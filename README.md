@@ -1,6 +1,24 @@
-# Cybara
+<p align="center">
+  <img src="cybara.png" alt="Cybara" width="120" />
+</p>
 
-A modern AI agent platform with a beautiful React web UI, full tool calling support, modular skills system, browser automation, and multi-channel messaging. Built with Bun for exceptional performance.
+<h1 align="center">Cybara</h1>
+
+<p align="center">
+  <strong>AI Agent Platform with Beautiful UI & Modular Skills</strong>
+</p>
+
+<p align="center">
+  <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
+  <img src="https://img.shields.io/badge/runtime-Bun-f9f1e1?logo=bun" alt="Bun" />
+  <img src="https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/React-19-61dafb?logo=react" alt="React" />
+  <img src="https://img.shields.io/badge/Playwright-browser-2EAD33?logo=playwright" alt="Playwright" />
+  <img src="https://img.shields.io/badge/tools-30%2B-green" alt="30+ Tools" />
+  <img src="https://img.shields.io/badge/AI_providers-17%2B-purple" alt="17+ Providers" />
+</p>
+
+---
 
 ## ✨ Key Features
 
