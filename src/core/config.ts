@@ -29,7 +29,7 @@ class ConfigManager {
     const defaults: PlatformConfig = {
       name: "Cybara",
       host: "0.0.0.0",
-      port: 3000,
+      port: 4269,
     };
 
     const all = tables.config.all();

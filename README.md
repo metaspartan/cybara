@@ -115,7 +115,7 @@ bun run check      # TypeScript + ESLint + Prettier
 ## ⚙️ Configuration
 
 ### Environment Variables
-- `PORT` - Server port (default: 3000)
+- `PORT` - Server port (default: 4269)
 - `BRAVE_API_KEY` - For web search (optional, falls back to DuckDuckGo)
 
 ### Workspace Files

@@ -38,7 +38,7 @@ const mimeTypes: Record<string, string> = {
 };
 
 const platformConfig = config.getAll();
-const PORT = Number(process.env.PORT) || platformConfig.port || 3000;
+const PORT = Number(process.env.PORT) || platformConfig.port || 4269;
 const HOST = platformConfig.host || "0.0.0.0";
 
 // Log status broadcasts for debugging

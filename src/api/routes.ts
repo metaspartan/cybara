@@ -1237,7 +1237,7 @@ export async function handleRequest(req: {
   body?: unknown;
 }> {
   const startTime = Date.now();
-  const url = new URL(req.url, `http://${req.headers.host || "localhost:3000"}`);
+  const url = new URL(req.url, `http://${req.headers.host || "localhost:4269"}`);
   const method = req.method || "GET";
   const path = url.pathname;
 
