@@ -26,10 +26,11 @@ interface StatusResponse {
 }
 
 interface MetricsResponse {
-    totalTokens: number;
-    totalRequests: number;
-    avgLatency: number;
-    providers: Record<string, { tokens: number; requests: number }>;
+    tokenUsage: { total: number; input: number; output: number; cache: number };
+    fileOperations: { filesRead: number; filesWritten: number; filesEdited: number };
+    toolCalls: { totalCalls: number };
+    apiCalls: { totalCalls: number; successfulCalls: number; failedCalls: number };
+    agentExecutions: { totalExecutions: number; totalMessages: number };
 }
 
 interface TaskItem {
@@ -77,7 +78,7 @@ const Logo = ({ compact = false }: { compact?: boolean }) => (
                 <BigText text="Cybara" font="chrome" />
             </Gradient>
         )}
-        <Text color="gray">AI Agent Platform v1.0.0</Text>
+        <Text color="gray">Cybara TUI</Text>
     </Box>
 );
 
@@ -217,7 +218,7 @@ const MetricsCommand = () => {
     });
 
     React.useEffect(() => {
-        fetchAPI<MetricsResponse>("/api/metrics/summary")
+        fetchAPI<MetricsResponse>("/api/metrics/overview")
             .then((d) => {
                 if (d) setData(d);
                 else setError("Failed to fetch metrics");
@@ -236,27 +237,36 @@ const MetricsCommand = () => {
                 <Text bold>Token Metrics</Text>
                 <Box marginTop={1}>
                     <Text color="gray">Total Tokens:   </Text>
-                    <Text color="green">{(data.totalTokens || 0).toLocaleString()}</Text>
+                    <Text color="green">{(data.tokenUsage?.total || 0).toLocaleString()}</Text>
                 </Box>
                 <Box>
-                    <Text color="gray">Total Requests: </Text>
-                    <Text>{(data.totalRequests || 0).toLocaleString()}</Text>
+                    <Text color="gray">Input Tokens:   </Text>
+                    <Text>{(data.tokenUsage?.input || 0).toLocaleString()}</Text>
                 </Box>
                 <Box>
-                    <Text color="gray">Avg Latency:    </Text>
-                    <Text>{(data.avgLatency || 0).toFixed(0)}ms</Text>
+                    <Text color="gray">Output Tokens:  </Text>
+                    <Text>{(data.tokenUsage?.output || 0).toLocaleString()}</Text>
+                </Box>
+                <Box>
+                    <Text color="gray">Tool Calls:     </Text>
+                    <Text>{(data.toolCalls?.totalCalls || 0).toLocaleString()}</Text>
+                </Box>
+                <Box>
+                    <Text color="gray">API Calls:      </Text>
+                    <Text>{(data.apiCalls?.totalCalls || 0).toLocaleString()}</Text>
                 </Box>
             </Box>
-            {data.providers && Object.keys(data.providers).length > 0 && (
+            {data.fileOperations && (
                 <Box flexDirection="column" marginTop={1}>
-                    <Text bold color="cyan">By Provider</Text>
-                    {Object.entries(data.providers).map(([name, info]) => (
-                        <Box key={name}>
-                            <Box width={20}><Text color="gray">{name}</Text></Box>
-                            <Text>{info.tokens.toLocaleString()} tokens</Text>
-                            <Text color="gray"> / {info.requests} requests</Text>
-                        </Box>
-                    ))}
+                    <Text bold color="cyan">File Operations</Text>
+                    <Box>
+                        <Box width={20}><Text color="gray">Files Read</Text></Box>
+                        <Text>{(data.fileOperations.filesRead || 0).toLocaleString()}</Text>
+                    </Box>
+                    <Box>
+                        <Box width={20}><Text color="gray">Files Written</Text></Box>
+                        <Text>{(data.fileOperations.filesWritten || 0).toLocaleString()}</Text>
+                    </Box>
                 </Box>
             )}
             <Box marginTop={1}>
@@ -278,9 +288,9 @@ const TasksCommand = () => {
     });
 
     React.useEffect(() => {
-        fetchAPI<{ tasks: TaskItem[] }>("/api/tasks")
+        fetchAPI<TaskItem[]>("/api/tasks")
             .then((d) => {
-                if (d) setData(d.tasks || []);
+                if (d) setData(Array.isArray(d) ? d : []);
                 else setError("Failed to fetch tasks");
             })
             .finally(() => setLoading(false));
@@ -376,9 +386,9 @@ const AgentsCommand = () => {
     });
 
     React.useEffect(() => {
-        fetchAPI<{ agents: AgentItem[] }>("/api/agents")
+        fetchAPI<AgentItem[]>("/api/agents")
             .then((d) => {
-                if (d) setData(d.agents || []);
+                if (d) setData(Array.isArray(d) ? d : []);
                 else setError("Failed to fetch agents");
             })
             .finally(() => setLoading(false));
