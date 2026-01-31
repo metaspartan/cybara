@@ -1,0 +1,934 @@
+import { Database } from "bun:sqlite";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+import { mkdirSync, existsSync } from "fs";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const dataDir = join(__dirname, "..", "data");
+const dbPath = join(dataDir, "platform.db");
+
+console.log("[Database] Initializing at:", dbPath);
+
+if (!existsSync(dataDir)) {
+  console.log("[Database] Creating data directory");
+  mkdirSync(dataDir, { recursive: true });
+}
+
+const db = new Database(dbPath);
+console.log("[Database] Database instance created");
+db.exec("PRAGMA journal_mode = WAL");
+console.log("[Database] Journal mode set");
+
+// Initialize schema
+console.log("[Database] Creating schema...");
+try {
+  db.exec(`
+  -- Platform configuration
+  CREATE TABLE IF NOT EXISTS config (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- AI Providers with credentials
+  CREATE TABLE IF NOT EXISTS providers (
+    id TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    name TEXT NOT NULL,
+    base_url TEXT,
+    api_key TEXT,
+    access_token TEXT,
+    refresh_token TEXT,
+    expires_at INTEGER,
+    is_default INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Provider models cache
+  CREATE TABLE IF NOT EXISTS provider_models (
+    id TEXT PRIMARY KEY,
+    provider_id TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    model_name TEXT,
+    context_window INTEGER,
+    max_tokens INTEGER,
+    reasoning BOOLEAN,
+    input_types TEXT,
+    cost_input REAL,
+    cost_output REAL,
+    cost_cache_read REAL,
+    cost_cache_write REAL,
+    FOREIGN KEY (provider_id) REFERENCES providers(id)
+  );
+
+  -- MCP Servers
+  CREATE TABLE IF NOT EXISTS mcp_servers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    command TEXT NOT NULL,
+    args TEXT,
+    env TEXT,
+    enabled BOOLEAN DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Agents
+  CREATE TABLE IF NOT EXISTS agents (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT DEFAULT 'main',
+    model TEXT,
+    provider_id TEXT,
+    system_prompt TEXT,
+    tools TEXT,
+    config TEXT,
+    status TEXT DEFAULT 'stopped',
+    memory_enabled BOOLEAN DEFAULT 0,
+    fallback_provider_id TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Messaging Channels
+  CREATE TABLE IF NOT EXISTS channels (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    config TEXT NOT NULL,
+    enabled INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Scheduled Tasks
+  CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT,
+    name TEXT NOT NULL,
+    type TEXT DEFAULT 'scheduled',
+    schedule TEXT,
+    config TEXT,
+    status TEXT DEFAULT 'pending',
+    last_run DATETIME,
+    next_run DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Sessions/Conversations
+  CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    channel_type TEXT,
+    channel_id TEXT,
+    title TEXT,
+    status TEXT DEFAULT 'active',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (agent_id) REFERENCES agents(id)
+  );
+
+  -- Setup wizard state
+  CREATE TABLE IF NOT EXISTS setup_state (
+    step TEXT PRIMARY KEY,
+    completed INTEGER DEFAULT 0,
+    config TEXT
+  );
+
+  -- Chat sessions (conversations)
+  CREATE TABLE IF NOT EXISTS chat_sessions (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    messages TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Chat memory (TOON format - Tools, Objects, Operators, Narratives)
+  CREATE TABLE IF NOT EXISTS chat_memory (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    content TEXT NOT NULL,
+    embedding TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES chat_sessions(id)
+  );
+
+  -- Session messages (all messages sent/received)
+  CREATE TABLE IF NOT EXISTS session_messages (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    agent_id TEXT,
+    channel_type TEXT,
+    channel_id TEXT,
+    role TEXT NOT NULL, -- 'user', 'assistant', 'system', 'tool'
+    content TEXT NOT NULL,
+    metadata TEXT, -- JSON: tool_calls, thinking, etc.
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES chat_sessions(id)
+  );
+
+  -- System logs
+  CREATE TABLE IF NOT EXISTS system_logs (
+    id TEXT PRIMARY KEY,
+    level TEXT NOT NULL, -- 'debug', 'info', 'warn', 'error'
+    source TEXT NOT NULL, -- 'agent', 'channel', 'tool', 'system'
+    message TEXT NOT NULL,
+    metadata TEXT, -- JSON: additional context
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Agent activity logs
+  CREATE TABLE IF NOT EXISTS agent_logs (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    action TEXT NOT NULL, -- 'spawned', 'message', 'tool_call', 'error', 'completed'
+    details TEXT,
+    metadata TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Metrics and statistics tracking
+  CREATE TABLE IF NOT EXISTS metrics (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL, -- 'token_usage', 'file_operation', 'api_call', 'tool_call', 'agent_execution'
+    key TEXT NOT NULL, -- e.g., 'gpt-4', 'read', 'read', 'claude-3-opus'
+    value INTEGER NOT NULL, -- Numeric value (tokens, file count, etc.)
+    metadata TEXT, -- JSON: additional context like model, provider, file path, etc.
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Daily aggregates for fast querying
+  CREATE TABLE IF NOT EXISTS metrics_daily (
+    id TEXT PRIMARY KEY,
+    date DATE NOT NULL,
+    type TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(date, type, key)
+  );
+
+  -- Channel message logs
+  CREATE TABLE IF NOT EXISTS channel_logs (
+    id TEXT PRIMARY KEY,
+    channel_type TEXT NOT NULL,
+    channel_id TEXT,
+    direction TEXT NOT NULL, -- 'incoming', 'outgoing'
+    sender_id TEXT,
+    content TEXT NOT NULL,
+    metadata TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Create indexes for performance
+  CREATE INDEX IF NOT EXISTS idx_session_messages_session ON session_messages(session_id);
+  CREATE INDEX IF NOT EXISTS idx_session_messages_created ON session_messages(created_at);
+  CREATE INDEX IF NOT EXISTS idx_system_logs_level ON system_logs(level);
+  CREATE INDEX IF NOT EXISTS idx_system_logs_source ON system_logs(source);
+  CREATE INDEX IF NOT EXISTS idx_system_logs_created ON system_logs(created_at);
+  CREATE INDEX IF NOT EXISTS idx_agent_logs_agent ON agent_logs(agent_id);
+  CREATE INDEX IF NOT EXISTS idx_agent_logs_created ON agent_logs(created_at);
+  CREATE INDEX IF NOT EXISTS idx_channel_logs_type ON channel_logs(channel_type);
+  CREATE INDEX IF NOT EXISTS idx_channel_logs_created ON channel_logs(created_at);
+`);
+  console.log("[Database] Schema created successfully");
+
+  // Migrations for new columns
+  try {
+    // Add fallback_provider_id column to agents table (if not exists)
+    db.exec("ALTER TABLE agents ADD COLUMN fallback_provider_id TEXT");
+    console.log("[Database] Migration: Added fallback_provider_id column");
+  } catch (e) {
+    // Column already exists, ignore
+  }
+} catch (error) {
+  console.error("[Database] Schema creation error:", error);
+}
+
+// Initialize schema
+db.exec(`
+  -- Platform configuration
+  CREATE TABLE IF NOT EXISTS config (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- AI Providers with credentials
+  CREATE TABLE IF NOT EXISTS providers (
+    id TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    name TEXT NOT NULL,
+    base_url TEXT,
+    api_key TEXT,
+    access_token TEXT,
+    refresh_token TEXT,
+    expires_at INTEGER,
+    is_default INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Provider models cache
+  CREATE TABLE IF NOT EXISTS provider_models (
+    id TEXT PRIMARY KEY,
+    provider_id TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    model_name TEXT,
+    context_window INTEGER,
+    max_tokens INTEGER,
+    reasoning BOOLEAN,
+    input_types TEXT,
+    cost_input REAL,
+    cost_output REAL,
+    cost_cache_read REAL,
+    cost_cache_write REAL,
+    FOREIGN KEY (provider_id) REFERENCES providers(id)
+  );
+
+  -- MCP Servers
+  CREATE TABLE IF NOT EXISTS mcp_servers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    command TEXT NOT NULL,
+    args TEXT,
+    env TEXT,
+    enabled BOOLEAN DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Agents
+  CREATE TABLE IF NOT EXISTS agents (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT DEFAULT 'main',
+    model TEXT,
+    provider_id TEXT,
+    system_prompt TEXT,
+    tools TEXT,
+    config TEXT,
+    status TEXT DEFAULT 'stopped',
+    memory_enabled BOOLEAN DEFAULT 0,
+    fallback_provider_id TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Messaging Channels
+  CREATE TABLE IF NOT EXISTS channels (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    config TEXT NOT NULL,
+    enabled INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Scheduled Tasks
+  CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT,
+    name TEXT NOT NULL,
+    type TEXT DEFAULT 'scheduled',
+    schedule TEXT,
+    config TEXT,
+    status TEXT DEFAULT 'pending',
+    last_run DATETIME,
+    next_run DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Sessions/Conversations
+  CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    channel_type TEXT,
+    channel_id TEXT,
+    title TEXT,
+    status TEXT DEFAULT 'active',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (agent_id) REFERENCES agents(id)
+  );
+
+  -- Setup wizard state
+  CREATE TABLE IF NOT EXISTS setup_state (
+    step TEXT PRIMARY KEY,
+    completed INTEGER DEFAULT 0,
+    config TEXT
+  );
+
+  -- Chat sessions (conversations)
+  CREATE TABLE IF NOT EXISTS chat_sessions (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    messages TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Chat memory (TOON format - Tools, Objects, Operators, Narratives)
+  CREATE TABLE IF NOT EXISTS chat_memory (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    content TEXT NOT NULL,
+    embedding TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES chat_sessions(id)
+  );
+`);
+
+// Add chat tables statements
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_chat_sessions_agent ON chat_sessions(agent_id);
+  CREATE INDEX IF NOT EXISTS idx_chat_memory_session ON chat_memory(session_id);
+`);
+
+// Prepared statements
+const prepare = (sql: string) => db.prepare(sql);
+
+// Config
+const stmts = {
+  config: {
+    get: prepare("SELECT value FROM config WHERE key = ?"),
+    set: prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)"),
+    all: prepare("SELECT key, value FROM config"),
+  },
+  providers: {
+    all: prepare("SELECT * FROM providers ORDER BY created_at DESC"),
+    get: prepare("SELECT * FROM providers WHERE id = ?"),
+    create: prepare(
+      "INSERT INTO providers (id, provider, name, base_url, api_key, access_token, refresh_token, expires_at, is_default) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ),
+    update: prepare(
+      "UPDATE providers SET name=?, base_url=?, api_key=?, access_token=?, refresh_token=?, expires_at=?, is_default=?, updated_at=CURRENT_TIMESTAMP WHERE id=?"
+    ),
+    delete: prepare("DELETE FROM providers WHERE id = ?"),
+  },
+  providerModels: {
+    all: prepare("SELECT * FROM provider_models"),
+    byProvider: prepare("SELECT * FROM provider_models WHERE provider_id = ?"),
+    upsert: prepare(
+      "INSERT OR REPLACE INTO provider_models (id, provider_id, model_id, model_name, context_window, max_tokens, reasoning, input_types, cost_input, cost_output, cost_cache_read, cost_cache_write) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ),
+  },
+  mcpServers: {
+    all: prepare("SELECT * FROM mcp_servers ORDER BY created_at DESC"),
+    get: prepare("SELECT * FROM mcp_servers WHERE id = ?"),
+    create: prepare(
+      "INSERT INTO mcp_servers (id, name, command, args, env, enabled) VALUES (?, ?, ?, ?, ?, ?)"
+    ),
+    update: prepare(
+      "UPDATE mcp_servers SET name=?, command=?, args=?, env=?, enabled=? WHERE id=?"
+    ),
+    delete: prepare("DELETE FROM mcp_servers WHERE id = ?"),
+  },
+  agents: {
+    all: prepare("SELECT * FROM agents ORDER BY created_at DESC"),
+    get: prepare("SELECT * FROM agents WHERE id = ?"),
+    create: prepare(
+      "INSERT INTO agents (id, name, type, model, provider_id, system_prompt, tools, config, status, memory_enabled, fallback_provider_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ),
+    update: prepare(
+      "UPDATE agents SET name=?, model=?, provider_id=?, system_prompt=?, tools=?, config=?, status=?, memory_enabled=?, fallback_provider_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?"
+    ),
+    updateStatus: prepare("UPDATE agents SET status=? WHERE id=?"),
+    delete: prepare("DELETE FROM agents WHERE id = ?"),
+  },
+  channels: {
+    all: prepare("SELECT * FROM channels ORDER BY created_at DESC"),
+    get: prepare("SELECT * FROM channels WHERE id = ?"),
+    create: prepare(
+      "INSERT INTO channels (id, type, name, config, enabled) VALUES (?, ?, ?, ?, ?)"
+    ),
+    update: prepare(
+      "UPDATE channels SET name=COALESCE(?, name), config=COALESCE(?, config), enabled=COALESCE(?, enabled) WHERE id=?"
+    ),
+    delete: prepare("DELETE FROM channels WHERE id = ?"),
+  },
+  tasks: {
+    all: prepare("SELECT * FROM tasks ORDER BY created_at DESC"),
+    get: prepare("SELECT * FROM tasks WHERE id = ?"),
+    create: prepare(
+      "INSERT INTO tasks (id, agent_id, name, type, schedule, config, status, next_run) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    ),
+    update: prepare("UPDATE tasks SET status=?, last_run=?, next_run=? WHERE id=?"),
+    delete: prepare("DELETE FROM tasks WHERE id = ?"),
+  },
+  setup: {
+    getStep: prepare("SELECT * FROM setup_state WHERE step = ?"),
+    setStep: prepare(
+      "INSERT OR REPLACE INTO setup_state (step, completed, config) VALUES (?, ?, ?)"
+    ),
+    all: prepare("SELECT step, completed FROM setup_state"),
+  },
+  chatSessions: {
+    get: prepare("SELECT * FROM chat_sessions WHERE id = ?"),
+    upsert: prepare(
+      "INSERT OR REPLACE INTO chat_sessions (id, agent_id, messages, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+    ),
+    delete: prepare("DELETE FROM chat_sessions WHERE id = ?"),
+    list: prepare("SELECT * FROM chat_sessions ORDER BY updated_at DESC"),
+  },
+  chatMemory: {
+    getBySession: prepare("SELECT * FROM chat_memory WHERE session_id = ? ORDER BY created_at ASC"),
+    add: prepare(
+      "INSERT INTO chat_memory (id, session_id, type, content, embedding) VALUES (?, ?, ?, ?, ?)"
+    ),
+    search: prepare(
+      "SELECT * FROM chat_memory WHERE content LIKE ? ORDER BY created_at DESC LIMIT ?"
+    ),
+  },
+  sessionMessages: {
+    getBySession: prepare(
+      "SELECT * FROM session_messages WHERE session_id = ? ORDER BY created_at ASC"
+    ),
+    add: prepare(
+      "INSERT INTO session_messages (id, session_id, agent_id, channel_type, channel_id, role, content, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    ),
+    list: prepare("SELECT * FROM session_messages ORDER BY created_at DESC LIMIT 1000"),
+    search: prepare(
+      "SELECT * FROM session_messages WHERE content LIKE ? ORDER BY created_at DESC LIMIT ?"
+    ),
+  },
+  systemLogs: {
+    add: prepare(
+      "INSERT INTO system_logs (id, level, source, message, metadata) VALUES (?, ?, ?, ?, ?)"
+    ),
+    getByLevel: prepare(
+      "SELECT * FROM system_logs WHERE level = ? ORDER BY created_at DESC LIMIT 1000"
+    ),
+    getBySource: prepare(
+      "SELECT * FROM system_logs WHERE source = ? ORDER BY created_at DESC LIMIT 1000"
+    ),
+    list: prepare("SELECT * FROM system_logs ORDER BY created_at DESC LIMIT 1000"),
+    search: prepare(
+      "SELECT * FROM system_logs WHERE message LIKE ? ORDER BY created_at DESC LIMIT ?"
+    ),
+  },
+  agentLogs: {
+    add: prepare(
+      "INSERT INTO agent_logs (id, agent_id, action, details, metadata) VALUES (?, ?, ?, ?, ?)"
+    ),
+    getByAgent: prepare(
+      "SELECT * FROM agent_logs WHERE agent_id = ? ORDER BY created_at DESC LIMIT 1000"
+    ),
+    list: prepare("SELECT * FROM agent_logs ORDER BY created_at DESC LIMIT 1000"),
+  },
+  channelLogs: {
+    add: prepare(
+      "INSERT INTO channel_logs (id, channel_type, channel_id, direction, sender_id, content, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ),
+    getByChannel: prepare(
+      "SELECT * FROM channel_logs WHERE channel_type = ? AND channel_id = ? ORDER BY created_at DESC LIMIT 1000"
+    ),
+    list: prepare("SELECT * FROM channel_logs ORDER BY created_at DESC LIMIT 1000"),
+  },
+  metrics: {
+    add: prepare("INSERT INTO metrics (id, type, key, value, metadata) VALUES (?, ?, ?, ?, ?)"),
+    getByType: prepare("SELECT * FROM metrics WHERE type = ? ORDER BY created_at DESC"),
+    getTotal: prepare("SELECT SUM(value) as total FROM metrics WHERE type = ? AND key = ?"),
+    getTopKeys: prepare(
+      "SELECT key, SUM(value) as total FROM metrics WHERE type = ? GROUP BY key ORDER BY total DESC LIMIT 20"
+    ),
+    getByDate: prepare(
+      "SELECT * FROM metrics WHERE type = ? AND date(created_at) = ? ORDER BY created_at DESC"
+    ),
+    // Daily aggregates from raw metrics table (for time-series)
+    getDailyTotalsFromRaw: prepare(
+      "SELECT type, SUM(value) as total FROM metrics WHERE date(created_at) = ? GROUP BY type"
+    ),
+    // Daily aggregates
+    addDaily: prepare(
+      "INSERT OR REPLACE INTO metrics_daily (id, date, type, key, value) VALUES (?, ?, ?, ?, ?)"
+    ),
+    getDaily: prepare(
+      "SELECT * FROM metrics_daily WHERE date = ? AND type = ? ORDER BY value DESC"
+    ),
+    getDailyTotals: prepare(
+      "SELECT type, SUM(value) as total FROM metrics_daily WHERE date = ? GROUP BY type"
+    ),
+    // Cleanup old metrics for scalability
+    deleteOlderThan: prepare(
+      "DELETE FROM metrics WHERE created_at < datetime('now', '-' || ? || ' days')"
+    ),
+    // Count total metrics
+    count: prepare("SELECT COUNT(*) as count FROM metrics"),
+  },
+};
+
+// Type-safe helpers
+export const tables = {
+  config: {
+    get: (key: string): { value: string } | null =>
+      stmts.config.get.get(key) as { value: string } | null,
+    set: (key: string, value: string) => stmts.config.set.run(key, value),
+    all: (): { key: string; value: string }[] =>
+      stmts.config.all.all() as { key: string; value: string }[],
+  },
+  providers: {
+    all: () => stmts.providers.all.all(),
+    get: (id: string) => stmts.providers.get.get(id),
+    create: (p: Provider) =>
+      stmts.providers.create.run(
+        p.id,
+        p.provider,
+        p.name,
+        p.base_url || null,
+        p.api_key || null,
+        p.access_token || null,
+        p.refresh_token || null,
+        p.expires_at || null,
+        p.is_default ? 1 : 0
+      ),
+    update: (id: string, p: Partial<Provider>) =>
+      stmts.providers.update.run(
+        p.name || null,
+        p.base_url || null,
+        p.api_key || null,
+        p.access_token || null,
+        p.refresh_token || null,
+        p.expires_at || null,
+        p.is_default ? 1 : 0,
+        id
+      ),
+    delete: (id: string) => stmts.providers.delete.run(id),
+  },
+  providerModels: {
+    all: () => stmts.providerModels.all.all(),
+    byProvider: (id: string) => stmts.providerModels.byProvider.all(id),
+    upsert: (m: ProviderModel) =>
+      stmts.providerModels.upsert.run(
+        m.id,
+        m.provider_id,
+        m.model_id,
+        m.model_name || null,
+        m.context_window || null,
+        m.max_tokens || null,
+        m.reasoning ? 1 : 0,
+        JSON.stringify(m.input_types || []),
+        m.cost_input || 0,
+        m.cost_output || 0,
+        m.cost_cache_read || 0,
+        m.cost_cache_write || 0
+      ),
+  },
+  mcpServers: {
+    all: () => stmts.mcpServers.all.all(),
+    get: (id: string) => stmts.mcpServers.get.get(id),
+    create: (s: MCPServer) =>
+      stmts.mcpServers.create.run(
+        s.id,
+        s.name,
+        s.command,
+        s.args || null,
+        s.env || null,
+        s.enabled ? 1 : 0
+      ),
+    update: (id: string, s: Partial<MCPServer>) =>
+      stmts.mcpServers.update.run(
+        s.name || null,
+        s.command || null,
+        s.args || null,
+        s.env || null,
+        s.enabled ? 1 : 0,
+        id
+      ),
+    delete: (id: string) => stmts.mcpServers.delete.run(id),
+  },
+  agents: {
+    all: () => stmts.agents.all.all(),
+    get: (id: string) => stmts.agents.get.get(id),
+    create: (a: Agent) =>
+      stmts.agents.create.run(
+        a.id,
+        a.name,
+        a.type || "main",
+        a.model || null,
+        a.provider_id || null,
+        a.system_prompt || null,
+        a.tools ? JSON.stringify(a.tools) : null,
+        a.config ? JSON.stringify(a.config) : null,
+        a.status || "stopped",
+        a.memory_enabled ? 1 : 0,
+        a.fallback_provider_id || null
+      ),
+    update: (id: string, a: Partial<Agent>) =>
+      stmts.agents.update.run(
+        a.name || null,
+        a.model || null,
+        a.provider_id || null,
+        a.system_prompt || null,
+        a.tools ? JSON.stringify(a.tools) : null,
+        a.config ? JSON.stringify(a.config) : null,
+        a.status || null,
+        a.memory_enabled ? 1 : 0,
+        a.fallback_provider_id || null,
+        id
+      ),
+    updateStatus: (id: string, status: string) => stmts.agents.updateStatus.run(status, id),
+    delete: (id: string) => stmts.agents.delete.run(id),
+  },
+  channels: {
+    all: () => stmts.channels.all.all(),
+    get: (id: string) => stmts.channels.get.get(id),
+    create: (c: Channel) =>
+      stmts.channels.create.run(c.id, c.type, c.name, JSON.stringify(c.config), c.enabled ? 1 : 0),
+    update: (id: string, c: Partial<Channel>) =>
+      stmts.channels.update.run(
+        c.name ?? null,
+        c.config ? JSON.stringify(c.config) : null,
+        c.enabled !== undefined ? (c.enabled ? 1 : 0) : null,
+        id
+      ),
+    delete: (id: string) => stmts.channels.delete.run(id),
+  },
+  tasks: {
+    all: () => stmts.tasks.all.all(),
+    get: (id: string) => stmts.tasks.get.get(id),
+    create: (t: Task) =>
+      stmts.tasks.create.run(
+        t.id,
+        t.agent_id || null,
+        t.name,
+        t.type || "scheduled",
+        t.schedule || null,
+        t.config ? JSON.stringify(t.config) : null,
+        t.status || "pending",
+        t.next_run || null
+      ),
+    update: (id: string, t: Partial<Task>) =>
+      stmts.tasks.update.run(t.status || null, t.last_run || null, t.next_run || null, id),
+    delete: (id: string) => stmts.tasks.delete.run(id),
+  },
+  setup: {
+    getStep: (step: string) => stmts.setup.getStep.get(step),
+    setStep: (step: string, completed: boolean, config?: string) =>
+      stmts.setup.setStep.run(step, completed ? 1 : 0, config || null),
+    all: () => stmts.setup.all.all(),
+    isComplete: () => {
+      const ws = stmts.setup.getStep.get("wizard") as { completed?: number } | null;
+      return ws?.completed === 1;
+    },
+  },
+  chatSessions: {
+    get: (id: string) => stmts.chatSessions?.get.get(id),
+    upsert: (session: ChatSessionDB) =>
+      stmts.chatSessions?.upsert.run(
+        session.id,
+        session.agent_id,
+        session.messages,
+        session.created_at,
+        new Date().toISOString()
+      ),
+    delete: (id: string) => stmts.chatSessions?.delete.run(id),
+    all: () => stmts.chatSessions?.list.all() || [],
+  },
+  chatMemory: {
+    getBySession: (sessionId: string) => stmts.chatMemory?.getBySession.all(sessionId) || [],
+    add: (memory: ChatMemoryDB) =>
+      stmts.chatMemory?.add.run(
+        memory.id,
+        memory.session_id,
+        memory.type,
+        memory.content,
+        memory.embedding || null
+      ),
+    search: (query: string, limit = 10) => stmts.chatMemory?.search.all(`%${query}%`, limit) || [],
+  },
+  sessionMessages: {
+    getBySession: (sessionId: string) => stmts.sessionMessages?.getBySession.all(sessionId) || [],
+    add: (msg: {
+      id: string;
+      session_id: string;
+      agent_id?: string;
+      channel_type?: string;
+      channel_id?: string;
+      role: string;
+      content: string;
+      metadata?: string;
+    }) =>
+      stmts.sessionMessages?.add.run(
+        msg.id,
+        msg.session_id,
+        msg.agent_id || null,
+        msg.channel_type || null,
+        msg.channel_id || null,
+        msg.role,
+        msg.content,
+        msg.metadata || null
+      ),
+    list: () => stmts.sessionMessages?.list.all() || [],
+    search: (query: string, limit = 100) =>
+      stmts.sessionMessages?.search.all(`%${query}%`, limit) || [],
+  },
+  systemLogs: {
+    add: (log: { id: string; level: string; source: string; message: string; metadata?: string }) =>
+      stmts.systemLogs?.add.run(log.id, log.level, log.source, log.message, log.metadata || null),
+    getByLevel: (level: string) => stmts.systemLogs?.getByLevel.all(level) || [],
+    getBySource: (source: string) => stmts.systemLogs?.getBySource.all(source) || [],
+    list: () => stmts.systemLogs?.list.all() || [],
+    search: (query: string, limit = 100) => stmts.systemLogs?.search.all(`%${query}%`, limit) || [],
+  },
+  agentLogs: {
+    add: (log: {
+      id: string;
+      agent_id: string;
+      action: string;
+      details?: string;
+      metadata?: string;
+    }) =>
+      stmts.agentLogs?.add.run(
+        log.id,
+        log.agent_id,
+        log.action,
+        log.details || null,
+        log.metadata || null
+      ),
+    getByAgent: (agentId: string) => stmts.agentLogs?.getByAgent.all(agentId) || [],
+    list: () => stmts.agentLogs?.list.all() || [],
+  },
+  channelLogs: {
+    add: (log: {
+      id: string;
+      channel_type: string;
+      channel_id?: string;
+      direction: string;
+      sender_id?: string;
+      content: string;
+      metadata?: string;
+    }) =>
+      stmts.channelLogs?.add.run(
+        log.id,
+        log.channel_type,
+        log.channel_id || null,
+        log.direction,
+        log.sender_id || null,
+        log.content,
+        log.metadata || null
+      ),
+    getByChannel: (channelType: string, channelId: string) =>
+      stmts.channelLogs?.getByChannel.all(channelType, channelId) || [],
+    list: () => stmts.channelLogs?.list.all() || [],
+  },
+  metrics: {
+    add: (m: { id: string; type: string; key: string; value: number; metadata?: string }) =>
+      stmts.metrics?.add.run(m.id, m.type, m.key, m.value, m.metadata || null),
+    getByType: (type: string) => stmts.metrics?.getByType.all(type) || [],
+    getTotal: (type: string, key: string) =>
+      (stmts.metrics?.getTotal.get(type, key) as { total?: number } | null)?.total || 0,
+    getTopKeys: (type: string) => stmts.metrics?.getTopKeys.all(type) || [],
+    getByDate: (type: string, date: string) => stmts.metrics?.getByDate.all(type, date) || [],
+    // Daily aggregates from raw metrics (for time-series when metrics_daily is empty)
+    getDailyTotalsFromRaw: (date: string): Array<{ type: string; total: number }> =>
+      (stmts.metrics?.getDailyTotalsFromRaw.all(date) || []) as Array<{ type: string; total: number }>,
+    // Daily aggregates (pre-aggregated cache)
+    addDaily: (d: { id: string; date: string; type: string; key: string; value: number }) =>
+      stmts.metrics?.addDaily.run(d.id, d.date, d.type, d.key, d.value),
+    getDaily: (date: string, type: string) => stmts.metrics?.getDaily.all(date, type) || [],
+    getDailyTotals: (date: string) => stmts.metrics?.getDailyTotals.all(date) || [],
+    // Cleanup for scalability
+    deleteOlderThan: (days: number) => stmts.metrics?.deleteOlderThan.run(days),
+    count: () => (stmts.metrics?.count.get() as { count: number } | null)?.count || 0,
+  },
+};
+
+// Types
+export interface Provider {
+  id: string;
+  provider: string;
+  name: string;
+  base_url?: string;
+  api_key?: string;
+  access_token?: string;
+  refresh_token?: string;
+  expires_at?: number;
+  is_default: boolean;
+  headers?: Record<string, string>; // For provider-specific headers (e.g., User-Agent for Kimi Code)
+}
+
+export interface ProviderModel {
+  id: string;
+  provider_id: string;
+  model_id: string;
+  model_name?: string;
+  context_window?: number;
+  max_tokens?: number;
+  reasoning?: boolean;
+  input_types?: string[];
+  cost_input?: number;
+  cost_output?: number;
+  cost_cache_read?: number;
+  cost_cache_write?: number;
+}
+
+export interface MCPServer {
+  id: string;
+  name: string;
+  command: string;
+  args?: string;
+  env?: string;
+  enabled: boolean;
+}
+
+export interface Agent {
+  id: string;
+  name: string;
+  type?: "main" | "subagent" | "worker" | "research" | "coder" | "planner" | "ops";
+  model?: string;
+  provider_id?: string;
+  fallback_provider_id?: string;
+  system_prompt?: string;
+  tools?: ToolDefinition[];
+  config?: Record<string, unknown>;
+  status: "running" | "stopped" | "error";
+  memory_enabled: boolean;
+}
+
+export interface ToolDefinition {
+  name: string;
+  description?: string;
+  input_schema?: Record<string, unknown>;
+  handler?: string;
+}
+
+export interface Channel {
+  id: string;
+  type: "telegram" | "whatsapp" | "discord" | "slack" | "signal" | "imessage" | "web";
+  name: string;
+  config: Record<string, unknown>;
+  enabled: boolean;
+}
+
+export interface Task {
+  id: string;
+  agent_id?: string;
+  name: string;
+  type?: "scheduled" | "triggered" | "recurring";
+  schedule?: string;
+  config?: Record<string, unknown>;
+  status: "pending" | "running" | "completed" | "failed" | "paused";
+  last_run?: string;
+  next_run?: string;
+}
+
+// Chat session type
+export interface ChatSessionDB {
+  id: string;
+  agent_id: string;
+  messages: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+// Chat memory entry (TOON format)
+export interface ChatMemoryDB {
+  id: string;
+  session_id: string;
+  type: "tool" | "object" | "operator" | "narrative";
+  content: string;
+  embedding?: string;
+  created_at: string;
+}
+
+export default db;
