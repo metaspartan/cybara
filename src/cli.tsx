@@ -1,6 +1,15 @@
 #!/usr/bin/env bun
 /**
- * Cybara CLI - Ink-based TUI for the AI agent platform
+ * Cybara CLI - TUI for interactive use, raw output for commands
+ * 
+ * Usage:
+ *   cybara              # Interactive TUI menu
+ *   cybara status       # Raw text output
+ *   cybara metrics      # Raw text output
+ *   cybara agents       # Raw text output
+ *   cybara skills       # Raw text output
+ *   cybara tasks        # Raw text output
+ *   cybara help         # Raw text help
  */
 
 import React from "react";
@@ -12,11 +21,9 @@ import { spawn } from "child_process";
 
 const API_BASE = process.env.CYBARA_API || "http://localhost:4269";
 
+// ============================================
 // Types
-interface AppProps {
-    command?: string;
-    args?: string[];
-}
+// ============================================
 
 interface StatusResponse {
     status: string;
@@ -56,19 +63,191 @@ interface AgentItem {
     model?: string;
 }
 
-// Fetch helper
+// ============================================
+// Fetch Helper
+// ============================================
+
 async function fetchAPI<T>(endpoint: string): Promise<T | null> {
     try {
         const res = await fetch(`${API_BASE}${endpoint}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.json();
+        return await res.json() as T;
     } catch {
         return null;
     }
 }
 
 // ============================================
-// Components
+// RAW OUTPUT MODE (for agents/scripts)
+// ============================================
+
+async function rawStatus(): Promise<void> {
+    const data = await fetchAPI<StatusResponse>("/api/health");
+    if (!data) {
+        console.error("ERROR: Failed to connect to Cybara server at", API_BASE);
+        process.exit(1);
+    }
+
+    const formatUptime = (sec: number) => {
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        return h > 0 ? `${h}h ${m}m` : `${m}m`;
+    };
+
+    console.log("CYBARA STATUS");
+    console.log("=============");
+    console.log(`status: ${data.status}`);
+    console.log(`uptime: ${formatUptime(data.uptime)}`);
+    console.log(`timestamp: ${data.timestamp}`);
+    console.log("");
+    console.log("HEALTH CHECKS");
+    for (const [name, info] of Object.entries(data.checks || {})) {
+        const status = info.status || "ok";
+        const extra = info.total !== undefined ? ` (${info.total} total)` : "";
+        console.log(`  ${name}: ${status}${extra}`);
+    }
+}
+
+async function rawMetrics(): Promise<void> {
+    const data = await fetchAPI<MetricsResponse>("/api/metrics/overview");
+    if (!data) {
+        console.error("ERROR: Failed to fetch metrics from", API_BASE);
+        process.exit(1);
+    }
+
+    console.log("CYBARA METRICS");
+    console.log("==============");
+    console.log("");
+    console.log("TOKEN USAGE");
+    console.log(`  total: ${data.tokenUsage?.total || 0}`);
+    console.log(`  input: ${data.tokenUsage?.input || 0}`);
+    console.log(`  output: ${data.tokenUsage?.output || 0}`);
+    console.log(`  cache: ${data.tokenUsage?.cache || 0}`);
+    console.log("");
+    console.log("FILE OPERATIONS");
+    console.log(`  files_read: ${data.fileOperations?.filesRead || 0}`);
+    console.log(`  files_written: ${data.fileOperations?.filesWritten || 0}`);
+    console.log(`  files_edited: ${data.fileOperations?.filesEdited || 0}`);
+    console.log("");
+    console.log("TOOL CALLS");
+    console.log(`  total: ${data.toolCalls?.totalCalls || 0}`);
+    console.log("");
+    console.log("API CALLS");
+    console.log(`  total: ${data.apiCalls?.totalCalls || 0}`);
+    console.log(`  success: ${data.apiCalls?.successfulCalls || 0}`);
+    console.log(`  failed: ${data.apiCalls?.failedCalls || 0}`);
+}
+
+async function rawAgents(): Promise<void> {
+    const data = await fetchAPI<AgentItem[]>("/api/agents");
+    if (!data) {
+        console.error("ERROR: Failed to fetch agents from", API_BASE);
+        process.exit(1);
+    }
+
+    const agents = Array.isArray(data) ? data : [];
+    console.log("CYBARA AGENTS");
+    console.log("=============");
+    console.log(`total: ${agents.length}`);
+    console.log("");
+
+    if (agents.length === 0) {
+        console.log("No agents configured");
+        return;
+    }
+
+    for (const agent of agents) {
+        console.log(`- ${agent.name}`);
+        console.log(`  id: ${agent.id}`);
+        console.log(`  type: ${agent.type}`);
+        console.log(`  status: ${agent.status || "inactive"}`);
+        if (agent.model) console.log(`  model: ${agent.model}`);
+    }
+}
+
+async function rawTasks(): Promise<void> {
+    const data = await fetchAPI<TaskItem[]>("/api/tasks");
+    if (!data) {
+        console.error("ERROR: Failed to fetch tasks from", API_BASE);
+        process.exit(1);
+    }
+
+    const tasks = Array.isArray(data) ? data : [];
+    console.log("CYBARA TASKS");
+    console.log("============");
+    console.log(`total: ${tasks.length}`);
+    console.log("");
+
+    if (tasks.length === 0) {
+        console.log("No tasks scheduled");
+        return;
+    }
+
+    for (const task of tasks) {
+        console.log(`- ${task.name}`);
+        console.log(`  id: ${task.id}`);
+        console.log(`  status: ${task.status}`);
+        if (task.schedule) console.log(`  schedule: ${task.schedule}`);
+        if (task.lastRun) console.log(`  last_run: ${task.lastRun}`);
+    }
+}
+
+async function rawSkills(): Promise<void> {
+    const data = await fetchAPI<{ skills: SkillItem[] }>("/api/skills/status");
+    if (!data) {
+        console.error("ERROR: Failed to fetch skills from", API_BASE);
+        process.exit(1);
+    }
+
+    const skills = data.skills || [];
+    const eligible = skills.filter(s => s.eligible).length;
+
+    console.log("CYBARA SKILLS");
+    console.log("=============");
+    console.log(`total: ${skills.length}`);
+    console.log(`eligible: ${eligible}`);
+    console.log(`blocked: ${skills.length - eligible}`);
+    console.log("");
+
+    if (skills.length === 0) {
+        console.log("No skills installed");
+        return;
+    }
+
+    console.log("ELIGIBLE:");
+    for (const skill of skills.filter(s => s.eligible)) {
+        console.log(`  - ${skill.name} (${skill.source})`);
+    }
+
+    console.log("");
+    console.log("BLOCKED:");
+    for (const skill of skills.filter(s => !s.eligible)) {
+        console.log(`  - ${skill.name} (${skill.source})`);
+    }
+}
+
+function rawHelp(): void {
+    console.log("CYBARA CLI");
+    console.log("==========");
+    console.log("");
+    console.log("Usage: cybara [command]");
+    console.log("");
+    console.log("Commands:");
+    console.log("  (none)      Interactive TUI menu");
+    console.log("  status      Show system status");
+    console.log("  metrics     Show token usage and metrics");
+    console.log("  agents      List configured agents");
+    console.log("  tasks       List scheduled tasks");
+    console.log("  skills      List installed skills");
+    console.log("  start       Start the server");
+    console.log("  install     Run installation wizard (TUI)");
+    console.log("  help        Show this help");
+    console.log("");
+    console.log(`Environment: CYBARA_API=${API_BASE}`);
+}
+
+// ============================================
+// TUI COMPONENTS (for interactive use)
 // ============================================
 
 const Logo = ({ compact = false }: { compact?: boolean }) => (
@@ -133,12 +312,8 @@ const ErrorState = ({ message }: { message: string }) => (
     </Box>
 );
 
-// ============================================
-// Command Components
-// ============================================
-
-// Status Command
-const StatusCommand = () => {
+// TUI Status Command
+const TUIStatusCommand = () => {
     const { exit } = useApp();
     const [data, setData] = React.useState<StatusResponse | null>(null);
     const [loading, setLoading] = React.useState(true);
@@ -206,8 +381,8 @@ const StatusCommand = () => {
     );
 };
 
-// Metrics Command
-const MetricsCommand = () => {
+// TUI Metrics Command
+const TUIMetricsCommand = () => {
     const { exit } = useApp();
     const [data, setData] = React.useState<MetricsResponse | null>(null);
     const [loading, setLoading] = React.useState(true);
@@ -276,56 +451,8 @@ const MetricsCommand = () => {
     );
 };
 
-// Tasks Command
-const TasksCommand = () => {
-    const { exit } = useApp();
-    const [data, setData] = React.useState<TaskItem[]>([]);
-    const [loading, setLoading] = React.useState(true);
-    const [error, setError] = React.useState<string | null>(null);
-
-    useInput((input) => {
-        if (input === "q") exit();
-    });
-
-    React.useEffect(() => {
-        fetchAPI<TaskItem[]>("/api/tasks")
-            .then((d) => {
-                if (d) setData(Array.isArray(d) ? d : []);
-                else setError("Failed to fetch tasks");
-            })
-            .finally(() => setLoading(false));
-    }, []);
-
-    if (loading) return <LoadingState message="Fetching tasks..." />;
-    if (error) return <ErrorState message={error} />;
-
-    return (
-        <Box flexDirection="column">
-            <Logo compact />
-            <Box marginY={1}>
-                <Text bold color="cyan">Scheduled Tasks ({data.length})</Text>
-            </Box>
-            {data.length === 0 ? (
-                <Text color="gray">No tasks scheduled</Text>
-            ) : (
-                <Table
-                    headers={["Name", "Status", "Schedule"]}
-                    rows={data.map((t) => [
-                        t.name,
-                        <StatusBadge key={t.id} status={t.status} />,
-                        t.schedule || "-",
-                    ])}
-                />
-            )}
-            <Box marginTop={1}>
-                <Text color="gray">Press q to exit</Text>
-            </Box>
-        </Box>
-    );
-};
-
-// Skills Command
-const SkillsCommand = () => {
+// TUI Skills Command
+const TUISkillsCommand = () => {
     const { exit } = useApp();
     const [data, setData] = React.useState<SkillItem[]>([]);
     const [loading, setLoading] = React.useState(true);
@@ -374,8 +501,8 @@ const SkillsCommand = () => {
     );
 };
 
-// Agents Command
-const AgentsCommand = () => {
+// TUI Agents Command
+const TUIAgentsCommand = () => {
     const { exit } = useApp();
     const [data, setData] = React.useState<AgentItem[]>([]);
     const [loading, setLoading] = React.useState(true);
@@ -423,41 +550,47 @@ const AgentsCommand = () => {
     );
 };
 
-// Help Command
-const HelpCommand = () => {
+// TUI Tasks Command
+const TUITasksCommand = () => {
     const { exit } = useApp();
+    const [data, setData] = React.useState<TaskItem[]>([]);
+    const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState<string | null>(null);
 
     useInput((input) => {
         if (input === "q") exit();
     });
 
-    const commands = [
-        { cmd: "cybara", desc: "Interactive TUI menu" },
-        { cmd: "cybara start", desc: "Start the server" },
-        { cmd: "cybara install", desc: "Run install wizard" },
-        { cmd: "cybara status", desc: "Show system status" },
-        { cmd: "cybara metrics", desc: "Show token usage metrics" },
-        { cmd: "cybara tasks", desc: "List scheduled tasks" },
-        { cmd: "cybara skills", desc: "List installed skills" },
-        { cmd: "cybara agents", desc: "List configured agents" },
-        { cmd: "cybara help", desc: "Show this help" },
-    ];
+    React.useEffect(() => {
+        fetchAPI<TaskItem[]>("/api/tasks")
+            .then((d) => {
+                if (d) setData(Array.isArray(d) ? d : []);
+                else setError("Failed to fetch tasks");
+            })
+            .finally(() => setLoading(false));
+    }, []);
+
+    if (loading) return <LoadingState message="Fetching tasks..." />;
+    if (error) return <ErrorState message={error} />;
 
     return (
         <Box flexDirection="column">
             <Logo compact />
             <Box marginY={1}>
-                <Text bold color="cyan">Available Commands</Text>
+                <Text bold color="cyan">Scheduled Tasks ({data.length})</Text>
             </Box>
-            {commands.map((c) => (
-                <Box key={c.cmd}>
-                    <Box width={25}><Text color="green">{c.cmd}</Text></Box>
-                    <Text color="gray">{c.desc}</Text>
-                </Box>
-            ))}
-            <Box marginTop={1}>
-                <Text color="gray">Environment: CYBARA_API={API_BASE}</Text>
-            </Box>
+            {data.length === 0 ? (
+                <Text color="gray">No tasks scheduled</Text>
+            ) : (
+                <Table
+                    headers={["Name", "Status", "Schedule"]}
+                    rows={data.map((t) => [
+                        t.name,
+                        <StatusBadge key={t.id} status={t.status} />,
+                        t.schedule || "-",
+                    ])}
+                />
+            )}
             <Box marginTop={1}>
                 <Text color="gray">Press q to exit</Text>
             </Box>
@@ -505,8 +638,8 @@ const MainMenu = () => {
             case "skills":
             case "agents":
             case "tasks":
-                // Re-render with the specific command
-                render(<App command={action} />);
+                // Re-render with the specific TUI command
+                render(<TUIApp command={action} />);
                 break;
             case "ui":
                 setStatus({ message: "Opening browser...", type: "info" });
@@ -522,7 +655,7 @@ const MainMenu = () => {
         <Box flexDirection="column">
             <Logo />
             <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={2} paddingY={1}>
-                <Text bold marginBottom={1}>Main Menu</Text>
+                <Text bold>Main Menu</Text>
                 {menuItems.map((item, i) => (
                     <Text key={item.action} color={i === selected ? "cyan" : "white"}>
                         {i === selected ? "❯ " : "  "}{item.label}
@@ -547,7 +680,7 @@ const MainMenu = () => {
     );
 };
 
-// Install Command Component
+// Install Command Component (always TUI)
 const InstallCommand = () => {
     const { exit } = useApp();
     const [step, setStep] = React.useState(0);
@@ -593,7 +726,7 @@ const InstallCommand = () => {
         <Box flexDirection="column">
             <Logo />
             <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={2} paddingY={1}>
-                <Text bold marginBottom={1}>Installing Cybara</Text>
+                <Text bold>Installing Cybara</Text>
                 {steps.map((s, i) => (
                     <Box key={i}>
                         {i < step ? (
@@ -622,37 +755,75 @@ const InstallCommand = () => {
     );
 };
 
-// App Router
-const App = ({ command, args }: AppProps) => {
+// TUI App Router (for interactive mode)
+const TUIApp = ({ command }: { command?: string }) => {
     switch (command) {
         case "install":
             return <InstallCommand />;
-        case "start":
-        case "dev":
-            spawn("bun", ["run", "dev"], { stdio: "inherit" });
-            return <Text color="cyan">Starting Cybara server...</Text>;
         case "status":
-            return <StatusCommand />;
+            return <TUIStatusCommand />;
         case "metrics":
-            return <MetricsCommand />;
+            return <TUIMetricsCommand />;
         case "tasks":
-            return <TasksCommand />;
+            return <TUITasksCommand />;
         case "skills":
-            return <SkillsCommand />;
+            return <TUISkillsCommand />;
         case "agents":
-            return <AgentsCommand />;
-        case "help":
-        case "--help":
-        case "-h":
-            return <HelpCommand />;
+            return <TUIAgentsCommand />;
         default:
             return <MainMenu />;
     }
 };
 
-// Parse CLI arguments
+// ============================================
+// MAIN ENTRY POINT
+// ============================================
+
 const args = process.argv.slice(2);
 const command = args[0];
 
-// Render the app
-render(<App command={command} args={args.slice(1)} />);
+// Route to raw output or TUI based on command
+async function main() {
+    switch (command) {
+        // Raw output commands (for agents/scripts)
+        case "status":
+            await rawStatus();
+            break;
+        case "metrics":
+            await rawMetrics();
+            break;
+        case "agents":
+            await rawAgents();
+            break;
+        case "tasks":
+            await rawTasks();
+            break;
+        case "skills":
+            await rawSkills();
+            break;
+        case "help":
+        case "--help":
+        case "-h":
+            rawHelp();
+            break;
+
+        // Server start (pass-through)
+        case "start":
+        case "dev":
+            spawn("bun", ["run", "dev"], { stdio: "inherit" });
+            break;
+
+        // TUI commands (interactive)
+        case "install":
+        case "tui":
+            render(<TUIApp command={command === "tui" ? undefined : command} />);
+            break;
+
+        // Default: show TUI menu
+        default:
+            render(<TUIApp />);
+            break;
+    }
+}
+
+main();
