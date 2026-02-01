@@ -3,6 +3,8 @@ import { logChannelMessage } from "./logging";
 import { randomUUID } from "crypto";
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
 import path, { join } from "path";
+import { listSessions } from "../api/chat";
+import { toolSchemas } from "./tools/index";
 
 export const telegramSessions = new Map<string, string>();
 
@@ -10,7 +12,6 @@ export const telegramSessions = new Map<string, string>();
 async function getUserSessions(
   userId: string
 ): Promise<Array<{ id: string; messageCount: number; lastActive: string }>> {
-  const { listSessions } = await import("../api/chat");
   const allSessions = await listSessions();
   // Filter sessions that might belong to this user (based on message activity)
   return allSessions
@@ -496,7 +497,6 @@ Memories will be automatically created when you share important context with the
 
     case "tools": {
       // Get available tools
-      const { toolSchemas } = await import("./tools/index");
       const toolList = Object.keys(toolSchemas).slice(0, 10);
 
       if (toolList.length === 0) {
