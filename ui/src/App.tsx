@@ -14,6 +14,7 @@ import { Chat } from '@/pages/Chat';
 import { Logs } from '@/pages/Logs';
 import { Sessions } from '@/pages/Sessions';
 import { Metrics } from '@/pages/Metrics';
+import { MCPServers } from '@/pages/MCPServers';
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/agents" element={<Agents />} />
           <Route path="/providers" element={<Providers />} />
+          <Route path="/mcp" element={<MCPServers />} />
           <Route path="/channels" element={<Channels />} />
           <Route path="/tasks" element={<Tasks />} />
           <Route path="/skills" element={<Skills />} />

@@ -108,6 +108,7 @@ const navItems = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/agents', icon: Bot, label: 'Agents' },
   { path: '/providers', icon: Plug, label: 'Providers' },
+  { path: '/mcp', icon: Terminal, label: 'MCP Servers' },
   { path: '/channels', icon: MessageSquare, label: 'Channels' },
   { path: '/memory', icon: Brain, label: 'Memory' },
   { path: '/metrics', icon: BarChart3, label: 'Metrics' },

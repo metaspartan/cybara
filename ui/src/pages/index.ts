@@ -2,6 +2,7 @@
 export { Dashboard } from './Dashboard';
 export { Agents } from './Agents';
 export { Providers } from './Providers';
+export { MCPServers } from './MCPServers';
 export { Channels } from './Channels';
 export { Tasks } from './Tasks';
 export { Skills } from './Skills';

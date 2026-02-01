@@ -67,9 +67,12 @@ interface AgentItem {
 // Fetch Helper
 // ============================================
 
-async function fetchAPI<T>(endpoint: string): Promise<T | null> {
+async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T | null> {
     try {
-        const res = await fetch(`${API_BASE}${endpoint}`);
+        const res = await fetch(`${API_BASE}${endpoint}`, {
+            headers: { "Content-Type": "application/json" },
+            ...options,
+        });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return await res.json() as T;
     } catch {
@@ -226,6 +229,116 @@ async function rawSkills(): Promise<void> {
     }
 }
 
+// MCP Commands
+interface MCPRegistryServer {
+    id: string;
+    name: string;
+    description: string;
+    registry: string;
+    package: string;
+    command: string;
+    args?: string;
+    envVars?: string[];
+}
+
+async function rawMcpSearch(query: string): Promise<void> {
+    const data = await fetchAPI<MCPRegistryServer[]>(`/api/mcp/registry/search?q=${encodeURIComponent(query)}`);
+    if (!data) {
+        console.error("ERROR: Failed to search MCP registry from", API_BASE);
+        process.exit(1);
+    }
+
+    console.log("MCP REGISTRY SEARCH");
+    console.log("===================");
+    console.log(`query: ${query}`);
+    console.log(`results: ${data.length}`);
+    console.log("");
+
+    if (data.length === 0) {
+        console.log("No servers found");
+        return;
+    }
+
+    for (const server of data) {
+        console.log(`- ${server.name} (${server.registry})`);
+        console.log(`  id: ${server.id}`);
+        console.log(`  package: ${server.package}`);
+        if (server.description) console.log(`  description: ${server.description.slice(0, 80)}...`);
+        if (server.envVars?.length) console.log(`  env_required: ${server.envVars.join(", ")}`);
+    }
+}
+
+async function rawMcpInstall(pkg: string): Promise<void> {
+    console.log(`Installing MCP server: ${pkg}...`);
+
+    const data = await fetchAPI<{ success: boolean; id?: string; error?: string }>(
+        "/api/mcp/registry/install",
+        { method: "POST", body: JSON.stringify({ package: pkg }) }
+    );
+
+    if (!data) {
+        console.error("ERROR: Failed to install MCP server from", API_BASE);
+        process.exit(1);
+    }
+
+    if (data.success) {
+        console.log(`SUCCESS: Installed ${pkg}`);
+        console.log(`  id: ${data.id}`);
+        console.log("");
+        console.log("Run 'cybara mcp list' to see installed servers");
+    } else {
+        console.error(`FAILED: ${data.error || "Unknown error"}`);
+        process.exit(1);
+    }
+}
+
+async function rawMcpList(): Promise<void> {
+    const data = await fetchAPI<Array<{ id: string; name: string; command: string; status: string; toolCount: number }>>("/api/mcp");
+    if (!data) {
+        console.error("ERROR: Failed to list MCP servers from", API_BASE);
+        process.exit(1);
+    }
+
+    console.log("MCP SERVERS");
+    console.log("===========");
+    console.log(`total: ${data.length}`);
+    console.log("");
+
+    if (data.length === 0) {
+        console.log("No MCP servers installed");
+        console.log("");
+        console.log("Use 'cybara mcp search <query>' to find servers");
+        return;
+    }
+
+    for (const server of data) {
+        console.log(`- ${server.name}`);
+        console.log(`  id: ${server.id}`);
+        console.log(`  command: ${server.command}`);
+        console.log(`  status: ${server.status}`);
+        console.log(`  tools: ${server.toolCount}`);
+    }
+}
+
+async function rawMcpPopular(): Promise<void> {
+    const data = await fetchAPI<MCPRegistryServer[]>("/api/mcp/registry/popular");
+    if (!data) {
+        console.error("ERROR: Failed to get popular MCP servers from", API_BASE);
+        process.exit(1);
+    }
+
+    console.log("POPULAR MCP SERVERS");
+    console.log("===================");
+    console.log(`total: ${data.length}`);
+    console.log("");
+
+    for (const server of data) {
+        console.log(`- ${server.name} [${server.registry}]`);
+        console.log(`  id: ${server.id}`);
+        if (server.description) console.log(`  ${server.description.slice(0, 60)}`);
+    }
+}
+
 function rawHelp(): void {
     console.log("CYBARA CLI");
     console.log("==========");
@@ -239,6 +352,11 @@ function rawHelp(): void {
     console.log("  agents      List configured agents");
     console.log("  tasks       List scheduled tasks");
     console.log("  skills      List installed skills");
+    console.log("  mcp         MCP server commands");
+    console.log("    mcp list     List installed MCP servers");
+    console.log("    mcp search   Search MCP registry");
+    console.log("    mcp install  Install MCP server");
+    console.log("    mcp popular  Show popular servers");
     console.log("  start       Start the server");
     console.log("  install     Run installation wizard (TUI)");
     console.log("  help        Show this help");
@@ -805,6 +923,41 @@ async function main() {
         case "--help":
         case "-h":
             rawHelp();
+            break;
+
+        // MCP commands
+        case "mcp":
+            const mcpSubCmd = args[1];
+            const mcpArg = args[2];
+            switch (mcpSubCmd) {
+                case "search":
+                    if (!mcpArg) {
+                        console.error("Usage: cybara mcp search <query>");
+                        process.exit(1);
+                    }
+                    await rawMcpSearch(mcpArg);
+                    break;
+                case "install":
+                    if (!mcpArg) {
+                        console.error("Usage: cybara mcp install <package>");
+                        process.exit(1);
+                    }
+                    await rawMcpInstall(mcpArg);
+                    break;
+                case "list":
+                    await rawMcpList();
+                    break;
+                case "popular":
+                    await rawMcpPopular();
+                    break;
+                default:
+                    console.log("MCP Commands:");
+                    console.log("  cybara mcp list       - List installed servers");
+                    console.log("  cybara mcp search <q> - Search registry");
+                    console.log("  cybara mcp install <p> - Install package");
+                    console.log("  cybara mcp popular    - Show popular servers");
+                    break;
+            }
             break;
 
         // Server start (pass-through)

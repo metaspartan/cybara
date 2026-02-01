@@ -5,6 +5,7 @@ import { providerManager, providers } from "../core/providers";
 import { channelManager, channels, processTelegramWebhook } from "../core/channels";
 import { taskScheduler } from "../core/scheduler";
 import { mcpManager } from "../core/mcp";
+import { mcpRegistry } from "../core/mcp-registry";
 import { getSkills, getSkill, getSkillCategories, executeSkill, loadAllSkills, createEligibilityContext, getSkillsStatusReport, registryManager, clearSkillsCache } from "../core/skills/index";
 import {
   handleChat,
@@ -365,7 +366,35 @@ const routes: Record<string, RouteHandler> = {
     return await mcpManager.callTool(params!.id, data.tool, data.args);
   },
 
-  // ===== CHANNELS =====
+  // ===== MCP REGISTRY =====
+  "GET /api/mcp/registry/search": async (_body, params) => {
+    const query = params?.q || "";
+    const registry = params?.registry || undefined;
+    return await mcpRegistry.search(query, registry);
+  },
+  "GET /api/mcp/registry/popular": () => mcpRegistry.getPopular(20),
+  "GET /api/mcp/registry/categories": () => mcpRegistry.getCategories(),
+  "GET /api/mcp/registry/category/:cat": (_body, params) =>
+    mcpRegistry.getByCategory(params!.cat),
+  "GET /api/mcp/registry/servers/:id": (_body, params) => {
+    const server = mcpRegistry.getDetails(params!.id);
+    if (!server) return { error: "Server not found in registry" };
+    return server;
+  },
+  "GET /api/mcp/registry/registries": () => mcpRegistry.getRegistries(),
+  "POST /api/mcp/registry/install": async (body) => {
+    const data = body as { package?: string; id?: string };
+    if (data.id) {
+      const server = mcpRegistry.getDetails(data.id);
+      if (!server) return { success: false, error: "Server not found in registry" };
+      return await mcpRegistry.installServer(server);
+    }
+    if (data.package) {
+      return await mcpRegistry.installByPackage(data.package);
+    }
+    return { success: false, error: "Must provide 'id' or 'package'" };
+  },
+
   "GET /api/channels": () => channelManager.list(),
   "GET /api/channels/available": () =>
     Object.entries(channels).map(([key, value]) => ({
