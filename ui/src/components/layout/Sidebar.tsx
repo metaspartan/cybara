@@ -13,11 +13,12 @@ import {
   Settings,
   Terminal,
   BarChart3,
+  Code,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef } from 'react';
 
-function StatusIndicator() {
+function useAgentStatus() {
   const [status, setStatus] = useState<'idle' | 'thinking' | 'active'>('idle');
   const eventSourceRef = useRef<EventSource | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -96,12 +97,7 @@ function StatusIndicator() {
     active: 'Active',
   };
 
-  return (
-    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
-      <div className={cn('w-2 h-2 rounded-full', statusColors[status])} />
-      <span className="text-xs text-gray-400">{statusLabels[status]}</span>
-    </div>
-  );
+  return status;
 }
 
 const navItems = [
@@ -114,6 +110,7 @@ const navItems = [
   { path: '/metrics', icon: BarChart3, label: 'Metrics' },
   { path: '/tasks', icon: ListTodo, label: 'Tasks' },
   { path: '/skills', icon: LibraryBig, label: 'Skills' },
+  { path: '/lsp', icon: Code, label: 'LSP' },
   { path: '/tools', icon: Wrench, label: 'Tools' },
   { path: '/chat', icon: MessageSquare, label: 'Chat' },
   { path: '/sessions', icon: MessagesSquare, label: 'Sessions' },
@@ -122,24 +119,39 @@ const navItems = [
 
 export function Sidebar() {
   const location = useLocation();
+  const status = useAgentStatus();
 
   return (
     <aside className="fixed left-0 top-0 h-full w-64 bg-[#12121a] border-r border-white/10 z-40">
-      {/* Logo with glow effect */}
-      <div className="p-6 border-b border-white/10">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl overflow-hidden">
-              <img src="/cybara.png" alt="Cybara" className="w-full h-full object-cover" />
+      {/* Compact Logo Header */}
+      <div className="px-5 py-4 border-b border-white/10">
+        <div className="flex items-center gap-3">
+          {/* Logo with thinking animation */}
+          <div className="relative flex-shrink-0">
+            <div
+              className={cn(
+                'w-10 h-10 rounded-xl overflow-hidden transition-all duration-300',
+                status === 'thinking' && 'ring-2 ring-amber-400/60 ring-offset-2 ring-offset-[#12121a]'
+              )}
+            >
+              <img
+                src="/cybara.png"
+                alt="Cybara"
+                className={cn(
+                  'w-full h-full object-cover transition-all duration-300',
+                  status === 'thinking' && 'animate-pulse'
+                )}
+              />
             </div>
-            <div>
-              <h1 className="font-bold text-lg gradient-text">Cybara</h1>
-              <p className="text-xs text-gray-400">Agent Platform</p>
-            </div>
+            {/* Thinking glow effect */}
+            {status === 'thinking' && (
+              <div className="absolute -inset-1 rounded-xl bg-amber-400/20 animate-ping" />
+            )}
           </div>
-        </div>
-        <div className="mt-3">
-          <StatusIndicator />
+          <div className="flex-1 min-w-0">
+            <h1 className="font-bold text-lg gradient-text">Cybara</h1>
+            <p className="text-[10px] text-gray-500 leading-tight">Agent Platform</p>
+          </div>
         </div>
       </div>
 

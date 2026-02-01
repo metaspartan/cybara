@@ -15,6 +15,7 @@ import { Logs } from '@/pages/Logs';
 import { Sessions } from '@/pages/Sessions';
 import { Metrics } from '@/pages/Metrics';
 import { MCPServers } from '@/pages/MCPServers';
+import { LSP } from '@/pages/LSP';
 
 function App() {
   return (
@@ -29,6 +30,7 @@ function App() {
           <Route path="/channels" element={<Channels />} />
           <Route path="/tasks" element={<Tasks />} />
           <Route path="/skills" element={<Skills />} />
+          <Route path="/lsp" element={<LSP />} />
           <Route path="/tools" element={<Tools />} />
           <Route path="/memory" element={<Memory />} />
           <Route path="/metrics" element={<Metrics />} />

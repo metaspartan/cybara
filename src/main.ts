@@ -41,6 +41,7 @@ const CLI_COMMANDS = [
     "tasks",
     "skills",
     "mcp",
+    "lsp",
     "help",
     "--help",
     "-h",
@@ -177,6 +178,7 @@ Usage:
   cybara mcp search <q>     Search MCP registry
   cybara mcp install <pkg>  Install MCP server
   cybara mcp popular        Show popular MCP servers
+  cybara lsp                Show LSP status and available language servers
   cybara help               Show this help
 
 Options:

@@ -6,6 +6,7 @@ import { channelManager, channels, processTelegramWebhook } from "../core/channe
 import { taskScheduler } from "../core/scheduler";
 import { mcpManager } from "../core/mcp";
 import { mcpRegistry } from "../core/mcp-registry";
+import { getLSPManager, initLSPManager } from "../core/lsp";
 import { getSkills, getSkill, getSkillCategories, executeSkill, loadAllSkills, createEligibilityContext, getSkillsStatusReport, registryManager, clearSkillsCache } from "../core/skills/index";
 import {
   handleChat,
@@ -393,6 +394,126 @@ const routes: Record<string, RouteHandler> = {
       return await mcpRegistry.installByPackage(data.package);
     }
     return { success: false, error: "Must provide 'id' or 'package'" };
+  },
+
+  // ===== LSP (Language Server Protocol) =====
+  "GET /api/lsp/status": async () => {
+    try {
+      const manager = getLSPManager(process.cwd());
+      const supported = manager.getSupportedLanguages();
+      const availability: Record<string, { available: boolean; bundled: boolean }> = {};
+
+      for (const lang of supported) {
+        availability[lang] = {
+          available: await manager.isAvailable(lang),
+          bundled: manager.isBundled(lang),
+        };
+      }
+
+      return {
+        status: "ok",
+        workspace: process.cwd(),
+        supported,
+        available: availability,
+        diagnosticsCount: manager.getAllDiagnostics().size,
+      };
+    } catch (e) {
+      // Manager not initialized, initialize with cwd
+      try {
+        const manager = initLSPManager(process.cwd());
+        const supported = manager.getSupportedLanguages();
+        return {
+          status: "initialized",
+          workspace: process.cwd(),
+          supported,
+          available: {},
+          diagnosticsCount: 0,
+        };
+      } catch (err) {
+        return { status: "error", error: String(err) };
+      }
+    }
+  },
+  "GET /api/lsp/languages": async () => {
+    try {
+      const manager = getLSPManager(process.cwd());
+      const supported = manager.getSupportedLanguages();
+      const result: Array<{ name: string; available: boolean; bundled: boolean }> = [];
+
+      for (const lang of supported) {
+        result.push({
+          name: lang,
+          available: await manager.isAvailable(lang),
+          bundled: manager.isBundled(lang),
+        });
+      }
+
+      return { languages: result };
+    } catch {
+      return { languages: [] };
+    }
+  },
+  "GET /api/lsp/diagnostics": () => {
+    try {
+      const manager = getLSPManager(process.cwd());
+      const all = manager.getAllDiagnostics();
+      const result: Array<{ file: string; count: number; errors: number; warnings: number }> = [];
+
+      for (const [uri, diags] of all) {
+        result.push({
+          file: uri.replace("file://", ""),
+          count: diags.length,
+          errors: diags.filter(d => d.severity === 1).length,
+          warnings: diags.filter(d => d.severity === 2).length,
+        });
+      }
+
+      return { files: result, total: result.reduce((sum, f) => sum + f.count, 0) };
+    } catch {
+      return { files: [], total: 0 };
+    }
+  },
+  "GET /api/lsp/install-status": async () => {
+    try {
+      const manager = getLSPManager(process.cwd());
+      const status = await manager.getInstallStatus();
+      return { status };
+    } catch (e) {
+      // If not initialized, create manager first
+      try {
+        const manager = initLSPManager(process.cwd());
+        const status = await manager.getInstallStatus();
+        return { status };
+      } catch (err) {
+        return { status: [], error: String(err) };
+      }
+    }
+  },
+  "POST /api/lsp/install": async (body) => {
+    const { language } = body as { language: string };
+    if (!language) {
+      return { success: false, error: "Missing 'language' parameter" };
+    }
+    try {
+      const manager = getLSPManager(process.cwd());
+      const result = await manager.installLSP(language);
+      return result;
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
+  },
+  "POST /api/lsp/uninstall": async (body) => {
+    const { language } = body as { language: string };
+    if (!language) {
+      return { success: false, error: "Missing 'language' parameter" };
+    }
+    try {
+      const manager = getLSPManager(process.cwd());
+      const result = await manager.uninstallLSP(language);
+      return result;
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
   },
 
   "GET /api/channels": () => channelManager.list(),

@@ -339,6 +339,124 @@ async function rawMcpPopular(): Promise<void> {
     }
 }
 
+async function rawLsp(): Promise<void> {
+    interface LSPInstallStatus {
+        language: string;
+        displayName: string;
+        description: string;
+        type: "bundled" | "binary" | "pip" | "go";
+        installed: boolean;
+        available: boolean;
+        path: string | null;
+        requiresRuntime?: string;
+    }
+
+    const data = await fetchAPI<{ status: LSPInstallStatus[] }>("/api/lsp/install-status");
+    if (!data) {
+        console.error("ERROR: Failed to get LSP status from", API_BASE);
+        process.exit(1);
+    }
+
+    console.log("LSP STATUS");
+    console.log("==========");
+    console.log("");
+    console.log("LANGUAGE SERVERS");
+    console.log("----------------");
+
+    // Separate bundled from others
+    const bundled = data.status.filter(l => l.type === "bundled");
+    const installable = data.status.filter(l => l.type !== "bundled");
+
+    console.log("");
+    console.log("Bundled (included in binary):");
+    for (const lang of bundled) {
+        console.log(`  ✓ ${lang.displayName.padEnd(15)} ${lang.description}`);
+    }
+
+    console.log("");
+    console.log("Installable:");
+    for (const lang of installable) {
+        const status = lang.installed ? "✓ installed" : lang.available ? "✓ in PATH" : "✗ not installed";
+        const statusIcon = lang.installed || lang.available ? "✓" : "✗";
+        const runtime = lang.requiresRuntime ? ` (requires ${lang.requiresRuntime})` : "";
+        console.log(`  ${statusIcon} ${lang.displayName.padEnd(15)} ${status}${runtime}`);
+        if (lang.path) {
+            console.log(`      → ${lang.path}`);
+        }
+    }
+
+    console.log("");
+    console.log("Commands:");
+    console.log("  cybara lsp list              - Show this status");
+    console.log("  cybara lsp install <lang>    - Install language server");
+    console.log("  cybara lsp uninstall <lang>  - Uninstall language server");
+    console.log("");
+    console.log("Available languages: " + data.status.filter(l => l.type !== "bundled").map(l => l.language).join(", "));
+}
+
+async function rawLspInstall(language: string): Promise<void> {
+    if (!language) {
+        console.error("ERROR: Please specify a language to install");
+        console.log("Usage: cybara lsp install <language>");
+        console.log("");
+        // List available languages
+        const data = await fetchAPI<{ status: { language: string; displayName: string; type: string }[] }>("/api/lsp/install-status");
+        if (data) {
+            const installable = data.status.filter(l => l.type !== "bundled");
+            console.log("Available languages:");
+            for (const lang of installable) {
+                console.log(`  ${lang.language.padEnd(12)} - ${lang.displayName}`);
+            }
+        }
+        process.exit(1);
+    }
+
+    console.log(`Installing ${language} language server...`);
+
+    const response = await fetch(`${API_BASE}/api/lsp/install`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ language }),
+    });
+
+    const result = await response.json() as { success: boolean; error?: string; path?: string };
+
+    if (result.success) {
+        console.log(`✓ Successfully installed ${language}`);
+        if (result.path) {
+            console.log(`  Installed to: ${result.path}`);
+        }
+    } else {
+        console.error(`✗ Failed to install ${language}: ${result.error}`);
+        process.exit(1);
+    }
+}
+
+async function rawLspUninstall(language: string): Promise<void> {
+    if (!language) {
+        console.error("ERROR: Please specify a language to uninstall");
+        console.log("Usage: cybara lsp uninstall <language>");
+        process.exit(1);
+    }
+
+    console.log(`Uninstalling ${language} language server...`);
+
+    const response = await fetch(`${API_BASE}/api/lsp/uninstall`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ language }),
+    });
+
+    const result = await response.json() as { success: boolean; error?: string };
+
+    if (result.success) {
+        console.log(`✓ Successfully uninstalled ${language}`);
+    } else {
+        console.error(`✗ Failed to uninstall ${language}: ${result.error}`);
+        process.exit(1);
+    }
+}
+
 function rawHelp(): void {
     console.log("CYBARA CLI");
     console.log("==========");
@@ -357,6 +475,10 @@ function rawHelp(): void {
     console.log("    mcp search   Search MCP registry");
     console.log("    mcp install  Install MCP server");
     console.log("    mcp popular  Show popular servers");
+    console.log("  lsp         Language Server commands");
+    console.log("    lsp list       Show language server status");
+    console.log("    lsp install    Install language server");
+    console.log("    lsp uninstall  Uninstall language server");
     console.log("  start       Start the server");
     console.log("  install     Run installation wizard (TUI)");
     console.log("  help        Show this help");
@@ -956,6 +1078,30 @@ async function main() {
                     console.log("  cybara mcp search <q> - Search registry");
                     console.log("  cybara mcp install <p> - Install package");
                     console.log("  cybara mcp popular    - Show popular servers");
+                    break;
+            }
+            break;
+
+        // LSP commands
+        case "lsp":
+            switch (args[1]) {
+                case "list":
+                case undefined:
+                    await rawLsp();
+                    break;
+                case "install":
+                    await rawLspInstall(args[2]);
+                    break;
+                case "uninstall":
+                    await rawLspUninstall(args[2]);
+                    break;
+                default:
+                    console.log("LSP Commands:");
+                    console.log("  cybara lsp list             - Show language server status");
+                    console.log("  cybara lsp install <lang>   - Install language server");
+                    console.log("  cybara lsp uninstall <lang> - Uninstall language server");
+                    console.log("");
+                    console.log("Languages: rust, go, python, cpp (C/C++), java, csharp, ruby, php, lua, zig, kotlin, swift");
                     break;
             }
             break;

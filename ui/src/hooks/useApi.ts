@@ -543,6 +543,74 @@ export function useTools() {
   });
 }
 
+// ==================== LSP ====================
+
+export interface LSPLanguageStatus {
+  available: boolean;
+  bundled: boolean;
+}
+
+export interface LSPStatus {
+  status: string;
+  workspace: string;
+  supported: string[];
+  available: Record<string, LSPLanguageStatus>;
+  diagnosticsCount: number;
+}
+
+export function useLSPStatus() {
+  return useQuery({
+    queryKey: ['lsp', 'status'],
+    queryFn: () => fetchApi<LSPStatus>('/lsp/status'),
+  });
+}
+
+export interface LSPInstallStatus {
+  language: string;
+  displayName: string;
+  description: string;
+  type: 'bundled' | 'binary' | 'pip' | 'go';
+  installed: boolean;
+  available: boolean;
+  path: string | null;
+  requiresRuntime?: string;
+}
+
+export function useLSPInstallStatus() {
+  return useQuery({
+    queryKey: ['lsp', 'install-status'],
+    queryFn: () => fetchApi<{ status: LSPInstallStatus[] }>('/lsp/install-status'),
+  });
+}
+
+export function useInstallLSP() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (language: string) =>
+      fetchApi<{ success: boolean; path?: string; error?: string }>('/lsp/install', {
+        method: 'POST',
+        body: JSON.stringify({ language }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lsp'] });
+    },
+  });
+}
+
+export function useUninstallLSP() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (language: string) =>
+      fetchApi<{ success: boolean; error?: string }>('/lsp/uninstall', {
+        method: 'POST',
+        body: JSON.stringify({ language }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lsp'] });
+    },
+  });
+}
+
 // ==================== SUBAGENTS ====================
 
 export interface Subagent {

@@ -40,6 +40,7 @@ import { handleHttp } from "./http";
 import { handleData } from "./data";
 import { handleEnv } from "./env";
 import { handleWebSearch } from "./web-search";
+import { handleLSPDiagnostics, handleLSPDefinition, handleLSPReferences, handleLSPHover, handleLSPLanguages } from "./lsp";
 import { trackToolCall } from "../../metrics";
 import type { ToolContext } from "../index";
 
@@ -153,6 +154,13 @@ const toolHandlers: Record<string, (args: Record<string, unknown>) => Promise<un
   http: handleHttp,
   data: handleData,
   env: handleEnv,
+
+  // LSP tools (bundled TypeScript diagnostics)
+  diagnostics: handleLSPDiagnostics,
+  definition: handleLSPDefinition,
+  references: handleLSPReferences,
+  hover: handleLSPHover,
+  languages: handleLSPLanguages,
 };
 
 export async function executeTool(

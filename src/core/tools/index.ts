@@ -22,7 +22,7 @@ export interface Tool {
   input_schema: Record<string, unknown>;
   handler?: ToolHandler;
   permissions?: string[];
-  category: "core" | "file" | "process" | "browser" | "memory" | "channel" | "media" | "skill";
+  category: "core" | "file" | "process" | "browser" | "memory" | "channel" | "media" | "skill" | "lsp";
 }
 
 // ============================================
@@ -1074,6 +1074,75 @@ ACTIONS:
     },
     permissions: ["fs:read"],
   },
+  // LSP (Language Server Protocol) tools
+  lsp_diagnostics: {
+    name: "lsp_diagnostics",
+    description: "Get code errors and warnings from language servers. Use after editing files to check for issues.",
+    category: "lsp",
+    input_schema: {
+      type: "object",
+      properties: {
+        file: { type: "string", description: "File path to check for diagnostics" },
+        workspace: { type: "string", description: "Workspace path to check all files (alternative to file)" },
+      },
+    },
+    permissions: ["fs:read"],
+  },
+  lsp_definition: {
+    name: "lsp_definition",
+    description: "Go to the definition of a symbol at a given position",
+    category: "lsp",
+    input_schema: {
+      type: "object",
+      properties: {
+        file: { type: "string", description: "File path" },
+        line: { type: "number", description: "Line number (1-indexed)" },
+        column: { type: "number", description: "Column number (1-indexed)" },
+      },
+      required: ["file", "line", "column"],
+    },
+    permissions: ["fs:read"],
+  },
+  lsp_references: {
+    name: "lsp_references",
+    description: "Find all references to a symbol at a given position",
+    category: "lsp",
+    input_schema: {
+      type: "object",
+      properties: {
+        file: { type: "string", description: "File path" },
+        line: { type: "number", description: "Line number (1-indexed)" },
+        column: { type: "number", description: "Column number (1-indexed)" },
+      },
+      required: ["file", "line", "column"],
+    },
+    permissions: ["fs:read"],
+  },
+  lsp_hover: {
+    name: "lsp_hover",
+    description: "Get type and documentation info for a symbol at a given position",
+    category: "lsp",
+    input_schema: {
+      type: "object",
+      properties: {
+        file: { type: "string", description: "File path" },
+        line: { type: "number", description: "Line number (1-indexed)" },
+        column: { type: "number", description: "Column number (1-indexed)" },
+      },
+      required: ["file", "line", "column"],
+    },
+    permissions: ["fs:read"],
+  },
+  lsp_languages: {
+    name: "lsp_languages",
+    description: "List supported languages and check if language servers are available",
+    category: "lsp",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+    permissions: [],
+  },
   // MCP Tools - dynamically populated
 };
 
@@ -1141,6 +1210,22 @@ _toolHandlers.set("clipboard", handleClipboard);
 _toolHandlers.set("http", handleHttp);
 _toolHandlers.set("data", handleData);
 _toolHandlers.set("env", handleEnv);
+
+// Import LSP handlers
+import {
+  handleLSPDiagnostics,
+  handleLSPDefinition,
+  handleLSPReferences,
+  handleLSPHover,
+  handleLSPLanguages,
+} from "./handlers/lsp";
+
+// Register LSP handlers
+_toolHandlers.set("lsp_diagnostics", handleLSPDiagnostics);
+_toolHandlers.set("lsp_definition", handleLSPDefinition);
+_toolHandlers.set("lsp_references", handleLSPReferences);
+_toolHandlers.set("lsp_hover", handleLSPHover);
+_toolHandlers.set("lsp_languages", handleLSPLanguages);
 
 // Register skill executors as tools
 import { getSkillExecutors } from "../skills/index";
