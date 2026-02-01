@@ -2,6 +2,9 @@
 // Implements OpenClaw-style security for channel adapters
 
 import { randomBytes } from "crypto";
+import { createLogger } from "../logger";
+
+const log = createLogger("Security");
 
 // DM Policy options
 export type DMPolicy = "pairing" | "allowlist" | "open" | "disabled";
@@ -191,7 +194,7 @@ export class ChannelSecurityManager {
         channelPairings.push(pairing);
         this.pairings.set(channelId, channelPairings);
 
-        console.log(`[Security] Created pairing for ${platform}:${senderId} on channel ${channelId}: ${pairing.code}`);
+        log.info(`Created pairing for ${platform}:${senderId}`, { channelId, code: pairing.code });
 
         return pairing;
     }
@@ -253,7 +256,7 @@ export class ChannelSecurityManager {
         // Add to allowed senders
         this.addAllowedSender(channelId, pairing.sender_id);
 
-        console.log(`[Security] Approved pairing for ${pairing.platform}:${pairing.sender_id} on channel ${channelId}`);
+        log.info(`Approved pairing for ${pairing.platform}:${pairing.sender_id}`, { channelId });
 
         return { success: true, senderId: pairing.sender_id };
     }
@@ -270,7 +273,7 @@ export class ChannelSecurityManager {
         }
 
         pairing.status = "rejected";
-        console.log(`[Security] Rejected pairing ${pairingId} on channel ${channelId}`);
+        log.info(`Rejected pairing ${pairingId}`, { channelId });
         return true;
     }
 
@@ -291,7 +294,7 @@ export class ChannelSecurityManager {
             config.allowed_senders.push(senderId);
         }
 
-        console.log(`[Security] Added allowed sender ${senderId} to channel ${channelId}`);
+        log.info(`Added allowed sender ${senderId}`, { channelId });
     }
 
     /**
@@ -368,6 +371,6 @@ export const securityManager = new ChannelSecurityManager();
 setInterval(() => {
     const cleaned = securityManager.cleanupExpired();
     if (cleaned > 0) {
-        console.log(`[Security] Cleaned up ${cleaned} expired pairings`);
+        log.debug(`Cleaned up ${cleaned} expired pairings`);
     }
 }, 5 * 60 * 1000); // Every 5 minutes

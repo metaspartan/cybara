@@ -229,7 +229,10 @@ providerManager.seedDefaults();
 // Set up Telegram message handler to route to chat
 telegramBot.setMessageHandler(async (message, chatId, userId, channelId, fileInfo) => {
   try {
-    const sessionId = telegramSessions.get(chatId.toString()) || `telegram:${chatId}`;
+    const storedSessionId = telegramSessions.get(chatId.toString());
+    const sessionId = storedSessionId || `telegram:${chatId}`;
+
+    console.log(`[Telegram] Message from chatId=${chatId}, storedSessionId=${storedSessionId}, using sessionId=${sessionId}`);
 
     // If there's a file, prepend file info to the message
     const fullMessage = fileInfo?.hasFile

@@ -1,4 +1,8 @@
 // Tool handlers - HTTP/API operations
+import { validateUrl } from "../../../api/security";
+import { createLogger } from "../../logger";
+
+const log = createLogger("HTTP");
 
 interface HttpResponse {
     status: number;
@@ -21,20 +25,46 @@ export async function handleHttp(
         throw new Error("URL is required");
     }
 
+    // SSRF Protection: Validate URL before making request
+    const urlValidation = await validateUrl(url);
+    if (!urlValidation.valid) {
+        log.warn(`SSRF blocked: ${urlValidation.error}`, { url });
+        throw new Error(`Request blocked: ${urlValidation.error}`);
+    }
+
     const startTime = Date.now();
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
     try {
+        log.debug(`HTTP ${method} ${url}`);
+
         const response = await fetch(url, {
             method: method.toUpperCase(),
             headers,
             body: body ? body : undefined,
             signal: controller.signal,
+            redirect: "manual", // Don't auto-follow redirects (prevent SSRF via redirect)
         });
 
         clearTimeout(timeoutId);
+
+        // If redirect, validate the new URL too
+        if (response.status >= 300 && response.status < 400) {
+            const location = response.headers.get("location");
+            if (location) {
+                const redirectValidation = await validateUrl(
+                    new URL(location, url).toString()
+                );
+                if (!redirectValidation.valid) {
+                    log.warn(`SSRF blocked redirect: ${redirectValidation.error}`, { location });
+                    throw new Error(`Redirect blocked: ${redirectValidation.error}`);
+                }
+                // Follow the validated redirect
+                return handleHttp({ ...args, url: new URL(location, url).toString() });
+            }
+        }
 
         const responseHeaders: Record<string, string> = {};
         response.headers.forEach((value, key) => {
@@ -42,6 +72,8 @@ export async function handleHttp(
         });
 
         const responseBody = await response.text();
+
+        log.debug(`HTTP ${method} ${url} -> ${response.status}`, { elapsed: Date.now() - startTime });
 
         return {
             status: response.status,
@@ -53,6 +85,7 @@ export async function handleHttp(
     } catch (error) {
         clearTimeout(timeoutId);
         const err = error as Error;
+        log.error(`HTTP ${method} ${url} failed: ${err.message}`);
         throw new Error(`HTTP request failed: ${err.message}`);
     }
 }

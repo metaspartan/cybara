@@ -33,6 +33,10 @@ import {
 import { buildSystemPrompt } from "../core/system-prompt";
 import * as pwManager from "../core/browser/pw-manager";
 import { homedir } from "os";
+import { securityCheck, validateMessageSize } from "./security";
+import { createLogger } from "../core/logger";
+
+const log = createLogger("API");
 
 // ============================================
 // REQUEST/RESPONSE LOGGING
@@ -1432,6 +1436,30 @@ export async function handleRequest(req: {
     return {
       status: 204,
       headers: corsHeaders,
+    };
+  }
+
+  // Security check - auth, rate limiting
+  const clientIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+    req.headers["x-real-ip"] ||
+    "127.0.0.1";
+
+  const security = securityCheck(method, path, req.headers, clientIp);
+  if (!security.passed) {
+    const duration = Date.now() - startTime;
+    log.warn(`Security check failed: ${security.error}`, { path, ip: clientIp });
+    logRequest({
+      timestamp: new Date().toISOString(),
+      method,
+      path,
+      status: security.statusCode || 403,
+      durationMs: duration,
+      error: security.error,
+    });
+    return {
+      status: security.statusCode || 403,
+      headers: { "Content-Type": "application/json", ...corsHeaders, ...security.headers },
+      body: { error: security.error },
     };
   }
 
