@@ -41,6 +41,12 @@ export const CORE_TOOL_SUMMARIES: Record<string, string> = {
   memory_get: "Get specific lines from a memory file",
   memory_save: "Save content to memory",
   tts: "Text-to-speech generation",
+  // LSP (Language Server Protocol) tools
+  lsp_diagnostics: "Get code errors/warnings after editing files (TypeScript bundled, others need install)",
+  lsp_definition: "Go to symbol definition across files",
+  lsp_references: "Find all references to a symbol",
+  lsp_hover: "Get type info and documentation for a symbol",
+  lsp_languages: "List available LSP languages and their install status",
 };
 
 export interface SystemPromptParams {
@@ -156,6 +162,11 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
     !isMinimal
   ) {
     lines.push(...buildSkillsSection(params.skills));
+  }
+
+  // LSP section (code intelligence)
+  if (features?.lspEnabled !== false && params.tools.includes("lsp_diagnostics") && !isMinimal) {
+    lines.push(...buildLSPSection(params.tools));
   }
 
   // Memory section
@@ -474,6 +485,28 @@ function buildSkillsSection(skills?: SkillEntry[]): string[] {
   }
 
   return lines;
+}
+
+function buildLSPSection(tools: string[]): string[] {
+  if (!tools.includes("lsp_diagnostics")) return [];
+
+  return [
+    "## Code Intelligence (LSP)",
+    "You have Language Server Protocol tools for IDE-like code analysis.",
+    "",
+    "**After editing code files, use `lsp_diagnostics` to check for errors before finishing.**",
+    "",
+    "Available capabilities:",
+    "- `lsp_diagnostics`: Check files for errors/warnings",
+    "- `lsp_definition`: Jump to symbol definitions",
+    "- `lsp_references`: Find all usages of a symbol",
+    "- `lsp_hover`: Get type info and documentation",
+    "- `lsp_languages`: See which language servers are installed",
+    "",
+    "TypeScript/JavaScript diagnostics are always available (bundled).",
+    "Other languages (Rust, Python, Go, C++, etc.) require language servers to be installed.",
+    "",
+  ];
 }
 
 function buildWorkspaceSection(workspaceDir?: string): string[] {
