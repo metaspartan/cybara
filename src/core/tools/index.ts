@@ -1,5 +1,8 @@
 
 
+import { exec } from "child_process";
+import { telegramBot, channelManager } from "../channels";
+
 // ============================================
 // TOOL DEFINITIONS
 // All Clawdbot tools + extras
@@ -1253,8 +1256,7 @@ async function handleTelegramMedia(
     throw new Error("file is required");
   }
 
-  // Import telegram bot manager
-  const { telegramBot, channelManager } = await import("../channels");
+  // telegramBot and channelManager imported at top of file
 
   // Find active Telegram channel
   const channels = channelManager.list();

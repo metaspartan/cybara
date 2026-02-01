@@ -3,7 +3,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { handleRequest } from "./api/routes";
 import { config } from "./core/config";
-import { channelManager, telegramBot } from "./core/channels";
+import { channelManager, telegramBot, telegramSessions } from "./core/channels";
 import { handleChat } from "./api/chat";
 import { providerManager } from "./core/providers";
 import { onStatus, addSSEClient, removeSSEClient } from "./core/status";
@@ -229,8 +229,6 @@ providerManager.seedDefaults();
 // Set up Telegram message handler to route to chat
 telegramBot.setMessageHandler(async (message, chatId, userId, channelId, fileInfo) => {
   try {
-    // Get session ID from telegramSessions map or create default
-    const { telegramSessions } = await import("./core/channels");
     const sessionId = telegramSessions.get(chatId.toString()) || `telegram:${chatId}`;
 
     // If there's a file, prepend file info to the message

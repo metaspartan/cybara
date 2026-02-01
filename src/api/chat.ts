@@ -24,6 +24,7 @@ import {
   shouldCompactContext,
   compactContext,
   persistSession,
+  deletePersistedSession,
 } from "../core/session-context";
 import { handleMemorySave } from "../core/tools/handlers/memory";
 
@@ -602,7 +603,6 @@ export async function getSession(sessionId: string) {
   if (session) return session;
 
   // Try to load from persistence
-  const { loadPersistedSession } = await import("../core/session-context");
   const persisted = await loadPersistedSession(sessionId);
   if (persisted) {
     const restoredSession = {
@@ -636,7 +636,6 @@ export async function listSessions(): Promise<
   }));
 
   // Get persisted sessions that aren't in memory
-  const { listPersistedSessions } = await import("../core/session-context");
   const persistedSessions = await listPersistedSessions();
 
   const persistedMap = new Map(memorySessions.map((s) => [s.id, s]));
@@ -663,7 +662,6 @@ export async function deleteSession(sessionId: string): Promise<boolean> {
   const memoryDeleted = chatSessions.delete(sessionId);
 
   // Delete from persistence
-  const { deletePersistedSession } = await import("../core/session-context");
   const persistedDeleted = await deletePersistedSession(sessionId);
 
   return memoryDeleted || persistedDeleted;

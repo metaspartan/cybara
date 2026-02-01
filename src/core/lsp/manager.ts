@@ -1,6 +1,7 @@
 // LSP Manager
 // Manages multiple language server clients and provides unified access
 
+import { exec } from "child_process";
 import { LSPClient } from "./client";
 import { getLanguageId, type Diagnostic, type Location, type Hover } from "./types";
 import { existsSync, readFileSync, writeFileSync } from "fs";
@@ -279,7 +280,6 @@ export class LSPManager {
 
         // Try to find the command in PATH
         try {
-            const { exec } = await import("child_process");
             return new Promise((resolve) => {
                 exec(`which ${config.command}`, (error) => {
                     resolve(!error);

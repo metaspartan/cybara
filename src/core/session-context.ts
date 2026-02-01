@@ -1,5 +1,5 @@
 // Session persistence and context management for chat
-import { tables } from "./database";
+import db, { tables } from "./database";
 import { randomUUID } from "crypto";
 import { agentManager } from "./agent";
 import { providerManager } from "./providers";
@@ -641,9 +641,6 @@ export async function persistSession(
   messages: ChatMessage[]
 ): Promise<void> {
   try {
-    // Store session metadata
-    const db = (await import("./database")).default;
-
     // Check if session exists
     const existing = db.prepare("SELECT id FROM chat_sessions WHERE id = ?").get(sessionId);
 
@@ -672,8 +669,6 @@ export async function loadPersistedSession(
   sessionId: string
 ): Promise<{ agentId: string; messages: ChatMessage[] } | null> {
   try {
-    const db = (await import("./database")).default;
-
     // Get session messages from database
     const sessionMessages = tables.sessionMessages?.getBySession(sessionId) || [];
 
@@ -723,8 +718,6 @@ export async function listPersistedSessions(): Promise<
   }>
 > {
   try {
-    const db = (await import("./database")).default;
-
     const sessions = db
       .prepare(
         `
@@ -758,8 +751,6 @@ export async function listPersistedSessions(): Promise<
 // Delete persisted session
 export async function deletePersistedSession(sessionId: string): Promise<boolean> {
   try {
-    const db = (await import("./database")).default;
-
     // Delete messages first
     db.prepare("DELETE FROM session_messages WHERE session_id = ?").run(sessionId);
 
@@ -782,8 +773,6 @@ export async function getSessionStats(sessionId: string): Promise<{
   lastMessageAt: string | null;
 } | null> {
   try {
-    const db = (await import("./database")).default;
-
     const stats = db
       .prepare(
         `

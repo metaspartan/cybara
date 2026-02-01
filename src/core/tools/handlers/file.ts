@@ -1,6 +1,7 @@
 // Tool handlers - file operations
 import { readFileSync, existsSync, writeFileSync, mkdirSync, promises as fs } from "fs";
 import { join, dirname } from "path";
+import { glob } from "tinyglobby";
 import { projectRoot } from "../../paths";
 import { trackMetric } from "../../metrics";
 
@@ -304,9 +305,6 @@ async function searchDirectory(
 }
 
 async function globFiles(dir: string, pattern: string): Promise<string[]> {
-  const results: string[] = [];
-  const { glob } = await import("tinyglobby");
-
   try {
     const matches = await glob(pattern, { cwd: dir });
     return matches;
