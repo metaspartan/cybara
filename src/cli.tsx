@@ -339,6 +339,148 @@ async function rawMcpPopular(): Promise<void> {
     }
 }
 
+// Pairing Commands
+interface PairingInfo {
+    id: string;
+    senderId: string;
+    code: string;
+    platform: string;
+    displayName?: string;
+    status: string;
+    createdAt: string;
+    expiresAt: string;
+}
+
+interface ChannelInfo {
+    id: string;
+    name: string;
+    type: string;
+}
+
+async function rawPairList(): Promise<void> {
+    // Get all channels first
+    const channels = await fetchAPI<ChannelInfo[]>("/api/channels") || [];
+
+    console.log("PENDING PAIRINGS");
+    console.log("================");
+    console.log("");
+
+    let totalPending = 0;
+    for (const channel of channels) {
+        const data = await fetchAPI<{ pairings: PairingInfo[]; pendingCount: number }>(`/api/channels/${channel.id}/pairings`);
+        if (!data || data.pendingCount === 0) continue;
+
+        totalPending += data.pendingCount;
+        console.log(`${channel.name} (${channel.type}):`);
+        for (const p of data.pairings.filter((x) => x.status === "pending")) {
+            const name = p.displayName || p.senderId;
+            console.log(`  - ${name}`);
+            console.log(`    code: ${p.code}`);
+            console.log(`    platform: ${p.platform}`);
+            console.log(`    expires: ${new Date(p.expiresAt).toLocaleString()}`);
+        }
+        console.log("");
+    }
+
+    if (totalPending === 0) {
+        console.log("No pending pairings");
+    } else {
+        console.log(`Total pending: ${totalPending}`);
+        console.log("");
+        console.log("To approve: cybara pair <CODE>");
+        console.log("To reject:  cybara pair reject <CODE>");
+    }
+}
+
+async function rawPairApprove(code: string): Promise<void> {
+    // Search all channels for this code
+    const channels = await fetchAPI<ChannelInfo[]>("/api/channels") || [];
+
+    for (const channel of channels) {
+        const result = await fetchAPI<{ success: boolean; senderId?: string; error?: string }>(
+            `/api/channels/${channel.id}/pairings/verify`,
+            { method: "POST", body: JSON.stringify({ code: code.toUpperCase() }) }
+        );
+
+        if (result?.success) {
+            console.log(`✓ Pairing approved!`);
+            console.log(`  channel: ${channel.name}`);
+            console.log(`  sender: ${result.senderId}`);
+            console.log("");
+            console.log("The user can now message your bot.");
+            return;
+        }
+    }
+
+    console.error(`✗ Pairing code ${code.toUpperCase()} not found or already expired`);
+    console.log("");
+    console.log("Use 'cybara pair list' to see pending pairings");
+    process.exit(1);
+}
+
+async function rawPairReject(code: string): Promise<void> {
+    // Search all channels for this code
+    const channels = await fetchAPI<ChannelInfo[]>("/api/channels") || [];
+
+    for (const channel of channels) {
+        const pairings = await fetchAPI<{ pairings: PairingInfo[] }>(`/api/channels/${channel.id}/pairings`);
+        const pairing = pairings?.pairings.find((p) => p.code === code.toUpperCase());
+
+        if (pairing) {
+            const result = await fetchAPI<{ success: boolean }>(
+                `/api/channels/${channel.id}/pairings/${pairing.id}/reject`,
+                { method: "POST" }
+            );
+
+            if (result?.success) {
+                console.log(`✓ Pairing rejected`);
+                console.log(`  code: ${code.toUpperCase()}`);
+                console.log(`  sender: ${pairing.senderId}`);
+                return;
+            }
+        }
+    }
+
+    console.error(`✗ Pairing code ${code.toUpperCase()} not found`);
+    process.exit(1);
+}
+
+async function rawPairPolicy(channelName: string, policy: string): Promise<void> {
+    const validPolicies = ["pairing", "allowlist", "open", "disabled"];
+    if (!validPolicies.includes(policy)) {
+        console.error(`Invalid policy: ${policy}`);
+        console.log(`Valid policies: ${validPolicies.join(", ")}`);
+        process.exit(1);
+    }
+
+    // Find channel by name
+    const channels = await fetchAPI<ChannelInfo[]>("/api/channels") || [];
+    const channel = channels.find((c) => c.name.toLowerCase() === channelName.toLowerCase() || c.id === channelName);
+
+    if (!channel) {
+        console.error(`Channel not found: ${channelName}`);
+        console.log("Available channels:");
+        for (const c of channels) {
+            console.log(`  - ${c.name} (${c.type})`);
+        }
+        process.exit(1);
+    }
+
+    const result = await fetchAPI<{ success: boolean; config: { dm_policy: string } }>(
+        `/api/channels/${channel.id}/security`,
+        { method: "PUT", body: JSON.stringify({ dm_policy: policy }) }
+    );
+
+    if (result?.success) {
+        console.log(`✓ DM policy updated`);
+        console.log(`  channel: ${channel.name}`);
+        console.log(`  policy: ${result.config.dm_policy}`);
+    } else {
+        console.error("Failed to update policy");
+        process.exit(1);
+    }
+}
+
 async function rawLsp(): Promise<void> {
     interface LSPInstallStatus {
         language: string;
@@ -470,6 +612,11 @@ function rawHelp(): void {
     console.log("  agents      List configured agents");
     console.log("  tasks       List scheduled tasks");
     console.log("  skills      List installed skills");
+    console.log("  pair        Channel pairing commands");
+    console.log("    pair           List pending pairings");
+    console.log("    pair <CODE>    Approve a pairing code");
+    console.log("    pair reject    Reject a pairing code");
+    console.log("    pair policy    Set DM policy for a channel");
     console.log("  mcp         MCP server commands");
     console.log("    mcp list     List installed MCP servers");
     console.log("    mcp search   Search MCP registry");
@@ -1045,6 +1192,33 @@ async function main() {
         case "--help":
         case "-h":
             rawHelp();
+            break;
+
+        // Pairing commands
+        case "pair":
+            const pairSubCmd = args[1];
+            if (!pairSubCmd || pairSubCmd === "list") {
+                await rawPairList();
+            } else if (pairSubCmd === "reject") {
+                const rejectCode = args[2];
+                if (!rejectCode) {
+                    console.error("Usage: cybara pair reject <CODE>");
+                    process.exit(1);
+                }
+                await rawPairReject(rejectCode);
+            } else if (pairSubCmd === "policy") {
+                const channelName = args[2];
+                const policy = args[3];
+                if (!channelName || !policy) {
+                    console.error("Usage: cybara pair policy <channel> <policy>");
+                    console.log("Policies: pairing, allowlist, open, disabled");
+                    process.exit(1);
+                }
+                await rawPairPolicy(channelName, policy);
+            } else {
+                // Assume it's a pairing code
+                await rawPairApprove(pairSubCmd);
+            }
             break;
 
         // MCP commands

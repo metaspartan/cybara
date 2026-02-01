@@ -42,6 +42,7 @@ const CLI_COMMANDS = [
     "skills",
     "mcp",
     "lsp",
+    "pair",
     "help",
     "--help",
     "-h",

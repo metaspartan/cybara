@@ -2,7 +2,7 @@ import { config } from "../core/config";
 import db, { tables } from "../core/database";
 import { agentManager, builtinTools } from "../core/agent";
 import { providerManager, providers } from "../core/providers";
-import { channelManager, channels, processTelegramWebhook } from "../core/channels";
+import { channelManager, channels, processTelegramWebhook, securityManager } from "../core/channels";
 import { taskScheduler } from "../core/scheduler";
 import { mcpManager } from "../core/mcp";
 import { mcpRegistry } from "../core/mcp-registry";
@@ -539,6 +539,42 @@ const routes: Record<string, RouteHandler> = {
     return { success: channelManager.update(params!.id, { enabled: data.enabled }) };
   },
   "DELETE /api/channels/:id": (_body, params) => ({ success: channelManager.delete(params!.id) }),
+
+  // Channel Security & Pairing
+  "GET /api/channels/:id/pairings": (_body, params) => {
+    const channelId = params!.id;
+    return {
+      pairings: securityManager.getAllPairings(channelId),
+      pendingCount: securityManager.getPendingPairings(channelId).length,
+      config: securityManager.getConfig(channelId),
+    };
+  },
+  "POST /api/channels/:id/pairings/verify": (body, params) => {
+    const channelId = params!.id;
+    const { code } = body as { code: string };
+    return securityManager.verifyPairing(channelId, code);
+  },
+  "POST /api/channels/:id/pairings/:pairingId/reject": (_body, params) => {
+    const { id, pairingId } = params!;
+    return { success: securityManager.rejectPairing(id, pairingId) };
+  },
+  "GET /api/channels/:id/allowed-senders": (_body, params) => {
+    return { senders: securityManager.getAllowedSenders(params!.id) };
+  },
+  "POST /api/channels/:id/allowed-senders": (body, params) => {
+    const { senderId } = body as { senderId: string };
+    securityManager.addAllowedSender(params!.id, senderId);
+    return { success: true };
+  },
+  "DELETE /api/channels/:id/allowed-senders/:senderId": (_body, params) => {
+    return { success: securityManager.removeAllowedSender(params!.id, params!.senderId) };
+  },
+  "PUT /api/channels/:id/security": (body, params) => {
+    const channelId = params!.id;
+    const config = body as { dm_policy?: string; pairing_expiry_minutes?: number; max_pending_pairings?: number };
+    securityManager.setConfig(channelId, config as Parameters<typeof securityManager.setConfig>[1]);
+    return { success: true, config: securityManager.getConfig(channelId) };
+  },
 
   // ===== TASKS =====
   "GET /api/tasks": () => taskScheduler.list(),
