@@ -92,8 +92,9 @@ async function startDaemon() {
 
     console.log("Starting Cybara in background...");
 
-    // Get the path to this executable
-    const execPath = process.argv[0];
+    // Get the path to this executable - use process.execPath for compiled binaries
+    // process.argv[0] would return 'bun' in dev mode, but we want the actual executable
+    const execPath = process.execPath;
 
     // Clear old log file
     writeFileSync(LOG_FILE, `[${new Date().toISOString()}] Starting Cybara daemon...\n`);

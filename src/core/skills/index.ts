@@ -1,5 +1,5 @@
 import { readFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "fs";
-import { join, dirname, basename, extname } from "path";
+import { join, dirname, basename, extname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { homedir } from "os";
 // ============================================================================
@@ -69,8 +69,18 @@ export {
 // ============================================================================
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-// __dirname is src/core/skills, go up 3 levels to reach project root
-const workspace = join(__dirname, "..", "..", "..");
+// Calculate workspace path - handle both dev and compiled binary modes
+// In compiled binaries, __dirname points to virtual filesystem /$bunfs/root
+const getWorkspacePath = (): string => {
+  if (__dirname.startsWith("/$bunfs") || __dirname.includes("$bunfs")) {
+    // Compiled binary - use executable path
+    const execDir = dirname(process.execPath);
+    return resolve(execDir, "..");
+  }
+  // Development mode - __dirname is src/core/skills, go up 3 levels
+  return join(__dirname, "..", "..", "..");
+};
+const workspace = getWorkspacePath();
 
 export interface Skill {
   name: string;

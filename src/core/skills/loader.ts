@@ -4,6 +4,7 @@
  */
 
 import { readdir, readFile, stat, watch } from "fs/promises";
+import { existsSync } from "fs";
 import { join, resolve, basename, dirname } from "path";
 import { homedir, platform } from "os";
 import type {
@@ -217,14 +218,42 @@ export async function scanSkillsDirectory(
 
 /**
  * Get default skill directory paths
+ * Handles both development mode and compiled binary mode
  */
 export function getSkillDirectories(workspaceDir?: string): {
     bundled: string;
     local: string;
     workspace: string | null;
 } {
+    // In compiled binaries, __dirname may not work correctly
+    // Detect compiled binary: execPath won't end with 'bun' when compiled
+    const isCompiledBinary = !process.execPath.endsWith("bun") && !process.execPath.includes("/bun");
+    let bundledPath: string;
+
+    if (isCompiledBinary) {
+        // Compiled binary - look for skills relative to executable
+        const execDir = dirname(process.execPath);
+        // Try: <exec_dir>/../skills (e.g., release/../skills = ./skills)
+        const repoSkills = resolve(execDir, "..", "skills");
+        // Try: <exec_dir>/skills
+        const sideSkills = join(execDir, "skills");
+
+        // Check which path exists (sync check, function is not async)
+        if (existsSync(repoSkills)) {
+            bundledPath = repoSkills;
+        } else if (existsSync(sideSkills)) {
+            bundledPath = sideSkills;
+        } else {
+            // Fallback to looking in home dir for bundled copy
+            bundledPath = join(homedir(), ".cybara", "bundled-skills");
+        }
+    } else {
+        // Development mode - use __dirname relative path
+        bundledPath = resolve(__dirname, "../../../skills");
+    }
+
     return {
-        bundled: resolve(__dirname, "../../../skills"),
+        bundled: bundledPath,
         local: join(homedir(), ".cybara", "skills"),
         workspace: workspaceDir ? join(workspaceDir, "skills") : null,
     };

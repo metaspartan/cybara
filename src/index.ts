@@ -9,7 +9,26 @@ import { providerManager } from "./core/providers";
 import { onStatus, addSSEClient, removeSSEClient } from "./core/status";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const uiPath = join(__dirname, "..", "ui", "dist");
+
+// Detect compiled binary: execPath won't contain 'bun' when compiled
+const isCompiledBinary = !process.execPath.endsWith("bun") && !process.execPath.includes("/bun");
+
+// In compiled binaries, __dirname points to virtual filesystem - use executable path
+const getUiPath = (): string => {
+  if (isCompiledBinary) {
+    const execDir = dirname(process.execPath);
+    // Check: <exec_dir>/ui/dist (e.g., release/ui/dist)
+    const releaseUi = join(execDir, "ui", "dist");
+    if (existsSync(releaseUi)) return releaseUi;
+    // Fallback: <exec_dir>/../ui/dist (e.g., release/../ui/dist = ./ui/dist)
+    const repoUi = join(execDir, "..", "ui", "dist");
+    if (existsSync(repoUi)) return repoUi;
+  }
+  // Development mode
+  return join(__dirname, "..", "ui", "dist");
+};
+
+const uiPath = getUiPath();
 let uiContent: string;
 let uiExists = false;
 
