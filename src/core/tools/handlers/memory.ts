@@ -2,24 +2,14 @@
 import {
   readFileSync,
   existsSync,
-  mkdirSync,
   readdirSync,
   writeFileSync,
   appendFileSync,
   statSync,
 } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 import { getVectorStore } from "../../memory";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-// Memory directory is at project root level (src/core/tools/handlers -> root)
-const memoryDir = join(__dirname, "..", "..", "..", "..", "memory");
-
-// Ensure memory directory exists
-if (!existsSync(memoryDir)) {
-  mkdirSync(memoryDir, { recursive: true });
-}
+import { memoryDir } from "../../paths";
 
 // Track if vector store has been indexed
 let vectorStoreInitialized = false;

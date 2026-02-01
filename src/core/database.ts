@@ -1,10 +1,11 @@
 import { Database } from "bun:sqlite";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 import { mkdirSync, existsSync } from "fs";
+import { homedir } from "os";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const dataDir = join(__dirname, "..", "data");
+// Use ~/.cybara/data for database - works in both dev and compiled binary
+// (In compiled binaries, __dirname resolves to /$bunfs/ which is read-only)
+const dataDir = join(homedir(), ".cybara", "data");
 const dbPath = join(dataDir, "platform.db");
 
 console.log("[Database] Initializing at:", dbPath);

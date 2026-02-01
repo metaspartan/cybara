@@ -1,16 +1,7 @@
 // Memory management API
-import { readFileSync, existsSync, mkdirSync, writeFileSync, unlinkSync, readdirSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-// Memory directory is at project root level
-const memoryDir = join(__dirname, "..", "..", "..", "memory");
-
-// Ensure memory directory exists
-if (!existsSync(memoryDir)) {
-  mkdirSync(memoryDir, { recursive: true });
-}
+import { readFileSync, existsSync, writeFileSync, unlinkSync, readdirSync } from "fs";
+import { join } from "path";
+import { memoryDir } from "../../core/paths";
 
 export interface MemoryEntry {
   timestamp: string;
