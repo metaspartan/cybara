@@ -1,5 +1,5 @@
 // Playwright Browser Manager - Moltbot-compatible with Profile Support
-import type { Browser, BrowserContext, Page } from "playwright";
+import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import {
   type BrowserProfile,
   type BrowserProfileConfig,
@@ -49,8 +49,6 @@ async function getLegacyBrowser(): Promise<Browser> {
   if (legacyBrowser) return legacyBrowser;
 
   try {
-    const { chromium } = await import("playwright");
-
     // Try to connect to existing Chrome/Chromium if available via CDP
     try {
       legacyBrowser = await chromium.connectOverCDP("http://localhost:9222");
@@ -736,7 +734,6 @@ export async function closeAll(): Promise<void> {
 // Get browser status
 export async function getStatus(): Promise<BrowserStatus> {
   try {
-    const { chromium } = await import("playwright");
     const executablePath = chromium.executablePath();
 
     const profileStatus = await getProfileStatus();
