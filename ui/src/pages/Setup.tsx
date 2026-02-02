@@ -1,13 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, Cloud, Bot, CheckCircle, ChevronRight, Key, Loader2 } from 'lucide-react';
+import { Cloud, Bot, CheckCircle, ChevronRight, Key, Loader2, AlertCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useProviders, useAgents, useAvailableProviders, useCreateProvider, useCreateDefaultAgent } from '@/hooks/useApi';
 import type { AvailableProvider } from '@/types';
 
-type WizardStep = 'welcome' | 'provider' | 'apikey' | 'agent' | 'complete';
+type WizardStep = 'welcome' | 'provider' | 'apikey' | 'oauth' | 'agent' | 'complete';
+
+// Helper to determine what auth flow a provider needs
+function getAuthFlow(provider: AvailableProvider): 'api_key' | 'oauth' | 'none' {
+    if (!provider.authType || provider.authType === 'none') return 'none';
+    if (provider.authType === 'oauth' || provider.authType === 'aws-sdk') return 'oauth';
+    return 'api_key'; // api_key, bearer, token
+}
 
 export function Setup() {
     const navigate = useNavigate();
@@ -35,11 +42,16 @@ export function Setup() {
     const handleProviderSelect = (provider: AvailableProvider) => {
         setSelectedProvider(provider);
         setError(null);
-        // Check if this provider requires API key
-        const requiresKey = provider.authType === 'api_key' || provider.authType === 'bearer' || provider.authType === 'token';
-        if (requiresKey) {
+
+        const authFlow = getAuthFlow(provider);
+
+        if (authFlow === 'api_key') {
             setStep('apikey');
+        } else if (authFlow === 'oauth') {
+            // OAuth providers need special handling - can't be fully set up in wizard
+            setStep('oauth');
         } else {
+            // No auth needed (e.g., Ollama) - create directly
             handleCreateProvider(provider.id, '');
         }
     };
@@ -59,6 +71,14 @@ export function Setup() {
             setError(err instanceof Error ? err.message : 'Failed to create provider');
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleSkipOAuth = () => {
+        // For OAuth providers, create a placeholder entry without credentials
+        // User will need to complete OAuth flow in Settings later
+        if (selectedProvider) {
+            handleCreateProvider(selectedProvider.id, '');
         }
     };
 
@@ -108,11 +128,13 @@ export function Setup() {
                 <div className="flex items-center justify-center gap-2 mb-8">
                     {['welcome', 'provider', 'apikey', 'agent', 'complete'].map((s, i) => (
                         <div key={s} className="flex items-center">
-                            <div className={`w-3 h-3 rounded-full transition-colors ${step === s ? 'bg-indigo-500' :
-                                ['welcome', 'provider', 'apikey', 'agent', 'complete'].indexOf(step) > i ? 'bg-emerald-500' :
-                                    'bg-white/20'
+                            <div className={`w-3 h-3 rounded-full transition-colors ${step === s || (step === 'oauth' && s === 'apikey') ? 'bg-indigo-500' :
+                                    ['welcome', 'provider', 'apikey', 'agent', 'complete'].indexOf(step) > i ||
+                                        (step === 'oauth' && i < 2) ? 'bg-emerald-500' :
+                                        'bg-white/20'
                                 }`} />
-                            {i < 4 && <div className={`w-8 h-0.5 ${['welcome', 'provider', 'apikey', 'agent', 'complete'].indexOf(step) > i ? 'bg-emerald-500' : 'bg-white/20'
+                            {i < 4 && <div className={`w-8 h-0.5 ${['welcome', 'provider', 'apikey', 'agent', 'complete'].indexOf(step) > i ||
+                                    (step === 'oauth' && i < 2) ? 'bg-emerald-500' : 'bg-white/20'
                                 }`} />}
                         </div>
                     ))}
@@ -166,18 +188,31 @@ export function Setup() {
                                         <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
                                     </div>
                                 ) : (
-                                    <div className="grid grid-cols-2 gap-2 max-h-80 overflow-y-auto">
-                                        {availableProviders?.map((provider) => (
-                                            <button
-                                                key={provider.id}
-                                                onClick={() => handleProviderSelect(provider)}
-                                                className="px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-indigo-500/10 transition-all text-center group"
-                                            >
-                                                <span className="font-medium text-sm text-white group-hover:text-indigo-300 transition-colors">
-                                                    {provider.name}
-                                                </span>
-                                            </button>
-                                        ))}
+                                    <div className="grid grid-cols-2 gap-2 max-h-80 overflow-y-auto pr-1">
+                                        {availableProviders?.map((provider) => {
+                                            const authFlow = getAuthFlow(provider);
+                                            return (
+                                                <button
+                                                    key={provider.id}
+                                                    onClick={() => handleProviderSelect(provider)}
+                                                    className="px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-indigo-500/10 transition-all text-center group relative"
+                                                >
+                                                    <span className="font-medium text-sm text-white group-hover:text-indigo-300 transition-colors">
+                                                        {provider.name}
+                                                    </span>
+                                                    {authFlow === 'none' && (
+                                                        <span className="absolute top-1 right-1 text-[10px] bg-emerald-500/20 text-emerald-400 px-1 rounded">
+                                                            Local
+                                                        </span>
+                                                    )}
+                                                    {authFlow === 'oauth' && (
+                                                        <span className="absolute top-1 right-1 text-[10px] bg-amber-500/20 text-amber-400 px-1 rounded">
+                                                            OAuth
+                                                        </span>
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>
@@ -220,6 +255,42 @@ export function Setup() {
                                             Continue
                                         </Button>
                                     </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* OAuth Step - for providers that need OAuth flow */}
+                        {step === 'oauth' && selectedProvider && (
+                            <div className="space-y-6">
+                                <div className="text-center">
+                                    <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center">
+                                        <AlertCircle className="w-8 h-8 text-white" />
+                                    </div>
+                                    <h2 className="text-2xl font-bold text-white mb-2">OAuth Required</h2>
+                                    <p className="text-gray-400">{selectedProvider.name} requires OAuth authentication</p>
+                                </div>
+
+                                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30">
+                                    <p className="text-sm text-amber-200">
+                                        This provider uses OAuth for authentication. After setup, go to <strong>Settings → Providers</strong> to complete the OAuth flow.
+                                    </p>
+                                </div>
+
+                                {error && (
+                                    <p className="text-red-400 text-sm text-center">{error}</p>
+                                )}
+
+                                <div className="flex gap-3">
+                                    <Button variant="ghost" onClick={() => setStep('provider')} className="flex-1">
+                                        Back
+                                    </Button>
+                                    <Button
+                                        onClick={handleSkipOAuth}
+                                        isLoading={isLoading}
+                                        className="flex-1"
+                                    >
+                                        Continue Anyway
+                                    </Button>
                                 </div>
                             </div>
                         )}

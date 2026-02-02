@@ -160,8 +160,8 @@ export const providers = {
       },
     ],
   },
-  "google-antigravity": {
-    name: "Google AI Studio",
+  antigravity: {
+    name: "Antigravity",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
     api: "google-generative-ai",
     authType: "oauth",
@@ -171,7 +171,7 @@ export const providers = {
         name: "Gemini 3 Pro",
         context: 1048576,
         maxTokens: 32768,
-        reasoning: false,
+        reasoning: true,
         input: ["text", "image", "audio", "video"],
       },
       {
@@ -191,12 +191,12 @@ export const providers = {
         input: ["text", "image", "audio", "video"],
       },
       {
-        id: "gemini-2.0-flash-exp",
-        name: "Gemini 2.0 Flash Exp",
-        context: 1048576,
-        maxTokens: 8192,
-        reasoning: false,
-        input: ["text", "image", "audio", "video"],
+        id: "claude-opus-4-5",
+        name: "Claude Opus 4.5",
+        context: 200000,
+        maxTokens: 81920,
+        reasoning: true,
+        input: ["text", "image"],
       },
     ],
   },
