@@ -2,10 +2,15 @@
 // Triggers memory saves before context compaction to preserve important information
 
 import { tables } from "../database";
-import { getContextWindow } from "../session-context";
+import {
+    getContextWindow,
+    estimateTokens,
+    estimateMessagesTokens
+} from "../session-context";
 
 // Re-export for backwards compatibility
 export { getContextWindow as getDefaultContextWindow };
+export { estimateTokens, estimateMessagesTokens };
 
 export const DEFAULT_MEMORY_FLUSH_SOFT_TOKENS = 4000;
 
@@ -85,23 +90,4 @@ export function shouldRunMemoryFlush(params: {
     return true;
 }
 
-/**
- * Simple token estimation (approximation: ~4 chars per token)
- */
-export function estimateTokens(text: string): number {
-    if (!text) return 0;
-    return Math.ceil(text.length / 4);
-}
-
-/**
- * Estimate tokens for an array of messages
- */
-export function estimateMessagesTokens(messages: Array<{ content?: string; role?: string }>): number {
-    return messages.reduce((sum, msg) => {
-        const content = typeof msg.content === "string" ? msg.content : "";
-        const role = typeof msg.role === "string" ? msg.role : "";
-        // Add overhead for role and message structure
-        return sum + estimateTokens(content) + estimateTokens(role) + 4;
-    }, 0);
-}
 
