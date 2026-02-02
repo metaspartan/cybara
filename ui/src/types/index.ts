@@ -167,7 +167,7 @@ export interface AvailableProvider {
   name: string;
   description: string;
   models: string[];
-  authType?: 'none' | 'bearer' | 'token';
+  authType?: 'none' | 'api_key' | 'bearer' | 'token' | 'oauth' | 'aws-sdk';
 }
 
 export interface AvailableChannel {

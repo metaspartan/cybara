@@ -10,3 +10,4 @@ export { Tools } from './Tools';
 export { Memory } from './Memory';
 export { Settings } from './Settings';
 export { Chat } from './Chat';
+export { Setup } from './Setup';

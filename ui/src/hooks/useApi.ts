@@ -72,6 +72,14 @@ export function useDeleteAgent() {
   });
 }
 
+export function useCreateDefaultAgent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => fetchApi<{ id: string }>('/agents/default', { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agents'] }),
+  });
+}
+
 export function useStartAgent() {
   const queryClient = useQueryClient();
   return useMutation({
