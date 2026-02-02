@@ -127,12 +127,12 @@ export const providers = {
       },
     ],
   },
-  // Google - pi-ai built-in
+  // Google - pi-ai built-in (uses API key from Google AI Studio)
   google: {
     name: "Google AI",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
     api: "google-generative-ai",
-    authType: "oauth",
+    authType: "api_key",
     models: [
       {
         id: "gemini-3-pro-preview",
@@ -160,6 +160,7 @@ export const providers = {
       },
     ],
   },
+  // Antigravity - Google OAuth (bundled auth plugin)
   antigravity: {
     name: "Antigravity",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
@@ -729,6 +730,99 @@ export const providers = {
         code: true,
       },
     ],
+  },
+  // OpenAI Codex (ChatGPT OAuth) - from moltbot auth-choice.apply.openai.ts
+  "openai-codex": {
+    name: "OpenAI Codex (ChatGPT)",
+    baseUrl: "https://api.openai.com/v1",
+    api: "openai-responses",
+    authType: "oauth",
+    models: [
+      {
+        id: "gpt-5.1-codex",
+        name: "GPT-5.1 Codex",
+        context: 400000,
+        maxTokens: 65536,
+        reasoning: false,
+        input: ["text"],
+        code: true,
+      },
+      {
+        id: "gpt-5.1-codex-mini",
+        name: "GPT-5.1 Codex Mini",
+        context: 400000,
+        maxTokens: 65536,
+        reasoning: false,
+        input: ["text"],
+        code: true,
+      },
+    ],
+  },
+  // Chutes (OAuth) - from moltbot onboard-types.ts
+  chutes: {
+    name: "Chutes",
+    baseUrl: "https://api.chutes.ai/v1",
+    api: "openai-completions",
+    authType: "oauth",
+    models: [],
+  },
+  // Vercel AI Gateway (API key) - from moltbot auth-choice.apply.api-providers.ts
+  "vercel-ai-gateway": {
+    name: "Vercel AI Gateway",
+    baseUrl: "https://gateway.ai.vercel.app/v1",
+    api: "openai-completions",
+    authType: "api_key",
+    models: [
+      {
+        id: "claude-opus-4-5",
+        name: "Claude Opus 4.5",
+        context: 200000,
+        maxTokens: 81920,
+        reasoning: true,
+        input: ["text", "image"],
+      },
+      {
+        id: "gpt-5.2",
+        name: "GPT-5.2",
+        context: 200000,
+        maxTokens: 100000,
+        reasoning: true,
+        input: ["text"],
+      },
+    ],
+  },
+  // Google Gemini CLI (OAuth) - from moltbot auth-choice.apply.google-gemini-cli.ts
+  "google-gemini-cli": {
+    name: "Google Gemini CLI",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    api: "google-generative-ai",
+    authType: "oauth",
+    models: [
+      {
+        id: "gemini-3-pro-preview",
+        name: "Gemini 3 Pro",
+        context: 1048576,
+        maxTokens: 32768,
+        reasoning: true,
+        input: ["text", "image", "audio", "video"],
+      },
+      {
+        id: "gemini-3-flash-preview",
+        name: "Gemini 3 Flash",
+        context: 1048576,
+        maxTokens: 8192,
+        reasoning: false,
+        input: ["text", "image", "audio", "video"],
+      },
+    ],
+  },
+  // Copilot Proxy (OAuth) - local proxy for VS Code Copilot models
+  "copilot-proxy": {
+    name: "Copilot Proxy",
+    baseUrl: "http://localhost:1234/v1",
+    api: "openai-completions",
+    authType: "oauth",
+    models: [],
   },
 } as const;
 
