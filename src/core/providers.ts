@@ -731,13 +731,21 @@ export const providers = {
       },
     ],
   },
-  // OpenAI Codex (ChatGPT OAuth) - from moltbot auth-choice.apply.openai.ts
+  // OpenAI Codex (ChatGPT OAuth) - from moltbot openai-codex-model-default.ts
   "openai-codex": {
     name: "OpenAI Codex (ChatGPT)",
     baseUrl: "https://api.openai.com/v1",
     api: "openai-responses",
     authType: "oauth",
     models: [
+      {
+        id: "gpt-5.2",
+        name: "GPT-5.2",
+        context: 200000,
+        maxTokens: 100000,
+        reasoning: true,
+        input: ["text", "image"],
+      },
       {
         id: "gpt-5.1-codex",
         name: "GPT-5.1 Codex",
