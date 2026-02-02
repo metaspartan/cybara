@@ -715,18 +715,42 @@ Use for tasks that may take longer or require separate context.`,
   },
   canvas: {
     name: "canvas",
-    description: "Control node canvases for UI rendering",
-    category: "media",
+    description: "Control canvas for HTML/CSS/JS rendering. Actions: present (show), hide, navigate (load URL), eval (run JS), snapshot (capture image), a2ui_push (push JSONL), a2ui_reset (clear A2UI).",
+    category: "browser",
     input_schema: {
       type: "object",
       properties: {
         action: {
           type: "string",
-          enum: ["present", "hide", "snapshot"],
-          description: "Canvas action",
+          enum: ["present", "hide", "navigate", "eval", "snapshot", "a2ui_push", "a2ui_reset"],
+          description: "Canvas action: present shows canvas, hide hides it, navigate loads URL, eval runs JS, snapshot captures image, a2ui_push sends JSONL to UI, a2ui_reset clears UI data",
         },
-        node: { type: "string", description: "Node ID" },
-        javaScript: { type: "string", description: "JavaScript to execute" },
+        // Gateway options
+        gatewayUrl: { type: "string", description: "Gateway URL for node communication" },
+        gatewayToken: { type: "string", description: "Gateway auth token" },
+        timeoutMs: { type: "number", description: "Timeout in milliseconds" },
+        node: { type: "string", description: "Target node ID" },
+        // present
+        target: { type: "string", description: "URL or path to present" },
+        url: { type: "string", description: "URL or HTML content for present/navigate" },
+        x: { type: "number", description: "Window X position" },
+        y: { type: "number", description: "Window Y position" },
+        width: { type: "number", description: "Window width" },
+        height: { type: "number", description: "Window height" },
+        // eval
+        javaScript: { type: "string", description: "JavaScript code to evaluate" },
+        // snapshot
+        outputFormat: {
+          type: "string",
+          enum: ["png", "jpg", "jpeg"],
+          description: "Image format for snapshot (default: png)",
+        },
+        maxWidth: { type: "number", description: "Max width in pixels for snapshot" },
+        quality: { type: "number", description: "JPEG quality 0-1 for snapshot" },
+        delayMs: { type: "number", description: "Delay before snapshot (ms)" },
+        // A2UI
+        jsonl: { type: "string", description: "JSONL data for A2UI push" },
+        jsonlPath: { type: "string", description: "Path to JSONL file for A2UI push" },
       },
       required: ["action"],
     },
@@ -1229,6 +1253,10 @@ _toolHandlers.set("lsp_definition", handleLSPDefinition);
 _toolHandlers.set("lsp_references", handleLSPReferences);
 _toolHandlers.set("lsp_hover", handleLSPHover);
 _toolHandlers.set("lsp_languages", handleLSPLanguages);
+
+// Import and register canvas handler
+import { handleCanvas } from "./handlers/canvas";
+_toolHandlers.set("canvas", handleCanvas);
 
 // Register skill executors as tools
 import { getSkillExecutors } from "../skills/index";
