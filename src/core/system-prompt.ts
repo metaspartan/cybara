@@ -154,6 +154,11 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
     lines.push(...buildToolCallStyleSection());
   }
 
+  // CLI Quick Reference section (OpenClaw style)
+  if (!isMinimal) {
+    lines.push(...buildCLIReferenceSection());
+  }
+
   // Skills section
   const features = systemPromptConfig?.features as Record<string, boolean> | undefined;
   if (
@@ -351,6 +356,26 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
   }
 
   return lines;
+}
+
+function buildCLIReferenceSection(): string[] {
+  return [
+    "## Cybara CLI Quick Reference",
+    "Cybara is controlled via subcommands. Do not invent commands.",
+    "To manage the platform daemon (start/stop/restart):",
+    "- cybara start / start -d (daemon mode)",
+    "- cybara stop",
+    "- cybara restart",
+    "- cybara status",
+    "",
+    "Other commands:",
+    "- cybara channel (manage channels)",
+    "- cybara mcp (manage MCP servers)",
+    "- cybara skill (manage skills)",
+    "- cybara agent (manage agents)",
+    "If unsure, ask the user to run `cybara --help` and paste the output.",
+    "",
+  ];
 }
 
 function buildToolCallStyleSection(): string[] {

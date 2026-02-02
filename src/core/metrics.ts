@@ -169,3 +169,174 @@ export function trackFileOperation(
     trackMetric("file_operation", operation, 1, { path, ...metadata });
     trackMetric(`file_${operation}`, path, 1);
 }
+
+// =========================================
+// OpenClaw-compatible session token tracking
+// =========================================
+
+/**
+ * Track session token usage (for context window monitoring)
+ */
+export function trackSessionTokens(
+    sessionId: string,
+    totalTokens: number,
+    contextWindow: number,
+    model?: string,
+    metadata?: { messageCount?: number; wasCompacted?: boolean }
+): void {
+    try {
+        // Track current session tokens
+        trackMetric("session_tokens", sessionId, totalTokens, {
+            contextWindow,
+            model,
+            utilization: Math.round((totalTokens / contextWindow) * 100),
+            ...metadata,
+        });
+
+        // Track utilization percentage
+        const utilization = Math.min(100, Math.round((totalTokens / contextWindow) * 100));
+        trackMetric("context_utilization", sessionId, utilization, { model });
+
+        // Track if near capacity (>80%)
+        if (utilization > 80) {
+            trackMetric("context_warning", sessionId, utilization, {
+                level: utilization > 95 ? "critical" : "high",
+                model,
+            });
+        }
+    } catch {
+        // Silent fail
+    }
+}
+
+/**
+ * Track memory flush events
+ */
+export function trackMemoryFlush(
+    sessionId: string,
+    success: boolean,
+    metadata?: {
+        tokensBeforeFlush?: number;
+        compactionCount?: number;
+        durationMs?: number;
+    }
+): void {
+    try {
+        trackMetric("memory_flush", success ? "success" : "failure", 1, {
+            sessionId,
+            ...metadata,
+        });
+
+        if (success) {
+            trackMetric("memory_flush_session", sessionId, 1, metadata);
+        }
+    } catch {
+        // Silent fail
+    }
+}
+
+/**
+ * Track context compaction events
+ */
+export function trackContextCompaction(
+    sessionId: string,
+    metadata: {
+        messagesBefore: number;
+        messagesAfter: number;
+        tokensBefore: number;
+        tokensAfter: number;
+        model?: string;
+        durationMs?: number;
+    }
+): void {
+    try {
+        const reduction = metadata.tokensBefore - metadata.tokensAfter;
+        const reductionPercent = Math.round((reduction / metadata.tokensBefore) * 100);
+
+        trackMetric("context_compaction", sessionId, reduction, {
+            ...metadata,
+            reductionPercent,
+        });
+
+        trackMetric("compaction_reduction", "tokens", reduction);
+        trackMetric("compaction_reduction", "messages", metadata.messagesBefore - metadata.messagesAfter);
+    } catch {
+        // Silent fail
+    }
+}
+
+/**
+ * Track session lifecycle events
+ */
+export function trackSessionEvent(
+    sessionId: string,
+    event: "created" | "resumed" | "ended" | "compacted" | "memory_flushed",
+    metadata?: Record<string, unknown>
+): void {
+    try {
+        trackMetric("session_event", event, 1, { sessionId, ...metadata });
+        trackMetric(`session_${event}`, sessionId, 1, metadata);
+    } catch {
+        // Silent fail
+    }
+}
+
+/**
+ * Track message metrics per session
+ */
+export function trackSessionMessage(
+    sessionId: string,
+    role: "user" | "assistant" | "system" | "tool",
+    tokens: number,
+    metadata?: { hasToolCalls?: boolean; model?: string }
+): void {
+    try {
+        trackMetric("session_message", role, tokens, { sessionId, ...metadata });
+
+        // Track message count by role
+        trackMetric("message_count", role, 1, { sessionId });
+
+        // Track tool calls specifically
+        if (metadata?.hasToolCalls) {
+            trackMetric("assistant_tool_calls", sessionId, 1);
+        }
+    } catch {
+        // Silent fail
+    }
+}
+
+/**
+ * Get aggregated metrics summary
+ */
+export function getMetricsSummary(): {
+    totalTokens: number;
+    totalToolCalls: number;
+    totalApiCalls: number;
+    totalSessions: number;
+    memoryFlushes: number;
+    compactions: number;
+} {
+    try {
+        // Use existing getTotal method instead of iterating all metrics
+        const summary = {
+            totalTokens: tables.metrics.getTotal("token_usage", "all"),
+            totalToolCalls: tables.metrics.getTotal("tool_call", "all"),
+            totalApiCalls: tables.metrics.getTotal("api_call", "success") + tables.metrics.getTotal("api_call", "error"),
+            totalSessions: tables.metrics.getTotal("session_event", "created"),
+            memoryFlushes: tables.metrics.getTotal("memory_flush", "success"),
+            compactions: tables.metrics.getTotal("context_compaction", "tokens"),
+        };
+
+        return summary;
+    } catch {
+        return {
+            totalTokens: 0,
+            totalToolCalls: 0,
+            totalApiCalls: 0,
+            totalSessions: 0,
+            memoryFlushes: 0,
+            compactions: 0,
+        };
+    }
+}
+

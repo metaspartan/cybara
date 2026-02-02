@@ -2,7 +2,7 @@
 import db, { tables } from "./database";
 import { randomUUID } from "crypto";
 import { agentManager } from "./agent";
-import { providerManager } from "./providers";
+import { providerManager, providers } from "./providers";
 import type { ChatMessage } from "../api/chat";
 
 // Context window configuration (OpenClaw compatible)
@@ -107,390 +107,90 @@ export function splitMessagesByTokenShare(
 }
 
 // Get context window for a model
-// Based on Moltbot's verified model configurations from multiple sources:
-// - models-config.providers.ts (MiniMax, Moonshot, Kimi, Qwen, Ollama)
-// - opencode-zen-models.ts (OpenCode Zen proxy)
-// - venice-models.ts (Venice AI)
-// - bedrock-discovery.ts (AWS Bedrock)
-// - github-copilot-models.ts (GitHub Copilot)
-// - synthetic-models.ts (Hugging Face/Synthetic)
+// Priority:
+// 1. Database lookup (provider_models table - most accurate)
+// 2. Static providers.ts definitions
+// 3. Fallback defaults with pattern matching
+
 export function getContextWindow(model?: string): number {
   // Default to 200k (Claude Opus 4.5)
   if (!model) return DEFAULT_CONTEXT_TOKENS;
 
   const modelLower = model.toLowerCase();
 
-  // Model-specific context windows from Moltbot's configs
-  const contextWindows: Record<string, number> = {
-    // ==========================================
-    // ANTHROPIC (Claude) - 200k context
-    // ==========================================
-    "claude-opus-4-5": 200_000,
-    "claude-opus-4": 200_000,
-    "claude-sonnet-4-5": 200_000,
-    "claude-sonnet-4": 200_000,
-    "claude-opus": 200_000,
-    "claude-sonnet": 200_000,
-    "claude-haiku": 200_000,
-
-    // ==========================================
-    // OPENAI GPT - 128k-400k context
-    // ==========================================
-    // Standard GPT models
-    "gpt-4": 128_000,
-    "gpt-4o": 128_000,
-    "gpt-4.1": 128_000,
-    "gpt-4.1-mini": 128_000,
-    "gpt-4.1-nano": 128_000,
-    "gpt-4o-mini": 128_000,
-
-    // GPT-5 series (via OpenCode Zen: 400k)
-    "gpt-5": 128_000,
-    "gpt-5.0": 128_000,
-    "gpt-5.1": 400_000,
-    "gpt-5.2": 400_000,
-
-    // GPT-5.1 Codex series (via OpenCode Zen: 400k)
-    "gpt-5.1-codex": 400_000,
-    "gpt-5.1-codex-mini": 400_000,
-    "gpt-5.1-codex-max": 400_000,
-
-    // GPT-5.2 Codex (if available)
-    "gpt-5.2-codex": 400_000,
-
-    "gpt-5-mini": 128_000,
-
-    // O-series reasoning models
-    o1: 128_000,
-    "o1-mini": 128_000,
-    "o3-mini": 128_000,
-
-    // ==========================================
-    // KIMI (Moonshot) - 256k context
-    // ==========================================
-    "kimi-k2": 256_000,
-    "kimi-k2.5": 256_000,
-    "kimi-k2-thinking": 256_000,
-    "kimi-k2.5-thinking": 256_000,
-
-    // Kimi for Coding - 262,144 tokens (exact from Moltbot)
-    "kimi-for-coding": 262_144,
-    "kimi-code": 262_144,
-    "kimi-coding": 262_144,
-
-    // ==========================================
-    // MINIMAX - 192k-200k context
-    // ==========================================
-    "minimax-text-01": 200_000,
-    "minimax-m2.1": 192_000,
-    "minimax-vl-01": 192_000,
-    abab7: 128_000,
-    "abab7-chat": 128_000,
-    abab6: 128_000,
-
-    // ==========================================
-    // GOOGLE GEMINI - 1M context (1,048,576)
-    // ==========================================
-    "gemini-3-pro": 1_048_576,
-    "gemini-3-pro-preview": 1_048_576,
-    "gemini-3-flash": 1_048_576,
-    "gemini-3-flash-preview": 1_048_576,
-    "gemini-2-flash": 1_048_576,
-    "gemini-2.5-pro": 1_048_576,
-    "gemini-2.5-flash": 1_048_576,
-    "gemini-pro": 1_048_576,
-    "gemini-flash": 1_048_576,
-    "gemini-1.5-pro": 1_048_576,
-    "gemini-1.5-flash": 1_048_576,
-
-    // ==========================================
-    // DEEPSEEK - 128k-163k context
-    // ==========================================
-    "deepseek-r1": 128_000,
-    "deepseek-v3": 128_000,
-    "deepseek-v3.1": 128_000,
-    "deepseek-v3.2": 163_840,
-    "deepseek-chat": 128_000,
-    "deepseek-coder": 128_000,
-    "deepseek-coder-v2": 128_000,
-
-    // ==========================================
-    // QWEN (Alibaba) - 128k-262k context
-    // ==========================================
-    "qwen2.5": 128_000,
-    "qwen2.5-coder": 128_000,
-    qwen3: 128_000,
-    "qwen3-coder": 262_144,
-    "qwen-portal": 128_000,
-    "qwen-max": 128_000,
-    "qwen-plus": 128_000,
-    "qwen-turbo": 128_000,
-
-    // ==========================================
-    // LLAMA (Meta) - 128k-131k context
-    // ==========================================
-    "llama3.3": 128_000,
-    "llama3.2": 128_000,
-    "llama3.1": 128_000,
-    "llama-3.3": 131_072,
-    "llama-3.3-70b": 131_072,
-    "llama-3.2": 128_000,
-    "llama-3.1": 128_000,
-    "llama-3.1-405b": 128_000,
-    llama3: 128_000,
-
-    // ==========================================
-    // GLM (Zhipu) - 198k-204k context
-    // ==========================================
-    "glm-4.7": 204_800,
-    "glm-4": 128_000,
-    "glm-4-plus": 128_000,
-    "glm-4-flash": 128_000,
-
-    // ==========================================
-    // VENICE AI MODELS - 32k-262k context
-    // ==========================================
-    "venice-qwen3": 262_144,
-    "venice-gpt": 262_144,
-    "venice-llama-3.3": 131_072,
-    "venice-llama-3.2": 131_072,
-    "venice-qwen3-235b": 131_072,
-    "venice-qwen3-coder": 262_144,
-    "venice-deepseek-v3.2": 163_840,
-    "venice-mistral": 131_072,
-    "venice-gemma-3": 202_752,
-    "venice-claude-opus": 202_752,
-    "venice-claude-sonnet": 202_752,
-    "venice-uncensored": 32_768,
-    "venice-qwen3-4b": 32_768,
-
-    // ==========================================
-    // SYNTHETIC MODELS (HF endpoints)
-    // ==========================================
-    "synthetic-minimax": 192_000,
-    "synthetic-kimi": 256_000,
-    "synthetic-glm": 198_000,
-    "synthetic-deepseek": 128_000,
-    "synthetic-llama": 128_000,
-    "synthetic-qwen": 128_000,
-    "synthetic-mistral": 128_000,
-    "synthetic-mixtral": 32_000,
-
-    // ==========================================
-    // GROQ - 8k-128k context
-    // ==========================================
-    "groq-llama": 128_000,
-    "groq-mixtral": 32_000,
-    "groq-gemma": 128_000,
-    groq: 128_000,
-
-    // ==========================================
-    // OPENROUTER - defaults
-    // ==========================================
-    openrouter: 128_000,
-
-    // ==========================================
-    // GITHUB COPILOT - 128k context
-    // ==========================================
-    "github-copilot": 128_000,
-    copilot: 128_000,
-
-    // ==========================================
-    // AWS BEDROCK - 32k default (varies by model)
-    // ==========================================
-    bedrock: 32_000,
-    "bedrock-claude": 200_000,
-    "bedrock-llama": 128_000,
-    amazon: 32_000,
-
-    // ==========================================
-    // PERPLEXITY - 128k context
-    // ==========================================
-    perplexity: 128_000,
-    pplx: 128_000,
-
-    // ==========================================
-    // FIREWORKS - 128k-256k context
-    // ==========================================
-    fireworks: 128_000,
-
-    // ==========================================
-    // TOGETHER - 128k context
-    // ==========================================
-    together: 128_000,
-
-    // ==========================================
-    // MISTRAL AI - 32k-128k context
-    // ==========================================
-    mistral: 128_000,
-    mixtral: 32_000,
-    "mistral-large": 128_000,
-    "mistral-medium": 32_000,
-    "mistral-small": 32_000,
-
-    // ==========================================
-    // COHERE - 128k context
-    // ==========================================
-    cohere: 128_000,
-    command: 128_000,
-
-    // ==========================================
-    // AI21 - 256k context
-    // ==========================================
-    ai21: 256_000,
-    jamba: 256_000,
-
-    // ==========================================
-    // OLLAMA defaults for common models
-    // ==========================================
-    codellama: 128_000,
-    phi4: 128_000,
-    phi3: 128_000,
-    phi: 128_000,
-    gemma: 128_000,
-    "gemma-2": 128_000,
-    "gemma-3": 128_000,
-    "command-r": 128_000,
-    dolphin: 128_000,
-    orca: 128_000,
-    vicuna: 128_000,
-    wizard: 128_000,
-    yi: 128_000,
-    stablelm: 128_000,
-    neural: 128_000,
-    openchat: 128_000,
-    starling: 128_000,
-    zephyr: 128_000,
-    solar: 128_000,
-    falcon: 128_000,
-    mpt: 128_000,
-    replit: 128_000,
-    phind: 128_000,
-    airoboros: 128_000,
-    everythinglm: 128_000,
-    nexusraven: 128_000,
-    samantha: 128_000,
-    wizardlm: 128_000,
-    tulu: 128_000,
-    manticore: 128_000,
-    nous: 128_000,
-    luna: 128_000,
-    pygmalion: 128_000,
-    mytho: 128_000,
-    alpaca: 128_000,
-    "vicuna-v1": 128_000,
-    baize: 128_000,
-    koala: 128_000,
-    redpajama: 128_000,
-    gpt4all: 128_000,
-    h2ogpt: 128_000,
-    fastchat: 128_000,
-    chatglm: 128_000,
-    starchat: 128_000,
-    starcoder: 128_000,
-    santacoder: 128_000,
-    octocoder: 128_000,
-    wizardcoder: 128_000,
-    "phind-codellama": 128_000,
-  };
-
-  // Check for exact match first
-  if (contextWindows[modelLower]) {
-    return contextWindows[modelLower];
+  // 1. Try database lookup first (most accurate, reflects user's configured providers)
+  try {
+    const dbModel = tables.providerModels.getByModelId(model);
+    if (dbModel?.context_window && dbModel.context_window > 0) {
+      return dbModel.context_window;
+    }
+    // Also try lowercase
+    if (model !== modelLower) {
+      const dbModelLower = tables.providerModels.getByModelId(modelLower);
+      if (dbModelLower?.context_window && dbModelLower.context_window > 0) {
+        return dbModelLower.context_window;
+      }
+    }
+  } catch {
+    // Database not available, continue to fallbacks
   }
 
-  // Check for partial matches (more specific patterns first)
-  const partialMatches = [
-    // Provider prefixes
-    { pattern: "opencode-zen", tokens: 400_000 },
-    { pattern: "opencode", tokens: 400_000 },
-    { pattern: "github-copilot", tokens: 128_000 },
-    { pattern: "copilot", tokens: 128_000 },
-
-    // Model families (exact matches didn't work, try patterns)
-    { pattern: "claude-opus", tokens: 200_000 },
-    { pattern: "claude-sonnet", tokens: 200_000 },
-    { pattern: "claude-haiku", tokens: 200_000 },
-    { pattern: "claude", tokens: 200_000 },
-
-    { pattern: "gpt-5.1-codex", tokens: 400_000 },
-    { pattern: "gpt-5.2-codex", tokens: 400_000 },
-    { pattern: "gpt-5.2", tokens: 400_000 },
-    { pattern: "gpt-5.1-codex", tokens: 400_000 },
-    { pattern: "gpt-5.1", tokens: 400_000 },
-    { pattern: "gpt-5.0", tokens: 128_000 },
-    { pattern: "gpt-5", tokens: 128_000 },
-    { pattern: "gpt-4.1", tokens: 128_000 },
-    { pattern: "gpt-4o", tokens: 128_000 },
-    { pattern: "gpt-4", tokens: 128_000 },
-
-    { pattern: "kimi-for-coding", tokens: 262_144 },
-    { pattern: "kimi-code", tokens: 262_144 },
-    { pattern: "kimi-k2", tokens: 256_000 },
-    { pattern: "kimi", tokens: 256_000 },
-
-    { pattern: "minimax-text", tokens: 200_000 },
-    { pattern: "minimax-m2", tokens: 192_000 },
-    { pattern: "minimax-vl", tokens: 192_000 },
-    { pattern: "minimax", tokens: 200_000 },
-    { pattern: "abab", tokens: 128_000 },
-
-    { pattern: "gemini-3", tokens: 1_048_576 },
-    { pattern: "gemini-2.5", tokens: 1_048_576 },
-    { pattern: "gemini-2", tokens: 1_048_576 },
-    { pattern: "gemini-1.5", tokens: 1_048_576 },
-    { pattern: "gemini", tokens: 1_048_576 },
-
-    { pattern: "deepseek-v3.2", tokens: 163_840 },
-    { pattern: "deepseek-v3", tokens: 128_000 },
-    { pattern: "deepseek-r1", tokens: 128_000 },
-    { pattern: "deepseek", tokens: 128_000 },
-
-    { pattern: "qwen3-coder", tokens: 262_144 },
-    { pattern: "qwen3", tokens: 128_000 },
-    { pattern: "qwen2.5-coder", tokens: 128_000 },
-    { pattern: "qwen2.5", tokens: 128_000 },
-    { pattern: "qwen", tokens: 128_000 },
-
-    { pattern: "llama-3.3", tokens: 131_072 },
-    { pattern: "llama-3.2", tokens: 128_000 },
-    { pattern: "llama-3.1", tokens: 128_000 },
-    { pattern: "llama3", tokens: 128_000 },
-    { pattern: "llama-2", tokens: 32_000 },
-    { pattern: "llama", tokens: 128_000 },
-
-    { pattern: "glm-4.7", tokens: 204_800 },
-    { pattern: "glm-4", tokens: 128_000 },
-    { pattern: "glm", tokens: 128_000 },
-
-    { pattern: "mixtral", tokens: 32_000 },
-    { pattern: "mistral-large", tokens: 128_000 },
-    { pattern: "mistral", tokens: 128_000 },
-
-    { pattern: "o1-mini", tokens: 128_000 },
-    { pattern: "o3-mini", tokens: 128_000 },
-    { pattern: "o1", tokens: 128_000 },
-
-    { pattern: "bedrock-claude", tokens: 200_000 },
-    { pattern: "bedrock-llama", tokens: 128_000 },
-    { pattern: "bedrock", tokens: 32_000 },
-    { pattern: "amazon", tokens: 32_000 },
-  ];
-
-  for (const { pattern, tokens } of partialMatches) {
-    if (modelLower.includes(pattern)) {
-      return tokens;
+  // 2. Static lookup from providers.ts (authoritative catalog)
+  for (const provider of Object.values(providers)) {
+    const modelConfig = provider.models?.find(
+      (m: { id: string; context?: number }) => m.id.toLowerCase() === modelLower
+    );
+    if (modelConfig?.context && modelConfig.context > 0) {
+      return modelConfig.context;
     }
   }
 
-  for (const [key, tokens] of Object.entries(contextWindows)) {
-    if (model.toLowerCase().includes(key.toLowerCase())) {
+  // 3. Pattern-based fallback for unknown models (minimal set)
+  const patternMatches = [
+    // Claude models
+    { pattern: "claude", tokens: 200_000 },
+    // Gemini (1M context)
+    { pattern: "gemini", tokens: 1_048_576 },
+    // GPT-5.x series (400k)
+    { pattern: "gpt-5.1", tokens: 400_000 },
+    { pattern: "gpt-5.2", tokens: 400_000 },
+    // GPT-4/5 (128k)
+    { pattern: "gpt-5", tokens: 128_000 },
+    { pattern: "gpt-4", tokens: 128_000 },
+    // O-series reasoning
+    { pattern: "o1", tokens: 200_000 },
+    { pattern: "o3", tokens: 200_000 },
+    // Kimi for Coding
+    { pattern: "kimi-for-coding", tokens: 262_144 },
+    { pattern: "kimi-code", tokens: 262_144 },
+    { pattern: "kimi", tokens: 256_000 },
+    // MiniMax
+    { pattern: "minimax", tokens: 200_000 },
+    // DeepSeek
+    { pattern: "deepseek", tokens: 128_000 },
+    // Qwen
+    { pattern: "qwen3-coder", tokens: 262_144 },
+    { pattern: "qwen", tokens: 128_000 },
+    // Llama
+    { pattern: "llama-3.3", tokens: 131_072 },
+    { pattern: "llama", tokens: 128_000 },
+    // GLM
+    { pattern: "glm-4.7", tokens: 204_800 },
+    { pattern: "glm", tokens: 128_000 },
+    // Mistral
+    { pattern: "mixtral", tokens: 32_000 },
+    { pattern: "mistral", tokens: 128_000 },
+  ];
+
+  for (const { pattern, tokens } of patternMatches) {
+    if (modelLower.includes(pattern)) {
       return tokens;
     }
   }
 
   return DEFAULT_CONTEXT_TOKENS;
 }
+
 
 // Check if context compaction is needed
 export function shouldCompactContext(

@@ -25,8 +25,22 @@ import {
   compactContext,
   persistSession,
   deletePersistedSession,
+  estimateMessagesTokens,
+  getContextWindow,
 } from "../core/session-context";
 import { handleMemorySave } from "../core/tools/handlers/memory";
+import {
+  trackSessionTokens,
+  trackSessionMessage,
+  trackSessionEvent,
+  trackContextCompaction,
+  trackMemoryFlush,
+} from "../core/metrics";
+import {
+  shouldRunMemoryFlush,
+  resolveMemoryFlushSettings,
+  DEFAULT_MEMORY_FLUSH_PROMPT,
+} from "../core/memory/flush";
 
 export interface ToolCallInfo {
   id: string;
@@ -74,6 +88,8 @@ const chatSessions = new Map<
     messages: ChatMessage[];
     createdAt: string;
     persisted: boolean;
+    compactionCount?: number;  // Track compaction cycles for memory flush
+    lastFlushCompactionCount?: number;  // Last compaction cycle we flushed
   }
 >();
 
@@ -252,7 +268,11 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
       persisted: false,
     };
     chatSessions.set(newSessionId, session);
+
+    // Track session creation
+    trackSessionEvent(newSessionId, "created", { agentId: agent.id, model: agent.model });
   }
+
 
   // Get agent
   const agent = agentManager.get(session.agentId);
@@ -277,16 +297,90 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     : undefined;
 
   // Context compaction: Check if we need to summarize older messages
+  // First, run memory flush if approaching threshold (OpenClaw pattern)
   if (provider && agent) {
+    const contextWindow = getContextWindow(agent.model);
+    const currentTokens = estimateMessagesTokens(session.messages);
+    const flushSettings = resolveMemoryFlushSettings();
+
+    // Track session tokens for metrics
+    trackSessionTokens(session.id, currentTokens, contextWindow, agent.model, {
+      messageCount: session.messages.length,
+    });
+
+    // Check if memory flush should run before compaction
+    if (flushSettings && shouldRunMemoryFlush({
+      totalTokens: currentTokens,
+      contextWindowTokens: contextWindow,
+      softThresholdTokens: flushSettings.softThresholdTokens,
+      lastFlushCompactionCount: session.lastFlushCompactionCount,
+      currentCompactionCount: session.compactionCount || 0,
+    })) {
+      console.log(`[Chat] Running pre-compaction memory flush (${currentTokens}/${contextWindow} tokens)`);
+      const flushStartTime = Date.now();
+
+      try {
+        // Run a memory flush turn - inject the flush prompt as a system message
+        const flushMessages: AgentMessage[] = [
+          ...session.messages.map(m => ({ role: m.role, content: m.content })),
+          { role: "user", content: flushSettings.prompt },
+        ];
+
+        const flushResult = await agentManager.callLLM(
+          provider,
+          agent.model,
+          flushMessages,
+          [] // No tools - just let agent respond naturally (it can write to files if needed)
+        );
+
+        // Update compaction tracking
+        session.lastFlushCompactionCount = session.compactionCount || 0;
+
+        // Track the memory flush
+        trackMemoryFlush(session.id, true, {
+          tokensBeforeFlush: currentTokens,
+          compactionCount: session.compactionCount || 0,
+          durationMs: Date.now() - flushStartTime,
+        });
+        trackSessionEvent(session.id, "memory_flushed", { model: agent.model });
+
+        console.log(`[Chat] Memory flush completed: ${flushResult.content.substring(0, 100)}...`);
+      } catch (flushError) {
+        console.error(`[Chat] Memory flush failed:`, flushError);
+        trackMemoryFlush(session.id, false, {
+          tokensBeforeFlush: currentTokens,
+          compactionCount: session.compactionCount || 0,
+        });
+      }
+    }
+
+    // Now check for context compaction
     const contextCheck = shouldCompactContext(session.messages, agent.model, message);
 
     if (contextCheck.needed) {
       console.log(
         `[Chat] Context compaction needed: ${contextCheck.currentTokens}/${contextCheck.maxTokens} tokens`
       );
+      const compactionStart = Date.now();
+      const messagesBefore = session.messages.length;
+      const tokensBefore = estimateMessagesTokens(session.messages);
+
       const compaction = await compactContext(session.messages, agent.model, agent.provider_id);
       if (compaction.wasCompacted) {
         session.messages = compaction.messages;
+        session.compactionCount = (session.compactionCount || 0) + 1;
+
+        const tokensAfter = estimateMessagesTokens(session.messages);
+        trackContextCompaction(session.id, {
+          messagesBefore,
+          messagesAfter: session.messages.length,
+          tokensBefore,
+          tokensAfter,
+          model: agent.model,
+          durationMs: Date.now() - compactionStart,
+        });
+        trackSessionEvent(session.id, "compacted", { model: agent.model });
+
         console.log(`[Chat] Context compacted. Summary: ${compaction.summary?.slice(0, 100)}...`);
       }
     }

@@ -1065,14 +1065,37 @@ const routes: Record<string, RouteHandler> = {
       totalMessages: metrics.getTotal("agent_execution", "message") || 0,
     };
 
+    // Session and context metrics (OpenClaw parity)
+    const sessionStats = {
+      totalSessions: metrics.getTotal("session_event", "created") || 0,
+      memoryFlushes: metrics.getTotal("memory_flush", "success") || 0,
+      memoryFlushFailures: metrics.getTotal("memory_flush", "failure") || 0,
+      compactions: metrics.getTotal("context_compaction", "tokens") || 0,
+    };
+
+    // Get context utilization warnings
+    const contextWarnings = metrics.getByType("context_warning") || [];
+    const contextStats = {
+      warnings: contextWarnings.length,
+      criticalWarnings: contextWarnings.filter((w: any) => {
+        try {
+          const meta = w.metadata ? JSON.parse(w.metadata) : {};
+          return meta.level === "critical";
+        } catch { return false; }
+      }).length,
+    };
+
     return {
       tokenUsage: tokenTotals,
       fileOperations: fileStats,
       toolCalls: toolStats,
       apiCalls: apiStats,
       agentActivity: agentStats,
+      sessions: sessionStats,
+      contextHealth: contextStats,
     };
   },
+
 
   "GET /api/metrics/tokens": () => {
     const metrics = tables.metrics;

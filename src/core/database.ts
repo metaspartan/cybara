@@ -421,6 +421,7 @@ const stmts = {
   providerModels: {
     all: prepare("SELECT * FROM provider_models"),
     byProvider: prepare("SELECT * FROM provider_models WHERE provider_id = ?"),
+    byModelId: prepare("SELECT * FROM provider_models WHERE model_id = ? LIMIT 1"),
     upsert: prepare(
       "INSERT OR REPLACE INTO provider_models (id, provider_id, model_id, model_name, context_window, max_tokens, reasoning, input_types, cost_input, cost_output, cost_cache_read, cost_cache_write) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     ),
@@ -610,6 +611,7 @@ export const tables = {
   providerModels: {
     all: () => stmts.providerModels.all.all(),
     byProvider: (id: string) => stmts.providerModels.byProvider.all(id),
+    getByModelId: (modelId: string) => stmts.providerModels.byModelId.get(modelId) as ProviderModel | undefined,
     upsert: (m: ProviderModel) =>
       stmts.providerModels.upsert.run(
         m.id,
