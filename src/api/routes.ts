@@ -547,8 +547,20 @@ const routes: Record<string, RouteHandler> = {
   // Channel Security & Pairing
   "GET /api/channels/:id/pairings": (_body, params) => {
     const channelId = params!.id;
+    const rawPairings = securityManager.getAllPairings(channelId);
+    // Transform to camelCase for UI
+    const pairings = rawPairings.map(p => ({
+      id: p.id,
+      senderId: p.sender_id,
+      code: p.code,
+      platform: p.platform,
+      displayName: p.sender_name,
+      status: p.status,
+      createdAt: new Date(p.created_at).toISOString(),
+      expiresAt: new Date(p.expires_at).toISOString(),
+    }));
     return {
-      pairings: securityManager.getAllPairings(channelId),
+      pairings,
       pendingCount: securityManager.getPendingPairings(channelId).length,
       config: securityManager.getConfig(channelId),
     };

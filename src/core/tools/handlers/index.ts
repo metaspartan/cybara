@@ -42,6 +42,7 @@ import { handleEnv } from "./env";
 import { handleWebSearch } from "./web-search";
 import { handleLSPDiagnostics, handleLSPDefinition, handleLSPReferences, handleLSPHover, handleLSPLanguages } from "./lsp";
 import { trackToolCall } from "../../metrics";
+import { logToolExecution } from "../../logging";
 import type { ToolContext } from "../index";
 
 const toolHandlers: Record<string, (args: Record<string, unknown>) => Promise<unknown>> = {
@@ -166,7 +167,7 @@ const toolHandlers: Record<string, (args: Record<string, unknown>) => Promise<un
 export async function executeTool(
   name: string,
   args: Record<string, unknown>,
-  _context?: ToolContext
+  context?: ToolContext
 ): Promise<unknown> {
   const handler = toolHandlers[name];
 
@@ -174,22 +175,40 @@ export async function executeTool(
     throw new Error(`Unknown tool: ${name}`);
   }
 
+  const startTime = Date.now();
+  const argsPreview = JSON.stringify(args).slice(0, 200);
+
   try {
-    const startTime = Date.now();
-    console.log(`[Tool] Executing ${name} with args:`, JSON.stringify(args).slice(0, 200));
+    console.log(`[Tool] Executing ${name} with args:`, argsPreview);
     const result = await handler(args);
     const duration = Date.now() - startTime;
     console.log(`[Tool] ${name} completed successfully in ${duration}ms`);
 
-    // Track tool call
+    // Track tool call in metrics
     await trackToolCall(name, duration, true);
+
+    // Log to database for UI visibility
+    await logToolExecution(name, "success", duration, {
+      sessionId: context?.sessionId,
+      agentId: context?.agentId,
+      argsPreview,
+    });
 
     return result;
   } catch (error) {
+    const duration = Date.now() - startTime;
     console.error(`[Tool] ${name} error:`, error);
 
-    // Track tool error
-    await trackToolCall(name, 0, false);
+    // Track tool error in metrics
+    await trackToolCall(name, duration, false);
+
+    // Log error to database
+    await logToolExecution(name, "error", duration, {
+      sessionId: context?.sessionId,
+      agentId: context?.agentId,
+      argsPreview,
+      error: (error as Error).message,
+    });
 
     throw error;
   }

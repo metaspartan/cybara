@@ -3,7 +3,8 @@
 export async function handleEnv(
     args: Record<string, unknown>
 ): Promise<unknown> {
-    const action = args.action as string;
+    // Default to 'info' action if not specified
+    const action = (args.action as string) || 'info';
     const key = args.key as string | undefined;
     const value = args.value as string | undefined;
 

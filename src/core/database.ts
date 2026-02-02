@@ -221,6 +221,17 @@ try {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  -- Allowed senders for channel security (persisted pairings)
+  CREATE TABLE IF NOT EXISTS allowed_senders (
+    id TEXT PRIMARY KEY,
+    channel_id TEXT NOT NULL,
+    sender_id TEXT NOT NULL,
+    platform TEXT,
+    sender_name TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(channel_id, sender_id)
+  );
+
   -- Create indexes for performance
   CREATE INDEX IF NOT EXISTS idx_session_messages_session ON session_messages(session_id);
   CREATE INDEX IF NOT EXISTS idx_session_messages_created ON session_messages(created_at);
@@ -231,6 +242,7 @@ try {
   CREATE INDEX IF NOT EXISTS idx_agent_logs_created ON agent_logs(created_at);
   CREATE INDEX IF NOT EXISTS idx_channel_logs_type ON channel_logs(channel_type);
   CREATE INDEX IF NOT EXISTS idx_channel_logs_created ON channel_logs(created_at);
+  CREATE INDEX IF NOT EXISTS idx_allowed_senders_channel ON allowed_senders(channel_id);
 `);
   console.log("[Database] Schema created successfully");
 

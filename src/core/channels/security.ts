@@ -3,6 +3,7 @@
 
 import { randomBytes } from "crypto";
 import { createLogger } from "../logger";
+import db from "../database";
 
 const log = createLogger("Security");
 
@@ -66,10 +67,37 @@ export function generatePairingCode(): string {
  * Handles DM policies, pairing codes, and sender allowlists
  */
 export class ChannelSecurityManager {
-    // In-memory pairing storage (should be persisted to database in production)
+    // In-memory pairing storage (pairings are temporary, allowed senders are persisted)
     private pairings = new Map<string, PairingRequest[]>();
     private allowedSenders = new Map<string, Set<string>>();
     private securityConfigs = new Map<string, ChannelSecurityConfig>();
+    private initialized = false;
+
+    /**
+     * Initialize allowed senders from database
+     */
+    initialize(): void {
+        if (this.initialized) return;
+
+        try {
+            const stmt = db.prepare("SELECT channel_id, sender_id FROM allowed_senders");
+            const rows = stmt.all() as Array<{ channel_id: string; sender_id: string }>;
+
+            for (const row of rows) {
+                let allowed = this.allowedSenders.get(row.channel_id);
+                if (!allowed) {
+                    allowed = new Set();
+                    this.allowedSenders.set(row.channel_id, allowed);
+                }
+                allowed.add(row.sender_id);
+            }
+
+            log.info(`Loaded ${rows.length} allowed senders from database`);
+            this.initialized = true;
+        } catch (error) {
+            log.error("Failed to load allowed senders from database", { error: (error as Error).message });
+        }
+    }
 
     /**
      * Set security configuration for a channel
@@ -88,7 +116,16 @@ export class ChannelSecurityManager {
      * Get security configuration for a channel
      */
     getConfig(channelId: string): ChannelSecurityConfig {
-        return this.securityConfigs.get(channelId) || { ...DEFAULT_SECURITY_CONFIG };
+        // Ensure initialized
+        if (!this.initialized) this.initialize();
+
+        // Include persisted allowed senders in config
+        const config = this.securityConfigs.get(channelId) || { ...DEFAULT_SECURITY_CONFIG };
+        const persistedSenders = this.allowedSenders.get(channelId);
+        if (persistedSenders) {
+            config.allowed_senders = Array.from(persistedSenders);
+        }
+        return config;
     }
 
     /**
@@ -278,27 +315,39 @@ export class ChannelSecurityManager {
     }
 
     /**
-     * Add a sender to the allowed list
+     * Add a sender to the allowed list (persisted to database)
      */
-    addAllowedSender(channelId: string, senderId: string): void {
+    addAllowedSender(channelId: string, senderId: string, platform?: string, senderName?: string): void {
+        // Ensure initialized
+        if (!this.initialized) this.initialize();
+
         let allowed = this.allowedSenders.get(channelId);
         if (!allowed) {
             allowed = new Set();
             this.allowedSenders.set(channelId, allowed);
         }
+
+        // Skip if already exists
+        if (allowed.has(senderId)) return;
+
         allowed.add(senderId);
 
-        // Update config
-        const config = this.getConfig(channelId);
-        if (!config.allowed_senders.includes(senderId)) {
-            config.allowed_senders.push(senderId);
+        // Persist to database
+        try {
+            const id = crypto.randomUUID();
+            const stmt = db.prepare(`
+                INSERT OR IGNORE INTO allowed_senders (id, channel_id, sender_id, platform, sender_name)
+                VALUES (?, ?, ?, ?, ?)
+            `);
+            stmt.run(id, channelId, senderId, platform || null, senderName || null);
+            log.info(`Added allowed sender ${senderId}`, { channelId, persisted: true });
+        } catch (error) {
+            log.error("Failed to persist allowed sender", { channelId, senderId, error: (error as Error).message });
         }
-
-        log.info(`Added allowed sender ${senderId}`, { channelId });
     }
 
     /**
-     * Remove a sender from the allowed list
+     * Remove a sender from the allowed list (removed from database)
      */
     removeAllowedSender(channelId: string, senderId: string): boolean {
         const allowed = this.allowedSenders.get(channelId);
@@ -306,10 +355,15 @@ export class ChannelSecurityManager {
 
         const removed = allowed.delete(senderId);
 
-        // Update config
+        // Remove from database
         if (removed) {
-            const config = this.getConfig(channelId);
-            config.allowed_senders = config.allowed_senders.filter((s) => s !== senderId);
+            try {
+                const stmt = db.prepare("DELETE FROM allowed_senders WHERE channel_id = ? AND sender_id = ?");
+                stmt.run(channelId, senderId);
+                log.info(`Removed allowed sender ${senderId}`, { channelId, persisted: true });
+            } catch (error) {
+                log.error("Failed to remove allowed sender from db", { channelId, senderId, error: (error as Error).message });
+            }
         }
 
         return removed;

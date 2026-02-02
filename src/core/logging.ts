@@ -141,6 +141,82 @@ export async function logChannelMessage(
   }
 }
 
+// Tool execution logging - for tracking all tool calls with results
+export async function logToolExecution(
+  toolName: string,
+  status: "success" | "error",
+  durationMs: number,
+  options?: {
+    sessionId?: string;
+    agentId?: string;
+    argsPreview?: string;
+    error?: string;
+  }
+) {
+  const message = status === "success"
+    ? `Tool ${toolName} completed in ${durationMs}ms`
+    : `Tool ${toolName} failed after ${durationMs}ms: ${options?.error || "Unknown error"}`;
+
+  const logEntry = {
+    id: randomUUID(),
+    level: status === "success" ? "info" : "error",
+    source: "tool",
+    message,
+    metadata: JSON.stringify({
+      toolName,
+      status,
+      durationMs,
+      sessionId: options?.sessionId,
+      agentId: options?.agentId,
+      argsPreview: options?.argsPreview,
+      error: options?.error,
+    }),
+  };
+
+  try {
+    await tables.systemLogs.add(logEntry);
+  } catch (error) {
+    console.error("[Logger] Failed to log tool execution:", error);
+  }
+}
+
+// Skill execution logging - for tracking skill usage
+export async function logSkillExecution(
+  skillName: string,
+  status: "success" | "error",
+  durationMs: number,
+  options?: {
+    sessionId?: string;
+    agentId?: string;
+    error?: string;
+  }
+) {
+  const message = status === "success"
+    ? `Skill ${skillName} executed in ${durationMs}ms`
+    : `Skill ${skillName} failed: ${options?.error || "Unknown error"}`;
+
+  const logEntry = {
+    id: randomUUID(),
+    level: status === "success" ? "info" : "error",
+    source: "skill",
+    message,
+    metadata: JSON.stringify({
+      skillName,
+      status,
+      durationMs,
+      sessionId: options?.sessionId,
+      agentId: options?.agentId,
+      error: options?.error,
+    }),
+  };
+
+  try {
+    await tables.systemLogs.add(logEntry);
+  } catch (error) {
+    console.error("[Logger] Failed to log skill execution:", error);
+  }
+}
+
 // Query functions for logs
 export async function getSystemLogs(options?: {
   level?: LogLevel;

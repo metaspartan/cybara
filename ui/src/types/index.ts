@@ -128,10 +128,23 @@ export interface SkillParameter {
   required?: boolean;
 }
 
+export interface ToolCallInfo {
+  id: string;
+  name: string;
+  args?: Record<string, unknown>;
+  arguments?: Record<string, unknown>; // Alias for compatibility
+  status: 'pending' | 'executing' | 'completed' | 'failed' | 'success' | 'error';
+  result?: unknown;
+  error?: string;
+  duration?: number;
+}
+
 export interface ChatMessage {
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   timestamp?: string;
+  thinking?: string;
+  tool_calls?: ToolCallInfo[];
 }
 
 export interface ChatSession {

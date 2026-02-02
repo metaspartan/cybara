@@ -1,17 +1,22 @@
 import { useState, useEffect } from 'react';
-import { 
-  MessageSquare, 
-  Search, 
-  Trash2, 
+import {
+  MessageSquare,
+  Search,
+  Trash2,
   RefreshCw,
   ChevronRight,
+  ChevronDown,
   Clock,
   Bot,
   User,
   Wrench,
   X,
   MoreVertical,
-  Calendar
+  Calendar,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  Zap
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -20,7 +25,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { PageLayout } from '@/components/layout';
 import { sessionsApi } from '@/lib/api';
-import type { ChatMessage } from '@/types';
+import type { ChatMessage, ToolCallInfo } from '@/types';
 
 interface Session {
   id: string;
@@ -36,7 +41,7 @@ interface Session {
 }
 
 interface SessionWithMessages extends Session {
-  messagesList: { role: string; content: string; timestamp?: string }[];
+  messagesList: ChatMessage[];
 }
 
 const roleIcons: Record<string, React.ReactNode> = {
@@ -79,7 +84,7 @@ export function Sessions() {
     try {
       const response = await sessionsApi.get(session.id);
       if (response.success) {
-        setSelectedSession(response.data);
+        setSelectedSession(response.data as SessionWithMessages);
         setIsViewModalOpen(true);
       }
     } catch (error) {
@@ -89,7 +94,7 @@ export function Sessions() {
 
   const handleDeleteSession = async () => {
     if (!sessionToDelete) return;
-    
+
     try {
       await sessionsApi.delete(sessionToDelete.id);
       setSessions(sessions.filter(s => s.id !== sessionToDelete.id));
@@ -100,7 +105,7 @@ export function Sessions() {
     }
   };
 
-  const filteredSessions = sessions.filter(session => 
+  const filteredSessions = sessions.filter(session =>
     session.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
     session.agent_id.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -160,7 +165,7 @@ export function Sessions() {
                           {session.message_count || 0} messages
                         </Badge>
                       </div>
-                      
+
                       <div className="flex items-center gap-4 text-sm text-gray-400">
                         <span className="flex items-center gap-1">
                           <Bot className="w-4 h-4" />
@@ -232,13 +237,14 @@ export function Sessions() {
               {selectedSession.messagesList?.map((message, index) => (
                 <div
                   key={index}
-                  className={`flex gap-3 p-3 rounded-xl ${
-                    message.role === 'user'
-                      ? 'bg-indigo-500/10'
-                      : message.role === 'assistant'
+                  className={`flex gap-3 p-3 rounded-xl ${message.role === 'user'
+                    ? 'bg-indigo-500/10'
+                    : message.role === 'assistant'
                       ? 'bg-emerald-500/10'
-                      : 'bg-white/5'
-                  }`}
+                      : message.role === 'tool'
+                        ? 'bg-amber-500/10'
+                        : 'bg-white/5'
+                    }`}
                 >
                   <div className="flex-shrink-0 mt-1">
                     {roleIcons[message.role] || <MessageSquare className="w-4 h-4 text-gray-400" />}
@@ -253,8 +259,56 @@ export function Sessions() {
                           {new Date(message.timestamp).toLocaleTimeString()}
                         </span>
                       )}
+                      {message.tool_calls && message.tool_calls.length > 0 && (
+                        <Badge variant="warning" size="sm" className="flex items-center gap-1">
+                          <Zap className="w-3 h-3" />
+                          {message.tool_calls.length} tool{message.tool_calls.length > 1 ? 's' : ''}
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-sm text-white whitespace-pre-wrap">{message.content}</p>
+
+                    {/* Tool Calls Display */}
+                    {message.tool_calls && message.tool_calls.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        {message.tool_calls.map((tc, tcIndex) => (
+                          <div
+                            key={tc.id || tcIndex}
+                            className="p-2 rounded-lg bg-black/30 border border-white/10"
+                          >
+                            <div className="flex items-center gap-2">
+                              {tc.status === 'completed' || tc.status === 'success' ? (
+                                <CheckCircle className="w-4 h-4 text-emerald-400" />
+                              ) : tc.status === 'failed' || tc.status === 'error' ? (
+                                <XCircle className="w-4 h-4 text-red-400" />
+                              ) : tc.status === 'executing' ? (
+                                <RefreshCw className="w-4 h-4 text-blue-400 animate-spin" />
+                              ) : (
+                                <AlertCircle className="w-4 h-4 text-amber-400" />
+                              )}
+                              <code className="text-sm font-mono text-amber-300">{tc.name}</code>
+                              {tc.duration && (
+                                <span className="text-xs text-gray-500">{tc.duration}ms</span>
+                              )}
+                              <Badge
+                                size="sm"
+                                variant={(tc.status === 'completed' || tc.status === 'success') ? 'success' : (tc.status === 'failed' || tc.status === 'error') ? 'error' : 'default'}
+                              >
+                                {tc.status}
+                              </Badge>
+                            </div>
+                            {tc.error && (
+                              <p className="mt-1 text-xs text-red-400">{tc.error}</p>
+                            )}
+                            {tc.result && (
+                              <pre className="mt-2 text-xs text-gray-400 overflow-auto max-h-24 bg-black/20 p-2 rounded">
+                                {typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2).slice(0, 500)}
+                              </pre>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

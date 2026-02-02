@@ -1,6 +1,6 @@
-import type { 
-  Agent, Provider, Channel, Memory, Task, Skill, 
-  ChatMessage, ChatSession, ApiResponse, DashboardStats 
+import type {
+  Agent, Provider, Channel, Memory, Task, Skill,
+  ChatMessage, ChatSession, ApiResponse, DashboardStats
 } from '@/types';
 
 const API_BASE = '/api';
@@ -13,12 +13,12 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<Api
     },
     ...options,
   });
-  
+
   if (!response.ok) {
     const error = await response.text();
     return { success: false, error };
   }
-  
+
   const data = await response.json();
   return { success: true, data };
 }
@@ -27,16 +27,16 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<Api
 export const agentsApi = {
   list: () => fetchApi<Agent[]>('/agents'),
   get: (id: string) => fetchApi<Agent>(`/agents/${id}`),
-  create: (agent: Omit<Agent, 'id' | 'createdAt' | 'updatedAt'>) => 
+  create: (agent: Omit<Agent, 'id' | 'createdAt' | 'updatedAt'>) =>
     fetchApi<Agent>('/agents', { method: 'POST', body: JSON.stringify(agent) }),
-  update: (id: string, agent: Partial<Agent>) => 
+  update: (id: string, agent: Partial<Agent>) =>
     fetchApi<Agent>(`/agents/${id}`, { method: 'PUT', body: JSON.stringify(agent) }),
-  delete: (id: string) => 
+  delete: (id: string) =>
     fetchApi<void>(`/agents/${id}`, { method: 'DELETE' }),
-  chat: (id: string, message: string, sessionId?: string) => 
-    fetchApi<{ message: ChatMessage; sessionId: string }>(`/agents/${id}/chat`, { 
-      method: 'POST', 
-      body: JSON.stringify({ message, sessionId }) 
+  chat: (id: string, message: string, sessionId?: string) =>
+    fetchApi<{ message: ChatMessage; sessionId: string }>(`/agents/${id}/chat`, {
+      method: 'POST',
+      body: JSON.stringify({ message, sessionId })
     }),
 };
 
@@ -44,13 +44,13 @@ export const agentsApi = {
 export const providersApi = {
   list: () => fetchApi<Provider[]>('/providers'),
   get: (id: string) => fetchApi<Provider>(`/providers/${id}`),
-  create: (provider: Omit<Provider, 'id' | 'createdAt'>) => 
+  create: (provider: Omit<Provider, 'id' | 'createdAt'>) =>
     fetchApi<Provider>('/providers', { method: 'POST', body: JSON.stringify(provider) }),
-  update: (id: string, provider: Partial<Provider>) => 
+  update: (id: string, provider: Partial<Provider>) =>
     fetchApi<Provider>(`/providers/${id}`, { method: 'PUT', body: JSON.stringify(provider) }),
-  delete: (id: string) => 
+  delete: (id: string) =>
     fetchApi<void>(`/providers/${id}`, { method: 'DELETE' }),
-  test: (id: string) => 
+  test: (id: string) =>
     fetchApi<{ success: boolean; latency: number }>(`/providers/${id}/test`, { method: 'POST' }),
 };
 
@@ -58,16 +58,16 @@ export const providersApi = {
 export const channelsApi = {
   list: () => fetchApi<Channel[]>('/channels'),
   get: (id: string) => fetchApi<Channel>(`/channels/${id}`),
-  create: (channel: Omit<Channel, 'id' | 'createdAt'>) => 
+  create: (channel: Omit<Channel, 'id' | 'createdAt'>) =>
     fetchApi<Channel>('/channels', { method: 'POST', body: JSON.stringify(channel) }),
-  update: (id: string, channel: Partial<Channel>) => 
+  update: (id: string, channel: Partial<Channel>) =>
     fetchApi<Channel>(`/channels/${id}`, { method: 'PUT', body: JSON.stringify(channel) }),
-  delete: (id: string) => 
+  delete: (id: string) =>
     fetchApi<void>(`/channels/${id}`, { method: 'DELETE' }),
-  setupTelegram: (botToken: string, webhookUrl: string) => 
-    fetchApi<Channel>('/channels/telegram/setup', { 
-      method: 'POST', 
-      body: JSON.stringify({ botToken, webhookUrl }) 
+  setupTelegram: (botToken: string, webhookUrl: string) =>
+    fetchApi<Channel>('/channels/telegram/setup', {
+      method: 'POST',
+      body: JSON.stringify({ botToken, webhookUrl })
     }),
 };
 
@@ -82,16 +82,16 @@ export const memoryApi = {
     return fetchApi<Memory[]>(`/memory?${query.toString()}`);
   },
   get: (id: string) => fetchApi<Memory>(`/memory/${id}`),
-  create: (memory: Omit<Memory, 'id' | 'createdAt' | 'updatedAt'>) => 
+  create: (memory: Omit<Memory, 'id' | 'createdAt' | 'updatedAt'>) =>
     fetchApi<Memory>('/memory', { method: 'POST', body: JSON.stringify(memory) }),
-  update: (id: string, memory: Partial<Memory>) => 
+  update: (id: string, memory: Partial<Memory>) =>
     fetchApi<Memory>(`/memory/${id}`, { method: 'PUT', body: JSON.stringify(memory) }),
-  delete: (id: string) => 
+  delete: (id: string) =>
     fetchApi<void>(`/memory/${id}`, { method: 'DELETE' }),
-  search: (query: string, limit?: number) => 
-    fetchApi<Memory[]>('/memory/search', { 
-      method: 'POST', 
-      body: JSON.stringify({ query, limit }) 
+  search: (query: string, limit?: number) =>
+    fetchApi<Memory[]>('/memory/search', {
+      method: 'POST',
+      body: JSON.stringify({ query, limit })
     }),
 };
 
@@ -99,13 +99,13 @@ export const memoryApi = {
 export const tasksApi = {
   list: () => fetchApi<Task[]>('/tasks'),
   get: (id: string) => fetchApi<Task>(`/tasks/${id}`),
-  create: (task: Omit<Task, 'id' | 'createdAt'>) => 
+  create: (task: Omit<Task, 'id' | 'createdAt'>) =>
     fetchApi<Task>('/tasks', { method: 'POST', body: JSON.stringify(task) }),
-  update: (id: string, task: Partial<Task>) => 
+  update: (id: string, task: Partial<Task>) =>
     fetchApi<Task>(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify(task) }),
-  delete: (id: string) => 
+  delete: (id: string) =>
     fetchApi<void>(`/tasks/${id}`, { method: 'DELETE' }),
-  run: (id: string) => 
+  run: (id: string) =>
     fetchApi<void>(`/tasks/${id}/run`, { method: 'POST' }),
 };
 
@@ -113,22 +113,22 @@ export const tasksApi = {
 export const skillsApi = {
   list: () => fetchApi<Skill[]>('/skills'),
   get: (id: string) => fetchApi<Skill>(`/skills/${id}`),
-  create: (skill: Omit<Skill, 'id' | 'createdAt'>) => 
+  create: (skill: Omit<Skill, 'id' | 'createdAt'>) =>
     fetchApi<Skill>('/skills', { method: 'POST', body: JSON.stringify(skill) }),
-  update: (id: string, skill: Partial<Skill>) => 
+  update: (id: string, skill: Partial<Skill>) =>
     fetchApi<Skill>(`/skills/${id}`, { method: 'PUT', body: JSON.stringify(skill) }),
-  delete: (id: string) => 
+  delete: (id: string) =>
     fetchApi<void>(`/skills/${id}`, { method: 'DELETE' }),
-  test: (id: string, params: Record<string, unknown>) => 
+  test: (id: string, params: Record<string, unknown>) =>
     fetchApi<unknown>(`/skills/${id}/test`, { method: 'POST', body: JSON.stringify(params) }),
 };
 
 // Chat API
 export const chatApi = {
-  send: (message: string, agentId?: string, sessionId?: string) => 
-    fetchApi<{ message: ChatMessage; sessionId: string }>('/chat', { 
-      method: 'POST', 
-      body: JSON.stringify({ message, agentId, sessionId }) 
+  send: (message: string, agentId?: string, sessionId?: string) =>
+    fetchApi<{ message: ChatMessage; sessionId: string }>('/chat', {
+      method: 'POST',
+      body: JSON.stringify({ message, agentId, sessionId })
     }),
   getSessions: () => fetchApi<{
     id: string;
@@ -145,7 +145,7 @@ export const chatApi = {
     updated_at: string;
     messagesList: ChatMessage[];
   }>('/sessions/' + id),
-  deleteSession: (id: string) => 
+  deleteSession: (id: string) =>
     fetchApi<void>('/sessions/' + id, { method: 'DELETE' }),
 };
 
@@ -156,18 +156,18 @@ export const dashboardApi = {
 
 // Logs API
 export const logsApi = {
-  getSystem: () => fetchApi<{id: string; level: string; source: string; message: string; created_at: string}[]>('/logs/system'),
+  getSystem: () => fetchApi<{ id: string; level: string; source: string; message: string; created_at: string }[]>('/logs/system'),
   search: (query: string) => fetchApi<{
-    system: {id: string; level: string; source: string; message: string; created_at: string}[];
-    sessionMessages: {id: string; session_id: string; role: string; content: string; created_at: string}[];
-    agent: {id: string; agent_id: string; action: string; created_at: string}[];
-    channel: {id: string; channel_type: string; content: string; created_at: string}[];
+    system: { id: string; level: string; source: string; message: string; created_at: string }[];
+    sessionMessages: { id: string; session_id: string; role: string; content: string; created_at: string }[];
+    agent: { id: string; agent_id: string; action: string; created_at: string }[];
+    channel: { id: string; channel_type: string; content: string; created_at: string }[];
   }>('/logs/search?q=' + encodeURIComponent(query)),
   getActivity: (minutes?: number) => fetchApi<{
-    system: {id: string; level: string; source: string; message: string; created_at: string}[];
-    messages: {id: string; session_id: string; role: string; content: string; created_at: string}[];
-    agent: {id: string; agent_id: string; action: string; created_at: string}[];
-    channel: {id: string; channel_type: string; content: string; created_at: string}[];
+    system: { id: string; level: string; source: string; message: string; created_at: string }[];
+    messages: { id: string; session_id: string; role: string; content: string; created_at: string }[];
+    agent: { id: string; agent_id: string; action: string; created_at: string }[];
+    channel: { id: string; channel_type: string; content: string; created_at: string }[];
   }>('/logs/activity?minutes=' + (minutes || 60)),
   getStats: (hours?: number) => fetchApi<{
     counts: { system: number; messages: number; agent: number; channel: number };
@@ -188,10 +188,10 @@ export const sessionsApi = {
   get: (id: string) => fetchApi<{
     id: string;
     agent_id: string;
-    messages: string;
+    messages?: string;
     created_at: string;
     updated_at: string;
-    messagesList: { role: string; content: string; timestamp?: string }[];
+    messagesList: ChatMessage[];
   }>('/sessions/' + id),
   delete: (id: string) => fetchApi<void>('/sessions/' + id, { method: 'DELETE' }),
 };
