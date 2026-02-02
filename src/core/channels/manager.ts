@@ -43,11 +43,32 @@ class ChannelManager {
 
     list(): (Channel & { info?: (typeof channels)[ChannelType] })[] {
         const all = tables.channels.all() as Channel[];
-        return all.map((c) => ({
-            ...c,
-            config: {}, // Don't expose sensitive config
-            info: channels[c.type as ChannelType],
-        }));
+        return all.map((c) => {
+            const rawConfig = typeof c.config === "string" ? JSON.parse(c.config) : (c.config || {});
+            const channelDef = channels[c.type as ChannelType];
+
+            // Mask sensitive fields but preserve non-sensitive values
+            const maskedConfig: Record<string, unknown> = {};
+            if (channelDef?.fields) {
+                for (const field of channelDef.fields) {
+                    const fieldName = field.name;
+                    if (rawConfig[fieldName] !== undefined) {
+                        if (field.type === "password") {
+                            // Indicate password is set without revealing it
+                            maskedConfig[fieldName] = "••••••••";
+                        } else {
+                            maskedConfig[fieldName] = rawConfig[fieldName];
+                        }
+                    }
+                }
+            }
+
+            return {
+                ...c,
+                config: maskedConfig,
+                info: channelDef,
+            };
+        });
     }
 
     get(id: string): Channel | undefined {
@@ -114,7 +135,25 @@ class ChannelManager {
     update(id: string, updates: Partial<Pick<Channel, "name" | "config" | "enabled">>): boolean {
         const existing = this.get(id);
         if (!existing) return false;
-        tables.channels.update(id, updates);
+
+        // Merge config if updating
+        let finalUpdates = updates;
+        if (updates.config && existing.config) {
+            const existingConfig = typeof existing.config === "string" ? JSON.parse(existing.config) : existing.config;
+            finalUpdates = {
+                ...updates,
+                config: { ...existingConfig, ...updates.config },
+            };
+        }
+
+        tables.channels.update(id, finalUpdates);
+
+        // Restart adapter if config changed and channel is enabled
+        if (updates.config && existing.enabled) {
+            const mergedConfig = { ...existing.config, ...updates.config };
+            this.startAdapter(id, existing.type as ChannelType, mergedConfig);
+        }
+
         return true;
     }
 

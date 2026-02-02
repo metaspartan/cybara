@@ -161,8 +161,12 @@ export function Channels() {
       const config: Record<string, unknown> = {};
       const channelType = availableChannels?.find(c => c.id === editingChannel.type);
       channelType?.fields.forEach(field => {
-        const value = formData.get(`config_${field.name}`);
+        const value = formData.get(`config_${field.name}`) as string;
         if (value) {
+          // Skip masked password values - they indicate unchanged password
+          if (field.type === 'password' && value === '••••••••') {
+            return;
+          }
           config[field.name] = field.type === 'boolean' ? value === 'on' : value;
         }
       });
@@ -523,7 +527,16 @@ interface ChannelModalProps {
 }
 
 function ChannelModal({ isOpen, onClose, onSubmit, title, channel, availableChannels, isLoading, isEdit }: ChannelModalProps) {
-  const [selectedType, setSelectedType] = useState(channel?.type || '');
+  // Default to first available channel type for new channels
+  const defaultType = availableChannels[0]?.id || '';
+  const [selectedType, setSelectedType] = useState(channel?.type || defaultType);
+
+  // Reset selectedType when modal opens for create (not edit)
+  useEffect(() => {
+    if (isOpen && !isEdit && !channel) {
+      setSelectedType(availableChannels[0]?.id || '');
+    }
+  }, [isOpen, isEdit, channel, availableChannels]);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -541,7 +554,7 @@ function ChannelModal({ isOpen, onClose, onSubmit, title, channel, availableChan
             name="type"
             label="Channel Type"
             options={channelTypeOptions}
-            defaultValue={channel?.type}
+            value={selectedType}
             onChange={setSelectedType}
             required
           />

@@ -10,9 +10,9 @@ export const channels = {
         description: "Connect to Telegram for messaging",
         color: "#229ED9",
         fields: [
-            { key: "bot_token", label: "Bot Token", type: "password", required: true },
-            { key: "webhook_url", label: "Webhook URL", type: "string", required: false },
-            { key: "dm_policy", label: "DM Policy", type: "select", required: false, options: ["pairing", "allowlist", "open", "disabled"], default: "pairing" },
+            { name: "bot_token", label: "Bot Token", type: "password", required: true },
+            { name: "webhook_url", label: "Webhook URL", type: "string", required: false },
+            { name: "dm_policy", label: "DM Policy", type: "select", required: false, options: ["pairing", "allowlist", "open", "disabled"], default: "pairing" },
         ],
     },
     whatsapp: {
@@ -21,8 +21,8 @@ export const channels = {
         description: "Connect via whatsapp-web.js (QR code)",
         color: "#25D366",
         fields: [
-            { key: "auth_path", label: "Auth Data Path", type: "string", required: false },
-            { key: "dm_policy", label: "DM Policy", type: "select", required: false, options: ["pairing", "allowlist", "open", "disabled"], default: "pairing" },
+            { name: "auth_path", label: "Auth Data Path", type: "string", required: false },
+            { name: "dm_policy", label: "DM Policy", type: "select", required: false, options: ["pairing", "allowlist", "open", "disabled"], default: "pairing" },
         ],
     },
     discord: {
@@ -31,9 +31,9 @@ export const channels = {
         description: "Connect to Discord server",
         color: "#5865F2",
         fields: [
-            { key: "bot_token", label: "Bot Token", type: "password", required: true },
-            { key: "guild_id", label: "Guild ID", type: "string", required: false },
-            { key: "dm_policy", label: "DM Policy", type: "select", required: false, options: ["pairing", "allowlist", "open", "disabled"], default: "pairing" },
+            { name: "bot_token", label: "Bot Token", type: "password", required: true },
+            { name: "guild_id", label: "Guild ID", type: "string", required: false },
+            { name: "dm_policy", label: "DM Policy", type: "select", required: false, options: ["pairing", "allowlist", "open", "disabled"], default: "pairing" },
         ],
     },
     slack: {
@@ -42,10 +42,10 @@ export const channels = {
         description: "Connect to Slack workspace",
         color: "#4A154B",
         fields: [
-            { key: "bot_token", label: "Bot Token (xoxb-)", type: "password", required: true },
-            { key: "app_token", label: "App Token (xapp-)", type: "password", required: true },
-            { key: "signing_secret", label: "Signing Secret", type: "password", required: false },
-            { key: "dm_policy", label: "DM Policy", type: "select", required: false, options: ["pairing", "allowlist", "open", "disabled"], default: "pairing" },
+            { name: "bot_token", label: "Bot Token (xoxb-)", type: "password", required: true },
+            { name: "app_token", label: "App Token (xapp-)", type: "password", required: true },
+            { name: "signing_secret", label: "Signing Secret", type: "password", required: false },
+            { name: "dm_policy", label: "DM Policy", type: "select", required: false, options: ["pairing", "allowlist", "open", "disabled"], default: "pairing" },
         ],
     },
     signal: {
@@ -54,10 +54,10 @@ export const channels = {
         description: "Connect via signal-cli",
         color: "#3A76F0",
         fields: [
-            { key: "signal_cli_path", label: "Signal CLI Path", type: "string", required: false },
-            { key: "phone_number", label: "Phone Number", type: "string", required: true },
-            { key: "socket_path", label: "Socket Path", type: "string", required: false },
-            { key: "dm_policy", label: "DM Policy", type: "select", required: false, options: ["pairing", "allowlist", "open", "disabled"], default: "pairing" },
+            { name: "signal_cli_path", label: "Signal CLI Path", type: "string", required: false },
+            { name: "phone_number", label: "Phone Number", type: "string", required: true },
+            { name: "socket_path", label: "Socket Path", type: "string", required: false },
+            { name: "dm_policy", label: "DM Policy", type: "select", required: false, options: ["pairing", "allowlist", "open", "disabled"], default: "pairing" },
         ],
     },
     imessage: {
@@ -66,9 +66,9 @@ export const channels = {
         description: "Connect via BlueBubbles",
         color: "#FF3B30",
         fields: [
-            { key: "server_url", label: "BlueBubbles Server URL", type: "string", required: true },
-            { key: "password", label: "Password", type: "password", required: true },
-            { key: "dm_policy", label: "DM Policy", type: "select", required: false, options: ["pairing", "allowlist", "open", "disabled"], default: "pairing" },
+            { name: "server_url", label: "BlueBubbles Server URL", type: "string", required: true },
+            { name: "password", label: "Password", type: "password", required: true },
+            { name: "dm_policy", label: "DM Policy", type: "select", required: false, options: ["pairing", "allowlist", "open", "disabled"], default: "pairing" },
         ],
     },
     web: {
