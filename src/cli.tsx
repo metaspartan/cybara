@@ -627,7 +627,7 @@ function rawHelp(): void {
     console.log("    lsp install    Install language server");
     console.log("    lsp uninstall  Uninstall language server");
     console.log("  start       Start the server");
-    console.log("  install     Run installation wizard (TUI)");
+    console.log("  wizard      Run setup wizard (first-time configuration)");
     console.log("  help        Show this help");
     console.log("");
     console.log(`Environment: CYBARA_API=${API_BASE}`);
@@ -1067,75 +1067,229 @@ const MainMenu = () => {
     );
 };
 
-// Install Command Component (always TUI)
-const InstallCommand = () => {
+// Provider type definitions for wizard
+interface ProviderOption {
+    id: string;
+    name: string;
+    description: string;
+    requiresApiKey: boolean;
+}
+
+const PROVIDER_OPTIONS: ProviderOption[] = [
+    { id: "anthropic", name: "Anthropic", description: "Claude models (3.5 Sonnet, Opus, Haiku)", requiresApiKey: true },
+    { id: "openai", name: "OpenAI", description: "GPT-4o, GPT-4, GPT-3.5", requiresApiKey: true },
+    { id: "gemini", name: "Google Gemini", description: "Gemini Pro, Ultra models", requiresApiKey: true },
+    { id: "openrouter", name: "OpenRouter", description: "Access many models via OpenRouter", requiresApiKey: true },
+    { id: "ollama", name: "Ollama (Local)", description: "Run models locally with Ollama", requiresApiKey: false },
+    { id: "lmstudio", name: "LM Studio (Local)", description: "Local models via LM Studio", requiresApiKey: false },
+];
+
+// Setup Wizard Component (runtime configuration, not dev installation)
+const SetupWizard = () => {
     const { exit } = useApp();
-    const [step, setStep] = React.useState(0);
-    const [error, setError] = React.useState<string | null>(null);
+    const [step, setStep] = React.useState<"welcome" | "provider" | "apikey" | "agent" | "complete">("welcome");
+    const [selectedProvider, setSelectedProvider] = React.useState(0);
+    const [apiKey, setApiKey] = React.useState("");
+    const [status, setStatus] = React.useState<{ message: string; type: "info" | "success" | "error" | "loading" } | null>(null);
+    const [providerCreated, setProviderCreated] = React.useState(false);
 
-    const steps = [
-        { label: "Checking environment...", check: () => true },
-        { label: "Installing dependencies...", action: () => spawn("bun", ["install"]) },
-        { label: "Installing Playwright browsers...", action: () => spawn("bunx", ["playwright", "install"]) },
-        { label: "Building UI...", action: () => spawn("bun", ["run", "ui:build"]) },
-        { label: "Building server...", action: () => spawn("bun", ["run", "build"]) },
-    ];
-
-    React.useEffect(() => {
-        const runStep = async () => {
-            if (step >= steps.length) {
-                setTimeout(() => exit(), 2000);
-                return;
+    useInput((input, key) => {
+        if (step === "welcome") {
+            if (key.return || input === " ") {
+                setStep("provider");
+            } else if (input === "q") {
+                exit();
             }
-
-            const currentStep = steps[step];
-            if (currentStep.action) {
-                const proc = currentStep.action();
-                proc.on("close", (code: number) => {
-                    if (code === 0) {
-                        setStep((s) => s + 1);
-                    } else {
-                        setError(`Failed at step: ${currentStep.label}`);
-                    }
-                });
-                proc.on("error", (err: Error) => setError(err.message));
-            } else {
-                setStep((s) => s + 1);
+        } else if (step === "provider") {
+            if (key.upArrow) {
+                setSelectedProvider((s) => (s > 0 ? s - 1 : PROVIDER_OPTIONS.length - 1));
+            } else if (key.downArrow) {
+                setSelectedProvider((s) => (s < PROVIDER_OPTIONS.length - 1 ? s + 1 : 0));
+            } else if (key.return) {
+                const provider = PROVIDER_OPTIONS[selectedProvider];
+                if (provider.requiresApiKey) {
+                    setStep("apikey");
+                } else {
+                    // Create provider without API key
+                    createProvider(provider.id, "");
+                }
+            } else if (input === "q") {
+                exit();
             }
-        };
-
-        if (!error) {
-            runStep();
+        } else if (step === "apikey") {
+            if (key.return) {
+                if (apiKey.length > 0) {
+                    createProvider(PROVIDER_OPTIONS[selectedProvider].id, apiKey);
+                }
+            } else if (key.backspace || key.delete) {
+                setApiKey((k) => k.slice(0, -1));
+            } else if (input && input.length === 1 && !key.ctrl && !key.meta) {
+                setApiKey((k) => k + input);
+            } else if (input === "") {
+                // Handle Ctrl+C
+                exit();
+            }
+        } else if (step === "agent") {
+            if (key.return || input === "y" || input === "Y") {
+                createDefaultAgent();
+            } else if (input === "n" || input === "N") {
+                completeSetup();
+            }
+        } else if (step === "complete") {
+            if (key.return || input === " " || input === "q") {
+                exit();
+            }
         }
-    }, [step, error]);
+    });
+
+    const createProvider = async (providerId: string, key: string) => {
+        setStatus({ message: "Creating provider...", type: "loading" });
+
+        const result = await fetchAPI<{ id?: string; error?: string }>("/api/providers", {
+            method: "POST",
+            body: JSON.stringify({
+                provider: providerId,
+                name: PROVIDER_OPTIONS.find(p => p.id === providerId)?.name || providerId,
+                api_key: key || undefined,
+                is_default: true,
+            }),
+        });
+
+        if (result?.id) {
+            setProviderCreated(true);
+            setStatus({ message: "Provider created!", type: "success" });
+            setTimeout(() => {
+                setStatus(null);
+                setStep("agent");
+            }, 1000);
+        } else {
+            setStatus({ message: result?.error || "Failed to create provider", type: "error" });
+        }
+    };
+
+    const createDefaultAgent = async () => {
+        setStatus({ message: "Creating default agent...", type: "loading" });
+
+        const result = await fetchAPI<{ id?: string; error?: string }>("/api/agents/default", {
+            method: "POST",
+        });
+
+        if (result?.id || result?.error === "Default agent already exists") {
+            setStatus({ message: "Agent ready!", type: "success" });
+            setTimeout(() => completeSetup(), 1000);
+        } else {
+            setStatus({ message: result?.error || "Failed to create agent", type: "error" });
+            setTimeout(() => completeSetup(), 2000);
+        }
+    };
+
+    const completeSetup = async () => {
+        await fetchAPI("/api/setup/complete", { method: "POST" });
+        setStep("complete");
+    };
 
     return (
         <Box flexDirection="column">
             <Logo />
             <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={2} paddingY={1}>
-                <Text bold>Installing Cybara</Text>
-                {steps.map((s, i) => (
-                    <Box key={i}>
-                        {i < step ? (
-                            <Text color="green">✓ {s.label}</Text>
-                        ) : i === step && !error ? (
-                            <Text color="yellow"><Spinner type="dots" /> {s.label}</Text>
-                        ) : error && i === step ? (
-                            <Text color="red">✗ {s.label}</Text>
-                        ) : (
-                            <Text color="gray">○ {s.label}</Text>
-                        )}
-                    </Box>
-                ))}
+                {step === "welcome" && (
+                    <>
+                        <Text bold>Welcome to Cybara! 🚀</Text>
+                        <Box marginTop={1}>
+                            <Text>This wizard will help you set up Cybara for first use.</Text>
+                        </Box>
+                        <Box marginTop={1}>
+                            <Text color="gray">We'll configure:</Text>
+                        </Box>
+                        <Box marginLeft={2} flexDirection="column">
+                            <Text color="gray">• An AI provider (OpenAI, Anthropic, etc.)</Text>
+                            <Text color="gray">• A default agent to chat with</Text>
+                        </Box>
+                        <Box marginTop={2}>
+                            <Text color="green" bold>Press ENTER to begin</Text>
+                        </Box>
+                    </>
+                )}
+
+                {step === "provider" && (
+                    <>
+                        <Text bold>Select AI Provider</Text>
+                        <Box marginTop={1} flexDirection="column">
+                            {PROVIDER_OPTIONS.map((p, i) => (
+                                <Box key={p.id}>
+                                    <Text color={i === selectedProvider ? "cyan" : "white"}>
+                                        {i === selectedProvider ? "❯ " : "  "}
+                                        {p.name}
+                                    </Text>
+                                    <Text color="gray"> - {p.description}</Text>
+                                </Box>
+                            ))}
+                        </Box>
+                        <Box marginTop={1}>
+                            <Text color="gray">↑↓ to select, ENTER to confirm</Text>
+                        </Box>
+                    </>
+                )}
+
+                {step === "apikey" && (
+                    <>
+                        <Text bold>Enter API Key for {PROVIDER_OPTIONS[selectedProvider].name}</Text>
+                        <Box marginTop={1}>
+                            <Text color="gray">API Key: </Text>
+                            <Text>{apiKey.length > 0 ? "•".repeat(apiKey.length) : "(type your key)"}</Text>
+                        </Box>
+                        <Box marginTop={1}>
+                            <Text color="gray">Press ENTER when done</Text>
+                        </Box>
+                    </>
+                )}
+
+                {step === "agent" && (
+                    <>
+                        <Text bold>Create Default Agent?</Text>
+                        <Box marginTop={1}>
+                            <Text>This creates a general-purpose AI assistant agent.</Text>
+                        </Box>
+                        <Box marginTop={1}>
+                            <Text color="green">Y</Text>
+                            <Text> - Yes, create it  </Text>
+                            <Text color="yellow">N</Text>
+                            <Text> - No, I'll configure later</Text>
+                        </Box>
+                    </>
+                )}
+
+                {step === "complete" && (
+                    <>
+                        <Text bold color="green">✓ Setup Complete!</Text>
+                        <Box marginTop={1} flexDirection="column">
+                            <Text>Cybara is ready to use. Here's what you can do:</Text>
+                        </Box>
+                        <Box marginTop={1} marginLeft={2} flexDirection="column">
+                            <Text color="cyan">• Open the dashboard: </Text>
+                            <Text color="white">  http://localhost:4269</Text>
+                            <Text color="cyan">• Chat in terminal: </Text>
+                            <Text color="white">  cybara chat "Hello!"</Text>
+                            <Text color="cyan">• Configure more: </Text>
+                            <Text color="white">  Settings → Providers / Agents</Text>
+                        </Box>
+                        <Box marginTop={2}>
+                            <Text color="gray">Press ENTER to exit</Text>
+                        </Box>
+                    </>
+                )}
             </Box>
-            {error && (
+            {status && (
                 <Box marginTop={1}>
-                    <Text color="red">Error: {error}</Text>
-                </Box>
-            )}
-            {step >= steps.length && (
-                <Box marginTop={1}>
-                    <Text color="green" bold>✓ Installation complete! Run `cybara start` to begin.</Text>
+                    {status.type === "loading" ? (
+                        <Text color="yellow"><Spinner type="dots" /> {status.message}</Text>
+                    ) : status.type === "success" ? (
+                        <Text color="green">✓ {status.message}</Text>
+                    ) : status.type === "error" ? (
+                        <Text color="red">✗ {status.message}</Text>
+                    ) : (
+                        <Text color="blue">ℹ {status.message}</Text>
+                    )}
                 </Box>
             )}
         </Box>
@@ -1145,8 +1299,10 @@ const InstallCommand = () => {
 // TUI App Router (for interactive mode)
 const TUIApp = ({ command }: { command?: string }) => {
     switch (command) {
+        case "wizard":
+        case "setup":
         case "install":
-            return <InstallCommand />;
+            return <SetupWizard />;
         case "status":
             return <TUIStatusCommand />;
         case "metrics":
@@ -1287,6 +1443,8 @@ async function main() {
             break;
 
         // TUI commands (interactive)
+        case "wizard":
+        case "setup":
         case "install":
         case "tui":
             render(<TUIApp command={command === "tui" ? undefined : command} />);
