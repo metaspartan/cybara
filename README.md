@@ -20,6 +20,21 @@
 
 ---
 
+## 📚 Documentation
+
+| Guide | Description |
+|-------|-------------|
+| [Architecture](docs/architecture.md) | Platform design and data flow |
+| [CLI Reference](docs/cli.md) | Command-line interface |
+| [Tools Reference](docs/tools.md) | 30+ available tools |
+| [Skills Guide](docs/skills.md) | Creating and managing skills |
+| [Channels](docs/channels.md) | Multi-platform messaging |
+| [Providers](docs/providers.md) | AI provider configuration |
+| [Configuration](docs/configuration.md) | Settings and environment |
+| [API Reference](docs/api.md) | REST API endpoints |
+
+---
+
 ## ✨ Key Features
 
 ### 🤖 Multi-Agent System

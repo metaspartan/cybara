@@ -625,7 +625,8 @@ export function cleanupOldRuns(maxAgeMs: number = 3600000): number {
     let cleaned = 0;
 
     for (const [runId, run] of subagentRuns.entries()) {
-        if (run.completedAt && now - run.completedAt > maxAgeMs) {
+        // Use endedAt (the actual field) instead of completedAt
+        if (run.endedAt && now - run.endedAt > maxAgeMs) {
             subagentRuns.delete(runId);
             cleaned++;
         }
@@ -693,7 +694,5 @@ export function resetSubagentRegistryForTests(): void {
     persistSubagentRuns();
 }
 
-// Extend the interface to include completedAt for legacy compatibility
-interface SubagentRunRecordWithCompleted extends SubagentRunRecord {
-    completedAt?: number;
-}
+// Registry initialized on first use
+initSubagentRegistry();

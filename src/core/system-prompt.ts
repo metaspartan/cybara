@@ -71,8 +71,10 @@ export interface SystemPromptParams {
     arch?: string;
     node?: string;
     model?: string;
+    defaultModel?: string;
     channel?: string;
     capabilities?: string[];
+    repoRoot?: string;
   };
   /** For subagent spawning - provides task context */
   subagentContext?: {
@@ -83,6 +85,35 @@ export interface SystemPromptParams {
   };
   /** Available skills for this session */
   skills?: SkillEntry[];
+  /** Sandbox/containerized execution info */
+  sandboxInfo?: {
+    enabled: boolean;
+    workspaceDir?: string;
+    workspaceAccess?: "none" | "ro" | "rw";
+    agentWorkspaceMount?: string;
+    browserBridgeUrl?: string;
+    browserNoVncUrl?: string;
+    hostBrowserAllowed?: boolean;
+    elevated?: {
+      allowed: boolean;
+      defaultLevel: "on" | "off" | "ask" | "full";
+    };
+  };
+  /** Reaction guidance (for Telegram/Discord minimal/extensive modes) */
+  reactionGuidance?: {
+    level: "minimal" | "extensive";
+    channel: string;
+  };
+  /** Path to documentation directory */
+  docsPath?: string;
+  /** Additional workspace notes */
+  workspaceNotes?: string[];
+  /** Additional hints for message tool usage */
+  messageToolHints?: string[];
+  /** Whether inline buttons are enabled for current channel */
+  inlineButtonsEnabled?: boolean;
+  /** User timezone for time display */
+  userTimezone?: string;
 }
 
 
@@ -196,25 +227,42 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
   }
 
   // Time section
-  lines.push(...buildTimeSection());
+  lines.push(...buildTimeSection(params.userTimezone));
 
   // Reply tags section
   if (features?.replyTagsEnabled !== false && !isMinimal) {
     lines.push(...buildReplyTagsSection());
   }
 
-  // Messaging section
-  if (
-    features?.messagingEnabled !== false &&
-    !isMinimal &&
-    params.tools.includes("message")
-  ) {
-    lines.push(...buildMessagingSection());
+  // Messaging section (enhanced with OpenClaw parity)
+  if (features?.messagingEnabled !== false && !isMinimal) {
+    lines.push(...buildMessagingSection({
+      isMinimal,
+      tools: params.tools,
+      inlineButtonsEnabled: params.inlineButtonsEnabled,
+      runtimeChannel: params.runtimeInfo?.channel,
+      messageToolHints: params.messageToolHints,
+    }));
   }
 
   // TTS/Voice section
   if (params.ttsHint && !isMinimal) {
     lines.push("## Voice (TTS)", params.ttsHint, "");
+  }
+
+  // Sandbox section (for containerized execution)
+  if (params.sandboxInfo?.enabled) {
+    lines.push(...buildSandboxSection(params.sandboxInfo));
+  }
+
+  // Documentation section
+  if (params.docsPath && !isMinimal) {
+    lines.push(...buildDocsSection(params.docsPath));
+  }
+
+  // Reactions section (for Telegram/Discord modes)
+  if (params.reactionGuidance && !isMinimal) {
+    lines.push(...buildReactionsSection(params.reactionGuidance));
   }
 
   // Subagent context (for spawned subagents)
@@ -473,9 +521,9 @@ function buildContextFilesSection(
 }
 
 
-function buildTimeSection(): string[] {
+function buildTimeSection(userTimezone?: string): string[] {
   const now = new Date();
-  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const timezone = userTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   return ["## Current Date & Time", `Time zone: ${timezone}`, now.toISOString(), ""];
 }
 
@@ -632,21 +680,61 @@ function buildRuntimeSection(
 }
 
 
-function buildMessagingSection(): string[] {
-  return [
+function buildMessagingSection(params: {
+  isMinimal: boolean;
+  tools: string[];
+  inlineButtonsEnabled?: boolean;
+  runtimeChannel?: string;
+  messageToolHints?: string[];
+}): string[] {
+  if (params.isMinimal) {
+    return [];
+  }
+
+  const hasMessageTool = params.tools.includes("message");
+  const lines = [
     "## Messaging",
-    "- Reply in current session → automatically routes to the source channel",
-    "- Cross-session messaging → use sessions_spawn or sessions_send",
-    "- Never use exec/curl for provider messaging; the platform handles all routing internally.",
-    "",
+    "- Reply in current session → automatically routes to the source channel (Signal, Telegram, etc.)",
+    "- Cross-session messaging → use sessions_send(sessionKey, message)",
+    "- Never use exec/curl for provider messaging; Cybara handles all routing internally.",
   ];
+
+  if (hasMessageTool) {
+    lines.push(
+      "",
+      "### message tool",
+      "- Use `message` for proactive sends + channel actions (polls, reactions, etc.).",
+      "- For `action=send`, include `to` and `message`.",
+      `- If you use \`message\` (\`action=send\`) to deliver your user-visible reply, respond with ONLY: ${SILENT_REPLY_TOKEN} (avoid duplicate replies).`,
+    );
+
+    if (params.inlineButtonsEnabled) {
+      lines.push(
+        "- Inline buttons supported. Use `action=send` with `buttons=[[{text,callback_data}]]` (callback_data routes back as a user message)."
+      );
+    } else if (params.runtimeChannel) {
+      lines.push(
+        `- Inline buttons not enabled for ${params.runtimeChannel}. If you need them, configure channel capabilities.`
+      );
+    }
+
+    // Add any extra message tool hints
+    if (params.messageToolHints && params.messageToolHints.length > 0) {
+      lines.push(...params.messageToolHints);
+    }
+  }
+
+  lines.push("");
+  return lines;
 }
 
 function buildReplyTagsSection(): string[] {
   return [
     "## Reply Tags",
-    "Tags are supported for special behaviors:",
+    "To request a native reply/quote on supported surfaces, include one tag in your reply:",
     "- [[reply_to_current]] replies to the triggering message.",
+    "- [[reply_to:<id>]] replies to a specific message id when you have it.",
+    "Whitespace inside the tag is allowed (e.g. [[ reply_to_current ]] / [[ reply_to: 123 ]]).",
     "Tags are stripped before sending; support depends on channel configuration.",
     "",
   ];
@@ -687,6 +775,101 @@ function buildSafetySection(): string[] {
     "- Don't exfiltrate private data. Ever.",
     "- Don't run destructive commands without asking.",
     "- When in doubt, ask.",
+    "",
+  ];
+}
+
+// ============================================
+// NEW OPENCLAW PARITY SECTIONS
+// ============================================
+
+function buildSandboxSection(sandboxInfo: NonNullable<SystemPromptParams["sandboxInfo"]>): string[] {
+  if (!sandboxInfo.enabled) {
+    return [];
+  }
+
+  const lines = [
+    "## Sandbox",
+    "You are running in a sandboxed runtime (tools execute in Docker).",
+    "Some tools may be unavailable due to sandbox policy.",
+    "Sub-agents stay sandboxed (no elevated/host access). Need outside-sandbox read/write? Don't spawn; ask first.",
+  ];
+
+  if (sandboxInfo.workspaceDir) {
+    lines.push(`Sandbox workspace: ${sandboxInfo.workspaceDir}`);
+  }
+
+  if (sandboxInfo.workspaceAccess) {
+    let accessLine = `Agent workspace access: ${sandboxInfo.workspaceAccess}`;
+    if (sandboxInfo.agentWorkspaceMount) {
+      accessLine += ` (mounted at ${sandboxInfo.agentWorkspaceMount})`;
+    }
+    lines.push(accessLine);
+  }
+
+  if (sandboxInfo.browserBridgeUrl) {
+    lines.push("Sandbox browser: enabled.");
+  }
+
+  if (sandboxInfo.browserNoVncUrl) {
+    lines.push(`Sandbox browser observer (noVNC): ${sandboxInfo.browserNoVncUrl}`);
+  }
+
+  if (sandboxInfo.hostBrowserAllowed === true) {
+    lines.push("Host browser control: allowed.");
+  } else if (sandboxInfo.hostBrowserAllowed === false) {
+    lines.push("Host browser control: blocked.");
+  }
+
+  if (sandboxInfo.elevated?.allowed) {
+    lines.push(
+      "Elevated exec is available for this session.",
+      "User can toggle with /elevated on|off|ask|full.",
+      "You may also send /elevated on|off|ask|full when needed.",
+      `Current elevated level: ${sandboxInfo.elevated.defaultLevel} (ask runs exec on host with approvals; full auto-approves).`
+    );
+  }
+
+  lines.push("");
+  return lines;
+}
+
+function buildReactionsSection(reactionGuidance: NonNullable<SystemPromptParams["reactionGuidance"]>): string[] {
+  const { level, channel } = reactionGuidance;
+
+  const guidanceText =
+    level === "minimal"
+      ? [
+        `Reactions are enabled for ${channel} in MINIMAL mode.`,
+        "React ONLY when truly relevant:",
+        "- Acknowledge important user requests or confirmations",
+        "- Express genuine sentiment (humor, appreciation) sparingly",
+        "- Avoid reacting to routine messages or your own replies",
+        "Guideline: at most 1 reaction per 5-10 exchanges.",
+      ].join("\n")
+      : [
+        `Reactions are enabled for ${channel} in EXTENSIVE mode.`,
+        "Feel free to react liberally:",
+        "- Acknowledge messages with appropriate emojis",
+        "- Express sentiment and personality through reactions",
+        "- React to interesting content, humor, or notable events",
+        "- Use reactions to confirm understanding or agreement",
+        "Guideline: react whenever it feels natural.",
+      ].join("\n");
+
+  return ["## Reactions", guidanceText, ""];
+}
+
+function buildDocsSection(docsPath?: string): string[] {
+  if (!docsPath?.trim()) {
+    return [];
+  }
+
+  return [
+    "## Documentation",
+    `Cybara docs: ${docsPath}`,
+    "For platform behavior, commands, config, or architecture: consult local docs first.",
+    "When diagnosing issues, run `cybara status` yourself when possible; only ask the user if you lack access.",
     "",
   ];
 }
