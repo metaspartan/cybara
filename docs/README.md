@@ -27,16 +27,7 @@ bun run --watch src/index.ts
 
 ```bash
 # Build everything (UI + backend + CLI)
-bun run build:all
-
-# Start production server (foreground)
-bun run start
-
-# Or: build + start in one command
-bun run start:prod
-
-# Compile to single binary
-bun build src/main.ts --compile --outfile release/cybara
+bun run package
 
 # Run as background daemon
 ./release/cybara start -d
