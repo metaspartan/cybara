@@ -24,7 +24,9 @@
     "format:check": "prettier --check \"src/**/*.ts\"",
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "bunx tsc --noEmit",
-    "check": "bun run typecheck && bun run lint && bun run format:check"
+    "check": "bun run typecheck && bun run lint && bun run format:check",
+    "sexy": "bun run typecheck && bun run lint && bun run format:check",
+    "sexy:write": "bun run typecheck && bun run lint && bun run format"
   },
   "dependencies": {
     "@slack/bolt": "^4.6.0",

@@ -7,7 +7,7 @@ import * as cron from "../../cron";
 import { agentManager } from "../../agent";
 import { providerManager, getProviderBaseUrl, getDefaultModel } from "../../providers";
 import * as subagentRegistry from "../../subagent-registry";
-import type { SubagentRun } from "../../subagent-registry";
+import type { SubagentRunRecord } from "../../subagent-registry";
 
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -160,7 +160,7 @@ function buildSubagentSystemPrompt(
 }
 
 
-async function executeSubagent(sessionId: string, run?: SubagentRun): Promise<void> {
+async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Promise<void> {
   const session = sessions.get(sessionId);
   if (!session) return;
 

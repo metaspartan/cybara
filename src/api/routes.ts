@@ -35,6 +35,15 @@ import * as pwManager from "../core/browser/pw-manager";
 import { homedir } from "os";
 import { securityCheck, validateMessageSize } from "./security";
 import { createLogger } from "../core/logger";
+import {
+  normalizeTimestamp,
+  getCombinedLogs,
+  getLogStats,
+  getDailyLogCounts,
+  getModelMetrics,
+  type MetricsEntry,
+  type CountResult,
+} from "./queries";
 
 const log = createLogger("API");
 
@@ -51,64 +60,9 @@ interface RequestLog {
   error?: string;
 }
 
-// Database query result interfaces
-interface CountResult {
-  count: number;
-}
-
-// Utility to normalize SQLite timestamps to UTC ISO format
-// SQLite CURRENT_TIMESTAMP stores UTC but without 'Z' suffix,
-// so JS Date() parses it as local time. This adds the 'Z' suffix.
-function normalizeTimestamp(timestamp: string | undefined): string | undefined {
-  if (!timestamp) return timestamp;
-  // If already has timezone info, return as-is
-  if (timestamp.includes('Z') || timestamp.includes('+') || timestamp.includes('-', 10)) {
-    return timestamp;
-  }
-  // SQLite format: "YYYY-MM-DD HH:MM:SS" - convert to ISO with Z
-  return timestamp.replace(' ', 'T') + 'Z';
-}
-
-interface ValueResult {
-  value: number;
-}
-
-interface MetricsEntry {
-  type: string;
-  key: string;
-  value: number;
-  metadata?: string;
-}
-
-interface LogEntry {
-  id: string;
-  level?: string;
-  source?: string;
-  message?: string;
-  metadata?: string;
-  created_at: string;
-  logType?: string;
-}
-
-interface AgentLogEntry {
-  id: string;
-  agent_id: string;
-  action: string;
-  details?: string;
-  metadata?: string;
-  created_at: string;
-}
-
-interface ChannelLogEntry {
-  id: string;
-  channel_type: string;
-  channel_id?: string;
-  direction: string;
-  sender_id?: string;
-  content?: string;
-  metadata?: string;
-  created_at: string;
-}
+// Types are now imported from ./queries
+// CountResult, ValueResult, MetricsEntry, LogEntry, AgentLogEntry, ChannelLogEntry
+// normalizeTimestamp utility is also imported from ./queries
 
 const requestLogs: RequestLog[] = [];
 const MAX_LOGS = 1000;
@@ -467,8 +421,8 @@ const routes: Record<string, RouteHandler> = {
         result.push({
           file: uri.replace("file://", ""),
           count: diags.length,
-          errors: diags.filter(d => d.severity === 1).length,
-          warnings: diags.filter(d => d.severity === 2).length,
+          errors: diags.filter((d: any) => d.severity === 1).length,
+          warnings: diags.filter((d: any) => d.severity === 2).length,
         });
       }
 
@@ -549,7 +503,7 @@ const routes: Record<string, RouteHandler> = {
     const channelId = params!.id;
     const rawPairings = securityManager.getAllPairings(channelId);
     // Transform to camelCase for UI
-    const pairings = rawPairings.map(p => ({
+    const pairings = rawPairings.map((p: { id: string; sender_id: string; code: string; platform: string; sender_name?: string; status: string; created_at: number; expires_at: number }) => ({
       id: p.id,
       senderId: p.sender_id,
       code: p.code,
@@ -657,7 +611,7 @@ const routes: Record<string, RouteHandler> = {
     const context = createEligibilityContext();
     const statuses = getSkillsStatusReport(allSkills, context);
     return {
-      skills: statuses.map(s => ({
+      skills: statuses.map((s: any) => ({
         name: s.skill.name,
         description: s.skill.description,
         location: s.skill.location,
@@ -672,21 +626,21 @@ const routes: Record<string, RouteHandler> = {
       })),
       summary: {
         total: statuses.length,
-        eligible: statuses.filter(s => s.eligible).length,
-        disabled: statuses.filter(s => s.disabled).length,
-        blocked: statuses.filter(s => !s.eligible && !s.disabled).length,
+        eligible: statuses.filter((s: any) => s.eligible).length,
+        disabled: statuses.filter((s: any) => s.disabled).length,
+        blocked: statuses.filter((s: any) => !s.eligible && !s.disabled).length,
       },
     };
   },
   "GET /api/skills/registry/search": async (_body, params) => {
     const query = params?.q || "";
-    if (!query) return { skills: [], registries: registryManager.list().map(r => r.name) };
+    if (!query) return { skills: [], registries: registryManager.list().map((r: any) => r.name) };
     const results = await registryManager.searchAll(query);
     return { skills: results };
   },
   "GET /api/skills/registry/browse": async () => {
     const results = await registryManager.browseAll();
-    return { skills: results, registries: registryManager.list().map(r => r.name) };
+    return { skills: results, registries: registryManager.list().map((r: any) => r.name) };
   },
   "POST /api/skills/install": async (body) => {
     const { slug, registry } = body as { slug: string; registry?: string };
@@ -715,37 +669,7 @@ const routes: Record<string, RouteHandler> = {
   },
 
   // ===== LOGS =====
-  "GET /api/logs/system": async () => {
-    // Return combined logs from all log tables
-    const system = tables.systemLogs.list ? tables.systemLogs.list() : [];
-    const agent = tables.agentLogs.list ? tables.agentLogs.list() : [];
-    const channel = tables.channelLogs.list ? tables.channelLogs.list() : [];
-
-    // Combine and format all logs
-    const combined = [
-      ...system.map((l: any) => ({ ...l, created_at: normalizeTimestamp(l.created_at), logType: "system" })),
-      ...agent.map((l: any) => ({
-        id: l.id,
-        level: "info",
-        source: "agent",
-        message: `Agent ${l.agent_id.slice(0, 8)}... ${l.action}${l.details ? `: ${l.details}` : ""}`,
-        metadata: l.metadata,
-        created_at: normalizeTimestamp(l.created_at),
-        logType: "agent",
-      })),
-      ...channel.map((l: any) => ({
-        id: l.id,
-        level: "info",
-        source: "channel",
-        message: `${l.direction} ${l.channel_type}${l.sender_id ? ` from ${l.sender_id}` : ""}: ${l.content?.substring(0, 100)}${l.content?.length > 100 ? "..." : ""}`,
-        metadata: l.metadata,
-        created_at: normalizeTimestamp(l.created_at),
-        logType: "channel",
-      })),
-    ].sort((a, b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime());
-
-    return combined;
-  },
+  "GET /api/logs/system": async () => getCombinedLogs(),
   "GET /api/logs/search": async (_body, params) => {
     return await searchAllLogs(params!.q || "", parseInt(params!.limit || "100"));
   },
@@ -761,29 +685,7 @@ const routes: Record<string, RouteHandler> = {
   },
   "GET /api/logs/stats": async (_body, params) => {
     const hours = parseInt(params!.hours || "24");
-    const since = Date.now() - hours * 60 * 60 * 1000;
-
-    // Use the same table helpers as the logs/system endpoint for consistency
-    const system = tables.systemLogs.list ? tables.systemLogs.list() : [];
-    const agent = tables.agentLogs.list ? tables.agentLogs.list() : [];
-    const channel = tables.channelLogs.list ? tables.channelLogs.list() : [];
-    const messages = db.prepare("SELECT COUNT(*) as count FROM session_messages WHERE created_at > ?")
-      .get(new Date(since).toISOString()) as CountResult | null;
-
-    // Filter by time window and count
-    const systemCount = system.filter((l: any) => new Date(l.created_at).getTime() > since).length;
-    const agentCount = agent.filter((l: any) => new Date(l.created_at).getTime() > since).length;
-    const channelCount = channel.filter((l: any) => new Date(l.created_at).getTime() > since).length;
-
-    return {
-      counts: {
-        system: systemCount,
-        messages: messages?.count || 0,
-        agent: agentCount,
-        channel: channelCount,
-      },
-      hours,
-    };
+    return getLogStats(hours);
   },
 
   // ===== SESSIONS =====
@@ -1264,7 +1166,6 @@ const routes: Record<string, RouteHandler> = {
       }
 
       const dayData: Record<string, string | number> = { date: dateStr };
-
       for (const total of dailyTotals) {
         dayData[total.type] = total.total;
       }
@@ -1273,30 +1174,13 @@ const routes: Record<string, RouteHandler> = {
       const hasMetricData = Object.keys(dayData).some(k => k !== 'date');
       if (!hasMetricData) {
         try {
-          // Count system logs for this date
-          const systemCount = db.prepare(
-            `SELECT COUNT(*) as count FROM system_logs WHERE date(created_at) = ?`
-          ).get(dateStr) as { count: number } | undefined;
-
-          // Count channel logs for this date  
-          const channelCount = db.prepare(
-            `SELECT COUNT(*) as count FROM channel_logs WHERE date(created_at) = ?`
-          ).get(dateStr) as { count: number } | undefined;
-
-          // Count session messages for this date
-          const messageCount = db.prepare(
-            `SELECT COUNT(*) as count FROM session_messages WHERE date(created_at) = ?`
-          ).get(dateStr) as { count: number } | undefined;
-
-          const totalActivity =
-            (systemCount?.count || 0) +
-            (channelCount?.count || 0) +
-            (messageCount?.count || 0);
+          const logCounts = getDailyLogCounts(dateStr);
+          const totalActivity = logCounts.systemCount + logCounts.channelCount + logCounts.messageCount;
 
           if (totalActivity > 0) {
             dayData['activity'] = totalActivity;
-            dayData['messages'] = messageCount?.count || 0;
-            dayData['channel_events'] = channelCount?.count || 0;
+            dayData['messages'] = logCounts.messageCount;
+            dayData['channel_events'] = logCounts.channelCount;
           }
         } catch {
           // Tables might not exist, ignore
@@ -1310,74 +1194,7 @@ const routes: Record<string, RouteHandler> = {
   },
 
   // Get per-model TPS (tokens per second) metrics
-  "GET /api/metrics/models": () => {
-    // Get TPS data by model from metrics table
-    const tpsData = db.prepare(`
-      SELECT 
-        key as model,
-        AVG(value) as avgTps,
-        MAX(value) as maxTps,
-        MIN(value) as minTps,
-        COUNT(*) as callCount,
-        json_extract(metadata, '$.provider') as provider
-      FROM metrics 
-      WHERE type = 'model_tps'
-      GROUP BY key
-      ORDER BY AVG(value) DESC
-    `).all() as Array<{
-      model: string;
-      avgTps: number;
-      maxTps: number;
-      minTps: number;
-      callCount: number;
-      provider: string | null;
-    }>;
-
-    // Get latency data
-    const latencyData = db.prepare(`
-      SELECT 
-        key as model,
-        AVG(value) as avgLatency,
-        json_extract(metadata, '$.provider') as provider
-      FROM metrics 
-      WHERE type = 'model_latency'
-      GROUP BY key
-    `).all() as Array<{
-      model: string;
-      avgLatency: number;
-      provider: string | null;
-    }>;
-
-    // Get total tokens by model
-    const tokenData = db.prepare(`
-      SELECT 
-        key as model,
-        SUM(value) as totalTokens
-      FROM metrics 
-      WHERE type = 'token_usage_by_model'
-      GROUP BY key
-    `).all() as Array<{
-      model: string;
-      totalTokens: number;
-    }>;
-
-    // Merge all data
-    const latencyMap = new Map(latencyData.map(l => [l.model, l.avgLatency]));
-    const tokenMap = new Map(tokenData.map(t => [t.model, t.totalTokens]));
-
-    const models = tpsData.map(t => ({
-      model: t.model,
-      provider: t.provider || "unknown",
-      avgTps: Math.round(t.avgTps),
-      maxTps: t.maxTps,
-      minTps: t.minTps,
-      avgLatencyMs: Math.round(latencyMap.get(t.model) || 0),
-      totalTokens: tokenMap.get(t.model) || 0,
-      callCount: t.callCount,
-    }));
-
-    return { models };
-  },
+  "GET /api/metrics/models": () => ({ models: getModelMetrics() }),
 
   "POST /api/metrics/track": (body) => {
     const data = body as {

@@ -7,7 +7,9 @@ import { writeFileSync, existsSync, mkdirSync } from "fs";
 import { readFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
-import type { ToolResult } from "../types";
+
+// Simple tool result type
+type ToolResult = { success: boolean; error?: string;[key: string]: unknown };
 
 // ============================================
 // CANVAS ACTIONS
