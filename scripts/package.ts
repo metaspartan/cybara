@@ -93,20 +93,16 @@ async function main() {
     const binarySize = statSync(binaryPath).size;
     const uiSize = getTotalSize(releaseUiPath);
 
-    console.log(`
-╔═══════════════════════════════════════════════════════════════╗
-║                                                               ║
-║   ✨ Cybara Packaged Successfully!                            ║
-║                                                               ║
-║   Binary:    ${binaryPath.padEnd(45)}║
-║   Size:      ${formatSize(binarySize).padEnd(45)}║
-║   UI Assets: ${formatSize(uiSize).padEnd(45)}║
-║   Platform:  ${(platform + "/" + arch).padEnd(45)}║
-║   Version:   ${pkg.version.padEnd(45)}║
-║                                                               ║
-║   Run with:  ./${RELEASE_DIR}/${BINARY_NAME}                              ║
-║                                                               ║
-╚═══════════════════════════════════════════════════════════════╝
+    console.log(`                                                    
+✨ Cybara Packaged Successfully!
+
+Binary:    ${binaryPath.padEnd(45)}                         
+Size:      ${formatSize(binarySize).padEnd(45)}             
+UI Assets: ${formatSize(uiSize).padEnd(45)}                 
+Platform:  ${(platform + "/" + arch).padEnd(45)}            
+Version:   ${pkg.version.padEnd(45)}                        
+                                                              
+Run with:  ./${RELEASE_DIR}/${BINARY_NAME}                                                                              
 `);
 }
 

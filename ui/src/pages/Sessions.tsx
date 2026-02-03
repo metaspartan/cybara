@@ -150,14 +150,14 @@ export function Sessions() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-4">
+          <div className="grid gap-4 max-w-full">
             {filteredSessions.map((session) => (
-              <Card key={session.id} className="hover:border-white/20 transition-colors">
+              <Card key={session.id} className="hover:border-white/20 transition-colors max-w-full overflow-hidden">
                 <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-2">
-                        <MessageSquare className="w-5 h-5 text-indigo-400" />
+                      <div className="flex items-center gap-3 mb-2 flex-wrap">
+                        <MessageSquare className="w-5 h-5 text-indigo-400 flex-shrink-0" />
                         <h3 className="font-medium text-white truncate">
                           Session {session.id.slice(0, 8)}...
                         </h3>
@@ -166,14 +166,14 @@ export function Sessions() {
                         </Badge>
                       </div>
 
-                      <div className="flex items-center gap-4 text-sm text-gray-400">
+                      <div className="flex flex-wrap items-center gap-3 text-sm text-gray-400">
                         <span className="flex items-center gap-1">
-                          <Bot className="w-4 h-4" />
-                          Agent: {session.agent_id.slice(0, 8)}...
+                          <Bot className="w-4 h-4 flex-shrink-0" />
+                          <span className="truncate">Agent: {session.agent_id.slice(0, 8)}...</span>
                         </span>
                         <span className="flex items-center gap-1">
-                          <Clock className="w-4 h-4" />
-                          {new Date(session.updated_at).toLocaleString()}
+                          <Clock className="w-4 h-4 flex-shrink-0" />
+                          <span className="truncate">{new Date(session.updated_at).toLocaleString()}</span>
                         </span>
                       </div>
 
@@ -185,7 +185,7 @@ export function Sessions() {
                       )}
                     </div>
 
-                    <div className="flex items-center gap-2 ml-4">
+                    <div className="flex items-center gap-2 flex-shrink-0">
                       <Button
                         variant="ghost"
                         size="sm"

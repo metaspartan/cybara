@@ -14,6 +14,8 @@ import {
   Terminal,
   BarChart3,
   Code,
+  Menu,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef } from 'react';
@@ -120,87 +122,115 @@ const navItems = [
 export function Sidebar() {
   const location = useLocation();
   const status = useAgentStatus();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Close sidebar on route change (mobile)
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname]);
 
   return (
-    <aside className="fixed left-0 top-0 h-full w-64 bg-[#12121a] border-r border-white/10 z-40">
-      {/* Compact Logo Header */}
-      <div className="px-5 py-4 border-b border-white/10">
-        <div className="flex items-center gap-3">
-          {/* Logo with thinking animation */}
-          <div className="relative flex-shrink-0">
-            <div
-              className={cn(
-                'w-10 h-10 rounded-xl overflow-hidden transition-all duration-300',
-                status === 'thinking' && 'ring-2 ring-amber-400/60 ring-offset-2 ring-offset-[#12121a]'
-              )}
-            >
-              <img
-                src="/cybara.png"
-                alt="Cybara"
+    <>
+      {/* Mobile Menu Button - positioned on the right */}
+      <button
+        onClick={() => setMobileOpen(!mobileOpen)}
+        className="mobile-menu-btn fixed top-4 right-4 z-50 p-2 rounded-lg bg-[#12121a] border border-white/10 text-white hidden md:hidden"
+        aria-label="Toggle menu"
+      >
+        {mobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+      </button>
+
+      {/* Mobile Overlay */}
+      <div
+        className={cn('sidebar-overlay', mobileOpen && 'open')}
+        onClick={() => setMobileOpen(false)}
+      />
+
+      {/* Sidebar */}
+      <aside className={cn(
+        'sidebar fixed left-0 top-0 h-full w-64 bg-[#12121a] border-r border-white/10 z-40',
+        mobileOpen && 'open'
+      )}>
+        {/* Compact Logo Header */}
+        <div className="px-5 py-4 border-b border-white/10">
+          <div className="flex items-center gap-3">
+            {/* Logo with thinking animation */}
+            <div className="relative flex-shrink-0">
+              <div
                 className={cn(
-                  'w-full h-full object-cover transition-all duration-300',
-                  status === 'thinking' && 'animate-pulse'
+                  'w-10 h-10 rounded-xl overflow-hidden transition-all duration-300',
+                  status === 'thinking' && 'ring-2 ring-amber-400/60 ring-offset-2 ring-offset-[#12121a]'
                 )}
-              />
+              >
+                <img
+                  src="/cybara.png"
+                  alt="Cybara"
+                  className={cn(
+                    'w-full h-full object-cover transition-all duration-300',
+                    status === 'thinking' && 'animate-pulse'
+                  )}
+                />
+              </div>
+              {/* Thinking glow effect */}
+              {status === 'thinking' && (
+                <div className="absolute -inset-1 rounded-xl bg-amber-400/20 animate-ping" />
+              )}
             </div>
-            {/* Thinking glow effect */}
-            {status === 'thinking' && (
-              <div className="absolute -inset-1 rounded-xl bg-amber-400/20 animate-ping" />
-            )}
-          </div>
-          <div className="flex-1 min-w-0">
-            <h1 className="font-bold text-lg gradient-text">Cybara</h1>
-            <p className="text-[10px] text-gray-500 leading-tight">Agent Platform</p>
+            <div className="flex-1 min-w-0">
+              <h1 className="font-bold text-lg gradient-text">Cybara</h1>
+              <p className="text-[10px] text-gray-500 leading-tight">Agent Platform</p>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Navigation */}
-      <nav className="p-4 space-y-1">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = location.pathname === item.path ||
-            (item.path !== '/' && location.pathname.startsWith(item.path));
+        {/* Navigation - no scrolling, fits naturally */}
+        <nav className="p-4 space-y-1">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = location.pathname === item.path ||
+              (item.path !== '/' && location.pathname.startsWith(item.path));
 
-          return (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              className={cn(
-                'flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200',
-                isActive
-                  ? 'bg-gradient-to-r from-indigo-500/20 to-violet-500/10 text-white border border-indigo-500/30 shadow-lg shadow-indigo-500/10'
-                  : 'text-gray-400 hover:text-white hover:bg-white/5 hover:translate-x-1'
-              )}
-            >
-              <Icon className={cn(
-                'w-5 h-5 transition-colors',
-                isActive ? 'text-indigo-400' : 'text-gray-500'
-              )} />
-              <span>{item.label}</span>
-            </NavLink>
-          );
-        })}
-      </nav>
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className={cn(
+                  'flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200',
+                  isActive
+                    ? 'bg-gradient-to-r from-indigo-500/20 to-violet-500/10 text-white border border-indigo-500/30 shadow-lg shadow-indigo-500/10'
+                    : 'text-gray-400 hover:text-white hover:bg-white/5 hover:translate-x-1'
+                )}
+              >
+                <Icon className={cn(
+                  'w-5 h-5 transition-colors',
+                  isActive ? 'text-indigo-400' : 'text-gray-500'
+                )} />
+                <span>{item.label}</span>
+              </NavLink>
+            );
+          })}
+        </nav>
 
-      {/* Footer */}
-      <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-white/10">
-        <NavLink
-          to="/settings"
-          className={cn(
-            'flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200',
-            location.pathname === '/settings'
-              ? 'bg-gradient-to-r from-indigo-500/20 to-violet-500/10 text-white border border-indigo-500/30 shadow-lg shadow-indigo-500/10'
-              : 'text-gray-400 hover:text-white hover:bg-white/5 hover:translate-x-1'
-          )}
-        >
-          <Settings className={cn(
-            'w-5 h-5 transition-colors',
-            location.pathname === '/settings' ? 'text-indigo-400' : 'text-gray-500'
-          )} />
-          <span>Settings</span>
-        </NavLink>
-      </div>
-    </aside>
+        {/* Footer */}
+        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-white/10">
+          <NavLink
+            to="/settings"
+            className={cn(
+              'flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200',
+              location.pathname === '/settings'
+                ? 'bg-gradient-to-r from-indigo-500/20 to-violet-500/10 text-white border border-indigo-500/30 shadow-lg shadow-indigo-500/10'
+                : 'text-gray-400 hover:text-white hover:bg-white/5 hover:translate-x-1'
+            )}
+          >
+            <Settings className={cn(
+              'w-5 h-5 transition-colors',
+              location.pathname === '/settings' ? 'text-indigo-400' : 'text-gray-500'
+            )} />
+            <span>Settings</span>
+          </NavLink>
+        </div>
+      </aside>
+    </>
   );
 }
+

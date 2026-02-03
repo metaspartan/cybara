@@ -34,7 +34,7 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
   // Show loading indicator while checking setup status
   if (providersLoading || agentsLoading) {
     return (
-      <div className="flex-1 ml-64 flex items-center justify-center bg-[#0a0a0f]">
+      <div className="flex-1 main-content flex items-center justify-center bg-[#0a0a0f]">
         <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
       </div>
     );
@@ -61,7 +61,7 @@ function App() {
           <>
             <Sidebar />
             <SetupGuard>
-              <div className="flex-1 ml-64 overflow-auto">
+              <div className="flex-1 main-content ml-64 overflow-auto">
                 <Routes>
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/agents" element={<Agents />} />
@@ -90,4 +90,3 @@ function App() {
 }
 
 export default App;
-

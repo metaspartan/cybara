@@ -761,27 +761,26 @@ const routes: Record<string, RouteHandler> = {
   },
   "GET /api/logs/stats": async (_body, params) => {
     const hours = parseInt(params!.hours || "24");
-    const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+    const since = Date.now() - hours * 60 * 60 * 1000;
 
-    const systemCount = db
-      .prepare("SELECT COUNT(*) as count FROM system_logs WHERE created_at > ?")
-      .get(since) as CountResult | null;
-    const messageCount = db
-      .prepare("SELECT COUNT(*) as count FROM session_messages WHERE created_at > ?")
-      .get(since) as CountResult | null;
-    const agentCount = db
-      .prepare("SELECT COUNT(*) as count FROM agent_logs WHERE created_at > ?")
-      .get(since) as CountResult | null;
-    const channelCount = db
-      .prepare("SELECT COUNT(*) as count FROM channel_logs WHERE created_at > ?")
-      .get(since) as CountResult | null;
+    // Use the same table helpers as the logs/system endpoint for consistency
+    const system = tables.systemLogs.list ? tables.systemLogs.list() : [];
+    const agent = tables.agentLogs.list ? tables.agentLogs.list() : [];
+    const channel = tables.channelLogs.list ? tables.channelLogs.list() : [];
+    const messages = db.prepare("SELECT COUNT(*) as count FROM session_messages WHERE created_at > ?")
+      .get(new Date(since).toISOString()) as CountResult | null;
+
+    // Filter by time window and count
+    const systemCount = system.filter((l: any) => new Date(l.created_at).getTime() > since).length;
+    const agentCount = agent.filter((l: any) => new Date(l.created_at).getTime() > since).length;
+    const channelCount = channel.filter((l: any) => new Date(l.created_at).getTime() > since).length;
 
     return {
       counts: {
-        system: systemCount?.count || 0,
-        messages: messageCount?.count || 0,
-        agent: agentCount?.count || 0,
-        channel: channelCount?.count || 0,
+        system: systemCount,
+        messages: messages?.count || 0,
+        agent: agentCount,
+        channel: channelCount,
       },
       hours,
     };

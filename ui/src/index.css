@@ -77,8 +77,20 @@ button,
 [role="button"],
 input,
 select,
-textarea {
-  outline: none;
+textarea,
+[tabindex] {
+  outline: none !important;
+}
+
+/* Ensure focus-visible is also clean */
+a:focus,
+a:focus-visible,
+button:focus,
+button:focus-visible,
+[role="button"]:focus,
+[role="button"]:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 /* Prevent layout shifts from transforms */
@@ -391,9 +403,97 @@ select:focus {
 
 /* ==================== RESPONSIVE ==================== */
 
-@media (max-width: 640px) {
+/* Mobile - sidebar hidden by default, main content full width */
+@media (max-width: 768px) {
   html {
     font-size: 14px;
+  }
+
+  /* Sidebar hidden on mobile - controlled by JS toggle */
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  /* Sidebar overlay when open on mobile */
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 30;
+  }
+
+  .sidebar-overlay.open {
+    display: block;
+  }
+
+  /* Main content full width on mobile */
+  .main-content {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+
+  /* Mobile hamburger menu button */
+  .mobile-menu-btn {
+    display: flex !important;
+  }
+
+  /* Adjust padding for mobile */
+  .page-container {
+    padding: 1rem !important;
+  }
+
+  /* Cards stack vertically */
+  .grid-cols-2,
+  .grid-cols-3,
+  .grid-cols-4 {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Tablet - sidebar visible, narrower */
+@media (min-width: 769px) and (max-width: 1024px) {
+  html {
+    font-size: 15px;
+  }
+
+  /* Narrower sidebar on tablet */
+  .sidebar {
+    width: 200px !important;
+  }
+
+  .main-content {
+    margin-left: 200px !important;
+  }
+
+  /* 2-column grids on tablet */
+  .grid-cols-3,
+  .grid-cols-4 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* Desktop - full sidebar */
+@media (min-width: 1025px) {
+  .mobile-menu-btn {
+    display: none !important;
+  }
+
+  .sidebar-overlay {
+    display: none !important;
+  }
+}
+
+/* Large screens - wider content */
+@media (min-width: 1440px) {
+  .page-container {
+    max-width: 1400px;
+    margin: 0 auto;
   }
 }
 
@@ -404,7 +504,12 @@ select:focus {
     color: black;
   }
 
-  .no-print {
+  .no-print,
+  .sidebar {
     display: none !important;
+  }
+
+  .main-content {
+    margin-left: 0 !important;
   }
 }
