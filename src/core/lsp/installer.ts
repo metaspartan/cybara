@@ -18,7 +18,7 @@ export function getLSPDir(): string {
 }
 
 // Platform detection
-function getPlatform(): "darwin_arm64" | "darwin_x64" | "linux_x64" | "linux_arm64" | "unsupported" {
+function getPlatform(): "darwin_arm64" | "darwin_x64" | "linux_x64" | "linux_arm64" | "win32_x64" | "win32_arm64" | "unsupported" {
     const platform = process.platform;
     const arch = process.arch;
 
@@ -26,6 +26,8 @@ function getPlatform(): "darwin_arm64" | "darwin_x64" | "linux_x64" | "linux_arm
     if (platform === "darwin" && arch === "x64") return "darwin_x64";
     if (platform === "linux" && arch === "x64") return "linux_x64";
     if (platform === "linux" && arch === "arm64") return "linux_arm64";
+    if (platform === "win32" && arch === "x64") return "win32_x64";
+    if (platform === "win32" && arch === "arm64") return "win32_arm64";
     return "unsupported";
 }
 
@@ -277,9 +279,10 @@ export async function isAvailable(language: string): Promise<boolean> {
     // Check local install first
     if (isInstalled(language)) return true;
 
-    // Check system PATH
+    // Check system PATH (use 'where' on Windows, 'which' elsewhere)
     try {
-        const result = Bun.spawnSync(["which", info.binaryName]);
+        const checkCmd = process.platform === "win32" ? "where" : "which";
+        const result = Bun.spawnSync([checkCmd, info.binaryName]);
         return result.exitCode === 0;
     } catch {
         return false;

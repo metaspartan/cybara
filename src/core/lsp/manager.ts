@@ -278,10 +278,11 @@ export class LSPManager {
         const config = this.config.lsp[language];
         if (!config || config.disabled) return false;
 
-        // Try to find the command in PATH
+        // Try to find the command in PATH (use 'where' on Windows)
         try {
             return new Promise((resolve) => {
-                exec(`which ${config.command}`, (error) => {
+                const checkCmd = process.platform === "win32" ? "where" : "which";
+                exec(`${checkCmd} ${config.command}`, (error) => {
                     resolve(!error);
                 });
             });

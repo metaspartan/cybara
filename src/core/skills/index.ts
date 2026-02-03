@@ -366,14 +366,15 @@ builtinExecutors.video_frames = async (args: Record<string, unknown>) => {
     mkdirSync(output, { recursive: true });
   }
 
-  // Check if ffmpeg is available
+  // Check if ffmpeg is available (use 'where' on Windows, 'which' elsewhere)
   try {
-    const whichResult = Bun.spawnSync(["which", "ffmpeg"]);
+    const checkCmd = process.platform === "win32" ? "where" : "which";
+    const whichResult = Bun.spawnSync([checkCmd, "ffmpeg"]);
     if (whichResult.exitCode !== 0) {
       return {
         error: "ffmpeg not found. Install ffmpeg to enable video frame extraction.",
         video,
-        installHint: "brew install ffmpeg",
+        installHint: process.platform === "win32" ? "choco install ffmpeg" : "brew install ffmpeg",
       };
     }
 
@@ -417,7 +418,13 @@ builtinExecutors.mactop = async (args: Record<string, unknown>) => {
   const mode = (args.mode as string) || "efficient";
 
   try {
-    // Check if mactop is available
+    // Check if mactop is available (macOS only)
+    if (process.platform !== "darwin") {
+      return {
+        error: "mactop is only available on macOS with Apple Silicon.",
+        installHint: "This skill requires macOS.",
+      };
+    }
     const whichResult = Bun.spawnSync(["which", "mactop"]);
     if (whichResult.exitCode !== 0) {
       return {

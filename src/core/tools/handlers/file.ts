@@ -162,6 +162,11 @@ export async function handleGrep(args: Record<string, unknown>): Promise<{
 
 async function checkRipgrepAvailable(): Promise<boolean> {
   try {
+    // Use 'where' on Windows, 'which' or 'command -v' on Unix
+    if (process.platform === "win32") {
+      const result = Bun.spawnSync(["where", "rg"], { timeout: 5000 });
+      return result.exitCode === 0;
+    }
     const result = Bun.spawnSync(["sh", "-c", "which rg || command -v rg"], { timeout: 5000 });
     return result.exitCode === 0;
   } catch {
