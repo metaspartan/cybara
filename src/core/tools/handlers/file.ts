@@ -317,3 +317,204 @@ async function globFiles(dir: string, pattern: string): Promise<string[]> {
     return [];
   }
 }
+
+/**
+ * Apply a unified diff patch to multiple files
+ * Supports standard unified diff format (git diff output)
+ */
+export async function handleApplyPatch(
+  args: Record<string, unknown>
+): Promise<{
+  success: boolean;
+  applied: Array<{ path: string; hunks: number }>;
+  failed: Array<{ path: string; error: string }>;
+}> {
+  const patch = args.patch as string;
+  const dryRun = (args.dryRun as boolean) || false;
+
+  if (!patch) {
+    throw new Error("Patch content is required");
+  }
+
+  const applied: Array<{ path: string; hunks: number }> = [];
+  const failed: Array<{ path: string; error: string }> = [];
+
+  // Parse unified diff format
+  const filePatches = parsePatch(patch);
+
+  for (const filePatch of filePatches) {
+    try {
+      const result = await applyFilePatch(filePatch, dryRun);
+      if (result.success) {
+        applied.push({ path: filePatch.path, hunks: filePatch.hunks.length });
+      } else {
+        failed.push({ path: filePatch.path, error: result.error || "Unknown error" });
+      }
+    } catch (error) {
+      failed.push({ path: filePatch.path, error: (error as Error).message });
+    }
+  }
+
+  // Track patch application
+  trackMetric("file_operation", "apply_patch", 1, {
+    filesApplied: applied.length,
+    filesFailed: failed.length,
+    dryRun,
+  });
+
+  return { success: failed.length === 0, applied, failed };
+}
+
+interface PatchHunk {
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  lines: string[];
+}
+
+interface FilePatch {
+  path: string;
+  oldPath?: string;
+  isNew: boolean;
+  isDelete: boolean;
+  hunks: PatchHunk[];
+}
+
+function parsePatch(patch: string): FilePatch[] {
+  const files: FilePatch[] = [];
+  const lines = patch.split("\n");
+  let currentFile: FilePatch | null = null;
+  let currentHunk: PatchHunk | null = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // New file header: --- a/path or --- /dev/null
+    if (line.startsWith("--- ")) {
+      const oldPath = line.slice(4).replace(/^[ab]\//, "").trim();
+
+      // Look for +++ line
+      if (i + 1 < lines.length && lines[i + 1].startsWith("+++ ")) {
+        const newPath = lines[i + 1].slice(4).replace(/^[ab]\//, "").trim();
+
+        if (currentFile && currentHunk) {
+          currentFile.hunks.push(currentHunk);
+        }
+        if (currentFile) {
+          files.push(currentFile);
+        }
+
+        currentFile = {
+          path: newPath === "/dev/null" ? oldPath : newPath,
+          oldPath: oldPath === "/dev/null" ? undefined : oldPath,
+          isNew: oldPath === "/dev/null",
+          isDelete: newPath === "/dev/null",
+          hunks: [],
+        };
+        currentHunk = null;
+        i++; // Skip +++ line
+      }
+      continue;
+    }
+
+    // Hunk header: @@ -1,5 +1,6 @@
+    if (line.startsWith("@@ ")) {
+      if (currentHunk && currentFile) {
+        currentFile.hunks.push(currentHunk);
+      }
+
+      const match = line.match(/@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
+      if (match) {
+        currentHunk = {
+          oldStart: parseInt(match[1]),
+          oldLines: parseInt(match[2] || "1"),
+          newStart: parseInt(match[3]),
+          newLines: parseInt(match[4] || "1"),
+          lines: [],
+        };
+      }
+      continue;
+    }
+
+    // Hunk content lines
+    if (currentHunk && (line.startsWith(" ") || line.startsWith("+") || line.startsWith("-") || line === "")) {
+      currentHunk.lines.push(line);
+    }
+  }
+
+  // Push last hunk and file
+  if (currentHunk && currentFile) {
+    currentFile.hunks.push(currentHunk);
+  }
+  if (currentFile) {
+    files.push(currentFile);
+  }
+
+  return files;
+}
+
+async function applyFilePatch(
+  filePatch: FilePatch,
+  dryRun: boolean
+): Promise<{ success: boolean; error?: string }> {
+  // Handle file deletion
+  if (filePatch.isDelete) {
+    if (!dryRun && existsSync(filePatch.path)) {
+      await fs.unlink(filePatch.path);
+    }
+    return { success: true };
+  }
+
+  // Handle new file
+  if (filePatch.isNew) {
+    const content = filePatch.hunks
+      .flatMap((h) => h.lines.filter((l) => l.startsWith("+")).map((l) => l.slice(1)))
+      .join("\n");
+
+    if (!dryRun) {
+      const dir = dirname(filePatch.path);
+      if (!existsSync(dir)) {
+        mkdirSync(dir, { recursive: true });
+      }
+      writeFileSync(filePatch.path, content, "utf-8");
+    }
+    return { success: true };
+  }
+
+  // Handle file modification
+  if (!existsSync(filePatch.path)) {
+    return { success: false, error: `File not found: ${filePatch.path}` };
+  }
+
+  let content = readFileSync(filePatch.path, "utf-8");
+  const lines = content.split("\n");
+
+  // Apply hunks in reverse order to preserve line numbers
+  const sortedHunks = [...filePatch.hunks].sort((a, b) => b.oldStart - a.oldStart);
+
+  for (const hunk of sortedHunks) {
+    const startIdx = hunk.oldStart - 1;
+    const deleteCount = hunk.oldLines;
+
+    // Build new lines from hunk
+    const newLines: string[] = [];
+    for (const line of hunk.lines) {
+      if (line.startsWith(" ") || line.startsWith("+")) {
+        newLines.push(line.slice(1));
+      }
+      // Skip lines starting with "-" (deletions)
+    }
+
+    // Apply the hunk
+    lines.splice(startIdx, deleteCount, ...newLines);
+  }
+
+  const newContent = lines.join("\n");
+
+  if (!dryRun) {
+    writeFileSync(filePatch.path, newContent, "utf-8");
+  }
+
+  return { success: true };
+}

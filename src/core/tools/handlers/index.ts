@@ -15,7 +15,7 @@ export * from "./web-search";
 export { getToolSchemasForLLM, toolSchemas } from "../index";
 
 // Tool execution dispatcher
-import { handleRead, handleWrite, handleEdit, handleFileSearch, handleGrep } from "./file";
+import { handleRead, handleWrite, handleEdit, handleFileSearch, handleGrep, handleApplyPatch } from "./file";
 import { handleExec, handleProcess, handleGit } from "./process";
 import { handleBrowser, handleWebFetch } from "./browser";
 import { handleMemorySearch, handleMemoryGet, handleMemorySave, handleMemorySaveDurable, handleMemoryContext } from "./memory";
@@ -52,6 +52,7 @@ const toolHandlers: Record<string, (args: Record<string, unknown>) => Promise<un
   edit: handleEdit,
   file_search: handleFileSearch,
   grep: handleGrep,
+  apply_patch: handleApplyPatch,
 
   // Process tools
   exec: handleExec,

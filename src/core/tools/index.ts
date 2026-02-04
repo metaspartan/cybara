@@ -250,6 +250,26 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
     },
     permissions: ["fs:read"],
   },
+  apply_patch: {
+    name: "apply_patch",
+    description: "Apply a unified diff patch to multiple files. Supports standard git diff format with create, modify, and delete operations.",
+    category: "file",
+    input_schema: {
+      type: "object",
+      properties: {
+        patch: {
+          type: "string",
+          description: "Unified diff patch content (git diff format)",
+        },
+        dryRun: {
+          type: "boolean",
+          description: "If true, validate the patch without applying it",
+        },
+      },
+      required: ["patch"],
+    },
+    permissions: ["fs:write"],
+  },
 
   // Process execution
   exec: {

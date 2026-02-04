@@ -334,42 +334,91 @@ export class VectorStore {
     }
 
     /**
-     * Simple keyword search fallback
+     * BM25 keyword search for better relevance ranking
+     * BM25 parameters: k1=1.5, b=0.75 (standard defaults)
      */
     private keywordSearch(query: string, maxResults: number): VectorSearchResult[] {
-        const terms = query.toLowerCase().split(/\s+/).filter(t => t.length > 2);
+        const terms = this.tokenize(query);
         if (terms.length === 0) return [];
 
-        const scored: Array<VectorSearchResult & { keywordScore: number }> = [];
+        const chunks = Array.from(this.chunks.values());
+        if (chunks.length === 0) return [];
 
-        for (const chunk of this.chunks.values()) {
+        // BM25 parameters
+        const k1 = 1.5;
+        const b = 0.75;
+
+        // Calculate average document length
+        const avgDl = chunks.reduce((sum, c) => sum + c.content.length, 0) / chunks.length;
+
+        // Calculate IDF for each term
+        const idf = new Map<string, number>();
+        for (const term of terms) {
+            const docsWithTerm = chunks.filter(c =>
+                c.content.toLowerCase().includes(term)
+            ).length;
+            // IDF formula: log((N - n + 0.5) / (n + 0.5) + 1)
+            const idfScore = Math.log((chunks.length - docsWithTerm + 0.5) / (docsWithTerm + 0.5) + 1);
+            idf.set(term, Math.max(0, idfScore)); // Ensure non-negative
+        }
+
+        // Score each document
+        const scored: Array<VectorSearchResult & { bm25Score: number }> = [];
+
+        for (const chunk of chunks) {
             const contentLower = chunk.content.toLowerCase();
-            let matches = 0;
+            const dl = chunk.content.length;
+            let score = 0;
 
             for (const term of terms) {
-                if (contentLower.includes(term)) {
-                    matches++;
-                }
+                // Term frequency
+                const regex = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+                const matches = contentLower.match(regex);
+                const tf = matches ? matches.length : 0;
+
+                if (tf === 0) continue;
+
+                // BM25 score for this term
+                const termIdf = idf.get(term) || 0;
+                const numerator = tf * (k1 + 1);
+                const denominator = tf + k1 * (1 - b + b * (dl / avgDl));
+                score += termIdf * (numerator / denominator);
             }
 
-            if (matches > 0) {
-                const score = matches / terms.length;
+            if (score > 0) {
                 scored.push({
                     id: chunk.id,
                     path: chunk.path,
                     startLine: chunk.startLine,
                     endLine: chunk.endLine,
                     content: chunk.content.slice(0, 500),
-                    score,
+                    score: score,
                     source: chunk.source,
-                    keywordScore: score,
+                    bm25Score: score,
                 });
             }
+        }
+
+        // Normalize scores to 0-1 range
+        const maxScore = Math.max(...scored.map(s => s.score), 1);
+        for (const s of scored) {
+            s.score = s.score / maxScore;
         }
 
         return scored
             .sort((a, b) => b.score - a.score)
             .slice(0, maxResults);
+    }
+
+    /**
+     * Tokenize text into search terms
+     */
+    private tokenize(text: string): string[] {
+        return text
+            .toLowerCase()
+            .split(/[\s\-_.,;:!?()[\]{}'"<>]+/)
+            .filter(t => t.length > 2)
+            .filter((t, i, arr) => arr.indexOf(t) === i); // Dedupe
     }
 
     /**
