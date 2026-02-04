@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { 
-  Send, Bot, User, Trash2, Wrench, Sparkles, ChevronDown, ChevronUp, 
+import {
+  Send, Bot, User, Trash2, Wrench, Sparkles, ChevronDown, ChevronUp,
   Zap, Plus, Square, Loader2, MessageSquare
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -42,7 +42,7 @@ function SubagentCallItem({ subagent }: { subagent: { id: string; task: string; 
     failed: { color: 'text-red-400 border-red-500/30 bg-red-500/10', icon: <div className="w-2 h-2 rounded-full bg-red-400" /> },
     killed: { color: 'text-gray-400 border-gray-500/30 bg-gray-500/10', icon: <div className="w-2 h-2 rounded-full bg-gray-400" /> },
   };
-  
+
   const config = statusConfig[subagent.status as keyof typeof statusConfig] || statusConfig.running;
 
   return (
@@ -195,24 +195,28 @@ function MessageContent({ content }: { content: string }) {
 }
 
 // Subagent Panel Component
-function SubagentPanel({ 
-  isOpen, 
-  onClose 
-}: { 
-  isOpen: boolean; 
+function SubagentPanel({
+  isOpen,
+  onClose,
+  onViewSession,
+}: {
+  isOpen: boolean;
   onClose: () => void;
+  onViewSession?: (sessionKey: string) => void;
 }) {
-  const { data: subagents, isLoading } = useSubagents();
+  const { data: subagents, isLoading, refetch } = useSubagents();
   const spawnSubagent = useSpawnSubagent();
   const killSubagent = useKillSubagent();
   const [newTask, setNewTask] = useState('');
   const [showSpawnModal, setShowSpawnModal] = useState(false);
+  const [selectedSubagent, setSelectedSubagent] = useState<Subagent | null>(null);
 
   const handleSpawn = async () => {
     if (!newTask.trim()) return;
     await spawnSubagent.mutateAsync({ task: newTask, label: `Task: ${newTask.slice(0, 30)}...` });
     setNewTask('');
     setShowSpawnModal(false);
+    refetch();
   };
 
   if (!isOpen) return null;
@@ -226,6 +230,9 @@ function SubagentPanel({
             <h3 className="font-medium text-white">Subagents</h3>
           </div>
           <div className="flex items-center gap-1">
+            <GlassButton variant="ghost" size="sm" onClick={() => refetch()}>
+              <Loader2 className="w-4 h-4" />
+            </GlassButton>
             <GlassButton variant="ghost" size="sm" onClick={() => setShowSpawnModal(true)}>
               <Plus className="w-4 h-4" />
             </GlassButton>
@@ -234,7 +241,7 @@ function SubagentPanel({
             </GlassButton>
           </div>
         </div>
-        
+
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
           {isLoading ? (
             <div className="text-center py-8 text-gray-500">
@@ -251,9 +258,10 @@ function SubagentPanel({
             </div>
           ) : (
             subagents?.map((subagent: Subagent) => (
-              <div 
-                key={subagent.id} 
-                className="p-3 rounded-xl bg-white/5 border border-white/10 hover:border-white/20 transition-colors"
+              <div
+                key={subagent.id}
+                className="p-3 rounded-xl bg-white/5 border border-white/10 hover:border-amber-500/30 transition-colors cursor-pointer"
+                onClick={() => setSelectedSubagent(subagent)}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
@@ -263,22 +271,25 @@ function SubagentPanel({
                     </p>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Badge 
+                    <Badge
                       variant={
-                        subagent.status === 'completed' ? 'success' : 
-                        subagent.status === 'failed' ? 'error' : 
-                        subagent.status === 'killed' ? 'default' : 'default'
-                      } 
+                        subagent.status === 'completed' ? 'success' :
+                          subagent.status === 'failed' ? 'error' :
+                            subagent.status === 'killed' ? 'default' : 'default'
+                      }
                       size="sm"
                     >
                       {subagent.status}
                     </Badge>
                     {subagent.status === 'running' && (
-                      <GlassButton 
-                        variant="ghost" 
-                        size="sm" 
+                      <GlassButton
+                        variant="ghost"
+                        size="sm"
                         className="p-1"
-                        onClick={() => killSubagent.mutateAsync(subagent.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          killSubagent.mutateAsync(subagent.id).then(() => refetch());
+                        }}
                       >
                         <Square className="w-3 h-3 text-red-400" />
                       </GlassButton>
@@ -312,8 +323,8 @@ function SubagentPanel({
             <GlassButton variant="ghost" onClick={() => setShowSpawnModal(false)}>
               Cancel
             </GlassButton>
-            <GlassButton 
-              variant="primary" 
+            <GlassButton
+              variant="primary"
               onClick={handleSpawn}
               disabled={!newTask.trim() || spawnSubagent.isPending}
             >
@@ -322,6 +333,111 @@ function SubagentPanel({
             </GlassButton>
           </div>
         </div>
+      </Modal>
+
+      {/* Subagent Detail Modal */}
+      <Modal
+        isOpen={!!selectedSubagent}
+        onClose={() => setSelectedSubagent(null)}
+        title={selectedSubagent?.label || "Subagent Details"}
+        size="lg"
+      >
+        {selectedSubagent && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Status</p>
+                <Badge
+                  variant={
+                    selectedSubagent.status === 'completed' ? 'success' :
+                      selectedSubagent.status === 'failed' ? 'error' :
+                        selectedSubagent.status === 'running' ? 'default' : 'default'
+                  }
+                >
+                  {selectedSubagent.status}
+                </Badge>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Created</p>
+                <p className="text-sm text-white">{new Date(selectedSubagent.createdAt).toLocaleString()}</p>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs text-gray-500 mb-1">Task</p>
+              <div className="p-3 rounded-lg bg-white/5 border border-white/10">
+                <p className="text-sm text-gray-300 whitespace-pre-wrap">{selectedSubagent.task}</p>
+              </div>
+            </div>
+
+            {/* Result display for completed/failed subagents */}
+            {selectedSubagent.result && (
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Result</p>
+                <div className={`p-3 rounded-lg border ${selectedSubagent.status === 'completed'
+                  ? 'bg-emerald-500/10 border-emerald-500/30'
+                  : 'bg-red-500/10 border-red-500/30'
+                  }`}>
+                  <pre className="text-sm text-gray-300 whitespace-pre-wrap overflow-x-auto max-h-48 overflow-y-auto">
+                    {typeof selectedSubagent.result === 'string'
+                      ? selectedSubagent.result
+                      : JSON.stringify(selectedSubagent.result, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <p className="text-xs text-gray-500 mb-1">Session Key</p>
+              <code className="text-xs text-amber-400 bg-black/30 px-2 py-1 rounded">
+                {selectedSubagent.sessionKey}
+              </code>
+            </div>
+
+            <div>
+              <p className="text-xs text-gray-500 mb-1">ID</p>
+              <code className="text-xs text-gray-400 bg-black/30 px-2 py-1 rounded">
+                {selectedSubagent.id}
+              </code>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4 border-t border-white/10">
+              {/* View Session button */}
+              {onViewSession && (
+                <button
+                  className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/30 transition-all"
+                  onClick={() => {
+                    onViewSession(selectedSubagent.sessionKey);
+                    setSelectedSubagent(null);
+                  }}
+                >
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  View Session
+                </button>
+              )}
+              {selectedSubagent.status === 'running' && (
+                <button
+                  className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/30 transition-all disabled:opacity-50"
+                  onClick={async () => {
+                    await killSubagent.mutateAsync(selectedSubagent.id);
+                    setSelectedSubagent(null);
+                    refetch();
+                  }}
+                  disabled={killSubagent.isPending}
+                >
+                  {killSubagent.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Square className="w-4 h-4 mr-2" />}
+                  Kill
+                </button>
+              )}
+              <button
+                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all"
+                onClick={() => setSelectedSubagent(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </>
   );
@@ -405,11 +521,10 @@ function SessionsPanel({
             sessions?.map((session) => (
               <div
                 key={session.id}
-                className={`p-3 rounded-xl border transition-colors cursor-pointer ${
-                  currentSessionId === session.id
-                    ? 'bg-indigo-500/20 border-indigo-500/50'
-                    : 'bg-white/5 border-white/10 hover:border-white/20'
-                }`}
+                className={`p-3 rounded-xl border transition-colors cursor-pointer ${currentSessionId === session.id
+                  ? 'bg-indigo-500/20 border-indigo-500/50'
+                  : 'bg-white/5 border-white/10 hover:border-white/20'
+                  }`}
                 onClick={() => handleLoadSession(session.id)}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -493,6 +608,7 @@ export function Chat() {
   const { data: agents = [] } = useAgents();
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
   const { messages, isLoading, sendMessage, clearChat, loadSession, sessionId } = useChat(selectedAgentId);
+  const loadSessionMutation = useLoadSession();
   const [input, setInput] = useState('');
   const [showSubagentPanel, setShowSubagentPanel] = useState(false);
   const [showSessionsPanel, setShowSessionsPanel] = useState(false);
@@ -538,7 +654,7 @@ export function Chat() {
               </span>
             </div>
           )}
-          
+
           <select
             value={selectedAgentId || ''}
             onChange={(e) => setSelectedAgentId(e.target.value || undefined)}
@@ -551,15 +667,15 @@ export function Chat() {
               </option>
             ))}
           </select>
-          <GlassButton 
-            variant="ghost" 
+          <GlassButton
+            variant="ghost"
             onClick={() => setShowSessionsPanel(!showSessionsPanel)}
             title="Manage Sessions"
           >
             <MessageSquare className={cn("w-4 h-4", showSessionsPanel && "text-indigo-400")} />
           </GlassButton>
-          <GlassButton 
-            variant="ghost" 
+          <GlassButton
+            variant="ghost"
             onClick={() => setShowSubagentPanel(!showSubagentPanel)}
             title="Manage Subagents"
           >
@@ -583,71 +699,70 @@ export function Chat() {
                   Start a conversation with your agent
                 </p>
                 <p className="text-sm text-gray-500 mt-2">
-                  {selectedAgentId 
+                  {selectedAgentId
                     ? `Chatting with: ${agents.find(a => a.id === selectedAgentId)?.name || 'Agent'}`
                     : 'Using default agent'}
                 </p>
               </GlassCard>
             ) : (
-              typedMessages.map((message, index) => (
-                <div
-                  key={index}
-                  className={`flex gap-4 ${
-                    message.role === 'user' ? 'flex-row-reverse' : ''
-                  }`}
-                >
+              typedMessages
+                .filter((message) => message.role !== 'system') // Hide system prompts
+                .map((message, index) => (
                   <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      message.role === 'user'
+                    key={index}
+                    className={`flex gap-4 ${message.role === 'user' ? 'flex-row-reverse' : ''
+                      }`}
+                  >
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${message.role === 'user'
                         ? 'bg-indigo-500/20'
                         : 'bg-emerald-500/20'
-                    }`}
-                  >
-                    {message.role === 'user' ? (
-                      <User className="w-4 h-4 text-indigo-400" />
-                    ) : (
-                      <Bot className="w-4 h-4 text-emerald-400" />
-                    )}
-                  </div>
-                  <div
-                    className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-                      message.role === 'user'
+                        }`}
+                    >
+                      {message.role === 'user' ? (
+                        <User className="w-4 h-4 text-indigo-400" />
+                      ) : (
+                        <Bot className="w-4 h-4 text-emerald-400" />
+                      )}
+                    </div>
+                    <div
+                      className={`max-w-[80%] rounded-2xl px-4 py-3 ${message.role === 'user'
                         ? 'bg-indigo-500/20 text-indigo-100'
                         : 'glass'
-                    }`}
-                  >
-                    {/* Thinking block */}
-                    {message.thinking && <ThinkingBlock thinking={message.thinking} />}
-                    
-                    {/* Subagent calls */}
-                    {message.subagent_calls && message.subagent_calls.length > 0 && (
-                      <div className="space-y-2 mb-3">
-                        {message.subagent_calls.map((subagent) => (
-                          <SubagentCallItem key={subagent.id} subagent={subagent} />
-                        ))}
-                      </div>
-                    )}
-                    
-                    {/* Tool calls */}
-                    {message.tool_calls && message.tool_calls.length > 0 && (
-                      <div className="space-y-2 mb-3">
-                        {message.tool_calls.map((tool) => (
-                          <ToolCallItem key={tool.id} tool={tool} />
-                        ))}
-                      </div>
-                    )}
-                    
-                    {/* Message content */}
-                    <MessageContent content={message.content} />
-                    
-                    {message.timestamp && (
-                      <p className="text-xs text-gray-500 mt-2">
-                        {formatRelativeTime(message.timestamp)}
-                      </p>
-                    )}
+                        }`}
+                    >
+                      {/* Thinking block */}
+                      {message.thinking && <ThinkingBlock thinking={message.thinking} />}
+
+                      {/* Subagent calls */}
+                      {message.subagent_calls && message.subagent_calls.length > 0 && (
+                        <div className="space-y-2 mb-3">
+                          {message.subagent_calls.map((subagent) => (
+                            <SubagentCallItem key={subagent.id} subagent={subagent} />
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Tool calls */}
+                      {message.tool_calls && message.tool_calls.length > 0 && (
+                        <div className="space-y-2 mb-3">
+                          {message.tool_calls.map((tool) => (
+                            <ToolCallItem key={tool.id} tool={tool} />
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Message content */}
+                      <MessageContent content={message.content} />
+
+                      {message.timestamp && (
+                        <p className="text-xs text-gray-500 mt-2">
+                          {formatRelativeTime(message.timestamp)}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))
+                ))
             )}
             {isLoading && (
               <div className="flex gap-4">
@@ -704,9 +819,21 @@ export function Chat() {
 
         {/* Subagent Panel */}
         {showSubagentPanel && (
-          <SubagentPanel 
-            isOpen={showSubagentPanel} 
-            onClose={() => setShowSubagentPanel(false)} 
+          <SubagentPanel
+            isOpen={showSubagentPanel}
+            onClose={() => setShowSubagentPanel(false)}
+            onViewSession={async (sessionKey) => {
+              // Load the subagent's session into the chat view
+              try {
+                const result = await loadSessionMutation.mutateAsync(sessionKey);
+                if (result?.messagesList) {
+                  loadSession(sessionKey, result.messagesList as ChatMessage[]);
+                  setShowSubagentPanel(false);
+                }
+              } catch (error) {
+                console.error('Failed to load subagent session:', error);
+              }
+            }}
           />
         )}
       </div>

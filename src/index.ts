@@ -226,6 +226,30 @@ console.log(`
 // Seed default providers
 providerManager.seedDefaults();
 
+// Subscribe to subagent lifecycle events for announcements (OpenClaw parity)
+import { onSubagentLifecycle } from "./core/subagent-registry";
+import { sendToSession } from "./api/chat";
+import type { ChatMessage } from "./api/chat";
+
+onSubagentLifecycle((event) => {
+  if (event.type === "announce" && event.data?.message) {
+    const sessionKey = event.data.requesterSessionKey as string;
+    if (sessionKey) {
+      // Inject announcement into requester's session
+      const announcement: ChatMessage = {
+        role: "assistant",
+        content: event.data.message as string,
+        timestamp: new Date().toISOString(),
+      };
+      const injected = sendToSession(sessionKey, announcement);
+      if (injected) {
+        console.log(`[Subagent] Announced to requester session ${sessionKey.slice(0, 20)}...`);
+      }
+    }
+  }
+});
+console.log("[Subagent] Lifecycle listener registered");
+
 // Set up Telegram message handler to route to chat
 telegramBot.setMessageHandler(async (message, chatId, userId, channelId, fileInfo) => {
   try {

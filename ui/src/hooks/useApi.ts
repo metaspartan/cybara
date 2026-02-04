@@ -626,6 +626,8 @@ export interface Subagent {
   label: string;
   status: 'running' | 'completed' | 'failed' | 'killed';
   createdAt: string;
+  task: string;
+  sessionKey: string;
   result?: unknown;
 }
 

@@ -15,7 +15,7 @@ import {
   getRateLimitStatus,
   toolHandlers,
 } from "../core/tools/index";
-import { executeTool, hasTool } from "../core/tools/handlers/index";
+import { executeTool, hasTool, getSubagentSession } from "../core/tools/handlers/index";
 import { logSessionMessage, logAgentActivity } from "../core/logging";
 import { randomUUID } from "crypto";
 import {
@@ -696,6 +696,24 @@ export async function getSession(sessionId: string) {
   const session = chatSessions.get(sessionId);
   if (session) return session;
 
+  // Check subagent sessions (stored in channel.ts)
+  const subagentSession = getSubagentSession(sessionId);
+  if (subagentSession) {
+    return {
+      id: subagentSession.id,
+      agentId: 'subagent',
+      messages: subagentSession.messages.map(m => ({
+        role: m.role as ChatMessage['role'],
+        content: m.content,
+        timestamp: m.timestamp,
+      })),
+      createdAt: subagentSession.createdAt,
+      isSubagent: true,
+      status: subagentSession.status,
+      result: subagentSession.result,
+    };
+  }
+
   // Try to load from persistence
   const persisted = await loadPersistedSession(sessionId);
   if (persisted) {
@@ -764,4 +782,18 @@ export async function deleteSession(sessionId: string): Promise<boolean> {
 // Get rate limit status for client
 export function getChatRateLimitStatus() {
   return getRateLimitStatus("chat");
+}
+
+// Inject a message into a session (used for subagent announcements)
+export function sendToSession(sessionKey: string, message: ChatMessage): boolean {
+  const session = chatSessions.get(sessionKey);
+  if (session) {
+    session.messages.push(message);
+    // Log for visibility
+    console.log(`[Chat] Injected message into session ${sessionKey.slice(0, 20)}...`);
+    return true;
+  }
+  // Session not in memory - could be inactive
+  console.log(`[Chat] Session ${sessionKey.slice(0, 20)}... not in memory, skipping announcement`);
+  return false;
 }

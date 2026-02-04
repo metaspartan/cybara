@@ -29,6 +29,16 @@ interface SubagentSession {
 
 const sessions = new Map<string, SubagentSession>();
 
+// Export function to get subagent session by sessionKey
+export function getSubagentSession(sessionKey: string): SubagentSession | undefined {
+  return sessions.get(sessionKey);
+}
+
+// Export function to get all subagent sessions
+export function getAllSubagentSessions(): SubagentSession[] {
+  return Array.from(sessions.values());
+}
+
 // Subagent execution queue
 const subagentQueue: Array<{
   sessionId: string;
