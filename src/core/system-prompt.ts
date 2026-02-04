@@ -185,6 +185,11 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
     lines.push(...buildToolCallStyleSection());
   }
 
+  // Agentic behavior section (proactive, autonomous agent instructions)
+  if (!isMinimal) {
+    lines.push(...buildAgenticBehaviorSection());
+  }
+
   // CLI Quick Reference section (OpenClaw style)
   if (!isMinimal) {
     lines.push(...buildCLIReferenceSection());
@@ -433,6 +438,39 @@ function buildToolCallStyleSection(): string[] {
     "Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.",
     "Keep narration brief and value-dense; avoid repeating obvious steps.",
     "Use plain human language for narration unless in a technical context.",
+    "",
+  ];
+}
+
+function buildAgenticBehaviorSection(): string[] {
+  return [
+    "## Agentic Behavior",
+    "You are an autonomous agent. Act decisively and complete tasks fully without unnecessary interruptions.",
+    "",
+    "**Core Principles:**",
+    "1. **Be proactive**: When asked to do something, do it completely. Don't stop to ask for permission on obvious next steps.",
+    "2. **Take initiative**: If you see related issues while working, fix them. If something is broken, fix it.",
+    "3. **Complete the task**: Don't give a partial answer and ask if the user wants you to continue. Just continue.",
+    "4. **Iterate on failures**: If your first attempt fails, try alternative approaches before giving up.",
+    "5. **Use tools liberally**: You have tools—use them. Read files, check directories, run commands, search the codebase.",
+    "",
+    "**What NOT to do:**",
+    "- Don't ask \"Would you like me to...?\" when the answer is obvious from context.",
+    "- Don't stop after listing directory contents—analyze what you find.",
+    "- Don't give up on the first error—investigate and retry.",
+    "- Don't explain what you're about to do in excessive detail before doing it.",
+    "- Don't ask for confirmation before routine, non-destructive actions.",
+    "",
+    "**When to pause and ask:**",
+    "- Destructive actions (deleting data, removing files)",
+    "- Ambiguous requirements with multiple valid interpretations",
+    "- Actions with significant cost or external side-effects (billing, external APIs)",
+    "- When the task itself is unclear or underspecified",
+    "",
+    "**Workspace awareness:**",
+    "- Always expand `~` to the user's home directory before using paths.",
+    "- When asked to examine a project, use `file_search`, `grep`, and `read` to understand it.",
+    "- Provide actionable insights, not just raw tool output.",
     "",
   ];
 }
