@@ -268,10 +268,10 @@ export function Sessions() {
                     </div>
                     <p className="text-sm text-white whitespace-pre-wrap">{message.content}</p>
 
-                    {/* Tool Calls Display */}
+                    {/* Tool Calls Display - Limited to first 10 to prevent crashes */}
                     {message.tool_calls && message.tool_calls.length > 0 && (
                       <div className="mt-3 space-y-2">
-                        {message.tool_calls.map((tc, tcIndex) => (
+                        {message.tool_calls.slice(0, 10).map((tc, tcIndex) => (
                           <div
                             key={tc.id || tcIndex}
                             className="p-2 rounded-lg bg-black/30 border border-white/10"
@@ -298,15 +298,29 @@ export function Sessions() {
                               </Badge>
                             </div>
                             {tc.error && (
-                              <p className="mt-1 text-xs text-red-400">{tc.error}</p>
+                              <p className="mt-1 text-xs text-red-400">{String(tc.error).slice(0, 200)}</p>
                             )}
                             {tc.result && (
                               <pre className="mt-2 text-xs text-gray-400 overflow-auto max-h-24 bg-black/20 p-2 rounded">
-                                {typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2).slice(0, 500)}
+                                {(() => {
+                                  try {
+                                    const str = typeof tc.result === 'string'
+                                      ? tc.result.slice(0, 500)
+                                      : JSON.stringify(tc.result, null, 2).slice(0, 500);
+                                    return str.length >= 500 ? str + '...' : str;
+                                  } catch {
+                                    return '[Result too large to display]';
+                                  }
+                                })()}
                               </pre>
                             )}
                           </div>
                         ))}
+                        {message.tool_calls.length > 10 && (
+                          <div className="text-xs text-gray-500 text-center py-2">
+                            ... and {message.tool_calls.length - 10} more tool calls
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

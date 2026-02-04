@@ -7,6 +7,7 @@ import { taskScheduler } from "../core/scheduler";
 import { mcpManager } from "../core/mcp";
 import { mcpRegistry } from "../core/mcp-registry";
 import { getLSPManager, initLSPManager } from "../core/lsp";
+import * as subagentRegistry from "../core/subagent-registry";
 import { getSkills, getSkill, getSkillCategories, executeSkill, loadAllSkills, createEligibilityContext, getSkillsStatusReport, registryManager, clearSkillsCache } from "../core/skills/index";
 import {
   handleChat,
@@ -46,6 +47,58 @@ import {
 } from "./queries";
 
 const log = createLogger("API");
+
+// ============================================
+// HELPER: Sanitize session messages for UI
+// Truncates large tool results to prevent browser OOM crashes
+// ============================================
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function sanitizeSessionMessages(messages: any[]): any[] {
+  const MAX_RESULT_SIZE = 500;
+  const MAX_TOOL_CALLS = 20;
+
+  if (!Array.isArray(messages)) return messages;
+
+  return messages.map((msg) => {
+    if (!msg || !msg.tool_calls || !Array.isArray(msg.tool_calls) || msg.tool_calls.length === 0) {
+      return msg;
+    }
+
+    // Limit and truncate tool calls
+    const sanitizedToolCalls = msg.tool_calls.slice(0, MAX_TOOL_CALLS).map((tc: Record<string, unknown>) => {
+      const sanitized = { ...tc };
+
+      // Truncate result
+      if (tc.result !== undefined) {
+        try {
+          const resultStr = typeof tc.result === "string"
+            ? tc.result
+            : JSON.stringify(tc.result);
+          sanitized.result = resultStr.length > MAX_RESULT_SIZE
+            ? resultStr.slice(0, MAX_RESULT_SIZE) + "... [truncated]"
+            : tc.result;
+        } catch {
+          sanitized.result = "[Result too large to display]";
+        }
+      }
+
+      // Truncate error
+      if (tc.error && typeof tc.error === "string" && tc.error.length > 200) {
+        sanitized.error = tc.error.slice(0, 200) + "...";
+      }
+
+      return sanitized;
+    });
+
+    return {
+      ...msg,
+      tool_calls: sanitizedToolCalls,
+      _truncated: msg.tool_calls.length > MAX_TOOL_CALLS
+        ? `Showing ${MAX_TOOL_CALLS} of ${msg.tool_calls.length} tool calls`
+        : undefined,
+    };
+  });
+}
 
 // ============================================
 // REQUEST/RESPONSE LOGGING
@@ -581,8 +634,25 @@ const routes: Record<string, RouteHandler> = {
     return await handleChat(data);
   },
   "GET /api/chat/sessions": () => listSessions(),
-  "GET /api/chat/sessions/:id": (_body, params) => getSession(params!.id),
-  "GET /api/chat/sessions/:id/messages": (_body, params) => getSessionMessages(params!.id),
+  "GET /api/chat/sessions/:id": async (_body, params) => {
+    const session = await getSession(params!.id);
+    if (!session) return session;
+    // Sanitize messages to prevent browser OOM
+    const sessionObj = session as Record<string, unknown>;
+    return {
+      ...session,
+      messages: Array.isArray(session.messages)
+        ? sanitizeSessionMessages(session.messages)
+        : session.messages,
+      messagesList: Array.isArray(sessionObj.messagesList)
+        ? sanitizeSessionMessages(sessionObj.messagesList as unknown[])
+        : undefined,
+    };
+  },
+  "GET /api/chat/sessions/:id/messages": async (_body, params) => {
+    const messages = await getSessionMessages(params!.id);
+    return sanitizeSessionMessages(messages);
+  },
   "DELETE /api/chat/sessions/:id": (_body, params) => ({ success: deleteSession(params!.id) }),
 
   // ===== MEMORY MANAGEMENT =====
@@ -724,20 +794,69 @@ const routes: Record<string, RouteHandler> = {
     const session = await getSession(params!.sessionId);
     if (!session) return { error: "Session not found" };
     const messages = await getSessionMessages(params!.sessionId);
+
+    // Truncate large message content and sanitize tool calls to prevent browser OOM
+    const MAX_CONTENT_SIZE = 10000; // 10KB per message max
+    const sanitizedMessages = sanitizeSessionMessages(messages).map((m: any) => {
+      const truncatedContent = typeof m.content === 'string' && m.content.length > MAX_CONTENT_SIZE
+        ? m.content.slice(0, MAX_CONTENT_SIZE) + `\n\n... [content truncated, ${m.content.length - MAX_CONTENT_SIZE} chars omitted]`
+        : m.content;
+      return {
+        ...m,
+        content: truncatedContent,
+        timestamp: normalizeTimestamp(m.timestamp),
+      };
+    });
+
     return {
       id: session.id,
       agent_id: session.agentId,
       created_at: normalizeTimestamp(session.createdAt),
       updated_at: normalizeTimestamp(session.createdAt),
-      messagesList: messages.map((m: any) => ({
-        ...m,
-        timestamp: normalizeTimestamp(m.timestamp),
-      })),
+      messagesList: sanitizedMessages,
     };
   },
   "DELETE /api/sessions/:sessionId": async (_body, params) => {
     await deleteSession(params!.sessionId);
     return { success: true, message: "Session deleted" };
+  },
+
+  // ===== SUBAGENTS =====
+  "GET /api/subagents": () => {
+    const runs = subagentRegistry.listAllRuns();
+    return runs.map(run => ({
+      id: run.runId,
+      label: run.label || run.task.slice(0, 50),
+      status: run.outcome?.status === "ok" ? "completed"
+        : run.outcome?.status === "error" ? "failed"
+          : run.outcome?.status === "timeout" ? "timeout"
+            : run.startedAt ? "running" : "pending",
+      createdAt: new Date(run.createdAt).toISOString(),
+      task: run.task.slice(0, 200),
+      sessionKey: run.childSessionKey,
+    }));
+  },
+  "GET /api/subagents/:id": (_body, params) => {
+    const run = subagentRegistry.getRun(params!.id);
+    if (!run) return { error: "Subagent not found" };
+    return {
+      id: run.runId,
+      label: run.label || run.task.slice(0, 50),
+      status: run.outcome?.status === "ok" ? "completed"
+        : run.outcome?.status === "error" ? "failed"
+          : run.outcome?.status === "timeout" ? "timeout"
+            : run.startedAt ? "running" : "pending",
+      createdAt: new Date(run.createdAt).toISOString(),
+      startedAt: run.startedAt ? new Date(run.startedAt).toISOString() : undefined,
+      endedAt: run.endedAt ? new Date(run.endedAt).toISOString() : undefined,
+      task: run.task,
+      sessionKey: run.childSessionKey,
+      outcome: run.outcome,
+    };
+  },
+  "POST /api/subagents/:id/kill": (_body, params) => {
+    const released = subagentRegistry.releaseSubagentRun(params!.id);
+    return { success: released, message: released ? "Subagent killed" : "Subagent not found" };
   },
 
   // ===== SYSTEM PROMPT & IDENTITY =====
