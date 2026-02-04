@@ -8,11 +8,19 @@ import { trackMetric } from "../../metrics";
 // Default workspace is user's home directory (not projectRoot which fails in binaries)
 const workspace = homeDir;
 
+// Helper to expand tilde to actual home directory
+function expandTilde(path: string): string {
+  if (path.startsWith("~")) {
+    return path.replace(/^~/, homeDir);
+  }
+  return path;
+}
+
 
 export async function handleRead(
   args: Record<string, unknown>
 ): Promise<{ content: string; path: string }> {
-  const path = args.path as string;
+  const path = expandTilde(args.path as string);
   if (!existsSync(path)) {
     throw new Error(`File not found: ${path}`);
   }
@@ -43,7 +51,7 @@ export async function handleRead(
 export async function handleWrite(
   args: Record<string, unknown>
 ): Promise<{ success: boolean; path: string }> {
-  const path = args.path as string;
+  const path = expandTilde(args.path as string);
   const content = args.content as string;
 
   // Ensure parent directory exists
@@ -64,7 +72,7 @@ export async function handleWrite(
 export async function handleEdit(
   args: Record<string, unknown>
 ): Promise<{ success: boolean; path: string }> {
-  const path = args.path as string;
+  const path = expandTilde(args.path as string);
   const oldText = args.oldText as string;
   const newText = args.newText as string;
 

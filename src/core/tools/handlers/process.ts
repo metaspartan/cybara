@@ -2,12 +2,21 @@
 import { existsSync } from "fs";
 import { homeDir } from "../../paths";
 
+// Helper to expand tilde to actual home directory
+function expandTilde(path: string | undefined): string | undefined {
+  if (!path) return path;
+  if (path.startsWith("~")) {
+    return path.replace(/^~/, homeDir);
+  }
+  return path;
+}
+
 export async function handleExec(
   args: Record<string, unknown>
-): Promise<{ output: string; exitCode: number }> {
+): Promise<{ output: string; exitCode: number; cwd?: string }> {
   const command = args.command as string;
   const timeout = args.timeout as number | undefined;
-  const workdir = args.workdir as string | undefined;
+  let workdir = expandTilde(args.workdir as string | undefined);
   const env = args.env as Record<string, string> | undefined;
 
   if (!command) {
@@ -19,6 +28,7 @@ export async function handleExec(
     return {
       output: `Error: Working directory does not exist: ${workdir}`,
       exitCode: 1,
+      cwd: workdir,
     };
   }
 
@@ -56,7 +66,7 @@ export async function handleExecAsync(
   args: Record<string, unknown>
 ): Promise<{ pid: number; output: string; exitCode: number }> {
   const command = args.command as string;
-  const workdir = args.workdir as string | undefined;
+  const workdir = expandTilde(args.workdir as string | undefined);
 
   const proc = Bun.spawn(["sh", "-c", command], {
     cwd: workdir || homeDir,
