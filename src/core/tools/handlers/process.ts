@@ -1,5 +1,6 @@
 // Tool handlers - process execution
 import { existsSync } from "fs";
+import { homeDir } from "../../paths";
 
 export async function handleExec(
   args: Record<string, unknown>
@@ -29,7 +30,7 @@ export async function handleExec(
     }
 
     const result = Bun.spawnSync(["sh", "-c", command], {
-      cwd: workdir || process.cwd(),
+      cwd: workdir || homeDir,
       env: fullEnv,
       timeout: timeout ? timeout * 1000 : undefined,
     });
@@ -58,7 +59,7 @@ export async function handleExecAsync(
   const workdir = args.workdir as string | undefined;
 
   const proc = Bun.spawn(["sh", "-c", command], {
-    cwd: workdir || process.cwd(),
+    cwd: workdir || homeDir,
     env: { ...process.env },
     stdout: "pipe",
     stderr: "pipe",

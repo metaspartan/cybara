@@ -2,10 +2,11 @@
 import { readFileSync, existsSync, writeFileSync, mkdirSync, promises as fs } from "fs";
 import { join, dirname } from "path";
 import { glob } from "tinyglobby";
-import { projectRoot } from "../../paths";
+import { homeDir } from "../../paths";
 import { trackMetric } from "../../metrics";
 
-const workspace = projectRoot;
+// Default workspace is user's home directory (not projectRoot which fails in binaries)
+const workspace = homeDir;
 
 
 export async function handleRead(
