@@ -37,4 +37,19 @@ export {
     getDurableMemorySummary,
     searchDurableMemory,
     getRecentMemoryContext,
+    isPrivateSessionContext,
 } from "./durable";
+
+export {
+    type HeartbeatState,
+    loadHeartbeatState,
+    saveHeartbeatState,
+    recordCheck,
+    getTimeSinceCheck,
+    needsCheck,
+    isQuietHours,
+    getDueChecks,
+    setQuietHours,
+    getHeartbeatSummary,
+    getHeartbeatStatePath,
+} from "./heartbeat-state";

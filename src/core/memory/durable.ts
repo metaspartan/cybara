@@ -151,12 +151,15 @@ export function searchDurableMemory(query: string): DurableMemoryEntry[] {
 /**
  * Get recent context for system prompt injection
  * Returns MEMORY.md content + last 1-2 days of daily logs
+ * 
+ * @param maxLines Maximum lines to return
+ * @param isPrivateSession If true, excludes MEMORY.md (for group chats/shared contexts)
  */
-export function getRecentMemoryContext(maxLines: number = 50): string {
+export function getRecentMemoryContext(maxLines: number = 50, isPrivateSession: boolean = false): string {
     const lines: string[] = [];
 
-    // Add durable memories first (always include)
-    if (existsSync(MEMORY_PATH)) {
+    // Add durable memories only in main sessions (not private/shared contexts)
+    if (!isPrivateSession && existsSync(MEMORY_PATH)) {
         const durableContent = readFileSync(MEMORY_PATH, "utf-8");
         const durableLines = durableContent.split("\n").slice(0, Math.floor(maxLines / 2));
         if (durableLines.length > 0) {
@@ -191,3 +194,23 @@ export function getRecentMemoryContext(maxLines: number = 50): string {
 
     return lines.join("\n");
 }
+
+/**
+ * Check if a session should be treated as private (no MEMORY.md access)
+ * Private sessions include group chats, Discord channels, shared contexts
+ */
+export function isPrivateSessionContext(channel?: string): boolean {
+    if (!channel) return false;
+
+    // Patterns that indicate shared/group contexts
+    const privatePatterns = [
+        /^discord:/i,      // Discord channels
+        /^slack:/i,        // Slack channels
+        /^group:/i,        // Generic group prefix
+        /^shared:/i,       // Shared context prefix
+        /^channel:/i,      // Channel prefix
+    ];
+
+    return privatePatterns.some(pattern => pattern.test(channel));
+}
+

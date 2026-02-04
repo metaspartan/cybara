@@ -342,11 +342,90 @@ export async function handleMemoryContext(
   args: Record<string, unknown>
 ): Promise<{ context: string; lines: number }> {
   const maxLines = (args.maxLines as number) || 50;
+  const isPrivate = (args.isPrivate as boolean) || false;
 
-  const context = getRecentMemoryContext(maxLines);
+  const context = getRecentMemoryContext(maxLines, isPrivate);
 
   return {
     context,
     lines: context.split("\n").length,
   };
+}
+
+/**
+ * Manage heartbeat state for periodic checks
+ * Tracks last check times for services like email, calendar, weather, mentions
+ */
+export async function handleHeartbeatState(
+  args: Record<string, unknown>
+): Promise<{
+  action: string;
+  state?: import("../../memory").HeartbeatState;
+  dueChecks?: string[];
+  summary?: string;
+  isQuiet?: boolean;
+}> {
+  const {
+    loadHeartbeatState,
+    recordCheck,
+    getDueChecks,
+    isQuietHours,
+    getHeartbeatSummary,
+    setQuietHours
+  } = await import("../../memory");
+
+  const action = (args.action as string) || "status";
+
+  switch (action) {
+    case "status": {
+      const state = loadHeartbeatState();
+      return {
+        action: "status",
+        state,
+        isQuiet: isQuietHours(),
+        summary: getHeartbeatSummary(),
+      };
+    }
+
+    case "record": {
+      const checkName = args.checkName as string;
+      if (!checkName) {
+        throw new Error("checkName is required for record action");
+      }
+      const state = recordCheck(checkName);
+      return { action: "record", state };
+    }
+
+    case "due": {
+      // Default check intervals in minutes
+      const intervals = (args.intervals as Record<string, number>) || {
+        email: 60,       // Check email every hour
+        calendar: 120,   // Check calendar every 2 hours
+        weather: 360,    // Check weather every 6 hours
+        mentions: 30,    // Check social mentions every 30 min
+      };
+      const dueChecks = getDueChecks(intervals);
+      return {
+        action: "due",
+        dueChecks,
+        isQuiet: isQuietHours(),
+      };
+    }
+
+    case "quiet": {
+      const start = args.start as number;
+      const end = args.end as number;
+      if (start !== undefined && end !== undefined) {
+        setQuietHours(start, end);
+      }
+      return {
+        action: "quiet",
+        isQuiet: isQuietHours(),
+        state: loadHeartbeatState(),
+      };
+    }
+
+    default:
+      throw new Error(`Unknown action: ${action}. Use: status, record, due, quiet`);
+  }
 }
