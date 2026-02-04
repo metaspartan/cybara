@@ -50,19 +50,61 @@
 - **Multi-registry support**: ClawdHub, skills.sh, CybaraHub
 - **Hot reloading**: File watcher for instant skill updates
 
-### 🔧 Tool System (30+ tools)
+### 🔧 Tool System (35+ tools)
 
 | Category | Tools |
 |----------|-------|
-| **File** | `read`, `write`, `edit`, `file_search`, `grep` |
+| **File** | `read`, `write`, `edit`, `file_search`, `grep`, `apply_patch` |
 | **Process** | `exec`, `process`, `git` |
 | **Browser** | `browser`, `web_fetch`, `web_search` |
-| **Memory** | `memory_search`, `memory_get`, `memory_save` |
+| **Memory** | `memory_search`, `memory_get`, `memory_save`, `memory_context` |
 | **Sessions** | `sessions_spawn`, `sessions_send`, `sessions_history`, `sessions_list`, `session_status` |
 | **Channel** | `message`, `telegram_media`, `canvas`, `nodes` |
 | **Media** | `image`, `tts` |
-| **Core** | `cron`, `gateway`, `agents_list` |
+| **Core** | `cron`, `gateway`, `agents_list`, `heartbeat_state` |
 | **Skills** | `summarization`, `video_frames`, `ocr`, `pdf`, `calc` |
+| **LSP** | `lsp_symbols`, `lsp_definitions`, `lsp_diagnostics`, `lsp_hover` |
+
+### 🧠 Memory System
+- **Vector Store** with SQLite-backed embeddings (OpenAI, Gemini, Ollama)
+- **BM25 hybrid search** combining keyword and semantic relevance
+- **Durable Memory** via MEMORY.md file with auto-summarization
+- **Heartbeat State** tracking for scheduled service checks
+- **Private Sessions** mode excluding memory from sub-agent contexts
+
+### 📚 LSP Code Intelligence
+Auto-installs language servers for enhanced code understanding:
+
+| Language | Server | Type |
+|----------|--------|------|
+| TypeScript/JavaScript | `typescript-language-server` | Bundled |
+| Python | `ruff-lsp` | Binary |
+| Go | `gopls` | Binary |
+| Rust | `rust-analyzer` | Binary |
+| Lua | `lua-language-server` | Binary |
+| JSON | `vscode-json-languageserver` | Bundled |
+| HTML/CSS | `vscode-html-languageserver` | Bundled |
+| C/C++ | `clangd` | Binary |
+| Java | `jdtls` | Binary |
+| Kotlin | `kotlin-language-server` | Binary |
+| Swift | `sourcekit-lsp` | System |
+| Ruby | `solargraph` | Gem |
+| PHP | `intelephense` | NPM |
+| Markdown | `marksman` | Binary |
+| Zig | `zls` | Binary |
+
+### 🔗 MCP Server Integration
+Model Context Protocol support for external tool servers:
+- **Auto-discovery** of MCP servers from config
+- **Dynamic tool registration** from connected servers
+- **Multi-server** concurrent connections
+- **Stdio & HTTP transports** supported
+
+### 🛡️ Channel Security
+- **DM Policies**: pairing, allowlist, open, disabled
+- **Secure Pairing Codes** for user verification
+- **Sender Allowlists** with SQLite persistence
+- **Rate Limiting** for pairing requests
 
 ### 🌐 Browser Automation
 - Playwright-based automation with full Chrome control
@@ -197,6 +239,28 @@ Place these in your workspace root for auto-loading:
 | GET | `/api/browser/status` | Browser session status |
 | GET | `/api/browser/profiles` | List browser profiles |
 | POST | `/api/browser/profiles` | Create profile |
+
+### Subagents
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/subagents/spawn` | Spawn new subagent with task |
+| GET | `/api/subagents` | List all subagent runs |
+| GET | `/api/subagents/:id` | Get subagent details |
+| POST | `/api/subagents/:id/kill` | Terminate subagent |
+
+### LSP
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/lsp/status` | LSP server installation status |
+| POST | `/api/lsp/install/:language` | Install language server |
+| POST | `/api/lsp/uninstall/:language` | Uninstall language server |
+
+### MCP
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/mcp/servers` | List configured MCP servers |
+| POST | `/api/mcp/servers` | Add MCP server |
+| GET | `/api/mcp/tools` | List tools from all MCP servers |
 
 ## 📁 Project Structure
 

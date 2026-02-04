@@ -89,19 +89,58 @@ export async function handleEdit(
 
 export async function handleFileSearch(
   args: Record<string, unknown>
-): Promise<{ files: string[]; pattern: string }> {
+): Promise<{ files: string[]; pattern: string; cwd: string; error?: string }> {
   const pattern = args.pattern as string;
-  const cwd = args.cwd as string | undefined;
+  let cwd = args.cwd as string | undefined;
 
-  // Simple glob implementation
+  // Expand tilde to home directory
+  if (cwd && cwd.startsWith("~")) {
+    cwd = cwd.replace(/^~/, homeDir);
+  }
+
+  // Use provided cwd or require it for safety (avoid scanning entire home)
   const searchDir = cwd || workspace;
-  const files = await globFiles(searchDir, pattern);
 
-  // Track file search
-  trackMetric("file_operation", "search", 1, { pattern, resultCount: files.length });
-  trackMetric("tool_call", "file_search", 1, { pattern, resultCount: files.length });
+  // Validate directory exists
+  if (!existsSync(searchDir)) {
+    return {
+      files: [],
+      pattern,
+      cwd: searchDir,
+      error: `Directory does not exist: ${searchDir}`
+    };
+  }
 
-  return { files, pattern };
+  try {
+    // Use glob with reasonable limits
+    const files = await glob(pattern, {
+      cwd: searchDir,
+      ignore: ["**/node_modules/**", "**/.git/**", "**/dist/**", "**/build/**"],
+      onlyFiles: true,
+    });
+
+    // Limit results to prevent OOM
+    const MAX_RESULTS = 1000;
+    const limitedFiles = files.slice(0, MAX_RESULTS);
+
+    // Track file search
+    trackMetric("file_operation", "search", 1, { pattern, resultCount: limitedFiles.length });
+    trackMetric("tool_call", "file_search", 1, { pattern, resultCount: limitedFiles.length });
+
+    return {
+      files: limitedFiles,
+      pattern,
+      cwd: searchDir,
+      ...(files.length > MAX_RESULTS ? { error: `Results limited to ${MAX_RESULTS} (found ${files.length} total)` } : {})
+    };
+  } catch (err) {
+    return {
+      files: [],
+      pattern,
+      cwd: searchDir,
+      error: `Glob search failed: ${(err as Error).message}`
+    };
+  }
 }
 
 export async function handleGrep(args: Record<string, unknown>): Promise<{

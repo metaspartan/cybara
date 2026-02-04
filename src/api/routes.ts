@@ -19,6 +19,7 @@ import {
 } from "../api/chat";
 import { getToolSchemasForLLM, getRateLimitStatus, getCircuitState } from "../core/tools/index";
 import { executeTool, hasTool } from "../core/tools/handlers/index";
+import { handleSessionsSpawn } from "../core/tools/handlers/channel";
 import {
   handleMemoryList,
   handleMemorySearch,
@@ -822,6 +823,29 @@ const routes: Record<string, RouteHandler> = {
   },
 
   // ===== SUBAGENTS =====
+  "POST /api/subagents/spawn": async (body) => {
+    const data = body as { task: string; model?: string; timeout?: number; label?: string; agentId?: string };
+    if (!data.task) {
+      return { error: "task is required", success: false };
+    }
+
+    const result = await handleSessionsSpawn({
+      task: data.task,
+      model: data.model,
+      timeoutSeconds: data.timeout,
+      label: data.label,
+      agentId: data.agentId,
+      _requesterSessionKey: "main", // API spawns are from main
+    });
+
+    return {
+      success: result.status === "accepted",
+      subagentId: result.runId,
+      sessionKey: result.childSessionKey,
+      status: result.status,
+      warning: result.warning,
+    };
+  },
   "GET /api/subagents": () => {
     const runs = subagentRegistry.listAllRuns();
     return runs.map(run => ({
