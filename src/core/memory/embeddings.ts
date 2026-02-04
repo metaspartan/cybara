@@ -1,5 +1,5 @@
 // Embedding provider abstraction for semantic memory search
-// Supports OpenAI, Ollama, and fallback to keyword search
+// Supports OpenAI, Gemini, Ollama, and fallback to keyword search
 
 export interface EmbeddingProvider {
     id: string;
@@ -11,7 +11,7 @@ export interface EmbeddingProvider {
 
 export interface EmbeddingProviderResult {
     provider: EmbeddingProvider;
-    source: "openai" | "ollama" | "none";
+    source: "openai" | "gemini" | "ollama" | "none";
     fallbackReason?: string;
 }
 
@@ -229,6 +229,75 @@ function createNullProvider(): EmbeddingProvider {
     };
 }
 
+// Gemini Embeddings
+const GEMINI_EMBEDDING_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent";
+const GEMINI_EMBEDDING_MODEL = "text-embedding-004";
+const GEMINI_EMBEDDING_DIMENSIONS = 768;
+
+async function createGeminiEmbedding(text: string, apiKey: string): Promise<number[]> {
+    const response = await fetch(`${GEMINI_EMBEDDING_ENDPOINT}?key=${apiKey}`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            model: `models/${GEMINI_EMBEDDING_MODEL}`,
+            content: {
+                parts: [{ text: text.trim().slice(0, 10000) }],
+            },
+        }),
+    });
+
+    if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Gemini embedding error: ${response.status} ${error}`);
+    }
+
+    const data = await response.json() as {
+        embedding?: { values?: number[] };
+    };
+
+    const embedding = data.embedding?.values;
+    if (!embedding || !Array.isArray(embedding)) {
+        throw new Error("Invalid Gemini embedding response");
+    }
+
+    return embedding;
+}
+
+function createGeminiProvider(apiKey: string): EmbeddingProvider {
+    return {
+        id: "gemini",
+        model: GEMINI_EMBEDDING_MODEL,
+        dimensions: GEMINI_EMBEDDING_DIMENSIONS,
+        embedQuery: async (text: string) => {
+            const cacheKey = getCacheKey("gemini", GEMINI_EMBEDDING_MODEL, text);
+            const cached = getFromCache(cacheKey);
+            if (cached) return cached;
+
+            const embedding = await createGeminiEmbedding(text, apiKey);
+            setCache(cacheKey, embedding);
+            return embedding;
+        },
+        embedBatch: async (texts: string[]) => {
+            // Gemini doesn't have batch API, process sequentially
+            const results: number[][] = [];
+            for (const text of texts) {
+                const cacheKey = getCacheKey("gemini", GEMINI_EMBEDDING_MODEL, text);
+                const cached = getFromCache(cacheKey);
+                if (cached) {
+                    results.push(cached);
+                } else {
+                    const embedding = await createGeminiEmbedding(text, apiKey);
+                    setCache(cacheKey, embedding);
+                    results.push(embedding);
+                }
+            }
+            return results;
+        },
+    };
+}
+
 // Check if Ollama is available
 async function isOllamaAvailable(): Promise<boolean> {
     try {
@@ -248,7 +317,7 @@ async function isOllamaAvailable(): Promise<boolean> {
 
 /**
  * Create an embedding provider with automatic fallback.
- * Priority: OpenAI > Ollama > None
+ * Priority: OpenAI > Gemini > Ollama > None
  */
 export async function createEmbeddingProvider(): Promise<EmbeddingProviderResult> {
     // Try OpenAI first
@@ -264,6 +333,22 @@ export async function createEmbeddingProvider(): Promise<EmbeddingProviderResult
         }
     }
 
+    // Try Gemini second
+    const geminiKey = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim();
+    if (geminiKey) {
+        try {
+            const provider = createGeminiProvider(geminiKey);
+            await provider.embedQuery("test");
+            return {
+                provider,
+                source: "gemini",
+                fallbackReason: openaiKey ? "OpenAI failed" : "No OpenAI API key",
+            };
+        } catch (error) {
+            console.warn("[Embeddings] Gemini failed:", (error as Error).message);
+        }
+    }
+
     // Try Ollama
     if (await isOllamaAvailable()) {
         try {
@@ -272,7 +357,7 @@ export async function createEmbeddingProvider(): Promise<EmbeddingProviderResult
             return {
                 provider,
                 source: "ollama",
-                fallbackReason: openaiKey ? "OpenAI failed" : "No OpenAI API key",
+                fallbackReason: openaiKey || geminiKey ? "Cloud providers failed" : "No cloud API keys",
             };
         } catch (error) {
             console.warn("[Embeddings] Ollama failed:", (error as Error).message);
@@ -283,7 +368,7 @@ export async function createEmbeddingProvider(): Promise<EmbeddingProviderResult
     return {
         provider: createNullProvider(),
         source: "none",
-        fallbackReason: "No embedding provider available (set OPENAI_API_KEY or run Ollama)",
+        fallbackReason: "No embedding provider available (set OPENAI_API_KEY, GEMINI_API_KEY, or run Ollama)",
     };
 }
 

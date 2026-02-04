@@ -18,7 +18,7 @@ export { getToolSchemasForLLM, toolSchemas } from "../index";
 import { handleRead, handleWrite, handleEdit, handleFileSearch, handleGrep } from "./file";
 import { handleExec, handleProcess, handleGit } from "./process";
 import { handleBrowser, handleWebFetch } from "./browser";
-import { handleMemorySearch, handleMemoryGet, handleMemorySave } from "./memory";
+import { handleMemorySearch, handleMemoryGet, handleMemorySave, handleMemorySaveDurable, handleMemoryContext } from "./memory";
 import {
   handleSessionsSpawn,
   handleSessionsSend,
@@ -121,6 +121,8 @@ const toolHandlers: Record<string, (args: Record<string, unknown>) => Promise<un
   memory_search: handleMemorySearch,
   memory_get: handleMemoryGet,
   memory_save: handleMemorySave,
+  memory_save_durable: handleMemorySaveDurable,
+  memory_context: handleMemoryContext,
 
   // Session tools
   sessions_spawn: handleSessionsSpawn,

@@ -545,7 +545,37 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
     },
     permissions: ["memory:write"],
   },
-
+  memory_save_durable: {
+    name: "memory_save_durable",
+    description: "Save important persistent information to MEMORY.md (preferences, decisions, conventions, goals, critical facts). Unlike daily logs, durable memories persist across sessions.",
+    category: "memory",
+    input_schema: {
+      type: "object",
+      properties: {
+        content: { type: "string", description: "Content to save durably" },
+        category: {
+          type: "string",
+          enum: ["preference", "decision", "convention", "goal", "fact"],
+          description: "Type of durable memory",
+        },
+        source: { type: "string", description: "Source or context of this memory" },
+      },
+      required: ["content"],
+    },
+    permissions: ["memory:write"],
+  },
+  memory_context: {
+    name: "memory_context",
+    description: "Get recent memory context (MEMORY.md + last 1-2 days of daily logs) for prompt injection",
+    category: "memory",
+    input_schema: {
+      type: "object",
+      properties: {
+        maxLines: { type: "number", description: "Maximum lines to return (default 50)" },
+      },
+    },
+    permissions: ["memory:read"],
+  },
   // Session management
   sessions_spawn: {
     name: "sessions_spawn",

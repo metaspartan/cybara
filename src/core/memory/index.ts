@@ -27,3 +27,14 @@ export {
     DEFAULT_MEMORY_FLUSH_SOFT_TOKENS,
 } from "./flush";
 
+export {
+    type DurableMemoryEntry,
+    getDurableMemoryPath,
+    initDurableMemory,
+    readDurableMemory,
+    parseDurableMemory,
+    saveDurableMemory,
+    getDurableMemorySummary,
+    searchDurableMemory,
+    getRecentMemoryContext,
+} from "./durable";

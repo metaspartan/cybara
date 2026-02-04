@@ -8,7 +8,7 @@ import {
   statSync,
 } from "fs";
 import { join } from "path";
-import { getVectorStore } from "../../memory";
+import { getVectorStore, saveDurableMemory, getRecentMemoryContext, type DurableMemoryEntry } from "../../memory";
 import { memoryDir } from "../../paths";
 
 // Track if vector store has been indexed
@@ -298,4 +298,55 @@ export function initializeTodayMemory(): void {
     const today = new Date().toISOString().split("T")[0];
     writeFileSync(filePath, `# Memory - ${today}\n\n`);
   }
+}
+
+/**
+ * Save a durable memory to MEMORY.md
+ * For persistent preferences, decisions, conventions, goals, and critical facts
+ */
+export async function handleMemorySaveDurable(
+  args: Record<string, unknown>
+): Promise<{ success: boolean; path: string; category: string; indexed: boolean }> {
+  const content = args.content as string;
+  const category = (args.category as DurableMemoryEntry["category"]) || "fact";
+  const source = args.source as string | undefined;
+
+  if (!content) {
+    throw new Error("Content is required");
+  }
+
+  const validCategories = ["preference", "decision", "convention", "goal", "fact"];
+  if (!validCategories.includes(category)) {
+    throw new Error(`Invalid category. Must be one of: ${validCategories.join(", ")}`);
+  }
+
+  const result = await saveDurableMemory({
+    category,
+    content,
+    source,
+  });
+
+  return {
+    success: result.success,
+    path: result.path,
+    category,
+    indexed: result.indexed,
+  };
+}
+
+/**
+ * Get recent memory context for injection into prompts
+ * Returns MEMORY.md + last 1-2 days of daily logs
+ */
+export async function handleMemoryContext(
+  args: Record<string, unknown>
+): Promise<{ context: string; lines: number }> {
+  const maxLines = (args.maxLines as number) || 50;
+
+  const context = getRecentMemoryContext(maxLines);
+
+  return {
+    context,
+    lines: context.split("\n").length,
+  };
 }
