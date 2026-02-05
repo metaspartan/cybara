@@ -36,6 +36,7 @@ import { buildSystemPrompt } from "../core/system-prompt";
 import * as pwManager from "../core/browser/pw-manager";
 import { homedir } from "os";
 import { securityCheck, validateMessageSize } from "./security";
+import { browseDirectory, readFileContent, writeFileContent, createItem } from "./ide-api";
 import { createLogger } from "../core/logger";
 import {
   normalizeTimestamp,
@@ -485,6 +486,32 @@ const routes: Record<string, RouteHandler> = {
       return { files: [], total: 0 };
     }
   },
+  "GET /api/lsp/diagnostics/file": async (_body, params) => {
+    const filePath = params?.path as string | undefined;
+    if (!filePath) {
+      return { success: false, error: "Missing 'path' parameter", diagnostics: [] };
+    }
+    try {
+      const manager = getLSPManager(process.cwd());
+      const diagnostics = await manager.getDiagnostics(filePath);
+      return {
+        success: true,
+        path: filePath,
+        diagnostics: diagnostics.map((d: any) => ({
+          line: d.range?.start?.line ?? 0,
+          character: d.range?.start?.character ?? 0,
+          endLine: d.range?.end?.line ?? 0,
+          endCharacter: d.range?.end?.character ?? 0,
+          severity: d.severity === 1 ? "error" : d.severity === 2 ? "warning" : "info",
+          message: d.message,
+          source: d.source,
+          code: d.code,
+        })),
+      };
+    } catch (e) {
+      return { success: false, error: String(e), diagnostics: [] };
+    }
+  },
   "GET /api/lsp/install-status": async () => {
     try {
       const manager = getLSPManager(process.cwd());
@@ -526,6 +553,45 @@ const routes: Record<string, RouteHandler> = {
     } catch (e) {
       return { success: false, error: String(e) };
     }
+  },
+
+  // ===== IDE (File Browser) =====
+  "GET /api/ide/browse": async (_body, params) => {
+    const path = params?.path as string | undefined;
+    return await browseDirectory(path);
+  },
+
+  "GET /api/ide/read": async (_body, params) => {
+    const path = params?.path as string | undefined;
+    if (!path) {
+      return { success: false, error: "Missing 'path' parameter" };
+    }
+    return await readFileContent(path);
+  },
+
+  "POST /api/ide/write": async (body) => {
+    const { path, content } = body as { path?: string; content?: string };
+    if (!path) {
+      return { success: false, error: "Missing 'path' parameter" };
+    }
+    if (content === undefined) {
+      return { success: false, error: "Missing 'content' parameter" };
+    }
+    return await writeFileContent(path, content);
+  },
+
+  "POST /api/ide/create": async (body) => {
+    const { parentPath, name, type } = body as { parentPath?: string; name?: string; type?: "file" | "directory" };
+    if (!parentPath) {
+      return { success: false, error: "Missing 'parentPath' parameter" };
+    }
+    if (!name) {
+      return { success: false, error: "Missing 'name' parameter" };
+    }
+    if (!type || (type !== "file" && type !== "directory")) {
+      return { success: false, error: "Missing or invalid 'type' parameter (must be 'file' or 'directory')" };
+    }
+    return await createItem(parentPath, name, type);
   },
 
   "GET /api/channels": () => channelManager.list(),

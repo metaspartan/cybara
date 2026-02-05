@@ -14,6 +14,7 @@ import {
   Terminal,
   BarChart3,
   Code,
+  FolderOpen,
   Menu,
   X,
   ChevronDown,
@@ -109,6 +110,7 @@ const navCategories = [
     items: [
       { path: '/mcp', icon: Terminal, label: 'MCP Servers' },
       { path: '/lsp', icon: Code, label: 'LSP' },
+      { path: '/ide', icon: FolderOpen, label: 'IDE' },
       { path: '/skills', icon: LibraryBig, label: 'Skills' },
       { path: '/tools', icon: Wrench, label: 'Tools' },
     ],

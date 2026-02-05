@@ -16,6 +16,7 @@ import { Sessions } from '@/pages/Sessions';
 import { Metrics } from '@/pages/Metrics';
 import { MCPServers } from '@/pages/MCPServers';
 import { LSP } from '@/pages/LSP';
+import { IDE } from '@/pages/IDE';
 import { Setup } from '@/pages/Setup';
 import { useProviders, useAgents } from '@/hooks/useApi';
 import { Loader2 } from 'lucide-react';
@@ -71,6 +72,7 @@ function App() {
                   <Route path="/tasks" element={<Tasks />} />
                   <Route path="/skills" element={<Skills />} />
                   <Route path="/lsp" element={<LSP />} />
+                  <Route path="/ide" element={<IDE />} />
                   <Route path="/tools" element={<Tools />} />
                   <Route path="/memory" element={<Memory />} />
                   <Route path="/metrics" element={<Metrics />} />
