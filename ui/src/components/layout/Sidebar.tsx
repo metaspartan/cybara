@@ -269,7 +269,10 @@ export function Sidebar() {
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 overflow-y-auto p-2 space-y-1 pb-20">
+          <nav className={cn(
+            'flex-1 p-2 space-y-1 pb-20',
+            collapsed ? 'overflow-hidden' : 'overflow-y-auto'
+          )}>
             {navCategories.map((category) => (
               <div key={category.id}>
                 {category.label && !collapsed ? (
