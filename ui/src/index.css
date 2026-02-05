@@ -80,17 +80,24 @@ select,
 textarea,
 [tabindex] {
   outline: none !important;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Ensure focus-visible is also clean */
 a:focus,
 a:focus-visible,
+a:focus-within,
 button:focus,
 button:focus-visible,
+button:focus-within,
 [role="button"]:focus,
-[role="button"]:focus-visible {
+[role="button"]:focus-visible,
+[role="button"]:focus-within,
+*:focus,
+*:focus-visible {
   outline: none !important;
   box-shadow: none !important;
+  -webkit-focus-ring-color: transparent !important;
 }
 
 /* Prevent layout shifts from transforms */
