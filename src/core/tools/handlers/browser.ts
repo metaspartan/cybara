@@ -587,27 +587,28 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       // This ensures price/value data is available even when accessibility tree lacks detail
       console.log(`[Browser] Adding DOM text supplement for data extraction...`);
       try {
-        const domText = await getDomText(page, { format: "text", maxChars: 50000 });
+        const domText = await getDomText(page, { format: "text", maxChars: 80000 });
         if (domText.trim()) {
           // Parse the DOM text into lines, preserving structure
           const textLines = domText.split("\n")
             .map(l => l.trim())
             .filter(l => l.length > 0 && l.length < 500);
 
-          // Add DOM text as a separate section
+          // Add DOM text as a separate section - increased limit for data-rich pages
           if (textLines.length > 0) {
             snapshotLines.push("");
             snapshotLines.push("## Page Text Content");
             snapshotLines.push("");
-            snapshotLines.push(...textLines.slice(0, 300));
+            snapshotLines.push(...textLines.slice(0, 800)); // Increased from 300 to get more content
           }
         }
       } catch (domErr) {
         console.log(`[Browser] getDomText failed:`, domErr);
       }
 
-      // Build final snapshot with truncation
-      const maxChars = (args.maxChars as number) || 12000;
+      // Build final snapshot with generous limit for data extraction
+      // LLMs can handle 30K+ chars easily, don't over-truncate
+      const maxChars = (args.maxChars as number) || 30000;
       let snapshot = snapshotLines.join("\n");
       const truncated = snapshot.length > maxChars;
       if (truncated) {
