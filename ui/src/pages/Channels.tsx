@@ -274,15 +274,15 @@ export function Channels() {
           <div className="space-y-4">
             {filteredChannels?.map((channel) => (
               <Card key={channel.id} hover>
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-2xl">
+                <CardContent className="p-4 sm:p-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-xl sm:text-2xl flex-shrink-0">
                         {getChannelIcon(channel.type)}
                       </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-medium text-white">{channel.name}</h3>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-medium text-white truncate">{channel.name}</h3>
                           <Badge variant={channel.enabled ? 'success' : 'default'} size="sm">
                             {channel.enabled ? (
                               <><Power className="w-3 h-3 mr-1" /> Enabled</>
@@ -295,14 +295,15 @@ export function Channels() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
                       <Button
                         variant="ghost"
                         size="sm"
                         leftIcon={channel.enabled ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
                         onClick={() => handleToggle(channel)}
+                        className="text-xs sm:text-sm"
                       >
-                        {channel.enabled ? 'Disable' : 'Enable'}
+                        <span className="hidden sm:inline">{channel.enabled ? 'Disable' : 'Enable'}</span>
                       </Button>
                       <Button
                         variant="ghost"
@@ -310,32 +311,36 @@ export function Channels() {
                         leftIcon={<Send className="w-4 h-4" />}
                         isLoading={testingChannel?.id === channel.id}
                         onClick={() => handleTest(channel)}
+                        className="text-xs sm:text-sm"
                       >
-                        Test
+                        <span className="hidden sm:inline">Test</span>
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
                         leftIcon={<Shield className="w-4 h-4" />}
                         onClick={() => setSecurityChannel(channel)}
+                        className="text-xs sm:text-sm"
                       >
-                        Security
+                        <span className="hidden sm:inline">Security</span>
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
                         leftIcon={<Edit2 className="w-4 h-4" />}
                         onClick={() => setEditingChannel(channel)}
+                        className="text-xs sm:text-sm"
                       >
-                        Edit
+                        <span className="hidden sm:inline">Edit</span>
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
                         leftIcon={<Trash2 className="w-4 h-4" />}
                         onClick={() => setDeletingChannel(channel)}
+                        className="text-xs sm:text-sm"
                       >
-                        Delete
+                        <span className="hidden sm:inline">Delete</span>
                       </Button>
                     </div>
                   </div>

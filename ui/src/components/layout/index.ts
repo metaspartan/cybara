@@ -1,2 +1,2 @@
 export { PageLayout } from './PageLayout';
-export { Sidebar } from './Sidebar';
+export { Sidebar, SidebarProvider, useSidebar } from './Sidebar';

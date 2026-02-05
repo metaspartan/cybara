@@ -17,17 +17,17 @@ export function Providers() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
   const [deletingProvider, setDeletingProvider] = useState<Provider | null>(null);
-  
+
   const { data: providers, isLoading } = useProviders();
   const { data: availableProviders } = useAvailableProviders();
   const { addToast } = useUIStore();
-  
+
   const createProvider = useCreateProvider();
   const updateProvider = useUpdateProvider();
   const deleteProvider = useDeleteProvider();
   const discoverOllama = useDiscoverOllama();
 
-  const filteredProviders = providers?.filter(provider => 
+  const filteredProviders = providers?.filter(provider =>
     provider.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     provider.provider.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -95,12 +95,12 @@ export function Providers() {
   };
 
   return (
-    <PageLayout 
-      title="Providers" 
+    <PageLayout
+      title="Providers"
       subtitle="Manage AI model providers"
       actions={
         <div className="flex gap-2">
-          <Button 
+          <Button
             variant="secondary"
             leftIcon={<RefreshCw className="w-4 h-4" />}
             onClick={handleDiscoverOllama}
@@ -108,7 +108,7 @@ export function Providers() {
           >
             Discover Ollama
           </Button>
-          <Button 
+          <Button
             leftIcon={<Plus className="w-4 h-4" />}
             onClick={() => setIsCreateModalOpen(true)}
           >
@@ -155,15 +155,15 @@ export function Providers() {
           <div className="space-y-4">
             {filteredProviders?.map((provider) => (
               <Card key={provider.id} hover>
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
-                        <Cloud className="w-6 h-6 text-white" />
+                <CardContent className="p-4 sm:p-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
+                        <Cloud className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                       </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-medium text-white">{provider.name}</h3>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-medium text-white truncate">{provider.name}</h3>
                           {provider.is_default && (
                             <Badge variant="success" size="sm">
                               <Star className="w-3 h-3 mr-1" />
@@ -174,31 +174,34 @@ export function Providers() {
                         <p className="text-sm text-gray-400 capitalize">{provider.provider}</p>
                       </div>
                     </div>
-                    
-                    <div className="flex items-center gap-2">
+
+                    <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
                       <Button
                         variant="ghost"
                         size="sm"
                         leftIcon={<TestTube className="w-4 h-4" />}
                         onClick={() => handleTestConnection(provider)}
+                        className="text-xs sm:text-sm"
                       >
-                        Test
+                        <span className="hidden sm:inline">Test</span>
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
                         leftIcon={<Edit2 className="w-4 h-4" />}
                         onClick={() => setEditingProvider(provider)}
+                        className="text-xs sm:text-sm"
                       >
-                        Edit
+                        <span className="hidden sm:inline">Edit</span>
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
                         leftIcon={<Trash2 className="w-4 h-4" />}
                         onClick={() => setDeletingProvider(provider)}
+                        className="text-xs sm:text-sm"
                       >
-                        Delete
+                        <span className="hidden sm:inline">Delete</span>
                       </Button>
                     </div>
                   </div>
@@ -278,7 +281,7 @@ interface ProviderModalProps {
 
 function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availableProviders, isLoading, isEdit }: ProviderModalProps) {
   const [selectedProvider, setSelectedProvider] = useState(provider?.provider || '');
-  
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     onSubmit(new FormData(e.currentTarget));
@@ -300,7 +303,7 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
             required
           />
         )}
-        
+
         <Input
           name="name"
           label="Display Name"
@@ -308,7 +311,7 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
           defaultValue={provider?.name}
           required
         />
-        
+
         {selectedProviderInfo?.authType !== 'none' && (
           <>
             {selectedProviderInfo?.authType === 'bearer' ? (
@@ -330,7 +333,7 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
             )}
           </>
         )}
-        
+
         <label className="flex items-center gap-3 p-3 rounded-xl bg-white/5 cursor-pointer">
           <input
             type="checkbox"

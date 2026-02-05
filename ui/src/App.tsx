@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { Sidebar } from '@/components/layout';
+import { Sidebar, SidebarProvider, useSidebar } from '@/components/layout/Sidebar';
 import { ToastContainer } from '@/components/ui/Toast';
 import { Dashboard } from '@/pages/Dashboard';
 import { Agents } from '@/pages/Agents';
@@ -20,6 +20,7 @@ import { IDE } from '@/pages/IDE';
 import { Setup } from '@/pages/Setup';
 import { useProviders, useAgents } from '@/hooks/useApi';
 import { Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 // Redirect to setup if no providers/agents configured
 function SetupGuard({ children }: { children: React.ReactNode }) {
@@ -35,7 +36,7 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
   // Show loading indicator while checking setup status
   if (providersLoading || agentsLoading) {
     return (
-      <div className="flex-1 main-content flex items-center justify-center bg-[#0a0a0f]">
+      <div className="flex-1 flex items-center justify-center bg-[#0a0a0f]">
         <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
       </div>
     );
@@ -50,44 +51,69 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Main content wrapper that responds to sidebar state
+function MainContent({ children }: { children: React.ReactNode }) {
+  const { collapsed } = useSidebar();
+
+  return (
+    <div className={cn(
+      'flex-1 overflow-auto transition-all duration-300',
+      // Desktop: adjust margin based on sidebar width
+      collapsed ? 'md:ml-16' : 'md:ml-64',
+      // Mobile: no margin (sidebar overlays)
+      'ml-0'
+    )}>
+      {children}
+    </div>
+  );
+}
+
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/" element={<Dashboard />} />
+      <Route path="/agents" element={<Agents />} />
+      <Route path="/providers" element={<Providers />} />
+      <Route path="/mcp" element={<MCPServers />} />
+      <Route path="/channels" element={<Channels />} />
+      <Route path="/tasks" element={<Tasks />} />
+      <Route path="/skills" element={<Skills />} />
+      <Route path="/lsp" element={<LSP />} />
+      <Route path="/ide" element={<IDE />} />
+      <Route path="/tools" element={<Tools />} />
+      <Route path="/memory" element={<Memory />} />
+      <Route path="/metrics" element={<Metrics />} />
+      <Route path="/settings" element={<Settings />} />
+      <Route path="/chat" element={<Chat />} />
+      <Route path="/logs" element={<Logs />} />
+      <Route path="/sessions" element={<Sessions />} />
+    </Routes>
+  );
+}
+
 function App() {
   return (
-    <div className="flex min-h-screen bg-[#0a0a0f] overflow-hidden">
-      <Routes>
-        {/* Setup wizard - no sidebar */}
-        <Route path="/setup" element={<Setup />} />
+    <SidebarProvider>
+      <div className="flex min-h-screen bg-[#0a0a0f] overflow-hidden">
+        <Routes>
+          {/* Setup wizard - no sidebar */}
+          <Route path="/setup" element={<Setup />} />
 
-        {/* Main app with sidebar */}
-        <Route path="*" element={
-          <>
-            <Sidebar />
-            <SetupGuard>
-              <div className="flex-1 main-content ml-64 overflow-auto">
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/agents" element={<Agents />} />
-                  <Route path="/providers" element={<Providers />} />
-                  <Route path="/mcp" element={<MCPServers />} />
-                  <Route path="/channels" element={<Channels />} />
-                  <Route path="/tasks" element={<Tasks />} />
-                  <Route path="/skills" element={<Skills />} />
-                  <Route path="/lsp" element={<LSP />} />
-                  <Route path="/ide" element={<IDE />} />
-                  <Route path="/tools" element={<Tools />} />
-                  <Route path="/memory" element={<Memory />} />
-                  <Route path="/metrics" element={<Metrics />} />
-                  <Route path="/settings" element={<Settings />} />
-                  <Route path="/chat" element={<Chat />} />
-                  <Route path="/logs" element={<Logs />} />
-                  <Route path="/sessions" element={<Sessions />} />
-                </Routes>
-              </div>
-            </SetupGuard>
-          </>
-        } />
-      </Routes>
-      <ToastContainer />
-    </div>
+          {/* Main app with sidebar */}
+          <Route path="*" element={
+            <>
+              <Sidebar />
+              <SetupGuard>
+                <MainContent>
+                  <AppRoutes />
+                </MainContent>
+              </SetupGuard>
+            </>
+          } />
+        </Routes>
+        <ToastContainer />
+      </div>
+    </SidebarProvider>
   );
 }
 
