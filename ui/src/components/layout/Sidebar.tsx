@@ -212,7 +212,7 @@ export function Sidebar() {
       {/* Mobile Menu Button */}
       <button
         onClick={() => setMobileOpen(!mobileOpen)}
-        className="fixed top-4 right-4 z-50 p-2 rounded-lg bg-[#12121a] border border-white/10 text-white md:hidden !outline-none !ring-0 focus:!outline-none active:!outline-none"
+        className="fixed top-4 right-4 z-50 p-2 rounded-lg glass-button text-white md:hidden !outline-none !ring-0 focus:!outline-none active:!outline-none"
         aria-label="Toggle menu"
       >
         {mobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -221,14 +221,14 @@ export function Sidebar() {
       {/* Mobile Overlay */}
       {mobileOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-30 md:hidden"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 md:hidden animate-in fade-in"
           onClick={() => setMobileOpen(false)}
         />
       )}
 
       {/* Sidebar */}
       <aside className={cn(
-        'fixed left-0 top-0 h-full bg-[#12121a] border-r border-white/10 z-40 overflow-hidden transition-all duration-300',
+        'fixed left-0 top-0 h-full glass border-r border-white/5 z-40 overflow-hidden transition-all duration-300',
         collapsed ? 'w-16' : 'w-64',
         // Mobile: slide in from left
         'max-md:-translate-x-full max-md:w-64',
@@ -237,7 +237,7 @@ export function Sidebar() {
         <div className="h-full flex flex-col">
           {/* Logo Header */}
           <div className={cn(
-            'border-b border-white/10 flex items-center',
+            'border-b border-white/5 flex items-center',
             collapsed ? 'px-3 py-4 justify-center' : 'px-5 py-4 gap-3'
           )}>
             <div className="relative flex-shrink-0">
@@ -251,19 +251,18 @@ export function Sidebar() {
                   src="/cybara.png"
                   alt="Cybara"
                   className={cn(
-                    'w-full h-full object-cover transition-all duration-300',
-                    status === 'thinking' && 'animate-pulse'
+                    'w-full h-full object-cover transition-all duration-300'
                   )}
                 />
               </div>
               {status === 'thinking' && (
-                <div className="absolute -inset-1 rounded-xl bg-amber-400/20 animate-ping" />
+                <div className="absolute -inset-1 rounded-xl bg-amber-400/20" />
               )}
             </div>
             {!collapsed && (
               <div className="flex-1 min-w-0">
-                <h1 className="font-bold text-lg gradient-text">Cybara</h1>
-                <p className="text-[10px] text-gray-500 leading-tight">Agent Platform</p>
+                <h1 className="font-bold text-lg text-white">Cybara</h1>
+                <p className="text-[10px] text-gray-400 leading-tight">Agent Platform</p>
               </div>
             )}
           </div>
@@ -308,7 +307,7 @@ export function Sidebar() {
           </nav>
 
           {/* Footer */}
-          <div className="border-t border-white/10 bg-[#12121a] p-2">
+          <div className="border-t border-white/5 bg-black/20 p-2 backdrop-blur-md">
             {/* Settings */}
             <NavLink
               to="/settings"
