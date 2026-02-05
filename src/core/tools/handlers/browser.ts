@@ -1133,16 +1133,55 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
 
     case "scroll": {
       const selector = args.selector as string;
-      if (!selector) throw new Error("Selector required for scroll action");
+      const direction = (args.direction as string) || "down";
+      const amount = (args.amount as number) || 500;
 
-      const pageId = await getOrCreatePage(sessionId);
-      await pwManager.scrollIntoView(pageId, selector);
+      // Visual mode: use profile browser if available
+      const useHeadless = args.headless === true || args.headless === "true";
 
-      return {
-        success: true,
-        selector,
-        message: `Scrolled ${selector} into view`,
-      };
+      if (useHeadless) {
+        // Headless mode with Playwright
+        const pageId = await getOrCreatePage(sessionId);
+        if (selector) {
+          await pwManager.scrollIntoView(pageId, selector);
+          return {
+            success: true,
+            selector,
+            message: `Scrolled ${selector} into view`,
+          };
+        } else {
+          // Scroll page by amount
+          const scrollY = direction === "up" ? -amount : amount;
+          await pwManager.evaluate(pageId, `window.scrollBy(0, ${scrollY})`);
+          return {
+            success: true,
+            direction,
+            amount,
+            message: `Scrolled ${direction} by ${amount}px`,
+          };
+        }
+      }
+
+      // Visual mode: use profile browser (Puppeteer)
+      const page = await getVisualPage(sessionId);
+      if (selector) {
+        await page.evaluate(`document.querySelector('${selector.replace(/'/g, "\\'")}')?.scrollIntoView({ behavior: 'smooth' })`);
+        return {
+          success: true,
+          selector,
+          message: `Scrolled ${selector} into view`,
+        };
+      } else {
+        // Scroll page by amount
+        const scrollY = direction === "up" ? -amount : amount;
+        await page.evaluate(`window.scrollBy(0, ${scrollY})`);
+        return {
+          success: true,
+          direction,
+          amount,
+          message: `Scrolled ${direction} by ${amount}px`,
+        };
+      }
     }
 
     case "drag": {

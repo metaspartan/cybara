@@ -406,6 +406,39 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
       "If a task is more complex or takes longer, spawn a sub-agent. It will do the work for you and ping you when it's done.",
       ""
     );
+
+    // Execution guidance for task completion
+    lines.push(
+      "### Execution Style",
+      "- Complete tasks FULLY in one response - don't stop to ask if it's okay",
+      "- Chain tool calls: open → snapshot → extract data → respond with answer",
+      "- Only ask questions if the request is genuinely ambiguous",
+      ""
+    );
+
+    // Browser-specific guidance if browser tool is available
+    if (availableTools.has("browser")) {
+      lines.push(
+        "### Browser Tool (for web data)",
+        "Use browser for JavaScript-rendered or dynamic websites (React, Next.js, SPAs).",
+        "",
+        "**REQUIRED WORKFLOW for extracting data from websites:**",
+        "1. browser({action:'open', url:'...'}) - open the page",
+        "2. browser({action:'snapshot'}) - get page text with content",
+        "3. browser({action:'scroll'}) - ALWAYS SCROLL to get more content (most pages truncate at fold)",
+        "4. browser({action:'snapshot'}) - get updated content after scroll",
+        "5. Repeat steps 3-4 at least 2-3 times for feeds/lists to get 10+ items",
+        "6. EXTRACT the data from snapshots and RESPOND with organized results",
+        "",
+        "**YOU MUST:**",
+        "- SCROLL DOWN multiple times when gathering lists, papers, articles, or any feed data",
+        "- Actually READ the snapshot text and extract the specific data asked for",
+        "- Present the data in organized format (titles, dates, descriptions)",
+        "- Never just say 'I opened the page' - extract and present the ACTUAL content",
+        "- web_fetch only works on static HTML - USE BROWSER for modern sites",
+        ""
+      );
+    }
   }
 
   return lines;

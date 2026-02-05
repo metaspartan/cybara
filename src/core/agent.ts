@@ -838,7 +838,7 @@ class AgentManager {
     const durationMs = Math.round(performance.now() - startTime);
 
     const choice = data.choices?.[0];
-    const message = choice?.message;
+    let message = choice?.message;
 
     // Track token usage for OpenAI-compatible API with duration
     if (data.usage) {
@@ -858,33 +858,117 @@ class AgentManager {
       throw new Error("No response from API");
     }
 
-    let content = message.content || "";
-    const tool_calls: Array<{ name: string; result: unknown }> = [];
+    // AGENTIC LOOP: Continue executing tools until LLM stops calling them
+    const maxIterations = 10; // Prevent infinite loops
+    let iterations = 0;
+    // Use Record type for flexible message shape that includes tool_calls and tool_call_id
+    const currentMessages: Record<string, unknown>[] = [...messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }))];
+    const allToolCalls: Array<{ name: string; result: unknown }> = [];
+    let finalContent = message.content || "";
 
-    // Handle tool calls
-    if (message.tool_calls && message.tool_calls.length > 0) {
+    while (iterations < maxIterations) {
+      iterations++;
+
+      // Check if LLM wants to call tools
+      if (!message.tool_calls || message.tool_calls.length === 0) {
+        // LLM is done - no more tool calls
+        break;
+      }
+
+      console.log(`[Agent] Agentic loop iteration ${iterations}: ${message.tool_calls.length} tool calls`);
+
+      // Execute all tool calls from this iteration
+      const toolResults: Array<{ tool_call_id: string; role: "tool"; content: string }> = [];
+
       for (const toolCall of message.tool_calls) {
         const toolName = toolCall.function?.name;
+        const toolCallId = toolCall.id;
         const args = toolCall.function?.arguments ? JSON.parse(toolCall.function.arguments) : {};
 
         if (toolName && hasTool(toolName)) {
           try {
-            // Broadcast tool executing status
             broadcastStatus({ status: "tool_executing", timestamp: Date.now(), detail: toolName });
             const result = await executeTool(toolName, args);
-            tool_calls.push({ name: toolName, result });
-            content += `\n\n[Tool: ${toolName}]\n${JSON.stringify(result, null, 2)}`;
+            allToolCalls.push({ name: toolName, result });
+            toolResults.push({
+              tool_call_id: toolCallId,
+              role: "tool",
+              content: JSON.stringify(result),
+            });
           } catch (error) {
-            tool_calls.push({ name: toolName, result: { error: (error as Error).message } });
-            content += `\n\n[Tool: ${toolName}] Error: ${(error as Error).message}`;
+            allToolCalls.push({ name: toolName, result: { error: (error as Error).message } });
+            toolResults.push({
+              tool_call_id: toolCallId,
+              role: "tool",
+              content: JSON.stringify({ error: (error as Error).message }),
+            });
           }
         }
       }
+
+      // Add assistant message with tool calls and tool results to conversation
+      currentMessages.push({
+        role: "assistant",
+        content: message.content || "",
+        tool_calls: message.tool_calls,
+      });
+      for (const toolResult of toolResults) {
+        currentMessages.push(toolResult);
+      }
+
+      // Call LLM again with updated conversation (includes tool results)
+      const loopRequestBody: Record<string, unknown> = {
+        model: modelId,
+        messages: currentMessages,
+        max_tokens: 4096,
+      };
+
+      if (tools && Array.isArray(tools) && tools.length > 0) {
+        loopRequestBody.tools = tools.map((t) => ({
+          type: "function",
+          function: {
+            name: t.name,
+            description: t.description || "",
+            parameters: t.input_schema || { type: "object", properties: {} },
+          },
+        }));
+      }
+
+      const loopResponse = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(loopRequestBody),
+      });
+
+      if (!loopResponse.ok) {
+        const loopError = await loopResponse.text();
+        throw new Error(`API error in agentic loop: ${loopResponse.status} - ${loopError}`);
+      }
+
+      const loopData = (await loopResponse.json()) as OpenAIResponse;
+      const loopChoice = loopData.choices?.[0];
+      message = loopChoice?.message as OpenAIMessage;
+
+      if (!message) {
+        break;
+      }
+
+      // Update final content with LLM's latest response
+      if (message.content) {
+        finalContent = message.content;
+      }
+    }
+
+    if (iterations >= maxIterations) {
+      console.log(`[Agent] Agentic loop reached max iterations (${maxIterations})`);
     }
 
     return {
-      content: content.trim(),
-      tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
+      content: finalContent.trim(),
+      tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
     };
   }
 
@@ -959,10 +1043,6 @@ class AgentManager {
     // End timing
     const durationMs = Math.round(performance.now() - startTime);
 
-    const content = data.content?.find((c) => c.type === "text")?.text || "";
-    const thinking =
-      data.content?.find((c) => c.type === ("thinking" as string))?.text || undefined;
-
     // Track token usage for Anthropic API with duration
     if (data.usage) {
       const inputTokens = data.usage.input_tokens || 0;
@@ -970,35 +1050,120 @@ class AgentManager {
       trackTokenUsage(modelId, providerConfig, baseUrl, inputTokens, outputTokens, durationMs);
     }
 
-    // Handle tool use blocks
-    const toolCalls: Array<{ name: string; result: unknown }> = [];
-    let finalContent = content;
+    // AGENTIC LOOP: Continue executing tools until LLM stops calling them
+    const maxIterations = 10;
+    let iterations = 0;
+    let currentData = data;
 
-    const toolUseBlocks =
-      data.content?.filter((c: { type: string }) => c.type === "tool_use") || [];
+    // Build conversation for loop - Anthropic uses content arrays
+    const currentMessages: Record<string, unknown>[] = chatMessages.map(m => ({
+      role: m.role,
+      content: m.content,
+    }));
 
-    for (const toolUse of toolUseBlocks) {
-      const toolName = toolUse.name;
-      const args = toolUse.input || {};
+    const allToolCalls: Array<{ name: string; result: unknown }> = [];
+    let finalContent = currentData.content?.find((c) => c.type === "text")?.text || "";
+    const thinking = currentData.content?.find((c) => c.type === ("thinking" as string))?.text || undefined;
 
-      if (toolName && hasTool(toolName)) {
-        try {
-          // Broadcast tool executing status
-          broadcastStatus({ status: "tool_executing", timestamp: Date.now(), detail: toolName });
-          const result = await executeTool(toolName, args);
-          toolCalls.push({ name: toolName, result });
-          finalContent += `\n\n[Tool: ${toolName}]\n${JSON.stringify(result, null, 2)}`;
-        } catch (error) {
-          toolCalls.push({ name: toolName, result: { error: (error as Error).message } });
-          finalContent += `\n\n[Tool: ${toolName}] Error: ${(error as Error).message}`;
+    while (iterations < maxIterations) {
+      iterations++;
+
+      // Check for tool_use blocks
+      const toolUseBlocks = currentData.content?.filter((c: { type: string }) => c.type === "tool_use") || [];
+
+      if (toolUseBlocks.length === 0) {
+        // No more tool calls - LLM is done
+        break;
+      }
+
+      console.log(`[Agent] Anthropic agentic loop iteration ${iterations}: ${toolUseBlocks.length} tool calls`);
+
+      // Execute all tool calls
+      const toolResults: Array<{ type: "tool_result"; tool_use_id: string; content: string }> = [];
+
+      for (const toolUse of toolUseBlocks) {
+        const toolName = toolUse.name;
+        const toolUseId = toolUse.id || "";  // Fallback to empty string if undefined
+        const args = toolUse.input || {};
+
+        if (toolName && hasTool(toolName)) {
+          try {
+            broadcastStatus({ status: "tool_executing", timestamp: Date.now(), detail: toolName });
+            const result = await executeTool(toolName, args);
+            allToolCalls.push({ name: toolName, result });
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: toolUseId,
+              content: JSON.stringify(result),
+            });
+          } catch (error) {
+            allToolCalls.push({ name: toolName, result: { error: (error as Error).message } });
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: toolUseId,
+              content: JSON.stringify({ error: (error as Error).message }),
+            });
+          }
         }
       }
+
+      // Add assistant message with tool use and user message with tool results
+      currentMessages.push({
+        role: "assistant",
+        content: currentData.content, // Keep full content array including tool_use blocks
+      });
+      currentMessages.push({
+        role: "user",
+        content: toolResults, // Anthropic expects tool_result in user message
+      });
+
+      // Call LLM again with tool results
+      const loopRequestBody: Record<string, unknown> = {
+        model: modelId,
+        messages: currentMessages,
+        max_tokens: 4096,
+      };
+
+      if (systemMessage) {
+        loopRequestBody.system = systemMessage.content;
+      }
+
+      if (tools && Array.isArray(tools) && tools.length > 0) {
+        loopRequestBody.tools = tools.map((t) => ({
+          name: t.name,
+          description: t.description || "",
+          input_schema: t.input_schema || { type: "object", properties: {} },
+        }));
+      }
+
+      const loopResponse = await fetch(`${baseUrl}/messages`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(loopRequestBody),
+      });
+
+      if (!loopResponse.ok) {
+        const loopError = await loopResponse.text();
+        throw new Error(`API error in agentic loop: ${loopResponse.status} - ${loopError}`);
+      }
+
+      currentData = (await loopResponse.json()) as AnthropicResponse;
+
+      // Update final content with LLM's latest text response
+      const latestText = currentData.content?.find((c) => c.type === "text")?.text;
+      if (latestText) {
+        finalContent = latestText;
+      }
+    }
+
+    if (iterations >= maxIterations) {
+      console.log(`[Agent] Anthropic agentic loop reached max iterations (${maxIterations})`);
     }
 
     return {
       content: finalContent.trim(),
       thinking,
-      tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+      tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
     };
   }
 
