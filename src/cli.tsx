@@ -599,6 +599,333 @@ async function rawLspUninstall(language: string): Promise<void> {
     }
 }
 
+// ============================================
+// NEW CLI COMMANDS - Feature parity with UI
+// ============================================
+
+// Providers command
+interface ProviderInfo {
+    id: string;
+    type: string;
+    name: string;
+    enabled: boolean;
+    models?: string[];
+}
+
+async function rawProviders(): Promise<void> {
+    const data = await fetchAPI<ProviderInfo[]>("/api/providers");
+    if (!data) {
+        console.error("ERROR: Failed to fetch providers from", API_BASE);
+        process.exit(1);
+    }
+
+    const providers = Array.isArray(data) ? data : [];
+    const enabled = providers.filter(p => p.enabled).length;
+
+    console.log("CYBARA PROVIDERS");
+    console.log("================");
+    console.log(`total: ${providers.length}`);
+    console.log(`enabled: ${enabled}`);
+    console.log("");
+
+    if (providers.length === 0) {
+        console.log("No providers configured");
+        return;
+    }
+
+    for (const provider of providers) {
+        const status = provider.enabled ? "✓" : "✗";
+        console.log(`${status} ${provider.name} (${provider.type})`);
+        if (provider.models && provider.models.length > 0) {
+            console.log(`    models: ${provider.models.slice(0, 3).join(", ")}${provider.models.length > 3 ? ` (+${provider.models.length - 3} more)` : ""}`);
+        }
+    }
+}
+
+// Sessions command
+interface SessionInfo {
+    id: string;
+    agent_id?: string;
+    message_count: number;
+    created_at: string;
+    updated_at: string;
+}
+
+async function rawSessions(): Promise<void> {
+    const data = await fetchAPI<SessionInfo[]>("/api/chat/sessions");
+    if (!data) {
+        console.error("ERROR: Failed to fetch sessions from", API_BASE);
+        process.exit(1);
+    }
+
+    const sessions = Array.isArray(data) ? data : [];
+
+    console.log("CYBARA SESSIONS");
+    console.log("===============");
+    console.log(`total: ${sessions.length}`);
+    console.log("");
+
+    if (sessions.length === 0) {
+        console.log("No active sessions");
+        return;
+    }
+
+    for (const session of sessions.slice(0, 20)) {
+        console.log(`- ${session.id.slice(0, 8)}...`);
+        console.log(`  messages: ${session.message_count}`);
+        console.log(`  updated: ${session.updated_at}`);
+    }
+
+    if (sessions.length > 20) {
+        console.log(`\n... and ${sessions.length - 20} more sessions`);
+    }
+}
+
+// Memory command
+interface MemoryEntry {
+    id: string;
+    content: string;
+    similarity?: number;
+    createdAt: string;
+}
+
+async function rawMemory(query?: string): Promise<void> {
+    const endpoint = query
+        ? `/api/memory/search?q=${encodeURIComponent(query)}&limit=10`
+        : "/api/memory?limit=20";
+
+    const data = await fetchAPI<MemoryEntry[] | { results: MemoryEntry[] }>(endpoint);
+    if (!data) {
+        console.error("ERROR: Failed to fetch memory from", API_BASE);
+        process.exit(1);
+    }
+
+    const entries = Array.isArray(data) ? data : (data.results || []);
+
+    console.log("CYBARA MEMORY");
+    console.log("=============");
+    if (query) console.log(`query: "${query}"`);
+    console.log(`results: ${entries.length}`);
+    console.log("");
+
+    if (entries.length === 0) {
+        console.log("No memory entries found");
+        return;
+    }
+
+    for (const entry of entries) {
+        const preview = entry.content.slice(0, 80).replace(/\n/g, " ");
+        console.log(`- ${preview}${entry.content.length > 80 ? "..." : ""}`);
+        if (entry.similarity) console.log(`  similarity: ${(entry.similarity * 100).toFixed(1)}%`);
+    }
+}
+
+// Logs command
+interface LogEntry {
+    timestamp: string;
+    level: string;
+    module: string;
+    message: string;
+}
+
+async function rawLogs(count = 20): Promise<void> {
+    const data = await fetchAPI<{ logs: LogEntry[] }>(`/api/logs?limit=${count}`);
+    if (!data) {
+        console.error("ERROR: Failed to fetch logs from", API_BASE);
+        process.exit(1);
+    }
+
+    const logs = data.logs || [];
+
+    console.log("CYBARA LOGS");
+    console.log("===========");
+    console.log(`showing: ${logs.length} entries`);
+    console.log("");
+
+    if (logs.length === 0) {
+        console.log("No logs available");
+        return;
+    }
+
+    for (const log of logs) {
+        const level = log.level.toUpperCase().padEnd(5);
+        const module = log.module.padEnd(12);
+        const time = new Date(log.timestamp).toLocaleTimeString();
+        console.log(`[${time}] ${level} ${module} ${log.message.slice(0, 60)}`);
+    }
+}
+
+// Subagents command
+interface SubagentInfo {
+    id: string;
+    task: string;
+    label: string;
+    status: string;
+    createdAt: string;
+}
+
+async function rawSubagents(): Promise<void> {
+    const data = await fetchAPI<SubagentInfo[]>("/api/subagents");
+    if (!data) {
+        console.error("ERROR: Failed to fetch subagents from", API_BASE);
+        process.exit(1);
+    }
+
+    const subagents = Array.isArray(data) ? data : [];
+    const running = subagents.filter(s => s.status === "running").length;
+
+    console.log("CYBARA SUBAGENTS");
+    console.log("================");
+    console.log(`total: ${subagents.length}`);
+    console.log(`running: ${running}`);
+    console.log("");
+
+    if (subagents.length === 0) {
+        console.log("No subagents");
+        return;
+    }
+
+    for (const sub of subagents) {
+        const status = sub.status === "running" ? "⟳" : sub.status === "completed" ? "✓" : "✗";
+        console.log(`${status} ${sub.label.slice(0, 50)}`);
+        console.log(`  id: ${sub.id}`);
+        console.log(`  status: ${sub.status}`);
+    }
+}
+
+async function rawSubagentSpawn(task: string): Promise<void> {
+    if (!task) {
+        console.error("ERROR: Please specify a task");
+        console.log("Usage: cybara subagent spawn <task>");
+        process.exit(1);
+    }
+
+    const response = await fetch(`${API_BASE}/api/subagents/spawn`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task, label: `Task: ${task.slice(0, 30)}...` }),
+    });
+
+    const result = await response.json() as { id?: string; error?: string };
+
+    if (result.id) {
+        console.log(`✓ Spawned subagent: ${result.id}`);
+    } else {
+        console.error(`✗ Failed to spawn: ${result.error}`);
+        process.exit(1);
+    }
+}
+
+async function rawSubagentKill(id: string): Promise<void> {
+    if (!id) {
+        console.error("ERROR: Please specify a subagent ID");
+        console.log("Usage: cybara subagent kill <id>");
+        process.exit(1);
+    }
+
+    const response = await fetch(`${API_BASE}/api/subagents/${id}/kill`, {
+        method: "POST",
+    });
+
+    const result = await response.json() as { success?: boolean; error?: string };
+
+    if (result.success) {
+        console.log(`✓ Killed subagent: ${id}`);
+    } else {
+        console.error(`✗ Failed to kill: ${result.error}`);
+        process.exit(1);
+    }
+}
+
+// Browser command
+interface BrowserStatus {
+    running: boolean;
+    currentUrl?: string;
+    profile?: string;
+}
+
+async function rawBrowser(): Promise<void> {
+    const data = await fetchAPI<BrowserStatus>("/api/browser/status");
+    if (!data) {
+        console.error("ERROR: Failed to fetch browser status from", API_BASE);
+        process.exit(1);
+    }
+
+    console.log("CYBARA BROWSER");
+    console.log("==============");
+    console.log(`status: ${data.running ? "running" : "stopped"}`);
+    if (data.profile) console.log(`profile: ${data.profile}`);
+    if (data.currentUrl) console.log(`url: ${data.currentUrl}`);
+}
+
+interface BrowserProfile {
+    name: string;
+    path: string;
+    lastUsed?: string;
+}
+
+async function rawBrowserProfiles(): Promise<void> {
+    const data = await fetchAPI<BrowserProfile[]>("/api/browser/profiles");
+    if (!data) {
+        console.error("ERROR: Failed to fetch browser profiles from", API_BASE);
+        process.exit(1);
+    }
+
+    const profiles = Array.isArray(data) ? data : [];
+
+    console.log("BROWSER PROFILES");
+    console.log("================");
+    console.log(`total: ${profiles.length}`);
+    console.log("");
+
+    if (profiles.length === 0) {
+        console.log("No profiles configured");
+        return;
+    }
+
+    for (const profile of profiles) {
+        console.log(`- ${profile.name}`);
+        console.log(`  path: ${profile.path}`);
+    }
+}
+
+// Channels command
+interface ChannelStatus {
+    id: string;
+    type: string;
+    name: string;
+    enabled: boolean;
+    dmPolicy?: string;
+}
+
+async function rawChannels(): Promise<void> {
+    const data = await fetchAPI<ChannelStatus[]>("/api/channels");
+    if (!data) {
+        console.error("ERROR: Failed to fetch channels from", API_BASE);
+        process.exit(1);
+    }
+
+    const chans = Array.isArray(data) ? data : [];
+    const enabled = chans.filter(c => c.enabled).length;
+
+    console.log("CYBARA CHANNELS");
+    console.log("===============");
+    console.log(`total: ${chans.length}`);
+    console.log(`enabled: ${enabled}`);
+    console.log("");
+
+    if (chans.length === 0) {
+        console.log("No channels configured");
+        return;
+    }
+
+    for (const chan of chans) {
+        const status = chan.enabled ? "✓" : "✗";
+        console.log(`${status} ${chan.name} (${chan.type})`);
+        if (chan.dmPolicy) console.log(`    policy: ${chan.dmPolicy}`);
+    }
+}
+
 function rawHelp(): void {
     console.log("CYBARA CLI");
     console.log("==========");
@@ -610,8 +937,22 @@ function rawHelp(): void {
     console.log("  status      Show system status");
     console.log("  metrics     Show token usage and metrics");
     console.log("  agents      List configured agents");
+    console.log("  providers   List AI providers");
     console.log("  tasks       List scheduled tasks");
     console.log("  skills      List installed skills");
+    console.log("  sessions    List chat sessions");
+    console.log("  memory      Memory commands");
+    console.log("    memory         List recent memories");
+    console.log("    memory <query> Search memories");
+    console.log("  logs        Show recent logs");
+    console.log("  subagent    Subagent commands");
+    console.log("    subagent list       List subagents");
+    console.log("    subagent spawn <t>  Spawn with task");
+    console.log("    subagent kill <id>  Kill subagent");
+    console.log("  browser     Browser commands");
+    console.log("    browser            Show browser status");
+    console.log("    browser profiles   List browser profiles");
+    console.log("  channels    List configured channels");
     console.log("  pair        Channel pairing commands");
     console.log("    pair           List pending pairings");
     console.log("    pair <CODE>    Approve a pairing code");
@@ -1344,6 +1685,56 @@ async function main() {
         case "skills":
             await rawSkills();
             break;
+
+        // NEW COMMANDS - Feature parity with UI
+        case "providers":
+            await rawProviders();
+            break;
+        case "sessions":
+            await rawSessions();
+            break;
+        case "memory":
+            await rawMemory(args[1]);
+            break;
+        case "logs":
+            await rawLogs(args[1] ? parseInt(args[1]) : 20);
+            break;
+        case "subagent":
+        case "subagents":
+            switch (args[1]) {
+                case "list":
+                case undefined:
+                    await rawSubagents();
+                    break;
+                case "spawn":
+                    await rawSubagentSpawn(args.slice(2).join(" "));
+                    break;
+                case "kill":
+                    await rawSubagentKill(args[2]);
+                    break;
+                default:
+                    console.log("Subagent Commands:");
+                    console.log("  cybara subagent list       - List all subagents");
+                    console.log("  cybara subagent spawn <t>  - Spawn with task");
+                    console.log("  cybara subagent kill <id>  - Kill subagent");
+                    break;
+            }
+            break;
+        case "browser":
+            switch (args[1]) {
+                case "profiles":
+                    await rawBrowserProfiles();
+                    break;
+                default:
+                    await rawBrowser();
+                    break;
+            }
+            break;
+        case "channels":
+        case "channel":
+            await rawChannels();
+            break;
+
         case "help":
         case "--help":
         case "-h":

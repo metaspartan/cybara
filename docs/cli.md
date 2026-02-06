@@ -10,6 +10,14 @@ cybara <command> [options]
 
 ## Commands
 
+### System Status
+
+```bash
+cybara status             # Show status and health
+cybara metrics            # Show token usage and metrics
+cybara logs [count]       # Show recent logs (default: 20)
+```
+
 ### Daemon Control
 
 ```bash
@@ -17,53 +25,118 @@ cybara start              # Start daemon (foreground)
 cybara start -d           # Start daemon (background)
 cybara stop               # Stop daemon
 cybara restart            # Restart daemon
-cybara status             # Show status and health
-```
-
-### Channels
-
-```bash
-cybara channel list             # List configured channels
-cybara channel add <type>       # Add channel (telegram, discord, etc.)
-cybara channel remove <id>      # Remove channel
-cybara channel test <id>        # Test channel connection
-```
-
-### MCP Servers
-
-```bash
-cybara mcp list                 # List MCP servers
-cybara mcp add <name> <config>  # Add MCP server
-cybara mcp remove <name>        # Remove MCP server
-cybara mcp restart <name>       # Restart MCP server
-```
-
-### Skills
-
-```bash
-cybara skill list               # List installed skills
-cybara skill install <url>      # Install from URL/registry
-cybara skill remove <name>      # Remove skill
-cybara skill update             # Update all skills
-cybara skill search <query>     # Search registries
 ```
 
 ### Agents
 
 ```bash
-cybara agent list               # List agents
-cybara agent create <name>      # Create new agent
-cybara agent delete <id>        # Delete agent
-cybara agent start <id>         # Start agent
-cybara agent stop <id>          # Stop agent
+cybara agents             # List configured agents
+cybara agent list         # List agents (alias)
+cybara agent create <name> # Create new agent
+cybara agent delete <id>  # Delete agent
+cybara agent start <id>   # Start agent
+cybara agent stop <id>    # Stop agent
 ```
+
+### Providers
+
+```bash
+cybara providers          # List configured AI providers
+```
+
+### Sessions
+
+```bash
+cybara sessions           # List active chat sessions
+```
+
+### Memory
+
+```bash
+cybara memory             # List recent memory entries
+cybara memory <query>     # Search memories semantically
+```
+
+### Subagents
+
+```bash
+cybara subagent           # List all subagents
+cybara subagent list      # List all subagents (explicit)
+cybara subagent spawn <t> # Spawn subagent with task
+cybara subagent kill <id> # Kill running subagent
+```
+
+### Browser
+
+```bash
+cybara browser            # Show browser status
+cybara browser profiles   # List browser profiles
+```
+
+### Channels
+
+```bash
+cybara channels           # List configured channels
+cybara channel list       # List channels (alias)
+cybara channel add <type> # Add channel (telegram, discord, etc.)
+cybara channel remove <id> # Remove channel
+cybara channel test <id>  # Test channel connection
+```
+
+### Channel Pairing
+
+```bash
+cybara pair               # List pending pairings
+cybara pair <CODE>        # Approve a pairing code
+cybara pair reject <CODE> # Reject a pairing code
+cybara pair policy <chan> <policy>  # Set DM policy
+```
+
+Policies: `pairing`, `allowlist`, `open`, `disabled`
+
+### MCP Servers
+
+```bash
+cybara mcp list           # List installed MCP servers
+cybara mcp search <query> # Search MCP registry
+cybara mcp install <pkg>  # Install MCP server package
+cybara mcp popular        # Show popular servers
+```
+
+### Skills
+
+```bash
+cybara skills             # List installed skills
+cybara skill list         # List skills (alias)
+cybara skill install <url> # Install from URL/registry
+cybara skill remove <name> # Remove skill
+cybara skill update       # Update all skills
+cybara skill search <q>   # Search registries
+```
+
+### LSP (Language Servers)
+
+```bash
+cybara lsp                # Show language server status
+cybara lsp list           # Show status (explicit)
+cybara lsp install <lang> # Install language server
+cybara lsp uninstall <lang> # Uninstall language server
+```
+
+Supported languages: `rust`, `go`, `python`, `cpp`, `java`, `csharp`, `ruby`, `php`, `lua`, `zig`, `kotlin`, `swift`
 
 ### Configuration
 
 ```bash
-cybara config get <key>         # Get config value
-cybara config set <key> <val>   # Set config value
-cybara config list              # List all config
+cybara config get <key>   # Get config value
+cybara config set <key> <val> # Set config value
+cybara config list        # List all config
+```
+
+### Setup
+
+```bash
+cybara wizard             # Run setup wizard (first-time configuration)
 ```
 
 ## Options
@@ -80,8 +153,9 @@ cybara config list              # List all config
 
 ```bash
 PORT=4269                 # Server port
-BRAVE_API_KEY=...        # Web search API key
-CYBARA_HOME=~/.cybara    # Data directory
+BRAVE_API_KEY=...         # Web search API key
+CYBARA_HOME=~/.cybara     # Data directory
+CYBARA_API=http://localhost:4269  # API endpoint for CLI
 ```
 
 ## Examples
@@ -93,12 +167,30 @@ bun run dev
 # Start production daemon
 cybara start -d
 
+# Check platform health
+cybara status
+
+# List AI providers
+cybara providers
+
+# View recent logs
+cybara logs 50
+
+# Search memory
+cybara memory "project architecture"
+
+# Spawn a subagent
+cybara subagent spawn "Research best practices for testing"
+
 # Install a skill from ClawhHub
 cybara skill install clawhub:git-commit
+
+# Install MCP server
+cybara mcp install @anthropic/mcp-server-filesystem
 
 # Add Telegram channel
 cybara channel add telegram
 
-# Check platform health
-cybara status
+# Install Python LSP
+cybara lsp install python
 ```

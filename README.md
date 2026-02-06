@@ -14,8 +14,9 @@
   <img src="https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript" alt="TypeScript" />
   <img src="https://img.shields.io/badge/React-19-61dafb?logo=react" alt="React" />
   <img src="https://img.shields.io/badge/Playwright-browser-2EAD33?logo=playwright" alt="Playwright" />
-  <img src="https://img.shields.io/badge/tools-30%2B-green" alt="30+ Tools" />
+  <img src="https://img.shields.io/badge/tools-35%2B-green" alt="35+ Tools" />
   <img src="https://img.shields.io/badge/AI_providers-17%2B-purple" alt="17+ Providers" />
+  <img src="https://img.shields.io/badge/desktop-Tauri-orange?logo=tauri" alt="Tauri Desktop" />
 </p>
 
 ---
@@ -26,7 +27,8 @@
 |-------|-------------|
 | [Architecture](docs/architecture.md) | Platform design and data flow |
 | [CLI Reference](docs/cli.md) | Command-line interface |
-| [Tools Reference](docs/tools.md) | 30+ available tools |
+| [Desktop App](docs/desktop.md) | Tauri desktop client |
+| [Tools Reference](docs/tools.md) | 35+ available tools |
 | [Skills Guide](docs/skills.md) | Creating and managing skills |
 | [Channels](docs/channels.md) | Multi-platform messaging |
 | [Providers](docs/providers.md) | AI provider configuration |
@@ -113,20 +115,23 @@ Model Context Protocol support for external tool servers:
 - **Element refs**: OpenClaw-style snapshot with interactive `[ref=eN]` markers
 - Actions: click, type, scroll, drag, screenshot, PDF export, JavaScript evaluation
 
-### 💬 Beautiful Web UI (14 pages)
+### 💬 Beautiful Web UI (17 pages)
 - **Dashboard** - System overview and health metrics
 - **Chat** - Real-time conversational interface with agent selector
+- **IDE** - Code editor with LSP integration (hover, definitions, diagnostics)
 - **Skills** - Browse, install, and manage skills with eligibility indicators
 - **Memory** - Semantic memory browser and search
 - **Agents** - Create and manage AI agents
 - **Providers** - Configure AI providers and models
 - **Sessions** - Active session monitoring
-- **Tasks** - Cron job management
+- **Tasks** - Cron job management with run history
 - **Channels** - Multi-channel configuration
+- **MCP Servers** - Install and manage MCP tool servers
+- **LSP** - Language server installation and status
 - **Metrics** - Token usage and performance analytics
 - **Logs** - System and agent activity logs
 - **Tools** - Tool registry and documentation
-- **Settings** - Platform configuration
+- **Settings** - Platform configuration with **10 theme accent colors**
 
 ### 📱 Multi-Channel Support
 | Channel | Integration |
