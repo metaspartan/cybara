@@ -679,6 +679,7 @@ const routes: Record<string, RouteHandler> = {
   "POST /api/tasks/:id/trigger": async (_body, params) => ({
     success: await taskScheduler.trigger(params!.id),
   }),
+  "GET /api/tasks/:id/runs": (_body, params) => tables.taskRuns.getByTask(params!.id),
   "DELETE /api/tasks/:id": (_body, params) => ({ success: taskScheduler.delete(params!.id) }),
 
   // ===== WEBHOOKS =====

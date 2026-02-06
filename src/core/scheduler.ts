@@ -114,7 +114,18 @@ class TaskScheduler {
 
   private async executeTask(task: Task): Promise<void> {
     console.log(`[Task] Executing: ${task.name}`);
-    tables.tasks.update(task.id, { status: "running", last_run: new Date().toISOString() });
+    const runId = crypto.randomUUID();
+    const startedAt = new Date().toISOString();
+
+    // Log run start
+    tables.taskRuns.create({
+      id: runId,
+      task_id: task.id,
+      status: "running",
+      started_at: startedAt,
+    });
+
+    tables.tasks.update(task.id, { status: "running", last_run: startedAt });
 
     try {
       // Get the action from config
@@ -143,6 +154,25 @@ class TaskScheduler {
 
       console.log(`[Task] Completed: ${task.name} - Session: ${result.sessionId}`);
 
+      // Log run completion
+      const resultPreview = result.message?.content?.slice(0, 200);
+      tables.taskRuns.complete(runId, {
+        status: "completed",
+        session_id: result.sessionId,
+        result_preview: resultPreview,
+      });
+
+      // Broadcast task_completed event for browser notifications
+      const { broadcastTaskEvent } = await import("./status");
+      broadcastTaskEvent({
+        type: "task_completed",
+        taskId: task.id,
+        taskName: task.name,
+        status: "completed",
+        sessionId: result.sessionId,
+        resultPreview,
+      });
+
       // Update status based on schedule
       if (task.schedule) {
         const next_run = this.calculateNextRun(task.schedule);
@@ -153,6 +183,24 @@ class TaskScheduler {
       }
     } catch (error) {
       console.error(`[Task] Error executing ${task.name}:`, error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+
+      // Log run failure
+      tables.taskRuns.complete(runId, {
+        status: "failed",
+        error: errorMsg.slice(0, 500),
+      });
+
+      // Broadcast failure event
+      const { broadcastTaskEvent } = await import("./status");
+      broadcastTaskEvent({
+        type: "task_completed",
+        taskId: task.id,
+        taskName: task.name,
+        status: "failed",
+        error: errorMsg.slice(0, 200),
+      });
+
       tables.tasks.update(task.id, { status: "failed" });
     }
   }

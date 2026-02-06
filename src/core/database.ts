@@ -115,6 +115,19 @@ try {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  -- Task Run History
+  CREATE TABLE IF NOT EXISTS task_runs (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    started_at DATETIME NOT NULL,
+    completed_at DATETIME,
+    session_id TEXT,
+    result_preview TEXT,
+    error TEXT,
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+  );
+
   -- Sessions/Conversations
   CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
@@ -469,6 +482,14 @@ const stmts = {
     update: prepare("UPDATE tasks SET status=?, last_run=?, next_run=? WHERE id=?"),
     delete: prepare("DELETE FROM tasks WHERE id = ?"),
   },
+  taskRuns: {
+    getByTask: prepare("SELECT * FROM task_runs WHERE task_id = ? ORDER BY started_at DESC LIMIT 10"),
+    create: prepare(
+      "INSERT INTO task_runs (id, task_id, status, started_at, completed_at, session_id, result_preview, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    ),
+    updateComplete: prepare("UPDATE task_runs SET status=?, completed_at=?, session_id=?, result_preview=?, error=? WHERE id=?"),
+    getRecent: prepare("SELECT tr.*, t.name as task_name FROM task_runs tr JOIN tasks t ON tr.task_id = t.id ORDER BY tr.started_at DESC LIMIT 20"),
+  },
   setup: {
     getStep: prepare("SELECT * FROM setup_state WHERE step = ?"),
     setStep: prepare(
@@ -716,6 +737,30 @@ export const tables = {
       stmts.tasks.update.run(t.status || null, t.last_run || null, t.next_run || null, id),
     delete: (id: string) => stmts.tasks.delete.run(id),
   },
+  taskRuns: {
+    getByTask: (taskId: string) => stmts.taskRuns.getByTask.all(taskId) as TaskRun[],
+    create: (run: TaskRun) =>
+      stmts.taskRuns.create.run(
+        run.id,
+        run.task_id,
+        run.status,
+        run.started_at,
+        run.completed_at || null,
+        run.session_id || null,
+        run.result_preview || null,
+        run.error || null
+      ),
+    complete: (id: string, data: { status: string; session_id?: string; result_preview?: string; error?: string }) =>
+      stmts.taskRuns.updateComplete.run(
+        data.status,
+        new Date().toISOString(),
+        data.session_id || null,
+        data.result_preview || null,
+        data.error || null,
+        id
+      ),
+    getRecent: () => stmts.taskRuns.getRecent.all() as (TaskRun & { task_name: string })[],
+  },
   setup: {
     getStep: (step: string) => stmts.setup.getStep.get(step),
     setStep: (step: string, completed: boolean, config?: string) =>
@@ -928,6 +973,17 @@ export interface Task {
   enabled?: boolean;
   last_run?: string;
   next_run?: string;
+}
+
+export interface TaskRun {
+  id: string;
+  task_id: string;
+  status: "running" | "completed" | "failed";
+  started_at: string;
+  completed_at?: string;
+  session_id?: string;
+  result_preview?: string;
+  error?: string;
 }
 
 // Chat session type
