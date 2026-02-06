@@ -12,18 +12,20 @@ interface PageLayoutProps {
 export function PageLayout({ children, title, subtitle, actions, noPadding }: PageLayoutProps) {
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Header - responsive padding and layout */}
-      <header className="sticky top-0 z-30 glass-strong border-b border-white/5 transition-all duration-300">
-        <div className="px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <h1 className="text-xl sm:text-2xl font-bold text-white truncate">{title}</h1>
+      {/* Compact Header */}
+      <header className="sticky top-0 z-30 border-b border-white/5 bg-[#0a0a0f]/90 backdrop-blur-xl">
+        <div className="px-4 sm:px-6 py-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0 flex items-center gap-3">
+              <h1 className="text-base sm:text-lg font-semibold text-white">{title}</h1>
               {subtitle && (
-                <p className="text-sm sm:text-base text-gray-400 mt-1 truncate">{subtitle}</p>
+                <span className="hidden sm:block text-xs text-gray-500 border-l border-white/10 pl-3">
+                  {subtitle}
+                </span>
               )}
             </div>
             {actions && (
-              <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+              <div className="flex items-center gap-2 flex-shrink-0">
                 {actions}
               </div>
             )}
@@ -31,13 +33,14 @@ export function PageLayout({ children, title, subtitle, actions, noPadding }: Pa
         </div>
       </header>
 
-      {/* Content - responsive padding, optional for full-screen pages */}
+      {/* Content */}
       <main className={cn(
         "flex-1 flex flex-col",
-        !noPadding && "px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-10"
+        !noPadding && "px-4 sm:px-6 py-4 sm:py-6"
       )}>
         {children}
       </main>
     </div>
   );
 }
+

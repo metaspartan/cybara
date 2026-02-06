@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   Send, Bot, User, Trash2, Wrench, Sparkles, ChevronDown, ChevronUp,
-  Zap, Plus, Square, Loader2, MessageSquare
+  Zap, Plus, Square, Loader2, MessageSquare, RefreshCw, X
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -80,41 +80,41 @@ function ToolCallItem({ tool }: { tool: ToolCall }) {
   const [expanded, setExpanded] = useState(false);
 
   const statusIcons = {
-    pending: <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />,
-    success: <div className="w-4 h-4 rounded-full bg-emerald-500/20 flex items-center justify-center"><div className="w-2 h-2 rounded-full bg-emerald-400" /></div>,
-    error: <div className="w-4 h-4 rounded-full bg-red-500/20 flex items-center justify-center"><div className="w-2 h-2 rounded-full bg-red-400" /></div>,
+    pending: <div className="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />,
+    success: <div className="w-3.5 h-3.5 rounded-full bg-emerald-500/30 flex items-center justify-center"><div className="w-1.5 h-1.5 rounded-full bg-emerald-400" /></div>,
+    error: <div className="w-3.5 h-3.5 rounded-full bg-red-500/30 flex items-center justify-center"><div className="w-1.5 h-1.5 rounded-full bg-red-400" /></div>,
   };
 
-  const statusColors = {
-    pending: 'text-amber-400 border-amber-500/30 bg-amber-500/10',
-    success: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10',
-    error: 'text-red-400 border-red-500/30 bg-red-500/10',
+  const statusStyles = {
+    pending: 'bg-amber-500/5 border-amber-500/20 text-amber-300',
+    success: 'bg-emerald-500/5 border-emerald-500/20 text-emerald-300',
+    error: 'bg-red-500/5 border-red-500/20 text-red-300',
   };
 
   return (
-    <div className={`rounded-lg border ${statusColors[tool.status]} overflow-hidden`}>
+    <div className={`rounded-lg backdrop-blur-sm overflow-hidden ${statusStyles[tool.status]}`}>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full px-3 py-2 flex items-center gap-2 text-sm"
+        className="w-full px-3 py-2 flex items-center gap-2 text-xs cursor-pointer hover:bg-white/5 transition-colors"
       >
         {statusIcons[tool.status]}
-        <Wrench className="w-3 h-3" />
-        <span className="font-medium">{tool.name}</span>
+        <Wrench className="w-3 h-3 opacity-60" />
+        <span className="font-medium truncate">{tool.name}</span>
         <span className="flex-1" />
-        {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        {expanded ? <ChevronUp className="w-3.5 h-3.5 opacity-50" /> : <ChevronDown className="w-3.5 h-3.5 opacity-50" />}
       </button>
       {expanded && (
-        <div className="px-3 pb-3 border-t border-white/10">
+        <div className="px-3 pb-3 border-t border-white/5">
           <div className="mt-2">
-            <p className="text-xs text-gray-500 mb-1">Arguments:</p>
-            <pre className="text-xs text-gray-300 bg-black/30 rounded p-2 overflow-x-auto">
+            <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wider">Arguments</p>
+            <pre className="text-[11px] text-gray-400 bg-black/40 rounded-md p-2 overflow-x-auto">
               {JSON.stringify(tool.arguments, null, 2)}
             </pre>
           </div>
           {tool.result !== undefined && (
             <div className="mt-2">
-              <p className="text-xs text-gray-500 mb-1">Result:</p>
-              <pre className="text-xs text-gray-300 bg-black/30 rounded p-2 overflow-x-auto">
+              <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wider">Result</p>
+              <pre className="text-[11px] text-gray-400 bg-black/40 rounded-md p-2 overflow-x-auto max-h-40">
                 {typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result, null, 2)}
               </pre>
             </div>
@@ -226,50 +226,61 @@ function SubagentPanel({
 
   return (
     <>
-      <div className="w-72 glass-strong border-l border-white/10 flex flex-col">
-        <div className="p-4 border-b border-white/10 flex items-center justify-between">
+      <div className="w-72 glass-strong border-l border-white/5 flex flex-col">
+        {/* Compact Header */}
+        <div className="px-3 py-2.5 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
           <div className="flex items-center gap-2">
-            <Zap className="w-4 h-4 text-amber-400" />
-            <h3 className="font-medium text-white">Subagents</h3>
+            <Zap className="w-3.5 h-3.5 accent-text" />
+            <h3 className="text-sm font-medium text-white">Subagents</h3>
+            {subagents && subagents.length > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 text-gray-400">
+                {subagents.length}
+              </span>
+            )}
           </div>
-          <div className="flex items-center gap-1">
-            <GlassButton variant="ghost" size="sm" onClick={() => refetch()}>
-              <Loader2 className="w-4 h-4" />
-            </GlassButton>
-            <GlassButton variant="ghost" size="sm" onClick={() => setShowSpawnModal(true)}>
-              <Plus className="w-4 h-4" />
-            </GlassButton>
-            <GlassButton variant="ghost" size="sm" onClick={onClose}>
-              <ChevronDown className="w-4 h-4 rotate-90" />
-            </GlassButton>
+          <div className="flex items-center">
+            <button onClick={() => refetch()} className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer">
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => setShowSpawnModal(true)} className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer">
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer">
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
           {isLoading ? (
             <div className="text-center py-8 text-gray-500">
-              <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-              <p className="text-sm">Loading...</p>
+              <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
+              <p className="text-xs">Loading...</p>
             </div>
           ) : subagents?.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
-              <Zap className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">No active subagents</p>
-              <GlassButton variant="ghost" size="sm" className="mt-2" onClick={() => setShowSpawnModal(true)}>
-                Spawn One
-              </GlassButton>
+              <Zap className="w-6 h-6 mx-auto mb-2 opacity-30" />
+              <p className="text-xs">No active subagents</p>
+              <button
+                onClick={() => setShowSpawnModal(true)}
+                className="mt-3 text-xs px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <Plus className="w-3 h-3 inline mr-1" />
+                Spawn New
+              </button>
             </div>
           ) : (
             subagents?.map((subagent: Subagent) => (
               <div
                 key={subagent.id}
-                className="p-3 rounded-xl bg-white/5 border border-white/10 hover:border-amber-500/30 transition-colors cursor-pointer"
+                className="p-2.5 rounded-lg bg-white/[0.03] border border-white/5 hover:border-white/15 transition-all cursor-pointer group"
                 onClick={() => setSelectedSubagent(subagent)}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm text-white truncate">{subagent.label}</p>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-white truncate font-medium">{subagent.label}</p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">
                       {new Date(subagent.createdAt).toLocaleTimeString()}
                     </p>
                   </div>
@@ -285,17 +296,15 @@ function SubagentPanel({
                       {subagent.status}
                     </Badge>
                     {subagent.status === 'running' && (
-                      <GlassButton
-                        variant="ghost"
-                        size="sm"
-                        className="p-1"
+                      <button
+                        className="p-1 rounded hover:bg-red-500/20 text-red-400 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                         onClick={(e) => {
                           e.stopPropagation();
                           killSubagent.mutateAsync(subagent.id).then(() => refetch());
                         }}
                       >
-                        <Square className="w-3 h-3 text-red-400" />
-                      </GlassButton>
+                        <Square className="w-3 h-3" />
+                      </button>
                     )}
                   </div>
                 </div>
@@ -480,86 +489,89 @@ function SessionsPanel({
 
   return (
     <>
-      <div className="w-72 glass-strong border-l border-white/10 flex flex-col">
-        <div className="p-4 border-b border-white/10 flex items-center justify-between">
+      <div className="w-72 glass-strong border-l border-white/5 flex flex-col">
+        {/* Compact Header */}
+        <div className="px-3 py-2.5 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
           <div className="flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-indigo-400" />
-            <h3 className="font-medium text-white">Sessions</h3>
+            <MessageSquare className="w-3.5 h-3.5 accent-text" />
+            <h3 className="text-sm font-medium text-white">Sessions</h3>
+            {sessions && sessions.length > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 text-gray-400">
+                {sessions.length}
+              </span>
+            )}
           </div>
-          <div className="flex items-center gap-1">
-            <GlassButton variant="ghost" size="sm" onClick={onNewSession}>
-              <Plus className="w-4 h-4" />
-            </GlassButton>
-            <GlassButton variant="ghost" size="sm" onClick={() => refetch()}>
-              <Loader2 className="w-4 h-4" />
-            </GlassButton>
-            <GlassButton variant="ghost" size="sm" onClick={onClose}>
-              <ChevronDown className="w-4 h-4 rotate-90" />
-            </GlassButton>
+          <div className="flex items-center">
+            <button onClick={onNewSession} className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer">
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => refetch()} className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer">
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer">
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
-          <GlassButton
-            variant="primary"
-            className="w-full justify-center bg-indigo-500/20 hover:bg-indigo-500/30 border-indigo-500/30"
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
+          {/* New Session Button */}
+          <button
             onClick={onNewSession}
+            className="w-full p-2.5 rounded-lg bg-[rgba(var(--accent-primary),0.1)] border border-[rgba(var(--accent-primary),0.2)] hover:bg-[rgba(var(--accent-primary),0.15)] text-white text-xs font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer"
           >
-            <Plus className="w-4 h-4 mr-2" />
+            <Plus className="w-3.5 h-3.5" />
             New Session
-          </GlassButton>
+          </button>
 
           {isLoading ? (
             <div className="text-center py-8 text-gray-500">
-              <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-              <p className="text-sm">Loading...</p>
+              <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
+              <p className="text-xs">Loading...</p>
             </div>
           ) : sessions?.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
-              <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">No sessions yet</p>
-              <p className="text-xs mt-1">Start chatting to create one</p>
+              <MessageSquare className="w-6 h-6 mx-auto mb-2 opacity-30" />
+              <p className="text-xs">No sessions yet</p>
+              <p className="text-[10px] mt-1 text-gray-600">Start chatting to create one</p>
             </div>
           ) : (
             sessions?.map((session) => (
               <div
                 key={session.id}
-                className={`p-3 rounded-xl border transition-colors cursor-pointer ${currentSessionId === session.id
-                  ? 'bg-indigo-500/20 border-indigo-500/50'
-                  : 'bg-white/5 border-white/10 hover:border-white/20'
+                className={`p-2.5 rounded-lg transition-all cursor-pointer group ${currentSessionId === session.id
+                  ? 'bg-[rgba(var(--accent-primary),0.12)] border border-[rgba(var(--accent-primary),0.3)]'
+                  : 'bg-white/[0.03] border border-white/5 hover:border-white/15'
                   }`}
                 onClick={() => handleLoadSession(session.id)}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm text-white font-medium">
+                    <p className="text-xs text-white font-medium flex items-center gap-1.5">
+                      {currentSessionId === session.id && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
+                      )}
                       Session {session.id.slice(0, 8)}...
                     </p>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-[10px] text-gray-500 mt-0.5">
                       {session.message_count || 0} messages
                     </p>
                     {session.last_message && (
-                      <p className="text-xs text-gray-400 mt-1 truncate">
-                        Last: {session.last_message.content.slice(0, 30)}...
+                      <p className="text-[10px] text-gray-500 mt-0.5 truncate">
+                        {session.last_message.content.slice(0, 40)}...
                       </p>
                     )}
                   </div>
-                  <div className="flex items-center gap-1">
-                    {currentSessionId === session.id && (
-                      <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                    )}
-                    <GlassButton
-                      variant="ghost"
-                      size="sm"
-                      className="p-1"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowDeleteModal(session.id);
-                      }}
-                    >
-                      <Trash2 className="w-3 h-3 text-red-400" />
-                    </GlassButton>
-                  </div>
+                  <button
+                    className="p-1 rounded hover:bg-red-500/20 text-red-400 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowDeleteModal(session.id);
+                    }}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
                 </div>
               </div>
             ))
@@ -662,140 +674,131 @@ export function Chat() {
   const typedMessages = messages as ChatMessage[];
 
   return (
-    <PageLayout
-      title="Chat"
-      subtitle="Chat with your agents"
-      actions={
-        <div className="flex items-center gap-3">
-          {/* Current Session Indicator */}
+    <div className="h-screen flex flex-col bg-[#050508]">
+      {/* Compact Header Toolbar */}
+      <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-white/5 bg-[#0a0a0f]/90 backdrop-blur-xl flex-shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <h1 className="text-sm sm:text-base font-semibold text-white">Chat</h1>
           {sessionId && (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
-              <div className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span className="text-xs text-emerald-400 font-mono">
-                Session {sessionId.slice(0, 6)}...
-              </span>
+            <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span className="text-[10px] text-emerald-400 font-mono">{sessionId.slice(0, 6)}...</span>
             </div>
           )}
-
+        </div>
+        <div className="flex items-center gap-1 sm:gap-2">
           <select
             value={selectedAgentId || ''}
             onChange={(e) => setSelectedAgentId(e.target.value || undefined)}
-            className="glass-input"
+            className="text-xs bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white !outline-none focus:border-white/20 cursor-pointer"
           >
-            <option value="">Default Agent</option>
+            <option value="">Default</option>
             {agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
-              </option>
+              <option key={agent.id} value={agent.id}>{agent.name}</option>
             ))}
           </select>
-          <GlassButton
-            variant="ghost"
+          <button
             onClick={() => setShowSessionsPanel(!showSessionsPanel)}
-            title="Manage Sessions"
+            className={cn("p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer", showSessionsPanel ? "accent-text" : "text-gray-500")}
+            title="Sessions"
           >
-            <MessageSquare className={cn("w-4 h-4", showSessionsPanel && "text-indigo-400")} />
-          </GlassButton>
-          <GlassButton
-            variant="ghost"
+            <MessageSquare className="w-4 h-4" />
+          </button>
+          <button
             onClick={() => setShowSubagentPanel(!showSubagentPanel)}
-            title="Manage Subagents"
+            className={cn("p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer", showSubagentPanel ? "text-amber-400" : "text-gray-500")}
+            title="Subagents"
           >
-            <Zap className={cn("w-4 h-4", showSubagentPanel && "text-amber-400")} />
-          </GlassButton>
-          <GlassButton variant="ghost" onClick={clearChat} title="Clear Chat">
+            <Zap className="w-4 h-4" />
+          </button>
+          <button
+            onClick={clearChat}
+            className="p-1.5 sm:p-2 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
+            title="Clear Chat"
+          >
             <Trash2 className="w-4 h-4" />
-          </GlassButton>
+          </button>
         </div>
-      }
-    >
-      <div className="flex h-[calc(100vh-220px)] gap-4">
+      </div>
+
+      {/* Main Content Area */}
+      <div className="flex-1 flex overflow-hidden">
         {/* Chat Area */}
         <div className="flex-1 flex flex-col min-w-0">
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
+          {/* Messages - scrollable */}
+          <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 space-y-4">
             {typedMessages.length === 0 ? (
-              <GlassCard className="text-center py-12">
-                <Bot className="w-12 h-12 mx-auto mb-4 text-accent-400" />
-                <p className="text-gray-400">
-                  Start a conversation with your agent
-                </p>
-                <p className="text-sm text-gray-500 mt-2">
-                  {selectedAgentId
-                    ? `Chatting with: ${agents.find(a => a.id === selectedAgentId)?.name || 'Agent'}`
-                    : 'Using default agent'}
-                </p>
-              </GlassCard>
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center text-gray-500">
+                  <Sparkles className="w-8 h-8 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm font-medium">Start a conversation</p>
+                  <p className="text-xs mt-1 text-gray-600">Ask questions, get help with code, or chat with your agents</p>
+                </div>
+              </div>
             ) : (
-              typedMessages
-                .filter((message) => message.role !== 'system') // Hide system prompts
-                .map((message, index) => (
-                  <div
-                    key={index}
-                    className={`flex gap-4 ${message.role === 'user' ? 'flex-row-reverse' : ''
-                      }`}
-                  >
-                    <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${message.role === 'user'
-                        ? 'bg-indigo-500/20'
-                        : 'bg-emerald-500/20'
-                        }`}
-                    >
-                      {message.role === 'user' ? (
-                        <User className="w-4 h-4 text-indigo-400" />
-                      ) : (
-                        <Bot className="w-4 h-4 text-emerald-400" />
-                      )}
-                    </div>
-                    <div
-                      className={`max-w-[80%] rounded-2xl px-4 py-3 ${message.role === 'user'
-                        ? 'bg-indigo-500/20 text-indigo-100'
-                        : 'glass'
-                        }`}
-                    >
-                      {/* Thinking block */}
-                      {message.thinking && <ThinkingBlock thinking={message.thinking} />}
-
-                      {/* Subagent calls */}
-                      {message.subagent_calls && message.subagent_calls.length > 0 && (
-                        <div className="space-y-2 mb-3">
-                          {message.subagent_calls.map((subagent) => (
-                            <SubagentCallItem key={subagent.id} subagent={subagent} />
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Tool calls */}
-                      {message.tool_calls && message.tool_calls.length > 0 && (
-                        <div className="space-y-2 mb-3">
-                          {message.tool_calls.map((tool) => (
-                            <ToolCallItem key={tool.id} tool={tool} />
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Message content */}
-                      <MessageContent content={message.content} />
-
-                      {message.timestamp && (
-                        <p className="text-xs text-gray-500 mt-2">
-                          {formatRelativeTime(message.timestamp)}
-                        </p>
-                      )}
-                    </div>
+              typedMessages.map((message, index) => (
+                <div
+                  key={index}
+                  className={`flex gap-3 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}
+                >
+                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${message.role === 'user'
+                    ? 'bg-[rgba(var(--accent-primary),0.2)]'
+                    : 'bg-emerald-500/20'
+                    }`}>
+                    {message.role === 'user'
+                      ? <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 accent-text" />
+                      : <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
+                    }
                   </div>
-                ))
+                  <div className={`max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] ${message.role === 'user' ? 'text-right' : ''}`}>
+                    {/* Thinking block */}
+                    {message.thinking && <ThinkingBlock thinking={message.thinking} />}
+
+                    {/* Subagent calls */}
+                    {message.subagent_calls && message.subagent_calls.length > 0 && (
+                      <div className="space-y-1.5 mb-2">
+                        {message.subagent_calls.map((subagent) => (
+                          <SubagentCallItem key={subagent.id} subagent={subagent} />
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Tool calls */}
+                    {message.tool_calls && message.tool_calls.length > 0 && (
+                      <div className="space-y-1.5 mb-2">
+                        {message.tool_calls.map((tool) => (
+                          <ToolCallItem key={tool.id} tool={tool} />
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Message content */}
+                    <div className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${message.role === 'user'
+                      ? 'bg-[rgba(var(--accent-primary),0.15)] border border-[rgba(var(--accent-primary),0.2)]'
+                      : 'bg-white/[0.03] border border-white/5'
+                      }`}>
+                      <MessageContent content={message.content} />
+                    </div>
+
+                    {message.timestamp && (
+                      <p className="text-[10px] text-gray-600 mt-1.5">
+                        {formatRelativeTime(message.timestamp)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))
             )}
             {isLoading && (
-              <div className="flex gap-4">
-                <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                  <Bot className="w-4 h-4 text-emerald-400" />
+              <div className="flex gap-3">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                  <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
                 </div>
-                <div className="glass rounded-2xl px-4 py-3">
+                <div className="bg-white/[0.03] border border-white/5 rounded-xl px-4 py-3">
                   <div className="flex gap-1">
-                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    <span className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                   </div>
                 </div>
               </div>
@@ -803,22 +806,24 @@ export function Chat() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input */}
-          <div className="flex gap-3">
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Type your message... (Shift+Enter for new line)"
-              className="flex-1"
-            />
-            <GlassButton
-              variant="primary"
-              onClick={handleSend}
-              disabled={!input.trim() || isLoading}
-            >
-              <Send className="w-4 h-4" />
-            </GlassButton>
+          {/* Input - sticky bottom */}
+          <div className="flex-shrink-0 px-3 sm:px-4 py-3 border-t border-white/5 bg-[#0a0a0f]/80 backdrop-blur-xl">
+            <div className="flex gap-2 sm:gap-3">
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Type a message..."
+                className="flex-1 px-3 sm:px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-sm text-white placeholder-gray-500 !outline-none focus:border-white/20 transition-colors"
+              />
+              <button
+                onClick={handleSend}
+                disabled={!input.trim() || isLoading}
+                className="px-3 sm:px-4 py-2.5 rounded-xl accent-button disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -859,7 +864,7 @@ export function Chat() {
           />
         )}
       </div>
-    </PageLayout>
+    </div>
   );
 }
 

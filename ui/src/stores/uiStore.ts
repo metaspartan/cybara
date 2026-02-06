@@ -3,14 +3,18 @@ import { persist } from 'zustand/middleware';
 import type { Toast } from '../types';
 
 // Theme accent presets
-export type ThemeAccent = 'indigo' | 'emerald' | 'amber' | 'rose' | 'cyan' | 'purple';
+export type ThemeAccent = 'indigo' | 'emerald' | 'amber' | 'rose' | 'cyan' | 'purple' | 'blue' | 'teal' | 'orange' | 'pink';
 
 export const themeAccents: Record<ThemeAccent, { primary: string; name: string }> = {
   indigo: { primary: '99, 102, 241', name: 'Indigo' },
+  blue: { primary: '59, 130, 246', name: 'Blue' },
+  cyan: { primary: '6, 182, 212', name: 'Cyan' },
+  teal: { primary: '20, 184, 166', name: 'Teal' },
   emerald: { primary: '16, 185, 129', name: 'Emerald' },
   amber: { primary: '245, 158, 11', name: 'Amber' },
+  orange: { primary: '249, 115, 22', name: 'Orange' },
   rose: { primary: '244, 63, 94', name: 'Rose' },
-  cyan: { primary: '6, 182, 212', name: 'Cyan' },
+  pink: { primary: '236, 72, 153', name: 'Pink' },
   purple: { primary: '168, 85, 247', name: 'Purple' },
 };
 

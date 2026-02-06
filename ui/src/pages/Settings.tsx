@@ -49,10 +49,14 @@ function ThemeSettings() {
 
   const accentColors: Record<ThemeAccent, string> = {
     indigo: 'bg-indigo-500',
+    blue: 'bg-blue-500',
+    cyan: 'bg-cyan-500',
+    teal: 'bg-teal-500',
     emerald: 'bg-emerald-500',
     amber: 'bg-amber-500',
+    orange: 'bg-orange-500',
     rose: 'bg-rose-500',
-    cyan: 'bg-cyan-500',
+    pink: 'bg-pink-500',
     purple: 'bg-purple-500',
   };
 
