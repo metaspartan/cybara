@@ -86,6 +86,14 @@ export const providers = {
     authType: "api_key",
     models: [
       {
+        id: "claude-opus-4-6",
+        name: "Claude Opus 4.6",
+        context: 1000000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
+      },
+      {
         id: "claude-opus-4-5",
         name: "Claude Opus 4.5",
         context: 200000,
@@ -559,6 +567,14 @@ export const providers = {
     authType: "api_key",
     models: [
       {
+        id: "anthropic/claude-opus-4-6",
+        name: "Claude Opus 4.6",
+        context: 1000000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
+      },
+      {
         id: "anthropic/claude-opus-4-5",
         name: "Claude Opus 4.5",
         context: 200000,
@@ -583,6 +599,14 @@ export const providers = {
     api: "anthropic-messages",
     authType: "api_key",
     models: [
+      {
+        id: "claude-opus-4-6",
+        name: "Claude Opus 4.6",
+        context: 1000000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
+      },
       {
         id: "claude-opus-4-5",
         name: "Claude Opus 4.5",
