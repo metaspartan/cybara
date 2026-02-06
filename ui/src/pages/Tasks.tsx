@@ -341,13 +341,22 @@ export function Tasks() {
                                 {run.error && (
                                   <p className="text-sm text-red-400 line-clamp-2">{run.error}</p>
                                 )}
-                                {run.session_id && (
+                                {run.session_id && run.status === 'completed' && (
                                   <a
-                                    href={`/sessions?id=${run.session_id}`}
-                                    className="inline-flex items-center gap-1 mt-2 text-xs text-blue-400 hover:text-blue-300"
+                                    href={`/chat?session=${run.session_id}`}
+                                    className="inline-flex items-center gap-2 mt-3 px-3 py-1.5 text-sm font-medium rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 hover:text-blue-300 transition-colors"
                                   >
-                                    <ExternalLink className="w-3 h-3" />
-                                    View Session
+                                    <ExternalLink className="w-4 h-4" />
+                                    View Full Agent Response
+                                  </a>
+                                )}
+                                {run.session_id && run.status === 'running' && (
+                                  <a
+                                    href={`/chat?session=${run.session_id}`}
+                                    className="inline-flex items-center gap-2 mt-3 px-3 py-1.5 text-sm font-medium rounded-lg bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 hover:text-amber-300 transition-colors"
+                                  >
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    Watch Live
                                   </a>
                                 )}
                               </div>
