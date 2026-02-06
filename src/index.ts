@@ -226,6 +226,41 @@ console.log(`
 // Seed default providers
 providerManager.seedDefaults();
 
+// Initialize cron scheduler (OpenClaw parity)
+import { startScheduler, setAgentHandler, setWakeHandler } from "./core/cron";
+import { agentManager } from "./core/agent";
+
+// Set up agent handler for agentTurn jobs - enables agentic cron execution
+setAgentHandler(async (job) => {
+  const agent = agentManager.list().find(a => a.status === "running");
+  if (!agent) return { success: false, error: "No running agent available" };
+
+  try {
+    const message = job.payload.kind === "agentTurn" ? job.payload.message : String(job.payload);
+    const result = await agentManager.message(agent.id, message);
+    console.log(`[Cron] agentTurn job ${job.id} completed: ${result.response.slice(0, 100)}...`);
+    return { success: true };
+  } catch (error) {
+    console.error(`[Cron] agentTurn job ${job.id} failed:`, error);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+// Set up wake handler for systemEvent jobs
+setWakeHandler(async (text) => {
+  console.log(`[Cron] Wake event received: ${text}`);
+  // System events are logged - can be extended to inject into sessions
+});
+
+// Start the scheduler
+startScheduler();
+console.log("[Cron] Scheduler initialized with agent execution support");
+
+// Initialize task scheduler (UI tasks)
+import { taskScheduler } from "./core/scheduler";
+taskScheduler.initialize();
+console.log("[Task] Scheduler initialized");
+
 // Subscribe to subagent lifecycle events for announcements (OpenClaw parity)
 import { onSubagentLifecycle } from "./core/subagent-registry";
 import { sendToSession } from "./api/chat";

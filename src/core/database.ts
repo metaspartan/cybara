@@ -921,8 +921,11 @@ export interface Task {
   name: string;
   type?: "scheduled" | "triggered" | "recurring";
   schedule?: string;
+  action?: string;
+  description?: string;
   config?: Record<string, unknown>;
   status: "pending" | "running" | "completed" | "failed" | "paused";
+  enabled?: boolean;
   last_run?: string;
   next_run?: string;
 }
