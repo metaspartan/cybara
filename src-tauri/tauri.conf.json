@@ -11,8 +11,8 @@
         "windows": [
             {
                 "title": "Cybara",
-                "width": 1280,
-                "height": 800,
+                "width": 1320,
+                "height": 900,
                 "minWidth": 800,
                 "minHeight": 600,
                 "resizable": true,
