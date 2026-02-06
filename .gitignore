@@ -6,3 +6,5 @@ node_modules
 .env
 .DS_Store
 release/
+src-tauri/target/
+src-tauri/bin/

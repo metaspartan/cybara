@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Bot,
   Plug,
+  Smartphone,
   MessageSquare,
   MessagesSquare,
   Brain,
@@ -124,7 +125,7 @@ const navCategories = [
       { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
       { path: '/agents', icon: Bot, label: 'Agents' },
       { path: '/providers', icon: Plug, label: 'Providers' },
-      { path: '/channels', icon: MessageSquare, label: 'Channels' },
+      { path: '/channels', icon: Smartphone, label: 'Channels' },
     ],
   },
   {

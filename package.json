@@ -26,7 +26,11 @@
     "typecheck": "bunx tsc --noEmit",
     "check": "bun run typecheck && bun run lint && bun run format:check",
     "sexy": "bun run typecheck && bun run lint && bun run format:check",
-    "sexy:write": "bun run typecheck && bun run lint && bun run format"
+    "sexy:write": "bun run typecheck && bun run lint && bun run format",
+    "tauri": "tauri",
+    "tauri:dev": "bun run ui:build && (./release/cybara start -d 2>/dev/null || true) && bunx tauri dev",
+    "tauri:build": "bun run ui:build && bunx tauri build",
+    "tauri:sidecar": "bun build src/index.ts --compile --outfile release/cybara && cp release/cybara src-tauri/bin/cybara-aarch64-apple-darwin"
   },
   "dependencies": {
     "@slack/bolt": "^4.6.0",
@@ -48,6 +52,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.10.0",
     "@types/bun": "^1.3.8",
     "@types/react": "^19.1.1",
     "@typescript-eslint/eslint-plugin": "^8.54.0",
