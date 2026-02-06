@@ -4,7 +4,7 @@ import { PageLayout } from '@/components/layout';
 import { useHealth, useInfo, useSystemPrompt, useSystemPromptPreview, useUpdateSystemPrompt, useIdentity, useUpdateIdentity, type SystemPromptConfig, type IdentityConfig, type HealthData, type InfoData } from '@/hooks/useApi';
 import { Input, Textarea, Select } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
-import { useUIStore } from '@/stores/uiStore';
+import { useUIStore, themeAccents, type ThemeAccent } from '@/stores/uiStore';
 import {
   Activity,
   Server,
@@ -18,7 +18,8 @@ import {
   User,
   Save,
   Sparkles,
-  Eye
+  Eye,
+  Palette,
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 
@@ -40,6 +41,54 @@ function getCheckStatus(value: unknown): { status: 'healthy' | 'warning' | 'erro
     }
   }
   return { status: 'healthy' };
+}
+
+// Theme Settings Component
+function ThemeSettings() {
+  const { accent, setAccent, addToast } = useUIStore();
+
+  const accentColors: Record<ThemeAccent, string> = {
+    indigo: 'bg-indigo-500',
+    emerald: 'bg-emerald-500',
+    amber: 'bg-amber-500',
+    rose: 'bg-rose-500',
+    cyan: 'bg-cyan-500',
+    purple: 'bg-purple-500',
+  };
+
+  return (
+    <Card variant="liquid">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Palette className="w-5 h-5 text-indigo-400" />
+          Theme Settings
+        </CardTitle>
+        <CardDescription>Customize the UI accent color</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap gap-3">
+          {(Object.keys(themeAccents) as ThemeAccent[]).map((key) => (
+            <button
+              key={key}
+              onClick={() => {
+                setAccent(key);
+                addToast('success', `Theme changed to ${themeAccents[key].name}`);
+              }}
+              className={cn(
+                'w-12 h-12 rounded-xl transition-all cursor-pointer',
+                accentColors[key],
+                accent === key
+                  ? 'ring-2 ring-white ring-offset-2 ring-offset-[#0a0a0f] scale-110'
+                  : 'hover:scale-105 opacity-70 hover:opacity-100'
+              )}
+              title={themeAccents[key].name}
+            />
+          ))}
+        </div>
+        <p className="text-xs text-gray-500 mt-3">Selected: {themeAccents[accent].name}</p>
+      </CardContent>
+    </Card>
+  );
 }
 
 export function Settings() {
@@ -78,6 +127,9 @@ export function Settings() {
   return (
     <PageLayout title="Settings" subtitle="Platform configuration and system information">
       <div className="space-y-6">
+        {/* Theme Settings */}
+        <ThemeSettings />
+
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {stats.map((stat) => (

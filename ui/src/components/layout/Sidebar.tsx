@@ -195,13 +195,14 @@ export function Sidebar() {
           '!outline-none !ring-0 !border-transparent focus:!outline-none focus-visible:!outline-none active:!outline-none',
           collapsed ? 'px-3 py-2.5 justify-center' : 'px-4 py-2.5',
           isActive
-            ? 'bg-gradient-to-r from-indigo-500/20 to-violet-500/10 text-white border border-indigo-500/30 shadow-lg shadow-indigo-500/10'
+            ? 'bg-[rgba(var(--accent-primary),0.15)] text-white border border-[rgba(var(--accent-primary),0.3)] shadow-lg'
             : 'text-gray-400 hover:text-white hover:bg-white/5'
         )}
+        style={isActive ? { boxShadow: 'inset 0 1px 8px rgba(var(--accent-primary), 0.15)' } : undefined}
       >
         <Icon className={cn(
           'w-5 h-5 flex-shrink-0 transition-colors',
-          isActive ? 'text-indigo-400' : 'text-gray-500'
+          isActive ? 'accent-text' : 'text-gray-500'
         )} />
         {!collapsed && <span className="truncate">{item.label}</span>}
       </NavLink>
@@ -318,13 +319,14 @@ export function Sidebar() {
                 '!outline-none !ring-0 !border-transparent focus:!outline-none focus-visible:!outline-none active:!outline-none',
                 collapsed ? 'px-3 py-2.5 justify-center' : 'px-4 py-2.5',
                 location.pathname === '/settings'
-                  ? 'bg-gradient-to-r from-indigo-500/20 to-violet-500/10 text-white border border-indigo-500/30 shadow-lg shadow-indigo-500/10'
+                  ? 'bg-[rgba(var(--accent-primary),0.15)] text-white border border-[rgba(var(--accent-primary),0.3)] shadow-lg'
                   : 'text-gray-400 hover:text-white hover:bg-white/5'
               )}
+              style={location.pathname === '/settings' ? { boxShadow: 'inset 0 1px 8px rgba(var(--accent-primary), 0.15)' } : undefined}
             >
               <Settings className={cn(
                 'w-5 h-5 flex-shrink-0 transition-colors',
-                location.pathname === '/settings' ? 'text-indigo-400' : 'text-gray-500'
+                location.pathname === '/settings' ? 'accent-text' : 'text-gray-500'
               )} />
               {!collapsed && <span>Settings</span>}
             </NavLink>

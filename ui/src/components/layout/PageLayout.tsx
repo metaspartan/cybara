@@ -1,13 +1,15 @@
 import { type ReactNode } from 'react';
+import { cn } from '@/lib/utils';
 
 interface PageLayoutProps {
   children: ReactNode;
   title: string;
   subtitle?: string;
   actions?: ReactNode;
+  noPadding?: boolean;
 }
 
-export function PageLayout({ children, title, subtitle, actions }: PageLayoutProps) {
+export function PageLayout({ children, title, subtitle, actions, noPadding }: PageLayoutProps) {
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header - responsive padding and layout */}
@@ -29,8 +31,11 @@ export function PageLayout({ children, title, subtitle, actions }: PageLayoutPro
         </div>
       </header>
 
-      {/* Content - responsive padding */}
-      <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-10">
+      {/* Content - responsive padding, optional for full-screen pages */}
+      <main className={cn(
+        "flex-1 flex flex-col",
+        !noPadding && "px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-10"
+      )}>
         {children}
       </main>
     </div>

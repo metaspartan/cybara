@@ -594,6 +594,30 @@ const routes: Record<string, RouteHandler> = {
     return await createItem(parentPath, name, type);
   },
 
+  // Git API routes
+  "GET /api/git/status": async (_body, params) => {
+    const { getGitStatus } = await import("./git-api");
+    const path = (params?.path as string | undefined) || "~";
+    return await getGitStatus(path);
+  },
+
+  "GET /api/git/branch": async (_body, params) => {
+    const { getGitBranch } = await import("./git-api");
+    const path = (params?.path as string | undefined) || "~";
+    const branch = await getGitBranch(path);
+    return { branch };
+  },
+
+  "GET /api/git/diff": async (_body, params) => {
+    const { getGitDiff } = await import("./git-api");
+    const path = params?.path as string | undefined;
+    const staged = params?.staged === "true";
+    if (!path) {
+      return { success: false, error: "Missing 'path' parameter" };
+    }
+    return await getGitDiff(path, staged);
+  },
+
   "GET /api/channels": () => channelManager.list(),
   "GET /api/channels/available": () =>
     Object.entries(channels).map(([key, value]) => ({

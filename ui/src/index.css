@@ -21,8 +21,12 @@
   --glass-surface: rgba(255, 255, 255, 0.03);
   --glass-highlight: rgba(255, 255, 255, 0.12);
 
-  /* Brand Gradients for accents */
-  --accent-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%);
+  /* Theme accent color (set dynamically via JS) */
+  --accent-primary: 99, 102, 241;
+  /* Default: Indigo */
+
+  /* Brand Gradients for accents - uses accent color */
+  --accent-gradient: linear-gradient(135deg, rgb(var(--accent-primary)) 0%, #8b5cf6 50%, #d946ef 100%);
 }
 
 *,
@@ -170,6 +174,52 @@ body::before {
   background: rgba(255, 255, 255, 0.06);
 }
 
+/* ==================== ACCENT THEME UTILITIES ==================== */
+
+/* Primary accent button - uses dynamic accent color */
+.accent-button {
+  background: rgb(var(--accent-primary));
+  color: white;
+  box-shadow: 0 4px 14px rgba(var(--accent-primary), 0.3);
+  transition: all 0.2s ease;
+}
+
+.accent-button:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 6px 20px rgba(var(--accent-primary), 0.4);
+  transform: translateY(-1px);
+}
+
+.accent-button:active {
+  filter: brightness(0.95);
+  transform: translateY(0);
+}
+
+/* Accent text */
+.accent-text {
+  color: rgb(var(--accent-primary));
+}
+
+/* Accent border */
+.accent-border {
+  border-color: rgb(var(--accent-primary));
+}
+
+/* Accent gradient background */
+.accent-gradient {
+  background: linear-gradient(135deg, rgb(var(--accent-primary)) 0%, rgb(var(--accent-primary) / 0.7) 100%);
+}
+
+/* Accent ring */
+.accent-ring {
+  box-shadow: 0 0 0 3px rgba(var(--accent-primary), 0.3);
+}
+
+/* Sidebar accent indicator */
+.accent-indicator {
+  background: rgb(var(--accent-primary));
+}
+
 /* Shimmer Effect for Loading States */
 .shimmer {
   background: linear-gradient(90deg,
@@ -301,7 +351,7 @@ body::before {
 
 /* Selection */
 ::selection {
-  background: rgba(99, 102, 241, 0.3);
+  background: rgba(var(--accent-primary), 0.3);
   color: white;
 }
 
@@ -334,12 +384,12 @@ select:-webkit-autofill:focus {
   transition: background-color 5000s ease-in-out 0s;
 }
 
-/* Input Focus States */
+/* Input Focus States - uses accent color */
 input:focus,
 textarea:focus,
 select:focus {
-  border-color: rgba(99, 102, 241, 0.5);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  border-color: rgba(var(--accent-primary), 0.5);
+  box-shadow: 0 0 0 3px rgba(var(--accent-primary), 0.1);
 }
 
 /* ==================== RESPONSIVE LAYOUTS ==================== */

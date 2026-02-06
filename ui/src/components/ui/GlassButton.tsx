@@ -27,7 +27,7 @@ export const GlassButton = forwardRef<HTMLButtonElement, GlassButtonProps>(
         className={cn(
           variants[variant],
           variant !== 'primary' && variant !== 'danger' && sizes[size],
-          'disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100',
+          'cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100',
           className
         )}
         {...props}

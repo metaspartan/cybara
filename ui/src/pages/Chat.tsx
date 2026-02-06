@@ -186,6 +186,9 @@ function MessageContent({ content }: { content: string }) {
               {children}
             </blockquote>
           ),
+          hr: () => (
+            <hr className="border-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent my-4" />
+          ),
         }}
       >
         {content}
@@ -635,6 +638,25 @@ export function Chat() {
       handleSend();
     }
   };
+
+  // Handle URL session parameter (from Task page links)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sessionParam = params.get('session');
+
+    if (sessionParam && sessionParam !== sessionId) {
+      // Load the session from URL
+      loadSessionMutation.mutateAsync(sessionParam).then((result) => {
+        if (result?.messagesList) {
+          loadSession(sessionParam, result.messagesList as ChatMessage[]);
+          // Clean up URL after loading
+          window.history.replaceState({}, '', '/chat');
+        }
+      }).catch((error) => {
+        console.error('Failed to load session from URL:', error);
+      });
+    }
+  }, []); // Only run on mount
 
   // Cast messages to include extended fields
   const typedMessages = messages as ChatMessage[];

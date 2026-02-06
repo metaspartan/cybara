@@ -8,6 +8,11 @@
         "core:default",
         "shell:allow-spawn",
         "shell:allow-execute",
-        "shell:default"
+        "shell:default",
+        "notification:default",
+        "notification:allow-is-permission-granted",
+        "notification:allow-request-permission",
+        "notification:allow-notify",
+        "notification:allow-show"
     ]
 }

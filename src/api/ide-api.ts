@@ -5,7 +5,7 @@ import { homedir } from "os";
 import { existsSync } from "fs";
 
 const HOME_DIR = homedir();
-const MAX_FILE_SIZE = 1024 * 1024; // 1MB limit
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit (industry standard for browser IDEs)
 
 // Security: Ensure path is within HOME_DIR
 function isPathAllowed(targetPath: string): boolean {

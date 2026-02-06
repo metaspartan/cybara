@@ -93,6 +93,7 @@ export function Tasks() {
       return res.json();
     },
     enabled: !!expandedTaskId,
+    refetchInterval: 5000, // Auto-refresh every 5 seconds when expanded
   });
 
   const filteredTasks = tasks?.filter(task =>
