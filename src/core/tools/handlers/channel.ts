@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 import type { CronJobCreate, CronJobPatch } from "../../cron/types";
 import * as cron from "../../cron";
 import { agentManager } from "../../agent";
-import { providerManager, getProviderBaseUrl, getDefaultModel } from "../../providers";
+import { providerManager } from "../../providers";
 import * as subagentRegistry from "../../subagent-registry";
 import type { SubagentRunRecord } from "../../subagent-registry";
 
@@ -180,14 +180,13 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
   }
 
   try {
-    // Use static imports
-    // Get default agent
+    // Get default agent for provider/model config
     const agent = agentManager.list().find((a) => a.status === "running") || agentManager.list()[0];
     if (!agent) {
       throw new Error("No agent available for subagent execution");
     }
 
-    // Get provider
+    // Get provider with credentials
     const provider = agent.provider_id
       ? providerManager.getWithCredentials(agent.provider_id)
       : undefined;
@@ -195,66 +194,56 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
       throw new Error("No provider available for subagent execution");
     }
 
-    // Call LLM for subagent
-    const auth = provider.api_key || provider.access_token;
-    if (!auth) {
-      throw new Error("No API credentials configured");
-    }
-
-    const baseUrl = provider.base_url || getProviderBaseUrl(provider.provider);
-    const modelId = session.model || agent.model || getDefaultModel(provider.provider);
-
-    const apiMessages = session.messages.map((m) => ({
-      role: m.role,
+    // Convert session messages to AgentMessage format
+    const agentMessages = session.messages.map((m) => ({
+      role: m.role as "user" | "assistant" | "system" | "tool",
       content: m.content,
     }));
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${auth}`,
-      },
-      body: JSON.stringify({
-        model: modelId,
-        messages: apiMessages,
-        max_tokens: 4096,
-        temperature: 0.7,
-      }),
-    });
+    // Get all available tools (subagents get full tool access)
+    const { getToolSchemasForLLM } = await import("../../tools/index");
+    const tools = getToolSchemasForLLM();
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`LLM API error: ${errorText.substring(0, 200)}`);
-    }
+    console.log(`[Subagent] Executing ${sessionId} with full agentic loop (${tools.length} tools available)`);
 
-    const data = (await response.json()) as any;
-    const content = data.choices?.[0]?.message?.content || "";
+    // Use AgentManager.callLLM for full agentic execution with tool support
+    const result = await agentManager.callLLM(
+      provider,
+      session.model || agent.model,
+      agentMessages,
+      tools
+    );
 
+    // Add assistant response to session history
     session.messages.push({
       role: "assistant",
-      content,
+      content: result.content,
       timestamp: new Date().toISOString(),
     });
 
-    session.result = content;
+    session.result = result.content;
     session.status = "completed";
     session.completedAt = new Date().toISOString();
 
     // Update registry
     if (run) {
-      subagentRegistry.markRunCompleted(run.runId, content);
+      subagentRegistry.markRunCompleted(run.runId, result.content);
     }
 
-
-    console.log(`[Subagent] Session ${sessionId} completed`);
+    console.log(`[Subagent] Session ${sessionId} completed with ${result.tool_calls?.length || 0} tool calls`);
   } catch (error) {
     session.status = "failed";
     session.error = (error as Error).message;
     session.completedAt = new Date().toISOString();
+
+    if (run) {
+      subagentRegistry.markRunFailed(run.runId, (error as Error).message);
+    }
+
     console.error(`[Subagent] Session ${sessionId} failed:`, error);
   }
 }
+
 
 export async function handleSessionsSend(
   args: Record<string, unknown>
