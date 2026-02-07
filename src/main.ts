@@ -1,39 +1,18 @@
 #!/usr/bin/env bun
-/**
- * Cybara - Unified Entry Point
- *
- * This file serves as the single entry point for the compiled binary.
- * It routes to either the CLI/TUI or starts the server based on arguments.
- *
- * Usage:
- *   cybara              - Start the server (default)
- *   cybara start        - Start the server (foreground)
- *   cybara start -d     - Start the server (daemon/background)
- *   cybara stop         - Stop the daemon
- *   cybara status       - Show status (CLI)
- *   cybara agents       - List agents (CLI)
- *   cybara mcp [cmd]    - MCP commands (CLI)
- *   cybara help         - Show help
- *   cybara --version    - Show version
- */
-
 import { spawn } from "bun";
-import { existsSync, readFileSync, writeFileSync, unlinkSync, appendFileSync, mkdirSync, openSync, closeSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, unlinkSync, appendFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
-// Use home directory for state files since __dirname is virtual in compiled binaries
 const CYBARA_DIR = join(homedir(), ".cybara");
 const PID_FILE = join(CYBARA_DIR, "cybara.pid");
 const LOG_FILE = join(CYBARA_DIR, "cybara.log");
 
-// Ensure .cybara directory exists
 try { mkdirSync(CYBARA_DIR, { recursive: true }); } catch { }
 
 const args = process.argv.slice(2);
 const command = args[0]?.toLowerCase();
 
-// Commands that should use CLI mode
 const CLI_COMMANDS = [
     "status",
     "metrics",
@@ -43,6 +22,17 @@ const CLI_COMMANDS = [
     "mcp",
     "lsp",
     "pair",
+    "provider",
+    "providers",
+    "sessions",
+    "memory",
+    "logs",
+    "subagent",
+    "subagents",
+    "browser",
+    "channels",
+    "channel",
+    "wizard",
     "help",
     "--help",
     "-h",
@@ -51,24 +41,21 @@ const CLI_COMMANDS = [
     "install",
 ];
 
-// Check flags
 const isDaemon = args.includes("-d") || args.includes("--daemon") || args.includes("-bg");
 const isDaemonChild = args.includes("--daemon-child");
 const isCliCommand = command && CLI_COMMANDS.includes(command);
 const isServerStart = !command || command === "start" || command === "server";
 const isStop = command === "stop";
-const isLogs = command === "logs";
+const isDaemonLogs = command === "daemon-logs";
 
 function getPid(): number | null {
     try {
         if (existsSync(PID_FILE)) {
             const pid = parseInt(readFileSync(PID_FILE, "utf-8").trim());
-            // Check if process is actually running
             try {
                 process.kill(pid, 0);
                 return pid;
             } catch {
-                // Process not running, clean up stale PID file
                 try { unlinkSync(PID_FILE); } catch { }
                 return null;
             }
@@ -93,14 +80,10 @@ async function startDaemon() {
 
     console.log("Starting Cybara in background...");
 
-    // Get the path to this executable - use process.execPath for compiled binaries
-    // process.argv[0] would return 'bun' in dev mode, but we want the actual executable
     const execPath = process.execPath;
 
-    // Clear old log file
     writeFileSync(LOG_FILE, `[${new Date().toISOString()}] Starting Cybara daemon...\n`);
 
-    // Spawn detached process - use 'ignore' for stdio and let child process handle logging
     const proc = spawn({
         cmd: [execPath, "start", "--daemon-child"],
         stdout: "ignore",
@@ -108,13 +91,10 @@ async function startDaemon() {
         stdin: "ignore",
     });
 
-    // Write PID file
     writeFileSync(PID_FILE, String(proc.pid));
 
-    // Wait a moment to check if it actually started
     await Bun.sleep(1000);
 
-    // Check if process is still running
     const stillRunning = getPid();
     if (stillRunning) {
         console.log(`Cybara started in background (PID: ${proc.pid})`);
@@ -123,8 +103,7 @@ async function startDaemon() {
         console.log(`\nRun 'cybara stop' to stop the server`);
     } else {
         console.log("Cybara failed to start. Check logs:");
-        console.log(`  cybara logs`);
-        // Show last few lines of log
+        console.log(`  cybara daemon-logs`);
         if (existsSync(LOG_FILE)) {
             const content = readFileSync(LOG_FILE, "utf-8");
             console.log("\nRecent log output:");
@@ -132,7 +111,6 @@ async function startDaemon() {
         }
     }
 
-    // Unref so this process can exit
     proc.unref();
     process.exit(0);
 }
@@ -154,13 +132,13 @@ async function stopDaemon() {
     }
 }
 
-async function showLogs() {
+async function showDaemonLogs() {
     if (existsSync(LOG_FILE)) {
         const content = readFileSync(LOG_FILE, "utf-8");
         const lines = content.split("\n").slice(-50);
         console.log(lines.join("\n"));
     } else {
-        console.log("No logs found");
+        console.log("No daemon logs found");
     }
 }
 
@@ -173,15 +151,22 @@ Usage:
   cybara start              Start the server (foreground)
   cybara start -d           Start the server in background (daemon)
   cybara stop               Stop the background server
-  cybara logs               Show daemon logs
   cybara status             Show platform status
+  cybara metrics            Show token usage and metrics
   cybara agents             List all agents
-  cybara mcp list           List MCP servers
-  cybara mcp search <q>     Search MCP registry
-  cybara mcp install <pkg>  Install MCP server
-  cybara mcp popular        Show popular MCP servers
-  cybara lsp                Show LSP status and available language servers
-  cybara help               Show this help
+  cybara provider           Provider management (add, update, delete, models)
+  cybara sessions           List chat sessions
+  cybara memory [query]     List or search memory
+  cybara logs [count]       Show system logs from API
+  cybara subagent           Subagent management (list, spawn, kill)
+  cybara browser            Browser status and tabs
+  cybara channels           List configured channels
+  cybara mcp [cmd]          MCP server management
+  cybara lsp [cmd]          Language server management
+  cybara pair [cmd]         Channel pairing
+  cybara wizard             Setup wizard
+  cybara daemon-logs        Show daemon process logs
+  cybara help               Show full command reference
 
 Options:
   -d, --daemon, -bg         Run server in background
@@ -197,20 +182,17 @@ Files:
 async function main() {
     if (isStop) {
         await stopDaemon();
-    } else if (isLogs) {
-        await showLogs();
+    } else if (isDaemonLogs) {
+        await showDaemonLogs();
     } else if (isServerStart && isDaemon && !isDaemonChild) {
         await startDaemon();
     } else if (isServerStart) {
-        // Write PID for foreground mode too
         writeFileSync(PID_FILE, String(process.pid));
 
-        // Log startup for daemon mode
         if (isDaemonChild) {
             logDaemon("Daemon child process starting...");
         }
 
-        // Cleanup on exit
         process.on("SIGINT", () => {
             try { unlinkSync(PID_FILE); } catch { }
             process.exit(0);
@@ -221,7 +203,6 @@ async function main() {
             process.exit(0);
         });
 
-        // Start the server (imports at runtime to avoid loading everything for CLI)
         try {
             logDaemon("Loading server module...");
             await import("./index");
@@ -230,7 +211,6 @@ async function main() {
             throw err;
         }
     } else if (isCliCommand) {
-        // Run CLI command
         await import("./cli");
     } else {
         await showHelp();

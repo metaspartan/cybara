@@ -4,7 +4,7 @@
   "description": "AI agent platform with beautiful web UI",
   "type": "module",
   "bin": {
-    "cybara": "./dist/cli.js"
+    "cybara": "./dist/main.js"
   },
   "scripts": {
     "dev": "bun run build && cd ui && bun run build && cd .. && bun run --watch src/index.ts",
@@ -36,7 +36,6 @@
     "@slack/bolt": "^4.6.0",
     "chromium-bidi": "^13.1.0",
     "discord.js": "^14.25.1",
-    "electron": "^40.1.0",
     "ink": "^6.6.0",
     "ink-big-text": "^2.0.0",
     "ink-gradient": "^3.0.0",

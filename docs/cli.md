@@ -41,7 +41,38 @@ cybara agent stop <id>    # Stop agent
 ### Providers
 
 ```bash
-cybara providers          # List configured AI providers
+cybara provider              # List configured providers
+cybara provider available    # Show available provider types
+cybara provider add <type>   # Add provider
+      --name NAME            # Display name
+      --key KEY              # API key (for bearer auth)
+      --token TOKEN          # Access token (for token auth)
+      --default              # Set as default provider
+cybara provider update <id>  # Update provider (same flags)
+cybara provider delete <id>  # Delete provider
+cybara provider models <id>  # List provider's models
+cybara provider discover     # Discover Ollama models
+```
+
+**Example:**
+```bash
+# See all available provider types
+cybara provider available
+
+# Add OpenAI with API key
+cybara provider add openai --name "My OpenAI" --key sk-abc123... --default
+
+# Add Ollama (no auth needed)
+cybara provider add ollama --name "Local Ollama"
+
+# Discover local Ollama models
+cybara provider discover
+
+# List models for a provider
+cybara provider models abc12345
+
+# Delete a provider
+cybara provider delete abc12345
 ```
 
 ### Sessions
@@ -70,7 +101,7 @@ cybara subagent kill <id> # Kill running subagent
 
 ```bash
 cybara browser            # Show browser status
-cybara browser profiles   # List browser profiles
+cybara browser tabs       # List open browser tabs
 ```
 
 ### Channels

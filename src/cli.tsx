@@ -1,29 +1,14 @@
 #!/usr/bin/env bun
-/**
- * Cybara CLI - TUI for interactive use, raw output for commands
- * 
- * Usage:
- *   cybara              # Interactive TUI menu
- *   cybara status       # Raw text output
- *   cybara metrics      # Raw text output
- *   cybara agents       # Raw text output
- *   cybara skills       # Raw text output
- *   cybara tasks        # Raw text output
- *   cybara help         # Raw text help
- */
-
 import React from "react";
 import { render, Box, Text, useApp, useInput } from "ink";
 import Gradient from "ink-gradient";
 import BigText from "ink-big-text";
 import Spinner from "ink-spinner";
 import { spawn } from "child_process";
+import { readFileSync } from "fs";
+import { join } from "path";
 
 const API_BASE = process.env.CYBARA_API || "http://localhost:4269";
-
-// ============================================
-// Types
-// ============================================
 
 interface StatusResponse {
     status: string;
@@ -63,26 +48,23 @@ interface AgentItem {
     model?: string;
 }
 
-// ============================================
-// Fetch Helper
-// ============================================
-
 async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T | null> {
     try {
         const res = await fetch(`${API_BASE}${endpoint}`, {
             headers: { "Content-Type": "application/json" },
             ...options,
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
         return await res.json() as T;
-    } catch {
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("ECONNREFUSED") || msg.includes("fetch failed")) {
+            console.error(`ERROR: Cannot connect to Cybara at ${API_BASE}`);
+            console.error("Is the server running? Start it with: cybara start");
+        }
         return null;
     }
 }
-
-// ============================================
-// RAW OUTPUT MODE (for agents/scripts)
-// ============================================
 
 async function rawStatus(): Promise<void> {
     const data = await fetchAPI<StatusResponse>("/api/health");
@@ -229,7 +211,7 @@ async function rawSkills(): Promise<void> {
     }
 }
 
-// MCP Commands
+
 interface MCPRegistryServer {
     id: string;
     name: string;
@@ -339,7 +321,7 @@ async function rawMcpPopular(): Promise<void> {
     }
 }
 
-// Pairing Commands
+
 interface PairingInfo {
     id: string;
     senderId: string;
@@ -358,7 +340,7 @@ interface ChannelInfo {
 }
 
 async function rawPairList(): Promise<void> {
-    // Get all channels first
+
     const channels = await fetchAPI<ChannelInfo[]>("/api/channels") || [];
 
     console.log("PENDING PAIRINGS");
@@ -393,7 +375,7 @@ async function rawPairList(): Promise<void> {
 }
 
 async function rawPairApprove(code: string): Promise<void> {
-    // Search all channels for this code
+
     const channels = await fetchAPI<ChannelInfo[]>("/api/channels") || [];
 
     for (const channel of channels) {
@@ -419,7 +401,7 @@ async function rawPairApprove(code: string): Promise<void> {
 }
 
 async function rawPairReject(code: string): Promise<void> {
-    // Search all channels for this code
+
     const channels = await fetchAPI<ChannelInfo[]>("/api/channels") || [];
 
     for (const channel of channels) {
@@ -453,7 +435,7 @@ async function rawPairPolicy(channelName: string, policy: string): Promise<void>
         process.exit(1);
     }
 
-    // Find channel by name
+
     const channels = await fetchAPI<ChannelInfo[]>("/api/channels") || [];
     const channel = channels.find((c) => c.name.toLowerCase() === channelName.toLowerCase() || c.id === channelName);
 
@@ -481,17 +463,18 @@ async function rawPairPolicy(channelName: string, policy: string): Promise<void>
     }
 }
 
+interface LSPInstallStatus {
+    language: string;
+    displayName: string;
+    description: string;
+    type: "bundled" | "binary" | "pip" | "go";
+    installed: boolean;
+    available: boolean;
+    path: string | null;
+    requiresRuntime?: string;
+}
+
 async function rawLsp(): Promise<void> {
-    interface LSPInstallStatus {
-        language: string;
-        displayName: string;
-        description: string;
-        type: "bundled" | "binary" | "pip" | "go";
-        installed: boolean;
-        available: boolean;
-        path: string | null;
-        requiresRuntime?: string;
-    }
 
     const data = await fetchAPI<{ status: LSPInstallStatus[] }>("/api/lsp/install-status");
     if (!data) {
@@ -505,7 +488,6 @@ async function rawLsp(): Promise<void> {
     console.log("LANGUAGE SERVERS");
     console.log("----------------");
 
-    // Separate bundled from others
     const bundled = data.status.filter(l => l.type === "bundled");
     const installable = data.status.filter(l => l.type !== "bundled");
 
@@ -541,7 +523,7 @@ async function rawLspInstall(language: string): Promise<void> {
         console.error("ERROR: Please specify a language to install");
         console.log("Usage: cybara lsp install <language>");
         console.log("");
-        // List available languages
+
         const data = await fetchAPI<{ status: { language: string; displayName: string; type: string }[] }>("/api/lsp/install-status");
         if (data) {
             const installable = data.status.filter(l => l.type !== "bundled");
@@ -599,17 +581,22 @@ async function rawLspUninstall(language: string): Promise<void> {
     }
 }
 
-// ============================================
-// NEW CLI COMMANDS - Feature parity with UI
-// ============================================
 
-// Providers command
 interface ProviderInfo {
     id: string;
-    type: string;
+    provider: string;
     name: string;
-    enabled: boolean;
-    models?: string[];
+    is_default: boolean;
+    config?: Record<string, unknown>;
+}
+
+interface AvailableProviderInfo {
+    id: string;
+    name: string;
+    description: string;
+    baseUrl: string;
+    authType: string;
+    models: { id: string; name: string; context: number }[];
 }
 
 async function rawProviders(): Promise<void> {
@@ -619,30 +606,240 @@ async function rawProviders(): Promise<void> {
         process.exit(1);
     }
 
-    const providers = Array.isArray(data) ? data : [];
-    const enabled = providers.filter(p => p.enabled).length;
+    const provs = Array.isArray(data) ? data : [];
 
     console.log("CYBARA PROVIDERS");
     console.log("================");
-    console.log(`total: ${providers.length}`);
-    console.log(`enabled: ${enabled}`);
+    console.log(`total: ${provs.length}`);
     console.log("");
 
-    if (providers.length === 0) {
+    if (provs.length === 0) {
         console.log("No providers configured");
+        console.log("Run 'cybara provider add <type>' to add one");
+        console.log("Run 'cybara provider available' to see available types");
         return;
     }
 
-    for (const provider of providers) {
-        const status = provider.enabled ? "✓" : "✗";
-        console.log(`${status} ${provider.name} (${provider.type})`);
-        if (provider.models && provider.models.length > 0) {
-            console.log(`    models: ${provider.models.slice(0, 3).join(", ")}${provider.models.length > 3 ? ` (+${provider.models.length - 3} more)` : ""}`);
-        }
+    for (const prov of provs) {
+        const def = prov.is_default ? " [DEFAULT]" : "";
+        console.log(`  ${prov.id.slice(0, 8)}  ${prov.name} (${prov.provider})${def}`);
     }
 }
 
-// Sessions command
+async function rawProviderAvailable(): Promise<void> {
+    const data = await fetchAPI<AvailableProviderInfo[]>("/api/providers/available");
+    if (!data) {
+        console.error("ERROR: Failed to fetch available providers from", API_BASE);
+        process.exit(1);
+    }
+
+    console.log("AVAILABLE PROVIDER TYPES");
+    console.log("========================");
+    console.log("");
+
+    for (const prov of data) {
+        const auth = prov.authType === "none" ? "(no auth)" : `(${prov.authType})`;
+        console.log(`  ${prov.id.padEnd(18)} ${prov.name} ${auth}`);
+        console.log(`${"".padEnd(20)} ${prov.models.length} models | ${prov.baseUrl}`);
+    }
+}
+
+async function rawProviderAdd(type: string, name?: string, apiKey?: string, accessToken?: string, isDefault?: boolean): Promise<void> {
+    if (!type) {
+        console.error("ERROR: Please specify a provider type");
+        console.log("Usage: cybara provider add <type> [--name NAME] [--key KEY] [--token TOKEN] [--default]");
+        console.log("");
+        console.log("Run 'cybara provider available' to see available types");
+        process.exit(1);
+    }
+
+    const displayName = name || type.charAt(0).toUpperCase() + type.slice(1);
+
+    const body: Record<string, unknown> = {
+        provider: type,
+        name: displayName,
+    };
+    if (apiKey) body.api_key = apiKey;
+    if (accessToken) body.access_token = accessToken;
+    if (isDefault) body.is_default = true;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/providers`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+
+        const result = await response.json() as { id?: string; error?: string };
+
+        if (result.id) {
+            console.log(`✓ Added provider: ${displayName} (${type})`);
+            console.log(`  ID: ${result.id}`);
+        } else {
+            console.error(`✗ Failed to add provider: ${result.error || "Unknown error"}`);
+            process.exit(1);
+        }
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("ECONNREFUSED") || msg.includes("fetch failed")) {
+            console.error(`ERROR: Cannot connect to Cybara at ${API_BASE}`);
+            console.error("Is the server running? Start it with: cybara start");
+        } else {
+            console.error(`✗ Failed to add provider: ${msg}`);
+        }
+        process.exit(1);
+    }
+}
+
+async function rawProviderUpdate(id: string, name?: string, apiKey?: string, accessToken?: string, isDefault?: boolean): Promise<void> {
+    if (!id) {
+        console.error("ERROR: Please specify a provider ID");
+        console.log("Usage: cybara provider update <id> [--name NAME] [--key KEY] [--token TOKEN] [--default]");
+        process.exit(1);
+    }
+
+    const body: Record<string, unknown> = {};
+    if (name) body.name = name;
+    if (apiKey) body.api_key = apiKey;
+    if (accessToken) body.access_token = accessToken;
+    if (isDefault !== undefined) body.is_default = isDefault;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/providers/${id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+
+        const result = await response.json() as { success?: boolean; error?: string };
+
+        if (result.success) {
+            console.log(`✓ Updated provider: ${id}`);
+        } else {
+            console.error(`✗ Failed to update: ${result.error || "Unknown error"}`);
+            process.exit(1);
+        }
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("ECONNREFUSED") || msg.includes("fetch failed")) {
+            console.error(`ERROR: Cannot connect to Cybara at ${API_BASE}`);
+            console.error("Is the server running? Start it with: cybara start");
+        } else {
+            console.error(`✗ Failed to update provider: ${msg}`);
+        }
+        process.exit(1);
+    }
+}
+
+async function rawProviderDelete(id: string): Promise<void> {
+    if (!id) {
+        console.error("ERROR: Please specify a provider ID");
+        console.log("Usage: cybara provider delete <id>");
+        process.exit(1);
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/api/providers/${id}`, {
+            method: "DELETE",
+        });
+
+        const result = await response.json() as { success?: boolean; error?: string };
+
+        if (result.success) {
+            console.log(`✓ Deleted provider: ${id}`);
+        } else {
+            console.error(`✗ Failed to delete: ${result.error || "Unknown error"}`);
+            process.exit(1);
+        }
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("ECONNREFUSED") || msg.includes("fetch failed")) {
+            console.error(`ERROR: Cannot connect to Cybara at ${API_BASE}`);
+            console.error("Is the server running? Start it with: cybara start");
+        } else {
+            console.error(`✗ Failed to delete provider: ${msg}`);
+        }
+        process.exit(1);
+    }
+}
+
+async function rawProviderModels(id: string): Promise<void> {
+    if (!id) {
+        console.error("ERROR: Please specify a provider ID");
+        console.log("Usage: cybara provider models <id>");
+        process.exit(1);
+    }
+
+    const data = await fetchAPI<{ id: string; name: string; context: number }[]>(`/api/providers/${id}/models`);
+    if (!data) {
+        console.error("ERROR: Failed to fetch models from", API_BASE);
+        process.exit(1);
+    }
+
+    const models = Array.isArray(data) ? data : [];
+
+    console.log(`MODELS FOR PROVIDER ${id}`);
+    console.log("=".repeat(26 + id.length));
+    console.log(`total: ${models.length}`);
+    console.log("");
+
+    for (const model of models) {
+        const ctx = model.context ? ` (${(model.context / 1000).toFixed(0)}k ctx)` : "";
+        console.log(`  ${model.id.padEnd(30)} ${model.name}${ctx}`);
+    }
+}
+
+async function rawProviderDiscover(): Promise<void> {
+    console.log("Discovering Ollama models...");
+
+    try {
+        const response = await fetch(`${API_BASE}/api/providers/discover/ollama`, {
+            method: "POST",
+        });
+
+        const result = await response.json() as { models?: { id: string }[]; error?: string };
+
+        if (result.models) {
+            console.log(`✓ Discovered ${result.models.length} Ollama models`);
+            for (const model of result.models) {
+                console.log(`  - ${model.id}`);
+            }
+        } else {
+            console.error(`✗ Failed to discover: ${result.error || "Unable to reach Ollama"}`);
+            process.exit(1);
+        }
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("ECONNREFUSED") || msg.includes("fetch failed")) {
+            console.error(`ERROR: Cannot connect to Cybara at ${API_BASE}`);
+            console.error("Is the server running? Start it with: cybara start");
+        } else {
+            console.error(`✗ Failed to discover Ollama models: ${msg}`);
+        }
+        process.exit(1);
+    }
+}
+
+
+function parseProviderFlags(args: string[]): { name?: string; key?: string; token?: string; isDefault: boolean } {
+    let name: string | undefined;
+    let key: string | undefined;
+    let token: string | undefined;
+    let isDefault = false;
+
+    for (let i = 0; i < args.length; i++) {
+        switch (args[i]) {
+            case "--name": name = args[++i]; break;
+            case "--key": key = args[++i]; break;
+            case "--token": token = args[++i]; break;
+            case "--default": isDefault = true; break;
+        }
+    }
+
+    return { name, key, token, isDefault };
+}
+
+
 interface SessionInfo {
     id: string;
     agent_id?: string;
@@ -681,7 +878,7 @@ async function rawSessions(): Promise<void> {
     }
 }
 
-// Memory command
+
 interface MemoryEntry {
     id: string;
     content: string;
@@ -691,8 +888,8 @@ interface MemoryEntry {
 
 async function rawMemory(query?: string): Promise<void> {
     const endpoint = query
-        ? `/api/memory/search?q=${encodeURIComponent(query)}&limit=10`
-        : "/api/memory?limit=20";
+        ? `/api/memory/search?query=${encodeURIComponent(query)}`
+        : "/api/memory";
 
     const data = await fetchAPI<MemoryEntry[] | { results: MemoryEntry[] }>(endpoint);
     if (!data) {
@@ -720,7 +917,7 @@ async function rawMemory(query?: string): Promise<void> {
     }
 }
 
-// Logs command
+
 interface LogEntry {
     timestamp: string;
     level: string;
@@ -729,13 +926,13 @@ interface LogEntry {
 }
 
 async function rawLogs(count = 20): Promise<void> {
-    const data = await fetchAPI<{ logs: LogEntry[] }>(`/api/logs?limit=${count}`);
+    const data = await fetchAPI<LogEntry[]>("/api/logs/system");
     if (!data) {
         console.error("ERROR: Failed to fetch logs from", API_BASE);
         process.exit(1);
     }
 
-    const logs = data.logs || [];
+    const logs = (Array.isArray(data) ? data : []).slice(0, count);
 
     console.log("CYBARA LOGS");
     console.log("===========");
@@ -755,7 +952,7 @@ async function rawLogs(count = 20): Promise<void> {
     }
 }
 
-// Subagents command
+
 interface SubagentInfo {
     id: string;
     task: string;
@@ -837,7 +1034,7 @@ async function rawSubagentKill(id: string): Promise<void> {
     }
 }
 
-// Browser command
+
 interface BrowserStatus {
     running: boolean;
     currentUrl?: string;
@@ -858,38 +1055,39 @@ async function rawBrowser(): Promise<void> {
     if (data.currentUrl) console.log(`url: ${data.currentUrl}`);
 }
 
-interface BrowserProfile {
-    name: string;
-    path: string;
-    lastUsed?: string;
+interface BrowserTab {
+    id: string;
+    url: string;
+    title?: string;
 }
 
 async function rawBrowserProfiles(): Promise<void> {
-    const data = await fetchAPI<BrowserProfile[]>("/api/browser/profiles");
+    const data = await fetchAPI<{ tabs: BrowserTab[] }>("/api/browser/tabs");
     if (!data) {
-        console.error("ERROR: Failed to fetch browser profiles from", API_BASE);
+        console.error("ERROR: Failed to fetch browser tabs from", API_BASE);
         process.exit(1);
     }
 
-    const profiles = Array.isArray(data) ? data : [];
+    const tabs = Array.isArray(data.tabs) ? data.tabs : [];
 
-    console.log("BROWSER PROFILES");
-    console.log("================");
-    console.log(`total: ${profiles.length}`);
+    console.log("BROWSER TABS");
+    console.log("============");
+    console.log(`total: ${tabs.length}`);
     console.log("");
 
-    if (profiles.length === 0) {
-        console.log("No profiles configured");
+    if (tabs.length === 0) {
+        console.log("No open tabs");
         return;
     }
 
-    for (const profile of profiles) {
-        console.log(`- ${profile.name}`);
-        console.log(`  path: ${profile.path}`);
+    for (const tab of tabs) {
+        console.log(`- ${tab.title || tab.url}`);
+        console.log(`  id: ${tab.id}`);
+        console.log(`  url: ${tab.url}`);
     }
 }
 
-// Channels command
+
 interface ChannelStatus {
     id: string;
     type: string;
@@ -937,7 +1135,14 @@ function rawHelp(): void {
     console.log("  status      Show system status");
     console.log("  metrics     Show token usage and metrics");
     console.log("  agents      List configured agents");
-    console.log("  providers   List AI providers");
+    console.log("  provider    Provider management commands");
+    console.log("    provider list         List configured providers");
+    console.log("    provider available    Show available types");
+    console.log("    provider add <type>   Add provider (--name, --key, --token, --default)");
+    console.log("    provider update <id>  Update provider");
+    console.log("    provider delete <id>  Delete provider");
+    console.log("    provider models <id>  List provider models");
+    console.log("    provider discover     Discover Ollama models");
     console.log("  tasks       List scheduled tasks");
     console.log("  skills      List installed skills");
     console.log("  sessions    List chat sessions");
@@ -951,7 +1156,7 @@ function rawHelp(): void {
     console.log("    subagent kill <id>  Kill subagent");
     console.log("  browser     Browser commands");
     console.log("    browser            Show browser status");
-    console.log("    browser profiles   List browser profiles");
+    console.log("    browser tabs       List open browser tabs");
     console.log("  channels    List configured channels");
     console.log("  pair        Channel pairing commands");
     console.log("    pair           List pending pairings");
@@ -971,12 +1176,11 @@ function rawHelp(): void {
     console.log("  wizard      Run setup wizard (first-time configuration)");
     console.log("  help        Show this help");
     console.log("");
+    console.log(`Version: ${getVersion()}`);
     console.log(`Environment: CYBARA_API=${API_BASE}`);
 }
 
-// ============================================
-// TUI COMPONENTS (for interactive use)
-// ============================================
+
 
 const Logo = ({ compact = false }: { compact?: boolean }) => (
     <Box flexDirection="column" alignItems="center" marginBottom={compact ? 0 : 1}>
@@ -1040,7 +1244,7 @@ const ErrorState = ({ message }: { message: string }) => (
     </Box>
 );
 
-// TUI Status Command
+
 const TUIStatusCommand = () => {
     const { exit } = useApp();
     const [data, setData] = React.useState<StatusResponse | null>(null);
@@ -1109,7 +1313,7 @@ const TUIStatusCommand = () => {
     );
 };
 
-// TUI Metrics Command
+
 const TUIMetricsCommand = () => {
     const { exit } = useApp();
     const [data, setData] = React.useState<MetricsResponse | null>(null);
@@ -1179,7 +1383,7 @@ const TUIMetricsCommand = () => {
     );
 };
 
-// TUI Skills Command
+
 const TUISkillsCommand = () => {
     const { exit } = useApp();
     const [data, setData] = React.useState<SkillItem[]>([]);
@@ -1229,7 +1433,7 @@ const TUISkillsCommand = () => {
     );
 };
 
-// TUI Agents Command
+
 const TUIAgentsCommand = () => {
     const { exit } = useApp();
     const [data, setData] = React.useState<AgentItem[]>([]);
@@ -1278,7 +1482,7 @@ const TUIAgentsCommand = () => {
     );
 };
 
-// TUI Tasks Command
+
 const TUITasksCommand = () => {
     const { exit } = useApp();
     const [data, setData] = React.useState<TaskItem[]>([]);
@@ -1326,7 +1530,7 @@ const TUITasksCommand = () => {
     );
 };
 
-// Main Menu Component
+
 const MainMenu = () => {
     const { exit } = useApp();
     const [selected, setSelected] = React.useState(0);
@@ -1366,7 +1570,7 @@ const MainMenu = () => {
             case "skills":
             case "agents":
             case "tasks":
-                // Re-render with the specific TUI command
+
                 render(<TUIApp command={action} />);
                 break;
             case "ui":
@@ -1408,7 +1612,7 @@ const MainMenu = () => {
     );
 };
 
-// Provider type definitions for wizard
+
 interface ProviderOption {
     id: string;
     name: string;
@@ -1425,7 +1629,7 @@ const PROVIDER_OPTIONS: ProviderOption[] = [
     { id: "lmstudio", name: "LM Studio (Local)", description: "Local models via LM Studio", requiresApiKey: false },
 ];
 
-// Setup Wizard Component (runtime configuration, not dev installation)
+
 const SetupWizard = () => {
     const { exit } = useApp();
     const [step, setStep] = React.useState<"welcome" | "provider" | "apikey" | "agent" | "complete">("welcome");
@@ -1451,7 +1655,7 @@ const SetupWizard = () => {
                 if (provider.requiresApiKey) {
                     setStep("apikey");
                 } else {
-                    // Create provider without API key
+
                     createProvider(provider.id, "");
                 }
             } else if (input === "q") {
@@ -1467,7 +1671,7 @@ const SetupWizard = () => {
             } else if (input && input.length === 1 && !key.ctrl && !key.meta) {
                 setApiKey((k) => k + input);
             } else if (input === "") {
-                // Handle Ctrl+C
+
                 exit();
             }
         } else if (step === "agent") {
@@ -1637,7 +1841,7 @@ const SetupWizard = () => {
     );
 };
 
-// TUI App Router (for interactive mode)
+
 const TUIApp = ({ command }: { command?: string }) => {
     switch (command) {
         case "wizard":
@@ -1659,17 +1863,20 @@ const TUIApp = ({ command }: { command?: string }) => {
     }
 };
 
-// ============================================
-// MAIN ENTRY POINT
-// ============================================
-
 const args = process.argv.slice(2);
 const command = args[0];
 
-// Route to raw output or TUI based on command
+function getVersion(): string {
+    try {
+        const pkg = JSON.parse(readFileSync(join(__dirname, "../package.json"), "utf-8"));
+        return pkg.version || "unknown";
+    } catch {
+        return "unknown";
+    }
+}
+
 async function main() {
     switch (command) {
-        // Raw output commands (for agents/scripts)
         case "status":
             await rawStatus();
             break;
@@ -1686,10 +1893,55 @@ async function main() {
             await rawSkills();
             break;
 
-        // NEW COMMANDS - Feature parity with UI
-        case "providers":
-            await rawProviders();
+        case "provider":
+        case "providers": {
+            const provSubCmd = args[1];
+            const provArg = args[2];
+            switch (provSubCmd) {
+                case "list":
+                case undefined:
+                    await rawProviders();
+                    break;
+                case "available":
+                    await rawProviderAvailable();
+                    break;
+                case "add": {
+                    const flags = parseProviderFlags(args.slice(3));
+                    await rawProviderAdd(provArg, flags.name, flags.key, flags.token, flags.isDefault);
+                    break;
+                }
+                case "update": {
+                    const uFlags = parseProviderFlags(args.slice(3));
+                    await rawProviderUpdate(provArg, uFlags.name, uFlags.key, uFlags.token, uFlags.isDefault);
+                    break;
+                }
+                case "delete":
+                case "remove":
+                    await rawProviderDelete(provArg);
+                    break;
+                case "models":
+                    await rawProviderModels(provArg);
+                    break;
+                case "discover":
+                    await rawProviderDiscover();
+                    break;
+                default:
+                    console.log("Provider Commands:");
+                    console.log("  cybara provider              - List configured providers");
+                    console.log("  cybara provider available     - Show available provider types");
+                    console.log("  cybara provider add <type>    - Add provider");
+                    console.log("    --name NAME   Display name");
+                    console.log("    --key KEY     API key");
+                    console.log("    --token TOK   Access token");
+                    console.log("    --default     Set as default");
+                    console.log("  cybara provider update <id>   - Update provider");
+                    console.log("  cybara provider delete <id>   - Delete provider");
+                    console.log("  cybara provider models <id>   - List provider models");
+                    console.log("  cybara provider discover      - Discover Ollama models");
+                    break;
+            }
             break;
+        }
         case "sessions":
             await rawSessions();
             break;
@@ -1722,7 +1974,7 @@ async function main() {
             break;
         case "browser":
             switch (args[1]) {
-                case "profiles":
+                case "tabs":
                     await rawBrowserProfiles();
                     break;
                 default:
@@ -1741,8 +1993,12 @@ async function main() {
             rawHelp();
             break;
 
-        // Pairing commands
-        case "pair":
+        case "--version":
+        case "-v":
+            console.log(`cybara v${getVersion()}`);
+            break;
+
+        case "pair": {
             const pairSubCmd = args[1];
             if (!pairSubCmd || pairSubCmd === "list") {
                 await rawPairList();
@@ -1763,13 +2019,12 @@ async function main() {
                 }
                 await rawPairPolicy(channelName, policy);
             } else {
-                // Assume it's a pairing code
                 await rawPairApprove(pairSubCmd);
             }
             break;
+        }
 
-        // MCP commands
-        case "mcp":
+        case "mcp": {
             const mcpSubCmd = args[1];
             const mcpArg = args[2];
             switch (mcpSubCmd) {
@@ -1802,8 +2057,7 @@ async function main() {
                     break;
             }
             break;
-
-        // LSP commands
+        }
         case "lsp":
             switch (args[1]) {
                 case "list":
@@ -1827,13 +2081,11 @@ async function main() {
             }
             break;
 
-        // Server start (pass-through)
         case "start":
         case "dev":
             spawn("bun", ["run", "dev"], { stdio: "inherit" });
             break;
 
-        // TUI commands (interactive)
         case "wizard":
         case "setup":
         case "install":
@@ -1841,7 +2093,6 @@ async function main() {
             render(<TUIApp command={command === "tui" ? undefined : command} />);
             break;
 
-        // Default: show TUI menu
         default:
             render(<TUIApp />);
             break;
