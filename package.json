@@ -28,7 +28,7 @@
     "sexy": "bun run typecheck && bun run lint && bun run format:check",
     "sexy:write": "bun run typecheck && bun run lint && bun run format",
     "tauri": "tauri",
-    "tauri:dev": "bun run --watch src/index.ts & bunx tauri dev",
+    "tauri:dev": "bun run --watch src/index.ts -- --enable-terminal & bunx tauri dev",
     "tauri:build": "bun run tauri:sidecar && bunx tauri build",
     "tauri:sidecar": "bun run scripts/build-sidecar.ts"
   },
