@@ -4,10 +4,16 @@
     "windows": [
         "main"
     ],
+    "remote": {
+        "urls": [
+            "http://localhost:*"
+        ]
+    },
     "permissions": [
         "core:default",
         "shell:allow-spawn",
         "shell:allow-execute",
+        "shell:allow-open",
         "shell:default",
         "notification:default",
         "notification:allow-is-permission-granted",

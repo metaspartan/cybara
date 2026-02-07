@@ -1,7 +1,7 @@
 import { config } from "../core/config";
 import db, { tables } from "../core/database";
 import { agentManager, builtinTools } from "../core/agent";
-import { providerManager, providers } from "../core/providers";
+import { providerManager, providers, type ProviderType } from "../core/providers";
 import { channelManager, channels, processTelegramWebhook, securityManager } from "../core/channels";
 import { taskScheduler } from "../core/scheduler";
 import { mcpManager } from "../core/mcp";
@@ -49,6 +49,17 @@ import {
 } from "./queries";
 
 const log = createLogger("API");
+
+// OAuth redirect flow state storage
+const oauthCallbacks = new Map<string, { status: string; access_token?: string; refresh_token?: string; error?: string }>();
+
+// Helper to open URLs in the system browser from the backend
+async function openUrlInBrowser(url: string): Promise<void> {
+  const { exec } = await import("child_process");
+  const platform = process.platform;
+  const cmd = platform === "darwin" ? "open" : platform === "win32" ? "start" : "xdg-open";
+  exec(`${cmd} "${url.replace(/"/g, '\\"')}"`);
+}
 
 // ============================================
 // HELPER: Sanitize session messages for UI
@@ -136,14 +147,26 @@ function logRequest(log: RequestLog): void {
 }
 
 // ============================================
-// CORS HEADERS
+// CORS & SECURITY HEADERS
 // ============================================
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+// In production, restrict CORS to same-origin. In dev, allow all.
+const isProduction = process.env.NODE_ENV === "production";
+
+const corsHeaders: Record<string, string> = {
+  "Access-Control-Allow-Origin": isProduction ? "" : "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
   "Access-Control-Max-Age": "86400",
+};
+
+// Security headers applied to all responses
+const securityHeaders: Record<string, string> = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "X-XSS-Protection": "1; mode=block",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
 };
 
 // ============================================
@@ -317,6 +340,9 @@ const routes: Record<string, RouteHandler> = {
       description: `Use ${value.name} models`,
       baseUrl: value.baseUrl,
       authType: value.authType,
+      oauthFlow: (value as Record<string, unknown>).oauthFlow || null,
+      hasOAuthConfig: !!(value as Record<string, unknown>).oauthConfig,
+      oauthLoginUrl: (value as Record<string, unknown>).oauthLoginUrl || null,
       models: value.models.map((m) => ({
         id: m.id,
         name: m.name,
@@ -356,7 +382,261 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/providers/:id/models": (_body, params) => providerManager.getModels(params!.id),
   "POST /api/providers/discover/ollama": async () => await providerManager.discoverOllamaModels(),
 
-  // ===== MCP SERVERS =====
+  // --- OAuth Device Code Flow ---
+  "POST /api/providers/oauth/device-code": async (body) => {
+    const { providerType } = body as { providerType: string };
+    const config = providers[providerType as ProviderType] as Record<string, unknown>;
+    if (!config) throw new Error(`Unknown provider: ${providerType}`);
+
+    const oauthConfig = config.oauthConfig as { clientId?: string; deviceCodeUrl?: string; scope?: string } | undefined;
+    if (!oauthConfig?.deviceCodeUrl || !oauthConfig?.clientId) {
+      throw new Error(`Provider ${providerType} does not support device code OAuth flow`);
+    }
+
+    const res = await fetch(oauthConfig.deviceCodeUrl, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        client_id: oauthConfig.clientId,
+        scope: oauthConfig.scope || "",
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Device code request failed: HTTP ${res.status}`);
+    }
+
+    const json = await res.json() as {
+      device_code: string;
+      user_code: string;
+      verification_uri: string;
+      expires_in: number;
+      interval: number;
+    };
+
+    return {
+      device_code: json.device_code,
+      user_code: json.user_code,
+      verification_uri: json.verification_uri,
+      expires_in: json.expires_in,
+      interval: json.interval,
+    };
+  },
+
+  "POST /api/providers/oauth/poll": async (body) => {
+    const { providerType, deviceCode } = body as { providerType: string; deviceCode: string };
+    const config = providers[providerType as ProviderType] as Record<string, unknown>;
+    if (!config) throw new Error(`Unknown provider: ${providerType}`);
+
+    const oauthConfig = config.oauthConfig as { clientId?: string; tokenUrl?: string } | undefined;
+    if (!oauthConfig?.tokenUrl || !oauthConfig?.clientId) {
+      throw new Error(`Provider ${providerType} does not support device code OAuth flow`);
+    }
+
+    const res = await fetch(oauthConfig.tokenUrl, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        client_id: oauthConfig.clientId,
+        device_code: deviceCode,
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Token poll failed: HTTP ${res.status}`);
+    }
+
+    const json = await res.json() as Record<string, string>;
+
+    if ("access_token" in json && typeof json.access_token === "string") {
+      return { status: "success", access_token: json.access_token };
+    }
+
+    const error = json.error || "unknown";
+    if (error === "authorization_pending") {
+      return { status: "pending" };
+    }
+    if (error === "slow_down") {
+      return { status: "slow_down" };
+    }
+    if (error === "expired_token") {
+      return { status: "expired" };
+    }
+    if (error === "access_denied") {
+      return { status: "denied" };
+    }
+
+    return { status: "error", error };
+  },
+
+  // Open URL in system browser (works in Tauri and browser contexts)
+  "POST /api/open-url": async (body) => {
+    const { url } = body as { url: string };
+    if (!url || typeof url !== "string") throw new Error("url required");
+    // Validate it's a real URL
+    try { new URL(url); } catch { throw new Error("Invalid URL"); }
+    await openUrlInBrowser(url);
+    log.info(`Opened URL in browser: ${url.substring(0, 80)}...`);
+    return { ok: true };
+  },
+
+  // OAuth redirect flow (for Google/Antigravity etc.)
+  // Starts a localhost callback server and returns the auth URL
+  "POST /api/providers/oauth/start": async (body) => {
+    const { providerType } = body as { providerType: string };
+    const providerConfig = providers[providerType as ProviderType] as Record<string, unknown>;
+    if (!providerConfig) throw new Error(`Unknown provider: ${providerType}`);
+
+    const oauthConfig = providerConfig.oauthConfig as {
+      authorizeUrl?: string;
+      tokenUrl?: string;
+      clientId?: string;
+      clientSecret?: string;
+      scope?: string;
+      callbackPort?: number;
+      callbackPath?: string;
+    } | undefined;
+
+    if (!oauthConfig?.authorizeUrl || !oauthConfig?.tokenUrl) {
+      throw new Error(`Provider ${providerType} does not support OAuth redirect flow`);
+    }
+
+    // Generate PKCE verifier + challenge (S256)
+    const { createHash, randomBytes } = await import("crypto");
+    const pkceVerifier = randomBytes(32).toString("hex");
+    const pkceChallenge = createHash("sha256").update(pkceVerifier).digest("base64url");
+
+    // Generate random state for CSRF protection
+    const state = randomBytes(16).toString("hex");
+
+    // Use configured callback port & path, or defaults
+    const callbackPort = oauthConfig.callbackPort || 0;
+    const callbackPath = oauthConfig.callbackPath || "/callback";
+    const redirectUri = `http://localhost:${callbackPort}${callbackPath}`;
+
+    // Start a callback server on the configured port
+    const callbackServer = Bun.serve({
+      port: callbackPort,
+      fetch: async (req) => {
+        const url = new URL(req.url);
+        if (url.pathname !== callbackPath) {
+          return new Response("Not found", { status: 404 });
+        }
+
+        const code = url.searchParams.get("code");
+        const returnedState = url.searchParams.get("state");
+        const error = url.searchParams.get("error");
+
+        if (error) {
+          oauthCallbacks.set(state, { status: "error", error });
+          setTimeout(() => { callbackServer.stop(); oauthCallbacks.delete(state); }, 5000);
+          return new Response(
+            "<html><body style='font-family:system-ui;text-align:center;padding:60px;background:#0a0a0a;color:#fff'><h2>❌ Authorization Failed</h2><p>You can close this tab.</p></body></html>",
+            { headers: { "Content-Type": "text/html" } }
+          );
+        }
+
+        if (!code || returnedState !== state) {
+          oauthCallbacks.set(state, { status: "error", error: "Invalid callback (state mismatch)" });
+          setTimeout(() => { callbackServer.stop(); oauthCallbacks.delete(state); }, 5000);
+          return new Response("Invalid callback", { status: 400 });
+        }
+
+        // Exchange code for token (with PKCE verifier + client_secret)
+        try {
+          const tokenParams: Record<string, string> = {
+            code,
+            redirect_uri: redirectUri,
+            grant_type: "authorization_code",
+            code_verifier: pkceVerifier,
+          };
+          if (oauthConfig.clientId) tokenParams.client_id = oauthConfig.clientId;
+          if (oauthConfig.clientSecret) tokenParams.client_secret = oauthConfig.clientSecret;
+
+          const tokenRes = await fetch(oauthConfig.tokenUrl!, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+              Accept: "application/json",
+            },
+            body: new URLSearchParams(tokenParams),
+          });
+
+          const tokenData = await tokenRes.json() as Record<string, unknown>;
+
+          if (tokenData.access_token && typeof tokenData.access_token === "string") {
+            oauthCallbacks.set(state, {
+              status: "success",
+              access_token: tokenData.access_token as string,
+              refresh_token: (tokenData.refresh_token as string) || undefined,
+            });
+          } else {
+            oauthCallbacks.set(state, {
+              status: "error",
+              error: (tokenData.error_description as string) || (tokenData.error as string) || "Token exchange failed",
+            });
+          }
+        } catch (err) {
+          oauthCallbacks.set(state, { status: "error", error: String(err) });
+        }
+
+        setTimeout(() => { callbackServer.stop(); oauthCallbacks.delete(state); }, 5000);
+        return new Response(
+          "<html><body style='font-family:system-ui;text-align:center;padding:60px;background:#0a0a0a;color:#fff'><h2>✅ Connected!</h2><p>You can close this tab and return to Cybara.</p></body></html>",
+          { headers: { "Content-Type": "text/html" } }
+        );
+      },
+    });
+
+    // Store pending callback
+    oauthCallbacks.set(state, { status: "pending" });
+
+    // Build authorize URL with PKCE
+    const authParams = new URLSearchParams({
+      response_type: "code",
+      client_id: oauthConfig.clientId || "",
+      redirect_uri: redirectUri,
+      scope: oauthConfig.scope || "",
+      code_challenge: pkceChallenge,
+      code_challenge_method: "S256",
+      state,
+      access_type: "offline",
+      prompt: "consent",
+    });
+
+    const authUrl = `${oauthConfig.authorizeUrl}?${authParams.toString()}`;
+
+    // Auto-cleanup after 10 minutes
+    setTimeout(() => {
+      callbackServer.stop();
+      oauthCallbacks.delete(state);
+    }, 600_000);
+
+    log.info(`OAuth started for ${providerType}: callback on port ${callbackServer.port}, path ${callbackPath}`);
+
+    return {
+      auth_url: authUrl,
+      state,
+      callback_port: callbackServer.port,
+    };
+  },
+
+  // Poll for OAuth redirect callback result
+  "POST /api/providers/oauth/callback-status": async (body) => {
+    const { state } = body as { state: string };
+    const result = oauthCallbacks.get(state);
+    if (!result) {
+      return { status: "not_found" };
+    }
+    return result;
+  },
   "GET /api/mcp": () => mcpManager.list(),
   "GET /api/mcp/:id": (_body, params) => {
     const server = mcpManager.get(params!.id);
@@ -1520,7 +1800,7 @@ export async function handleRequest(req: {
   if (method === "OPTIONS") {
     return {
       status: 204,
-      headers: corsHeaders,
+      headers: { ...corsHeaders, ...securityHeaders },
     };
   }
 
@@ -1543,7 +1823,7 @@ export async function handleRequest(req: {
     });
     return {
       status: security.statusCode || 403,
-      headers: { "Content-Type": "application/json", ...corsHeaders, ...security.headers },
+      headers: { "Content-Type": "application/json", ...corsHeaders, ...securityHeaders, ...security.headers },
       body: { error: security.error },
     };
   }
@@ -1566,7 +1846,7 @@ export async function handleRequest(req: {
     });
     return {
       status: 404,
-      headers: { "Content-Type": "application/json", ...corsHeaders },
+      headers: { "Content-Type": "application/json", ...corsHeaders, ...securityHeaders },
       body: { error: "Not found" },
     };
   }
@@ -1583,7 +1863,7 @@ export async function handleRequest(req: {
     });
     return {
       status: 200,
-      headers: { "Content-Type": "application/json", ...corsHeaders },
+      headers: { "Content-Type": "application/json", ...corsHeaders, ...securityHeaders },
       body: result,
     };
   } catch (error) {
@@ -1634,7 +1914,7 @@ export async function handleRequest(req: {
     });
     return {
       status: errorMessage.includes("not found") ? 404 : 500,
-      headers: { "Content-Type": "application/json", ...corsHeaders },
+      headers: { "Content-Type": "application/json", ...corsHeaders, ...securityHeaders },
       body: {
         error: userMessage,
         code: errorCode,

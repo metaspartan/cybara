@@ -644,16 +644,96 @@ async function rawProviderAvailable(): Promise<void> {
     }
 }
 
-async function rawProviderAdd(type: string, name?: string, apiKey?: string, accessToken?: string, isDefault?: boolean): Promise<void> {
+async function rawProviderAdd(type: string, name?: string, apiKey?: string, accessToken?: string, isDefault?: boolean, useOAuth?: boolean): Promise<void> {
     if (!type) {
         console.error("ERROR: Please specify a provider type");
-        console.log("Usage: cybara provider add <type> [--name NAME] [--key KEY] [--token TOKEN] [--default]");
+        console.log("Usage: cybara provider add <type> [--name NAME] [--key KEY] [--token TOKEN] [--oauth] [--default]");
         console.log("");
         console.log("Run 'cybara provider available' to see available types");
         process.exit(1);
     }
 
     const displayName = name || type.charAt(0).toUpperCase() + type.slice(1);
+
+    // OAuth device code flow
+    if (useOAuth) {
+        try {
+            // Initiate device code flow
+            const dcRes = await fetch(`${API_BASE}/api/providers/oauth/device-code`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ providerType: type }),
+            });
+            const dcData = await dcRes.json() as { user_code?: string; verification_uri?: string; device_code?: string; expires_in?: number; interval?: number; error?: string };
+
+            if (!dcRes.ok || !dcData.user_code) {
+                console.error(`✗ OAuth not available for ${type}: ${dcData.error || "No device code flow configured"}`);
+                process.exit(1);
+            }
+
+            console.log("");
+            console.log(`  Code: ${dcData.user_code.padEnd(28)}`);
+            console.log("");
+            console.log(`  Open: ${dcData.verification_uri}`);
+            console.log("  Enter the code above, then authorize.");
+            console.log("");
+
+            // Try to open browser
+            try {
+                const { exec } = await import("child_process");
+                const openCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+                exec(`${openCmd} ${dcData.verification_uri}`);
+            } catch { /* ignore */ }
+
+            // Poll for token
+            const interval = Math.max(5, dcData.interval || 5) * 1000;
+            const expiresAt = Date.now() + (dcData.expires_in || 900) * 1000;
+            process.stdout.write("  Waiting for authorization");
+
+            while (Date.now() < expiresAt) {
+                await new Promise(r => setTimeout(r, interval));
+                process.stdout.write(".");
+
+                const pollRes = await fetch(`${API_BASE}/api/providers/oauth/poll`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ providerType: type, deviceCode: dcData.device_code }),
+                });
+                const pollData = await pollRes.json() as { status: string; access_token?: string; error?: string };
+
+                if (pollData.status === "success" && pollData.access_token) {
+                    console.log(" ✓");
+                    accessToken = pollData.access_token;
+                    break;
+                }
+                if (pollData.status === "denied" || pollData.status === "expired") {
+                    console.log("");
+                    console.error(`✗ Authorization ${pollData.status}`);
+                    process.exit(1);
+                }
+                if (pollData.status === "error") {
+                    console.log("");
+                    console.error(`✗ Error: ${pollData.error}`);
+                    process.exit(1);
+                }
+            }
+
+            if (!accessToken) {
+                console.log("");
+                console.error("✗ Authorization timed out");
+                process.exit(1);
+            }
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg.includes("ECONNREFUSED") || msg.includes("fetch failed")) {
+                console.error(`ERROR: Cannot connect to Cybara at ${API_BASE}`);
+                console.error("Is the server running? Start it with: cybara start");
+            } else {
+                console.error(`✗ OAuth failed: ${msg}`);
+            }
+            process.exit(1);
+        }
+    }
 
     const body: Record<string, unknown> = {
         provider: type,
@@ -821,11 +901,12 @@ async function rawProviderDiscover(): Promise<void> {
 }
 
 
-function parseProviderFlags(args: string[]): { name?: string; key?: string; token?: string; isDefault: boolean } {
+function parseProviderFlags(args: string[]): { name?: string; key?: string; token?: string; isDefault: boolean; oauth: boolean } {
     let name: string | undefined;
     let key: string | undefined;
     let token: string | undefined;
     let isDefault = false;
+    let oauth = false;
 
     for (let i = 0; i < args.length; i++) {
         switch (args[i]) {
@@ -833,10 +914,11 @@ function parseProviderFlags(args: string[]): { name?: string; key?: string; toke
             case "--key": key = args[++i]; break;
             case "--token": token = args[++i]; break;
             case "--default": isDefault = true; break;
+            case "--oauth": oauth = true; break;
         }
     }
 
-    return { name, key, token, isDefault };
+    return { name, key, token, isDefault, oauth };
 }
 
 
@@ -1124,6 +1206,140 @@ async function rawChannels(): Promise<void> {
     }
 }
 
+async function rawChat(sessionArg?: string): Promise<void> {
+    const readline = await import("readline");
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
+    // Pick or create session
+    let sessionId = sessionArg;
+    if (!sessionId) {
+        const sessions = await fetchAPI<{ id: string; agentId: string; messageCount: number; createdAt: string }[]>("/api/sessions");
+        if (sessions && sessions.length > 0) {
+            console.log("\n  SESSIONS");
+            console.log("  ========");
+            sessions.slice(0, 10).forEach((s, i) => {
+                console.log(`  [${i + 1}] ${s.id.slice(0, 8)}... (${s.messageCount} msgs)`);
+            });
+            console.log(`  [n] New session\n`);
+
+            const answer = await new Promise<string>(r => rl.question("  Select session: ", r));
+            const idx = parseInt(answer) - 1;
+            if (idx >= 0 && idx < sessions.length) {
+                sessionId = sessions[idx].id;
+                // Load session messages
+                const msgs = await fetchAPI<{ role: string; content: string }[]>(`/api/sessions/${sessionId}/messages`);
+                if (msgs && msgs.length > 0) {
+                    console.log("\n  --- Session History ---");
+                    for (const m of msgs.slice(-6)) {
+                        if (m.role === "system") continue;
+                        const prefix = m.role === "user" ? "  You: " : "  AI:  ";
+                        console.log(`${prefix}${m.content.slice(0, 200)}${m.content.length > 200 ? "..." : ""}`);
+                    }
+                    console.log("  ----------------------\n");
+                }
+            }
+        }
+    }
+
+    console.log("  Cybara Chat (Ctrl+C to exit)\n");
+
+    const prompt = () => {
+        rl.question("  You: ", async (input: string) => {
+            if (!input.trim()) { prompt(); return; }
+            if (input.trim() === "/quit" || input.trim() === "/exit") {
+                rl.close();
+                process.exit(0);
+            }
+            if (input.trim() === "/sessions") {
+                await rawSessions();
+                prompt();
+                return;
+            }
+            if (input.trim().startsWith("/new")) {
+                sessionId = undefined;
+                console.log("  (New session)\n");
+                prompt();
+                return;
+            }
+
+            try {
+                const body: Record<string, unknown> = { message: input.trim() };
+                if (sessionId) body.sessionId = sessionId;
+
+                const resp = await fetch(`${API_BASE}/api/chat`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body),
+                });
+
+                if (!resp.ok) {
+                    console.error(`  Error: ${resp.status} ${resp.statusText}`);
+                    prompt();
+                    return;
+                }
+
+                const data = await resp.json() as {
+                    sessionId: string;
+                    message: { content: string; tool_calls?: { name: string; status: string }[] };
+                    thinking?: string;
+                    tool_calls?: { name: string; status: string; result?: unknown }[];
+                };
+
+                sessionId = data.sessionId;
+
+                // Show tool calls
+                if (data.tool_calls && data.tool_calls.length > 0) {
+                    for (const tc of data.tool_calls) {
+                        console.log(`  🔧 ${tc.name} [${tc.status}]`);
+                    }
+                }
+
+                // Show thinking
+                if (data.thinking) {
+                    console.log(`  💭 ${data.thinking.slice(0, 100)}...`);
+                }
+
+                // Show response
+                console.log(`\n  AI:  ${data.message.content}\n`);
+            } catch (err) {
+                console.error(`  Error: ${(err as Error).message}`);
+            }
+
+            prompt();
+        });
+    };
+
+    prompt();
+}
+
+async function rawConfig(subCmd?: string, key?: string, value?: string): Promise<void> {
+    if (subCmd === "get" && key) {
+        const data = await fetchAPI<Record<string, unknown>>("/api/config");
+        if (!data) { console.error("ERROR: Failed to fetch config"); process.exit(1); }
+        const val = (data as Record<string, unknown>)[key];
+        console.log(val !== undefined ? `${key} = ${JSON.stringify(val)}` : `Key '${key}' not found`);
+    } else if (subCmd === "set" && key && value !== undefined) {
+        const resp = await fetch(`${API_BASE}/api/config`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ [key]: value }),
+        });
+        if (resp.ok) {
+            console.log(`✓ Set ${key} = ${value}`);
+        } else {
+            console.error(`ERROR: Failed to set config: ${resp.status}`);
+        }
+    } else {
+        const data = await fetchAPI<Record<string, unknown>>("/api/config");
+        if (!data) { console.error("ERROR: Failed to fetch config"); process.exit(1); }
+        console.log("CYBARA CONFIG");
+        console.log("=============");
+        for (const [k, v] of Object.entries(data)) {
+            console.log(`  ${k} = ${JSON.stringify(v)}`);
+        }
+    }
+}
+
 function rawHelp(): void {
     console.log("CYBARA CLI");
     console.log("==========");
@@ -1132,9 +1348,14 @@ function rawHelp(): void {
     console.log("");
     console.log("Commands:");
     console.log("  (none)      Interactive TUI menu");
+    console.log("  chat        Interactive chat with AI");
     console.log("  status      Show system status");
     console.log("  metrics     Show token usage and metrics");
     console.log("  agents      List configured agents");
+    console.log("  config      Config commands");
+    console.log("    config            Show all config");
+    console.log("    config get <key>  Get config value");
+    console.log("    config set <k> <v> Set config value");
     console.log("  provider    Provider management commands");
     console.log("    provider list         List configured providers");
     console.log("    provider available    Show available types");
@@ -1179,6 +1400,7 @@ function rawHelp(): void {
     console.log(`Version: ${getVersion()}`);
     console.log(`Environment: CYBARA_API=${API_BASE}`);
 }
+
 
 
 
@@ -1907,7 +2129,7 @@ async function main() {
                     break;
                 case "add": {
                     const flags = parseProviderFlags(args.slice(3));
-                    await rawProviderAdd(provArg, flags.name, flags.key, flags.token, flags.isDefault);
+                    await rawProviderAdd(provArg, flags.name, flags.key, flags.token, flags.isDefault, flags.oauth);
                     break;
                 }
                 case "update": {
@@ -1933,6 +2155,7 @@ async function main() {
                     console.log("    --name NAME   Display name");
                     console.log("    --key KEY     API key");
                     console.log("    --token TOK   Access token");
+                    console.log("    --oauth       Connect via OAuth device code flow");
                     console.log("    --default     Set as default");
                     console.log("  cybara provider update <id>   - Update provider");
                     console.log("  cybara provider delete <id>   - Delete provider");
@@ -1942,6 +2165,12 @@ async function main() {
             }
             break;
         }
+        case "chat":
+            await rawChat(args[1]);
+            break;
+        case "config":
+            await rawConfig(args[1], args[2], args[3]);
+            break;
         case "sessions":
             await rawSessions();
             break;

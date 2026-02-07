@@ -435,6 +435,7 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
         "- Scroll and snapshot multiple times to get complete lists/feeds",
         "- Accumulate data across snapshots - don't forget earlier items",
         "- Extract and present the data, don't just describe what you did",
+        "- **ALWAYS close the browser when done**: browser({action:'close'}) after finishing your browsing task to free resources",
         ""
       );
     }

@@ -61,6 +61,15 @@ export const providers = {
         code: true,
       },
       {
+        id: "gpt-5.3-codex",
+        name: "GPT-5.3 Codex",
+        context: 400000,
+        maxTokens: 100000,
+        reasoning: true,
+        input: ["text"],
+        code: true,
+      },
+      {
         id: "o1",
         name: "o1",
         context: 200000,
@@ -174,6 +183,16 @@ export const providers = {
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
     api: "google-generative-ai",
     authType: "oauth",
+    oauthFlow: "redirect" as const,
+    oauthConfig: {
+      clientId: "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com",
+      clientSecret: "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",
+      authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+      tokenUrl: "https://oauth2.googleapis.com/token",
+      scope: "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/cclog https://www.googleapis.com/auth/experimentsandconfigs",
+      callbackPort: 51121,
+      callbackPath: "/oauth-callback",
+    },
     models: [
       {
         id: "gemini-3-pro-preview",
@@ -200,10 +219,10 @@ export const providers = {
         input: ["text", "image", "audio", "video"],
       },
       {
-        id: "claude-opus-4-5",
-        name: "Claude Opus 4.5",
-        context: 200000,
-        maxTokens: 81920,
+        id: "claude-opus-4-6",
+        name: "Claude Opus 4.6",
+        context: 1000000,
+        maxTokens: 128000,
         reasoning: true,
         input: ["text", "image"],
       },
@@ -275,6 +294,8 @@ export const providers = {
     baseUrl: "https://portal.qwen.ai/v1",
     api: "openai-completions",
     authType: "oauth",
+    oauthFlow: "redirect" as const,
+    oauthLoginUrl: "https://chat.qwen.ai/",
     models: [
       {
         id: "coder-model",
@@ -510,12 +531,19 @@ export const providers = {
     authType: "none",
     models: [],
   },
-  // GitHub Copilot (OAuth)
+  // GitHub Copilot (OAuth Device Code Flow)
   github_copilot: {
     name: "GitHub Copilot",
     baseUrl: "https://api.github.com/copilot",
     api: "github-copilot",
     authType: "oauth",
+    oauthFlow: "device_code" as const,
+    oauthConfig: {
+      clientId: "Iv1.b507a08c87ecfe98",
+      deviceCodeUrl: "https://github.com/login/device/code",
+      tokenUrl: "https://github.com/login/oauth/access_token",
+      scope: "read:user",
+    },
     models: [],
   },
   // AWS Bedrock (AWS SDK)
@@ -761,6 +789,8 @@ export const providers = {
     baseUrl: "https://api.openai.com/v1",
     api: "openai-responses",
     authType: "oauth",
+    oauthFlow: "redirect" as const,
+    oauthLoginUrl: "https://platform.openai.com/api-keys",
     models: [
       {
         id: "gpt-5.2",
@@ -796,6 +826,8 @@ export const providers = {
     baseUrl: "https://api.chutes.ai/v1",
     api: "openai-completions",
     authType: "oauth",
+    oauthFlow: "redirect" as const,
+    oauthLoginUrl: "https://chutes.ai/app/api-keys",
     models: [],
   },
   // Vercel AI Gateway (API key) - from moltbot auth-choice.apply.api-providers.ts
@@ -829,6 +861,8 @@ export const providers = {
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
     api: "google-generative-ai",
     authType: "oauth",
+    oauthFlow: "redirect" as const,
+    oauthLoginUrl: "https://aistudio.google.com/apikey",
     models: [
       {
         id: "gemini-3-pro-preview",
@@ -854,7 +888,107 @@ export const providers = {
     baseUrl: "http://localhost:1234/v1",
     api: "openai-completions",
     authType: "oauth",
+    oauthFlow: "redirect" as const,
+    oauthLoginUrl: "https://github.com/settings/copilot",
     models: [],
+  },
+  // xAI - Grok models (OpenAI-compatible API)
+  xai: {
+    name: "xAI (Grok)",
+    baseUrl: "https://api.x.ai/v1",
+    api: "openai-completions",
+    authType: "api_key",
+    models: [
+      {
+        id: "grok-4",
+        name: "Grok 4",
+        context: 262144,
+        maxTokens: 131072,
+        reasoning: true,
+        input: ["text", "image"],
+      },
+      {
+        id: "grok-4-heavy",
+        name: "Grok 4 Heavy",
+        context: 262144,
+        maxTokens: 131072,
+        reasoning: true,
+        input: ["text", "image"],
+      },
+      {
+        id: "grok-4-fast",
+        name: "Grok 4.1 Fast",
+        context: 262144,
+        maxTokens: 131072,
+        reasoning: true,
+        input: ["text", "image"],
+      },
+      {
+        id: "grok-3",
+        name: "Grok 3",
+        context: 131072,
+        maxTokens: 131072,
+        reasoning: true,
+        input: ["text"],
+      },
+      {
+        id: "grok-3-mini",
+        name: "Grok 3 Mini",
+        context: 131072,
+        maxTokens: 131072,
+        reasoning: true,
+        input: ["text"],
+      },
+    ],
+  },
+  // Baidu Qianfan - ERNIE models (OpenAI-compatible API)
+  qianfan: {
+    name: "Baidu Qianfan",
+    baseUrl: "https://qianfan.baidubce.com/v2",
+    api: "openai-completions",
+    authType: "api_key",
+    models: [
+      {
+        id: "ernie-5.0",
+        name: "ERNIE 5.0",
+        context: 131072,
+        maxTokens: 8192,
+        reasoning: true,
+        input: ["text"],
+      },
+      {
+        id: "ernie-4.5",
+        name: "ERNIE 4.5",
+        context: 131072,
+        maxTokens: 8192,
+        reasoning: true,
+        input: ["text"],
+      },
+      {
+        id: "ernie-x1",
+        name: "ERNIE X1",
+        context: 131072,
+        maxTokens: 8192,
+        reasoning: true,
+        input: ["text"],
+      },
+      {
+        id: "ernie-speed",
+        name: "ERNIE Speed",
+        context: 131072,
+        maxTokens: 8192,
+        reasoning: false,
+        input: ["text"],
+      },
+      {
+        id: "ernie-lite",
+        name: "ERNIE Lite",
+        context: 131072,
+        maxTokens: 4096,
+        reasoning: false,
+        input: ["text"],
+      },
+    ],
   },
 } as const;
 

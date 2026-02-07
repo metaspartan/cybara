@@ -173,13 +173,14 @@ class TaskScheduler {
         resultPreview,
       });
 
-      // Update status based on schedule
+      // Update status based on schedule — preserve last_run!
+      const completedAt = new Date().toISOString();
       if (task.schedule) {
         const next_run = this.calculateNextRun(task.schedule);
-        tables.tasks.update(task.id, { status: "pending", next_run });
+        tables.tasks.update(task.id, { status: "pending", last_run: completedAt, next_run });
         console.log(`[Task] Next run scheduled: ${next_run}`);
       } else {
-        tables.tasks.update(task.id, { status: "completed" });
+        tables.tasks.update(task.id, { status: "completed", last_run: completedAt });
       }
     } catch (error) {
       console.error(`[Task] Error executing ${task.name}:`, error);
@@ -201,7 +202,7 @@ class TaskScheduler {
         error: errorMsg.slice(0, 200),
       });
 
-      tables.tasks.update(task.id, { status: "failed" });
+      tables.tasks.update(task.id, { status: "failed", last_run: new Date().toISOString() });
     }
   }
 
@@ -210,41 +211,72 @@ class TaskScheduler {
 
     const now = new Date();
 
-    // Parse cron expression (simplified - handles common cases)
+    // Parse cron expression: minute hour dayOfMonth month dayOfWeek
     const parts = schedule.trim().split(/\s+/);
     if (parts.length >= 5) {
-      const minute = parts[0];
-      const hour = parts[1];
+      const [minutePart, hourPart, , , dowPart] = parts;
 
-      // Handle */N intervals
-      if (minute.startsWith('*/')) {
-        const interval = parseInt(minute.slice(2));
+      // Handle */N minute intervals (e.g., "*/5 * * * *", "*/15 * * * *")
+      if (minutePart.startsWith('*/')) {
+        const interval = parseInt(minutePart.slice(2));
         if (!isNaN(interval) && interval > 0) {
           const next = new Date(now.getTime() + interval * 60 * 1000);
           return next.toISOString();
         }
       }
 
-      // Handle specific minute (e.g., "0 * * * *" = every hour at :00)
-      if (minute === '0' && hour === '*') {
-        now.setMinutes(0, 0, 0);
-        now.setHours(now.getHours() + 1);
-        return now.toISOString();
+      // Handle "0 * * * *" = every hour at :00
+      if (minutePart === '0' && hourPart === '*') {
+        const next = new Date(now);
+        next.setMinutes(0, 0, 0);
+        next.setHours(next.getHours() + 1);
+        return next.toISOString();
       }
 
-      // Handle specific hour intervals (e.g., "0 */6 * * *")
-      if (minute === '0' && hour.startsWith('*/')) {
-        const interval = parseInt(hour.slice(2));
+      // Handle "0 */N * * *" = every N hours
+      if (minutePart === '0' && hourPart.startsWith('*/')) {
+        const interval = parseInt(hourPart.slice(2));
         if (!isNaN(interval) && interval > 0) {
           const next = new Date(now.getTime() + interval * 60 * 60 * 1000);
           return next.toISOString();
         }
       }
+
+      // Handle specific hour + minute with optional day-of-week
+      // e.g., "0 0 * * *" (daily at midnight), "0 9 * * 1" (weekly Monday 9am)
+      const targetMinute = parseInt(minutePart);
+      const targetHour = parseInt(hourPart);
+      if (!isNaN(targetMinute) && !isNaN(targetHour)) {
+        const next = new Date(now);
+        next.setSeconds(0, 0);
+        next.setMinutes(targetMinute);
+        next.setHours(targetHour);
+
+        // If we have a specific day of week
+        if (dowPart !== '*' && dowPart !== '?') {
+          const targetDow = parseInt(dowPart); // 0=Sun, 1=Mon, ..., 6=Sat
+          if (!isNaN(targetDow)) {
+            const currentDow = next.getDay();
+            let daysAhead = targetDow - currentDow;
+            if (daysAhead < 0) daysAhead += 7;
+            // If same day but time already passed, go to next week
+            if (daysAhead === 0 && next <= now) daysAhead = 7;
+            next.setDate(next.getDate() + daysAhead);
+            return next.toISOString();
+          }
+        }
+
+        // Daily: if target time already passed today, schedule for tomorrow
+        if (next <= now) {
+          next.setDate(next.getDate() + 1);
+        }
+        return next.toISOString();
+      }
     }
 
-    // Default: 1 hour
-    now.setHours(now.getHours() + 1);
-    return now.toISOString();
+    // Default fallback: 1 hour from now
+    const fallback = new Date(now.getTime() + 60 * 60 * 1000);
+    return fallback.toISOString();
   }
 
   startScheduler(): void {

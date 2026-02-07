@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
-import { 
-  Bot, 
-  Plus, 
-  Play, 
-  Square, 
-  Trash2, 
-  Edit2, 
+import {
+  Bot,
+  Plus,
+  Play,
+  Square,
+  Trash2,
+  Edit2,
   Search,
   RefreshCw,
   MessageSquare,
@@ -23,11 +23,12 @@ import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Select } from '@/components/ui/Input';
 import { PageLayout } from '@/components/layout';
-import { 
-  useAgents, 
+import {
+  useAgents,
   useProviders,
-  useCreateAgent, 
-  useUpdateAgent, 
+  useProviderModels,
+  useCreateAgent,
+  useUpdateAgent,
   useDeleteAgent,
   useStartAgent,
   useStopAgent,
@@ -56,11 +57,11 @@ export function Agents() {
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
   const [chatInput, setChatInput] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
-  
+
   const { data: agents, isLoading } = useAgents();
   const { data: providers } = useProviders();
   const { addToast } = useUIStore();
-  
+
   const createAgent = useCreateAgent();
   const updateAgent = useUpdateAgent();
   const deleteAgent = useDeleteAgent();
@@ -69,7 +70,7 @@ export function Agents() {
   const sendMessage = useAgentMessage();
   const clearHistory = useClearAgentHistory();
 
-  const filteredAgents = agents?.filter(agent => 
+  const filteredAgents = agents?.filter(agent =>
     agent.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (agent.type && agent.type.toLowerCase().includes(searchQuery.toLowerCase()))
   );
@@ -89,11 +90,11 @@ export function Agents() {
   // Handle sending messages to running agent
   const handleSendMessage = async () => {
     if (!chatAgent || !chatInput.trim() || sendMessage.isPending) return;
-    
+
     const userMessage = chatInput.trim();
     setChatInput('');
     setChatMessages(prev => [...prev, { role: 'user', content: userMessage }]);
-    
+
     try {
       const result = await sendMessage.mutateAsync({
         id: chatAgent.id,
@@ -296,14 +297,14 @@ export function Agents() {
 }
 
 // Agent Card Component
-function AgentCard({ 
-  agent, 
-  onToggleStatus, 
-  onEdit, 
+function AgentCard({
+  agent,
+  onToggleStatus,
+  onEdit,
   onDelete,
-  onChat 
-}: { 
-  agent: Agent; 
+  onChat
+}: {
+  agent: Agent;
   onToggleStatus: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -405,17 +406,17 @@ function AgentCard({
 }
 
 // Chat Modal Component
-function ChatModal({ 
-  isOpen, 
-  onClose, 
-  agent, 
-  messages, 
-  input, 
-  onInputChange, 
-  onSend, 
+function ChatModal({
+  isOpen,
+  onClose,
+  agent,
+  messages,
+  input,
+  onInputChange,
+  onSend,
   onClearHistory,
   isLoading,
-  chatEndRef 
+  chatEndRef
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -469,11 +470,10 @@ function ChatModal({
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-[80%] rounded-xl px-4 py-2 ${
-                    msg.role === 'user'
-                      ? 'bg-indigo-500/20 text-indigo-100'
-                      : 'bg-white/5 text-gray-200'
-                  }`}
+                  className={`max-w-[80%] rounded-xl px-4 py-2 ${msg.role === 'user'
+                    ? 'bg-indigo-500/20 text-indigo-100'
+                    : 'bg-white/5 text-gray-200'
+                    }`}
                 >
                   <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                 </div>
@@ -528,14 +528,14 @@ function getStatusBadge(status: string | undefined) {
 }
 
 // Agent Modal Component
-function AgentModal({ 
-  isOpen, 
-  onClose, 
-  onSubmit, 
-  title, 
-  providers, 
+function AgentModal({
+  isOpen,
+  onClose,
+  onSubmit,
+  title,
+  providers,
   isLoading,
-  initialData 
+  initialData
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -545,11 +545,50 @@ function AgentModal({
   isLoading: boolean;
   initialData?: Agent;
 }) {
+  const [selectedProvider, setSelectedProvider] = useState(initialData?.provider || providers[0]?.id || '');
+  const [selectedModel, setSelectedModel] = useState(initialData?.model || '');
+  const [customModel, setCustomModel] = useState('');
+  const [useCustomModel, setUseCustomModel] = useState(false);
+  const { data: models, isLoading: modelsLoading } = useProviderModels(selectedProvider);
+
+  // Reset model when provider changes (but not on initial mount)
+  const providerChangedRef = useRef(false);
+  useEffect(() => {
+    if (providerChangedRef.current) {
+      setSelectedModel('');
+      setCustomModel('');
+      setUseCustomModel(false);
+    }
+    providerChangedRef.current = true;
+  }, [selectedProvider]);
+
+  // Reset state when modal opens with different data
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedProvider(initialData?.provider || providers[0]?.id || '');
+      setSelectedModel(initialData?.model || '');
+      setCustomModel('');
+      setUseCustomModel(false);
+      providerChangedRef.current = false;
+    }
+  }, [isOpen, initialData, providers]);
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    // Override model with the actual selected value
+    const modelValue = useCustomModel ? customModel : selectedModel;
+    formData.set('model', modelValue);
+    formData.set('provider_id', selectedProvider);
     onSubmit(formData);
   };
+
+  const modelOptions = models?.map((m: { model_id: string; model_name?: string; context_window?: number }) => ({
+    value: m.model_id,
+    label: m.model_name
+      ? `${m.model_name}${m.context_window ? ` (${Math.round(m.context_window / 1024)}K)` : ''}`
+      : m.model_id,
+  })) || [];
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg">
@@ -563,28 +602,72 @@ function AgentModal({
             placeholder="My Agent"
             required
           />
-          
+
           <Select
             label="Type"
             name="type"
             defaultValue={initialData?.type || 'main'}
             options={agentTypes}
           />
-          
-          <Input
-            label="Model"
-            name="model"
-            defaultValue={initialData?.model || 'MiniMax-M2.1'}
-            placeholder="MiniMax-M2.1"
-          />
-          
+
           <Select
             label="Provider"
             name="provider_id"
-            defaultValue={initialData?.provider}
+            value={selectedProvider}
+            onChange={(val) => setSelectedProvider(val)}
             options={providers.map(p => ({ value: p.id, label: p.name }))}
           />
-          
+
+          {/* Model selection */}
+          <div className="space-y-2">
+            {!useCustomModel ? (
+              <>
+                <Select
+                  label="Model"
+                  name="model_display"
+                  value={selectedModel}
+                  onChange={(val) => setSelectedModel(val)}
+                  options={
+                    modelsLoading
+                      ? [{ value: '', label: 'Loading models...' }]
+                      : modelOptions.length > 0
+                        ? [{ value: '', label: 'Select a model...' }, ...modelOptions]
+                        : [{ value: '', label: 'No models found' }]
+                  }
+                />
+                <button
+                  type="button"
+                  onClick={() => setUseCustomModel(true)}
+                  className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer"
+                >
+                  or type a custom model name
+                </button>
+              </>
+            ) : (
+              <>
+                <Input
+                  label="Model"
+                  name="model_custom"
+                  value={customModel}
+                  onChange={(e) => setCustomModel(e.target.value)}
+                  placeholder="model-name-here"
+                />
+                {modelOptions.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => { setUseCustomModel(false); setCustomModel(''); }}
+                    className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer"
+                  >
+                    or select from available models
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Hidden input to ensure model goes in FormData */}
+          <input type="hidden" name="model" value={useCustomModel ? customModel : selectedModel} />
+
           <Textarea
             label="System Prompt"
             name="system_prompt"
@@ -592,7 +675,7 @@ function AgentModal({
             placeholder="You are a helpful AI assistant..."
             rows={6}
           />
-          
+
           <div className="flex justify-end gap-2 pt-4">
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel

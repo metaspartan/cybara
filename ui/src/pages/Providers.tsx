@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Cloud, Plus, Trash2, Edit2, Search, RefreshCw, Key, Star, TestTube } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Cloud, Plus, Trash2, Edit2, Search, RefreshCw, Key, Star, TestTube, Shield, Link2, Info, ExternalLink } from 'lucide-react';
+import { openExternal } from '@/utils/openExternal';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -281,14 +282,184 @@ interface ProviderModalProps {
 
 function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availableProviders, isLoading, isEdit }: ProviderModalProps) {
   const [selectedProvider, setSelectedProvider] = useState(provider?.provider || '');
+  const [oauthState, setOauthState] = useState<'idle' | 'connecting' | 'polling' | 'success' | 'error'>('idle');
+  const [deviceCode, setDeviceCode] = useState<{ user_code: string; verification_uri: string; device_code: string } | null>(null);
+  const [oauthToken, setOauthToken] = useState<string>('');
+  const [oauthError, setOauthError] = useState<string>('');
+  const abortRef = useRef(false);
+  const { addToast } = useUIStore();
+
+  // Reset state when modal opens/closes
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedProvider(provider?.provider || availableProviders[0]?.id || '');
+      setOauthState('idle');
+      setDeviceCode(null);
+      setOauthToken('');
+      setOauthError('');
+      abortRef.current = false;
+    } else {
+      // Cancel any running OAuth polling when modal closes
+      abortRef.current = true;
+    }
+    return () => { abortRef.current = true; };
+  }, [isOpen, provider, availableProviders]);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    onSubmit(new FormData(e.currentTarget));
+    const formData = new FormData(e.currentTarget);
+    // Inject oauth token if we got one
+    if (oauthToken) {
+      formData.set('access_token', oauthToken);
+    }
+    onSubmit(formData);
   };
 
   const providerOptions = availableProviders.map(p => ({ value: p.id, label: p.name }));
   const selectedProviderInfo = availableProviders.find(p => p.id === selectedProvider);
+  const authType = selectedProviderInfo?.authType || 'api_key';
+
+  // Start OAuth device code flow
+  const startDeviceCodeFlow = async () => {
+    setOauthState('connecting');
+    setOauthError('');
+    try {
+      const res = await fetch('/api/providers/oauth/device-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ providerType: selectedProvider }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to start OAuth flow');
+
+      setDeviceCode({
+        user_code: data.user_code,
+        verification_uri: data.verification_uri,
+        device_code: data.device_code,
+      });
+      setOauthState('polling');
+
+      // Open verification URL
+      openExternal(data.verification_uri);
+
+      // Start polling
+      const interval = Math.max(5000, (data.interval || 5) * 1000);
+      const expiresAt = Date.now() + (data.expires_in || 900) * 1000;
+      pollForToken(data.device_code, interval, expiresAt);
+    } catch (err) {
+      setOauthError(err instanceof Error ? err.message : 'OAuth initiation failed');
+      setOauthState('error');
+    }
+  };
+
+  const pollForToken = async (code: string, intervalMs: number, expiresAt: number) => {
+    while (Date.now() < expiresAt && !abortRef.current) {
+      await new Promise(r => setTimeout(r, intervalMs));
+      if (abortRef.current) return;
+      try {
+        const res = await fetch('/api/providers/oauth/poll', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ providerType: selectedProvider, deviceCode: code }),
+        });
+        const data = await res.json();
+
+        if (data.status === 'success' && data.access_token) {
+          setOauthToken(data.access_token);
+          setOauthState('success');
+          addToast('success', `${selectedProviderInfo?.name || 'Provider'} connected successfully!`);
+          return;
+        }
+        if (data.status === 'expired' || data.status === 'denied') {
+          setOauthError(data.status === 'denied' ? 'Authorization was denied' : 'Code expired, try again');
+          setOauthState('error');
+          return;
+        }
+        if (data.status === 'error') {
+          setOauthError(data.error || 'Unknown error');
+          setOauthState('error');
+          return;
+        }
+        // pending or slow_down — continue polling
+      } catch {
+        // Network error — continue polling
+      }
+    }
+    if (!abortRef.current) {
+      setOauthError('Authorization timed out. Please try again.');
+      setOauthState('error');
+    }
+  };
+
+  const copyCode = () => {
+    if (deviceCode?.user_code) {
+      navigator.clipboard.writeText(deviceCode.user_code);
+      addToast('success', 'Code copied to clipboard');
+    }
+  };
+
+  // Start OAuth redirect flow (for Google/Antigravity, OpenAI Codex, etc.)
+  const startRedirectOAuthFlow = async () => {
+    setOauthState('connecting');
+    setOauthError('');
+    abortRef.current = false;
+    try {
+      console.log('[OAuth] Starting redirect flow for', selectedProvider);
+      const res = await fetch('/api/providers/oauth/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ providerType: selectedProvider }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to start OAuth flow');
+
+      console.log('[OAuth] Got auth URL, opening in browser:', data.auth_url?.substring(0, 80) + '...');
+
+      // Open auth URL in system browser
+      await openExternal(data.auth_url);
+      console.log('[OAuth] openExternal completed, starting poll');
+      setOauthState('polling');
+
+      // Poll for callback completion
+      const oauthStateId = data.state;
+      const expiresAt = Date.now() + 600_000; // 10 min timeout
+      while (Date.now() < expiresAt && !abortRef.current) {
+        await new Promise(r => setTimeout(r, 3000));
+        if (abortRef.current) return;
+        try {
+          const pollRes = await fetch('/api/providers/oauth/callback-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ state: oauthStateId }),
+          });
+          const pollData = await pollRes.json();
+
+          if (pollData.status === 'success' && pollData.access_token) {
+            setOauthToken(pollData.access_token);
+            setOauthState('success');
+            addToast('success', `${selectedProviderInfo?.name || 'Provider'} connected!`);
+            return;
+          }
+          if (pollData.status === 'error') {
+            setOauthError(pollData.error || 'Authorization failed');
+            setOauthState('error');
+            return;
+          }
+          // pending — keep polling
+        } catch {
+          // Network error — keep polling
+        }
+      }
+      if (!abortRef.current) {
+        setOauthError('Authorization timed out. Please try again.');
+        setOauthState('error');
+      }
+    } catch (err) {
+      console.error('[OAuth] Error:', err);
+      setOauthError(err instanceof Error ? err.message : 'OAuth failed');
+      setOauthState('error');
+    }
+  };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} size="md">
@@ -307,31 +478,239 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
         <Input
           name="name"
           label="Display Name"
-          placeholder="My OpenAI Account"
+          placeholder={selectedProviderInfo?.name ? `My ${selectedProviderInfo.name}` : 'My Provider'}
           defaultValue={provider?.name}
           required
         />
 
-        {selectedProviderInfo?.authType !== 'none' && (
-          <>
-            {selectedProviderInfo?.authType === 'bearer' ? (
-              <Input
-                name="api_key"
-                label="API Key"
-                type="password"
-                placeholder="sk-..."
-                defaultValue={provider?.config?.api_key as string}
-              />
-            ) : (
-              <Input
-                name="access_token"
-                label="Access Token"
-                type="password"
-                placeholder="Enter access token..."
-                defaultValue={provider?.config?.access_token as string}
-              />
+        {/* Auth section - adapts based on provider auth type */}
+        {authType === 'api_key' && (
+          <Input
+            name="api_key"
+            label="API Key"
+            type="password"
+            placeholder="sk-..."
+            defaultValue={provider?.config?.api_key as string}
+            helperText="Your API key from the provider's dashboard"
+          />
+        )}
+
+        {authType === 'oauth' && (
+          <div className="space-y-3">
+            {/* Device code flow (GitHub Copilot, etc.) */}
+            {selectedProviderInfo?.oauthFlow === 'device_code' && selectedProviderInfo?.hasOAuthConfig && (
+              <>
+                {oauthState === 'idle' && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full justify-center"
+                    leftIcon={<Shield className="w-4 h-4" />}
+                    onClick={startDeviceCodeFlow}
+                  >
+                    Connect via OAuth
+                  </Button>
+                )}
+
+                {oauthState === 'connecting' && (
+                  <div className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-center">
+                    <RefreshCw className="w-5 h-5 text-indigo-400 mx-auto animate-spin" />
+                    <p className="text-sm text-indigo-300 mt-2">Initiating OAuth flow...</p>
+                  </div>
+                )}
+
+                {(oauthState === 'polling') && deviceCode && (
+                  <div className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 space-y-3">
+                    <div className="flex items-center gap-2 justify-center">
+                      <Shield className="w-4 h-4 text-indigo-400" />
+                      <p className="text-sm text-indigo-300 font-medium">Enter this code in your browser:</p>
+                    </div>
+                    <div
+                      onClick={copyCode}
+                      className="text-2xl font-mono font-bold text-white text-center tracking-[0.3em] py-3 px-4 rounded-lg bg-white/10 cursor-pointer hover:bg-white/15 transition-colors"
+                      title="Click to copy"
+                    >
+                      {deviceCode.user_code}
+                    </div>
+                    <p className="text-xs text-gray-400 text-center">
+                      A browser window should have opened to <span className="text-indigo-300">{deviceCode.verification_uri}</span>.
+                      {' '}Click the code above to copy it.
+                    </p>
+                    <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                      Waiting for authorization...
+                    </div>
+                  </div>
+                )}
+
+                {oauthState === 'success' && (
+                  <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/20">
+                    <div className="flex items-center gap-2 justify-center">
+                      <Link2 className="w-5 h-5 text-green-400" />
+                      <p className="text-sm font-medium text-green-300">Connected successfully!</p>
+                    </div>
+                    <p className="text-xs text-gray-400 text-center mt-1">
+                      Click "Add" below to save this provider.
+                    </p>
+                  </div>
+                )}
+
+                {oauthState === 'error' && (
+                  <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 space-y-2">
+                    <p className="text-sm text-red-300 text-center">{oauthError}</p>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="w-full justify-center"
+                      onClick={startDeviceCodeFlow}
+                    >
+                      Try Again
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
-          </>
+
+            {/* OAuth providers with redirect flow (Google, OpenAI Codex, etc.) */}
+            {selectedProviderInfo?.oauthFlow !== 'device_code' && selectedProviderInfo?.hasOAuthConfig && (
+              <>
+                {oauthState === 'idle' && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full justify-center"
+                    leftIcon={<Shield className="w-4 h-4" />}
+                    onClick={startRedirectOAuthFlow}
+                  >
+                    Sign in with {selectedProviderInfo?.name || 'Provider'}
+                  </Button>
+                )}
+
+                {oauthState === 'connecting' && (
+                  <div className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-center">
+                    <RefreshCw className="w-5 h-5 text-indigo-400 mx-auto animate-spin" />
+                    <p className="text-sm text-indigo-300 mt-2">Opening sign-in page...</p>
+                  </div>
+                )}
+
+                {oauthState === 'polling' && (
+                  <div className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 space-y-2">
+                    <div className="flex items-center justify-center gap-2">
+                      <RefreshCw className="w-4 h-4 text-indigo-400 animate-spin" />
+                      <p className="text-sm text-indigo-300">Waiting for sign-in...</p>
+                    </div>
+                    <p className="text-xs text-gray-400 text-center">
+                      Complete the sign-in in the browser window that opened. This will update automatically.
+                    </p>
+                  </div>
+                )}
+
+                {oauthState === 'success' && (
+                  <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/20">
+                    <div className="flex items-center gap-2 justify-center">
+                      <Link2 className="w-5 h-5 text-green-400" />
+                      <p className="text-sm font-medium text-green-300">Connected successfully!</p>
+                    </div>
+                    <p className="text-xs text-gray-400 text-center mt-1">
+                      Click "Add" below to save this provider.
+                    </p>
+                  </div>
+                )}
+
+                {oauthState === 'error' && (
+                  <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 space-y-2">
+                    <p className="text-sm text-red-300 text-center">{oauthError || 'Connection failed'}</p>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="w-full justify-center"
+                      onClick={startRedirectOAuthFlow}
+                    >
+                      Try Again
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* OAuth providers without oauthConfig (fallback to manual token) */}
+            {selectedProviderInfo?.oauthFlow !== 'device_code' && !selectedProviderInfo?.hasOAuthConfig && (
+              <div className="space-y-3">
+                {selectedProviderInfo?.oauthLoginUrl ? (
+                  <>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="w-full justify-center"
+                      leftIcon={<ExternalLink className="w-4 h-4" />}
+                      onClick={() => openExternal(selectedProviderInfo.oauthLoginUrl!)}
+                    >
+                      Get API Key from {selectedProviderInfo?.name || 'Provider'}
+                    </Button>
+                    <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
+                      <p className="text-xs text-gray-400 text-center">
+                        Copy your API key or access token and paste it below.
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
+                    <div className="flex items-start gap-3">
+                      <Shield className="w-4 h-4 text-indigo-400 mt-0.5 flex-shrink-0" />
+                      <p className="text-xs text-gray-400">
+                        This provider uses OAuth. Paste your access token below.
+                      </p>
+                    </div>
+                  </div>
+                )}
+                <Input
+                  name="access_token"
+                  label="Access Token"
+                  type="password"
+                  placeholder="Paste your token here..."
+                  defaultValue={provider?.config?.access_token as string}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {authType === 'aws-sdk' && (
+          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
+            <div className="flex items-start gap-3">
+              <Info className="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-amber-300">AWS SDK Authentication</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Configure AWS credentials via environment variables (AWS_ACCESS_KEY_ID,
+                  AWS_SECRET_ACCESS_KEY) or AWS CLI profile.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {authType === 'none' && (
+          <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/20">
+            <div className="flex items-start gap-3">
+              <Link2 className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-green-300">No Authentication Required</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  This provider connects directly without credentials (e.g. local Ollama instance).
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Provider info footer */}
+        {selectedProviderInfo && (
+          <div className="text-xs text-gray-500 flex items-center gap-4">
+            <span>{selectedProviderInfo.models.length} models available</span>
+          </div>
         )}
 
         <label className="flex items-center gap-3 p-3 rounded-xl bg-white/5 cursor-pointer">

@@ -20,6 +20,14 @@ const getUiPath = (): string => {
     // Check: <exec_dir>/ui/dist (e.g., release/ui/dist)
     const releaseUi = join(execDir, "ui", "dist");
     if (existsSync(releaseUi)) return releaseUi;
+    // Tauri macOS: Contents/Resources/_up_/ui/dist (Tauri converts ../ to _up_/)
+    const tauriMacUi = join(execDir, "..", "Resources", "_up_", "ui", "dist");
+    if (existsSync(tauriMacUi)) return tauriMacUi;
+    // Tauri Linux: <exec_dir>/../lib/<app>/ui/dist or <exec_dir>/../share/<app>/ui/dist
+    const tauriLinuxLib = join(execDir, "..", "lib", "cybara", "ui", "dist");
+    if (existsSync(tauriLinuxLib)) return tauriLinuxLib;
+    const tauriLinuxShare = join(execDir, "..", "share", "cybara", "ui", "dist");
+    if (existsSync(tauriLinuxShare)) return tauriLinuxShare;
     // Fallback: <exec_dir>/../ui/dist (e.g., release/../ui/dist = ./ui/dist)
     const repoUi = join(execDir, "..", "ui", "dist");
     if (existsSync(repoUi)) return repoUi;
@@ -58,7 +66,15 @@ const mimeTypes: Record<string, string> = {
 
 const platformConfig = config.getAll();
 const PORT = Number(process.env.PORT) || platformConfig.port || 4269;
-const HOST = platformConfig.host || "0.0.0.0";
+
+// Security: default to localhost-only binding
+// Use --expose or CYBARA_HOST=0.0.0.0 to allow LAN access
+const isExposed = process.argv.includes("--expose") || process.env.CYBARA_HOST === "0.0.0.0";
+const HOST = process.env.CYBARA_HOST || platformConfig.host || (isExposed ? "0.0.0.0" : "127.0.0.1");
+const TERMINAL_CLI_FLAG = process.argv.includes("--enable-terminal");
+function isTerminalEnabled(): boolean {
+  return TERMINAL_CLI_FLAG || config.get<boolean>("terminal_enabled") === true;
+}
 
 // Log status broadcasts for debugging
 onStatus((status) => {
@@ -135,12 +151,39 @@ function createStatusStream(): ReadableStream<Uint8Array> {
   });
 }
 
-const server = Bun.serve({
+import { createTerminalSession, getTerminalSession, destroyTerminalSession, listTerminalSessions, destroyAllTerminalSessions } from "./api/terminal";
+
+interface WsData { sessionId: string }
+
+const server = Bun.serve<WsData>({
   port: PORT,
   hostname: HOST,
-  fetch: async (req) => {
+  fetch: async (req, server) => {
     const url = new URL(req.url);
     const pathname = url.pathname;
+
+    // Terminal WebSocket upgrade
+    if (pathname === "/api/terminal/ws" && isTerminalEnabled()) {
+      const sessionId = url.searchParams.get("session") || crypto.randomUUID();
+      const success = server.upgrade(req, { data: { sessionId } });
+      if (success) return undefined as any;
+      return new Response("WebSocket upgrade failed", { status: 400 });
+    }
+
+    // Terminal REST endpoints (session management)
+    if (pathname.startsWith("/api/terminal") && req.method === "GET") {
+      if (!isTerminalEnabled()) {
+        return new Response(JSON.stringify({ error: "Terminal disabled. Start with --enable-terminal" }), {
+          status: 403,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (pathname === "/api/terminal/sessions") {
+        return new Response(JSON.stringify(listTerminalSessions()), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
 
     // SSE endpoint for status updates
     if (pathname === "/api/sse/status") {
@@ -208,6 +251,44 @@ const server = Bun.serve({
 
     // Fallback to index.html for client-side routing
     return new Response(uiContent, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+  },
+  websocket: {
+    open(ws) {
+      const { sessionId } = ws.data as { sessionId: string };
+      const session = getTerminalSession(sessionId) || createTerminalSession(sessionId);
+
+      if (session.pty) {
+        // node-pty uses onData for output
+        session.pty.onData((data: string) => {
+          try { ws.send(data); } catch { }
+        });
+        session.pty.onExit(() => {
+          try { ws.close(); } catch { }
+          destroyTerminalSession(sessionId);
+        });
+      }
+    },
+    message(ws, message) {
+      const { sessionId } = ws.data as { sessionId: string };
+      const session = getTerminalSession(sessionId);
+      if (session?.pty) {
+        session.lastActivity = Date.now();
+        const data = typeof message === "string" ? message : Buffer.from(message).toString();
+        // Handle resize messages
+        if (data.startsWith('\x1b[RESIZE:')) {
+          const match = data.match(/\x1b\[RESIZE:(\d+),(\d+)\]/);
+          if (match) {
+            session.pty.resize(parseInt(match[1]), parseInt(match[2]));
+            return;
+          }
+        }
+        session.pty.write(data);
+      }
+    },
+    close(ws) {
+      const { sessionId } = ws.data as { sessionId: string };
+      destroyTerminalSession(sessionId);
+    },
   },
 });
 

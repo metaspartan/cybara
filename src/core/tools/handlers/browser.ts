@@ -22,10 +22,11 @@ import {
 import { randomUUID } from "crypto";
 import { writeFileSync, mkdirSync, existsSync } from "fs";
 import { join, resolve } from "path";
+import { homedir } from "os";
 
 
-// Media output directory for screenshots
-const SCREENSHOTS_DIR = resolve(process.cwd(), "media/outbound/screenshots");
+// Media output directory for screenshots — use ~/.cybara/ for consistent cross-platform paths
+const SCREENSHOTS_DIR = join(process.env.HOME || process.env.USERPROFILE || homedir(), ".cybara", "screenshots");
 
 // Track active page for each session (legacy mode)
 const sessionPages = new Map<string, string>();
@@ -184,6 +185,17 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       return {
         success: true,
         message: "Browser closed",
+      };
+    }
+
+    case "close_all": {
+      // Close ALL pages, tabs, and browser instances
+      await pwManager.closeAll();
+      // Clear all session page mappings
+      sessionPages.clear();
+      return {
+        success: true,
+        message: "All browser pages and tabs closed",
       };
     }
 

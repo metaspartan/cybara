@@ -1,6 +1,6 @@
 # Cybara Documentation
 
-Welcome to Cybara, an AI agent platform with modular skills and beautiful UI.
+Welcome to Cybara — a self-hosted AI agent platform with modular skills, browser automation, multi-channel messaging, and a beautiful web UI.
 
 ## Quick Start
 
@@ -39,6 +39,18 @@ bun run package
 ./release/cybara status
 ```
 
+### Desktop (Tauri)
+
+```bash
+# Development mode
+bun run tauri:dev
+
+# Production build (macOS .dmg, Linux .deb/.rpm/.appimage)
+bun run tauri:build
+```
+
+See [Desktop Guide](./desktop.md) for platform-specific build info.
+
 ### Available Scripts
 
 | Script | Description |
@@ -51,6 +63,9 @@ bun run package
 | `bun run ui:dev` | UI dev server (Vite HMR) |
 | `bun run ui:build` | Build UI for production |
 | `bun run check` | TypeScript + ESLint + Prettier |
+| `bun run tauri:dev` | Tauri desktop dev mode |
+| `bun run tauri:build` | Tauri desktop production build |
+| `bun run package` | Build release binaries |
 
 
 ## Documentation
@@ -65,16 +80,18 @@ bun run package
 | [Providers](./providers.md) | AI provider configuration |
 | [Configuration](./configuration.md) | Settings and environment |
 | [API Reference](./api.md) | REST API endpoints |
+| [Desktop](./desktop.md) | Tauri desktop client |
+| [Security](./security.md) | Self-hosting security model |
 
 ## Core Concepts
 
 ### Agents
 AI entities with configurable personalities, prompts, and tool access. Types:
-- **main** - Primary conversational agent
-- **research** - Information gathering
-- **coder** - Software development
-- **planner** - Task breakdown
-- **ops** - System administration
+- **main** — Primary conversational agent
+- **research** — Information gathering
+- **coder** — Software development
+- **planner** — Task breakdown
+- **ops** — System administration
 
 ### Sessions
 Conversation contexts with message history, token tracking, and context management.
@@ -88,6 +105,9 @@ Functions the agent can invoke (file I/O, browser, exec, web search, etc.).
 ### Channels
 Communication interfaces (Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Web).
 
+### Security
+API key authentication, rate limiting, SSRF protection, path sandboxing. See [Security](./security.md).
+
 ## Support
 
 - **Issues**: [GitHub Issues](https://github.com/metaspartan/cybara/issues)
@@ -95,4 +115,4 @@ Communication interfaces (Telegram, Discord, Slack, WhatsApp, Signal, iMessage, 
 
 ---
 
-Built with Bun, TypeScript, React, and Playwright.
+Built with Bun, TypeScript, React, Tauri, and Playwright.

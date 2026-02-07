@@ -168,6 +168,9 @@ export interface AvailableProvider {
   description: string;
   models: string[];
   authType?: 'none' | 'api_key' | 'bearer' | 'token' | 'oauth' | 'aws-sdk';
+  oauthFlow?: 'device_code' | 'redirect' | null;
+  hasOAuthConfig?: boolean;
+  oauthLoginUrl?: string | null;
 }
 
 export interface AvailableChannel {

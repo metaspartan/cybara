@@ -13,6 +13,7 @@ import {
   Wrench,
   Settings,
   Terminal,
+  SquareTerminal,
   BarChart3,
   Code,
   FolderOpen,
@@ -137,6 +138,7 @@ const navCategories = [
       { path: '/ide', icon: FolderOpen, label: 'IDE' },
       { path: '/skills', icon: LibraryBig, label: 'Skills' },
       { path: '/tools', icon: Wrench, label: 'Tools' },
+      { path: '/terminal', icon: SquareTerminal, label: 'Terminal' },
     ],
   },
   {

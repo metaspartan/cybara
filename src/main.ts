@@ -32,6 +32,8 @@ const CLI_COMMANDS = [
     "browser",
     "channels",
     "channel",
+    "chat",
+    "config",
     "wizard",
     "help",
     "--help",
@@ -154,6 +156,8 @@ Usage:
   cybara status             Show platform status
   cybara metrics            Show token usage and metrics
   cybara agents             List all agents
+  cybara chat               Interactive TUI chat
+  cybara config             Show / get / set config
   cybara provider           Provider management (add, update, delete, models)
   cybara sessions           List chat sessions
   cybara memory [query]     List or search memory
@@ -170,6 +174,8 @@ Usage:
 
 Options:
   -d, --daemon, -bg         Run server in background
+  --expose                  Bind to 0.0.0.0 (allow LAN access)
+  --enable-terminal         Enable web terminal access
   --version, -v             Show version
   --help, -h                Show help
 

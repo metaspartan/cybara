@@ -10,7 +10,7 @@ Cybara is a Bun/TypeScript AI agent platform with a modular architecture.
 └─────────────────────────────┬───────────────────────────────┘
                               │ REST API
 ┌─────────────────────────────▼───────────────────────────────┐
-│                       API Layer (Hono)                       │
+│                       API Layer (Bun)                       │
 │  /api/chat  /api/agents  /api/skills  /api/browser  ...     │
 └─────────────────────────────┬───────────────────────────────┘
                               │

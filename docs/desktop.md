@@ -5,10 +5,10 @@ Cybara is available as a native desktop application built with [Tauri](https://t
 ## Features
 
 - **Native Performance**: Built with Rust, minimal resource usage
-- **System Tray**: Quick access and background operation
 - **Native Notifications**: OS-level alerts for important events
 - **Offline Capable**: Local model support via Ollama
-- **Cross-Platform**: macOS (Apple Silicon & Intel)
+- **Cross-Platform**: macOS (Apple Silicon & Intel), Linux (x64 & arm64), Windows (x64 and arm64)
+- **Bundled UI**: All assets embedded in the app bundle
 
 ## Installation
 
@@ -21,6 +21,9 @@ Download the latest release from [GitHub Releases](https://github.com/metasparta
 | macOS (Apple Silicon) | `Cybara_x.x.x_aarch64.dmg` |
 | macOS (Intel) | `Cybara_x.x.x_x64.dmg` |
 | macOS (Universal) | `Cybara_x.x.x_universal.dmg` |
+| Linux (x64) | `cybara_x.x.x_amd64.deb` / `.rpm` / `.AppImage` |
+| Linux (arm64) | `cybara_x.x.x_arm64.deb` / `.rpm` / `.AppImage` |
+| Windows (x64 and arm64) | `Cybara_x.x.x_x64-setup.exe` |
 
 ### From Source
 
@@ -32,6 +35,9 @@ cd cybara
 # Install dependencies
 bun install
 
+# Build the sidecar (platform-aware)
+bun run tauri:sidecar
+
 # Run in development mode
 bun run tauri:dev
 
@@ -41,33 +47,45 @@ bun run tauri:build
 
 ## Architecture
 
-The desktop client wraps the Cybara web UI in a Tauri webview:
+The desktop client embeds the Cybara sidecar binary and bundles the web UI as resources:
 
 ```
-┌─────────────────────────────────────┐
-│         Tauri Window                │
-│  ┌───────────────────────────────┐  │
-│  │     React Web UI (Vite)       │  │
-│  │  ┌─────────────────────────┐  │  │
-│  │  │  Dashboard │ Chat │ ... │  │  │
-│  │  └─────────────────────────┘  │  │
-│  └───────────────────────────────┘  │
-│         ↕ IPC Bridge                │
-│  ┌───────────────────────────────┐  │
-│  │    Rust Backend (Tauri)       │  │
-│  │  - System tray                │  │
-│  │  - Native notifications       │  │
-│  │  - File system access         │  │
-│  └───────────────────────────────┘  │
-└─────────────────────────────────────┘
-         ↕ HTTP/WebSocket
-┌─────────────────────────────────────┐
-│      Cybara Backend (Bun)           │
-│  - Agent orchestration              │
-│  - AI provider routing              │
-│  - Tool execution                   │
-└─────────────────────────────────────┘
+Cybara.app/
+├── Contents/
+│   ├── MacOS/
+│   │   ├── cybara-desktop     # Tauri shell (Rust)
+│   │   └── cybara-<triple>    # Sidecar binary (Bun-compiled)
+│   ├── Resources/
+│   │   ├── icon.icns
+│   │   └── _up_/ui/dist/      # Bundled web UI
+│   │       ├── index.html
+│   │       ├── cybara.png      # App icon
+│   │       └── assets/         # JS, CSS
+│   └── Info.plist
 ```
+
+On launch:
+1. Tauri shell starts the sidecar binary with `cybara start`
+2. Sidecar starts the HTTP server on port 4269
+3. Sidecar finds `ui/dist/` in `Resources/_up_/ui/dist/`
+4. Tauri webview navigates to `http://localhost:4269`
+5. On close, Tauri kills the sidecar process
+
+## Sidecar Build Script
+
+The `scripts/build-sidecar.ts` auto-detects your platform and compiles:
+
+```bash
+bun run tauri:sidecar
+```
+
+This creates the correctly-named binary that Tauri expects:
+- macOS arm64: `cybara-aarch64-apple-darwin`
+- macOS x64: `cybara-x86_64-apple-darwin`
+- Linux x64: `cybara-x86_64-unknown-linux-gnu`
+- Linux arm64: `cybara-aarch64-unknown-linux-gnu`
+- Windows x64: `cybara-x86_64-pc-windows-msvc.exe`
+- Windows arm64: `cybara-aarch64-pc-windows-msvc.exe`
 
 ## Development
 
@@ -76,6 +94,7 @@ The desktop client wraps the Cybara web UI in a Tauri webview:
 - [Rust](https://rustup.rs/) (latest stable)
 - [Bun](https://bun.sh/) (v1.0+)
 - Xcode Command Line Tools (macOS)
+- `libwebkit2gtk-4.1-dev`, `libappindicator3-dev` (Linux)
 
 ### Commands
 
@@ -88,17 +107,6 @@ bun run tauri:build
 
 # Clean build artifacts
 cd src-tauri && cargo clean
-```
-
-### Project Structure
-
-```
-src-tauri/
-├── Cargo.toml          # Rust dependencies
-├── tauri.conf.json     # Tauri configuration
-├── src/
-│   └── main.rs         # Rust entry point
-└── icons/              # App icons
 ```
 
 ## Configuration
@@ -116,6 +124,12 @@ The desktop client uses the same configuration as the CLI/web:
 1. Ensure Cybara backend is running: `cybara status`
 2. Check logs: `cat ~/.cybara/cybara.log`
 3. Try starting backend manually: `cybara start`
+
+### Icon not showing
+
+The app icon should display automatically. If missing:
+1. Ensure `ui/dist/cybara.png` exists after building
+2. Rebuild: `bun run ui:build && bun run tauri:build`
 
 ### Build errors on macOS
 

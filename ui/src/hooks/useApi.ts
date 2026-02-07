@@ -195,6 +195,14 @@ export function useDiscoverOllama() {
   });
 }
 
+export function useProviderModels(providerId: string | null | undefined) {
+  return useQuery({
+    queryKey: ['providers', providerId, 'models'],
+    queryFn: () => fetchApi<Array<{ id: string; model_id: string; model_name?: string; context_window?: number }>>(`/providers/${providerId}/models`),
+    enabled: !!providerId,
+  });
+}
+
 // ==================== CHANNELS ====================
 
 export function useChannels() {

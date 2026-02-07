@@ -155,16 +155,20 @@ function MessageContent({ content }: { content: string }) {
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          code({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode }) {
-            const match = /language-(\w+)/.exec(className || '');
-            return !inline ? (
-              <pre className="bg-black/40 rounded-lg p-3 overflow-x-auto my-2">
-                <code className={className} {...props}>
-                  {children}
-                </code>
-              </pre>
-            ) : (
-              <code className="bg-white/10 rounded px-1.5 py-0.5 text-sm" {...props}>
+          pre: ({ children, ...props }: any) => (
+            <pre className="bg-black/40 rounded-lg p-3 overflow-x-auto my-2" {...props}>
+              {children}
+            </pre>
+          ),
+          code({ className, children, ...props }: any) {
+            // If we're inside a <pre>, it's a code block — just render the <code> tag
+            // The pre component above handles the wrapper
+            if (className) {
+              return <code className={className} {...props}>{children}</code>;
+            }
+            // Inline code
+            return (
+              <code className="bg-white/10 rounded px-1.5 py-0.5 text-[0.85em] font-mono" {...props}>
                 {children}
               </code>
             );

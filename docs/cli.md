@@ -10,6 +10,24 @@ cybara <command> [options]
 
 ## Commands
 
+### Server Control
+
+```bash
+cybara                    # Start the server on port 4269 (foreground)
+cybara start              # Start the server (foreground)
+cybara start -d           # Start the server in background (daemon)
+cybara stop               # Stop the background server
+cybara daemon-logs        # Show daemon process logs
+```
+
+### Interactive Modes
+
+```bash
+cybara chat               # Interactive TUI chat (sessions, subagents, tools)
+cybara wizard             # Setup wizard (first-time configuration)
+cybara tui                # Main menu (interactive TUI)
+```
+
 ### System Status
 
 ```bash
@@ -18,24 +36,10 @@ cybara metrics            # Show token usage and metrics
 cybara logs [count]       # Show recent logs (default: 20)
 ```
 
-### Daemon Control
-
-```bash
-cybara start              # Start daemon (foreground)
-cybara start -d           # Start daemon (background)
-cybara stop               # Stop daemon
-cybara restart            # Restart daemon
-```
-
 ### Agents
 
 ```bash
 cybara agents             # List configured agents
-cybara agent list         # List agents (alias)
-cybara agent create <name> # Create new agent
-cybara agent delete <id>  # Delete agent
-cybara agent start <id>   # Start agent
-cybara agent stop <id>    # Stop agent
 ```
 
 ### Providers
@@ -101,17 +105,13 @@ cybara subagent kill <id> # Kill running subagent
 
 ```bash
 cybara browser            # Show browser status
-cybara browser tabs       # List open browser tabs
+cybara browser tabs       # List open browser tabs/profiles
 ```
 
 ### Channels
 
 ```bash
 cybara channels           # List configured channels
-cybara channel list       # List channels (alias)
-cybara channel add <type> # Add channel (telegram, discord, etc.)
-cybara channel remove <id> # Remove channel
-cybara channel test <id>  # Test channel connection
 ```
 
 ### Channel Pairing
@@ -138,11 +138,6 @@ cybara mcp popular        # Show popular servers
 
 ```bash
 cybara skills             # List installed skills
-cybara skill list         # List skills (alias)
-cybara skill install <url> # Install from URL/registry
-cybara skill remove <name> # Remove skill
-cybara skill update       # Update all skills
-cybara skill search <q>   # Search registries
 ```
 
 ### LSP (Language Servers)
@@ -159,34 +154,29 @@ Supported languages: `rust`, `go`, `python`, `cpp`, `java`, `csharp`, `ruby`, `p
 ### Configuration
 
 ```bash
+cybara config             # Show current config
 cybara config get <key>   # Get config value
 cybara config set <key> <val> # Set config value
-cybara config list        # List all config
-```
-
-### Setup
-
-```bash
-cybara wizard             # Run setup wizard (first-time configuration)
 ```
 
 ## Options
 
 ```
--p, --port <port>    Server port (default: 4269)
--d, --daemon         Run in background
--v, --verbose        Verbose output
--h, --help           Show help
---version            Show version
+-d, --daemon, -bg    Run server in background
+--expose             Bind to 0.0.0.0 (allow LAN access)
+--enable-terminal    Enable web terminal access
+--version, -v        Show version
+--help, -h           Show help
 ```
 
 ## Environment Variables
 
 ```bash
 PORT=4269                 # Server port
-BRAVE_API_KEY=...         # Web search API key
-CYBARA_HOME=~/.cybara     # Data directory
+CYBARA_HOST=127.0.0.1     # Bind address (default: localhost only)
+CYBARA_API_KEY=...        # API key (auto-generated if not set)
 CYBARA_API=http://localhost:4269  # API endpoint for CLI
+BRAVE_API_KEY=...         # Web search API key
 ```
 
 ## Examples
@@ -197,6 +187,12 @@ bun run dev
 
 # Start production daemon
 cybara start -d
+
+# Start with LAN access
+cybara start -d --expose
+
+# Interactive chat
+cybara chat
 
 # Check platform health
 cybara status
@@ -213,14 +209,8 @@ cybara memory "project architecture"
 # Spawn a subagent
 cybara subagent spawn "Research best practices for testing"
 
-# Install a skill from ClawhHub
-cybara skill install clawhub:git-commit
-
 # Install MCP server
 cybara mcp install @anthropic/mcp-server-filesystem
-
-# Add Telegram channel
-cybara channel add telegram
 
 # Install Python LSP
 cybara lsp install python

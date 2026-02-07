@@ -162,7 +162,7 @@ async function findChromeExecutable(): Promise<string | null> {
       "/Applications/Chromium.app/Contents/MacOS/Chromium",
       "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
       "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-      process.env.HOME + "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      os.homedir() + "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     ];
   } else if (platform === "win32") {
     // Windows

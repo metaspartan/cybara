@@ -95,6 +95,74 @@ function ThemeSettings() {
   );
 }
 
+// Feature Toggles
+function FeatureSettings() {
+  const [terminalEnabled, setTerminalEnabled] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const { addToast } = useUIStore();
+
+  useEffect(() => {
+    fetch('/api/config')
+      .then(r => r.json())
+      .then((data: Record<string, unknown>) => {
+        setTerminalEnabled(data.terminal_enabled === true);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const toggleTerminal = async (enabled: boolean) => {
+    setTerminalEnabled(enabled);
+    try {
+      await fetch('/api/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ terminal_enabled: enabled }),
+      });
+      addToast('success', `Web terminal ${enabled ? 'enabled' : 'disabled'}`);
+    } catch {
+      addToast('error', 'Failed to update terminal setting');
+      setTerminalEnabled(!enabled);
+    }
+  };
+
+  return (
+    <Card variant="liquid">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Server className="w-5 h-5" />
+          Features
+        </CardTitle>
+        <CardDescription>Enable or disable platform features</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between py-3 border-b border-white/10">
+          <div>
+            <p className="text-sm text-white font-medium">Web Terminal</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Enable browser-based terminal access. Also available via <code className="text-indigo-400">--enable-terminal</code> flag.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={terminalEnabled}
+            disabled={loading}
+            onClick={() => toggleTerminal(!terminalEnabled)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${terminalEnabled ? 'bg-indigo-500' : 'bg-white/10'
+              } ${loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${terminalEnabled ? 'translate-x-6' : 'translate-x-1'
+                }`}
+            />
+          </button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function Settings() {
   const { data: health } = useHealth();
   const { data: info } = useInfo();
@@ -133,6 +201,9 @@ export function Settings() {
       <div className="space-y-6">
         {/* Theme Settings */}
         <ThemeSettings />
+
+        {/* Feature Toggles */}
+        <FeatureSettings />
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
