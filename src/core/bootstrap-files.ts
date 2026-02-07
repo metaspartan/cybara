@@ -1,6 +1,7 @@
 // Bootstrap file utilities - OpenClaw compatible workspace setup
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
 import { join } from "path";
+import { homedir } from "os";
 
 export interface BootstrapFile {
     name: string;
@@ -33,10 +34,8 @@ export const CONTEXT_FILES = [
  * Get the templates directory path
  */
 function getTemplatesDir(): string {
-    const projectRoot = process.env.HOME
-        ? join(process.env.HOME, ".cybara", "templates")
-        : "./templates";
-    return projectRoot;
+    const home = process.env.HOME || process.env.USERPROFILE || homedir();
+    return join(home, ".cybara", "templates");
 }
 
 /**

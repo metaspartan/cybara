@@ -1,9 +1,10 @@
 // Cron job store - persistence layer
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
+import { homedir } from "os";
 import type { CronJob, CronJobCreate, CronJobPatch, CronStoreFile, CronRunLog } from "./types";
 
-const CRON_DIR = join(process.env.HOME || "~", ".cybara", "cron");
+const CRON_DIR = join(process.env.HOME || process.env.USERPROFILE || homedir(), ".cybara", "cron");
 const JOBS_FILE = join(CRON_DIR, "jobs.json");
 const RUNS_FILE = join(CRON_DIR, "runs.json");
 const MAX_RUN_LOGS = 100;

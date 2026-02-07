@@ -35,6 +35,9 @@ jobs:
           - target: windows-x64
             os: windows-latest
             artifact: cybara-windows-x64.exe
+          - target: windows-arm64
+            os: windows-latest
+            artifact: cybara-windows-arm64.exe
     
     runs-on: ${{ matrix.os }}
     

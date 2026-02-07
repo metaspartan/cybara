@@ -1,6 +1,7 @@
 // Tool handlers - channel messaging and sessions
 import { readFileSync, existsSync } from "fs";
 import { join, dirname } from "path";
+import { homedir } from "os";
 import { fileURLToPath } from "url";
 import type { CronJobCreate, CronJobPatch } from "../../cron/types";
 import * as cron from "../../cron";
@@ -788,10 +789,11 @@ export async function handleGateway(
     case "config.get": {
       // Return current configuration (sanitized)
       try {
+        const home = process.env.HOME || process.env.USERPROFILE || homedir();
         const config = {
-          sessionStore: process.env.HOME + "/.cybara/sessions",
-          memoryStore: process.env.HOME + "/.cybara/memory",
-          cronStore: process.env.HOME + "/.cybara/cron",
+          sessionStore: join(home, ".cybara", "sessions"),
+          memoryStore: join(home, ".cybara", "memory"),
+          cronStore: join(home, ".cybara", "cron"),
           runtime: {
             node: process.version,
             platform: process.platform,

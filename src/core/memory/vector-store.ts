@@ -4,6 +4,7 @@
 import { Database } from "bun:sqlite";
 import { join } from "path";
 import { mkdirSync, existsSync } from "fs";
+import { homedir } from "os";
 import {
     createEmbeddingProvider,
     cosineSimilarity,
@@ -11,7 +12,7 @@ import {
     type EmbeddingProvider,
 } from "./embeddings";
 
-const MEMORY_DIR = join(process.env.HOME || "~", ".cybara", "memory");
+const MEMORY_DIR = join(process.env.HOME || process.env.USERPROFILE || homedir(), ".cybara", "memory");
 const VECTOR_DB_PATH = join(MEMORY_DIR, "vectors.db");
 
 export interface MemoryChunk {

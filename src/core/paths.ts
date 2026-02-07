@@ -9,7 +9,7 @@ import { homedir } from "os";
 import { existsSync, mkdirSync } from "fs";
 
 // User home directory
-export const homeDir = process.env.HOME || homedir();
+export const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
 
 // Cybara data directory (writable in both dev and compiled binary)
 export const cybaraDir = join(homeDir, ".cybara");
