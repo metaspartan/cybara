@@ -86,9 +86,9 @@ function ToolCallItem({ tool }: { tool: ToolCall }) {
   };
 
   const statusStyles = {
-    pending: 'bg-amber-500/5 border-amber-500/20 text-amber-300',
-    success: 'bg-emerald-500/5 border-emerald-500/20 text-emerald-300',
-    error: 'bg-red-500/5 border-red-500/20 text-red-300',
+    pending: 'bg-amber-500/5 border border-white/[0.06] text-amber-300',
+    success: 'bg-emerald-500/5 border border-white/[0.06] text-emerald-300',
+    error: 'bg-red-500/5 border border-white/[0.06] text-red-300',
   };
 
   return (

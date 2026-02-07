@@ -5,7 +5,9 @@
     "identifier": "com.cybara.desktop",
     "build": {
         "frontendDist": "../ui/dist",
-        "devUrl": "http://localhost:4269"
+        "devUrl": "http://localhost:5173",
+        "beforeDevCommand": "cd ui && bun run dev",
+        "beforeBuildCommand": "cd ui && bun run build"
     },
     "app": {
         "windows": [

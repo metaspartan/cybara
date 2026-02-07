@@ -28,8 +28,8 @@
     "sexy": "bun run typecheck && bun run lint && bun run format:check",
     "sexy:write": "bun run typecheck && bun run lint && bun run format",
     "tauri": "tauri",
-    "tauri:dev": "bun run ui:build && (./release/cybara start -d 2>/dev/null || true) && bunx tauri dev",
-    "tauri:build": "bun run ui:build && bunx tauri build",
+    "tauri:dev": "bun run --watch src/index.ts & bunx tauri dev",
+    "tauri:build": "bun run tauri:sidecar && bunx tauri build",
     "tauri:sidecar": "bun build src/index.ts --compile --outfile release/cybara && cp release/cybara src-tauri/bin/cybara-aarch64-apple-darwin"
   },
   "dependencies": {

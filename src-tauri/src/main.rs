@@ -18,6 +18,12 @@ fn main() {
             if is_server_running() {
                 println!("[Cybara] Server already running on port 4269");
                 app.manage(SidecarState(std::sync::Mutex::new(None)));
+
+                // Navigate to the backend URL so relative /api/ paths work
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.navigate("http://localhost:4269".parse().unwrap());
+                }
+
                 return Ok(());
             }
 
@@ -54,8 +60,12 @@ fn main() {
             // Store the child process so we can kill it on exit
             app.manage(SidecarState(std::sync::Mutex::new(Some(child))));
 
-            // Wait a moment for the server to start
+            // Wait for the server to start, then navigate to it
             std::thread::sleep(std::time::Duration::from_millis(2000));
+
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.navigate("http://localhost:4269".parse().unwrap());
+            }
 
             Ok(())
         })
