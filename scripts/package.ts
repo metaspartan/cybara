@@ -40,15 +40,15 @@ async function main() {
     }
 
     // Build main entry point
-    await $`bun build src/main.ts --outdir ${DIST_DIR} --target bun`.quiet();
+    await $`bun build src/main.ts --outdir ${DIST_DIR} --target bun --external electron`.quiet();
     console.log("   ✓ Main entry built");
 
     // Build server
-    await $`bun build src/index.ts --outdir ${DIST_DIR} --target bun`.quiet();
+    await $`bun build src/index.ts --outdir ${DIST_DIR} --target bun --external electron`.quiet();
     console.log("   ✓ Server built");
 
     // Build CLI
-    await $`bun build src/cli.tsx --outdir ${DIST_DIR} --target bun`.quiet();
+    await $`bun build src/cli.tsx --outdir ${DIST_DIR} --target bun --external electron`.quiet();
     console.log("   ✓ CLI built");
 
     // Step 4: Copy UI dist to be embedded
@@ -72,7 +72,7 @@ async function main() {
     // Compile with bun including embedded assets
     // Using --compile to create single executable
     try {
-        await $`bun build src/main.ts --compile --outfile ${binaryPath} --target bun`;
+        await $`bun build src/main.ts --compile --outfile ${binaryPath} --target bun --external electron`;
         console.log(`   ✓ Binary compiled: ${binaryPath}`);
     } catch (error) {
         console.error("   ✗ Binary compilation failed:", error);
