@@ -6,7 +6,10 @@
 |----------|---------|-------------|
 | `PORT` | 4269 | HTTP server port |
 | `CYBARA_HOME` | `~/.cybara` | Data directory |
-| `BRAVE_API_KEY` | - | Web search (optional) |
+| `CYBARA_HOST` | `127.0.0.1` | Bind address (localhost only) |
+| `CYBARA_API_KEY` | auto-generated | API key for auth |
+| `CYBARA_API` | `http://localhost:4269` | API endpoint for CLI |
+| `BRAVE_API_KEY` | - | Web search (optional, falls back to DuckDuckGo) |
 | `LOG_LEVEL` | info | Logging verbosity |
 
 ## Workspace Files
@@ -68,17 +71,30 @@ curl -X POST http://localhost:4269/api/providers \
   -d '{"type": "openai", "apiKey": "sk-..."}'
 ```
 
-### Supported Providers
+### Supported Providers (20)
 
 | Provider | Config Key |
 |----------|------------|
 | OpenAI | `OPENAI_API_KEY` |
 | Anthropic | `ANTHROPIC_API_KEY` |
 | Google | `GOOGLE_API_KEY` |
+| Antigravity | OAuth (no key needed) |
+| xAI | `XAI_API_KEY` |
 | MiniMax | `MINIMAX_API_KEY` |
+| Moonshot | `MOONSHOT_API_KEY` |
+| Kimi Code | `KIMI_API_KEY` |
+| Qwen Portal | OAuth (no key needed) |
+| Venice AI | `VENICE_API_KEY` |
 | Groq | `GROQ_API_KEY` |
 | OpenRouter | `OPENROUTER_API_KEY` |
 | Ollama | `OLLAMA_HOST` |
+| AWS Bedrock | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` |
+| GitHub Copilot | `GITHUB_TOKEN` |
+| Synthetic | `SYNTHETIC_API_KEY` |
+| OpenCode Zen | `OPENCODE_ZEN_API_KEY` |
+| Chutes | `CHUTES_API_KEY` |
+| Xiaomi | `XIAOMI_API_KEY` |
+| Qianfan | `QIANFAN_API_KEY` |
 
 ## Browser Profiles
 

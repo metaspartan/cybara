@@ -1,73 +1,71 @@
-# React + TypeScript + Vite
+# Cybara Web UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 19 + Vite + TanStack Query frontend for the Cybara Agent Platform.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **React 19** with modern hooks and concurrent features
+- **Vite** for fast development and production bundling
+- **TanStack Query** for server state management
+- **Tailwind CSS v4** with Liquid Glass design system
+- **xterm.js** for the web terminal
 
-## React Compiler
+## Pages (18)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| Page | Description |
+|------|-------------|
+| **Dashboard** | System overview, agent status, health metrics |
+| **Chat** | Real-time conversational interface with agent/model selector |
+| **IDE** | Code editor with LSP integration (hover, go-to-definition, diagnostics) |
+| **Terminal** | Full-featured web terminal with PTY support |
+| **Skills** | Browse, install, manage skills with eligibility indicators |
+| **Memory** | Semantic memory browser and search |
+| **Agents** | Create and manage AI agents |
+| **Providers** | Configure AI providers (API key + OAuth flows) |
+| **Sessions** | Active session monitoring |
+| **Tasks** | Cron job management with run history |
+| **Channels** | Multi-channel configuration (Telegram, Discord, etc.) |
+| **MCP Servers** | Install and manage MCP tool servers |
+| **LSP** | Language server installation and status |
+| **Metrics** | Token usage and performance analytics |
+| **Logs** | System and agent activity logs |
+| **Tools** | Tool registry and documentation |
+| **Settings** | Platform configuration with 10 theme accent colors |
+| **Setup** | First-run setup wizard |
 
-## Expanding the ESLint configuration
+## Development
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+# From the project root
+bun run ui:dev      # Start Vite dev server with HMR
+bun run ui:build    # Build for production
+bun run ui:preview  # Preview production build
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+The UI connects to the Cybara backend at `http://localhost:4269` by default.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Design System
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Uses a "Liquid Glass" design system:
+- High-blur glassmorphism effects
+- Static radial backgrounds
+- 10 user-selectable accent colors
+- Dark mode optimized
+- Responsive layouts with collapsible sidebar
+- Custom header toolbars per page
+
+## Project Structure
+
+```
+ui/
+├── src/
+│   ├── App.tsx           # Router + layout
+│   ├── index.css         # Global styles + design tokens
+│   ├── main.tsx          # Entry point
+│   ├── pages/            # 18 page components
+│   ├── components/       # Shared components
+│   └── stores/           # State management
+├── public/               # Static assets
+├── index.html            # HTML template
+└── vite.config.ts        # Vite configuration
 ```

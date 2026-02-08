@@ -1,6 +1,6 @@
 # Cybara Tools Reference
 
-Agents have access to 30+ tools for file, process, browser, and messaging operations.
+Agents have access to 47 tools for file, process, browser, memory, data, and messaging operations.
 
 ## File Operations
 
@@ -9,6 +9,7 @@ Read file contents.
 ```json
 {"name": "read", "args": {"path": "/path/to/file.txt"}}
 ```
+Options: `limit` (max lines), `offset` (start line, 1-indexed)
 
 ### write
 Create or overwrite files.
@@ -19,40 +20,49 @@ Create or overwrite files.
 ### edit
 Make precise edits to files using search/replace.
 ```json
-{"name": "edit", "args": {"path": "/path/to/file.txt", "search": "old", "replace": "new"}}
+{"name": "edit", "args": {"path": "/path/to/file.txt", "oldText": "old", "newText": "new"}}
+```
+
+### file_search
+Search for files matching a glob pattern.
+```json
+{"name": "file_search", "args": {"pattern": "**/*.ts", "cwd": "/project"}}
 ```
 
 ### grep
-Search file contents for patterns.
+Search file contents using ripgrep (fast recursive pattern matching).
 ```json
 {"name": "grep", "args": {"pattern": "TODO", "path": "/project"}}
 ```
+Options: `type` (file extension filter), `context` (lines around matches), `maxResults`, `caseSensitive`, `recursive`
 
-### find
-Find files by glob pattern.
+### apply_patch
+Apply a unified diff patch to multiple files (git diff format).
 ```json
-{"name": "find", "args": {"pattern": "*.ts", "path": "/project"}}
+{"name": "apply_patch", "args": {"patch": "--- a/file.ts\n+++ b/file.ts\n..."}}
 ```
-
-### ls
-List directory contents.
-```json
-{"name": "ls", "args": {"path": "/project"}}
-```
+Options: `dryRun` (validate without applying)
 
 ## Process Operations
 
 ### exec
-Run shell commands. Supports PTY for interactive CLIs.
+Run shell commands.
 ```json
-{"name": "exec", "args": {"command": "git status", "cwd": "/project"}}
+{"name": "exec", "args": {"command": "git status", "workdir": "/project"}}
 ```
+Options: `timeout` (seconds), `elevated`, `env` (extra environment vars)
 
 ### process
 Manage background exec sessions.
 ```json
 {"name": "process", "args": {"action": "list"}}
-{"name": "process", "args": {"action": "kill", "pid": 12345}}
+{"name": "process", "args": {"action": "kill", "sessionId": "abc123"}}
+```
+
+### git
+Git operations (status, diff, log, etc.).
+```json
+{"name": "git", "args": {"action": "status", "cwd": "/project"}}
 ```
 
 ## Browser Automation
@@ -61,18 +71,24 @@ Manage background exec sessions.
 Full Chrome control via Playwright.
 
 **Actions:**
-- `status` - Browser session status
-- `start` - Launch browser
-- `stop` - Close browser
-- `open` - Navigate to URL
-- `snapshot` - Get page text with refs
-- `screenshot` - Capture image
-- `act` - Click, type, scroll, etc.
+- `status` — Browser session status
+- `start` — Launch browser
+- `stop` / `close` — Close browser
+- `open` / `navigate` — Navigate to URL
+- `snapshot` — Get page text with element refs
+- `screenshot` — Capture image
+- `pdf` — Export page as PDF
+- `click`, `type`, `press`, `hover`, `scroll`, `drag`, `fill` — Element interactions
+- `act` — OpenClaw-style interaction with `request` object
+- `evaluate` — Execute JavaScript
+- `wait` — Wait for element/load state
+- `profiles`, `createProfile`, `deleteProfile` — Profile management
+- `upload`, `dialog`, `resize`, `console`, `select` — Advanced actions
 
 ```json
 {"name": "browser", "args": {"action": "open", "url": "https://example.com"}}
 {"name": "browser", "args": {"action": "snapshot"}}
-{"name": "browser", "args": {"action": "act", "type": "click", "ref": "e5"}}
+{"name": "browser", "args": {"action": "act", "request": {"kind": "click", "ref": "e5"}}}
 ```
 
 ### web_search
@@ -87,15 +103,14 @@ Fetch and extract readable content from a URL.
 {"name": "web_fetch", "args": {"url": "https://example.com/article"}}
 ```
 
-## Canvas
-
 ### canvas
-Present, evaluate, and snapshot the Canvas.
+Control canvas for HTML/CSS/JS rendering.
 ```json
-{"name": "canvas", "args": {"action": "present", "html": "<div>...</div>"}}
+{"name": "canvas", "args": {"action": "present", "url": "<div>...</div>"}}
 {"name": "canvas", "args": {"action": "snapshot"}}
-{"name": "canvas", "args": {"action": "eval", "expression": "document.title"}}
+{"name": "canvas", "args": {"action": "eval", "javaScript": "document.title"}}
 ```
+Actions: `present`, `hide`, `navigate`, `eval`, `snapshot`, `a2ui_push`, `a2ui_reset`
 
 ## Memory
 
@@ -108,13 +123,26 @@ Semantic search through memory files.
 ### memory_get
 Get specific lines from a memory file.
 ```json
-{"name": "memory_get", "args": {"file": "MEMORY.md", "startLine": 10, "endLine": 20}}
+{"name": "memory_get", "args": {"path": "memory/2024-01-15.md", "from": 10, "lines": 20}}
 ```
 
 ### memory_save
-Save content to memory.
+Save content to memory (daily logs).
 ```json
-{"name": "memory_save", "args": {"content": "...", "file": "notes.md"}}
+{"name": "memory_save", "args": {"content": "...", "type": "fact", "tags": ["project"]}}
+```
+
+### memory_save_durable
+Save persistent information to MEMORY.md (preferences, decisions, conventions, goals).
+```json
+{"name": "memory_save_durable", "args": {"content": "...", "category": "preference"}}
+```
+Categories: `preference`, `decision`, `convention`, `goal`, `fact`
+
+### memory_context
+Get recent memory context (MEMORY.md + recent daily logs) for prompt injection.
+```json
+{"name": "memory_context", "args": {"maxLines": 50}}
 ```
 
 ## Sessions & Agents
@@ -124,11 +152,12 @@ Spawn a sub-agent for background work.
 ```json
 {"name": "sessions_spawn", "args": {"task": "Research topic X", "label": "research-1"}}
 ```
+Options: `agentId`, `model`, `thinking` (off/minimal/low/medium/high/max), `runTimeoutSeconds`, `cleanup` (keep/delete)
 
 ### sessions_send
 Send a message to another session.
 ```json
-{"name": "sessions_send", "args": {"sessionKey": "abc123", "message": "Update ready"}}
+{"name": "sessions_send", "args": {"sessionId": "abc123", "message": "Update ready"}}
 ```
 
 ### sessions_list
@@ -140,11 +169,11 @@ List active sessions.
 ### sessions_history
 Get history for a session.
 ```json
-{"name": "sessions_history", "args": {"sessionKey": "abc123"}}
+{"name": "sessions_history", "args": {"sessionId": "abc123", "limit": 20}}
 ```
 
 ### session_status
-Show current session status (tokens, time, etc.).
+Show current session status (tokens, time, message count).
 ```json
 {"name": "session_status", "args": {}}
 ```
@@ -158,19 +187,22 @@ List available agent IDs.
 ## Messaging
 
 ### message
-Send messages and channel actions.
+Send messages via messaging channels.
 ```json
-{"name": "message", "args": {"action": "send", "to": "user123", "message": "Hello!"}}
+{"name": "message", "args": {"action": "send", "target": "user123", "message": "Hello!"}}
+```
+Actions: `send`, `broadcast`
+
+### telegram_media
+Send photos, documents, or videos via Telegram.
+```json
+{"name": "telegram_media", "args": {"action": "photo", "file": "/path/to/image.png", "chatId": "current"}}
 ```
 
-Inline buttons (Telegram):
+### nodes
+List/describe/notify paired nodes.
 ```json
-{"name": "message", "args": {
-  "action": "send",
-  "to": "user123",
-  "message": "Choose:",
-  "buttons": [[{"text": "Option A", "callback_data": "a"}]]
-}}
+{"name": "nodes", "args": {"action": "list"}}
 ```
 
 ## Media
@@ -185,6 +217,94 @@ Analyze an image with vision models.
 Text-to-speech generation.
 ```json
 {"name": "tts", "args": {"text": "Hello world", "voice": "nova"}}
+```
+
+## Data & Utility
+
+### http
+Make HTTP requests (GET, POST, PUT, DELETE).
+```json
+{"name": "http", "args": {"method": "GET", "url": "https://api.example.com/data"}}
+```
+
+### data
+Transform, filter, and analyze structured data (JSON, CSV).
+```json
+{"name": "data", "args": {"action": "parse", "input": "[1,2,3]", "format": "json"}}
+```
+
+### env
+Read and manage environment variables.
+```json
+{"name": "env", "args": {"action": "get", "key": "HOME"}}
+```
+
+### calc
+Evaluate mathematical expressions.
+```json
+{"name": "calc", "args": {"expression": "sqrt(144) + 3^2"}}
+```
+
+### convert
+Convert between units and formats.
+```json
+{"name": "convert", "args": {"value": 100, "from": "celsius", "to": "fahrenheit"}}
+```
+
+### clipboard
+Read and write the system clipboard.
+```json
+{"name": "clipboard", "args": {"action": "read"}}
+{"name": "clipboard", "args": {"action": "write", "content": "copied text"}}
+```
+
+## Document Processing
+
+### summarization
+Summarize text content.
+```json
+{"name": "summarization", "args": {"text": "Long article content...", "maxLength": 200}}
+```
+
+### pdf
+Extract text from PDF files.
+```json
+{"name": "pdf", "args": {"path": "/path/to/document.pdf"}}
+```
+
+### ocr
+Extract text from images using OCR.
+```json
+{"name": "ocr", "args": {"path": "/path/to/image.png"}}
+```
+
+### video_frames
+Extract frames from video files for analysis.
+```json
+{"name": "video_frames", "args": {"path": "/path/to/video.mp4", "count": 5}}
+```
+
+## Weather
+
+### weather
+Get weather information.
+```json
+{"name": "weather", "args": {"location": "San Francisco"}}
+```
+
+## Scheduling
+
+### cron
+Manage cron jobs and wake events.
+```json
+{"name": "cron", "args": {"action": "list"}}
+{"name": "cron", "args": {"action": "add", "schedule": "0 9 * * *", "task": "Check emails"}}
+```
+
+### gateway
+Restart, apply config, or run updates.
+```json
+{"name": "gateway", "args": {"action": "restart"}}
 ```
 
 ## LSP (Language Server Protocol)
@@ -214,28 +334,7 @@ Get type info and documentation.
 ```
 
 ### lsp_languages
-List available LSP languages.
+List available LSP languages and installation status.
 ```json
 {"name": "lsp_languages", "args": {}}
-```
-
-## Other
-
-### cron
-Manage cron jobs and wake events.
-```json
-{"name": "cron", "args": {"action": "list"}}
-{"name": "cron", "args": {"action": "add", "schedule": "0 9 * * *", "task": "..."}}
-```
-
-### gateway
-Restart, apply config, or run updates.
-```json
-{"name": "gateway", "args": {"action": "restart"}}
-```
-
-### nodes
-List/describe/notify paired nodes.
-```json
-{"name": "nodes", "args": {"action": "list"}}
 ```

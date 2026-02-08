@@ -6,6 +6,7 @@ Cybara is available as a native desktop application built with [Tauri](https://t
 
 - **Native Performance**: Built with Rust, minimal resource usage
 - **Native Notifications**: OS-level alerts for important events
+- **Web Terminal**: Full PTY terminal accessible from the UI (auto-enabled in dev)
 - **Offline Capable**: Local model support via Ollama
 - **Cross-Platform**: macOS (Apple Silicon & Intel), Linux (x64 & arm64), Windows (x64 and arm64)
 - **Bundled UI**: All assets embedded in the app bundle
@@ -38,7 +39,7 @@ bun install
 # Build the sidecar (platform-aware)
 bun run tauri:sidecar
 
-# Run in development mode
+# Run in development mode (includes --enable-terminal)
 bun run tauri:dev
 
 # Build for production

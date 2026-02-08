@@ -14,8 +14,8 @@
   <img src="https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript" alt="TypeScript" />
   <img src="https://img.shields.io/badge/React-19-61dafb?logo=react" alt="React" />
   <img src="https://img.shields.io/badge/Playwright-browser-2EAD33?logo=playwright" alt="Playwright" />
-  <img src="https://img.shields.io/badge/tools-35%2B-green" alt="35+ Tools" />
-  <img src="https://img.shields.io/badge/AI_providers-17%2B-purple" alt="17+ Providers" />
+  <img src="https://img.shields.io/badge/tools-47-green" alt="47 Tools" />
+  <img src="https://img.shields.io/badge/AI_providers-20-purple" alt="20 Providers" />
   <img src="https://img.shields.io/badge/desktop-Tauri-orange?logo=tauri" alt="Tauri Desktop" />
 </p>
 
@@ -28,12 +28,13 @@
 | [Architecture](docs/architecture.md) | Platform design and data flow |
 | [CLI Reference](docs/cli.md) | Command-line interface |
 | [Desktop App](docs/desktop.md) | Tauri desktop client |
-| [Tools Reference](docs/tools.md) | 35+ available tools |
+| [Tools Reference](docs/tools.md) | 47 available tools |
 | [Skills Guide](docs/skills.md) | Creating and managing skills |
 | [Channels](docs/channels.md) | Multi-platform messaging |
 | [Providers](docs/providers.md) | AI provider configuration |
 | [Configuration](docs/configuration.md) | Settings and environment |
 | [API Reference](docs/api.md) | REST API endpoints |
+| [Security](docs/security.md) | Self-hosting security model |
 
 ---
 
@@ -46,26 +47,29 @@
 - OpenClaw-compatible system prompts with adaptive context handling
 
 ### 🧩 Modular Skills System
-- **SKILL.md format** - YAML frontmatter + markdown instructions
+- **SKILL.md format** — YAML frontmatter + markdown instructions
 - **4-tier skill discovery**: Bundled → Local → Workspace → Registry
 - **Eligibility gating**: OS, environment variables, required binaries
 - **Multi-registry support**: ClawdHub, skills.sh, CybaraHub
 - **Hot reloading**: File watcher for instant skill updates
 
-### 🔧 Tool System (35+ tools)
+### 🔧 Tool System (47 tools)
 
 | Category | Tools |
 |----------|-------|
 | **File** | `read`, `write`, `edit`, `file_search`, `grep`, `apply_patch` |
 | **Process** | `exec`, `process`, `git` |
-| **Browser** | `browser`, `web_fetch`, `web_search` |
-| **Memory** | `memory_search`, `memory_get`, `memory_save`, `memory_context` |
+| **Browser** | `browser`, `web_fetch`, `web_search`, `canvas` |
+| **Memory** | `memory_search`, `memory_get`, `memory_save`, `memory_save_durable`, `memory_context` |
 | **Sessions** | `sessions_spawn`, `sessions_send`, `sessions_history`, `sessions_list`, `session_status` |
-| **Channel** | `message`, `telegram_media`, `canvas`, `nodes` |
+| **Agents** | `agents_list` |
+| **Channel** | `message`, `telegram_media`, `nodes` |
 | **Media** | `image`, `tts` |
-| **Core** | `cron`, `gateway`, `agents_list`, `heartbeat_state` |
-| **Skills** | `summarization`, `video_frames`, `ocr`, `pdf`, `calc` |
-| **LSP** | `lsp_symbols`, `lsp_definitions`, `lsp_diagnostics`, `lsp_hover` |
+| **Scheduling** | `cron`, `gateway` |
+| **Data** | `http`, `data`, `env`, `calc`, `convert`, `clipboard` |
+| **Document** | `summarization`, `pdf`, `ocr`, `video_frames` |
+| **Weather** | `weather` |
+| **LSP** | `lsp_diagnostics`, `lsp_definition`, `lsp_references`, `lsp_hover`, `lsp_languages` |
 
 ### 🧠 Memory System
 - **Vector Store** with SQLite-backed embeddings (OpenAI, Gemini, Ollama)
@@ -115,23 +119,25 @@ Model Context Protocol support for external tool servers:
 - **Element refs**: OpenClaw-style snapshot with interactive `[ref=eN]` markers
 - Actions: click, type, scroll, drag, screenshot, PDF export, JavaScript evaluation
 
-### 💬 Beautiful Web UI (17 pages)
-- **Dashboard** - System overview and health metrics
-- **Chat** - Real-time conversational interface with agent selector
-- **IDE** - Code editor with LSP integration (hover, definitions, diagnostics)
-- **Skills** - Browse, install, and manage skills with eligibility indicators
-- **Memory** - Semantic memory browser and search
-- **Agents** - Create and manage AI agents
-- **Providers** - Configure AI providers and models
-- **Sessions** - Active session monitoring
-- **Tasks** - Cron job management with run history
-- **Channels** - Multi-channel configuration
-- **MCP Servers** - Install and manage MCP tool servers
-- **LSP** - Language server installation and status
-- **Metrics** - Token usage and performance analytics
-- **Logs** - System and agent activity logs
-- **Tools** - Tool registry and documentation
-- **Settings** - Platform configuration with **10 theme accent colors**
+### 💬 Beautiful Web UI (18 pages)
+- **Dashboard** — System overview and health metrics
+- **Chat** — Real-time conversational interface with agent selector
+- **IDE** — Code editor with LSP integration (hover, definitions, diagnostics)
+- **Terminal** — Full-featured web terminal with PTY support
+- **Skills** — Browse, install, and manage skills with eligibility indicators
+- **Memory** — Semantic memory browser and search
+- **Agents** — Create and manage AI agents
+- **Providers** — Configure AI providers and models (with OAuth flows)
+- **Sessions** — Active session monitoring
+- **Tasks** — Cron job management with run history
+- **Channels** — Multi-channel configuration
+- **MCP Servers** — Install and manage MCP tool servers
+- **LSP** — Language server installation and status
+- **Metrics** — Token usage and performance analytics
+- **Logs** — System and agent activity logs
+- **Tools** — Tool registry and documentation
+- **Settings** — Platform configuration with **10 theme accent colors**
+- **Setup** — First-run setup wizard
 
 ### 📱 Multi-Channel Support
 | Channel | Integration |
@@ -144,15 +150,18 @@ Model Context Protocol support for external tool servers:
 | iMessage | via BlueBubbles |
 | Web | Built-in interface |
 
-### 🔌 17+ AI Providers
+### 🔌 20 AI Providers
 | Provider | Models |
 |----------|--------|
 | OpenAI | GPT-5.x, o1, o3 |
 | Anthropic | Claude 4.x (Opus, Sonnet, Haiku) |
 | Google | Gemini 3 Pro/Flash, Gemini 2.0 |
+| Antigravity | Google AI models via OAuth (free tier) |
+| xAI | Grok 3, Grok 3 Mini |
 | MiniMax | M2.1, VL-01 |
 | Moonshot | Kimi K2.5 |
 | Kimi Code | Kimi for Coding |
+| Qwen Portal | Coder, Vision models (OAuth) |
 | Venice AI | Llama 3.3, Qwen3, DeepSeek V3.2, GLM 4.7 |
 | Z.ai | GLM 4.7 |
 | OpenCode Zen | Full model catalog |
@@ -163,7 +172,8 @@ Model Context Protocol support for external tool servers:
 | AWS Bedrock | Claude, Titan |
 | GitHub Copilot | Integrated models |
 | Xiaomi | MiMo v2 Flash |
-| Qwen Portal | Coder, Vision models |
+| Chutes | DeepSeek, Qwen, Llama |
+| Qianfan | Baidu ERNIE models |
 
 ## 🚀 Installation
 
@@ -184,52 +194,66 @@ The platform auto-configures on first run with a setup wizard.
 ## 📦 Scripts
 
 ```bash
-bun run dev        # Build + watch mode (backend + UI)
-bun run build      # Build backend only
-bun run ui:dev     # UI development server (Vite HMR)
-bun run ui:build   # Build UI for production
-bun run start:prod # Full production build + start
-bun run check      # TypeScript + ESLint + Prettier
+bun run dev          # Build + watch mode (backend + UI)
+bun run build        # Build backend only
+bun run build:all    # Build UI + backend + CLI + main entry
+bun run ui:dev       # UI development server (Vite HMR)
+bun run ui:build     # Build UI for production
+bun run start:prod   # Full production build + start
+bun run check        # TypeScript + ESLint + Prettier
+bun run tauri:dev    # Tauri desktop dev mode (with terminal)
+bun run tauri:build  # Tauri desktop production build
+bun run package      # Build release binaries
 ```
 
 ## ⚙️ Configuration
 
 ### Environment Variables
-- `PORT` - Server port (default: 4269)
-- `BRAVE_API_KEY` - For web search (optional, falls back to DuckDuckGo)
+- `PORT` — Server port (default: 4269)
+- `CYBARA_HOME` — Data directory (default: `~/.cybara`)
+- `BRAVE_API_KEY` — For web search (optional, falls back to DuckDuckGo)
+- `LOG_LEVEL` — Logging verbosity (default: info)
 
 ### Workspace Files
 Place these in your workspace root for auto-loading:
-- `SOUL.md` - Agent personality and tone
-- `IDENTITY.md` - Agent identity configuration
-- `USER.md` - User preferences and context
-- `TOOLS.md` - Custom tool guidance
-- `BOOTSTRAP.md` - First-run ritual (deleted after initial setup)
+- `SOUL.md` — Agent personality and tone
+- `IDENTITY.md` — Agent identity configuration
+- `USER.md` — User preferences and context
+- `TOOLS.md` — Custom tool guidance
+- `BOOTSTRAP.md` — First-run ritual (deleted after initial setup)
+- `MEMORY.md` — Persistent durable memory
 
 ## 🔌 API Endpoints
 
 ### Chat
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/chat` | Send message to agent |
+| POST | `/api/chat` | Send message to agent (SSE streaming) |
 | GET | `/api/chat/sessions` | List sessions |
 | GET | `/api/chat/sessions/:id/messages` | Get session messages |
+| DELETE | `/api/chat/sessions/:id` | Delete a session |
 
 ### Agents
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/agents` | List agents |
 | POST | `/api/agents` | Create agent |
+| GET | `/api/agents/:id` | Get agent details |
+| PUT | `/api/agents/:id` | Update agent |
+| DELETE | `/api/agents/:id` | Delete agent |
 | POST | `/api/agents/:id/start` | Start agent |
 | POST | `/api/agents/:id/stop` | Stop agent |
+| GET | `/api/agents/:id/state` | Get agent state |
 
 ### Skills
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| GET | `/api/skills` | List installed skills |
 | GET | `/api/skills/status` | Eligibility status + missing requirements |
 | GET | `/api/skills/registry/search` | Search multi-registry |
 | POST | `/api/skills/install` | Install from registry |
 | POST | `/api/skills/update` | Update all installed skills |
+| DELETE | `/api/skills/:name` | Remove a skill |
 
 ### Providers
 | Method | Endpoint | Description |
@@ -237,6 +261,12 @@ Place these in your workspace root for auto-loading:
 | GET | `/api/providers` | List configured providers |
 | GET | `/api/providers/available` | List available types |
 | POST | `/api/providers` | Add provider |
+| PUT | `/api/providers/:id` | Update provider |
+| DELETE | `/api/providers/:id` | Remove provider |
+| POST | `/api/providers/:id/test` | Test provider connectivity |
+| GET | `/api/providers/:id/models` | List provider's models |
+| POST | `/api/providers/oauth/start` | Start OAuth flow |
+| POST | `/api/providers/oauth/callback-status` | Poll OAuth callback |
 
 ### Browser
 | Method | Endpoint | Description |
@@ -244,6 +274,22 @@ Place these in your workspace root for auto-loading:
 | GET | `/api/browser/status` | Browser session status |
 | GET | `/api/browser/profiles` | List browser profiles |
 | POST | `/api/browser/profiles` | Create profile |
+| DELETE | `/api/browser/profiles/:name` | Delete profile |
+
+### Tasks (Cron)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/tasks` | List scheduled tasks |
+| POST | `/api/tasks` | Create task |
+| PUT | `/api/tasks/:id` | Update task |
+| DELETE | `/api/tasks/:id` | Delete task |
+| GET | `/api/tasks/:id/runs` | Get task run history |
+
+### Terminal
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| WS | `/api/terminal/ws` | WebSocket terminal connection |
+| GET | `/api/terminal/sessions` | List active terminals |
 
 ### Subagents
 | Method | Endpoint | Description |
@@ -265,38 +311,60 @@ Place these in your workspace root for auto-loading:
 |--------|----------|-------------|
 | GET | `/api/mcp/servers` | List configured MCP servers |
 | POST | `/api/mcp/servers` | Add MCP server |
-| GET | `/api/mcp/tools` | List tools from all MCP servers |
+| GET | `/api/mcp/tools` | List tools from all servers |
+
+### System
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/health` | Health check |
+| GET | `/api/info` | Platform info and version |
+| GET | `/api/status/sse` | SSE event stream |
+| GET | `/api/config/:key` | Get config value |
+| POST | `/api/config` | Set config values |
+| POST | `/api/open-url` | Open URL in default browser |
 
 ## 📁 Project Structure
 
 ```
 ├── src/
-│   ├── index.ts              # Main entry point
+│   ├── main.ts               # Binary entry point (CLI/server router)
+│   ├── index.ts              # HTTP server + WebSocket handler
+│   ├── cli.tsx               # Interactive TUI (React/Ink)
 │   ├── api/
-│   │   ├── routes.ts         # API route handlers (1381 lines)
-│   │   └── chat.ts           # Chat API implementation
+│   │   ├── routes.ts         # REST API route handlers
+│   │   ├── chat.ts           # Chat API + streaming
+│   │   ├── terminal.ts       # Web terminal (Python PTY bridge)
+│   │   ├── ide-api.ts        # IDE code intelligence API
+│   │   ├── git-api.ts        # Git operations API
+│   │   ├── security.ts       # Auth, rate limiting, SSRF
+│   │   └── queries.ts        # Database query helpers
 │   └── core/
-│       ├── agent.ts          # Agent management (1160 lines)
-│       ├── channels.ts       # Multi-channel support
-│       ├── database.ts       # SQLite database
-│       ├── providers.ts      # 17+ AI providers (928 lines)
-│       ├── system-prompt.ts  # OpenClaw-compatible prompts
+│       ├── agent.ts          # Agent management + tool loop
+│       ├── channels/         # Multi-channel adapters (7 platforms)
+│       ├── database.ts       # SQLite database layer
+│       ├── providers.ts      # 20 AI provider definitions
+│       ├── system-prompt.ts  # OpenClaw-compatible prompt builder
 │       ├── session-context.ts # Adaptive context compaction
-│       ├── subagent-registry.ts # Sub-agent spawning
-│       ├── browser/
-│       │   ├── pw-manager.ts  # Playwright management
-│       │   └── profiles.ts    # Browser profile isolation
-│       ├── skills/
-│       │   ├── loader.ts      # SKILL.md parsing + file watcher
-│       │   ├── gating.ts      # Eligibility checks
-│       │   └── registry.ts    # Multi-registry manager
-│       └── tools/
-│           ├── index.ts       # Tool definitions
-│           └── handlers/      # 12 handler modules
-├── ui/                        # React + Vite + TanStack Query
-│   └── src/pages/             # 14 page components
+│       ├── subagent-registry.ts # Sub-agent spawning + lifecycle
+│       ├── scheduler.ts      # Cron/task scheduler
+│       ├── cron/             # Cron job store + execution
+│       ├── browser/          # Playwright browser automation
+│       ├── lsp/              # Language server protocol client
+│       ├── memory/           # Vector store + BM25 search
+│       ├── skills/           # Skill loader, gating, registry
+│       ├── tools/            # 47 tool definitions + 14 handler modules
+│       ├── mcp.ts            # MCP client connections
+│       ├── mcp-registry.ts   # MCP server registry
+│       ├── metrics.ts        # Token usage tracking
+│       ├── logger.ts         # Structured logging
+│       └── config.ts         # Configuration management
+├── ui/                        # React 19 + Vite + TanStack Query
+│   └── src/pages/             # 18 page components
+├── src-tauri/                 # Tauri desktop shell (Rust)
 ├── skills/                    # Bundled skills
-└── templates/                 # Agent templates
+├── templates/                 # Agent prompt templates
+├── scripts/                   # Build + packaging scripts
+└── tests/                     # Test suite
 ```
 
 ## 🤝 Telegram Bot Commands
@@ -313,4 +381,4 @@ Place these in your workspace root for auto-loading:
 
 ## 📄 License
 
-MIT
+MIT — [Carsen Klock](https://github.com/metaspartan)

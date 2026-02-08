@@ -42,7 +42,7 @@ bun run package
 ### Desktop (Tauri)
 
 ```bash
-# Development mode
+# Development mode (includes terminal support)
 bun run tauri:dev
 
 # Production build (macOS .dmg, Linux .deb/.rpm/.appimage)
@@ -57,7 +57,7 @@ See [Desktop Guide](./desktop.md) for platform-specific build info.
 |--------|-------------|
 | `bun run dev` | Build + watch mode (full stack) |
 | `bun run build` | Build backend only |
-| `bun run build:all` | Build UI + backend + CLI |
+| `bun run build:all` | Build UI + backend + CLI + main entry |
 | `bun run start` | Start production server |
 | `bun run start:prod` | Build all + start |
 | `bun run ui:dev` | UI dev server (Vite HMR) |
@@ -74,10 +74,10 @@ See [Desktop Guide](./desktop.md) for platform-specific build info.
 |-------|-------------|
 | [Architecture](./architecture.md) | Platform design and data flow |
 | [CLI Reference](./cli.md) | Command-line interface |
-| [Tools Reference](./tools.md) | 30+ available tools |
+| [Tools Reference](./tools.md) | 47 available tools |
 | [Skills Guide](./skills.md) | Creating and managing skills |
 | [Channels](./channels.md) | Multi-platform messaging |
-| [Providers](./providers.md) | AI provider configuration |
+| [Providers](./providers.md) | 20 AI provider configurations |
 | [Configuration](./configuration.md) | Settings and environment |
 | [API Reference](./api.md) | REST API endpoints |
 | [Desktop](./desktop.md) | Tauri desktop client |
@@ -92,18 +92,26 @@ AI entities with configurable personalities, prompts, and tool access. Types:
 - **coder** — Software development
 - **planner** — Task breakdown
 - **ops** — System administration
+- **subagent** — Background worker
+- **worker** — Task-specific agent
 
 ### Sessions
-Conversation contexts with message history, token tracking, and context management.
+Conversation contexts with message history, token tracking, and adaptive context compaction.
 
 ### Skills
-Modular capabilities loaded from SKILL.md files with eligibility gating.
+Modular capabilities loaded from SKILL.md files with eligibility gating (OS, env, binaries).
 
 ### Tools
-Functions the agent can invoke (file I/O, browser, exec, web search, etc.).
+47 functions the agent can invoke: file I/O, browser, exec, web search, memory, data processing, LSP, scheduling, and more.
 
 ### Channels
-Communication interfaces (Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Web).
+Communication interfaces: Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Web.
+
+### Memory
+Vector store with hybrid BM25 search, durable MEMORY.md, and daily logs.
+
+### Providers
+20 AI providers: OpenAI, Anthropic, Google, Antigravity (OAuth), xAI, MiniMax, Moonshot, Kimi Code, Qwen (OAuth), Venice, Groq, OpenRouter, Ollama, Bedrock, GitHub Copilot, Synthetic, OpenCode Zen, Chutes, Xiaomi, Qianfan.
 
 ### Security
 API key authentication, rate limiting, SSRF protection, path sandboxing. See [Security](./security.md).

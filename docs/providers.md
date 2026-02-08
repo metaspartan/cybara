@@ -1,6 +1,6 @@
 # Cybara AI Providers
 
-Cybara supports 17+ AI providers out of the box.
+Cybara supports 20 AI providers out of the box, including API key, OAuth, and local model support.
 
 ## Quick Setup
 
@@ -9,10 +9,18 @@ Settings → Providers → Add Provider
 
 ### Via CLI
 ```bash
-# Set API key in environment
-export OPENAI_API_KEY=sk-...
+# Add via CLI
+cybara provider add openai --name "My OpenAI" --key sk-abc123... --default
 
-# Or add via API
+# See all available provider types
+cybara provider available
+
+# Discover local Ollama models
+cybara provider discover
+```
+
+### Via API
+```bash
 curl -X POST http://localhost:4269/api/providers \
   -H "Content-Type: application/json" \
   -d '{"type": "openai", "apiKey": "sk-..."}'
@@ -32,11 +40,24 @@ Models: `gpt-4o`, `gpt-5.2`, `o1`, `o3`
 ```
 Models: `claude-opus-4-5`, `claude-sonnet-4-5`, `claude-haiku-4-5`
 
-### Google
+### Google AI
 ```json
 {"type": "google", "apiKey": "..."}
 ```
 Models: `gemini-3-pro-preview`, `gemini-3-flash-preview`, `gemini-2.0-flash-exp`
+
+### Antigravity
+OAuth-based Google AI provider (free tier). Sign in with your Google account — no API key needed.
+```json
+{"type": "antigravity"}
+```
+Uses OAuth 2.0 with PKCE. Models: Same as Google AI (Gemini 3 Pro/Flash, Gemini 2.0, etc.)
+
+### xAI
+```json
+{"type": "xai", "apiKey": "..."}
+```
+Models: `grok-3`, `grok-3-mini`
 
 ### MiniMax
 ```json
@@ -49,6 +70,19 @@ Models: `MiniMax-M2.1`, `minimax-vl-01`
 {"type": "moonshot", "apiKey": "..."}
 ```
 Models: `kimi-k2.5`
+
+### Kimi Code
+```json
+{"type": "kimi_code", "apiKey": "..."}
+```
+Models: `kimi-coder-k2.5`, `kimi-coder-32k`
+
+### Qwen Portal
+OAuth-based provider. Sign in through Qwen's web interface.
+```json
+{"type": "qwen_portal"}
+```
+Models: `qwq-32b`, `qwen-coder-plus`, `qwen-vl-max`
 
 ### Venice AI
 ```json
@@ -72,7 +106,7 @@ Access 100+ models via routing.
 ```json
 {"type": "ollama", "baseUrl": "http://localhost:11434"}
 ```
-Models: Any locally installed model
+Models: Any locally installed model. Use `cybara provider discover` to auto-detect.
 
 ### AWS Bedrock
 ```json
@@ -87,16 +121,48 @@ Models: Claude, Titan
 
 ### GitHub Copilot
 ```json
-{"type": "github", "token": "..."}
+{"type": "github_copilot", "token": "..."}
 ```
 
-### Other Providers
-- Z.ai (GLM 4.7)
-- Xiaomi (MiMo v2)
-- Qwen Portal
-- OpenCode Zen
-- Synthetic (HuggingFace)
-- Kimi Code
+### Synthetic (HuggingFace)
+```json
+{"type": "synthetic", "apiKey": "..."}
+```
+
+### OpenCode Zen
+```json
+{"type": "opencode_zen", "apiKey": "..."}
+```
+Full model catalog with multi-provider routing.
+
+### Chutes
+```json
+{"type": "chutes", "apiKey": "..."}
+```
+Models: DeepSeek, Qwen, Llama variants
+
+### Xiaomi
+```json
+{"type": "xiaomi", "apiKey": "..."}
+```
+Models: `MiMo-v2-Flash`
+
+### Qianfan (Baidu)
+```json
+{"type": "qianfan", "apiKey": "..."}
+```
+Models: ERNIE series
+
+## OAuth Providers
+
+Some providers use OAuth instead of API keys:
+
+| Provider | Auth Flow | Notes |
+|----------|-----------|-------|
+| Antigravity | OAuth 2.0 + PKCE | Google sign-in, free tier |
+| Qwen Portal | Browser redirect | Qwen web sign-in |
+
+When adding an OAuth provider, the UI opens a browser window for authentication. The callback is handled automatically on a local port.
 
 ## Model Aliases
 
@@ -115,7 +181,7 @@ Use shortcuts instead of full model names:
 
 ## Default Provider
 
-Set default via settings:
+Set default via settings or CLI:
 ```bash
 cybara config set defaultProvider openai
 cybara config set defaultModel gpt-4o

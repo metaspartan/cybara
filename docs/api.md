@@ -4,9 +4,18 @@ REST API for programmatic access to Cybara.
 
 Base URL: `http://localhost:4269`
 
+## Authentication
+
+Pass your API key via header:
+```bash
+curl -H "Authorization: Bearer cybara_abc123..." http://localhost:4269/api/health
+```
+
+Localhost connections skip auth in development mode.
+
 ## Chat
 
-### Send Message
+### Send Message (SSE Streaming)
 ```http
 POST /api/chat
 Content-Type: application/json
@@ -17,6 +26,7 @@ Content-Type: application/json
   "agentId": "optional-agent-id"
 }
 ```
+Returns a Server-Sent Events stream with assistant response, tool calls, and status updates.
 
 ### List Sessions
 ```http
@@ -74,6 +84,11 @@ POST /api/agents/:id/start
 POST /api/agents/:id/stop
 ```
 
+### Get Agent State
+```http
+GET /api/agents/:id/state
+```
+
 ## Skills
 
 ### List Installed Skills
@@ -123,6 +138,7 @@ GET /api/providers
 ```http
 GET /api/providers/available
 ```
+Returns all 20 supported provider types with their configuration requirements.
 
 ### Add Provider
 ```http
@@ -135,6 +151,11 @@ Content-Type: application/json
 }
 ```
 
+### Update Provider
+```http
+PUT /api/providers/:id
+```
+
 ### Remove Provider
 ```http
 DELETE /api/providers/:id
@@ -144,6 +165,28 @@ DELETE /api/providers/:id
 ```http
 POST /api/providers/:id/test
 ```
+
+### List Provider Models
+```http
+GET /api/providers/:id/models
+```
+
+### Start OAuth Flow
+```http
+POST /api/providers/oauth/start
+Content-Type: application/json
+
+{
+  "type": "antigravity"
+}
+```
+Opens a browser window for OAuth authentication. Uses PKCE for security.
+
+### Check OAuth Callback Status
+```http
+POST /api/providers/oauth/callback-status
+```
+Poll this endpoint to check if the OAuth flow completed.
 
 ## Browser
 
@@ -177,6 +220,11 @@ DELETE /api/browser/profiles/:name
 GET /api/channels
 ```
 
+### Get Available Channel Types
+```http
+GET /api/channels/available
+```
+
 ### Add Channel
 ```http
 POST /api/channels
@@ -196,6 +244,83 @@ DELETE /api/channels/:id
 ### Test Channel
 ```http
 POST /api/channels/:id/test
+```
+
+## Tasks (Cron)
+
+### List Tasks
+```http
+GET /api/tasks
+```
+
+### Create Task
+```http
+POST /api/tasks
+Content-Type: application/json
+
+{
+  "schedule": "0 9 * * *",
+  "task": "Check emails",
+  "agentId": "optional-agent-id"
+}
+```
+
+### Update Task
+```http
+PUT /api/tasks/:id
+```
+
+### Delete Task
+```http
+DELETE /api/tasks/:id
+```
+
+### Get Task Run History
+```http
+GET /api/tasks/:id/runs
+```
+
+## Terminal
+
+> Requires `--enable-terminal` flag (enabled by default in `tauri:dev`).
+
+### WebSocket Connection
+```
+WS /api/terminal/ws?sessionId=my-session
+```
+Connect via WebSocket for interactive terminal access. Send text to write to stdin, receive stdout/stderr output.
+
+### List Terminal Sessions
+```http
+GET /api/terminal/sessions
+```
+
+## Subagents
+
+### Spawn Subagent
+```http
+POST /api/subagents/spawn
+Content-Type: application/json
+
+{
+  "task": "Research best practices for...",
+  "agentId": "optional-agent-id"
+}
+```
+
+### List Subagents
+```http
+GET /api/subagents
+```
+
+### Get Subagent Details
+```http
+GET /api/subagents/:id
+```
+
+### Kill Subagent
+```http
+POST /api/subagents/:id/kill
 ```
 
 ## Memory
@@ -221,27 +346,45 @@ Content-Type: application/json
 }
 ```
 
-## Cron
+## LSP
 
-### List Jobs
+### Get Language Server Status
 ```http
-GET /api/cron
+GET /api/lsp/status
 ```
 
-### Create Job
+### Install Language Server
 ```http
-POST /api/cron
+POST /api/lsp/install/:language
+```
+
+### Uninstall Language Server
+```http
+POST /api/lsp/uninstall/:language
+```
+
+## MCP
+
+### List MCP Servers
+```http
+GET /api/mcp/servers
+```
+
+### Add MCP Server
+```http
+POST /api/mcp/servers
 Content-Type: application/json
 
 {
-  "schedule": "0 9 * * *",
-  "task": "Check emails"
+  "name": "filesystem",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-filesystem"]
 }
 ```
 
-### Delete Job
+### List MCP Tools
 ```http
-DELETE /api/cron/:id
+GET /api/mcp/tools
 ```
 
 ## Metrics
@@ -271,9 +414,9 @@ Content-Type: application/json
 {"key": "value", ...}
 ```
 
-## Health
+## System
 
-### Status Check
+### Health Check
 ```http
 GET /api/health
 ```
@@ -287,3 +430,23 @@ Returns:
   "database": "connected"
 }
 ```
+
+### Platform Info
+```http
+GET /api/info
+```
+
+### SSE Event Stream
+```http
+GET /api/status/sse
+```
+Server-Sent Events stream for real-time status updates (agent state changes, task completions, etc.).
+
+### Open URL
+```http
+POST /api/open-url
+Content-Type: application/json
+
+{"url": "https://example.com"}
+```
+Opens a URL in the default browser (used by OAuth flows).
