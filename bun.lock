@@ -12,7 +12,6 @@
         "ink-big-text": "^2.0.0",
         "ink-gradient": "^4.0.0",
         "ink-spinner": "^5.0.0",
-        "node-pty": "^1.1.0",
         "playwright": "^1.58.0",
         "puppeteer-core": "^24.36.1",
         "qrcode-terminal": "^0.12.0",
@@ -666,11 +665,7 @@
 
     "netmask": ["netmask@2.0.2", "", {}, "sha512-dBpDMdxv9Irdq66304OLfEmQ9tbNRFnFTuZiLo+bD+r332bBmMJ8GBLXklIXXgxd3+v9+KUnZaUR5PJMa75Gsg=="],
 
-    "node-addon-api": ["node-addon-api@7.1.1", "", {}, "sha512-5m3bsyrjFWE1xf7nz7YXdN4udnVtXK6/Yfgn5qnahL6bCkf2yKt4k3nuTKAtT4r3IG8JNR2ncsIMdZuAzJjHQQ=="],
-
     "node-fetch": ["node-fetch@2.7.0", "", { "dependencies": { "whatwg-url": "^5.0.0" }, "peerDependencies": { "encoding": "^0.1.0" }, "optionalPeers": ["encoding"] }, "sha512-c4FRfUm/dbcWZ7U+1Wq0AwCyFL+3nt2bEw05wfxSz+DWpWsitgmSgYmy2dQdWyKC1694ELPqMs/YzUSNozLt8A=="],
-
-    "node-pty": ["node-pty@1.1.0", "", { "dependencies": { "node-addon-api": "^7.1.0" } }, "sha512-20JqtutY6JPXTUnL0ij1uad7Qe1baT46lyolh2sSENDd4sTzKZ4nmAFkeAARDKwmlLjPx6XKRlwRUxwjOy+lUg=="],
 
     "node-webpmux": ["node-webpmux@3.1.7", "", {}, "sha512-ySkL4lBCto86OyQ0blAGzylWSECcn5I0lM3bYEhe75T8Zxt/BFUMHa8ktUguR7zwXNdS/Hms31VfSsYKN1383g=="],
 

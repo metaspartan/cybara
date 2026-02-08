@@ -151,7 +151,7 @@ function createStatusStream(): ReadableStream<Uint8Array> {
   });
 }
 
-import { createTerminalSession, getTerminalSession, destroyTerminalSession, listTerminalSessions, destroyAllTerminalSessions } from "./api/terminal";
+import { createTerminalSession, getTerminalSession, destroyTerminalSession, listTerminalSessions, destroyAllTerminalSessions, writeToTerminal, startOutputReader } from "./api/terminal";
 
 interface WsData { sessionId: string }
 
@@ -257,32 +257,26 @@ const server = Bun.serve<WsData>({
       const { sessionId } = ws.data as { sessionId: string };
       const session = getTerminalSession(sessionId) || createTerminalSession(sessionId);
 
-      if (session.pty) {
-        // node-pty uses onData for output
-        session.pty.onData((data: string) => {
+      // Start reading output from the PTY and forwarding to WebSocket
+      startOutputReader(
+        session,
+        (data: string) => {
           try { ws.send(data); } catch { }
-        });
-        session.pty.onExit(() => {
+        },
+        () => {
           try { ws.close(); } catch { }
           destroyTerminalSession(sessionId);
-        });
-      }
+        },
+      );
     },
     message(ws, message) {
       const { sessionId } = ws.data as { sessionId: string };
       const session = getTerminalSession(sessionId);
-      if (session?.pty) {
+      if (session) {
         session.lastActivity = Date.now();
         const data = typeof message === "string" ? message : Buffer.from(message).toString();
-        // Handle resize messages
-        if (data.startsWith('\x1b[RESIZE:')) {
-          const match = data.match(/\x1b\[RESIZE:(\d+),(\d+)\]/);
-          if (match) {
-            session.pty.resize(parseInt(match[1]), parseInt(match[2]));
-            return;
-          }
-        }
-        session.pty.write(data);
+        // Resize messages and regular input are both forwarded to the Python PTY script
+        writeToTerminal(session, data);
       }
     },
     close(ws) {
