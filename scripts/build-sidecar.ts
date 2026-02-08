@@ -40,7 +40,7 @@ async function main() {
         if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     }
 
-    await $`bun build src/index.ts --compile --target=${target.bunTarget} --outfile ${releasePath}`;
+    await $`bun build src/index.ts --compile --target=${target.bunTarget} --outfile ${releasePath} --external electron`;
     await $`cp ${releasePath} ${sidecarPath}`;
 
     console.log(`\n✅ Sidecar built: ${sidecarPath}\n`);
