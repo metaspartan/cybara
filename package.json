@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "bun run build && cd ui && bun run build && cd .. && bun run --watch src/index.ts",
-    "postinstall": "bunx playwright install",
+    "postinstall": "cd ui && bun install && cd .. && bunx playwright install",
     "build": "bun build src/index.ts --outdir dist --target bun --external electron",
     "build:cli": "bun build src/cli.tsx --outdir dist --target bun --external electron",
     "build:main": "bun build src/main.ts --outdir dist --target bun --external electron",
