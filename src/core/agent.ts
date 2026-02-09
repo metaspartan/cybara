@@ -499,7 +499,7 @@ class AgentManager {
 
     // Check if current provider supports function calling
     const providerConfig = provider.provider as string;
-    const supportsTools = !["openai", "moonshot"].includes(providerConfig);
+    const supportsTools = true;
 
     let tools: ToolDefinition[] = [];
     if (supportsTools) {
@@ -636,7 +636,7 @@ class AgentManager {
     // Check if current provider supports function calling
     const providerConfig = provider.provider as string;
     // Kimi Code supports tool_calls in OpenAI-compatible format
-    const supportsTools = !["openai", "moonshot"].includes(providerConfig);
+    const supportsTools = true;
 
     const needTools = options?.useTools !== false;
 
@@ -1174,17 +1174,7 @@ class AgentManager {
     messages: AgentMessage[],
     tools: ToolDefinition[]
   ): Promise<{ content: string; tool_calls?: Array<{ name: string; result: unknown }> }> {
-    // For OpenAI-compatible APIs, use chat/completions format
-    const requestBody: Record<string, unknown> = {
-      model: modelId,
-      messages: messages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      })),
-      max_tokens: 4096,
-    };
-
-    // Add system message (OpenAI-compatible format uses content array or string)
+    // Build properly ordered messages: system first, then chat messages
     const systemMessage = messages.find((m) => m.role === "system");
     const chatMessages = messages
       .filter((m) => m.role !== "system")
@@ -1200,6 +1190,12 @@ class AgentManager {
       });
     }
 
+    const requestBody: Record<string, unknown> = {
+      model: modelId,
+      messages: chatMessages,
+      max_tokens: 4096,
+    };
+
     if (tools && Array.isArray(tools) && tools.length > 0) {
       requestBody.tools = tools.map((t) => ({
         type: "function",
@@ -1209,8 +1205,7 @@ class AgentManager {
           parameters: t.input_schema || { type: "object", properties: {} },
         },
       }));
-      // Force tool choice for OpenAI-compatible APIs
-      requestBody.tool_choice = { type: "any" };
+      requestBody.tool_choice = "auto";
     }
 
     const headers: Record<string, string> = {
@@ -1241,7 +1236,7 @@ class AgentManager {
     const durationMs = Math.round(performance.now() - startTime);
 
     const choice = data.choices?.[0];
-    const message = choice?.message;
+    let message = choice?.message;
 
     // Track token usage for OpenAI API with duration
     if (data.usage) {
@@ -1254,13 +1249,29 @@ class AgentManager {
       throw new Error("No response from API");
     }
 
-    let content = message.content || "";
-    const tool_calls: Array<{ name: string; result: unknown }> = [];
+    // AGENTIC LOOP: Continue executing tools until LLM stops calling them
+    const maxIterations = 10;
+    let iterations = 0;
+    const currentMessages: Record<string, unknown>[] = [...chatMessages];
+    const allToolCalls: Array<{ name: string; result: unknown }> = [];
+    let finalContent = message.content || "";
 
-    if (message.tool_calls && message.tool_calls.length > 0) {
+    while (iterations < maxIterations) {
+      iterations++;
+
+      // Check if LLM wants to call tools
+      if (!message.tool_calls || message.tool_calls.length === 0) {
+        break;
+      }
+
+      console.log(`[Agent] OpenAI agentic loop iteration ${iterations}: ${message.tool_calls.length} tool calls`);
+
+      // Execute all tool calls from this iteration
+      const toolResults: Array<{ tool_call_id: string; role: "tool"; content: string }> = [];
+
       for (const toolCall of message.tool_calls) {
         const toolName = toolCall.function?.name;
-        // Arguments might be a string or object
+        const toolCallId = toolCall.id;
         let args = {};
         if (typeof toolCall.function?.arguments === "string") {
           try {
@@ -1274,20 +1285,86 @@ class AgentManager {
 
         if (toolName && hasTool(toolName)) {
           try {
-            // Broadcast tool executing status
             broadcastStatus({ status: "tool_executing", timestamp: Date.now(), detail: toolName });
             const result = await executeTool(toolName, args);
-            tool_calls.push({ name: toolName, result });
-            content += `\n\n[Tool: ${toolName}]\n${JSON.stringify(result, null, 2)}`;
+            allToolCalls.push({ name: toolName, result });
+            toolResults.push({
+              tool_call_id: toolCallId,
+              role: "tool",
+              content: JSON.stringify(result),
+            });
           } catch (error) {
-            tool_calls.push({ name: toolName, result: { error: (error as Error).message } });
-            content += `\n\n[Tool: ${toolName}] Error: ${(error as Error).message}`;
+            allToolCalls.push({ name: toolName, result: { error: (error as Error).message } });
+            toolResults.push({
+              tool_call_id: toolCallId,
+              role: "tool",
+              content: JSON.stringify({ error: (error as Error).message }),
+            });
           }
         }
       }
+
+      // Add assistant message with tool calls and tool results to conversation
+      currentMessages.push({
+        role: "assistant",
+        content: message.content || "",
+        tool_calls: message.tool_calls,
+      });
+      for (const toolResult of toolResults) {
+        currentMessages.push(toolResult);
+      }
+
+      // Call LLM again with updated conversation (includes tool results)
+      const loopRequestBody: Record<string, unknown> = {
+        model: modelId,
+        messages: currentMessages,
+        max_tokens: 4096,
+      };
+
+      if (tools && Array.isArray(tools) && tools.length > 0) {
+        loopRequestBody.tools = tools.map((t) => ({
+          type: "function",
+          function: {
+            name: t.name,
+            description: t.description || "",
+            parameters: t.input_schema || { type: "object", properties: {} },
+          },
+        }));
+      }
+
+      const loopResponse = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(loopRequestBody),
+      });
+
+      if (!loopResponse.ok) {
+        const loopError = await loopResponse.text();
+        throw new Error(`API error in agentic loop: ${loopResponse.status} - ${loopError}`);
+      }
+
+      const loopData = (await loopResponse.json()) as OpenAIResponse;
+      const loopChoice = loopData.choices?.[0];
+      message = loopChoice?.message as OpenAIMessage;
+
+      if (!message) {
+        break;
+      }
+
+      // Update final content with LLM's latest response
+      if (message.content) {
+        finalContent = message.content;
+      }
     }
 
-    return { content: content.trim(), tool_calls: tool_calls.length > 0 ? tool_calls : undefined };
+    if (iterations >= maxIterations) {
+      console.log(`[Agent] OpenAI agentic loop reached max iterations (${maxIterations})`);
+    }
+
+    return {
+      content: finalContent.trim(),
+      tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
+    };
   }
 
   private getProviderBaseUrl(provider: string): string {
