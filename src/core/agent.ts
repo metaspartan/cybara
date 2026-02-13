@@ -2,7 +2,12 @@ import { tables, type Agent, type ToolDefinition } from "./database";
 import { providerManager, getProviderBaseUrl, getDefaultModel } from "./providers";
 import { getToolSchemasForLLM, toolSchemas } from "./tools/index";
 import { executeTool, hasTool } from "./tools/handlers/index";
-import { buildSystemPrompt, AGENT_TYPE_PROMPTS, resolveModelAlias, getDefaultSystemPrompt } from "./system-prompt";
+import {
+  buildSystemPrompt,
+  AGENT_TYPE_PROMPTS,
+  resolveModelAlias,
+  getDefaultSystemPrompt,
+} from "./system-prompt";
 import { broadcastStatus } from "./status";
 import { homedir } from "os";
 import { loadAllSkills, createEligibilityContext, filterEligibleSkills } from "./skills";
@@ -175,7 +180,7 @@ function trackTokenUsage(
           inputTokens,
           outputTokens,
           durationMs,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         }),
       });
 
@@ -204,7 +209,6 @@ function trackTokenUsage(
   }
 }
 
-
 // Built-in tools - get from the tools registry
 export const builtinTools: ToolDefinition[] = Object.values(toolSchemas).map((t) => ({
   name: t.name,
@@ -216,43 +220,43 @@ export const builtinTools: ToolDefinition[] = Object.values(toolSchemas).map((t)
 export const AGENT_TYPES = {
   main: {
     description: "General-purpose assistant",
-    defaultModel: "MiniMax-M2.1",
+    defaultModel: "MiniMax-M2.5",
     tools: builtinTools,
     systemPrompt: AGENT_TYPE_PROMPTS.main,
   },
   research: {
     description: "Research and information gathering",
-    defaultModel: "MiniMax-M2.1",
+    defaultModel: "MiniMax-M2.5",
     tools: builtinTools,
     systemPrompt: AGENT_TYPE_PROMPTS.research,
   },
   coder: {
     description: "Coding and software development",
-    defaultModel: "MiniMax-M2.1",
+    defaultModel: "MiniMax-M2.5",
     tools: builtinTools,
     systemPrompt: AGENT_TYPE_PROMPTS.coder,
   },
   planner: {
     description: "Planning and task breakdown",
-    defaultModel: "MiniMax-M2.1",
+    defaultModel: "MiniMax-M2.5",
     tools: builtinTools,
     systemPrompt: AGENT_TYPE_PROMPTS.planner,
   },
   ops: {
     description: "Operations and system administration",
-    defaultModel: "MiniMax-M2.1",
+    defaultModel: "MiniMax-M2.5",
     tools: builtinTools,
     systemPrompt: AGENT_TYPE_PROMPTS.ops,
   },
   subagent: {
     description: "Subagent for delegated tasks",
-    defaultModel: "MiniMax-M2.1",
+    defaultModel: "MiniMax-M2.5",
     tools: builtinTools,
     systemPrompt: AGENT_TYPE_PROMPTS.main,
   },
   worker: {
     description: "Worker for background tasks",
-    defaultModel: "MiniMax-M2.1",
+    defaultModel: "MiniMax-M2.5",
     tools: builtinTools,
     systemPrompt: AGENT_TYPE_PROMPTS.main,
   },
@@ -281,20 +285,37 @@ interface RunningAgentState {
 class AgentManager {
   private runningAgents: Map<string, RunningAgentState> = new Map();
 
-  list(): (Agent & { provider?: { name: string }; typeConfig?: typeof AGENT_TYPES.main })[] {
+  list(): (Agent & {
+    provider?: string;
+    providerInfo?: { name: string };
+    typeConfig?: typeof AGENT_TYPES.main;
+  })[] {
     const all = tables.agents.all() as Agent[];
     return all.map((a) => {
       const provider = a.provider_id ? providerManager.get(a.provider_id) : undefined;
       const typeConfig = a.type ? AGENT_TYPES[a.type as keyof typeof AGENT_TYPES] : undefined;
-      return { ...a, provider: provider ? { name: provider.name } : undefined, typeConfig };
+      // Return provider_id as 'provider' for frontend compatibility
+      return {
+        ...a,
+        provider: a.provider_id, // Frontend expects provider ID as 'provider'
+        providerInfo: provider ? { name: provider.name } : undefined,
+        typeConfig,
+      };
     });
   }
 
-  get(id: string): (Agent & { typeConfig?: typeof AGENT_TYPES.main }) | undefined {
+  get(
+    id: string
+  ): (Agent & { provider?: string; typeConfig?: typeof AGENT_TYPES.main }) | undefined {
     const agent = tables.agents.get(id) as Agent | undefined;
     if (!agent) return undefined;
     const typeConfig = agent.type ? AGENT_TYPES[agent.type as keyof typeof AGENT_TYPES] : undefined;
-    return { ...agent, typeConfig };
+    // Return provider_id as 'provider' for frontend compatibility
+    return {
+      ...agent,
+      provider: agent.provider_id, // Frontend expects provider ID as 'provider'
+      typeConfig,
+    };
   }
 
   create(definition: AgentDefinition): Agent {
@@ -341,7 +362,7 @@ class AgentManager {
     return this.create({
       name: "Mini",
       type: "research",
-      model: providerInfo?.models?.[0]?.id || "MiniMax-M2.1",
+      model: providerInfo?.models?.[0]?.id || "MiniMax-M2.5",
       provider_id: defaultProvider?.id,
       system_prompt: AGENT_TYPE_PROMPTS.research,
       tools: builtinTools,
@@ -363,7 +384,7 @@ class AgentManager {
       workspaceDir: homeDir,
       agentData: undefined,
       config: {},
-      modelDisplay: definition.model || typeConfig?.defaultModel || "MiniMax-M2.1",
+      modelDisplay: definition.model || typeConfig?.defaultModel || "MiniMax-M2.5",
       tools: (definition.tools || builtinTools).map((t) => t.name),
       skills: eligibleSkills,
     });
@@ -422,7 +443,7 @@ class AgentManager {
       workspaceDir: homeDir,
       agentData: { name: agent.name, config: agent.config as string | undefined },
       config: {},
-      modelDisplay: agent.model || "MiniMax-M2.1",
+      modelDisplay: agent.model || "MiniMax-M2.5",
       tools: this.getAgentTools(agent).map((t) => t.name),
       skills: eligibleSkills,
     });
@@ -862,10 +883,12 @@ class AgentManager {
     const maxIterations = 10; // Prevent infinite loops
     let iterations = 0;
     // Use Record type for flexible message shape that includes tool_calls and tool_call_id
-    const currentMessages: Record<string, unknown>[] = [...messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }))];
+    const currentMessages: Record<string, unknown>[] = [
+      ...messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      })),
+    ];
     const allToolCalls: Array<{ name: string; result: unknown }> = [];
     let finalContent = message.content || "";
 
@@ -878,7 +901,9 @@ class AgentManager {
         break;
       }
 
-      console.log(`[Agent] Agentic loop iteration ${iterations}: ${message.tool_calls.length} tool calls`);
+      console.log(
+        `[Agent] Agentic loop iteration ${iterations}: ${message.tool_calls.length} tool calls`
+      );
 
       // Execute all tool calls from this iteration
       const toolResults: Array<{ tool_call_id: string; role: "tool"; content: string }> = [];
@@ -1056,34 +1081,38 @@ class AgentManager {
     let currentData = data;
 
     // Build conversation for loop - Anthropic uses content arrays
-    const currentMessages: Record<string, unknown>[] = chatMessages.map(m => ({
+    const currentMessages: Record<string, unknown>[] = chatMessages.map((m) => ({
       role: m.role,
       content: m.content,
     }));
 
     const allToolCalls: Array<{ name: string; result: unknown }> = [];
     let finalContent = currentData.content?.find((c) => c.type === "text")?.text || "";
-    const thinking = currentData.content?.find((c) => c.type === ("thinking" as string))?.text || undefined;
+    const thinking =
+      currentData.content?.find((c) => c.type === ("thinking" as string))?.text || undefined;
 
     while (iterations < maxIterations) {
       iterations++;
 
       // Check for tool_use blocks
-      const toolUseBlocks = currentData.content?.filter((c: { type: string }) => c.type === "tool_use") || [];
+      const toolUseBlocks =
+        currentData.content?.filter((c: { type: string }) => c.type === "tool_use") || [];
 
       if (toolUseBlocks.length === 0) {
         // No more tool calls - LLM is done
         break;
       }
 
-      console.log(`[Agent] Anthropic agentic loop iteration ${iterations}: ${toolUseBlocks.length} tool calls`);
+      console.log(
+        `[Agent] Anthropic agentic loop iteration ${iterations}: ${toolUseBlocks.length} tool calls`
+      );
 
       // Execute all tool calls
       const toolResults: Array<{ type: "tool_result"; tool_use_id: string; content: string }> = [];
 
       for (const toolUse of toolUseBlocks) {
         const toolName = toolUse.name;
-        const toolUseId = toolUse.id || "";  // Fallback to empty string if undefined
+        const toolUseId = toolUse.id || ""; // Fallback to empty string if undefined
         const args = toolUse.input || {};
 
         if (toolName && hasTool(toolName)) {
@@ -1264,7 +1293,9 @@ class AgentManager {
         break;
       }
 
-      console.log(`[Agent] OpenAI agentic loop iteration ${iterations}: ${message.tool_calls.length} tool calls`);
+      console.log(
+        `[Agent] OpenAI agentic loop iteration ${iterations}: ${message.tool_calls.length} tool calls`
+      );
 
       // Execute all tool calls from this iteration
       const toolResults: Array<{ tool_call_id: string; role: "tool"; content: string }> = [];

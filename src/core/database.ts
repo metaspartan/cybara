@@ -457,7 +457,7 @@ const stmts = {
       "INSERT INTO agents (id, name, type, model, provider_id, system_prompt, tools, config, status, memory_enabled, fallback_provider_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     ),
     update: prepare(
-      "UPDATE agents SET name=?, model=?, provider_id=?, system_prompt=?, tools=?, config=?, status=?, memory_enabled=?, fallback_provider_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?"
+      "UPDATE agents SET name=?, type=?, model=?, provider_id=?, system_prompt=?, tools=?, config=?, status=?, memory_enabled=?, fallback_provider_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?"
     ),
     updateStatus: prepare("UPDATE agents SET status=? WHERE id=?"),
     delete: prepare("DELETE FROM agents WHERE id = ?"),
@@ -483,12 +483,18 @@ const stmts = {
     delete: prepare("DELETE FROM tasks WHERE id = ?"),
   },
   taskRuns: {
-    getByTask: prepare("SELECT * FROM task_runs WHERE task_id = ? ORDER BY started_at DESC LIMIT 10"),
+    getByTask: prepare(
+      "SELECT * FROM task_runs WHERE task_id = ? ORDER BY started_at DESC LIMIT 10"
+    ),
     create: prepare(
       "INSERT INTO task_runs (id, task_id, status, started_at, completed_at, session_id, result_preview, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     ),
-    updateComplete: prepare("UPDATE task_runs SET status=?, completed_at=?, session_id=?, result_preview=?, error=? WHERE id=?"),
-    getRecent: prepare("SELECT tr.*, t.name as task_name FROM task_runs tr JOIN tasks t ON tr.task_id = t.id ORDER BY tr.started_at DESC LIMIT 20"),
+    updateComplete: prepare(
+      "UPDATE task_runs SET status=?, completed_at=?, session_id=?, result_preview=?, error=? WHERE id=?"
+    ),
+    getRecent: prepare(
+      "SELECT tr.*, t.name as task_name FROM task_runs tr JOIN tasks t ON tr.task_id = t.id ORDER BY tr.started_at DESC LIMIT 20"
+    ),
   },
   setup: {
     getStep: prepare("SELECT * FROM setup_state WHERE step = ?"),
@@ -632,7 +638,8 @@ export const tables = {
   providerModels: {
     all: () => stmts.providerModels.all.all(),
     byProvider: (id: string) => stmts.providerModels.byProvider.all(id),
-    getByModelId: (modelId: string) => stmts.providerModels.byModelId.get(modelId) as ProviderModel | undefined,
+    getByModelId: (modelId: string) =>
+      stmts.providerModels.byModelId.get(modelId) as ProviderModel | undefined,
     upsert: (m: ProviderModel) =>
       stmts.providerModels.upsert.run(
         m.id,
@@ -692,6 +699,7 @@ export const tables = {
     update: (id: string, a: Partial<Agent>) =>
       stmts.agents.update.run(
         a.name || null,
+        a.type || null,
         a.model || null,
         a.provider_id || null,
         a.system_prompt || null,
@@ -750,7 +758,10 @@ export const tables = {
         run.result_preview || null,
         run.error || null
       ),
-    complete: (id: string, data: { status: string; session_id?: string; result_preview?: string; error?: string }) =>
+    complete: (
+      id: string,
+      data: { status: string; session_id?: string; result_preview?: string; error?: string }
+    ) =>
       stmts.taskRuns.updateComplete.run(
         data.status,
         new Date().toISOString(),
@@ -881,7 +892,10 @@ export const tables = {
     getByDate: (type: string, date: string) => stmts.metrics?.getByDate.all(type, date) || [],
     // Daily aggregates from raw metrics (for time-series when metrics_daily is empty)
     getDailyTotalsFromRaw: (date: string): Array<{ type: string; total: number }> =>
-      (stmts.metrics?.getDailyTotalsFromRaw.all(date) || []) as Array<{ type: string; total: number }>,
+      (stmts.metrics?.getDailyTotalsFromRaw.all(date) || []) as Array<{
+        type: string;
+        total: number;
+      }>,
     // Daily aggregates (pre-aggregated cache)
     addDaily: (d: { id: string; date: string; type: string; key: string; value: number }) =>
       stmts.metrics?.addDaily.run(d.id, d.date, d.type, d.key, d.value),

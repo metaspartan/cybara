@@ -189,7 +189,8 @@ export const providers = {
       clientSecret: "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",
       authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenUrl: "https://oauth2.googleapis.com/token",
-      scope: "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/cclog https://www.googleapis.com/auth/experimentsandconfigs",
+      scope:
+        "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/cclog https://www.googleapis.com/auth/experimentsandconfigs",
       callbackPort: 51121,
       callbackPath: "/oauth-callback",
     },
@@ -235,6 +236,14 @@ export const providers = {
     api: "anthropic-messages",
     authType: "api_key",
     models: [
+      {
+        id: "MiniMax-M2.5",
+        name: "MiniMax M2.5",
+        context: 200000,
+        maxTokens: 16384,
+        reasoning: false,
+        input: ["text"],
+      },
       {
         id: "MiniMax-M2.1",
         name: "MiniMax M2.1",
@@ -716,6 +725,14 @@ export const providers = {
     authType: "api_key",
     models: [
       {
+        id: "glm-5",
+        name: "GLM-5",
+        context: 204800,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text"],
+      },
+      {
         id: "glm-4.7",
         name: "GLM-4.7",
         context: 204800,
@@ -763,6 +780,15 @@ export const providers = {
     api: "openai-completions",
     authType: "api_key",
     models: [
+      {
+        id: "glm-5",
+        name: "GLM-5 (Coding)",
+        context: 204800,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text"],
+        code: true,
+      },
       {
         id: "glm-4.7",
         name: "GLM-4.7 (Coding)",
@@ -1167,15 +1193,15 @@ export function getDefaultModel(providerType: string): string {
   const defaults: Record<string, string> = {
     openai: "gpt-5.1",
     anthropic: "claude-sonnet-4",
-    minimax: "MiniMax-M2.1",
+    minimax: "MiniMax-M2.5",
     google: "gemini-2.0-flash-exp",
     "google-antigravity": "gemini-3-pro-preview",
     groq: "llama-3.3-70b-versatile",
     openrouter: "anthropic/claude-opus-4-5",
     ollama: "llama3",
     venice: "llama-3.3-70b",
-    "z.ai": "glm-4.7",
-    "z.ai-coding": "glm-4.7",
+    "z.ai": "glm-5",
+    "z.ai-coding": "glm-5",
     xiaomi: "mimo-v2-flash",
     opencode_zen: "claude-opus-4-5",
     moonshot: "kimi-k2-0905-preview",
