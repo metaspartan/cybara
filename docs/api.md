@@ -302,6 +302,7 @@ Content-Type: application/json
 POST /api/tasks/:id/start
 POST /api/tasks/:id/stop
 POST /api/tasks/:id/trigger
+POST /api/tasks/:id/run
 ```
 
 ### Delete Task
@@ -394,12 +395,14 @@ Content-Type: application/json
 ### Delete Memory Entry or File
 ```http
 DELETE /api/memory/:file
-Content-Type: application/json
-
+```
+Optional JSON body:
+```json
 {
   "index": 0
 }
 ```
+If `index` is provided, that entry is deleted. If no body is sent, the whole file is deleted.
 
 ## LSP
 

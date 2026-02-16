@@ -16,7 +16,6 @@ function expandTilde(path: string): string {
   return path;
 }
 
-
 export async function handleRead(
   args: Record<string, unknown>
 ): Promise<{ content: string; path: string }> {
@@ -115,7 +114,7 @@ export async function handleFileSearch(
       files: [],
       pattern,
       cwd: searchDir,
-      error: `Directory does not exist: ${searchDir}`
+      error: `Directory does not exist: ${searchDir}`,
     };
   }
 
@@ -139,14 +138,16 @@ export async function handleFileSearch(
       files: limitedFiles,
       pattern,
       cwd: searchDir,
-      ...(files.length > MAX_RESULTS ? { error: `Results limited to ${MAX_RESULTS} (found ${files.length} total)` } : {})
+      ...(files.length > MAX_RESULTS
+        ? { error: `Results limited to ${MAX_RESULTS} (found ${files.length} total)` }
+        : {}),
     };
   } catch (err) {
     return {
       files: [],
       pattern,
       cwd: searchDir,
-      error: `Glob search failed: ${(err as Error).message}`
+      error: `Glob search failed: ${(err as Error).message}`,
     };
   }
 }
@@ -370,9 +371,7 @@ async function globFiles(dir: string, pattern: string): Promise<string[]> {
  * Apply a unified diff patch to multiple files
  * Supports standard unified diff format (git diff output)
  */
-export async function handleApplyPatch(
-  args: Record<string, unknown>
-): Promise<{
+export async function handleApplyPatch(args: Record<string, unknown>): Promise<{
   success: boolean;
   applied: Array<{ path: string; hunks: number }>;
   failed: Array<{ path: string; error: string }>;
@@ -440,11 +439,17 @@ function parsePatch(patch: string): FilePatch[] {
 
     // New file header: --- a/path or --- /dev/null
     if (line.startsWith("--- ")) {
-      const oldPath = line.slice(4).replace(/^[ab]\//, "").trim();
+      const oldPath = line
+        .slice(4)
+        .replace(/^[ab]\//, "")
+        .trim();
 
       // Look for +++ line
       if (i + 1 < lines.length && lines[i + 1].startsWith("+++ ")) {
-        const newPath = lines[i + 1].slice(4).replace(/^[ab]\//, "").trim();
+        const newPath = lines[i + 1]
+          .slice(4)
+          .replace(/^[ab]\//, "")
+          .trim();
 
         if (currentFile && currentHunk) {
           currentFile.hunks.push(currentHunk);
@@ -486,7 +491,10 @@ function parsePatch(patch: string): FilePatch[] {
     }
 
     // Hunk content lines
-    if (currentHunk && (line.startsWith(" ") || line.startsWith("+") || line.startsWith("-") || line === "")) {
+    if (
+      currentHunk &&
+      (line.startsWith(" ") || line.startsWith("+") || line.startsWith("-") || line === "")
+    ) {
       currentHunk.lines.push(line);
     }
   }
@@ -535,7 +543,7 @@ async function applyFilePatch(
     return { success: false, error: `File not found: ${filePatch.path}` };
   }
 
-  let content = readFileSync(filePatch.path, "utf-8");
+  const content = readFileSync(filePatch.path, "utf-8");
   const lines = content.split("\n");
 
   // Apply hunks in reverse order to preserve line numbers

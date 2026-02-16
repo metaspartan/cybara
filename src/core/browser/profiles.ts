@@ -1,7 +1,6 @@
 // Browser profile management - Moltbot-compatible
 // Using puppeteer-core instead of Playwright for Bun compatibility (Playwright WS hangs in Bun)
-import type { Browser, Page } from "puppeteer-core";
-import puppeteer from "puppeteer-core";
+import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -213,7 +212,9 @@ async function findChromeExecutable(): Promise<string | null> {
     console.log(`[Browser] Using Playwright Chromium: ${playwrightPath}`);
     return playwrightPath;
   } catch {
-    console.warn("[Browser] No Chrome/Chromium found. Install a browser or run: bunx playwright install chromium");
+    console.warn(
+      "[Browser] No Chrome/Chromium found. Install a browser or run: bunx playwright install chromium"
+    );
     return null;
   }
 }
@@ -291,10 +292,10 @@ export async function startBrowser(profileName: string): Promise<Browser> {
       try {
         // Check if CDP is responding and get WebSocket URL (OpenClaw pattern)
         const response = await fetch(`${cdpUrl}/json/version`, {
-          signal: AbortSignal.timeout(1000)
+          signal: AbortSignal.timeout(1000),
         });
         if (response.ok && !connected) {
-          const versionData = await response.json() as { webSocketDebuggerUrl?: string };
+          const versionData = (await response.json()) as { webSocketDebuggerUrl?: string };
           const wsUrl = versionData.webSocketDebuggerUrl;
 
           if (!wsUrl) {
@@ -347,7 +348,7 @@ export async function stopBrowser(profileName: string): Promise<void> {
   // Close all tracked pages for this profile
   for (const [pageId, page] of pages) {
     if (pageId.startsWith(profileName)) {
-      await page.close().catch(() => { });
+      await page.close().catch(() => {});
       pages.delete(pageId);
     }
   }
@@ -382,7 +383,7 @@ export async function createPage(profileName: string, url?: string): Promise<Pag
   const existingPages = await browser.pages();
   let page: Page;
 
-  if (existingPages.length > 0 && !existingPages[0].url().includes('about:blank') === false) {
+  if (existingPages.length > 0 && !existingPages[0].url().includes("about:blank") === false) {
     // Use existing empty page
     page = existingPages[0];
     console.log(`[Browser] Using existing page for profile: ${profileName}`);
@@ -479,7 +480,7 @@ export async function closePage(profileName: string, pageId: string): Promise<bo
 export async function closeAllPages(profileName: string): Promise<void> {
   for (const [id, page] of pages.entries()) {
     if (id.startsWith(profileName)) {
-      await page.close().catch(() => { });
+      await page.close().catch(() => {});
       pages.delete(id);
     }
   }

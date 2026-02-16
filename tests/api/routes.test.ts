@@ -94,6 +94,12 @@ describe("Providers API", () => {
         expect(data.summary).toBeDefined();
         expect(Array.isArray(data.providers)).toBe(true);
     });
+
+    test("POST /api/providers/:id/test should return not found for unknown provider", async () => {
+        const { status, data } = await api("POST", `/api/providers/nonexistent-${Date.now()}/test`);
+        expect(status).toBe(404);
+        expect(data.code).toBe("NOT_FOUND");
+    });
 });
 
 describe("Channels API", () => {
@@ -111,6 +117,37 @@ describe("Channels API", () => {
         });
         expect(status).toBe(400);
         expect(typeof data.error).toBe("string");
+    });
+
+    test("POST /api/channels/telegram/setup should validate bot token", async () => {
+        const { status, data } = await api("POST", "/api/channels/telegram/setup", {});
+        expect(status).toBe(400);
+        expect(data.code).toBe("VALIDATION_ERROR");
+    });
+
+    test("GET /api/channels/:id and POST /api/channels/:id/test should work for web channel", async () => {
+        const channelName = `web-test-${Date.now()}`;
+        const created = await api("POST", "/api/channels", {
+            name: channelName,
+            type: "web",
+            config: {},
+        });
+
+        expect(created.status).toBe(200);
+        const channelId = created.data.id as string;
+        expect(channelId).toBeDefined();
+
+        const fetched = await api("GET", `/api/channels/${channelId}`);
+        expect(fetched.status).toBe(200);
+        expect(fetched.data.id).toBe(channelId);
+        expect(fetched.data.type).toBe("web");
+
+        const tested = await api("POST", `/api/channels/${channelId}/test`);
+        expect(tested.status).toBe(200);
+        expect(tested.data.success).toBe(true);
+        expect(tested.data.running).toBe(true);
+
+        await api("DELETE", `/api/channels/${channelId}`);
     });
 });
 
@@ -168,6 +205,14 @@ describe("Session API", () => {
     });
 });
 
+describe("Tasks API", () => {
+    test("POST /api/tasks/:id/run should resolve alias route", async () => {
+        const runRes = await api("POST", `/api/tasks/nonexistent-${Date.now()}/run`);
+        expect(runRes.status).toBe(200);
+        expect(runRes.data.success).toBe(false);
+    });
+});
+
 describe("Metrics API", () => {
     test("GET /api/metrics should return metrics", async () => {
         const { status, data } = await api("GET", "/api/metrics");
@@ -176,6 +221,29 @@ describe("Metrics API", () => {
         // Should contain expected properties
         expect(data).toHaveProperty("memory");
         expect(data).toHaveProperty("uptime");
+    });
+});
+
+describe("Memory API", () => {
+    test("POST /api/memory should create file and DELETE should remove it", async () => {
+        const file = `routes-memory-${Date.now()}.md`;
+        const createRes = await api("POST", "/api/memory", {
+            file,
+            content: "memory integration test",
+        });
+
+        expect(createRes.status).toBe(200);
+        expect(createRes.data.success).toBe(true);
+        expect(createRes.data.file).toBe(file);
+
+        const listRes = await api("GET", "/api/memory");
+        expect(listRes.status).toBe(200);
+        expect(Array.isArray(listRes.data.files)).toBe(true);
+        expect(listRes.data.files).toContain(file);
+
+        const deleteRes = await api("DELETE", `/api/memory/${file}`);
+        expect(deleteRes.status).toBe(200);
+        expect(deleteRes.data.success).toBe(true);
     });
 });
 

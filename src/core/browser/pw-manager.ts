@@ -712,19 +712,19 @@ export async function closeAll(): Promise<void> {
 
   // Close legacy pages
   for (const [id, page] of legacyPages) {
-    await page.close().catch(() => { });
+    await page.close().catch(() => {});
     legacyPages.delete(id);
   }
 
   consoleLogs.clear();
 
   if (legacyContext) {
-    await legacyContext.close().catch(() => { });
+    await legacyContext.close().catch(() => {});
     legacyContext = null;
   }
 
   if (legacyBrowser) {
-    await legacyBrowser.close().catch(() => { });
+    await legacyBrowser.close().catch(() => {});
     legacyBrowser = null;
   }
 

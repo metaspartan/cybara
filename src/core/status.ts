@@ -87,6 +87,7 @@ export function broadcastTaskEvent(event: TaskEventPayload): void {
     }
   }
 
-  console.log(`[Status] Task event: ${event.taskName} ${event.status} (${sseClients.size} SSE clients)`);
+  console.log(
+    `[Status] Task event: ${event.taskName} ${event.status} (${sseClients.size} SSE clients)`
+  );
 }
-

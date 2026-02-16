@@ -15,10 +15,24 @@ export * from "./web-search";
 export { getToolSchemasForLLM, toolSchemas } from "../index";
 
 // Tool execution dispatcher
-import { handleRead, handleWrite, handleEdit, handleFileSearch, handleGrep, handleApplyPatch } from "./file";
+import {
+  handleRead,
+  handleWrite,
+  handleEdit,
+  handleFileSearch,
+  handleGrep,
+  handleApplyPatch,
+} from "./file";
 import { handleExec, handleProcess, handleGit } from "./process";
 import { handleBrowser, handleWebFetch } from "./browser";
-import { handleMemorySearch, handleMemoryGet, handleMemorySave, handleMemorySaveDurable, handleMemoryContext, handleHeartbeatState } from "./memory";
+import {
+  handleMemorySearch,
+  handleMemoryGet,
+  handleMemorySave,
+  handleMemorySaveDurable,
+  handleMemoryContext,
+  handleHeartbeatState,
+} from "./memory";
 import {
   handleSessionsSpawn,
   handleSessionsSend,
@@ -40,7 +54,13 @@ import { handleHttp } from "./http";
 import { handleData } from "./data";
 import { handleEnv } from "./env";
 import { handleWebSearch } from "./web-search";
-import { handleLSPDiagnostics, handleLSPDefinition, handleLSPReferences, handleLSPHover, handleLSPLanguages } from "./lsp";
+import {
+  handleLSPDiagnostics,
+  handleLSPDefinition,
+  handleLSPReferences,
+  handleLSPHover,
+  handleLSPLanguages,
+} from "./lsp";
 import { trackToolCall } from "../../metrics";
 import { logToolExecution } from "../../logging";
 import type { ToolContext } from "../index";
@@ -217,8 +237,6 @@ export async function executeTool(
     throw error;
   }
 }
-
-
 
 export function hasTool(name: string): boolean {
   return name in toolHandlers;

@@ -3,51 +3,51 @@
 
 // Types
 export {
-    channels,
-    type ChannelType,
-    type ChannelAdapter,
-    type MessageHandler,
-    type MessageHandlerFileInfo,
-    type ToolCallInfo,
-    type ChannelInfo,
+  channels,
+  type ChannelType,
+  type ChannelAdapter,
+  type MessageHandler,
+  type MessageHandlerFileInfo,
+  type ToolCallInfo,
+  type ChannelInfo,
 } from "./types";
 
 // Formatting utilities
 export {
-    escapeMarkdown,
-    formatToolCallsForTelegram,
-    formatToolCallsForDiscord,
-    formatToolCallsPlain,
+  escapeMarkdown,
+  formatToolCallsForTelegram,
+  formatToolCallsForDiscord,
+  formatToolCallsPlain,
 } from "./formatting";
 
 // Security
 export {
-    securityManager,
-    generatePairingCode,
-    type DMPolicy,
-    type PairingRequest,
-    type ChannelSecurityConfig,
-    type AccessCheckResult,
-    DEFAULT_SECURITY_CONFIG,
+  securityManager,
+  generatePairingCode,
+  type DMPolicy,
+  type PairingRequest,
+  type ChannelSecurityConfig,
+  type AccessCheckResult,
+  DEFAULT_SECURITY_CONFIG,
 } from "./security";
 
 // Channel manager and session maps
 export {
-    channelManager,
-    telegramBot,
-    telegramSessions,
-    discordSessions,
-    slackSessions,
-    signalSessions,
-    whatsappSessions,
-    imessageSessions,
+  channelManager,
+  telegramBot,
+  telegramSessions,
+  discordSessions,
+  slackSessions,
+  signalSessions,
+  whatsappSessions,
+  imessageSessions,
 } from "./manager";
 
 // Telegram adapter and types
 export {
-    TelegramBotManager,
-    type TelegramUpdate,
-    processTelegramWebhook,
+  TelegramBotManager,
+  type TelegramUpdate,
+  processTelegramWebhook,
 } from "./adapters/telegram";
 
 // Production adapters

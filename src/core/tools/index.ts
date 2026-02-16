@@ -1,5 +1,3 @@
-
-
 import { exec } from "child_process";
 import { telegramBot, channelManager } from "../channels";
 
@@ -25,7 +23,16 @@ export interface Tool {
   input_schema: Record<string, unknown>;
   handler?: ToolHandler;
   permissions?: string[];
-  category: "core" | "file" | "process" | "browser" | "memory" | "channel" | "media" | "skill" | "lsp";
+  category:
+    | "core"
+    | "file"
+    | "process"
+    | "browser"
+    | "memory"
+    | "channel"
+    | "media"
+    | "skill"
+    | "lsp";
 }
 
 // ============================================
@@ -252,7 +259,8 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
   },
   apply_patch: {
     name: "apply_patch",
-    description: "Apply a unified diff patch to multiple files. Supports standard git diff format with create, modify, and delete operations.",
+    description:
+      "Apply a unified diff patch to multiple files. Supports standard git diff format with create, modify, and delete operations.",
     category: "file",
     input_schema: {
       type: "object",
@@ -274,7 +282,8 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
   // Process execution
   exec: {
     name: "exec",
-    description: "Execute shell commands. Use workdir parameter for directory context (don't use 'cd' in command). Commands run from workspace root if workdir not specified.",
+    description:
+      "Execute shell commands. Use workdir parameter for directory context (don't use 'cd' in command). Commands run from workspace root if workdir not specified.",
     category: "process",
     input_schema: {
       type: "object",
@@ -383,12 +392,23 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
         profile: { type: "string", description: "Profile name for profile-related actions" },
         color: { type: "string", description: "Profile color (hex)" },
         executablePath: { type: "string", description: "Chrome executable path for profile" },
-        headless: { type: "boolean", description: "Run in headless mode (default true). Set to false for visible browser." },
-        visual: { type: "boolean", description: "Launch visible Chrome window with persistent profile (alternative to headless: false)" },
+        headless: {
+          type: "boolean",
+          description: "Run in headless mode (default true). Set to false for visible browser.",
+        },
+        visual: {
+          type: "boolean",
+          description:
+            "Launch visible Chrome window with persistent profile (alternative to headless: false)",
+        },
         userDataDir: { type: "string", description: "Custom user data directory for profile" },
         pageId: { type: "string", description: "Page ID for closeProfileTab" },
         // Navigation
-        url: { type: "string", description: "URL for start/navigate/open actions. ALWAYS pass url with start to open a page." },
+        url: {
+          type: "string",
+          description:
+            "URL for start/navigate/open actions. ALWAYS pass url with start to open a page.",
+        },
         targetId: { type: "string", description: "Target tab ID for focus/close actions" },
         // Element interactions
         selector: { type: "string", description: "CSS selector for element interactions" },
@@ -408,9 +428,13 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
         script: { type: "string", description: "JavaScript code to evaluate" },
         request: {
           type: "object",
-          description: "OpenClaw-style request for 'act' action. Use {kind:'click', ref:'e5'} or {kind:'type', ref:'e3', text:'hello'}",
+          description:
+            "OpenClaw-style request for 'act' action. Use {kind:'click', ref:'e5'} or {kind:'type', ref:'e3', text:'hello'}",
           properties: {
-            kind: { type: "string", description: "Action kind: click, type, press, hover, scroll, wait, evaluate" },
+            kind: {
+              type: "string",
+              description: "Action kind: click, type, press, hover, scroll, wait, evaluate",
+            },
             ref: { type: "string", description: "Element ref from snapshot (e.g., 'e5', 'e12')" },
             text: { type: "string", description: "Text to type (for kind='type')" },
             key: { type: "string", description: "Key to press (for kind='press')" },
@@ -418,8 +442,7 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
         },
         kind: {
           type: "string",
-          description:
-            "Legacy: Sub-action for 'act' (prefer request.kind instead)",
+          description: "Legacy: Sub-action for 'act' (prefer request.kind instead)",
         },
         button: {
           type: "string",
@@ -503,7 +526,8 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
   // Web search (OpenClaw pattern: supports Brave API or DuckDuckGo fallback)
   web_search: {
     name: "web_search",
-    description: "Search the web. Returns titles, URLs, and snippets. Use for quick research before browsing. Set BRAVE_API_KEY for better results.",
+    description:
+      "Search the web. Returns titles, URLs, and snippets. Use for quick research before browsing. Set BRAVE_API_KEY for better results.",
     category: "browser",
     input_schema: {
       type: "object",
@@ -567,7 +591,8 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
   },
   memory_save_durable: {
     name: "memory_save_durable",
-    description: "Save important persistent information to MEMORY.md (preferences, decisions, conventions, goals, critical facts). Unlike daily logs, durable memories persist across sessions.",
+    description:
+      "Save important persistent information to MEMORY.md (preferences, decisions, conventions, goals, critical facts). Unlike daily logs, durable memories persist across sessions.",
     category: "memory",
     input_schema: {
       type: "object",
@@ -586,7 +611,8 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
   },
   memory_context: {
     name: "memory_context",
-    description: "Get recent memory context (MEMORY.md + last 1-2 days of daily logs) for prompt injection",
+    description:
+      "Get recent memory context (MEMORY.md + last 1-2 days of daily logs) for prompt injection",
     category: "memory",
     input_schema: {
       type: "object",
@@ -609,19 +635,20 @@ Use for tasks that may take longer or require separate context.`,
       properties: {
         task: {
           type: "string",
-          description: "Task description for the sub-agent. Be specific and include all context needed."
+          description:
+            "Task description for the sub-agent. Be specific and include all context needed.",
         },
         label: {
           type: "string",
-          description: "Optional short label for the task (used in status/logs)"
+          description: "Optional short label for the task (used in status/logs)",
         },
         agentId: {
           type: "string",
-          description: "Optional agent ID to use for the sub-agent (defaults to current agent)"
+          description: "Optional agent ID to use for the sub-agent (defaults to current agent)",
         },
         model: {
           type: "string",
-          description: "Optional model override for the sub-agent"
+          description: "Optional model override for the sub-agent",
         },
         thinking: {
           type: "string",
@@ -629,7 +656,7 @@ Use for tasks that may take longer or require separate context.`,
         },
         runTimeoutSeconds: {
           type: "number",
-          description: "Timeout for the run in seconds (0 = no timeout)"
+          description: "Timeout for the run in seconds (0 = no timeout)",
         },
         timeoutSeconds: {
           type: "number",
@@ -638,7 +665,8 @@ Use for tasks that may take longer or require separate context.`,
         cleanup: {
           type: "string",
           enum: ["keep", "delete"],
-          description: "Cleanup policy after completion (keep = preserve session, delete = remove after 5s)",
+          description:
+            "Cleanup policy after completion (keep = preserve session, delete = remove after 5s)",
         },
       },
       required: ["task"],
@@ -688,14 +716,15 @@ Use for tasks that may take longer or require separate context.`,
   },
   session_status: {
     name: "session_status",
-    description: "Get detailed status of a session including message count, token estimate, and uptime",
+    description:
+      "Get detailed status of a session including message count, token estimate, and uptime",
     category: "core",
     input_schema: {
       type: "object",
       properties: {
         sessionId: {
           type: "string",
-          description: "Session ID to check. If omitted, returns main session status"
+          description: "Session ID to check. If omitted, returns main session status",
         },
       },
     },
@@ -736,7 +765,8 @@ Use for tasks that may take longer or require separate context.`,
   // Telegram media sending
   telegram_media: {
     name: "telegram_media",
-    description: "Send photos, documents, or videos via Telegram. Use to share screenshots, files, or media with users.",
+    description:
+      "Send photos, documents, or videos via Telegram. Use to share screenshots, files, or media with users.",
     category: "channel",
     input_schema: {
       type: "object",
@@ -765,7 +795,8 @@ Use for tasks that may take longer or require separate context.`,
   },
   canvas: {
     name: "canvas",
-    description: "Control canvas for HTML/CSS/JS rendering. Actions: present (show), hide, navigate (load URL), eval (run JS), snapshot (capture image), a2ui_push (push JSONL), a2ui_reset (clear A2UI).",
+    description:
+      "Control canvas for HTML/CSS/JS rendering. Actions: present (show), hide, navigate (load URL), eval (run JS), snapshot (capture image), a2ui_push (push JSONL), a2ui_reset (clear A2UI).",
     category: "browser",
     input_schema: {
       type: "object",
@@ -773,7 +804,8 @@ Use for tasks that may take longer or require separate context.`,
         action: {
           type: "string",
           enum: ["present", "hide", "navigate", "eval", "snapshot", "a2ui_push", "a2ui_reset"],
-          description: "Canvas action: present shows canvas, hide hides it, navigate loads URL, eval runs JS, snapshot captures image, a2ui_push sends JSONL to UI, a2ui_reset clears UI data",
+          description:
+            "Canvas action: present shows canvas, hide hides it, navigate loads URL, eval runs JS, snapshot captures image, a2ui_push sends JSONL to UI, a2ui_reset clears UI data",
         },
         // Gateway options
         gatewayUrl: { type: "string", description: "Gateway URL for node communication" },
@@ -884,7 +916,7 @@ PAYLOAD TYPES (payload.kind):
         action: {
           type: "string",
           enum: ["status", "list", "add", "update", "remove", "run", "runs", "wake"],
-          description: "Cron action to perform"
+          description: "Cron action to perform",
         },
         includeDisabled: { type: "boolean", description: "Include disabled jobs in list" },
         job: { type: "object", description: "Job definition for add action" },
@@ -930,13 +962,20 @@ ACTIONS:
   // Git operations (extra)
   git: {
     name: "git",
-    description: "Run git commands (clone/status/pull/etc). Pass subcommand without 'git' prefix (e.g., 'clone url' not 'git clone url'). Use workdir for existing repos.",
+    description:
+      "Run git commands (clone/status/pull/etc). Pass subcommand without 'git' prefix (e.g., 'clone url' not 'git clone url'). Use workdir for existing repos.",
     category: "process",
     input_schema: {
       type: "object",
       properties: {
-        command: { type: "string", description: "Git subcommand and arguments (e.g., 'status', 'clone url', 'pull')" },
-        workdir: { type: "string", description: "Repository directory (required for most commands except clone)" },
+        command: {
+          type: "string",
+          description: "Git subcommand and arguments (e.g., 'status', 'clone url', 'pull')",
+        },
+        workdir: {
+          type: "string",
+          description: "Repository directory (required for most commands except clone)",
+        },
       },
       required: ["command"],
     },
@@ -1102,7 +1141,10 @@ ACTIONS:
     input_schema: {
       type: "object",
       properties: {
-        expression: { type: "string", description: "Math expression to evaluate (e.g., '2 + 2', 'sqrt(16)', '2^8')" },
+        expression: {
+          type: "string",
+          description: "Math expression to evaluate (e.g., '2 + 2', 'sqrt(16)', '2^8')",
+        },
       },
       required: ["expression"],
     },
@@ -1130,7 +1172,11 @@ ACTIONS:
     input_schema: {
       type: "object",
       properties: {
-        action: { type: "string", enum: ["extract_text", "metadata", "page_count"], description: "PDF action" },
+        action: {
+          type: "string",
+          enum: ["extract_text", "metadata", "page_count"],
+          description: "PDF action",
+        },
         path: { type: "string", description: "Path to the PDF file" },
       },
       required: ["action", "path"],
@@ -1154,13 +1200,17 @@ ACTIONS:
   // LSP (Language Server Protocol) tools
   lsp_diagnostics: {
     name: "lsp_diagnostics",
-    description: "Get code errors and warnings from language servers. Use after editing files to check for issues.",
+    description:
+      "Get code errors and warnings from language servers. Use after editing files to check for issues.",
     category: "lsp",
     input_schema: {
       type: "object",
       properties: {
         file: { type: "string", description: "File path to check for diagnostics" },
-        workspace: { type: "string", description: "Workspace path to check all files (alternative to file)" },
+        workspace: {
+          type: "string",
+          description: "Workspace path to check all files (alternative to file)",
+        },
       },
     },
     permissions: ["fs:read"],

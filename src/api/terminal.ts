@@ -4,30 +4,37 @@
 import { homedir, platform } from "os";
 
 interface TerminalSession {
-    id: string;
-    proc: ReturnType<typeof Bun.spawn> | null;
-    createdAt: string;
-    lastActivity: number;
+  id: string;
+  proc: ReturnType<typeof Bun.spawn> | null;
+  createdAt: string;
+  lastActivity: number;
 }
 
 const sessions = new Map<string, TerminalSession>();
 
 // Cleanup stale sessions every 5 minutes
-setInterval(() => {
+setInterval(
+  () => {
     const staleThreshold = Date.now() - 10 * 60 * 1000; // 10 min idle
     for (const [id, session] of sessions) {
-        if (session.lastActivity < staleThreshold) {
-            killSession(id);
-        }
+      if (session.lastActivity < staleThreshold) {
+        killSession(id);
+      }
     }
-}, 5 * 60 * 1000);
+  },
+  5 * 60 * 1000
+);
 
 function killSession(id: string) {
-    const session = sessions.get(id);
-    if (session?.proc) {
-        try { session.proc.kill(); } catch { }
+  const session = sessions.get(id);
+  if (session?.proc) {
+    try {
+      session.proc.kill();
+    } catch (error) {
+      console.debug("[Terminal] Failed to kill session process:", error);
     }
-    sessions.delete(id);
+  }
+  sessions.delete(id);
 }
 
 // Python script that creates a real PTY and copies I/O
@@ -105,100 +112,102 @@ else:
 `;
 
 export function createTerminalSession(sessionId: string): TerminalSession {
-    const shell = process.env.SHELL || "/bin/zsh";
-    const home = homedir();
+  const shell = process.env.SHELL || "/bin/zsh";
+  const home = homedir();
 
-    const proc = Bun.spawn(["python3", "-u", "-c", PTY_SCRIPT], {
-        cwd: home,
-        stdin: "pipe",
-        stdout: "pipe",
-        stderr: "pipe",
-        env: {
-            ...process.env,
-            SHELL: shell,
-            TERM: "xterm-256color",
-            COLORTERM: "truecolor",
-            HOME: home,
-            PYTHONUNBUFFERED: "1",
-        },
-    });
+  const proc = Bun.spawn(["python3", "-u", "-c", PTY_SCRIPT], {
+    cwd: home,
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "pipe",
+    env: {
+      ...process.env,
+      SHELL: shell,
+      TERM: "xterm-256color",
+      COLORTERM: "truecolor",
+      HOME: home,
+      PYTHONUNBUFFERED: "1",
+    },
+  });
 
-    const session: TerminalSession = {
-        id: sessionId,
-        proc,
-        createdAt: new Date().toISOString(),
-        lastActivity: Date.now(),
-    };
+  const session: TerminalSession = {
+    id: sessionId,
+    proc,
+    createdAt: new Date().toISOString(),
+    lastActivity: Date.now(),
+  };
 
-    sessions.set(sessionId, session);
-    return session;
+  sessions.set(sessionId, session);
+  return session;
 }
 
 /** Write data to the terminal's stdin (Bun FileSink) */
 export function writeToTerminal(session: TerminalSession, data: string): void {
-    if (session.proc?.stdin) {
-        try {
-            (session.proc.stdin as any).write(data);
-            (session.proc.stdin as any).flush?.();
-        } catch {
-            // stdin closed
-        }
+  if (session.proc?.stdin) {
+    try {
+      (session.proc.stdin as any).write(data);
+      (session.proc.stdin as any).flush?.();
+    } catch {
+      // stdin closed
     }
+  }
 }
 
 /** Start reading output and forward to a callback */
 export function startOutputReader(
-    session: TerminalSession,
-    onData: (data: string) => void,
-    onExit: () => void,
+  session: TerminalSession,
+  onData: (data: string) => void,
+  onExit: () => void
 ): void {
-    const decoder = new TextDecoder();
+  const decoder = new TextDecoder();
 
-    // Read stdout (PTY output comes through here)
-    if (session.proc?.stdout) {
-        const stdout = session.proc.stdout as ReadableStream<Uint8Array>;
-        const reader = stdout.getReader();
-        (async () => {
-            try {
-                while (true) {
-                    const { value, done } = await reader.read();
-                    if (done) break;
-                    if (value) onData(decoder.decode(value, { stream: true }));
-                }
-            } catch { /* stream closed */ }
-            onExit();
-        })();
-    } else {
-        onExit();
-    }
+  // Read stdout (PTY output comes through here)
+  if (session.proc?.stdout) {
+    const stdout = session.proc.stdout as ReadableStream<Uint8Array>;
+    const reader = stdout.getReader();
+    (async () => {
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) onData(decoder.decode(value, { stream: true }));
+        }
+      } catch {
+        /* stream closed */
+      }
+      onExit();
+    })();
+  } else {
+    onExit();
+  }
 
-    // Handle process exit
-    if (session.proc?.exited) {
-        session.proc.exited.then(() => onExit()).catch(() => onExit());
-    }
+  // Handle process exit
+  if (session.proc?.exited) {
+    session.proc.exited.then(() => onExit()).catch(() => onExit());
+  }
 }
 
 export function getTerminalSession(sessionId: string): TerminalSession | undefined {
-    return sessions.get(sessionId);
+  return sessions.get(sessionId);
 }
 
 export function listTerminalSessions(): { id: string; createdAt: string }[] {
-    return Array.from(sessions.values()).map(s => ({
-        id: s.id,
-        createdAt: s.createdAt,
-    }));
+  return Array.from(sessions.values()).map((s) => ({
+    id: s.id,
+    createdAt: s.createdAt,
+  }));
 }
 
 export function destroyTerminalSession(sessionId: string): boolean {
-    if (!sessions.has(sessionId)) return false;
-    killSession(sessionId);
-    return true;
+  if (!sessions.has(sessionId)) return false;
+  killSession(sessionId);
+  return true;
 }
 
 export function destroyAllTerminalSessions(): void {
-    for (const id of sessions.keys()) {
-        killSession(id);
-    }
+  for (const id of sessions.keys()) {
+    killSession(id);
+  }
 }
 
 export { sessions as terminalSessions };

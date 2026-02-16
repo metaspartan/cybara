@@ -88,8 +88,8 @@ const chatSessions = new Map<
     messages: ChatMessage[];
     createdAt: string;
     persisted: boolean;
-    compactionCount?: number;  // Track compaction cycles for memory flush
-    lastFlushCompactionCount?: number;  // Last compaction cycle we flushed
+    compactionCount?: number; // Track compaction cycles for memory flush
+    lastFlushCompactionCount?: number; // Last compaction cycle we flushed
   }
 >();
 
@@ -273,7 +273,6 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     trackSessionEvent(newSessionId, "created", { agentId: agent.id, model: agent.model });
   }
 
-
   // Get agent
   const agent = agentManager.get(session.agentId);
 
@@ -309,20 +308,25 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     });
 
     // Check if memory flush should run before compaction
-    if (flushSettings && shouldRunMemoryFlush({
-      totalTokens: currentTokens,
-      contextWindowTokens: contextWindow,
-      softThresholdTokens: flushSettings.softThresholdTokens,
-      lastFlushCompactionCount: session.lastFlushCompactionCount,
-      currentCompactionCount: session.compactionCount || 0,
-    })) {
-      console.log(`[Chat] Running pre-compaction memory flush (${currentTokens}/${contextWindow} tokens)`);
+    if (
+      flushSettings &&
+      shouldRunMemoryFlush({
+        totalTokens: currentTokens,
+        contextWindowTokens: contextWindow,
+        softThresholdTokens: flushSettings.softThresholdTokens,
+        lastFlushCompactionCount: session.lastFlushCompactionCount,
+        currentCompactionCount: session.compactionCount || 0,
+      })
+    ) {
+      console.log(
+        `[Chat] Running pre-compaction memory flush (${currentTokens}/${contextWindow} tokens)`
+      );
       const flushStartTime = Date.now();
 
       try {
         // Run a memory flush turn - inject the flush prompt as a system message
         const flushMessages: AgentMessage[] = [
-          ...session.messages.map(m => ({ role: m.role, content: m.content })),
+          ...session.messages.map((m) => ({ role: m.role, content: m.content })),
           { role: "user", content: flushSettings.prompt },
         ];
 
@@ -619,9 +623,9 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     message: assistantMessage,
     agent: agent
       ? {
-        id: agent.id,
-        name: agent.name,
-      }
+          id: agent.id,
+          name: agent.name,
+        }
       : undefined,
     thinking: finalThinking || undefined,
     tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
@@ -701,9 +705,9 @@ export async function getSession(sessionId: string) {
   if (subagentSession) {
     return {
       id: subagentSession.id,
-      agentId: 'subagent',
-      messages: subagentSession.messages.map(m => ({
-        role: m.role as ChatMessage['role'],
+      agentId: "subagent",
+      messages: subagentSession.messages.map((m) => ({
+        role: m.role as ChatMessage["role"],
         content: m.content,
         timestamp: m.timestamp,
       })),

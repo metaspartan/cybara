@@ -191,7 +191,6 @@ export function getContextWindow(model?: string): number {
   return DEFAULT_CONTEXT_TOKENS;
 }
 
-
 // Check if context compaction is needed
 export function shouldCompactContext(
   messages: ChatMessage[],
@@ -434,12 +433,12 @@ export async function listPersistedSessions(): Promise<
     `
       )
       .all() as Array<{
-        id: string;
-        agentId: string;
-        createdAt: string;
-        updatedAt: string;
-        messageCount: number;
-      }>;
+      id: string;
+      agentId: string;
+      createdAt: string;
+      updatedAt: string;
+      messageCount: number;
+    }>;
 
     return sessions;
   } catch (error) {

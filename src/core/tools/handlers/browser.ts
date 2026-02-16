@@ -15,18 +15,20 @@ import {
   selectOption,
   waitFor,
   fillField,
-  type RefInfo
+  type RefInfo,
 } from "../../browser/cdp-helpers";
-
 
 import { randomUUID } from "crypto";
 import { writeFileSync, mkdirSync, existsSync } from "fs";
 import { join, resolve } from "path";
 import { homedir } from "os";
 
-
 // Media output directory for screenshots — use ~/.cybara/ for consistent cross-platform paths
-const SCREENSHOTS_DIR = join(process.env.HOME || process.env.USERPROFILE || homedir(), ".cybara", "screenshots");
+const SCREENSHOTS_DIR = join(
+  process.env.HOME || process.env.USERPROFILE || homedir(),
+  ".cybara",
+  "screenshots"
+);
 
 // Track active page for each session (legacy mode)
 const sessionPages = new Map<string, string>();
@@ -67,7 +69,9 @@ async function getOrCreatePage(sessionId: string): Promise<string> {
 }
 
 // Get a page for actions - defaults to visual profile browser (like Moltbot/OpenClaw)
-async function getVisualPage(sessionId: string): Promise<Awaited<ReturnType<typeof profileManager.getActivePage>>> {
+async function getVisualPage(
+  sessionId: string
+): Promise<Awaited<ReturnType<typeof profileManager.getActivePage>>> {
   const profileName = sessionId;
 
   // Ensure browser is started
@@ -111,7 +115,9 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       const url = args.url as string | undefined;
       const profileName = (args.profile as string) || sessionId;
 
-      console.log(`[Browser] Start requested - headless: ${args.headless}, useHeadless: ${useHeadless}, url: ${url}`);
+      console.log(
+        `[Browser] Start requested - headless: ${args.headless}, useHeadless: ${useHeadless}, url: ${url}`
+      );
 
       if (useHeadless) {
         // Headless mode (explicit opt-in only)
@@ -503,9 +509,9 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         try {
           await Promise.race([
             page.waitForNetworkIdle({ timeout: 8000, idleTime: 500 }),
-            new Promise(resolve => setTimeout(resolve, 8000)),
+            new Promise((resolve) => setTimeout(resolve, 8000)),
           ]);
-          await new Promise(resolve => setTimeout(resolve, 300));
+          await new Promise((resolve) => setTimeout(resolve, 300));
         } catch (e) {
           console.log(`[Browser] Network idle wait timeout, continuing with available content`);
         }
@@ -523,7 +529,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       const compactMode = args.compact === true;
       const maxDepth = typeof args.depth === "number" ? args.depth : undefined;
 
-      let snapshotLines: string[] = [];
+      const snapshotLines: string[] = [];
       let refCounter = 0;
       let interactiveCount = 0;
 
@@ -546,12 +552,14 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
           const roleLower = role.toLowerCase();
 
           // Use OpenClaw's role classification
-          const isGeneric = STRUCTURAL_ROLES.has(roleLower) || role === "none" || role === "unknown" || !role;
+          const isGeneric =
+            STRUCTURAL_ROLES.has(roleLower) || role === "none" || role === "unknown" || !role;
           const isContent = CONTENT_ROLES.has(roleLower);
           const isInteractive = INTERACTIVE_ROLES.has(roleLower);
 
           // StaticText and text nodes contain the actual content (prices, values, etc.)
-          const isText = roleLower === "statictext" || roleLower === "text" || roleLower === "inlinetextbox";
+          const isText =
+            roleLower === "statictext" || roleLower === "text" || roleLower === "inlinetextbox";
 
           // In interactive mode, only show interactive elements
           if (interactiveOnly && !isInteractive) continue;
@@ -602,9 +610,10 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         const domText = await getDomText(page, { format: "text", maxChars: 80000 });
         if (domText.trim()) {
           // Parse the DOM text into lines, preserving structure
-          const textLines = domText.split("\n")
-            .map(l => l.trim())
-            .filter(l => l.length > 0 && l.length < 500);
+          const textLines = domText
+            .split("\n")
+            .map((l) => l.trim())
+            .filter((l) => l.length > 0 && l.length < 500);
 
           // Add DOM text as a separate section - increased limit for data-rich pages
           if (textLines.length > 0) {
@@ -631,7 +640,9 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       const usageHint = `# Page: ${title}\n# URL: ${url}\n# Interactive elements have [ref=eN] - use browser({action:'act', request:{kind:'click', ref:'eN'}}) to interact\n\n`;
 
       // Debug logging
-      console.log(`[Browser] Snapshot stats: ${snapshotLines.length} lines, ${snapshot.length} chars, truncated=${truncated}`);
+      console.log(
+        `[Browser] Snapshot stats: ${snapshotLines.length} lines, ${snapshot.length} chars, truncated=${truncated}`
+      );
 
       // Return EXACTLY like OpenClaw: pure snapshot text string
       // OpenClaw returns: { content: [{ type: "text", text: snapshot.snapshot }] }
@@ -640,10 +651,6 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       const fullSnapshot = usageHint + snapshot;
       return fullSnapshot;
     }
-
-
-
-
 
     case "screenshot": {
       // Default to visual mode
@@ -814,7 +821,8 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       // And legacy: browser({action:'act', kind:'click', ref:'e12'})
       const request = (args.request as Record<string, unknown>) || args;
       const kind = (request.kind as string) || (args.kind as string);
-      if (!kind) throw new Error("kind required for act action (use request.kind or kind directly)");
+      if (!kind)
+        throw new Error("kind required for act action (use request.kind or kind directly)");
 
       // Get the ref and resolve it to a selector
       const rawRef = (request.ref as string) || (args.ref as string);
@@ -828,7 +836,9 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
           resolvedSelector = elementRef.selector;
           console.log(`[Browser] Resolved ref ${rawRef} to selector: ${resolvedSelector}`);
         } else {
-          console.log(`[Browser] Warning: ref ${rawRef} not found in session refs. Using as literal selector.`);
+          console.log(
+            `[Browser] Warning: ref ${rawRef} not found in session refs. Using as literal selector.`
+          );
         }
       }
 
@@ -989,7 +999,9 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
               const info: RefInfo = { role: refInfo.role, name: refInfo.name };
               await scrollIntoView(page, info);
             } else if (resolvedSelector) {
-              await page.evaluate(`document.querySelector('${resolvedSelector.replace(/'/g, "\\'")}')?.scrollIntoView({ behavior: 'smooth' })`);
+              await page.evaluate(
+                `document.querySelector('${resolvedSelector.replace(/'/g, "\\'")}')?.scrollIntoView({ behavior: 'smooth' })`
+              );
             }
           } else {
             await page.evaluate(`window.scrollBy(0, 300)`);
@@ -1021,7 +1033,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
             const info: RefInfo = { role: refInfo.role, name: refInfo.name };
             const success = await fillField(page, info, text, {
               submit: request.submit === true,
-              slowly: request.slowly === true
+              slowly: request.slowly === true,
             });
             if (!success) throw new Error(`Could not find element for ref ${rawRef}`);
           } else {
@@ -1057,7 +1069,9 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         }
 
         default:
-          throw new Error(`Unknown act kind: ${kind}. Supported: click, type, press, hover, scroll, wait, fill, select, evaluate`);
+          throw new Error(
+            `Unknown act kind: ${kind}. Supported: click, type, press, hover, scroll, wait, fill, select, evaluate`
+          );
       }
     }
 
@@ -1178,7 +1192,9 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       // Visual mode: use profile browser (Puppeteer)
       const page = await getVisualPage(sessionId);
       if (selector) {
-        await page.evaluate(`document.querySelector('${selector.replace(/'/g, "\\'")}')?.scrollIntoView({ behavior: 'smooth' })`);
+        await page.evaluate(
+          `document.querySelector('${selector.replace(/'/g, "\\'")}')?.scrollIntoView({ behavior: 'smooth' })`
+        );
         return {
           success: true,
           selector,
@@ -1325,8 +1341,9 @@ export async function handleWebFetch(
   try {
     const response = await fetch(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
       },
     });
@@ -1349,7 +1366,10 @@ export async function handleWebFetch(
   }
 }
 
-function extractReadableContent(html: string, mode: string = "markdown"): { title: string; content: string } {
+function extractReadableContent(
+  html: string,
+  mode: string = "markdown"
+): { title: string; content: string } {
   // Extract title
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
   const title = titleMatch ? titleMatch[1].trim().replace(/\s+/g, " ") : "";
@@ -1422,7 +1442,7 @@ export async function handleOpenUrl(args: Record<string, unknown>): Promise<unkn
 
   // Puppeteer: wait for navigation to settle (waitForLoadState is Playwright-only)
   // The createPage already does navigation with goto(), just wait briefly for DOM
-  await new Promise(resolve => setTimeout(resolve, 500));
+  await new Promise((resolve) => setTimeout(resolve, 500));
 
   const title = await page.title();
   const currentUrl = page.url();

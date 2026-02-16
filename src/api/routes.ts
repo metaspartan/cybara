@@ -2,7 +2,12 @@ import { config } from "../core/config";
 import db, { tables } from "../core/database";
 import { agentManager, builtinTools } from "../core/agent";
 import { providerManager, providers, type ProviderType } from "../core/providers";
-import { channelManager, channels, processTelegramWebhook, securityManager } from "../core/channels";
+import {
+  channelManager,
+  channels,
+  processTelegramWebhook,
+  securityManager,
+} from "../core/channels";
 import { taskScheduler } from "../core/scheduler";
 import { mcpManager } from "../core/mcp";
 import { mcpRegistry } from "../core/mcp-registry";
@@ -63,7 +68,10 @@ import {
 const log = createLogger("API");
 
 // OAuth redirect flow state storage
-const oauthCallbacks = new Map<string, { status: string; access_token?: string; refresh_token?: string; error?: string }>();
+const oauthCallbacks = new Map<
+  string,
+  { status: string; access_token?: string; refresh_token?: string; error?: string }
+>();
 
 // Helper to open URLs in the system browser from the backend
 async function openUrlInBrowser(url: string): Promise<void> {
@@ -90,37 +98,39 @@ function sanitizeSessionMessages(messages: any[]): any[] {
     }
 
     // Limit and truncate tool calls
-    const sanitizedToolCalls = msg.tool_calls.slice(0, MAX_TOOL_CALLS).map((tc: Record<string, unknown>) => {
-      const sanitized = { ...tc };
+    const sanitizedToolCalls = msg.tool_calls
+      .slice(0, MAX_TOOL_CALLS)
+      .map((tc: Record<string, unknown>) => {
+        const sanitized = { ...tc };
 
-      // Truncate result
-      if (tc.result !== undefined) {
-        try {
-          const resultStr = typeof tc.result === "string"
-            ? tc.result
-            : JSON.stringify(tc.result);
-          sanitized.result = resultStr.length > MAX_RESULT_SIZE
-            ? resultStr.slice(0, MAX_RESULT_SIZE) + "... [truncated]"
-            : tc.result;
-        } catch {
-          sanitized.result = "[Result too large to display]";
+        // Truncate result
+        if (tc.result !== undefined) {
+          try {
+            const resultStr = typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result);
+            sanitized.result =
+              resultStr.length > MAX_RESULT_SIZE
+                ? resultStr.slice(0, MAX_RESULT_SIZE) + "... [truncated]"
+                : tc.result;
+          } catch {
+            sanitized.result = "[Result too large to display]";
+          }
         }
-      }
 
-      // Truncate error
-      if (tc.error && typeof tc.error === "string" && tc.error.length > 200) {
-        sanitized.error = tc.error.slice(0, 200) + "...";
-      }
+        // Truncate error
+        if (tc.error && typeof tc.error === "string" && tc.error.length > 200) {
+          sanitized.error = tc.error.slice(0, 200) + "...";
+        }
 
-      return sanitized;
-    });
+        return sanitized;
+      });
 
     return {
       ...msg,
       tool_calls: sanitizedToolCalls,
-      _truncated: msg.tool_calls.length > MAX_TOOL_CALLS
-        ? `Showing ${MAX_TOOL_CALLS} of ${msg.tool_calls.length} tool calls`
-        : undefined,
+      _truncated:
+        msg.tool_calls.length > MAX_TOOL_CALLS
+          ? `Showing ${MAX_TOOL_CALLS} of ${msg.tool_calls.length} tool calls`
+          : undefined,
     };
   });
 }
@@ -486,7 +496,9 @@ const routes: Record<string, RouteHandler> = {
     const config = providers[providerType as ProviderType] as Record<string, unknown>;
     if (!config) throw new Error(`Unknown provider: ${providerType}`);
 
-    const oauthConfig = config.oauthConfig as { clientId?: string; deviceCodeUrl?: string; scope?: string } | undefined;
+    const oauthConfig = config.oauthConfig as
+      | { clientId?: string; deviceCodeUrl?: string; scope?: string }
+      | undefined;
     if (!oauthConfig?.deviceCodeUrl || !oauthConfig?.clientId) {
       throw new Error(`Provider ${providerType} does not support device code OAuth flow`);
     }
@@ -507,7 +519,7 @@ const routes: Record<string, RouteHandler> = {
       throw new Error(`Device code request failed: HTTP ${res.status}`);
     }
 
-    const json = await res.json() as {
+    const json = (await res.json()) as {
       device_code: string;
       user_code: string;
       verification_uri: string;
@@ -551,7 +563,7 @@ const routes: Record<string, RouteHandler> = {
       throw new Error(`Token poll failed: HTTP ${res.status}`);
     }
 
-    const json = await res.json() as Record<string, string>;
+    const json = (await res.json()) as Record<string, string>;
 
     if ("access_token" in json && typeof json.access_token === "string") {
       return { status: "success", access_token: json.access_token };
@@ -579,7 +591,11 @@ const routes: Record<string, RouteHandler> = {
     const { url } = body as { url: string };
     if (!url || typeof url !== "string") throw new Error("url required");
     // Validate it's a real URL
-    try { new URL(url); } catch { throw new Error("Invalid URL"); }
+    try {
+      new URL(url);
+    } catch {
+      throw new Error("Invalid URL");
+    }
     await openUrlInBrowser(url);
     log.info(`Opened URL in browser: ${url.substring(0, 80)}...`);
     return { ok: true };
@@ -592,15 +608,17 @@ const routes: Record<string, RouteHandler> = {
     const providerConfig = providers[providerType as ProviderType] as Record<string, unknown>;
     if (!providerConfig) throw new Error(`Unknown provider: ${providerType}`);
 
-    const oauthConfig = providerConfig.oauthConfig as {
-      authorizeUrl?: string;
-      tokenUrl?: string;
-      clientId?: string;
-      clientSecret?: string;
-      scope?: string;
-      callbackPort?: number;
-      callbackPath?: string;
-    } | undefined;
+    const oauthConfig = providerConfig.oauthConfig as
+      | {
+          authorizeUrl?: string;
+          tokenUrl?: string;
+          clientId?: string;
+          clientSecret?: string;
+          scope?: string;
+          callbackPort?: number;
+          callbackPath?: string;
+        }
+      | undefined;
 
     if (!oauthConfig?.authorizeUrl || !oauthConfig?.tokenUrl) {
       throw new Error(`Provider ${providerType} does not support OAuth redirect flow`);
@@ -634,7 +652,10 @@ const routes: Record<string, RouteHandler> = {
 
         if (error) {
           oauthCallbacks.set(state, { status: "error", error });
-          setTimeout(() => { callbackServer.stop(); oauthCallbacks.delete(state); }, 5000);
+          setTimeout(() => {
+            callbackServer.stop();
+            oauthCallbacks.delete(state);
+          }, 5000);
           return new Response(
             "<html><body style='font-family:system-ui;text-align:center;padding:60px;background:#0a0a0a;color:#fff'><h2>❌ Authorization Failed</h2><p>You can close this tab.</p></body></html>",
             { headers: { "Content-Type": "text/html" } }
@@ -642,8 +663,14 @@ const routes: Record<string, RouteHandler> = {
         }
 
         if (!code || returnedState !== state) {
-          oauthCallbacks.set(state, { status: "error", error: "Invalid callback (state mismatch)" });
-          setTimeout(() => { callbackServer.stop(); oauthCallbacks.delete(state); }, 5000);
+          oauthCallbacks.set(state, {
+            status: "error",
+            error: "Invalid callback (state mismatch)",
+          });
+          setTimeout(() => {
+            callbackServer.stop();
+            oauthCallbacks.delete(state);
+          }, 5000);
           return new Response("Invalid callback", { status: 400 });
         }
 
@@ -667,7 +694,7 @@ const routes: Record<string, RouteHandler> = {
             body: new URLSearchParams(tokenParams),
           });
 
-          const tokenData = await tokenRes.json() as Record<string, unknown>;
+          const tokenData = (await tokenRes.json()) as Record<string, unknown>;
 
           if (tokenData.access_token && typeof tokenData.access_token === "string") {
             oauthCallbacks.set(state, {
@@ -678,14 +705,20 @@ const routes: Record<string, RouteHandler> = {
           } else {
             oauthCallbacks.set(state, {
               status: "error",
-              error: (tokenData.error_description as string) || (tokenData.error as string) || "Token exchange failed",
+              error:
+                (tokenData.error_description as string) ||
+                (tokenData.error as string) ||
+                "Token exchange failed",
             });
           }
         } catch (err) {
           oauthCallbacks.set(state, { status: "error", error: String(err) });
         }
 
-        setTimeout(() => { callbackServer.stop(); oauthCallbacks.delete(state); }, 5000);
+        setTimeout(() => {
+          callbackServer.stop();
+          oauthCallbacks.delete(state);
+        }, 5000);
         return new Response(
           "<html><body style='font-family:system-ui;text-align:center;padding:60px;background:#0a0a0a;color:#fff'><h2>✅ Connected!</h2><p>You can close this tab and return to Cybara.</p></body></html>",
           { headers: { "Content-Type": "text/html" } }
@@ -717,7 +750,9 @@ const routes: Record<string, RouteHandler> = {
       oauthCallbacks.delete(state);
     }, 600_000);
 
-    log.info(`OAuth started for ${providerType}: callback on port ${callbackServer.port}, path ${callbackPath}`);
+    log.info(
+      `OAuth started for ${providerType}: callback on port ${callbackServer.port}, path ${callbackPath}`
+    );
 
     return {
       auth_url: authUrl,
@@ -737,7 +772,8 @@ const routes: Record<string, RouteHandler> = {
   },
   "GET /api/mcp": () => mcpManager.list(),
   "GET /api/mcp/servers": () => mcpManager.list(), // Legacy alias
-  "POST /api/mcp/servers": (body) => mcpManager.create(body as Parameters<typeof mcpManager.create>[0]), // Legacy alias
+  "POST /api/mcp/servers": (body) =>
+    mcpManager.create(body as Parameters<typeof mcpManager.create>[0]), // Legacy alias
   "GET /api/mcp/tools": () => mcpManager.getToolDefinitions(),
   "POST /api/mcp": (body) => mcpManager.create(body as Parameters<typeof mcpManager.create>[0]),
   "GET /api/mcp/:id": (_body, params) => {
@@ -768,8 +804,7 @@ const routes: Record<string, RouteHandler> = {
   },
   "GET /api/mcp/registry/popular": () => mcpRegistry.getPopular(20),
   "GET /api/mcp/registry/categories": () => mcpRegistry.getCategories(),
-  "GET /api/mcp/registry/category/:cat": (_body, params) =>
-    mcpRegistry.getByCategory(params!.cat),
+  "GET /api/mcp/registry/category/:cat": (_body, params) => mcpRegistry.getByCategory(params!.cat),
   "GET /api/mcp/registry/servers/:id": (_body, params) => {
     const server = mcpRegistry.getDetails(params!.id);
     if (!server) return { error: "Server not found in registry" };
@@ -961,7 +996,11 @@ const routes: Record<string, RouteHandler> = {
   },
 
   "POST /api/ide/create": async (body) => {
-    const { parentPath, name, type } = body as { parentPath?: string; name?: string; type?: "file" | "directory" };
+    const { parentPath, name, type } = body as {
+      parentPath?: string;
+      name?: string;
+      type?: "file" | "directory";
+    };
     if (!parentPath) {
       return { success: false, error: "Missing 'parentPath' parameter" };
     }
@@ -969,7 +1008,10 @@ const routes: Record<string, RouteHandler> = {
       return { success: false, error: "Missing 'name' parameter" };
     }
     if (!type || (type !== "file" && type !== "directory")) {
-      return { success: false, error: "Missing or invalid 'type' parameter (must be 'file' or 'directory')" };
+      return {
+        success: false,
+        error: "Missing or invalid 'type' parameter (must be 'file' or 'directory')",
+      };
     }
     return await createItem(parentPath, name, type);
   },
@@ -1063,9 +1105,7 @@ const routes: Record<string, RouteHandler> = {
     }
 
     const config =
-      typeof channel.config === "string"
-        ? JSON.parse(channel.config)
-        : (channel.config || {});
+      typeof channel.config === "string" ? JSON.parse(channel.config) : channel.config || {};
 
     const channelDef = channels[channel.type as keyof typeof channels];
     const missingRequired = channelDef.fields
@@ -1073,7 +1113,11 @@ const routes: Record<string, RouteHandler> = {
       .map((f) => f.name)
       .filter((key) => {
         const value = (config as Record<string, unknown>)[key];
-        return value === undefined || value === null || (typeof value === "string" && value.trim().length === 0);
+        return (
+          value === undefined ||
+          value === null ||
+          (typeof value === "string" && value.trim().length === 0)
+        );
       });
 
     if (missingRequired.length > 0) {
@@ -1102,16 +1146,27 @@ const routes: Record<string, RouteHandler> = {
     const channelId = params!.id;
     const rawPairings = securityManager.getAllPairings(channelId);
     // Transform to camelCase for UI
-    const pairings = rawPairings.map((p: { id: string; sender_id: string; code: string; platform: string; sender_name?: string; status: string; created_at: number; expires_at: number }) => ({
-      id: p.id,
-      senderId: p.sender_id,
-      code: p.code,
-      platform: p.platform,
-      displayName: p.sender_name,
-      status: p.status,
-      createdAt: new Date(p.created_at).toISOString(),
-      expiresAt: new Date(p.expires_at).toISOString(),
-    }));
+    const pairings = rawPairings.map(
+      (p: {
+        id: string;
+        sender_id: string;
+        code: string;
+        platform: string;
+        sender_name?: string;
+        status: string;
+        created_at: number;
+        expires_at: number;
+      }) => ({
+        id: p.id,
+        senderId: p.sender_id,
+        code: p.code,
+        platform: p.platform,
+        displayName: p.sender_name,
+        status: p.status,
+        createdAt: new Date(p.created_at).toISOString(),
+        expiresAt: new Date(p.expires_at).toISOString(),
+      })
+    );
     return {
       pairings,
       pendingCount: securityManager.getPendingPairings(channelId).length,
@@ -1140,7 +1195,11 @@ const routes: Record<string, RouteHandler> = {
   },
   "PUT /api/channels/:id/security": (body, params) => {
     const channelId = params!.id;
-    const config = body as { dm_policy?: string; pairing_expiry_minutes?: number; max_pending_pairings?: number };
+    const config = body as {
+      dm_policy?: string;
+      pairing_expiry_minutes?: number;
+      max_pending_pairings?: number;
+    };
     securityManager.setConfig(channelId, config as Parameters<typeof securityManager.setConfig>[1]);
     return { success: true, config: securityManager.getConfig(channelId) };
   },
@@ -1221,7 +1280,7 @@ const routes: Record<string, RouteHandler> = {
     return await handleMemorySearch(params!.query || "");
   },
   "DELETE /api/memory/:file": async (body, params) => {
-    const data = body as { index?: number };
+    const data = (body || {}) as { index?: number };
     return await handleMemoryDelete(params!.file, data.index);
   },
   "PUT /api/memory/:file": async (body, params) => {
@@ -1369,11 +1428,11 @@ const routes: Record<string, RouteHandler> = {
           message_count: session.messageCount,
           last_message: lastMessage
             ? {
-              role: lastMessage.role,
-              content:
-                lastMessage.content.slice(0, 100) +
-                (lastMessage.content.length > 100 ? "..." : ""),
-            }
+                role: lastMessage.role,
+                content:
+                  lastMessage.content.slice(0, 100) +
+                  (lastMessage.content.length > 100 ? "..." : ""),
+              }
             : null,
         };
       })
@@ -1391,9 +1450,11 @@ const routes: Record<string, RouteHandler> = {
     // Truncate large message content and sanitize tool calls to prevent browser OOM
     const MAX_CONTENT_SIZE = 10000; // 10KB per message max
     const sanitizedMessages = sanitizeSessionMessages(messages).map((m: any) => {
-      const truncatedContent = typeof m.content === 'string' && m.content.length > MAX_CONTENT_SIZE
-        ? m.content.slice(0, MAX_CONTENT_SIZE) + `\n\n... [content truncated, ${m.content.length - MAX_CONTENT_SIZE} chars omitted]`
-        : m.content;
+      const truncatedContent =
+        typeof m.content === "string" && m.content.length > MAX_CONTENT_SIZE
+          ? m.content.slice(0, MAX_CONTENT_SIZE) +
+            `\n\n... [content truncated, ${m.content.length - MAX_CONTENT_SIZE} chars omitted]`
+          : m.content;
       return {
         ...m,
         content: truncatedContent,
@@ -1416,7 +1477,13 @@ const routes: Record<string, RouteHandler> = {
 
   // ===== SUBAGENTS =====
   "POST /api/subagents/spawn": async (body) => {
-    const data = body as { task: string; model?: string; timeout?: number; label?: string; agentId?: string };
+    const data = body as {
+      task: string;
+      model?: string;
+      timeout?: number;
+      label?: string;
+      agentId?: string;
+    };
     if (!data.task) {
       return { error: "task is required", success: false };
     }
@@ -1440,13 +1507,19 @@ const routes: Record<string, RouteHandler> = {
   },
   "GET /api/subagents": () => {
     const runs = subagentRegistry.listAllRuns();
-    return runs.map(run => ({
+    return runs.map((run) => ({
       id: run.runId,
       label: run.label || run.task.slice(0, 50),
-      status: run.outcome?.status === "ok" ? "completed"
-        : run.outcome?.status === "error" ? "failed"
-          : run.outcome?.status === "timeout" ? "timeout"
-            : run.startedAt ? "running" : "pending",
+      status:
+        run.outcome?.status === "ok"
+          ? "completed"
+          : run.outcome?.status === "error"
+            ? "failed"
+            : run.outcome?.status === "timeout"
+              ? "timeout"
+              : run.startedAt
+                ? "running"
+                : "pending",
       createdAt: new Date(run.createdAt).toISOString(),
       task: run.task.slice(0, 200),
       sessionKey: run.childSessionKey,
@@ -1458,10 +1531,16 @@ const routes: Record<string, RouteHandler> = {
     return {
       id: run.runId,
       label: run.label || run.task.slice(0, 50),
-      status: run.outcome?.status === "ok" ? "completed"
-        : run.outcome?.status === "error" ? "failed"
-          : run.outcome?.status === "timeout" ? "timeout"
-            : run.startedAt ? "running" : "pending",
+      status:
+        run.outcome?.status === "ok"
+          ? "completed"
+          : run.outcome?.status === "error"
+            ? "failed"
+            : run.outcome?.status === "timeout"
+              ? "timeout"
+              : run.startedAt
+                ? "running"
+                : "pending",
       createdAt: new Date(run.createdAt).toISOString(),
       startedAt: run.startedAt ? new Date(run.startedAt).toISOString() : undefined,
       endedAt: run.endedAt ? new Date(run.endedAt).toISOString() : undefined,
@@ -1717,7 +1796,9 @@ const routes: Record<string, RouteHandler> = {
         try {
           const meta = w.metadata ? JSON.parse(w.metadata) : {};
           return meta.level === "critical";
-        } catch { return false; }
+        } catch {
+          return false;
+        }
       }).length,
     };
 
@@ -1731,7 +1812,6 @@ const routes: Record<string, RouteHandler> = {
       contextHealth: contextStats,
     };
   },
-
 
   "GET /api/metrics/tokens": () => {
     const metrics = tables.metrics;
@@ -1906,16 +1986,17 @@ const routes: Record<string, RouteHandler> = {
       }
 
       // If still no metric data, count log entries as activity
-      const hasMetricData = Object.keys(dayData).some(k => k !== 'date');
+      const hasMetricData = Object.keys(dayData).some((k) => k !== "date");
       if (!hasMetricData) {
         try {
           const logCounts = getDailyLogCounts(dateStr);
-          const totalActivity = logCounts.systemCount + logCounts.channelCount + logCounts.messageCount;
+          const totalActivity =
+            logCounts.systemCount + logCounts.channelCount + logCounts.messageCount;
 
           if (totalActivity > 0) {
-            dayData['activity'] = totalActivity;
-            dayData['messages'] = logCounts.messageCount;
-            dayData['channel_events'] = logCounts.channelCount;
+            dayData["activity"] = totalActivity;
+            dayData["messages"] = logCounts.messageCount;
+            dayData["channel_events"] = logCounts.channelCount;
           }
         } catch {
           // Tables might not exist, ignore
@@ -2026,7 +2107,8 @@ export async function handleRequest(req: {
   }
 
   // Security check - auth, rate limiting
-  const clientIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+  const clientIp =
+    req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
     req.headers["x-real-ip"] ||
     "127.0.0.1";
 
@@ -2044,7 +2126,12 @@ export async function handleRequest(req: {
     });
     return {
       status: security.statusCode || 403,
-      headers: { "Content-Type": "application/json", ...corsHeaders, ...securityHeaders, ...security.headers },
+      headers: {
+        "Content-Type": "application/json",
+        ...corsHeaders,
+        ...securityHeaders,
+        ...security.headers,
+      },
       body: { error: security.error },
     };
   }
@@ -2203,8 +2290,7 @@ function findRoute(
     // 2) more static segments
     if (
       dynamicSegments < bestMatch.dynamicSegments ||
-      (dynamicSegments === bestMatch.dynamicSegments &&
-        staticSegments > bestMatch.staticSegments)
+      (dynamicSegments === bestMatch.dynamicSegments && staticSegments > bestMatch.staticSegments)
     ) {
       bestMatch = { routeKey: key, params: localParams, dynamicSegments, staticSegments };
     }

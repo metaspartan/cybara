@@ -70,7 +70,7 @@ export function parseDurableMemory(): DurableMemoryEntry[] {
     const entries: DurableMemoryEntry[] = [];
 
     // Match entries like: ## preference [2024-01-15 10:30:00]
-    const entryRegex = /^## (\w+) \[([^\]]+)\](?: from (.+))?\n([\s\S]*?)(?=^## |\n---|\Z)/gm;
+    const entryRegex = /^## (\w+) \[([^\]]+)\](?: from (.+))?\n([\s\S]*?)(?=^## |\n---|$)/gm;
     let match;
 
     while ((match = entryRegex.exec(content)) !== null) {
@@ -213,4 +213,3 @@ export function isPrivateSessionContext(channel?: string): boolean {
 
     return privatePatterns.some(pattern => pattern.test(channel));
 }
-

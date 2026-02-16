@@ -10,7 +10,6 @@ import { providerManager } from "../../providers";
 import * as subagentRegistry from "../../subagent-registry";
 import type { SubagentRunRecord } from "../../subagent-registry";
 
-
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Session management for subagents
@@ -47,9 +46,7 @@ const subagentQueue: Array<{
   reject: (error: Error) => void;
 }> = [];
 
-export async function handleSessionsSpawn(
-  args: Record<string, unknown>
-): Promise<{
+export async function handleSessionsSpawn(args: Record<string, unknown>): Promise<{
   status: string;
   childSessionKey: string;
   runId: string;
@@ -62,11 +59,12 @@ export async function handleSessionsSpawn(
   const requestedAgentId = args.agentId as string | undefined;
   const modelOverride = args.model as string | undefined;
   const thinkingOverride = args.thinking as string | undefined;
-  const runTimeoutSeconds = typeof args.runTimeoutSeconds === "number"
-    ? Math.max(0, Math.floor(args.runTimeoutSeconds))
-    : typeof args.timeoutSeconds === "number" // Back-compat alias
-      ? Math.max(0, Math.floor(args.timeoutSeconds))
-      : 0;
+  const runTimeoutSeconds =
+    typeof args.runTimeoutSeconds === "number"
+      ? Math.max(0, Math.floor(args.runTimeoutSeconds))
+      : typeof args.timeoutSeconds === "number" // Back-compat alias
+        ? Math.max(0, Math.floor(args.timeoutSeconds))
+        : 0;
   const cleanup = args.cleanup === "delete" ? "delete" : "keep";
 
   // Get requester session key (for nested spawn check)
@@ -170,7 +168,6 @@ function buildSubagentSystemPrompt(
   return lines.filter(Boolean).join("\n");
 }
 
-
 async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Promise<void> {
   const session = sessions.get(sessionId);
   if (!session) return;
@@ -205,7 +202,9 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
     const { getToolSchemasForLLM } = await import("../../tools/index");
     const tools = getToolSchemasForLLM();
 
-    console.log(`[Subagent] Executing ${sessionId} with full agentic loop (${tools.length} tools available)`);
+    console.log(
+      `[Subagent] Executing ${sessionId} with full agentic loop (${tools.length} tools available)`
+    );
 
     // Use AgentManager.callLLM for full agentic execution with tool support
     const result = await agentManager.callLLM(
@@ -231,7 +230,9 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
       subagentRegistry.markRunCompleted(run.runId, result.content);
     }
 
-    console.log(`[Subagent] Session ${sessionId} completed with ${result.tool_calls?.length || 0} tool calls`);
+    console.log(
+      `[Subagent] Session ${sessionId} completed with ${result.tool_calls?.length || 0} tool calls`
+    );
   } catch (error) {
     session.status = "failed";
     session.error = (error as Error).message;
@@ -244,7 +245,6 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
     console.error(`[Subagent] Session ${sessionId} failed:`, error);
   }
 }
-
 
 export async function handleSessionsSend(
   args: Record<string, unknown>
@@ -336,9 +336,7 @@ export async function handleSessionsList(): Promise<{
 }
 
 // Session status - aligned with OpenClaw session_status tool
-export async function handleSessionStatus(
-  args: Record<string, unknown>
-): Promise<{
+export async function handleSessionStatus(args: Record<string, unknown>): Promise<{
   sessionId: string;
   status: string;
   model?: string;
@@ -475,7 +473,8 @@ export async function handleImage(
   args: Record<string, unknown>
 ): Promise<{ description: string; image: string; text?: string }> {
   const image = args.image as string;
-  const prompt = (args.prompt as string) || "Describe what you see in this image and extract any visible text.";
+  const prompt =
+    (args.prompt as string) || "Describe what you see in this image and extract any visible text.";
 
   if (!image) {
     throw new Error("image path is required");
@@ -565,7 +564,9 @@ $stream.Dispose()
   return {
     description: prompt,
     image,
-    text: extractedText || "No text could be extracted. Try using browser({action:'snapshot'}) to read page text directly.",
+    text:
+      extractedText ||
+      "No text could be extracted. Try using browser({action:'snapshot'}) to read page text directly.",
   };
 }
 
@@ -584,9 +585,7 @@ export async function handleTTS(
   };
 }
 
-export async function handleCron(
-  args: Record<string, unknown>
-): Promise<{
+export async function handleCron(args: Record<string, unknown>): Promise<{
   success: boolean;
   action: string;
   data?: unknown;
@@ -708,9 +707,8 @@ export async function handleCron(
 
     case "wake": {
       const text = args.text as string;
-      const mode = (args.mode === "now" || args.mode === "next-heartbeat")
-        ? args.mode
-        : "next-heartbeat";
+      const mode =
+        args.mode === "now" || args.mode === "next-heartbeat" ? args.mode : "next-heartbeat";
 
       if (!text) {
         throw new Error("text is required for wake action");
@@ -725,13 +723,13 @@ export async function handleCron(
     }
 
     default:
-      throw new Error(`Unknown cron action: ${action}. Use: status/list/add/update/remove/run/runs/wake`);
+      throw new Error(
+        `Unknown cron action: ${action}. Use: status/list/add/update/remove/run/runs/wake`
+      );
   }
 }
 
-export async function handleGateway(
-  args: Record<string, unknown>
-): Promise<{
+export async function handleGateway(args: Record<string, unknown>): Promise<{
   success: boolean;
   action: string;
   data?: unknown;
@@ -747,7 +745,7 @@ export async function handleGateway(
     case "status": {
       // Return gateway/agent status
       const agents = agentManager.list();
-      const activeAgents = agents.filter(a => a.status === "running");
+      const activeAgents = agents.filter((a) => a.status === "running");
       const cronStatus = cron.getSchedulerStatus();
 
       return {
@@ -824,6 +822,8 @@ export async function handleGateway(
     }
 
     default:
-      throw new Error(`Unknown gateway action: ${action}. Use: status/restart/config.get/config.patch`);
+      throw new Error(
+        `Unknown gateway action: ${action}. Use: status/restart/config.get/config.patch`
+      );
   }
 }

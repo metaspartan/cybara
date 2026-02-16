@@ -4,7 +4,7 @@ import { fileURLToPath } from "url";
 import { handleRequest } from "./api/routes";
 import { config } from "./core/config";
 import { channelManager, telegramBot, telegramSessions } from "./core/channels";
-import { handleChat } from "./api/chat";
+import { handleChat, sendToSession, type ChatMessage } from "./api/chat";
 import { providerManager } from "./core/providers";
 import { onStatus, addSSEClient, removeSSEClient } from "./core/status";
 
@@ -70,7 +70,8 @@ const PORT = Number(process.env.PORT) || platformConfig.port || 4269;
 // Security: default to localhost-only binding
 // Use --expose or CYBARA_HOST=0.0.0.0 to allow LAN access
 const isExposed = process.argv.includes("--expose") || process.env.CYBARA_HOST === "0.0.0.0";
-const HOST = process.env.CYBARA_HOST || platformConfig.host || (isExposed ? "0.0.0.0" : "127.0.0.1");
+const HOST =
+  process.env.CYBARA_HOST || platformConfig.host || (isExposed ? "0.0.0.0" : "127.0.0.1");
 const TERMINAL_CLI_FLAG = process.argv.includes("--enable-terminal");
 function isTerminalEnabled(): boolean {
   return TERMINAL_CLI_FLAG || config.get<boolean>("terminal_enabled") === true;
@@ -151,9 +152,19 @@ function createStatusStream(): ReadableStream<Uint8Array> {
   });
 }
 
-import { createTerminalSession, getTerminalSession, destroyTerminalSession, listTerminalSessions, destroyAllTerminalSessions, writeToTerminal, startOutputReader } from "./api/terminal";
+import {
+  createTerminalSession,
+  getTerminalSession,
+  destroyTerminalSession,
+  listTerminalSessions,
+  destroyAllTerminalSessions,
+  writeToTerminal,
+  startOutputReader,
+} from "./api/terminal";
 
-interface WsData { sessionId: string }
+interface WsData {
+  sessionId: string;
+}
 
 const server = Bun.serve<WsData>({
   port: PORT,
@@ -173,10 +184,13 @@ const server = Bun.serve<WsData>({
     // Terminal REST endpoints (session management)
     if (pathname.startsWith("/api/terminal") && req.method === "GET") {
       if (!isTerminalEnabled()) {
-        return new Response(JSON.stringify({ error: "Terminal disabled. Start with --enable-terminal" }), {
-          status: 403,
-          headers: { "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({ error: "Terminal disabled. Start with --enable-terminal" }),
+          {
+            status: 403,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
       }
       if (pathname === "/api/terminal/sessions") {
         return new Response(JSON.stringify(listTerminalSessions()), {
@@ -261,12 +275,20 @@ const server = Bun.serve<WsData>({
       startOutputReader(
         session,
         (data: string) => {
-          try { ws.send(data); } catch { }
+          try {
+            ws.send(data);
+          } catch (error) {
+            console.debug("[Terminal] Failed to send websocket data:", error);
+          }
         },
         () => {
-          try { ws.close(); } catch { }
+          try {
+            ws.close();
+          } catch (error) {
+            console.debug("[Terminal] Failed to close websocket:", error);
+          }
           destroyTerminalSession(sessionId);
-        },
+        }
       );
     },
     message(ws, message) {
@@ -307,7 +329,7 @@ import { agentManager } from "./core/agent";
 
 // Set up agent handler for agentTurn jobs - enables agentic cron execution
 setAgentHandler(async (job) => {
-  const agent = agentManager.list().find(a => a.status === "running");
+  const agent = agentManager.list().find((a) => a.status === "running");
   if (!agent) return { success: false, error: "No running agent available" };
 
   try {
@@ -338,8 +360,6 @@ console.log("[Task] Scheduler initialized");
 
 // Subscribe to subagent lifecycle events for announcements (OpenClaw parity)
 import { onSubagentLifecycle } from "./core/subagent-registry";
-import { sendToSession } from "./api/chat";
-import type { ChatMessage } from "./api/chat";
 
 onSubagentLifecycle((event) => {
   if (event.type === "announce" && event.data?.message) {
@@ -366,7 +386,9 @@ telegramBot.setMessageHandler(async (message, chatId, userId, channelId, fileInf
     const storedSessionId = telegramSessions.get(chatId.toString());
     const sessionId = storedSessionId || `telegram:${chatId}`;
 
-    console.log(`[Telegram] Message from chatId=${chatId}, storedSessionId=${storedSessionId}, using sessionId=${sessionId}`);
+    console.log(
+      `[Telegram] Message from chatId=${chatId}, storedSessionId=${storedSessionId}, using sessionId=${sessionId}`
+    );
 
     // If there's a file, prepend file info to the message
     const fullMessage = fileInfo?.hasFile
@@ -385,8 +407,7 @@ telegramBot.setMessageHandler(async (message, chatId, userId, channelId, fileInf
 });
 
 // Auto-setup Telegram if bot token is provided
-const TELEGRAM_BOT_TOKEN =
-  process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
 
 async function initializeChannels() {
@@ -398,7 +419,7 @@ async function initializeChannels() {
     try {
       // Check if Telegram channel already exists (was initialized above)
       const existingChannels = channelManager.list();
-      const hasTelegram = existingChannels.some(c => c.type === "telegram");
+      const hasTelegram = existingChannels.some((c) => c.type === "telegram");
 
       if (hasTelegram) {
         console.log(`[Telegram] Channel already initialized`);

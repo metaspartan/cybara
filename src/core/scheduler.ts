@@ -9,19 +9,21 @@ class TaskScheduler {
   list(): Task[] {
     const rawTasks = tables.tasks.all() as Task[];
     // Normalize tasks to include enabled status for UI
-    return rawTasks.map(t => ({
+    return rawTasks.map((t) => ({
       ...t,
-      config: typeof t.config === 'string' ? JSON.parse(t.config) : t.config,
-      enabled: t.status === 'running' || t.status === 'pending',
+      config: typeof t.config === "string" ? JSON.parse(t.config) : t.config,
+      enabled: t.status === "running" || t.status === "pending",
     }));
   }
 
   get(id: string): Task | undefined {
     const task = tables.tasks.get(id) as Task | undefined;
-    if (task && typeof task.config === 'string') {
+    if (task && typeof task.config === "string") {
       try {
         task.config = JSON.parse(task.config);
-      } catch { /* ignore parse errors */ }
+      } catch {
+        /* ignore parse errors */
+      }
     }
     return task;
   }
@@ -43,7 +45,7 @@ class TaskScheduler {
     const config = {
       ...(data.config || {}),
       action: data.action || data.name,
-      description: data.description || '',
+      description: data.description || "",
     };
 
     const task: Task = {
@@ -72,7 +74,11 @@ class TaskScheduler {
     const task = this.get(id);
     if (!task) return false;
 
-    tables.tasks.update(id, { status: "pending", last_run: undefined, next_run: this.calculateNextRun(task.schedule) });
+    tables.tasks.update(id, {
+      status: "pending",
+      last_run: undefined,
+      next_run: this.calculateNextRun(task.schedule),
+    });
     this.scheduleTask(task);
     console.log(`[Task] Started: ${task.name}`);
     return true;
@@ -129,13 +135,13 @@ class TaskScheduler {
 
     try {
       // Get the action from config
-      const config = typeof task.config === 'string' ? JSON.parse(task.config) : (task.config || {});
+      const config = typeof task.config === "string" ? JSON.parse(task.config) : task.config || {};
       const action = config.action || config.description || task.name;
 
       // Find the agent (specific or any available)
       const agent = task.agent_id
         ? agentManager.get(task.agent_id)
-        : agentManager.list().find(a => a.status === "running") || agentManager.list()[0];
+        : agentManager.list().find((a) => a.status === "running") || agentManager.list()[0];
 
       if (!agent) {
         throw new Error("No agent available for task execution");
@@ -217,7 +223,7 @@ class TaskScheduler {
       const [minutePart, hourPart, , , dowPart] = parts;
 
       // Handle */N minute intervals (e.g., "*/5 * * * *", "*/15 * * * *")
-      if (minutePart.startsWith('*/')) {
+      if (minutePart.startsWith("*/")) {
         const interval = parseInt(minutePart.slice(2));
         if (!isNaN(interval) && interval > 0) {
           const next = new Date(now.getTime() + interval * 60 * 1000);
@@ -226,7 +232,7 @@ class TaskScheduler {
       }
 
       // Handle "0 * * * *" = every hour at :00
-      if (minutePart === '0' && hourPart === '*') {
+      if (minutePart === "0" && hourPart === "*") {
         const next = new Date(now);
         next.setMinutes(0, 0, 0);
         next.setHours(next.getHours() + 1);
@@ -234,7 +240,7 @@ class TaskScheduler {
       }
 
       // Handle "0 */N * * *" = every N hours
-      if (minutePart === '0' && hourPart.startsWith('*/')) {
+      if (minutePart === "0" && hourPart.startsWith("*/")) {
         const interval = parseInt(hourPart.slice(2));
         if (!isNaN(interval) && interval > 0) {
           const next = new Date(now.getTime() + interval * 60 * 60 * 1000);
@@ -253,7 +259,7 @@ class TaskScheduler {
         next.setHours(targetHour);
 
         // If we have a specific day of week
-        if (dowPart !== '*' && dowPart !== '?') {
+        if (dowPart !== "*" && dowPart !== "?") {
           const targetDow = parseInt(dowPart); // 0=Sun, 1=Mon, ..., 6=Sat
           if (!isNaN(targetDow)) {
             const currentDow = next.getDay();
@@ -293,7 +299,11 @@ class TaskScheduler {
           continue;
         }
 
-        if (currentTask.next_run && new Date(currentTask.next_run) <= now && currentTask.status === "pending") {
+        if (
+          currentTask.next_run &&
+          new Date(currentTask.next_run) <= now &&
+          currentTask.status === "pending"
+        ) {
           console.log(`[Task] Time to run: ${currentTask.name}`);
           await handler();
         }
@@ -315,7 +325,7 @@ class TaskScheduler {
     this.initialized = true;
 
     const allTasks = tables.tasks.all() as Task[];
-    const pendingTasks = allTasks.filter(t => t.status === 'pending' && t.schedule);
+    const pendingTasks = allTasks.filter((t) => t.status === "pending" && t.schedule);
 
     console.log(`[Task] Initializing scheduler with ${pendingTasks.length} pending tasks`);
 
@@ -349,4 +359,3 @@ class TaskScheduler {
 }
 
 export const taskScheduler = new TaskScheduler();
-

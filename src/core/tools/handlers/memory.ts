@@ -1,14 +1,12 @@
 // Tool handlers - memory system
-import {
-  readFileSync,
-  existsSync,
-  readdirSync,
-  writeFileSync,
-  appendFileSync,
-  statSync,
-} from "fs";
+import { readFileSync, existsSync, readdirSync, writeFileSync, appendFileSync, statSync } from "fs";
 import { join } from "path";
-import { getVectorStore, saveDurableMemory, getRecentMemoryContext, type DurableMemoryEntry } from "../../memory";
+import {
+  getVectorStore,
+  saveDurableMemory,
+  getRecentMemoryContext,
+  type DurableMemoryEntry,
+} from "../../memory";
 import { memoryDir } from "../../paths";
 
 // Track if vector store has been indexed
@@ -51,9 +49,7 @@ async function ensureVectorStoreIndexed(): Promise<void> {
   vectorStoreInitialized = true;
 }
 
-export async function handleMemorySearch(
-  args: Record<string, unknown>
-): Promise<{
+export async function handleMemorySearch(args: Record<string, unknown>): Promise<{
   results: Array<{ file: string; content: string; score: number; method: string }>;
   query: string;
   searchMethod: string;
@@ -83,7 +79,7 @@ export async function handleMemorySearch(
 
       if (vectorResults.length > 0) {
         return {
-          results: vectorResults.map(r => ({
+          results: vectorResults.map((r) => ({
             file: r.path.replace("memory/", ""),
             content: r.content,
             score: r.score,
@@ -167,9 +163,10 @@ export async function handleMemorySearch(
   return {
     results,
     query,
-    searchMethod: stats.provider !== "none"
-      ? `keyword (semantic unavailable: ${stats.chunks} chunks indexed)`
-      : "keyword (no embedding provider)",
+    searchMethod:
+      stats.provider !== "none"
+        ? `keyword (semantic unavailable: ${stats.chunks} chunks indexed)`
+        : "keyword (no embedding provider)",
   };
 }
 
@@ -356,9 +353,7 @@ export async function handleMemoryContext(
  * Manage heartbeat state for periodic checks
  * Tracks last check times for services like email, calendar, weather, mentions
  */
-export async function handleHeartbeatState(
-  args: Record<string, unknown>
-): Promise<{
+export async function handleHeartbeatState(args: Record<string, unknown>): Promise<{
   action: string;
   state?: import("../../memory").HeartbeatState;
   dueChecks?: string[];
@@ -371,7 +366,7 @@ export async function handleHeartbeatState(
     getDueChecks,
     isQuietHours,
     getHeartbeatSummary,
-    setQuietHours
+    setQuietHours,
   } = await import("../../memory");
 
   const action = (args.action as string) || "status";
@@ -399,10 +394,10 @@ export async function handleHeartbeatState(
     case "due": {
       // Default check intervals in minutes
       const intervals = (args.intervals as Record<string, number>) || {
-        email: 60,       // Check email every hour
-        calendar: 120,   // Check calendar every 2 hours
-        weather: 360,    // Check weather every 6 hours
-        mentions: 30,    // Check social mentions every 30 min
+        email: 60, // Check email every hour
+        calendar: 120, // Check calendar every 2 hours
+        weather: 360, // Check weather every 6 hours
+        mentions: 30, // Check social mentions every 30 min
       };
       const dueChecks = getDueChecks(intervals);
       return {

@@ -38,12 +38,12 @@ export const userSkillsDir = join(cybaraDir, "skills");
 
 // Ensure writable directories exist
 export function ensureCybaraDirs() {
-    const dirs = [cybaraDir, dataDir, memoryDir, logsDir, userSkillsDir];
-    for (const dir of dirs) {
-        if (!existsSync(dir)) {
-            mkdirSync(dir, { recursive: true });
-        }
+  const dirs = [cybaraDir, dataDir, memoryDir, logsDir, userSkillsDir];
+  for (const dir of dirs) {
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
     }
+  }
 }
 
 // Initialize directories on module load

@@ -153,9 +153,10 @@ export async function logToolExecution(
     error?: string;
   }
 ) {
-  const message = status === "success"
-    ? `Tool ${toolName} completed in ${durationMs}ms`
-    : `Tool ${toolName} failed after ${durationMs}ms: ${options?.error || "Unknown error"}`;
+  const message =
+    status === "success"
+      ? `Tool ${toolName} completed in ${durationMs}ms`
+      : `Tool ${toolName} failed after ${durationMs}ms: ${options?.error || "Unknown error"}`;
 
   const logEntry = {
     id: randomUUID(),
@@ -191,9 +192,10 @@ export async function logSkillExecution(
     error?: string;
   }
 ) {
-  const message = status === "success"
-    ? `Skill ${skillName} executed in ${durationMs}ms`
-    : `Skill ${skillName} failed: ${options?.error || "Unknown error"}`;
+  const message =
+    status === "success"
+      ? `Skill ${skillName} executed in ${durationMs}ms`
+      : `Skill ${skillName} failed: ${options?.error || "Unknown error"}`;
 
   const logEntry = {
     id: randomUUID(),

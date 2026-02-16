@@ -16,7 +16,7 @@ export async function handleExec(
 ): Promise<{ output: string; exitCode: number; cwd?: string }> {
   const command = args.command as string;
   const timeout = args.timeout as number | undefined;
-  let workdir = expandTilde(args.workdir as string | undefined);
+  const workdir = expandTilde(args.workdir as string | undefined);
   const env = args.env as Record<string, string> | undefined;
 
   if (!command) {

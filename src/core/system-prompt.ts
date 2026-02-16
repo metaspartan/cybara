@@ -5,7 +5,6 @@ import { getBootstrapContextFiles, isFirstRun } from "./bootstrap-files";
 import type { SkillEntry } from "./skills/types";
 import { formatSkillsForPrompt } from "./skills/loader";
 
-
 // OpenClaw silent reply token
 export const SILENT_REPLY_TOKEN = "[SILENT]";
 
@@ -42,7 +41,8 @@ export const CORE_TOOL_SUMMARIES: Record<string, string> = {
   memory_save: "Save content to memory",
   tts: "Text-to-speech generation",
   // LSP (Language Server Protocol) tools
-  lsp_diagnostics: "Get code errors/warnings after editing files (TypeScript bundled, others need install)",
+  lsp_diagnostics:
+    "Get code errors/warnings after editing files (TypeScript bundled, others need install)",
   lsp_definition: "Go to symbol definition across files",
   lsp_references: "Find all references to a symbol",
   lsp_hover: "Get type info and documentation for a symbol",
@@ -115,7 +115,6 @@ export interface SystemPromptParams {
   /** User timezone for time display */
   userTimezone?: string;
 }
-
 
 // Load custom system prompt configuration
 function loadSystemPromptConfig(): Record<string, unknown> {
@@ -197,11 +196,7 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
 
   // Skills section
   const features = systemPromptConfig?.features as Record<string, boolean> | undefined;
-  if (
-    features?.skillsEnabled !== false &&
-    params.tools.includes("read") &&
-    !isMinimal
-  ) {
+  if (features?.skillsEnabled !== false && params.tools.includes("read") && !isMinimal) {
     lines.push(...buildSkillsSection(params.skills));
   }
 
@@ -241,13 +236,15 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
 
   // Messaging section (enhanced with OpenClaw parity)
   if (features?.messagingEnabled !== false && !isMinimal) {
-    lines.push(...buildMessagingSection({
-      isMinimal,
-      tools: params.tools,
-      inlineButtonsEnabled: params.inlineButtonsEnabled,
-      runtimeChannel: params.runtimeInfo?.channel,
-      messageToolHints: params.messageToolHints,
-    }));
+    lines.push(
+      ...buildMessagingSection({
+        isMinimal,
+        tools: params.tools,
+        inlineButtonsEnabled: params.inlineButtonsEnabled,
+        runtimeChannel: params.runtimeInfo?.channel,
+        messageToolHints: params.messageToolHints,
+      })
+    );
   }
 
   // TTS/Voice section
@@ -337,7 +334,9 @@ export function buildSystemPromptWithBootstrap(
       "BOOTSTRAP.md exists in your workspace. This is your first session.",
       "Follow the BOOTSTRAP.md ritual to establish your identity and learn about your human.",
       "Delete BOOTSTRAP.md when you're done — you won't need it again.",
-    ].join("\n").trim();
+    ]
+      .join("\n")
+      .trim();
   }
 
   return buildSystemPrompt({
@@ -346,7 +345,6 @@ export function buildSystemPromptWithBootstrap(
     extraSystemPrompt: extraSystemPrompt || undefined,
   });
 }
-
 
 function buildIdentitySection(
   name: string,
@@ -377,18 +375,41 @@ function buildIdentitySection(
 // OpenClaw-style tooling section with tool summaries
 function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
   const toolOrder = [
-    "read", "write", "edit", "apply_patch", "grep", "find", "ls",
-    "exec", "process", "web_search", "web_fetch", "browser", "canvas",
-    "nodes", "cron", "message", "gateway", "agents_list", "sessions_list",
-    "sessions_history", "sessions_send", "sessions_spawn", "session_status",
-    "image", "memory_search", "memory_get", "memory_save", "tts",
+    "read",
+    "write",
+    "edit",
+    "apply_patch",
+    "grep",
+    "find",
+    "ls",
+    "exec",
+    "process",
+    "web_search",
+    "web_fetch",
+    "browser",
+    "canvas",
+    "nodes",
+    "cron",
+    "message",
+    "gateway",
+    "agents_list",
+    "sessions_list",
+    "sessions_history",
+    "sessions_send",
+    "sessions_spawn",
+    "session_status",
+    "image",
+    "memory_search",
+    "memory_get",
+    "memory_save",
+    "tts",
   ];
 
-  const availableTools = new Set(tools.map(t => t.toLowerCase()));
-  const enabledTools = toolOrder.filter(t => availableTools.has(t));
-  const extraTools = tools.filter(t => !toolOrder.includes(t.toLowerCase()));
+  const availableTools = new Set(tools.map((t) => t.toLowerCase()));
+  const enabledTools = toolOrder.filter((t) => availableTools.has(t));
+  const extraTools = tools.filter((t) => !toolOrder.includes(t.toLowerCase()));
 
-  const toolLines = [...enabledTools, ...extraTools].map(tool => {
+  const toolLines = [...enabledTools, ...extraTools].map((tool) => {
     const summary = CORE_TOOL_SUMMARIES[tool.toLowerCase()];
     return summary ? `- ${tool}: ${summary}` : `- ${tool}`;
   });
@@ -488,7 +509,7 @@ function buildAgenticBehaviorSection(): string[] {
     "5. **Use tools liberally**: You have tools—use them. Read files, check directories, run commands, search the codebase.",
     "",
     "**What NOT to do:**",
-    "- Don't ask \"Would you like me to...?\" when the answer is obvious from context.",
+    '- Don\'t ask "Would you like me to...?" when the answer is obvious from context.',
     "- Don't stop after listing directory contents—analyze what you find.",
     "- Don't give up on the first error—investigate and retry.",
     "- Don't explain what you're about to do in excessive detail before doing it.",
@@ -564,16 +585,12 @@ function buildReasoningFormatSection(): string[] {
 function buildContextFilesSection(
   contextFiles: Array<{ name: string; path?: string; content: string }>
 ): string[] {
-  const hasSoulFile = contextFiles.some(file => {
+  const hasSoulFile = contextFiles.some((file) => {
     const name = file.name.toLowerCase();
     return name === "soul.md" || name.endsWith("/soul.md");
   });
 
-  const lines = [
-    "# Project Context",
-    "",
-    "The following project context files have been loaded:",
-  ];
+  const lines = ["# Project Context", "", "The following project context files have been loaded:"];
 
   if (hasSoulFile) {
     lines.push(
@@ -590,7 +607,6 @@ function buildContextFilesSection(
 
   return lines;
 }
-
 
 function buildTimeSection(userTimezone?: string): string[] {
   const now = new Date();
@@ -695,10 +711,18 @@ function buildToolsSection(tools: string[]): string[] {
   if (tools.includes("browser")) {
     lines.push("");
     lines.push("### Browser Automation");
-    lines.push("Control the browser via status/start/stop/profiles/tabs/open/snapshot/screenshot/actions.");
-    lines.push("Use snapshot+act for UI automation. Snapshot returns page text with interactive refs [ref=eN].");
-    lines.push("When using refs from snapshot, keep the same tab by passing targetId from snapshot into subsequent actions.");
-    lines.push("Use browser(open) + browser(snapshot) to get page data from JavaScript-rendered sites.");
+    lines.push(
+      "Control the browser via status/start/stop/profiles/tabs/open/snapshot/screenshot/actions."
+    );
+    lines.push(
+      "Use snapshot+act for UI automation. Snapshot returns page text with interactive refs [ref=eN]."
+    );
+    lines.push(
+      "When using refs from snapshot, keep the same tab by passing targetId from snapshot into subsequent actions."
+    );
+    lines.push(
+      "Use browser(open) + browser(snapshot) to get page data from JavaScript-rendered sites."
+    );
   }
 
   lines.push("");
@@ -721,15 +745,16 @@ function buildRuntimeSection(
     parts.push("host=cybara");
   }
 
-  const os = runtimeInfo?.os ||
-    (typeof process !== "undefined" && process.platform
-      ? `${process.platform}`
-      : "unknown");
-  const arch = runtimeInfo?.arch ||
+  const os =
+    runtimeInfo?.os ||
+    (typeof process !== "undefined" && process.platform ? `${process.platform}` : "unknown");
+  const arch =
+    runtimeInfo?.arch ||
     (typeof process !== "undefined" && process.arch ? process.arch : "unknown");
   parts.push(`os=${os} (${arch})`);
 
-  const nodeVersion = runtimeInfo?.node ||
+  const nodeVersion =
+    runtimeInfo?.node ||
     (typeof process !== "undefined" && process.version ? process.version : "unknown");
   parts.push(`node=${nodeVersion}`);
 
@@ -743,13 +768,8 @@ function buildRuntimeSection(
     parts.push(`capabilities=${runtimeInfo.capabilities.join(",")}`);
   }
 
-  return [
-    "## Runtime",
-    `Runtime: ${parts.join(" | ")}`,
-    "",
-  ];
+  return ["## Runtime", `Runtime: ${parts.join(" | ")}`, ""];
 }
-
 
 function buildMessagingSection(params: {
   isMinimal: boolean;
@@ -776,7 +796,7 @@ function buildMessagingSection(params: {
       "### message tool",
       "- Use `message` for proactive sends + channel actions (polls, reactions, etc.).",
       "- For `action=send`, include `to` and `message`.",
-      `- If you use \`message\` (\`action=send\`) to deliver your user-visible reply, respond with ONLY: ${SILENT_REPLY_TOKEN} (avoid duplicate replies).`,
+      `- If you use \`message\` (\`action=send\`) to deliver your user-visible reply, respond with ONLY: ${SILENT_REPLY_TOKEN} (avoid duplicate replies).`
     );
 
     if (params.inlineButtonsEnabled) {
@@ -854,7 +874,9 @@ function buildSafetySection(): string[] {
 // NEW OPENCLAW PARITY SECTIONS
 // ============================================
 
-function buildSandboxSection(sandboxInfo: NonNullable<SystemPromptParams["sandboxInfo"]>): string[] {
+function buildSandboxSection(
+  sandboxInfo: NonNullable<SystemPromptParams["sandboxInfo"]>
+): string[] {
   if (!sandboxInfo.enabled) {
     return [];
   }
@@ -905,28 +927,30 @@ function buildSandboxSection(sandboxInfo: NonNullable<SystemPromptParams["sandbo
   return lines;
 }
 
-function buildReactionsSection(reactionGuidance: NonNullable<SystemPromptParams["reactionGuidance"]>): string[] {
+function buildReactionsSection(
+  reactionGuidance: NonNullable<SystemPromptParams["reactionGuidance"]>
+): string[] {
   const { level, channel } = reactionGuidance;
 
   const guidanceText =
     level === "minimal"
       ? [
-        `Reactions are enabled for ${channel} in MINIMAL mode.`,
-        "React ONLY when truly relevant:",
-        "- Acknowledge important user requests or confirmations",
-        "- Express genuine sentiment (humor, appreciation) sparingly",
-        "- Avoid reacting to routine messages or your own replies",
-        "Guideline: at most 1 reaction per 5-10 exchanges.",
-      ].join("\n")
+          `Reactions are enabled for ${channel} in MINIMAL mode.`,
+          "React ONLY when truly relevant:",
+          "- Acknowledge important user requests or confirmations",
+          "- Express genuine sentiment (humor, appreciation) sparingly",
+          "- Avoid reacting to routine messages or your own replies",
+          "Guideline: at most 1 reaction per 5-10 exchanges.",
+        ].join("\n")
       : [
-        `Reactions are enabled for ${channel} in EXTENSIVE mode.`,
-        "Feel free to react liberally:",
-        "- Acknowledge messages with appropriate emojis",
-        "- Express sentiment and personality through reactions",
-        "- React to interesting content, humor, or notable events",
-        "- Use reactions to confirm understanding or agreement",
-        "Guideline: react whenever it feels natural.",
-      ].join("\n");
+          `Reactions are enabled for ${channel} in EXTENSIVE mode.`,
+          "Feel free to react liberally:",
+          "- Acknowledge messages with appropriate emojis",
+          "- Express sentiment and personality through reactions",
+          "- React to interesting content, humor, or notable events",
+          "- Use reactions to confirm understanding or agreement",
+          "Guideline: react whenever it feels natural.",
+        ].join("\n");
 
   return ["## Reactions", guidanceText, ""];
 }
