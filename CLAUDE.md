@@ -139,7 +139,7 @@ const nested = data?.deep?.value;
 
 ```typescript
 // ❌ DON'T - hardcoded user paths
-const memoryDir = "/Users/carsen/clawd/memory";
+const memoryDir = "/absolute/path/to/memory";
 
 // ✅ DO - relative to project
 const __dirname = dirname(fileURLToPath(import.meta.url));

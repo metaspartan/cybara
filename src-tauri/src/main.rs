@@ -5,8 +5,12 @@ use std::net::TcpStream;
 use tauri::Manager;
 use tauri_plugin_shell::ShellExt;
 
+fn is_server_running_at(addr: &str) -> bool {
+    TcpStream::connect(addr).is_ok()
+}
+
 fn is_server_running() -> bool {
-    TcpStream::connect("127.0.0.1:4269").is_ok()
+    is_server_running_at("127.0.0.1:4269")
 }
 
 fn main() {
@@ -88,3 +92,21 @@ fn main() {
 
 // State to hold the sidecar child process (None if server was already running)
 struct SidecarState(std::sync::Mutex<Option<tauri_plugin_shell::process::CommandChild>>);
+
+#[cfg(test)]
+mod tests {
+    use super::is_server_running_at;
+    use std::net::TcpListener;
+
+    #[test]
+    fn server_check_is_false_for_closed_port() {
+        assert!(!is_server_running_at("127.0.0.1:65534"));
+    }
+
+    #[test]
+    fn server_check_is_true_when_listener_exists() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
+        let addr = listener.local_addr().expect("read local addr");
+        assert!(is_server_running_at(&addr.to_string()));
+    }
+}
