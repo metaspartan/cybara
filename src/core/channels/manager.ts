@@ -100,6 +100,23 @@ class ChannelManager {
         }
     }
 
+    private async stopAdapter(channelId: string, type: ChannelType) {
+        try {
+            const adapter = this.adapters.get(type);
+            if (adapter?.isRunning(channelId)) {
+                await adapter.stop(channelId);
+                console.log(`[ChannelManager] Stopped ${type} adapter for channel ${channelId}`);
+            }
+        } catch (error) {
+            console.error(`[ChannelManager] Failed to stop ${type} adapter:`, error);
+        }
+    }
+
+    private async restartAdapter(channelId: string, type: ChannelType, config: Record<string, unknown>) {
+        await this.stopAdapter(channelId, type);
+        await this.startAdapter(channelId, type, config);
+    }
+
     // Auto-setup Telegram with bot token
     async setupTelegram(botToken: string, baseUrl: string): Promise<Channel | null> {
         const existing = (tables.channels.all() as Channel[]).find((c) => c.type === "telegram");
@@ -136,22 +153,39 @@ class ChannelManager {
         const existing = this.get(id);
         if (!existing) return false;
 
+        const existingType = existing.type as ChannelType;
+        const existingEnabled = !!existing.enabled;
+        const existingConfig =
+            typeof existing.config === "string" ? JSON.parse(existing.config) : (existing.config || {});
+        const mergedConfig = updates.config ? { ...existingConfig, ...updates.config } : existingConfig;
+        const nextEnabled = updates.enabled !== undefined ? updates.enabled : existingEnabled;
+
         // Merge config if updating
         let finalUpdates = updates;
         if (updates.config && existing.config) {
-            const existingConfig = typeof existing.config === "string" ? JSON.parse(existing.config) : existing.config;
             finalUpdates = {
                 ...updates,
-                config: { ...existingConfig, ...updates.config },
+                config: mergedConfig,
             };
         }
 
         tables.channels.update(id, finalUpdates);
 
-        // Restart adapter if config changed and channel is enabled
-        if (updates.config && existing.enabled) {
-            const mergedConfig = { ...existing.config, ...updates.config };
-            this.startAdapter(id, existing.type as ChannelType, mergedConfig);
+        const isDisabling = updates.enabled === false && existingEnabled;
+        const isEnabling = updates.enabled === true && !existingEnabled;
+        const hasConfigUpdate = !!updates.config;
+
+        // Disable: stop running adapter
+        if (isDisabling) {
+            this.stopAdapter(id, existingType);
+        }
+
+        // Config update on enabled channel: restart adapter to apply config changes
+        if (hasConfigUpdate && nextEnabled) {
+            this.restartAdapter(id, existingType, mergedConfig);
+        } else if (isEnabling) {
+            // Enable without config changes: start adapter with persisted config
+            this.startAdapter(id, existingType, mergedConfig);
         }
 
         return true;
