@@ -90,7 +90,9 @@ describe("Providers API", () => {
     test("GET /api/providers/health should return provider health", async () => {
         const { status, data } = await api("GET", "/api/providers/health");
         expect(status).toBe(200);
-        expect(typeof data).toBe("object");
+        expect(data.status).toBe("healthy");
+        expect(data.summary).toBeDefined();
+        expect(Array.isArray(data.providers)).toBe(true);
     });
 });
 
@@ -100,6 +102,16 @@ describe("Channels API", () => {
         expect(status).toBe(200);
         expect(Array.isArray(data)).toBe(true);
     });
+
+    test("POST /api/channels should reject missing required config", async () => {
+        const { status, data } = await api("POST", "/api/channels", {
+            name: `invalid-discord-${Date.now()}`,
+            type: "discord",
+            config: {},
+        });
+        expect(status).toBe(400);
+        expect(typeof data.error).toBe("string");
+    });
 });
 
 describe("Skills API", () => {
@@ -108,13 +120,35 @@ describe("Skills API", () => {
         expect(status).toBe(200);
         expect(Array.isArray(data)).toBe(true);
     });
+
+    test("POST /api/skills should create local skill", async () => {
+        const skillSlug = `audit-skill-${Date.now()}`;
+        const { status, data } = await api("POST", "/api/skills", {
+            name: skillSlug,
+            slug: skillSlug,
+            description: "Audit test skill",
+            content: `# ${skillSlug}\n\nA test skill created by integration tests.`,
+        });
+
+        expect(status).toBe(200);
+        expect(data.name).toBeDefined();
+
+        // Cleanup
+        await api("DELETE", `/api/skills/${skillSlug}`);
+    });
 });
 
 describe("MCP Servers API", () => {
-    test("GET /api/mcp/servers should return object", async () => {
+    test("GET /api/mcp/servers should return array", async () => {
         const { status, data } = await api("GET", "/api/mcp/servers");
         expect(status).toBe(200);
-        expect(typeof data).toBe("object");
+        expect(Array.isArray(data)).toBe(true);
+    });
+
+    test("GET /api/mcp/tools should return array", async () => {
+        const { status, data } = await api("GET", "/api/mcp/tools");
+        expect(status).toBe(200);
+        expect(Array.isArray(data)).toBe(true);
     });
 });
 

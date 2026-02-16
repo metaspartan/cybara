@@ -75,7 +75,32 @@ class ChannelManager {
         return tables.channels.get(id) as Channel | undefined;
     }
 
+    private validateConfig(type: ChannelType, config: Record<string, unknown>): void {
+        const channelDef = channels[type];
+        if (!channelDef) {
+            throw new Error(`Validation error: Unknown channel type "${type}"`);
+        }
+
+        const missingRequired = channelDef.fields
+            .filter((field) => field.required)
+            .filter((field) => {
+                const value = config[field.name];
+                if (value === undefined || value === null) return true;
+                if (typeof value === "string" && value.trim().length === 0) return true;
+                return false;
+            })
+            .map((field) => field.name);
+
+        if (missingRequired.length > 0) {
+            throw new Error(
+                `Validation error: Missing required config field(s) for ${type}: ${missingRequired.join(", ")}`
+            );
+        }
+    }
+
     create(type: ChannelType, name: string, config: Record<string, unknown>): Channel {
+        this.validateConfig(type, config);
+
         const id = crypto.randomUUID();
         tables.channels.create({ id, type, name, config, enabled: true });
 

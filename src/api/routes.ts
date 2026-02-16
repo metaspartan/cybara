@@ -8,7 +8,18 @@ import { mcpManager } from "../core/mcp";
 import { mcpRegistry } from "../core/mcp-registry";
 import { getLSPManager, initLSPManager } from "../core/lsp";
 import * as subagentRegistry from "../core/subagent-registry";
-import { getSkills, getSkill, getSkillCategories, executeSkill, loadAllSkills, createEligibilityContext, getSkillsStatusReport, registryManager, clearSkillsCache } from "../core/skills/index";
+import {
+  getSkills,
+  getSkill,
+  getSkillCategories,
+  executeSkill,
+  loadAllSkills,
+  createEligibilityContext,
+  getSkillsStatusReport,
+  registryManager,
+  clearSkillsCache,
+  createLocalSkill,
+} from "../core/skills/index";
 import {
   handleChat,
   getSession,
@@ -25,6 +36,7 @@ import {
   handleMemorySearch,
   handleMemoryDelete,
   handleMemoryEdit,
+  handleMemoryCreate,
 } from "../api/memory/memory-api";
 import {
   searchAllLogs,
@@ -352,6 +364,92 @@ const routes: Record<string, RouteHandler> = {
         input: m.input,
       })),
     })),
+  "GET /api/providers/health": () => {
+    const providerRows = tables.providers.all() as Array<{
+      id: string;
+      provider: string;
+      name: string;
+      api_key?: string | null;
+      access_token?: string | null;
+      refresh_token?: string | null;
+      is_default?: number | boolean;
+    }>;
+
+    const providerStates = providerRows.map((p) => {
+      const providerInfo = providers[p.provider as ProviderType];
+      const requiresCredentials = providerInfo?.authType !== "none";
+      const hasCredentials = !!(p.api_key || p.access_token || p.refresh_token);
+      const configured = requiresCredentials ? hasCredentials : true;
+      return {
+        id: p.id,
+        provider: p.provider,
+        name: p.name,
+        configured,
+        requiresCredentials,
+        default: !!p.is_default,
+      };
+    });
+
+    return {
+      status: "healthy",
+      summary: {
+        total: providerStates.length,
+        configured: providerStates.filter((p) => p.configured).length,
+        unconfigured: providerStates.filter((p) => !p.configured).length,
+      },
+      providers: providerStates,
+    };
+  },
+  "POST /api/providers/:id/test": async (_body, params) => {
+    const provider = providerManager.getWithCredentials(params!.id);
+    if (!provider) {
+      throw new Error("Provider not found");
+    }
+
+    const providerInfo = providers[provider.provider as ProviderType];
+    if (!providerInfo) {
+      throw new Error(`Unknown provider type: ${provider.provider}`);
+    }
+
+    const requiresCredentials = providerInfo.authType !== "none";
+    const hasCredentials = !!(provider.api_key || provider.access_token || provider.refresh_token);
+
+    if (requiresCredentials && !hasCredentials) {
+      return {
+        success: false,
+        provider: provider.provider,
+        message: "Provider credentials are missing",
+      };
+    }
+
+    if (provider.provider === "ollama") {
+      const baseUrl = provider.base_url || providerInfo.baseUrl || "http://localhost:11434";
+      try {
+        const response = await fetch(`${baseUrl}/api/tags`, {
+          signal: AbortSignal.timeout(5000),
+        });
+        return {
+          success: response.ok,
+          provider: provider.provider,
+          message: response.ok
+            ? "Ollama connection verified"
+            : `Ollama returned HTTP ${response.status}`,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          provider: provider.provider,
+          message: `Failed to connect to Ollama: ${(error as Error).message}`,
+        };
+      }
+    }
+
+    return {
+      success: true,
+      provider: provider.provider,
+      message: "Provider configuration appears valid",
+    };
+  },
   "GET /api/providers/:id": (_body, params) => {
     const provider = providerManager.get(params!.id);
     return provider || { error: "Provider not found" };
@@ -638,13 +736,16 @@ const routes: Record<string, RouteHandler> = {
     return result;
   },
   "GET /api/mcp": () => mcpManager.list(),
+  "GET /api/mcp/servers": () => mcpManager.list(), // Legacy alias
+  "POST /api/mcp/servers": (body) => mcpManager.create(body as Parameters<typeof mcpManager.create>[0]), // Legacy alias
+  "GET /api/mcp/tools": () => mcpManager.getToolDefinitions(),
+  "POST /api/mcp": (body) => mcpManager.create(body as Parameters<typeof mcpManager.create>[0]),
   "GET /api/mcp/:id": (_body, params) => {
     const server = mcpManager.get(params!.id);
     if (!server) return { error: "MCP server not found" };
     const status = mcpManager.getStatus(params!.id);
     return { ...server, ...status };
   },
-  "POST /api/mcp": (body) => mcpManager.create(body as Parameters<typeof mcpManager.create>[0]),
   "PUT /api/mcp/:id": (body, params) => ({
     success: mcpManager.update(params!.id, body as Parameters<typeof mcpManager.update>[1]),
   }),
@@ -654,7 +755,6 @@ const routes: Record<string, RouteHandler> = {
     success: await mcpManager.stop(params!.id),
   }),
   "POST /api/mcp/:id/restart": async (_body, params) => await mcpManager.restart(params!.id),
-  "GET /api/mcp/tools": () => mcpManager.getToolDefinitions(),
   "POST /api/mcp/:id/call": async (body, params) => {
     const data = body as { tool: string; args: Record<string, unknown> };
     return await mcpManager.callTool(params!.id, data.tool, data.args);
@@ -905,13 +1005,44 @@ const routes: Record<string, RouteHandler> = {
       ...value,
       fields: value.fields,
     })),
+  "POST /api/channels/telegram/setup": async (body) => {
+    const data = body as { botToken?: string; webhookUrl?: string };
+    if (!data.botToken) {
+      throw new Error("Validation error: botToken is required");
+    }
+
+    let baseUrl = data.webhookUrl;
+    if (baseUrl) {
+      const parsed = new URL(baseUrl);
+      baseUrl = `${parsed.protocol}//${parsed.host}`;
+    } else {
+      const configuredBaseUrl =
+        config.get<string>("public_url") ||
+        config.get<string>("base_url") ||
+        `http://localhost:${config.get<number>("port") || 4269}`;
+      baseUrl = configuredBaseUrl;
+    }
+
+    const channel = await channelManager.setupTelegram(data.botToken, baseUrl);
+    if (!channel) {
+      throw new Error("Failed to set up Telegram channel");
+    }
+    return channel;
+  },
   "POST /api/channels": (body) => {
-    const data = body as { type: string; name: string; config: Record<string, unknown> };
+    const data = body as { type?: string; name?: string; config?: Record<string, unknown> };
+    if (!data.type || !data.name) {
+      throw new Error("Validation error: type and name are required");
+    }
     return channelManager.create(
       data.type as Parameters<typeof channelManager.create>[0],
       data.name,
-      data.config
+      data.config || {}
     );
+  },
+  "GET /api/channels/:id": (_body, params) => {
+    const channel = channelManager.list().find((c) => c.id === params!.id);
+    return channel || { error: "Channel not found" };
   },
   "PUT /api/channels/:id": (body, params) => ({
     success: channelManager.update(params!.id, body as Parameters<typeof channelManager.update>[1]),
@@ -919,6 +1050,50 @@ const routes: Record<string, RouteHandler> = {
   "POST /api/channels/:id/toggle": (body, params) => {
     const data = body as { enabled: boolean };
     return { success: channelManager.update(params!.id, { enabled: data.enabled }) };
+  },
+  "POST /api/channels/:id/test": async (_body, params) => {
+    const channel = channelManager.get(params!.id);
+    if (!channel) {
+      throw new Error("Channel not found");
+    }
+
+    const adapter = channelManager.getAdapter(channel.type as keyof typeof channels);
+    if (!adapter) {
+      return { success: false, error: `No adapter registered for channel type: ${channel.type}` };
+    }
+
+    const config =
+      typeof channel.config === "string"
+        ? JSON.parse(channel.config)
+        : (channel.config || {});
+
+    const channelDef = channels[channel.type as keyof typeof channels];
+    const missingRequired = channelDef.fields
+      .filter((f) => f.required)
+      .map((f) => f.name)
+      .filter((key) => {
+        const value = (config as Record<string, unknown>)[key];
+        return value === undefined || value === null || (typeof value === "string" && value.trim().length === 0);
+      });
+
+    if (missingRequired.length > 0) {
+      return {
+        success: false,
+        error: `Missing required config fields: ${missingRequired.join(", ")}`,
+        running: adapter.isRunning(channel.id),
+      };
+    }
+
+    if (!adapter.isRunning(channel.id) && channel.enabled) {
+      await adapter.start(channel.id, config as Record<string, unknown>);
+    }
+
+    return {
+      success: adapter.isRunning(channel.id),
+      running: adapter.isRunning(channel.id),
+      type: channel.type,
+      enabled: channel.enabled,
+    };
   },
   "DELETE /api/channels/:id": (_body, params) => ({ success: channelManager.delete(params!.id) }),
 
@@ -972,6 +1147,10 @@ const routes: Record<string, RouteHandler> = {
 
   // ===== TASKS =====
   "GET /api/tasks": () => taskScheduler.list(),
+  "GET /api/tasks/:id": (_body, params) => {
+    const task = taskScheduler.get(params!.id);
+    return task || { error: "Task not found" };
+  },
   "POST /api/tasks": (body) =>
     taskScheduler.create(body as Parameters<typeof taskScheduler.create>[0]),
   "POST /api/tasks/:id/start": async (_body, params) => ({
@@ -981,6 +1160,9 @@ const routes: Record<string, RouteHandler> = {
     success: await taskScheduler.stop(params!.id),
   }),
   "POST /api/tasks/:id/trigger": async (_body, params) => ({
+    success: await taskScheduler.trigger(params!.id),
+  }),
+  "POST /api/tasks/:id/run": async (_body, params) => ({
     success: await taskScheduler.trigger(params!.id),
   }),
   "GET /api/tasks/:id/runs": (_body, params) => tables.taskRuns.getByTask(params!.id),
@@ -1031,6 +1213,10 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/memory": async () => {
     return await handleMemoryList();
   },
+  "POST /api/memory": async (body) => {
+    const data = body as { file?: string; content?: string };
+    return await handleMemoryCreate(data.file || "", data.content || "");
+  },
   "GET /api/memory/search": async (_body, params) => {
     return await handleMemorySearch(params!.query || "");
   },
@@ -1044,6 +1230,41 @@ const routes: Record<string, RouteHandler> = {
   },
 
   // ===== SKILLS =====
+  "POST /api/skills": (body) => {
+    const data = body as {
+      name?: string;
+      description?: string;
+      content?: string;
+      category?: string;
+      slug?: string;
+    };
+
+    if (!data.name) throw new Error("Validation error: Skill name is required");
+    if (!data.content) throw new Error("Validation error: Skill content is required");
+
+    const result = createLocalSkill({
+      name: data.name,
+      description: data.description,
+      content: data.content,
+      category: data.category,
+      slug: data.slug,
+    });
+
+    if (!result.success) {
+      throw new Error(result.error || "Failed to create skill");
+    }
+
+    const createdSkill = getSkill(result.slug || data.name);
+    return (
+      createdSkill || {
+        id: result.slug || data.name,
+        name: data.name,
+        description: data.description || "",
+        category: data.category || "custom",
+        location: result.path,
+      }
+    );
+  },
   "GET /api/skills": () => getSkills(),
   "GET /api/skills/categories": () => getSkillCategories(),
   "GET /api/skills/status": async () => {
@@ -1869,7 +2090,6 @@ export async function handleRequest(req: {
   } catch (error) {
     const duration = Date.now() - startTime;
     const errorMessage = (error as Error).message;
-    const errorStack = (error as Error).stack;
 
     // Log full error for debugging
     console.error(`[API Error] ${method} ${path}:`, error);
@@ -1877,28 +2097,36 @@ export async function handleRequest(req: {
     // Provide helpful error messages based on error type
     let userMessage = "An unexpected error occurred";
     let errorCode = "INTERNAL_ERROR";
+    let statusCode = 500;
 
     if (errorMessage.includes("No API credentials")) {
       userMessage = "API credentials not configured. Please add a provider with valid API keys.";
       errorCode = "MISSING_CREDENTIALS";
+      statusCode = 400;
     } else if (errorMessage.includes("Rate limit")) {
       userMessage = "Rate limit exceeded. Please try again later.";
       errorCode = "RATE_LIMITED";
+      statusCode = 429;
     } else if (errorMessage.includes("circuit breaker")) {
       userMessage = "Service temporarily unavailable. Please try again shortly.";
       errorCode = "SERVICE_UNAVAILABLE";
+      statusCode = 503;
     } else if (errorMessage.includes("LLM API error")) {
       userMessage = `AI service error: ${errorMessage}`;
       errorCode = "LLM_ERROR";
+      statusCode = 502;
     } else if (errorMessage.includes("not found")) {
       userMessage = errorMessage;
       errorCode = "NOT_FOUND";
+      statusCode = 404;
     } else if (errorMessage.includes("already exists")) {
       userMessage = errorMessage;
       errorCode = "CONFLICT";
+      statusCode = 409;
     } else if (errorMessage.includes("Validation") || errorMessage.includes("required")) {
       userMessage = errorMessage;
       errorCode = "VALIDATION_ERROR";
+      statusCode = 400;
     } else {
       // Generic error - show simplified message to user
       userMessage = "An error occurred while processing your request.";
@@ -1908,12 +2136,12 @@ export async function handleRequest(req: {
       timestamp: new Date().toISOString(),
       method,
       path,
-      status: 500,
+      status: statusCode,
       durationMs: duration,
       error: errorMessage,
     });
     return {
-      status: errorMessage.includes("not found") ? 404 : 500,
+      status: statusCode,
       headers: { "Content-Type": "application/json", ...corsHeaders, ...securityHeaders },
       body: {
         error: userMessage,
@@ -1931,7 +2159,12 @@ function findRoute(
   path: string
 ): { routeKey: string | null; params: Record<string, string> } {
   const keys = Object.keys(routes);
-  const params: Record<string, string> = {};
+  let bestMatch: {
+    routeKey: string;
+    params: Record<string, string>;
+    dynamicSegments: number;
+    staticSegments: number;
+  } | null = null;
 
   for (const key of keys) {
     const [routeMethod, routePath] = key.split(" ");
@@ -1942,18 +2175,41 @@ function findRoute(
 
     if (routeParts.length !== actualParts.length) continue;
 
+    const localParams: Record<string, string> = {};
+    let dynamicSegments = 0;
+    let staticSegments = 0;
     let match = true;
     for (let i = 0; i < routeParts.length; i++) {
       if (routeParts[i].startsWith(":")) {
-        params[routeParts[i].slice(1)] = actualParts[i];
+        localParams[routeParts[i].slice(1)] = actualParts[i];
+        dynamicSegments += 1;
       } else if (routeParts[i] !== actualParts[i]) {
         match = false;
         break;
+      } else {
+        staticSegments += 1;
       }
     }
 
-    if (match) return { routeKey: key, params };
+    if (!match) continue;
+
+    if (!bestMatch) {
+      bestMatch = { routeKey: key, params: localParams, dynamicSegments, staticSegments };
+      continue;
+    }
+
+    // Prefer more specific routes:
+    // 1) fewer dynamic segments
+    // 2) more static segments
+    if (
+      dynamicSegments < bestMatch.dynamicSegments ||
+      (dynamicSegments === bestMatch.dynamicSegments &&
+        staticSegments > bestMatch.staticSegments)
+    ) {
+      bestMatch = { routeKey: key, params: localParams, dynamicSegments, staticSegments };
+    }
   }
 
-  return { routeKey: null, params: {} };
+  if (!bestMatch) return { routeKey: null, params: {} };
+  return { routeKey: bestMatch.routeKey, params: bestMatch.params };
 }

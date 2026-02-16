@@ -244,6 +244,62 @@ export function clearSkillsCache(): void {
   skillsCache = null;
 }
 
+function slugifySkillName(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function normalizeSkillContent(name: string, description: string | undefined, content: string): string {
+  const trimmed = content.trim();
+
+  // If caller provides full markdown/frontmatter, preserve it as-is.
+  if (trimmed.startsWith("---") || trimmed.startsWith("#")) {
+    return `${trimmed}\n`;
+  }
+
+  const header = description?.trim()
+    ? `# ${name}\n\n${description.trim()}\n\n`
+    : `# ${name}\n\n`;
+  return `${header}${trimmed}\n`;
+}
+
+export function createLocalSkill(data: {
+  name: string;
+  description?: string;
+  content: string;
+  category?: string;
+  slug?: string;
+}): { success: boolean; path?: string; slug?: string; error?: string } {
+  const name = data.name?.trim();
+  const content = data.content?.trim();
+  const slug = slugifySkillName(data.slug || name);
+
+  if (!name) return { success: false, error: "Validation error: Skill name is required" };
+  if (!content) return { success: false, error: "Validation error: Skill content is required" };
+  if (!slug) return { success: false, error: "Validation error: Invalid skill name" };
+
+  const skillsRoot = join(homedir(), ".cybara", "skills");
+  const targetDir = join(skillsRoot, slug);
+  const skillPath = join(targetDir, "SKILL.md");
+
+  if (existsSync(skillPath)) {
+    return { success: false, error: `Skill already exists: ${slug}` };
+  }
+
+  try {
+    mkdirSync(targetDir, { recursive: true });
+    const normalizedContent = normalizeSkillContent(name, data.description, content);
+    writeFileSync(skillPath, normalizedContent, "utf-8");
+    clearSkillsCache();
+    return { success: true, path: targetDir, slug };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+}
+
 // Skill execution interface
 export interface SkillExecutor {
   (args: Record<string, unknown>): Promise<unknown>;

@@ -90,9 +90,17 @@ export function Providers() {
 
   const handleTestConnection = async (provider: Provider) => {
     addToast('info', `Testing connection to ${provider.name}...`);
-    setTimeout(() => {
-      addToast('success', `Connection to ${provider.name} successful`);
-    }, 1500);
+    try {
+      const res = await fetch(`/api/providers/${provider.id}/test`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        addToast('success', `Connection to ${provider.name} successful`);
+      } else {
+        addToast('error', data.message || data.error || `Connection to ${provider.name} failed`);
+      }
+    } catch (error) {
+      addToast('error', error instanceof Error ? error.message : `Failed to test ${provider.name}`);
+    }
   };
 
   return (

@@ -1,6 +1,6 @@
 // Memory management API
-import { readFileSync, existsSync, writeFileSync, unlinkSync, readdirSync } from "fs";
-import { join } from "path";
+import { readFileSync, existsSync, writeFileSync, unlinkSync, readdirSync, mkdirSync } from "fs";
+import { join, basename } from "path";
 import { memoryDir } from "../../core/paths";
 
 export interface MemoryEntry {
@@ -136,4 +136,37 @@ export async function handleMemoryEdit(file: string, index: number, newContent: 
   }
 
   return { success: true };
+}
+
+export async function handleMemoryCreate(
+  file: string,
+  content: string
+): Promise<{ success: boolean; file: string }> {
+  const trimmedFile = file.trim();
+  const trimmedContent = content.trim();
+
+  if (!trimmedFile) {
+    throw new Error("Validation error: file is required");
+  }
+  if (!trimmedContent) {
+    throw new Error("Validation error: content is required");
+  }
+
+  const safeBaseName = basename(trimmedFile).replace(/[^\w.-]/g, "-");
+  const finalFileName = safeBaseName.endsWith(".md") ? safeBaseName : `${safeBaseName}.md`;
+  const path = join(memoryDir, finalFileName);
+
+  if (existsSync(path)) {
+    throw new Error("Memory file already exists");
+  }
+
+  mkdirSync(memoryDir, { recursive: true });
+
+  const now = new Date();
+  const timestamp = now.toTimeString().slice(0, 8);
+  const title = finalFileName.replace(/\.md$/i, "");
+  const fileContent = `# ${title}\n\n## ${timestamp} - note [manual]\n\n${trimmedContent}\n`;
+
+  writeFileSync(path, fileContent, "utf-8");
+  return { success: true, file: finalFileName };
 }

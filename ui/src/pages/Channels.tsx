@@ -205,12 +205,20 @@ export function Channels() {
   const handleTest = async (channel: Channel) => {
     setTestingChannel(channel);
     addToast('info', `Testing ${channel.name}...`);
+    try {
+      const res = await fetch(`/api/channels/${channel.id}/test`, { method: 'POST' });
+      const data = await res.json();
 
-    // Simulate test - in real implementation, call test API
-    setTimeout(() => {
-      addToast('success', `${channel.name} connection test successful`);
+      if (res.ok && data.success) {
+        addToast('success', `${channel.name} connection test successful`);
+      } else {
+        addToast('error', data.error || `${channel.name} connection test failed`);
+      }
+    } catch (error) {
+      addToast('error', error instanceof Error ? error.message : 'Failed to test channel');
+    } finally {
       setTestingChannel(null);
-    }, 2000);
+    }
   };
 
   const getChannelIcon = (type: string) => {

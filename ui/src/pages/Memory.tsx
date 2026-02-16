@@ -61,7 +61,7 @@ export function Memory() {
   const [deletingEntry, setDeletingEntry] = useState<{ file: string; index: number } | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
-  const { data: memoryData, isLoading } = useMemory();
+  const { data: memoryData, isLoading, refetch: refetchMemory } = useMemory();
   const { data: searchResults } = useSearchMemory(searchQuery);
   const { addToast } = useUIStore();
 
@@ -100,8 +100,20 @@ export function Memory() {
     const content = formData.get('content') as string;
 
     try {
+      const res = await fetch('/api/memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file, content }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to create memory');
+      }
+
       addToast('success', 'Memory entry created');
       setIsCreating(false);
+      await refetchMemory();
     } catch (error) {
       addToast('error', error instanceof Error ? error.message : 'Failed to create memory');
     }

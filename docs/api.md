@@ -96,6 +96,18 @@ GET /api/agents/:id/state
 GET /api/skills
 ```
 
+### Create Local Skill
+```http
+POST /api/skills
+Content-Type: application/json
+
+{
+  "name": "my-skill",
+  "description": "What this skill does",
+  "content": "# my-skill\n\nSkill instructions..."
+}
+```
+
 ### Get Skill Status
 ```http
 GET /api/skills/status
@@ -113,7 +125,8 @@ POST /api/skills/install
 Content-Type: application/json
 
 {
-  "source": "clawhub:git-commit"
+  "slug": "git-commit",
+  "registry": "clawhub"
 }
 ```
 
@@ -140,14 +153,20 @@ GET /api/providers/available
 ```
 Returns all 20 supported provider types with their configuration requirements.
 
+### Provider Health
+```http
+GET /api/providers/health
+```
+
 ### Add Provider
 ```http
 POST /api/providers
 Content-Type: application/json
 
 {
-  "type": "openai",
-  "apiKey": "sk-..."
+  "provider": "openai",
+  "name": "OpenAI",
+  "api_key": "sk-..."
 }
 ```
 
@@ -177,7 +196,7 @@ POST /api/providers/oauth/start
 Content-Type: application/json
 
 {
-  "type": "antigravity"
+  "providerType": "antigravity"
 }
 ```
 Opens a browser window for OAuth authentication. Uses PKCE for security.
@@ -232,7 +251,19 @@ Content-Type: application/json
 
 {
   "type": "telegram",
-  "config": {"token": "123:ABC..."}
+  "name": "Telegram Bot",
+  "config": {"bot_token": "123:ABC..."}
+}
+```
+
+### Auto-Setup Telegram
+```http
+POST /api/channels/telegram/setup
+Content-Type: application/json
+
+{
+  "botToken": "123:ABC...",
+  "webhookUrl": "https://example.com/api/webhooks/telegram"
 }
 ```
 
@@ -259,15 +290,18 @@ POST /api/tasks
 Content-Type: application/json
 
 {
+  "name": "Daily Report",
+  "action": "Check emails",
   "schedule": "0 9 * * *",
-  "task": "Check emails",
-  "agentId": "optional-agent-id"
+  "agent_id": "optional-agent-id"
 }
 ```
 
-### Update Task
+### Start/Stop/Trigger Task
 ```http
-PUT /api/tasks/:id
+POST /api/tasks/:id/start
+POST /api/tasks/:id/stop
+POST /api/tasks/:id/trigger
 ```
 
 ### Delete Task
@@ -325,14 +359,14 @@ POST /api/subagents/:id/kill
 
 ## Memory
 
-### Search
+### List Memory Files
 ```http
-GET /api/memory/search?q=project+architecture
+GET /api/memory
 ```
 
-### Get Lines
+### Search
 ```http
-GET /api/memory/:file?start=10&end=20
+GET /api/memory/search?query=project+architecture
 ```
 
 ### Save
@@ -343,6 +377,27 @@ Content-Type: application/json
 {
   "file": "notes.md",
   "content": "..."
+}
+```
+
+### Edit Memory Entry
+```http
+PUT /api/memory/:file
+Content-Type: application/json
+
+{
+  "index": 0,
+  "content": "updated text"
+}
+```
+
+### Delete Memory Entry or File
+```http
+DELETE /api/memory/:file
+Content-Type: application/json
+
+{
+  "index": 0
 }
 ```
 
