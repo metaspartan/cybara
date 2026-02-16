@@ -5,8 +5,6 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
 import path from "path";
 import { tables } from "../../database";
 import { logChannelMessage } from "../../logging";
-import { toolSchemas } from "../../tools/index";
-import { listSessions } from "../../../api/chat";
 import type {
   ChannelAdapter,
   MessageHandler,
@@ -14,7 +12,8 @@ import type {
   ToolCallInfo,
 } from "../types";
 import { formatToolCallsForTelegram, escapeMarkdown } from "../formatting";
-import { securityManager } from "../security";
+import { buildChannelSecurityConfig, securityManager } from "../security";
+import { getTelegramInboundMediaDir } from "../paths";
 
 // Telegram session storage
 export const telegramSessions = new Map<string, string>();
@@ -23,6 +22,7 @@ export const telegramSessions = new Map<string, string>();
 async function getUserSessions(
   userId: string
 ): Promise<Array<{ id: string; messageCount: number; lastActive: string }>> {
+  const { listSessions } = await import("../../../api/chat");
   const allSessions = await listSessions();
   return allSessions
     .map((s) => ({
@@ -415,6 +415,7 @@ Memories will be automatically created when you share important context with the
     }
 
     case "tools": {
+      const { toolSchemas } = await import("../../tools/index");
       const toolList = Object.keys(toolSchemas).slice(0, 10);
 
       if (toolList.length === 0) {
@@ -495,7 +496,7 @@ async function downloadTelegramMedia(
         contentType = contentType || "application/octet-stream";
     }
 
-    const mediaDir = path.join(process.cwd(), "media", "inbound");
+    const mediaDir = getTelegramInboundMediaDir();
     if (!existsSync(mediaDir)) {
       mkdirSync(mediaDir, { recursive: true, mode: 0o700 });
     }
@@ -582,10 +583,7 @@ export class TelegramBotManager implements ChannelAdapter {
     await registerTelegramCommands(botToken);
 
     // Configure security based on channel config
-    securityManager.setConfig(channelId, {
-      dm_policy: (config.dm_policy as "pairing" | "allowlist" | "open" | "disabled") || "pairing",
-      allowed_senders: (config.allowed_senders as string[]) || [],
-    });
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
 
     const isLocalhost =
       !webhookUrl || webhookUrl.includes("localhost") || webhookUrl.includes("127.0.0.1");

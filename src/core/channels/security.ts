@@ -48,6 +48,35 @@ export const DEFAULT_SECURITY_CONFIG: ChannelSecurityConfig = {
   max_pending_pairings: 3,
 };
 
+const VALID_DM_POLICIES: readonly DMPolicy[] = ["pairing", "allowlist", "open", "disabled"];
+
+/**
+ * Build channel security config from raw channel adapter config.
+ * Only applies allowlist when explicitly provided to avoid wiping persisted senders on startup.
+ */
+export function buildChannelSecurityConfig(
+  config: Record<string, unknown>
+): Partial<ChannelSecurityConfig> {
+  const dmPolicyRaw = config.dm_policy;
+  const dmPolicy =
+    typeof dmPolicyRaw === "string" && VALID_DM_POLICIES.includes(dmPolicyRaw as DMPolicy)
+      ? (dmPolicyRaw as DMPolicy)
+      : "pairing";
+
+  const securityConfig: Partial<ChannelSecurityConfig> = {
+    dm_policy: dmPolicy,
+  };
+
+  if (Array.isArray(config.allowed_senders)) {
+    securityConfig.allowed_senders = config.allowed_senders
+      .filter((sender): sender is string => typeof sender === "string")
+      .map((sender) => sender.trim())
+      .filter((sender) => sender.length > 0);
+  }
+
+  return securityConfig;
+}
+
 /**
  * Generate a cryptographically secure pairing code
  * Format: 6 alphanumeric characters (uppercase)

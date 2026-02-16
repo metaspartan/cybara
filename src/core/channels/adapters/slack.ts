@@ -5,7 +5,7 @@ import { App } from "@slack/bolt";
 import type { ChannelAdapter, ToolCallInfo, MessageHandler } from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
-import { securityManager } from "../security";
+import { buildChannelSecurityConfig, securityManager } from "../security";
 
 // Slack message event type (inline since @slack/bolt doesn't export it directly)
 interface SlackMessageEvent {
@@ -51,10 +51,7 @@ export class SlackAdapter implements ChannelAdapter {
     }
 
     // Configure security based on channel config
-    securityManager.setConfig(channelId, {
-      dm_policy: (config.dm_policy as "pairing" | "allowlist" | "open" | "disabled") || "pairing",
-      allowed_senders: (config.allowed_senders as string[]) || [],
-    });
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
 
     // Check if already running
     if (this.apps.has(channelId)) {

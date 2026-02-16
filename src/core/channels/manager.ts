@@ -25,7 +25,7 @@ export {
   imessageSessions,
 };
 
-class ChannelManager {
+export class ChannelManager {
   private adapters = new Map<ChannelType, ChannelAdapter>();
 
   constructor() {

@@ -264,7 +264,7 @@ describe("CLI Commands", () => {
   });
 
   test("status exits non-zero when API is unreachable", async () => {
-    const { exitCode, stderr } = await runCli(["status"], { CYBARA_API: "http://127.0.0.1:65534" });
+    const { exitCode, stderr } = await runCli(["status"], { CYBARA_API: "http://127.0.0.1:0" });
     expect(exitCode).toBe(1);
     expect(stderr).toContain("Failed to connect to Cybara server");
   });

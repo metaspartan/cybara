@@ -6,7 +6,7 @@ import { io, type Socket } from "socket.io-client";
 import type { ChannelAdapter, ToolCallInfo, MessageHandler } from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
-import { securityManager } from "../security";
+import { buildChannelSecurityConfig, securityManager } from "../security";
 
 // iMessage session storage (chatGuid -> sessionId)
 export const imessageSessions = new Map<string, string>();
@@ -68,10 +68,7 @@ export class IMessageAdapter implements ChannelAdapter {
     }
 
     // Configure security based on channel config
-    securityManager.setConfig(channelId, {
-      dm_policy: (config.dm_policy as "pairing" | "allowlist" | "open" | "disabled") || "pairing",
-      allowed_senders: (config.allowed_senders as string[]) || [],
-    });
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
 
     console.log(`[iMessage] Connecting to BlueBubbles server at ${serverUrl}...`);
 

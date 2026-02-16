@@ -5,7 +5,7 @@ export interface Agent {
   model: string;
   provider: string;
   type?: string;
-  status?: 'active' | 'inactive' | 'idle' | 'running' | 'stopped';
+  status?: "active" | "inactive" | "idle" | "running" | "stopped";
   systemPrompt?: string;
   system_prompt?: string;
   temperature?: number;
@@ -19,7 +19,7 @@ export interface Agent {
 }
 
 export interface AgentMessage {
-  role: 'user' | 'assistant' | 'system' | 'tool';
+  role: "user" | "assistant" | "system" | "tool";
   content: string;
   tool_calls?: Array<{
     id: string;
@@ -45,7 +45,7 @@ export interface Provider {
   isDefault?: boolean;
   is_default?: boolean;
   config?: Record<string, unknown>;
-  authType?: 'none' | 'bearer' | 'token';
+  authType?: "none" | "bearer" | "token";
   createdAt?: string;
   created_at?: string;
 }
@@ -53,7 +53,7 @@ export interface Provider {
 export interface Channel {
   id: string;
   name: string;
-  type: 'telegram' | 'discord' | 'slack' | 'webhook';
+  type: "telegram" | "discord" | "slack" | "whatsapp" | "signal" | "imessage" | "web" | "webhook";
   config: Record<string, unknown>;
   enabled?: boolean;
   isActive?: boolean;
@@ -65,7 +65,7 @@ export interface Channel {
 export interface ChannelField {
   name: string;
   label: string;
-  type: 'text' | 'password' | 'number' | 'boolean' | 'select';
+  type: "text" | "password" | "number" | "boolean" | "select";
   required?: boolean;
   description?: string;
   options?: string[];
@@ -75,7 +75,7 @@ export interface Memory {
   id?: string;
   file?: string;
   content: string;
-  type?: 'user' | 'agent' | 'system';
+  type?: "user" | "agent" | "system";
   agentId?: string;
   userId?: string;
   sessionId?: string;
@@ -96,7 +96,7 @@ export interface Task {
   agentId?: string;
   agent_id?: string;
   action?: string;
-  status?: 'pending' | 'running' | 'completed' | 'failed' | 'active' | 'paused';
+  status?: "pending" | "running" | "completed" | "failed" | "active" | "paused";
   enabled?: boolean;
   schedule?: string;
   lastRun?: string;
@@ -133,14 +133,14 @@ export interface ToolCallInfo {
   name: string;
   args?: Record<string, unknown>;
   arguments?: Record<string, unknown>; // Alias for compatibility
-  status: 'pending' | 'executing' | 'completed' | 'failed' | 'success' | 'error';
+  status: "pending" | "executing" | "completed" | "failed" | "success" | "error";
   result?: unknown;
   error?: string;
   duration?: number;
 }
 
 export interface ChatMessage {
-  role: 'user' | 'assistant' | 'system' | 'tool';
+  role: "user" | "assistant" | "system" | "tool";
   content: string;
   timestamp?: string;
   thinking?: string;
@@ -167,8 +167,8 @@ export interface AvailableProvider {
   name: string;
   description: string;
   models: string[];
-  authType?: 'none' | 'api_key' | 'bearer' | 'token' | 'oauth' | 'aws-sdk';
-  oauthFlow?: 'device_code' | 'redirect' | null;
+  authType?: "none" | "api_key" | "bearer" | "token" | "oauth" | "aws-sdk";
+  oauthFlow?: "device_code" | "redirect" | null;
   hasOAuthConfig?: boolean;
   oauthLoginUrl?: string | null;
 }
@@ -201,7 +201,7 @@ export interface MemoryEntry {
 
 export interface Toast {
   id: string;
-  type: 'success' | 'error' | 'warning' | 'info';
+  type: "success" | "error" | "warning" | "info";
   message: string;
   duration?: number;
 }

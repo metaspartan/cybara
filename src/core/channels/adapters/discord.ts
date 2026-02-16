@@ -5,10 +5,19 @@ import { Client, GatewayIntentBits, Events, Partials, type Message } from "disco
 import type { ChannelAdapter, ToolCallInfo, MessageHandler } from "../types";
 import { formatToolCallsForDiscord } from "../formatting";
 import { logChannelMessage } from "../../logging";
-import { securityManager } from "../security";
+import { buildChannelSecurityConfig, securityManager } from "../security";
 
 // Discord session storage (channelId -> sessionId)
 export const discordSessions = new Map<string, string>();
+
+// Keep intents minimal to avoid Discord disallowed-intent gateway failures.
+// MessageContent is required to read message text; GuildMembers is not required for this adapter.
+export const DISCORD_REQUIRED_INTENTS = [
+  GatewayIntentBits.Guilds,
+  GatewayIntentBits.GuildMessages,
+  GatewayIntentBits.MessageContent,
+  GatewayIntentBits.DirectMessages,
+] as const;
 
 export class DiscordAdapter implements ChannelAdapter {
   type = "discord" as const;
@@ -32,10 +41,7 @@ export class DiscordAdapter implements ChannelAdapter {
     }
 
     // Configure security based on channel config
-    securityManager.setConfig(channelId, {
-      dm_policy: (config.dm_policy as "pairing" | "allowlist" | "open" | "disabled") || "pairing",
-      allowed_senders: (config.allowed_senders as string[]) || [],
-    });
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
 
     // Check if already running
     if (this.clients.has(channelId)) {
@@ -47,11 +53,7 @@ export class DiscordAdapter implements ChannelAdapter {
 
     const client = new Client({
       intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent, // Privileged intent - must be enabled in Discord Developer Portal
-        GatewayIntentBits.DirectMessages,
-        GatewayIntentBits.GuildMembers,
+        ...DISCORD_REQUIRED_INTENTS, // MessageContent must be enabled in Discord Developer Portal
       ],
       partials: [Partials.Channel, Partials.Message, Partials.User],
     });

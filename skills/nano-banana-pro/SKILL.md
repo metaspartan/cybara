@@ -26,7 +26,7 @@ uv run {baseDir}/scripts/generate_image.py --prompt "combine these into one scen
 
 API key
 - `GEMINI_API_KEY` env var
-- Or set `skills."nano-banana-pro".apiKey` / `skills."nano-banana-pro".env.GEMINI_API_KEY` in `~/.clawdbot/moltbot.json`
+- Or set `skills."nano-banana-pro".apiKey` / `skills."nano-banana-pro".env.GEMINI_API_KEY` in `~/.cybara/config.json`
 
 Notes
 - Resolutions: `1K` (default), `2K`, `4K`.

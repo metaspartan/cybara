@@ -5,11 +5,11 @@
 import { Client, LocalAuth, type Message } from "whatsapp-web.js";
 import qrcode from "qrcode-terminal";
 import { existsSync, mkdirSync } from "fs";
-import path from "path";
 import type { ChannelAdapter, ToolCallInfo, MessageHandler } from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
-import { securityManager } from "../security";
+import { buildChannelSecurityConfig, securityManager } from "../security";
+import { getDefaultWhatsAppAuthPath } from "../paths";
 
 // WhatsApp session storage (chatId -> sessionId)
 export const whatsappSessions = new Map<string, string>();
@@ -48,14 +48,10 @@ export class WhatsAppAdapter implements ChannelAdapter {
     console.log(`[WhatsApp] Starting client for channel ${channelId}...`);
 
     // Configure security based on channel config
-    securityManager.setConfig(channelId, {
-      dm_policy: (config.dm_policy as "pairing" | "allowlist" | "open" | "disabled") || "pairing",
-      allowed_senders: (config.allowed_senders as string[]) || [],
-    });
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
 
     // Create auth directory
-    const authPath =
-      (config.auth_path as string) || path.join(process.cwd(), ".whatsapp-auth", channelId);
+    const authPath = (config.auth_path as string) || getDefaultWhatsAppAuthPath(channelId);
     if (!existsSync(authPath)) {
       mkdirSync(authPath, { recursive: true });
     }

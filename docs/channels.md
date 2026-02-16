@@ -32,7 +32,7 @@ Or via API:
 ```bash
 curl -X POST http://localhost:4269/api/channels \
   -H "Content-Type: application/json" \
-  -d '{"type": "telegram", "config": {"token": "123456:ABC..."}}'
+  -d '{"type":"telegram","name":"Telegram Bot","config":{"bot_token":"123456:ABC..."}}'
 ```
 
 #### Telegram Features
@@ -53,6 +53,10 @@ curl -X POST http://localhost:4269/api/channels \
 cybara channel add discord
 # Paste token when prompted
 ```
+
+Discord requirements:
+- Enable `Message Content Intent` in the Discord Developer Portal for your bot.
+- In servers, message the bot with a mention (or DM the bot directly) to trigger responses.
 
 ### Slack
 
@@ -124,7 +128,7 @@ Settings → Channels → Add/Edit
       "type": "telegram",
       "enabled": true,
       "config": {
-        "token": "123456:ABC...",
+        "bot_token": "123456:ABC...",
         "allowedChats": ["@username", "-100123456"],
         "reactions": {
           "enabled": true,

@@ -154,9 +154,9 @@ export function parseSkillFile(content: string, filePath: string, source: SkillE
 
     // Extract metadata from frontmatter
     const rawMetadata = frontmatter.metadata as Record<string, unknown> | undefined;
-    const metadata: SkillMetadata | undefined = rawMetadata?.moltbot as SkillMetadata
-        ?? rawMetadata?.clawdbot as SkillMetadata
-        ?? rawMetadata?.cybara as SkillMetadata
+    // Prefer Cybara metadata; keep Moltbot as transitional fallback.
+    const metadata: SkillMetadata | undefined = rawMetadata?.cybara as SkillMetadata
+        ?? rawMetadata?.moltbot as SkillMetadata
         ?? undefined;
 
     // Build invocation policy

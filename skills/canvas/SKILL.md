@@ -55,14 +55,14 @@ This is why localhost URLs don't work - the node receives the Tailscale hostname
 
 ## Configuration
 
-In `~/.clawdbot/moltbot.json`:
+In `~/.cybara/config.json`:
 
 ```json
 {
   "canvasHost": {
     "enabled": true,
     "port": 18793,
-    "root": "/Users/you/clawd/canvas",
+    "root": "~/cybara/canvas",
     "liveReload": true
   },
   "gateway": {
@@ -84,10 +84,10 @@ Great for development!
 
 ### 1. Create HTML content
 
-Place files in the canvas root directory (default `~/clawd/canvas/`):
+Place files in the canvas root directory (default `~/cybara/canvas/`):
 
 ```bash
-cat > ~/clawd/canvas/my-game.html << 'HTML'
+cat > ~/cybara/canvas/my-game.html << 'HTML'
 <!DOCTYPE html>
 <html>
 <head><title>My Game</title></head>
@@ -102,7 +102,7 @@ HTML
 
 Check how your gateway is bound:
 ```bash
-cat ~/.clawdbot/moltbot.json | jq '.gateway.bind'
+cat ~/.cybara/config.json | jq '.gateway.bind'
 ```
 
 Then construct the URL:
@@ -148,7 +148,7 @@ canvas action:hide node:<node-id>
 **Cause:** URL mismatch between server bind and node expectation.
 
 **Debug steps:**
-1. Check server bind: `cat ~/.clawdbot/moltbot.json | jq '.gateway.bind'`
+1. Check server bind: `cat ~/.cybara/config.json | jq '.gateway.bind'`
 2. Check what port canvas is on: `lsof -i :18793`
 3. Test URL directly: `curl http://<hostname>:18793/__moltbot__/canvas/<file>.html`
 
@@ -174,8 +174,8 @@ If live reload isn't working:
 The canvas host serves from `/__moltbot__/canvas/` prefix:
 
 ```
-http://<host>:18793/__moltbot__/canvas/index.html  → ~/clawd/canvas/index.html
-http://<host>:18793/__moltbot__/canvas/games/snake.html → ~/clawd/canvas/games/snake.html
+http://<host>:18793/__moltbot__/canvas/index.html  → ~/cybara/canvas/index.html
+http://<host>:18793/__moltbot__/canvas/games/snake.html → ~/cybara/canvas/games/snake.html
 ```
 
 The `/__moltbot__/canvas/` prefix is defined by `CANVAS_HOST_PATH` constant.

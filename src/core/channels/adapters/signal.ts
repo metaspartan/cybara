@@ -8,7 +8,7 @@ import { existsSync } from "fs";
 import type { ChannelAdapter, ToolCallInfo, MessageHandler } from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
-import { securityManager } from "../security";
+import { buildChannelSecurityConfig, securityManager } from "../security";
 
 // Signal session storage (phoneNumber -> sessionId)
 export const signalSessions = new Map<string, string>();
@@ -88,10 +88,7 @@ export class SignalAdapter implements ChannelAdapter {
     }
 
     // Configure security based on channel config
-    securityManager.setConfig(channelId, {
-      dm_policy: (config.dm_policy as "pairing" | "allowlist" | "open" | "disabled") || "pairing",
-      allowed_senders: (config.allowed_senders as string[]) || [],
-    });
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
 
     // Check if already running
     if (this.connections.has(channelId)) {
