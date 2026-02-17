@@ -13,6 +13,7 @@ import {
   sessionsApi,
   subagentApi,
   tasksApi,
+  walletApi,
 } from "../../ui/src/lib/api";
 
 type FetchCall = {
@@ -331,6 +332,181 @@ describe("UI API client wiring", () => {
 
     expect(calls[1].url).toBe("/api/setup/complete");
     expect(calls[1].init?.method).toBe("POST");
+  });
+
+  test("walletApi uses expected wallet endpoints", async () => {
+    await walletApi.status();
+    await walletApi.rpc();
+    await walletApi.rpcStatus();
+    await walletApi.updateRpc({
+      ethRpc: "https://ethereum-rpc.publicnode.com",
+      solRpc: "https://api.mainnet-beta.solana.com",
+      btcApi: "https://mempool.space/api",
+    });
+    await walletApi.accounts({ chains: ["eth", "btc"], count: 2, startIndex: 1 });
+    await walletApi.receive("sol", 3);
+    await walletApi.balances({ chains: ["eth", "sol"], count: 3, startIndex: 0 });
+    await walletApi.tokenBalances({ chain: "eth", index: 1, includeZero: true });
+    await walletApi.tokenTransactions({
+      chain: "sol",
+      index: 2,
+      limit: 15,
+      tokenAddress: "So11111111111111111111111111111111111111112",
+      rpcUrl: "https://sol-rpc.example",
+    });
+    await walletApi.transactions({
+      chain: "btc",
+      index: 4,
+      limit: 12,
+      rpcUrl: "https://rpc.example",
+    });
+    await walletApi.send({ chain: "eth", to: "0xabc", amount: "0.1", index: 1, memo: "test memo" });
+    await walletApi.sendToken({
+      chain: "sol",
+      tokenAddress: "So11111111111111111111111111111111111111112",
+      to: "SoReceiver111111111111111111111111111111111111",
+      amount: "1.5",
+      index: 2,
+      decimals: 9,
+    });
+    await walletApi.ethContractCall({
+      contractAddress: "0x0000000000000000000000000000000000000001",
+      method: "balanceOf(address)",
+      methodSignature: "balanceOf(address)",
+      args: ["0x0000000000000000000000000000000000000002"],
+      gasLimit: "210000",
+      maxFeePerGasGwei: "25",
+      nonce: 4,
+      readOnly: true,
+    });
+    await walletApi.solProgramInstruction({
+      programId: "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+      accounts: [
+        { pubkey: "11111111111111111111111111111111", isSigner: false, isWritable: false },
+      ],
+      dataHex: "0x0102",
+      computeUnitLimit: 180000,
+      computeUnitPriceMicroLamports: 2000,
+      skipPreflight: true,
+      index: 0,
+    });
+    await walletApi.swapEthUniswap({
+      tokenOut: "LINK",
+      percent: 50,
+      slippageBps: 120,
+      dryRun: true,
+      index: 1,
+    });
+    await walletApi.signMessage("hello", "eth", 5);
+    await walletApi.getAgentPolicy();
+    await walletApi.updateAgentPolicy({
+      allowNativeSend: true,
+      allowTokenSend: true,
+      allowEthSwaps: true,
+      allowedEthContracts: ["0x0000000000000000000000000000000000000001"],
+      allowedSolPrograms: ["11111111111111111111111111111111"],
+    });
+    await walletApi.setAgentAccess(true);
+    await walletApi.deleteWallet("secretpass");
+
+    expect(calls).toHaveLength(20);
+    expect(calls[0].url).toBe("/api/wallet/status");
+    expect(calls[1].url).toBe("/api/wallet/rpc");
+    expect(calls[2].url).toBe("/api/wallet/rpc/status");
+    expect(calls[3].url).toBe("/api/wallet/rpc");
+    expect(calls[3].init?.method).toBe("PUT");
+    expect(JSON.parse(String(calls[3].init?.body))).toEqual({
+      ethRpc: "https://ethereum-rpc.publicnode.com",
+      solRpc: "https://api.mainnet-beta.solana.com",
+      btcApi: "https://mempool.space/api",
+    });
+    expect(calls[4].url).toBe("/api/wallet/accounts?chains=eth%2Cbtc&count=2&startIndex=1");
+    expect(calls[5].url).toBe("/api/wallet/receive?chain=sol&index=3");
+    expect(calls[6].url).toBe("/api/wallet/balances?chains=eth%2Csol&count=3&startIndex=0");
+    expect(calls[7].url).toBe("/api/wallet/tokens?chain=eth&index=1&includeZero=true");
+    expect(calls[8].url).toBe(
+      "/api/wallet/token-transactions?chain=sol&index=2&limit=15&tokenAddress=So11111111111111111111111111111111111111112&rpcUrl=https%3A%2F%2Fsol-rpc.example"
+    );
+    expect(calls[9].url).toBe(
+      "/api/wallet/transactions?chain=btc&index=4&limit=12&rpcUrl=https%3A%2F%2Frpc.example"
+    );
+    expect(calls[10].url).toBe("/api/wallet/send");
+    expect(calls[10].init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[10].init?.body))).toEqual({
+      chain: "eth",
+      to: "0xabc",
+      amount: "0.1",
+      index: 1,
+      memo: "test memo",
+    });
+    expect(calls[11].url).toBe("/api/wallet/send-token");
+    expect(calls[11].init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[11].init?.body))).toEqual({
+      chain: "sol",
+      tokenAddress: "So11111111111111111111111111111111111111112",
+      to: "SoReceiver111111111111111111111111111111111111",
+      amount: "1.5",
+      index: 2,
+      decimals: 9,
+    });
+    expect(calls[12].url).toBe("/api/wallet/eth-contract");
+    expect(calls[12].init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[12].init?.body))).toEqual({
+      contractAddress: "0x0000000000000000000000000000000000000001",
+      method: "balanceOf(address)",
+      methodSignature: "balanceOf(address)",
+      args: ["0x0000000000000000000000000000000000000002"],
+      gasLimit: "210000",
+      maxFeePerGasGwei: "25",
+      nonce: 4,
+      readOnly: true,
+    });
+    expect(calls[13].url).toBe("/api/wallet/sol-instruction");
+    expect(calls[13].init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[13].init?.body))).toEqual({
+      programId: "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+      accounts: [
+        { pubkey: "11111111111111111111111111111111", isSigner: false, isWritable: false },
+      ],
+      dataHex: "0x0102",
+      computeUnitLimit: 180000,
+      computeUnitPriceMicroLamports: 2000,
+      skipPreflight: true,
+      index: 0,
+    });
+    expect(calls[14].url).toBe("/api/wallet/swap-eth-uniswap");
+    expect(calls[14].init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[14].init?.body))).toEqual({
+      tokenOut: "LINK",
+      percent: 50,
+      slippageBps: 120,
+      dryRun: true,
+      index: 1,
+    });
+    expect(calls[15].url).toBe("/api/wallet/sign");
+    expect(calls[15].init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[15].init?.body))).toEqual({
+      message: "hello",
+      chain: "eth",
+      index: 5,
+    });
+    expect(calls[16].url).toBe("/api/wallet/agent-policy");
+    expect(calls[17].url).toBe("/api/wallet/agent-policy");
+    expect(calls[17].init?.method).toBe("PUT");
+    expect(JSON.parse(String(calls[17].init?.body))).toEqual({
+      allowNativeSend: true,
+      allowTokenSend: true,
+      allowEthSwaps: true,
+      allowedEthContracts: ["0x0000000000000000000000000000000000000001"],
+      allowedSolPrograms: ["11111111111111111111111111111111"],
+    });
+    expect(calls[18].url).toBe("/api/wallet/agent-access");
+    expect(calls[18].init?.method).toBe("PUT");
+    expect(calls[19].url).toBe("/api/wallet");
+    expect(calls[19].init?.method).toBe("DELETE");
+    expect(JSON.parse(String(calls[19].init?.body))).toEqual({
+      password: "secretpass",
+    });
   });
 
   test("returns success=false with text error body on non-OK response", async () => {

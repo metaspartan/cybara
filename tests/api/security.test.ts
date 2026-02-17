@@ -8,7 +8,7 @@ describe("API security module", () => {
   beforeAll(async () => {
     const prior = process.env.CYBARA_API_KEY;
     process.env.CYBARA_API_KEY = "cybara_test_key_for_security_suite";
-    security = await import("../../src/api/security");
+    security = (await import(`../../src/api/security?test=${Date.now()}`)) as SecurityModule;
     if (prior === undefined) {
       delete process.env.CYBARA_API_KEY;
     } else {

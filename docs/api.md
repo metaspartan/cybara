@@ -207,6 +207,189 @@ POST /api/providers/oauth/callback-status
 ```
 Poll this endpoint to check if the OAuth flow completed.
 
+## Wallet
+
+Encrypted local BIP39 wallet with multi-chain derivations (`eth`, `btc`, `sol`).
+
+### Status / Locking
+```http
+GET /api/wallet/status
+POST /api/wallet/create
+POST /api/wallet/import
+POST /api/wallet/unlock
+POST /api/wallet/lock
+DELETE /api/wallet
+PUT /api/wallet/agent-access
+GET /api/wallet/agent-policy
+PUT /api/wallet/agent-policy
+```
+
+Create/import/unlock payloads:
+```json
+{
+  "password": "your-password",
+  "mnemonic": "24 words (import only)"
+}
+```
+
+### Derivations / Portfolio
+```http
+GET /api/wallet/accounts?chains=eth,btc,sol&count=3&startIndex=0
+GET /api/wallet/receive?chain=eth&index=0
+GET /api/wallet/balances?chains=eth,btc,sol&count=3&startIndex=0
+GET /api/wallet/tokens?chain=eth&index=0&includeZero=false
+GET /api/wallet/token-transactions?chain=eth&index=0&limit=20
+GET /api/wallet/transactions?chain=eth&index=0&limit=10
+```
+
+### Send Transaction
+```http
+POST /api/wallet/send
+Content-Type: application/json
+
+{
+  "chain": "eth",
+  "to": "0x...",
+  "amount": "0.01",
+  "index": 0,
+  "memo": "optional",
+  "feeRate": 4
+}
+```
+
+`feeRate` is used for BTC (sat/vByte).
+
+### Send Token (ERC-20 / SPL)
+```http
+POST /api/wallet/send-token
+Content-Type: application/json
+
+{
+  "chain": "eth",
+  "tokenAddress": "0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+  "to": "0x...",
+  "amount": "10.5",
+  "index": 0,
+  "decimals": 6
+}
+```
+
+For Solana, pass the SPL mint in `tokenAddress` (or `mint`) and set `chain` to `sol`.
+
+### Token Transfer History (ERC-20 / SPL)
+```http
+GET /api/wallet/token-transactions?chain=eth&index=0&limit=20&tokenAddress=0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48
+```
+
+For Solana, set `chain=sol` and optionally pass `rpcUrl`.
+
+### ETH Smart Contract Call
+```http
+POST /api/wallet/eth-contract
+Content-Type: application/json
+
+{
+  "contractAddress": "0x...",
+  "method": "balanceOf(address)",
+  "methodSignature": "balanceOf(address)",
+  "abi": "[\"function balanceOf(address owner) view returns (uint256)\"]",
+  "args": ["0x..."],
+  "readOnly": true,
+  "gasLimit": "210000",
+  "maxFeePerGasGwei": "25",
+  "maxPriorityFeePerGasGwei": "1.5",
+  "nonce": 7
+}
+```
+
+`abi` is optional when `methodSignature` is provided. Set `readOnly: false` (or omit) to send a signed transaction from the derived wallet index.
+
+### Solana Program Instruction
+```http
+POST /api/wallet/sol-instruction
+Content-Type: application/json
+
+{
+  "programId": "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+  "accounts": [
+    { "pubkey": "11111111111111111111111111111111", "isSigner": false, "isWritable": false }
+  ],
+  "dataHex": "0x0102",
+  "computeUnitLimit": 180000,
+  "computeUnitPriceMicroLamports": 2000,
+  "skipPreflight": false,
+  "index": 0,
+  "rpcUrl": "https://api.mainnet-beta.solana.com"
+}
+```
+
+Use exactly one data field: `dataBase64`, `dataHex`, or `dataUtf8`. `keys` is also accepted as an alias of `accounts`.
+
+### Sign Message (ETH)
+```http
+POST /api/wallet/sign
+Content-Type: application/json
+
+{
+  "message": "hello",
+  "chain": "eth",
+  "index": 0
+}
+```
+
+### RPC Endpoint Configuration
+```http
+GET /api/wallet/rpc
+GET /api/wallet/rpc/status
+PUT /api/wallet/rpc
+```
+
+Update payload:
+```json
+{
+  "ethRpc": "https://ethereum-rpc.publicnode.com",
+  "solRpc": "https://api.mainnet-beta.solana.com",
+  "btcApi": "https://mempool.space/api"
+}
+```
+
+`GET /api/wallet/rpc/status` returns health/latency/latest-height for ETH, SOL, and BTC endpoints.
+
+### Agent Wallet Policy
+```http
+GET /api/wallet/agent-policy
+PUT /api/wallet/agent-policy
+```
+
+Update payload example:
+```json
+{
+  "allowNativeSend": true,
+  "allowTokenSend": true,
+  "allowEthContractWrite": false,
+  "allowSolProgramInstruction": false,
+  "allowEthSwaps": true,
+  "allowedEthContracts": ["0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"],
+  "allowedSolPrograms": []
+}
+```
+
+### Uniswap ETH Swap (V2)
+```http
+POST /api/wallet/swap-eth-uniswap
+Content-Type: application/json
+
+{
+  "tokenOut": "LINK",
+  "percent": 50,
+  "slippageBps": 100,
+  "dryRun": true,
+  "index": 0
+}
+```
+
+Set `dryRun: false` (or omit) to broadcast the swap transaction.
+
 ## Browser
 
 ### Get Status

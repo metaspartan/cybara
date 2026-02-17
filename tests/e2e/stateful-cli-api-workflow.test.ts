@@ -244,4 +244,76 @@ describe("Stateful CLI + API e2e", () => {
     await api("DELETE", `/api/chat/sessions/${sessionId}`);
     await api("DELETE", `/api/agents/${agentId}`);
   });
+
+  test("wallet CLI and API state flows stay consistent", async () => {
+    const initialStatus = await api("GET", "/api/wallet/status");
+    expect(initialStatus.status).toBe(200);
+    expect(initialStatus.data.exists).toBe(false);
+
+    const create = await runCli(["wallet", "create", "--password", "stateful-wallet-pass"]);
+    expect(create.exitCode).toBe(0);
+    expect(create.stdout).toContain("Wallet created and unlocked");
+
+    const statusAfterCreate = await api("GET", "/api/wallet/status");
+    expect(statusAfterCreate.status).toBe(200);
+    expect(statusAfterCreate.data.exists).toBe(true);
+    expect(statusAfterCreate.data.unlocked).toBe(true);
+    expect(statusAfterCreate.data.primaryAddresses.eth).toMatch(/^0x/);
+    expect(statusAfterCreate.data.primaryAddresses.btc).toMatch(/^bc1/);
+    expect(typeof statusAfterCreate.data.primaryAddresses.sol).toBe("string");
+
+    const accounts = await runCli([
+      "wallet",
+      "accounts",
+      "--chains",
+      "eth,btc,sol",
+      "--count",
+      "1",
+      "--start",
+      "0",
+    ]);
+    expect(accounts.exitCode).toBe(0);
+    expect(accounts.stdout).toContain("WALLET ACCOUNTS");
+    expect(accounts.stdout).toContain("ETH index 0");
+    expect(accounts.stdout).toContain("BTC index 0");
+    expect(accounts.stdout).toContain("SOL index 0");
+
+    const rpcSet = await runCli([
+      "wallet",
+      "rpc",
+      "set",
+      "--eth",
+      "https://ethereum-rpc.publicnode.com",
+      "--sol",
+      "https://api.mainnet-beta.solana.com",
+      "--btc",
+      "https://mempool.space/api",
+    ]);
+    expect(rpcSet.exitCode).toBe(0);
+    expect(rpcSet.stdout).toContain("Wallet RPC settings updated");
+
+    const agentAccess = await runCli(["wallet", "agent-access", "on"]);
+    expect(agentAccess.exitCode).toBe(0);
+    expect(agentAccess.stdout).toContain("Agent wallet access enabled");
+
+    const statusAfterAgentToggle = await api("GET", "/api/wallet/status");
+    expect(statusAfterAgentToggle.status).toBe(200);
+    expect(statusAfterAgentToggle.data.agentAccessEnabled).toBe(true);
+
+    const lock = await runCli(["wallet", "lock"]);
+    expect(lock.exitCode).toBe(0);
+    expect(lock.stdout).toContain("Wallet locked");
+
+    const statusAfterLock = await api("GET", "/api/wallet/status");
+    expect(statusAfterLock.status).toBe(200);
+    expect(statusAfterLock.data.unlocked).toBe(false);
+
+    const unlock = await runCli(["wallet", "unlock", "--password", "stateful-wallet-pass"]);
+    expect(unlock.exitCode).toBe(0);
+    expect(unlock.stdout).toContain("Wallet unlocked");
+
+    const statusAfterUnlock = await api("GET", "/api/wallet/status");
+    expect(statusAfterUnlock.status).toBe(200);
+    expect(statusAfterUnlock.data.unlocked).toBe(true);
+  });
 });

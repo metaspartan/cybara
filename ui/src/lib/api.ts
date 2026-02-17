@@ -161,8 +161,10 @@ export const mcpApi = {
       method: "POST",
       body: JSON.stringify(server),
     }),
-  start: (id: string) => fetchApi<{ success: boolean; error?: string }>(`/mcp/${id}/start`, { method: "POST" }),
-  stop: (id: string) => fetchApi<{ success: boolean; error?: string }>(`/mcp/${id}/stop`, { method: "POST" }),
+  start: (id: string) =>
+    fetchApi<{ success: boolean; error?: string }>(`/mcp/${id}/start`, { method: "POST" }),
+  stop: (id: string) =>
+    fetchApi<{ success: boolean; error?: string }>(`/mcp/${id}/stop`, { method: "POST" }),
   delete: (id: string) => fetchApi<{ success: boolean }>(`/mcp/${id}`, { method: "DELETE" }),
 };
 
@@ -180,6 +182,339 @@ export const settingsApi = {
 export const setupApi = {
   status: () => fetchApi<{ complete: boolean }>("/setup/status"),
   complete: () => fetchApi<{ success: boolean }>("/setup/complete", { method: "POST" }),
+};
+
+export interface WalletStatus {
+  exists: boolean;
+  unlocked: boolean;
+  address?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  unlockExpiresAt?: string;
+  wordCount?: number;
+  kdf?: {
+    name: "PBKDF2";
+    hash: "SHA-256";
+    iterations: number;
+  };
+  agentAccessEnabled: boolean;
+  chains: Array<WalletChain>;
+  primaryAddresses?: Record<WalletChain, string>;
+}
+
+export type WalletChain = "eth" | "btc" | "sol";
+export type WalletTokenChain = "eth" | "sol";
+
+export interface WalletAccount {
+  chain: WalletChain;
+  index: number;
+  path: string;
+  address: string;
+}
+
+export interface WalletBalance extends WalletAccount {
+  symbol: "ETH" | "BTC" | "SOL";
+  decimals: number;
+  amount: string;
+  raw: string;
+}
+
+export interface WalletTransaction {
+  chain: WalletChain;
+  txid: string;
+  status: "confirmed" | "pending" | "failed";
+  from?: string;
+  to?: string;
+  amount?: string;
+  fee?: string;
+  confirmations?: number;
+  timestamp?: string;
+  explorerUrl: string;
+}
+
+export interface WalletTokenBalance {
+  chain: WalletTokenChain;
+  index: number;
+  address: string;
+  tokenAddress: string;
+  symbol: string;
+  name?: string;
+  decimals: number;
+  amount: string;
+  raw: string;
+  tokenAccount?: string;
+}
+
+export interface WalletInstructionAccount {
+  pubkey: string;
+  isSigner?: boolean;
+  isWritable?: boolean;
+}
+
+export interface WalletRpcConfig {
+  ethRpc: string;
+  solRpc: string;
+  btcApi: string;
+}
+
+export interface WalletRpcServiceStatus {
+  chain: WalletChain;
+  endpoint: string;
+  healthy: boolean;
+  latencyMs: number;
+  latestHeight?: string;
+  error?: string;
+}
+
+export interface WalletRpcStatus {
+  checkedAt: string;
+  services: WalletRpcServiceStatus[];
+}
+
+export interface WalletTokenTransaction {
+  chain: WalletTokenChain;
+  index: number;
+  address: string;
+  tokenAddress: string;
+  symbol: string;
+  name?: string;
+  decimals: number;
+  txid: string;
+  status: "confirmed" | "pending" | "failed";
+  direction: "in" | "out" | "self" | "unknown";
+  from?: string;
+  to?: string;
+  amount: string;
+  raw: string;
+  fee?: string;
+  timestamp?: string;
+  explorerUrl: string;
+}
+
+export interface WalletAgentPolicy {
+  allowNativeSend: boolean;
+  allowTokenSend: boolean;
+  allowEthContractWrite: boolean;
+  allowSolProgramInstruction: boolean;
+  allowEthSwaps: boolean;
+  allowedEthContracts: string[];
+  allowedSolPrograms: string[];
+}
+
+export interface WalletSwapEthUniswapResult {
+  chain: "eth";
+  dex: "uniswap_v2";
+  from: string;
+  toTokenAddress: string;
+  toTokenSymbol: string;
+  amountInEth: string;
+  amountInWei: string;
+  quotedAmountOut: string;
+  quotedAmountOutRaw: string;
+  minAmountOut: string;
+  minAmountOutRaw: string;
+  slippageBps: number;
+  recipient: string;
+  deadline: string;
+  txid?: string;
+  explorerUrl?: string;
+  dryRun: boolean;
+}
+
+export const walletApi = {
+  status: () => fetchApi<WalletStatus>("/wallet/status"),
+  rpc: () => fetchApi<WalletRpcConfig>("/wallet/rpc"),
+  rpcStatus: () => fetchApi<WalletRpcStatus>("/wallet/rpc/status"),
+  updateRpc: (payload: { ethRpc?: string; solRpc?: string; btcApi?: string }) =>
+    fetchApi<{ success: boolean; config: WalletRpcConfig }>("/wallet/rpc", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  create: (password: string) =>
+    fetchApi<{
+      success: boolean;
+      mnemonic: string;
+      address: string;
+      primaryAddresses: Record<WalletChain, string>;
+    }>("/wallet/create", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
+  importWallet: (mnemonic: string, password: string) =>
+    fetchApi<{
+      success: boolean;
+      mnemonic: string;
+      address: string;
+      primaryAddresses: Record<WalletChain, string>;
+    }>("/wallet/import", {
+      method: "POST",
+      body: JSON.stringify({ mnemonic, password }),
+    }),
+  unlock: (password: string) =>
+    fetchApi<{
+      success: boolean;
+      address: string;
+      primaryAddresses: Record<WalletChain, string>;
+      unlockExpiresAt: string;
+    }>("/wallet/unlock", { method: "POST", body: JSON.stringify({ password }) }),
+  lock: () => fetchApi<{ success: boolean }>("/wallet/lock", { method: "POST" }),
+  accounts: (params?: { chains?: WalletChain[]; count?: number; startIndex?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.chains?.length) query.set("chains", params.chains.join(","));
+    if (typeof params?.count === "number") query.set("count", String(params.count));
+    if (typeof params?.startIndex === "number") query.set("startIndex", String(params.startIndex));
+    return fetchApi<WalletAccount[]>(`/wallet/accounts${query.size ? `?${query.toString()}` : ""}`);
+  },
+  receive: (chain: WalletChain, index = 0) =>
+    fetchApi<WalletAccount>(
+      `/wallet/receive?chain=${encodeURIComponent(chain)}&index=${encodeURIComponent(index)}`
+    ),
+  balances: (params?: { chains?: WalletChain[]; count?: number; startIndex?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.chains?.length) query.set("chains", params.chains.join(","));
+    if (typeof params?.count === "number") query.set("count", String(params.count));
+    if (typeof params?.startIndex === "number") query.set("startIndex", String(params.startIndex));
+    return fetchApi<WalletBalance[]>(`/wallet/balances${query.size ? `?${query.toString()}` : ""}`);
+  },
+  tokenBalances: (params: { chain: WalletTokenChain; index?: number; includeZero?: boolean }) => {
+    const query = new URLSearchParams();
+    query.set("chain", params.chain);
+    if (typeof params.index === "number") query.set("index", String(params.index));
+    if (params.includeZero) query.set("includeZero", "true");
+    return fetchApi<WalletTokenBalance[]>(`/wallet/tokens?${query.toString()}`);
+  },
+  tokenTransactions: (params: {
+    chain: WalletTokenChain;
+    index?: number;
+    limit?: number;
+    tokenAddress?: string;
+    rpcUrl?: string;
+  }) => {
+    const query = new URLSearchParams();
+    query.set("chain", params.chain);
+    if (typeof params.index === "number") query.set("index", String(params.index));
+    if (typeof params.limit === "number") query.set("limit", String(params.limit));
+    if (params.tokenAddress) query.set("tokenAddress", params.tokenAddress);
+    if (params.rpcUrl) query.set("rpcUrl", params.rpcUrl);
+    return fetchApi<WalletTokenTransaction[]>(`/wallet/token-transactions?${query.toString()}`);
+  },
+  transactions: (params: {
+    chain: WalletChain;
+    index?: number;
+    limit?: number;
+    rpcUrl?: string;
+  }) => {
+    const query = new URLSearchParams();
+    query.set("chain", params.chain);
+    if (typeof params.index === "number") query.set("index", String(params.index));
+    if (typeof params.limit === "number") query.set("limit", String(params.limit));
+    if (params.rpcUrl) query.set("rpcUrl", params.rpcUrl);
+    return fetchApi<WalletTransaction[]>(`/wallet/transactions?${query.toString()}`);
+  },
+  send: (payload: {
+    chain: WalletChain;
+    to: string;
+    amount: string;
+    index?: number;
+    memo?: string;
+    rpcUrl?: string;
+    feeRate?: number;
+  }) =>
+    fetchApi<{ chain: WalletChain; txid: string; explorerUrl: string }>("/wallet/send", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  sendToken: (payload: {
+    chain: WalletTokenChain;
+    tokenAddress: string;
+    to: string;
+    amount: string;
+    index?: number;
+    decimals?: number;
+    memo?: string;
+    rpcUrl?: string;
+  }) =>
+    fetchApi<{ chain: WalletTokenChain; txid: string; explorerUrl: string; tokenAddress: string }>(
+      "/wallet/send-token",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    ),
+  ethContractCall: (payload: {
+    contractAddress: string;
+    abi?: string;
+    method: string;
+    methodSignature?: string;
+    args?: unknown[];
+    index?: number;
+    value?: string;
+    gasLimit?: number | string;
+    gasPriceGwei?: string;
+    maxFeePerGasGwei?: string;
+    maxPriorityFeePerGasGwei?: string;
+    nonce?: number;
+    readOnly?: boolean;
+    rpcUrl?: string;
+  }) =>
+    fetchApi<Record<string, unknown>>("/wallet/eth-contract", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  solProgramInstruction: (payload: {
+    programId: string;
+    keys?: WalletInstructionAccount[];
+    accounts?: WalletInstructionAccount[];
+    dataBase64?: string;
+    dataHex?: string;
+    dataUtf8?: string;
+    index?: number;
+    rpcUrl?: string;
+    computeUnitLimit?: number;
+    computeUnitPriceMicroLamports?: number;
+    skipPreflight?: boolean;
+  }) =>
+    fetchApi<{ chain: "sol"; txid: string; explorerUrl: string }>("/wallet/sol-instruction", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  swapEthUniswap: (payload: {
+    tokenOut: string;
+    amountEth?: string;
+    percent?: number;
+    minAmountOut?: string;
+    slippageBps?: number;
+    deadlineSeconds?: number;
+    index?: number;
+    recipient?: string;
+    rpcUrl?: string;
+    dryRun?: boolean;
+  }) =>
+    fetchApi<WalletSwapEthUniswapResult>("/wallet/swap-eth-uniswap", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  signMessage: (message: string, chain: WalletChain = "eth", index = 0) =>
+    fetchApi<{ address: string; signature: string }>("/wallet/sign", {
+      method: "POST",
+      body: JSON.stringify({ message, chain, index }),
+    }),
+  deleteWallet: (password?: string) =>
+    fetchApi<{ success: boolean }>("/wallet", {
+      method: "DELETE",
+      body: password ? JSON.stringify({ password }) : undefined,
+    }),
+  setAgentAccess: (enabled: boolean) =>
+    fetchApi<{ success: boolean; enabled: boolean }>("/wallet/agent-access", {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    }),
+  getAgentPolicy: () => fetchApi<WalletAgentPolicy>("/wallet/agent-policy"),
+  updateAgentPolicy: (policy: Partial<WalletAgentPolicy>) =>
+    fetchApi<{ success: boolean; policy: WalletAgentPolicy }>("/wallet/agent-policy", {
+      method: "PUT",
+      body: JSON.stringify(policy),
+    }),
 };
 
 // Memory API

@@ -1,6 +1,6 @@
 import { tables, type Agent, type ToolDefinition } from "./database";
 import { providerManager, getProviderBaseUrl, getDefaultModel } from "./providers";
-import { toolSchemas } from "./tools/index";
+import { isToolEnabledForAgent, toolSchemas } from "./tools/index";
 import { executeTool, hasTool } from "./tools/handlers/index";
 import {
   buildSystemPrompt,
@@ -681,15 +681,23 @@ class AgentManager {
       return { content: this.generateFallbackResponse(messages) };
     }
 
-    // Build system message - always use fresh system prompt with tool guidance
-    // This ensures new tool guidance (like open_url) is always included
-    const freshSystemPrompt = getDefaultSystemPrompt(agent.type || "main");
-    const systemMessage: AgentMessage = {
-      role: "system",
-      content: freshSystemPrompt,
-    };
+    // Preserve any caller-provided system prompt (e.g. session-level buildSystemPrompt output).
+    // Only inject a fallback system message when none is present.
+    const hasSystemMessage = messages.some((message) => message.role === "system");
+    const fallbackSystemPrompt =
+      typeof agent.system_prompt === "string" && agent.system_prompt.trim()
+        ? agent.system_prompt
+        : getDefaultSystemPrompt(agent.type || "main");
 
-    const fullMessages = [systemMessage, ...messages];
+    const fullMessages = hasSystemMessage
+      ? messages
+      : [
+          {
+            role: "system" as const,
+            content: fallbackSystemPrompt,
+          },
+          ...messages,
+        ];
 
     // Check if current provider supports function calling
     // Kimi Code supports tool_calls in OpenAI-compatible format
@@ -742,18 +750,21 @@ class AgentManager {
   }
 
   private getAgentTools(agent: Agent): ToolDefinition[] {
+    const filterEnabledTools = (tools: ToolDefinition[]): ToolDefinition[] =>
+      tools.filter((tool) => isToolEnabledForAgent(tool.name));
+
     // If agent has tools defined, try to parse them
     if (agent.tools) {
       // Check if it's an array
       if (Array.isArray(agent.tools)) {
-        return agent.tools;
+        return filterEnabledTools(agent.tools);
       }
       // Check if it's a JSON string
       if (typeof agent.tools === "string") {
         try {
           const parsed = JSON.parse(agent.tools);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed;
+            return filterEnabledTools(parsed as ToolDefinition[]);
           }
         } catch {
           // Ignore parsing errors
@@ -761,7 +772,7 @@ class AgentManager {
       }
     }
     // Fall back to built-in tools
-    return builtinTools;
+    return filterEnabledTools(builtinTools);
   }
 
   // Public method to call LLM - can be used by API handlers

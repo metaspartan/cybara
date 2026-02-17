@@ -114,6 +114,33 @@ cybara browser tabs       # List open browser tabs/profiles
 cybara channels           # List configured channels
 ```
 
+### Wallet
+
+```bash
+cybara wallet status                                    # Wallet status + RPC settings
+cybara wallet create --password <password>              # Create 24-word BIP39 wallet
+cybara wallet import --password <password> --mnemonic "..."  # Import 24-word seed phrase
+cybara wallet unlock --password <password>              # Unlock wallet in memory
+cybara wallet lock                                      # Lock wallet immediately
+cybara wallet accounts [--chains eth,btc,sol] [--count N] [--start N]
+cybara wallet balances [--chains eth,btc,sol] [--count N] [--start N]
+cybara wallet tokens <eth|sol> [--index N] [--include-zero] # ERC-20/SPL token balances
+cybara wallet token-tx <eth|sol> [--index N] [--limit N] [--token ADDRESS] # ERC-20/SPL token transfer history
+cybara wallet receive <eth|btc|sol> [--index N]        # Get receive address
+cybara wallet tx <eth|btc|sol> [--index N] [--limit N] # Transaction history
+cybara wallet send <eth|btc|sol> --to <addr> --amount <value> [--index N]
+cybara wallet send-token <eth|sol> --token <addr|mint> --to <addr> --amount <value> [--index N]
+cybara wallet swap-eth-uniswap --token <symbol|addr> (--percent N | --amount-eth ETH) [--execute]
+cybara wallet contract-call --contract <addr> (--abi '<json_or_sig>' | --signature '<name(types)>') [--method <name>] [--args '[...]'] [--read]
+cybara wallet sol-instruction --program <id> (--keys '[...]' | --accounts '[...]') [--data-base64 DATA | --data-hex HEX | --data-utf8 TEXT]
+cybara wallet agent-access <on|off>                     # Enable/disable agent wallet tool access
+cybara wallet agent-policy [show]
+cybara wallet agent-policy set --json '{...}'
+cybara wallet rpc [show]                                # Show configured endpoints
+cybara wallet rpc status
+cybara wallet rpc set [--eth URL] [--sol URL] [--btc URL]
+```
+
 ### Channel Pairing
 
 ```bash

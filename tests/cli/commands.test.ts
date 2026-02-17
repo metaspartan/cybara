@@ -12,6 +12,40 @@ const configState: Record<string, unknown> = {
   theme: "indigo",
 };
 
+const walletState: {
+  exists: boolean;
+  unlocked: boolean;
+  agentAccessEnabled: boolean;
+  unlockExpiresAt?: string;
+  primaryAddresses?: Record<string, string>;
+} = {
+  exists: true,
+  unlocked: true,
+  agentAccessEnabled: false,
+  unlockExpiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+  primaryAddresses: {
+    eth: "0x1111111111111111111111111111111111111111",
+    btc: "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080",
+    sol: "3fM5V9iUGn2YvBG3VDBgaR7jWT8QdbdbfF7wq9fN4sJ5",
+  },
+};
+
+const walletRpcState = {
+  ethRpc: "https://ethereum-rpc.publicnode.com",
+  solRpc: "https://api.mainnet-beta.solana.com",
+  btcApi: "https://mempool.space/api",
+};
+
+const walletAgentPolicyState = {
+  allowNativeSend: false,
+  allowTokenSend: false,
+  allowEthContractWrite: false,
+  allowSolProgramInstruction: false,
+  allowEthSwaps: false,
+  allowedEthContracts: [] as string[],
+  allowedSolPrograms: [] as string[],
+};
+
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -362,6 +396,361 @@ function route(method: string, url: URL, body: string): Response {
     });
   }
 
+  if (method === "GET" && pathname === "/api/wallet/status") {
+    return json({
+      exists: walletState.exists,
+      unlocked: walletState.unlocked,
+      address: walletState.primaryAddresses?.eth,
+      unlockExpiresAt: walletState.unlockExpiresAt,
+      agentAccessEnabled: walletState.agentAccessEnabled,
+      chains: ["eth", "btc", "sol"],
+      primaryAddresses: walletState.primaryAddresses,
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/wallet/rpc") {
+    return json(walletRpcState);
+  }
+
+  if (method === "GET" && pathname === "/api/wallet/rpc/status") {
+    return json({
+      checkedAt: new Date().toISOString(),
+      services: [
+        {
+          chain: "eth",
+          endpoint: walletRpcState.ethRpc,
+          healthy: true,
+          latencyMs: 21,
+          latestHeight: "22000000",
+        },
+        {
+          chain: "sol",
+          endpoint: walletRpcState.solRpc,
+          healthy: true,
+          latencyMs: 44,
+          latestHeight: "320000000",
+        },
+        {
+          chain: "btc",
+          endpoint: walletRpcState.btcApi,
+          healthy: true,
+          latencyMs: 18,
+          latestHeight: "885000",
+        },
+      ],
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/wallet/agent-policy") {
+    return json(walletAgentPolicyState);
+  }
+
+  if (method === "PUT" && pathname === "/api/wallet/rpc") {
+    const parsed = body
+      ? (JSON.parse(body) as { ethRpc?: string; solRpc?: string; btcApi?: string })
+      : {};
+    if (parsed.ethRpc) walletRpcState.ethRpc = parsed.ethRpc;
+    if (parsed.solRpc) walletRpcState.solRpc = parsed.solRpc;
+    if (parsed.btcApi) walletRpcState.btcApi = parsed.btcApi;
+    return json({ success: true, config: walletRpcState });
+  }
+
+  if (method === "PUT" && pathname === "/api/wallet/agent-policy") {
+    const parsed = body ? (JSON.parse(body) as Partial<typeof walletAgentPolicyState>) : {};
+    if (typeof parsed.allowNativeSend === "boolean")
+      walletAgentPolicyState.allowNativeSend = parsed.allowNativeSend;
+    if (typeof parsed.allowTokenSend === "boolean")
+      walletAgentPolicyState.allowTokenSend = parsed.allowTokenSend;
+    if (typeof parsed.allowEthContractWrite === "boolean")
+      walletAgentPolicyState.allowEthContractWrite = parsed.allowEthContractWrite;
+    if (typeof parsed.allowSolProgramInstruction === "boolean")
+      walletAgentPolicyState.allowSolProgramInstruction = parsed.allowSolProgramInstruction;
+    if (typeof parsed.allowEthSwaps === "boolean")
+      walletAgentPolicyState.allowEthSwaps = parsed.allowEthSwaps;
+    if (Array.isArray(parsed.allowedEthContracts))
+      walletAgentPolicyState.allowedEthContracts = parsed.allowedEthContracts.filter(
+        (value): value is string => typeof value === "string"
+      );
+    if (Array.isArray(parsed.allowedSolPrograms))
+      walletAgentPolicyState.allowedSolPrograms = parsed.allowedSolPrograms.filter(
+        (value): value is string => typeof value === "string"
+      );
+    return json({ success: true, policy: walletAgentPolicyState });
+  }
+
+  if (method === "POST" && pathname === "/api/wallet/create") {
+    const parsed = body ? (JSON.parse(body) as { password?: string }) : {};
+    if (!parsed.password) return json({ error: "password required" }, 400);
+    walletState.exists = true;
+    walletState.unlocked = true;
+    walletState.unlockExpiresAt = new Date(Date.now() + 15 * 60_000).toISOString();
+    return json({
+      success: true,
+      mnemonic:
+        "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega",
+      address: walletState.primaryAddresses?.eth,
+      primaryAddresses: walletState.primaryAddresses,
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/wallet/import") {
+    const parsed = body ? (JSON.parse(body) as { password?: string; mnemonic?: string }) : {};
+    if (!parsed.password || !parsed.mnemonic)
+      return json({ error: "password and mnemonic required" }, 400);
+    walletState.exists = true;
+    walletState.unlocked = true;
+    walletState.unlockExpiresAt = new Date(Date.now() + 15 * 60_000).toISOString();
+    return json({
+      success: true,
+      mnemonic: parsed.mnemonic,
+      address: walletState.primaryAddresses?.eth,
+      primaryAddresses: walletState.primaryAddresses,
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/wallet/unlock") {
+    const parsed = body ? (JSON.parse(body) as { password?: string }) : {};
+    if (!parsed.password) return json({ error: "password required" }, 400);
+    walletState.unlocked = true;
+    walletState.unlockExpiresAt = new Date(Date.now() + 15 * 60_000).toISOString();
+    return json({
+      success: true,
+      address: walletState.primaryAddresses?.eth,
+      unlockExpiresAt: walletState.unlockExpiresAt,
+      primaryAddresses: walletState.primaryAddresses,
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/wallet/lock") {
+    walletState.unlocked = false;
+    return json({ success: true });
+  }
+
+  if (method === "GET" && pathname === "/api/wallet/accounts") {
+    const count = Number(url.searchParams.get("count") || "1");
+    const startIndex = Number(url.searchParams.get("startIndex") || "0");
+    const chains = (url.searchParams.get("chains") || "eth,btc,sol").split(",");
+    const accounts = chains.flatMap((chain) =>
+      Array.from({ length: Math.max(1, count) }).map((_, offset) => ({
+        chain,
+        index: startIndex + offset,
+        path: `m/mock/${chain}/${startIndex + offset}`,
+        address: `${chain}-address-${startIndex + offset}`,
+      }))
+    );
+    return json(accounts);
+  }
+
+  if (method === "GET" && pathname === "/api/wallet/receive") {
+    const chain = url.searchParams.get("chain") || "eth";
+    const index = Number(url.searchParams.get("index") || "0");
+    return json({
+      chain,
+      index,
+      path: `m/mock/${chain}/${index}`,
+      address: `${chain}-address-${index}`,
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/wallet/balances") {
+    const count = Number(url.searchParams.get("count") || "1");
+    const startIndex = Number(url.searchParams.get("startIndex") || "0");
+    const chains = (url.searchParams.get("chains") || "eth,btc,sol").split(",");
+    const symbolByChain: Record<string, string> = { eth: "ETH", btc: "BTC", sol: "SOL" };
+    const balances = chains.flatMap((chain) =>
+      Array.from({ length: Math.max(1, count) }).map((_, offset) => ({
+        chain,
+        index: startIndex + offset,
+        path: `m/mock/${chain}/${startIndex + offset}`,
+        address: `${chain}-address-${startIndex + offset}`,
+        symbol: symbolByChain[chain] || chain.toUpperCase(),
+        amount: chain === "eth" ? "0.5" : chain === "btc" ? "0.01" : "2.3",
+      }))
+    );
+    return json(balances);
+  }
+
+  if (method === "GET" && pathname === "/api/wallet/tokens") {
+    const chain = (url.searchParams.get("chain") || "eth") as "eth" | "sol";
+    const index = Number(url.searchParams.get("index") || "0");
+    return json([
+      {
+        chain,
+        index,
+        address: `${chain}-address-${index}`,
+        tokenAddress:
+          chain === "eth"
+            ? "0xToken000000000000000000000000000000000001"
+            : "So11111111111111111111111111111111111111112",
+        symbol: chain === "eth" ? "USDC" : "SPL",
+        amount: "4.2",
+        decimals: chain === "eth" ? 6 : 9,
+        raw: chain === "eth" ? "4200000" : "4200000000",
+      },
+    ]);
+  }
+
+  if (method === "GET" && pathname === "/api/wallet/transactions") {
+    const chain = url.searchParams.get("chain") || "eth";
+    return json([
+      {
+        txid: `${chain}-tx-1`,
+        status: "confirmed",
+        amount: "0.1",
+        fee: "0.001",
+        from: `${chain}-from`,
+        to: `${chain}-to`,
+        timestamp: new Date().toISOString(),
+        explorerUrl: `https://explorer.example/${chain}/tx/${chain}-tx-1`,
+      },
+    ]);
+  }
+
+  if (method === "GET" && pathname === "/api/wallet/token-transactions") {
+    const chain = (url.searchParams.get("chain") || "eth") as "eth" | "sol";
+    const index = Number(url.searchParams.get("index") || "0");
+    return json([
+      {
+        chain,
+        index,
+        address: `${chain}-address-${index}`,
+        tokenAddress:
+          chain === "eth"
+            ? "0xToken000000000000000000000000000000000001"
+            : "So11111111111111111111111111111111111111112",
+        symbol: chain === "eth" ? "USDC" : "SPL",
+        decimals: chain === "eth" ? 6 : 9,
+        txid: `${chain}-token-tx-1`,
+        status: "confirmed",
+        direction: "in",
+        amount: "1.25",
+        raw: chain === "eth" ? "1250000" : "1250000000",
+        explorerUrl: `https://explorer.example/${chain}/tx/${chain}-token-tx-1`,
+      },
+    ]);
+  }
+
+  if (method === "POST" && pathname === "/api/wallet/send") {
+    const parsed = body
+      ? (JSON.parse(body) as { chain?: string; to?: string; amount?: string })
+      : {};
+    if (!parsed.chain || !parsed.to || !parsed.amount)
+      return json({ error: "invalid payload" }, 400);
+    return json({
+      chain: parsed.chain,
+      txid: `${parsed.chain}-tx-sent-1`,
+      explorerUrl: `https://explorer.example/${parsed.chain}/tx/${parsed.chain}-tx-sent-1`,
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/wallet/send-token") {
+    const parsed = body
+      ? (JSON.parse(body) as {
+          chain?: "eth" | "sol";
+          tokenAddress?: string;
+          to?: string;
+          amount?: string;
+        })
+      : {};
+    if (!parsed.chain || !parsed.tokenAddress || !parsed.to || !parsed.amount) {
+      return json({ error: "invalid payload" }, 400);
+    }
+    return json({
+      chain: parsed.chain,
+      tokenAddress: parsed.tokenAddress,
+      txid: `${parsed.chain}-token-tx-sent-1`,
+      explorerUrl: `https://explorer.example/${parsed.chain}/tx/${parsed.chain}-token-tx-sent-1`,
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/wallet/eth-contract") {
+    const parsed = body
+      ? (JSON.parse(body) as {
+          contractAddress?: string;
+          abi?: string;
+          method?: string;
+          methodSignature?: string;
+          gasLimit?: string;
+          nonce?: number;
+          readOnly?: boolean;
+        })
+      : {};
+    if (!parsed.contractAddress || !parsed.method || (!parsed.abi && !parsed.methodSignature)) {
+      return json({ error: "invalid payload" }, 400);
+    }
+    return json({
+      chain: "eth",
+      readOnly: parsed.readOnly === true,
+      contractAddress: parsed.contractAddress,
+      method: parsed.method,
+      methodSignature: parsed.methodSignature,
+      nonce: parsed.nonce,
+      gasLimit: parsed.gasLimit,
+      result: "mock-result",
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/wallet/sol-instruction") {
+    const parsed = body
+      ? (JSON.parse(body) as {
+          programId?: string;
+          keys?: unknown[];
+          accounts?: unknown[];
+        })
+      : {};
+    if (!parsed.programId || (!Array.isArray(parsed.keys) && !Array.isArray(parsed.accounts))) {
+      return json({ error: "invalid payload" }, 400);
+    }
+    return json({
+      chain: "sol",
+      txid: "sol-inst-tx-1",
+      explorerUrl: "https://explorer.example/sol/tx/sol-inst-tx-1",
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/wallet/swap-eth-uniswap") {
+    const parsed = body
+      ? (JSON.parse(body) as {
+          tokenOut?: string;
+          percent?: number;
+          amountEth?: string;
+          dryRun?: boolean;
+        })
+      : {};
+    if (!parsed.tokenOut || (!parsed.percent && !parsed.amountEth)) {
+      return json({ error: "invalid payload" }, 400);
+    }
+    return json({
+      chain: "eth",
+      dex: "uniswap_v2",
+      from: walletState.primaryAddresses?.eth,
+      toTokenAddress: "0x514910771AF9Ca656af840dff83E8264EcF986CA",
+      toTokenSymbol: parsed.tokenOut,
+      amountInEth: parsed.amountEth || "0.5",
+      amountInWei: "500000000000000000",
+      quotedAmountOut: "100",
+      quotedAmountOutRaw: "100000000000000000000",
+      minAmountOut: "99",
+      minAmountOutRaw: "99000000000000000000",
+      slippageBps: 100,
+      recipient: walletState.primaryAddresses?.eth,
+      deadline: new Date(Date.now() + 10 * 60_000).toISOString(),
+      dryRun: parsed.dryRun === true,
+      txid: parsed.dryRun ? undefined : "swap-tx-1",
+      explorerUrl: parsed.dryRun ? undefined : "https://etherscan.io/tx/swap-tx-1",
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/wallet/sign") {
+    return json({ address: walletState.primaryAddresses?.eth, signature: "0xsignature" });
+  }
+
+  if (method === "PUT" && pathname === "/api/wallet/agent-access") {
+    const parsed = body ? (JSON.parse(body) as { enabled?: boolean }) : {};
+    walletState.agentAccessEnabled = parsed.enabled === true;
+    return json({ success: true, enabled: walletState.agentAccessEnabled });
+  }
+
   return json({ error: `Unhandled route: ${method} ${pathname}` }, 404);
 }
 
@@ -530,6 +919,199 @@ describe("CLI Commands", () => {
     expect(tabs.stdout).toContain("Cybara Docs");
   });
 
+  test("wallet command group is wired", async () => {
+    const status = await runCli(["wallet", "status"]);
+    expect(status.exitCode).toBe(0);
+    expect(status.stdout).toContain("CYBARA WALLET");
+    expect(status.stdout).toContain("RPC ENDPOINTS");
+
+    const accounts = await runCli([
+      "wallet",
+      "accounts",
+      "--chains",
+      "eth,btc",
+      "--count",
+      "2",
+      "--start",
+      "1",
+    ]);
+    expect(accounts.exitCode).toBe(0);
+    expect(accounts.stdout).toContain("WALLET ACCOUNTS");
+    expect(accounts.stdout).toContain("ETH index 1");
+
+    const balances = await runCli([
+      "wallet",
+      "balances",
+      "--chains",
+      "sol",
+      "--count",
+      "1",
+      "--start",
+      "0",
+    ]);
+    expect(balances.exitCode).toBe(0);
+    expect(balances.stdout).toContain("WALLET BALANCES");
+    expect(balances.stdout).toContain("SOL index 0");
+
+    const tokens = await runCli(["wallet", "tokens", "eth", "--index", "1", "--include-zero"]);
+    expect(tokens.exitCode).toBe(0);
+    expect(tokens.stdout).toContain("WALLET TOKENS (ETH)");
+    expect(tokens.stdout).toContain("USDC");
+
+    const tokenTx = await runCli(["wallet", "token-tx", "sol", "--index", "1", "--limit", "5"]);
+    expect(tokenTx.exitCode).toBe(0);
+    expect(tokenTx.stdout).toContain("WALLET TOKEN TRANSACTIONS (SOL)");
+    expect(tokenTx.stdout).toContain("sol-token-tx-1");
+
+    const receive = await runCli(["wallet", "receive", "btc", "--index", "3"]);
+    expect(receive.exitCode).toBe(0);
+    expect(receive.stdout).toContain("WALLET RECEIVE ADDRESS");
+    expect(receive.stdout).toContain("BTC");
+
+    const tx = await runCli(["wallet", "tx", "eth", "--index", "0", "--limit", "5"]);
+    expect(tx.exitCode).toBe(0);
+    expect(tx.stdout).toContain("WALLET TRANSACTIONS (ETH)");
+    expect(tx.stdout).toContain("eth-tx-1");
+
+    const send = await runCli([
+      "wallet",
+      "send",
+      "sol",
+      "--to",
+      "sol-address-4",
+      "--amount",
+      "0.3",
+    ]);
+    expect(send.exitCode).toBe(0);
+    expect(send.stdout).toContain("Transaction submitted");
+    expect(send.stdout).toContain("SOL");
+
+    const sendToken = await runCli([
+      "wallet",
+      "send-token",
+      "eth",
+      "--token",
+      "0xToken000000000000000000000000000000000001",
+      "--to",
+      "0xReceiver0000000000000000000000000000000001",
+      "--amount",
+      "1.2",
+    ]);
+    expect(sendToken.exitCode).toBe(0);
+    expect(sendToken.stdout).toContain("Token transaction submitted");
+    expect(sendToken.stdout).toContain("ETH");
+
+    const swapQuote = await runCli([
+      "wallet",
+      "swap-eth-uniswap",
+      "--token",
+      "LINK",
+      "--percent",
+      "50",
+    ]);
+    expect(swapQuote.exitCode).toBe(0);
+    expect(swapQuote.stdout).toContain("UNISWAP ETH SWAP");
+    expect(swapQuote.stdout).toContain("quote-only");
+    expect(swapQuote.stdout).not.toContain("txid:");
+
+    const swapExecute = await runCli([
+      "wallet",
+      "swap-eth-uniswap",
+      "--token",
+      "LINK",
+      "--amount-eth",
+      "0.25",
+      "--execute",
+    ]);
+    expect(swapExecute.exitCode).toBe(0);
+    expect(swapExecute.stdout).toContain("UNISWAP ETH SWAP");
+    expect(swapExecute.stdout).toContain("mode: execute");
+    expect(swapExecute.stdout).toContain("txid: swap-tx-1");
+    expect(swapExecute.stdout).toContain("explorer: https://etherscan.io/tx/swap-tx-1");
+
+    const contractCall = await runCli([
+      "wallet",
+      "contract-call",
+      "--contract",
+      "0x0000000000000000000000000000000000000001",
+      "--signature",
+      "totalSupply()",
+      "--gas-limit",
+      "210000",
+      "--nonce",
+      "3",
+      "--read",
+    ]);
+    expect(contractCall.exitCode).toBe(0);
+    expect(contractCall.stdout).toContain("ETH contract call result");
+    expect(contractCall.stdout).toContain("mock-result");
+    expect(contractCall.stdout).toContain("totalSupply()");
+
+    const solInstruction = await runCli([
+      "wallet",
+      "sol-instruction",
+      "--program",
+      "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+      "--accounts",
+      '[{"pubkey":"11111111111111111111111111111111","isSigner":false,"isWritable":false}]',
+      "--data-hex",
+      "0x0102",
+      "--compute-units",
+      "180000",
+      "--compute-price-microlamports",
+      "2000",
+    ]);
+    expect(solInstruction.exitCode).toBe(0);
+    expect(solInstruction.stdout).toContain("Solana instruction submitted");
+    expect(solInstruction.stdout).toContain("sol-inst-tx-1");
+
+    const rpcStatus = await runCli(["wallet", "rpc", "status"]);
+    expect(rpcStatus.exitCode).toBe(0);
+    expect(rpcStatus.stdout).toContain("WALLET RPC STATUS");
+    expect(rpcStatus.stdout).toContain("ETH healthy");
+
+    const rpcSet = await runCli([
+      "wallet",
+      "rpc",
+      "set",
+      "--eth",
+      "https://eth.example",
+      "--sol",
+      "https://sol.example",
+      "--btc",
+      "https://btc.example",
+    ]);
+    expect(rpcSet.exitCode).toBe(0);
+    expect(rpcSet.stdout).toContain("Wallet RPC settings updated");
+
+    const policyShow = await runCli(["wallet", "agent-policy"]);
+    expect(policyShow.exitCode).toBe(0);
+    expect(policyShow.stdout).toContain("WALLET AGENT POLICY");
+    expect(policyShow.stdout).toContain("allow_eth_swaps");
+
+    const policySet = await runCli([
+      "wallet",
+      "agent-policy",
+      "set",
+      "--json",
+      '{"allowNativeSend":true,"allowTokenSend":true,"allowEthSwaps":true}',
+    ]);
+    expect(policySet.exitCode).toBe(0);
+    expect(policySet.stdout).toContain("Wallet agent policy updated");
+
+    const agentAccess = await runCli(["wallet", "agent-access", "on"]);
+    expect(agentAccess.exitCode).toBe(0);
+    expect(agentAccess.stdout).toContain("Agent wallet access enabled");
+
+    const lock = await runCli(["wallet", "lock"]);
+    expect(lock.exitCode).toBe(0);
+    expect(lock.stdout).toContain("Wallet locked");
+
+    const unlock = await runCli(["wallet", "unlock", "--password", "supersecret123"]);
+    expect(unlock.exitCode).toBe(0);
+    expect(unlock.stdout).toContain("Wallet unlocked");
+  });
+
   test("memory search query path is wired", async () => {
     const search = await runCli(["memory", "integration"]);
     expect(search.exitCode).toBe(0);
@@ -626,6 +1208,44 @@ describe("CLI Commands", () => {
     const badPairPolicy = await runCli(["pair", "policy", "Discord Ops", "invalid-policy"]);
     expect(badPairPolicy.exitCode).toBe(1);
     expect(badPairPolicy.stderr).toContain("Invalid policy: invalid-policy");
+
+    const badWalletSend = await runCli(["wallet", "send", "eth", "--to", "0xabc"]);
+    expect(badWalletSend.exitCode).toBe(1);
+    expect(badWalletSend.stderr).toContain("Usage: cybara wallet send");
+
+    const badWalletSendToken = await runCli(["wallet", "send-token", "eth", "--to", "0xabc"]);
+    expect(badWalletSendToken.exitCode).toBe(1);
+    expect(badWalletSendToken.stderr).toContain("Usage: cybara wallet send-token");
+
+    const badWalletSwap = await runCli(["wallet", "swap-eth-uniswap", "--token", "LINK"]);
+    expect(badWalletSwap.exitCode).toBe(1);
+    expect(badWalletSwap.stderr).toContain("Usage: cybara wallet swap-eth-uniswap");
+
+    const badWalletContractCall = await runCli([
+      "wallet",
+      "contract-call",
+      "--contract",
+      "0x0000000000000000000000000000000000000001",
+      "--method",
+      "totalSupply",
+    ]);
+    expect(badWalletContractCall.exitCode).toBe(1);
+    expect(badWalletContractCall.stderr).toContain("Usage: cybara wallet contract-call");
+
+    const badWalletSolInstruction = await runCli([
+      "wallet",
+      "sol-instruction",
+      "--program",
+      "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+      "--keys",
+      '[{"pubkey":"11111111111111111111111111111111"}]',
+      "--data-base64",
+      "aGVsbG8=",
+      "--data-utf8",
+      "hello",
+    ]);
+    expect(badWalletSolInstruction.exitCode).toBe(1);
+    expect(badWalletSolInstruction.stderr).toContain("Use only one instruction data encoding");
   });
 
   test("lsp list/install/uninstall commands are wired", async () => {

@@ -28,6 +28,8 @@ export const CORE_TOOL_SUMMARIES: Record<string, string> = {
   nodes: "List/describe/notify/camera/screen on paired nodes",
   cron: "Manage cron jobs and wake events (use for reminders; write systemEvent text that reads like a reminder when it fires)",
   message: "Send messages and channel actions",
+  wallet:
+    "Read balances and history, send native/token transfers, run contract/program calls, and execute guarded Uniswap ETH swaps",
   gateway: "Restart, apply config, or run updates on the running process",
   agents_list: "List agent ids allowed for sessions_spawn",
   sessions_list: "List other sessions (incl. sub-agents) with filters",
@@ -388,6 +390,7 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
     "nodes",
     "cron",
     "message",
+    "wallet",
     "gateway",
     "agents_list",
     "sessions_list",
@@ -454,6 +457,20 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
         "- Accumulate data across snapshots - don't forget earlier items",
         "- Extract and present the data, don't just describe what you did",
         "- **ALWAYS close the browser when done**: browser({action:'close'}) after finishing your browsing task to free resources",
+        ""
+      );
+    }
+
+    if (availableTools.has("wallet")) {
+      lines.push(
+        "### Wallet Tool (funds and contracts)",
+        "- Always begin with read-only steps: wallet status/balances/quotes before any write action.",
+        "- For swaps, prefer wallet action `swap_eth_uniswap` with `dryRun: true` first, then execute with explicit amount/percent and slippage.",
+        "- For ETH contract calls, prefer explicit `methodSignature` for overloaded methods and run `readOnly: true` first before write execution.",
+        "- For dynamic contract interactions, verify contract address and method ABI/signature from trusted docs before submission.",
+        "- For Solana program instructions, include full account metas and choose a single data encoding (`dataBase64`/`dataHex`/`dataUtf8`).",
+        "- For token sends, verify chain + token address/mint + decimals assumptions before submitting.",
+        "- Surface tx hash and explorer URL after successful writes.",
         ""
       );
     }

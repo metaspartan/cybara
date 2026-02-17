@@ -208,8 +208,10 @@ function isLocalhostIP(ip: string): boolean {
 }
 
 export function authenticateRequest(headers: Record<string, string>, ip: string): AuthResult {
+  const effectiveApiKey = process.env.CYBARA_API_KEY || config.apiKey;
+
   // If no API key configured, allow all requests (open mode)
-  if (!config.apiKey) {
+  if (!effectiveApiKey) {
     return { authenticated: true };
   }
 
@@ -228,7 +230,7 @@ export function authenticateRequest(headers: Record<string, string>, ip: string)
   // Support both "Bearer <token>" and raw token
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
 
-  if (token !== config.apiKey) {
+  if (token !== effectiveApiKey) {
     log.warn("Invalid API key attempt", { ip });
     return { authenticated: false, reason: "Invalid API key" };
   }

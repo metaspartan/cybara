@@ -112,6 +112,13 @@ Model Context Protocol support for external tool servers:
 - **Sender Allowlists** with SQLite persistence
 - **Rate Limiting** for pairing requests
 
+### 💳 Encrypted Wallet
+- Local encrypted BIP39 vault (AES-256-GCM + PBKDF2)
+- Multi-chain derivation support: ETH, BTC, SOL
+- Address derivation, balances, tx history, send/receive
+- Agent wallet access toggle (disabled by default)
+- Configurable RPC/API endpoints per chain
+
 ### 🌐 Browser Automation
 - Playwright-based automation with full Chrome control
 - **Profile management**: Persistent browser profiles with isolated sessions
@@ -119,13 +126,14 @@ Model Context Protocol support for external tool servers:
 - **Element refs**: OpenClaw-style snapshot with interactive `[ref=eN]` markers
 - Actions: click, type, scroll, drag, screenshot, PDF export, JavaScript evaluation
 
-### 💬 Beautiful Web UI (18 pages)
+### 💬 Beautiful Web UI (19 pages)
 - **Dashboard** — System overview and health metrics
 - **Chat** — Real-time conversational interface with agent selector
 - **IDE** — Code editor with LSP integration (hover, definitions, diagnostics)
 - **Terminal** — Full-featured web terminal with PTY support
 - **Skills** — Browse, install, and manage skills with eligibility indicators
 - **Memory** — Semantic memory browser and search
+- **Wallet** — Encrypted multi-chain wallet management
 - **Agents** — Create and manage AI agents
 - **Providers** — Configure AI providers and models (with OAuth flows)
 - **Sessions** — Active session monitoring

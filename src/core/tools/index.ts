@@ -1,4 +1,5 @@
 import { telegramBot, channelManager } from "../channels";
+import { config } from "../config";
 
 // ============================================
 // TOOL DEFINITIONS
@@ -741,6 +742,258 @@ Use for tasks that may take longer or require separate context.`,
     },
     permissions: ["agents:read"],
   },
+  wallet: {
+    name: "wallet",
+    description:
+      "Use the local encrypted multi-chain wallet (ETH, BTC, SOL): native/token balances, native/token history, sends, message signing, ERC-20/SPL token transfers, ETH contract calls, raw Solana program instructions, and guarded Uniswap ETH swaps. Requires wallet agent access enabled and an unlocked wallet.",
+    category: "core",
+    input_schema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: [
+            "status",
+            "address",
+            "accounts",
+            "balances",
+            "token_balances",
+            "token_transactions",
+            "transactions",
+            "receive",
+            "send",
+            "send_token",
+            "sign_message",
+            "eth_contract_call",
+            "sol_program_instruction",
+            "swap_eth_uniswap",
+          ],
+          description: "Wallet action",
+        },
+        chain: {
+          type: "string",
+          enum: ["eth", "btc", "sol"],
+          description: "Blockchain network",
+        },
+        chains: {
+          type: "array",
+          items: { type: "string", enum: ["eth", "btc", "sol"] },
+          description: "List of chains to query for accounts/balances",
+        },
+        count: {
+          type: "number",
+          description: "Number of derived accounts per chain (default 1, max 20)",
+        },
+        startIndex: {
+          type: "number",
+          description: "Derivation index offset for accounts/balances",
+        },
+        index: {
+          type: "number",
+          description: "Single derivation index for receive/send/transactions/sign_message",
+        },
+        limit: {
+          type: "number",
+          description: "Transaction history limit (default 10, max 50)",
+        },
+        to: {
+          type: "string",
+          description: "Destination address for send action",
+        },
+        amount: {
+          type: "string",
+          description: "Transfer amount for send action, in native units",
+        },
+        memo: {
+          type: "string",
+          description: "Optional memo for SOL/ETH send transactions",
+        },
+        feeRate: {
+          type: "number",
+          description: "Optional BTC fee rate in sats/vByte",
+        },
+        tokenAddress: {
+          type: "string",
+          description:
+            "ERC-20 contract address (ETH) or SPL mint address (SOL) for send_token/token_transactions",
+        },
+        mint: {
+          type: "string",
+          description: "Alias for tokenAddress on Solana token actions",
+        },
+        decimals: {
+          type: "number",
+          description: "Optional token decimals override for send_token",
+        },
+        includeZero: {
+          type: "boolean",
+          description: "When true, token_balances includes zero-balance tokens",
+        },
+        message: {
+          type: "string",
+          description: "Message to sign when action is sign_message",
+        },
+        contractAddress: {
+          type: "string",
+          description: "ETH smart contract address for eth_contract_call",
+        },
+        abi: {
+          type: "string",
+          description:
+            "Optional contract ABI as JSON string or function fragment (e.g. 'transfer(address,uint256)'). Omit when methodSignature is provided.",
+        },
+        method: {
+          type: "string",
+          description:
+            "Contract method name for eth_contract_call (or full selector like 'swapExactETHForTokens(uint256,address[],address,uint256)')",
+        },
+        methodSignature: {
+          type: "string",
+          description:
+            "Optional method selector for overloaded methods, e.g. 'approve(address,uint256)'. Can be used without abi for dynamic calls.",
+        },
+        args: {
+          type: "array",
+          items: {},
+          description: "Method arguments for eth_contract_call",
+        },
+        value: {
+          type: "string",
+          description: "Optional ETH value in ETH units for payable contract calls",
+        },
+        gasLimit: {
+          type: "string",
+          description: "Optional gas limit override for eth_contract_call",
+        },
+        gasPriceGwei: {
+          type: "string",
+          description: "Optional legacy gasPrice in gwei for eth_contract_call writes",
+        },
+        maxFeePerGasGwei: {
+          type: "string",
+          description: "Optional EIP-1559 maxFeePerGas in gwei",
+        },
+        maxPriorityFeePerGasGwei: {
+          type: "string",
+          description: "Optional EIP-1559 maxPriorityFeePerGas in gwei",
+        },
+        nonce: {
+          type: "number",
+          description: "Optional transaction nonce override for eth_contract_call writes",
+        },
+        readOnly: {
+          type: "boolean",
+          description:
+            "When true, execute eth_contract_call as a static read (no broadcast/signature)",
+        },
+        rpcUrl: {
+          type: "string",
+          description:
+            "Optional RPC override for send_token, token_transactions, eth_contract_call, sol_program_instruction, and swap_eth_uniswap",
+        },
+        programId: {
+          type: "string",
+          description: "Solana program ID for sol_program_instruction",
+        },
+        keys: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              pubkey: { type: "string" },
+              isSigner: { type: "boolean" },
+              isWritable: { type: "boolean" },
+            },
+            required: ["pubkey"],
+          },
+          description: "Account metas for sol_program_instruction",
+        },
+        accounts: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              pubkey: { type: "string" },
+              address: { type: "string" },
+              isSigner: { type: "boolean" },
+              signer: { type: "boolean" },
+              isWritable: { type: "boolean" },
+              writable: { type: "boolean" },
+            },
+          },
+          description: "Alias for keys in sol_program_instruction",
+        },
+        dataBase64: {
+          type: "string",
+          description: "Base64-encoded instruction data for sol_program_instruction",
+        },
+        dataHex: {
+          type: "string",
+          description:
+            "Hex-encoded instruction data for sol_program_instruction (exclusive with dataBase64/dataUtf8)",
+        },
+        dataUtf8: {
+          type: "string",
+          description:
+            "UTF-8 instruction data for sol_program_instruction (exclusive with dataBase64/dataHex)",
+        },
+        data: {
+          type: "string",
+          description: "Alias for dataUtf8 in sol_program_instruction",
+        },
+        computeUnitLimit: {
+          type: "number",
+          description: "Optional Solana compute unit limit override",
+        },
+        computeUnitPriceMicroLamports: {
+          type: "number",
+          description: "Optional Solana priority fee price in micro-lamports per CU",
+        },
+        skipPreflight: {
+          type: "boolean",
+          description: "Optional Solana skipPreflight flag for sol_program_instruction",
+        },
+        tokenOut: {
+          type: "string",
+          description:
+            "Output token for swap_eth_uniswap; accepts ERC-20 address or symbol (e.g. LINK)",
+        },
+        amountEth: {
+          type: "string",
+          description:
+            "Exact ETH amount to swap for swap_eth_uniswap (use either amountEth or percent)",
+        },
+        percent: {
+          type: "number",
+          description:
+            "Percent of current ETH balance to swap for swap_eth_uniswap (0-100, e.g. 50)",
+        },
+        minAmountOut: {
+          type: "string",
+          description: "Optional explicit minimum token-out amount; overrides slippageBps quote",
+        },
+        slippageBps: {
+          type: "number",
+          description: "Slippage tolerance in basis points for swap_eth_uniswap (default 100)",
+        },
+        deadlineSeconds: {
+          type: "number",
+          description: "Swap expiry window in seconds for swap_eth_uniswap (default 900)",
+        },
+        recipient: {
+          type: "string",
+          description: "Optional recipient address for swap_eth_uniswap output tokens",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "When true, swap_eth_uniswap returns quote/minOut without broadcasting a transaction",
+        },
+      },
+      required: ["action"],
+    },
+    permissions: ["wallet:use"],
+  },
 
   // Channel/messaging
   message: {
@@ -1276,9 +1529,16 @@ ACTIONS:
 // TOOL HANDLER FUNCTIONS
 // ============================================
 
+export function isToolEnabledForAgent(toolName: string): boolean {
+  if (toolName === "wallet") {
+    return config.get<boolean>("wallet_agent_access_enabled") === true;
+  }
+  return true;
+}
+
 // Get tool schemas for LLM tool calling
 export function getToolSchemasForLLM(): Omit<Tool, "handler">[] {
-  return Object.values(toolSchemas);
+  return Object.values(toolSchemas).filter((tool) => isToolEnabledForAgent(tool.name));
 }
 
 // Get tool handler by name

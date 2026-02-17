@@ -58,6 +58,14 @@ import { browseDirectory, readFileContent, writeFileContent, createItem } from "
 import { createLogger } from "../core/logger";
 import { openUrlInBrowser } from "../core/runtime/open-url";
 import {
+  walletManager,
+  type WalletChain,
+  type WalletAgentPolicy,
+  type WalletSwapEthUniswapInput,
+  type WalletTokenChain,
+  type SolInstructionAccountMeta,
+} from "../core/wallet";
+import {
   normalizeTimestamp,
   getCombinedLogs,
   getLogStats,
@@ -109,6 +117,9 @@ interface ProviderMetricSummary {
   url: string;
 }
 
+const WALLET_CHAIN_SET = new Set<WalletChain>(["eth", "btc", "sol"]);
+const WALLET_TOKEN_CHAIN_SET = new Set<WalletTokenChain>(["eth", "sol"]);
+
 function parseJsonObject(value: unknown): Record<string, unknown> | null {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     return value as Record<string, unknown>;
@@ -126,6 +137,64 @@ function parseJsonObject(value: unknown): Record<string, unknown> | null {
 
 function parseMetricMetadata(metadata?: string): Record<string, unknown> | null {
   return parseJsonObject(metadata);
+}
+
+function parseWalletChains(input: unknown): WalletChain[] | undefined {
+  if (typeof input !== "string" || !input.trim()) return undefined;
+
+  const values = input
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (!values.length) return undefined;
+
+  const chains: WalletChain[] = [];
+  for (const value of values) {
+    if (!WALLET_CHAIN_SET.has(value as WalletChain)) {
+      throw new Error(`Validation error: Unsupported chain '${value}'`);
+    }
+    chains.push(value as WalletChain);
+  }
+
+  return chains;
+}
+
+function parseWalletTokenChain(
+  input: unknown,
+  fallback: WalletTokenChain = "eth"
+): WalletTokenChain {
+  const value = String(input || fallback)
+    .trim()
+    .toLowerCase();
+  if (!WALLET_TOKEN_CHAIN_SET.has(value as WalletTokenChain)) {
+    throw new Error(
+      `Validation error: Unsupported token chain '${value}'. Use one of: ${[...WALLET_TOKEN_CHAIN_SET].join(", ")}`
+    );
+  }
+  return value as WalletTokenChain;
+}
+
+function parseJsonArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string" || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseOptionalNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
 }
 
 function getDefaultSystemPromptConfig(): Record<string, unknown> {
@@ -358,6 +427,251 @@ const routes: Record<string, RouteHandler> = {
       agentManager.createDefault();
     }
     return { success: true };
+  },
+
+  // ===== WALLET =====
+  "GET /api/wallet/status": () => walletManager.getStatus(),
+  "GET /api/wallet/rpc": () => walletManager.getRpcConfig(),
+  "GET /api/wallet/rpc/status": async () => await walletManager.getRpcStatus(),
+  "PUT /api/wallet/rpc": (body) => {
+    const data = body as { ethRpc?: string; solRpc?: string; btcApi?: string };
+    return walletManager.setRpcConfig({
+      ethRpc: data.ethRpc,
+      solRpc: data.solRpc,
+      btcApi: data.btcApi,
+    });
+  },
+  "GET /api/wallet/agent-policy": () => walletManager.getAgentPolicy(),
+  "PUT /api/wallet/agent-policy": (body) => {
+    const data = (body || {}) as Partial<WalletAgentPolicy>;
+    return walletManager.setAgentPolicy({
+      allowNativeSend: data.allowNativeSend,
+      allowTokenSend: data.allowTokenSend,
+      allowEthContractWrite: data.allowEthContractWrite,
+      allowSolProgramInstruction: data.allowSolProgramInstruction,
+      allowEthSwaps: data.allowEthSwaps,
+      allowedEthContracts: Array.isArray(data.allowedEthContracts)
+        ? data.allowedEthContracts
+        : undefined,
+      allowedSolPrograms: Array.isArray(data.allowedSolPrograms)
+        ? data.allowedSolPrograms
+        : undefined,
+    });
+  },
+  "POST /api/wallet/create": async (body) => {
+    const data = body as { password?: string };
+    return await walletManager.createWallet(data.password || "");
+  },
+  "POST /api/wallet/import": async (body) => {
+    const data = body as { mnemonic?: string; password?: string };
+    return await walletManager.importWallet(data.mnemonic || "", data.password || "");
+  },
+  "POST /api/wallet/unlock": async (body) => {
+    const data = body as { password?: string };
+    return await walletManager.unlock(data.password || "");
+  },
+  "POST /api/wallet/lock": () => walletManager.lock(),
+  "GET /api/wallet/accounts": (_body, params) => {
+    const count = params?.count ? Number(params.count) : undefined;
+    const startIndex = params?.startIndex ? Number(params.startIndex) : undefined;
+    const chains = parseWalletChains(params?.chains);
+    return walletManager.getAccounts({ chains, count, startIndex });
+  },
+  "GET /api/wallet/receive": (_body, params) => {
+    const chain = String(params?.chain || "eth").toLowerCase();
+    const index = params?.index ? Number(params.index) : 0;
+    return walletManager.getReceiveAddress(chain as WalletChain, index);
+  },
+  "GET /api/wallet/balances": async (_body, params) => {
+    const count = params?.count ? Number(params.count) : undefined;
+    const startIndex = params?.startIndex ? Number(params.startIndex) : undefined;
+    const chains = parseWalletChains(params?.chains);
+    return await walletManager.getBalances({ chains, count, startIndex });
+  },
+  "GET /api/wallet/tokens": async (_body, params) => {
+    const chain = parseWalletTokenChain(params?.chain, "eth");
+    const index = params?.index ? Number(params.index) : 0;
+    const includeZero = String(params?.includeZero || "").toLowerCase() === "true";
+    return await walletManager.getTokenBalances({
+      chain,
+      index,
+      includeZero,
+    });
+  },
+  "GET /api/wallet/token-transactions": async (_body, params) => {
+    const chain = parseWalletTokenChain(params?.chain, "eth");
+    const index = params?.index ? Number(params.index) : 0;
+    const limit = params?.limit ? Number(params.limit) : undefined;
+    const tokenAddress = params?.tokenAddress;
+    const rpcUrl = params?.rpcUrl;
+
+    return await walletManager.getTokenTransactions({
+      chain,
+      index,
+      limit,
+      tokenAddress,
+      rpcUrl,
+    });
+  },
+  "GET /api/wallet/transactions": async (_body, params) => {
+    const chain = String(params?.chain || "").toLowerCase();
+    if (!chain) {
+      throw new Error("Validation error: chain is required");
+    }
+    const index = params?.index ? Number(params.index) : 0;
+    const limit = params?.limit ? Number(params.limit) : undefined;
+    const rpcUrl = params?.rpcUrl;
+    return await walletManager.getTransactions({
+      chain: chain as WalletChain,
+      index,
+      limit,
+      rpcUrl,
+    });
+  },
+  "POST /api/wallet/send": async (body) => {
+    const data = body as {
+      chain?: string;
+      to?: string;
+      amount?: string;
+      index?: number;
+      memo?: string;
+      rpcUrl?: string;
+      feeRate?: number;
+    };
+    return await walletManager.send({
+      chain: String(data.chain || "").toLowerCase() as WalletChain,
+      to: data.to || "",
+      amount: data.amount || "",
+      index: data.index,
+      memo: data.memo,
+      rpcUrl: data.rpcUrl,
+      feeRate: data.feeRate,
+    });
+  },
+  "POST /api/wallet/send-token": async (body) => {
+    const data = body as {
+      chain?: string;
+      tokenAddress?: string;
+      mint?: string;
+      to?: string;
+      amount?: string;
+      index?: number;
+      decimals?: number;
+      rpcUrl?: string;
+      memo?: string;
+    };
+
+    return await walletManager.sendToken({
+      chain: parseWalletTokenChain(data.chain, "eth"),
+      tokenAddress: String(data.tokenAddress || data.mint || "").trim(),
+      to: String(data.to || "").trim(),
+      amount: String(data.amount || "").trim(),
+      index: data.index,
+      decimals: data.decimals,
+      rpcUrl: data.rpcUrl,
+      memo: data.memo,
+    });
+  },
+  "POST /api/wallet/eth-contract": async (body) => {
+    const data = body as {
+      contractAddress?: string;
+      abi?: string;
+      method?: string;
+      methodSignature?: string;
+      args?: unknown[];
+      index?: number;
+      value?: string;
+      gasLimit?: number | string;
+      gasPriceGwei?: string;
+      maxFeePerGasGwei?: string;
+      maxPriorityFeePerGasGwei?: string;
+      nonce?: number;
+      readOnly?: boolean;
+      rpcUrl?: string;
+    };
+    return await walletManager.callEthContract({
+      contractAddress: String(data.contractAddress || ""),
+      abi: typeof data.abi === "string" ? data.abi : undefined,
+      method: String(data.method || data.methodSignature || ""),
+      methodSignature: typeof data.methodSignature === "string" ? data.methodSignature : undefined,
+      args: parseJsonArray(data.args),
+      index: data.index,
+      value: data.value,
+      gasLimit:
+        typeof data.gasLimit === "number" || typeof data.gasLimit === "string"
+          ? data.gasLimit
+          : undefined,
+      gasPriceGwei: typeof data.gasPriceGwei === "string" ? data.gasPriceGwei : undefined,
+      maxFeePerGasGwei:
+        typeof data.maxFeePerGasGwei === "string" ? data.maxFeePerGasGwei : undefined,
+      maxPriorityFeePerGasGwei:
+        typeof data.maxPriorityFeePerGasGwei === "string"
+          ? data.maxPriorityFeePerGasGwei
+          : undefined,
+      nonce: parseOptionalNumber(data.nonce),
+      readOnly: data.readOnly === true,
+      rpcUrl: data.rpcUrl,
+    });
+  },
+  "POST /api/wallet/sol-instruction": async (body) => {
+    const data = body as {
+      programId?: string;
+      keys?: SolInstructionAccountMeta[];
+      accounts?: SolInstructionAccountMeta[];
+      dataBase64?: string;
+      dataHex?: string;
+      dataUtf8?: string;
+      index?: number;
+      rpcUrl?: string;
+      computeUnitLimit?: number;
+      computeUnitPriceMicroLamports?: number;
+      skipPreflight?: boolean;
+    };
+
+    return await walletManager.sendSolProgramInstruction({
+      programId: String(data.programId || ""),
+      keys: Array.isArray(data.keys) ? data.keys : undefined,
+      accounts: Array.isArray(data.accounts) ? data.accounts : undefined,
+      dataBase64: typeof data.dataBase64 === "string" ? data.dataBase64 : undefined,
+      dataHex: typeof data.dataHex === "string" ? data.dataHex : undefined,
+      dataUtf8: typeof data.dataUtf8 === "string" ? data.dataUtf8 : undefined,
+      index: data.index,
+      rpcUrl: data.rpcUrl,
+      computeUnitLimit: parseOptionalNumber(data.computeUnitLimit),
+      computeUnitPriceMicroLamports: parseOptionalNumber(data.computeUnitPriceMicroLamports),
+      skipPreflight: data.skipPreflight === true,
+    });
+  },
+  "POST /api/wallet/swap-eth-uniswap": async (body) => {
+    const data = (body || {}) as Partial<WalletSwapEthUniswapInput>;
+    return await walletManager.swapEthOnUniswap({
+      tokenOut: String(data.tokenOut || ""),
+      amountEth: typeof data.amountEth === "string" ? data.amountEth : undefined,
+      percent: typeof data.percent === "number" ? data.percent : undefined,
+      minAmountOut: typeof data.minAmountOut === "string" ? data.minAmountOut : undefined,
+      slippageBps: typeof data.slippageBps === "number" ? data.slippageBps : undefined,
+      deadlineSeconds: typeof data.deadlineSeconds === "number" ? data.deadlineSeconds : undefined,
+      index: typeof data.index === "number" ? data.index : undefined,
+      recipient: typeof data.recipient === "string" ? data.recipient : undefined,
+      rpcUrl: typeof data.rpcUrl === "string" ? data.rpcUrl : undefined,
+      dryRun: data.dryRun === true,
+    });
+  },
+  "POST /api/wallet/sign": async (body) => {
+    const data = body as { message?: string; chain?: string; index?: number };
+    return await walletManager.signMessage(
+      data.message || "",
+      (data.chain || "eth") as WalletChain,
+      data.index || 0
+    );
+  },
+  "DELETE /api/wallet": async (body) => {
+    const data = (body || {}) as { password?: string };
+    return await walletManager.deleteWallet(data.password);
+  },
+  "PUT /api/wallet/agent-access": (body) => {
+    const data = body as { enabled?: boolean };
+    return walletManager.setAgentAccessEnabled(data.enabled === true);
   },
 
   // ===== CONFIG =====
@@ -1675,6 +1989,7 @@ const routes: Record<string, RouteHandler> = {
         "write",
         "exec",
         "browser",
+        "wallet",
         "memory_search",
         "memory_get",
         "message",

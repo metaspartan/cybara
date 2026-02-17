@@ -115,6 +115,12 @@ describe("Server + CLI + UI smoke", () => {
     expect(health.status).toBe("healthy");
     expect(typeof health.checks).toBe("object");
 
+    const walletRes = await fetch(`${baseUrl}/api/wallet/status`);
+    expect(walletRes.status).toBe(200);
+    const wallet = (await walletRes.json()) as { exists: boolean; unlocked: boolean };
+    expect(wallet.exists).toBe(false);
+    expect(wallet.unlocked).toBe(false);
+
     const uiRes = await fetch(`${baseUrl}/`);
     expect(uiRes.status).toBe(200);
     expect(uiRes.headers.get("content-type")).toContain("text/html");

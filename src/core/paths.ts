@@ -18,6 +18,7 @@ export const cybaraDir = join(homeDir, ".cybara");
 export const dataDir = join(cybaraDir, "data");
 export const memoryDir = join(cybaraDir, "memory");
 export const logsDir = join(cybaraDir, "logs");
+export const secureDir = join(cybaraDir, "secure");
 export const configDir = process.env.CONFIG_DIR || cybaraDir;
 
 // Get the directory of this file (may be virtual /$bunfs/ in compiled binary)
@@ -38,7 +39,7 @@ export const userSkillsDir = join(cybaraDir, "skills");
 
 // Ensure writable directories exist
 export function ensureCybaraDirs() {
-  const dirs = [cybaraDir, dataDir, memoryDir, logsDir, userSkillsDir];
+  const dirs = [cybaraDir, dataDir, memoryDir, logsDir, secureDir, userSkillsDir];
   for (const dir of dirs) {
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });

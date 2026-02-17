@@ -10,6 +10,7 @@ export * from "./http";
 export * from "./data";
 export * from "./env";
 export * from "./web-search";
+export * from "./wallet";
 
 // Re-export from main tools index
 export { getToolSchemasForLLM, toolSchemas } from "../index";
@@ -54,6 +55,7 @@ import { handleHttp } from "./http";
 import { handleData } from "./data";
 import { handleEnv } from "./env";
 import { handleWebSearch } from "./web-search";
+import { handleWallet } from "./wallet";
 import {
   handleLSPDiagnostics,
   handleLSPDefinition,
@@ -137,6 +139,7 @@ const toolHandlers: Record<string, (args: Record<string, unknown>) => Promise<un
   browser: handleBrowser,
   web_fetch: handleWebFetch,
   web_search: handleWebSearch,
+  wallet: handleWallet,
 
   // Memory tools
   memory_search: handleMemorySearch,

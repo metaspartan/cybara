@@ -231,6 +231,81 @@ describe("Setup & Info API", () => {
   });
 });
 
+describe("Wallet API", () => {
+  test("wallet create/unlock/derive/sign/delete flow works", async () => {
+    const statusBefore = await api("GET", "/api/wallet/status");
+    expect(statusBefore.status).toBe(200);
+    expect(statusBefore.data.exists).toBe(false);
+
+    const create = await api("POST", "/api/wallet/create", { password: "integration-pass-123" });
+    expect(create.status).toBe(200);
+    expect(create.data.success).toBe(true);
+    expect(typeof create.data.mnemonic).toBe("string");
+    expect(create.data.mnemonic.split(" ").length).toBe(24);
+    expect(typeof create.data.address).toBe("string");
+    expect(typeof create.data.primaryAddresses.eth).toBe("string");
+    expect(typeof create.data.primaryAddresses.btc).toBe("string");
+    expect(typeof create.data.primaryAddresses.sol).toBe("string");
+
+    const statusAfterCreate = await api("GET", "/api/wallet/status");
+    expect(statusAfterCreate.status).toBe(200);
+    expect(statusAfterCreate.data.exists).toBe(true);
+    expect(statusAfterCreate.data.unlocked).toBe(true);
+    expect(statusAfterCreate.data.primaryAddresses.eth).toBe(create.data.primaryAddresses.eth);
+
+    const accounts = await api("GET", "/api/wallet/accounts?chains=eth,btc,sol&count=1&startIndex=0");
+    expect(accounts.status).toBe(200);
+    expect(Array.isArray(accounts.data)).toBe(true);
+    expect(accounts.data).toHaveLength(3);
+    expect(accounts.data[0].index).toBe(0);
+    expect(typeof accounts.data[0].address).toBe("string");
+
+    const receive = await api("GET", "/api/wallet/receive?chain=eth&index=0");
+    expect(receive.status).toBe(200);
+    expect(receive.data.chain).toBe("eth");
+    expect(receive.data.index).toBe(0);
+    expect(typeof receive.data.address).toBe("string");
+
+    const invalidTokenChain = await api("GET", "/api/wallet/tokens?chain=btc&index=0");
+    expect(invalidTokenChain.status).toBe(400);
+    expect(invalidTokenChain.data.code).toBe("VALIDATION_ERROR");
+
+    const invalidTokenTxChain = await api("GET", "/api/wallet/token-transactions?chain=btc&index=0");
+    expect(invalidTokenTxChain.status).toBe(400);
+    expect(invalidTokenTxChain.data.code).toBe("VALIDATION_ERROR");
+
+    const sign = await api("POST", "/api/wallet/sign", {
+      message: "integration-wallet-sign",
+      chain: "eth",
+      index: 0,
+    });
+    expect(sign.status).toBe(200);
+    expect(typeof sign.data.signature).toBe("string");
+    expect(sign.data.signature.startsWith("0x")).toBe(true);
+
+    const lock = await api("POST", "/api/wallet/lock");
+    expect(lock.status).toBe(200);
+    expect(lock.data.success).toBe(true);
+
+    const lockedStatus = await api("GET", "/api/wallet/status");
+    expect(lockedStatus.status).toBe(200);
+    expect(lockedStatus.data.unlocked).toBe(false);
+
+    const unlock = await api("POST", "/api/wallet/unlock", { password: "integration-pass-123" });
+    expect(unlock.status).toBe(200);
+    expect(unlock.data.success).toBe(true);
+    expect(unlock.data.address).toBe(create.data.address);
+
+    const deleteRes = await api("DELETE", "/api/wallet", { password: "integration-pass-123" });
+    expect(deleteRes.status).toBe(200);
+    expect(deleteRes.data.success).toBe(true);
+
+    const statusAfterDelete = await api("GET", "/api/wallet/status");
+    expect(statusAfterDelete.status).toBe(200);
+    expect(statusAfterDelete.data.exists).toBe(false);
+  });
+});
+
 describe("Agents API", () => {
   test("GET /api/agents should return array", async () => {
     const { status, data } = await api("GET", "/api/agents");
