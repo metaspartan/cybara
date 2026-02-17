@@ -62,6 +62,7 @@ See [Desktop Guide](./desktop.md) for platform-specific build info.
 | `bun run start:prod` | Build all + start |
 | `bun run ui:dev` | UI dev server (Vite HMR) |
 | `bun run ui:build` | Build UI for production |
+| `bun test` | Run Bun test suite |
 | `bun run check` | TypeScript + ESLint + Prettier |
 | `bun run tauri:dev` | Tauri desktop dev mode |
 | `bun run tauri:build` | Tauri desktop production build |
@@ -82,6 +83,7 @@ See [Desktop Guide](./desktop.md) for platform-specific build info.
 | [API Reference](./api.md) | REST API endpoints |
 | [Desktop](./desktop.md) | Tauri desktop client |
 | [Security](./security.md) | Self-hosting security model |
+| [Testing](./testing.md) | Automated test strategy and commands |
 
 ## Core Concepts
 

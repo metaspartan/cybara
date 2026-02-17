@@ -200,6 +200,7 @@ bun run build:all    # Build UI + backend + CLI + main entry
 bun run ui:dev       # UI development server (Vite HMR)
 bun run ui:build     # Build UI for production
 bun run start:prod   # Full production build + start
+bun test             # Run Bun test suite
 bun run check        # TypeScript + ESLint + Prettier
 bun run tauri:dev    # Tauri desktop dev mode (with terminal)
 bun run tauri:build  # Tauri desktop production build
