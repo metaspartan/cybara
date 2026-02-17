@@ -4,8 +4,8 @@
 import { createLogger } from "../core/logger";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
-import { homedir } from "os";
 import { randomBytes } from "crypto";
+import { cybaraDir } from "../core/paths";
 
 const log = createLogger("Security");
 
@@ -13,7 +13,7 @@ const log = createLogger("Security");
 // API KEY MANAGEMENT
 // ============================================
 
-const API_KEY_FILE = join(homedir(), ".cybara", "api_key");
+const API_KEY_FILE = join(cybaraDir, "api_key");
 
 /**
  * Get or generate API key
@@ -41,7 +41,7 @@ function getOrCreateApiKey(): string | null {
   const newKey = `cybara_${randomBytes(24).toString("hex")}`;
 
   // Ensure directory exists
-  const dir = join(homedir(), ".cybara");
+  const dir = cybaraDir;
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
@@ -266,12 +266,12 @@ export function isPrivateOrBlockedIP(ip: string): boolean {
   const blockedHostnames = ["localhost", "0.0.0.0", "metadata.google.internal"];
   if (blockedHostnames.includes(ip.toLowerCase())) return true;
 
-  // Validate IPv4 format
+  // If this is not an IPv4 literal, treat as hostname and let caller apply hostname policies.
   const parts = ip.split(".");
-  if (parts.length !== 4) return true; // Invalid or IPv6 without mapping
+  if (parts.length !== 4) return false;
 
   const nums = parts.map(Number);
-  if (nums.some((n) => isNaN(n) || n < 0 || n > 255)) return true;
+  if (nums.some((n) => isNaN(n) || n < 0 || n > 255)) return false;
 
   // Check against blocked CIDR ranges
   for (const cidr of config.blockedIpRanges) {
@@ -369,6 +369,22 @@ export interface SecurityCheckResult {
   headers?: Record<string, string>;
 }
 
+function getRateLimitType(method: string, path: string): keyof typeof config.rateLimits {
+  if (path === "/api/chat" || path.startsWith("/api/chat/") || path.endsWith("/chat")) {
+    return "chat";
+  }
+
+  if (method === "POST" && path.includes("/pairings/verify")) {
+    return "pairing";
+  }
+
+  if (path.startsWith("/api/providers/oauth/")) {
+    return "auth";
+  }
+
+  return "global";
+}
+
 export function securityCheck(
   method: string,
   path: string,
@@ -382,7 +398,8 @@ export function securityCheck(
   }
 
   // Rate limit check
-  const rateLimit = rateLimitEndpoint(path, ip);
+  const limitType = getRateLimitType(method, path);
+  const rateLimit = rateLimitEndpoint(path, ip, limitType);
   if (!rateLimit.allowed) {
     return {
       passed: false,

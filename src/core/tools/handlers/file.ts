@@ -358,15 +358,6 @@ async function searchDirectory(
   }
 }
 
-async function globFiles(dir: string, pattern: string): Promise<string[]> {
-  try {
-    const matches = await glob(pattern, { cwd: dir });
-    return matches;
-  } catch {
-    return [];
-  }
-}
-
 /**
  * Apply a unified diff patch to multiple files
  * Supports standard unified diff format (git diff output)

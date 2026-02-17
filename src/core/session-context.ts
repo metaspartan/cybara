@@ -1,9 +1,30 @@
 // Session persistence and context management for chat
 import db, { tables } from "./database";
-import { randomUUID } from "crypto";
 import { agentManager } from "./agent";
 import { providerManager, providers } from "./providers";
 import type { ChatMessage } from "../api/chat";
+
+interface PersistedSessionMessage {
+  role: string;
+  content: string;
+  created_at: string;
+  metadata?: string;
+  agent_id?: string;
+}
+
+type SessionMessageMetadata = Partial<Pick<ChatMessage, "thinking" | "tool_calls">>;
+
+function parseSessionMessageMetadata(metadata?: string): SessionMessageMetadata {
+  if (!metadata) return {};
+  try {
+    const parsed = JSON.parse(metadata);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as SessionMessageMetadata)
+      : {};
+  } catch {
+    return {};
+  }
+}
 
 // Context window configuration (OpenClaw compatible)
 const DEFAULT_CONTEXT_TOKENS = 200_000;
@@ -369,18 +390,19 @@ export async function loadPersistedSession(
 ): Promise<{ agentId: string; messages: ChatMessage[] } | null> {
   try {
     // Get session messages from database
-    const sessionMessages = tables.sessionMessages?.getBySession(sessionId) || [];
+    const sessionMessages =
+      (tables.sessionMessages?.getBySession(sessionId) as PersistedSessionMessage[]) || [];
 
     if (sessionMessages.length === 0) {
       return null;
     }
 
     // Reconstruct messages
-    const messages: ChatMessage[] = sessionMessages.map((m: any) => ({
+    const messages: ChatMessage[] = sessionMessages.map((m) => ({
       role: m.role as ChatMessage["role"],
       content: m.content,
       timestamp: m.created_at,
-      ...(m.metadata ? JSON.parse(m.metadata) : {}),
+      ...parseSessionMessageMetadata(m.metadata),
     }));
 
     // Get agent from first message or session table

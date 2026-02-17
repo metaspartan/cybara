@@ -317,7 +317,6 @@ export async function handleCanvas(
 
       const formatRaw = params.outputFormat || "png";
       const format: "png" | "jpeg" = formatRaw === "jpg" || formatRaw === "jpeg" ? "jpeg" : "png";
-      const maxWidth = params.maxWidth;
       const quality = params.quality;
       const delayMs = params.delayMs;
 

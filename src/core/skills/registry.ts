@@ -8,7 +8,6 @@ import { join } from "path";
 import { homedir } from "os";
 import { exec } from "child_process";
 import { promisify } from "util";
-import type { SkillEntry, SkillsInstallPreferences } from "./types";
 
 /**
  * Registry provider interface

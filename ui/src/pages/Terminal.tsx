@@ -3,6 +3,7 @@ import { Terminal as XTerminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { SquareTerminal, Plus, Trash2, AlertTriangle } from 'lucide-react';
+import { appendApiTokenParam, apiFetch } from '@/lib/auth';
 
 interface TermSession {
     id: string;
@@ -20,7 +21,7 @@ export function TerminalPage() {
 
     // Check if terminal is enabled
     useEffect(() => {
-        fetch('/api/terminal/sessions')
+        apiFetch('/api/terminal/sessions')
             .then(res => {
                 if (res.status === 403) setTerminalEnabled(false);
                 else { setTerminalEnabled(true); }
@@ -63,7 +64,8 @@ export function TerminalPage() {
         term.loadAddon(fitAddon);
 
         const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const ws = new WebSocket(`${proto}//${window.location.host}/api/terminal/ws?session=${id}`);
+        const wsPath = appendApiTokenParam(`/api/terminal/ws?session=${encodeURIComponent(id)}`);
+        const ws = new WebSocket(`${proto}//${window.location.host}${wsPath}`);
         ws.binaryType = 'arraybuffer';
 
         ws.onopen = () => {

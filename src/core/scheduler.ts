@@ -1,6 +1,29 @@
 import { tables, type Task } from "./database";
 import { agentManager } from "./agent";
 
+function parseTaskConfig(config: unknown, taskId?: string): Record<string, unknown> {
+  if (typeof config === "string") {
+    try {
+      const parsed = JSON.parse(config);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+      return {};
+    } catch {
+      console.warn(
+        `[Task] Invalid task config JSON${taskId ? ` for ${taskId}` : ""}; using empty config`
+      );
+      return {};
+    }
+  }
+
+  if (config && typeof config === "object" && !Array.isArray(config)) {
+    return config as Record<string, unknown>;
+  }
+
+  return {};
+}
+
 class TaskScheduler {
   private interval: ReturnType<typeof setInterval> | null = null;
   private tasks: Map<string, { task: Task; handler: () => Promise<void> }> = new Map();
@@ -11,19 +34,15 @@ class TaskScheduler {
     // Normalize tasks to include enabled status for UI
     return rawTasks.map((t) => ({
       ...t,
-      config: typeof t.config === "string" ? JSON.parse(t.config) : t.config,
+      config: parseTaskConfig(t.config, t.id),
       enabled: t.status === "running" || t.status === "pending",
     }));
   }
 
   get(id: string): Task | undefined {
     const task = tables.tasks.get(id) as Task | undefined;
-    if (task && typeof task.config === "string") {
-      try {
-        task.config = JSON.parse(task.config);
-      } catch {
-        /* ignore parse errors */
-      }
+    if (task) {
+      task.config = parseTaskConfig(task.config, task.id);
     }
     return task;
   }
@@ -135,8 +154,10 @@ class TaskScheduler {
 
     try {
       // Get the action from config
-      const config = typeof task.config === "string" ? JSON.parse(task.config) : task.config || {};
-      const action = config.action || config.description || task.name;
+      const config = parseTaskConfig(task.config, task.id);
+      const actionValue = config.action ?? config.description;
+      const action =
+        typeof actionValue === "string" && actionValue.trim().length > 0 ? actionValue : task.name;
 
       // Find the agent (specific or any available)
       const agent = task.agent_id
@@ -291,7 +312,7 @@ class TaskScheduler {
     console.log("[Task] Starting scheduler loop (60s interval)");
     this.interval = setInterval(async () => {
       const now = new Date();
-      for (const [id, { task, handler }] of this.tasks) {
+      for (const [id, { handler }] of this.tasks) {
         // Reload task to get latest status
         const currentTask = this.get(id);
         if (!currentTask) {

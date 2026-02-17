@@ -1,9 +1,9 @@
 // Tool handlers for LSP (Language Server Protocol)
 // Provides code intelligence to agents
 
-import { getLSPManager, initLSPManager, type Diagnostic } from "../../lsp";
+import { getLSPManager, initLSPManager } from "../../lsp";
 import { resolve, dirname } from "path";
-import { existsSync, statSync } from "fs";
+import { existsSync } from "fs";
 
 // Format diagnostic severity
 function severityToString(severity?: number): string {
@@ -19,15 +19,6 @@ function severityToString(severity?: number): string {
     default:
       return "unknown";
   }
-}
-
-// Format diagnostic for agent consumption
-function formatDiagnostic(uri: string, diag: Diagnostic): string {
-  const file = uri.replace("file://", "");
-  const severity = severityToString(diag.severity);
-  const line = diag.range.start.line + 1; // 1-indexed for humans
-  const col = diag.range.start.character + 1;
-  return `${file}:${line}:${col} [${severity}] ${diag.message}`;
 }
 
 /**

@@ -1,5 +1,5 @@
 // Tool handlers - channel messaging and sessions
-import { readFileSync, existsSync } from "fs";
+import { existsSync } from "fs";
 import { join, dirname } from "path";
 import { homedir } from "os";
 import { fileURLToPath } from "url";
@@ -39,13 +39,6 @@ export function getAllSubagentSessions(): SubagentSession[] {
   return Array.from(sessions.values());
 }
 
-// Subagent execution queue
-const subagentQueue: Array<{
-  sessionId: string;
-  resolve: (result: string) => void;
-  reject: (error: Error) => void;
-}> = [];
-
 export async function handleSessionsSpawn(args: Record<string, unknown>): Promise<{
   status: string;
   childSessionKey: string;
@@ -58,7 +51,6 @@ export async function handleSessionsSpawn(args: Record<string, unknown>): Promis
   const label = (args.label as string)?.trim() || undefined;
   const requestedAgentId = args.agentId as string | undefined;
   const modelOverride = args.model as string | undefined;
-  const thinkingOverride = args.thinking as string | undefined;
   const runTimeoutSeconds =
     typeof args.runTimeoutSeconds === "number"
       ? Math.max(0, Math.floor(args.runTimeoutSeconds))
@@ -395,7 +387,7 @@ export async function handleAgentsList(): Promise<{
         type: a.type || "general",
       })),
     };
-  } catch (error) {
+  } catch {
     return {
       agents: [{ id: "default", name: "Assistant", status: "running", type: "general" }],
     };
@@ -407,7 +399,6 @@ export async function handleMessage(
 ): Promise<{ success: boolean; action: string; target: string; message?: string }> {
   const action = args.action as string;
   const target = args.target as string;
-  const messageContent = args.message as string | undefined;
 
   if (!action || !target) {
     throw new Error("action and target are required");

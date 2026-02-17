@@ -79,7 +79,7 @@ export class SlackAdapter implements ChannelAdapter {
     });
 
     // Handle DM opened
-    app.event("app_home_opened", async ({ event, client }) => {
+    app.event("app_home_opened", async ({ event, client: _client }) => {
       console.log(`[Slack] App home opened by user ${event.user}`);
     });
 

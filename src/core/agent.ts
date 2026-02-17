@@ -1,6 +1,6 @@
 import { tables, type Agent, type ToolDefinition } from "./database";
 import { providerManager, getProviderBaseUrl, getDefaultModel } from "./providers";
-import { getToolSchemasForLLM, toolSchemas } from "./tools/index";
+import { toolSchemas } from "./tools/index";
 import { executeTool, hasTool } from "./tools/handlers/index";
 import {
   buildSystemPrompt,
@@ -282,6 +282,45 @@ interface RunningAgentState {
   lastActive: Date;
 }
 
+function parseAgentConfig(config: unknown, agentId?: string): Record<string, unknown> {
+  if (typeof config === "string") {
+    try {
+      const parsed = JSON.parse(config);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+      return {};
+    } catch {
+      console.warn(
+        `[Agent] Invalid agent config JSON${agentId ? ` for ${agentId}` : ""}; using empty config`
+      );
+      return {};
+    }
+  }
+
+  if (config && typeof config === "object" && !Array.isArray(config)) {
+    return config as Record<string, unknown>;
+  }
+
+  return {};
+}
+
+function parseToolArguments(raw: unknown): Record<string, unknown> {
+  if (!raw) return {};
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  if (typeof raw !== "string") return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
 class AgentManager {
   private runningAgents: Map<string, RunningAgentState> = new Map();
 
@@ -419,8 +458,7 @@ class AgentManager {
       tools: updates.tools || existing.tools,
       memory_enabled:
         updates.memory_enabled !== undefined ? updates.memory_enabled : existing.memory_enabled,
-      config:
-        updates.config || (existing.config ? JSON.parse(existing.config as unknown as string) : {}),
+      config: updates.config || parseAgentConfig(existing.config, id),
     };
 
     tables.agents.update(id, updated);
@@ -519,7 +557,6 @@ class AgentManager {
     const fullMessages = messages;
 
     // Check if current provider supports function calling
-    const providerConfig = provider.provider as string;
     const supportsTools = true;
 
     let tools: ToolDefinition[] = [];
@@ -655,7 +692,6 @@ class AgentManager {
     const fullMessages = [systemMessage, ...messages];
 
     // Check if current provider supports function calling
-    const providerConfig = provider.provider as string;
     // Kimi Code supports tool_calls in OpenAI-compatible format
     const supportsTools = true;
 
@@ -719,7 +755,7 @@ class AgentManager {
           if (Array.isArray(parsed) && parsed.length > 0) {
             return parsed;
           }
-        } catch (e) {
+        } catch {
           // Ignore parsing errors
         }
       }
@@ -911,7 +947,7 @@ class AgentManager {
       for (const toolCall of message.tool_calls) {
         const toolName = toolCall.function?.name;
         const toolCallId = toolCall.id;
-        const args = toolCall.function?.arguments ? JSON.parse(toolCall.function.arguments) : {};
+        const args = parseToolArguments(toolCall.function?.arguments);
 
         if (toolName && hasTool(toolName)) {
           try {
@@ -1303,16 +1339,7 @@ class AgentManager {
       for (const toolCall of message.tool_calls) {
         const toolName = toolCall.function?.name;
         const toolCallId = toolCall.id;
-        let args = {};
-        if (typeof toolCall.function?.arguments === "string") {
-          try {
-            args = JSON.parse(toolCall.function.arguments);
-          } catch (e) {
-            console.error(`[Agent] Failed to parse tool arguments:`, toolCall.function.arguments);
-          }
-        } else if (toolCall.function?.arguments) {
-          args = toolCall.function.arguments;
-        }
+        const args = parseToolArguments(toolCall.function?.arguments);
 
         if (toolName && hasTool(toolName)) {
           try {

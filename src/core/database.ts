@@ -1,11 +1,10 @@
 import { Database } from "bun:sqlite";
 import { join } from "path";
 import { mkdirSync, existsSync } from "fs";
-import { homedir } from "os";
+import { dataDir } from "./paths";
 
 // Use ~/.cybara/data for database - works in both dev and compiled binary
 // (In compiled binaries, __dirname resolves to /$bunfs/ which is read-only)
-const dataDir = join(homedir(), ".cybara", "data");
 const dbPath = join(dataDir, "platform.db");
 
 console.log("[Database] Initializing at:", dbPath);
@@ -264,7 +263,7 @@ try {
     // Add fallback_provider_id column to agents table (if not exists)
     db.exec("ALTER TABLE agents ADD COLUMN fallback_provider_id TEXT");
     console.log("[Database] Migration: Added fallback_provider_id column");
-  } catch (e) {
+  } catch {
     // Column already exists, ignore
   }
 } catch (error) {

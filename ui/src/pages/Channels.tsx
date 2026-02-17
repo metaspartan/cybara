@@ -32,6 +32,7 @@ import {
 } from "../hooks/useApi";
 import { useUIStore } from "../stores/uiStore";
 import { PageLayout } from "@/components/layout";
+import { apiFetch } from "@/lib/auth";
 import type { Channel, AvailableChannel, ChannelField } from "../types";
 
 interface PairingInfo {
@@ -74,7 +75,7 @@ export function Channels() {
 
   const fetchPairings = async (channelId: string) => {
     try {
-      const res = await fetch(`/api/channels/${channelId}/pairings`);
+      const res = await apiFetch(`/api/channels/${channelId}/pairings`);
       const data = await res.json();
       setPairings(data.pairings || []);
     } catch {
@@ -86,7 +87,7 @@ export function Channels() {
     if (!securityChannel) return;
     setIsApproving(true);
     try {
-      const res = await fetch(`/api/channels/${securityChannel.id}/pairings/verify`, {
+      const res = await apiFetch(`/api/channels/${securityChannel.id}/pairings/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: code.toUpperCase() }),
@@ -109,7 +110,7 @@ export function Channels() {
   const handleRejectPairing = async (pairingId: string) => {
     if (!securityChannel) return;
     try {
-      const res = await fetch(`/api/channels/${securityChannel.id}/pairings/${pairingId}/reject`, {
+      const res = await apiFetch(`/api/channels/${securityChannel.id}/pairings/${pairingId}/reject`, {
         method: "POST",
       });
       const data = await res.json();
@@ -207,7 +208,7 @@ export function Channels() {
     setTestingChannel(channel);
     addToast("info", `Testing ${channel.name}...`);
     try {
-      const res = await fetch(`/api/channels/${channel.id}/test`, { method: "POST" });
+      const res = await apiFetch(`/api/channels/${channel.id}/test`, { method: "POST" });
       const data = await res.json();
 
       if (res.ok && data.success) {

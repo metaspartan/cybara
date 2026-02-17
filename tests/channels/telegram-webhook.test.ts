@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { tables } from "../../src/core/database";
+import db, { tables } from "../../src/core/database";
 import { securityManager } from "../../src/core/channels/security";
 import { processTelegramWebhook, telegramBot } from "../../src/core/channels/adapters/telegram";
 
@@ -141,5 +141,25 @@ describe("Telegram webhook mocked flows", () => {
     expect(payload.text).toBe("pong");
     expect(payload.parse_mode).toBe("Markdown");
     expect(payload.reply_to_message_id).toBe(101);
+  });
+
+  test("malformed stored channel config uses missing-token path instead of parse-error catch path", async () => {
+    db.query("UPDATE channels SET config = ? WHERE id = ?").run("{bad-json", channelId);
+
+    const errorMessages: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => {
+      errorMessages.push(String(args[0] || ""));
+    };
+
+    try {
+      const ok = await processTelegramWebhook(channelId, makeTelegramUpdate("hello"));
+      expect(ok).toBe(false);
+      expect(fetchCalls).toHaveLength(0);
+      expect(errorMessages.some((msg) => msg.includes("No bot token"))).toBe(true);
+      expect(errorMessages.some((msg) => msg.includes("Error processing update"))).toBe(false);
+    } finally {
+      console.error = originalError;
+    }
   });
 });

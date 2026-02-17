@@ -11,6 +11,7 @@ import { Select } from '@/components/ui/Input';
 import { PageLayout } from '@/components/layout';
 import { useProviders, useAvailableProviders, useCreateProvider, useUpdateProvider, useDeleteProvider, useDiscoverOllama } from '@/hooks/useApi';
 import { useUIStore } from '@/stores/uiStore';
+import { apiFetch } from '@/lib/auth';
 import type { Provider, AvailableProvider } from '@/types';
 
 export function Providers() {
@@ -91,7 +92,7 @@ export function Providers() {
   const handleTestConnection = async (provider: Provider) => {
     addToast('info', `Testing connection to ${provider.name}...`);
     try {
-      const res = await fetch(`/api/providers/${provider.id}/test`, { method: 'POST' });
+      const res = await apiFetch(`/api/providers/${provider.id}/test`, { method: 'POST' });
       const data = await res.json();
       if (res.ok && data.success) {
         addToast('success', `Connection to ${provider.name} successful`);
@@ -332,7 +333,7 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
     setOauthState('connecting');
     setOauthError('');
     try {
-      const res = await fetch('/api/providers/oauth/device-code', {
+      const res = await apiFetch('/api/providers/oauth/device-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ providerType: selectedProvider }),
@@ -365,7 +366,7 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
       await new Promise(r => setTimeout(r, intervalMs));
       if (abortRef.current) return;
       try {
-        const res = await fetch('/api/providers/oauth/poll', {
+        const res = await apiFetch('/api/providers/oauth/poll', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ providerType: selectedProvider, deviceCode: code }),
@@ -413,7 +414,7 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
     abortRef.current = false;
     try {
       console.log('[OAuth] Starting redirect flow for', selectedProvider);
-      const res = await fetch('/api/providers/oauth/start', {
+      const res = await apiFetch('/api/providers/oauth/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ providerType: selectedProvider }),
@@ -435,7 +436,7 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
         await new Promise(r => setTimeout(r, 3000));
         if (abortRef.current) return;
         try {
-          const pollRes = await fetch('/api/providers/oauth/callback-status', {
+          const pollRes = await apiFetch('/api/providers/oauth/callback-status', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ state: oauthStateId }),

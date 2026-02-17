@@ -1,23 +1,16 @@
 // Chat API - Full LLM integration with OpenAI-compatible chat completions
-import { tables } from "../core/database";
 import { agentManager, type AgentMessage } from "../core/agent";
 import { providerManager } from "../core/providers";
 import {
-  toolSchemas,
-  type ToolHandler,
-  type ToolContext,
   getToolSchemasForLLM,
-  getToolHandler,
   checkCircuit,
   recordCircuitSuccess,
   recordCircuitFailure,
   checkRateLimit,
   getRateLimitStatus,
-  toolHandlers,
 } from "../core/tools/index";
-import { executeTool, hasTool, getSubagentSession } from "../core/tools/handlers/index";
+import { getSubagentSession } from "../core/tools/handlers/index";
 import { logSessionMessage, logAgentActivity } from "../core/logging";
-import { randomUUID } from "crypto";
 import {
   listPersistedSessions,
   loadPersistedSession,
@@ -31,16 +24,11 @@ import {
 import { handleMemorySave } from "../core/tools/handlers/memory";
 import {
   trackSessionTokens,
-  trackSessionMessage,
   trackSessionEvent,
   trackContextCompaction,
   trackMemoryFlush,
 } from "../core/metrics";
-import {
-  shouldRunMemoryFlush,
-  resolveMemoryFlushSettings,
-  DEFAULT_MEMORY_FLUSH_PROMPT,
-} from "../core/memory/flush";
+import { shouldRunMemoryFlush, resolveMemoryFlushSettings } from "../core/memory/flush";
 
 export interface ToolCallInfo {
   id: string;
@@ -404,7 +392,11 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
       }
 
       // Use agent execute method which handles fallback providers for tool calling
-      const result = await agentManager.execute(agent.id, session.messages as any, {
+      const executionMessages: AgentMessage[] = session.messages.map((sessionMessage) => ({
+        role: sessionMessage.role,
+        content: sessionMessage.content,
+      }));
+      const result = await agentManager.execute(agent.id, executionMessages, {
         useTools: tools,
       });
       responseContent = result.content;
@@ -481,10 +473,10 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
               let screenshotFound = false;
               let screenshotPath = "";
               for (const tc of summaryResult.tool_calls) {
-                const result = tc.result as any;
-                if (result?.filePath && typeof result.filePath === "string") {
+                const toolResult = tc.result as { filePath?: unknown } | undefined;
+                if (typeof toolResult?.filePath === "string") {
                   screenshotFound = true;
-                  screenshotPath = result.filePath;
+                  screenshotPath = toolResult.filePath;
                   break;
                 }
               }
@@ -522,7 +514,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
               }
             }
           }
-        } catch (summaryError) {
+        } catch {
           // If summary fails, create a simple formatted response
           console.log("[Chat] Could not generate summary, using formatted tool output");
           responseContent = `Here are the results from the tool execution:\n\n${toolResultsText}`;
@@ -568,7 +560,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
             tags: ["auto-saved"],
           });
           console.log(`[Chat] Auto-saved memory: "${match[1].substring(0, 50)}..."`);
-        } catch (e) {
+        } catch {
           // Ignore memory save errors
         }
         break;
@@ -630,65 +622,6 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     thinking: finalThinking || undefined,
     tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
   };
-}
-
-// ============================================
-// TOOL EXECUTION
-// ============================================
-
-async function executeToolCalls(
-  toolCalls: Array<{ name: string; args: Record<string, unknown> }>
-): Promise<ToolCallInfo[]> {
-  const results: ToolCallInfo[] = [];
-
-  for (const call of toolCalls) {
-    const callId = `call_${crypto.randomUUID().slice(0, 8)}`;
-    const startTime = Date.now();
-
-    try {
-      // Check if tool exists
-      if (!hasTool(call.name)) {
-        results.push({
-          id: callId,
-          name: call.name,
-          args: call.args,
-          status: "failed",
-          error: `Unknown tool: ${call.name}`,
-          duration: Date.now() - startTime,
-        });
-        continue;
-      }
-
-      // Execute the tool
-      console.log(`[Chat] Executing tool: ${call.name}`);
-      const result = await executeTool(call.name, call.args, {
-        agentId: "current",
-        sessionId: "current",
-        channel: "api",
-        userId: "user",
-      });
-
-      results.push({
-        id: callId,
-        name: call.name,
-        args: call.args,
-        status: "completed",
-        result,
-        duration: Date.now() - startTime,
-      });
-    } catch (error) {
-      results.push({
-        id: callId,
-        name: call.name,
-        args: call.args,
-        status: "failed",
-        error: (error as Error).message,
-        duration: Date.now() - startTime,
-      });
-    }
-  }
-
-  return results;
 }
 
 // ============================================

@@ -5,12 +5,7 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
 import path from "path";
 import { tables } from "../../database";
 import { logChannelMessage } from "../../logging";
-import type {
-  ChannelAdapter,
-  MessageHandler,
-  MessageHandlerFileInfo,
-  ToolCallInfo,
-} from "../types";
+import type { ChannelAdapter, MessageHandlerFileInfo, ToolCallInfo } from "../types";
 import { formatToolCallsForTelegram, escapeMarkdown } from "../formatting";
 import { buildChannelSecurityConfig, securityManager } from "../security";
 import { getTelegramInboundMediaDir } from "../paths";
@@ -20,7 +15,7 @@ export const telegramSessions = new Map<string, string>();
 
 // Get user's sessions from in-memory store
 async function getUserSessions(
-  userId: string
+  _userId: string
 ): Promise<Array<{ id: string; messageCount: number; lastActive: string }>> {
   const { listSessions } = await import("../../../api/chat");
   const allSessions = await listSessions();
@@ -450,7 +445,7 @@ async function downloadTelegramMedia(
   botToken: string,
   fileId: string,
   type: string,
-  originalFileName?: string
+  _originalFileName?: string
 ): Promise<{ path: string; contentType?: string; placeholder: string } | null> {
   try {
     const fileInfo = await telegramApi(botToken, "getFile", { file_id: fileId });
@@ -540,6 +535,29 @@ function escapeTelegramMarkdown(text: string): string {
     return text;
   }
   return text.replace(/\[/g, "\\[").replace(/\]/g, "\\]");
+}
+
+function parseStoredTelegramConfig(config: unknown, channelId?: string): Record<string, unknown> {
+  if (typeof config === "string") {
+    try {
+      const parsed = JSON.parse(config);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+      return {};
+    } catch {
+      console.warn(
+        `[Telegram Webhook] Invalid channel config JSON${channelId ? ` for ${channelId}` : ""}; using empty config`
+      );
+      return {};
+    }
+  }
+
+  if (config && typeof config === "object" && !Array.isArray(config)) {
+    return config as Record<string, unknown>;
+  }
+
+  return {};
 }
 
 // Telegram Bot Manager class
@@ -1195,11 +1213,8 @@ export class TelegramBotManager implements ChannelAdapter {
         return false;
       }
 
-      const config =
-        typeof channel.config === "string"
-          ? JSON.parse(channel.config)
-          : (channel.config as Record<string, unknown>);
-      const botToken = config.bot_token;
+      const config = parseStoredTelegramConfig(channel.config, channelId);
+      const botToken = typeof config.bot_token === "string" ? config.bot_token : "";
       if (!botToken) {
         console.error(`[Telegram Webhook] No bot token for channel ${channelId}`);
         return false;

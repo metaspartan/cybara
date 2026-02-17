@@ -5,6 +5,7 @@ import { useHealth, useInfo, useSystemPrompt, useSystemPromptPreview, useUpdateS
 import { Input, Textarea, Select } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useUIStore, themeAccents, type ThemeAccent } from '@/stores/uiStore';
+import { apiFetch } from '@/lib/auth';
 import {
   Activity,
   Server,
@@ -102,7 +103,7 @@ function FeatureSettings() {
   const { addToast } = useUIStore();
 
   useEffect(() => {
-    fetch('/api/config')
+    apiFetch('/api/config')
       .then(r => r.json())
       .then((data: Record<string, unknown>) => {
         setTerminalEnabled(data.terminal_enabled === true);
@@ -114,7 +115,7 @@ function FeatureSettings() {
   const toggleTerminal = async (enabled: boolean) => {
     setTerminalEnabled(enabled);
     try {
-      await fetch('/api/config', {
+      await apiFetch('/api/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ terminal_enabled: enabled }),

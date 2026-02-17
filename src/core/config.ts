@@ -8,15 +8,25 @@ interface PlatformConfig {
   [key: string]: unknown;
 }
 
+function parseJsonValue(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function asObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
 class ConfigManager {
   get<T>(key: string): T | undefined {
     const stored = tables.config.get(key);
     if (stored) {
-      try {
-        return JSON.parse(stored.value) as T;
-      } catch {
-        return stored.value as unknown as T;
-      }
+      return parseJsonValue(stored.value) as T;
     }
     return undefined;
   }
@@ -36,11 +46,7 @@ class ConfigManager {
     const config: PlatformConfig = { ...defaults };
 
     for (const { key, value } of all) {
-      try {
-        config[key] = JSON.parse(value);
-      } catch {
-        config[key] = value;
-      }
+      config[key] = parseJsonValue(value);
     }
     return config;
   }
@@ -60,12 +66,9 @@ class ConfigManager {
   getSetupStep(): string {
     const step = tables.setup.getStep("wizard") as { config?: string } | null;
     if (!step) return "welcome";
-    try {
-      const stepConfig = step.config ? JSON.parse(step.config) : {};
-      return stepConfig.current_step || "welcome";
-    } catch {
-      return "welcome";
-    }
+    const parsed = step.config ? parseJsonValue(step.config) : {};
+    const stepConfig = asObject(parsed);
+    return typeof stepConfig?.current_step === "string" ? stepConfig.current_step : "welcome";
   }
 }
 

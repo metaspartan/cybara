@@ -5,8 +5,8 @@
 
 import { readdir, readFile, stat, watch } from "fs/promises";
 import { existsSync } from "fs";
-import { join, resolve, basename, dirname } from "path";
-import { homedir, platform } from "os";
+import { join, resolve, dirname } from "path";
+import { homedir } from "os";
 import type {
     Skill,
     SkillEntry,

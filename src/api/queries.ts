@@ -130,17 +130,21 @@ export function normalizeTimestamp(timestamp: string | undefined): string | unde
  * Returns unified format sorted by created_at descending
  */
 export function getCombinedLogs(): CombinedLogEntry[] {
-  const system = tables.systemLogs.list ? tables.systemLogs.list() : [];
-  const agent = tables.agentLogs.list ? tables.agentLogs.list() : [];
-  const channel = tables.channelLogs.list ? tables.channelLogs.list() : [];
+  const system = (tables.systemLogs.list ? tables.systemLogs.list() : []) as LogEntry[];
+  const agent = (tables.agentLogs.list ? tables.agentLogs.list() : []) as AgentLogEntry[];
+  const channel = (tables.channelLogs.list ? tables.channelLogs.list() : []) as ChannelLogEntry[];
 
   const combined: CombinedLogEntry[] = [
-    ...system.map((l: any) => ({
-      ...l,
+    ...system.map((l) => ({
+      id: l.id,
+      level: l.level || "info",
+      source: l.source || "system",
+      message: l.message || "",
+      metadata: l.metadata,
       created_at: normalizeTimestamp(l.created_at)!,
       logType: "system",
     })),
-    ...agent.map((l: any) => ({
+    ...agent.map((l) => ({
       id: l.id,
       level: "info",
       source: "agent",
@@ -149,7 +153,7 @@ export function getCombinedLogs(): CombinedLogEntry[] {
       created_at: normalizeTimestamp(l.created_at)!,
       logType: "agent",
     })),
-    ...channel.map((l: any) => ({
+    ...channel.map((l) => ({
       id: l.id,
       level: "info",
       source: "channel",
@@ -173,18 +177,18 @@ export function getLogStats(hours: number = 24): LogStats {
   const since = Date.now() - hours * 60 * 60 * 1000;
 
   // Use the same table helpers for consistency
-  const system = tables.systemLogs.list ? tables.systemLogs.list() : [];
-  const agent = tables.agentLogs.list ? tables.agentLogs.list() : [];
-  const channel = tables.channelLogs.list ? tables.channelLogs.list() : [];
+  const system = (tables.systemLogs.list ? tables.systemLogs.list() : []) as LogEntry[];
+  const agent = (tables.agentLogs.list ? tables.agentLogs.list() : []) as AgentLogEntry[];
+  const channel = (tables.channelLogs.list ? tables.channelLogs.list() : []) as ChannelLogEntry[];
 
   const messages = db
     .prepare("SELECT COUNT(*) as count FROM session_messages WHERE created_at > ?")
     .get(new Date(since).toISOString()) as CountResult | null;
 
   // Filter by time window and count
-  const systemCount = system.filter((l: any) => new Date(l.created_at).getTime() > since).length;
-  const agentCount = agent.filter((l: any) => new Date(l.created_at).getTime() > since).length;
-  const channelCount = channel.filter((l: any) => new Date(l.created_at).getTime() > since).length;
+  const systemCount = system.filter((l) => new Date(l.created_at).getTime() > since).length;
+  const agentCount = agent.filter((l) => new Date(l.created_at).getTime() > since).length;
+  const channelCount = channel.filter((l) => new Date(l.created_at).getTime() > since).length;
 
   return {
     counts: {

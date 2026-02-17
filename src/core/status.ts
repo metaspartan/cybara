@@ -53,7 +53,7 @@ export function broadcastStatus(status: StatusPayload): void {
   for (const callback of statusCallbacks) {
     try {
       callback(status);
-    } catch (e) {
+    } catch {
       // Ignore callback errors
     }
   }
@@ -63,7 +63,7 @@ export function broadcastStatus(status: StatusPayload): void {
   for (const client of sseClients) {
     try {
       client.enqueue(message);
-    } catch (e) {
+    } catch {
       // Client disconnected, remove
       sseClients.delete(client);
     }
@@ -82,7 +82,7 @@ export function broadcastTaskEvent(event: TaskEventPayload): void {
   for (const client of sseClients) {
     try {
       client.enqueue(message);
-    } catch (e) {
+    } catch {
       sseClients.delete(client);
     }
   }

@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Agent, AgentMessage, Provider, Channel, Task, Skill, Memory, MemoryEntry, AvailableProvider, AvailableChannel, Session, Tool } from '../types';
 import { subagentApi, skillsApi } from '@/lib/api';
+import { apiFetch } from '@/lib/auth';
 
 const API_BASE = '/api';
 
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${endpoint}`, {
+  const response = await apiFetch(`${API_BASE}${endpoint}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -947,4 +948,3 @@ export function useTrackMetric() {
     },
   });
 }
-

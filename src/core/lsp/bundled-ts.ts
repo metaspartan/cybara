@@ -2,8 +2,8 @@
 // Uses TypeScript Compiler API directly - no external LSP process needed
 
 import * as ts from "typescript";
-import { dirname, resolve, join } from "path";
-import { existsSync, readFileSync } from "fs";
+import { dirname, resolve } from "path";
+import { existsSync } from "fs";
 
 export interface BundledDiagnostic {
   file: string;

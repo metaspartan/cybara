@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { appendApiTokenParam } from '@/lib/auth';
 
 interface TaskEvent {
     type: 'task_completed';
@@ -103,7 +104,7 @@ export function useTaskNotifications() {
 
     useEffect(() => {
         // Connect to SSE for task events
-        const eventSource = new EventSource('/api/sse/status');
+        const eventSource = new EventSource(appendApiTokenParam('/api/sse/status'));
 
         eventSource.onopen = () => {
             setConnected(true);

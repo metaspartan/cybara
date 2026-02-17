@@ -1,13 +1,18 @@
 // Web Terminal - Shell WebSocket endpoint
 // Requires --enable-terminal flag to activate
 // Uses Python's pty module via Bun.spawn for real PTY allocation
-import { homedir, platform } from "os";
+import { homedir } from "os";
 
 interface TerminalSession {
   id: string;
   proc: ReturnType<typeof Bun.spawn> | null;
   createdAt: string;
   lastActivity: number;
+}
+
+interface TerminalInputSink {
+  write: (chunk: string | Uint8Array) => void;
+  flush?: () => void;
 }
 
 const sessions = new Map<string, TerminalSession>();
@@ -145,8 +150,9 @@ export function createTerminalSession(sessionId: string): TerminalSession {
 export function writeToTerminal(session: TerminalSession, data: string): void {
   if (session.proc?.stdin) {
     try {
-      (session.proc.stdin as any).write(data);
-      (session.proc.stdin as any).flush?.();
+      const stdin = session.proc.stdin as unknown as TerminalInputSink;
+      stdin.write(data);
+      stdin.flush?.();
     } catch {
       // stdin closed
     }

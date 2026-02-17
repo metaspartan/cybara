@@ -103,7 +103,7 @@ const toolHandlers: Record<string, (args: Record<string, unknown>) => Promise<un
         count,
         format: "json",
       };
-    } catch (e) {
+    } catch {
       // Fallback to system stats
       try {
         const env = { ...process.env, PATH: "/usr/sbin:" + (process.env.PATH || "") };

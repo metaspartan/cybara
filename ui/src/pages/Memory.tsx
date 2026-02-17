@@ -20,6 +20,7 @@ import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Textarea } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { PageLayout } from '@/components/layout';
+import { apiFetch } from '@/lib/auth';
 import {
   useMemory,
   useSearchMemory,
@@ -100,7 +101,7 @@ export function Memory() {
     const content = formData.get('content') as string;
 
     try {
-      const res = await fetch('/api/memory', {
+      const res = await apiFetch('/api/memory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ file, content }),

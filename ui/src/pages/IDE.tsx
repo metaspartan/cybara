@@ -35,6 +35,7 @@ import {
     GitBranch,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { apiFetch } from '@/lib/auth';
 
 // Types for file browsing
 interface FileEntry {
@@ -239,7 +240,7 @@ function FileTree({
             setIsLoading(true);
             setError(null);
             try {
-                const res = await fetch(`/api/ide/browse?path=${encodeURIComponent(path)}`);
+                const res = await apiFetch(`/api/ide/browse?path=${encodeURIComponent(path)}`);
                 const data: BrowseResult = await res.json();
                 if (data.success) {
                     setEntries(data.entries);
@@ -333,7 +334,7 @@ function CodeViewer({
         setIsLoading(true);
         setError(null);
         try {
-            const res = await fetch(`/api/ide/read?path=${encodeURIComponent(path)}`);
+            const res = await apiFetch(`/api/ide/read?path=${encodeURIComponent(path)}`);
             const data: ReadResult = await res.json();
             if (data.success) {
                 setContent(data.content || '');
@@ -355,7 +356,7 @@ function CodeViewer({
         if (!path) return;
 
         try {
-            const res = await fetch(`/api/lsp/diagnostics/file?path=${encodeURIComponent(path)}`);
+            const res = await apiFetch(`/api/lsp/diagnostics/file?path=${encodeURIComponent(path)}`);
             const data = await res.json();
             if (data.success && data.diagnostics) {
                 setDiagnostics(data.diagnostics);
@@ -395,7 +396,7 @@ function CodeViewer({
         setIsSaving(true);
         setSaveError(null);
         try {
-            const res = await fetch('/api/ide/write', {
+            const res = await apiFetch('/api/ide/write', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ path, content: editContent }),
@@ -670,7 +671,7 @@ function CreateDialog({
         setIsCreating(true);
         setError(null);
         try {
-            const res = await fetch('/api/ide/create', {
+            const res = await apiFetch('/api/ide/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ parentPath, name: name.trim(), type }),
@@ -729,7 +730,7 @@ function LSPStatus() {
     useEffect(() => {
         const fetchStatus = async () => {
             try {
-                const res = await fetch('/api/lsp/languages');
+                const res = await apiFetch('/api/lsp/languages');
                 const data = await res.json();
                 setLanguages(data.languages || []);
             } catch {
@@ -770,7 +771,7 @@ function GitStatus({ path }: { path: string }) {
     useEffect(() => {
         const fetchGit = async () => {
             try {
-                const res = await fetch(`/api/git/status?path=${encodeURIComponent(path)}`);
+                const res = await apiFetch(`/api/git/status?path=${encodeURIComponent(path)}`);
                 const data = await res.json();
                 if (data.isRepo) {
                     setBranch(data.branch || 'HEAD');
@@ -817,7 +818,7 @@ export function IDE() {
     // Load initial path info
     useEffect(() => {
         const fetchRoot = async () => {
-            const res = await fetch(`/api/ide/browse?path=${encodeURIComponent(currentPath)}`);
+            const res = await apiFetch(`/api/ide/browse?path=${encodeURIComponent(currentPath)}`);
             const data: BrowseResult = await res.json();
             if (data.success) {
                 setRootInfo(data);
@@ -950,4 +951,3 @@ export function IDE() {
 }
 
 export default IDE;
-

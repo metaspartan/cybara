@@ -197,9 +197,11 @@ export function refLocator(page: Page, ref: string): Locator {
 
     const scope = state?.frameSelector ? page.frameLocator(state.frameSelector) : page;
 
+    const roleScope = scope as { getByRole: Page["getByRole"] };
+    const role = info.role as Parameters<Page["getByRole"]>[0];
     const locator = info.name
-      ? (scope as any).getByRole(info.role, { name: info.name, exact: true })
-      : (scope as any).getByRole(info.role);
+      ? roleScope.getByRole(role, { name: info.name, exact: true })
+      : roleScope.getByRole(role);
 
     return info.nth !== undefined ? locator.nth(info.nth) : locator;
   }

@@ -35,6 +35,10 @@ export function getHostTarget(): Target {
   return getHostTargetFor(platform(), arch());
 }
 
+export async function copyFilePortable(sourcePath: string, targetPath: string): Promise<void> {
+  await Bun.write(targetPath, Bun.file(sourcePath));
+}
+
 export async function buildSidecar(): Promise<void> {
   const target = getHostTarget();
   const isWindows = platform() === "win32";
@@ -50,7 +54,7 @@ export async function buildSidecar(): Promise<void> {
   }
 
   await $`bun build src/index.ts --compile --target=${target.bunTarget} --outfile ${releasePath} --external electron`;
-  await $`cp ${releasePath} ${sidecarPath}`;
+  await copyFilePortable(releasePath, sidecarPath);
 
   console.log(`\n✅ Sidecar built: ${sidecarPath}\n`);
 }

@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, createContext, useContext } from 'react';
+import { appendApiTokenParam } from '@/lib/auth';
 
 // Context for sidebar state (shared with App layout)
 interface SidebarContextType {
@@ -70,7 +71,7 @@ function useAgentStatus() {
 
   useEffect(() => {
     const connectSSE = () => {
-      const eventSource = new EventSource('/api/sse/status');
+      const eventSource = new EventSource(appendApiTokenParam('/api/sse/status'));
       eventSourceRef.current = eventSource;
 
       eventSource.onmessage = (event) => {

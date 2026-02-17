@@ -116,30 +116,26 @@ export interface SystemPromptParams {
   userTimezone?: string;
 }
 
+function parseJsonObject(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value !== "string") return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
 // Load custom system prompt configuration
 function loadSystemPromptConfig(): Record<string, unknown> {
   const config = tables.config.get("systemPrompt");
-  if (config) {
-    try {
-      return JSON.parse(config.value);
-    } catch {
-      return {};
-    }
-  }
-  return {};
-}
-
-// Load identity configuration
-function loadIdentityConfig(): Record<string, unknown> {
-  const config = tables.config.get("identity");
-  if (config) {
-    try {
-      return JSON.parse(config.value);
-    } catch {
-      return {};
-    }
-  }
-  return {};
+  if (!config) return {};
+  return parseJsonObject(config.value);
 }
 
 /**
@@ -149,13 +145,14 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
   // Load custom configuration from database
   const systemPromptConfig = loadSystemPromptConfig();
 
-  const { config, agentData } = params;
-  const agentConfig = agentData?.config ? JSON.parse(agentData.config) : {};
+  const { agentData } = params;
+  const agentConfig = parseJsonObject(agentData?.config);
+  const promptFeatures = systemPromptConfig?.features as { promptMode?: PromptMode } | undefined;
 
   const promptMode: PromptMode =
     params.promptMode ||
     (agentConfig?.promptMode as PromptMode) ||
-    (systemPromptConfig?.features as any)?.promptMode ||
+    promptFeatures?.promptMode ||
     "full";
 
   const isMinimal = promptMode === "minimal" || promptMode === "none";
@@ -681,7 +678,7 @@ function buildWorkspaceSection(workspaceDir?: string): string[] {
   ];
 }
 
-function buildToolsSection(tools: string[]): string[] {
+export function buildToolsSection(tools: string[]): string[] {
   const toolList = tools.filter(Boolean).join(", ");
   const lines = [
     "## Tools",

@@ -40,6 +40,7 @@ import { PageLayout } from '@/components/layout';
 import type { Task, Agent } from '../types';
 import { useTaskNotifications } from '../hooks/useNotifications';
 import { useQuery } from '@tanstack/react-query';
+import { apiFetch } from '@/lib/auth';
 
 // Task Run History type
 interface TaskRun {
@@ -88,7 +89,7 @@ export function Tasks() {
     queryKey: ['taskRuns', expandedTaskId],
     queryFn: async () => {
       if (!expandedTaskId) return [];
-      const res = await fetch(`/api/tasks/${expandedTaskId}/runs`);
+      const res = await apiFetch(`/api/tasks/${expandedTaskId}/runs`);
       if (!res.ok) return [];
       return res.json();
     },

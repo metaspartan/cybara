@@ -111,6 +111,35 @@ describe("ChannelManager lifecycle wiring", () => {
     });
   });
 
+  test("updating one channel does not stop unrelated adapters", async () => {
+    const webChannel = manager.create("web", makeName("mgr-isolation-web"), {});
+    createdChannelIds.push(webChannel.id);
+
+    const discordChannel = manager.create("discord", makeName("mgr-isolation-discord"), {
+      bot_token: "discord-token",
+      guild_id: "guild-1",
+      dm_policy: "pairing",
+    });
+    createdChannelIds.push(discordChannel.id);
+
+    await waitFor(() => webAdapter.starts.length === 1 && discordAdapter.starts.length === 1);
+
+    const updated = manager.update(discordChannel.id, {
+      config: {
+        guild_id: "guild-2",
+      },
+    });
+    expect(updated).toBe(true);
+
+    await waitFor(() => discordAdapter.stops.length === 1 && discordAdapter.starts.length === 2);
+    expect(discordAdapter.stops).toEqual([discordChannel.id]);
+
+    // Web channel remains untouched and running.
+    expect(webAdapter.starts).toHaveLength(1);
+    expect(webAdapter.stops).toHaveLength(0);
+    expect(webAdapter.isRunning(webChannel.id)).toBe(true);
+  });
+
   test("disable stops adapter and enable starts it again", async () => {
     const channel = manager.create("web", makeName("mgr-toggle"), {});
     createdChannelIds.push(channel.id);

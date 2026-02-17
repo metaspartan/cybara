@@ -7,9 +7,6 @@ import { INTERACTIVE_ROLES, CONTENT_ROLES, STRUCTURAL_ROLES } from "../../browse
 import {
   getFullAccessibilityTree,
   getDomText,
-  getFrameAccessibilityTree,
-  resolveRefToElement,
-  screenshotWithLabels,
   scrollIntoView,
   hoverElement,
   selectOption,
@@ -18,9 +15,8 @@ import {
   type RefInfo,
 } from "../../browser/cdp-helpers";
 
-import { randomUUID } from "crypto";
 import { writeFileSync, mkdirSync, existsSync } from "fs";
-import { join, resolve } from "path";
+import { join } from "path";
 import { homedir } from "os";
 
 // Media output directory for screenshots — use ~/.cybara/ for consistent cross-platform paths
@@ -32,7 +28,6 @@ const SCREENSHOTS_DIR = join(
 
 // Track active page for each session (legacy mode)
 const sessionPages = new Map<string, string>();
-const activeDialogs = new Map<string, { type: string; message: string }>();
 
 // ============================================
 // OpenClaw-style Element Refs
@@ -145,7 +140,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       // OpenClaw pattern: 'start' just starts browser, 'open' loads URL
       // If URL provided with start, navigate to it (convenience)
       if (url) {
-        const page = await profileManager.createPage(profileName, url);
+        await profileManager.createPage(profileName, url);
         console.log(`[Browser] Started browser and navigated to ${url}`);
         return {
           success: true,
@@ -370,7 +365,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       }
 
       // Open page in visual browser
-      const page = await profileManager.createPage(profileName, url);
+      await profileManager.createPage(profileName, url);
 
       return {
         success: true,
@@ -399,7 +394,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       }
 
       // Open page in profile
-      const page = await profileManager.createPage(profileName, url);
+      await profileManager.createPage(profileName, url);
 
       return {
         success: true,
@@ -512,7 +507,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
             new Promise((resolve) => setTimeout(resolve, 8000)),
           ]);
           await new Promise((resolve) => setTimeout(resolve, 300));
-        } catch (e) {
+        } catch {
           console.log(`[Browser] Network idle wait timeout, continuing with available content`);
         }
       }
@@ -531,7 +526,6 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
 
       const snapshotLines: string[] = [];
       let refCounter = 0;
-      let interactiveCount = 0;
 
       try {
         // Use CDP Accessibility.getFullAXTree (more complete than Puppeteer's accessibility.snapshot)
@@ -583,7 +577,6 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
           // Add ref for interactive elements
           if (isInteractive) {
             refCounter++;
-            interactiveCount++;
             const refId = `e${refCounter}`;
             line += ` [ref=${refId}]`;
             refs.set(refId, { selector: "", role, name: name || undefined });

@@ -22,6 +22,16 @@ interface MCPServerInstance {
   startedAt?: Date;
 }
 
+type MCPToolListResponse = {
+  result?: {
+    tools?: Array<{
+      name?: string;
+      description?: string;
+      inputSchema?: unknown;
+    }>;
+  };
+};
+
 class MCPServerManager extends EventEmitter {
   private instances: Map<string, MCPServerInstance> = new Map();
   private toolCache: Map<string, MCPTool[]> = new Map();
@@ -50,7 +60,7 @@ class MCPServerManager extends EventEmitter {
   list(): (MCPServer & { status: string; toolCount: number })[] {
     const result: (MCPServer & { status: string; toolCount: number })[] = [];
 
-    for (const [id, instance] of this.instances) {
+    for (const [, instance] of this.instances) {
       result.push({
         ...instance.server,
         status: instance.status,
@@ -210,6 +220,18 @@ class MCPServerManager extends EventEmitter {
       // Wait for initialization
       await new Promise<void>((resolve) => setTimeout(resolve, 1000));
 
+      // If process exited during startup, treat as failed start
+      if (instance.process !== proc || proc.exitCode !== null) {
+        const exitCode = proc.exitCode;
+        const exitedMsg =
+          exitCode === 0
+            ? "MCP server exited before initialization"
+            : `MCP server exited with code ${String(exitCode)}`;
+        instance.status = exitCode === 0 ? "stopped" : "error";
+        instance.lastError = exitedMsg;
+        return { success: false, error: exitedMsg };
+      }
+
       // Request tools list
       await this.requestTools(id);
 
@@ -263,15 +285,22 @@ class MCPServerManager extends EventEmitter {
       const lines = message.split("\n").filter(Boolean);
       for (const line of lines) {
         try {
-          const msg = JSON.parse(line);
-
-          if (msg.result?.tools) {
+          const msg = JSON.parse(line) as MCPToolListResponse;
+          if (Array.isArray(msg.result?.tools)) {
             // Tools list response
-            instance.tools = msg.result.tools.map((t: any) => ({
-              name: t.name,
-              description: t.description || "",
-              inputSchema: t.inputSchema || { type: "object", properties: {} },
-            }));
+            instance.tools = msg.result.tools
+              .filter(
+                (tool): tool is { name: string; description?: string; inputSchema?: unknown } =>
+                  typeof tool.name === "string"
+              )
+              .map((tool) => ({
+                name: tool.name,
+                description: tool.description || "",
+                inputSchema:
+                  tool.inputSchema && typeof tool.inputSchema === "object"
+                    ? (tool.inputSchema as Record<string, unknown>)
+                    : { type: "object", properties: {} },
+              }));
             this.toolCache.set(id, instance.tools);
             this.emit("toolsUpdated", { id, tools: instance.tools });
           }

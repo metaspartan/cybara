@@ -25,6 +25,29 @@ export {
   imessageSessions,
 };
 
+function parseChannelConfig(config: unknown, channelId?: string): Record<string, unknown> {
+  if (typeof config === "string") {
+    try {
+      const parsed = JSON.parse(config);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+      return {};
+    } catch {
+      console.warn(
+        `[ChannelManager] Invalid channel config JSON${channelId ? ` for ${channelId}` : ""}; using empty config`
+      );
+      return {};
+    }
+  }
+
+  if (config && typeof config === "object" && !Array.isArray(config)) {
+    return config as Record<string, unknown>;
+  }
+
+  return {};
+}
+
 export class ChannelManager {
   private adapters = new Map<ChannelType, ChannelAdapter>();
 
@@ -51,7 +74,7 @@ export class ChannelManager {
   list(): (Channel & { info?: (typeof channels)[ChannelType] })[] {
     const all = tables.channels.all() as Channel[];
     return all.map((c) => {
-      const rawConfig = typeof c.config === "string" ? JSON.parse(c.config) : c.config || {};
+      const rawConfig = parseChannelConfig(c.config, c.id);
       const channelDef = channels[c.type as ChannelType];
 
       // Mask sensitive fields but preserve non-sensitive values
@@ -195,8 +218,7 @@ export class ChannelManager {
 
     const existingType = existing.type as ChannelType;
     const existingEnabled = !!existing.enabled;
-    const existingConfig =
-      typeof existing.config === "string" ? JSON.parse(existing.config) : existing.config || {};
+    const existingConfig = parseChannelConfig(existing.config, id);
     const mergedConfig = updates.config ? { ...existingConfig, ...updates.config } : existingConfig;
     const nextEnabled = updates.enabled !== undefined ? updates.enabled : existingEnabled;
 
@@ -262,8 +284,7 @@ export class ChannelManager {
 
       const adapter = this.adapters.get(channel.type as ChannelType);
       if (adapter) {
-        const config =
-          typeof channel.config === "string" ? JSON.parse(channel.config) : channel.config;
+        const config = parseChannelConfig(channel.config, channel.id);
         await this.startAdapter(channel.id, channel.type as ChannelType, config);
       }
     }

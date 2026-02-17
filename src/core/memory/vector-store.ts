@@ -7,7 +7,6 @@ import { mkdirSync, existsSync } from "fs";
 import { homedir } from "os";
 import {
     createEmbeddingProvider,
-    cosineSimilarity,
     findTopKSimilar,
     type EmbeddingProvider,
 } from "./embeddings";

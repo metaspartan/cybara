@@ -14,7 +14,6 @@ import type {
   PublishDiagnosticsParams,
   Location,
   Hover,
-  Diagnostic,
 } from "./types";
 
 interface JsonRpcMessage {

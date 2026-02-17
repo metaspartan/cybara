@@ -296,7 +296,7 @@ export class SignalAdapter implements ChannelAdapter {
       id: ++this.requestId,
     };
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       this.pendingRequests.set(request.id, {
         resolve: () => resolve(true),
         reject: (err) => {

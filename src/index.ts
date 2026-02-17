@@ -7,36 +7,21 @@ import { channelManager, telegramBot, telegramSessions } from "./core/channels";
 import { handleChat, sendToSession, type ChatMessage } from "./api/chat";
 import { providerManager } from "./core/providers";
 import { onStatus, addSSEClient, removeSSEClient } from "./core/status";
+import { resolveUiPath } from "./core/runtime/ui-path";
+import { securityCheck } from "./api/security";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Detect compiled binary: execPath won't contain 'bun' when compiled
 const isCompiledBinary = !process.execPath.endsWith("bun") && !process.execPath.includes("/bun");
 
-// In compiled binaries, __dirname points to virtual filesystem - use executable path
-const getUiPath = (): string => {
-  if (isCompiledBinary) {
-    const execDir = dirname(process.execPath);
-    // Check: <exec_dir>/ui/dist (e.g., release/ui/dist)
-    const releaseUi = join(execDir, "ui", "dist");
-    if (existsSync(releaseUi)) return releaseUi;
-    // Tauri macOS: Contents/Resources/_up_/ui/dist (Tauri converts ../ to _up_/)
-    const tauriMacUi = join(execDir, "..", "Resources", "_up_", "ui", "dist");
-    if (existsSync(tauriMacUi)) return tauriMacUi;
-    // Tauri Linux: <exec_dir>/../lib/<app>/ui/dist or <exec_dir>/../share/<app>/ui/dist
-    const tauriLinuxLib = join(execDir, "..", "lib", "cybara", "ui", "dist");
-    if (existsSync(tauriLinuxLib)) return tauriLinuxLib;
-    const tauriLinuxShare = join(execDir, "..", "share", "cybara", "ui", "dist");
-    if (existsSync(tauriLinuxShare)) return tauriLinuxShare;
-    // Fallback: <exec_dir>/../ui/dist (e.g., release/../ui/dist = ./ui/dist)
-    const repoUi = join(execDir, "..", "ui", "dist");
-    if (existsSync(repoUi)) return repoUi;
-  }
-  // Development mode
-  return join(__dirname, "..", "ui", "dist");
-};
-
-const uiPath = getUiPath();
+const uiPath = resolveUiPath({
+  isCompiledBinary,
+  execPath: process.execPath,
+  moduleDir: __dirname,
+  appName: "cybara",
+  existsSyncFn: existsSync,
+});
 let uiContent: string;
 let uiExists = false;
 
@@ -98,7 +83,7 @@ function createStatusStream(): ReadableStream<Uint8Array> {
       controller.enqueue(encoder.encode(initMsg));
 
       // Add to SSE clients
-      addSSEClient(controller as any);
+      addSSEClient(controller);
       console.log(`[SSE] Client connected`);
 
       // Set up heartbeat to keep connection alive (every 30 seconds)
@@ -128,7 +113,7 @@ function createStatusStream(): ReadableStream<Uint8Array> {
           heartbeatInterval = null;
         }
         if (controllerRef) {
-          removeSSEClient(controllerRef as any);
+          removeSSEClient(controllerRef);
         }
         if (unsubscribe) {
           unsubscribe();
@@ -142,7 +127,7 @@ function createStatusStream(): ReadableStream<Uint8Array> {
         clearInterval(heartbeatInterval);
       }
       if (controllerRef) {
-        removeSSEClient(controllerRef as any);
+        removeSSEClient(controllerRef);
       }
       if (unsubscribe) {
         unsubscribe();
@@ -157,7 +142,6 @@ import {
   getTerminalSession,
   destroyTerminalSession,
   listTerminalSessions,
-  destroyAllTerminalSessions,
   writeToTerminal,
   startOutputReader,
 } from "./api/terminal";
@@ -166,23 +150,32 @@ interface WsData {
   sessionId: string;
 }
 
-const server = Bun.serve<WsData>({
+function getClientIp(headers: Record<string, string>): string {
+  return headers["x-forwarded-for"]?.split(",")[0]?.trim() || headers["x-real-ip"] || "127.0.0.1";
+}
+
+function withOptionalQueryToken(headers: Record<string, string>, url: URL): Record<string, string> {
+  const token = url.searchParams.get("token") || url.searchParams.get("api_key");
+  if (!token) return headers;
+
+  if (!headers.authorization && !headers.Authorization) {
+    return { ...headers, authorization: token };
+  }
+
+  return headers;
+}
+
+Bun.serve<WsData>({
   port: PORT,
   hostname: HOST,
   fetch: async (req, server) => {
     const url = new URL(req.url);
     const pathname = url.pathname;
+    const requestHeaders = Object.fromEntries(req.headers.entries());
+    const clientIp = getClientIp(requestHeaders);
 
-    // Terminal WebSocket upgrade
-    if (pathname === "/api/terminal/ws" && isTerminalEnabled()) {
-      const sessionId = url.searchParams.get("session") || crypto.randomUUID();
-      const success = server.upgrade(req, { data: { sessionId } });
-      if (success) return undefined as any;
-      return new Response("WebSocket upgrade failed", { status: 400 });
-    }
-
-    // Terminal REST endpoints (session management)
-    if (pathname.startsWith("/api/terminal") && req.method === "GET") {
+    // Terminal endpoints (session management + websocket)
+    if (pathname.startsWith("/api/terminal")) {
       if (!isTerminalEnabled()) {
         return new Response(
           JSON.stringify({ error: "Terminal disabled. Start with --enable-terminal" }),
@@ -192,15 +185,50 @@ const server = Bun.serve<WsData>({
           }
         );
       }
+
+      const terminalHeaders = withOptionalQueryToken(requestHeaders, url);
+      const security = securityCheck(req.method, pathname, terminalHeaders, clientIp);
+      if (!security.passed) {
+        return new Response(JSON.stringify({ error: security.error }), {
+          status: security.statusCode || 403,
+          headers: {
+            "Content-Type": "application/json",
+            ...security.headers,
+          },
+        });
+      }
+
+      if (pathname === "/api/terminal/ws") {
+        const sessionId = url.searchParams.get("session") || crypto.randomUUID();
+        const success = server.upgrade(req, { data: { sessionId } });
+        if (success) return undefined;
+        return new Response("WebSocket upgrade failed", { status: 400 });
+      }
+
       if (pathname === "/api/terminal/sessions") {
         return new Response(JSON.stringify(listTerminalSessions()), {
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...security.headers,
+          },
         });
       }
     }
 
     // SSE endpoint for status updates
     if (pathname === "/api/sse/status") {
+      const sseHeaders = withOptionalQueryToken(requestHeaders, url);
+      const security = securityCheck(req.method, pathname, sseHeaders, clientIp);
+      if (!security.passed) {
+        return new Response(JSON.stringify({ error: security.error }), {
+          status: security.statusCode || 403,
+          headers: {
+            "Content-Type": "application/json",
+            ...security.headers,
+          },
+        });
+      }
+
       return new Response(createStatusStream(), {
         headers: {
           "Content-Type": "text/event-stream",
@@ -208,6 +236,7 @@ const server = Bun.serve<WsData>({
           Connection: "keep-alive",
           "X-Accel-Buffering": "no", // Disable nginx buffering if proxied
           "Access-Control-Allow-Origin": "*",
+          ...security.headers,
         },
       });
     }
@@ -224,7 +253,7 @@ const server = Bun.serve<WsData>({
       const response = await handleRequest({
         method: req.method,
         url: req.url,
-        headers: Object.fromEntries(req.headers.entries()),
+        headers: requestHeaders,
         body,
       });
       return new Response(JSON.stringify(response.body), {

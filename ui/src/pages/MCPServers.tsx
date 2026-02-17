@@ -19,6 +19,7 @@ import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { PageLayout } from '@/components/layout';
 import { useUIStore } from '../stores/uiStore';
+import { apiFetch } from '@/lib/auth';
 
 // Types
 interface MCPServer {
@@ -49,22 +50,22 @@ interface MCPRegistryServer {
 const API_BASE = '';
 
 async function fetchMCPServers(): Promise<MCPServer[]> {
-    const res = await fetch(`${API_BASE}/api/mcp`);
+    const res = await apiFetch(`${API_BASE}/api/mcp`);
     return res.json();
 }
 
 async function fetchRegistryPopular(): Promise<MCPRegistryServer[]> {
-    const res = await fetch(`${API_BASE}/api/mcp/registry/popular`);
+    const res = await apiFetch(`${API_BASE}/api/mcp/registry/popular`);
     return res.json();
 }
 
 async function searchRegistry(query: string): Promise<MCPRegistryServer[]> {
-    const res = await fetch(`${API_BASE}/api/mcp/registry/search?q=${encodeURIComponent(query)}`);
+    const res = await apiFetch(`${API_BASE}/api/mcp/registry/search?q=${encodeURIComponent(query)}`);
     return res.json();
 }
 
 async function installFromRegistry(id: string): Promise<{ success: boolean; id?: string; error?: string }> {
-    const res = await fetch(`${API_BASE}/api/mcp/registry/install`, {
+    const res = await apiFetch(`${API_BASE}/api/mcp/registry/install`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
@@ -73,17 +74,17 @@ async function installFromRegistry(id: string): Promise<{ success: boolean; id?:
 }
 
 async function startServer(id: string): Promise<{ success: boolean; error?: string }> {
-    const res = await fetch(`${API_BASE}/api/mcp/${id}/start`, { method: 'POST' });
+    const res = await apiFetch(`${API_BASE}/api/mcp/${id}/start`, { method: 'POST' });
     return res.json();
 }
 
 async function stopServer(id: string): Promise<{ success: boolean }> {
-    const res = await fetch(`${API_BASE}/api/mcp/${id}/stop`, { method: 'POST' });
+    const res = await apiFetch(`${API_BASE}/api/mcp/${id}/stop`, { method: 'POST' });
     return res.json();
 }
 
 async function deleteServer(id: string): Promise<{ success: boolean }> {
-    const res = await fetch(`${API_BASE}/api/mcp/${id}`, { method: 'DELETE' });
+    const res = await apiFetch(`${API_BASE}/api/mcp/${id}`, { method: 'DELETE' });
     return res.json();
 }
 
@@ -385,7 +386,7 @@ function AddServerModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; onClo
 
         setLoading(true);
         try {
-            const res = await fetch('/api/mcp', {
+            const res = await apiFetch('/api/mcp', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, command, args, env, enabled: true }),

@@ -5,7 +5,7 @@ import { exec } from "child_process";
 import { LSPClient } from "./client";
 import { getLanguageId, type Diagnostic, type Location, type Hover } from "./types";
 import { existsSync, readFileSync, writeFileSync } from "fs";
-import { join, extname } from "path";
+import { join } from "path";
 import { cybaraDir } from "../paths";
 import * as bundledTS from "./bundled-ts";
 import * as installer from "./installer";

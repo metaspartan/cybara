@@ -8,7 +8,6 @@ import { platform } from "os";
 import type {
     SkillEntry,
     SkillStatus,
-    SkillMetadata,
     SkillEligibilityContext,
     SkillsConfig,
 } from "./types";

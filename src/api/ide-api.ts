@@ -1,16 +1,34 @@
 // IDE API - File browsing and reading for the IDE page
 import { readdir, readFile, stat, writeFile, mkdir } from "fs/promises";
-import { join, basename, extname, dirname, resolve } from "path";
+import { join, basename, extname, dirname, resolve, relative, isAbsolute } from "path";
 import { homedir } from "os";
-import { existsSync } from "fs";
+import { existsSync, realpathSync } from "fs";
 
 const HOME_DIR = homedir();
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit (industry standard for browser IDEs)
 
+function resolveCanonicalPath(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
+const HOME_ROOTS = Array.from(new Set([resolve(HOME_DIR), resolveCanonicalPath(HOME_DIR)]));
+
+function isWithinRoot(rootPath: string, resolvedPath: string): boolean {
+  const rel = relative(rootPath, resolvedPath);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+function isWithinHome(resolvedPath: string): boolean {
+  return HOME_ROOTS.some((rootPath) => isWithinRoot(rootPath, resolvedPath));
+}
+
 // Security: Ensure path is within HOME_DIR
 function isPathAllowed(targetPath: string): boolean {
-  const resolved = resolve(targetPath);
-  return resolved.startsWith(HOME_DIR) && !resolved.includes("..");
+  return isWithinHome(resolve(targetPath));
 }
 
 // Normalize path - resolve ~ to home dir
@@ -112,6 +130,17 @@ export async function browseDirectory(inputPath?: string): Promise<BrowseResult>
     };
   }
 
+  const canonicalTargetPath = resolveCanonicalPath(targetPath);
+  if (!isWithinHome(canonicalTargetPath)) {
+    return {
+      success: false,
+      path: targetPath,
+      parent: null,
+      entries: [],
+      error: "Access denied: Path outside home directory",
+    };
+  }
+
   try {
     const stats = await stat(targetPath);
     if (!stats.isDirectory()) {
@@ -133,6 +162,8 @@ export async function browseDirectory(inputPath?: string): Promise<BrowseResult>
       if (item.name === "node_modules" || item.name === "__pycache__") continue;
 
       const itemPath = join(targetPath, item.name);
+      const canonicalItemPath = resolveCanonicalPath(itemPath);
+      if (!isWithinHome(canonicalItemPath)) continue;
 
       try {
         const itemStats = await stat(itemPath);
@@ -189,6 +220,15 @@ export async function readFileContent(inputPath: string): Promise<ReadResult> {
       success: false,
       path: targetPath,
       error: "File does not exist",
+    };
+  }
+
+  const canonicalTargetPath = resolveCanonicalPath(targetPath);
+  if (!isWithinHome(canonicalTargetPath)) {
+    return {
+      success: false,
+      path: targetPath,
+      error: "Access denied: Path outside home directory",
     };
   }
 
@@ -289,6 +329,26 @@ export async function writeFileContent(inputPath: string, content: string): Prom
     };
   }
 
+  const canonicalParentDir = resolveCanonicalPath(parentDir);
+  if (!isWithinHome(canonicalParentDir)) {
+    return {
+      success: false,
+      path: targetPath,
+      error: "Access denied: Path outside home directory",
+    };
+  }
+
+  if (existsSync(targetPath)) {
+    const canonicalTargetPath = resolveCanonicalPath(targetPath);
+    if (!isWithinHome(canonicalTargetPath)) {
+      return {
+        success: false,
+        path: targetPath,
+        error: "Access denied: Path outside home directory",
+      };
+    }
+  }
+
   try {
     await writeFile(targetPath, content, "utf-8");
     return {
@@ -325,6 +385,25 @@ export async function createItem(
   const targetPath = join(parentDir, name);
 
   if (!isPathAllowed(targetPath)) {
+    return {
+      success: false,
+      path: targetPath,
+      type,
+      error: "Access denied: Path outside home directory",
+    };
+  }
+
+  if (!existsSync(parentDir)) {
+    return {
+      success: false,
+      path: targetPath,
+      type,
+      error: "Parent directory does not exist",
+    };
+  }
+
+  const canonicalParentDir = resolveCanonicalPath(parentDir);
+  if (!isWithinHome(canonicalParentDir)) {
     return {
       success: false,
       path: targetPath,

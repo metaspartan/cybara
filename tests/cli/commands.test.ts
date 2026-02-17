@@ -6,6 +6,11 @@ const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 let server: ReturnType<typeof Bun.serve>;
 let apiBase = "";
+const configState: Record<string, unknown> = {
+  host: "127.0.0.1",
+  port: 4269,
+  theme: "indigo",
+};
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -198,10 +203,15 @@ function route(method: string, url: URL, body: string): Response {
     return json({
       results: [
         {
-          id: "m-search-1",
-          content: `result for ${query}`,
-          similarity: 0.93,
-          createdAt: new Date().toISOString(),
+          file: "2026-01-01.md",
+          entry: {
+            timestamp: "12:00:00",
+            date: "2026-01-01",
+            type: "note",
+            tags: ["manual"],
+            content: `result for ${query}`,
+            index: 0,
+          },
         },
       ],
     });
@@ -211,6 +221,16 @@ function route(method: string, url: URL, body: string): Response {
     return json([
       { timestamp: new Date().toISOString(), level: "info", module: "api", message: "ok" },
     ]);
+  }
+
+  if (method === "GET" && pathname === "/api/config") {
+    return json(configState);
+  }
+
+  if (method === "PUT" && pathname === "/api/config") {
+    const parsed = body ? (JSON.parse(body) as Record<string, unknown>) : {};
+    Object.assign(configState, parsed);
+    return json({ success: true });
   }
 
   if (method === "GET" && pathname === "/api/subagents") {
@@ -323,6 +343,23 @@ function route(method: string, url: URL, body: string): Response {
     const parsed = body ? (JSON.parse(body) as { language?: string }) : {};
     if (!parsed.language) return json({ success: false, error: "language required" }, 400);
     return json({ success: true });
+  }
+
+  if (method === "GET" && pathname === "/api/browser/status") {
+    return json({
+      running: true,
+      profile: "default",
+      currentUrl: "https://example.com",
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/browser/tabs") {
+    return json({
+      tabs: [
+        { id: "tab-1", url: "https://example.com", title: "Example Domain" },
+        { id: "tab-2", url: "https://docs.cybara.dev", title: "Cybara Docs" },
+      ],
+    });
   }
 
   return json({ error: `Unhandled route: ${method} ${pathname}` }, 404);
@@ -458,6 +495,39 @@ describe("CLI Commands", () => {
     const logs = await runCli(["logs", "1"]);
     expect(logs.exitCode).toBe(0);
     expect(logs.stdout).toContain("CYBARA LOGS");
+  });
+
+  test("config commands list/get/set are wired", async () => {
+    const list = await runCli(["config"]);
+    expect(list.exitCode).toBe(0);
+    expect(list.stdout).toContain("CYBARA CONFIG");
+    expect(list.stdout).toContain('host = "127.0.0.1"');
+
+    const getHost = await runCli(["config", "get", "host"]);
+    expect(getHost.exitCode).toBe(0);
+    expect(getHost.stdout).toContain('host = "127.0.0.1"');
+
+    const setTheme = await runCli(["config", "set", "theme", "teal"]);
+    expect(setTheme.exitCode).toBe(0);
+    expect(setTheme.stdout).toContain("Set theme = teal");
+
+    const getTheme = await runCli(["config", "get", "theme"]);
+    expect(getTheme.exitCode).toBe(0);
+    expect(getTheme.stdout).toContain('theme = "teal"');
+  });
+
+  test("browser commands are wired", async () => {
+    const status = await runCli(["browser"]);
+    expect(status.exitCode).toBe(0);
+    expect(status.stdout).toContain("CYBARA BROWSER");
+    expect(status.stdout).toContain("status: running");
+    expect(status.stdout).toContain("url: https://example.com");
+
+    const tabs = await runCli(["browser", "tabs"]);
+    expect(tabs.exitCode).toBe(0);
+    expect(tabs.stdout).toContain("BROWSER TABS");
+    expect(tabs.stdout).toContain("Example Domain");
+    expect(tabs.stdout).toContain("Cybara Docs");
   });
 
   test("memory search query path is wired", async () => {

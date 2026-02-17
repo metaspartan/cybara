@@ -1,5 +1,5 @@
 import { config } from "../core/config";
-import db, { tables } from "../core/database";
+import { tables } from "../core/database";
 import { agentManager, builtinTools } from "../core/agent";
 import { providerManager, providers, type ProviderType } from "../core/providers";
 import {
@@ -32,8 +32,9 @@ import {
   listSessions,
   deleteSession,
   getChatRateLimitStatus,
+  type ChatMessage,
 } from "../api/chat";
-import { getToolSchemasForLLM, getRateLimitStatus, getCircuitState } from "../core/tools/index";
+import { getToolSchemasForLLM, getCircuitState } from "../core/tools/index";
 import { executeTool, hasTool } from "../core/tools/handlers/index";
 import { handleSessionsSpawn } from "../core/tools/handlers/channel";
 import {
@@ -52,9 +53,10 @@ import {
 import { buildSystemPrompt } from "../core/system-prompt";
 import * as pwManager from "../core/browser/pw-manager";
 import { homedir } from "os";
-import { securityCheck, validateMessageSize } from "./security";
+import { securityCheck, validateUrl } from "./security";
 import { browseDirectory, readFileContent, writeFileContent, createItem } from "./ide-api";
 import { createLogger } from "../core/logger";
+import { openUrlInBrowser } from "../core/runtime/open-url";
 import {
   normalizeTimestamp,
   getCombinedLogs,
@@ -62,7 +64,6 @@ import {
   getDailyLogCounts,
   getModelMetrics,
   type MetricsEntry,
-  type CountResult,
 } from "./queries";
 
 const log = createLogger("API");
@@ -73,24 +74,123 @@ const oauthCallbacks = new Map<
   { status: string; access_token?: string; refresh_token?: string; error?: string }
 >();
 
-// Helper to open URLs in the system browser from the backend
-async function openUrlInBrowser(url: string): Promise<void> {
-  const { exec } = await import("child_process");
-  const platform = process.platform;
-  const cmd = platform === "darwin" ? "open" : platform === "win32" ? "start" : "xdg-open";
-  exec(`${cmd} "${url.replace(/"/g, '\\"')}"`);
+interface LspDiagnosticLike {
+  severity?: number;
+  message?: string;
+  source?: string;
+  code?: string | number;
+  range?: {
+    start?: { line?: number; character?: number };
+    end?: { line?: number; character?: number };
+  };
+}
+
+type SessionMessageView = ChatMessage & {
+  tool_calls?: Array<{
+    id?: string;
+    name?: string;
+    args?: Record<string, unknown>;
+    status?: string;
+    result?: unknown;
+    error?: string;
+  }>;
+  _truncated?: string;
+};
+
+interface MetricTopKey {
+  key: string;
+  total: number;
+}
+
+interface ProviderMetricSummary {
+  provider: string;
+  hits: number;
+  tokens: number;
+  url: string;
+}
+
+function parseJsonObject(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseMetricMetadata(metadata?: string): Record<string, unknown> | null {
+  return parseJsonObject(metadata);
+}
+
+function getDefaultSystemPromptConfig(): Record<string, unknown> {
+  return {
+    template: "default",
+    customPrompt: "",
+    defaultBasePrompt: "",
+    identity: {
+      name: "Cybara",
+      emoji: "🧠",
+      creature: "AI assistant",
+      vibe: "Professional, helpful, and concise",
+      theme: "dark",
+    },
+    features: {
+      memoryEnabled: true,
+      skillsEnabled: true,
+      messagingEnabled: true,
+      replyTagsEnabled: true,
+    },
+  };
+}
+
+function getDefaultIdentityConfig(): Record<string, unknown> {
+  return {
+    name: "Cybara",
+    emoji: "🧠",
+    creature: "AI assistant",
+    vibe: "Professional, helpful, and concise",
+    theme: "dark",
+    avatar: "",
+  };
+}
+
+function normalizeSystemPromptConfig(value: unknown): Record<string, unknown> {
+  const defaults = getDefaultSystemPromptConfig();
+  const parsed = parseJsonObject(value);
+  if (!parsed) return defaults;
+
+  const defaultIdentity = parseJsonObject(defaults.identity) || {};
+  const defaultFeatures = parseJsonObject(defaults.features) || {};
+  const parsedIdentity = parseJsonObject(parsed.identity) || {};
+  const parsedFeatures = parseJsonObject(parsed.features) || {};
+
+  return {
+    ...defaults,
+    ...parsed,
+    identity: { ...defaultIdentity, ...parsedIdentity },
+    features: { ...defaultFeatures, ...parsedFeatures },
+  };
+}
+
+function normalizeIdentityConfig(value: unknown): Record<string, unknown> {
+  const defaults = getDefaultIdentityConfig();
+  const parsed = parseJsonObject(value);
+  return parsed ? { ...defaults, ...parsed } : defaults;
 }
 
 // ============================================
 // HELPER: Sanitize session messages for UI
 // Truncates large tool results to prevent browser OOM crashes
 // ============================================
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function sanitizeSessionMessages(messages: any[]): any[] {
+function sanitizeSessionMessages(messages: SessionMessageView[]): SessionMessageView[] {
   const MAX_RESULT_SIZE = 500;
   const MAX_TOOL_CALLS = 20;
-
-  if (!Array.isArray(messages)) return messages;
 
   return messages.map((msg) => {
     if (!msg || !msg.tool_calls || !Array.isArray(msg.tool_calls) || msg.tool_calls.length === 0) {
@@ -98,31 +198,29 @@ function sanitizeSessionMessages(messages: any[]): any[] {
     }
 
     // Limit and truncate tool calls
-    const sanitizedToolCalls = msg.tool_calls
-      .slice(0, MAX_TOOL_CALLS)
-      .map((tc: Record<string, unknown>) => {
-        const sanitized = { ...tc };
+    const sanitizedToolCalls = msg.tool_calls.slice(0, MAX_TOOL_CALLS).map((tc) => {
+      const sanitized = { ...tc };
 
-        // Truncate result
-        if (tc.result !== undefined) {
-          try {
-            const resultStr = typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result);
-            sanitized.result =
-              resultStr.length > MAX_RESULT_SIZE
-                ? resultStr.slice(0, MAX_RESULT_SIZE) + "... [truncated]"
-                : tc.result;
-          } catch {
-            sanitized.result = "[Result too large to display]";
-          }
+      // Truncate result
+      if (tc.result !== undefined) {
+        try {
+          const resultStr = typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result);
+          sanitized.result =
+            resultStr.length > MAX_RESULT_SIZE
+              ? resultStr.slice(0, MAX_RESULT_SIZE) + "... [truncated]"
+              : tc.result;
+        } catch {
+          sanitized.result = "[Result too large to display]";
         }
+      }
 
-        // Truncate error
-        if (tc.error && typeof tc.error === "string" && tc.error.length > 200) {
-          sanitized.error = tc.error.slice(0, 200) + "...";
-        }
+      // Truncate error
+      if (tc.error && typeof tc.error === "string" && tc.error.length > 200) {
+        sanitized.error = tc.error.slice(0, 200) + "...";
+      }
 
-        return sanitized;
-      });
+      return sanitized;
+    });
 
     return {
       ...msg,
@@ -342,7 +440,7 @@ const routes: Record<string, RouteHandler> = {
     if (!data.name) throw new Error("Tool name is required");
 
     if (!hasTool(data.name)) {
-      throw new Error(`Unknown tool: ${data.name}`);
+      throw new Error(`Invalid tool: ${data.name}`);
     }
 
     return await executeTool(data.name, data.args, {
@@ -494,7 +592,7 @@ const routes: Record<string, RouteHandler> = {
   "POST /api/providers/oauth/device-code": async (body) => {
     const { providerType } = body as { providerType: string };
     const config = providers[providerType as ProviderType] as Record<string, unknown>;
-    if (!config) throw new Error(`Unknown provider: ${providerType}`);
+    if (!config) throw new Error(`Validation error: unknown provider '${providerType}'`);
 
     const oauthConfig = config.oauthConfig as
       | { clientId?: string; deviceCodeUrl?: string; scope?: string }
@@ -539,7 +637,7 @@ const routes: Record<string, RouteHandler> = {
   "POST /api/providers/oauth/poll": async (body) => {
     const { providerType, deviceCode } = body as { providerType: string; deviceCode: string };
     const config = providers[providerType as ProviderType] as Record<string, unknown>;
-    if (!config) throw new Error(`Unknown provider: ${providerType}`);
+    if (!config) throw new Error(`Validation error: unknown provider '${providerType}'`);
 
     const oauthConfig = config.oauthConfig as { clientId?: string; tokenUrl?: string } | undefined;
     if (!oauthConfig?.tokenUrl || !oauthConfig?.clientId) {
@@ -590,12 +688,12 @@ const routes: Record<string, RouteHandler> = {
   "POST /api/open-url": async (body) => {
     const { url } = body as { url: string };
     if (!url || typeof url !== "string") throw new Error("url required");
-    // Validate it's a real URL
-    try {
-      new URL(url);
-    } catch {
-      throw new Error("Invalid URL");
+
+    const validation = await validateUrl(url);
+    if (!validation.valid) {
+      throw new Error(`Invalid URL: ${validation.error || "URL blocked"}`);
     }
+
     await openUrlInBrowser(url);
     log.info(`Opened URL in browser: ${url.substring(0, 80)}...`);
     return { ok: true };
@@ -606,7 +704,7 @@ const routes: Record<string, RouteHandler> = {
   "POST /api/providers/oauth/start": async (body) => {
     const { providerType } = body as { providerType: string };
     const providerConfig = providers[providerType as ProviderType] as Record<string, unknown>;
-    if (!providerConfig) throw new Error(`Unknown provider: ${providerType}`);
+    if (!providerConfig) throw new Error(`Validation error: unknown provider '${providerType}'`);
 
     const oauthConfig = providerConfig.oauthConfig as
       | {
@@ -845,7 +943,7 @@ const routes: Record<string, RouteHandler> = {
         available: availability,
         diagnosticsCount: manager.getAllDiagnostics().size,
       };
-    } catch (e) {
+    } catch {
       // Manager not initialized, initialize with cwd
       try {
         const manager = initLSPManager(process.cwd());
@@ -888,11 +986,12 @@ const routes: Record<string, RouteHandler> = {
       const result: Array<{ file: string; count: number; errors: number; warnings: number }> = [];
 
       for (const [uri, diags] of all) {
+        const typedDiags = diags as LspDiagnosticLike[];
         result.push({
           file: uri.replace("file://", ""),
-          count: diags.length,
-          errors: diags.filter((d: any) => d.severity === 1).length,
-          warnings: diags.filter((d: any) => d.severity === 2).length,
+          count: typedDiags.length,
+          errors: typedDiags.filter((d) => d.severity === 1).length,
+          warnings: typedDiags.filter((d) => d.severity === 2).length,
         });
       }
 
@@ -912,7 +1011,7 @@ const routes: Record<string, RouteHandler> = {
       return {
         success: true,
         path: filePath,
-        diagnostics: diagnostics.map((d: any) => ({
+        diagnostics: (diagnostics as LspDiagnosticLike[]).map((d) => ({
           line: d.range?.start?.line ?? 0,
           character: d.range?.start?.character ?? 0,
           endLine: d.range?.end?.line ?? 0,
@@ -932,7 +1031,7 @@ const routes: Record<string, RouteHandler> = {
       const manager = getLSPManager(process.cwd());
       const status = await manager.getInstallStatus();
       return { status };
-    } catch (e) {
+    } catch {
       // If not initialized, create manager first
       try {
         const manager = initLSPManager(process.cwd());
@@ -1104,8 +1203,7 @@ const routes: Record<string, RouteHandler> = {
       return { success: false, error: `No adapter registered for channel type: ${channel.type}` };
     }
 
-    const config =
-      typeof channel.config === "string" ? JSON.parse(channel.config) : channel.config || {};
+    const config = parseJsonObject(channel.config) || {};
 
     const channelDef = channels[channel.type as keyof typeof channels];
     const missingRequired = channelDef.fields
@@ -1258,7 +1356,7 @@ const routes: Record<string, RouteHandler> = {
         ? sanitizeSessionMessages(session.messages)
         : session.messages,
       messagesList: Array.isArray(sessionObj.messagesList)
-        ? sanitizeSessionMessages(sessionObj.messagesList as unknown[])
+        ? sanitizeSessionMessages(sessionObj.messagesList as SessionMessageView[])
         : undefined,
     };
   },
@@ -1266,7 +1364,9 @@ const routes: Record<string, RouteHandler> = {
     const messages = await getSessionMessages(params!.id);
     return sanitizeSessionMessages(messages);
   },
-  "DELETE /api/chat/sessions/:id": (_body, params) => ({ success: deleteSession(params!.id) }),
+  "DELETE /api/chat/sessions/:id": async (_body, params) => ({
+    success: await deleteSession(params!.id),
+  }),
 
   // ===== MEMORY MANAGEMENT =====
   "GET /api/memory": async () => {
@@ -1333,7 +1433,7 @@ const routes: Record<string, RouteHandler> = {
     const context = createEligibilityContext();
     const statuses = getSkillsStatusReport(allSkills, context);
     return {
-      skills: statuses.map((s: any) => ({
+      skills: statuses.map((s) => ({
         name: s.skill.name,
         description: s.skill.description,
         location: s.skill.location,
@@ -1348,21 +1448,21 @@ const routes: Record<string, RouteHandler> = {
       })),
       summary: {
         total: statuses.length,
-        eligible: statuses.filter((s: any) => s.eligible).length,
-        disabled: statuses.filter((s: any) => s.disabled).length,
-        blocked: statuses.filter((s: any) => !s.eligible && !s.disabled).length,
+        eligible: statuses.filter((s) => s.eligible).length,
+        disabled: statuses.filter((s) => s.disabled).length,
+        blocked: statuses.filter((s) => !s.eligible && !s.disabled).length,
       },
     };
   },
   "GET /api/skills/registry/search": async (_body, params) => {
     const query = params?.q || "";
-    if (!query) return { skills: [], registries: registryManager.list().map((r: any) => r.name) };
+    if (!query) return { skills: [], registries: registryManager.list().map((r) => r.name) };
     const results = await registryManager.searchAll(query);
     return { skills: results };
   },
   "GET /api/skills/registry/browse": async () => {
     const results = await registryManager.browseAll();
-    return { skills: results, registries: registryManager.list().map((r: any) => r.name) };
+    return { skills: results, registries: registryManager.list().map((r) => r.name) };
   },
   "POST /api/skills/install": async (body) => {
     const { slug, registry } = body as { slug: string; registry?: string };
@@ -1415,7 +1515,7 @@ const routes: Record<string, RouteHandler> = {
     const sessions = await listSessions();
 
     const sessionsWithCounts = await Promise.all(
-      sessions.map(async (session: any) => {
+      sessions.map(async (session) => {
         const messages = await getSessionMessages(session.id);
         const lastMessage = messages[messages.length - 1];
         // Get the actual last activity timestamp from the last message
@@ -1449,7 +1549,7 @@ const routes: Record<string, RouteHandler> = {
 
     // Truncate large message content and sanitize tool calls to prevent browser OOM
     const MAX_CONTENT_SIZE = 10000; // 10KB per message max
-    const sanitizedMessages = sanitizeSessionMessages(messages).map((m: any) => {
+    const sanitizedMessages = sanitizeSessionMessages(messages).map((m) => {
       const truncatedContent =
         typeof m.content === "string" && m.content.length > MAX_CONTENT_SIZE
           ? m.content.slice(0, MAX_CONTENT_SIZE) +
@@ -1557,32 +1657,7 @@ const routes: Record<string, RouteHandler> = {
   // ===== SYSTEM PROMPT & IDENTITY =====
   "GET /api/system-prompt": () => {
     const config = tables.config.get("systemPrompt");
-    if (config) {
-      try {
-        return JSON.parse(config.value);
-      } catch {
-        return config.value;
-      }
-    }
-    // Return default structure
-    return {
-      template: "default",
-      customPrompt: "",
-      defaultBasePrompt: "",
-      identity: {
-        name: "Cybara",
-        emoji: "🧠",
-        creature: "AI assistant",
-        vibe: "Professional, helpful, and concise",
-        theme: "dark",
-      },
-      features: {
-        memoryEnabled: true,
-        skillsEnabled: true,
-        messagingEnabled: true,
-        replyTagsEnabled: true,
-      },
-    };
+    return normalizeSystemPromptConfig(config?.value);
   },
   "PUT /api/system-prompt": (body) => {
     const data = body as Record<string, unknown>;
@@ -1611,22 +1686,7 @@ const routes: Record<string, RouteHandler> = {
   },
   "GET /api/identity": () => {
     const config = tables.config.get("identity");
-    if (config) {
-      try {
-        return JSON.parse(config.value);
-      } catch {
-        return config.value;
-      }
-    }
-    // Return default identity
-    return {
-      name: "Cybara",
-      emoji: "🧠",
-      creature: "AI assistant",
-      vibe: "Professional, helpful, and concise",
-      theme: "dark",
-      avatar: "",
-    };
+    return normalizeIdentityConfig(config?.value);
   },
   "PUT /api/identity": (body) => {
     const data = body as Record<string, unknown>;
@@ -1641,7 +1701,7 @@ const routes: Record<string, RouteHandler> = {
   },
   "GET /api/browser/tabs": async () => {
     const getAllPages = pwManager.getAllPages;
-    return { tabs: getAllPages() };
+    return { tabs: await getAllPages() };
   },
   "POST /api/browser/tabs": async () => {
     const createPage = pwManager.createPage;
@@ -1755,11 +1815,8 @@ const routes: Record<string, RouteHandler> = {
     };
 
     // Get tool calls by aggregating all tool_call entries
-    const toolCallEntries = metrics.getByType("tool_call") || [];
-    const totalToolCalls = toolCallEntries.reduce(
-      (sum: number, entry: any) => sum + (entry.value || 0),
-      0
-    );
+    const toolCallEntries = (metrics.getByType("tool_call") || []) as MetricsEntry[];
+    const totalToolCalls = toolCallEntries.reduce((sum, entry) => sum + (entry.value || 0), 0);
 
     const toolStats = {
       totalCalls: totalToolCalls,
@@ -1789,13 +1846,13 @@ const routes: Record<string, RouteHandler> = {
     };
 
     // Get context utilization warnings
-    const contextWarnings = metrics.getByType("context_warning") || [];
+    const contextWarnings = (metrics.getByType("context_warning") || []) as MetricsEntry[];
     const contextStats = {
       warnings: contextWarnings.length,
-      criticalWarnings: contextWarnings.filter((w: any) => {
+      criticalWarnings: contextWarnings.filter((w) => {
         try {
-          const meta = w.metadata ? JSON.parse(w.metadata) : {};
-          return meta.level === "critical";
+          const meta = w.metadata ? (JSON.parse(w.metadata) as { level?: string }) : undefined;
+          return meta?.level === "critical";
         } catch {
           return false;
         }
@@ -1817,9 +1874,9 @@ const routes: Record<string, RouteHandler> = {
     const metrics = tables.metrics;
 
     // Get top models by token usage
-    const topModels = metrics.getTopKeys("token_usage_by_model");
-    const topProviders = metrics.getTopKeys("token_usage_by_provider");
-    const recentTokens = metrics.getByType("token_usage");
+    const topModels = metrics.getTopKeys("token_usage_by_model") as MetricTopKey[];
+    const topProviders = metrics.getTopKeys("token_usage_by_provider") as MetricTopKey[];
+    const recentTokens = metrics.getByType("token_usage") as MetricsEntry[];
 
     // Calculate total tokens from input + output
     const inputTokens = metrics.getTotal("token_usage", "input") || 0;
@@ -1827,18 +1884,18 @@ const routes: Record<string, RouteHandler> = {
     const totalTokens = inputTokens + outputTokens;
 
     return {
-      topModels: topModels.map((m: any) => ({
+      topModels: topModels.map((m) => ({
         model: m.key,
         tokens: m.total,
       })),
-      topProviders: topProviders.map((p: any) => ({
+      topProviders: topProviders.map((p) => ({
         provider: p.key,
         tokens: p.total,
       })),
-      recentUsage: recentTokens.slice(0, 50).map((t: any) => ({
+      recentUsage: recentTokens.slice(0, 50).map((t) => ({
         timestamp: t.created_at,
         tokens: t.value,
-        metadata: t.metadata ? JSON.parse(t.metadata) : null,
+        metadata: parseMetricMetadata(t.metadata),
       })),
       totalTokens,
       estimatedCost: 0, // Disabled - billing varies too much between providers
@@ -1848,29 +1905,29 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/metrics/files": () => {
     const metrics = tables.metrics;
 
-    const topRead = metrics.getTopKeys("file_read");
-    const topWritten = metrics.getTopKeys("file_write");
-    const topEdited = metrics.getTopKeys("file_edit");
-    const recentOperations = metrics.getByType("file_operation");
+    const topRead = metrics.getTopKeys("file_read") as MetricTopKey[];
+    const topWritten = metrics.getTopKeys("file_write") as MetricTopKey[];
+    const topEdited = metrics.getTopKeys("file_edit") as MetricTopKey[];
+    const recentOperations = metrics.getByType("file_operation") as MetricsEntry[];
 
     return {
-      mostRead: topRead.map((f: any) => ({
+      mostRead: topRead.map((f) => ({
         path: f.key,
         count: f.total,
       })),
-      mostWritten: topWritten.map((f: any) => ({
+      mostWritten: topWritten.map((f) => ({
         path: f.key,
         count: f.total,
       })),
-      mostEdited: topEdited.map((f: any) => ({
+      mostEdited: topEdited.map((f) => ({
         path: f.key,
         count: f.total,
       })),
-      recentOperations: recentOperations.slice(0, 50).map((op: any) => ({
+      recentOperations: recentOperations.slice(0, 50).map((op) => ({
         timestamp: op.created_at,
         type: op.key,
         value: op.value,
-        metadata: op.metadata ? JSON.parse(op.metadata) : null,
+        metadata: parseMetricMetadata(op.metadata),
       })),
     };
   },
@@ -1878,24 +1935,24 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/metrics/tools": () => {
     const metrics = tables.metrics;
 
-    const topTools = metrics.getTopKeys("tool_call");
-    const toolErrors = metrics.getTopKeys("tool_error");
-    const recentCalls = metrics.getByType("tool_call");
+    const topTools = metrics.getTopKeys("tool_call") as MetricTopKey[];
+    const toolErrors = metrics.getTopKeys("tool_error") as MetricTopKey[];
+    const recentCalls = metrics.getByType("tool_call") as MetricsEntry[];
 
     return {
-      mostUsed: topTools.map((t: any) => ({
+      mostUsed: topTools.map((t) => ({
         tool: t.key,
         calls: t.total,
       })),
-      mostErrors: toolErrors.map((t: any) => ({
+      mostErrors: toolErrors.map((t) => ({
         tool: t.key,
         errors: t.total,
       })),
-      recentCalls: recentCalls.slice(0, 50).map((call: any) => ({
+      recentCalls: recentCalls.slice(0, 50).map((call) => ({
         timestamp: call.created_at,
         tool: call.key,
         duration: call.value,
-        metadata: call.metadata ? JSON.parse(call.metadata) : null,
+        metadata: parseMetricMetadata(call.metadata),
       })),
     };
   },
@@ -1907,14 +1964,14 @@ const routes: Record<string, RouteHandler> = {
     const providerTokenEntries = metrics.getByType("token_usage_by_provider") as MetricsEntry[];
 
     // Build provider map with URLs from token entries
-    const providerMap = new Map();
+    const providerMap = new Map<string, ProviderMetricSummary>();
 
     for (const entry of providerTokenEntries) {
       // Skip aggregate keys
       if (entry.key === "all" || entry.key === "input" || entry.key === "output") continue;
 
-      const metadata = entry.metadata ? JSON.parse(entry.metadata) : null;
-      const url = metadata?.url || "unknown";
+      const metadata = parseMetricMetadata(entry.metadata);
+      const url = typeof metadata?.url === "string" ? metadata.url : "unknown";
 
       providerMap.set(entry.key, {
         provider: entry.key,
@@ -1930,8 +1987,8 @@ const routes: Record<string, RouteHandler> = {
       // Skip aggregate keys
       if (entry.key === "all" || entry.key === "success" || entry.key === "error") continue;
 
-      const metadata = entry.metadata ? JSON.parse(entry.metadata) : null;
-      const url = metadata?.url || "unknown";
+      const metadata = parseMetricMetadata(entry.metadata);
+      const url = typeof metadata?.url === "string" ? metadata.url : "unknown";
 
       if (!providerMap.has(entry.key)) {
         providerMap.set(entry.key, {
@@ -1941,16 +1998,19 @@ const routes: Record<string, RouteHandler> = {
           url,
         });
       } else {
+        const summary = providerMap.get(entry.key);
+        if (!summary) continue;
+
         // Update URL if we have one from metadata
         if (url !== "unknown") {
-          providerMap.get(entry.key).url = url;
+          summary.url = url;
         }
-        providerMap.get(entry.key).hits += entry.value || 0;
+        summary.hits += entry.value || 0;
       }
     }
 
     return {
-      providers: Array.from(providerMap.values()).map((p: any) => ({
+      providers: Array.from(providerMap.values()).map((p) => ({
         provider: p.provider,
         url: p.url,
         hits: p.hits,
@@ -2154,7 +2214,12 @@ export async function handleRequest(req: {
     });
     return {
       status: 404,
-      headers: { "Content-Type": "application/json", ...corsHeaders, ...securityHeaders },
+      headers: {
+        "Content-Type": "application/json",
+        ...corsHeaders,
+        ...securityHeaders,
+        ...security.headers,
+      },
       body: { error: "Not found" },
     };
   }
@@ -2171,7 +2236,12 @@ export async function handleRequest(req: {
     });
     return {
       status: 200,
-      headers: { "Content-Type": "application/json", ...corsHeaders, ...securityHeaders },
+      headers: {
+        "Content-Type": "application/json",
+        ...corsHeaders,
+        ...securityHeaders,
+        ...security.headers,
+      },
       body: result,
     };
   } catch (error) {
@@ -2210,7 +2280,11 @@ export async function handleRequest(req: {
       userMessage = errorMessage;
       errorCode = "CONFLICT";
       statusCode = 409;
-    } else if (errorMessage.includes("Validation") || errorMessage.includes("required")) {
+    } else if (
+      errorMessage.includes("Validation") ||
+      errorMessage.includes("required") ||
+      errorMessage.startsWith("Invalid ")
+    ) {
       userMessage = errorMessage;
       errorCode = "VALIDATION_ERROR";
       statusCode = 400;
@@ -2229,7 +2303,12 @@ export async function handleRequest(req: {
     });
     return {
       status: statusCode,
-      headers: { "Content-Type": "application/json", ...corsHeaders, ...securityHeaders },
+      headers: {
+        "Content-Type": "application/json",
+        ...corsHeaders,
+        ...securityHeaders,
+        ...security.headers,
+      },
       body: {
         error: userMessage,
         code: errorCode,

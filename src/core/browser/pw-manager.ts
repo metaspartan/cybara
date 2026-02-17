@@ -10,11 +10,8 @@ import {
   startBrowser,
   stopBrowser,
   createPage as createProfilePage,
-  getPage,
   getProfilePages,
   closePage as closeProfilePage,
-  closeAllPages,
-  getStatus as getProfileStatus,
   shutdownAll,
   getPagesMap,
   getBrowsersMap,
@@ -28,6 +25,12 @@ interface AXNode {
   value?: string;
   description?: string;
   children?: AXNode[];
+}
+
+type ClickModifier = "Alt" | "Control" | "ControlOrMeta" | "Meta" | "Shift";
+
+function isClickModifier(value: string): value is ClickModifier {
+  return ["Alt", "Control", "ControlOrMeta", "Meta", "Shift"].includes(value);
 }
 
 // Legacy single-browser mode (for backward compatibility)
@@ -122,7 +125,7 @@ export async function stopBrowserProfile(name: string): Promise<void> {
 }
 
 export async function createPageInProfile(profileName: string, url?: string): Promise<string> {
-  const page = await createProfilePage(profileName, url);
+  await createProfilePage(profileName, url);
   // createProfilePage returns a Page object - we need a page ID
   return `${profileName}-${Date.now()}`;
 }
@@ -418,33 +421,6 @@ export async function getSnapshot(
   };
 }
 
-// Format accessibility tree as text
-function formatAccessibilityTree(node: AXNode, depth = 0, maxDepth?: number): string {
-  if (maxDepth && depth > maxDepth) return "";
-
-  const indent = "  ".repeat(depth);
-  let result = "";
-
-  if (node.name || node.role) {
-    const role = node.role || "unknown";
-    const name = node.name || "";
-    const value = node.value ? `="${node.value}"` : "";
-    const description = node.description ? ` (${node.description})` : "";
-
-    if (name || role !== "generic") {
-      result += `${indent}[${role}]${name ? " " + name : ""}${value}${description}\n`;
-    }
-  }
-
-  if (node.children) {
-    for (const child of node.children) {
-      result += formatAccessibilityTree(child, depth + 1, maxDepth);
-    }
-  }
-
-  return result;
-}
-
 // Click element
 export async function click(
   pageId: string,
@@ -463,7 +439,8 @@ export async function click(
   if (options?.doubleClick) {
     await locator.dblclick({ button: options.button });
   } else {
-    await locator.click({ button: options?.button, modifiers: options?.modifiers as any });
+    const modifiers = options?.modifiers?.filter(isClickModifier);
+    await locator.click({ button: options?.button, modifiers });
   }
 }
 
@@ -735,8 +712,6 @@ export async function closeAll(): Promise<void> {
 export async function getStatus(): Promise<BrowserStatus> {
   try {
     const executablePath = chromium.executablePath();
-
-    const profileStatus = await getProfileStatus();
     const browsersMap = getBrowsersMap();
 
     return {

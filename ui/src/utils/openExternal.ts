@@ -1,3 +1,5 @@
+import { apiFetch } from '@/lib/auth';
+
 /**
  * Open a URL in the system browser.
  * Uses the backend /api/open-url endpoint which works in both
@@ -6,7 +8,7 @@
  */
 export async function openExternal(url: string): Promise<void> {
     try {
-        const res = await fetch('/api/open-url', {
+        const res = await apiFetch('/api/open-url', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url }),

@@ -10,6 +10,27 @@ import { join } from "path";
 
 const API_BASE = process.env.CYBARA_API || "http://localhost:4269";
 
+function resolveCliApiKey(): string | null {
+    const envKey = process.env.CYBARA_API_KEY?.trim();
+    if (envKey) {
+        return envKey;
+    }
+
+    const home = process.env.HOME || process.env.USERPROFILE;
+    if (!home) {
+        return null;
+    }
+
+    try {
+        const keyFromFile = readFileSync(join(home, ".cybara", "api_key"), "utf-8").trim();
+        return keyFromFile || null;
+    } catch {
+        return null;
+    }
+}
+
+const CLI_API_KEY = resolveCliApiKey();
+
 interface StatusResponse {
     status: string;
     uptime: number;
@@ -50,9 +71,17 @@ interface AgentItem {
 
 async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T | null> {
     try {
+        const headers = new Headers(options?.headers);
+        if (!headers.has("Content-Type")) {
+            headers.set("Content-Type", "application/json");
+        }
+        if (CLI_API_KEY && !headers.has("Authorization")) {
+            headers.set("Authorization", `Bearer ${CLI_API_KEY}`);
+        }
+
         const res = await fetch(`${API_BASE}${endpoint}`, {
-            headers: { "Content-Type": "application/json" },
             ...options,
+            headers,
         });
         if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
         return await res.json() as T;
@@ -61,6 +90,9 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T |
         if (msg.includes("ECONNREFUSED") || msg.includes("fetch failed")) {
             console.error(`ERROR: Cannot connect to Cybara at ${API_BASE}`);
             console.error("Is the server running? Start it with: cybara start");
+        } else if (msg.includes("HTTP 401")) {
+            console.error("ERROR: Unauthorized API request (401)");
+            console.error("Set CYBARA_API_KEY or create ~/.cybara/api_key");
         }
         return null;
     }
@@ -973,13 +1005,60 @@ async function rawMemory(query?: string): Promise<void> {
         ? `/api/memory/search?query=${encodeURIComponent(query)}`
         : "/api/memory";
 
-    const data = await fetchAPI<MemoryEntry[] | { results: MemoryEntry[] }>(endpoint);
+    const data = await fetchAPI<
+        | MemoryEntry[]
+        | {
+            results?: Array<
+                MemoryEntry |
+                {
+                    file?: string;
+                    entry?: { content?: string; timestamp?: string; date?: string; type?: string };
+                }
+            >;
+            memories?: Array<{
+                file?: string;
+                entries?: Array<{ content?: string; timestamp?: string; date?: string; type?: string }>;
+            }>;
+        }
+    >(endpoint);
     if (!data) {
         console.error("ERROR: Failed to fetch memory from", API_BASE);
         process.exit(1);
     }
 
-    const entries = Array.isArray(data) ? data : (data.results || []);
+    const entries: Array<{ content: string; similarity?: number }> = [];
+    if (Array.isArray(data)) {
+        for (const item of data) {
+            if (item && typeof item.content === "string") {
+                entries.push({ content: item.content, similarity: item.similarity });
+            }
+        }
+    } else if (Array.isArray(data.results)) {
+        for (const item of data.results) {
+            if (item && typeof item === "object" && "entry" in item) {
+                const wrapped = item as {
+                    entry?: { content?: string };
+                };
+                if (wrapped.entry && typeof wrapped.entry.content === "string") {
+                    entries.push({ content: wrapped.entry.content });
+                }
+                continue;
+            }
+
+            const flat = item as MemoryEntry;
+            if (flat && typeof flat.content === "string") {
+                entries.push({ content: flat.content, similarity: flat.similarity });
+            }
+        }
+    } else if (Array.isArray(data.memories)) {
+        for (const memory of data.memories) {
+            for (const entry of memory.entries || []) {
+                if (entry && typeof entry.content === "string") {
+                    entries.push({ content: entry.content });
+                }
+            }
+        }
+    }
 
     console.log("CYBARA MEMORY");
     console.log("=============");

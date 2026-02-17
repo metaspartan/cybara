@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { getHostTargetFor } from "../../scripts/build-sidecar";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import { copyFilePortable, getHostTargetFor } from "../../scripts/build-sidecar";
 
 describe("build-sidecar host target mapping", () => {
   test("maps darwin/arm64", () => {
@@ -46,5 +49,20 @@ describe("build-sidecar host target mapping", () => {
 
   test("throws for unsupported platform/arch", () => {
     expect(() => getHostTargetFor("freebsd", "x64")).toThrow("Unsupported platform: freebsd/x64");
+  });
+
+  test("copyFilePortable copies sidecar binary in a cross-platform way", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cybara-sidecar-test-"));
+    const source = join(dir, "source.bin");
+    const target = join(dir, "target.bin");
+    const payload = "sidecar-bytes";
+
+    try {
+      writeFileSync(source, payload, "utf8");
+      await copyFilePortable(source, target);
+      expect(readFileSync(target, "utf8")).toBe(payload);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

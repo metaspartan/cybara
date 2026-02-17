@@ -54,7 +54,8 @@ describe("openExternal utility", () => {
     expect(fetchCalls).toHaveLength(1);
     expect(fetchCalls[0].input).toBe("/api/open-url");
     expect(fetchCalls[0].init?.method).toBe("POST");
-    expect(fetchCalls[0].init?.headers).toEqual({ "Content-Type": "application/json" });
+    const headers = new Headers(fetchCalls[0].init?.headers);
+    expect(headers.get("Content-Type")).toBe("application/json");
     expect(JSON.parse(String(fetchCalls[0].init?.body))).toEqual({
       url: "https://example.com/docs",
     });

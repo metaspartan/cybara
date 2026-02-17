@@ -25,6 +25,7 @@
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "bunx tsc --noEmit",
     "check": "bun run typecheck && bun run lint && bun run format:check",
+    "test:smoke": "bun test tests/runtime && bun test tests/api/security.test.ts tests/api/browser-routes-mocked.test.ts tests/api/channel-security-routes-mocked.test.ts && bun test tests/e2e",
     "sexy": "bun run typecheck && bun run lint && bun run format:check",
     "sexy:write": "bun run typecheck && bun run lint && bun run format",
     "tauri": "tauri",
