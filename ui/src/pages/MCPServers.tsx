@@ -19,74 +19,7 @@ import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { PageLayout } from '@/components/layout';
 import { useUIStore } from '../stores/uiStore';
-import { apiFetch } from '@/lib/auth';
-
-// Types
-interface MCPServer {
-    id: string;
-    name: string;
-    command: string;
-    args?: string;
-    env?: string;
-    enabled: boolean;
-    status: string;
-    toolCount: number;
-}
-
-interface MCPRegistryServer {
-    id: string;
-    name: string;
-    description: string;
-    registry: string;
-    package: string;
-    command: string;
-    args?: string;
-    envVars?: string[];
-    categories?: string[];
-    installType: string;
-}
-
-// API helpers
-const API_BASE = '';
-
-async function fetchMCPServers(): Promise<MCPServer[]> {
-    const res = await apiFetch(`${API_BASE}/api/mcp`);
-    return res.json();
-}
-
-async function fetchRegistryPopular(): Promise<MCPRegistryServer[]> {
-    const res = await apiFetch(`${API_BASE}/api/mcp/registry/popular`);
-    return res.json();
-}
-
-async function searchRegistry(query: string): Promise<MCPRegistryServer[]> {
-    const res = await apiFetch(`${API_BASE}/api/mcp/registry/search?q=${encodeURIComponent(query)}`);
-    return res.json();
-}
-
-async function installFromRegistry(id: string): Promise<{ success: boolean; id?: string; error?: string }> {
-    const res = await apiFetch(`${API_BASE}/api/mcp/registry/install`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-    });
-    return res.json();
-}
-
-async function startServer(id: string): Promise<{ success: boolean; error?: string }> {
-    const res = await apiFetch(`${API_BASE}/api/mcp/${id}/start`, { method: 'POST' });
-    return res.json();
-}
-
-async function stopServer(id: string): Promise<{ success: boolean }> {
-    const res = await apiFetch(`${API_BASE}/api/mcp/${id}/stop`, { method: 'POST' });
-    return res.json();
-}
-
-async function deleteServer(id: string): Promise<{ success: boolean }> {
-    const res = await apiFetch(`${API_BASE}/api/mcp/${id}`, { method: 'DELETE' });
-    return res.json();
-}
+import { mcpApi, type MCPRegistryServer, type MCPServer } from '@/lib/api';
 
 export function MCPServers() {
     const [tab, setTab] = useState<'installed' | 'registry'>('installed');
@@ -101,12 +34,16 @@ export function MCPServers() {
     const loadServers = async () => {
         setLoading(true);
         try {
-            const data = await fetchMCPServers();
-            setServers(data);
+            const result = await mcpApi.list();
+            if (!result.success || !Array.isArray(result.data)) {
+                throw new Error(result.error || 'Failed to load MCP servers');
+            }
+            setServers(result.data);
         } catch {
             addToast('error', 'Failed to load MCP servers');
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     // Load registry
@@ -114,16 +51,23 @@ export function MCPServers() {
         setLoading(true);
         try {
             if (searchQuery) {
-                const data = await searchRegistry(searchQuery);
-                setRegistryServers(data);
+                const result = await mcpApi.search(searchQuery);
+                if (!result.success || !Array.isArray(result.data)) {
+                    throw new Error(result.error || 'Failed to load registry');
+                }
+                setRegistryServers(result.data);
             } else {
-                const data = await fetchRegistryPopular();
-                setRegistryServers(data);
+                const result = await mcpApi.popular();
+                if (!result.success || !Array.isArray(result.data)) {
+                    throw new Error(result.error || 'Failed to load registry');
+                }
+                setRegistryServers(result.data);
             }
         } catch {
             addToast('error', 'Failed to load registry');
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     useEffect(() => {
@@ -142,37 +86,45 @@ export function MCPServers() {
     }, [searchQuery]);
 
     const handleStart = async (id: string) => {
-        const result = await startServer(id);
-        if (result.success) {
+        const result = await mcpApi.start(id);
+        if (result.success && result.data?.success) {
             addToast('success', 'Server started');
             loadServers();
         } else {
-            addToast('error', result.error || 'Failed to start');
+            addToast('error', result.error || result.data?.error || 'Failed to start');
         }
     };
 
     const handleStop = async (id: string) => {
-        await stopServer(id);
-        addToast('info', 'Server stopped');
-        loadServers();
+        const result = await mcpApi.stop(id);
+        if (result.success && result.data?.success) {
+            addToast('info', 'Server stopped');
+            loadServers();
+        } else {
+            addToast('error', result.error || result.data?.error || 'Failed to stop');
+        }
     };
 
     const handleDelete = async (id: string) => {
         if (!confirm('Delete this MCP server?')) return;
-        await deleteServer(id);
-        addToast('success', 'Server deleted');
-        loadServers();
+        const result = await mcpApi.delete(id);
+        if (result.success && result.data?.success) {
+            addToast('success', 'Server deleted');
+            loadServers();
+        } else {
+            addToast('error', result.error || 'Failed to delete server');
+        }
     };
 
     const handleInstall = async (server: MCPRegistryServer) => {
         addToast('info', `Installing ${server.name}...`);
-        const result = await installFromRegistry(server.id);
-        if (result.success) {
+        const result = await mcpApi.install({ id: server.id });
+        if (result.success && result.data?.success) {
             addToast('success', `${server.name} installed!`);
             setTab('installed');
             loadServers();
         } else {
-            addToast('error', result.error || 'Install failed');
+            addToast('error', result.error || result.data?.error || 'Install failed');
         }
     };
 
@@ -386,20 +338,21 @@ function AddServerModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; onClo
 
         setLoading(true);
         try {
-            const res = await apiFetch('/api/mcp', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, command, args, env, enabled: true }),
+            const result = await mcpApi.create({
+                name,
+                command,
+                args: args || undefined,
+                env: env || undefined,
+                enabled: true,
             });
-            const data = await res.json();
-            if (data.id) {
+            if (result.success && result.data?.id) {
                 addToast('success', 'Server added!');
                 onSuccess();
                 setName('');
                 setArgs('');
                 setEnv('');
             } else {
-                throw new Error('Failed to create');
+                throw new Error(result.error || 'Failed to create');
             }
         } catch {
             addToast('error', 'Failed to add server');

@@ -70,11 +70,116 @@ export const channelsApi = {
   update: (id: string, channel: Partial<Channel>) =>
     fetchApi<Channel>(`/channels/${id}`, { method: "PUT", body: JSON.stringify(channel) }),
   delete: (id: string) => fetchApi<void>(`/channels/${id}`, { method: "DELETE" }),
+  test: (id: string) =>
+    fetchApi<{ success: boolean; running?: boolean; error?: string }>(`/channels/${id}/test`, {
+      method: "POST",
+    }),
+  getPairings: (id: string) =>
+    fetchApi<{
+      pairings: Array<{
+        id: string;
+        senderId: string;
+        code: string;
+        platform: string;
+        displayName?: string;
+        status: string;
+        createdAt: string;
+        expiresAt: string;
+      }>;
+      pendingCount: number;
+      config?: Record<string, unknown>;
+    }>(`/channels/${id}/pairings`),
+  verifyPairing: (id: string, code: string) =>
+    fetchApi<{ success: boolean; senderId?: string; error?: string }>(
+      `/channels/${id}/pairings/verify`,
+      {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      }
+    ),
+  rejectPairing: (id: string, pairingId: string) =>
+    fetchApi<{ success: boolean }>(`/channels/${id}/pairings/${pairingId}/reject`, {
+      method: "POST",
+    }),
   setupTelegram: (botToken: string, webhookUrl: string) =>
     fetchApi<Channel>("/channels/telegram/setup", {
       method: "POST",
       body: JSON.stringify({ botToken, webhookUrl }),
     }),
+};
+
+// MCP API
+export interface MCPServer {
+  id: string;
+  name: string;
+  command: string;
+  args?: string;
+  env?: string;
+  enabled: boolean;
+  status: string;
+  toolCount: number;
+}
+
+export interface MCPRegistryServer {
+  id: string;
+  name: string;
+  description: string;
+  registry: string;
+  package: string;
+  command: string;
+  args?: string;
+  envVars?: string[];
+  categories?: string[];
+  installType?: string;
+}
+
+export const mcpApi = {
+  list: () => fetchApi<MCPServer[]>("/mcp"),
+  popular: () => fetchApi<MCPRegistryServer[]>("/mcp/registry/popular"),
+  search: (query: string) =>
+    fetchApi<MCPRegistryServer[]>(`/mcp/registry/search?q=${encodeURIComponent(query)}`),
+  install: (payload: { id?: string; package?: string }) =>
+    fetchApi<{ success: boolean; id?: string; error?: string }>("/mcp/registry/install", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  create: (server: {
+    name: string;
+    command: string;
+    args?: string;
+    env?: string;
+    enabled?: boolean;
+  }) =>
+    fetchApi<{
+      id: string;
+      name: string;
+      command: string;
+      args?: string;
+      env?: string;
+      enabled: boolean;
+    }>("/mcp", {
+      method: "POST",
+      body: JSON.stringify(server),
+    }),
+  start: (id: string) => fetchApi<{ success: boolean; error?: string }>(`/mcp/${id}/start`, { method: "POST" }),
+  stop: (id: string) => fetchApi<{ success: boolean; error?: string }>(`/mcp/${id}/stop`, { method: "POST" }),
+  delete: (id: string) => fetchApi<{ success: boolean }>(`/mcp/${id}`, { method: "DELETE" }),
+};
+
+// Settings / Config API
+export const settingsApi = {
+  getConfig: () => fetchApi<Record<string, unknown>>("/config"),
+  updateConfig: (data: Record<string, unknown>) =>
+    fetchApi<{ success: boolean }>("/config", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+};
+
+// Setup API
+export const setupApi = {
+  status: () => fetchApi<{ complete: boolean }>("/setup/status"),
+  complete: () => fetchApi<{ success: boolean }>("/setup/complete", { method: "POST" }),
 };
 
 // Memory API
@@ -87,6 +192,11 @@ export const memoryApi = {
     if (params?.limit) query.append("limit", params.limit.toString());
     return fetchApi<Memory[]>(`/memory?${query.toString()}`);
   },
+  createFile: (file: string, content: string) =>
+    fetchApi<{ success: boolean; file: string }>("/memory", {
+      method: "POST",
+      body: JSON.stringify({ file, content }),
+    }),
   get: (id: string) => fetchApi<Memory>(`/memory/${id}`),
   create: (memory: Omit<Memory, "id" | "createdAt" | "updatedAt">) =>
     fetchApi<Memory>("/memory", { method: "POST", body: JSON.stringify(memory) }),
@@ -103,6 +213,19 @@ export const memoryApi = {
 export const tasksApi = {
   list: () => fetchApi<Task[]>("/tasks"),
   get: (id: string) => fetchApi<Task>(`/tasks/${id}`),
+  getRuns: (id: string) =>
+    fetchApi<
+      Array<{
+        id: string;
+        task_id: string;
+        status: "running" | "completed" | "failed";
+        started_at: string;
+        completed_at?: string;
+        session_id?: string;
+        result_preview?: string;
+        error?: string;
+      }>
+    >(`/tasks/${id}/runs`),
   create: (task: Omit<Task, "id" | "createdAt">) =>
     fetchApi<Task>("/tasks", { method: "POST", body: JSON.stringify(task) }),
   update: (id: string, task: Partial<Task>) =>

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { createServer } from "net";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
@@ -425,6 +425,176 @@ describe("Security auth e2e", () => {
       expect(sseApiKeyParam.headers.get("content-type")).toContain("text/event-stream");
       expect(sseApiKeyParam.chunk).toContain("data:");
       expect(sseApiKeyParam.headers.get("x-ratelimit-remaining")).not.toBeNull();
+    } finally {
+      await stopServer(proc);
+    }
+  });
+
+  test("production mode enforces API key on IDE routes and keeps HOME sandbox restrictions", async () => {
+    const apiKey = `cybara_e2e_key_${Date.now()}`;
+    const port = await getFreePort();
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const insideFile = join(homeDir, `ide-auth-inside-${Date.now()}.txt`);
+    const outsideDir = `${homeDir}-ide-outside-${Date.now()}`;
+    const outsideFile = join(outsideDir, "outside.txt");
+    const symlinkDir = join(homeDir, `ide-auth-link-${Date.now()}`);
+    let proc: ReturnType<typeof Bun.spawn> | null = null;
+    let symlinkCreated = false;
+
+    mkdirSync(outsideDir, { recursive: true });
+    writeFileSync(insideFile, "inside-home-file", "utf8");
+    writeFileSync(outsideFile, "outside-home-file", "utf8");
+    try {
+      symlinkSync(outsideDir, symlinkDir);
+      symlinkCreated = true;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EPERM" && code !== "EACCES") {
+        throw error;
+      }
+    }
+
+    try {
+      proc = startServer(port, {
+        NODE_ENV: "production",
+        CYBARA_API_KEY: apiKey,
+      });
+      await waitForServerReady(baseUrl);
+
+      const missingAuth = await request(
+        baseUrl,
+        `/api/ide/read?path=${encodeURIComponent(insideFile)}`
+      );
+      expect(missingAuth.status).toBe(401);
+      expect(missingAuth.data.error).toContain("Missing Authorization");
+
+      const browseHome = await request(baseUrl, `/api/ide/browse?path=${encodeURIComponent(homeDir)}`, {
+        Authorization: `Bearer ${apiKey}`,
+      });
+      expect(browseHome.status).toBe(200);
+      expect(browseHome.data.success).toBe(true);
+
+      const readInside = await request(
+        baseUrl,
+        `/api/ide/read?path=${encodeURIComponent(insideFile)}`,
+        {
+          Authorization: `Bearer ${apiKey}`,
+        }
+      );
+      expect(readInside.status).toBe(200);
+      expect(readInside.data.success).toBe(true);
+      expect(readInside.data.content).toContain("inside-home-file");
+
+      const browseOutside = await request(
+        baseUrl,
+        `/api/ide/browse?path=${encodeURIComponent(outsideDir)}`,
+        {
+          Authorization: `Bearer ${apiKey}`,
+        }
+      );
+      expect(browseOutside.status).toBe(200);
+      expect(browseOutside.data.success).toBe(false);
+      expect(String(browseOutside.data.error || "")).toContain("Access denied");
+
+      const readOutside = await request(
+        baseUrl,
+        `/api/ide/read?path=${encodeURIComponent(outsideFile)}`,
+        {
+          Authorization: `Bearer ${apiKey}`,
+        }
+      );
+      expect(readOutside.status).toBe(200);
+      expect(readOutside.data.success).toBe(false);
+      expect(String(readOutside.data.error || "")).toContain("Access denied");
+
+      const writeOutsideRes = await fetch(`${baseUrl}/api/ide/write`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          path: outsideFile,
+          content: "should-not-write",
+        }),
+      });
+      const writeOutside = (await writeOutsideRes.json()) as { success?: boolean; error?: string };
+      expect(writeOutsideRes.status).toBe(200);
+      expect(writeOutside.success).toBe(false);
+      expect(String(writeOutside.error || "")).toContain("Access denied");
+
+      if (symlinkCreated) {
+        const readViaSymlink = await request(
+          baseUrl,
+          `/api/ide/read?path=${encodeURIComponent(join(symlinkDir, "outside.txt"))}`,
+          {
+            Authorization: `Bearer ${apiKey}`,
+          }
+        );
+        expect(readViaSymlink.status).toBe(200);
+        expect(readViaSymlink.data.success).toBe(false);
+        expect(String(readViaSymlink.data.error || "")).toContain("Access denied");
+      }
+    } finally {
+      await stopServer(proc);
+      rmSync(insideFile, { force: true });
+      rmSync(symlinkDir, { force: true });
+      rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+
+  test("production mode enforces API key on git routes", async () => {
+    const apiKey = `cybara_e2e_key_${Date.now()}`;
+    const port = await getFreePort();
+    const baseUrl = `http://127.0.0.1:${port}`;
+    let proc: ReturnType<typeof Bun.spawn> | null = null;
+
+    try {
+      proc = startServer(port, {
+        NODE_ENV: "production",
+        CYBARA_API_KEY: apiKey,
+      });
+      await waitForServerReady(baseUrl);
+
+      const missingStatus = await request(
+        baseUrl,
+        `/api/git/status?path=${encodeURIComponent(ROOT_DIR)}`
+      );
+      expect(missingStatus.status).toBe(401);
+      expect(missingStatus.data.error).toContain("Missing Authorization");
+
+      const authStatus = await request(
+        baseUrl,
+        `/api/git/status?path=${encodeURIComponent(ROOT_DIR)}`,
+        {
+          Authorization: `Bearer ${apiKey}`,
+        }
+      );
+      expect(authStatus.status).toBe(200);
+      expect(typeof authStatus.data.isRepo).toBe("boolean");
+      expect(Array.isArray(authStatus.data.staged)).toBe(true);
+      expect(Array.isArray(authStatus.data.modified)).toBe(true);
+      expect(Array.isArray(authStatus.data.untracked)).toBe(true);
+      expect(authStatus.headers.get("x-ratelimit-remaining")).not.toBeNull();
+
+      const authBranch = await request(
+        baseUrl,
+        `/api/git/branch?path=${encodeURIComponent(ROOT_DIR)}`,
+        {
+          Authorization: `Bearer ${apiKey}`,
+        }
+      );
+      expect(authBranch.status).toBe(200);
+      expect("branch" in authBranch.data).toBe(true);
+      expect(authBranch.headers.get("x-ratelimit-remaining")).not.toBeNull();
+
+      const diffMissingPath = await request(baseUrl, "/api/git/diff", {
+        Authorization: `Bearer ${apiKey}`,
+      });
+      expect(diffMissingPath.status).toBe(200);
+      expect(diffMissingPath.data.success).toBe(false);
+      expect(String(diffMissingPath.data.error || "")).toContain("Missing 'path' parameter");
+      expect(diffMissingPath.headers.get("x-ratelimit-remaining")).not.toBeNull();
     } finally {
       await stopServer(proc);
     }

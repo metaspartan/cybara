@@ -40,7 +40,7 @@ import { PageLayout } from '@/components/layout';
 import type { Task, Agent } from '../types';
 import { useTaskNotifications } from '../hooks/useNotifications';
 import { useQuery } from '@tanstack/react-query';
-import { apiFetch } from '@/lib/auth';
+import { tasksApi } from '@/lib/api';
 
 // Task Run History type
 interface TaskRun {
@@ -89,9 +89,9 @@ export function Tasks() {
     queryKey: ['taskRuns', expandedTaskId],
     queryFn: async () => {
       if (!expandedTaskId) return [];
-      const res = await apiFetch(`/api/tasks/${expandedTaskId}/runs`);
-      if (!res.ok) return [];
-      return res.json();
+      const result = await tasksApi.getRuns(expandedTaskId);
+      if (!result.success || !result.data) return [];
+      return result.data;
     },
     enabled: !!expandedTaskId,
     refetchInterval: 5000, // Auto-refresh every 5 seconds when expanded

@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useProviders, useAgents, useAvailableProviders, useCreateProvider, useCreateDefaultAgent } from '@/hooks/useApi';
-import { apiFetch } from '@/lib/auth';
+import { setupApi } from '@/lib/api';
 import type { AvailableProvider } from '@/types';
 
 type WizardStep = 'welcome' | 'provider' | 'apikey' | 'oauth' | 'agent' | 'complete';
@@ -101,7 +101,10 @@ export function Setup() {
 
     const completeSetup = async () => {
         try {
-            await apiFetch('/api/setup/complete', { method: 'POST' });
+            const result = await setupApi.complete();
+            if (!result.success || !result.data?.success) {
+                throw new Error(result.error || 'Failed to complete setup');
+            }
             setStep('complete');
         } catch (err) {
             setError('Failed to complete setup');

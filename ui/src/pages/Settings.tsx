@@ -2,10 +2,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/Badge';
 import { PageLayout } from '@/components/layout';
 import { useHealth, useInfo, useSystemPrompt, useSystemPromptPreview, useUpdateSystemPrompt, useIdentity, useUpdateIdentity, type SystemPromptConfig, type IdentityConfig, type HealthData, type InfoData } from '@/hooks/useApi';
+import { settingsApi } from '@/lib/api';
 import { Input, Textarea, Select } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useUIStore, themeAccents, type ThemeAccent } from '@/stores/uiStore';
-import { apiFetch } from '@/lib/auth';
 import {
   Activity,
   Server,
@@ -103,10 +103,10 @@ function FeatureSettings() {
   const { addToast } = useUIStore();
 
   useEffect(() => {
-    apiFetch('/api/config')
-      .then(r => r.json())
-      .then((data: Record<string, unknown>) => {
-        setTerminalEnabled(data.terminal_enabled === true);
+    settingsApi.getConfig()
+      .then((result) => {
+        const data = result.success ? result.data : undefined;
+        setTerminalEnabled(data?.terminal_enabled === true);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -115,11 +115,10 @@ function FeatureSettings() {
   const toggleTerminal = async (enabled: boolean) => {
     setTerminalEnabled(enabled);
     try {
-      await apiFetch('/api/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ terminal_enabled: enabled }),
-      });
+      const result = await settingsApi.updateConfig({ terminal_enabled: enabled });
+      if (!result.success || !result.data?.success) {
+        throw new Error(result.error || 'Config update failed');
+      }
       addToast('success', `Web terminal ${enabled ? 'enabled' : 'disabled'}`);
     } catch {
       addToast('error', 'Failed to update terminal setting');

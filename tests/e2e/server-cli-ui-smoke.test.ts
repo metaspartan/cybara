@@ -120,6 +120,33 @@ describe("Server + CLI + UI smoke", () => {
     expect(uiRes.headers.get("content-type")).toContain("text/html");
     const html = await uiRes.text();
     expect(html.toLowerCase()).toContain("<html");
+
+    // When UI build assets are present, ensure module scripts are served as JavaScript.
+    const moduleScript = html.match(/<script[^>]*type=["']module["'][^>]*src=["']([^"']+)["']/i);
+    if (moduleScript?.[1]) {
+      const assetPath = moduleScript[1].startsWith("http")
+        ? moduleScript[1]
+        : `${baseUrl}${moduleScript[1]}`;
+      const moduleRes = await fetch(assetPath);
+      expect(moduleRes.status).toBe(200);
+      expect(moduleRes.headers.get("content-type")).toContain("javascript");
+    }
+  });
+
+  test("missing static asset returns 404 and never falls back to HTML", async () => {
+    const res = await fetch(`${baseUrl}/assets/__missing-module__.js`);
+    expect(res.status).toBe(404);
+    expect(res.headers.get("content-type")).toContain("text/plain");
+    const body = await res.text();
+    expect(body.toLowerCase()).not.toContain("<html");
+  });
+
+  test("SPA deep links return index HTML", async () => {
+    const res = await fetch(`${baseUrl}/tasks`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    const html = await res.text();
+    expect(html.toLowerCase()).toContain("<html");
   });
 
   test("terminal API is blocked when --enable-terminal is not set", async () => {

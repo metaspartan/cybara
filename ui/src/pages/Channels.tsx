@@ -32,7 +32,7 @@ import {
 } from "../hooks/useApi";
 import { useUIStore } from "../stores/uiStore";
 import { PageLayout } from "@/components/layout";
-import { apiFetch } from "@/lib/auth";
+import { channelsApi } from "@/lib/api";
 import type { Channel, AvailableChannel, ChannelField } from "../types";
 
 interface PairingInfo {
@@ -75,9 +75,8 @@ export function Channels() {
 
   const fetchPairings = async (channelId: string) => {
     try {
-      const res = await apiFetch(`/api/channels/${channelId}/pairings`);
-      const data = await res.json();
-      setPairings(data.pairings || []);
+      const res = await channelsApi.getPairings(channelId);
+      setPairings(res.success ? res.data?.pairings || [] : []);
     } catch {
       setPairings([]);
     }
@@ -87,18 +86,13 @@ export function Channels() {
     if (!securityChannel) return;
     setIsApproving(true);
     try {
-      const res = await apiFetch(`/api/channels/${securityChannel.id}/pairings/verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: code.toUpperCase() }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        addToast("success", `Approved pairing for ${data.senderId}`);
+      const result = await channelsApi.verifyPairing(securityChannel.id, code.toUpperCase());
+      if (result.success && result.data?.success) {
+        addToast("success", `Approved pairing for ${result.data.senderId}`);
         setPairingCode("");
         fetchPairings(securityChannel.id);
       } else {
-        addToast("error", data.error || "Failed to approve pairing");
+        addToast("error", result.error || result.data?.error || "Failed to approve pairing");
       }
     } catch {
       addToast("error", "Failed to approve pairing");
@@ -110,15 +104,12 @@ export function Channels() {
   const handleRejectPairing = async (pairingId: string) => {
     if (!securityChannel) return;
     try {
-      const res = await apiFetch(`/api/channels/${securityChannel.id}/pairings/${pairingId}/reject`, {
-        method: "POST",
-      });
-      const data = await res.json();
-      if (data.success) {
+      const result = await channelsApi.rejectPairing(securityChannel.id, pairingId);
+      if (result.success && result.data?.success) {
         addToast("success", "Pairing rejected");
         fetchPairings(securityChannel.id);
       } else {
-        addToast("error", "Failed to reject pairing");
+        addToast("error", result.error || "Failed to reject pairing");
       }
     } catch {
       addToast("error", "Failed to reject pairing");
@@ -208,13 +199,11 @@ export function Channels() {
     setTestingChannel(channel);
     addToast("info", `Testing ${channel.name}...`);
     try {
-      const res = await apiFetch(`/api/channels/${channel.id}/test`, { method: "POST" });
-      const data = await res.json();
-
-      if (res.ok && data.success) {
+      const result = await channelsApi.test(channel.id);
+      if (result.success && result.data?.success) {
         addToast("success", `${channel.name} connection test successful`);
       } else {
-        addToast("error", data.error || `${channel.name} connection test failed`);
+        addToast("error", result.error || result.data?.error || `${channel.name} connection test failed`);
       }
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Failed to test channel");

@@ -49,6 +49,15 @@ const mimeTypes: Record<string, string> = {
   ".webp": "image/webp",
 };
 
+const htmlHeaders = {
+  "Content-Type": "text/html; charset=utf-8",
+  "Cache-Control": "no-cache",
+};
+
+function isFileLikePath(pathname: string): boolean {
+  return /\.[^/]+$/.test(pathname);
+}
+
 const platformConfig = config.getAll();
 const PORT = Number(process.env.PORT) || platformConfig.port || 4269;
 
@@ -262,14 +271,23 @@ Bun.serve<WsData>({
       });
     }
 
+    const fileLikePath = isFileLikePath(pathname);
+
     // Serve static files from ui/dist directory (Vite build output)
     if (!uiExists) {
-      return new Response(uiContent, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+      // Keep fallback HTML for app routes, but do not return HTML for missing assets.
+      if (pathname === "/" || pathname === "/index.html" || !fileLikePath) {
+        return new Response(uiContent, { headers: htmlHeaders });
+      }
+      return new Response("Static asset not found", {
+        status: 404,
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
     }
 
     // Serve index.html for root and all non-file routes (SPA routing)
-    if (pathname === "/" || pathname === "/index.html" || !pathname.includes(".")) {
-      return new Response(uiContent, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+    if (pathname === "/" || pathname === "/index.html" || !fileLikePath) {
+      return new Response(uiContent, { headers: htmlHeaders });
     }
 
     // Serve other static files (assets, etc.)
@@ -292,8 +310,16 @@ Bun.serve<WsData>({
       }
     }
 
+    // Missing static assets should not fall back to HTML (prevents JS MIME errors).
+    if (fileLikePath) {
+      return new Response("Static asset not found", {
+        status: 404,
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
+    }
+
     // Fallback to index.html for client-side routing
-    return new Response(uiContent, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+    return new Response(uiContent, { headers: htmlHeaders });
   },
   websocket: {
     open(ws) {

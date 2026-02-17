@@ -20,7 +20,7 @@ import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Textarea } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { PageLayout } from '@/components/layout';
-import { apiFetch } from '@/lib/auth';
+import { memoryApi } from '@/lib/api';
 import {
   useMemory,
   useSearchMemory,
@@ -101,15 +101,9 @@ export function Memory() {
     const content = formData.get('content') as string;
 
     try {
-      const res = await apiFetch('/api/memory', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file, content }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to create memory');
+      const result = await memoryApi.createFile(file, content);
+      if (!result.success || !result.data?.success) {
+        throw new Error(result.error || 'Failed to create memory');
       }
 
       addToast('success', 'Memory entry created');

@@ -137,6 +137,13 @@ describe("CLI auth e2e", () => {
     expect(metrics.stderr).toContain("Unauthorized API request (401)");
   });
 
+  test("CLI config set also fails without auth key", async () => {
+    removeApiKeyFile();
+    const setConfig = await runCli(["config", "set", "theme", `auth-missing-${Date.now()}`]);
+    expect(setConfig.exitCode).toBe(1);
+    expect(setConfig.stderr).toContain("Failed to set config: 401");
+  });
+
   test("CLI succeeds with CYBARA_API_KEY env auth", async () => {
     removeApiKeyFile();
     const metrics = await runCli(["metrics"], { CYBARA_API_KEY: apiKey });
@@ -163,5 +170,54 @@ describe("CLI auth e2e", () => {
     const providers = await runCli(["provider"]);
     expect(providers.exitCode).toBe(0);
     expect(providers.stdout).toContain("CYBARA PROVIDERS");
+  });
+
+  test("CLI direct-fetch mutation commands succeed when CYBARA_API_KEY is set", async () => {
+    removeApiKeyFile();
+
+    const setConfig = await runCli(
+      ["config", "set", "theme", `cli-auth-theme-${Date.now()}`],
+      { CYBARA_API_KEY: apiKey }
+    );
+    expect(setConfig.exitCode).toBe(0);
+    expect(setConfig.stdout).toContain("Set theme =");
+
+    const providerName = `cli-auth-provider-${Date.now()}`;
+    const addProvider = await runCli(
+      ["provider", "add", "openai", "--name", providerName, "--key", "sk-cli-auth-test"],
+      { CYBARA_API_KEY: apiKey }
+    );
+    expect(addProvider.exitCode).toBe(0);
+    expect(addProvider.stdout).toContain(`Added provider: ${providerName}`);
+    const providerIdMatch = addProvider.stdout.match(/ID:\s+([^\s]+)/);
+    expect(providerIdMatch).toBeTruthy();
+    if (!providerIdMatch) return;
+    const providerId = providerIdMatch[1];
+
+    const updateProvider = await runCli(
+      ["provider", "update", providerId, "--name", `${providerName}-updated`],
+      { CYBARA_API_KEY: apiKey }
+    );
+    expect(updateProvider.exitCode).toBe(0);
+    expect(updateProvider.stdout).toContain(`Updated provider: ${providerId}`);
+
+    const deleteProvider = await runCli(["provider", "delete", providerId], {
+      CYBARA_API_KEY: apiKey,
+    });
+    expect(deleteProvider.exitCode).toBe(0);
+    expect(deleteProvider.stdout).toContain(`Deleted provider: ${providerId}`);
+
+    const spawnSubagent = await runCli(["subagent", "spawn", "cli auth smoke subagent"], {
+      CYBARA_API_KEY: apiKey,
+    });
+    expect(spawnSubagent.exitCode).toBe(0);
+    const subagentIdMatch = spawnSubagent.stdout.match(/Spawned subagent:\s+([^\s]+)/);
+    expect(subagentIdMatch).toBeTruthy();
+    if (!subagentIdMatch) return;
+    const subagentId = subagentIdMatch[1];
+
+    const killSubagent = await runCli(["subagent", "kill", subagentId], { CYBARA_API_KEY: apiKey });
+    expect(killSubagent.exitCode).toBe(0);
+    expect(killSubagent.stdout).toContain(`Killed subagent: ${subagentId}`);
   });
 });

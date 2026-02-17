@@ -31,6 +31,17 @@ function resolveCliApiKey(): string | null {
 
 const CLI_API_KEY = resolveCliApiKey();
 
+function withCliAuthHeaders(headers?: RequestInit["headers"], ensureJsonContentType = false): Headers {
+    const merged = new Headers(headers);
+    if (ensureJsonContentType && !merged.has("Content-Type")) {
+        merged.set("Content-Type", "application/json");
+    }
+    if (CLI_API_KEY && !merged.has("Authorization")) {
+        merged.set("Authorization", `Bearer ${CLI_API_KEY}`);
+    }
+    return merged;
+}
+
 interface StatusResponse {
     status: string;
     uptime: number;
@@ -71,13 +82,7 @@ interface AgentItem {
 
 async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T | null> {
     try {
-        const headers = new Headers(options?.headers);
-        if (!headers.has("Content-Type")) {
-            headers.set("Content-Type", "application/json");
-        }
-        if (CLI_API_KEY && !headers.has("Authorization")) {
-            headers.set("Authorization", `Bearer ${CLI_API_KEY}`);
-        }
+        const headers = withCliAuthHeaders(options?.headers, true);
 
         const res = await fetch(`${API_BASE}${endpoint}`, {
             ...options,
@@ -571,7 +576,7 @@ async function rawLspInstall(language: string): Promise<void> {
 
     const response = await fetch(`${API_BASE}/api/lsp/install`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ language }),
     });
 
@@ -599,7 +604,7 @@ async function rawLspUninstall(language: string): Promise<void> {
 
     const response = await fetch(`${API_BASE}/api/lsp/uninstall`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ language }),
     });
 
@@ -693,7 +698,7 @@ async function rawProviderAdd(type: string, name?: string, apiKey?: string, acce
             // Initiate device code flow
             const dcRes = await fetch(`${API_BASE}/api/providers/oauth/device-code`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
                 body: JSON.stringify({ providerType: type }),
             });
             const dcData = await dcRes.json() as { user_code?: string; verification_uri?: string; device_code?: string; expires_in?: number; interval?: number; error?: string };
@@ -728,7 +733,7 @@ async function rawProviderAdd(type: string, name?: string, apiKey?: string, acce
 
                 const pollRes = await fetch(`${API_BASE}/api/providers/oauth/poll`, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
                     body: JSON.stringify({ providerType: type, deviceCode: dcData.device_code }),
                 });
                 const pollData = await pollRes.json() as { status: string; access_token?: string; error?: string };
@@ -778,7 +783,7 @@ async function rawProviderAdd(type: string, name?: string, apiKey?: string, acce
     try {
         const response = await fetch(`${API_BASE}/api/providers`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
             body: JSON.stringify(body),
         });
 
@@ -819,7 +824,7 @@ async function rawProviderUpdate(id: string, name?: string, apiKey?: string, acc
     try {
         const response = await fetch(`${API_BASE}/api/providers/${id}`, {
             method: "PUT",
-            headers: { "Content-Type": "application/json" },
+            headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
             body: JSON.stringify(body),
         });
 
@@ -853,6 +858,7 @@ async function rawProviderDelete(id: string): Promise<void> {
     try {
         const response = await fetch(`${API_BASE}/api/providers/${id}`, {
             method: "DELETE",
+            headers: withCliAuthHeaders(),
         });
 
         const result = await response.json() as { success?: boolean; error?: string };
@@ -907,6 +913,7 @@ async function rawProviderDiscover(): Promise<void> {
     try {
         const response = await fetch(`${API_BASE}/api/providers/discover/ollama`, {
             method: "POST",
+            headers: withCliAuthHeaders(),
         });
 
         const result = await response.json() as { models?: { id: string }[]; error?: string };
@@ -1160,16 +1167,24 @@ async function rawSubagentSpawn(task: string): Promise<void> {
 
     const response = await fetch(`${API_BASE}/api/subagents/spawn`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ task, label: `Task: ${task.slice(0, 30)}...` }),
     });
 
-    const result = await response.json() as { id?: string; error?: string };
+    const result = await response.json() as {
+        id?: string;
+        subagentId?: string;
+        success?: boolean;
+        status?: string;
+        error?: string;
+    };
+    const subagentId = result.subagentId || result.id;
 
-    if (result.id) {
-        console.log(`✓ Spawned subagent: ${result.id}`);
+    if (subagentId) {
+        console.log(`✓ Spawned subagent: ${subagentId}`);
     } else {
-        console.error(`✗ Failed to spawn: ${result.error}`);
+        const reason = result.error || result.status || response.statusText || "Unknown error";
+        console.error(`✗ Failed to spawn: ${reason}`);
         process.exit(1);
     }
 }
@@ -1183,6 +1198,7 @@ async function rawSubagentKill(id: string): Promise<void> {
 
     const response = await fetch(`${API_BASE}/api/subagents/${id}/kill`, {
         method: "POST",
+        headers: withCliAuthHeaders(),
     });
 
     const result = await response.json() as { success?: boolean; error?: string };
@@ -1347,7 +1363,7 @@ async function rawChat(sessionArg?: string): Promise<void> {
 
                 const resp = await fetch(`${API_BASE}/api/chat`, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
                     body: JSON.stringify(body),
                 });
 
@@ -1400,13 +1416,14 @@ async function rawConfig(subCmd?: string, key?: string, value?: string): Promise
     } else if (subCmd === "set" && key && value !== undefined) {
         const resp = await fetch(`${API_BASE}/api/config`, {
             method: "PUT",
-            headers: { "Content-Type": "application/json" },
+            headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
             body: JSON.stringify({ [key]: value }),
         });
         if (resp.ok) {
             console.log(`✓ Set ${key} = ${value}`);
         } else {
             console.error(`ERROR: Failed to set config: ${resp.status}`);
+            process.exit(1);
         }
     } else {
         const data = await fetchAPI<Record<string, unknown>>("/api/config");

@@ -4,8 +4,11 @@ import {
   chatApi,
   channelsApi,
   logsApi,
+  mcpApi,
   memoryApi,
   providersApi,
+  settingsApi,
+  setupApi,
   skillsApi,
   sessionsApi,
   subagentApi,
@@ -106,6 +109,27 @@ describe("UI API client wiring", () => {
     });
   });
 
+  test("channelsApi pairing and test helpers use security endpoints", async () => {
+    await channelsApi.getPairings("chan-1");
+    await channelsApi.verifyPairing("chan-1", "PAIR42");
+    await channelsApi.rejectPairing("chan-1", "pair-1");
+    await channelsApi.test("chan-1");
+
+    expect(calls).toHaveLength(4);
+    expect(calls[0].url).toBe("/api/channels/chan-1/pairings");
+    expect(calls[0].init?.method).toBeUndefined();
+
+    expect(calls[1].url).toBe("/api/channels/chan-1/pairings/verify");
+    expect(calls[1].init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[1].init?.body))).toEqual({ code: "PAIR42" });
+
+    expect(calls[2].url).toBe("/api/channels/chan-1/pairings/pair-1/reject");
+    expect(calls[2].init?.method).toBe("POST");
+
+    expect(calls[3].url).toBe("/api/channels/chan-1/test");
+    expect(calls[3].init?.method).toBe("POST");
+  });
+
   test("memoryApi.list encodes query params", async () => {
     await memoryApi.list({
       agentId: "agent 1",
@@ -132,6 +156,18 @@ describe("UI API client wiring", () => {
     expect(parsed.searchParams.get("query")).toBe("needles + haystack");
     expect(parsed.searchParams.get("limit")).toBe("10");
     expect(calls[0].init?.method).toBeUndefined();
+  });
+
+  test("memoryApi.createFile posts file + content payload", async () => {
+    await memoryApi.createFile("notes", "remember this");
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe("/api/memory");
+    expect(calls[0].init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({
+      file: "notes",
+      content: "remember this",
+    });
   });
 
   test("logsApi.search encodes query", async () => {
@@ -210,6 +246,91 @@ describe("UI API client wiring", () => {
 
     expect(calls[3].url).toBe("/api/subagents/sub-1/kill");
     expect(calls[3].init?.method).toBe("POST");
+  });
+
+  test("tasksApi.getRuns hits /api/tasks/:id/runs", async () => {
+    await tasksApi.getRuns("task-1");
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe("/api/tasks/task-1/runs");
+    expect(calls[0].init?.method).toBeUndefined();
+  });
+
+  test("mcpApi uses expected list/registry/lifecycle endpoints", async () => {
+    await mcpApi.list();
+    await mcpApi.popular();
+    await mcpApi.search("filesystem tools");
+    await mcpApi.install({ id: "filesystem" });
+    await mcpApi.create({
+      name: "Filesystem MCP",
+      command: "bunx",
+      args: "@modelcontextprotocol/server-filesystem",
+      enabled: true,
+    });
+    await mcpApi.start("mcp-1");
+    await mcpApi.stop("mcp-1");
+    await mcpApi.delete("mcp-1");
+
+    expect(calls).toHaveLength(8);
+
+    expect(calls[0].url).toBe("/api/mcp");
+    expect(calls[0].init?.method).toBeUndefined();
+
+    expect(calls[1].url).toBe("/api/mcp/registry/popular");
+    expect(calls[1].init?.method).toBeUndefined();
+
+    const searchUrl = new URL(calls[2].url, "http://localhost");
+    expect(searchUrl.pathname).toBe("/api/mcp/registry/search");
+    expect(searchUrl.searchParams.get("q")).toBe("filesystem tools");
+
+    expect(calls[3].url).toBe("/api/mcp/registry/install");
+    expect(calls[3].init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[3].init?.body))).toEqual({ id: "filesystem" });
+
+    expect(calls[4].url).toBe("/api/mcp");
+    expect(calls[4].init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[4].init?.body))).toEqual({
+      name: "Filesystem MCP",
+      command: "bunx",
+      args: "@modelcontextprotocol/server-filesystem",
+      enabled: true,
+    });
+
+    expect(calls[5].url).toBe("/api/mcp/mcp-1/start");
+    expect(calls[5].init?.method).toBe("POST");
+
+    expect(calls[6].url).toBe("/api/mcp/mcp-1/stop");
+    expect(calls[6].init?.method).toBe("POST");
+
+    expect(calls[7].url).toBe("/api/mcp/mcp-1");
+    expect(calls[7].init?.method).toBe("DELETE");
+  });
+
+  test("settingsApi get/update config uses /api/config", async () => {
+    await settingsApi.getConfig();
+    await settingsApi.updateConfig({ terminal_enabled: true });
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0].url).toBe("/api/config");
+    expect(calls[0].init?.method).toBeUndefined();
+
+    expect(calls[1].url).toBe("/api/config");
+    expect(calls[1].init?.method).toBe("PUT");
+    expect(JSON.parse(String(calls[1].init?.body))).toEqual({
+      terminal_enabled: true,
+    });
+  });
+
+  test("setupApi status/complete uses setup endpoints", async () => {
+    await setupApi.status();
+    await setupApi.complete();
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0].url).toBe("/api/setup/status");
+    expect(calls[0].init?.method).toBeUndefined();
+
+    expect(calls[1].url).toBe("/api/setup/complete");
+    expect(calls[1].init?.method).toBe("POST");
   });
 
   test("returns success=false with text error body on non-OK response", async () => {
