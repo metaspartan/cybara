@@ -6,6 +6,7 @@ import {
   HDNodeWallet,
   JsonRpcProvider,
   Contract,
+  TypedDataDomain,
   formatEther,
   isAddress as isEvmAddress,
   parseEther,
@@ -30,6 +31,19 @@ import {
   getAssociatedTokenAddressSync,
   getMint,
 } from "@solana/spl-token";
+import { createKeyPairSignerFromBytes } from "@solana/signers";
+import {
+  SelectPaymentRequirements as X402SelectPaymentRequirements,
+  x402Client as X402Client,
+  x402HTTPClient as X402HttpClient,
+} from "@x402/fetch";
+import { ExactEvmScheme, toClientEvmSigner } from "@x402/evm";
+import {
+  EVM_NETWORK_CHAIN_ID_MAP as X402EvmNetworkChainIdMap,
+  ExactEvmSchemeV1,
+} from "@x402/evm/v1";
+import { ExactSvmScheme, toClientSvmSigner } from "@x402/svm";
+import { ExactSvmSchemeV1, NETWORKS as X402SvmV1Networks } from "@x402/svm/v1";
 import { derivePath as deriveEd25519Path } from "ed25519-hd-key";
 import * as bitcoin from "bitcoinjs-lib";
 import BIP32Factory from "bip32";
@@ -78,33 +92,24 @@ const CHAINLINK_FEED_REGISTRY_ETH = "0x47Fb2585D2C56Fe188D0E6ec628a38b74fCeeeDf"
 const CHAINLINK_DENOMINATION_USD = "0x0000000000000000000000000000000000000348";
 const ZERO_EVM_ADDRESS = "0x0000000000000000000000000000000000000000";
 const X402_REQUIRED_HEADER = "PAYMENT-REQUIRED";
-const X402_SIGNATURE_HEADER = "PAYMENT-SIGNATURE";
 const X402_RESPONSE_HEADER = "PAYMENT-RESPONSE";
-const X402_LEGACY_SIGNATURE_HEADER = "X-PAYMENT";
 const X402_LEGACY_RESPONSE_HEADER = "X-PAYMENT-RESPONSE";
 const X402_AGENT_MAX_DEFAULT_ATOMIC = "1000000";
 const X402_AGENT_SUPPORTED_SCHEMES = new Set<string>(["exact"]);
 const X402_V1_EVM_NETWORK_CHAIN_IDS: Record<string, number> = {
-  base: 8453,
-  "base-mainnet": 8453,
-  "base-sepolia": 84532,
+  ...Object.fromEntries(
+    Object.entries(X402EvmNetworkChainIdMap).map(([network, chainId]) => [
+      network.toLowerCase(),
+      Number(chainId),
+    ])
+  ),
   mainnet: 1,
-  ethereum: 1,
-  sepolia: 11155111,
   arbitrum: 42161,
   optimism: 10,
-  polygon: 137,
 };
-const X402_EIP3009_AUTHORIZATION_TYPES: Record<string, Array<{ name: string; type: string }>> = {
-  TransferWithAuthorization: [
-    { name: "from", type: "address" },
-    { name: "to", type: "address" },
-    { name: "value", type: "uint256" },
-    { name: "validAfter", type: "uint256" },
-    { name: "validBefore", type: "uint256" },
-    { name: "nonce", type: "bytes32" },
-  ],
-};
+const X402_V1_SOLANA_NETWORKS = [
+  ...new Set(X402SvmV1Networks.map((network) => network.toLowerCase())),
+];
 const CHAINLINK_BASE_ASSETS: Record<string, string> = {
   ETH: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
   BTC: "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB",
@@ -414,6 +419,7 @@ interface WalletX402SelectedRequirement {
   x402Version: 1 | 2;
   scheme: string;
   network: string;
+  networkFamily: "evm" | "solana";
   amount: string;
   asset: string;
   payTo: string;
@@ -885,6 +891,17 @@ function parseEip155ChainId(networkInput: string): number | undefined {
     }
   }
   return X402_V1_EVM_NETWORK_CHAIN_IDS[network];
+}
+
+function parseX402NetworkFamily(networkInput: string): "evm" | "solana" | undefined {
+  const network = networkInput.trim().toLowerCase();
+  if (!network) return undefined;
+  if (parseEip155ChainId(network)) return "evm";
+  if (network.startsWith("solana:") && network.length > "solana:".length) return "solana";
+  if (X402_V1_SOLANA_NETWORKS.includes(network)) {
+    return "solana";
+  }
+  return undefined;
 }
 
 function normalizeFeedId(value: string): string {
@@ -1675,12 +1692,12 @@ class WalletManager {
           chain: "multi",
           write: true,
           description:
-            "HTTP call with automatic x402 payment-required handling and EVM EIP-3009 signing",
+            "HTTP call with automatic x402 payment-required handling for EVM (EIP-3009 + Permit2) and Solana",
         },
       ],
       notes: [
-        "x402 currently supports EVM exact scheme using EIP-3009 transfer authorization payloads",
-        "Permit2 assetTransferMethod is not yet supported in this wallet implementation",
+        "x402 uses official @x402 clients with exact scheme support across EVM and Solana",
+        "EVM flows support both eip3009 and permit2 assetTransferMethod values when provided by merchant requirements",
       ],
     };
   }
@@ -3222,7 +3239,7 @@ class WalletManager {
     }
 
     const paymentHeader = await this.createX402PaymentHeader({
-      version: selectedRequirement.x402Version,
+      required,
       requirement: selectedRequirement,
       index: normalizeStartIndex(input.index),
       requestUrl: url.toString(),
@@ -4393,12 +4410,25 @@ class WalletManager {
     if (policy.allowedDappHosts.length === 0) {
       return;
     }
-    const host = new URL(urlInput).host.toLowerCase();
-    if (!policy.allowedDappHosts.includes(host)) {
-      throw new Error(
-        `Validation error: ${context.toUpperCase()} host '${host}' is not allowlisted by wallet policy`
-      );
+    const parsed = new URL(urlInput);
+    const host = parsed.host.toLowerCase();
+    const hostname = parsed.hostname.toLowerCase();
+    for (const entry of policy.allowedDappHosts) {
+      const allowed = String(entry || "")
+        .trim()
+        .toLowerCase();
+      if (!allowed) continue;
+      if (allowed.includes(":")) {
+        if (host === allowed) return;
+        continue;
+      }
+      if (hostname === allowed || hostname.endsWith(`.${allowed}`)) {
+        return;
+      }
     }
+    throw new Error(
+      `Validation error: ${context.toUpperCase()} host '${host}' is not allowlisted by wallet policy`
+    );
   }
 
   private normalizeDappAdapter(adapterInput: string): WalletDappAdapter {
@@ -4485,11 +4515,14 @@ class WalletManager {
       for (const entry of required.accepts || []) {
         const scheme = String(entry.scheme || "").toLowerCase();
         if (!X402_AGENT_SUPPORTED_SCHEMES.has(scheme)) continue;
-        if (!parseEip155ChainId(String(entry.network || ""))) continue;
+        const network = String(entry.network || "");
+        const networkFamily = parseX402NetworkFamily(network);
+        if (!networkFamily) continue;
         candidates.push({
           x402Version: 2,
           scheme,
-          network: String(entry.network || ""),
+          network,
+          networkFamily,
           amount: String(entry.amount || ""),
           asset: String(entry.asset || ""),
           payTo: String(entry.payTo || ""),
@@ -4505,11 +4538,14 @@ class WalletManager {
       for (const entry of required.accepts || []) {
         const scheme = String(entry.scheme || "").toLowerCase();
         if (!X402_AGENT_SUPPORTED_SCHEMES.has(scheme)) continue;
-        if (!parseEip155ChainId(String(entry.network || ""))) continue;
+        const network = String(entry.network || "");
+        const networkFamily = parseX402NetworkFamily(network);
+        if (!networkFamily) continue;
         candidates.push({
           x402Version: 1,
           scheme,
-          network: String(entry.network || ""),
+          network,
+          networkFamily,
           amount: String(entry.maxAmountRequired || ""),
           asset: String(entry.asset || ""),
           payTo: String(entry.payTo || ""),
@@ -4529,120 +4565,152 @@ class WalletManager {
       throw new Error(
         requested
           ? `Validation error: No x402 requirement for network '${requestedNetwork}'`
-          : "Validation error: No supported EVM x402 payment requirement found"
+          : "Validation error: No supported x402 payment requirement found for configured schemes"
       );
     }
     return selected;
   }
 
   private async createX402PaymentHeader(input: {
-    version: 1 | 2;
+    required: WalletX402PaymentRequiredV2 | WalletX402PaymentRequiredV1;
     requirement: WalletX402SelectedRequirement;
     index: number;
     requestUrl: string;
   }): Promise<{ name: string; value: string }> {
     const requirement = input.requirement;
-    if (!isEvmAddress(requirement.asset)) {
-      throw new Error("Validation error: x402 payment asset must be an EVM token address");
-    }
-    if (!isEvmAddress(requirement.payTo)) {
-      throw new Error("Validation error: x402 payTo must be a valid EVM address");
-    }
-
-    const chainId = parseEip155ChainId(requirement.network);
-    if (!chainId) {
-      throw new Error(`Validation error: Unsupported x402 network '${requirement.network}'`);
-    }
-
-    const transferMethod = String(requirement.extra?.assetTransferMethod || "eip3009")
-      .trim()
-      .toLowerCase();
-    if (transferMethod !== "eip3009") {
-      throw new Error(
-        `Validation error: Unsupported x402 assetTransferMethod '${transferMethod}'. Only eip3009 is currently supported`
-      );
-    }
-
-    const domainName = String(requirement.extra?.name || "").trim();
-    const domainVersion = String(requirement.extra?.version || "").trim();
-    if (!domainName || !domainVersion) {
-      throw new Error(
-        "Validation error: x402 requirement missing EIP-712 domain fields (extra.name/version)"
-      );
-    }
-
-    const amount = parsePositiveAtomicAmount(requirement.amount, "x402 payment amount");
-    const unlocked = this.requireUnlocked();
-    const signer = this.deriveEthWallet(unlocked.mnemonic, normalizeStartIndex(input.index)).wallet;
-
-    const now = Math.floor(Date.now() / 1000);
-    const validBefore = now + Math.min(86_400, Math.max(30, requirement.maxTimeoutSeconds));
-    const nonceBytes = crypto.getRandomValues(new Uint8Array(32));
-    const nonce = `0x${Buffer.from(nonceBytes).toString("hex")}`;
-    const authorization = {
-      from: signer.address,
-      to: requirement.payTo,
-      value: amount.toString(),
-      validAfter: String(Math.max(0, now - 600)),
-      validBefore: String(validBefore),
-      nonce,
-    };
-
-    const signature = await signer.signTypedData(
-      {
-        name: domainName,
-        version: domainVersion,
-        chainId,
-        verifyingContract: requirement.asset,
-      },
-      X402_EIP3009_AUTHORIZATION_TYPES,
-      {
-        from: authorization.from,
-        to: authorization.to,
-        value: amount,
-        validAfter: BigInt(authorization.validAfter),
-        validBefore: BigInt(authorization.validBefore),
-        nonce: authorization.nonce,
+    if (requirement.networkFamily === "evm") {
+      if (!isEvmAddress(requirement.asset)) {
+        throw new Error("Validation error: x402 payment asset must be an EVM token address");
       }
+      if (!isEvmAddress(requirement.payTo)) {
+        throw new Error("Validation error: x402 payTo must be a valid EVM address");
+      }
+    } else {
+      try {
+        new PublicKey(requirement.asset);
+      } catch {
+        throw new Error("Validation error: x402 payment asset must be a valid Solana mint address");
+      }
+      try {
+        new PublicKey(requirement.payTo);
+      } catch {
+        throw new Error("Validation error: x402 payTo must be a valid Solana address");
+      }
+    }
+
+    const unlocked = this.requireUnlocked();
+    const index = normalizeStartIndex(input.index);
+    const evmWallet = this.deriveEthWallet(unlocked.mnemonic, index).wallet;
+    const solKeypair = this.deriveSolKeypair(unlocked.mnemonic, index);
+    const solSigner = await createKeyPairSignerFromBytes(solKeypair.secretKey);
+
+    const evmSigner = toClientEvmSigner({
+      address: evmWallet.address as `0x${string}`,
+      signTypedData: async ({ domain, types, message }) => {
+        const signature = await evmWallet.signTypedData(
+          domain as TypedDataDomain,
+          (types || {}) as Record<string, Array<{ name: string; type: string }>>,
+          message as Record<string, unknown>
+        );
+        return signature as `0x${string}`;
+      },
+    });
+
+    const selector: X402SelectPaymentRequirements = (_x402Version, paymentRequirements) => {
+      const selected = paymentRequirements.find((entry) => {
+        const candidate = entry as Record<string, unknown>;
+        const candidateAmount =
+          typeof candidate.amount === "string"
+            ? candidate.amount
+            : typeof candidate.maxAmountRequired === "string"
+              ? candidate.maxAmountRequired
+              : "";
+        return (
+          String(candidate.scheme || "").toLowerCase() === requirement.scheme.toLowerCase() &&
+          String(candidate.network || "").toLowerCase() === requirement.network.toLowerCase() &&
+          String(candidateAmount) === requirement.amount
+        );
+      });
+      if (!selected) {
+        throw new Error(
+          `Validation error: Could not select x402 requirement for ${requirement.network} ${requirement.scheme}`
+        );
+      }
+      return selected;
+    };
+
+    const evmScheme = new ExactEvmScheme(evmSigner);
+    const evmSchemeV1 = new ExactEvmSchemeV1(evmSigner);
+    const svmScheme = new ExactSvmScheme(toClientSvmSigner(solSigner), {
+      rpcUrl: this.getSolRpc(),
+    });
+    const svmSchemeV1 = new ExactSvmSchemeV1(toClientSvmSigner(solSigner), {
+      rpcUrl: this.getSolRpc(),
+    });
+    const x402Client = new X402Client(selector)
+      .register("eip155:*", evmScheme)
+      .register("solana:*", svmScheme);
+
+    for (const network of Object.keys(X402_V1_EVM_NETWORK_CHAIN_IDS)) {
+      x402Client.registerV1(network, evmSchemeV1);
+    }
+    for (const network of X402_V1_SOLANA_NETWORKS) {
+      x402Client.registerV1(network, svmSchemeV1);
+    }
+
+    const paymentClient = new X402HttpClient(x402Client);
+    const paymentRequiredPayload =
+      input.required.x402Version === 2
+        ? {
+            x402Version: 2 as const,
+            error: input.required.error,
+            resource: input.required.resource || {
+              url: input.requestUrl,
+              description: "x402 protected resource",
+              mimeType: "application/json",
+            },
+            accepts: (input.required.accepts || []).map((entry) => ({
+              scheme: String(entry.scheme || ""),
+              network: String(entry.network || ""),
+              amount: String(entry.amount || ""),
+              asset: String(entry.asset || ""),
+              payTo: String(entry.payTo || ""),
+              maxTimeoutSeconds: Number.isFinite(Number(entry.maxTimeoutSeconds))
+                ? Math.max(30, Number(entry.maxTimeoutSeconds))
+                : 60,
+              extra: (entry.extra || {}) as Record<string, unknown>,
+            })),
+            extensions: input.required.extensions || {},
+          }
+        : {
+            x402Version: 1 as const,
+            error: input.required.error,
+            accepts: (input.required.accepts || []).map((entry) => ({
+              scheme: String(entry.scheme || ""),
+              network: String(entry.network || ""),
+              maxAmountRequired: String(entry.maxAmountRequired || ""),
+              resource: input.requestUrl,
+              description: "x402 protected resource",
+              mimeType: "application/json",
+              outputSchema: {},
+              payTo: String(entry.payTo || ""),
+              maxTimeoutSeconds: Number.isFinite(Number(entry.maxTimeoutSeconds))
+                ? Math.max(30, Number(entry.maxTimeoutSeconds))
+                : 60,
+              asset: String(entry.asset || ""),
+              extra: (entry.extra || {}) as Record<string, unknown>,
+            })),
+          };
+
+    const paymentPayload = await paymentClient.createPaymentPayload(
+      paymentRequiredPayload as never
     );
-
-    const payloadV2 = {
-      x402Version: 2,
-      resource: requirement.resource || { url: input.requestUrl },
-      accepted: {
-        scheme: requirement.scheme,
-        network: requirement.network,
-        amount: requirement.amount,
-        asset: requirement.asset,
-        payTo: requirement.payTo,
-        maxTimeoutSeconds: requirement.maxTimeoutSeconds,
-        extra: requirement.extra || {},
-      },
-      payload: {
-        signature,
-        authorization,
-      },
-      extensions: requirement.extensions,
-    };
-
-    const payloadV1 = {
-      x402Version: 1,
-      scheme: requirement.scheme,
-      network: requirement.network,
-      payload: {
-        signature,
-        authorization,
-      },
-    };
-
-    const encoded = Buffer.from(
-      JSON.stringify(input.version === 2 ? payloadV2 : payloadV1),
-      "utf8"
-    ).toString("base64");
-    return {
-      name: input.version === 2 ? X402_SIGNATURE_HEADER : X402_LEGACY_SIGNATURE_HEADER,
-      value: encoded,
-    };
+    const paymentHeaders = paymentClient.encodePaymentSignatureHeader(paymentPayload);
+    const [name, value] = Object.entries(paymentHeaders)[0] || [];
+    if (!name || typeof value !== "string" || !value.trim()) {
+      throw new Error("Validation error: Failed to create x402 payment signature header");
+    }
+    return { name, value };
   }
 
   private decodeX402SettlementResponse(headers: Headers): WalletX402SettlementResponse | undefined {

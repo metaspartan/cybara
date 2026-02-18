@@ -234,7 +234,7 @@ export async function startBrowser(profileName: string): Promise<Browser> {
   const executablePath = await findChromeExecutable();
   if (!executablePath) {
     throw new Error(
-      "Chrome/Chromium not found. Install Playwright browsers: npx playwright install chromium"
+      "Chrome/Chromium not found. Install Playwright browsers: bunx playwright install chromium"
     );
   }
 

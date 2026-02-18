@@ -158,7 +158,7 @@ cybara channel add signal
 Add Model Context Protocol servers:
 
 ```bash
-cybara mcp add memory '{"command": "npx", "args": ["-y", "@modelcontextprotocol/server-memory"]}'
+cybara mcp add memory '{"command": "bunx", "args": ["@modelcontextprotocol/server-memory"]}'
 ```
 
 ## Logging

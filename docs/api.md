@@ -379,6 +379,8 @@ Update payload example:
 }
 ```
 
+`allowedDappHosts` entries can be hostnames (e.g. `app.uniswap.org`), parent domains (e.g. `uniswap.org`), or explicit `host:port` values for local/dev gateways.
+
 ### Uniswap ETH Swap (V2)
 ```http
 POST /api/wallet/swap-eth-uniswap
@@ -477,6 +479,12 @@ Content-Type: application/json
 
 When `dryRun: true`, the endpoint returns 402 requirement details without signing/broadcasting a payment.  
 When `dryRun: false`, it attempts payment if policy permits.
+
+Compatibility notes:
+- Supports x402 v2 (`PAYMENT-REQUIRED` / `PAYMENT-SIGNATURE`) and x402 v1 (`X-PAYMENT` body/header flows).
+- EVM exact payments support both `extra.assetTransferMethod = "eip3009"` and `"permit2"`.
+- Solana exact payments are supported for `solana:*` (and v1 `solana*` names). Solana requirements must include `extra.feePayer`.
+- `network` may be omitted to auto-select the first compatible merchant requirement, or set explicitly (for example `eip155:1`, `base`, `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`).
 
 ### Dynamic Swap Quote / Execute (Uniswap V2, Uniswap V3, Jupiter)
 ```http
@@ -742,7 +750,7 @@ Content-Type: application/json
 
 {
   "name": "filesystem",
-  "command": "npx",
+  "command": "bunx",
   "args": ["-y", "@modelcontextprotocol/server-filesystem"]
 }
 ```
