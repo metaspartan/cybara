@@ -240,7 +240,7 @@ describe("Stateful CLI + API e2e", () => {
       "--name",
       providerName,
       "--key",
-      "e2e-test-key",
+      "sk-e2e-test-key",
     ]);
     expect(addProvider.exitCode).toBe(0);
     expect(addProvider.stdout).toContain(`Added provider: ${providerName}`);

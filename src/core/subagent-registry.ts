@@ -1,5 +1,5 @@
-// Subagent Registry - OpenClaw compatible tracking of spawned subagent runs
-// Full parity with OpenClaw: persistence, lifecycle events, announce flow, sweeper
+// Subagent Registry - Cybara compatible tracking of spawned subagent runs
+// Full parity with Cybara: persistence, lifecycle events, announce flow, sweeper
 
 import { randomUUID } from "crypto";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";

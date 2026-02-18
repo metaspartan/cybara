@@ -1,5 +1,5 @@
 // Channel Security - DM Policies, Pairing Codes, and Allowed Senders
-// Implements OpenClaw-style security for channel adapters
+// Implements Cybara-style security for channel adapters
 
 import { randomBytes } from "crypto";
 import { createLogger } from "../logger";

@@ -96,7 +96,7 @@ Full Chrome control via Playwright.
 - `screenshot` — Capture image
 - `pdf` — Export page as PDF
 - `click`, `type`, `press`, `hover`, `scroll`, `drag`, `fill` — Element interactions
-- `act` — OpenClaw-style interaction with `request` object
+- `act` — Cybara-style interaction with `request` object
 - `evaluate` — Execute JavaScript
 - `wait` — Wait for element/load state
 - `profiles`, `createProfile`, `deleteProfile` — Profile management

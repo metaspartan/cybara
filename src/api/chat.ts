@@ -278,13 +278,11 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     metadata: { source: "chat_api" },
   });
 
-  // Get provider for this agent
-  const provider = agent?.provider_id
-    ? providerManager.getWithCredentials(agent.provider_id)
-    : undefined;
+  // Resolve provider for this agent (auto-heals legacy agents missing provider_id)
+  const provider = agent ? agentManager.resolveProvider(agent.id) : undefined;
 
   // Context compaction: Check if we need to summarize older messages
-  // First, run memory flush if approaching threshold (OpenClaw pattern)
+  // First, run memory flush if approaching threshold (Cybara pattern)
   if (provider && agent) {
     const contextWindow = getContextWindow(agent.model);
     const currentTokens = estimateMessagesTokens(session.messages);

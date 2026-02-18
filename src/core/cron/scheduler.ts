@@ -1,4 +1,4 @@
-// Cron scheduler service - aligned with OpenClaw
+// Cron scheduler service - aligned with Cybara
 import type { CronJob, CronRunLog } from "./types";
 import {
   loadJobs,

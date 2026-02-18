@@ -149,4 +149,12 @@ describe("UI page API wiring", () => {
     expect(source).not.toContain("globalThis.prompt");
     expect(source).not.toContain("apiFetch(");
   });
+
+  test("Agents page sends provider_id in create/update payloads", () => {
+    const source = readPage("Agents.tsx");
+
+    expect(source).toContain("provider_id: formData.get(\"provider_id\") as string");
+    expect(source).toContain("formData.set(\"provider_id\", selectedProvider);");
+    expect(source).not.toContain("provider: formData.get(\"provider\") as string");
+  });
 });

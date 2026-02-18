@@ -1,5 +1,5 @@
-// OpenClaw-compatible Playwright snapshot functions
-// Port of /tmp/openclaw/src/browser/pw-tools-core.snapshot.ts
+// Cybara-compatible Playwright snapshot functions
+// Port of /tmp/cybara/src/browser/pw-tools-core.snapshot.ts
 
 import type { Page, Locator, FrameLocator } from "playwright-core";
 import {

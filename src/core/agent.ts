@@ -1,5 +1,11 @@
 import { tables, type Agent, type ToolDefinition } from "./database";
-import { providerManager, getProviderBaseUrl, getDefaultModel } from "./providers";
+import {
+  providerManager,
+  getProviderBaseUrl,
+  getDefaultModel,
+  providers as providerCatalog,
+  type ProviderType,
+} from "./providers";
 import { getToolSchemasForLLM, isToolEnabledForAgent, type ToolContext } from "./tools/index";
 import { executeTool, hasTool } from "./tools/handlers/index";
 import {
@@ -17,7 +23,9 @@ export interface AgentDefinition {
   type?: "main" | "research" | "coder" | "planner" | "ops" | "subagent" | "worker";
   model?: string;
   provider_id?: string;
+  provider?: string;
   fallback_provider_id?: string;
+  fallback_provider?: string;
   system_prompt?: string;
   tools?: ToolDefinition[];
   memory_enabled?: boolean;
@@ -218,7 +226,7 @@ export function getBuiltinTools(): ToolDefinition[] {
   }));
 }
 
-// Agent type configuration - matches Clawdbot's patterns
+// Agent type configuration - matches Cybara's patterns
 export const AGENT_TYPES = {
   main: {
     description: "General-purpose assistant",
@@ -336,6 +344,79 @@ function normalizePermissionList(value: unknown): string[] {
 class AgentManager {
   private runningAgents: Map<string, RunningAgentState> = new Map();
 
+  private formatLlmFailure(error: unknown): string {
+    const message =
+      typeof error === "object" && error && "message" in error
+        ? String((error as { message?: unknown }).message || "")
+        : String(error || "");
+    const lower = message.toLowerCase();
+
+    if (lower.includes("invalid_api_key") || lower.includes("incorrect api key")) {
+      return "OpenAI API key was rejected. Update your OpenAI provider key in Providers.";
+    }
+    if (lower.includes("model_not_found") || lower.includes("does not exist")) {
+      return "Configured model is not available for this provider. Select another model and try again.";
+    }
+    if (lower.includes("insufficient_quota") || lower.includes("quota")) {
+      return "Provider quota/billing limit reached. Update billing or use a different provider.";
+    }
+    if (lower.includes("401")) {
+      return "Provider authentication failed (401). Verify your provider API key/token.";
+    }
+    if (lower.includes("403")) {
+      return "Provider rejected access (403). Verify account permissions and model access.";
+    }
+    if (lower.includes("429") || lower.includes("rate limit")) {
+      return "Provider rate limit hit (429). Retry shortly or switch providers.";
+    }
+
+    return "I apologize, but I encountered an issue processing your request. Please try again or rephrase your message.";
+  }
+
+  private resolveProviderForAgent(
+    agent: Pick<Agent, "id" | "provider_id" | "config">,
+    persistIfResolved = false
+  ): ReturnType<typeof providerManager.getWithCredentials> {
+    let resolvedProvider =
+      typeof agent.provider_id === "string" && agent.provider_id.trim()
+        ? providerManager.getWithCredentials(agent.provider_id)
+        : undefined;
+
+    if (resolvedProvider) return resolvedProvider;
+
+    const config = parseAgentConfig(agent.config, agent.id);
+    const configProviderInput =
+      typeof config.provider_id === "string"
+        ? config.provider_id
+        : typeof config.provider === "string"
+          ? config.provider
+          : undefined;
+
+    const resolvedProviderId =
+      providerManager.resolveProviderId(configProviderInput) ||
+      providerManager.getPreferredProvider({ preferCredentialed: true })?.id;
+
+    if (!resolvedProviderId) return undefined;
+
+    resolvedProvider = providerManager.getWithCredentials(resolvedProviderId);
+    if (!resolvedProvider) return undefined;
+
+    if (persistIfResolved && agent.provider_id !== resolvedProviderId) {
+      this.update(agent.id, { provider_id: resolvedProviderId });
+      if ("provider_id" in agent) {
+        agent.provider_id = resolvedProviderId;
+      }
+    }
+
+    return resolvedProvider;
+  }
+
+  resolveProvider(id: string): ReturnType<typeof providerManager.getWithCredentials> {
+    const agent = this.get(id);
+    if (!agent) return undefined;
+    return this.resolveProviderForAgent(agent, true);
+  }
+
   list(): (Agent & {
     provider?: string;
     providerInfo?: { name: string };
@@ -345,9 +426,11 @@ class AgentManager {
     return all.map((a) => {
       const provider = a.provider_id ? providerManager.get(a.provider_id) : undefined;
       const typeConfig = a.type ? AGENT_TYPES[a.type as keyof typeof AGENT_TYPES] : undefined;
+      const status = this.runningAgents.has(a.id) ? "running" : "stopped";
       // Return provider_id as 'provider' for frontend compatibility
       return {
         ...a,
+        status,
         provider: a.provider_id, // Frontend expects provider ID as 'provider'
         providerInfo: provider ? { name: provider.name } : undefined,
         typeConfig,
@@ -361,9 +444,11 @@ class AgentManager {
     const agent = tables.agents.get(id) as Agent | undefined;
     if (!agent) return undefined;
     const typeConfig = agent.type ? AGENT_TYPES[agent.type as keyof typeof AGENT_TYPES] : undefined;
+    const status = this.runningAgents.has(agent.id) ? "running" : "stopped";
     // Return provider_id as 'provider' for frontend compatibility
     return {
       ...agent,
+      status,
       provider: agent.provider_id, // Frontend expects provider ID as 'provider'
       typeConfig,
     };
@@ -384,13 +469,21 @@ class AgentManager {
     const systemPrompt =
       definition.system_prompt || typeConfig?.systemPrompt || AGENT_TYPE_PROMPTS.main;
 
+    const resolvedProviderId =
+      providerManager.resolveProviderId(definition.provider_id || definition.provider) ||
+      definition.provider_id;
+    const resolvedFallbackProviderId =
+      providerManager.resolveProviderId(
+        definition.fallback_provider_id || definition.fallback_provider
+      ) || definition.fallback_provider_id;
+
     const agent: Agent = {
       id,
       name: definition.name,
       type: definition.type || "main",
       model: resolvedModel,
-      provider_id: definition.provider_id,
-      fallback_provider_id: definition.fallback_provider_id,
+      provider_id: resolvedProviderId,
+      fallback_provider_id: resolvedFallbackProviderId,
       system_prompt: systemPrompt,
       tools: definition.tools ?? getBuiltinTools(),
       config: definition.config || {},
@@ -402,13 +495,14 @@ class AgentManager {
     return agent;
   }
 
-  // Create a default agent with sensible defaults - matches Clawdbot's default agent
+  // Create a default agent with sensible defaults - matches Cybara's default agent
   createDefault(): Agent {
-    // Find any provider with API key
-    const providers = providerManager.list();
-    const hasAuth = providers.find((p) => p.api_key || p.access_token);
-    const defaultProvider = hasAuth || providers[0];
-    const providerInfo = defaultProvider?.info;
+    const defaultProvider =
+      providerManager.getPreferredProvider({ preferCredentialed: true }) ||
+      providerManager.getPreferredProvider();
+    const providerInfo = defaultProvider
+      ? providerCatalog[defaultProvider.provider as ProviderType]
+      : undefined;
 
     return this.create({
       name: "Mini",
@@ -421,7 +515,7 @@ class AgentManager {
     });
   }
 
-  // Create agent using Clawdbot-style full system prompt
+  // Create agent using Cybara-style full system prompt
   async createWithSystemPrompt(definition: Omit<AgentDefinition, "system_prompt">): Promise<Agent> {
     const typeConfig = definition.type ? AGENT_TYPES[definition.type] : undefined;
     const homeDir = process.env.HOME || homedir();
@@ -456,14 +550,31 @@ class AgentManager {
       resolvedModel = resolveModelAlias(resolvedModel, undefined);
     }
 
+    const resolvedProviderId =
+      updates.provider_id !== undefined || updates.provider !== undefined
+        ? providerManager.resolveProviderId(
+            (updates.provider_id as string | undefined) || (updates.provider as string | undefined)
+          )
+        : undefined;
+    const resolvedFallbackProviderId =
+      updates.fallback_provider_id !== undefined || updates.fallback_provider !== undefined
+        ? providerManager.resolveProviderId(
+            (updates.fallback_provider_id as string | undefined) ||
+              (updates.fallback_provider as string | undefined)
+          )
+        : undefined;
+
     const updated: Partial<Agent> = {
       name: updates.name || existing.name,
       type: updates.type || existing.type,
       model: resolvedModel || existing.model,
-      provider_id: updates.provider_id !== undefined ? updates.provider_id : existing.provider_id,
+      provider_id:
+        updates.provider_id !== undefined || updates.provider !== undefined
+          ? (resolvedProviderId ?? existing.provider_id)
+          : existing.provider_id,
       fallback_provider_id:
-        updates.fallback_provider_id !== undefined
-          ? updates.fallback_provider_id
+        updates.fallback_provider_id !== undefined || updates.fallback_provider !== undefined
+          ? (resolvedFallbackProviderId ?? existing.fallback_provider_id)
           : existing.fallback_provider_id,
       system_prompt:
         updates.system_prompt !== undefined ? updates.system_prompt : existing.system_prompt,
@@ -531,9 +642,16 @@ class AgentManager {
 
   // Send a message to a running agent
   async message(id: string, content: string): Promise<{ response: string; thinking?: string }> {
-    const state = this.runningAgents.get(id);
+    let state = this.runningAgents.get(id);
     if (!state) {
-      throw new Error("Agent is not running. Start the agent first.");
+      const started = await this.start(id);
+      if (started) {
+        state = this.runningAgents.get(id);
+      }
+    }
+
+    if (!state) {
+      throw new Error("Agent is not running.");
     }
 
     state.lastActive = new Date();
@@ -557,11 +675,7 @@ class AgentManager {
     const { agent, messages } = state;
 
     // Get provider
-    if (!agent.provider_id) {
-      return { response: this.generateFallbackResponse(messages) };
-    }
-
-    const provider = providerManager.getWithCredentials(agent.provider_id);
+    const provider = this.resolveProviderForAgent(agent, true);
     if (!provider) {
       return { response: this.generateFallbackResponse(messages) };
     }
@@ -584,7 +698,7 @@ class AgentManager {
       console.error("[Agent] LLM call failed:", error);
 
       // Try fallback provider
-      if (agent.fallback_provider_id && provider.provider !== agent.fallback_provider_id) {
+      if (agent.fallback_provider_id && provider.id !== agent.fallback_provider_id) {
         const fallbackProvider = providerManager.getWithCredentials(agent.fallback_provider_id);
         if (fallbackProvider) {
           try {
@@ -597,11 +711,12 @@ class AgentManager {
             return { response: fallbackResult.content, thinking: fallbackResult.thinking };
           } catch (fallbackError) {
             console.error("[Agent] Fallback LLM call also failed:", fallbackError);
+            return { response: this.formatLlmFailure(fallbackError) };
           }
         }
       }
 
-      return { response: this.generateFallbackResponse(messages) };
+      return { response: this.formatLlmFailure(error) };
     }
   }
 
@@ -684,11 +799,7 @@ class AgentManager {
     }
 
     // Get provider
-    if (!agent.provider_id) {
-      return { content: this.generateFallbackResponse(messages) };
-    }
-
-    let provider = providerManager.getWithCredentials(agent.provider_id);
+    let provider = this.resolveProviderForAgent(agent, true);
     if (!provider) {
       return { content: this.generateFallbackResponse(messages) };
     }
@@ -742,7 +853,7 @@ class AgentManager {
       console.error("[Agent] LLM call failed:", error);
 
       // Try fallback provider if primary failed and we haven't tried it yet
-      if (agent.fallback_provider_id && provider.provider !== agent.fallback_provider_id) {
+      if (agent.fallback_provider_id && provider.id !== agent.fallback_provider_id) {
         const fallbackProvider = providerManager.getWithCredentials(agent.fallback_provider_id);
         if (fallbackProvider) {
           try {
@@ -756,11 +867,12 @@ class AgentManager {
             return fallbackResult;
           } catch (fallbackError) {
             console.error("[Agent] Fallback LLM call also failed:", fallbackError);
+            return { content: this.formatLlmFailure(fallbackError) };
           }
         }
       }
 
-      return { content: this.generateFallbackResponse(messages) };
+      return { content: this.formatLlmFailure(error) };
     }
   }
 

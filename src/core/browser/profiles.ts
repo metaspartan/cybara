@@ -1,4 +1,4 @@
-// Browser profile management - Moltbot-compatible
+// Browser profile management - Cybara-compatible
 // Using puppeteer-core instead of Playwright for Bun compatibility (Playwright WS hangs in Bun)
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -63,7 +63,7 @@ function findAvailablePort(): number {
 export async function createProfile(config: BrowserProfileConfig): Promise<BrowserProfile> {
   const name = config.name;
   const cdpPort = config.cdpPort || findAvailablePort();
-  const color = config.color || "#F4B400"; // Cybara gold (like OpenClaw yellow)
+  const color = config.color || "#F4B400"; // Cybara gold (like Cybara yellow)
   const userDataDir = config.userDataDir || resolveUserDataDir(name);
 
   // Ensure user data directory exists
@@ -71,7 +71,7 @@ export async function createProfile(config: BrowserProfileConfig): Promise<Brows
     fs.mkdirSync(userDataDir, { recursive: true });
   }
 
-  // Create Chrome Preferences file for gold theme (like OpenClaw)
+  // Create Chrome Preferences file for gold theme (like Cybara)
   const defaultDir = path.join(userDataDir, "Default");
   if (!fs.existsSync(defaultDir)) {
     fs.mkdirSync(defaultDir, { recursive: true });
@@ -146,7 +146,7 @@ export async function deleteProfile(name: string): Promise<void> {
 }
 
 // Find Chrome executable - cross-platform support (macOS, Windows, Linux)
-// Follows Moltbot pattern: supports Chrome, Brave, Edge, Chromium
+// Follows Cybara pattern: supports Chrome, Brave, Edge, Chromium
 async function findChromeExecutable(): Promise<string | null> {
   const platform = process.platform;
 
@@ -238,7 +238,7 @@ export async function startBrowser(profileName: string): Promise<Browser> {
     );
   }
 
-  // Launch Chrome with CDP (platform-aware args like OpenClaw/Moltbot)
+  // Launch Chrome with CDP (platform-aware args like Cybara/Cybara)
   const chromeArgs = [
     `--remote-debugging-port=${profile.cdpPort}`,
     `--remote-debugging-address=127.0.0.1`,
@@ -258,7 +258,7 @@ export async function startBrowser(profileName: string): Promise<Browser> {
     "--window-position=0,0",
   ];
 
-  // Platform-specific flags (like OpenClaw pattern)
+  // Platform-specific flags (like Cybara pattern)
   const platform = process.platform;
   if (platform === "linux") {
     // Linux/Docker may need sandbox disabled
@@ -279,7 +279,7 @@ export async function startBrowser(profileName: string): Promise<Browser> {
       reject(new Error(`Failed to start Chrome: ${err.message}`));
     });
 
-    // Poll for CDP readiness instead of fixed timeout (like OpenClaw)
+    // Poll for CDP readiness instead of fixed timeout (like Cybara)
     const cdpUrl = profile!.cdpUrl;
     const maxAttempts = 30; // 30 * 500ms = 15 seconds max
     let attempts = 0;
@@ -290,7 +290,7 @@ export async function startBrowser(profileName: string): Promise<Browser> {
 
       attempts++;
       try {
-        // Check if CDP is responding and get WebSocket URL (OpenClaw pattern)
+        // Check if CDP is responding and get WebSocket URL (Cybara pattern)
         const response = await fetch(`${cdpUrl}/json/version`, {
           signal: AbortSignal.timeout(1000),
         });
@@ -404,7 +404,7 @@ export async function createPage(profileName: string, url?: string): Promise<Pag
     pages.delete(pageId);
   });
 
-  // Navigate if URL provided (OpenClaw pattern: 30s timeout, catch errors)
+  // Navigate if URL provided (Cybara pattern: 30s timeout, catch errors)
   const targetUrl = url?.trim() || "";
   if (targetUrl && targetUrl !== "about:blank") {
     console.log(`[Browser] Navigating to ${targetUrl}...`);
@@ -412,7 +412,7 @@ export async function createPage(profileName: string, url?: string): Promise<Pag
       await page.goto(targetUrl, { timeout: 30000, waitUntil: "domcontentloaded" });
       console.log(`[Browser] Successfully navigated to ${targetUrl}`);
     } catch (err) {
-      // OpenClaw pattern: Navigation might fail for some URLs, but page is still created
+      // Cybara pattern: Navigation might fail for some URLs, but page is still created
       console.log(`[Browser] Navigation error (page still created): ${(err as Error).message}`);
     }
   }

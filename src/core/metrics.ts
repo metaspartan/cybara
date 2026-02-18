@@ -167,7 +167,7 @@ export function trackFileOperation(
 }
 
 // =========================================
-// OpenClaw-compatible session token tracking
+// Cybara-compatible session token tracking
 // =========================================
 
 /**

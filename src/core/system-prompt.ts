@@ -1,16 +1,16 @@
-// System Prompt Builder - OpenClaw compatible structure
+// System Prompt Builder - Cybara compatible structure
 import { tables } from "./database";
 import { homedir } from "os";
 import { getBootstrapContextFiles, isFirstRun } from "./bootstrap-files";
 import type { SkillEntry } from "./skills/types";
 import { formatSkillsForPrompt } from "./skills/loader";
 
-// OpenClaw silent reply token
+// Cybara silent reply token
 export const SILENT_REPLY_TOKEN = "[SILENT]";
 
 export type PromptMode = "full" | "minimal" | "none";
 
-// OpenClaw-aligned tool summaries
+// Cybara-aligned tool summaries
 export const CORE_TOOL_SUMMARIES: Record<string, string> = {
   read: "Read file contents",
   write: "Create or overwrite files",
@@ -62,7 +62,7 @@ export interface SystemPromptParams {
   tools: string[];
   contextFiles?: Array<{ name: string; path?: string; content: string }>;
   ttsHint?: string;
-  // OpenClaw additions
+  // Cybara additions
   promptMode?: PromptMode;
   reasoningTagHint?: boolean;
   modelAliases?: string[];
@@ -141,7 +141,7 @@ function loadSystemPromptConfig(): Record<string, unknown> {
 }
 
 /**
- * Build a system prompt following OpenClaw's structure
+ * Build a system prompt following Cybara's structure
  */
 export function buildSystemPrompt(params: SystemPromptParams): string {
   // Load custom configuration from database
@@ -175,7 +175,7 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
 
   lines.push(...buildIdentitySection(agentName, emoji, creature, vibe, params.modelDisplay));
 
-  // Tooling section (OpenClaw style with summaries)
+  // Tooling section (Cybara style with summaries)
   lines.push(...buildToolingSection(params.tools, isMinimal));
 
   // Tool Call Style section
@@ -188,7 +188,7 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
     lines.push(...buildAgenticBehaviorSection());
   }
 
-  // CLI Quick Reference section (OpenClaw style)
+  // CLI Quick Reference section (Cybara style)
   if (!isMinimal) {
     lines.push(...buildCLIReferenceSection());
   }
@@ -233,7 +233,7 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
     lines.push(...buildReplyTagsSection());
   }
 
-  // Messaging section (enhanced with OpenClaw parity)
+  // Messaging section (enhanced with Cybara parity)
   if (features?.messagingEnabled !== false && !isMinimal) {
     lines.push(
       ...buildMessagingSection({
@@ -289,12 +289,12 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
     lines.push(...buildContextFilesSection(params.contextFiles));
   }
 
-  // Silent replies section (OpenClaw)
+  // Silent replies section (Cybara)
   if (!isMinimal) {
     lines.push(...buildSilentRepliesSection());
   }
 
-  // Heartbeats section (OpenClaw)
+  // Heartbeats section (Cybara)
   if (!isMinimal && params.heartbeatPrompt) {
     lines.push(...buildHeartbeatsSection(params.heartbeatPrompt));
   }
@@ -371,7 +371,7 @@ function buildIdentitySection(
   return parts;
 }
 
-// OpenClaw-style tooling section with tool summaries
+// Cybara-style tooling section with tool summaries
 function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
   const toolOrder = [
     "read",
@@ -753,7 +753,7 @@ function buildRuntimeSection(
   modelDisplay: string,
   runtimeInfo?: SystemPromptParams["runtimeInfo"]
 ): string[] {
-  // Build OpenClaw-style runtime line
+  // Build Cybara-style runtime line
   const parts: string[] = [];
 
   if (runtimeInfo?.agentId) {
@@ -891,7 +891,7 @@ function buildSafetySection(): string[] {
 }
 
 // ============================================
-// NEW OPENCLAW PARITY SECTIONS
+// NEW CYBARA PARITY SECTIONS
 // ============================================
 
 function buildSandboxSection(
@@ -990,10 +990,10 @@ function buildDocsSection(docsPath?: string): string[] {
 }
 
 /**
- * Agent type presets - similar to Clawdbot's agent types
+ * Agent type presets - similar to Cybara's agent types
  */
 
-// Common tool guidance added to all agent types (OpenClaw pattern)
+// Common tool guidance added to all agent types (Cybara pattern)
 const TOOL_GUIDANCE = `
 
 ## TOOLS - USE THEM!
@@ -1032,7 +1032,7 @@ export function getDefaultSystemPrompt(agentType: string): string {
 }
 
 /**
- * Model alias resolution - matches Clawdbot's model aliases
+ * Model alias resolution - matches Cybara's model aliases
  */
 export function resolveModelAlias(modelId: string, provider?: string): string {
   const aliases: Record<string, string> = {

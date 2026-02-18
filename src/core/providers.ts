@@ -1,6 +1,6 @@
 import { tables, type Provider, type ProviderModel } from "./database";
 
-// Providers - matching Clawdbot's exact model catalog
+// Providers - matching Cybara's exact model catalog
 export const providers = {
   // OpenAI - pi-ai built-in
   openai: {
@@ -809,7 +809,7 @@ export const providers = {
       },
     ],
   },
-  // OpenAI Codex (ChatGPT OAuth) - from moltbot openai-codex-model-default.ts
+  // OpenAI Codex (ChatGPT OAuth) - from cybara openai-codex-model-default.ts
   "openai-codex": {
     name: "OpenAI Codex (ChatGPT)",
     baseUrl: "https://api.openai.com/v1",
@@ -846,7 +846,7 @@ export const providers = {
       },
     ],
   },
-  // Chutes (OAuth) - from moltbot onboard-types.ts
+  // Chutes (OAuth) - from cybara onboard-types.ts
   chutes: {
     name: "Chutes",
     baseUrl: "https://api.chutes.ai/v1",
@@ -856,7 +856,7 @@ export const providers = {
     oauthLoginUrl: "https://chutes.ai/app/api-keys",
     models: [],
   },
-  // Vercel AI Gateway (API key) - from moltbot auth-choice.apply.api-providers.ts
+  // Vercel AI Gateway (API key) - from cybara auth-choice.apply.api-providers.ts
   "vercel-ai-gateway": {
     name: "Vercel AI Gateway",
     baseUrl: "https://gateway.ai.vercel.app/v1",
@@ -881,7 +881,7 @@ export const providers = {
       },
     ],
   },
-  // Google Gemini CLI (OAuth) - from moltbot auth-choice.apply.google-gemini-cli.ts
+  // Google Gemini CLI (OAuth) - from cybara auth-choice.apply.google-gemini-cli.ts
   "google-gemini-cli": {
     name: "Google Gemini CLI",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
@@ -1021,6 +1021,54 @@ export const providers = {
 export type ProviderType = keyof typeof providers;
 
 class ProviderManager {
+  private mergeWithStaticConfig(dbProvider: Provider): Provider {
+    const staticConfig = providers[dbProvider.provider as ProviderType];
+    if (!staticConfig) return dbProvider;
+    return {
+      ...dbProvider,
+      headers: (staticConfig as { headers?: Record<string, string> }).headers,
+    };
+  }
+
+  private hasSecretCredential(provider: Provider): boolean {
+    return !!(provider.api_key || provider.access_token || provider.refresh_token);
+  }
+
+  private isUsableProvider(provider: Provider): boolean {
+    const staticConfig = providers[provider.provider as ProviderType];
+    if (!staticConfig) return this.hasSecretCredential(provider);
+    if (staticConfig.authType === "none") return true;
+    return this.hasSecretCredential(provider);
+  }
+
+  private pickPreferredProvider(
+    candidates: Provider[],
+    options?: { preferCredentialed?: boolean; requireUsable?: boolean }
+  ): Provider | undefined {
+    if (candidates.length === 0) return undefined;
+
+    const requireUsable = options?.requireUsable !== false;
+    const usable = requireUsable
+      ? candidates.filter((candidate) => this.isUsableProvider(candidate))
+      : candidates;
+    if (usable.length === 0) return undefined;
+
+    if (options?.preferCredentialed) {
+      const defaultWithSecret = usable.find(
+        (candidate) => !!candidate.is_default && this.hasSecretCredential(candidate)
+      );
+      if (defaultWithSecret) return this.mergeWithStaticConfig(defaultWithSecret);
+
+      const anyWithSecret = usable.find((candidate) => this.hasSecretCredential(candidate));
+      if (anyWithSecret) return this.mergeWithStaticConfig(anyWithSecret);
+    }
+
+    const defaultProvider = usable.find((candidate) => !!candidate.is_default);
+    if (defaultProvider) return this.mergeWithStaticConfig(defaultProvider);
+
+    return this.mergeWithStaticConfig(usable[0]);
+  }
+
   list(): (Provider & { info?: (typeof providers)[ProviderType] })[] {
     const all = tables.providers.all() as Provider[];
     return all.map((p) => ({
@@ -1046,17 +1094,33 @@ class ProviderManager {
   getWithCredentials(id: string): Provider | undefined {
     const dbProvider = tables.providers.get(id) as Provider | undefined;
     if (!dbProvider) return undefined;
+    return this.mergeWithStaticConfig(dbProvider);
+  }
 
-    // Merge with static config to get headers and other provider-specific settings
-    const staticConfig = providers[dbProvider.provider as ProviderType];
-    if (!staticConfig) return dbProvider;
+  getPreferredProvider(options?: {
+    preferCredentialed?: boolean;
+    requireUsable?: boolean;
+  }): Provider | undefined {
+    const allProviders = tables.providers.all() as Provider[];
+    return this.pickPreferredProvider(allProviders, options);
+  }
 
-    // Return merged provider with headers from static config
-    return {
-      ...dbProvider,
-      // Headers from static config (e.g., User-Agent for Kimi Code)
-      headers: (staticConfig as { headers?: Record<string, string> }).headers,
-    };
+  resolveProviderId(value: string | undefined): string | undefined {
+    if (!value || typeof value !== "string") return undefined;
+    const input = value.trim();
+    if (!input) return undefined;
+
+    const direct = this.getWithCredentials(input);
+    if (direct) return direct.id;
+
+    const byType = (tables.providers.all() as Provider[]).filter(
+      (provider) => provider.provider === input
+    );
+    const preferred = this.pickPreferredProvider(byType, {
+      preferCredentialed: true,
+      requireUsable: false,
+    });
+    return preferred?.id;
   }
 
   create(data: {
@@ -1109,7 +1173,39 @@ class ProviderManager {
   update(id: string, data: Partial<Provider>): boolean {
     const existing = tables.providers.get(id);
     if (!existing) return false;
-    tables.providers.update(id, { ...existing, ...data });
+
+    const normalizedData: Partial<Provider> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) {
+        (normalizedData as Record<string, unknown>)[key] = value;
+      }
+    }
+
+    if (typeof normalizedData.name === "string") {
+      const trimmed = normalizedData.name.trim();
+      if (trimmed) normalizedData.name = trimmed;
+      else delete normalizedData.name;
+    }
+
+    if (typeof normalizedData.base_url === "string") {
+      const trimmed = normalizedData.base_url.trim();
+      if (trimmed) normalizedData.base_url = trimmed;
+      else delete normalizedData.base_url;
+    }
+
+    for (const field of ["api_key", "access_token", "refresh_token"] as const) {
+      const value = normalizedData[field];
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (trimmed) {
+          normalizedData[field] = trimmed;
+        } else {
+          delete normalizedData[field];
+        }
+      }
+    }
+
+    tables.providers.update(id, { ...(existing as Provider), ...normalizedData });
     return true;
   }
 

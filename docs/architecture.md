@@ -54,7 +54,7 @@ Adaptive context window management with 3-tier token estimation:
 3. Model-specific adjustments
 
 ### System Prompt (`src/core/system-prompt.ts`)
-OpenClaw-compatible prompt builder with sections:
+Cybara-compatible prompt builder with sections:
 - Identity, Tooling, Skills, Memory
 - Workspace, Messaging, Reactions
 - Sandbox, Documentation, Runtime

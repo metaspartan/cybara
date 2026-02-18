@@ -1,6 +1,6 @@
 /**
  * Heartbeat State Tracking
- * OpenClaw-compatible heartbeat-state.json for tracking periodic check times
+ * Cybara-compatible heartbeat-state.json for tracking periodic check times
  * 
  * Tracks last check times for:
  * - Email inbox checks

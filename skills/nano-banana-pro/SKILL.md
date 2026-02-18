@@ -2,7 +2,7 @@
 name: nano-banana-pro
 description: Generate or edit images via Gemini 3 Pro Image (Nano Banana Pro).
 homepage: https://ai.google.dev/
-metadata: {"moltbot":{"emoji":"🍌","requires":{"bins":["uv"],"env":["GEMINI_API_KEY"]},"primaryEnv":"GEMINI_API_KEY","install":[{"id":"uv-brew","kind":"brew","formula":"uv","bins":["uv"],"label":"Install uv (brew)"}]}}
+metadata: {"cybara":{"emoji":"🍌","requires":{"bins":["uv"],"env":["GEMINI_API_KEY"]},"primaryEnv":"GEMINI_API_KEY","install":[{"id":"uv-brew","kind":"brew","formula":"uv","bins":["uv"],"label":"Install uv (brew)"}]}}
 ---
 
 # Nano Banana Pro (Gemini 3 Pro Image)
@@ -31,5 +31,5 @@ API key
 Notes
 - Resolutions: `1K` (default), `2K`, `4K`.
 - Use timestamps in filenames: `yyyy-mm-dd-hh-mm-ss-name.png`.
-- The script prints a `MEDIA:` line for Moltbot to auto-attach on supported chat providers.
+- The script prints a `MEDIA:` line for Cybara to auto-attach on supported chat providers.
 - Do not read the image back; report the saved path only.

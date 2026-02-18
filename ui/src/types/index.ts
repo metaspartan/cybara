@@ -4,6 +4,8 @@ export interface Agent {
   description?: string;
   model: string;
   provider: string;
+  provider_id?: string;
+  fallback_provider_id?: string;
   type?: string;
   status?: "active" | "inactive" | "idle" | "running" | "stopped";
   systemPrompt?: string;

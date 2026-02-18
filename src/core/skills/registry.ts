@@ -75,7 +75,7 @@ export type UpdateInfo = {
 
 /**
  * ClawdHub Registry Implementation
- * https://clawhub.ai - Official OpenClaw skill registry
+ * https://clawhub.ai - Official Cybara skill registry
  */
 export class ClawdHubRegistry implements SkillRegistry {
     name = "clawhub";

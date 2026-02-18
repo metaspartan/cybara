@@ -1,4 +1,4 @@
-// Bootstrap file utilities - OpenClaw compatible workspace setup
+// Bootstrap file utilities - Cybara compatible workspace setup
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
@@ -10,7 +10,7 @@ export interface BootstrapFile {
   missing: boolean;
 }
 
-// Default bootstrap file names (OpenClaw standard)
+// Default bootstrap file names (Cybara standard)
 export const BOOTSTRAP_FILENAMES = [
   "AGENTS.md",
   "SOUL.md",
@@ -21,7 +21,7 @@ export const BOOTSTRAP_FILENAMES = [
   "HEARTBEAT.md",
 ];
 
-// Files to inject into system prompt context (OpenClaw standard)
+// Files to inject into system prompt context (Cybara standard)
 export const CONTEXT_FILES = ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "TOOLS.md"];
 
 /**

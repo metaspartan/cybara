@@ -140,7 +140,7 @@ const toolHandlers: Record<string, (args: Record<string, unknown>) => Promise<un
     }
   },
 
-  // Browser tools (OpenClaw pattern: use browser({ action: 'open', url }))
+  // Browser tools (Cybara pattern: use browser({ action: 'open', url }))
   browser: handleBrowser,
   web_fetch: handleWebFetch,
   web_search: handleWebSearch,

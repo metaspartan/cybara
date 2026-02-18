@@ -1,6 +1,6 @@
 /**
  * Skills System Types
- * OpenClaw-compatible skill definitions and metadata
+ * Cybara-compatible skill definitions and metadata
  */
 
 /**
@@ -27,7 +27,7 @@ export type SkillInstallSpec = {
 };
 
 /**
- * OpenClaw-compatible skill metadata
+ * Cybara-compatible skill metadata
  * Stored as JSON in YAML frontmatter under "metadata"
  */
 export type SkillMetadata = {

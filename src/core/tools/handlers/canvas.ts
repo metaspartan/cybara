@@ -1,4 +1,4 @@
-// Canvas Tool Handler - OpenClaw compatible
+// Canvas Tool Handler - Cybara compatible
 // Full parity: gateway integration, A2UI support, real screenshot capture
 
 import { z } from "zod";

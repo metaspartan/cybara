@@ -1,4 +1,4 @@
-// Tool handlers - browser automation using Playwright (Moltbot-compatible with Profile Support)
+// Tool handlers - browser automation using Playwright (Cybara-compatible with Profile Support)
 import * as pwManager from "../../browser/pw-manager";
 import * as profileManager from "../../browser/profiles";
 // pw-snapshot is for Playwright pages - visual mode uses Puppeteer, so we import role definitions only
@@ -30,7 +30,7 @@ const SCREENSHOTS_DIR = join(
 const sessionPages = new Map<string, string>();
 
 // ============================================
-// OpenClaw-style Element Refs
+// Cybara-style Element Refs
 // ============================================
 // Maps ref (e.g. "e12") to element selector/xpath for resolution in act()
 interface ElementRef {
@@ -63,7 +63,7 @@ async function getOrCreatePage(sessionId: string): Promise<string> {
   return pageId;
 }
 
-// Get a page for actions - defaults to visual profile browser (like Moltbot/OpenClaw)
+// Get a page for actions - defaults to visual profile browser (like Cybara/Cybara)
 async function getVisualPage(
   sessionId: string
 ): Promise<Awaited<ReturnType<typeof profileManager.getActivePage>>> {
@@ -104,7 +104,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         throw new Error("Playwright not installed. Run: bun add playwright");
       }
 
-      // Default to VISUAL mode (like Moltbot/OpenClaw)
+      // Default to VISUAL mode (like Cybara/Cybara)
       // ONLY use headless if explicitly requested with headless: true
       const useHeadless = args.headless === true || args.headless === "true";
       const url = args.url as string | undefined;
@@ -137,7 +137,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       await profileManager.startBrowser(profileName);
       const profile = profileManager.getProfile(profileName);
 
-      // OpenClaw pattern: 'start' just starts browser, 'open' loads URL
+      // Cybara pattern: 'start' just starts browser, 'open' loads URL
       // If URL provided with start, navigate to it (convenience)
       if (url) {
         await profileManager.createPage(profileName, url);
@@ -153,7 +153,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         };
       }
 
-      // No URL - just start the browser (OpenClaw: use 'open' action for URLs)
+      // No URL - just start the browser (Cybara: use 'open' action for URLs)
       console.log(`[Browser] Browser started. Use action='open' with url to load a page.`);
       return {
         success: true,
@@ -334,7 +334,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       const url = args.url as string;
       if (!url) throw new Error("URL required for open action");
 
-      // Default to visual mode (like Moltbot/OpenClaw pattern)
+      // Default to visual mode (like Cybara/Cybara pattern)
       // Use headless: true to explicitly opt-in to headless mode
       const useHeadless = args.headless === true || args.headless === "true";
 
@@ -426,7 +426,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       const url = args.url as string;
       if (!url) throw new Error("URL required for navigate action");
 
-      // Default to visual mode (like Moltbot/OpenClaw)
+      // Default to visual mode (like Cybara/Cybara)
       const useHeadless = args.headless === true || args.headless === "true";
       const profileName = (args.profile as string) || sessionId;
 
@@ -495,11 +495,11 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
 
       // Visual mode: use profile browser (Puppeteer via CDP)
       // Note: Puppeteer is used instead of Playwright because Playwright WebSocket hangs in Bun
-      // We use CDP accessibility API + OpenClaw's role definitions for consistent behavior
+      // We use CDP accessibility API + Cybara's role definitions for consistent behavior
       const page = await getVisualPage(sessionId);
       console.log(`[Browser] Taking snapshot in visual mode for session: ${sessionId}`);
 
-      // Wait for page to be ready (like OpenClaw)
+      // Wait for page to be ready (like Cybara)
       if (waitForContent) {
         try {
           await Promise.race([
@@ -529,7 +529,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
 
       try {
         // Use CDP Accessibility.getFullAXTree (more complete than Puppeteer's accessibility.snapshot)
-        // This is what makes OpenClaw work on dynamic sites
+        // This is what makes Cybara work on dynamic sites
         const axNodes = await getFullAccessibilityTree(page, 1000);
         console.log(`[Browser] CDP getFullAXTree returned ${axNodes.length} nodes`);
 
@@ -545,7 +545,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
           const indent = "  ".repeat(depth);
           const roleLower = role.toLowerCase();
 
-          // Use OpenClaw's role classification
+          // Use Cybara's role classification
           const isGeneric =
             STRUCTURAL_ROLES.has(roleLower) || role === "none" || role === "unknown" || !role;
           const isContent = CONTENT_ROLES.has(roleLower);
@@ -565,7 +565,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
           if (isGeneric && !name && !value && !isText) continue;
           if (isText && !name && !value) continue;
 
-          // Build line in OpenClaw format: - role "name" [ref=eN]
+          // Build line in Cybara format: - role "name" [ref=eN]
           let line = `${indent}- ${role}`;
           if (name) {
             line += ` "${name.slice(0, 100)}${name.length > 100 ? "..." : ""}"`;
@@ -637,8 +637,8 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         `[Browser] Snapshot stats: ${snapshotLines.length} lines, ${snapshot.length} chars, truncated=${truncated}`
       );
 
-      // Return EXACTLY like OpenClaw: pure snapshot text string
-      // OpenClaw returns: { content: [{ type: "text", text: snapshot.snapshot }] }
+      // Return EXACTLY like Cybara: pure snapshot text string
+      // Cybara returns: { content: [{ type: "text", text: snapshot.snapshot }] }
       // For our JSON-based tools, we return the text directly as the result
       // This ensures the LLM sees the actual page content, not JSON metadata
       const fullSnapshot = usageHint + snapshot;
@@ -809,7 +809,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
     }
 
     case "act": {
-      // OpenClaw-style action handler with nested request object
+      // Cybara-style action handler with nested request object
       // Supports both: browser({action:'act', request:{kind:'click', ref:'e12'}})
       // And legacy: browser({action:'act', kind:'click', ref:'e12'})
       const request = (args.request as Record<string, unknown>) || args;
@@ -835,7 +835,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         }
       }
 
-      // Use visual mode by default (like OpenClaw)
+      // Use visual mode by default (like Cybara)
       const useHeadless = args.headless === true || args.headless === "true";
 
       if (useHeadless) {
@@ -1412,7 +1412,7 @@ function extractReadableContent(
   return { title, content: text };
 }
 
-// Simple URL opener - focused tool like OpenClaw pattern
+// Simple URL opener - focused tool like Cybara pattern
 export async function handleOpenUrl(args: Record<string, unknown>): Promise<unknown> {
   const url = args.url as string;
   if (!url) {

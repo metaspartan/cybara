@@ -53,10 +53,12 @@ import {
 import { buildSystemPrompt } from "../core/system-prompt";
 import * as pwManager from "../core/browser/pw-manager";
 import { homedir } from "os";
+import { dirname, isAbsolute, resolve } from "path";
 import { securityCheck, validateUrl } from "./security";
 import { browseDirectory, readFileContent, writeFileContent, createItem } from "./ide-api";
 import { createLogger } from "../core/logger";
 import { openUrlInBrowser } from "../core/runtime/open-url";
+import { trackApiCall, trackFileOperation, trackMetric } from "../core/metrics";
 import {
   walletManager,
   type WalletChain,
@@ -202,6 +204,60 @@ function parseOptionalNumber(value: unknown): number | undefined {
   return undefined;
 }
 
+function normalizeOptionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function validateProviderCredentialShape(
+  providerType: string,
+  credentials: { apiKey?: string; accessToken?: string }
+): void {
+  // OpenAI API keys should use sk-* format. Guard against accidental wallet/address pastes.
+  if (providerType === "openai" && credentials.apiKey && !credentials.apiKey.startsWith("sk-")) {
+    throw new Error("Validation error: OpenAI API key must start with 'sk-'");
+  }
+}
+
+function resolveWorkspacePath(filePath?: string): string {
+  if (!filePath || typeof filePath !== "string") {
+    return process.cwd();
+  }
+
+  const trimmed = filePath.trim();
+  if (!trimmed) return process.cwd();
+
+  const absolute = isAbsolute(trimmed) ? trimmed : resolve(process.cwd(), trimmed);
+  return dirname(absolute);
+}
+
+function getOrInitLspManager(workspacePath?: string) {
+  const resolvedWorkspace = workspacePath ? resolve(workspacePath) : resolve(process.cwd());
+  try {
+    const existing = getLSPManager();
+    if (resolve(existing.getWorkspacePath()) !== resolvedWorkspace) {
+      return initLSPManager(resolvedWorkspace);
+    }
+    return existing;
+  } catch {
+    return initLSPManager(resolvedWorkspace);
+  }
+}
+
+function trackLspOperation(operation: string, metadata?: Record<string, unknown>, value = 1): void {
+  trackMetric("lsp_operation", operation, value, metadata);
+}
+
+function trackIdeOperation(
+  operation: "browse" | "read" | "write" | "create",
+  path: string | undefined,
+  success: boolean,
+  metadata?: Record<string, unknown>
+): void {
+  trackMetric("ide_operation", operation, 1, { path, success, ...metadata });
+}
+
 function getDefaultSystemPromptConfig(): Record<string, unknown> {
   return {
     template: "default",
@@ -338,6 +394,11 @@ function logRequest(log: RequestLog): void {
   console[logLevel](
     `[API] ${log.method} ${log.path} ${log.status} ${log.durationMs}ms${log.error ? ` - ${log.error}` : ""}`
   );
+}
+
+function recordApiMetrics(method: string, path: string, status: number, durationMs: number): void {
+  trackApiCall(path, method, status, durationMs);
+  trackMetric("api_status", String(status), 1, { method, path, durationMs });
 }
 
 // ============================================
@@ -1021,6 +1082,48 @@ const routes: Record<string, RouteHandler> = {
       }
     }
 
+    if (provider.provider === "openai") {
+      const apiKey = provider.api_key || provider.access_token;
+      const baseUrl = provider.base_url || providerInfo.baseUrl || "https://api.openai.com/v1";
+      if (!apiKey) {
+        return {
+          success: false,
+          provider: provider.provider,
+          message: "OpenAI API key is missing",
+        };
+      }
+
+      try {
+        const response = await fetch(`${baseUrl}/models`, {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+          },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!response.ok) {
+          const text = await response.text();
+          const safeText = text.slice(0, 300);
+          return {
+            success: false,
+            provider: provider.provider,
+            message: `OpenAI auth/model check failed: HTTP ${response.status}${safeText ? ` - ${safeText}` : ""}`,
+          };
+        }
+
+        return {
+          success: true,
+          provider: provider.provider,
+          message: "OpenAI credentials verified",
+        };
+      } catch (error) {
+        return {
+          success: false,
+          provider: provider.provider,
+          message: `OpenAI test failed: ${(error as Error).message}`,
+        };
+      }
+    }
+
     return {
       success: true,
       provider: provider.provider,
@@ -1039,20 +1142,69 @@ const routes: Record<string, RouteHandler> = {
       access_token?: string;
       is_default?: boolean;
     };
+
+    const apiKey = normalizeOptionalString(data.api_key);
+    const accessToken = normalizeOptionalString(data.access_token);
+    validateProviderCredentialShape(data.provider, { apiKey, accessToken });
+
     return providerManager.create({
       provider: data.provider as Parameters<typeof providerManager.create>[0]["provider"],
-      name: data.name,
-      api_key: data.api_key,
-      access_token: data.access_token,
+      name: normalizeOptionalString(data.name) || data.name,
+      api_key: apiKey,
+      access_token: accessToken,
       is_default: data.is_default,
     });
   },
-  "PUT /api/providers/:id": (body, params) => ({
-    success: providerManager.update(
-      params!.id,
-      body as Parameters<typeof providerManager.update>[1]
-    ),
-  }),
+  "PUT /api/providers/:id": (body, params) => {
+    const existing = providerManager.getWithCredentials(params!.id);
+    if (!existing) {
+      throw new Error("Provider not found");
+    }
+
+    const data = (body || {}) as Record<string, unknown>;
+    const updates: Parameters<typeof providerManager.update>[1] = {};
+
+    if ("name" in data) {
+      const normalizedName = normalizeOptionalString(data.name);
+      if (normalizedName) {
+        updates.name = normalizedName;
+      }
+    }
+
+    if ("base_url" in data) {
+      const normalizedBaseUrl = normalizeOptionalString(data.base_url);
+      if (normalizedBaseUrl) {
+        updates.base_url = normalizedBaseUrl;
+      }
+    }
+
+    if ("is_default" in data) {
+      updates.is_default = data.is_default === true;
+    }
+
+    if ("api_key" in data) {
+      const normalizedApiKey = normalizeOptionalString(data.api_key);
+      if (normalizedApiKey) {
+        updates.api_key = normalizedApiKey;
+      }
+    }
+
+    if ("access_token" in data) {
+      const normalizedAccessToken = normalizeOptionalString(data.access_token);
+      if (normalizedAccessToken) {
+        updates.access_token = normalizedAccessToken;
+      }
+    }
+
+    validateProviderCredentialShape(existing.provider, {
+      apiKey: updates.api_key,
+      accessToken: updates.access_token,
+    });
+
+    return {
+      success: providerManager.update(params!.id, updates),
+    };
+  },
   "DELETE /api/providers/:id": (_body, params) => ({ success: providerManager.delete(params!.id) }),
   "GET /api/providers/:id/models": (_body, params) => providerManager.getModels(params!.id),
   "POST /api/providers/discover/ollama": async () => await providerManager.discoverOllamaModels(),
@@ -1394,7 +1546,7 @@ const routes: Record<string, RouteHandler> = {
   // ===== LSP (Language Server Protocol) =====
   "GET /api/lsp/status": async () => {
     try {
-      const manager = getLSPManager(process.cwd());
+      const manager = getOrInitLspManager(process.cwd());
       const supported = manager.getSupportedLanguages();
       const availability: Record<string, { available: boolean; bundled: boolean }> = {};
 
@@ -1405,6 +1557,12 @@ const routes: Record<string, RouteHandler> = {
         };
       }
 
+      trackLspOperation("status", {
+        workspace: manager.getWorkspacePath(),
+        supportedCount: supported.length,
+        diagnosticsCount: manager.getAllDiagnostics().size,
+        success: true,
+      });
       return {
         status: "ok",
         workspace: process.cwd(),
@@ -1412,26 +1570,18 @@ const routes: Record<string, RouteHandler> = {
         available: availability,
         diagnosticsCount: manager.getAllDiagnostics().size,
       };
-    } catch {
-      // Manager not initialized, initialize with cwd
-      try {
-        const manager = initLSPManager(process.cwd());
-        const supported = manager.getSupportedLanguages();
-        return {
-          status: "initialized",
-          workspace: process.cwd(),
-          supported,
-          available: {},
-          diagnosticsCount: 0,
-        };
-      } catch (err) {
-        return { status: "error", error: String(err) };
-      }
+    } catch (err) {
+      trackLspOperation("status", {
+        workspace: process.cwd(),
+        success: false,
+        error: String(err),
+      });
+      return { status: "error", error: String(err) };
     }
   },
   "GET /api/lsp/languages": async () => {
     try {
-      const manager = getLSPManager(process.cwd());
+      const manager = getOrInitLspManager(process.cwd());
       const supported = manager.getSupportedLanguages();
       const result: Array<{ name: string; available: boolean; bundled: boolean }> = [];
 
@@ -1443,14 +1593,24 @@ const routes: Record<string, RouteHandler> = {
         });
       }
 
+      trackLspOperation("languages", {
+        workspace: manager.getWorkspacePath(),
+        languageCount: result.length,
+        success: true,
+      });
       return { languages: result };
-    } catch {
+    } catch (err) {
+      trackLspOperation("languages", {
+        workspace: process.cwd(),
+        success: false,
+        error: String(err),
+      });
       return { languages: [] };
     }
   },
   "GET /api/lsp/diagnostics": () => {
     try {
-      const manager = getLSPManager(process.cwd());
+      const manager = getOrInitLspManager(process.cwd());
       const all = manager.getAllDiagnostics();
       const result: Array<{ file: string; count: number; errors: number; warnings: number }> = [];
 
@@ -1464,22 +1624,42 @@ const routes: Record<string, RouteHandler> = {
         });
       }
 
+      trackLspOperation("diagnostics", {
+        workspace: manager.getWorkspacePath(),
+        files: result.length,
+        total: result.reduce((sum, f) => sum + f.count, 0),
+        success: true,
+      });
       return { files: result, total: result.reduce((sum, f) => sum + f.count, 0) };
-    } catch {
+    } catch (err) {
+      trackLspOperation("diagnostics", {
+        workspace: process.cwd(),
+        success: false,
+        error: String(err),
+      });
       return { files: [], total: 0 };
     }
   },
   "GET /api/lsp/diagnostics/file": async (_body, params) => {
     const filePath = params?.path as string | undefined;
     if (!filePath) {
+      trackLspOperation("diagnostics_file", { success: false, reason: "missing_path" });
       return { success: false, error: "Missing 'path' parameter", diagnostics: [] };
     }
+    const normalizedPath = isAbsolute(filePath) ? filePath : resolve(process.cwd(), filePath);
+    const workspacePath = resolveWorkspacePath(normalizedPath);
     try {
-      const manager = getLSPManager(process.cwd());
-      const diagnostics = await manager.getDiagnostics(filePath);
+      const manager = getOrInitLspManager(workspacePath);
+      const diagnostics = await manager.getDiagnostics(normalizedPath);
+      trackLspOperation("diagnostics_file", {
+        workspace: manager.getWorkspacePath(),
+        filePath: normalizedPath,
+        diagnosticsCount: diagnostics.length,
+        success: true,
+      });
       return {
         success: true,
-        path: filePath,
+        path: normalizedPath,
         diagnostics: (diagnostics as LspDiagnosticLike[]).map((d) => ({
           line: d.range?.start?.line ?? 0,
           character: d.range?.start?.character ?? 0,
@@ -1492,48 +1672,81 @@ const routes: Record<string, RouteHandler> = {
         })),
       };
     } catch (e) {
+      trackLspOperation("diagnostics_file", {
+        workspace: workspacePath,
+        filePath: normalizedPath,
+        success: false,
+        error: String(e),
+      });
       return { success: false, error: String(e), diagnostics: [] };
     }
   },
   "GET /api/lsp/install-status": async () => {
     try {
-      const manager = getLSPManager(process.cwd());
+      const manager = getOrInitLspManager(process.cwd());
       const status = await manager.getInstallStatus();
+      trackLspOperation("install_status", {
+        workspace: manager.getWorkspacePath(),
+        languageCount: status.length,
+        success: true,
+      });
       return { status };
-    } catch {
-      // If not initialized, create manager first
-      try {
-        const manager = initLSPManager(process.cwd());
-        const status = await manager.getInstallStatus();
-        return { status };
-      } catch (err) {
-        return { status: [], error: String(err) };
-      }
+    } catch (err) {
+      trackLspOperation("install_status", {
+        workspace: process.cwd(),
+        success: false,
+        error: String(err),
+      });
+      return { status: [], error: String(err) };
     }
   },
   "POST /api/lsp/install": async (body) => {
     const { language } = body as { language: string };
     if (!language) {
+      trackLspOperation("install", { success: false, reason: "missing_language" });
       return { success: false, error: "Missing 'language' parameter" };
     }
     try {
-      const manager = getLSPManager(process.cwd());
+      const manager = getOrInitLspManager(process.cwd());
       const result = await manager.installLSP(language);
+      trackLspOperation("install", {
+        workspace: manager.getWorkspacePath(),
+        language,
+        success: result.success === true,
+      });
       return result;
     } catch (e) {
+      trackLspOperation("install", {
+        workspace: process.cwd(),
+        language,
+        success: false,
+        error: String(e),
+      });
       return { success: false, error: String(e) };
     }
   },
   "POST /api/lsp/uninstall": async (body) => {
     const { language } = body as { language: string };
     if (!language) {
+      trackLspOperation("uninstall", { success: false, reason: "missing_language" });
       return { success: false, error: "Missing 'language' parameter" };
     }
     try {
-      const manager = getLSPManager(process.cwd());
+      const manager = getOrInitLspManager(process.cwd());
       const result = await manager.uninstallLSP(language);
+      trackLspOperation("uninstall", {
+        workspace: manager.getWorkspacePath(),
+        language,
+        success: result.success === true,
+      });
       return result;
     } catch (e) {
+      trackLspOperation("uninstall", {
+        workspace: process.cwd(),
+        language,
+        success: false,
+        error: String(e),
+      });
       return { success: false, error: String(e) };
     }
   },
@@ -1541,26 +1754,44 @@ const routes: Record<string, RouteHandler> = {
   // ===== IDE (File Browser) =====
   "GET /api/ide/browse": async (_body, params) => {
     const path = params?.path as string | undefined;
-    return await browseDirectory(path);
+    const result = await browseDirectory(path);
+    const success =
+      !!result && typeof result === "object" && (result as { success?: boolean }).success !== false;
+    trackIdeOperation("browse", path, success);
+    trackFileOperation("search", path || process.cwd(), { success });
+    return result;
   },
 
   "GET /api/ide/read": async (_body, params) => {
     const path = params?.path as string | undefined;
     if (!path) {
+      trackIdeOperation("read", path, false, { reason: "missing_path" });
       return { success: false, error: "Missing 'path' parameter" };
     }
-    return await readFileContent(path);
+    const result = await readFileContent(path);
+    const success =
+      !!result && typeof result === "object" && (result as { success?: boolean }).success !== false;
+    trackIdeOperation("read", path, success);
+    trackFileOperation("read", path, { success });
+    return result;
   },
 
   "POST /api/ide/write": async (body) => {
     const { path, content } = body as { path?: string; content?: string };
     if (!path) {
+      trackIdeOperation("write", path, false, { reason: "missing_path" });
       return { success: false, error: "Missing 'path' parameter" };
     }
     if (content === undefined) {
+      trackIdeOperation("write", path, false, { reason: "missing_content" });
       return { success: false, error: "Missing 'content' parameter" };
     }
-    return await writeFileContent(path, content);
+    const result = await writeFileContent(path, content);
+    const success =
+      !!result && typeof result === "object" && (result as { success?: boolean }).success !== false;
+    trackIdeOperation("write", path, success, { bytes: content.length });
+    trackFileOperation("write", path, { success, bytes: content.length });
+    return result;
   },
 
   "POST /api/ide/create": async (body) => {
@@ -1570,18 +1801,27 @@ const routes: Record<string, RouteHandler> = {
       type?: "file" | "directory";
     };
     if (!parentPath) {
+      trackIdeOperation("create", parentPath, false, { reason: "missing_parent_path" });
       return { success: false, error: "Missing 'parentPath' parameter" };
     }
     if (!name) {
+      trackIdeOperation("create", parentPath, false, { reason: "missing_name" });
       return { success: false, error: "Missing 'name' parameter" };
     }
     if (!type || (type !== "file" && type !== "directory")) {
+      trackIdeOperation("create", parentPath, false, { reason: "invalid_type" });
       return {
         success: false,
         error: "Missing or invalid 'type' parameter (must be 'file' or 'directory')",
       };
     }
-    return await createItem(parentPath, name, type);
+    const createdPath = resolve(parentPath, name);
+    const result = await createItem(parentPath, name, type);
+    const success =
+      !!result && typeof result === "object" && (result as { success?: boolean }).success !== false;
+    trackIdeOperation("create", createdPath, success, { type });
+    trackFileOperation("write", createdPath, { success, type, parentPath });
+    return result;
   },
 
   // Git API routes
@@ -2307,7 +2547,7 @@ const routes: Record<string, RouteHandler> = {
       totalMessages: metrics.getTotal("agent_execution", "message") || 0,
     };
 
-    // Session and context metrics (OpenClaw parity)
+    // Session and context metrics (Cybara parity)
     const sessionStats = {
       totalSessions: metrics.getTotal("session_event", "created") || 0,
       memoryFlushes: metrics.getTotal("memory_flush", "success") || 0,
@@ -2646,6 +2886,7 @@ export async function handleRequest(req: {
   if (!security.passed) {
     const duration = Date.now() - startTime;
     log.warn(`Security check failed: ${security.error}`, { path, ip: clientIp });
+    recordApiMetrics(method, path, security.statusCode || 403, duration);
     logRequest({
       timestamp: new Date().toISOString(),
       method,
@@ -2675,6 +2916,7 @@ export async function handleRequest(req: {
 
   if (!routeKey || !routes[routeKey]) {
     const duration = Date.now() - startTime;
+    recordApiMetrics(method, path, 404, duration);
     logRequest({
       timestamp: new Date().toISOString(),
       method,
@@ -2697,6 +2939,7 @@ export async function handleRequest(req: {
   try {
     const result = await routes[routeKey](req.body, params);
     const duration = Date.now() - startTime;
+    recordApiMetrics(method, path, 200, duration);
     logRequest({
       timestamp: new Date().toISOString(),
       method,
@@ -2738,6 +2981,10 @@ export async function handleRequest(req: {
       userMessage = "Service temporarily unavailable. Please try again shortly.";
       errorCode = "SERVICE_UNAVAILABLE";
       statusCode = 503;
+    } else if (errorMessage.includes("Agent is not running")) {
+      userMessage = "Agent is not running. Start the agent and try again.";
+      errorCode = "AGENT_NOT_RUNNING";
+      statusCode = 409;
     } else if (errorMessage.includes("LLM API error")) {
       userMessage = `AI service error: ${errorMessage}`;
       errorCode = "LLM_ERROR";
@@ -2771,6 +3018,7 @@ export async function handleRequest(req: {
       durationMs: duration,
       error: errorMessage,
     });
+    recordApiMetrics(method, path, statusCode, duration);
     return {
       status: statusCode,
       headers: {

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from "react";
 import {
   Bot,
   Plus,
@@ -13,16 +13,16 @@ import {
   Hash,
   Send,
   X,
-  RotateCcw
-} from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input, Textarea } from '@/components/ui/Input';
-import { Badge } from '@/components/ui/Badge';
-import { Modal } from '@/components/ui/Modal';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { Select } from '@/components/ui/Input';
-import { PageLayout } from '@/components/layout';
+  RotateCcw,
+} from "lucide-react";
+import { Card, CardContent } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input, Textarea } from "@/components/ui/Input";
+import { Badge } from "@/components/ui/Badge";
+import { Modal } from "@/components/ui/Modal";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Select } from "@/components/ui/Input";
+import { PageLayout } from "@/components/layout";
 import {
   useAgents,
   useProviders,
@@ -35,27 +35,29 @@ import {
   useAgentMessage,
   useClearAgentHistory,
   useAgentState,
-} from '@/hooks/useApi';
-import { useUIStore } from '@/stores/uiStore';
-import type { Agent, AgentMessage } from '@/types';
+} from "@/hooks/useApi";
+import { useUIStore } from "@/stores/uiStore";
+import type { Agent, AgentMessage } from "@/types";
 
 const agentTypes = [
-  { value: 'main', label: 'Main Assistant' },
-  { value: 'research', label: 'Research' },
-  { value: 'coder', label: 'Coder' },
-  { value: 'planner', label: 'Planner' },
-  { value: 'ops', label: 'Operations' },
-  { value: 'worker', label: 'Worker' },
+  { value: "main", label: "Main Assistant" },
+  { value: "research", label: "Research" },
+  { value: "coder", label: "Coder" },
+  { value: "planner", label: "Planner" },
+  { value: "ops", label: "Operations" },
+  { value: "worker", label: "Worker" },
 ];
 
 export function Agents() {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
   const [deletingAgent, setDeletingAgent] = useState<Agent | null>(null);
   const [chatAgent, setChatAgent] = useState<Agent | null>(null);
-  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
-  const [chatInput, setChatInput] = useState('');
+  const [chatMessages, setChatMessages] = useState<
+    Array<{ role: "user" | "assistant"; content: string }>
+  >([]);
+  const [chatInput, setChatInput] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const { data: agents, isLoading } = useAgents();
@@ -70,21 +72,22 @@ export function Agents() {
   const sendMessage = useAgentMessage();
   const clearHistory = useClearAgentHistory();
 
-  const filteredAgents = agents?.filter(agent =>
-    agent.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (agent.type && agent.type.toLowerCase().includes(searchQuery.toLowerCase()))
+  const filteredAgents = agents?.filter(
+    (agent) =>
+      agent.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (agent.type && agent.type.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   // Auto-scroll chat to bottom
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
 
   // Load chat history when opening chat
   const handleOpenChat = async (agent: Agent) => {
     setChatAgent(agent);
     setChatMessages([]);
-    setChatInput('');
+    setChatInput("");
   };
 
   // Handle sending messages to running agent
@@ -92,17 +95,23 @@ export function Agents() {
     if (!chatAgent || !chatInput.trim() || sendMessage.isPending) return;
 
     const userMessage = chatInput.trim();
-    setChatInput('');
-    setChatMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setChatInput("");
+    setChatMessages((prev) => [...prev, { role: "user", content: userMessage }]);
 
     try {
       const result = await sendMessage.mutateAsync({
         id: chatAgent.id,
         message: userMessage,
       });
-      setChatMessages(prev => [...prev, { role: 'assistant', content: result.response }]);
+      setChatMessages((prev) => [...prev, { role: "assistant", content: result.response }]);
     } catch (error) {
-      setChatMessages(prev => [...prev, { role: 'assistant', content: `Error: ${error instanceof Error ? error.message : 'Failed to send message'}` }]);
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `Error: ${error instanceof Error ? error.message : "Failed to send message"}`,
+        },
+      ]);
     }
   };
 
@@ -112,25 +121,25 @@ export function Agents() {
     try {
       await clearHistory.mutateAsync(chatAgent.id);
       setChatMessages([]);
-      addToast('success', 'Conversation cleared');
+      addToast("success", "Conversation cleared");
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to clear history');
+      addToast("error", error instanceof Error ? error.message : "Failed to clear history");
     }
   };
 
   const handleCreate = async (formData: FormData) => {
     try {
       await createAgent.mutateAsync({
-        name: formData.get('name') as string,
-        type: formData.get('type') as string,
-        model: formData.get('model') as string,
-        provider: formData.get('provider_id') as string,
-        system_prompt: formData.get('system_prompt') as string,
+        name: formData.get("name") as string,
+        type: formData.get("type") as string,
+        model: formData.get("model") as string,
+        provider_id: formData.get("provider_id") as string,
+        system_prompt: formData.get("system_prompt") as string,
       });
-      addToast('success', 'Agent created successfully');
+      addToast("success", "Agent created successfully");
       setIsCreateModalOpen(false);
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to create agent');
+      addToast("error", error instanceof Error ? error.message : "Failed to create agent");
     }
   };
 
@@ -140,17 +149,17 @@ export function Agents() {
       await updateAgent.mutateAsync({
         id: editingAgent.id,
         data: {
-          name: formData.get('name') as string,
-          type: formData.get('type') as string,
-          model: formData.get('model') as string,
-          provider: formData.get('provider_id') as string,
-          system_prompt: formData.get('system_prompt') as string,
+          name: formData.get("name") as string,
+          type: formData.get("type") as string,
+          model: formData.get("model") as string,
+          provider_id: formData.get("provider_id") as string,
+          system_prompt: formData.get("system_prompt") as string,
         },
       });
-      addToast('success', 'Agent updated successfully');
+      addToast("success", "Agent updated successfully");
       setEditingAgent(null);
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to update agent');
+      addToast("error", error instanceof Error ? error.message : "Failed to update agent");
     }
   };
 
@@ -158,35 +167,47 @@ export function Agents() {
     if (!deletingAgent) return;
     try {
       await deleteAgent.mutateAsync(deletingAgent.id);
-      addToast('success', 'Agent deleted successfully');
+      addToast("success", "Agent deleted successfully");
       setDeletingAgent(null);
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to delete agent');
+      addToast("error", error instanceof Error ? error.message : "Failed to delete agent");
     }
   };
 
   const handleToggleStatus = async (agent: Agent) => {
     try {
-      if (agent.status === 'running') {
+      if (agent.status === "running") {
         await stopAgent.mutateAsync(agent.id);
-        addToast('success', `Agent "${agent.name}" stopped`);
+        addToast("success", `Agent "${agent.name}" stopped`);
       } else {
         await startAgent.mutateAsync(agent.id);
-        addToast('success', `Agent "${agent.name}" started`);
+        addToast("success", `Agent "${agent.name}" started`);
       }
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to toggle status');
+      addToast("error", error instanceof Error ? error.message : "Failed to toggle status");
     }
   };
 
   const getStatusBadge = (status: string | undefined) => {
     switch (status) {
-      case 'running':
-        return <Badge variant="success" size="sm">Running</Badge>;
-      case 'stopped':
-        return <Badge variant="default" size="sm">Stopped</Badge>;
+      case "running":
+        return (
+          <Badge variant="success" size="sm">
+            Running
+          </Badge>
+        );
+      case "stopped":
+        return (
+          <Badge variant="default" size="sm">
+            Stopped
+          </Badge>
+        );
       default:
-        return <Badge variant="default" size="sm">{status || 'unknown'}</Badge>;
+        return (
+          <Badge variant="default" size="sm">
+            {status || "unknown"}
+          </Badge>
+        );
     }
   };
 
@@ -200,9 +221,7 @@ export function Agents() {
           onChange={(e) => setSearchQuery(e.target.value)}
           className="max-w-xs"
         />
-        <Button onClick={() => setIsCreateModalOpen(true)}>
-          Create Agent
-        </Button>
+        <Button onClick={() => setIsCreateModalOpen(true)}>Create Agent</Button>
       </div>
 
       {/* Agents Grid */}
@@ -302,7 +321,7 @@ function AgentCard({
   onToggleStatus,
   onEdit,
   onDelete,
-  onChat
+  onChat,
 }: {
   agent: Agent;
   onToggleStatus: () => void;
@@ -310,24 +329,29 @@ function AgentCard({
   onDelete: () => void;
   onChat: () => void;
 }) {
-  const { data: state } = useAgentState(agent.status === 'running' ? agent.id : null);
-  const isRunning = agent.status === 'running';
+  const { data: state } = useAgentState(agent.status === "running" ? agent.id : null);
+  const isRunning = agent.status === "running";
 
   return (
     <Card hover>
       <CardContent className="p-6">
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isRunning ? 'bg-green-500/20' : 'bg-indigo-500/20'}`}>
-              <Bot className={`w-5 h-5 ${isRunning ? 'text-green-400' : 'text-indigo-400'}`} />
+            <div
+              className={`w-10 h-10 rounded-lg flex items-center justify-center ${isRunning ? "bg-green-500/20" : "bg-indigo-500/20"}`}
+            >
+              <Bot className={`w-5 h-5 ${isRunning ? "text-green-400" : "text-indigo-400"}`} />
             </div>
             <div>
               <h3 className="font-medium text-white">{agent.name}</h3>
               {isRunning && state ? (
                 <div className="flex items-center gap-2 mt-1">
-                  <Badge variant="success" size="sm">Running</Badge>
+                  <Badge variant="success" size="sm">
+                    Running
+                  </Badge>
                   <span className="text-xs text-gray-500 flex items-center gap-1">
-                    <Hash className="w-3 h-3" />{state.messageCount || 0}
+                    <Hash className="w-3 h-3" />
+                    {state.messageCount || 0}
                   </span>
                 </div>
               ) : (
@@ -335,11 +359,7 @@ function AgentCard({
               )}
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onToggleStatus}
-          >
+          <Button variant="ghost" size="sm" onClick={onToggleStatus}>
             {isRunning ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
           </Button>
         </div>
@@ -347,7 +367,7 @@ function AgentCard({
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-gray-500">Type</span>
-            <span className="text-gray-300 capitalize">{agent.type || 'main'}</span>
+            <span className="text-gray-300 capitalize">{agent.type || "main"}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500">Model</span>
@@ -356,7 +376,7 @@ function AgentCard({
           <div className="flex justify-between">
             <span className="text-gray-500">Created</span>
             <span className="text-gray-300">
-              {agent.created_at ? new Date(agent.created_at).toLocaleDateString() : 'Unknown'}
+              {agent.created_at ? new Date(agent.created_at).toLocaleDateString() : "Unknown"}
             </span>
           </div>
           {isRunning && state?.lastActive && (
@@ -416,12 +436,12 @@ function ChatModal({
   onSend,
   onClearHistory,
   isLoading,
-  chatEndRef
+  chatEndRef,
 }: {
   isOpen: boolean;
   onClose: () => void;
   agent: Agent | null;
-  messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  messages: Array<{ role: "user" | "assistant"; content: string }>;
   input: string;
   onInputChange: (value: string) => void;
   onSend: () => void;
@@ -446,7 +466,12 @@ function ChatModal({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={onClearHistory} leftIcon={<RotateCcw className="w-4 h-4" />}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClearHistory}
+              leftIcon={<RotateCcw className="w-4 h-4" />}
+            >
               Clear
             </Button>
             <Button variant="ghost" size="sm" onClick={onClose}>
@@ -467,13 +492,14 @@ function ChatModal({
             messages.map((msg, i) => (
               <div
                 key={i}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-[80%] rounded-xl px-4 py-2 ${msg.role === 'user'
-                    ? 'bg-indigo-500/20 text-indigo-100'
-                    : 'bg-white/5 text-gray-200'
-                    }`}
+                  className={`max-w-[80%] rounded-xl px-4 py-2 ${
+                    msg.role === "user"
+                      ? "bg-indigo-500/20 text-indigo-100"
+                      : "bg-white/5 text-gray-200"
+                  }`}
                 >
                   <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                 </div>
@@ -492,17 +518,13 @@ function ChatModal({
               placeholder="Type your message..."
               className="min-h-[44px] max-h-32 resize-none"
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   onSend();
                 }
               }}
             />
-            <Button
-              onClick={onSend}
-              disabled={!input.trim() || isLoading}
-              className="shrink-0"
-            >
+            <Button onClick={onSend} disabled={!input.trim() || isLoading} className="shrink-0">
               <Send className="w-4 h-4" />
             </Button>
           </div>
@@ -518,12 +540,24 @@ function ChatModal({
 // Status badge helper
 function getStatusBadge(status: string | undefined) {
   switch (status) {
-    case 'running':
-      return <Badge variant="success" size="sm">Running</Badge>;
-    case 'stopped':
-      return <Badge variant="default" size="sm">Stopped</Badge>;
+    case "running":
+      return (
+        <Badge variant="success" size="sm">
+          Running
+        </Badge>
+      );
+    case "stopped":
+      return (
+        <Badge variant="default" size="sm">
+          Stopped
+        </Badge>
+      );
     default:
-      return <Badge variant="default" size="sm">{status || 'unknown'}</Badge>;
+      return (
+        <Badge variant="default" size="sm">
+          {status || "unknown"}
+        </Badge>
+      );
   }
 }
 
@@ -535,7 +569,7 @@ function AgentModal({
   title,
   providers,
   isLoading,
-  initialData
+  initialData,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -545,9 +579,11 @@ function AgentModal({
   isLoading: boolean;
   initialData?: Agent;
 }) {
-  const [selectedProvider, setSelectedProvider] = useState(initialData?.provider || providers[0]?.id || '');
-  const [selectedModel, setSelectedModel] = useState(initialData?.model || '');
-  const [customModel, setCustomModel] = useState('');
+  const [selectedProvider, setSelectedProvider] = useState(
+    initialData?.provider || providers[0]?.id || ""
+  );
+  const [selectedModel, setSelectedModel] = useState(initialData?.model || "");
+  const [customModel, setCustomModel] = useState("");
   const [useCustomModel, setUseCustomModel] = useState(false);
   const { data: models, isLoading: modelsLoading } = useProviderModels(selectedProvider);
 
@@ -555,8 +591,8 @@ function AgentModal({
   const providerChangedRef = useRef(false);
   useEffect(() => {
     if (providerChangedRef.current) {
-      setSelectedModel('');
-      setCustomModel('');
+      setSelectedModel("");
+      setCustomModel("");
       setUseCustomModel(false);
     }
     providerChangedRef.current = true;
@@ -565,9 +601,9 @@ function AgentModal({
   // Reset state when modal opens with different data
   useEffect(() => {
     if (isOpen) {
-      setSelectedProvider(initialData?.provider || providers[0]?.id || '');
-      setSelectedModel(initialData?.model || '');
-      setCustomModel('');
+      setSelectedProvider(initialData?.provider || providers[0]?.id || "");
+      setSelectedModel(initialData?.model || "");
+      setCustomModel("");
       setUseCustomModel(false);
       providerChangedRef.current = false;
     }
@@ -578,17 +614,18 @@ function AgentModal({
     const formData = new FormData(e.currentTarget);
     // Override model with the actual selected value
     const modelValue = useCustomModel ? customModel : selectedModel;
-    formData.set('model', modelValue);
-    formData.set('provider_id', selectedProvider);
+    formData.set("model", modelValue);
+    formData.set("provider_id", selectedProvider);
     onSubmit(formData);
   };
 
-  const modelOptions = models?.map((m: { model_id: string; model_name?: string; context_window?: number }) => ({
-    value: m.model_id,
-    label: m.model_name
-      ? `${m.model_name}${m.context_window ? ` (${Math.round(m.context_window / 1024)}K)` : ''}`
-      : m.model_id,
-  })) || [];
+  const modelOptions =
+    models?.map((m: { model_id: string; model_name?: string; context_window?: number }) => ({
+      value: m.model_id,
+      label: m.model_name
+        ? `${m.model_name}${m.context_window ? ` (${Math.round(m.context_window / 1024)}K)` : ""}`
+        : m.model_id,
+    })) || [];
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg">
@@ -606,7 +643,7 @@ function AgentModal({
           <Select
             label="Type"
             name="type"
-            defaultValue={initialData?.type || 'main'}
+            defaultValue={initialData?.type || "main"}
             options={agentTypes}
           />
 
@@ -615,7 +652,7 @@ function AgentModal({
             name="provider_id"
             value={selectedProvider}
             onChange={(val) => setSelectedProvider(val)}
-            options={providers.map(p => ({ value: p.id, label: p.name }))}
+            options={providers.map((p) => ({ value: p.id, label: p.name }))}
           />
 
           {/* Model selection */}
@@ -629,10 +666,10 @@ function AgentModal({
                   onChange={(val) => setSelectedModel(val)}
                   options={
                     modelsLoading
-                      ? [{ value: '', label: 'Loading models...' }]
+                      ? [{ value: "", label: "Loading models..." }]
                       : modelOptions.length > 0
-                        ? [{ value: '', label: 'Select a model...' }, ...modelOptions]
-                        : [{ value: '', label: 'No models found' }]
+                        ? [{ value: "", label: "Select a model..." }, ...modelOptions]
+                        : [{ value: "", label: "No models found" }]
                   }
                 />
                 <button
@@ -655,7 +692,10 @@ function AgentModal({
                 {modelOptions.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => { setUseCustomModel(false); setCustomModel(''); }}
+                    onClick={() => {
+                      setUseCustomModel(false);
+                      setCustomModel("");
+                    }}
                     className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer"
                   >
                     or select from available models
@@ -671,7 +711,7 @@ function AgentModal({
           <Textarea
             label="System Prompt"
             name="system_prompt"
-            defaultValue={initialData?.system_prompt || ''}
+            defaultValue={initialData?.system_prompt || ""}
             placeholder="You are a helpful AI assistant..."
             rows={6}
           />
@@ -681,7 +721,7 @@ function AgentModal({
               Cancel
             </Button>
             <Button type="submit" variant="primary" disabled={isLoading}>
-              {isLoading ? 'Saving...' : 'Save'}
+              {isLoading ? "Saving..." : "Save"}
             </Button>
           </div>
         </form>

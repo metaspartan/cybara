@@ -66,11 +66,13 @@ const LANGUAGE_TO_CONFIG: Record<string, string> = {
 export class LSPManager {
   private clients = new Map<string, LSPClient>();
   private config: LSPConfig;
+  private workspacePath: string;
   private workspaceUri: string;
   private diagnosticsCache = new Map<string, Diagnostic[]>();
   private openDocuments = new Map<string, { version: number; text: string }>();
 
   constructor(workspacePath: string) {
+    this.workspacePath = workspacePath;
     this.workspaceUri = `file://${workspacePath}`;
     this.config = this.loadConfig();
   }
@@ -274,6 +276,11 @@ export class LSPManager {
   // Get supported languages
   getSupportedLanguages(): string[] {
     return Object.keys(this.config.lsp).filter((lang) => !this.config.lsp[lang].disabled);
+  }
+
+  // Get the currently configured workspace root
+  getWorkspacePath(): string {
+    return this.workspacePath;
   }
 
   // Check if a language server is available

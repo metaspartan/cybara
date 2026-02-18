@@ -1,4 +1,4 @@
-// Memory Flush System - OpenClaw Compatible
+// Memory Flush System - Cybara Compatible
 // Triggers memory saves before context compaction to preserve important information
 
 import { tables } from "../database";

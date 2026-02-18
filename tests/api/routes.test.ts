@@ -86,6 +86,23 @@ function insertRawMetric(type: string, key: string, value: number, metadata?: st
   }
 }
 
+function countMetrics(type: string, key?: string): number {
+  const dbPath = join(testHome, ".cybara", "data", "platform.db");
+  const db = new Database(dbPath);
+  try {
+    const row = key
+      ? (db
+          .query("SELECT COUNT(*) as count FROM metrics WHERE type = ? AND key = ?")
+          .get(type, key) as { count?: number } | null)
+      : (db.query("SELECT COUNT(*) as count FROM metrics WHERE type = ?").get(type) as {
+          count?: number;
+        } | null);
+    return Number(row?.count || 0);
+  } finally {
+    db.close();
+  }
+}
+
 function insertRawChannel(
   id: string,
   type: string,
@@ -138,6 +155,34 @@ function upsertRawConfig(key: string, value: string): void {
   const db = new Database(dbPath);
   try {
     db.query("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)").run(key, value);
+  } finally {
+    db.close();
+  }
+}
+
+function getRawProviderRecord(id: string): {
+  id: string;
+  provider: string;
+  name: string;
+  api_key: string | null;
+  access_token: string | null;
+  is_default: number;
+} | null {
+  const dbPath = join(testHome, ".cybara", "data", "platform.db");
+  const db = new Database(dbPath);
+  try {
+    return db
+      .query(
+        "SELECT id, provider, name, api_key, access_token, is_default FROM providers WHERE id = ?"
+      )
+      .get(id) as {
+      id: string;
+      provider: string;
+      name: string;
+      api_key: string | null;
+      access_token: string | null;
+      is_default: number;
+    } | null;
   } finally {
     db.close();
   }
@@ -253,7 +298,10 @@ describe("Wallet API", () => {
     expect(statusAfterCreate.data.unlocked).toBe(true);
     expect(statusAfterCreate.data.primaryAddresses.eth).toBe(create.data.primaryAddresses.eth);
 
-    const accounts = await api("GET", "/api/wallet/accounts?chains=eth,btc,sol&count=1&startIndex=0");
+    const accounts = await api(
+      "GET",
+      "/api/wallet/accounts?chains=eth,btc,sol&count=1&startIndex=0"
+    );
     expect(accounts.status).toBe(200);
     expect(Array.isArray(accounts.data)).toBe(true);
     expect(accounts.data).toHaveLength(3);
@@ -270,7 +318,10 @@ describe("Wallet API", () => {
     expect(invalidTokenChain.status).toBe(400);
     expect(invalidTokenChain.data.code).toBe("VALIDATION_ERROR");
 
-    const invalidTokenTxChain = await api("GET", "/api/wallet/token-transactions?chain=btc&index=0");
+    const invalidTokenTxChain = await api(
+      "GET",
+      "/api/wallet/token-transactions?chain=btc&index=0"
+    );
     expect(invalidTokenTxChain.status).toBe(400);
     expect(invalidTokenTxChain.data.code).toBe("VALIDATION_ERROR");
 
@@ -326,6 +377,54 @@ describe("Agents API", () => {
     expect(data.id).toBeDefined();
   });
 
+  test("agent create/update resolve legacy provider field and auto-heal missing provider_id", async () => {
+    const providerRes = await api("POST", "/api/providers", {
+      provider: "openai",
+      name: `agent-provider-${Date.now()}`,
+      api_key: `sk-test-${Date.now()}`,
+      is_default: true,
+    });
+    expect(providerRes.status).toBe(200);
+    const providerId = providerRes.data.id as string;
+
+    const created = await api("POST", "/api/agents", {
+      name: `legacy-provider-agent-${Date.now()}`,
+      type: "main",
+      model: "gpt-5-mini",
+      provider: providerId,
+    });
+    expect(created.status).toBe(200);
+    expect(created.data.provider_id).toBe(providerId);
+
+    const fetched = await api("GET", `/api/agents/${created.data.id}`);
+    expect(fetched.status).toBe(200);
+    expect(fetched.data.provider).toBe(providerId);
+
+    const missingProviderAgent = await api("POST", "/api/agents", {
+      name: `missing-provider-agent-${Date.now()}`,
+      type: "main",
+      model: "gpt-5-mini",
+    });
+    expect(missingProviderAgent.status).toBe(200);
+    expect(missingProviderAgent.data.provider_id).toBeUndefined();
+
+    const chatRes = await api("POST", "/api/chat", {
+      message: "provider auto-heal check",
+      agentId: missingProviderAgent.data.id,
+    });
+    expect(chatRes.status).toBe(200);
+    expect(String(chatRes.data.message?.content || "")).not.toContain("No AI provider configured");
+
+    const healed = await api("GET", `/api/agents/${missingProviderAgent.data.id}`);
+    expect(healed.status).toBe(200);
+    expect(typeof healed.data.provider).toBe("string");
+    expect(healed.data.provider.length).toBeGreaterThan(0);
+
+    await api("DELETE", `/api/agents/${created.data.id}`);
+    await api("DELETE", `/api/agents/${missingProviderAgent.data.id}`);
+    await api("DELETE", `/api/providers/${providerId}`);
+  });
+
   test("PUT /api/agents/:id tolerates malformed persisted config JSON", async () => {
     const agentId = `bad-agent-config-${Date.now()}`;
     insertRawAgent(agentId, `bad-agent-${Date.now()}`, "{bad-json");
@@ -364,6 +463,34 @@ describe("Agents API", () => {
 
     await api("DELETE", `/api/agents/${agentId}`);
   });
+
+  test("POST /api/agents/:id/message auto-starts a stopped agent", async () => {
+    const created = await api("POST", "/api/agents", {
+      name: `auto-start-message-agent-${Date.now()}`,
+      type: "main",
+      model: "gpt-5-mini",
+    });
+    expect(created.status).toBe(200);
+
+    const agentId = created.data.id as string;
+    const beforeState = await api("GET", `/api/agents/${agentId}/state`);
+    expect(beforeState.status).toBe(200);
+    expect(beforeState.data.running).toBe(false);
+
+    const messageRes = await api("POST", `/api/agents/${agentId}/message`, {
+      message: "hello",
+    });
+    expect(messageRes.status).toBe(200);
+    expect(typeof messageRes.data.response).toBe("string");
+    expect(messageRes.data.response.length).toBeGreaterThan(0);
+
+    const afterState = await api("GET", `/api/agents/${agentId}/state`);
+    expect(afterState.status).toBe(200);
+    expect(afterState.data.running).toBe(true);
+
+    await api("POST", `/api/agents/${agentId}/stop`);
+    await api("DELETE", `/api/agents/${agentId}`);
+  });
 });
 
 describe("Providers API", () => {
@@ -371,6 +498,46 @@ describe("Providers API", () => {
     const { status, data } = await api("GET", "/api/providers");
     expect(status).toBe(200);
     expect(Array.isArray(data)).toBe(true);
+  });
+
+  test("POST /api/providers rejects invalid OpenAI key shapes", async () => {
+    const bad = await api("POST", "/api/providers", {
+      provider: "openai",
+      name: `bad-openai-key-${Date.now()}`,
+      api_key: "bc1qnotanopenaikey",
+    });
+
+    expect(bad.status).toBe(400);
+    expect(bad.data.code).toBe("VALIDATION_ERROR");
+    expect(String(bad.data.error)).toContain("OpenAI API key must start with 'sk-'");
+  });
+
+  test("PUT /api/providers/:id preserves existing credentials when api_key is blank", async () => {
+    const provider = await api("POST", "/api/providers", {
+      provider: "openai",
+      name: `preserve-openai-key-${Date.now()}`,
+      api_key: `sk-preserve-${Date.now()}`,
+    });
+    expect(provider.status).toBe(200);
+    const providerId = provider.data.id as string;
+
+    const before = getRawProviderRecord(providerId);
+    expect(before).not.toBeNull();
+    expect(before?.api_key).toContain("sk-preserve-");
+
+    const update = await api("PUT", `/api/providers/${providerId}`, {
+      name: `preserve-openai-key-updated-${Date.now()}`,
+      api_key: "",
+    });
+    expect(update.status).toBe(200);
+    expect(update.data.success).toBe(true);
+
+    const after = getRawProviderRecord(providerId);
+    expect(after).not.toBeNull();
+    expect(after?.name).toContain("preserve-openai-key-updated-");
+    expect(after?.api_key).toBe(before?.api_key);
+
+    await api("DELETE", `/api/providers/${providerId}`);
   });
 
   test("GET /api/providers/available should return provider catalog metadata", async () => {
@@ -529,11 +696,7 @@ describe("Channels API", () => {
 
 describe("Webhooks API", () => {
   test("POST /api/webhooks/telegram/:channelId should return ok=false for unknown channel", async () => {
-    const { status, data } = await api(
-      "POST",
-      `/api/webhooks/telegram/missing-${Date.now()}`,
-      {}
-    );
+    const { status, data } = await api("POST", `/api/webhooks/telegram/missing-${Date.now()}`, {});
     expect(status).toBe(200);
     expect(data.ok).toBe(false);
   });
@@ -752,6 +915,8 @@ describe("Tools API", () => {
 
 describe("LSP API", () => {
   test("LSP status/languages/diagnostics/install-status endpoints should return shaped payloads", async () => {
+    const lspMetricsBefore = countMetrics("lsp_operation");
+
     const statusRes = await api("GET", "/api/lsp/status");
     expect(statusRes.status).toBe(200);
     expect(typeof statusRes.data.status).toBe("string");
@@ -772,6 +937,9 @@ describe("LSP API", () => {
     expect(installStatusRes.status).toBe(200);
     expect(Array.isArray(installStatusRes.data.status)).toBe(true);
     expect(installStatusRes.data.status.length).toBeGreaterThan(0);
+
+    const lspMetricsAfter = countMetrics("lsp_operation");
+    expect(lspMetricsAfter).toBeGreaterThan(lspMetricsBefore);
   });
 
   test("LSP diagnostics file endpoint should validate missing path and support explicit file path", async () => {
@@ -1241,6 +1409,9 @@ describe("Memory API", () => {
 
 describe("IDE & Git API", () => {
   test("IDE browse/read/write/create routes should work inside HOME sandbox", async () => {
+    const ideMetricsBefore = countMetrics("ide_operation");
+    const fileMetricsBefore = countMetrics("file_operation");
+
     const fileName = `ide-test-${Date.now()}.txt`;
     const filePath = join(testHome, fileName);
     writeFileSync(filePath, "initial-content", "utf8");
@@ -1250,7 +1421,9 @@ describe("IDE & Git API", () => {
     expect(browseRes.data.success).toBe(true);
     expect(Array.isArray(browseRes.data.entries)).toBe(true);
     expect(
-      browseRes.data.entries.some((entry: { name: string; type: string }) => entry.name === fileName)
+      browseRes.data.entries.some(
+        (entry: { name: string; type: string }) => entry.name === fileName
+      )
     ).toBe(true);
 
     const readRes = await api("GET", `/api/ide/read?path=${encodeURIComponent(filePath)}`);
@@ -1279,6 +1452,11 @@ describe("IDE & Git API", () => {
     expect(createRes.status).toBe(200);
     expect(createRes.data.success).toBe(true);
     expect(createRes.data.type).toBe("file");
+
+    const ideMetricsAfter = countMetrics("ide_operation");
+    const fileMetricsAfter = countMetrics("file_operation");
+    expect(ideMetricsAfter).toBeGreaterThan(ideMetricsBefore);
+    expect(fileMetricsAfter).toBeGreaterThan(fileMetricsBefore);
   });
 
   test("IDE routes block sibling paths that only share HOME prefix", async () => {

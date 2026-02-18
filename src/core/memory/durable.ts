@@ -1,6 +1,6 @@
 /**
  * Durable Memory Management
- * OpenClaw-compatible MEMORY.md for persistent user preferences, decisions, and long-term facts
+ * Cybara-compatible MEMORY.md for persistent user preferences, decisions, and long-term facts
  * 
  * Unlike daily logs (YYYY-MM-DD.md), MEMORY.md is curated and persists across sessions.
  * It stores:

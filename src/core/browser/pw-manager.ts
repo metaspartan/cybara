@@ -1,4 +1,4 @@
-// Playwright Browser Manager - Moltbot-compatible with Profile Support
+// Playwright Browser Manager - Cybara-compatible with Profile Support
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import {
   type BrowserProfile,

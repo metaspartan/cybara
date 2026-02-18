@@ -3,7 +3,7 @@ import { join, dirname, basename, extname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { homedir } from "os";
 // ============================================================================
-// OpenClaw-compatible Skills System (new modular architecture)
+// Cybara-compatible Skills System (new modular architecture)
 // ============================================================================
 
 // Types
@@ -14,7 +14,7 @@ export type {
   SkillCommandDispatch,
   SkillCommandSpec,
   SkillFrontmatter,
-  Skill as OpenClawSkill,
+  Skill as CybaraSkill,
   SkillEntry,
   SkillEligibilityContext,
   SkillStatus,

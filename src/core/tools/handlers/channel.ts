@@ -66,7 +66,7 @@ export async function handleSessionsSpawn(args: Record<string, unknown>): Promis
     throw new Error("task is required");
   }
 
-  // Forbid nested spawning (OpenClaw policy)
+  // Forbid nested spawning (Cybara policy)
   if (subagentRegistry.isSubagentSessionKey(requesterSessionKey)) {
     return {
       status: "forbidden",
@@ -77,7 +77,7 @@ export async function handleSessionsSpawn(args: Record<string, unknown>): Promis
     };
   }
 
-  // Generate OpenClaw-style session key
+  // Generate Cybara-style session key
   const agentId = requestedAgentId || "default";
   const childSessionKey = subagentRegistry.generateSubagentSessionKey(agentId);
   const runId = crypto.randomUUID();
@@ -327,7 +327,7 @@ export async function handleSessionsList(): Promise<{
   };
 }
 
-// Session status - aligned with OpenClaw session_status tool
+// Session status - aligned with Cybara session_status tool
 export async function handleSessionStatus(args: Record<string, unknown>): Promise<{
   sessionId: string;
   status: string;

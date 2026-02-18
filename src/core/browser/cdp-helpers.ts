@@ -1,4 +1,4 @@
-// CDP helpers for browser control - ported from OpenClaw cdp.ts
+// CDP helpers for browser control - ported from Cybara cdp.ts
 // These provide direct CDP access for more complete accessibility tree and DOM content
 
 import type { Page, Frame, ElementHandle } from "puppeteer-core";
@@ -118,7 +118,7 @@ export async function getFullAccessibilityTree(
 }
 
 /**
- * Get accessibility tree for a specific frame (like OpenClaw frameSelector)
+ * Get accessibility tree for a specific frame (like Cybara frameSelector)
  */
 export async function getFrameAccessibilityTree(
   page: Page,
@@ -284,7 +284,7 @@ export async function querySelectorAll(
 
 /**
  * Resolve a ref (e1, e2, etc.) to an element handle using role+name
- * This is the Puppeteer equivalent of OpenClaw's refLocator with getByRole
+ * This is the Puppeteer equivalent of Cybara's refLocator with getByRole
  */
 export async function resolveRefToElement(
   page: Page,
@@ -455,7 +455,7 @@ export async function getRefBoundingBoxes(
 }
 
 /**
- * Take screenshot with ref labels overlaid (like OpenClaw screenshotWithLabels)
+ * Take screenshot with ref labels overlaid (like Cybara screenshotWithLabels)
  */
 export async function screenshotWithLabels(
   page: Page,
@@ -592,7 +592,7 @@ export async function selectOption(
 }
 
 /**
- * Wait for various conditions (like OpenClaw waitFor)
+ * Wait for various conditions (like Cybara waitFor)
  */
 export async function waitFor(
   page: Page,

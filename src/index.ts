@@ -387,7 +387,7 @@ console.log(`
 // Seed default providers
 providerManager.seedDefaults();
 
-// Initialize cron scheduler (OpenClaw parity)
+// Initialize cron scheduler (Cybara parity)
 import { startScheduler, setAgentHandler, setWakeHandler } from "./core/cron";
 import { agentManager } from "./core/agent";
 
@@ -422,7 +422,7 @@ import { taskScheduler } from "./core/scheduler";
 taskScheduler.initialize();
 console.log("[Task] Scheduler initialized");
 
-// Subscribe to subagent lifecycle events for announcements (OpenClaw parity)
+// Subscribe to subagent lifecycle events for announcements (Cybara parity)
 import { onSubagentLifecycle } from "./core/subagent-registry";
 
 onSubagentLifecycle((event) => {

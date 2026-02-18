@@ -3,7 +3,7 @@ import { config } from "../config";
 
 // ============================================
 // TOOL DEFINITIONS
-// All Clawdbot tools + extras
+// All Cybara tools + extras
 // ============================================
 
 export interface ToolHandler {
@@ -319,7 +319,7 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
     permissions: ["exec:manage"],
   },
 
-  // Browser automation - Moltbot/OpenClaw compatible with Profile Support
+  // Browser automation - Cybara/Cybara compatible with Profile Support
   browser: {
     name: "browser",
     description: [
@@ -431,7 +431,7 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
         request: {
           type: "object",
           description:
-            "OpenClaw-style request for 'act' action. Use {kind:'click', ref:'e5'} or {kind:'type', ref:'e3', text:'hello'}",
+            "Cybara-style request for 'act' action. Use {kind:'click', ref:'e5'} or {kind:'type', ref:'e3', text:'hello'}",
           properties: {
             kind: {
               type: "string",
@@ -508,7 +508,7 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
     permissions: ["browser:control"],
   },
 
-  // NOTE: Use browser({ action: 'open', url }) instead - OpenClaw pattern
+  // NOTE: Use browser({ action: 'open', url }) instead - Cybara pattern
   web_fetch: {
     name: "web_fetch",
     description: "Fetch and extract readable content from a URL",
@@ -525,7 +525,7 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
     permissions: ["net:fetch"],
   },
 
-  // Web search (OpenClaw pattern: supports Brave API or DuckDuckGo fallback)
+  // Web search (Cybara pattern: supports Brave API or DuckDuckGo fallback)
   web_search: {
     name: "web_search",
     description:

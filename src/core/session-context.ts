@@ -26,13 +26,13 @@ function parseSessionMessageMetadata(metadata?: string): SessionMessageMetadata 
   }
 }
 
-// Context window configuration (OpenClaw compatible)
+// Context window configuration (Cybara compatible)
 const DEFAULT_CONTEXT_TOKENS = 200_000;
 const CONTEXT_SAFETY_MARGIN = 1.2; // 20% buffer for token estimation
 const MAX_HISTORY_SHARE = 0.5; // Max 50% of context for history
 const SUMMARY_RESERVE_TOKENS = 4000; // Reserve tokens for summary generation
 
-// OpenClaw-style adaptive chunking
+// Cybara-style adaptive chunking
 const BASE_CHUNK_RATIO = 0.4;
 const MIN_CHUNK_RATIO = 0.15;
 const OVERSIZED_MESSAGE_THRESHOLD = 0.5; // Message > 50% of context is oversized
@@ -56,7 +56,7 @@ export function estimateMessagesTokens(messages: ChatMessage[]): number {
 }
 
 /**
- * OpenClaw-style adaptive chunk ratio based on average message size.
+ * Cybara-style adaptive chunk ratio based on average message size.
  * When messages are large, we use smaller chunks to avoid exceeding model limits.
  */
 export function computeAdaptiveChunkRatio(messages: ChatMessage[], contextWindow: number): number {

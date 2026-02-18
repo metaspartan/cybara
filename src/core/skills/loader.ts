@@ -20,7 +20,7 @@ const SKILL_FILENAME = "SKILL.md";
 
 /**
  * Parse YAML frontmatter from markdown content
- * OpenClaw uses single-line values in frontmatter
+ * Cybara uses single-line values in frontmatter
  */
 export function parseFrontmatter(content: string): { frontmatter: Record<string, unknown>; body: string } {
     const lines = content.split("\n");
@@ -152,12 +152,16 @@ export function parseSkillFile(content: string, filePath: string, source: SkillE
         return null;
     }
 
-    // Extract metadata from frontmatter
+    // Extract metadata from frontmatter. Prefer `cybara`, then fallback to first object-shaped entry.
     const rawMetadata = frontmatter.metadata as Record<string, unknown> | undefined;
-    // Prefer Cybara metadata; keep Moltbot as transitional fallback.
-    const metadata: SkillMetadata | undefined = rawMetadata?.cybara as SkillMetadata
-        ?? rawMetadata?.moltbot as SkillMetadata
-        ?? undefined;
+    const firstMetadataValue = rawMetadata
+        ? Object.values(rawMetadata).find(
+            (value): value is SkillMetadata =>
+                !!value && typeof value === "object" && !Array.isArray(value)
+        )
+        : undefined;
+    const metadata: SkillMetadata | undefined = (rawMetadata?.cybara as SkillMetadata | undefined)
+        ?? firstMetadataValue;
 
     // Build invocation policy
     const invocation: SkillInvocationPolicy = {
@@ -394,7 +398,7 @@ export async function watchSkillDirectories(
 }
 
 /**
- * Format skills list for system prompt (OpenClaw XML format)
+ * Format skills list for system prompt (Cybara XML format)
  */
 export function formatSkillsForPrompt(skills: SkillEntry[]): string {
     if (skills.length === 0) return "";

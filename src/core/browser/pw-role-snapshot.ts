@@ -1,5 +1,5 @@
-// OpenClaw-compatible role snapshot utilities
-// Port of /tmp/openclaw/src/browser/pw-role-snapshot.ts
+// Cybara-compatible role snapshot utilities
+// Port of /tmp/cybara/src/browser/pw-role-snapshot.ts
 
 export type RoleRef = {
   role: string;
