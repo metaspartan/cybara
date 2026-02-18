@@ -215,43 +215,113 @@ export function MCPServers() {
                     <RefreshCw className="w-8 h-8 animate-spin text-indigo-500" />
                 </div>
             ) : tab === 'installed' ? (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {registryServers.map((server) => (
-                        <Card key={server.id} className="p-4 hover:border-indigo-500/30 transition-colors">
-                            <div className="flex items-start justify-between mb-3">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500/20 to-violet-500/20 flex items-center justify-center">
-                                        <Package className="w-5 h-5 text-indigo-400" />
+                servers.length === 0 ? (
+                    <Card className="p-10 text-center">
+                        <Server className="w-12 h-12 mx-auto text-gray-500 mb-3" />
+                        <p className="text-gray-300 font-medium mb-1">No MCP servers installed</p>
+                        <p className="text-gray-500 text-sm">Add one manually or install from the registry.</p>
+                    </Card>
+                ) : (
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        {servers.map((server) => (
+                            <Card key={server.id} className="p-4 hover:border-indigo-500/30 transition-colors">
+                                <div className="flex items-start justify-between mb-3">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500/20 to-violet-500/20 flex items-center justify-center">
+                                            <Server className="w-5 h-5 text-indigo-400" />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <h3 className="font-medium text-white truncate">{server.name}</h3>
+                                            <p className="text-xs text-gray-500 truncate">{server.command}</p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h3 className="font-medium text-white">{server.name}</h3>
-                                        {getRegistryBadge(server.registry)}
+                                    {getStatusBadge(server.status)}
+                                </div>
+
+                                <div className="text-xs text-gray-500 mb-4">
+                                    {server.toolCount} tools available
+                                </div>
+
+                                <div className="flex gap-2">
+                                    {server.status === 'running' ? (
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="flex-1"
+                                            leftIcon={<Square className="w-4 h-4" />}
+                                            onClick={() => handleStop(server.id)}
+                                        >
+                                            Stop
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            size="sm"
+                                            className="flex-1"
+                                            leftIcon={<Play className="w-4 h-4" />}
+                                            onClick={() => handleStart(server.id)}
+                                        >
+                                            Start
+                                        </Button>
+                                    )}
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        leftIcon={<Trash2 className="w-4 h-4" />}
+                                        onClick={() => handleDelete(server.id)}
+                                    >
+                                        Delete
+                                    </Button>
+                                </div>
+                            </Card>
+                        ))}
+                    </div>
+                )
+            ) : (
+                registryServers.length === 0 ? (
+                    <Card className="p-10 text-center">
+                        <Package className="w-12 h-12 mx-auto text-gray-500 mb-3" />
+                        <p className="text-gray-300 font-medium mb-1">No registry servers found</p>
+                        <p className="text-gray-500 text-sm">Try a different search query.</p>
+                    </Card>
+                ) : (
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        {registryServers.map((server) => (
+                            <Card key={server.id} className="p-4 hover:border-indigo-500/30 transition-colors">
+                                <div className="flex items-start justify-between mb-3">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500/20 to-violet-500/20 flex items-center justify-center">
+                                            <Package className="w-5 h-5 text-indigo-400" />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-medium text-white">{server.name}</h3>
+                                            {getRegistryBadge(server.registry)}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                            <p className="text-sm text-gray-400 mb-3 line-clamp-2">{server.description}</p>
-                            {server.envVars && server.envVars.length > 0 && (
-                                <div className="flex flex-wrap gap-1 mb-3">
-                                    {server.envVars.map((v) => (
-                                        <span key={v} className="px-2 py-0.5 text-xs rounded bg-amber-500/20 text-amber-400">
-                                            {v}
-                                        </span>
-                                    ))}
+                                <p className="text-sm text-gray-400 mb-3 line-clamp-2">{server.description}</p>
+                                {server.envVars && server.envVars.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mb-3">
+                                        {server.envVars.map((v) => (
+                                            <span key={v} className="px-2 py-0.5 text-xs rounded bg-amber-500/20 text-amber-400">
+                                                {v}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                                <div className="flex gap-2">
+                                    <Button
+                                        size="sm"
+                                        className="flex-1"
+                                        leftIcon={<Download className="w-4 h-4" />}
+                                        onClick={() => handleInstall(server)}
+                                    >
+                                        Install
+                                    </Button>
                                 </div>
-                            )}
-                            <div className="flex gap-2">
-                                <Button
-                                    size="sm"
-                                    className="flex-1"
-                                    leftIcon={<Download className="w-4 h-4" />}
-                                    onClick={() => handleInstall(server)}
-                                >
-                                    Install
-                                </Button>
-                            </div>
-                        </Card>
-                    ))}
-                </div>
+                            </Card>
+                        ))}
+                    </div>
+                )
             )}
 
             <AddServerModal
