@@ -1,7 +1,3 @@
-// Channel System - Main Index
-// Re-exports all channel types, adapters, and managers for backwards compatibility
-
-// Types
 export {
   channels,
   type ChannelType,
@@ -12,7 +8,6 @@ export {
   type ChannelInfo,
 } from "./types";
 
-// Formatting utilities
 export {
   escapeMarkdown,
   formatToolCallsForTelegram,
@@ -20,7 +15,6 @@ export {
   formatToolCallsPlain,
 } from "./formatting";
 
-// Security
 export {
   securityManager,
   generatePairingCode,
@@ -31,7 +25,6 @@ export {
   DEFAULT_SECURITY_CONFIG,
 } from "./security";
 
-// Channel manager and session maps
 export {
   channelManager,
   telegramBot,
@@ -43,14 +36,12 @@ export {
   imessageSessions,
 } from "./manager";
 
-// Telegram adapter and types
 export {
   TelegramBotManager,
   type TelegramUpdate,
   processTelegramWebhook,
 } from "./adapters/telegram";
 
-// Production adapters
 export { discordAdapter, DiscordAdapter } from "./adapters/discord";
 export { slackAdapter, SlackAdapter } from "./adapters/slack";
 export { signalAdapter, SignalAdapter } from "./adapters/signal";

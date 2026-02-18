@@ -1,19 +1,12 @@
-// Tool call formatting utilities for different platforms
-
 import type { ToolCallInfo } from "./types";
 
-// Escape markdown special characters (minimal escaping to avoid breaking formatting)
 export function escapeMarkdown(text: string): string {
-  // Only escape characters that would break Telegram Markdown
-  // Don't escape if text is already short/simple
   if (text.length < 50 && !/[[\]()*_`]/.test(text)) {
     return text;
   }
-  // Minimal escaping - only escape what's necessary
   return text.replace(/\[/g, "\\[").replace(/\]/g, "\\]");
 }
 
-// Format tool calls for Telegram
 export function formatToolCallsForTelegram(toolCalls: ToolCallInfo[]): string {
   if (toolCalls.length === 0) return "";
 
@@ -36,7 +29,6 @@ export function formatToolCallsForTelegram(toolCalls: ToolCallInfo[]): string {
   return text;
 }
 
-// Format tool calls for Discord
 export function formatToolCallsForDiscord(toolCalls: ToolCallInfo[]): string {
   if (toolCalls.length === 0) return "";
 
@@ -59,7 +51,6 @@ export function formatToolCallsForDiscord(toolCalls: ToolCallInfo[]): string {
   return text;
 }
 
-// Format tool calls for plain text
 export function formatToolCallsPlain(toolCalls: ToolCallInfo[]): string {
   if (toolCalls.length === 0) return "";
 

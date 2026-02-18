@@ -78,19 +78,16 @@ export function Agents() {
       (agent.type && agent.type.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  // Auto-scroll chat to bottom
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
 
-  // Load chat history when opening chat
   const handleOpenChat = async (agent: Agent) => {
     setChatAgent(agent);
     setChatMessages([]);
     setChatInput("");
   };
 
-  // Handle sending messages to running agent
   const handleSendMessage = async () => {
     if (!chatAgent || !chatInput.trim() || sendMessage.isPending) return;
 
@@ -115,7 +112,6 @@ export function Agents() {
     }
   };
 
-  // Clear chat history
   const handleClearHistory = async () => {
     if (!chatAgent) return;
     try {
@@ -213,7 +209,6 @@ export function Agents() {
 
   return (
     <PageLayout title="Agents">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center mb-6">
         <Input
           placeholder="Search agents..."
@@ -224,7 +219,6 @@ export function Agents() {
         <Button onClick={() => setIsCreateModalOpen(true)}>Create Agent</Button>
       </div>
 
-      {/* Agents Grid */}
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
@@ -265,7 +259,6 @@ export function Agents() {
         </div>
       )}
 
-      {/* Create Modal */}
       <AgentModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
@@ -275,7 +268,6 @@ export function Agents() {
         isLoading={createAgent.isPending}
       />
 
-      {/* Edit Modal */}
       <AgentModal
         isOpen={!!editingAgent}
         onClose={() => setEditingAgent(null)}
@@ -286,7 +278,6 @@ export function Agents() {
         initialData={editingAgent || undefined}
       />
 
-      {/* Delete Confirmation */}
       <ConfirmDialog
         isOpen={!!deletingAgent}
         onClose={() => setDeletingAgent(null)}
@@ -298,7 +289,6 @@ export function Agents() {
         isLoading={deleteAgent.isPending}
       />
 
-      {/* Chat Modal */}
       <ChatModal
         isOpen={!!chatAgent}
         onClose={() => setChatAgent(null)}
@@ -315,7 +305,6 @@ export function Agents() {
   );
 }
 
-// Agent Card Component
 function AgentCard({
   agent,
   onToggleStatus,
@@ -425,7 +414,6 @@ function AgentCard({
   );
 }
 
-// Chat Modal Component
 function ChatModal({
   isOpen,
   onClose,
@@ -454,7 +442,6 @@ function ChatModal({
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg">
       <div className="flex flex-col h-[600px]">
-        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-white/10">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
@@ -480,7 +467,6 @@ function ChatModal({
           </div>
         </div>
 
-        {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.length === 0 ? (
             <div className="text-center text-gray-500 py-8">
@@ -509,7 +495,6 @@ function ChatModal({
           <div ref={chatEndRef} />
         </div>
 
-        {/* Input */}
         <div className="p-4 border-t border-white/10">
           <div className="flex gap-2">
             <Textarea
@@ -537,7 +522,6 @@ function ChatModal({
   );
 }
 
-// Status badge helper
 function getStatusBadge(status: string | undefined) {
   switch (status) {
     case "running":
@@ -561,7 +545,6 @@ function getStatusBadge(status: string | undefined) {
   }
 }
 
-// Agent Modal Component
 function AgentModal({
   isOpen,
   onClose,
@@ -587,7 +570,6 @@ function AgentModal({
   const [useCustomModel, setUseCustomModel] = useState(false);
   const { data: models, isLoading: modelsLoading } = useProviderModels(selectedProvider);
 
-  // Reset model when provider changes (but not on initial mount)
   const providerChangedRef = useRef(false);
   useEffect(() => {
     if (providerChangedRef.current) {
@@ -598,7 +580,6 @@ function AgentModal({
     providerChangedRef.current = true;
   }, [selectedProvider]);
 
-  // Reset state when modal opens with different data
   useEffect(() => {
     if (isOpen) {
       setSelectedProvider(initialData?.provider || providers[0]?.id || "");
@@ -612,7 +593,6 @@ function AgentModal({
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    // Override model with the actual selected value
     const modelValue = useCustomModel ? customModel : selectedModel;
     formData.set("model", modelValue);
     formData.set("provider_id", selectedProvider);
@@ -655,7 +635,6 @@ function AgentModal({
             options={providers.map((p) => ({ value: p.id, label: p.name }))}
           />
 
-          {/* Model selection */}
           <div className="space-y-2">
             {!useCustomModel ? (
               <>
@@ -705,7 +684,6 @@ function AgentModal({
             )}
           </div>
 
-          {/* Hidden input to ensure model goes in FormData */}
           <input type="hidden" name="model" value={useCustomModel ? customModel : selectedModel} />
 
           <Textarea

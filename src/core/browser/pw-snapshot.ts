@@ -1,6 +1,3 @@
-// Cybara-compatible Playwright snapshot functions
-// Port of /tmp/cybara/src/browser/pw-tools-core.snapshot.ts
-
 import type { Page, Locator, FrameLocator } from "playwright-core";
 import {
   buildRoleSnapshotFromAiSnapshot,
@@ -10,7 +7,6 @@ import {
   type RoleRefMap,
 } from "./pw-role-snapshot";
 
-// Type for Playwright's _snapshotForAI (private API in 1.48+)
 export type WithSnapshotForAI = {
   _snapshotForAI?: (options?: {
     timeout?: number;
@@ -18,7 +14,6 @@ export type WithSnapshotForAI = {
   }) => Promise<{ full: string; incremental?: string }>;
 };
 
-// Page state for tracking refs per page
 type PageRoleRefs = {
   refs: RoleRefMap;
   mode: "role" | "aria";
@@ -27,9 +22,6 @@ type PageRoleRefs = {
 
 const pageRoleRefs = new WeakMap<Page, PageRoleRefs>();
 
-/**
- * Store role refs for a page (for later resolution in act)
- */
 export function storeRoleRefsForPage(
   page: Page,
   refs: RoleRefMap,
@@ -39,16 +31,10 @@ export function storeRoleRefsForPage(
   pageRoleRefs.set(page, { refs, mode, frameSelector });
 }
 
-/**
- * Get stored role refs for a page
- */
 export function getRoleRefsForPage(page: Page): PageRoleRefs | undefined {
   return pageRoleRefs.get(page);
 }
 
-/**
- * Get aria snapshot using Playwright's ariaSnapshot() on a locator
- */
 export async function snapshotAriaViaPlaywright(
   page: Page,
   opts: {
@@ -60,7 +46,6 @@ export async function snapshotAriaViaPlaywright(
   const frameSelector = opts.frameSelector?.trim() || "";
   const selector = opts.selector?.trim() || "";
 
-  // Build the locator
   let locator: Locator | ReturnType<FrameLocator["locator"]>;
   if (frameSelector) {
     const frame = page.frameLocator(frameSelector);
@@ -69,11 +54,9 @@ export async function snapshotAriaViaPlaywright(
     locator = selector ? page.locator(selector) : page.locator(":root");
   }
 
-  // Get aria snapshot
   const ariaSnapshot = await locator.ariaSnapshot();
   const built = buildRoleSnapshotFromAriaSnapshot(String(ariaSnapshot ?? ""), opts.options);
 
-  // Store refs for this page
   storeRoleRefsForPage(page, built.refs, "role", frameSelector || undefined);
 
   return {
@@ -83,9 +66,6 @@ export async function snapshotAriaViaPlaywright(
   };
 }
 
-/**
- * Get AI snapshot using Playwright's _snapshotForAI() (Playwright 1.48+)
- */
 export async function snapshotAiViaPlaywright(
   page: Page,
   opts: {
@@ -124,10 +104,6 @@ export async function snapshotAiViaPlaywright(
   return truncated ? { snapshot, truncated, refs: built.refs } : { snapshot, refs: built.refs };
 }
 
-/**
- * Get role snapshot with options (interactive, compact, maxDepth)
- * Falls back to ariaSnapshot() if _snapshotForAI is not available
- */
 export async function snapshotRoleViaPlaywright(
   page: Page,
   opts: {
@@ -141,7 +117,6 @@ export async function snapshotRoleViaPlaywright(
   refs: RoleRefMap;
   stats: ReturnType<typeof getRoleSnapshotStats>;
 }> {
-  // If refsMode is "aria", use _snapshotForAI
   if (opts.refsMode === "aria") {
     if (opts.selector?.trim() || opts.frameSelector?.trim()) {
       throw new Error("refs=aria does not support selector/frame snapshots yet.");
@@ -163,14 +138,9 @@ export async function snapshotRoleViaPlaywright(
     };
   }
 
-  // Otherwise use ariaSnapshot()
   return snapshotAriaViaPlaywright(page, opts);
 }
 
-/**
- * Resolve a ref (e.g. "e12") to a Playwright locator
- * This is the key function for acting on refs from snapshots
- */
 export function refLocator(page: Page, ref: string): Locator {
   const normalized = ref.startsWith("@")
     ? ref.slice(1)
@@ -181,13 +151,11 @@ export function refLocator(page: Page, ref: string): Locator {
   if (/^e\d+$/.test(normalized)) {
     const state = pageRoleRefs.get(page);
 
-    // For aria mode, use aria-ref locator
     if (state?.mode === "aria") {
       const scope = state.frameSelector ? page.frameLocator(state.frameSelector) : page;
       return scope.locator(`aria-ref=${normalized}`);
     }
 
-    // For role mode, use getByRole
     const info = state?.refs?.[normalized];
     if (!info) {
       throw new Error(
@@ -206,21 +174,14 @@ export function refLocator(page: Page, ref: string): Locator {
     return info.nth !== undefined ? locator.nth(info.nth) : locator;
   }
 
-  // Direct aria-ref
   return page.locator(`aria-ref=${normalized}`);
 }
 
-/**
- * Check if Playwright has _snapshotForAI available
- */
 export function hasAiSnapshotSupport(page: Page): boolean {
   const maybe = page as unknown as WithSnapshotForAI;
   return typeof maybe._snapshotForAI === "function";
 }
 
-/**
- * Navigate to a URL
- */
 export async function navigateViaPlaywright(
   page: Page,
   opts: {

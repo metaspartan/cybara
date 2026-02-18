@@ -1,4 +1,3 @@
-// Cron module exports
 export type {
   CronSchedule,
   CronSessionTarget,

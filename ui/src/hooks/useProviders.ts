@@ -6,7 +6,6 @@ import type { Provider, Channel } from '@/types';
 const PROVIDERS_KEY = 'providers';
 const CHANNELS_KEY = 'channels';
 
-// Providers hooks
 export function useProviders() {
   const { setProviders, setLoading } = useProviderStore();
   
@@ -67,7 +66,6 @@ export function useDeleteProvider() {
   });
 }
 
-// Channels hooks
 export function useChannels() {
   const { setChannels, setLoading } = useChannelStore();
   

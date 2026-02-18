@@ -30,15 +30,11 @@ import {
 import { useUIStore } from '../stores/uiStore';
 import type { MemoryEntry } from '../types';
 
-// Helper to format memory entry date
 function formatMemoryDate(entry: MemoryEntry): string {
   if (entry.date && entry.timestamp) {
-    // Timestamp in memory file is in UTC format (e.g., "10:15:22" UTC = 3:15 AM MST)
-    // Parse as UTC to get correct local time
     const [hours, minutes, seconds] = entry.timestamp.split(':').map(Number);
     const [year, month, day] = entry.date.split('-').map(Number);
     
-    // Create date in UTC, then convert to local
     const date = new Date(Date.UTC(year, month - 1, day, hours, minutes, seconds));
     
     return date.toLocaleString(undefined, {
@@ -51,7 +47,6 @@ function formatMemoryDate(entry: MemoryEntry): string {
       timeZoneName: 'short'
     });
   }
-  // Fallback: just show the timestamp if date is missing
   return entry.timestamp || 'Unknown';
 }
 
@@ -69,7 +64,6 @@ export function Memory() {
   const deleteMemory = useDeleteMemory();
   const updateMemory = useUpdateMemory();
 
-  // Ensure memory is always an array
   const memory = Array.isArray(memoryData) ? memoryData : [];
 
   const handleUpdate = async (file: string, index: number, content: string) => {
@@ -116,7 +110,6 @@ export function Memory() {
 
   const selectedMemory = memory?.find(m => m.file === selectedFile);
 
-  // Empty state - no memory files
   if (!isLoading && memory.length === 0) {
     return (
       <PageLayout title="Memory">
@@ -138,7 +131,6 @@ export function Memory() {
           </Card>
         </div>
 
-        {/* Create Modal for empty state */}
         <Modal
           isOpen={isCreating}
           onClose={() => setIsCreating(false)}
@@ -187,7 +179,6 @@ export function Memory() {
         </Button>
       }
     >
-      {/* Search */}
       <div className="flex gap-4 mb-6">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
@@ -200,7 +191,6 @@ export function Memory() {
         </div>
       </div>
 
-      {/* Search Results */}
       {searchQuery && searchResults && searchResults.length > 0 && (
         <Card>
           <CardHeader>
@@ -221,7 +211,6 @@ export function Memory() {
         </Card>
       )}
 
-      {/* Memory Files Grid */}
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[...Array(6)].map((_, i) => (
@@ -234,7 +223,6 @@ export function Memory() {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Files List */}
           <div className="space-y-2">
             <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">Memory Files</h3>
             {memory?.map((mem) => (
@@ -265,7 +253,6 @@ export function Memory() {
             ))}
           </div>
 
-          {/* Entries */}
           <div className="lg:col-span-2">
             {selectedMemory ? (
               <Card>
@@ -368,7 +355,6 @@ export function Memory() {
         </div>
       )}
 
-      {/* Create Modal */}
       <Modal
         isOpen={isCreating}
         onClose={() => setIsCreating(false)}
@@ -404,7 +390,6 @@ export function Memory() {
         </form>
       </Modal>
 
-      {/* Delete Confirmation */}
       <ConfirmDialog
         isOpen={!!deletingEntry}
         onClose={() => setDeletingEntry(null)}

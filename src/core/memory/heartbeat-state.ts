@@ -1,14 +1,3 @@
-/**
- * Heartbeat State Tracking
- * Cybara-compatible heartbeat-state.json for tracking periodic check times
- * 
- * Tracks last check times for:
- * - Email inbox checks
- * - Calendar event checks
- * - Weather updates
- * - Social media notifications
- * - Custom checks defined by the agent
- */
 
 import { readFileSync, existsSync, writeFileSync } from "fs";
 import { join } from "path";
@@ -17,9 +6,6 @@ import { memoryDir } from "../paths";
 const HEARTBEAT_STATE_FILE = "heartbeat-state.json";
 const HEARTBEAT_STATE_PATH = join(memoryDir, HEARTBEAT_STATE_FILE);
 
-/**
- * Heartbeat state structure
- */
 export interface HeartbeatState {
     lastChecks: Record<string, number | null>;
     lastHeartbeat: number | null;
@@ -41,9 +27,6 @@ const DEFAULT_STATE: HeartbeatState = {
     quietHoursEnd: 8,
 };
 
-/**
- * Load heartbeat state from file
- */
 export function loadHeartbeatState(): HeartbeatState {
     if (!existsSync(HEARTBEAT_STATE_PATH)) {
         return { ...DEFAULT_STATE };
@@ -58,16 +41,10 @@ export function loadHeartbeatState(): HeartbeatState {
     }
 }
 
-/**
- * Save heartbeat state to file
- */
 export function saveHeartbeatState(state: HeartbeatState): void {
     writeFileSync(HEARTBEAT_STATE_PATH, JSON.stringify(state, null, 2));
 }
 
-/**
- * Record a check for a specific service
- */
 export function recordCheck(checkName: string): HeartbeatState {
     const state = loadHeartbeatState();
     state.lastChecks[checkName] = Date.now();
@@ -77,9 +54,6 @@ export function recordCheck(checkName: string): HeartbeatState {
     return state;
 }
 
-/**
- * Get time since last check for a service (in minutes)
- */
 export function getTimeSinceCheck(checkName: string): number | null {
     const state = loadHeartbeatState();
     const lastCheck = state.lastChecks[checkName];
@@ -87,18 +61,12 @@ export function getTimeSinceCheck(checkName: string): number | null {
     return Math.floor((Date.now() - lastCheck) / 60000);
 }
 
-/**
- * Check if a service needs checking based on interval
- */
 export function needsCheck(checkName: string, intervalMinutes: number): boolean {
     const timeSince = getTimeSinceCheck(checkName);
     if (timeSince === null) return true;
     return timeSince >= intervalMinutes;
 }
 
-/**
- * Check if currently in quiet hours
- */
 export function isQuietHours(): boolean {
     const state = loadHeartbeatState();
     const { quietHoursStart, quietHoursEnd } = state;
@@ -110,7 +78,6 @@ export function isQuietHours(): boolean {
     const now = new Date();
     const currentHour = now.getHours();
 
-    // Handle overnight quiet hours (e.g., 23:00 - 08:00)
     if (quietHoursStart > quietHoursEnd) {
         return currentHour >= quietHoursStart || currentHour < quietHoursEnd;
     }
@@ -118,9 +85,6 @@ export function isQuietHours(): boolean {
     return currentHour >= quietHoursStart && currentHour < quietHoursEnd;
 }
 
-/**
- * Get checks that are due based on their intervals
- */
 export function getDueChecks(intervals: Record<string, number>): string[] {
     const due: string[] = [];
 
@@ -133,9 +97,6 @@ export function getDueChecks(intervals: Record<string, number>): string[] {
     return due;
 }
 
-/**
- * Set quiet hours
- */
 export function setQuietHours(start: number, end: number): void {
     const state = loadHeartbeatState();
     state.quietHoursStart = start;
@@ -143,9 +104,6 @@ export function setQuietHours(start: number, end: number): void {
     saveHeartbeatState(state);
 }
 
-/**
- * Get heartbeat summary for system prompt context
- */
 export function getHeartbeatSummary(): string {
     const state = loadHeartbeatState();
     const lines: string[] = [];
@@ -178,9 +136,6 @@ export function getHeartbeatSummary(): string {
     return lines.join("\n");
 }
 
-/**
- * Get heartbeat state file path
- */
 export function getHeartbeatStatePath(): string {
     return HEARTBEAT_STATE_PATH;
 }

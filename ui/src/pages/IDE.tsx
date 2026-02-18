@@ -1,7 +1,3 @@
-/**
- * IDE Page - VS Code-like file browser and code viewer with LSP integration
- * Browse workspaces from home directory, view and edit files with diagnostics
- */
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/Button';
@@ -37,7 +33,6 @@ import {
 import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/auth';
 
-// Types for file browsing
 interface FileEntry {
     name: string;
     path: string;
@@ -65,7 +60,6 @@ interface ReadResult {
     error?: string;
 }
 
-// LSP Diagnostic type
 interface Diagnostic {
     line: number;
     character: number;
@@ -83,7 +77,6 @@ interface LSPLanguage {
     bundled: boolean;
 }
 
-// Get file icon based on extension
 function getFileIcon(entry: FileEntry) {
     if (entry.type === 'directory') return null;
 
@@ -98,7 +91,6 @@ function getFileIcon(entry: FileEntry) {
     return <File className="w-4 h-4 text-gray-500" />;
 }
 
-// Format file size
 function formatSize(bytes?: number): string {
     if (bytes === undefined) return '';
     if (bytes < 1024) return `${bytes} B`;
@@ -106,7 +98,6 @@ function formatSize(bytes?: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// Prism language from extension
 function getPrismLanguage(ext?: string): string {
     const map: Record<string, string> = {
         '.ts': 'typescript',
@@ -142,7 +133,6 @@ function getPrismLanguage(ext?: string): string {
     return map[ext?.toLowerCase() || ''] || 'plaintext';
 }
 
-// Get severity icon
 function getSeverityIcon(severity: 'error' | 'warning' | 'info') {
     switch (severity) {
         case 'error':
@@ -154,7 +144,6 @@ function getSeverityIcon(severity: 'error' | 'warning' | 'info') {
     }
 }
 
-// File Tree Item Component
 function FileTreeItem({
     entry,
     level = 0,
@@ -215,7 +204,6 @@ function FileTreeItem({
     );
 }
 
-// Recursive File Tree Component
 function FileTree({
     path,
     level = 0,
@@ -305,7 +293,6 @@ function FileTree({
     );
 }
 
-// Code Viewer/Editor Component with Diagnostics
 function CodeViewer({
     path,
     autoRefresh,
@@ -351,7 +338,6 @@ function CodeViewer({
         setIsLoading(false);
     }, [path]);
 
-    // Fetch diagnostics for the file
     const fetchDiagnostics = useCallback(async () => {
         if (!path) return;
 
@@ -362,7 +348,6 @@ function CodeViewer({
                 setDiagnostics(data.diagnostics);
             }
         } catch {
-            // Silently fail - LSP might not be available
         }
     }, [path]);
 
@@ -372,14 +357,12 @@ function CodeViewer({
         fetchContent();
     }, [fetchContent]);
 
-    // Fetch diagnostics after content loads
     useEffect(() => {
         if (content !== null && path) {
             fetchDiagnostics();
         }
     }, [content, path, fetchDiagnostics]);
 
-    // Auto-refresh (only when not editing)
     useEffect(() => {
         if (!autoRefresh || !path || isEditing) return;
 
@@ -407,7 +390,6 @@ function CodeViewer({
                 setIsEditing(false);
                 setLastModified(new Date().toLocaleTimeString());
                 onSaveSuccess?.();
-                // Re-fetch diagnostics after save
                 setTimeout(fetchDiagnostics, 500);
             } else {
                 setSaveError(data.error || 'Failed to save');
@@ -457,7 +439,6 @@ function CodeViewer({
     const filename = path.split('/').pop() || path;
     const language = getPrismLanguage(extension);
 
-    // Create a map of line numbers to diagnostics for quick lookup
     const lineDiagnostics = new Map<number, Diagnostic[]>();
     diagnostics.forEach((d) => {
         const existing = lineDiagnostics.get(d.line) || [];
@@ -470,7 +451,6 @@ function CodeViewer({
 
     return (
         <div className="flex-1 flex flex-col overflow-hidden">
-            {/* File header */}
             <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-white/5">
                 <div className="flex items-center gap-2">
                     {getFileIcon({ name: filename, path, type: 'file', extension })}
@@ -547,11 +527,9 @@ function CodeViewer({
                 </div>
             )}
 
-            {/* Code content */}
             <div className="flex-1 overflow-auto">
                 {isEditing ? (
                     <div className="flex h-full">
-                        {/* Line numbers gutter */}
                         <div
                             className="flex-shrink-0 text-right pr-2 select-none text-gray-600 font-mono text-sm border-r border-white/5 bg-black/20"
                             style={{ paddingTop: '16px' }}
@@ -560,7 +538,6 @@ function CodeViewer({
                                 <div key={i} className="h-[1.5em] px-2">{i + 1}</div>
                             ))}
                         </div>
-                        {/* Editor */}
                         <textarea
                             value={editContent}
                             onChange={(e) => setEditContent(e.target.value)}
@@ -619,7 +596,6 @@ function CodeViewer({
                 )}
             </div>
 
-            {/* Diagnostics panel */}
             {showDiagnostics && diagnostics.length > 0 && (
                 <div className="max-h-48 overflow-y-auto border-t border-white/10 bg-black/30">
                     <div className="px-3 py-2 text-xs font-medium text-gray-400 border-b border-white/5 flex items-center gap-2">
@@ -647,7 +623,6 @@ function CodeViewer({
     );
 }
 
-// Create File/Folder Dialog
 function CreateDialog({
     isOpen,
     type,
@@ -722,7 +697,6 @@ function CreateDialog({
     );
 }
 
-// LSP Status Component
 function LSPStatus() {
     const [languages, setLanguages] = useState<LSPLanguage[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -762,7 +736,6 @@ function LSPStatus() {
     );
 }
 
-// Git Status Component
 function GitStatus({ path }: { path: string }) {
     const [branch, setBranch] = useState<string | null>(null);
     const [modified, setModified] = useState(0);
@@ -805,7 +778,6 @@ function GitStatus({ path }: { path: string }) {
     );
 }
 
-// Main IDE Page
 export function IDE() {
     const [currentPath, setCurrentPath] = useState<string>('~');
     const [selectedFile, setSelectedFile] = useState<FileEntry | null>(null);
@@ -815,7 +787,6 @@ export function IDE() {
     const [createType, setCreateType] = useState<'file' | 'directory' | null>(null);
     const [refreshKey, setRefreshKey] = useState(0);
 
-    // Load initial path info
     useEffect(() => {
         const fetchRoot = async () => {
             const res = await apiFetch(`/api/ide/browse?path=${encodeURIComponent(currentPath)}`);
@@ -865,7 +836,6 @@ export function IDE() {
 
     return (
         <div className="h-screen flex flex-col bg-[#050508]">
-            {/* Mini toolbar at top */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 bg-white/[0.02]">
                 <div className="flex items-center gap-2">
                     <Home className="w-4 h-4 text-gray-500" />
@@ -887,11 +857,8 @@ export function IDE() {
                 </div>
             </div>
 
-            {/* Main content */}
             <div className="flex-1 flex overflow-hidden">
-                {/* Sidebar - File Tree */}
                 <div className="w-64 border-r border-white/10 flex flex-col overflow-hidden bg-white/[0.01]">
-                    {/* Path header */}
                     <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2 bg-white/5">
                         <Button variant="ghost" size="sm" onClick={handleGoHome} className="p-1 h-6 w-6">
                             <Home className="w-3.5 h-3.5" />
@@ -912,7 +879,6 @@ export function IDE() {
                         </Button>
                     </div>
 
-                    {/* File tree */}
                     <div className="flex-1 overflow-y-auto py-2" key={refreshKey}>
                         <FileTree
                             path={rootInfo?.path || currentPath}
@@ -923,12 +889,10 @@ export function IDE() {
                         />
                     </div>
 
-                    {/* LSP Status */}
                     <LSPStatus />
                     <GitStatus path={rootInfo?.path || currentPath} />
                 </div>
 
-                {/* Main - Code Viewer */}
                 <div className="flex-1 flex flex-col overflow-hidden bg-[#0d0d12]">
                     <CodeViewer
                         path={selectedFile?.path || null}
@@ -938,7 +902,6 @@ export function IDE() {
                 </div>
             </div>
 
-            {/* Create Dialog */}
             <CreateDialog
                 isOpen={createType !== null}
                 type={createType || 'file'}

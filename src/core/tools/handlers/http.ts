@@ -1,4 +1,3 @@
-// Tool handlers - HTTP/API operations
 import { validateUrl } from "../../../api/security";
 import { createLogger } from "../../logger";
 
@@ -23,7 +22,6 @@ export async function handleHttp(args: Record<string, unknown>): Promise<HttpRes
     throw new Error("URL is required");
   }
 
-  // SSRF Protection: Validate URL before making request
   const urlValidation = await validateUrl(url);
   if (!urlValidation.valid) {
     log.warn(`SSRF blocked: ${urlValidation.error}`, { url });
@@ -48,7 +46,6 @@ export async function handleHttp(args: Record<string, unknown>): Promise<HttpRes
 
     clearTimeout(timeoutId);
 
-    // If redirect, validate the new URL too
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
       if (location) {
@@ -57,7 +54,6 @@ export async function handleHttp(args: Record<string, unknown>): Promise<HttpRes
           log.warn(`SSRF blocked redirect: ${redirectValidation.error}`, { location });
           throw new Error(`Redirect blocked: ${redirectValidation.error}`);
         }
-        // Follow the validated redirect
         return handleHttp({ ...args, url: new URL(location, url).toString() });
       }
     }
@@ -86,7 +82,6 @@ export async function handleHttp(args: Record<string, unknown>): Promise<HttpRes
   }
 }
 
-// Shorthand for common HTTP methods
 export async function handleHttpGet(args: Record<string, unknown>): Promise<HttpResponse> {
   return handleHttp({ ...args, method: "GET" });
 }

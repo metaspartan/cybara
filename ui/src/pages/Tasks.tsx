@@ -42,7 +42,6 @@ import { useTaskNotifications } from '../hooks/useNotifications';
 import { useQuery } from '@tanstack/react-query';
 import { tasksApi } from '@/lib/api';
 
-// Task Run History type
 interface TaskRun {
   id: string;
   task_id: string;
@@ -71,7 +70,6 @@ export function Tasks() {
   const [deletingTask, setDeletingTask] = useState<Task | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
 
-  // Notification hook for browser notifications
   const { permission, requestPermission, connected } = useTaskNotifications();
 
   const { data: tasks, isLoading } = useTasks();
@@ -84,7 +82,6 @@ export function Tasks() {
   const stopTask = useStopTask();
   const triggerTask = useTriggerTask();
 
-  // Fetch runs for expanded task
   const { data: taskRuns, isLoading: runsLoading } = useQuery<TaskRun[]>({
     queryKey: ['taskRuns', expandedTaskId],
     queryFn: async () => {
@@ -193,7 +190,6 @@ export function Tasks() {
       }
     >
       <div className="space-y-6">
-        {/* Search */}
         <div className="flex gap-4">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
@@ -206,7 +202,6 @@ export function Tasks() {
           </div>
         </div>
 
-        {/* Tasks List */}
         {isLoading ? (
           <div className="space-y-4">
             {[...Array(3)].map((_, i) => (
@@ -297,7 +292,6 @@ export function Tasks() {
                     </div>
                   </div>
 
-                  {/* Expandable Run History Panel */}
                   {expandedTaskId === task.id && (
                     <div className="mt-4 pt-4 border-t border-white/10">
                       <h4 className="text-sm font-medium text-gray-300 mb-3">Recent Runs</h4>
@@ -376,7 +370,6 @@ export function Tasks() {
           </div>
         )}
 
-        {/* Create Modal */}
         <TaskModal
           isOpen={isCreateModalOpen}
           onClose={() => setIsCreateModalOpen(false)}
@@ -386,7 +379,6 @@ export function Tasks() {
           isLoading={createTask.isPending}
         />
 
-        {/* Delete Confirmation */}
         <ConfirmDialog
           isOpen={!!deletingTask}
           onClose={() => setDeletingTask(null)}

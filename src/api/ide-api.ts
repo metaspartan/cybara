@@ -1,4 +1,3 @@
-// IDE API - File browsing and reading for the IDE page
 import { readdir, readFile, stat, writeFile, mkdir } from "fs/promises";
 import { join, basename, extname, dirname, resolve, relative, isAbsolute } from "path";
 import { homedir } from "os";
@@ -26,12 +25,10 @@ function isWithinHome(resolvedPath: string): boolean {
   return HOME_ROOTS.some((rootPath) => isWithinRoot(rootPath, resolvedPath));
 }
 
-// Security: Ensure path is within HOME_DIR
 function isPathAllowed(targetPath: string): boolean {
   return isWithinHome(resolve(targetPath));
 }
 
-// Normalize path - resolve ~ to home dir
 function normalizePath(inputPath: string): string {
   if (inputPath.startsWith("~")) {
     return join(HOME_DIR, inputPath.slice(1));
@@ -66,7 +63,6 @@ export interface ReadResult {
   error?: string;
 }
 
-// Check if file is likely binary
 function isBinaryExtension(ext: string): boolean {
   const binaryExts = [
     ".png",
@@ -106,7 +102,6 @@ function isBinaryExtension(ext: string): boolean {
   return binaryExts.includes(ext.toLowerCase());
 }
 
-// Browse directory
 export async function browseDirectory(inputPath?: string): Promise<BrowseResult> {
   const targetPath = normalizePath(inputPath || HOME_DIR);
 
@@ -176,11 +171,10 @@ export async function browseDirectory(inputPath?: string): Promise<BrowseResult>
           modifiedAt: itemStats.mtime.toISOString(),
         });
       } catch {
-        // Skip items we can't access
+        void 0;
       }
     }
 
-    // Sort: directories first, then alphabetically
     entries.sort((a, b) => {
       if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
       return a.name.localeCompare(b.name);
@@ -203,7 +197,6 @@ export async function browseDirectory(inputPath?: string): Promise<BrowseResult>
   }
 }
 
-// Read file content
 export async function readFileContent(inputPath: string): Promise<ReadResult> {
   const targetPath = normalizePath(inputPath);
 
@@ -290,10 +283,6 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// ============================================
-// WRITE OPERATIONS
-// ============================================
-
 export interface WriteResult {
   success: boolean;
   path: string;
@@ -307,7 +296,6 @@ export interface CreateResult {
   error?: string;
 }
 
-// Write/save file content
 export async function writeFileContent(inputPath: string, content: string): Promise<WriteResult> {
   const targetPath = normalizePath(inputPath);
 
@@ -319,7 +307,6 @@ export async function writeFileContent(inputPath: string, content: string): Prom
     };
   }
 
-  // Check if parent directory exists
   const parentDir = dirname(targetPath);
   if (!existsSync(parentDir)) {
     return {
@@ -364,7 +351,6 @@ export async function writeFileContent(inputPath: string, content: string): Prom
   }
 }
 
-// Create new file or directory
 export async function createItem(
   parentPath: string,
   name: string,
@@ -372,7 +358,6 @@ export async function createItem(
 ): Promise<CreateResult> {
   const parentDir = normalizePath(parentPath);
 
-  // Validate name - no path separators or invalid chars
   if (name.includes("/") || name.includes("\\") || name.includes("..")) {
     return {
       success: false,
@@ -425,7 +410,6 @@ export async function createItem(
     if (type === "directory") {
       await mkdir(targetPath, { recursive: true });
     } else {
-      // Create empty file
       await writeFile(targetPath, "", "utf-8");
     }
 

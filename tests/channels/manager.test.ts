@@ -134,7 +134,6 @@ describe("ChannelManager lifecycle wiring", () => {
     await waitFor(() => discordAdapter.stops.length === 1 && discordAdapter.starts.length === 2);
     expect(discordAdapter.stops).toEqual([discordChannel.id]);
 
-    // Web channel remains untouched and running.
     expect(webAdapter.starts).toHaveLength(1);
     expect(webAdapter.stops).toHaveLength(0);
     expect(webAdapter.isRunning(webChannel.id)).toBe(true);

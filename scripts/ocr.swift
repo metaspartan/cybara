@@ -1,5 +1,4 @@
 #!/usr/bin/env swift
-// OCR script using macOS Vision framework
 import Foundation
 import Vision
 import AppKit

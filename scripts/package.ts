@@ -1,14 +1,4 @@
 #!/usr/bin/env bun
-/**
- * Cybara Build Script
- *
- * Creates a standalone binary that includes:
- * - Server (API + WebUI serving)
- * - CLI/TUI interface
- * - Embedded static UI files
- *
- * Usage: bun run package
- */
 
 import { $ } from "bun";
 import {
@@ -30,37 +20,30 @@ const BINARY_NAME = "cybara";
 export async function runPackage(): Promise<void> {
   console.log("\n🚀 Cybara Packaging Script\n");
 
-  // Step 1: Clean release directory
   console.log("📁 Cleaning release directory...");
   if (existsSync(RELEASE_DIR)) {
     rmSync(RELEASE_DIR, { recursive: true });
   }
   mkdirSync(RELEASE_DIR, { recursive: true });
 
-  // Step 2: Build UI
   console.log("🎨 Building UI...");
   await $`cd ui && bun run build`.quiet();
   console.log("   ✓ UI built");
 
-  // Step 3: Build TypeScript
   console.log("📦 Building TypeScript...");
   if (!existsSync(DIST_DIR)) {
     mkdirSync(DIST_DIR);
   }
 
-  // Build main entry point
   await $`bun build src/main.ts --outdir ${DIST_DIR} --target bun --external electron`.quiet();
   console.log("   ✓ Main entry built");
 
-  // Build server
   await $`bun build src/index.ts --outdir ${DIST_DIR} --target bun --external electron`.quiet();
   console.log("   ✓ Server built");
 
-  // Build CLI
   await $`bun build src/cli.tsx --outdir ${DIST_DIR} --target bun --external electron`.quiet();
   console.log("   ✓ CLI built");
 
-  // Step 4: Copy UI dist to be embedded
   console.log("📋 Preparing static assets...");
   const uiDistSrc = "ui/dist";
   const uiDistDest = join(DIST_DIR, "ui", "dist");
@@ -70,16 +53,12 @@ export async function runPackage(): Promise<void> {
     console.log("   ✓ UI assets copied");
   }
 
-  // Step 5: Create the standalone binary with embedded files
   console.log("⚡ Compiling standalone binary...");
 
-  // Get target platform
   const platform = process.platform;
   const arch = process.arch;
   const binaryPath = join(RELEASE_DIR, BINARY_NAME);
 
-  // Compile with bun including embedded assets
-  // Using --compile to create single executable
   try {
     await $`bun build src/main.ts --compile --outfile ${binaryPath} --target bun --external electron`;
     console.log(`   ✓ Binary compiled: ${binaryPath}`);
@@ -88,17 +67,14 @@ export async function runPackage(): Promise<void> {
     process.exit(1);
   }
 
-  // Step 6: Copy UI assets next to binary (fallback for file-based serving)
   const releaseUiPath = join(RELEASE_DIR, "ui", "dist");
   mkdirSync(join(RELEASE_DIR, "ui"), { recursive: true });
   cpSync(uiDistSrc, releaseUiPath, { recursive: true });
   console.log("   ✓ UI assets bundled with binary");
 
-  // Step 7: Create VERSION file
   const pkg = JSON.parse(readFileSync("package.json", "utf-8"));
   writeFileSync(join(RELEASE_DIR, "VERSION"), pkg.version);
 
-  // Step 8: Show results
   const binarySize = statSync(binaryPath).size;
   const uiSize = getTotalSize(releaseUiPath);
 

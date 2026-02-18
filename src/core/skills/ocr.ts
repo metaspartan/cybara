@@ -1,4 +1,3 @@
-// OCR skill - extract text from images using tesseract or macOS Vision
 
 export async function handleOcr(args: Record<string, unknown>): Promise<unknown> {
     const path = args.path as string;
@@ -13,7 +12,6 @@ export async function handleOcr(args: Record<string, unknown>): Promise<unknown>
         throw new Error(`File not found: ${path}`);
     }
 
-    // Try tesseract first
     try {
         const result = Bun.spawnSync(["tesseract", path, "stdout", "-l", language], {
             stdout: "pipe",
@@ -30,12 +28,10 @@ export async function handleOcr(args: Record<string, unknown>): Promise<unknown>
             };
         }
     } catch {
-        // tesseract not available
+    void 0;
     }
 
-    // Try macOS Vision framework via shortcuts
     try {
-        // Create a temporary shortcut to use Vision OCR
         const script = `
       tell application "Shortcuts Events"
         run shortcut "Extract Text from Image" with input (POSIX file "${path}" as alias)
@@ -57,12 +53,10 @@ export async function handleOcr(args: Record<string, unknown>): Promise<unknown>
             }
         }
     } catch {
-        // Shortcuts not available or configured
+    void 0;
     }
 
-    // Alternative: Use screencapture + shortcuts for any image
     try {
-        // Use the macOS Vision framework via Python (if available)
         const pythonScript = `
 import Vision
 import Quartz
@@ -108,7 +102,7 @@ print(extract_text("${path}"))
             }
         }
     } catch {
-        // Python Vision not available
+    void 0;
     }
 
     throw new Error(
@@ -116,7 +110,6 @@ print(extract_text("${path}"))
     );
 }
 
-// Image description using built-in macOS features
 export async function handleImageDescribe(args: Record<string, unknown>): Promise<unknown> {
     const path = args.path as string;
 
@@ -129,7 +122,6 @@ export async function handleImageDescribe(args: Record<string, unknown>): Promis
         throw new Error(`File not found: ${path}`);
     }
 
-    // Get basic image info using sips
     try {
         const result = Bun.spawnSync(
             ["sips", "-g", "pixelWidth", "-g", "pixelHeight", "-g", "format", path],
@@ -152,7 +144,7 @@ export async function handleImageDescribe(args: Record<string, unknown>): Promis
             };
         }
     } catch {
-        // sips failed
+    void 0;
     }
 
     return {

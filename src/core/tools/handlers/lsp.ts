@@ -1,11 +1,7 @@
-// Tool handlers for LSP (Language Server Protocol)
-// Provides code intelligence to agents
-
 import { getLSPManager, initLSPManager } from "../../lsp";
 import { resolve, dirname } from "path";
 import { existsSync } from "fs";
 
-// Format diagnostic severity
 function severityToString(severity?: number): string {
   switch (severity) {
     case 1:
@@ -21,9 +17,6 @@ function severityToString(severity?: number): string {
   }
 }
 
-/**
- * Get diagnostics (errors/warnings) for a file or workspace
- */
 export async function handleLSPDiagnostics(args: Record<string, unknown>): Promise<{
   diagnostics: Array<{
     file: string;
@@ -42,7 +35,6 @@ export async function handleLSPDiagnostics(args: Record<string, unknown>): Promi
     throw new Error("Either 'file' or 'workspace' parameter is required");
   }
 
-  // Initialize manager with workspace
   const workspace = workspacePath || dirname(filePath!);
   const resolvedWorkspace = resolve(workspace);
 
@@ -63,7 +55,6 @@ export async function handleLSPDiagnostics(args: Record<string, unknown>): Promi
   }> = [];
 
   if (filePath) {
-    // Get diagnostics for specific file
     const resolvedPath = resolve(filePath);
     if (!existsSync(resolvedPath)) {
       throw new Error(`File not found: ${filePath}`);
@@ -82,7 +73,6 @@ export async function handleLSPDiagnostics(args: Record<string, unknown>): Promi
       });
     }
   } else {
-    // Get all diagnostics in workspace
     const allDiagnostics = manager.getAllDiagnostics();
     for (const [uri, diagnostics] of allDiagnostics) {
       const file = uri.replace("file://", "");
@@ -99,7 +89,6 @@ export async function handleLSPDiagnostics(args: Record<string, unknown>): Promi
     }
   }
 
-  // Build summary
   const errorCount = results.filter((d) => d.severity === "error").length;
   const warningCount = results.filter((d) => d.severity === "warning").length;
   let summary = "";
@@ -120,9 +109,6 @@ export async function handleLSPDiagnostics(args: Record<string, unknown>): Promi
   return { diagnostics: results, summary };
 }
 
-/**
- * Go to definition of symbol at position
- */
 export async function handleLSPDefinition(args: Record<string, unknown>): Promise<{
   locations: Array<{
     file: string;
@@ -173,9 +159,6 @@ export async function handleLSPDefinition(args: Record<string, unknown>): Promis
   };
 }
 
-/**
- * Find all references to symbol at position
- */
 export async function handleLSPReferences(args: Record<string, unknown>): Promise<{
   references: Array<{ file: string; line: number; column: number }>;
   count: number;
@@ -217,9 +200,6 @@ export async function handleLSPReferences(args: Record<string, unknown>): Promis
   };
 }
 
-/**
- * Get hover information for symbol at position
- */
 export async function handleLSPHover(args: Record<string, unknown>): Promise<{
   content: string | null;
   found: boolean;
@@ -251,7 +231,6 @@ export async function handleLSPHover(args: Record<string, unknown>): Promise<{
     return { content: null, found: false };
   }
 
-  // Extract content from hover result
   let content: string;
   if (typeof result.contents === "string") {
     content = result.contents;
@@ -266,13 +245,9 @@ export async function handleLSPHover(args: Record<string, unknown>): Promise<{
   return { content, found: true };
 }
 
-/**
- * Get list of supported languages and their availability
- */
 export async function handleLSPLanguages(_args: Record<string, unknown>): Promise<{
   languages: Array<{ name: string; available: boolean; command: string }>;
 }> {
-  // Use a temporary workspace
   const workspace = process.cwd();
   let manager;
   try {

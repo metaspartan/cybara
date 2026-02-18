@@ -54,7 +54,6 @@ async function stopServer(proc: ReturnType<typeof Bun.spawn> | null): Promise<vo
   try {
     proc.kill("SIGTERM");
   } catch {
-    // Already exited.
   }
   await Promise.race([proc.exited, sleep(5000)]);
 }
@@ -66,7 +65,6 @@ async function waitForServerReady(url: string, timeoutMs = 30000): Promise<void>
       const res = await fetch(`${url}/api/health`);
       if (res.ok) return;
     } catch {
-      // Server still starting.
     }
     await sleep(250);
   }
@@ -286,7 +284,6 @@ describe("Persistence + SSE e2e", () => {
       try {
         await reader?.cancel();
       } catch {
-        // Stream may already be closed.
       }
       await stopServer(proc);
     }

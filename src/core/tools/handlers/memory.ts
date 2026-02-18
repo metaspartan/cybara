@@ -1,4 +1,3 @@
-// Tool handlers - memory system
 import { readFileSync, existsSync, readdirSync, writeFileSync, appendFileSync, statSync } from "fs";
 import { join } from "path";
 import {
@@ -9,12 +8,8 @@ import {
 } from "../../memory";
 import { memoryDir } from "../../paths";
 
-// Track if vector store has been indexed
 let vectorStoreInitialized = false;
 
-/**
- * Index all memory files into the vector store (called once at startup or on first search)
- */
 async function ensureVectorStoreIndexed(): Promise<void> {
   if (vectorStoreInitialized) return;
 
@@ -37,7 +32,7 @@ async function ensureVectorStoreIndexed(): Promise<void> {
         const chunks = await vectorStore.indexFile(`memory/${file}`, content, "memory");
         if (chunks > 0) indexed++;
       } catch {
-        // Skip unreadable files
+        void 0;
       }
     }
 
@@ -62,13 +57,11 @@ export async function handleMemorySearch(args: Record<string, unknown>): Promise
     throw new Error("Query is required");
   }
 
-  // Ensure vector store is indexed
   await ensureVectorStoreIndexed();
 
   const vectorStore = getVectorStore();
   const stats = vectorStore.stats();
 
-  // Try semantic search first
   if (stats.provider !== "none" && stats.chunks > 0) {
     try {
       const vectorResults = await vectorStore.search(query, {
@@ -94,7 +87,6 @@ export async function handleMemorySearch(args: Record<string, unknown>): Promise
     }
   }
 
-  // Fallback to keyword search
   const results: Array<{ file: string; content: string; score: number; method: string }> = [];
 
   if (!existsSync(memoryDir)) {
@@ -112,7 +104,6 @@ export async function handleMemorySearch(args: Record<string, unknown>): Promise
         const content = readFileSync(filePath, "utf-8");
         const contentLower = content.toLowerCase();
 
-        // Calculate relevance score
         let score = 0;
         for (const word of queryWords) {
           const matches = (contentLower.match(new RegExp(word, "g")) || []).length;
@@ -120,10 +111,8 @@ export async function handleMemorySearch(args: Record<string, unknown>): Promise
         }
 
         if (score > 0) {
-          // Normalize score to 0-1 range
           const normalizedScore = Math.min(1, score / (queryWords.length * 3));
 
-          // Find the most relevant section
           const lines = content.split("\n");
           let bestSection = "";
           let bestSectionScore = 0;
@@ -149,11 +138,10 @@ export async function handleMemorySearch(args: Record<string, unknown>): Promise
           });
         }
       } catch {
-        // Skip unreadable files
+        void 0;
       }
     }
 
-    // Sort by score and limit results
     results.sort((a, b) => b.score - a.score);
     results.splice(maxResults);
   } catch (error) {
@@ -181,7 +169,6 @@ export async function handleMemoryGet(
     throw new Error("Path is required");
   }
 
-  // Handle relative paths
   let filePath = path;
   if (!path.startsWith("/")) {
     filePath = join(memoryDir, path);
@@ -219,25 +206,20 @@ export async function handleMemorySave(
     throw new Error("Content is required");
   }
 
-  // Get today's memory file
   const today = new Date().toISOString().split("T")[0];
   const filePath = join(memoryDir, `${today}.md`);
   const fileName = `${today}.md`;
 
-  // Create file with header if it doesn't exist
   if (!existsSync(filePath)) {
     writeFileSync(filePath, `# Memory - ${today}\n\n`);
   }
 
-  // Format the memory entry
   const timestamp = new Date().toISOString().split("T")[1].split(".")[0];
   const tagsStr = tags.length > 0 ? ` [${tags.join(", ")}]` : "";
   const entry = `\n## ${timestamp} - ${type}${tagsStr}\n\n${content}\n`;
 
-  // Append to the file
   appendFileSync(filePath, entry);
 
-  // Re-index this file in the vector store
   let indexed = false;
   try {
     const vectorStore = getVectorStore();
@@ -258,7 +240,6 @@ export async function handleMemorySave(
   };
 }
 
-// List all memory files
 export async function handleMemoryList(): Promise<{
   files: Array<{ name: string; date: string; size: number }>;
 }> {
@@ -282,13 +263,11 @@ export async function handleMemoryList(): Promise<{
   return { files };
 }
 
-// Create today's memory file if it doesn't exist
 export function getTodayMemoryPath(): string {
   const today = new Date().toISOString().split("T")[0];
   return join(memoryDir, `${today}.md`);
 }
 
-// Initialize today's memory file
 export function initializeTodayMemory(): void {
   const filePath = getTodayMemoryPath();
   if (!existsSync(filePath)) {
@@ -297,10 +276,6 @@ export function initializeTodayMemory(): void {
   }
 }
 
-/**
- * Save a durable memory to MEMORY.md
- * For persistent preferences, decisions, conventions, goals, and critical facts
- */
 export async function handleMemorySaveDurable(
   args: Record<string, unknown>
 ): Promise<{ success: boolean; path: string; category: string; indexed: boolean }> {
@@ -331,10 +306,6 @@ export async function handleMemorySaveDurable(
   };
 }
 
-/**
- * Get recent memory context for injection into prompts
- * Returns MEMORY.md + last 1-2 days of daily logs
- */
 export async function handleMemoryContext(
   args: Record<string, unknown>
 ): Promise<{ context: string; lines: number }> {
@@ -349,10 +320,6 @@ export async function handleMemoryContext(
   };
 }
 
-/**
- * Manage heartbeat state for periodic checks
- * Tracks last check times for services like email, calendar, weather, mentions
- */
 export async function handleHeartbeatState(args: Record<string, unknown>): Promise<{
   action: string;
   state?: import("../../memory").HeartbeatState;
@@ -392,7 +359,6 @@ export async function handleHeartbeatState(args: Record<string, unknown>): Promi
     }
 
     case "due": {
-      // Default check intervals in minutes
       const intervals = (args.intervals as Record<string, number>) || {
         email: 60, // Check email every hour
         calendar: 120, // Check calendar every 2 hours

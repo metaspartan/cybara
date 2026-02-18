@@ -34,13 +34,11 @@ export function Modal({ isOpen, onClose, title, description, children, size = 'm
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop with enhanced blur */}
       <div
         className="absolute inset-0 bg-black/70 backdrop-blur-md transition-opacity animate-in fade-in"
         onClick={onClose}
       />
 
-      {/* Modal with liquid glass effect */}
       <div className={cn(
         'relative w-full rounded-2xl overflow-hidden',
         'transform transition-all duration-300 ease-out',
@@ -48,12 +46,10 @@ export function Modal({ isOpen, onClose, title, description, children, size = 'm
         sizes[size],
         'glass-strong'
       )}>
-        {/* Shimmer border effect */}
         <div className="absolute inset-0 rounded-2xl pointer-events-none">
           <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/20 via-transparent to-white/10" />
         </div>
 
-        {/* Header */}
         {(title || description) && (
           <div className="relative flex items-start justify-between px-6 py-4 border-b border-white/10">
             <div>
@@ -69,7 +65,6 @@ export function Modal({ isOpen, onClose, title, description, children, size = 'm
           </div>
         )}
 
-        {/* Content */}
         <div className="relative p-6">
           {children}
         </div>

@@ -30,7 +30,6 @@ export function MCPServers() {
     const [showAddModal, setShowAddModal] = useState(false);
     const { addToast } = useUIStore();
 
-    // Load installed servers
     const loadServers = async () => {
         setLoading(true);
         try {
@@ -46,7 +45,6 @@ export function MCPServers() {
         }
     };
 
-    // Load registry
     const loadRegistry = async () => {
         setLoading(true);
         try {
@@ -177,7 +175,6 @@ export function MCPServers() {
                 </div>
             }
         >
-            {/* Tabs */}
             <div className="flex gap-2 mb-6">
                 <button
                     onClick={() => setTab('installed')}
@@ -201,7 +198,6 @@ export function MCPServers() {
                 </button>
             </div>
 
-            {/* Search (registry only) */}
             {tab === 'registry' && (
                 <div className="mb-6 relative max-w-md">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
@@ -214,61 +210,11 @@ export function MCPServers() {
                 </div>
             )}
 
-            {/* Content */}
             {loading ? (
                 <div className="flex items-center justify-center py-20">
                     <RefreshCw className="w-8 h-8 animate-spin text-indigo-500" />
                 </div>
             ) : tab === 'installed' ? (
-                /* Installed Servers */
-                <div className="grid gap-4">
-                    {servers.length === 0 ? (
-                        <Card className="p-12 text-center">
-                            <Server className="w-12 h-12 mx-auto mb-4 text-gray-500" />
-                            <h3 className="text-lg font-medium text-white mb-2">No MCP Servers Installed</h3>
-                            <p className="text-gray-400 mb-4">Browse the registry to install MCP servers</p>
-                            <Button onClick={() => setTab('registry')}>
-                                Browse Registry
-                            </Button>
-                        </Card>
-                    ) : (
-                        servers.map((server) => (
-                            <Card key={server.id} className="p-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500/20 to-violet-500/20 flex items-center justify-center">
-                                            <Server className="w-5 h-5 text-indigo-400" />
-                                        </div>
-                                        <div>
-                                            <h3 className="font-medium text-white">{server.name}</h3>
-                                            <p className="text-sm text-gray-400 font-mono">{server.command} {server.args}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        {getStatusBadge(server.status)}
-                                        <span className="text-sm text-gray-400">{server.toolCount} tools</span>
-                                        <div className="flex gap-2">
-                                            {server.status === 'running' ? (
-                                                <Button variant="ghost" size="sm" onClick={() => handleStop(server.id)}>
-                                                    <Square className="w-4 h-4" />
-                                                </Button>
-                                            ) : (
-                                                <Button variant="ghost" size="sm" onClick={() => handleStart(server.id)}>
-                                                    <Play className="w-4 h-4" />
-                                                </Button>
-                                            )}
-                                            <Button variant="ghost" size="sm" onClick={() => handleDelete(server.id)}>
-                                                <Trash2 className="w-4 h-4 text-red-400" />
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </Card>
-                        ))
-                    )}
-                </div>
-            ) : (
-                /* Registry Browser */
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {registryServers.map((server) => (
                         <Card key={server.id} className="p-4 hover:border-indigo-500/30 transition-colors">
@@ -308,7 +254,6 @@ export function MCPServers() {
                 </div>
             )}
 
-            {/* Add Server Modal */}
             <AddServerModal
                 isOpen={showAddModal}
                 onClose={() => setShowAddModal(false)}
@@ -321,7 +266,6 @@ export function MCPServers() {
     );
 }
 
-// Add Server Modal Component
 function AddServerModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; onClose: () => void; onSuccess: () => void }) {
     const [name, setName] = useState('');
     const [command, setCommand] = useState('bunx');

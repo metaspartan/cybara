@@ -32,7 +32,6 @@ interface ChatMessage {
   }[];
 }
 
-// Subagent spawn display component
 function SubagentCallItem({ subagent }: { subagent: { id: string; task: string; status: string } }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -75,7 +74,6 @@ function SubagentCallItem({ subagent }: { subagent: { id: string; task: string; 
   );
 }
 
-// Tool call display component
 function ToolCallItem({ tool }: { tool: ToolCall }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -125,7 +123,6 @@ function ToolCallItem({ tool }: { tool: ToolCall }) {
   );
 }
 
-// Thinking display component
 function ThinkingBlock({ thinking }: { thinking: string }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -148,7 +145,6 @@ function ThinkingBlock({ thinking }: { thinking: string }) {
   );
 }
 
-// Markdown message content
 function MessageContent({ content }: { content: string }) {
   return (
     <div className="prose prose-invert prose-sm max-w-none">
@@ -161,12 +157,9 @@ function MessageContent({ content }: { content: string }) {
             </pre>
           ),
           code({ className, children, ...props }: any) {
-            // If we're inside a <pre>, it's a code block — just render the <code> tag
-            // The pre component above handles the wrapper
             if (className) {
               return <code className={className} {...props}>{children}</code>;
             }
-            // Inline code
             return (
               <code className="bg-white/10 rounded px-1.5 py-0.5 text-[0.85em] font-mono" {...props}>
                 {children}
@@ -201,7 +194,6 @@ function MessageContent({ content }: { content: string }) {
   );
 }
 
-// Subagent Panel Component
 function SubagentPanel({
   isOpen,
   onClose,
@@ -231,7 +223,6 @@ function SubagentPanel({
   return (
     <>
       <div className="w-72 glass-strong border-l border-white/5 flex flex-col">
-        {/* Compact Header */}
         <div className="px-3 py-2.5 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
           <div className="flex items-center gap-2">
             <Zap className="w-3.5 h-3.5 accent-text" />
@@ -255,7 +246,6 @@ function SubagentPanel({
           </div>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
           {isLoading ? (
             <div className="text-center py-8 text-gray-500">
@@ -318,7 +308,6 @@ function SubagentPanel({
         </div>
       </div>
 
-      {/* Spawn Modal */}
       <Modal
         isOpen={showSpawnModal}
         onClose={() => setShowSpawnModal(false)}
@@ -351,7 +340,6 @@ function SubagentPanel({
         </div>
       </Modal>
 
-      {/* Subagent Detail Modal */}
       <Modal
         isOpen={!!selectedSubagent}
         onClose={() => setSelectedSubagent(null)}
@@ -386,7 +374,6 @@ function SubagentPanel({
               </div>
             </div>
 
-            {/* Result display for completed/failed subagents */}
             {selectedSubagent.result && (
               <div>
                 <p className="text-xs text-gray-500 mb-1">Result</p>
@@ -418,7 +405,6 @@ function SubagentPanel({
             </div>
 
             <div className="flex justify-end gap-2 pt-4 border-t border-white/10">
-              {/* View Session button */}
               {onViewSession && (
                 <button
                   className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/30 transition-all"
@@ -459,7 +445,6 @@ function SubagentPanel({
   );
 }
 
-// Sessions Panel Component
 function SessionsPanel({
   isOpen,
   onClose,
@@ -494,7 +479,6 @@ function SessionsPanel({
   return (
     <>
       <div className="w-72 glass-strong border-l border-white/5 flex flex-col">
-        {/* Compact Header */}
         <div className="px-3 py-2.5 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
           <div className="flex items-center gap-2">
             <MessageSquare className="w-3.5 h-3.5 accent-text" />
@@ -518,9 +502,7 @@ function SessionsPanel({
           </div>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
-          {/* New Session Button */}
           <button
             onClick={onNewSession}
             className="w-full p-2.5 rounded-lg bg-[rgba(var(--accent-primary),0.1)] border border-[rgba(var(--accent-primary),0.2)] hover:bg-[rgba(var(--accent-primary),0.15)] text-white text-xs font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer"
@@ -583,7 +565,6 @@ function SessionsPanel({
         </div>
       </div>
 
-      {/* Delete Confirmation Modal */}
       <Modal
         isOpen={!!showDeleteModal}
         onClose={() => setShowDeleteModal(null)}
@@ -655,17 +636,14 @@ export function Chat() {
     }
   };
 
-  // Handle URL session parameter (from Task page links)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const sessionParam = params.get('session');
 
     if (sessionParam && sessionParam !== sessionId) {
-      // Load the session from URL
       loadSessionMutation.mutateAsync(sessionParam).then((result) => {
         if (result?.messagesList) {
           loadSession(sessionParam, result.messagesList as ChatMessage[]);
-          // Clean up URL after loading
           window.history.replaceState({}, '', '/chat');
         }
       }).catch((error) => {
@@ -674,12 +652,10 @@ export function Chat() {
     }
   }, []); // Only run on mount
 
-  // Cast messages to include extended fields
   const typedMessages = messages as ChatMessage[];
 
   return (
     <div className="h-screen flex flex-col bg-[#050508]">
-      {/* Compact Header Toolbar */}
       <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-white/5 bg-[#0a0a0f]/90 backdrop-blur-xl flex-shrink-0">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <h1 className="text-sm sm:text-base font-semibold text-white">Chat</h1>
@@ -725,11 +701,8 @@ export function Chat() {
         </div>
       </div>
 
-      {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Chat Area */}
         <div className="flex-1 flex flex-col min-w-0">
-          {/* Messages - scrollable */}
           <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 space-y-4">
             {typedMessages.length === 0 ? (
               <div className="flex items-center justify-center h-full">
@@ -755,10 +728,8 @@ export function Chat() {
                     }
                   </div>
                   <div className={`max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] ${message.role === 'user' ? 'text-right' : ''}`}>
-                    {/* Thinking block */}
                     {message.thinking && <ThinkingBlock thinking={message.thinking} />}
 
-                    {/* Subagent calls */}
                     {message.subagent_calls && message.subagent_calls.length > 0 && (
                       <div className="space-y-1.5 mb-2">
                         {message.subagent_calls.map((subagent) => (
@@ -767,7 +738,6 @@ export function Chat() {
                       </div>
                     )}
 
-                    {/* Tool calls */}
                     {message.tool_calls && message.tool_calls.length > 0 && (
                       <div className="space-y-1.5 mb-2">
                         {message.tool_calls.map((tool) => (
@@ -776,7 +746,6 @@ export function Chat() {
                       </div>
                     )}
 
-                    {/* Message content */}
                     <div className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${message.role === 'user'
                       ? 'bg-[rgba(var(--accent-primary),0.15)] border border-[rgba(var(--accent-primary),0.2)]'
                       : 'bg-white/[0.03] border border-white/5'
@@ -810,7 +779,6 @@ export function Chat() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input - sticky bottom */}
           <div className="flex-shrink-0 px-3 sm:px-4 py-3 border-t border-white/5 bg-[#0a0a0f]/80 backdrop-blur-xl">
             <div className="flex gap-2 sm:gap-3">
               <input
@@ -831,7 +799,6 @@ export function Chat() {
           </div>
         </div>
 
-        {/* Sessions Panel */}
         {showSessionsPanel && (
           <SessionsPanel
             isOpen={showSessionsPanel}
@@ -848,13 +815,11 @@ export function Chat() {
           />
         )}
 
-        {/* Subagent Panel */}
         {showSubagentPanel && (
           <SubagentPanel
             isOpen={showSubagentPanel}
             onClose={() => setShowSubagentPanel(false)}
             onViewSession={async (sessionKey) => {
-              // Load the subagent's session into the chat view
               try {
                 const result = await loadSessionMutation.mutateAsync(sessionKey);
                 if (result?.messagesList) {

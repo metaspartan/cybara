@@ -1,11 +1,5 @@
-/**
- * Cross-Platform Utilities
- * Centralized helpers for platform detection and cross-platform operations
- */
-
 import { platform as osPlatform, arch as osArch } from "os";
 
-// Platform targets matching Bun's cross-compilation targets
 export type PlatformTarget =
   | "darwin_arm64"
   | "darwin_x64"
@@ -14,9 +8,6 @@ export type PlatformTarget =
   | "win32_x64"
   | "win32_arm64";
 
-/**
- * Get the current platform target
- */
 export function getPlatformTarget(): PlatformTarget | "unsupported" {
   const platform = osPlatform();
   const arch = osArch();
@@ -31,31 +22,18 @@ export function getPlatformTarget(): PlatformTarget | "unsupported" {
   return "unsupported";
 }
 
-/**
- * Check if current platform is Windows
- */
 export function isWindows(): boolean {
   return osPlatform() === "win32";
 }
 
-/**
- * Check if current platform is macOS
- */
 export function isMacOS(): boolean {
   return osPlatform() === "darwin";
 }
 
-/**
- * Check if current platform is Linux
- */
 export function isLinux(): boolean {
   return osPlatform() === "linux";
 }
 
-/**
- * Check if a command/binary exists on the system PATH
- * Uses 'where' on Windows, 'which' on Unix-like systems
- */
 export function commandExists(cmd: string): boolean {
   try {
     const checkCmd = isWindows() ? "where" : "which";
@@ -69,31 +47,18 @@ export function commandExists(cmd: string): boolean {
   }
 }
 
-/**
- * Get the appropriate shell for running commands
- * Returns [shell, flag] tuple for use with spawn
- */
 export function getShell(): [string, string] {
   return isWindows() ? ["cmd", "/c"] : ["sh", "-c"];
 }
 
-/**
- * Get the path separator for the current platform
- */
 export function getPathSeparator(): string {
   return isWindows() ? ";" : ":";
 }
 
-/**
- * Get the executable extension for the current platform
- */
 export function getExecutableExtension(): string {
   return isWindows() ? ".exe" : "";
 }
 
-/**
- * Convert a Unix-style path to the platform-appropriate format
- */
 export function normalizePath(path: string): string {
   if (isWindows()) {
     return path.replace(/\//g, "\\");
@@ -101,9 +66,6 @@ export function normalizePath(path: string): string {
   return path;
 }
 
-/**
- * Get HOME directory cross-platform
- */
 export function getHomeDir(): string {
   if (isWindows()) {
     return process.env.USERPROFILE || process.env.HOME || "C:\\Users\\Default";
@@ -111,9 +73,6 @@ export function getHomeDir(): string {
   return process.env.HOME || "/tmp";
 }
 
-/**
- * Get the temp directory cross-platform
- */
 export function getTempDir(): string {
   if (isWindows()) {
     return process.env.TEMP || process.env.TMP || "C:\\Windows\\Temp";

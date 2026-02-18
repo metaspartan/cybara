@@ -22,8 +22,6 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
   return response.json();
 }
 
-// ==================== AGENTS ====================
-
 export function useAgents() {
   return useQuery({
     queryKey: ['agents'],
@@ -97,7 +95,6 @@ export function useStopAgent() {
   });
 }
 
-// Running agent messaging
 export function useAgentMessage() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -141,8 +138,6 @@ export function useAgentState(id: string | null) {
     refetchInterval: 5000, // Refresh state every 5 seconds
   });
 }
-
-// ==================== PROVIDERS ====================
 
 export function useProviders() {
   return useQuery({
@@ -204,8 +199,6 @@ export function useProviderModels(providerId: string | null | undefined) {
   });
 }
 
-// ==================== CHANNELS ====================
-
 export function useChannels() {
   return useQuery({
     queryKey: ['channels'],
@@ -264,8 +257,6 @@ export function useDeleteChannel() {
   });
 }
 
-// ==================== TASKS ====================
-
 export function useTasks() {
   return useQuery({
     queryKey: ['tasks'],
@@ -316,8 +307,6 @@ export function useTriggerTask() {
   });
 }
 
-// ==================== SKILLS ====================
-
 export function useSkills() {
   return useQuery({
     queryKey: ['skills'],
@@ -341,8 +330,6 @@ export function useExecuteSkill() {
       }),
   });
 }
-
-// Enhanced skills hooks with eligibility status
 
 export interface SkillStatusInfo {
   name: string;
@@ -450,8 +437,6 @@ export function useUpdateAllSkills() {
   });
 }
 
-// ==================== MEMORY ====================
-
 export function useMemory() {
   return useQuery({
     queryKey: ['memory'],
@@ -497,8 +482,6 @@ export function useUpdateMemory() {
   });
 }
 
-// ==================== SESSIONS ====================
-
 export function useSessions() {
   return useQuery({
     queryKey: ['sessions'],
@@ -513,8 +496,6 @@ export function useDeleteSession() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
   });
 }
-
-// ==================== HEALTH & INFO ====================
 
 export interface HealthData {
   status: string;
@@ -551,16 +532,12 @@ export function useInfo() {
   });
 }
 
-// ==================== TOOLS ====================
-
 export function useTools() {
   return useQuery({
     queryKey: ['tools'],
     queryFn: () => fetchApi<Tool[]>('/tools'),
   });
 }
-
-// ==================== LSP ====================
 
 export interface LSPLanguageStatus {
   available: boolean;
@@ -627,8 +604,6 @@ export function useUninstallLSP() {
     },
   });
 }
-
-// ==================== SUBAGENTS ====================
 
 export interface Subagent {
   id: string;
@@ -698,9 +673,6 @@ export function useKillSubagent() {
   });
 }
 
-
-// ==================== SKILLS ====================
-
 export function useCreateSkill() {
   const queryClient = useQueryClient();
 
@@ -717,9 +689,6 @@ export function useCreateSkill() {
     },
   });
 }
-
-
-// ==================== SYSTEM PROMPT & IDENTITY ====================
 
 export interface SystemPromptConfig {
   template: string;
@@ -798,8 +767,6 @@ export function useUpdateIdentity() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['identity'] }),
   });
 }
-
-// ==================== METRICS ====================
 
 export interface MetricsOverview {
   tokenUsage: {
@@ -913,7 +880,6 @@ export function useMetricsProviders() {
   });
 }
 
-// Model performance metrics (TPS, latency)
 export interface ModelMetrics {
   models: Array<{
     model: string;

@@ -2,11 +2,7 @@ import { readFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 
 import { join, dirname, basename, extname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { homedir } from "os";
-// ============================================================================
-// Cybara-compatible Skills System (new modular architecture)
-// ============================================================================
 
-// Types
 export type {
   SkillInstallSpec,
   SkillMetadata,
@@ -23,7 +19,6 @@ export type {
   SkillsInstallPreferences,
 } from "./types";
 
-// Loader
 export {
   parseFrontmatter,
   parseSkillFile,
@@ -35,7 +30,6 @@ export {
   formatSkillsForPrompt,
 } from "./loader";
 
-// Gating
 export {
   hasBinary,
   hasEnvVar,
@@ -46,7 +40,6 @@ export {
   getSkillsStatusReport,
 } from "./gating";
 
-// Registry (multi-registry: ClawdHub, skills.sh, CybaraHub)
 export type {
   SkillRegistry,
   RegistrySkill,
@@ -64,20 +57,12 @@ export {
   registryManager,
 } from "./registry";
 
-// ============================================================================
-// Legacy Skill System (for backwards compatibility)
-// ============================================================================
-
 const __dirname = dirname(fileURLToPath(import.meta.url));
-// Calculate workspace path - handle both dev and compiled binary modes
-// In compiled binaries, __dirname points to virtual filesystem /$bunfs/root
 const getWorkspacePath = (): string => {
   if (__dirname.startsWith("/$bunfs") || __dirname.includes("$bunfs")) {
-    // Compiled binary - use executable path
     const execDir = dirname(process.execPath);
     return resolve(execDir, "..");
   }
-  // Development mode - __dirname is src/core/skills, go up 3 levels
   return join(__dirname, "..", "..", "..");
 };
 const workspace = getWorkspacePath();
@@ -96,17 +81,11 @@ export interface SkillDefinition {
   category: string;
 }
 
-// Default skills are now loaded from the local skills/ directory
-// Users can add their own skills by creating a folder in skills/ with a SKILL.md file
 const defaultSkills: SkillDefinition[] = [
-  // Skills are discovered from ./skills/{skill-name}/SKILL.md
-  // Add your custom skills there
 ];
 
-// Cache for loaded skills
 let skillsCache: Skill[] | null = null;
 
-// Load a single skill from SKILL.md
 function loadSkillFromFile(skillPath: string): Skill | null {
   if (!existsSync(skillPath)) {
     return null;
@@ -120,23 +99,19 @@ function loadSkillFromFile(skillPath: string): Skill | null {
     let name = folderName;
     let description = "";
 
-    // Parse YAML frontmatter (between --- markers)
     const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
     if (frontmatterMatch) {
       const frontmatter = frontmatterMatch[1];
 
-      // Extract name from frontmatter
       const nameMatch = frontmatter.match(/^name:\s*(.+)$/m);
       if (nameMatch) {
         name = nameMatch[1].trim();
       }
 
-      // Extract description from frontmatter (handle multiline with |)
       const descMatch = frontmatter.match(/^description:\s*\|?\s*\n?([\s\S]*?)(?=\n[a-z]+:|$)/m);
       if (descMatch) {
         description = descMatch[1].trim().split("\n").map(l => l.trim()).join(" ").slice(0, 300);
       } else {
-        // Single-line description
         const singleDescMatch = frontmatter.match(/^description:\s*(.+)$/m);
         if (singleDescMatch) {
           description = singleDescMatch[1].trim().slice(0, 300);
@@ -144,7 +119,6 @@ function loadSkillFromFile(skillPath: string): Skill | null {
       }
     }
 
-    // Fallback: extract from first heading if no frontmatter description
     if (!description) {
       const headingMatch = content.match(/#\s+([^\n]+)\n([^#]+)/);
       if (headingMatch) {
@@ -164,7 +138,6 @@ function loadSkillFromFile(skillPath: string): Skill | null {
   }
 }
 
-// Get all available skills
 export function getSkills(): Skill[] {
   if (skillsCache) {
     return skillsCache;
@@ -172,7 +145,6 @@ export function getSkills(): Skill[] {
 
   const skills: Skill[] = [];
 
-  // Load default skills
   for (const def of defaultSkills) {
     const skill = loadSkillFromFile(def.location);
     if (skill) {
@@ -182,7 +154,6 @@ export function getSkills(): Skill[] {
     }
   }
 
-  // Scan for custom skills in the platform's skills directory (root level)
   const skillsDir = join(workspace, "skills");
   if (existsSync(skillsDir)) {
     const entries = readdirSync(skillsDir);
@@ -197,7 +168,6 @@ export function getSkills(): Skill[] {
     }
   }
 
-  // Scan for installed skills from registry (~/.cybara/skills)
   const localSkillsDir = join(homedir(), ".cybara", "skills");
   if (existsSync(localSkillsDir)) {
     const entries = readdirSync(localSkillsDir);
@@ -217,7 +187,6 @@ export function getSkills(): Skill[] {
   return skills;
 }
 
-// Get skill by name
 export function getSkill(name: string): Skill | undefined {
   const skills = getSkills();
   const normalizedName = name.toLowerCase().replace(/\s+/g, "-");
@@ -228,18 +197,15 @@ export function getSkill(name: string): Skill | undefined {
   );
 }
 
-// Get skills by category
 export function getSkillsByCategory(category: string): Skill[] {
   return getSkills().filter((s) => s.category === category);
 }
 
-// Get available skill categories
 export function getSkillCategories(): string[] {
   const categories = new Set(getSkills().map((s) => s.category));
   return Array.from(categories);
 }
 
-// Clear skills cache (useful when skills are added/removed)
 export function clearSkillsCache(): void {
   skillsCache = null;
 }
@@ -255,7 +221,6 @@ function slugifySkillName(name: string): string {
 function normalizeSkillContent(name: string, description: string | undefined, content: string): string {
   const trimmed = content.trim();
 
-  // If caller provides full markdown/frontmatter, preserve it as-is.
   if (trimmed.startsWith("---") || trimmed.startsWith("#")) {
     return `${trimmed}\n`;
   }
@@ -300,41 +265,33 @@ export function createLocalSkill(data: {
   }
 }
 
-// Skill execution interface
 export interface SkillExecutor {
   (args: Record<string, unknown>): Promise<unknown>;
 }
 
-// Import skill handlers
 import { handleCalc, handleConvert } from "./calc";
 import { handlePdf } from "./pdf";
 import { handleOcr, handleImageDescribe } from "./ocr";
 
-// Built-in skill executors
 const builtinExecutors: Record<string, SkillExecutor> = {
-  // Calculator skills
   calc: handleCalc,
   calculate: handleCalc,
   convert: handleConvert,
   unit_convert: handleConvert,
 
-  // PDF skills
   pdf: handlePdf,
   pdf_extract: handlePdf,
 
-  // OCR skills
   ocr: handleOcr,
   image_to_text: handleOcr,
   image_describe: handleImageDescribe,
 };
 
-// Weather skill executor
 builtinExecutors.weather = async (args: Record<string, unknown>) => {
   const location = (args.location as string) || "";
   const format = (args.format as string) || "short";
 
   try {
-    // Use wttr.in for weather data
     const urlPath = location ? encodeURIComponent(location) : "";
     const formatParam = format === "detailed" ? "?format=j1" : format === "forecast" ? "?format=j1" : "?format=3";
 
@@ -364,7 +321,6 @@ builtinExecutors.weather = async (args: Record<string, unknown>) => {
   }
 };
 
-// Summarization skill executor
 builtinExecutors.summarization = async (args: Record<string, unknown>) => {
   const text = args.text as string;
   const maxLength = (args.maxLength as number) || 200;
@@ -374,11 +330,9 @@ builtinExecutors.summarization = async (args: Record<string, unknown>) => {
     throw new Error("Text is required for summarization");
   }
 
-  // Simple extractive summarization
   const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
 
   if (style === "bullet") {
-    // Return key sentences as bullet points
     const keyPoints = sentences.slice(0, Math.min(5, sentences.length));
     return {
       summary: keyPoints.map(s => `• ${s.trim()}`).join("\n"),
@@ -387,7 +341,6 @@ builtinExecutors.summarization = async (args: Record<string, unknown>) => {
     };
   }
 
-  // Brief or detailed style
   const targetSentences = style === "detailed"
     ? Math.ceil(sentences.length * 0.4)
     : Math.ceil(maxLength / 80);
@@ -402,7 +355,6 @@ builtinExecutors.summarization = async (args: Record<string, unknown>) => {
   };
 };
 
-// Video frames skill executor (requires ffmpeg)
 builtinExecutors.video_frames = async (args: Record<string, unknown>) => {
   const video = args.video as string;
   const interval = (args.interval as number) || 10;
@@ -417,12 +369,10 @@ builtinExecutors.video_frames = async (args: Record<string, unknown>) => {
     throw new Error(`Video file not found: ${video}`);
   }
 
-  // Create output directory
   if (!existsSync(output)) {
     mkdirSync(output, { recursive: true });
   }
 
-  // Check if ffmpeg is available (use 'where' on Windows, 'which' elsewhere)
   try {
     const checkCmd = process.platform === "win32" ? "where" : "which";
     const whichResult = Bun.spawnSync([checkCmd, "ffmpeg"]);
@@ -434,14 +384,12 @@ builtinExecutors.video_frames = async (args: Record<string, unknown>) => {
       };
     }
 
-    // Extract frames using ffmpeg
     const framePattern = join(output, "frame_%04d.jpg");
     const cmd = `ffmpeg -i "${video}" -vf "fps=1/${interval}" -frames:v ${count} "${framePattern}" -y 2>&1`;
 
     try {
       Bun.spawnSync(["sh", "-c", cmd]);
 
-      // List extracted frames
       const frames = readdirSync(output)
         .filter(f => f.startsWith("frame_"))
         .map(f => join(output, f));
@@ -468,13 +416,11 @@ builtinExecutors.video_frames = async (args: Record<string, unknown>) => {
   }
 };
 
-// Mactop skill executor - real-time hardware metrics for Apple Silicon Macs
 builtinExecutors.mactop = async (args: Record<string, unknown>) => {
   const seconds = (args.seconds as number) || 5;
   const mode = (args.mode as string) || "efficient";
 
   try {
-    // Check if mactop is available (macOS only)
     if (process.platform !== "darwin") {
       return {
         error: "mactop is only available on macOS with Apple Silicon.",
@@ -489,7 +435,6 @@ builtinExecutors.mactop = async (args: Record<string, unknown>) => {
       };
     }
 
-    // Run mactop for specified duration and capture output
     const cmd = `mactop -t ${seconds} -j`;
     const result = Bun.spawnSync(["sh", "-c", cmd], { timeout: (seconds + 2) * 1000 });
     const output = result.stdout.toString();
@@ -503,7 +448,6 @@ builtinExecutors.mactop = async (args: Record<string, unknown>) => {
         timestamp: new Date().toISOString(),
       };
     } catch {
-      // Fallback to text output if JSON parsing fails
       return {
         output: output.trim(),
         duration: seconds,
@@ -520,12 +464,10 @@ builtinExecutors.mactop = async (args: Record<string, unknown>) => {
   }
 };
 
-// Get skill executors
 export async function getSkillExecutors(): Promise<Record<string, SkillExecutor>> {
   return { ...builtinExecutors };
 }
 
-// Execute a skill by name
 export async function executeSkill(
   skillName: string,
   args: Record<string, unknown>
@@ -537,7 +479,6 @@ export async function executeSkill(
     return await executor(args);
   }
 
-  // Check if skill exists but has no executor
   const skill = getSkill(skillName);
   if (skill) {
     return {
@@ -554,7 +495,6 @@ export async function executeSkill(
   throw new Error(`Unknown skill: ${skillName}`);
 }
 
-// Register a custom skill executor
 export function registerSkillExecutor(name: string, executor: SkillExecutor): void {
   builtinExecutors[name.toLowerCase().replace(/\s+/g, "_")] = executor;
 }

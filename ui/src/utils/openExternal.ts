@@ -1,11 +1,5 @@
 import { apiFetch } from '@/lib/auth';
 
-/**
- * Open a URL in the system browser.
- * Uses the backend /api/open-url endpoint which works in both
- * Tauri desktop and regular browser contexts.
- * Falls back to window.open() if the backend call fails.
- */
 export async function openExternal(url: string): Promise<void> {
     try {
         const res = await apiFetch('/api/open-url', {
@@ -18,7 +12,6 @@ export async function openExternal(url: string): Promise<void> {
             return;
         }
     } catch {
-        // Backend unavailable, fall back
     }
     console.log('[openExternal] Falling back to window.open()');
     window.open(url, '_blank', 'noopener,noreferrer');

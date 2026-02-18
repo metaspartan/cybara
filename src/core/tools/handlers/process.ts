@@ -1,8 +1,6 @@
-// Tool handlers - process execution
 import { existsSync } from "fs";
 import { homeDir } from "../../paths";
 
-// Helper to expand tilde to actual home directory
 function expandTilde(path: string | undefined): string | undefined {
   if (!path) return path;
   if (path.startsWith("~")) {
@@ -23,7 +21,6 @@ export async function handleExec(
     throw new Error("Command is required");
   }
 
-  // Validate workdir if provided
   if (workdir && !existsSync(workdir)) {
     return {
       output: `Error: Working directory does not exist: ${workdir}`,
@@ -33,16 +30,19 @@ export async function handleExec(
   }
 
   try {
-    // Merge with system environment and ensure /usr/sbin is in PATH (needed for sysctl)
     const fullEnv = { ...process.env, ...env };
     if (!fullEnv.PATH?.includes("/usr/sbin")) {
       fullEnv.PATH = "/usr/sbin:" + fullEnv.PATH;
     }
+    const timeoutSeconds =
+      typeof timeout === "number" && Number.isFinite(timeout)
+        ? Math.min(Math.max(timeout, 1), 300)
+        : undefined;
 
     const result = Bun.spawnSync(["sh", "-c", command], {
       cwd: workdir || homeDir,
       env: fullEnv,
-      timeout: timeout ? timeout * 1000 : undefined,
+      timeout: timeoutSeconds ? timeoutSeconds * 1000 : undefined,
     });
 
     const stdout = result.stdout.toString();
@@ -61,7 +61,6 @@ export async function handleExec(
   }
 }
 
-// Async exec for long-running commands
 export async function handleExecAsync(
   args: Record<string, unknown>
 ): Promise<{ pid: number; output: string; exitCode: number }> {
@@ -86,7 +85,6 @@ export async function handleExecAsync(
   };
 }
 
-// Process management (placeholder for background process tracking)
 const runningProcesses = new Map<string, { pid: number; command: string; startedAt: Date }>();
 
 export async function handleProcess(args: Record<string, unknown>): Promise<unknown> {
@@ -120,16 +118,48 @@ export async function handleProcess(args: Record<string, unknown>): Promise<unkn
 export async function handleGit(
   args: Record<string, unknown>
 ): Promise<{ output: string; exitCode: number }> {
-  let command = args.command as string;
-  const workdir = args.workdir as string | undefined;
+  let command = (args.command as string | undefined)?.trim();
+  const workdir = expandTilde(args.workdir as string | undefined);
 
   if (!command) {
     throw new Error("Git command is required");
   }
 
   if (command.startsWith("git ")) {
-    command = command.slice(4);
+    command = command.slice(4).trim();
   }
 
-  return handleExec({ command: `git ${command}`, workdir });
+  const segments = command
+    .match(/"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'|[^\s]+/g)
+    ?.map((token) =>
+      token.startsWith('"') && token.endsWith('"')
+        ? token.slice(1, -1)
+        : token.startsWith("'") && token.endsWith("'")
+          ? token.slice(1, -1)
+          : token
+    )
+    .filter(Boolean);
+
+  if (!segments || segments.length === 0) {
+    throw new Error("Git command is required");
+  }
+
+  if (workdir && !existsSync(workdir)) {
+    return {
+      output: `Error: Working directory does not exist: ${workdir}`,
+      exitCode: 1,
+    };
+  }
+
+  const result = Bun.spawnSync(["git", ...segments], {
+    cwd: workdir || homeDir,
+    env: { ...process.env },
+  });
+
+  const stdout = result.stdout.toString();
+  const stderr = result.stderr.toString();
+  return {
+    output: stdout + (stderr ? "\n" + stderr : ""),
+    exitCode: result.exitCode ?? 0,
+  };
 }

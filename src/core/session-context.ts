@@ -1,4 +1,3 @@
-// Session persistence and context management for chat
 import db, { tables } from "./database";
 import { agentManager } from "./agent";
 import { providerManager, providers } from "./providers";
@@ -26,18 +25,15 @@ function parseSessionMessageMetadata(metadata?: string): SessionMessageMetadata 
   }
 }
 
-// Context window configuration (Cybara compatible)
 const DEFAULT_CONTEXT_TOKENS = 200_000;
 const CONTEXT_SAFETY_MARGIN = 1.2; // 20% buffer for token estimation
 const MAX_HISTORY_SHARE = 0.5; // Max 50% of context for history
 const SUMMARY_RESERVE_TOKENS = 4000; // Reserve tokens for summary generation
 
-// Cybara-style adaptive chunking
 const BASE_CHUNK_RATIO = 0.4;
 const MIN_CHUNK_RATIO = 0.15;
 const OVERSIZED_MESSAGE_THRESHOLD = 0.5; // Message > 50% of context is oversized
 
-// Simple token estimation (4 chars per token average)
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
@@ -55,21 +51,15 @@ export function estimateMessagesTokens(messages: ChatMessage[]): number {
   return messages.reduce((sum, msg) => sum + estimateMessageTokens(msg), 0);
 }
 
-/**
- * Cybara-style adaptive chunk ratio based on average message size.
- * When messages are large, we use smaller chunks to avoid exceeding model limits.
- */
 export function computeAdaptiveChunkRatio(messages: ChatMessage[], contextWindow: number): number {
   if (messages.length === 0) return BASE_CHUNK_RATIO;
 
   const totalTokens = estimateMessagesTokens(messages);
   const avgTokens = totalTokens / messages.length;
 
-  // Apply safety margin to account for estimation inaccuracy
   const safeAvgTokens = avgTokens * CONTEXT_SAFETY_MARGIN;
   const avgRatio = safeAvgTokens / contextWindow;
 
-  // If average message is > 10% of context, reduce chunk ratio
   if (avgRatio > 0.1) {
     const reduction = Math.min(avgRatio * 2, BASE_CHUNK_RATIO - MIN_CHUNK_RATIO);
     return Math.max(MIN_CHUNK_RATIO, BASE_CHUNK_RATIO - reduction);
@@ -78,18 +68,11 @@ export function computeAdaptiveChunkRatio(messages: ChatMessage[], contextWindow
   return BASE_CHUNK_RATIO;
 }
 
-/**
- * Check if a single message is too large to safely summarize.
- * If single message > 50% of context, it can't be summarized safely.
- */
 export function isOversizedForSummary(message: ChatMessage, contextWindow: number): boolean {
   const tokens = estimateMessageTokens(message) * CONTEXT_SAFETY_MARGIN;
   return tokens > contextWindow * OVERSIZED_MESSAGE_THRESHOLD;
 }
 
-/**
- * Split messages into chunks by token share for staged summarization.
- */
 export function splitMessagesByTokenShare(
   messages: ChatMessage[],
   parts: number = 2
@@ -127,25 +110,16 @@ export function splitMessagesByTokenShare(
   return chunks;
 }
 
-// Get context window for a model
-// Priority:
-// 1. Database lookup (provider_models table - most accurate)
-// 2. Static providers.ts definitions
-// 3. Fallback defaults with pattern matching
-
 export function getContextWindow(model?: string): number {
-  // Default to 200k (Claude Opus 4.5)
   if (!model) return DEFAULT_CONTEXT_TOKENS;
 
   const modelLower = model.toLowerCase();
 
-  // 1. Try database lookup first (most accurate, reflects user's configured providers)
   try {
     const dbModel = tables.providerModels.getByModelId(model);
     if (dbModel?.context_window && dbModel.context_window > 0) {
       return dbModel.context_window;
     }
-    // Also try lowercase
     if (model !== modelLower) {
       const dbModelLower = tables.providerModels.getByModelId(modelLower);
       if (dbModelLower?.context_window && dbModelLower.context_window > 0) {
@@ -153,10 +127,9 @@ export function getContextWindow(model?: string): number {
       }
     }
   } catch {
-    // Database not available, continue to fallbacks
+    void 0;
   }
 
-  // 2. Static lookup from providers.ts (authoritative catalog)
   for (const provider of Object.values(providers)) {
     const modelConfig = provider.models?.find(
       (m: { id: string; context?: number }) => m.id.toLowerCase() === modelLower
@@ -166,39 +139,26 @@ export function getContextWindow(model?: string): number {
     }
   }
 
-  // 3. Pattern-based fallback for unknown models (minimal set)
   const patternMatches = [
-    // Claude models
     { pattern: "claude", tokens: 200_000 },
-    // Gemini (1M context)
     { pattern: "gemini", tokens: 1_048_576 },
-    // GPT-5.x series (400k)
     { pattern: "gpt-5.1", tokens: 400_000 },
     { pattern: "gpt-5.2", tokens: 400_000 },
-    // GPT-4/5 (128k)
     { pattern: "gpt-5", tokens: 128_000 },
     { pattern: "gpt-4", tokens: 128_000 },
-    // O-series reasoning
     { pattern: "o1", tokens: 200_000 },
     { pattern: "o3", tokens: 200_000 },
-    // Kimi for Coding
     { pattern: "kimi-for-coding", tokens: 262_144 },
     { pattern: "kimi-code", tokens: 262_144 },
     { pattern: "kimi", tokens: 256_000 },
-    // MiniMax
     { pattern: "minimax", tokens: 200_000 },
-    // DeepSeek
     { pattern: "deepseek", tokens: 128_000 },
-    // Qwen
     { pattern: "qwen3-coder", tokens: 262_144 },
     { pattern: "qwen", tokens: 128_000 },
-    // Llama
     { pattern: "llama-3.3", tokens: 131_072 },
     { pattern: "llama", tokens: 128_000 },
-    // GLM
     { pattern: "glm-4.7", tokens: 204_800 },
     { pattern: "glm", tokens: 128_000 },
-    // Mistral
     { pattern: "mixtral", tokens: 32_000 },
     { pattern: "mistral", tokens: 128_000 },
   ];
@@ -212,7 +172,6 @@ export function getContextWindow(model?: string): number {
   return DEFAULT_CONTEXT_TOKENS;
 }
 
-// Check if context compaction is needed
 export function shouldCompactContext(
   messages: ChatMessage[],
   model?: string,
@@ -223,7 +182,6 @@ export function shouldCompactContext(
   const newContentTokens = newContent ? estimateTokens(newContent) : 0;
   const totalTokens = currentTokens + newContentTokens;
 
-  // Apply safety margin
   const maxUsableTokens = Math.floor(contextWindow / CONTEXT_SAFETY_MARGIN);
   const availableTokens = maxUsableTokens - totalTokens;
 
@@ -235,7 +193,6 @@ export function shouldCompactContext(
   };
 }
 
-// Summarize older messages to fit within context window
 export async function compactContext(
   messages: ChatMessage[],
   model?: string,
@@ -244,11 +201,9 @@ export async function compactContext(
   const contextWindow = getContextWindow(model);
   const maxHistoryTokens = Math.floor((contextWindow * MAX_HISTORY_SHARE) / CONTEXT_SAFETY_MARGIN);
 
-  // Keep system message and recent messages
   const systemMessages = messages.filter((m) => m.role === "system");
   const nonSystemMessages = messages.filter((m) => m.role !== "system");
 
-  // Always keep last 4 messages
   const recentMessages = nonSystemMessages.slice(-4);
   const olderMessages = nonSystemMessages.slice(0, -4);
 
@@ -260,24 +215,20 @@ export async function compactContext(
   const systemTokens = estimateMessagesTokens(systemMessages);
   const availableForOlder = maxHistoryTokens - recentTokens - systemTokens - SUMMARY_RESERVE_TOKENS;
 
-  // If older messages fit, no compaction needed
   const olderTokens = estimateMessagesTokens(olderMessages);
   if (olderTokens <= availableForOlder) {
     return { messages, wasCompacted: false };
   }
 
-  // Need to summarize older messages
   console.log(
     `[Context] Compacting ${olderMessages.length} messages (${olderTokens} tokens) into summary`
   );
 
-  // Generate summary using LLM if provider available
   let summary: string;
   try {
     if (providerId) {
       summary = await generateContextSummary(olderMessages, providerId, model);
     } else {
-      // Fallback: simple extraction of key points
       summary = createFallbackSummary(olderMessages);
     }
   } catch (error) {
@@ -285,7 +236,6 @@ export async function compactContext(
     summary = createFallbackSummary(olderMessages);
   }
 
-  // Create summary message
   const summaryMessage: ChatMessage = {
     role: "system",
     content: `[Context Summary: ${summary}]`,
@@ -305,7 +255,6 @@ export async function compactContext(
   };
 }
 
-// Generate summary using LLM
 async function generateContextSummary(
   messages: ChatMessage[],
   providerId: string,
@@ -337,12 +286,10 @@ ${messages.map((m) => `${m.role}: ${m.content.slice(0, 500)}${m.content.length >
   return response.content.slice(0, 1000); // Limit summary length
 }
 
-// Fallback summary when LLM is unavailable
 function createFallbackSummary(messages: ChatMessage[]): string {
   const topics = new Set<string>();
   const userMessages = messages.filter((m) => m.role === "user");
 
-  // Extract keywords from user messages
   for (const msg of userMessages.slice(-5)) {
     const words = msg.content
       .toLowerCase()
@@ -354,23 +301,19 @@ function createFallbackSummary(messages: ChatMessage[]): string {
   return `Previous conversation covered: ${Array.from(topics).slice(0, 5).join(", ") || "various topics"}. ${messages.length} messages summarized.`;
 }
 
-// Persist session to database
 export async function persistSession(
   sessionId: string,
   agentId: string,
   messages: ChatMessage[]
 ): Promise<void> {
   try {
-    // Check if session exists
     const existing = db.prepare("SELECT id FROM chat_sessions WHERE id = ?").get(sessionId);
 
     if (existing) {
-      // Update session
       db.prepare("UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(
         sessionId
       );
     } else {
-      // Create new session
       db.prepare(
         "INSERT INTO chat_sessions (id, agent_id, messages, created_at, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
       ).run(sessionId, agentId, JSON.stringify(messages.slice(0, 2))); // Store preview
@@ -384,12 +327,10 @@ export async function persistSession(
   }
 }
 
-// Load session from database
 export async function loadPersistedSession(
   sessionId: string
 ): Promise<{ agentId: string; messages: ChatMessage[] } | null> {
   try {
-    // Get session messages from database
     const sessionMessages =
       (tables.sessionMessages?.getBySession(sessionId) as PersistedSessionMessage[]) || [];
 
@@ -397,7 +338,6 @@ export async function loadPersistedSession(
       return null;
     }
 
-    // Reconstruct messages
     const messages: ChatMessage[] = sessionMessages.map((m) => ({
       role: m.role as ChatMessage["role"],
       content: m.content,
@@ -405,7 +345,6 @@ export async function loadPersistedSession(
       ...parseSessionMessageMetadata(m.metadata),
     }));
 
-    // Get agent from first message or session table
     let agentId = (sessionMessages[0] as { agent_id?: string })?.agent_id;
     if (!agentId) {
       const session = db
@@ -428,7 +367,6 @@ export async function loadPersistedSession(
   }
 }
 
-// List all persisted sessions
 export async function listPersistedSessions(): Promise<
   Array<{
     id: string;
@@ -469,13 +407,10 @@ export async function listPersistedSessions(): Promise<
   }
 }
 
-// Delete persisted session
 export async function deletePersistedSession(sessionId: string): Promise<boolean> {
   try {
-    // Delete messages first
     db.prepare("DELETE FROM session_messages WHERE session_id = ?").run(sessionId);
 
-    // Delete session
     db.prepare("DELETE FROM chat_sessions WHERE id = ?").run(sessionId);
 
     console.log(`[Session] Deleted persisted session ${sessionId.slice(0, 8)}...`);
@@ -486,7 +421,6 @@ export async function deletePersistedSession(sessionId: string): Promise<boolean
   }
 }
 
-// Get session stats
 export async function getSessionStats(sessionId: string): Promise<{
   messageCount: number;
   tokenCount: number;
@@ -515,7 +449,6 @@ export async function getSessionStats(sessionId: string): Promise<{
       lastMessageAt: string | null;
     };
 
-    // Get messages to count tokens
     const messages = (tables.sessionMessages?.getBySession(sessionId) || []) as Array<{
       content: string;
     }>;

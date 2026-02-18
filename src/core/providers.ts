@@ -1,8 +1,6 @@
 import { tables, type Provider, type ProviderModel } from "./database";
 
-// Providers - matching Cybara's exact model catalog
 export const providers = {
-  // OpenAI - pi-ai built-in
   openai: {
     name: "OpenAI",
     baseUrl: "https://api.openai.com/v1",
@@ -87,7 +85,6 @@ export const providers = {
       },
     ],
   },
-  // Anthropic - pi-ai built-in
   anthropic: {
     name: "Anthropic",
     baseUrl: "https://api.anthropic.com/v1",
@@ -144,7 +141,6 @@ export const providers = {
       },
     ],
   },
-  // Google - pi-ai built-in (uses API key from Google AI Studio)
   google: {
     name: "Google AI",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
@@ -177,7 +173,6 @@ export const providers = {
       },
     ],
   },
-  // Antigravity - Google OAuth (bundled auth plugin)
   antigravity: {
     name: "Antigravity",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
@@ -229,7 +224,6 @@ export const providers = {
       },
     ],
   },
-  // MiniMax - user's current provider
   minimax: {
     name: "MiniMax",
     baseUrl: "https://api.minimax.io/anthropic/v1",
@@ -262,7 +256,6 @@ export const providers = {
       },
     ],
   },
-  // Moonshot/Kimi
   moonshot: {
     name: "Moonshot AI",
     baseUrl: "https://api.moonshot.ai/v1",
@@ -279,7 +272,6 @@ export const providers = {
       },
     ],
   },
-  // Kimi for Coding
   "kimi-code": {
     name: "Kimi Code",
     baseUrl: "https://api.kimi.com/coding/v1",
@@ -297,7 +289,6 @@ export const providers = {
       },
     ],
   },
-  // Qwen Portal (OAuth)
   "qwen-portal": {
     name: "Qwen Portal",
     baseUrl: "https://portal.qwen.ai/v1",
@@ -324,7 +315,6 @@ export const providers = {
       },
     ],
   },
-  // Synthetic (various HF models)
   synthetic: {
     name: "Synthetic",
     baseUrl: "https://api.synthetic.new/anthropic",
@@ -540,7 +530,6 @@ export const providers = {
     authType: "none",
     models: [],
   },
-  // GitHub Copilot (OAuth Device Code Flow)
   github_copilot: {
     name: "GitHub Copilot",
     baseUrl: "https://api.github.com/copilot",
@@ -555,7 +544,6 @@ export const providers = {
     },
     models: [],
   },
-  // AWS Bedrock (AWS SDK)
   bedrock: {
     name: "AWS Bedrock",
     baseUrl: "https://bedrock-runtime.{region}.amazonaws.com",
@@ -563,7 +551,6 @@ export const providers = {
     authType: "aws-sdk",
     models: [],
   },
-  // Groq
   groq: {
     name: "Groq",
     baseUrl: "https://api.groq.com/openai/v1",
@@ -596,7 +583,6 @@ export const providers = {
       },
     ],
   },
-  // OpenRouter
   openrouter: {
     name: "OpenRouter",
     baseUrl: "https://openrouter.ai/api/v1",
@@ -629,7 +615,6 @@ export const providers = {
       },
     ],
   },
-  // OpenCode Zen (special proxy provider)
   opencode_zen: {
     name: "OpenCode Zen",
     baseUrl: "https://opencode.ai/zen/v1",
@@ -809,7 +794,6 @@ export const providers = {
       },
     ],
   },
-  // OpenAI Codex (ChatGPT OAuth) - from cybara openai-codex-model-default.ts
   "openai-codex": {
     name: "OpenAI Codex (ChatGPT)",
     baseUrl: "https://api.openai.com/v1",
@@ -846,7 +830,6 @@ export const providers = {
       },
     ],
   },
-  // Chutes (OAuth) - from cybara onboard-types.ts
   chutes: {
     name: "Chutes",
     baseUrl: "https://api.chutes.ai/v1",
@@ -856,7 +839,6 @@ export const providers = {
     oauthLoginUrl: "https://chutes.ai/app/api-keys",
     models: [],
   },
-  // Vercel AI Gateway (API key) - from cybara auth-choice.apply.api-providers.ts
   "vercel-ai-gateway": {
     name: "Vercel AI Gateway",
     baseUrl: "https://gateway.ai.vercel.app/v1",
@@ -881,7 +863,6 @@ export const providers = {
       },
     ],
   },
-  // Google Gemini CLI (OAuth) - from cybara auth-choice.apply.google-gemini-cli.ts
   "google-gemini-cli": {
     name: "Google Gemini CLI",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
@@ -908,7 +889,6 @@ export const providers = {
       },
     ],
   },
-  // Copilot Proxy (OAuth) - local proxy for VS Code Copilot models
   "copilot-proxy": {
     name: "Copilot Proxy",
     baseUrl: "http://localhost:1234/v1",
@@ -918,7 +898,6 @@ export const providers = {
     oauthLoginUrl: "https://github.com/settings/copilot",
     models: [],
   },
-  // xAI - Grok models (OpenAI-compatible API)
   xai: {
     name: "xAI (Grok)",
     baseUrl: "https://api.x.ai/v1",
@@ -967,7 +946,6 @@ export const providers = {
       },
     ],
   },
-  // Baidu Qianfan - ERNIE models (OpenAI-compatible API)
   qianfan: {
     name: "Baidu Qianfan",
     baseUrl: "https://qianfan.baidubce.com/v2",
@@ -1241,14 +1219,12 @@ class ProviderManager {
   }
 
   seedDefaults(): void {
-    // Seed default providers if not exists
     const existing = tables.providers.all() as Provider[];
     const existingProviders = new Set(existing.map((p) => p.provider));
 
     for (const [key, config] of Object.entries(providers)) {
       if (existingProviders.has(key)) continue;
 
-      // Skip providers that require credentials
       if (config.authType === "oauth" || config.authType === "api_key") continue;
 
       try {

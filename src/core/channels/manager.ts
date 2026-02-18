@@ -1,4 +1,3 @@
-// Channel Manager - Central registry for all channel adapters
 import { tables, type Channel } from "../database";
 import { channels, type ChannelType, type ChannelAdapter, type ToolCallInfo } from "./types";
 import { telegramBot, telegramSessions } from "./adapters/telegram";
@@ -15,7 +14,6 @@ import {
   escapeMarkdown,
 } from "./formatting";
 
-// Re-export session maps for backwards compatibility
 export {
   telegramSessions,
   discordSessions,
@@ -52,7 +50,6 @@ export class ChannelManager {
   private adapters = new Map<ChannelType, ChannelAdapter>();
 
   constructor() {
-    // Register all production adapters
     this.registerAdapter("telegram", telegramBot);
     this.registerAdapter("discord", discordAdapter);
     this.registerAdapter("slack", slackAdapter);
@@ -77,14 +74,12 @@ export class ChannelManager {
       const rawConfig = parseChannelConfig(c.config, c.id);
       const channelDef = channels[c.type as ChannelType];
 
-      // Mask sensitive fields but preserve non-sensitive values
       const maskedConfig: Record<string, unknown> = {};
       if (channelDef?.fields) {
         for (const field of channelDef.fields) {
           const fieldName = field.name;
           if (rawConfig[fieldName] !== undefined) {
             if (field.type === "password") {
-              // Indicate password is set without revealing it
               maskedConfig[fieldName] = "••••••••";
             } else {
               maskedConfig[fieldName] = rawConfig[fieldName];
@@ -134,7 +129,6 @@ export class ChannelManager {
     const id = crypto.randomUUID();
     tables.channels.create({ id, type, name, config, enabled: true });
 
-    // If there's an adapter for this type, start it
     const adapter = this.adapters.get(type);
     if (adapter) {
       this.startAdapter(id, type, config);
@@ -180,7 +174,6 @@ export class ChannelManager {
     await this.startAdapter(channelId, type, config);
   }
 
-  // Auto-setup Telegram with bot token
   async setupTelegram(botToken: string, baseUrl: string): Promise<Channel | null> {
     const existing = (tables.channels.all() as Channel[]).find((c) => c.type === "telegram");
     if (existing) {
@@ -191,7 +184,6 @@ export class ChannelManager {
       };
       this.update(existing.id, { config });
 
-      // Only start bot if not already running
       if (!telegramBot.isRunning(existing.id)) {
         await this.startAdapter(existing.id, "telegram", config);
       } else {
@@ -200,7 +192,6 @@ export class ChannelManager {
       return { ...existing, config };
     }
 
-    // Create new Telegram channel
     const id = crypto.randomUUID();
     const webhookUrl = `${baseUrl}/api/webhooks/telegram/${id}`;
     const config = { bot_token: botToken, webhook_url: webhookUrl };
@@ -222,7 +213,6 @@ export class ChannelManager {
     const mergedConfig = updates.config ? { ...existingConfig, ...updates.config } : existingConfig;
     const nextEnabled = updates.enabled !== undefined ? updates.enabled : existingEnabled;
 
-    // Merge config if updating
     let finalUpdates = updates;
     if (updates.config && existing.config) {
       finalUpdates = {
@@ -237,16 +227,13 @@ export class ChannelManager {
     const isEnabling = updates.enabled === true && !existingEnabled;
     const hasConfigUpdate = !!updates.config;
 
-    // Disable: stop running adapter
     if (isDisabling) {
       this.stopAdapter(id, existingType);
     }
 
-    // Config update on enabled channel: restart adapter to apply config changes
     if (hasConfigUpdate && nextEnabled) {
       this.restartAdapter(id, existingType, mergedConfig);
     } else if (isEnabling) {
-      // Enable without config changes: start adapter with persisted config
       this.startAdapter(id, existingType, mergedConfig);
     }
 
@@ -256,7 +243,6 @@ export class ChannelManager {
   delete(id: string): boolean {
     const existing = this.get(id);
     if (existing) {
-      // Stop adapter if running
       const adapter = this.adapters.get(existing.type as ChannelType);
       if (adapter?.isRunning(id)) {
         adapter.stop(id);
@@ -275,7 +261,6 @@ export class ChannelManager {
     };
   }
 
-  // Initialize all channels on startup
   async initializeAll(): Promise<void> {
     const all = tables.channels.all() as Channel[];
 
@@ -290,7 +275,6 @@ export class ChannelManager {
     }
   }
 
-  // Format chat response for a specific channel
   formatChatResponse(
     response: {
       content: string;
@@ -301,7 +285,6 @@ export class ChannelManager {
   ): string {
     let text = response.content;
 
-    // Add tool calls first (they happened before the response)
     if (response.tool_calls && response.tool_calls.length > 0) {
       if (channelType === "telegram") {
         const toolSection = formatToolCallsForTelegram(response.tool_calls);
@@ -314,7 +297,6 @@ export class ChannelManager {
       }
     }
 
-    // Add thinking tags (collapsible where supported)
     if (response.thinking) {
       if (channelType === "telegram") {
         const thinkingPreview =
@@ -335,5 +317,4 @@ export class ChannelManager {
 
 export const channelManager = new ChannelManager();
 
-// Re-export telegramBot for backwards compatibility
 export { telegramBot };

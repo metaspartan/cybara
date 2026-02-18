@@ -12,7 +12,6 @@ interface PageLayoutProps {
 export function PageLayout({ children, title, subtitle, actions, noPadding }: PageLayoutProps) {
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Compact Header */}
       <header className="sticky top-0 z-30 border-b border-white/5 bg-[#0a0a0f]/90 backdrop-blur-xl">
         <div className="px-4 sm:px-6 py-3">
           <div className="flex items-center justify-between gap-4">
@@ -33,7 +32,6 @@ export function PageLayout({ children, title, subtitle, actions, noPadding }: Pa
         </div>
       </header>
 
-      {/* Content */}
       <main className={cn(
         "flex-1 flex flex-col",
         !noPadding && "px-4 sm:px-6 py-4 sm:py-6"

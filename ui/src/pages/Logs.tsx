@@ -113,7 +113,6 @@ export function Logs() {
     try {
       const response = await logsApi.search(searchQuery);
       if (response.success) {
-        // Combine all log types from search results and map to LogEntry format
         const allLogs: LogEntry[] = [
           ...(response.data?.system || []).map((l: any) => ({ ...l })),
           ...(response.data?.sessionMessages || []).map((l: any) => ({
@@ -179,7 +178,6 @@ export function Logs() {
       }
     >
       <div className="space-y-6">
-        {/* Stats Cards */}
         {stats && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card>
@@ -229,7 +227,6 @@ export function Logs() {
           </div>
         )}
 
-        {/* Search & Filters */}
         <Card>
           <CardContent className="p-4">
             <div className="flex flex-col md:flex-row gap-4">
@@ -273,7 +270,6 @@ export function Logs() {
           </CardContent>
         </Card>
 
-        {/* Logs List */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">

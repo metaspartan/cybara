@@ -67,7 +67,6 @@ export function Tools() {
       title="Tools"
       subtitle="Built-in tools available to agents"
     >
-      {/* Search and Filter */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
@@ -106,7 +105,6 @@ export function Tools() {
         </div>
       </div>
 
-      {/* Tools List */}
       {isLoading ? (
         <div className="space-y-2">
           {[...Array(5)].map((_, i) => (
@@ -132,7 +130,6 @@ export function Tools() {
               key={tool.name}
               className="rounded-xl border border-white/10 bg-white/5 hover:bg-white/[0.07] transition-colors overflow-hidden"
             >
-              {/* Tool Header - Always visible */}
               <button
                 onClick={() => setExpandedTool(expandedTool === tool.name ? null : tool.name)}
                 className="w-full px-4 py-4 flex items-center gap-4"
@@ -163,11 +160,9 @@ export function Tools() {
                 )} />
               </button>
 
-              {/* Expanded Details */}
               {expandedTool === tool.name && (
                 <div className="px-4 pb-4 border-t border-white/10 pt-4">
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Parameters */}
                     {tool.input_schema && Object.keys(tool.input_schema.properties || {}).length > 0 && (
                       <div>
                         <h4 className="text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
@@ -190,7 +185,6 @@ export function Tools() {
                       </div>
                     )}
 
-                    {/* Permissions */}
                     {tool.permissions && tool.permissions.length > 0 && (
                       <div>
                         <h4 className="text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">

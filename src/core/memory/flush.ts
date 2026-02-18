@@ -1,5 +1,3 @@
-// Memory Flush System - Cybara Compatible
-// Triggers memory saves before context compaction to preserve important information
 
 import { tables } from "../database";
 import {
@@ -8,7 +6,6 @@ import {
     estimateMessagesTokens
 } from "../session-context";
 
-// Re-export for backwards compatibility
 export { getContextWindow as getDefaultContextWindow };
 export { estimateTokens, estimateMessagesTokens };
 
@@ -33,9 +30,6 @@ export interface MemoryFlushSettings {
     systemPrompt: string;
 }
 
-/**
- * Load memory flush settings from config
- */
 export function resolveMemoryFlushSettings(): MemoryFlushSettings | null {
     const config = tables.config.get("memoryFlush");
     let settings: Partial<MemoryFlushSettings> = {};
@@ -44,7 +38,7 @@ export function resolveMemoryFlushSettings(): MemoryFlushSettings | null {
         try {
             settings = JSON.parse(config.value);
         } catch {
-            // Use defaults
+        void 0;
         }
     }
 
@@ -61,9 +55,6 @@ export function resolveMemoryFlushSettings(): MemoryFlushSettings | null {
     };
 }
 
-/**
- * Determine if memory flush should run based on token usage
- */
 export function shouldRunMemoryFlush(params: {
     totalTokens: number;
     contextWindowTokens: number;
@@ -74,12 +65,10 @@ export function shouldRunMemoryFlush(params: {
     const softThreshold = params.softThresholdTokens ?? DEFAULT_MEMORY_FLUSH_SOFT_TOKENS;
     const threshold = Math.max(0, params.contextWindowTokens - softThreshold);
 
-    // Not near threshold yet
     if (params.totalTokens < threshold) {
         return false;
     }
 
-    // Already flushed for this compaction cycle
     if (
         typeof params.lastFlushCompactionCount === "number" &&
         params.lastFlushCompactionCount === params.currentCompactionCount
@@ -89,5 +78,4 @@ export function shouldRunMemoryFlush(params: {
 
     return true;
 }
-
 

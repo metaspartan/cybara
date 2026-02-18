@@ -10,7 +10,6 @@ import type { AvailableProvider } from '@/types';
 
 type WizardStep = 'welcome' | 'provider' | 'apikey' | 'oauth' | 'agent' | 'complete';
 
-// Helper to determine what auth flow a provider needs
 function getAuthFlow(provider: AvailableProvider): 'api_key' | 'oauth' | 'none' {
     if (!provider.authType || provider.authType === 'none') return 'none';
     if (provider.authType === 'oauth' || provider.authType === 'aws-sdk') return 'oauth';
@@ -31,7 +30,6 @@ export function Setup() {
     const createProvider = useCreateProvider();
     const createDefaultAgent = useCreateDefaultAgent();
 
-    // Skip wizard if already set up
     useEffect(() => {
         if (!providersLoading && !agentsLoading) {
             if (providers && providers.length > 0 && agents && agents.length > 0) {
@@ -49,10 +47,8 @@ export function Setup() {
         if (authFlow === 'api_key') {
             setStep('apikey');
         } else if (authFlow === 'oauth') {
-            // OAuth providers need special handling - can't be fully set up in wizard
             setStep('oauth');
         } else {
-            // No auth needed (e.g., Ollama) - create directly
             handleCreateProvider(provider.id, '');
         }
     };
@@ -76,8 +72,6 @@ export function Setup() {
     };
 
     const handleSkipOAuth = () => {
-        // For OAuth providers, create a placeholder entry without credentials
-        // User will need to complete OAuth flow in Settings later
         if (selectedProvider) {
             handleCreateProvider(selectedProvider.id, '');
         }
@@ -90,7 +84,6 @@ export function Setup() {
             await createDefaultAgent.mutateAsync();
             await completeSetup();
         } catch (err) {
-            // Agent might already exist, that's okay
             await completeSetup();
         }
     };
@@ -128,7 +121,6 @@ export function Setup() {
     return (
         <div className="min-h-screen w-full bg-[#0a0a0f] flex items-center justify-center">
             <div className="w-full max-w-xl mx-auto px-4">
-                {/* Progress indicator */}
                 <div className="flex items-center justify-center gap-2 mb-8">
                     {['welcome', 'provider', 'apikey', 'agent', 'complete'].map((s, i) => (
                         <div key={s} className="flex items-center">
@@ -146,7 +138,6 @@ export function Setup() {
 
                 <Card className="backdrop-blur-xl bg-white/5 border-white/10">
                     <CardContent className="p-8">
-                        {/* Welcome Step */}
                         {step === 'welcome' && (
                             <div className="text-center space-y-6">
                                 <div className="w-20 h-20 mx-auto flex items-center justify-center">
@@ -180,7 +171,6 @@ export function Setup() {
                             </div>
                         )}
 
-                        {/* Provider Selection Step */}
                         {step === 'provider' && (
                             <div className="space-y-6">
                                 <div className="text-center">
@@ -222,7 +212,6 @@ export function Setup() {
                             </div>
                         )}
 
-                        {/* API Key Step */}
                         {step === 'apikey' && selectedProvider && (
                             <div className="space-y-6">
                                 <div className="text-center">
@@ -263,7 +252,6 @@ export function Setup() {
                             </div>
                         )}
 
-                        {/* OAuth Step - for providers that need OAuth flow */}
                         {step === 'oauth' && selectedProvider && (
                             <div className="space-y-6">
                                 <div className="text-center">
@@ -299,7 +287,6 @@ export function Setup() {
                             </div>
                         )}
 
-                        {/* Agent Creation Step */}
                         {step === 'agent' && (
                             <div className="space-y-6">
                                 <div className="text-center">
@@ -336,7 +323,6 @@ export function Setup() {
                             </div>
                         )}
 
-                        {/* Complete Step */}
                         {step === 'complete' && (
                             <div className="text-center space-y-6">
                                 <div className="w-20 h-20 mx-auto rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">

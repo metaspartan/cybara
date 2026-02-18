@@ -1,4 +1,3 @@
-// Channel Security Tests
 import { describe, test, expect, beforeEach } from "bun:test";
 import {
   securityManager,
@@ -11,10 +10,8 @@ describe("Security Manager", () => {
   let testChannelId: string;
 
   beforeEach(() => {
-    // Generate unique channel ID for each test to avoid state leakage
     testChannelId = `test-channel-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-    // Reset the security manager state for each test
     securityManager.setConfig(testChannelId, {
       dm_policy: "pairing",
       allowed_senders: [],
@@ -73,10 +70,8 @@ describe("Security Manager", () => {
     });
 
     test("should return pending_pairing for sender who already has a pairing", () => {
-      // First access creates pairing
       securityManager.checkAccess(testChannelId, "pendinguser", "telegram");
 
-      // Second access should return pending
       const result = securityManager.checkAccess(testChannelId, "pendinguser", "telegram");
       expect(result.permitted).toBe(false);
       expect(result.reason).toBe("pending_pairing");
@@ -159,16 +154,13 @@ describe("Security Manager", () => {
 
   describe("verifyPairing", () => {
     test("should approve valid pairing code and add sender to allowed list", () => {
-      // Create a pairing
       const accessResult = securityManager.checkAccess(testChannelId, "newuser", "telegram");
       expect(accessResult.code).toBeDefined();
 
-      // Verify the pairing
       const verifyResult = securityManager.verifyPairing(testChannelId, accessResult.code!);
       expect(verifyResult.success).toBe(true);
       expect(verifyResult.senderId).toBe("newuser");
 
-      // User should now be allowed
       const checkResult = securityManager.checkAccess(testChannelId, "newuser", "telegram");
       expect(checkResult.permitted).toBe(true);
     });
@@ -181,17 +173,14 @@ describe("Security Manager", () => {
 
   describe("rejectPairing", () => {
     test("should remove pending pairing", () => {
-      // Create a pairing
       securityManager.checkAccess(testChannelId, "userToReject", "telegram");
 
       const pairings = securityManager.getPendingPairings(testChannelId);
       expect(pairings.length).toBe(1);
 
-      // Reject the pairing
       const rejected = securityManager.rejectPairing(testChannelId, pairings[0].id);
       expect(rejected).toBe(true);
 
-      // Pairing should be gone
       const remaining = securityManager.getPendingPairings(testChannelId);
       expect(remaining.length).toBe(0);
     });

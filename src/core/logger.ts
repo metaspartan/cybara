@@ -1,6 +1,3 @@
-// Centralized Logger - Structured logging with levels and formatting
-// Replaces console.log/console.error throughout the codebase
-
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
 export interface LogContext {
@@ -20,7 +17,6 @@ interface LogEntry {
   context?: Record<string, unknown>;
 }
 
-// Log level priority for filtering
 const LOG_LEVELS: Record<LogLevel, number> = {
   debug: 0,
   info: 1,
@@ -28,11 +24,9 @@ const LOG_LEVELS: Record<LogLevel, number> = {
   error: 3,
 };
 
-// Get minimum log level from env, default to "info"
 const MIN_LOG_LEVEL: LogLevel = (process.env.LOG_LEVEL as LogLevel) || "info";
 const MIN_LEVEL_PRIORITY = LOG_LEVELS[MIN_LOG_LEVEL] ?? 1;
 
-// ANSI color codes for terminal output
 const COLORS = {
   reset: "\x1b[0m",
   dim: "\x1b[2m",
@@ -57,7 +51,6 @@ const LEVEL_LABELS: Record<LogLevel, string> = {
   error: "ERR",
 };
 
-// Format log entry for console output
 function formatLogEntry(entry: LogEntry): string {
   const color = LEVEL_COLORS[entry.level];
   const label = LEVEL_LABELS[entry.level];
@@ -75,7 +68,6 @@ function formatLogEntry(entry: LogEntry): string {
   return line;
 }
 
-// Core logging function
 function log(
   level: LogLevel,
   module: string,
@@ -103,7 +95,6 @@ function log(
   }
 }
 
-// Logger factory - creates a logger bound to a module name
 export function createLogger(module: string) {
   return {
     debug: (message: string, context?: LogContext) => log("debug", module, message, context),
@@ -111,7 +102,6 @@ export function createLogger(module: string) {
     warn: (message: string, context?: LogContext) => log("warn", module, message, context),
     error: (message: string, context?: LogContext) => log("error", module, message, context),
 
-    // Convenience method for logging errors with stack traces
     exception: (message: string, error: unknown, context?: LogContext) => {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const stack = error instanceof Error ? error.stack : undefined;
@@ -120,7 +110,6 @@ export function createLogger(module: string) {
   };
 }
 
-// Pre-created loggers for common modules
 export const logger = {
   api: createLogger("API"),
   chat: createLogger("Chat"),
@@ -144,5 +133,4 @@ export const logger = {
   core: createLogger("Core"),
 };
 
-// Default export for quick usage
 export default logger;

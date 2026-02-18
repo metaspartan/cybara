@@ -1,4 +1,3 @@
-// Tool handlers - skill execution
 import { executeSkill } from "../../skills/index";
 
 export async function handleSummarization(args: Record<string, unknown>): Promise<unknown> {
@@ -13,7 +12,6 @@ export async function handleWeather(args: Record<string, unknown>): Promise<unkn
   return await executeSkill("weather", args);
 }
 
-// Generic skill executor
 export async function handleSkillExecution(
   skillName: string,
   args: Record<string, unknown>

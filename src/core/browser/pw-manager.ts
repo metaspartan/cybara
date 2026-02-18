@@ -1,4 +1,3 @@
-// Playwright Browser Manager - Cybara-compatible with Profile Support
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import {
   type BrowserProfile,
@@ -18,7 +17,6 @@ import {
 } from "./profiles";
 import { randomUUID } from "crypto";
 
-// Local AXNode interface for accessibility tree (Playwright removed this export)
 interface AXNode {
   role?: string;
   name?: string;
@@ -33,7 +31,6 @@ function isClickModifier(value: string): value is ClickModifier {
   return ["Alt", "Control", "ControlOrMeta", "Meta", "Shift"].includes(value);
 }
 
-// Legacy single-browser mode (for backward compatibility)
 let legacyBrowser: Browser | null = null;
 let legacyContext: BrowserContext | null = null;
 const legacyPages = new Map<string, Page>();
@@ -47,18 +44,16 @@ export interface BrowserStatus {
   profiles: BrowserProfile[];
 }
 
-// Get or create browser instance (legacy mode)
 async function getLegacyBrowser(): Promise<Browser> {
   if (legacyBrowser) return legacyBrowser;
 
   try {
-    // Try to connect to existing Chrome/Chromium if available via CDP
     try {
       legacyBrowser = await chromium.connectOverCDP("http://localhost:9222");
       console.log("[Browser] Connected to existing Chrome instance via CDP");
       return legacyBrowser;
     } catch {
-      // Fall back to launching new browser
+      void 0;
     }
 
     legacyBrowser = await chromium.launch({
@@ -83,7 +78,6 @@ async function getLegacyBrowser(): Promise<Browser> {
   }
 }
 
-// Get or create legacy browser context
 async function getLegacyContext(): Promise<BrowserContext> {
   if (legacyContext) return legacyContext;
 
@@ -96,8 +90,6 @@ async function getLegacyContext(): Promise<BrowserContext> {
 
   return legacyContext;
 }
-
-// ===== Profile-Based API =====
 
 export async function createBrowserProfile(config: BrowserProfileConfig): Promise<BrowserProfile> {
   return await createProfile(config);
@@ -116,7 +108,6 @@ export async function deleteBrowserProfile(name: string): Promise<void> {
 }
 
 export async function startBrowserProfile(name: string): Promise<unknown> {
-  // Returns Puppeteer Browser (profiles.ts uses puppeteer-core)
   return await startBrowser(name);
 }
 
@@ -126,7 +117,6 @@ export async function stopBrowserProfile(name: string): Promise<void> {
 
 export async function createPageInProfile(profileName: string, url?: string): Promise<string> {
   await createProfilePage(profileName, url);
-  // createProfilePage returns a Page object - we need a page ID
   return `${profileName}-${Date.now()}`;
 }
 
@@ -140,9 +130,6 @@ export async function closePageInProfile(profileName: string, pageId: string): P
   return await closeProfilePage(profileName, pageId);
 }
 
-// ===== Legacy Single-Browser API (backward compatible) =====
-
-// Create a new page/tab in legacy mode
 export async function createPage(): Promise<string> {
   const ctx = await getLegacyContext();
   const page = await ctx.newPage();
@@ -150,13 +137,11 @@ export async function createPage(): Promise<string> {
   legacyPages.set(id, page);
   consoleLogs.set(id, []);
 
-  // Set up event handlers
   page.on("close", () => {
     legacyPages.delete(id);
     consoleLogs.delete(id);
   });
 
-  // Collect console messages
   page.on("console", (msg) => {
     const logs = consoleLogs.get(id) || [];
     logs.push({
@@ -171,12 +156,10 @@ export async function createPage(): Promise<string> {
   return id;
 }
 
-// Get page by ID
 export function getPageById(id: string): Page | undefined {
   return legacyPages.get(id);
 }
 
-// Get all pages
 export async function getAllPages(): Promise<Array<{ id: string; url: string; title: string }>> {
   const result: Array<{ id: string; url: string; title: string }> = [];
   for (const [id, page] of legacyPages.entries()) {
@@ -189,7 +172,6 @@ export async function getAllPages(): Promise<Array<{ id: string; url: string; ti
   return result;
 }
 
-// Close page
 export async function closePage(id: string): Promise<boolean> {
   const page = legacyPages.get(id);
   if (!page) return false;
@@ -200,7 +182,6 @@ export async function closePage(id: string): Promise<boolean> {
   return true;
 }
 
-// Navigate to URL
 export async function navigate(
   pageId: string,
   url: string,
@@ -220,7 +201,6 @@ export async function navigate(
   };
 }
 
-// Take screenshot
 export async function screenshot(
   pageId: string,
   options?: {
@@ -248,7 +228,6 @@ export async function screenshot(
   });
 }
 
-// Generate PDF
 export async function pdf(
   pageId: string,
   options?: {
@@ -270,7 +249,6 @@ export async function pdf(
   );
 }
 
-// Get console logs
 export async function getConsoleLogs(
   pageId: string,
   options?: { type?: string }
@@ -287,7 +265,6 @@ export async function getConsoleLogs(
   return logs;
 }
 
-// Get page snapshot (ARIA or AI format)
 export async function getSnapshot(
   pageId: string,
   options?: {
@@ -314,19 +291,15 @@ export async function getSnapshot(
   const maxChars = options?.maxChars || 8000;
 
   if (format === "aria") {
-    // ARIA snapshot format - use ariaSnapshot() instead of deprecated accessibility.snapshot()
     let ariaSnapshot: AXNode | null = null;
     try {
-      // Try using the new API
       const snapshotStr = await page.locator("body").ariaSnapshot();
-      // Parse the ARIA snapshot string into a node structure
       ariaSnapshot = {
         role: "document",
         name: "document",
         children: [{ role: "text", name: snapshotStr }],
       };
     } catch {
-      // Fallback: create a simple snapshot from page content
       const text = (await page.textContent("body").catch(() => "")) || "";
       ariaSnapshot = {
         role: "document",
@@ -374,29 +347,23 @@ export async function getSnapshot(
     };
   }
 
-  // AI format - text-based snapshot
   let snapshotText: string;
 
   if (options?.selector) {
     const element = await page.locator(options.selector).first();
     try {
-      // Use ariaSnapshot for the element
       snapshotText = await element.ariaSnapshot();
     } catch {
-      // Fallback to text content
       snapshotText = await element.innerText().catch(() => "");
     }
   } else {
     try {
-      // Use ariaSnapshot for the entire page
       snapshotText = await page.locator("body").ariaSnapshot();
-      // Apply depth truncation if specified
       if (options?.depth) {
         const lines = snapshotText.split("\n");
         snapshotText = lines.slice(0, options.depth * 10).join("\n");
       }
     } catch {
-      // Fallback to page text content
       snapshotText = (await page.textContent("body").catch(() => "")) || "";
       snapshotText = snapshotText.slice(0, 8000);
     }
@@ -421,7 +388,6 @@ export async function getSnapshot(
   };
 }
 
-// Click element
 export async function click(
   pageId: string,
   selector: string,
@@ -444,7 +410,6 @@ export async function click(
   }
 }
 
-// Type text
 export async function type(
   pageId: string,
   selector: string,
@@ -468,7 +433,6 @@ export async function type(
   }
 }
 
-// Press key
 export async function pressKey(pageId: string, key: string, delayMs = 0): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
@@ -480,7 +444,6 @@ export async function pressKey(pageId: string, key: string, delayMs = 0): Promis
   }
 }
 
-// Select single option
 export async function select(pageId: string, selector: string, value: string): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
@@ -488,7 +451,6 @@ export async function select(pageId: string, selector: string, value: string): P
   await page.locator(selector).first().selectOption(value);
 }
 
-// Select multiple options
 export async function selectMultiple(
   pageId: string,
   selector: string,
@@ -500,7 +462,6 @@ export async function selectMultiple(
   await page.locator(selector).first().selectOption(values);
 }
 
-// Fill form fields
 export async function fill(pageId: string, selector: string, value: string): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
@@ -508,7 +469,6 @@ export async function fill(pageId: string, selector: string, value: string): Pro
   await page.locator(selector).first().fill(value);
 }
 
-// Hover element
 export async function hover(pageId: string, selector: string): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
@@ -516,7 +476,6 @@ export async function hover(pageId: string, selector: string): Promise<void> {
   await page.locator(selector).first().hover();
 }
 
-// Scroll element into view
 export async function scrollIntoView(pageId: string, selector: string): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
@@ -524,7 +483,6 @@ export async function scrollIntoView(pageId: string, selector: string): Promise<
   await page.locator(selector).first().scrollIntoViewIfNeeded();
 }
 
-// Drag and drop
 export async function drag(
   pageId: string,
   startSelector: string,
@@ -539,7 +497,6 @@ export async function drag(
   await start.dragTo(end);
 }
 
-// Resize viewport
 export async function resize(pageId: string, width: number, height: number): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
@@ -547,7 +504,6 @@ export async function resize(pageId: string, width: number, height: number): Pro
   await page.setViewportSize({ width, height });
 }
 
-// Upload files
 export async function uploadFiles(
   pageId: string,
   paths: string[],
@@ -565,7 +521,6 @@ export async function uploadFiles(
   }
 }
 
-// Accept dialog (alert/confirm/prompt)
 export async function acceptDialog(pageId: string, promptText?: string): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
@@ -579,7 +534,6 @@ export async function acceptDialog(pageId: string, promptText?: string): Promise
   });
 }
 
-// Dismiss dialog
 export async function dismissDialog(pageId: string): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
@@ -589,7 +543,6 @@ export async function dismissDialog(pageId: string): Promise<void> {
   });
 }
 
-// Evaluate JavaScript
 export async function evaluate<T = unknown>(pageId: string, script: string): Promise<T> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
@@ -599,7 +552,6 @@ export async function evaluate<T = unknown>(pageId: string, script: string): Pro
   }, script);
 }
 
-// Wait for milliseconds
 export async function wait(pageId: string, timeMs: number): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
@@ -607,7 +559,6 @@ export async function wait(pageId: string, timeMs: number): Promise<void> {
   await page.waitForTimeout(timeMs);
 }
 
-// Wait for selector
 export async function waitForSelector(
   pageId: string,
   selector: string,
@@ -622,7 +573,6 @@ export async function waitForSelector(
   });
 }
 
-// Wait for text to appear
 export async function waitForText(
   pageId: string,
   text: string,
@@ -636,7 +586,6 @@ export async function waitForText(
   });
 }
 
-// Wait for text to disappear
 export async function waitForTextGone(
   pageId: string,
   text: string,
@@ -651,7 +600,6 @@ export async function waitForTextGone(
   });
 }
 
-// Wait for navigation
 export async function waitForNavigation(
   pageId: string,
   url?: string,
@@ -671,7 +619,6 @@ export async function waitForNavigation(
   }
 }
 
-// Wait for load state
 export async function waitForLoadState(
   pageId: string,
   state: "load" | "domcontentloaded" | "networkidle"
@@ -682,12 +629,9 @@ export async function waitForLoadState(
   await page.waitForLoadState(state);
 }
 
-// Close all pages and browser
 export async function closeAll(): Promise<void> {
-  // Close profile-based pages
   await shutdownAll();
 
-  // Close legacy pages
   for (const [id, page] of legacyPages) {
     await page.close().catch(() => {});
     legacyPages.delete(id);
@@ -708,7 +652,6 @@ export async function closeAll(): Promise<void> {
   console.log("[Browser] Closed all sessions");
 }
 
-// Get browser status
 export async function getStatus(): Promise<BrowserStatus> {
   try {
     const executablePath = chromium.executablePath();

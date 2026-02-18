@@ -1,8 +1,5 @@
-// Channel adapter types and shared interfaces
-
 import type { Channel } from "../database";
 
-// Channel type definitions
 export const channels = {
   telegram: {
     name: "Telegram",
@@ -124,7 +121,6 @@ export const channels = {
 
 export type ChannelType = keyof typeof channels;
 
-// File info for message handling
 export interface MessageHandlerFileInfo {
   hasFile: boolean;
   filePath: string;
@@ -132,7 +128,6 @@ export interface MessageHandlerFileInfo {
   placeholder: string;
 }
 
-// Message handler function type
 export type MessageHandler = (
   message: string,
   userId: string,
@@ -140,7 +135,6 @@ export type MessageHandler = (
   fileInfo: MessageHandlerFileInfo
 ) => Promise<string>;
 
-// Tool call info for formatting
 export interface ToolCallInfo {
   id?: string;
   name: string;
@@ -150,17 +144,14 @@ export interface ToolCallInfo {
   duration?: number;
 }
 
-// Channel adapter interface - each platform implements this
 export interface ChannelAdapter {
   type: ChannelType;
   name: string;
 
-  // Lifecycle
   start(channelId: string, config: Record<string, unknown>): Promise<void>;
   stop(channelId: string): Promise<void>;
   isRunning(channelId: string): boolean;
 
-  // Messaging
   sendMessage(
     channelId: string,
     chatId: string | number,
@@ -168,10 +159,8 @@ export interface ChannelAdapter {
     options?: Record<string, unknown>
   ): Promise<boolean>;
 
-  // Response formatting
   formatResponse(content: string, toolCalls?: ToolCallInfo[], thinking?: string): string;
 
-  // Optional media support
   sendPhoto?(
     channelId: string,
     chatId: string | number,
@@ -192,7 +181,6 @@ export interface ChannelAdapter {
   ): Promise<boolean>;
 }
 
-// Extended channel info with adapter metadata
 export interface ChannelInfo extends Channel {
   info?: (typeof channels)[ChannelType];
 }

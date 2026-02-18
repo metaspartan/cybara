@@ -45,7 +45,6 @@ async function waitForServerReady(url: string, timeoutMs = 30000): Promise<void>
       const res = await fetch(`${url}/api/health`);
       if (res.ok) return;
     } catch {
-      // server still starting
     }
     await sleep(250);
   }
@@ -101,7 +100,6 @@ describe("Terminal e2e smoke", () => {
       try {
         serverProc.kill("SIGTERM");
       } catch {
-        // already exited
       }
       await Promise.race([serverProc.exited, sleep(5000)]);
     }

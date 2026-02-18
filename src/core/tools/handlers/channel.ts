@@ -1,4 +1,3 @@
-// Tool handlers - channel messaging and sessions
 import { existsSync } from "fs";
 import { join, dirname } from "path";
 import { homedir } from "os";
@@ -12,7 +11,6 @@ import type { SubagentRunRecord } from "../../subagent-registry";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Session management for subagents
 interface SubagentSession {
   id: string;
   parentSessionId?: string;
@@ -29,12 +27,10 @@ interface SubagentSession {
 
 const sessions = new Map<string, SubagentSession>();
 
-// Export function to get subagent session by sessionKey
 export function getSubagentSession(sessionKey: string): SubagentSession | undefined {
   return sessions.get(sessionKey);
 }
 
-// Export function to get all subagent sessions
 export function getAllSubagentSessions(): SubagentSession[] {
   return Array.from(sessions.values());
 }
@@ -59,14 +55,12 @@ export async function handleSessionsSpawn(args: Record<string, unknown>): Promis
         : 0;
   const cleanup = args.cleanup === "delete" ? "delete" : "keep";
 
-  // Get requester session key (for nested spawn check)
   const requesterSessionKey = (args._requesterSessionKey as string) || "main";
 
   if (!task) {
     throw new Error("task is required");
   }
 
-  // Forbid nested spawning (Cybara policy)
   if (subagentRegistry.isSubagentSessionKey(requesterSessionKey)) {
     return {
       status: "forbidden",
@@ -77,12 +71,10 @@ export async function handleSessionsSpawn(args: Record<string, unknown>): Promis
     };
   }
 
-  // Generate Cybara-style session key
   const agentId = requestedAgentId || "default";
   const childSessionKey = subagentRegistry.generateSubagentSessionKey(agentId);
   const runId = crypto.randomUUID();
 
-  // Register the run
   const run = subagentRegistry.registerSubagentRun({
     runId,
     childSessionKey,
@@ -94,7 +86,6 @@ export async function handleSessionsSpawn(args: Record<string, unknown>): Promis
     runTimeoutSeconds: runTimeoutSeconds > 0 ? runTimeoutSeconds : undefined,
   });
 
-  // Create session entry
   const session: SubagentSession = {
     id: childSessionKey,
     parentSessionId: requesterSessionKey,
@@ -119,7 +110,6 @@ export async function handleSessionsSpawn(args: Record<string, unknown>): Promis
 
   sessions.set(childSessionKey, session);
 
-  // Start subagent execution asynchronously
   executeSubagent(childSessionKey, run).catch((err) => {
     console.error(`[Subagent] Error executing session ${childSessionKey}:`, err);
     subagentRegistry.markRunFailed(runId, err.message || "Unknown error");
@@ -134,7 +124,6 @@ export async function handleSessionsSpawn(args: Record<string, unknown>): Promis
   };
 }
 
-// Build minimal system prompt for subagents
 function buildSubagentSystemPrompt(
   requesterSessionKey: string,
   childSessionKey: string,
@@ -170,13 +159,11 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
   }
 
   try {
-    // Get default agent for provider/model config
     const agent = agentManager.list().find((a) => a.status === "running") || agentManager.list()[0];
     if (!agent) {
       throw new Error("No agent available for subagent execution");
     }
 
-    // Get provider with credentials
     const provider = agent.provider_id
       ? providerManager.getWithCredentials(agent.provider_id)
       : undefined;
@@ -184,13 +171,11 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
       throw new Error("No provider available for subagent execution");
     }
 
-    // Convert session messages to AgentMessage format
     const agentMessages = session.messages.map((m) => ({
       role: m.role as "user" | "assistant" | "system" | "tool",
       content: m.content,
     }));
 
-    // Get all available tools (subagents get full tool access)
     const { getToolSchemasForLLM } = await import("../../tools/index");
     const tools = getToolSchemasForLLM();
 
@@ -198,7 +183,6 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
       `[Subagent] Executing ${sessionId} with full agentic loop (${tools.length} tools available)`
     );
 
-    // Use AgentManager.callLLM for full agentic execution with tool support
     const result = await agentManager.callLLM(
       provider,
       session.model || agent.model,
@@ -206,7 +190,6 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
       tools
     );
 
-    // Add assistant response to session history
     session.messages.push({
       role: "assistant",
       content: result.content,
@@ -217,7 +200,6 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
     session.status = "completed";
     session.completedAt = new Date().toISOString();
 
-    // Update registry
     if (run) {
       subagentRegistry.markRunCompleted(run.runId, result.content);
     }
@@ -253,14 +235,12 @@ export async function handleSessionsSend(
     throw new Error(`Session not found: ${sessionId}`);
   }
 
-  // Add user message
   session.messages.push({
     role: "user",
     content: message,
     timestamp: new Date().toISOString(),
   });
 
-  // If session is completed, restart it with new message
   if (session.status === "completed" || session.status === "failed") {
     session.status = "pending";
     executeSubagent(sessionId).catch((err) => {
@@ -327,7 +307,6 @@ export async function handleSessionsList(): Promise<{
   };
 }
 
-// Session status - aligned with Cybara session_status tool
 export async function handleSessionStatus(args: Record<string, unknown>): Promise<{
   sessionId: string;
   status: string;
@@ -342,7 +321,6 @@ export async function handleSessionStatus(args: Record<string, unknown>): Promis
   const sessionId = args.sessionId as string;
 
   if (!sessionId) {
-    // Return current/default session info (no agent manager access needed)
     return {
       sessionId: "main",
       status: "active",
@@ -358,7 +336,6 @@ export async function handleSessionStatus(args: Record<string, unknown>): Promis
     throw new Error(`Session not found: ${sessionId}`);
   }
 
-  // Estimate tokens (rough: 4 chars per token)
   const totalChars = session.messages.reduce((sum, m) => sum + m.content.length, 0);
   const tokenEstimate = Math.ceil(totalChars / 4);
 
@@ -471,21 +448,16 @@ export async function handleImage(
     throw new Error("image path is required");
   }
 
-  // Check if file exists
   if (!existsSync(image)) {
     throw new Error(`Image file not found: ${image}`);
   }
 
-  // Use OCR to extract text from the image
   let extractedText = "";
   const platform = process.platform; // 'darwin', 'win32', 'linux'
 
-  // Get the project root for finding scripts
   const projectRoot = join(__dirname, "..", "..", "..", "..");
 
-  // Platform-specific OCR
   if (platform === "darwin") {
-    // macOS: Swift Vision framework
     const ocrScriptPath = join(projectRoot, "scripts", "ocr.swift");
     if (existsSync(ocrScriptPath)) {
       try {
@@ -504,7 +476,6 @@ export async function handleImage(
       }
     }
   } else if (platform === "win32") {
-    // Windows: PowerShell with Windows.Media.Ocr
     try {
       const psScript = `
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
@@ -535,7 +506,6 @@ $stream.Dispose()
     }
   }
 
-  // Fallback: tesseract (cross-platform)
   if (!extractedText) {
     try {
       const result = Bun.spawnSync(["tesseract", image, "stdout"], {
@@ -548,7 +518,7 @@ $stream.Dispose()
         console.log(`[Image] OCR extracted ${extractedText.length} characters via tesseract`);
       }
     } catch {
-      // Tesseract not available
+      void 0;
     }
   }
 
@@ -606,7 +576,6 @@ export async function handleCron(args: Record<string, unknown>): Promise<{
         throw new Error("job object is required");
       }
 
-      // Validate required fields
       if (!job.schedule || typeof job.schedule !== "object") {
         throw new Error("job.schedule is required");
       }
@@ -734,7 +703,6 @@ export async function handleGateway(args: Record<string, unknown>): Promise<{
 
   switch (action) {
     case "status": {
-      // Return gateway/agent status
       const agents = agentManager.list();
       const activeAgents = agents.filter((a) => a.status === "running");
       const cronStatus = cron.getSchedulerStatus();
@@ -762,10 +730,8 @@ export async function handleGateway(args: Record<string, unknown>): Promise<{
 
       console.log(`[Gateway] Restart requested: ${reason} (delay: ${delayMs}ms)`);
 
-      // Schedule restart (in a real implementation, this would trigger a process restart)
       setTimeout(() => {
         console.log("[Gateway] Executing scheduled restart...");
-        // In production, would call process exit or send SIGUSR1
       }, delayMs);
 
       return {
@@ -776,7 +742,6 @@ export async function handleGateway(args: Record<string, unknown>): Promise<{
     }
 
     case "config.get": {
-      // Return current configuration (sanitized)
       try {
         const home = process.env.HOME || process.env.USERPROFILE || homedir();
         const config = {
@@ -802,7 +767,6 @@ export async function handleGateway(args: Record<string, unknown>): Promise<{
         throw new Error("raw config patch is required");
       }
 
-      // In a real implementation, this would merge with existing config
       console.log(`[Gateway] Config patch received: ${raw.slice(0, 100)}...`);
 
       return {

@@ -121,7 +121,6 @@ export function Sessions() {
       }
     >
       <div className="space-y-6">
-        {/* Search */}
         <Card>
           <CardContent className="p-4">
             <div className="relative">
@@ -136,7 +135,6 @@ export function Sessions() {
           </CardContent>
         </Card>
 
-        {/* Sessions List */}
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <RefreshCw className="w-8 h-8 animate-spin text-gray-500" />
@@ -212,7 +210,6 @@ export function Sessions() {
         )}
       </div>
 
-      {/* View Session Modal */}
       <Modal
         isOpen={isViewModalOpen}
         onClose={() => {
@@ -224,7 +221,6 @@ export function Sessions() {
       >
         {selectedSession && (
           <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-            {/* Session Info */}
             <div className="flex items-center gap-4 p-3 rounded-lg bg-white/5 text-sm">
               <span className="text-gray-400">Agent:</span>
               <code className="text-white">{selectedSession.agent_id}</code>
@@ -232,7 +228,6 @@ export function Sessions() {
               <span className="text-white">{new Date(selectedSession.created_at).toLocaleString()}</span>
             </div>
 
-            {/* Messages */}
             <div className="space-y-3">
               {selectedSession.messagesList?.map((message, index) => (
                 <div
@@ -268,7 +263,6 @@ export function Sessions() {
                     </div>
                     <p className="text-sm text-white whitespace-pre-wrap">{message.content}</p>
 
-                    {/* Tool Calls Display - Limited to first 10 to prevent crashes */}
                     {message.tool_calls && message.tool_calls.length > 0 && (
                       <div className="mt-3 space-y-2">
                         {message.tool_calls.slice(0, 10).map((tc, tcIndex) => (
@@ -337,7 +331,6 @@ export function Sessions() {
         )}
       </Modal>
 
-      {/* Delete Confirmation Modal */}
       <Modal
         isOpen={isDeleteModalOpen}
         onClose={() => {

@@ -1,38 +1,28 @@
-// Calculator skill - safe math evaluation using mathjs-like parsing
 
-// Simple expression evaluator (safe, no eval)
 function evaluateExpression(expr: string): number {
-    // Remove whitespace
     expr = expr.replace(/\s+/g, "");
 
-    // Basic validation - only allow math characters
     if (!/^[\d+\-*/().^%sqrt,e]+$/i.test(expr)) {
         throw new Error("Invalid characters in expression");
     }
 
-    // Handle sqrt
     expr = expr.replace(/sqrt\(([^)]+)\)/gi, (_, inner) => {
         return String(Math.sqrt(evaluateExpression(inner)));
     });
 
-    // Handle exponentiation (^)
     expr = expr.replace(/(\d+\.?\d*)\^(\d+\.?\d*)/g, (_, base, exp) => {
         return String(Math.pow(parseFloat(base), parseFloat(exp)));
     });
 
-    // Handle parentheses recursively
     while (expr.includes("(")) {
         expr = expr.replace(/\(([^()]+)\)/g, (_, inner) => {
             return String(evaluateExpression(inner));
         });
     }
 
-    // Parse remaining expression with standard operators
-    // First handle * and /
     const tokens = expr.match(/(\d+\.?\d*|[+\-*/])/g);
     if (!tokens) return 0;
 
-    // Convert to postfix and evaluate
     const values: number[] = [];
     const ops: string[] = [];
 
@@ -99,7 +89,6 @@ export async function handleCalc(
     }
 }
 
-// Unit conversion
 export async function handleConvert(
     args: Record<string, unknown>
 ): Promise<{ result: number; from: string; to: string }> {
@@ -109,17 +98,14 @@ export async function handleConvert(
 
     type ConversionValue = number | ((v: number) => number);
     const conversions: Record<string, Record<string, ConversionValue>> = {
-        // Length (base: meters)
         m: { km: 0.001, cm: 100, mm: 1000, ft: 3.28084, in: 39.3701, mi: 0.000621371 },
         km: { m: 1000, cm: 100000, mm: 1000000, ft: 3280.84, in: 39370.1, mi: 0.621371 },
         ft: { m: 0.3048, km: 0.0003048, cm: 30.48, mm: 304.8, in: 12, mi: 0.000189394 },
 
-        // Weight (base: kg)
         kg: { g: 1000, mg: 1000000, lb: 2.20462, oz: 35.274 },
         g: { kg: 0.001, mg: 1000, lb: 0.00220462, oz: 0.035274 },
         lb: { kg: 0.453592, g: 453.592, mg: 453592, oz: 16 },
 
-        // Temperature
         c: { f: (v: number) => (v * 9) / 5 + 32, k: (v: number) => v + 273.15 },
         f: { c: (v: number) => ((v - 32) * 5) / 9, k: (v: number) => ((v - 32) * 5) / 9 + 273.15 },
         k: { c: (v: number) => v - 273.15, f: (v: number) => ((v - 273.15) * 9) / 5 + 32 },

@@ -1,5 +1,3 @@
-// Tool handlers - data transformation operations
-
 export async function handleData(args: Record<string, unknown>): Promise<unknown> {
   const action = args.action as string;
   const data = args.data as string;

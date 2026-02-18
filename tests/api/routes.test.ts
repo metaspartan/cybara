@@ -1,4 +1,3 @@
-// API Routes Tests - Integration tests for the HTTP API
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { Database } from "bun:sqlite";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "fs";
@@ -44,14 +43,12 @@ async function waitForServerReady(baseUrl: string, timeoutMs = 30000): Promise<v
       const res = await fetch(`${baseUrl}/api/health`);
       if (res.ok) return;
     } catch {
-      // server still starting
     }
     await sleep(250);
   }
   throw new Error(`Timed out waiting for API server at ${baseUrl}`);
 }
 
-// Helper to make API requests with auth
 async function api(method: string, path: string, body?: unknown) {
   const headers: Record<string, string> = {};
 
@@ -213,7 +210,6 @@ afterAll(async () => {
     try {
       serverProc.kill("SIGTERM");
     } catch {
-      // already exited
     }
     await Promise.race([serverProc.exited, sleep(5000)]);
   }
@@ -719,7 +715,6 @@ describe("Skills API", () => {
     expect(Array.isArray(statusRes.data.skills)).toBe(true);
     expect(typeof statusRes.data.summary.total).toBe("number");
 
-    // Empty query avoids remote lookups while still exercising route wiring.
     const registrySearch = await api("GET", "/api/skills/registry/search");
     expect(registrySearch.status).toBe(200);
     expect(Array.isArray(registrySearch.data.skills)).toBe(true);
@@ -738,7 +733,6 @@ describe("Skills API", () => {
     expect(status).toBe(200);
     expect(data.name).toBeDefined();
 
-    // Cleanup
     await api("DELETE", `/api/skills/${skillSlug}`);
   });
 
@@ -788,7 +782,6 @@ describe("MCP Servers API", () => {
 
     const startRes = await api("POST", `/api/mcp/${mcpId}/start`);
     expect(startRes.status).toBe(200);
-    // Short-lived commands should not be treated as running MCP servers.
     expect(startRes.data.success).toBe(false);
     expect(typeof startRes.data.error).toBe("string");
 
@@ -824,7 +817,6 @@ describe("MCP Registry API", () => {
     expect(Array.isArray(categoryRes.data)).toBe(true);
     expect(categoryRes.data.length).toBeGreaterThan(0);
 
-    // Restrict to official registry to avoid npm network dependency in tests.
     const searchRes = await api("GET", "/api/mcp/registry/search?q=filesystem&registry=official");
     expect(searchRes.status).toBe(200);
     expect(Array.isArray(searchRes.data)).toBe(true);
@@ -1087,7 +1079,6 @@ describe("Metrics API", () => {
     const { status, data } = await api("GET", "/api/metrics");
     expect(status).toBe(200);
     expect(typeof data).toBe("object");
-    // Should contain expected properties
     expect(data).toHaveProperty("memory");
     expect(data).toHaveProperty("uptime");
   });
@@ -1574,7 +1565,6 @@ describe("Channel Security API", () => {
   let testChannelId: string;
 
   beforeAll(async () => {
-    // Create a test channel for security tests
     const { data } = await api("POST", "/api/channels", {
       name: `security-test-${Date.now()}`,
       type: "telegram",
@@ -1620,7 +1610,6 @@ describe("Channel Security API", () => {
   });
 
   afterAll(async () => {
-    // Cleanup test channel
     if (testChannelId) {
       await api("DELETE", `/api/channels/${testChannelId}`);
     }

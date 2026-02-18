@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Toast } from '../types';
 
-// Theme accent presets
 export type ThemeAccent = 'indigo' | 'emerald' | 'amber' | 'rose' | 'cyan' | 'purple' | 'blue' | 'teal' | 'orange' | 'pink';
 
 export const themeAccents: Record<ThemeAccent, { primary: string; name: string }> = {
@@ -19,31 +18,25 @@ export const themeAccents: Record<ThemeAccent, { primary: string; name: string }
 };
 
 interface UIState {
-  // Theme
   accent: ThemeAccent;
   setAccent: (accent: ThemeAccent) => void;
 
-  // Loading states
   loading: Record<string, boolean>;
   setLoading: (key: string, value: boolean) => void;
 
-  // Toast notifications
   toasts: Toast[];
   addToast: (type: Toast['type'], message: string) => void;
   removeToast: (id: string) => void;
 
-  // Modal states
   activeModal: string | null;
   modalData: unknown;
   openModal: (modal: string, data?: unknown) => void;
   closeModal: () => void;
 
-  // Sidebar state
   sidebarOpen: boolean;
   toggleSidebar: () => void;
 }
 
-// Apply theme CSS variables
 const applyTheme = (accent: ThemeAccent) => {
   const colors = themeAccents[accent];
   document.documentElement.style.setProperty('--accent-primary', colors.primary);

@@ -28,7 +28,6 @@ import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, createContext, useContext } from 'react';
 import { appendApiTokenParam } from '@/lib/auth';
 
-// Context for sidebar state (shared with App layout)
 interface SidebarContextType {
   collapsed: boolean;
   setCollapsed: (collapsed: boolean) => void;
@@ -119,7 +118,6 @@ function useAgentStatus() {
   return status;
 }
 
-// Navigation items grouped by category
 const navCategories = [
   {
     id: 'main',
@@ -173,7 +171,6 @@ export function Sidebar() {
     system: true,
   });
 
-  // Close sidebar on route change (mobile)
   useEffect(() => {
     setMobileOpen(false);
   }, [location.pathname, setMobileOpen]);
@@ -216,7 +213,6 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Mobile Menu Button */}
       <button
         onClick={() => setMobileOpen(!mobileOpen)}
         className="fixed top-4 right-4 z-50 p-2 rounded-lg glass-button text-white md:hidden !outline-none !ring-0 focus:!outline-none active:!outline-none"
@@ -225,7 +221,6 @@ export function Sidebar() {
         {mobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
       </button>
 
-      {/* Mobile Overlay */}
       {mobileOpen && (
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 md:hidden animate-in fade-in"
@@ -233,16 +228,13 @@ export function Sidebar() {
         />
       )}
 
-      {/* Sidebar */}
       <aside className={cn(
         'fixed left-0 top-0 h-full glass border-r border-white/5 z-40 overflow-hidden transition-all duration-300',
         collapsed ? 'w-16' : 'w-64',
-        // Mobile: slide in from left
         'max-md:-translate-x-full max-md:w-64',
         mobileOpen && 'max-md:translate-x-0'
       )}>
         <div className="h-full flex flex-col">
-          {/* Logo Header */}
           <div className={cn(
             'border-b border-white/5 flex items-center',
             collapsed ? 'px-3 py-4 justify-center' : 'px-5 py-4 gap-3'
@@ -274,7 +266,6 @@ export function Sidebar() {
             )}
           </div>
 
-          {/* Navigation */}
           <nav className={cn(
             'flex-1 p-2 space-y-1 pb-20',
             collapsed ? 'overflow-hidden' : 'overflow-y-auto'
@@ -313,9 +304,7 @@ export function Sidebar() {
             ))}
           </nav>
 
-          {/* Footer */}
           <div className="border-t border-white/5 bg-black/20 p-2 backdrop-blur-md">
-            {/* Settings */}
             <NavLink
               to="/settings"
               title={collapsed ? 'Settings' : undefined}
@@ -336,7 +325,6 @@ export function Sidebar() {
               {!collapsed && <span>Settings</span>}
             </NavLink>
 
-            {/* Collapse Toggle (desktop only) */}
             <button
               onClick={() => setCollapsed(!collapsed)}
               className="hidden md:flex w-full items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-500 hover:text-white hover:bg-white/5 transition-colors !outline-none"

@@ -1,4 +1,3 @@
-// Git API - Basic git status integration for IDE
 import { spawn } from "bun";
 import { dirname } from "path";
 
@@ -19,7 +18,6 @@ export interface GitDiff {
   error?: string;
 }
 
-// Run git command in directory
 async function runGit(
   cwd: string,
   args: string[]
@@ -52,15 +50,12 @@ async function runGit(
   }
 }
 
-// Find git root directory from a path
 async function findGitRoot(path: string): Promise<string | null> {
   const result = await runGit(path, ["rev-parse", "--show-toplevel"]);
   return result.success ? result.stdout : null;
 }
 
-// Get git status for a directory
 export async function getGitStatus(path: string): Promise<GitStatus> {
-  // Find git root
   const gitRoot = await findGitRoot(path);
 
   if (!gitRoot) {
@@ -72,11 +67,9 @@ export async function getGitStatus(path: string): Promise<GitStatus> {
     };
   }
 
-  // Get current branch
   const branchResult = await runGit(gitRoot, ["branch", "--show-current"]);
   const branch = branchResult.success ? branchResult.stdout : undefined;
 
-  // Get ahead/behind
   let ahead = 0;
   let behind = 0;
   const trackingResult = await runGit(gitRoot, [
@@ -91,7 +84,6 @@ export async function getGitStatus(path: string): Promise<GitStatus> {
     ahead = a || 0;
   }
 
-  // Get status
   const statusResult = await runGit(gitRoot, ["status", "--porcelain"]);
 
   const staged: string[] = [];
@@ -105,17 +97,14 @@ export async function getGitStatus(path: string): Promise<GitStatus> {
       const workTreeStatus = line[1];
       const filePath = line.slice(3);
 
-      // Staged files (index has changes)
       if (indexStatus !== " " && indexStatus !== "?") {
         staged.push(filePath);
       }
 
-      // Modified in working tree
       if (workTreeStatus === "M" || workTreeStatus === "D") {
         modified.push(filePath);
       }
 
-      // Untracked
       if (indexStatus === "?" && workTreeStatus === "?") {
         untracked.push(filePath);
       }
@@ -133,7 +122,6 @@ export async function getGitStatus(path: string): Promise<GitStatus> {
   };
 }
 
-// Get diff for a file
 export async function getGitDiff(filePath: string, staged: boolean = false): Promise<GitDiff> {
   const dir = dirname(filePath);
   const gitRoot = await findGitRoot(dir);
@@ -156,7 +144,6 @@ export async function getGitDiff(filePath: string, staged: boolean = false): Pro
   };
 }
 
-// Get current branch name
 export async function getGitBranch(path: string): Promise<string | null> {
   const gitRoot = await findGitRoot(path);
   if (!gitRoot) return null;

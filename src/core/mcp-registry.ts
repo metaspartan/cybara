@@ -1,10 +1,5 @@
 import { mcpManager } from "./mcp";
 
-// ============================================
-// MCP REGISTRY MANAGER
-// Multi-registry search and installation
-// ============================================
-
 export interface MCPRegistryServer {
   id: string;
   name: string;
@@ -27,9 +22,7 @@ interface RegistryConfig {
   baseUrl?: string;
 }
 
-// Built-in popular MCP servers (curated list)
 const POPULAR_SERVERS: MCPRegistryServer[] = [
-  // Official Anthropic servers
   {
     id: "mcp-filesystem",
     name: "Filesystem",
@@ -157,7 +150,6 @@ const POPULAR_SERVERS: MCPRegistryServer[] = [
     categories: ["web", "http"],
     installType: "bunx",
   },
-  // Smithery popular servers
   {
     id: "smithery-exa",
     name: "Exa Search",
@@ -218,7 +210,6 @@ const POPULAR_SERVERS: MCPRegistryServer[] = [
     categories: ["productivity", "issues"],
     installType: "smithery",
   },
-  // Community servers
   {
     id: "mcp-obsidian",
     name: "Obsidian",
@@ -251,11 +242,9 @@ class MCPRegistryManager {
     ["npm", { name: "npm", enabled: true, baseUrl: "https://www.npmjs.com" }],
   ]);
 
-  // Search across all registries
   async search(query: string, registry?: string): Promise<MCPRegistryServer[]> {
     const q = query.toLowerCase().trim();
 
-    // Filter from curated list
     const results = POPULAR_SERVERS.filter((server) => {
       const matchesRegistry = !registry || server.registry === registry;
       const matchesQuery =
@@ -267,11 +256,9 @@ class MCPRegistryManager {
       return matchesRegistry && matchesQuery;
     });
 
-    // For npm queries, also search for @modelcontextprotocol packages
     if ((!registry || registry === "npm") && q) {
       try {
         const npmResults = await this.searchNpm(q);
-        // Add unique npm results
         for (const pkg of npmResults) {
           if (!results.find((r) => r.package === pkg.package)) {
             results.push(pkg);
@@ -285,7 +272,6 @@ class MCPRegistryManager {
     return results;
   }
 
-  // Search npm for MCP server packages
   private async searchNpm(query: string): Promise<MCPRegistryServer[]> {
     try {
       const searchQuery = encodeURIComponent(`mcp server ${query}`);
@@ -306,7 +292,6 @@ class MCPRegistryManager {
 
       for (const obj of data.objects || []) {
         const pkg = obj.package;
-        // Only include MCP-related packages
         if (pkg.name.includes("mcp") || pkg.name.includes("modelcontextprotocol")) {
           results.push({
             id: `npm-${pkg.name}`,
@@ -329,19 +314,16 @@ class MCPRegistryManager {
     }
   }
 
-  // Get popular/featured servers
   getPopular(limit = 20): MCPRegistryServer[] {
     return POPULAR_SERVERS.slice(0, limit);
   }
 
-  // Get servers by category
   getByCategory(category: string): MCPRegistryServer[] {
     return POPULAR_SERVERS.filter((s) =>
       s.categories?.some((c) => c.toLowerCase() === category.toLowerCase())
     );
   }
 
-  // Get available categories
   getCategories(): string[] {
     const cats = new Set<string>();
     for (const server of POPULAR_SERVERS) {
@@ -352,12 +334,10 @@ class MCPRegistryManager {
     return Array.from(cats).sort();
   }
 
-  // Get server details by ID
   getDetails(id: string): MCPRegistryServer | undefined {
     return POPULAR_SERVERS.find((s) => s.id === id);
   }
 
-  // Get enabled registries
   getRegistries(): Array<{ id: string; name: string; enabled: boolean }> {
     return Array.from(this.registries.entries()).map(([id, config]) => ({
       id,
@@ -366,16 +346,13 @@ class MCPRegistryManager {
     }));
   }
 
-  // Install a server from registry
   async installServer(
     server: MCPRegistryServer
   ): Promise<{ success: boolean; id?: string; error?: string }> {
     try {
-      // Build full command
       const fullCommand = server.command;
       const fullArgs = server.args || "";
 
-      // Create server in MCP manager
       const created = mcpManager.create({
         name: server.name,
         command: fullCommand,
@@ -390,11 +367,9 @@ class MCPRegistryManager {
     }
   }
 
-  // Install by package name (convenience method)
   async installByPackage(
     packageName: string
   ): Promise<{ success: boolean; id?: string; error?: string }> {
-    // Try to find in curated list first
     let server = POPULAR_SERVERS.find(
       (s) =>
         s.package === packageName ||
@@ -402,7 +377,6 @@ class MCPRegistryManager {
         s.name.toLowerCase() === packageName.toLowerCase()
     );
 
-    // If not found, create generic bunx server
     if (!server) {
       server = {
         id: `custom-${packageName}`,

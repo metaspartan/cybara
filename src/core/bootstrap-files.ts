@@ -1,4 +1,3 @@
-// Bootstrap file utilities - Cybara compatible workspace setup
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
@@ -10,7 +9,6 @@ export interface BootstrapFile {
   missing: boolean;
 }
 
-// Default bootstrap file names (Cybara standard)
 export const BOOTSTRAP_FILENAMES = [
   "AGENTS.md",
   "SOUL.md",
@@ -21,22 +19,14 @@ export const BOOTSTRAP_FILENAMES = [
   "HEARTBEAT.md",
 ];
 
-// Files to inject into system prompt context (Cybara standard)
 export const CONTEXT_FILES = ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "TOOLS.md"];
 
-/**
- * Get the templates directory path
- */
 function getTemplatesDir(): string {
   const home = process.env.HOME || process.env.USERPROFILE || homedir();
   return join(home, ".cybara", "templates");
 }
 
-/**
- * Read a template file, falling back to embedded templates
- */
 function readTemplate(name: string): string | null {
-  // Try local templates first
   const templatesDir = getTemplatesDir();
   const templatePath = join(templatesDir, name);
 
@@ -44,7 +34,6 @@ function readTemplate(name: string): string | null {
     return readFileSync(templatePath, "utf-8");
   }
 
-  // Try project templates directory
   const projectTemplates = join(__dirname, "..", "..", "..", "templates", name);
   if (existsSync(projectTemplates)) {
     return readFileSync(projectTemplates, "utf-8");
@@ -53,10 +42,6 @@ function readTemplate(name: string): string | null {
   return null;
 }
 
-/**
- * Create bootstrap files in a workspace directory if they don't exist.
- * Returns list of files created.
- */
 export function createBootstrapFiles(
   workspaceDir: string,
   options: { skipExisting?: boolean; files?: string[] } = {}
@@ -64,7 +49,6 @@ export function createBootstrapFiles(
   const filesToCreate = options.files || BOOTSTRAP_FILENAMES;
   const created: string[] = [];
 
-  // Ensure workspace directory exists
   if (!existsSync(workspaceDir)) {
     mkdirSync(workspaceDir, { recursive: true });
   }
@@ -84,7 +68,6 @@ export function createBootstrapFiles(
     }
   }
 
-  // Create memory directory if it doesn't exist
   const memoryDir = join(workspaceDir, "memory");
   if (!existsSync(memoryDir)) {
     mkdirSync(memoryDir, { recursive: true });
@@ -94,10 +77,6 @@ export function createBootstrapFiles(
   return created;
 }
 
-/**
- * Read bootstrap files from a workspace directory.
- * Returns array of bootstrap file objects.
- */
 export function readBootstrapFiles(workspaceDir: string): BootstrapFile[] {
   const files: BootstrapFile[] = [];
 
@@ -116,10 +95,6 @@ export function readBootstrapFiles(workspaceDir: string): BootstrapFile[] {
   return files;
 }
 
-/**
- * Get bootstrap files as context files for system prompt injection.
- * Filters out missing files and optionally truncates large content.
- */
 export function getBootstrapContextFiles(
   workspaceDir: string,
   options: { maxChars?: number } = {}
@@ -132,7 +107,6 @@ export function getBootstrapContextFiles(
     .map((file) => {
       let content = file.content;
 
-      // Truncate if too large
       if (content.length > maxChars) {
         content = content.slice(0, maxChars) + "\n\n[... truncated ...]";
         console.log(
@@ -148,16 +122,10 @@ export function getBootstrapContextFiles(
     });
 }
 
-/**
- * Check if BOOTSTRAP.md exists (indicates first run).
- */
 export function isFirstRun(workspaceDir: string): boolean {
   return existsSync(join(workspaceDir, "BOOTSTRAP.md"));
 }
 
-/**
- * Remove BOOTSTRAP.md after first-run ritual is complete.
- */
 export function completeBootstrap(workspaceDir: string): void {
   const bootstrapPath = join(workspaceDir, "BOOTSTRAP.md");
   if (existsSync(bootstrapPath)) {

@@ -21,6 +21,15 @@ describe("API security module", () => {
     expect(result.authenticated).toBe(true);
   });
 
+  test("authenticateRequest blocks localhost bypass for cross-origin browser requests", () => {
+    const result = security.authenticateRequest(
+      { origin: "https://evil.example", host: "localhost:4269" },
+      "127.0.0.1"
+    );
+    expect(result.authenticated).toBe(false);
+    expect(result.reason).toContain("Missing Authorization");
+  });
+
   test("authenticateRequest rejects missing header for non-localhost", () => {
     const result = security.authenticateRequest({}, "203.0.113.10");
     expect(result.authenticated).toBe(false);
@@ -51,6 +60,8 @@ describe("API security module", () => {
   test("isPrivateOrBlockedIP catches private and invalid targets", () => {
     expect(security.isPrivateOrBlockedIP("127.0.0.1")).toBe(true);
     expect(security.isPrivateOrBlockedIP("192.168.1.10")).toBe(true);
+    expect(security.isPrivateOrBlockedIP("fd00::1")).toBe(true);
+    expect(security.isPrivateOrBlockedIP("fe80::1")).toBe(true);
     expect(security.isPrivateOrBlockedIP("localhost")).toBe(true);
     expect(security.isPrivateOrBlockedIP("8.8.8.8")).toBe(false);
     expect(security.isPrivateOrBlockedIP("example.com")).toBe(false);
@@ -62,6 +73,12 @@ describe("API security module", () => {
 
     const localhostUrl = await security.validateUrl("http://localhost:4269");
     expect(localhostUrl.valid).toBe(false);
+
+    const loopbackIpv6Url = await security.validateUrl("http://[::1]/");
+    expect(loopbackIpv6Url.valid).toBe(false);
+
+    const credentialUrl = await security.validateUrl("https://user:pass@example.com");
+    expect(credentialUrl.valid).toBe(false);
 
     const publicUrl = await security.validateUrl("https://example.com/docs");
     expect(publicUrl.valid).toBe(true);

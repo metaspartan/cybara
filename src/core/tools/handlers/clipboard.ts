@@ -1,5 +1,3 @@
-// Tool handlers - clipboard operations (macOS)
-
 export async function handleClipboard(
   args: Record<string, unknown>
 ): Promise<{ content?: string; success?: boolean }> {

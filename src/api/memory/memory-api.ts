@@ -1,4 +1,3 @@
-// Memory management API
 import { readFileSync, existsSync, writeFileSync, unlinkSync, readdirSync, mkdirSync } from "fs";
 import { join, basename } from "path";
 import { memoryDir } from "../../core/paths";

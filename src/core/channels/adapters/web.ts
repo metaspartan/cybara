@@ -1,6 +1,3 @@
-// Web Adapter - Stub implementation
-// Web UI uses SSE/WebSockets directly, not this adapter pattern
-
 import type { ChannelAdapter, ToolCallInfo } from "../types";
 import { formatToolCallsPlain } from "../formatting";
 
@@ -13,8 +10,6 @@ export class WebAdapter implements ChannelAdapter {
   async start(channelId: string, _config: Record<string, unknown>): Promise<void> {
     console.log(`[Web] Starting adapter for channel ${channelId}`);
     this.running.add(channelId);
-    // Web UI doesn't require active connection management
-    // Messages are handled via HTTP API + SSE
   }
 
   async stop(channelId: string): Promise<void> {
@@ -32,7 +27,6 @@ export class WebAdapter implements ChannelAdapter {
     _text: string,
     _options?: Record<string, unknown>
   ): Promise<boolean> {
-    // Web messages are pushed via SSE, not this method
     console.log("[Web] Messages are handled via SSE, not sendMessage");
     return true;
   }

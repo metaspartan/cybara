@@ -6,8 +6,6 @@
 import { mkdir, writeFile, readFile, rm, readdir } from "fs/promises";
 import { join } from "path";
 import { homedir } from "os";
-import { exec } from "child_process";
-import { promisify } from "util";
 
 /**
  * Registry provider interface
@@ -186,8 +184,14 @@ export class ClawdHubRegistry implements SkillRegistry {
             await writeFile(zipPath, Buffer.from(buffer));
 
             // Unzip using bun/system
-            const execAsync = promisify(exec);
-            await execAsync(`unzip -o "${zipPath}" -d "${tempDir}"`);
+            const unzipResult = Bun.spawnSync(["unzip", "-o", zipPath, "-d", tempDir], {
+                stdout: "ignore",
+                stderr: "pipe",
+            });
+            if ((unzipResult.exitCode ?? 1) !== 0) {
+                const unzipError = unzipResult.stderr.toString().trim();
+                throw new Error(unzipError || `Failed to extract ZIP for: ${slug}`);
+            }
 
             // Find and read skill file (case-insensitive, also check for skill.json)
             const files = await readdir(tempDir, { recursive: true });

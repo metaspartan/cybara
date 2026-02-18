@@ -1,7 +1,4 @@
-// Tool handlers - environment variable operations
-
 export async function handleEnv(args: Record<string, unknown>): Promise<unknown> {
-  // Default to 'info' action if not specified
   const action = (args.action as string) || "info";
   const key = args.key as string | undefined;
   const value = args.value as string | undefined;
@@ -26,7 +23,6 @@ export async function handleEnv(args: Record<string, unknown>): Promise<unknown>
 
       return {
         count: entries.length,
-        // Only show first 100 chars of each value for security
         variables: Object.fromEntries(
           entries.map(([k, v]) => [k, v?.slice(0, 100) + (v && v.length > 100 ? "..." : "")])
         ),
@@ -40,7 +36,6 @@ export async function handleEnv(args: Record<string, unknown>): Promise<unknown>
       if (value === undefined) {
         throw new Error("Value is required for set action");
       }
-      // Only set at runtime (not persisted)
       process.env[key] = value;
       return { success: true, key, note: "Set for current process only" };
     }

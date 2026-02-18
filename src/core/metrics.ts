@@ -1,11 +1,5 @@
-// Centralized metrics tracking for the Cybara Agent Platform
-// Consolidates all metric tracking functions
-
 import { tables } from "./database";
 
-/**
- * Track a generic metric
- */
 export function trackMetric(
   type: string,
   key: string,
@@ -22,25 +16,19 @@ export function trackMetric(
       metadata: metadata ? JSON.stringify(metadata) : undefined,
     });
   } catch {
-    // Silent fail - metrics shouldn't break execution
+    void 0;
   }
 }
 
-/**
- * Track a tool call
- */
 export function trackToolCall(toolName: string, duration: number, success: boolean): void {
   try {
     const id = crypto.randomUUID();
 
-    // Track by tool name
     tables.metrics.add({ id, type: "tool_call", key: toolName, value: 1 });
 
-    // Also track with 'all' for easier aggregation
     const allId = crypto.randomUUID();
     tables.metrics.add({ id: allId, type: "tool_call", key: "all", value: 1 });
 
-    // Track duration
     if (duration > 0) {
       const durationId = crypto.randomUUID();
       tables.metrics.add({
@@ -51,19 +39,15 @@ export function trackToolCall(toolName: string, duration: number, success: boole
       });
     }
 
-    // Track errors
     if (!success) {
       const errId = crypto.randomUUID();
       tables.metrics.add({ id: errId, type: "tool_error", key: toolName, value: 1 });
     }
   } catch {
-    // Silent fail - metrics shouldn't break execution
+    void 0;
   }
 }
 
-/**
- * Track token usage for LLM calls
- */
 export function trackTokenUsage(
   model: string,
   provider: string,
@@ -73,7 +57,6 @@ export function trackTokenUsage(
   try {
     const totalTokens = inputTokens + outputTokens;
 
-    // Track total
     const totalId = crypto.randomUUID();
     tables.metrics.add({
       id: totalId,
@@ -82,7 +65,6 @@ export function trackTokenUsage(
       value: totalTokens,
     });
 
-    // Track input/output separately
     const inputId = crypto.randomUUID();
     tables.metrics.add({
       id: inputId,
@@ -99,7 +81,6 @@ export function trackTokenUsage(
       value: outputTokens,
     });
 
-    // Track by model
     const modelId = crypto.randomUUID();
     tables.metrics.add({
       id: modelId,
@@ -108,7 +89,6 @@ export function trackTokenUsage(
       value: totalTokens,
     });
 
-    // Track by provider
     const providerId = crypto.randomUUID();
     tables.metrics.add({
       id: providerId,
@@ -117,13 +97,10 @@ export function trackTokenUsage(
       value: totalTokens,
     });
   } catch {
-    // Silent fail
+    void 0;
   }
 }
 
-/**
- * Track API call metrics
- */
 export function trackApiCall(
   endpoint: string,
   method: string,
@@ -141,7 +118,6 @@ export function trackApiCall(
       value: 1,
     });
 
-    // Track by endpoint
     const endpointId = crypto.randomUUID();
     tables.metrics.add({
       id: endpointId,
@@ -150,13 +126,10 @@ export function trackApiCall(
       value: durationMs,
     });
   } catch {
-    // Silent fail
+    void 0;
   }
 }
 
-/**
- * Track file operations
- */
 export function trackFileOperation(
   operation: "read" | "write" | "edit" | "search",
   path: string,
@@ -166,13 +139,6 @@ export function trackFileOperation(
   trackMetric(`file_${operation}`, path, 1);
 }
 
-// =========================================
-// Cybara-compatible session token tracking
-// =========================================
-
-/**
- * Track session token usage (for context window monitoring)
- */
 export function trackSessionTokens(
   sessionId: string,
   totalTokens: number,
@@ -181,7 +147,6 @@ export function trackSessionTokens(
   metadata?: { messageCount?: number; wasCompacted?: boolean }
 ): void {
   try {
-    // Track current session tokens
     trackMetric("session_tokens", sessionId, totalTokens, {
       contextWindow,
       model,
@@ -189,11 +154,9 @@ export function trackSessionTokens(
       ...metadata,
     });
 
-    // Track utilization percentage
     const utilization = Math.min(100, Math.round((totalTokens / contextWindow) * 100));
     trackMetric("context_utilization", sessionId, utilization, { model });
 
-    // Track if near capacity (>80%)
     if (utilization > 80) {
       trackMetric("context_warning", sessionId, utilization, {
         level: utilization > 95 ? "critical" : "high",
@@ -201,13 +164,10 @@ export function trackSessionTokens(
       });
     }
   } catch {
-    // Silent fail
+    void 0;
   }
 }
 
-/**
- * Track memory flush events
- */
 export function trackMemoryFlush(
   sessionId: string,
   success: boolean,
@@ -227,13 +187,10 @@ export function trackMemoryFlush(
       trackMetric("memory_flush_session", sessionId, 1, metadata);
     }
   } catch {
-    // Silent fail
+    void 0;
   }
 }
 
-/**
- * Track context compaction events
- */
 export function trackContextCompaction(
   sessionId: string,
   metadata: {
@@ -261,13 +218,10 @@ export function trackContextCompaction(
       metadata.messagesBefore - metadata.messagesAfter
     );
   } catch {
-    // Silent fail
+    void 0;
   }
 }
 
-/**
- * Track session lifecycle events
- */
 export function trackSessionEvent(
   sessionId: string,
   event: "created" | "resumed" | "ended" | "compacted" | "memory_flushed",
@@ -277,13 +231,10 @@ export function trackSessionEvent(
     trackMetric("session_event", event, 1, { sessionId, ...metadata });
     trackMetric(`session_${event}`, sessionId, 1, metadata);
   } catch {
-    // Silent fail
+    void 0;
   }
 }
 
-/**
- * Track message metrics per session
- */
 export function trackSessionMessage(
   sessionId: string,
   role: "user" | "assistant" | "system" | "tool",
@@ -293,21 +244,16 @@ export function trackSessionMessage(
   try {
     trackMetric("session_message", role, tokens, { sessionId, ...metadata });
 
-    // Track message count by role
     trackMetric("message_count", role, 1, { sessionId });
 
-    // Track tool calls specifically
     if (metadata?.hasToolCalls) {
       trackMetric("assistant_tool_calls", sessionId, 1);
     }
   } catch {
-    // Silent fail
+    void 0;
   }
 }
 
-/**
- * Get aggregated metrics summary
- */
 export function getMetricsSummary(): {
   totalTokens: number;
   totalToolCalls: number;
@@ -317,7 +263,6 @@ export function getMetricsSummary(): {
   compactions: number;
 } {
   try {
-    // Use existing getTotal method instead of iterating all metrics
     const summary = {
       totalTokens: tables.metrics.getTotal("token_usage", "all"),
       totalToolCalls: tables.metrics.getTotal("tool_call", "all"),

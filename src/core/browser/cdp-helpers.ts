@@ -1,9 +1,5 @@
-// CDP helpers for browser control - ported from Cybara cdp.ts
-// These provide direct CDP access for more complete accessibility tree and DOM content
-
 import type { Page, Frame, ElementHandle } from "puppeteer-core";
 
-// Raw CDP accessibility node type
 export type RawAXNode = {
   nodeId?: string;
   role?: { value?: string };
@@ -14,7 +10,6 @@ export type RawAXNode = {
   backendDOMNodeId?: number;
 };
 
-// Formatted ARIA snapshot node
 export type AriaSnapshotNode = {
   ref: string;
   role: string;
@@ -25,7 +20,6 @@ export type AriaSnapshotNode = {
   depth: number;
 };
 
-// Ref info stored for element resolution
 export type RefInfo = {
   role: string;
   name?: string;
@@ -43,16 +37,12 @@ function axValue(v: unknown): string {
   return "";
 }
 
-/**
- * Format raw CDP AX nodes into a flat list with refs and depth
- */
 export function formatAriaSnapshot(nodes: RawAXNode[], limit: number): AriaSnapshotNode[] {
   const byId = new Map<string, RawAXNode>();
   for (const n of nodes) {
     if (n.nodeId) byId.set(n.nodeId, n);
   }
 
-  // Find root node
   const referenced = new Set<string>();
   for (const n of nodes) {
     for (const c of n.childIds ?? []) referenced.add(c);
@@ -96,10 +86,6 @@ export function formatAriaSnapshot(nodes: RawAXNode[], limit: number): AriaSnaps
   return out;
 }
 
-/**
- * Get FULL accessibility tree via CDP Accessibility.getFullAXTree
- * This is more complete than Puppeteer's accessibility.snapshot()
- */
 export async function getFullAccessibilityTree(
   page: Page,
   limit = 500
@@ -117,15 +103,11 @@ export async function getFullAccessibilityTree(
   }
 }
 
-/**
- * Get accessibility tree for a specific frame (like Cybara frameSelector)
- */
 export async function getFrameAccessibilityTree(
   page: Page,
   frameSelector: string,
   limit = 500
 ): Promise<AriaSnapshotNode[]> {
-  // Find the frame by selector
   const frames = page.frames();
   let targetFrame: Frame | undefined;
 
@@ -139,7 +121,6 @@ export async function getFrameAccessibilityTree(
   }
 
   if (!targetFrame) {
-    // Try to find by CSS selector on main frame
     try {
       const frameEl = await page.$(frameSelector);
       if (frameEl) {
@@ -156,7 +137,6 @@ export async function getFrameAccessibilityTree(
     return [];
   }
 
-  // Get accessibility tree from frame context
   const client = await page.createCDPSession();
   try {
     await client.send("Accessibility.enable").catch(() => {});
@@ -170,10 +150,6 @@ export async function getFrameAccessibilityTree(
   }
 }
 
-/**
- * Get page text content via CDP Runtime.evaluate
- * More reliable than accessibility API for actual visible text
- */
 export async function getDomText(
   page: Page,
   options: {
@@ -221,9 +197,6 @@ export async function getDomText(
   }
 }
 
-/**
- * Query DOM elements by selector via CDP
- */
 export async function querySelectorAll(
   page: Page,
   selector: string,
@@ -255,7 +228,7 @@ export async function querySelectorAll(
       return els.map((el, i) => {
         const tag = (el.tagName || "").toLowerCase();
         let text = "";
-        try { text = String(el.innerText || "").trim(); } catch {}
+        try { text = String(el.innerText || "").trim(); } catch { void 0; }
         if (maxText && text.length > maxText) text = text.slice(0, maxText) + "...";
         const value = (el.value !== undefined && el.value !== null) ? String(el.value).slice(0, 500) : undefined;
         const href = (el.href !== undefined && el.href !== null) ? String(el.href) : undefined;
@@ -282,18 +255,12 @@ export async function querySelectorAll(
   }
 }
 
-/**
- * Resolve a ref (e1, e2, etc.) to an element handle using role+name
- * This is the Puppeteer equivalent of Cybara's refLocator with getByRole
- */
 export async function resolveRefToElement(
   page: Page,
   refInfo: RefInfo
 ): Promise<ElementHandle | null> {
   const { role, name, nth } = refInfo;
 
-  // Build a selector based on role and name
-  // ARIA roles map to HTML elements and role attributes
   const roleSelectors: Record<string, string> = {
     button: 'button, [role="button"], input[type="button"], input[type="submit"]',
     link: 'a[href], [role="link"]',
@@ -326,7 +293,6 @@ export async function resolveRefToElement(
     const elements = await page.$$(selector);
 
     if (name) {
-      // Filter by name (text content, aria-label, title, placeholder)
       for (let i = 0; i < elements.length; i++) {
         const el = elements[i];
         if (!el) continue;
@@ -358,7 +324,6 @@ export async function resolveRefToElement(
           elProps.ariaLabel.includes(name);
 
         if (matchesName) {
-          // If nth is specified, count matches
           if (nth !== undefined && nth > 0) {
             let matchCount = 0;
             for (let j = 0; j <= i; j++) {
@@ -389,7 +354,6 @@ export async function resolveRefToElement(
       }
     }
 
-    // If no name match or no name specified, return nth element or first
     const index = nth ?? 0;
     return elements[index] ?? null;
   } catch (err) {
@@ -398,16 +362,12 @@ export async function resolveRefToElement(
   }
 }
 
-/**
- * Get bounding boxes for refs (used for labeled screenshots)
- */
 export async function getRefBoundingBoxes(
   page: Page,
   refs: Record<string, RefInfo>
 ): Promise<Array<{ ref: string; x: number; y: number; w: number; h: number }>> {
   const boxes: Array<{ ref: string; x: number; y: number; w: number; h: number }> = [];
 
-  // Get viewport info
   const viewport = (await page.evaluate(`
         (function() {
             return {
@@ -427,7 +387,6 @@ export async function getRefBoundingBoxes(
       const box = await el.boundingBox();
       if (!box) continue;
 
-      // Check if visible in viewport
       const x0 = box.x;
       const y0 = box.y;
       const x1 = box.x + box.width;
@@ -454,9 +413,6 @@ export async function getRefBoundingBoxes(
   return boxes;
 }
 
-/**
- * Take screenshot with ref labels overlaid (like Cybara screenshotWithLabels)
- */
 export async function screenshotWithLabels(
   page: Page,
   refs: Record<string, RefInfo>,
@@ -473,7 +429,6 @@ export async function screenshotWithLabels(
   const skipped = boxes.length - visibleBoxes.length;
 
   try {
-    // Inject label overlay
     if (visibleBoxes.length > 0) {
       const labelsJson = JSON.stringify(visibleBoxes);
       await page.evaluate(`
@@ -531,12 +486,10 @@ export async function screenshotWithLabels(
             `);
     }
 
-    // Take screenshot
     const buffer = (await page.screenshot({ type, encoding: "binary" })) as Buffer;
 
     return { buffer, labels: visibleBoxes.length, skipped };
   } finally {
-    // Clean up labels
     await page
       .evaluate(
         `
@@ -550,9 +503,6 @@ export async function screenshotWithLabels(
   }
 }
 
-/**
- * Scroll element into view
- */
 export async function scrollIntoView(page: Page, refInfo: RefInfo): Promise<boolean> {
   const el = await resolveRefToElement(page, refInfo);
   if (!el) return false;
@@ -565,9 +515,6 @@ export async function scrollIntoView(page: Page, refInfo: RefInfo): Promise<bool
   return true;
 }
 
-/**
- * Hover over element
- */
 export async function hoverElement(page: Page, refInfo: RefInfo): Promise<boolean> {
   const el = await resolveRefToElement(page, refInfo);
   if (!el) return false;
@@ -576,9 +523,6 @@ export async function hoverElement(page: Page, refInfo: RefInfo): Promise<boolea
   return true;
 }
 
-/**
- * Select option in dropdown
- */
 export async function selectOption(
   page: Page,
   refInfo: RefInfo,
@@ -591,9 +535,6 @@ export async function selectOption(
   return true;
 }
 
-/**
- * Wait for various conditions (like Cybara waitFor)
- */
 export async function waitFor(
   page: Page,
   options: {
@@ -642,9 +583,6 @@ export async function waitFor(
   }
 }
 
-/**
- * Fill form field (clear first, then type)
- */
 export async function fillField(
   page: Page,
   refInfo: RefInfo,
@@ -654,15 +592,12 @@ export async function fillField(
   const el = await resolveRefToElement(page, refInfo);
   if (!el) return false;
 
-  // Clear existing content
   await el.click({ clickCount: 3 });
   await page.keyboard.press("Backspace");
 
   if (options.slowly) {
-    // Type character by character
     await el.type(text, { delay: 75 });
   } else {
-    // Fast fill via evaluate
     const escapedText = JSON.stringify(text);
     await el.evaluate(`
             (function(node) {

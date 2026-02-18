@@ -1,15 +1,8 @@
-// Subagent Registry - Cybara compatible tracking of spawned subagent runs
-// Full parity with Cybara: persistence, lifecycle events, announce flow, sweeper
-
 import { randomUUID } from "crypto";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { EventEmitter } from "events";
-
-// ============================================
-// TYPES
-// ============================================
 
 export type SubagentRunOutcome = {
   status: "ok" | "error" | "timeout";
@@ -41,10 +34,6 @@ export interface SubagentRunRecord {
   cleanupHandled?: boolean;
 }
 
-// ============================================
-// CONFIGURATION
-// ============================================
-
 interface SubagentConfig {
   archiveAfterMinutes: number;
   defaultTimeoutSeconds: number;
@@ -63,22 +52,13 @@ export function configureSubagentRegistry(cfg: Partial<SubagentConfig>): void {
   config = { ...config, ...cfg };
 }
 
-// ============================================
-// STATE
-// ============================================
-
 const subagentRuns = new Map<string, SubagentRunRecord>();
 const resumedRuns = new Set<string>();
 let sweeper: ReturnType<typeof setInterval> | null = null;
 let listenerStarted = false;
 let restoreAttempted = false;
 
-// Event emitter for lifecycle events
 const lifecycleEmitter = new EventEmitter();
-
-// ============================================
-// PERSISTENCE
-// ============================================
 
 function persistSubagentRuns(): void {
   try {
@@ -107,10 +87,6 @@ function loadSubagentRegistryFromDisk(): Map<string, SubagentRunRecord> {
   }
 }
 
-// ============================================
-// SWEEPER (Cleanup old runs)
-// ============================================
-
 function resolveArchiveAfterMs(): number | undefined {
   const minutes = config.archiveAfterMinutes;
   if (!Number.isFinite(minutes) || minutes <= 0) {
@@ -124,7 +100,6 @@ function startSweeper(): void {
   sweeper = setInterval(() => {
     void sweepSubagentRuns();
   }, 60_000);
-  // Allow process to exit even if sweeper is running
   if (sweeper.unref) {
     sweeper.unref();
   }
@@ -145,12 +120,10 @@ async function sweepSubagentRuns(): Promise<void> {
       continue;
     }
 
-    // Archive: delete from registry
     subagentRuns.delete(runId);
     mutated = true;
     console.log(`[Subagent] Archived run ${runId} (child: ${entry.childSessionKey})`);
 
-    // Emit archive event for cleanup
     lifecycleEmitter.emit("archive", {
       runId,
       childSessionKey: entry.childSessionKey,
@@ -165,10 +138,6 @@ async function sweepSubagentRuns(): Promise<void> {
     stopSweeper();
   }
 }
-
-// ============================================
-// LIFECYCLE EVENTS
-// ============================================
 
 export type LifecycleEventType = "start" | "end" | "error" | "archive" | "announce";
 
@@ -192,7 +161,6 @@ function ensureListener(): void {
   if (listenerStarted) return;
   listenerStarted = true;
 
-  // Internal listener for run tracking updates
   lifecycleEmitter.on("lifecycle", (evt: LifecycleEvent) => {
     const entry = subagentRuns.get(evt.runId);
     if (!entry) return;
@@ -216,7 +184,6 @@ function ensureListener(): void {
 
       persistSubagentRuns();
 
-      // Trigger announce flow
       if (beginSubagentCleanup(evt.runId)) {
         void runAnnounceFlow(evt.runId).then((didAnnounce) => {
           finalizeSubagentCleanup(evt.runId, entry.cleanup, didAnnounce);
@@ -226,16 +193,11 @@ function ensureListener(): void {
   });
 }
 
-// ============================================
-// ANNOUNCE FLOW
-// ============================================
-
 async function runAnnounceFlow(runId: string): Promise<boolean> {
   const entry = subagentRuns.get(runId);
   if (!entry) return false;
 
   try {
-    // Build summary message for requester
     const duration =
       entry.endedAt && entry.startedAt ? Math.round((entry.endedAt - entry.startedAt) / 1000) : 0;
     const status = entry.outcome?.status === "ok" ? "✅" : "❌";
@@ -249,7 +211,6 @@ async function runAnnounceFlow(runId: string): Promise<boolean> {
       .filter(Boolean)
       .join("\n");
 
-    // Emit announce event for delivery
     emitLifecycle({
       runId,
       type: "announce",
@@ -268,10 +229,6 @@ async function runAnnounceFlow(runId: string): Promise<boolean> {
     return false;
   }
 }
-
-// ============================================
-// CLEANUP COORDINATION
-// ============================================
 
 function beginSubagentCleanup(runId: string): boolean {
   const entry = subagentRuns.get(runId);
@@ -293,7 +250,6 @@ function finalizeSubagentCleanup(
   if (!entry) return;
 
   if (cleanup === "delete") {
-    // Immediate deletion
     subagentRuns.delete(runId);
     persistSubagentRuns();
     console.log(`[Subagent] Deleted run ${runId} (cleanup=delete)`);
@@ -301,7 +257,6 @@ function finalizeSubagentCleanup(
   }
 
   if (!didAnnounce) {
-    // Allow retry on next wake if announce failed
     entry.cleanupHandled = false;
     persistSubagentRuns();
     return;
@@ -311,10 +266,6 @@ function finalizeSubagentCleanup(
   persistSubagentRuns();
 }
 
-// ============================================
-// RESUME (After restart)
-// ============================================
-
 function resumeSubagentRun(runId: string): void {
   if (!runId || resumedRuns.has(runId)) return;
 
@@ -322,7 +273,6 @@ function resumeSubagentRun(runId: string): void {
   if (!entry) return;
   if (entry.cleanupCompletedAt) return;
 
-  // If already ended, trigger announce flow
   if (typeof entry.endedAt === "number" && entry.endedAt > 0) {
     if (beginSubagentCleanup(runId)) {
       void runAnnounceFlow(runId).then((didAnnounce) => {
@@ -333,7 +283,6 @@ function resumeSubagentRun(runId: string): void {
     return;
   }
 
-  // Otherwise wait for completion
   const timeoutMs = config.defaultTimeoutSeconds * 1000;
   void waitForSubagentCompletion(runId, timeoutMs);
   resumedRuns.add(runId);
@@ -349,13 +298,11 @@ function restoreSubagentRunsOnce(): void {
 
     for (const [runId, entry] of restored.entries()) {
       if (!runId || !entry) continue;
-      // Keep any newer in-memory entries
       if (!subagentRuns.has(runId)) {
         subagentRuns.set(runId, entry);
       }
     }
 
-    // Resume pending work
     ensureListener();
     if ([...subagentRuns.values()].some((e) => e.archiveAtMs)) {
       startSweeper();
@@ -370,26 +317,19 @@ function restoreSubagentRunsOnce(): void {
   }
 }
 
-// ============================================
-// TIMEOUT HANDLING
-// ============================================
-
 const runTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 async function waitForSubagentCompletion(runId: string, timeoutMs: number): Promise<void> {
-  // Clear any existing timer
   const existingTimer = runTimers.get(runId);
   if (existingTimer) {
     clearTimeout(existingTimer);
   }
 
-  // Set timeout timer
   const timer = setTimeout(() => {
     const entry = subagentRuns.get(runId);
     if (!entry) return;
     if (entry.endedAt) return; // Already completed
 
-    // Timeout - mark as error
     entry.endedAt = Date.now();
     entry.outcome = {
       status: "timeout",
@@ -412,13 +352,6 @@ async function waitForSubagentCompletion(runId: string, timeoutMs: number): Prom
   runTimers.set(runId, timer);
 }
 
-// ============================================
-// PUBLIC API
-// ============================================
-
-/**
- * Register a new subagent run.
- */
 export function registerSubagentRun(params: {
   runId?: string;
   childSessionKey: string;
@@ -459,16 +392,12 @@ export function registerSubagentRun(params: {
     startSweeper();
   }
 
-  // Start timeout tracking
   void waitForSubagentCompletion(runId, timeoutMs);
 
   console.log(`[Subagent] Registered run ${runId} for child session ${params.childSessionKey}`);
   return run;
 }
 
-/**
- * Mark a run as started (running).
- */
 export function markRunStarted(runId: string): boolean {
   const entry = subagentRuns.get(runId);
   if (!entry) return false;
@@ -485,9 +414,6 @@ export function markRunStarted(runId: string): boolean {
   return true;
 }
 
-/**
- * Mark a run as completed with a result.
- */
 export function markRunCompleted(runId: string, result?: string): boolean {
   const entry = subagentRuns.get(runId);
   if (!entry) return false;
@@ -496,7 +422,6 @@ export function markRunCompleted(runId: string, result?: string): boolean {
   entry.outcome = { status: "ok" };
   persistSubagentRuns();
 
-  // Clear timeout timer
   const timer = runTimers.get(runId);
   if (timer) {
     clearTimeout(timer);
@@ -512,9 +437,6 @@ export function markRunCompleted(runId: string, result?: string): boolean {
   return true;
 }
 
-/**
- * Mark a run as failed with an error.
- */
 export function markRunFailed(runId: string, error: string): boolean {
   const entry = subagentRuns.get(runId);
   if (!entry) return false;
@@ -523,7 +445,6 @@ export function markRunFailed(runId: string, error: string): boolean {
   entry.outcome = { status: "error", error };
   persistSubagentRuns();
 
-  // Clear timeout timer
   const timer = runTimers.get(runId);
   if (timer) {
     clearTimeout(timer);
@@ -539,16 +460,10 @@ export function markRunFailed(runId: string, error: string): boolean {
   return true;
 }
 
-/**
- * Get a run by ID.
- */
 export function getRun(runId: string): SubagentRunRecord | undefined {
   return subagentRuns.get(runId);
 }
 
-/**
- * Get a run by child session key.
- */
 export function getRunBySessionKey(childSessionKey: string): SubagentRunRecord | undefined {
   for (const run of subagentRuns.values()) {
     if (run.childSessionKey === childSessionKey) {
@@ -558,32 +473,20 @@ export function getRunBySessionKey(childSessionKey: string): SubagentRunRecord |
   return undefined;
 }
 
-/**
- * Get all runs for a requester session.
- */
 export function getRunsByRequester(requesterSessionKey: string): SubagentRunRecord[] {
   const key = requesterSessionKey.trim();
   if (!key) return [];
   return [...subagentRuns.values()].filter((r) => r.requesterSessionKey === key);
 }
 
-/**
- * Get all active runs.
- */
 export function listActiveRuns(): SubagentRunRecord[] {
   return [...subagentRuns.values()].filter((r) => !r.endedAt || r.endedAt === 0);
 }
 
-/**
- * Get all runs (including completed).
- */
 export function listAllRuns(): SubagentRunRecord[] {
   return [...subagentRuns.values()];
 }
 
-/**
- * Release/delete a run manually.
- */
 export function releaseSubagentRun(runId: string): boolean {
   const timer = runTimers.get(runId);
   if (timer) {
@@ -601,15 +504,11 @@ export function releaseSubagentRun(runId: string): boolean {
   return didDelete;
 }
 
-/**
- * Clean up old completed runs (older than maxAgeMs).
- */
 export function cleanupOldRuns(maxAgeMs: number = 3600000): number {
   const now = Date.now();
   let cleaned = 0;
 
   for (const [runId, run] of subagentRuns.entries()) {
-    // Use endedAt (the actual field) instead of completedAt
     if (run.endedAt && now - run.endedAt > maxAgeMs) {
       subagentRuns.delete(runId);
       cleaned++;
@@ -624,16 +523,10 @@ export function cleanupOldRuns(maxAgeMs: number = 3600000): number {
   return cleaned;
 }
 
-/**
- * Check if a session key is a subagent session.
- */
 export function isSubagentSessionKey(sessionKey: string): boolean {
   return sessionKey.includes(":subagent:") || sessionKey.startsWith("subagent:");
 }
 
-/**
- * Parse a session key to extract agent ID.
- */
 export function parseAgentSessionKey(sessionKey: string): {
   agentId?: string;
   isSubagent: boolean;
@@ -648,23 +541,14 @@ export function parseAgentSessionKey(sessionKey: string): {
   return { isSubagent: isSubagentSessionKey(sessionKey) };
 }
 
-/**
- * Generate a new subagent session key.
- */
 export function generateSubagentSessionKey(agentId: string = "default"): string {
   return `agent:${agentId}:subagent:${randomUUID()}`;
 }
 
-/**
- * Initialize the subagent registry (restore from disk).
- */
 export function initSubagentRegistry(): void {
   restoreSubagentRunsOnce();
 }
 
-/**
- * Reset the registry (for testing).
- */
 export function resetSubagentRegistryForTests(): void {
   subagentRuns.clear();
   resumedRuns.clear();
@@ -681,5 +565,4 @@ export function resetSubagentRegistryForTests(): void {
   persistSubagentRuns();
 }
 
-// Registry initialized on first use
 initSubagentRegistry();

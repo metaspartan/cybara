@@ -1,6 +1,3 @@
-// Discord Adapter - Production implementation using discord.js v14
-// Requires: discord.js package, bot token with MessageContent intent enabled
-
 import { Client, GatewayIntentBits, Events, Partials, type Message } from "discord.js";
 import type { ChannelAdapter, ToolCallInfo, MessageHandler } from "../types";
 import { formatToolCallsForDiscord } from "../formatting";
@@ -8,11 +5,8 @@ import { logChannelMessage } from "../../logging";
 import { buildChannelSecurityConfig, securityManager } from "../security";
 import { handleChannelManagementCommand } from "../commands";
 
-// Discord session storage (channelId -> sessionId)
 export const discordSessions = new Map<string, string>();
 
-// Keep intents minimal to avoid Discord disallowed-intent gateway failures.
-// MessageContent is required to read message text; GuildMembers is not required for this adapter.
 export const DISCORD_REQUIRED_INTENTS = [
   GatewayIntentBits.Guilds,
   GatewayIntentBits.GuildMessages,
@@ -41,10 +35,8 @@ export class DiscordAdapter implements ChannelAdapter {
       throw new Error("bot_token is required for Discord adapter");
     }
 
-    // Configure security based on channel config
     securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
 
-    // Check if already running
     if (this.clients.has(channelId)) {
       console.log(`[Discord] Client already running for channel ${channelId}`);
       return;
@@ -59,18 +51,15 @@ export class DiscordAdapter implements ChannelAdapter {
       partials: [Partials.Channel, Partials.Message, Partials.User],
     });
 
-    // Handle ready event
     client.once(Events.ClientReady, (readyClient) => {
       console.log(`[Discord] Bot logged in as ${readyClient.user.tag}`);
       console.log(`[Discord] Serving ${readyClient.guilds.cache.size} guilds`);
     });
 
-    // Handle incoming messages
     client.on(Events.MessageCreate, async (message: Message) => {
       await this.handleMessage(channelId, message);
     });
 
-    // Handle errors
     client.on(Events.Error, (error) => {
       console.error(`[Discord] Client error:`, error);
     });
@@ -79,7 +68,6 @@ export class DiscordAdapter implements ChannelAdapter {
       console.warn(`[Discord] Client warning:`, warning);
     });
 
-    // Login
     try {
       await client.login(botToken);
       this.clients.set(channelId, client);
@@ -101,14 +89,11 @@ export class DiscordAdapter implements ChannelAdapter {
     const chatId = message.channel.id;
     const guildId = message.guild?.id || "DM";
 
-    // Check if bot is mentioned or this is a DM
     const isMentioned = message.mentions.has(message.client.user!);
     const isDM = !message.guild;
 
-    // Only respond to mentions or DMs (configurable)
     if (!isMentioned && !isDM) return;
 
-    // 🔐 SECURITY CHECK: Verify sender is allowed
     const accessCheck = securityManager.checkAccess(
       channelId,
       userId,
@@ -118,7 +103,6 @@ export class DiscordAdapter implements ChannelAdapter {
 
     if (!accessCheck.permitted) {
       if (accessCheck.reason === "new_pairing") {
-        // Send pairing code to user
         try {
           await message.reply(accessCheck.message || `🔐 Pairing code: ${accessCheck.code}`);
         } catch (e) {
@@ -138,12 +122,10 @@ export class DiscordAdapter implements ChannelAdapter {
       return;
     }
 
-    // Remove bot mention from content
     let content = message.content
       .replace(new RegExp(`<@!?${message.client.user!.id}>`, "g"), "")
       .trim();
 
-    // Handle attachments
     let hasFile = false;
     let filePath = "";
     let fileType = "";
@@ -151,7 +133,6 @@ export class DiscordAdapter implements ChannelAdapter {
 
     if (message.attachments.size > 0) {
       const attachment = message.attachments.first()!;
-      // For now, just note the attachment URL
       content += `\n\n[Attachment: ${attachment.url}]`;
       hasFile = true;
       filePath = attachment.url;
@@ -159,7 +140,6 @@ export class DiscordAdapter implements ChannelAdapter {
       placeholder = `<attachment:${attachment.name}>`;
     }
 
-    // Log incoming message
     await logChannelMessage("discord", "incoming", content, {
       channelId: chatId,
       senderId: userId,
@@ -172,16 +152,14 @@ export class DiscordAdapter implements ChannelAdapter {
       },
     });
 
-    // Show typing indicator
     try {
       if ("sendTyping" in message.channel) {
         await message.channel.sendTyping();
       }
     } catch {
-      // Typing indicator may fail in some channels
+      void 0;
     }
 
-    // Get or create session
     const sessionKey = `${channelId}:${chatId}`;
     let sessionId = discordSessions.get(sessionKey);
     if (!sessionId) {
@@ -189,7 +167,6 @@ export class DiscordAdapter implements ChannelAdapter {
       discordSessions.set(sessionKey, sessionId);
     }
 
-    // Process message
     let response: string;
     try {
       const commandResponse = await handleChannelManagementCommand(content, {
@@ -218,13 +195,11 @@ export class DiscordAdapter implements ChannelAdapter {
       response = "❌ Sorry, I encountered an error processing your message. Please try again.";
     }
 
-    // Log outgoing message
     await logChannelMessage("discord", "outgoing", response, {
       channelId: chatId,
       metadata: { replyToMessageId: message.id },
     });
 
-    // Send response (split if too long)
     await this.sendLongMessage(message, response);
   }
 
@@ -236,7 +211,6 @@ export class DiscordAdapter implements ChannelAdapter {
       return;
     }
 
-    // Split into chunks
     const chunks: string[] = [];
     let remaining = response;
 
@@ -246,7 +220,6 @@ export class DiscordAdapter implements ChannelAdapter {
         break;
       }
 
-      // Find a good split point (newline or space)
       let splitIndex = remaining.lastIndexOf("\n", MAX_LENGTH);
       if (splitIndex < MAX_LENGTH / 2) {
         splitIndex = remaining.lastIndexOf(" ", MAX_LENGTH);
@@ -259,10 +232,8 @@ export class DiscordAdapter implements ChannelAdapter {
       remaining = remaining.slice(splitIndex).trim();
     }
 
-    // Send first chunk as reply
     await message.reply(chunks[0]);
 
-    // Send remaining chunks as follow-up messages
     for (let i = 1; i < chunks.length; i++) {
       if ("send" in message.channel) {
         await message.channel.send(chunks[i]);
@@ -323,7 +294,6 @@ export class DiscordAdapter implements ChannelAdapter {
     }
 
     if (thinking) {
-      // Discord spoiler tags for thinking
       text += `\n\n💭 ||${thinking}||`;
     }
 

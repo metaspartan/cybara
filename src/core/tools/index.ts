@@ -1,11 +1,6 @@
 import { telegramBot, channelManager } from "../channels";
 import { config } from "../config";
 
-// ============================================
-// TOOL DEFINITIONS
-// All Cybara tools + extras
-// ============================================
-
 export interface ToolHandler {
   (args: Record<string, unknown>, context?: ToolContext): Promise<unknown>;
 }
@@ -37,16 +32,8 @@ export interface Tool {
     | "lsp";
 }
 
-// ============================================
-// TOOL HANDLERS REGISTRY
-// ============================================
-
 const _toolHandlers = new Map<string, ToolHandler>();
 export const toolHandlers = _toolHandlers;
-
-// ============================================
-// RATE LIMITING
-// ============================================
 
 interface RateLimitConfig {
   windowMs: number;
@@ -86,10 +73,6 @@ export function getRateLimitStatus(key: string): { remaining: number; resetTime:
   }
   return { remaining: 100 - record.count, resetTime: record.resetTime };
 }
-
-// ============================================
-// CIRCUIT BREAKER
-// ============================================
 
 interface CircuitBreakerConfig {
   failureThreshold: number;
@@ -173,12 +156,7 @@ export function recordCircuitFailure(
   }
 }
 
-// ============================================
-// TOOL SCHEMAS
-// ============================================
-
 export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
-  // File operations
   read: {
     name: "read",
     description: "Read file contents from the filesystem",
@@ -281,7 +259,6 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
     permissions: ["fs:write"],
   },
 
-  // Process execution
   exec: {
     name: "exec",
     description:
@@ -319,7 +296,6 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
     permissions: ["exec:manage"],
   },
 
-  // Browser automation - Cybara/Cybara compatible with Profile Support
   browser: {
     name: "browser",
     description: [
@@ -342,12 +318,10 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
         action: {
           type: "string",
           enum: [
-            // Lifecycle
             "status",
             "start",
             "stop",
             "close",
-            // Profile management
             "profiles",
             "createProfile",
             "deleteProfile",
@@ -356,21 +330,17 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
             "profileTabs",
             "openProfileTab",
             "closeProfileTab",
-            // Tab management (legacy)
             "tabs",
             "open",
             "openVisual",
             "focus",
             "navigate",
-            // Capture
             "snapshot",
             "screenshot",
             "pdf",
             "console",
-            // File I/O
             "upload",
             "dialog",
-            // Interactions
             "click",
             "type",
             "press",
@@ -380,7 +350,6 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
             "drag",
             "fill",
             "resize",
-            // Scripting & Waiting
             "evaluate",
             "wait",
             "act",
@@ -389,7 +358,6 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
             "Browser action: 'open'/'navigate' to load URL, 'screenshot' to capture page as IMAGE (returns base64), 'snapshot' for page TEXT, 'click'/'type' to interact",
         },
         sessionId: { type: "string", description: "Session ID for legacy browser session" },
-        // Profile actions
         name: { type: "string", description: "Profile name for create/delete/start/stopProfile" },
         profile: { type: "string", description: "Profile name for profile-related actions" },
         color: { type: "string", description: "Profile color (hex)" },
@@ -405,14 +373,12 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
         },
         userDataDir: { type: "string", description: "Custom user data directory for profile" },
         pageId: { type: "string", description: "Page ID for closeProfileTab" },
-        // Navigation
         url: {
           type: "string",
           description:
             "URL for start/navigate/open actions. ALWAYS pass url with start to open a page.",
         },
         targetId: { type: "string", description: "Target tab ID for focus/close actions" },
-        // Element interactions
         selector: { type: "string", description: "CSS selector for element interactions" },
         ref: { type: "string", description: "Element reference (alternative to selector)" },
         text: { type: "string", description: "Text to type" },
@@ -460,7 +426,6 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
         submit: { type: "boolean", description: "Submit form after typing" },
         slowly: { type: "boolean", description: "Type slowly with delay" },
         clear: { type: "boolean", description: "Clear field before typing (default: true)" },
-        // Capture options
         fullPage: { type: "boolean", description: "Capture full page screenshot" },
         type: { type: "string", enum: ["png", "jpeg"], description: "Screenshot/PDF format type" },
         quality: { type: "number", description: "Image quality (1-100) for JPEG" },
@@ -508,7 +473,6 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
     permissions: ["browser:control"],
   },
 
-  // NOTE: Use browser({ action: 'open', url }) instead - Cybara pattern
   web_fetch: {
     name: "web_fetch",
     description: "Fetch and extract readable content from a URL",
@@ -525,7 +489,6 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
     permissions: ["net:fetch"],
   },
 
-  // Web search (Cybara pattern: supports Brave API or DuckDuckGo fallback)
   web_search: {
     name: "web_search",
     description:
@@ -542,7 +505,6 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
     permissions: ["net:fetch"],
   },
 
-  // Memory system
   memory_search: {
     name: "memory_search",
     description: "Search long-term memory for information",
@@ -624,7 +586,6 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
     },
     permissions: ["memory:read"],
   },
-  // Session management
   sessions_spawn: {
     name: "sessions_spawn",
     description: `Spawn a background sub-agent run in an isolated session and announce the result back to the requester chat.
@@ -733,7 +694,6 @@ Use for tasks that may take longer or require separate context.`,
     permissions: ["sessions:read"],
   },
 
-  // Agent management
   agents_list: {
     name: "agents_list",
     description: "List all available agents",
@@ -1129,7 +1089,6 @@ Use for tasks that may take longer or require separate context.`,
     permissions: ["wallet:use"],
   },
 
-  // Channel/messaging
   message: {
     name: "message",
     description: "Send messages via messaging channels",
@@ -1148,7 +1107,6 @@ Use for tasks that may take longer or require separate context.`,
     permissions: ["message:send"],
   },
 
-  // Telegram media sending
   telegram_media: {
     name: "telegram_media",
     description:
@@ -1193,21 +1151,17 @@ Use for tasks that may take longer or require separate context.`,
           description:
             "Canvas action: present shows canvas, hide hides it, navigate loads URL, eval runs JS, snapshot captures image, a2ui_push sends JSONL to UI, a2ui_reset clears UI data",
         },
-        // Gateway options
         gatewayUrl: { type: "string", description: "Gateway URL for node communication" },
         gatewayToken: { type: "string", description: "Gateway auth token" },
         timeoutMs: { type: "number", description: "Timeout in milliseconds" },
         node: { type: "string", description: "Target node ID" },
-        // present
         target: { type: "string", description: "URL or path to present" },
         url: { type: "string", description: "URL or HTML content for present/navigate" },
         x: { type: "number", description: "Window X position" },
         y: { type: "number", description: "Window Y position" },
         width: { type: "number", description: "Window width" },
         height: { type: "number", description: "Window height" },
-        // eval
         javaScript: { type: "string", description: "JavaScript code to evaluate" },
-        // snapshot
         outputFormat: {
           type: "string",
           enum: ["png", "jpg", "jpeg"],
@@ -1216,7 +1170,6 @@ Use for tasks that may take longer or require separate context.`,
         maxWidth: { type: "number", description: "Max width in pixels for snapshot" },
         quality: { type: "number", description: "JPEG quality 0-1 for snapshot" },
         delayMs: { type: "number", description: "Delay before snapshot (ms)" },
-        // A2UI
         jsonl: { type: "string", description: "JSONL data for A2UI push" },
         jsonlPath: { type: "string", description: "Path to JSONL file for A2UI push" },
       },
@@ -1272,7 +1225,6 @@ Use for tasks that may take longer or require separate context.`,
     permissions: ["media:tts"],
   },
 
-  // Scheduling
   cron: {
     name: "cron",
     description: `Manage cron jobs (status/list/add/update/remove/run/runs) and send wake events.
@@ -1317,7 +1269,6 @@ PAYLOAD TYPES (payload.kind):
     permissions: ["cron:manage"],
   },
 
-  // Gateway
   gateway: {
     name: "gateway",
     description: `Control the gateway daemon service, get status, and manage configuration.
@@ -1345,7 +1296,6 @@ ACTIONS:
     permissions: ["gateway:control"],
   },
 
-  // Git operations (extra)
   git: {
     name: "git",
     description:
@@ -1368,7 +1318,6 @@ ACTIONS:
     permissions: ["exec:run"],
   },
 
-  // Skills (extra)
   summarization: {
     name: "summarization",
     description: "Summarize text content using AI",
@@ -1422,7 +1371,6 @@ ACTIONS:
     permissions: ["fs:read", "fs:write"],
   },
 
-  // Utility tools
   clipboard: {
     name: "clipboard",
     description: "Read and write system clipboard (macOS)",
@@ -1519,7 +1467,6 @@ ACTIONS:
     permissions: ["env:read"],
   },
 
-  // Skill tools
   calc: {
     name: "calc",
     description: "Safely evaluate mathematical expressions",
@@ -1583,7 +1530,6 @@ ACTIONS:
     },
     permissions: ["fs:read"],
   },
-  // LSP (Language Server Protocol) tools
   lsp_diagnostics: {
     name: "lsp_diagnostics",
     description:
@@ -1656,12 +1602,7 @@ ACTIONS:
     },
     permissions: [],
   },
-  // MCP Tools - dynamically populated
 };
-
-// ============================================
-// TOOL HANDLER FUNCTIONS
-// ============================================
 
 export function isToolEnabledForAgent(toolName: string): boolean {
   if (toolName === "wallet") {
@@ -1670,12 +1611,10 @@ export function isToolEnabledForAgent(toolName: string): boolean {
   return true;
 }
 
-// Get tool schemas for LLM tool calling
 export function getToolSchemasForLLM(): Omit<Tool, "handler">[] {
   return Object.values(toolSchemas).filter((tool) => isToolEnabledForAgent(tool.name));
 }
 
-// Get tool handler by name
 export function getToolHandler(name: string): ToolHandler | undefined {
   return _toolHandlers.get(name);
 }
@@ -1686,7 +1625,6 @@ export function getToolRequiredPermissions(name: string): string[] {
   return tool.permissions;
 }
 
-// Check tool permissions
 export function checkToolPermissions(
   permissions: string[] = [],
   contextPermissions: string[] = []
@@ -1698,21 +1636,14 @@ export function checkToolPermissions(
 
 export type ToolName = keyof typeof toolSchemas;
 
-// ============================================
-// INITIALIZE TOOL HANDLERS
-// ============================================
-
-// Import file handlers
 import { handleRead, handleWrite, handleEdit, handleFileSearch, handleGrep } from "./handlers/file";
 
-// Register file handlers
 _toolHandlers.set("read", handleRead);
 _toolHandlers.set("write", handleWrite);
 _toolHandlers.set("edit", handleEdit);
 _toolHandlers.set("file_search", handleFileSearch);
 _toolHandlers.set("grep", handleGrep);
 
-// Import memory handlers
 import {
   handleMemorySearch,
   handleMemoryGet,
@@ -1720,25 +1651,21 @@ import {
   handleMemoryList,
 } from "./handlers/memory";
 
-// Register memory handlers
 _toolHandlers.set("memory_search", handleMemorySearch);
 _toolHandlers.set("memory_get", handleMemoryGet);
 _toolHandlers.set("memory_save", handleMemorySave);
 _toolHandlers.set("memory_list", handleMemoryList);
 
-// Import utility handlers
 import { handleClipboard } from "./handlers/clipboard";
 import { handleHttp } from "./handlers/http";
 import { handleData } from "./handlers/data";
 import { handleEnv } from "./handlers/env";
 
-// Register utility handlers
 _toolHandlers.set("clipboard", handleClipboard);
 _toolHandlers.set("http", handleHttp);
 _toolHandlers.set("data", handleData);
 _toolHandlers.set("env", handleEnv);
 
-// Import LSP handlers
 import {
   handleLSPDiagnostics,
   handleLSPDefinition,
@@ -1747,18 +1674,15 @@ import {
   handleLSPLanguages,
 } from "./handlers/lsp";
 
-// Register LSP handlers
 _toolHandlers.set("lsp_diagnostics", handleLSPDiagnostics);
 _toolHandlers.set("lsp_definition", handleLSPDefinition);
 _toolHandlers.set("lsp_references", handleLSPReferences);
 _toolHandlers.set("lsp_hover", handleLSPHover);
 _toolHandlers.set("lsp_languages", handleLSPLanguages);
 
-// Import and register canvas handler
 import { handleCanvas } from "./handlers/canvas";
 _toolHandlers.set("canvas", handleCanvas);
 
-// Register skill executors as tools
 import { getSkillExecutors } from "../skills/index";
 getSkillExecutors()
   .then((executors) => {
@@ -1770,7 +1694,6 @@ getSkillExecutors()
     console.error("Failed to initialize skill executors:", err);
   });
 
-// Telegram media handler
 async function handleTelegramMedia(
   args: Record<string, unknown>,
   context?: ToolContext
@@ -1784,9 +1707,6 @@ async function handleTelegramMedia(
     throw new Error("file is required");
   }
 
-  // telegramBot and channelManager imported at top of file
-
-  // Find active Telegram channel
   const channels = channelManager.list();
   const telegramChannel = channels.find((c) => c.type === "telegram" && c.enabled);
 
@@ -1794,10 +1714,8 @@ async function handleTelegramMedia(
     throw new Error("No active Telegram channel found");
   }
 
-  // Get chat ID from context or argument
   let targetChatId = chatId;
   if (!targetChatId || targetChatId === "current") {
-    // Try to get from context
     if (context?.channel) {
       targetChatId = context.channel;
     } else {

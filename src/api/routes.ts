@@ -83,7 +83,6 @@ import {
 
 const log = createLogger("API");
 
-// OAuth redirect flow state storage
 const oauthCallbacks = new Map<
   string,
   { status: string; access_token?: string; refresh_token?: string; error?: string }
@@ -214,7 +213,6 @@ function validateProviderCredentialShape(
   providerType: string,
   credentials: { apiKey?: string; accessToken?: string }
 ): void {
-  // OpenAI API keys should use sk-* format. Guard against accidental wallet/address pastes.
   if (providerType === "openai" && credentials.apiKey && !credentials.apiKey.startsWith("sk-")) {
     throw new Error("Validation error: OpenAI API key must start with 'sk-'");
   }
@@ -314,10 +312,6 @@ function normalizeIdentityConfig(value: unknown): Record<string, unknown> {
   return parsed ? { ...defaults, ...parsed } : defaults;
 }
 
-// ============================================
-// HELPER: Sanitize session messages for UI
-// Truncates large tool results to prevent browser OOM crashes
-// ============================================
 function sanitizeSessionMessages(messages: SessionMessageView[]): SessionMessageView[] {
   const MAX_RESULT_SIZE = 500;
   const MAX_TOOL_CALLS = 20;
@@ -327,11 +321,9 @@ function sanitizeSessionMessages(messages: SessionMessageView[]): SessionMessage
       return msg;
     }
 
-    // Limit and truncate tool calls
     const sanitizedToolCalls = msg.tool_calls.slice(0, MAX_TOOL_CALLS).map((tc) => {
       const sanitized = { ...tc };
 
-      // Truncate result
       if (tc.result !== undefined) {
         try {
           const resultStr = typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result);
@@ -344,7 +336,6 @@ function sanitizeSessionMessages(messages: SessionMessageView[]): SessionMessage
         }
       }
 
-      // Truncate error
       if (tc.error && typeof tc.error === "string" && tc.error.length > 200) {
         sanitized.error = tc.error.slice(0, 200) + "...";
       }
@@ -363,10 +354,6 @@ function sanitizeSessionMessages(messages: SessionMessageView[]): SessionMessage
   });
 }
 
-// ============================================
-// REQUEST/RESPONSE LOGGING
-// ============================================
-
 interface RequestLog {
   timestamp: string;
   method: string;
@@ -375,10 +362,6 @@ interface RequestLog {
   durationMs: number;
   error?: string;
 }
-
-// Types are now imported from ./queries
-// CountResult, ValueResult, MetricsEntry, LogEntry, AgentLogEntry, ChannelLogEntry
-// normalizeTimestamp utility is also imported from ./queries
 
 const requestLogs: RequestLog[] = [];
 const MAX_LOGS = 1000;
@@ -389,7 +372,6 @@ function logRequest(log: RequestLog): void {
     requestLogs.pop();
   }
 
-  // Console log for production monitoring
   const logLevel = log.status >= 500 ? "error" : log.status >= 400 ? "warn" : "info";
   console[logLevel](
     `[API] ${log.method} ${log.path} ${log.status} ${log.durationMs}ms${log.error ? ` - ${log.error}` : ""}`
@@ -401,21 +383,23 @@ function recordApiMetrics(method: string, path: string, status: number, duration
   trackMetric("api_status", String(status), 1, { method, path, durationMs });
 }
 
-// ============================================
-// CORS & SECURITY HEADERS
-// ============================================
-
-// In production, restrict CORS to same-origin. In dev, allow all.
 const isProduction = process.env.NODE_ENV === "production";
 
-const corsHeaders: Record<string, string> = {
-  "Access-Control-Allow-Origin": isProduction ? "" : "*",
+const corsBaseHeaders: Record<string, string> = {
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
   "Access-Control-Max-Age": "86400",
 };
 
-// Security headers applied to all responses
+function buildCorsHeaders(origin?: string): Record<string, string> {
+  const headers: Record<string, string> = { ...corsBaseHeaders };
+  if (!isProduction) {
+    headers["Access-Control-Allow-Origin"] = origin || "*";
+    headers["Vary"] = "Origin";
+  }
+  return headers;
+}
+
 const securityHeaders: Record<string, string> = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
@@ -424,14 +408,9 @@ const securityHeaders: Record<string, string> = {
   "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
 };
 
-// ============================================
-// ROUTES
-// ============================================
-
 type RouteHandler = (body?: unknown, params?: Record<string, string>) => Promise<unknown> | unknown;
 
 const routes: Record<string, RouteHandler> = {
-  // ===== HEALTH & STATUS =====
   "GET /api/health": () => {
     const now = new Date();
     return {
@@ -469,7 +448,6 @@ const routes: Record<string, RouteHandler> = {
     uptime: process.uptime(),
   }),
 
-  // ===== INFO =====
   "GET /api/info": () => ({
     name: "Cybara",
     version: "1.0.0",
@@ -482,7 +460,6 @@ const routes: Record<string, RouteHandler> = {
     },
   }),
 
-  // ===== SETUP =====
   "GET /api/setup/status": () => ({
     complete: config.isSetupComplete(),
     currentStep: config.getSetupStep(),
@@ -495,7 +472,6 @@ const routes: Record<string, RouteHandler> = {
     return { success: true };
   },
 
-  // ===== WALLET =====
   "GET /api/wallet/status": () => walletManager.getStatus(),
   "GET /api/wallet/rpc": () => walletManager.getRpcConfig(),
   "GET /api/wallet/rpc/status": async () => await walletManager.getRpcStatus(),
@@ -863,7 +839,6 @@ const routes: Record<string, RouteHandler> = {
     return walletManager.setAgentAccessEnabled(data.enabled === true);
   },
 
-  // ===== CONFIG =====
   "GET /api/config": () => config.getAll(),
   "PUT /api/config": (body) => {
     const data = body as Record<string, unknown>;
@@ -873,7 +848,6 @@ const routes: Record<string, RouteHandler> = {
     return { success: true };
   },
 
-  // ===== AGENTS =====
   "GET /api/agents": () => agentManager.list(),
   "POST /api/agents": (body) => {
     const data = body as Parameters<typeof agentManager.create>[0];
@@ -896,7 +870,6 @@ const routes: Record<string, RouteHandler> = {
   }),
   "DELETE /api/agents/:id": (_body, params) => ({ success: agentManager.delete(params!.id) }),
 
-  // Running agent messaging and history
   "POST /api/agents/:id/message": async (body, params) => {
     const data = body as { message: string };
     if (!data.message) throw new Error("Message content is required");
@@ -930,7 +903,6 @@ const routes: Record<string, RouteHandler> = {
     });
   },
 
-  // ===== TOOLS =====
   "GET /api/tools/builtin": () => getBuiltinTools(),
   "GET /api/tools": () => getToolSchemasForLLM(),
   "GET /api/tools/:name": (_body, params) => {
@@ -981,7 +953,6 @@ const routes: Record<string, RouteHandler> = {
     });
   },
 
-  // ===== PROVIDERS =====
   "GET /api/providers": () => providerManager.list(),
   "GET /api/providers/available": () =>
     Object.entries(providers).map(([key, value]) => ({
@@ -1209,7 +1180,6 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/providers/:id/models": (_body, params) => providerManager.getModels(params!.id),
   "POST /api/providers/discover/ollama": async () => await providerManager.discoverOllamaModels(),
 
-  // --- OAuth Device Code Flow ---
   "POST /api/providers/oauth/device-code": async (body) => {
     const { providerType } = body as { providerType: string };
     const config = providers[providerType as ProviderType] as Record<string, unknown>;
@@ -1305,7 +1275,6 @@ const routes: Record<string, RouteHandler> = {
     return { status: "error", error };
   },
 
-  // Open URL in system browser (works in Tauri and browser contexts)
   "POST /api/open-url": async (body) => {
     const { url } = body as { url: string };
     if (!url || typeof url !== "string") throw new Error("url required");
@@ -1320,8 +1289,6 @@ const routes: Record<string, RouteHandler> = {
     return { ok: true };
   },
 
-  // OAuth redirect flow (for Google/Antigravity etc.)
-  // Starts a localhost callback server and returns the auth URL
   "POST /api/providers/oauth/start": async (body) => {
     const { providerType } = body as { providerType: string };
     const providerConfig = providers[providerType as ProviderType] as Record<string, unknown>;
@@ -1343,20 +1310,16 @@ const routes: Record<string, RouteHandler> = {
       throw new Error(`Provider ${providerType} does not support OAuth redirect flow`);
     }
 
-    // Generate PKCE verifier + challenge (S256)
     const { createHash, randomBytes } = await import("crypto");
     const pkceVerifier = randomBytes(32).toString("hex");
     const pkceChallenge = createHash("sha256").update(pkceVerifier).digest("base64url");
 
-    // Generate random state for CSRF protection
     const state = randomBytes(16).toString("hex");
 
-    // Use configured callback port & path, or defaults
     const callbackPort = oauthConfig.callbackPort || 0;
     const callbackPath = oauthConfig.callbackPath || "/callback";
     const redirectUri = `http://localhost:${callbackPort}${callbackPath}`;
 
-    // Start a callback server on the configured port
     const callbackServer = Bun.serve({
       port: callbackPort,
       fetch: async (req) => {
@@ -1393,7 +1356,6 @@ const routes: Record<string, RouteHandler> = {
           return new Response("Invalid callback", { status: 400 });
         }
 
-        // Exchange code for token (with PKCE verifier + client_secret)
         try {
           const tokenParams: Record<string, string> = {
             code,
@@ -1445,10 +1407,8 @@ const routes: Record<string, RouteHandler> = {
       },
     });
 
-    // Store pending callback
     oauthCallbacks.set(state, { status: "pending" });
 
-    // Build authorize URL with PKCE
     const authParams = new URLSearchParams({
       response_type: "code",
       client_id: oauthConfig.clientId || "",
@@ -1463,7 +1423,6 @@ const routes: Record<string, RouteHandler> = {
 
     const authUrl = `${oauthConfig.authorizeUrl}?${authParams.toString()}`;
 
-    // Auto-cleanup after 10 minutes
     setTimeout(() => {
       callbackServer.stop();
       oauthCallbacks.delete(state);
@@ -1480,7 +1439,6 @@ const routes: Record<string, RouteHandler> = {
     };
   },
 
-  // Poll for OAuth redirect callback result
   "POST /api/providers/oauth/callback-status": async (body) => {
     const { state } = body as { state: string };
     const result = oauthCallbacks.get(state);
@@ -1515,7 +1473,6 @@ const routes: Record<string, RouteHandler> = {
     return await mcpManager.callTool(params!.id, data.tool, data.args);
   },
 
-  // ===== MCP REGISTRY =====
   "GET /api/mcp/registry/search": async (_body, params) => {
     const query = params?.q || "";
     const registry = params?.registry || undefined;
@@ -1543,7 +1500,6 @@ const routes: Record<string, RouteHandler> = {
     return { success: false, error: "Must provide 'id' or 'package'" };
   },
 
-  // ===== LSP (Language Server Protocol) =====
   "GET /api/lsp/status": async () => {
     try {
       const manager = getOrInitLspManager(process.cwd());
@@ -1751,7 +1707,6 @@ const routes: Record<string, RouteHandler> = {
     }
   },
 
-  // ===== IDE (File Browser) =====
   "GET /api/ide/browse": async (_body, params) => {
     const path = params?.path as string | undefined;
     const result = await browseDirectory(path);
@@ -1824,7 +1779,6 @@ const routes: Record<string, RouteHandler> = {
     return result;
   },
 
-  // Git API routes
   "GET /api/git/status": async (_body, params) => {
     const { getGitStatus } = await import("./git-api");
     const path = (params?.path as string | undefined) || "~";
@@ -1948,11 +1902,9 @@ const routes: Record<string, RouteHandler> = {
   },
   "DELETE /api/channels/:id": (_body, params) => ({ success: channelManager.delete(params!.id) }),
 
-  // Channel Security & Pairing
   "GET /api/channels/:id/pairings": (_body, params) => {
     const channelId = params!.id;
     const rawPairings = securityManager.getAllPairings(channelId);
-    // Transform to camelCase for UI
     const pairings = rawPairings.map(
       (p: {
         id: string;
@@ -2011,7 +1963,6 @@ const routes: Record<string, RouteHandler> = {
     return { success: true, config: securityManager.getConfig(channelId) };
   },
 
-  // ===== TASKS =====
   "GET /api/tasks": () => taskScheduler.list(),
   "GET /api/tasks/:id": (_body, params) => {
     const task = taskScheduler.get(params!.id);
@@ -2034,7 +1985,6 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/tasks/:id/runs": (_body, params) => tables.taskRuns.getByTask(params!.id),
   "DELETE /api/tasks/:id": (_body, params) => ({ success: taskScheduler.delete(params!.id) }),
 
-  // ===== WEBHOOKS =====
   "POST /api/webhooks/telegram/:channelId": async (body, params) => {
     const { channelId } = params!;
 
@@ -2042,7 +1992,6 @@ const routes: Record<string, RouteHandler> = {
     return { ok: success };
   },
 
-  // ===== CHAT / CONVERSATIONS =====
   "POST /api/chat": async (body) => {
     const data = body as {
       message: string;
@@ -2057,7 +2006,6 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/chat/sessions/:id": async (_body, params) => {
     const session = await getSession(params!.id);
     if (!session) return session;
-    // Sanitize messages to prevent browser OOM
     const sessionObj = session as Record<string, unknown>;
     return {
       ...session,
@@ -2077,7 +2025,6 @@ const routes: Record<string, RouteHandler> = {
     success: await deleteSession(params!.id),
   }),
 
-  // ===== MEMORY MANAGEMENT =====
   "GET /api/memory": async () => {
     return await handleMemoryList();
   },
@@ -2097,7 +2044,6 @@ const routes: Record<string, RouteHandler> = {
     return await handleMemoryEdit(params!.file, data.index, data.content);
   },
 
-  // ===== SKILLS =====
   "POST /api/skills": (body) => {
     const data = body as {
       name?: string;
@@ -2136,7 +2082,6 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/skills": () => getSkills(),
   "GET /api/skills/categories": () => getSkillCategories(),
   "GET /api/skills/status": async () => {
-    // Load skills with full eligibility status
     const homeDir = process.env.HOME || homedir();
     const allSkills = await loadAllSkills({ workspaceDir: homeDir });
     const context = createEligibilityContext();
@@ -2199,7 +2144,6 @@ const routes: Record<string, RouteHandler> = {
     return await executeSkill(params!.name, args);
   },
 
-  // ===== LOGS =====
   "GET /api/logs/system": async () => getCombinedLogs(),
   "GET /api/logs/search": async (_body, params) => {
     return await searchAllLogs(params!.q || "", parseInt(params!.limit || "100"));
@@ -2219,7 +2163,6 @@ const routes: Record<string, RouteHandler> = {
     return getLogStats(hours);
   },
 
-  // ===== SESSIONS =====
   "GET /api/sessions": async () => {
     const sessions = await listSessions();
 
@@ -2227,7 +2170,6 @@ const routes: Record<string, RouteHandler> = {
       sessions.map(async (session) => {
         const messages = await getSessionMessages(session.id);
         const lastMessage = messages[messages.length - 1];
-        // Get the actual last activity timestamp from the last message
         const updatedAt = lastMessage?.timestamp ? lastMessage.timestamp : session.createdAt;
         return {
           id: session.id,
@@ -2246,7 +2188,6 @@ const routes: Record<string, RouteHandler> = {
         };
       })
     );
-    // Sort by updated_at (last activity) descending so most recent shows first
     return sessionsWithCounts.sort(
       (a, b) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime()
     );
@@ -2256,7 +2197,6 @@ const routes: Record<string, RouteHandler> = {
     if (!session) return { error: "Session not found" };
     const messages = await getSessionMessages(params!.sessionId);
 
-    // Truncate large message content and sanitize tool calls to prevent browser OOM
     const MAX_CONTENT_SIZE = 10000; // 10KB per message max
     const sanitizedMessages = sanitizeSessionMessages(messages).map((m) => {
       const truncatedContent =
@@ -2284,7 +2224,6 @@ const routes: Record<string, RouteHandler> = {
     return { success: true, message: "Session deleted" };
   },
 
-  // ===== SUBAGENTS =====
   "POST /api/subagents/spawn": async (body) => {
     const data = body as {
       task: string;
@@ -2363,7 +2302,6 @@ const routes: Record<string, RouteHandler> = {
     return { success: released, message: released ? "Subagent killed" : "Subagent not found" };
   },
 
-  // ===== SYSTEM PROMPT & IDENTITY =====
   "GET /api/system-prompt": () => {
     const config = tables.config.get("systemPrompt");
     return normalizeSystemPromptConfig(config?.value);
@@ -2374,8 +2312,6 @@ const routes: Record<string, RouteHandler> = {
     return { success: true, message: "System prompt configuration saved" };
   },
   "GET /api/system-prompt/preview": async () => {
-    // Return a preview of what the system prompt would look like
-
     const homeDir = process.env.HOME || homedir();
     const preview = buildSystemPrompt({
       modelDisplay: "MiniMax-M2.1",
@@ -2404,7 +2340,6 @@ const routes: Record<string, RouteHandler> = {
     return { success: true, message: "Identity configuration saved" };
   },
 
-  // ===== BROWSER AUTOMATION =====
   "GET /api/browser/status": async () => {
     const getStatus = pwManager.getStatus;
     return await getStatus();
@@ -2479,11 +2414,9 @@ const routes: Record<string, RouteHandler> = {
     return { success: true, message: "Browser closed" };
   },
 
-  // ===== SYSTEM STATUS (lightweight - for UI polling) =====
   "GET /api/system/status": () => {
     const metrics = tables.metrics;
 
-    // Get last activity timestamp
     const lastActivity = (metrics.getByType("system_status") as MetricsEntry[]).find(
       (s) => s.key === "last_activity"
     );
@@ -2491,7 +2424,6 @@ const routes: Record<string, RouteHandler> = {
     const now = Date.now();
     const isThinking = lastActivityTime > 0 && now - lastActivityTime < 30000; // 30 second window
 
-    // Get agent count from list
     const agentCount = agentManager.list().length;
 
     return {
@@ -2502,11 +2434,9 @@ const routes: Record<string, RouteHandler> = {
     };
   },
 
-  // ===== METRICS =====
   "GET /api/metrics/overview": () => {
     const metrics = tables.metrics;
 
-    // Get totals for each metric type
     const tokenTotals = {
       total:
         (metrics.getTotal("token_usage", "input") || 0) +
@@ -2524,7 +2454,6 @@ const routes: Record<string, RouteHandler> = {
       filesSearched: metrics.getTotal("file_operation", "search") || 0,
     };
 
-    // Get tool calls by aggregating all tool_call entries
     const toolCallEntries = (metrics.getByType("tool_call") || []) as MetricsEntry[];
     const totalToolCalls = toolCallEntries.reduce((sum, entry) => sum + (entry.value || 0), 0);
 
@@ -2547,7 +2476,6 @@ const routes: Record<string, RouteHandler> = {
       totalMessages: metrics.getTotal("agent_execution", "message") || 0,
     };
 
-    // Session and context metrics (Cybara parity)
     const sessionStats = {
       totalSessions: metrics.getTotal("session_event", "created") || 0,
       memoryFlushes: metrics.getTotal("memory_flush", "success") || 0,
@@ -2555,7 +2483,6 @@ const routes: Record<string, RouteHandler> = {
       compactions: metrics.getTotal("context_compaction", "tokens") || 0,
     };
 
-    // Get context utilization warnings
     const contextWarnings = (metrics.getByType("context_warning") || []) as MetricsEntry[];
     const contextStats = {
       warnings: contextWarnings.length,
@@ -2583,12 +2510,10 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/metrics/tokens": () => {
     const metrics = tables.metrics;
 
-    // Get top models by token usage
     const topModels = metrics.getTopKeys("token_usage_by_model") as MetricTopKey[];
     const topProviders = metrics.getTopKeys("token_usage_by_provider") as MetricTopKey[];
     const recentTokens = metrics.getByType("token_usage") as MetricsEntry[];
 
-    // Calculate total tokens from input + output
     const inputTokens = metrics.getTotal("token_usage", "input") || 0;
     const outputTokens = metrics.getTotal("token_usage", "output") || 0;
     const totalTokens = inputTokens + outputTokens;
@@ -2670,14 +2595,11 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/metrics/providers": () => {
     const metrics = tables.metrics;
 
-    // Get provider token entries with metadata (for URL)
     const providerTokenEntries = metrics.getByType("token_usage_by_provider") as MetricsEntry[];
 
-    // Build provider map with URLs from token entries
     const providerMap = new Map<string, ProviderMetricSummary>();
 
     for (const entry of providerTokenEntries) {
-      // Skip aggregate keys
       if (entry.key === "all" || entry.key === "input" || entry.key === "output") continue;
 
       const metadata = parseMetricMetadata(entry.metadata);
@@ -2691,10 +2613,8 @@ const routes: Record<string, RouteHandler> = {
       });
     }
 
-    // Add API call hits from api_call entries
     const apiCalls = metrics.getByType("api_call") as MetricsEntry[];
     for (const entry of apiCalls) {
-      // Skip aggregate keys
       if (entry.key === "all" || entry.key === "success" || entry.key === "error") continue;
 
       const metadata = parseMetricMetadata(entry.metadata);
@@ -2711,7 +2631,6 @@ const routes: Record<string, RouteHandler> = {
         const summary = providerMap.get(entry.key);
         if (!summary) continue;
 
-        // Update URL if we have one from metadata
         if (url !== "unknown") {
           summary.url = url;
         }
@@ -2730,7 +2649,6 @@ const routes: Record<string, RouteHandler> = {
   },
 
   "GET /api/metrics/time-series": () => {
-    // Get daily aggregates for the last 30 days
     const days: Array<Record<string, string | number>> = [];
     const today = new Date();
 
@@ -2739,13 +2657,11 @@ const routes: Record<string, RouteHandler> = {
       date.setDate(date.getDate() - i);
       const dateStr = date.toISOString().split("T")[0];
 
-      // First try pre-aggregated metrics_daily table
       let dailyTotals = tables.metrics.getDailyTotals(dateStr) as Array<{
         type: string;
         total: number;
       }>;
 
-      // If empty, fallback to aggregating from raw metrics table
       if (dailyTotals.length === 0) {
         dailyTotals = tables.metrics.getDailyTotalsFromRaw(dateStr);
       }
@@ -2755,7 +2671,6 @@ const routes: Record<string, RouteHandler> = {
         dayData[total.type] = total.total;
       }
 
-      // If still no metric data, count log entries as activity
       const hasMetricData = Object.keys(dayData).some((k) => k !== "date");
       if (!hasMetricData) {
         try {
@@ -2779,7 +2694,6 @@ const routes: Record<string, RouteHandler> = {
     return { days };
   },
 
-  // Get per-model TPS (tokens per second) metrics
   "GET /api/metrics/models": () => ({ models: getModelMetrics() }),
 
   "POST /api/metrics/track": (body) => {
@@ -2807,13 +2721,8 @@ const routes: Record<string, RouteHandler> = {
   },
 };
 
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
-
 function checkDatabaseHealth(): { status: string; error?: string } {
   try {
-    // Simple check - try to list agents
     agentManager.list();
     return { status: "healthy" };
   } catch (error) {
@@ -2834,7 +2743,6 @@ function getMemoryUsage(): { heapUsed: number; heapTotal: number; external: numb
 function getCircuitBreakersStatus(): Record<string, { state: string; failureCount?: number }> {
   const breakers: Record<string, { state: string; failureCount?: number }> = {};
 
-  // Get known circuit breaker states
   const providers = providerManager.list();
   for (const provider of providers) {
     const state = getCircuitState(`llm:${provider.id}`);
@@ -2849,15 +2757,12 @@ function getCircuitBreakersStatus(): Record<string, { state: string; failureCoun
   return breakers;
 }
 
-// ============================================
-// REQUEST HANDLER
-// ============================================
-
 export async function handleRequest(req: {
   method: string;
   url: string;
   headers: Record<string, string>;
   body?: unknown;
+  ip?: string;
 }): Promise<{
   status: number;
   headers: Record<string, string>;
@@ -2867,8 +2772,9 @@ export async function handleRequest(req: {
   const url = new URL(req.url, `http://${req.headers.host || "localhost:4269"}`);
   const method = req.method || "GET";
   const path = url.pathname;
+  const requestOrigin = req.headers.origin || req.headers.Origin;
+  const corsHeaders = buildCorsHeaders(requestOrigin);
 
-  // Handle CORS preflight
   if (method === "OPTIONS") {
     return {
       status: 204,
@@ -2876,8 +2782,8 @@ export async function handleRequest(req: {
     };
   }
 
-  // Security check - auth, rate limiting
   const clientIp =
+    req.ip ||
     req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
     req.headers["x-real-ip"] ||
     "127.0.0.1";
@@ -2909,7 +2815,6 @@ export async function handleRequest(req: {
 
   const { routeKey, params } = findRoute(method, path);
 
-  // Merge URL query params into params
   for (const [key, value] of url.searchParams.entries()) {
     params[key] = value;
   }
@@ -2961,10 +2866,8 @@ export async function handleRequest(req: {
     const duration = Date.now() - startTime;
     const errorMessage = (error as Error).message;
 
-    // Log full error for debugging
     console.error(`[API Error] ${method} ${path}:`, error);
 
-    // Provide helpful error messages based on error type
     let userMessage = "An unexpected error occurred";
     let errorCode = "INTERNAL_ERROR";
     let statusCode = 500;
@@ -3006,7 +2909,6 @@ export async function handleRequest(req: {
       errorCode = "VALIDATION_ERROR";
       statusCode = 400;
     } else {
-      // Generic error - show simplified message to user
       userMessage = "An error occurred while processing your request.";
     }
 
@@ -3082,9 +2984,6 @@ function findRoute(
       continue;
     }
 
-    // Prefer more specific routes:
-    // 1) fewer dynamic segments
-    // 2) more static segments
     if (
       dynamicSegments < bestMatch.dynamicSegments ||
       (dynamicSegments === bestMatch.dynamicSegments && staticSegments > bestMatch.staticSegments)

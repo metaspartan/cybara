@@ -1,4 +1,3 @@
-// Memory module exports
 export {
     type EmbeddingProvider,
     type EmbeddingProviderResult,

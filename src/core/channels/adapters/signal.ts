@@ -1,7 +1,3 @@
-// Signal Adapter - Production implementation using signal-cli JSON-RPC daemon
-// Requires: signal-cli installed and running as daemon with JSON-RPC
-// Start daemon: signal-cli -a +1PHONENUMBER daemon --socket /tmp/signal-cli.sock
-
 import { spawn, type ChildProcess } from "child_process";
 import { createConnection, type Socket } from "net";
 import { existsSync } from "fs";
@@ -11,7 +7,6 @@ import { logChannelMessage } from "../../logging";
 import { buildChannelSecurityConfig, securityManager } from "../security";
 import { handleChannelManagementCommand } from "../commands";
 
-// Signal session storage (phoneNumber -> sessionId)
 export const signalSessions = new Map<string, string>();
 
 interface SignalEnvelope {
@@ -88,10 +83,8 @@ export class SignalAdapter implements ChannelAdapter {
       throw new Error("phone_number is required for Signal adapter");
     }
 
-    // Configure security based on channel config
     securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
 
-    // Check if already running
     if (this.connections.has(channelId)) {
       console.log(`[Signal] Already connected for channel ${channelId}`);
       return;
@@ -99,10 +92,8 @@ export class SignalAdapter implements ChannelAdapter {
 
     console.log(`[Signal] Starting for channel ${channelId}...`);
 
-    // Check if socket exists (daemon already running)
     let process: ChildProcess | undefined;
     if (!existsSync(socketPath)) {
-      // Start signal-cli daemon
       console.log(`[Signal] Starting signal-cli daemon...`);
       process = spawn(signalCliPath, ["-a", phoneNumber, "daemon", "--socket", socketPath], {
         stdio: ["pipe", "pipe", "pipe"],
@@ -121,7 +112,6 @@ export class SignalAdapter implements ChannelAdapter {
         console.error(`[Signal] daemon error:`, err);
       });
 
-      // Wait for socket to be created
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => {
           reject(new Error("Timeout waiting for signal-cli socket"));
@@ -139,7 +129,6 @@ export class SignalAdapter implements ChannelAdapter {
       });
     }
 
-    // Connect to socket
     const socket = createConnection(socketPath);
 
     await new Promise<void>((resolve, reject) => {
@@ -152,12 +141,10 @@ export class SignalAdapter implements ChannelAdapter {
       });
     });
 
-    // Handle incoming data
     let buffer = "";
     socket.on("data", (data) => {
       buffer += data.toString();
 
-      // Parse JSON-RPC messages (newline-delimited)
       const lines = buffer.split("\n");
       buffer = lines.pop() || "";
 
@@ -186,7 +173,6 @@ export class SignalAdapter implements ChannelAdapter {
   }
 
   private handleJsonRpc(channelId: string, json: JsonRpcResponse | JsonRpcNotification): void {
-    // Handle responses to our requests
     if ("id" in json && json.id !== undefined) {
       const pending = this.pendingRequests.get(json.id);
       if (pending) {
@@ -200,7 +186,6 @@ export class SignalAdapter implements ChannelAdapter {
       return;
     }
 
-    // Handle notifications (incoming messages)
     if ("method" in json && json.method === "receive") {
       const params = json.params as { envelope?: SignalEnvelope };
       if (params.envelope) {
@@ -212,13 +197,11 @@ export class SignalAdapter implements ChannelAdapter {
   }
 
   private async handleEnvelope(channelId: string, envelope: SignalEnvelope): Promise<void> {
-    // Only handle data messages with text
     if (!envelope.dataMessage?.message) return;
 
     const text = envelope.dataMessage.message;
     const sender = envelope.sourceNumber || envelope.sourceUuid || "unknown";
 
-    // 🔐 SECURITY CHECK: Verify sender is allowed
     const accessCheck = securityManager.checkAccess(
       channelId,
       sender,
@@ -228,7 +211,6 @@ export class SignalAdapter implements ChannelAdapter {
 
     if (!accessCheck.permitted) {
       if (accessCheck.reason === "new_pairing" || accessCheck.reason === "blocked") {
-        // Send pairing/blocked message
         await this.sendSignalMessage(
           channelId,
           sender,
@@ -238,7 +220,6 @@ export class SignalAdapter implements ChannelAdapter {
       return;
     }
 
-    // Log incoming message
     await logChannelMessage("signal", "incoming", text, {
       channelId: sender,
       senderId: sender,
@@ -249,14 +230,12 @@ export class SignalAdapter implements ChannelAdapter {
       },
     });
 
-    // Get or create session
     let sessionId = signalSessions.get(sender);
     if (!sessionId) {
       sessionId = crypto.randomUUID();
       signalSessions.set(sender, sessionId);
     }
 
-    // Process message
     let response: string;
     try {
       const commandResponse = await handleChannelManagementCommand(text, {
@@ -285,12 +264,10 @@ export class SignalAdapter implements ChannelAdapter {
       response = "❌ Sorry, I encountered an error processing your message. Please try again.";
     }
 
-    // Log outgoing message
     await logChannelMessage("signal", "outgoing", response, {
       channelId: sender,
     });
 
-    // Send response
     await this.sendSignalMessage(channelId, sender, response);
   }
 
@@ -323,7 +300,6 @@ export class SignalAdapter implements ChannelAdapter {
 
       conn.socket.write(JSON.stringify(request) + "\n");
 
-      // Timeout
       setTimeout(() => {
         if (this.pendingRequests.has(request.id)) {
           this.pendingRequests.delete(request.id);

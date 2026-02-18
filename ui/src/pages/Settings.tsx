@@ -24,7 +24,6 @@ import {
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 
-// Helper to format check status
 function getCheckStatus(value: unknown): { status: 'healthy' | 'warning' | 'error'; details?: string } {
   if (typeof value === 'string') {
     return { status: value === 'healthy' ? 'healthy' : 'error' };
@@ -44,7 +43,6 @@ function getCheckStatus(value: unknown): { status: 'healthy' | 'warning' | 'erro
   return { status: 'healthy' };
 }
 
-// Theme Settings Component
 function ThemeSettings() {
   const { accent, setAccent, addToast } = useUIStore();
 
@@ -96,7 +94,6 @@ function ThemeSettings() {
   );
 }
 
-// Feature Toggles
 function FeatureSettings() {
   const [terminalEnabled, setTerminalEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -191,7 +188,6 @@ export function Settings() {
     },
   ];
 
-  // Filter out 'memory' check to avoid confusion with stored memory files
   const checks = healthData.checks
     ? Object.entries(healthData.checks as Record<string, unknown>).filter(([key]) => key !== 'memory')
     : [];
@@ -199,13 +195,10 @@ export function Settings() {
   return (
     <PageLayout title="Settings" subtitle="Platform configuration and system information">
       <div className="space-y-6">
-        {/* Theme Settings */}
         <ThemeSettings />
 
-        {/* Feature Toggles */}
         <FeatureSettings />
 
-        {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {stats.map((stat) => (
             <Card key={stat.label} variant="liquid">
@@ -299,7 +292,6 @@ export function Settings() {
             </CardContent>
           </Card>
 
-          {/* System Prompt Configuration */}
           <SystemPromptSection />
         </div>
       </div>
@@ -321,7 +313,6 @@ function cn(...classes: (string | boolean | undefined)[]) {
   return classes.filter(Boolean).join(' ');
 }
 
-// System Prompt Configuration Section
 function SystemPromptSection() {
   const { data: systemPrompt, isLoading: loadingPrompt } = useSystemPrompt();
   const { data: identity, isLoading: loadingIdentity } = useIdentity();
@@ -347,7 +338,6 @@ function SystemPromptSection() {
     replyTagsEnabled: true,
   });
 
-  // Initialize form values when data loads
   useEffect(() => {
     if (loadingPrompt || loadingIdentity) return;
     if (initialized.current) return;
@@ -427,7 +417,6 @@ function SystemPromptSection() {
           </div>
         ) : (
           <>
-            {/* Identity Section */}
             <div className="p-4 rounded-xl bg-white/5">
               <h4 className="flex items-center gap-2 text-white font-medium mb-4">
                 <User className="w-4 h-4 text-emerald-400" />
@@ -490,7 +479,6 @@ function SystemPromptSection() {
               </div>
             </div>
 
-            {/* System Prompt Features */}
             <div className="p-4 rounded-xl bg-white/5">
               <h4 className="flex items-center gap-2 text-white font-medium mb-4">
                 <Sparkles className="w-4 h-4 text-amber-400" />
@@ -514,7 +502,6 @@ function SystemPromptSection() {
               </div>
             </div>
 
-            {/* Custom System Prompt */}
             <div className="p-4 rounded-xl bg-white/5">
               <h4 className="flex items-center gap-2 text-white font-medium mb-4">
                 <Bot className="w-4 h-4 text-blue-400" />
@@ -542,7 +529,6 @@ function SystemPromptSection() {
               </div>
             </div>
 
-            {/* System Prompt Preview */}
             <SystemPromptPreviewSection />
           </>
         )}
@@ -551,7 +537,6 @@ function SystemPromptSection() {
   );
 }
 
-// System Prompt Preview Section
 function SystemPromptPreviewSection() {
   const { data: preview, isLoading: loadingPreview } = useSystemPromptPreview();
 

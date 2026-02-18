@@ -12,10 +12,8 @@ interface TaskEvent {
     timestamp?: number;
 }
 
-// Check if running in Tauri desktop app
 const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
 
-// Tauri notification API (lazy loaded)
 async function sendTauriNotification(title: string, body?: string) {
     if (!isTauri) return;
     try {
@@ -41,7 +39,6 @@ export function useNotifications() {
     );
 
     const requestPermission = useCallback(async () => {
-        // For Tauri, use native notification API
         if (isTauri) {
             try {
                 const { isPermissionGranted, requestPermission: tauriRequest } = await import('@tauri-apps/plugin-notification');
@@ -57,7 +54,6 @@ export function useNotifications() {
             }
         }
 
-        // Browser fallback
         if (typeof Notification === 'undefined') return 'denied';
 
         const result = await Notification.requestPermission();
@@ -66,13 +62,11 @@ export function useNotifications() {
     }, []);
 
     const showNotification = useCallback((title: string, options?: NotificationOptions) => {
-        // For Tauri, use native notifications
         if (isTauri) {
             sendTauriNotification(title, options?.body);
             return null;
         }
 
-        // Browser fallback
         if (permission !== 'granted') return null;
 
         const notification = new Notification(title, {
@@ -84,7 +78,6 @@ export function useNotifications() {
         return notification;
     }, [permission]);
 
-    // Initialize Tauri permission state
     useEffect(() => {
         if (isTauri) {
             import('@tauri-apps/plugin-notification').then(({ isPermissionGranted }) => {
@@ -103,7 +96,6 @@ export function useTaskNotifications() {
     const [connected, setConnected] = useState(false);
 
     useEffect(() => {
-        // Connect to SSE for task events
         const eventSource = new EventSource(appendApiTokenParam('/api/sse/status'));
 
         eventSource.onopen = () => {
@@ -114,11 +106,9 @@ export function useTaskNotifications() {
             try {
                 const data = JSON.parse(event.data) as TaskEvent | { status: string };
 
-                // Check if this is a task_completed event
                 if ('type' in data && data.type === 'task_completed') {
                     const taskEvent = data as TaskEvent;
 
-                    // Show notification (browser or native)
                     if (taskEvent.status === 'completed') {
                         showNotification(`Task Completed: ${taskEvent.taskName}`, {
                             body: taskEvent.resultPreview?.slice(0, 100) || 'Task finished successfully',

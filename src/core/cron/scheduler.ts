@@ -1,4 +1,3 @@
-// Cron scheduler service - aligned with Cybara
 import type { CronJob, CronRunLog } from "./types";
 import {
   loadJobs,
@@ -10,14 +9,11 @@ import {
   getRunLogs,
 } from "./store";
 
-// Active timers for jobs
 const jobTimers = new Map<string, NodeJS.Timeout>();
 
-// Wake event handlers
 type WakeHandler = (text: string) => Promise<void>;
 let wakeHandler: WakeHandler | null = null;
 
-// Agent execution handler
 type AgentHandler = (job: CronJob) => Promise<{ success: boolean; error?: string }>;
 let agentHandler: AgentHandler | null = null;
 
@@ -29,13 +25,9 @@ export function setAgentHandler(handler: AgentHandler): void {
   agentHandler = handler;
 }
 
-/**
- * Start the cron scheduler
- */
 export function startScheduler(): void {
   console.log("[Cron] Starting scheduler...");
 
-  // Load all jobs and schedule them
   const jobs = listJobs(false); // Only enabled jobs
   for (const job of jobs) {
     scheduleJob(job);
@@ -44,9 +36,6 @@ export function startScheduler(): void {
   console.log(`[Cron] Scheduled ${jobs.length} jobs`);
 }
 
-/**
- * Stop the cron scheduler
- */
 export function stopScheduler(): void {
   console.log("[Cron] Stopping scheduler...");
 
@@ -56,11 +45,7 @@ export function stopScheduler(): void {
   }
 }
 
-/**
- * Schedule a job for execution
- */
 export function scheduleJob(job: CronJob): void {
-  // Clear existing timer
   const existingTimer = jobTimers.get(job.id);
   if (existingTimer) {
     clearTimeout(existingTimer);
@@ -75,7 +60,6 @@ export function scheduleJob(job: CronJob): void {
   const nextRun = job.state.nextRunAtMs || computeNextRun(job.schedule, now);
   const delay = Math.max(0, nextRun - now);
 
-  // Cap delay at 24 hours to prevent overflow
   const maxDelay = 24 * 60 * 60 * 1000;
   const effectiveDelay = Math.min(delay, maxDelay);
 
@@ -90,9 +74,6 @@ export function scheduleJob(job: CronJob): void {
   jobTimers.set(job.id, timer);
 }
 
-/**
- * Run a job immediately
- */
 export async function runJob(jobId: string): Promise<CronRunLog> {
   const job = getJob(jobId);
   if (!job) {
@@ -109,20 +90,16 @@ export async function runJob(jobId: string): Promise<CronRunLog> {
     status: "running",
   };
 
-  // Update job state
   job.state.runningAtMs = startedAtMs;
 
   try {
-    // Execute based on payload type
     if (job.payload.kind === "systemEvent") {
-      // System event: inject text as wake event
       if (wakeHandler) {
         await wakeHandler(job.payload.text);
       } else {
         console.log(`[Cron] System event: ${job.payload.text}`);
       }
     } else if (job.payload.kind === "agentTurn") {
-      // Agent turn: run agent with message
       if (agentHandler) {
         const result = await agentHandler(job);
         if (!result.success) {
@@ -138,7 +115,6 @@ export async function runJob(jobId: string): Promise<CronRunLog> {
     runLog.status = "ok";
     runLog.durationMs = completedAtMs - startedAtMs;
 
-    // Update job state
     job.state.lastRunAtMs = completedAtMs;
     job.state.lastStatus = "ok";
     job.state.lastDurationMs = runLog.durationMs;
@@ -152,7 +128,6 @@ export async function runJob(jobId: string): Promise<CronRunLog> {
     runLog.error = (error as Error).message;
     runLog.durationMs = completedAtMs - startedAtMs;
 
-    // Update job state
     job.state.lastRunAtMs = completedAtMs;
     job.state.lastStatus = "error";
     job.state.lastError = runLog.error;
@@ -162,9 +137,7 @@ export async function runJob(jobId: string): Promise<CronRunLog> {
     console.error(`[Cron] Job ${jobId} failed:`, error);
   }
 
-  // Handle deleteAfterRun
   if (job.deleteAfterRun && job.schedule.kind === "at") {
-    // Remove one-shot jobs after run
     const jobs = loadJobs();
     const index = jobs.findIndex((j) => j.id === jobId);
     if (index !== -1) {
@@ -173,11 +146,9 @@ export async function runJob(jobId: string): Promise<CronRunLog> {
     }
     jobTimers.delete(jobId);
   } else {
-    // Schedule next run
     const now = Date.now();
     job.state.nextRunAtMs = computeNextRun(job.schedule, now);
 
-    // Save updated state
     const jobs = loadJobs();
     const index = jobs.findIndex((j) => j.id === jobId);
     if (index !== -1) {
@@ -185,21 +156,16 @@ export async function runJob(jobId: string): Promise<CronRunLog> {
       saveJobs(jobs);
     }
 
-    // Re-schedule if recurring
     if (job.schedule.kind !== "at" && job.enabled) {
       scheduleJob(job);
     }
   }
 
-  // Add run log
   addRunLog(runLog);
 
   return runLog;
 }
 
-/**
- * Send a wake event
- */
 export async function sendWakeEvent(
   text: string,
   mode: "now" | "next-heartbeat" = "next-heartbeat"
@@ -209,14 +175,10 @@ export async function sendWakeEvent(
     return { sent: true };
   }
 
-  // For next-heartbeat, the message will be delivered on next interaction
   console.log(`[Cron] Wake event queued (${mode}): ${text}`);
   return { sent: true };
 }
 
-/**
- * Get scheduler status
- */
 export function getSchedulerStatus(): {
   running: boolean;
   activeJobs: number;
@@ -229,9 +191,6 @@ export function getSchedulerStatus(): {
   };
 }
 
-/**
- * Cancel a scheduled job
- */
 export function cancelJobTimer(jobId: string): boolean {
   const timer = jobTimers.get(jobId);
   if (timer) {
@@ -242,5 +201,4 @@ export function cancelJobTimer(jobId: string): boolean {
   return false;
 }
 
-// Export for run log access
 export { getRunLogs };

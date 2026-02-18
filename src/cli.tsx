@@ -719,10 +719,8 @@ async function rawProviderAdd(
 
   const displayName = name || type.charAt(0).toUpperCase() + type.slice(1);
 
-  // OAuth device code flow
   if (useOAuth) {
     try {
-      // Initiate device code flow
       const dcRes = await fetch(`${API_BASE}/api/providers/oauth/device-code`, {
         method: "POST",
         headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
@@ -751,16 +749,23 @@ async function rawProviderAdd(
       console.log("  Enter the code above, then authorize.");
       console.log("");
 
-      // Try to open browser
       try {
-        const { exec } = await import("child_process");
-        const openCmd =
-          process.platform === "darwin"
-            ? "open"
-            : process.platform === "win32"
-              ? "start"
-              : "xdg-open";
-        exec(`${openCmd} ${dcData.verification_uri}`);
+        const verificationUri = dcData.verification_uri;
+        if (verificationUri) {
+          if (process.platform === "darwin") {
+            const child = spawn("open", [verificationUri], { stdio: "ignore", detached: true });
+            child.unref();
+          } else if (process.platform === "win32") {
+            const child = spawn("cmd", ["/c", "start", "", verificationUri], {
+              stdio: "ignore",
+              detached: true,
+            });
+            child.unref();
+          } else {
+            const child = spawn("xdg-open", [verificationUri], { stdio: "ignore", detached: true });
+            child.unref();
+          }
+        }
       } catch {
         /* ignore */
       }

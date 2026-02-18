@@ -1,7 +1,3 @@
-/**
- * LSP (Language Server Protocol) Page
- * Manage language server installations for code intelligence
- */
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -16,7 +12,6 @@ function cn(...classes: (string | boolean | undefined)[]) {
     return classes.filter(Boolean).join(' ');
 }
 
-// Language icons/colors
 const LANGUAGE_META: Record<string, { color: string; icon?: string }> = {
     typescript: { color: 'bg-blue-500/20 text-blue-400' },
     javascript: { color: 'bg-yellow-500/20 text-yellow-400' },
@@ -82,7 +77,6 @@ function LSPCard({ lsp, onInstall, onUninstall, isInstalling, isUninstalling }: 
                     </div>
                 </div>
 
-                {/* Path or runtime info */}
                 <div className="mt-4 flex items-center justify-between">
                     <div className="text-xs text-gray-500">
                         {isBundled ? (
@@ -99,7 +93,6 @@ function LSPCard({ lsp, onInstall, onUninstall, isInstalling, isUninstalling }: 
                         )}
                     </div>
 
-                    {/* Action buttons */}
                     {!isBundled && (
                         <div className="flex gap-2">
                             {lsp.installed ? (
@@ -194,7 +187,6 @@ export function LSP() {
 
     const lspList = data?.status || [];
 
-    // Separate bundled from downloadable
     const bundled = lspList.filter(l => l.type === 'bundled');
     const downloadable = lspList.filter(l => l.type !== 'bundled');
 
@@ -204,7 +196,6 @@ export function LSP() {
             subtitle="Manage language server installations for code intelligence"
         >
             <div className="space-y-6">
-                {/* Info banner */}
                 <Card className="border-blue-500/20 bg-blue-500/5">
                     <CardContent className="p-4">
                         <div className="flex items-start gap-3">
@@ -229,7 +220,6 @@ export function LSP() {
                     </div>
                 ) : (
                     <>
-                        {/* Bundled section */}
                         {bundled.length > 0 && (
                             <div>
                                 <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
@@ -251,7 +241,6 @@ export function LSP() {
                             </div>
                         )}
 
-                        {/* Downloadable section */}
                         {downloadable.length > 0 && (
                             <div>
                                 <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
@@ -273,7 +262,6 @@ export function LSP() {
                             </div>
                         )}
 
-                        {/* Storage info */}
                         <Card className="border-gray-700/50">
                             <CardContent className="p-4">
                                 <div className="text-xs text-gray-500">

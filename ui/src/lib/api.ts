@@ -32,7 +32,6 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<Api
   return { success: true, data };
 }
 
-// Agents API
 export const agentsApi = {
   list: () => fetchApi<Agent[]>("/agents"),
   get: (id: string) => fetchApi<Agent>(`/agents/${id}`),
@@ -48,7 +47,6 @@ export const agentsApi = {
     }),
 };
 
-// Providers API
 export const providersApi = {
   list: () => fetchApi<Provider[]>("/providers"),
   get: (id: string) => fetchApi<Provider>(`/providers/${id}`),
@@ -61,7 +59,6 @@ export const providersApi = {
     fetchApi<{ success: boolean; latency: number }>(`/providers/${id}/test`, { method: "POST" }),
 };
 
-// Channels API
 export const channelsApi = {
   list: () => fetchApi<Channel[]>("/channels"),
   get: (id: string) => fetchApi<Channel>(`/channels/${id}`),
@@ -108,7 +105,6 @@ export const channelsApi = {
     }),
 };
 
-// MCP API
 export interface MCPServer {
   id: string;
   name: string;
@@ -168,7 +164,6 @@ export const mcpApi = {
   delete: (id: string) => fetchApi<{ success: boolean }>(`/mcp/${id}`, { method: "DELETE" }),
 };
 
-// Settings / Config API
 export const settingsApi = {
   getConfig: () => fetchApi<Record<string, unknown>>("/config"),
   updateConfig: (data: Record<string, unknown>) =>
@@ -178,7 +173,6 @@ export const settingsApi = {
     }),
 };
 
-// Setup API
 export const setupApi = {
   status: () => fetchApi<{ complete: boolean }>("/setup/status"),
   complete: () => fetchApi<{ success: boolean }>("/setup/complete", { method: "POST" }),
@@ -690,7 +684,6 @@ export const walletApi = {
     }),
 };
 
-// Memory API
 export const memoryApi = {
   list: (params?: { agentId?: string; userId?: string; search?: string; limit?: number }) => {
     const query = new URLSearchParams();
@@ -717,7 +710,6 @@ export const memoryApi = {
     ),
 };
 
-// Tasks API
 export const tasksApi = {
   list: () => fetchApi<Task[]>("/tasks"),
   get: (id: string) => fetchApi<Task>(`/tasks/${id}`),
@@ -742,7 +734,6 @@ export const tasksApi = {
   run: (id: string) => fetchApi<void>(`/tasks/${id}/run`, { method: "POST" }),
 };
 
-// Skills API
 export const skillsApi = {
   list: () => fetchApi<Skill[]>("/skills"),
   get: (id: string) => fetchApi<Skill>(`/skills/${id}`),
@@ -755,7 +746,6 @@ export const skillsApi = {
     fetchApi<unknown>(`/skills/${id}/execute`, { method: "POST", body: JSON.stringify(params) }),
 };
 
-// Chat API
 export const chatApi = {
   send: (message: string, agentId?: string, sessionId?: string) =>
     fetchApi<{ message: ChatMessage; sessionId: string }>("/chat", {
@@ -784,12 +774,10 @@ export const chatApi = {
   deleteSession: (id: string) => fetchApi<void>("/sessions/" + id, { method: "DELETE" }),
 };
 
-// Dashboard API
 export const dashboardApi = {
   getStats: () => fetchApi<DashboardStats>("/dashboard/stats"),
 };
 
-// Logs API
 export const logsApi = {
   getSystem: () =>
     fetchApi<{ id: string; level: string; source: string; message: string; created_at: string }[]>(
@@ -828,7 +816,6 @@ export const logsApi = {
     }>("/logs/stats?hours=" + (hours || 24)),
 };
 
-// Sessions API
 export const sessionsApi = {
   list: () =>
     fetchApi<
@@ -853,7 +840,6 @@ export const sessionsApi = {
   delete: (id: string) => fetchApi<void>("/sessions/" + id, { method: "DELETE" }),
 };
 
-// Subagent API
 export const subagentApi = {
   spawn: (task: string, options?: { model?: string; timeout?: number; label?: string }) =>
     fetchApi<{ subagentId: string; status: string }>("/subagents/spawn", {

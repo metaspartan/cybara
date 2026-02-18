@@ -103,7 +103,6 @@ export function Skills() {
       }
     >
       <div className="space-y-6">
-        {/* Summary Cards */}
         {summary && (
           <div className="grid grid-cols-4 gap-4">
             <Card>
@@ -133,7 +132,6 @@ export function Skills() {
           </div>
         )}
 
-        {/* Search & Filters */}
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
@@ -165,7 +163,6 @@ export function Skills() {
           </div>
         </div>
 
-        {/* Skills Grid */}
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {[...Array(6)].map((_, i) => (
@@ -224,20 +221,17 @@ export function Skills() {
           </div>
         )}
 
-        {/* Skill Detail Modal */}
         <SkillDetailModal
           skill={selectedSkill}
           isOpen={!!selectedSkill}
           onClose={() => setSelectedSkill(null)}
         />
 
-        {/* Add Skill Modal */}
         <AddSkillModal
           isOpen={showAddModal}
           onClose={() => setShowAddModal(false)}
         />
 
-        {/* Registry Browser Modal */}
         <RegistryBrowserModal
           isOpen={showRegistryModal}
           onClose={() => setShowRegistryModal(false)}
@@ -279,13 +273,11 @@ function SkillDetailModal({ skill, isOpen, onClose }: SkillDetailModalProps) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={skill.name} size="lg">
       <div className="space-y-6">
-        {/* Description */}
         <div>
           <h4 className="text-sm font-medium text-gray-400 mb-2">Description</h4>
           <p className="text-white">{skill.description}</p>
         </div>
 
-        {/* Status & Source */}
         <div className="flex gap-4">
           <div>
             <h4 className="text-sm font-medium text-gray-400 mb-1">Source</h4>
@@ -303,7 +295,6 @@ function SkillDetailModal({ skill, isOpen, onClose }: SkillDetailModalProps) {
           </div>
         </div>
 
-        {/* Missing Requirements */}
         {hasMissingRequirements && (
           <div>
             <h4 className="text-sm font-medium text-gray-400 mb-2">
@@ -339,7 +330,6 @@ function SkillDetailModal({ skill, isOpen, onClose }: SkillDetailModalProps) {
           </div>
         )}
 
-        {/* Install Instructions */}
         {skill.install && skill.install.length > 0 && (
           <div>
             <h4 className="text-sm font-medium text-gray-400 mb-2">Install Missing Dependencies</h4>
@@ -361,7 +351,6 @@ function SkillDetailModal({ skill, isOpen, onClose }: SkillDetailModalProps) {
           </div>
         )}
 
-        {/* Location */}
         <div>
           <h4 className="text-sm font-medium text-gray-400 mb-2">Location</h4>
           <div className="flex items-center gap-2 p-3 rounded-lg bg-white/5">
@@ -378,7 +367,6 @@ function SkillDetailModal({ skill, isOpen, onClose }: SkillDetailModalProps) {
           </div>
         </div>
 
-        {/* Actions */}
         <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
           {skill.source === 'local' && (
             <Button
@@ -462,7 +450,6 @@ function AddSkillModal({ isOpen, onClose }: AddSkillModalProps) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Add New Skill" size="xl">
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Tabs */}
         <div className="flex gap-2 border-b border-white/10">
           <button
             type="button"
@@ -488,7 +475,6 @@ function AddSkillModal({ isOpen, onClose }: AddSkillModalProps) {
           </button>
         </div>
 
-        {/* Skill Details */}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm text-gray-400 mb-2">Skill Name</label>
@@ -518,7 +504,6 @@ function AddSkillModal({ isOpen, onClose }: AddSkillModalProps) {
           />
         </div>
 
-        {/* Content Input */}
         {activeTab === 'upload' ? (
           <div>
             <label className="block text-sm text-gray-400 mb-2">Upload SKILL.md</label>
@@ -555,7 +540,6 @@ function AddSkillModal({ isOpen, onClose }: AddSkillModalProps) {
           </div>
         )}
 
-        {/* Actions */}
         <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancel
@@ -629,7 +613,6 @@ function RegistryBrowserModal({ isOpen, onClose }: RegistryBrowserModalProps) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Browse Skill Registries" size="xl">
       <div className="space-y-4">
-        {/* Tabs */}
         <div className="flex gap-2 border-b border-white/10 pb-2">
           <button
             className={cn(
@@ -657,7 +640,6 @@ function RegistryBrowserModal({ isOpen, onClose }: RegistryBrowserModalProps) {
           </button>
         </div>
 
-        {/* Search Input (only on search tab) */}
         {activeTab === 'search' && (
           <div className="flex gap-2">
             <div className="relative flex-1">
@@ -681,7 +663,6 @@ function RegistryBrowserModal({ isOpen, onClose }: RegistryBrowserModalProps) {
           </div>
         )}
 
-        {/* Registry Filter */}
         <div className="flex gap-2 flex-wrap">
           <button
             className={cn(
@@ -710,7 +691,6 @@ function RegistryBrowserModal({ isOpen, onClose }: RegistryBrowserModalProps) {
           ))}
         </div>
 
-        {/* Results */}
         {isLoading ? (
           <div className="space-y-3">
             {[...Array(5)].map((_, i) => (
@@ -764,7 +744,6 @@ function RegistryBrowserModal({ isOpen, onClose }: RegistryBrowserModalProps) {
           </div>
         )}
 
-        {/* Actions */}
         <div className="flex justify-between items-center pt-4 border-t border-white/10">
           <p className="text-xs text-gray-500">
             {filteredSkills.length} skills shown

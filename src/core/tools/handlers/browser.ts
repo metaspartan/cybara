@@ -1,9 +1,6 @@
-// Tool handlers - browser automation using Playwright (Cybara-compatible with Profile Support)
 import * as pwManager from "../../browser/pw-manager";
 import * as profileManager from "../../browser/profiles";
-// pw-snapshot is for Playwright pages - visual mode uses Puppeteer, so we import role definitions only
 import { INTERACTIVE_ROLES, CONTENT_ROLES, STRUCTURAL_ROLES } from "../../browser/pw-role-snapshot";
-// CDP helpers for direct access to Accessibility.getFullAXTree (more complete than Puppeteer's API)
 import {
   getFullAccessibilityTree,
   getDomText,
@@ -19,20 +16,14 @@ import { writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
-// Media output directory for screenshots — use ~/.cybara/ for consistent cross-platform paths
 const SCREENSHOTS_DIR = join(
   process.env.HOME || process.env.USERPROFILE || homedir(),
   ".cybara",
   "screenshots"
 );
 
-// Track active page for each session (legacy mode)
 const sessionPages = new Map<string, string>();
 
-// ============================================
-// Cybara-style Element Refs
-// ============================================
-// Maps ref (e.g. "e12") to element selector/xpath for resolution in act()
 interface ElementRef {
   selector: string;
   role: string;
@@ -63,20 +54,17 @@ async function getOrCreatePage(sessionId: string): Promise<string> {
   return pageId;
 }
 
-// Get a page for actions - defaults to visual profile browser (like Cybara/Cybara)
 async function getVisualPage(
   sessionId: string
 ): Promise<Awaited<ReturnType<typeof profileManager.getActivePage>>> {
   const profileName = sessionId;
 
-  // Ensure browser is started
   const profile = profileManager.getProfile(profileName);
   if (!profile?.running) {
     console.log(`[Browser] Starting visual browser for session: ${sessionId}`);
     await profileManager.startBrowser(profileName);
   }
 
-  // Get active page (or create one)
   return await profileManager.getActivePage(profileName);
 }
 
@@ -104,8 +92,6 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         throw new Error("Playwright not installed. Run: bun add playwright");
       }
 
-      // Default to VISUAL mode (like Cybara/Cybara)
-      // ONLY use headless if explicitly requested with headless: true
       const useHeadless = args.headless === true || args.headless === "true";
       const url = args.url as string | undefined;
       const profileName = (args.profile as string) || sessionId;
@@ -115,10 +101,8 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       );
 
       if (useHeadless) {
-        // Headless mode (explicit opt-in only)
         const pageId = await getOrCreatePage(sessionId);
 
-        // Navigate to URL if provided
         if (url) {
           await pwManager.navigate(pageId, url, { waitUntil: "domcontentloaded" });
         }
@@ -132,13 +116,10 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         };
       }
 
-      // DEFAULT: Visual mode with persistent Chrome profile
       console.log(`[Browser] Starting VISUAL browser with profile: ${profileName}`);
       await profileManager.startBrowser(profileName);
       const profile = profileManager.getProfile(profileName);
 
-      // Cybara pattern: 'start' just starts browser, 'open' loads URL
-      // If URL provided with start, navigate to it (convenience)
       if (url) {
         await profileManager.createPage(profileName, url);
         console.log(`[Browser] Started browser and navigated to ${url}`);
@@ -153,7 +134,6 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         };
       }
 
-      // No URL - just start the browser (Cybara: use 'open' action for URLs)
       console.log(`[Browser] Browser started. Use action='open' with url to load a page.`);
       return {
         success: true,
@@ -190,9 +170,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
     }
 
     case "close_all": {
-      // Close ALL pages, tabs, and browser instances
       await pwManager.closeAll();
-      // Clear all session page mappings
       sessionPages.clear();
       return {
         success: true,
@@ -200,7 +178,6 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       };
     }
 
-    // ===== PROFILE MANAGEMENT =====
     case "profiles": {
       const profiles = profileManager.listProfiles();
       return {
@@ -320,8 +297,6 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       };
     }
 
-    // ===== END PROFILE MANAGEMENT =====
-
     case "tabs": {
       const tabs = pwManager.getAllPages();
       return {
@@ -334,12 +309,9 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       const url = args.url as string;
       if (!url) throw new Error("URL required for open action");
 
-      // Default to visual mode (like Cybara/Cybara pattern)
-      // Use headless: true to explicitly opt-in to headless mode
       const useHeadless = args.headless === true || args.headless === "true";
 
       if (useHeadless) {
-        // Legacy headless mode (opt-in)
         const pageId = await getOrCreatePage(sessionId);
         const result = await pwManager.navigate(pageId, url, {
           waitUntil:
@@ -353,18 +325,15 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         };
       }
 
-      // Default: Visual mode with persistent Chrome profile
       const profileName = (args.profile as string) || sessionId;
       console.log(`[Browser] Opening ${url} in visual mode (profile: ${profileName})`);
 
-      // Start profile browser if not running
       let profile = profileManager.getProfile(profileName);
       if (!profile?.running) {
         await profileManager.startBrowser(profileName);
         profile = profileManager.getProfile(profileName);
       }
 
-      // Open page in visual browser
       await profileManager.createPage(profileName, url);
 
       return {
@@ -378,7 +347,6 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       };
     }
 
-    // Explicit visual mode (alias for open without headless flag)
     case "openVisual": {
       const url = args.url as string;
       if (!url) throw new Error("URL required for openVisual action");
@@ -386,14 +354,12 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       const profileName = (args.profile as string) || sessionId;
       console.log(`[Browser] openVisual: Opening ${url} (profile: ${profileName})`);
 
-      // Start profile browser if not running
       let profile = profileManager.getProfile(profileName);
       if (!profile?.running) {
         await profileManager.startBrowser(profileName);
         profile = profileManager.getProfile(profileName);
       }
 
-      // Open page in profile
       await profileManager.createPage(profileName, url);
 
       return {
@@ -426,12 +392,10 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       const url = args.url as string;
       if (!url) throw new Error("URL required for navigate action");
 
-      // Default to visual mode (like Cybara/Cybara)
       const useHeadless = args.headless === true || args.headless === "true";
       const profileName = (args.profile as string) || sessionId;
 
       if (useHeadless) {
-        // Legacy headless navigation
         const pageId = await getOrCreatePage(sessionId);
         const result = await pwManager.navigate(pageId, url, {
           waitUntil:
@@ -444,17 +408,14 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         };
       }
 
-      // Visual mode: navigate in the profile's browser
       console.log(`[Browser] Navigating to ${url} in visual mode (profile: ${profileName})`);
 
-      // Start profile browser if not running
       let profile = profileManager.getProfile(profileName);
       if (!profile?.running) {
         await profileManager.startBrowser(profileName);
         profile = profileManager.getProfile(profileName);
       }
 
-      // Create page with URL (navigates to it)
       await profileManager.createPage(profileName, url);
 
       return {
@@ -467,12 +428,10 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
     }
 
     case "snapshot": {
-      // Default to visual mode like screenshot
       const useHeadless = args.headless === true || args.headless === "true";
       const waitForContent = args.wait !== false; // Default: wait for content to load
 
       if (useHeadless) {
-        // Headless snapshot using Playwright pw-manager (supports ariaSnapshot)
         const pageId = await getOrCreatePage(sessionId);
         const format = (args.snapshotFormat as "aria" | "ai") || "ai";
         const result = await pwManager.getSnapshot(pageId, {
@@ -493,13 +452,9 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         };
       }
 
-      // Visual mode: use profile browser (Puppeteer via CDP)
-      // Note: Puppeteer is used instead of Playwright because Playwright WebSocket hangs in Bun
-      // We use CDP accessibility API + Cybara's role definitions for consistent behavior
       const page = await getVisualPage(sessionId);
       console.log(`[Browser] Taking snapshot in visual mode for session: ${sessionId}`);
 
-      // Wait for page to be ready (like Cybara)
       if (waitForContent) {
         try {
           await Promise.race([
@@ -515,11 +470,9 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       const url = page.url();
       const title = await page.title();
 
-      // Clear previous refs for this session
       clearSessionRefs(sessionId);
       const refs = getSessionRefs(sessionId);
 
-      // Options
       const interactiveOnly = args.interactive === true;
       const compactMode = args.compact === true;
       const maxDepth = typeof args.depth === "number" ? args.depth : undefined;
@@ -528,12 +481,9 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       let refCounter = 0;
 
       try {
-        // Use CDP Accessibility.getFullAXTree (more complete than Puppeteer's accessibility.snapshot)
-        // This is what makes Cybara work on dynamic sites
         const axNodes = await getFullAccessibilityTree(page, 1000);
         console.log(`[Browser] CDP getFullAXTree returned ${axNodes.length} nodes`);
 
-        // Process the flattened tree from CDP
         for (const node of axNodes) {
           const role = node.role || "";
           const name = node.name || "";
@@ -545,27 +495,21 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
           const indent = "  ".repeat(depth);
           const roleLower = role.toLowerCase();
 
-          // Use Cybara's role classification
           const isGeneric =
             STRUCTURAL_ROLES.has(roleLower) || role === "none" || role === "unknown" || !role;
           const isContent = CONTENT_ROLES.has(roleLower);
           const isInteractive = INTERACTIVE_ROLES.has(roleLower);
 
-          // StaticText and text nodes contain the actual content (prices, values, etc.)
           const isText =
             roleLower === "statictext" || roleLower === "text" || roleLower === "inlinetextbox";
 
-          // In interactive mode, only show interactive elements
           if (interactiveOnly && !isInteractive) continue;
 
-          // In compact mode, skip unnamed structural elements
           if (compactMode && isGeneric && !name) continue;
 
-          // Skip truly empty generic nodes (but keep text nodes with names)
           if (isGeneric && !name && !value && !isText) continue;
           if (isText && !name && !value) continue;
 
-          // Build line in Cybara format: - role "name" [ref=eN]
           let line = `${indent}- ${role}`;
           if (name) {
             line += ` "${name.slice(0, 100)}${name.length > 100 ? "..." : ""}"`;
@@ -574,7 +518,6 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
             line += ` value="${value.slice(0, 50)}${value.length > 50 ? "..." : ""}"`;
           }
 
-          // Add ref for interactive elements
           if (isInteractive) {
             refCounter++;
             const refId = `e${refCounter}`;
@@ -582,7 +525,6 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
             refs.set(refId, { selector: "", role, name: name || undefined });
           }
 
-          // Also add refs for content elements with names
           if (isContent && name && !isInteractive) {
             refCounter++;
             const refId = `e${refCounter}`;
@@ -596,19 +538,15 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         console.log(`[Browser] CDP Accessibility.getFullAXTree failed:`, err);
       }
 
-      // Always add DOM text as supplementary content for data extraction
-      // This ensures price/value data is available even when accessibility tree lacks detail
       console.log(`[Browser] Adding DOM text supplement for data extraction...`);
       try {
         const domText = await getDomText(page, { format: "text", maxChars: 80000 });
         if (domText.trim()) {
-          // Parse the DOM text into lines, preserving structure
           const textLines = domText
             .split("\n")
             .map((l) => l.trim())
             .filter((l) => l.length > 0 && l.length < 500);
 
-          // Add DOM text as a separate section - increased limit for data-rich pages
           if (textLines.length > 0) {
             snapshotLines.push("");
             snapshotLines.push("## Page Text Content");
@@ -620,8 +558,6 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         console.log(`[Browser] getDomText failed:`, domErr);
       }
 
-      // Build final snapshot with generous limit for data extraction
-      // LLMs can handle 30K+ chars easily, don't over-truncate
       const maxChars = (args.maxChars as number) || 30000;
       let snapshot = snapshotLines.join("\n");
       const truncated = snapshot.length > maxChars;
@@ -629,28 +565,20 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         snapshot = snapshot.slice(0, maxChars) + "\n\n[...TRUNCATED - page too large]";
       }
 
-      // Add usage hint at the top
       const usageHint = `# Page: ${title}\n# URL: ${url}\n# Interactive elements have [ref=eN] - use browser({action:'act', request:{kind:'click', ref:'eN'}}) to interact\n\n`;
 
-      // Debug logging
       console.log(
         `[Browser] Snapshot stats: ${snapshotLines.length} lines, ${snapshot.length} chars, truncated=${truncated}`
       );
 
-      // Return EXACTLY like Cybara: pure snapshot text string
-      // Cybara returns: { content: [{ type: "text", text: snapshot.snapshot }] }
-      // For our JSON-based tools, we return the text directly as the result
-      // This ensures the LLM sees the actual page content, not JSON metadata
       const fullSnapshot = usageHint + snapshot;
       return fullSnapshot;
     }
 
     case "screenshot": {
-      // Default to visual mode
       const useHeadless = args.headless === true || args.headless === "true";
 
       if (useHeadless) {
-        // Legacy headless screenshot
         const pageId = await getOrCreatePage(sessionId);
         const screenshot = await pwManager.screenshot(pageId, {
           fullPage: args.fullPage === true,
@@ -662,7 +590,6 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         const format = (args.type as "png" | "jpeg") || "png";
         const mimeType = format === "jpeg" ? "image/jpeg" : "image/png";
 
-        // Save screenshot to file
         const timestamp = Date.now();
         const filename = `screenshot_${timestamp}.${format}`;
 
@@ -674,7 +601,6 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         writeFileSync(filePath, screenshot);
         console.log(`[Browser] Screenshot saved to: ${filePath}`);
 
-        // Return file path only - do NOT include base64 to avoid context bloat
         return {
           success: true,
           mode: "headless",
@@ -685,7 +611,6 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         };
       }
 
-      // Visual mode: use profile browser
       const page = await getVisualPage(sessionId);
       console.log(`[Browser] Taking screenshot in visual mode for session: ${sessionId}`);
 
@@ -712,16 +637,13 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         screenshotData = await page.screenshot(screenshotOptions);
       }
 
-      // Puppeteer returns Uint8Array, convert to Buffer
       const screenshot = Buffer.from(screenshotData);
       const format = (args.type as "png" | "jpeg") || "png";
       const mimeType = format === "jpeg" ? "image/jpeg" : "image/png";
 
-      // Save screenshot to file
       const timestamp = Date.now();
       const filename = `screenshot_${timestamp}.${format}`;
 
-      // Ensure media/outbound directory exists
       if (!existsSync(SCREENSHOTS_DIR)) {
         mkdirSync(SCREENSHOTS_DIR, { recursive: true });
       }
@@ -730,8 +652,6 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       writeFileSync(filePath, screenshot);
       console.log(`[Browser] Screenshot saved to: ${filePath}`);
 
-      // Return file path only - do NOT include base64 to avoid context bloat
-      // Include hint for agent to use OCR when asked about content
       return {
         success: true,
         mode: "visual",
@@ -809,19 +729,14 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
     }
 
     case "act": {
-      // Cybara-style action handler with nested request object
-      // Supports both: browser({action:'act', request:{kind:'click', ref:'e12'}})
-      // And legacy: browser({action:'act', kind:'click', ref:'e12'})
       const request = (args.request as Record<string, unknown>) || args;
       const kind = (request.kind as string) || (args.kind as string);
       if (!kind)
         throw new Error("kind required for act action (use request.kind or kind directly)");
 
-      // Get the ref and resolve it to a selector
       const rawRef = (request.ref as string) || (args.ref as string);
       let resolvedSelector = rawRef;
 
-      // Check if this is an element ref (e1, e2, etc.) and resolve it
       if (rawRef && /^e\d+$/.test(rawRef)) {
         const refs = getSessionRefs(sessionId);
         const elementRef = refs.get(rawRef);
@@ -835,11 +750,9 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         }
       }
 
-      // Use visual mode by default (like Cybara)
       const useHeadless = args.headless === true || args.headless === "true";
 
       if (useHeadless) {
-        // Legacy headless mode
         const pageId = await getOrCreatePage(sessionId);
 
         switch (kind) {
@@ -877,7 +790,6 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         }
       }
 
-      // Visual mode: use profile browser (Puppeteer)
       const page = await getVisualPage(sessionId);
       console.log(`[Browser] Executing act ${kind} in visual mode`);
 
@@ -885,7 +797,6 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         case "click": {
           if (!resolvedSelector) throw new Error("ref required for click action");
           try {
-            // Try the first selector (may be comma-separated for fallback)
             const selectors = resolvedSelector.split(", ");
             let clicked = false;
             for (const sel of selectors) {
@@ -898,11 +809,9 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
               }
             }
             if (!clicked) {
-              // Fallback: try by text content
               const refs = getSessionRefs(sessionId);
               const elementRef = refs.get(rawRef);
               if (elementRef?.name) {
-                // Try clicking by aria-label or text
                 await page.evaluate(`
                   (function() {
                     const name = ${JSON.stringify(elementRef.name)};
@@ -973,7 +882,6 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
             const info: RefInfo = { role: refInfo.role, name: refInfo.name };
             const success = await hoverElement(page, info);
             if (!success) {
-              // Fallback to selector
               if (resolvedSelector) await page.hover(resolvedSelector);
             }
           } else if (resolvedSelector) {
@@ -1156,11 +1064,9 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       const direction = (args.direction as string) || "down";
       const amount = (args.amount as number) || 500;
 
-      // Visual mode: use profile browser if available
       const useHeadless = args.headless === true || args.headless === "true";
 
       if (useHeadless) {
-        // Headless mode with Playwright
         const pageId = await getOrCreatePage(sessionId);
         if (selector) {
           await pwManager.scrollIntoView(pageId, selector);
@@ -1170,7 +1076,6 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
             message: `Scrolled ${selector} into view`,
           };
         } else {
-          // Scroll page by amount
           const scrollY = direction === "up" ? -amount : amount;
           await pwManager.evaluate(pageId, `window.scrollBy(0, ${scrollY})`);
           return {
@@ -1182,7 +1087,6 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         }
       }
 
-      // Visual mode: use profile browser (Puppeteer)
       const page = await getVisualPage(sessionId);
       if (selector) {
         await page.evaluate(
@@ -1194,7 +1098,6 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
           message: `Scrolled ${selector} into view`,
         };
       } else {
-        // Scroll page by amount
         const scrollY = direction === "up" ? -amount : amount;
         await page.evaluate(`window.scrollBy(0, ${scrollY})`);
         return {
@@ -1363,11 +1266,9 @@ function extractReadableContent(
   html: string,
   mode: string = "markdown"
 ): { title: string; content: string } {
-  // Extract title
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
   const title = titleMatch ? titleMatch[1].trim().replace(/\s+/g, " ") : "";
 
-  // Remove non-content elements
   let text = html
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
@@ -1379,7 +1280,6 @@ function extractReadableContent(
     .replace(/<!--[\s\S]*?-->/g, "");
 
   if (mode === "markdown") {
-    // Convert common HTML to markdown-ish format
     text = text
       .replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, "\n# $1\n")
       .replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, "\n## $1\n")
@@ -1396,7 +1296,6 @@ function extractReadableContent(
       .replace(/<div[^>]*>([\s\S]*?)<\/div>/gi, "\n$1\n");
   }
 
-  // Strip remaining HTML tags
   text = text
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/g, " ")
@@ -1412,7 +1311,6 @@ function extractReadableContent(
   return { title, content: text };
 }
 
-// Simple URL opener - focused tool like Cybara pattern
 export async function handleOpenUrl(args: Record<string, unknown>): Promise<unknown> {
   const url = args.url as string;
   if (!url) {
@@ -1423,18 +1321,14 @@ export async function handleOpenUrl(args: Record<string, unknown>): Promise<unkn
 
   console.log(`[Browser] open_url: Opening ${url} in visual browser (profile: ${profileName})`);
 
-  // Start browser if not running
   let profile = profileManager.getProfile(profileName);
   if (!profile?.running) {
     await profileManager.startBrowser(profileName);
     profile = profileManager.getProfile(profileName);
   }
 
-  // Create page and navigate to URL
   const page = await profileManager.createPage(profileName, url);
 
-  // Puppeteer: wait for navigation to settle (waitForLoadState is Playwright-only)
-  // The createPage already does navigation with goto(), just wait briefly for DOM
   await new Promise((resolve) => setTimeout(resolve, 500));
 
   const title = await page.title();

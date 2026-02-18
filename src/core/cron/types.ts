@@ -1,4 +1,3 @@
-// Cron types - aligned with Cybara
 export type CronSchedule =
   | { kind: "at"; atMs: number }
   | { kind: "every"; everyMs: number; anchorMs?: number }

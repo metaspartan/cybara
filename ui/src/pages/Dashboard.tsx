@@ -15,17 +15,14 @@ import { PageLayout } from '@/components/layout';
 import { useInfo, useHealth } from '@/hooks/useApi';
 import { Link } from 'react-router-dom';
 
-// Helper to format check status
 function getCheckStatus(value: unknown): { status: 'healthy' | 'warning' | 'error'; details?: string } {
   if (typeof value === 'string') {
     return { status: value === 'healthy' ? 'healthy' : 'error' };
   }
   if (typeof value === 'object' && value !== null) {
     const obj = value as Record<string, unknown>;
-    // Handle nested status
     if (obj.status === 'healthy') return { status: 'healthy' };
     if (obj.status) return { status: obj.status as 'error' };
-    // Handle agents/providers/memory stats
     if ('total' in obj) {
       return { status: 'healthy', details: `${obj.total} total` };
     }
@@ -47,7 +44,6 @@ export function Dashboard() {
     { name: 'Tasks', value: info?.stats.tasks.total || 0, icon: Clock, href: '/tasks', color: 'from-amber-500 to-orange-500' },
   ];
 
-  // Filter out 'memory' check to avoid confusion with stored memory files
   const checks = health?.checks 
     ? Object.entries(health.checks).filter(([key]) => key !== 'memory')
     : [];
@@ -55,7 +51,6 @@ export function Dashboard() {
   return (
     <PageLayout title="Dashboard" subtitle="Overview of your agent platform">
       <div className="space-y-6">
-        {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-1">
           {stats.map((stat) => (
             <Link key={stat.name} to={stat.href} className="block focus:outline-none active:outline-none">
@@ -83,7 +78,6 @@ export function Dashboard() {
           ))}
         </div>
 
-        {/* Quick Actions & System Status */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card variant="liquid">
             <CardHeader>
@@ -138,7 +132,6 @@ export function Dashboard() {
               <CardDescription>Current platform health metrics</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {/* Overall Status */}
               <div className="flex items-center justify-between p-3 rounded-xl bg-white/5">
                 <div className="flex items-center gap-3">
                   <div className={cn(
@@ -152,7 +145,6 @@ export function Dashboard() {
                 </Badge>
               </div>
 
-              {/* Individual Checks */}
               {checks.map(([key, value]) => {
                 const check = getCheckStatus(value);
                 const icons: Record<string, React.ReactNode> = {

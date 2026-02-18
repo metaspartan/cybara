@@ -1,6 +1,3 @@
-// Telegram Bot Adapter - Full implementation
-// Extracted from channels.ts for modular architecture
-
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
 import path from "path";
 import { tables } from "../../database";
@@ -11,10 +8,8 @@ import { buildChannelSecurityConfig, securityManager } from "../security";
 import { getTelegramInboundMediaDir } from "../paths";
 import { handleChannelManagementCommand } from "../commands";
 
-// Telegram session storage
 export const telegramSessions = new Map<string, string>();
 
-// Get user's sessions from in-memory store
 async function getUserSessions(
   _userId: string
 ): Promise<Array<{ id: string; messageCount: number; lastActive: string }>> {
@@ -29,7 +24,6 @@ async function getUserSessions(
     .slice(0, 10);
 }
 
-// Telegram Bot Commands
 interface TelegramBotCommand {
   command: string;
   description: string;
@@ -54,7 +48,6 @@ const TELEGRAM_COMMANDS: TelegramBotCommand[] = [
   { command: "cancel", description: "Cancel current operation" },
 ];
 
-// Telegram API helper
 async function telegramApi(
   botToken: string,
   method: string,
@@ -69,7 +62,6 @@ async function telegramApi(
   return response.json() as Promise<{ ok: boolean; result?: unknown }>;
 }
 
-// Register bot commands with BotFather
 async function registerTelegramCommands(botToken: string): Promise<boolean> {
   try {
     const result = await telegramApi(botToken, "setMyCommands", {
@@ -83,7 +75,6 @@ async function registerTelegramCommands(botToken: string): Promise<boolean> {
   }
 }
 
-// Get bot info
 async function getTelegramBotInfo(
   botToken: string
 ): Promise<{ id: number; username: string; first_name: string } | null> {
@@ -99,7 +90,6 @@ async function getTelegramBotInfo(
   }
 }
 
-// Set up webhook for receiving messages
 async function setupTelegramWebhook(botToken: string, webhookUrl: string): Promise<boolean> {
   try {
     const result = await telegramApi(botToken, "setWebhook", {
@@ -114,7 +104,6 @@ async function setupTelegramWebhook(botToken: string, webhookUrl: string): Promi
   }
 }
 
-// Delete webhook (switch to polling)
 async function deleteTelegramWebhook(botToken: string): Promise<boolean> {
   try {
     const result = await telegramApi(botToken, "deleteWebhook");
@@ -126,7 +115,6 @@ async function deleteTelegramWebhook(botToken: string): Promise<boolean> {
   }
 }
 
-// Send message to Telegram chat
 async function sendTelegramMessage(
   botToken: string,
   chatId: number | string,
@@ -150,7 +138,6 @@ async function sendTelegramMessage(
   }
 }
 
-// Telegram Update interface
 export interface TelegramUpdate {
   update_id: number;
   message?: {
@@ -243,7 +230,6 @@ export interface TelegramUpdate {
   };
 }
 
-// Internal message handler type
 interface InternalMessageHandler {
   (
     message: string,
@@ -254,7 +240,6 @@ interface InternalMessageHandler {
   ): Promise<string>;
 }
 
-// Handle Telegram command
 async function handleTelegramCommand(
   command: string,
   args: string[],
@@ -516,7 +501,6 @@ Use /help to see available commands.`;
   }
 }
 
-// Download file from Telegram and save to media store
 async function downloadTelegramMedia(
   botToken: string,
   fileId: string,
@@ -604,7 +588,6 @@ function getExtensionForMime(mimeType?: string): string {
   return mimeToExt[mimeType.split(";")[0].trim()] || "";
 }
 
-// Escape special Markdown characters for Telegram
 function escapeTelegramMarkdown(text: string): string {
   const hasIntentionalMarkdown = /(\*[^*]+\*|_[^_]+_|`[^`]+`)/.test(text);
   if (hasIntentionalMarkdown) {
@@ -636,7 +619,6 @@ function parseStoredTelegramConfig(config: unknown, channelId?: string): Record<
   return {};
 }
 
-// Telegram Bot Manager class
 export class TelegramBotManager implements ChannelAdapter {
   type = "telegram" as const;
   name = "Telegram";
@@ -676,7 +658,6 @@ export class TelegramBotManager implements ChannelAdapter {
     console.log(`[Telegram] Starting bot @${botInfo.username}`);
     await registerTelegramCommands(botToken);
 
-    // Configure security based on channel config
     securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
 
     const isLocalhost =
@@ -789,7 +770,6 @@ export class TelegramBotManager implements ChannelAdapter {
     return text;
   }
 
-  // Process incoming Telegram message
   private async processTelegramUpdate(
     update: TelegramUpdate,
     channelId: string,
@@ -816,7 +796,6 @@ export class TelegramBotManager implements ChannelAdapter {
       content = message.text.trim();
     }
 
-    // Handle media
     if (message.photo && message.photo.length > 0) {
       const photo = message.photo[message.photo.length - 1];
       if (photo.file_id) {
@@ -905,7 +884,6 @@ export class TelegramBotManager implements ChannelAdapter {
 
     if (!content && !hasFile) return;
 
-    // 🔐 SECURITY CHECK: Verify sender is allowed
     const accessCheck = securityManager.checkAccess(
       channelId,
       userId.toString(),
@@ -915,7 +893,6 @@ export class TelegramBotManager implements ChannelAdapter {
 
     if (!accessCheck.permitted) {
       if (accessCheck.reason === "new_pairing") {
-        // Send pairing code
         await sendTelegramMessage(
           botToken,
           chatId,
@@ -956,14 +933,13 @@ export class TelegramBotManager implements ChannelAdapter {
 
     let response: string;
 
-    // Show typing indicator
     try {
       await telegramApi(botToken, "sendChatAction", {
         chat_id: chatId,
         action: "typing",
       });
     } catch {
-      // Typing indicator may fail, continue anyway
+      void 0;
     }
 
     if (content.startsWith("/")) {
@@ -999,7 +975,6 @@ export class TelegramBotManager implements ChannelAdapter {
       metadata: { replyToMessageId: message.message_id },
     });
 
-    // Check for screenshot
     const screenshotMatch = response.match(/Screenshot saved: ([^\n]+)/);
     if (screenshotMatch?.[1]) {
       const screenshotPath = screenshotMatch[1].trim();
@@ -1086,7 +1061,6 @@ export class TelegramBotManager implements ChannelAdapter {
     });
   }
 
-  // Media sending methods
   async sendPhoto(
     channelId: string,
     chatId: string | number,
@@ -1280,7 +1254,6 @@ export class TelegramBotManager implements ChannelAdapter {
     }
   }
 
-  // Process webhook updates from Telegram
   async processWebhook(channelId: string, update: Record<string, unknown>): Promise<boolean> {
     try {
       const channel = tables.channels.get(channelId) as { type?: string; config?: unknown } | null;
@@ -1305,10 +1278,8 @@ export class TelegramBotManager implements ChannelAdapter {
   }
 }
 
-// Export singleton instance
 export const telegramBot = new TelegramBotManager();
 
-// Export webhook processor for backwards compatibility
 export async function processTelegramWebhook(
   channelId: string,
   update: Record<string, unknown>

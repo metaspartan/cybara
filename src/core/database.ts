@@ -3,8 +3,6 @@ import { join } from "path";
 import { mkdirSync, existsSync } from "fs";
 import { dataDir } from "./paths";
 
-// Use ~/.cybara/data for database - works in both dev and compiled binary
-// (In compiled binaries, __dirname resolves to /$bunfs/ which is read-only)
 const dbPath = join(dataDir, "platform.db");
 
 console.log("[Database] Initializing at:", dbPath);
@@ -19,7 +17,6 @@ console.log("[Database] Database instance created");
 db.exec("PRAGMA journal_mode = WAL");
 console.log("[Database] Journal mode set");
 
-// Initialize schema
 console.log("[Database] Creating schema...");
 try {
   db.exec(`
@@ -258,9 +255,7 @@ try {
 `);
   console.log("[Database] Schema created successfully");
 
-  // Migrations for new columns
   try {
-    // Add fallback_provider_id column to agents table (if not exists)
     db.exec("ALTER TABLE agents ADD COLUMN fallback_provider_id TEXT");
     console.log("[Database] Migration: Added fallback_provider_id column");
   } catch {
@@ -270,7 +265,6 @@ try {
   console.error("[Database] Schema creation error:", error);
 }
 
-// Initialize schema
 db.exec(`
   -- Platform configuration
   CREATE TABLE IF NOT EXISTS config (
@@ -403,16 +397,13 @@ db.exec(`
   );
 `);
 
-// Add chat tables statements
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_chat_sessions_agent ON chat_sessions(agent_id);
   CREATE INDEX IF NOT EXISTS idx_chat_memory_session ON chat_memory(session_id);
 `);
 
-// Prepared statements
 const prepare = (sql: string) => db.prepare(sql);
 
-// Config
 const stmts = {
   config: {
     get: prepare("SELECT value FROM config WHERE key = ?"),
@@ -574,11 +565,9 @@ const stmts = {
     getByDate: prepare(
       "SELECT * FROM metrics WHERE type = ? AND date(created_at) = ? ORDER BY created_at DESC"
     ),
-    // Daily aggregates from raw metrics table (for time-series)
     getDailyTotalsFromRaw: prepare(
       "SELECT type, SUM(value) as total FROM metrics WHERE date(created_at) = ? GROUP BY type"
     ),
-    // Daily aggregates
     addDaily: prepare(
       "INSERT OR REPLACE INTO metrics_daily (id, date, type, key, value) VALUES (?, ?, ?, ?, ?)"
     ),
@@ -588,16 +577,13 @@ const stmts = {
     getDailyTotals: prepare(
       "SELECT type, SUM(value) as total FROM metrics_daily WHERE date = ? GROUP BY type"
     ),
-    // Cleanup old metrics for scalability
     deleteOlderThan: prepare(
       "DELETE FROM metrics WHERE created_at < datetime('now', '-' || ? || ' days')"
     ),
-    // Count total metrics
     count: prepare("SELECT COUNT(*) as count FROM metrics"),
   },
 };
 
-// Type-safe helpers
 export const tables = {
   config: {
     get: (key: string): { value: string } | null =>
@@ -889,24 +875,20 @@ export const tables = {
       (stmts.metrics?.getTotal.get(type, key) as { total?: number } | null)?.total || 0,
     getTopKeys: (type: string) => stmts.metrics?.getTopKeys.all(type) || [],
     getByDate: (type: string, date: string) => stmts.metrics?.getByDate.all(type, date) || [],
-    // Daily aggregates from raw metrics (for time-series when metrics_daily is empty)
     getDailyTotalsFromRaw: (date: string): Array<{ type: string; total: number }> =>
       (stmts.metrics?.getDailyTotalsFromRaw.all(date) || []) as Array<{
         type: string;
         total: number;
       }>,
-    // Daily aggregates (pre-aggregated cache)
     addDaily: (d: { id: string; date: string; type: string; key: string; value: number }) =>
       stmts.metrics?.addDaily.run(d.id, d.date, d.type, d.key, d.value),
     getDaily: (date: string, type: string) => stmts.metrics?.getDaily.all(date, type) || [],
     getDailyTotals: (date: string) => stmts.metrics?.getDailyTotals.all(date) || [],
-    // Cleanup for scalability
     deleteOlderThan: (days: number) => stmts.metrics?.deleteOlderThan.run(days),
     count: () => (stmts.metrics?.count.get() as { count: number } | null)?.count || 0,
   },
 };
 
-// Types
 export interface Provider {
   id: string;
   provider: string;
@@ -999,7 +981,6 @@ export interface TaskRun {
   error?: string;
 }
 
-// Chat session type
 export interface ChatSessionDB {
   id: string;
   agent_id: string;
@@ -1008,7 +989,6 @@ export interface ChatSessionDB {
   updated_at?: string;
 }
 
-// Chat memory entry (TOON format)
 export interface ChatMemoryDB {
   id: string;
   session_id: string;

@@ -1,31 +1,20 @@
-// API Security - Authentication, Rate Limiting, and Input Validation
-// Implements security hardening for the Cybara API
-
 import { createLogger } from "../core/logger";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { randomBytes } from "crypto";
+import { lookup } from "dns/promises";
+import { isIP } from "net";
 import { cybaraDir } from "../core/paths";
 
 const log = createLogger("Security");
 
-// ============================================
-// API KEY MANAGEMENT
-// ============================================
-
 const API_KEY_FILE = join(cybaraDir, "api_key");
 
-/**
- * Get or generate API key
- * Priority: CYBARA_API_KEY env > ~/.cybara/api_key file > generate new key
- */
 function getOrCreateApiKey(): string | null {
-  // 1. Check environment variable
   if (process.env.CYBARA_API_KEY) {
     return process.env.CYBARA_API_KEY;
   }
 
-  // 2. Check if key file exists
   if (existsSync(API_KEY_FILE)) {
     try {
       const key = readFileSync(API_KEY_FILE, "utf-8").trim();
@@ -33,20 +22,17 @@ function getOrCreateApiKey(): string | null {
         return key;
       }
     } catch {
-      // Fall through to generate new key
+      void 0;
     }
   }
 
-  // 3. Generate new key
   const newKey = `cybara_${randomBytes(24).toString("hex")}`;
 
-  // Ensure directory exists
   const dir = cybaraDir;
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
 
-  // Save key to file
   try {
     writeFileSync(API_KEY_FILE, newKey, { mode: 0o600 }); // Read/write only by owner
     log.info("Generated new API key", { path: API_KEY_FILE });
@@ -71,18 +57,11 @@ function getOrCreateApiKey(): string | null {
   return newKey;
 }
 
-// ============================================
-// CONFIGURATION
-// ============================================
-
 const config = {
-  // API Key - auto-generated if not provided
   apiKey: getOrCreateApiKey(),
 
-  // Allow localhost connections without auth in dev mode
   allowLocalhostBypass: process.env.NODE_ENV !== "production",
 
-  // Rate limiting defaults
   rateLimits: {
     global: { windowMs: 60000, maxRequests: 200 }, // 200 req/min globally
     chat: { windowMs: 60000, maxRequests: 60 }, // 60 req/min for chat
@@ -90,10 +69,8 @@ const config = {
     auth: { windowMs: 300000, maxRequests: 5 }, // 5 failed auths per 5 min
   },
 
-  // Max message size (32KB)
   maxMessageSize: 32 * 1024,
 
-  // SSRF protection - blocked IP ranges
   blockedIpRanges: [
     "127.0.0.0/8", // localhost
     "10.0.0.0/8", // private class A
@@ -106,10 +83,6 @@ const config = {
   ],
 };
 
-// ============================================
-// RATE LIMITING
-// ============================================
-
 interface RateLimitEntry {
   count: number;
   resetAt: number;
@@ -117,7 +90,6 @@ interface RateLimitEntry {
 
 const rateLimitStore = new Map<string, RateLimitEntry>();
 
-// Clean up expired entries every 5 minutes
 setInterval(
   () => {
     const now = Date.now();
@@ -151,13 +123,11 @@ export function checkRateLimit(
   const entry = rateLimitStore.get(key);
 
   if (!entry || now > entry.resetAt) {
-    // New window
     rateLimitStore.set(key, { count: 1, resetAt: now + windowMs });
     return { allowed: true, remaining: maxRequests - 1, resetAt: now + windowMs };
   }
 
   if (entry.count >= maxRequests) {
-    // Rate limited
     const retryAfterMs = entry.resetAt - now;
     log.warn(`Rate limit exceeded for ${key}`, { count: entry.count, retryAfterMs });
     return {
@@ -168,7 +138,6 @@ export function checkRateLimit(
     };
   }
 
-  // Increment counter
   entry.count++;
   return {
     allowed: true,
@@ -177,7 +146,6 @@ export function checkRateLimit(
   };
 }
 
-// Convenience function for endpoint rate limiting
 export function rateLimitEndpoint(
   endpoint: string,
   ip: string,
@@ -187,10 +155,6 @@ export function rateLimitEndpoint(
   const key = `${limitType}:${ip}:${endpoint}`;
   return checkRateLimit(key, limits.windowMs, limits.maxRequests);
 }
-
-// ============================================
-// AUTHENTICATION
-// ============================================
 
 export interface AuthResult {
   authenticated: boolean;
@@ -207,27 +171,38 @@ function isLocalhostIP(ip: string): boolean {
   );
 }
 
+function isSameOriginRequest(headers: Record<string, string>): boolean {
+  const origin = headers.origin || headers.Origin;
+  if (!origin) return true;
+
+  const host = headers.host || headers.Host;
+  if (!host) return false;
+
+  try {
+    const parsedOrigin = new URL(origin);
+    return parsedOrigin.host === host;
+  } catch {
+    return false;
+  }
+}
+
 export function authenticateRequest(headers: Record<string, string>, ip: string): AuthResult {
   const effectiveApiKey = process.env.CYBARA_API_KEY || config.apiKey;
 
-  // If no API key configured, allow all requests (open mode)
   if (!effectiveApiKey) {
     return { authenticated: true };
   }
 
-  // Allow localhost bypass in dev mode
-  if (config.allowLocalhostBypass && isLocalhostIP(ip)) {
+  if (config.allowLocalhostBypass && isLocalhostIP(ip) && isSameOriginRequest(headers)) {
     log.debug("Localhost bypass for auth", { ip });
     return { authenticated: true };
   }
 
-  // Check Authorization header
   const authHeader = headers["authorization"] || headers["Authorization"];
   if (!authHeader) {
     return { authenticated: false, reason: "Missing Authorization header" };
   }
 
-  // Support both "Bearer <token>" and raw token
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
 
   if (token !== effectiveApiKey) {
@@ -238,9 +213,18 @@ export function authenticateRequest(headers: Record<string, string>, ip: string)
   return { authenticated: true };
 }
 
-// ============================================
-// SSRF PROTECTION
-// ============================================
+function isPrivateIpv6(ip: string): boolean {
+  const normalized = ip.toLowerCase().replace(/^\[|\]$/g, "").split("%")[0];
+  if (normalized === "::1" || normalized === "::") return true;
+
+  if (normalized.startsWith("::ffff:")) {
+    return isPrivateOrBlockedIP(normalized.slice(7));
+  }
+
+  if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true;
+  if (/^fe[89ab]/.test(normalized)) return true;
+  return false;
+}
 
 function ipToInt(ip: string): number {
   const parts = ip.split(".").map(Number);
@@ -256,26 +240,30 @@ function isInCidr(ip: string, cidr: string): boolean {
 }
 
 export function isPrivateOrBlockedIP(ip: string): boolean {
-  // Handle IPv6 localhost
-  if (ip === "::1" || ip === "::") return true;
+  const normalized = ip.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  if (!normalized) return true;
 
-  // Handle IPv4-mapped IPv6
-  if (ip.startsWith("::ffff:")) {
-    ip = ip.slice(7);
+  if (normalized.includes(":")) {
+    return isPrivateIpv6(normalized);
   }
 
-  // Check hostnames
   const blockedHostnames = ["localhost", "0.0.0.0", "metadata.google.internal"];
-  if (blockedHostnames.includes(ip.toLowerCase())) return true;
+  if (blockedHostnames.includes(normalized)) return true;
 
-  // If this is not an IPv4 literal, treat as hostname and let caller apply hostname policies.
-  const parts = ip.split(".");
+  const ipVersion = isIP(normalized);
+  if (ipVersion === 6) {
+    return isPrivateIpv6(normalized);
+  }
+  if (ipVersion !== 4) {
+    return false;
+  }
+
+  const parts = normalized.split(".");
   if (parts.length !== 4) return false;
 
   const nums = parts.map(Number);
   if (nums.some((n) => isNaN(n) || n < 0 || n > 255)) return false;
 
-  // Check against blocked CIDR ranges
   for (const cidr of config.blockedIpRanges) {
     if (isInCidr(ip, cidr)) {
       return true;
@@ -289,21 +277,20 @@ export async function validateUrl(url: string): Promise<{ valid: boolean; error?
   try {
     const parsed = new URL(url);
 
-    // Only allow http and https
     if (!["http:", "https:"].includes(parsed.protocol)) {
       return { valid: false, error: `Blocked protocol: ${parsed.protocol}` };
     }
 
-    // Resolve hostname to IP
-    const hostname = parsed.hostname;
+    if (parsed.username || parsed.password) {
+      return { valid: false, error: "URLs with embedded credentials are not allowed" };
+    }
 
-    // Block obvious private hostnames
+    const hostname = parsed.hostname.toLowerCase();
+
     if (isPrivateOrBlockedIP(hostname)) {
       return { valid: false, error: `Blocked hostname: ${hostname}` };
     }
 
-    // DNS resolution check would go here for production
-    // For now, block known internal hostnames
     const blockedPatterns = [
       /localhost/i,
       /\.local$/i,
@@ -320,15 +307,28 @@ export async function validateUrl(url: string): Promise<{ valid: boolean; error?
       }
     }
 
+    const ipVersion = isIP(hostname);
+    if (ipVersion === 0) {
+      try {
+        const addresses = await lookup(hostname, { all: true, verbatim: true });
+        for (const address of addresses) {
+          if (isPrivateOrBlockedIP(address.address)) {
+            return {
+              valid: false,
+              error: `Blocked resolved address: ${address.address}`,
+            };
+          }
+        }
+      } catch {
+        // Keep behavior permissive when DNS lookup fails to avoid false negatives offline.
+      }
+    }
+
     return { valid: true };
   } catch (error) {
     return { valid: false, error: `Invalid URL: ${(error as Error).message}` };
   }
 }
-
-// ============================================
-// INPUT VALIDATION
-// ============================================
 
 export function validateMessageSize(message: string): { valid: boolean; error?: string } {
   if (!message) {
@@ -349,20 +349,14 @@ export function validateMessageSize(message: string): { valid: boolean; error?: 
 export function sanitizeString(input: string, maxLength = 1000): string {
   if (!input) return "";
 
-  // Remove null bytes
   let sanitized = input.replace(/\0/g, "");
 
-  // Trim to max length
   if (sanitized.length > maxLength) {
     sanitized = sanitized.substring(0, maxLength);
   }
 
   return sanitized.trim();
 }
-
-// ============================================
-// MIDDLEWARE HELPER
-// ============================================
 
 export interface SecurityCheckResult {
   passed: boolean;
@@ -393,13 +387,11 @@ export function securityCheck(
   headers: Record<string, string>,
   ip: string
 ): SecurityCheckResult {
-  // Skip auth for health endpoints
   const publicPaths = ["/api/health", "/api/health/ready", "/api/health/live"];
   if (publicPaths.some((p) => path.startsWith(p))) {
     return { passed: true };
   }
 
-  // Rate limit check
   const limitType = getRateLimitType(method, path);
   const rateLimit = rateLimitEndpoint(path, ip, limitType);
   if (!rateLimit.allowed) {
@@ -415,7 +407,6 @@ export function securityCheck(
     };
   }
 
-  // Auth check
   const auth = authenticateRequest(headers, ip);
   if (!auth.authenticated) {
     return {
@@ -437,5 +428,4 @@ export function securityCheck(
   };
 }
 
-// Export config for testing/debugging
 export const securityConfig = config;

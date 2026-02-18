@@ -1,14 +1,8 @@
-/**
- * LSP Installer - Manages downloading and installing language server binaries
- * Stores binaries in ~/.cybara/lsp/
- */
-
 import { existsSync, mkdirSync, unlinkSync, chmodSync, writeFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { gunzipSync } from "zlib";
 
-// Get the LSP installation directory
 export function getLSPDir(): string {
   const dir = join(homedir(), ".cybara", "lsp");
   if (!existsSync(dir)) {
@@ -17,7 +11,6 @@ export function getLSPDir(): string {
   return dir;
 }
 
-// Platform detection
 function getPlatform():
   | "darwin_arm64"
   | "darwin_x64"
@@ -38,7 +31,6 @@ function getPlatform():
   return "unsupported";
 }
 
-// LSP download sources and metadata
 export interface LSPInfo {
   name: string;
   displayName: string;
@@ -113,7 +105,6 @@ export const LSP_REGISTRY: Record<string, LSPInfo> = {
     type: "binary",
     binaryName: "clangd",
     downloadUrls: {
-      // clangd uses universal macOS binary, no arch suffix
       darwin_arm64:
         "https://github.com/clangd/clangd/releases/download/21.1.8/clangd-mac-21.1.8.zip",
       darwin_x64: "https://github.com/clangd/clangd/releases/download/21.1.8/clangd-mac-21.1.8.zip",
@@ -131,7 +122,6 @@ export const LSP_REGISTRY: Record<string, LSPInfo> = {
     type: "binary",
     binaryName: "jdtls",
     downloadUrls: {
-      // Eclipse provides a stable latest URL
       darwin_arm64:
         "https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz",
       darwin_x64: "https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz",
@@ -186,7 +176,6 @@ export const LSP_REGISTRY: Record<string, LSPInfo> = {
     type: "binary",
     binaryName: "lua-language-server",
     downloadUrls: {
-      // Versioned releases from LuaLS - using 3.17.1
       darwin_arm64:
         "https://github.com/LuaLS/lua-language-server/releases/download/3.17.1/lua-language-server-3.17.1-darwin-arm64.tar.gz",
       darwin_x64:
@@ -222,7 +211,6 @@ export const LSP_REGISTRY: Record<string, LSPInfo> = {
     type: "binary",
     binaryName: "kotlin-lsp.sh",
     downloadUrls: {
-      // Official JetBrains Kotlin LSP - platform-specific, no JDK required
       darwin_arm64:
         "https://download-cdn.jetbrains.com/kotlin-lsp/261.13587.0/kotlin-lsp-261.13587.0-mac-aarch64.zip",
       darwin_x64:
@@ -232,7 +220,6 @@ export const LSP_REGISTRY: Record<string, LSPInfo> = {
       linux_arm64:
         "https://download-cdn.jetbrains.com/kotlin-lsp/261.13587.0/kotlin-lsp-261.13587.0-linux-aarch64.zip",
     },
-    // JetBrains Kotlin LSP bundles its own JDK
     fileExtensions: [".kt", ".kts"],
   },
   swift: {
@@ -241,14 +228,12 @@ export const LSP_REGISTRY: Record<string, LSPInfo> = {
     description: "sourcekit-lsp - Apple's LSP for Swift",
     type: "binary",
     binaryName: "sourcekit-lsp",
-    // sourcekit-lsp comes with Xcode on macOS
     downloadUrls: {},
     requiresRuntime: "swift",
     fileExtensions: [".swift"],
   },
 };
 
-// Get path to installed LSP binary
 export function getLSPPath(language: string): string | null {
   const info = LSP_REGISTRY[language];
   if (!info || info.type === "bundled") return null;
@@ -263,7 +248,6 @@ export function getLSPPath(language: string): string | null {
   return null;
 }
 
-// Check if LSP is installed locally
 export function isInstalled(language: string): boolean {
   const info = LSP_REGISTRY[language];
   if (!info) return false;
@@ -272,16 +256,13 @@ export function isInstalled(language: string): boolean {
   return getLSPPath(language) !== null;
 }
 
-// Check if LSP is available (installed locally or in PATH)
 export async function isAvailable(language: string): Promise<boolean> {
   const info = LSP_REGISTRY[language];
   if (!info) return false;
   if (info.type === "bundled") return true;
 
-  // Check local install first
   if (isInstalled(language)) return true;
 
-  // Check system PATH (use 'where' on Windows, 'which' elsewhere)
   try {
     const checkCmd = process.platform === "win32" ? "where" : "which";
     const result = Bun.spawnSync([checkCmd, info.binaryName]);
@@ -291,7 +272,6 @@ export async function isAvailable(language: string): Promise<boolean> {
   }
 }
 
-// Get install status for all languages
 export interface LSPInstallStatus {
   language: string;
   displayName: string;
@@ -326,7 +306,6 @@ export async function getInstallStatus(): Promise<LSPInstallStatus[]> {
   return results;
 }
 
-// Install LSP for a language
 export interface InstallResult {
   success: boolean;
   error?: string;
@@ -385,26 +364,21 @@ async function installBinary(info: LSPInfo, lspDir: string): Promise<InstallResu
   const buffer = await response.arrayBuffer();
   const binaryPath = join(lspDir, info.binaryName);
 
-  // Handle different archive types
   if (url.endsWith(".gz") && !url.endsWith(".tar.gz")) {
-    // Simple gzip (e.g., rust-analyzer)
     const binary = gunzipSync(Buffer.from(buffer));
     writeFileSync(binaryPath, binary);
     chmodSync(binaryPath, 0o755);
   } else if (url.endsWith(".tar.gz") || url.endsWith(".tar.xz") || url.endsWith(".zip")) {
-    // Archive - extract to subdirectory
     const extractDir = join(lspDir, `${info.name}-extracted`);
     if (!existsSync(extractDir)) {
       mkdirSync(extractDir, { recursive: true });
     }
 
-    // Write archive to temp file
     const archivePath = join(lspDir, `${info.name}-archive`);
     writeFileSync(archivePath, Buffer.from(buffer));
 
     try {
       if (url.endsWith(".zip")) {
-        // Extract zip using unzip
         const result = Bun.spawnSync(["unzip", "-o", archivePath, "-d", extractDir], {
           timeout: 60000,
         });
@@ -413,7 +387,6 @@ async function installBinary(info: LSPInfo, lspDir: string): Promise<InstallResu
           return { success: false, error: "Failed to extract zip archive" };
         }
       } else if (url.endsWith(".tar.xz")) {
-        // Extract tar.xz
         const result = Bun.spawnSync(["tar", "-xJf", archivePath, "-C", extractDir], {
           timeout: 60000,
         });
@@ -422,7 +395,6 @@ async function installBinary(info: LSPInfo, lspDir: string): Promise<InstallResu
           return { success: false, error: "Failed to extract tar.xz archive" };
         }
       } else {
-        // Extract tar.gz
         const result = Bun.spawnSync(["tar", "-xzf", archivePath, "-C", extractDir], {
           timeout: 60000,
         });
@@ -432,10 +404,8 @@ async function installBinary(info: LSPInfo, lspDir: string): Promise<InstallResu
         }
       }
 
-      // Clean up archive
       unlinkSync(archivePath);
 
-      // Find the binary in extracted directory
       const findBinary = Bun.spawnSync(
         ["find", extractDir, "-name", info.binaryName, "-type", "f"],
         { timeout: 30000 }
@@ -443,7 +413,6 @@ async function installBinary(info: LSPInfo, lspDir: string): Promise<InstallResu
       const foundPath = findBinary.stdout.toString().trim().split("\n")[0];
 
       if (foundPath && existsSync(foundPath)) {
-        // Create wrapper script pointing to the found binary
         const wrapperContent = `#!/bin/bash\nexec "${foundPath}" "$@"\n`;
         writeFileSync(binaryPath, wrapperContent);
         chmodSync(binaryPath, 0o755);
@@ -456,7 +425,6 @@ async function installBinary(info: LSPInfo, lspDir: string): Promise<InstallResu
       return { success: false, error: String(err) };
     }
   } else {
-    // Direct binary download
     writeFileSync(binaryPath, Buffer.from(buffer));
     chmodSync(binaryPath, 0o755);
   }
@@ -466,7 +434,6 @@ async function installBinary(info: LSPInfo, lspDir: string): Promise<InstallResu
 }
 
 async function installGo(info: LSPInfo, lspDir: string): Promise<InstallResult> {
-  // Check if Go is installed
   const goCheck = Bun.spawnSync(["which", "go"]);
   if (goCheck.exitCode !== 0) {
     return { success: false, error: "Go runtime not found. Install Go first: https://go.dev/dl/" };
@@ -474,7 +441,6 @@ async function installGo(info: LSPInfo, lspDir: string): Promise<InstallResult> 
 
   console.log(`[LSP Installer] Installing ${info.displayName} via go install...`);
 
-  // Install to our LSP directory
   const result = Bun.spawnSync(["go", "install", "golang.org/x/tools/gopls@latest"], {
     env: { ...process.env, GOBIN: lspDir },
     timeout: 120000, // 2 minutes
@@ -490,7 +456,6 @@ async function installGo(info: LSPInfo, lspDir: string): Promise<InstallResult> 
 }
 
 async function installPip(info: LSPInfo, lspDir: string): Promise<InstallResult> {
-  // Check if Python is installed
   const pythonCheck = Bun.spawnSync(["which", "python3"]);
   if (pythonCheck.exitCode !== 0) {
     return { success: false, error: "Python 3 not found. Install Python first." };
@@ -498,7 +463,6 @@ async function installPip(info: LSPInfo, lspDir: string): Promise<InstallResult>
 
   console.log(`[LSP Installer] Installing ${info.displayName} via pip...`);
 
-  // Create a virtual environment in our LSP directory for python packages
   const venvDir = join(lspDir, "python-venv");
   if (!existsSync(venvDir)) {
     const venvResult = Bun.spawnSync(["python3", "-m", "venv", venvDir], { timeout: 60000 });
@@ -507,7 +471,6 @@ async function installPip(info: LSPInfo, lspDir: string): Promise<InstallResult>
     }
   }
 
-  // Install python-lsp-server into the venv
   const pipPath = join(venvDir, "bin", "pip");
   const installResult = Bun.spawnSync([pipPath, "install", "python-lsp-server"], {
     timeout: 120000,
@@ -517,11 +480,9 @@ async function installPip(info: LSPInfo, lspDir: string): Promise<InstallResult>
     return { success: false, error: installResult.stderr.toString() || "Pip install failed" };
   }
 
-  // Create a symlink or wrapper script in lspDir
   const pylspPath = join(venvDir, "bin", "pylsp");
   const wrapperPath = join(lspDir, "pylsp");
 
-  // Create wrapper script that activates venv
   const wrapperContent = `#!/bin/bash
 exec "${pylspPath}" "$@"
 `;
@@ -533,7 +494,6 @@ exec "${pylspPath}" "$@"
 }
 
 async function installGem(info: LSPInfo, lspDir: string): Promise<InstallResult> {
-  // Check if Ruby is installed
   const rubyCheck = Bun.spawnSync(["which", "gem"]);
   if (rubyCheck.exitCode !== 0) {
     return { success: false, error: "Ruby gem not found. Install Ruby first." };
@@ -541,7 +501,6 @@ async function installGem(info: LSPInfo, lspDir: string): Promise<InstallResult>
 
   console.log(`[LSP Installer] Installing ${info.displayName} via gem...`);
 
-  // Install gem with user-local prefix
   const gemDir = join(lspDir, "ruby-gems");
   if (!existsSync(gemDir)) {
     mkdirSync(gemDir, { recursive: true });
@@ -566,7 +525,6 @@ async function installGem(info: LSPInfo, lspDir: string): Promise<InstallResult>
 }
 
 async function installBun(info: LSPInfo, lspDir: string): Promise<InstallResult> {
-  // Check if Bun is installed (it should be since we're running on it)
   const bunCheck = Bun.spawnSync(["which", "bun"]);
   if (bunCheck.exitCode !== 0) {
     return { success: false, error: "Bun not found in PATH" };
@@ -574,7 +532,6 @@ async function installBun(info: LSPInfo, lspDir: string): Promise<InstallResult>
 
   console.log(`[LSP Installer] Installing ${info.displayName} via bun...`);
 
-  // Install globally using bun
   const result = Bun.spawnSync(["bun", "install", "-g", info.binaryName], {
     timeout: 120000,
   });
@@ -583,12 +540,10 @@ async function installBun(info: LSPInfo, lspDir: string): Promise<InstallResult>
     return { success: false, error: result.stderr.toString() || "Bun install failed" };
   }
 
-  // Find where bun installed it
   const whichResult = Bun.spawnSync(["which", info.binaryName]);
   const installedPath = whichResult.stdout.toString().trim();
 
   if (installedPath) {
-    // Create wrapper script in our lspDir
     const wrapperPath = join(lspDir, info.binaryName);
     const wrapperContent = `#!/bin/bash\nexec "${installedPath}" "$@"\n`;
     writeFileSync(wrapperPath, wrapperContent);
@@ -602,7 +557,6 @@ async function installBun(info: LSPInfo, lspDir: string): Promise<InstallResult>
   return { success: true, path: "(global)" };
 }
 
-// Uninstall LSP
 export async function uninstall(language: string): Promise<{ success: boolean; error?: string }> {
   const info = LSP_REGISTRY[language];
   if (!info) {
@@ -622,21 +576,12 @@ export async function uninstall(language: string): Promise<{ success: boolean; e
       console.log(`[LSP Installer] Uninstalled ${info.displayName}`);
     }
 
-    // For Python, also clean up venv if no other Python LSPs remain
-    if (info.type === "pip") {
-      const venvDir = join(lspDir, "python-venv");
-      if (existsSync(venvDir)) {
-        // Could add logic to remove venv, but leave it for now
-      }
-    }
-
     return { success: true };
   } catch (err) {
     return { success: false, error: String(err) };
   }
 }
 
-// Get list of available languages
 export function getAvailableLanguages(): string[] {
   return Object.keys(LSP_REGISTRY);
 }

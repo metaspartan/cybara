@@ -1,4 +1,3 @@
-// Cron job store - persistence layer
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
@@ -9,14 +8,12 @@ const JOBS_FILE = join(CRON_DIR, "jobs.json");
 const RUNS_FILE = join(CRON_DIR, "runs.json");
 const MAX_RUN_LOGS = 100;
 
-// Ensure directory exists
 function ensureDir(): void {
   if (!existsSync(CRON_DIR)) {
     mkdirSync(CRON_DIR, { recursive: true });
   }
 }
 
-// Load jobs from file
 export function loadJobs(): CronJob[] {
   ensureDir();
   if (!existsSync(JOBS_FILE)) {
@@ -30,19 +27,16 @@ export function loadJobs(): CronJob[] {
   }
 }
 
-// Save jobs to file
 export function saveJobs(jobs: CronJob[]): void {
   ensureDir();
   const store: CronStoreFile = { version: 1, jobs };
   writeFileSync(JOBS_FILE, JSON.stringify(store, null, 2));
 }
 
-// Generate unique job ID
 function generateId(): string {
   return `job_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-// Create a new job
 export function createJob(input: CronJobCreate): CronJob {
   const now = Date.now();
   const job: CronJob = {
@@ -71,7 +65,6 @@ export function createJob(input: CronJobCreate): CronJob {
   return job;
 }
 
-// Update an existing job
 export function updateJob(id: string, patch: CronJobPatch): CronJob | null {
   const jobs = loadJobs();
   const index = jobs.findIndex((j) => j.id === id);
@@ -80,7 +73,6 @@ export function updateJob(id: string, patch: CronJobPatch): CronJob | null {
   const job = jobs[index];
   const now = Date.now();
 
-  // Apply patches
   if (patch.name !== undefined) job.name = patch.name;
   if (patch.description !== undefined) job.description = patch.description;
   if (patch.enabled !== undefined) job.enabled = patch.enabled;
@@ -93,7 +85,6 @@ export function updateJob(id: string, patch: CronJobPatch): CronJob | null {
   if (patch.wakeMode !== undefined) job.wakeMode = patch.wakeMode;
   if (patch.agentId !== undefined) job.agentId = patch.agentId;
 
-  // Handle payload patch
   if (patch.payload) {
     if (patch.payload.kind === "systemEvent" && job.payload.kind === "systemEvent") {
       if (patch.payload.text !== undefined) job.payload.text = patch.payload.text;
@@ -109,7 +100,6 @@ export function updateJob(id: string, patch: CronJobPatch): CronJob | null {
     }
   }
 
-  // Handle state patch
   if (patch.state) {
     Object.assign(job.state, patch.state);
   }
@@ -121,7 +111,6 @@ export function updateJob(id: string, patch: CronJobPatch): CronJob | null {
   return job;
 }
 
-// Remove a job
 export function removeJob(id: string): boolean {
   const jobs = loadJobs();
   const index = jobs.findIndex((j) => j.id === id);
@@ -132,40 +121,32 @@ export function removeJob(id: string): boolean {
   return true;
 }
 
-// Get a job by ID
 export function getJob(id: string): CronJob | null {
   const jobs = loadJobs();
   return jobs.find((j) => j.id === id) || null;
 }
 
-// List all jobs
 export function listJobs(includeDisabled: boolean = true): CronJob[] {
   const jobs = loadJobs();
   return includeDisabled ? jobs : jobs.filter((j) => j.enabled);
 }
 
-// Compute next run time based on schedule
 export function computeNextRun(schedule: CronJob["schedule"], fromMs: number = Date.now()): number {
   switch (schedule.kind) {
     case "at":
-      // One-shot at absolute time
       return schedule.atMs > fromMs ? schedule.atMs : fromMs;
 
     case "every": {
-      // Recurring interval
       const anchor = schedule.anchorMs || fromMs;
       const interval = schedule.everyMs;
       if (interval <= 0) return fromMs + 60000; // Default 1 minute
 
-      // Find next occurrence
       const elapsed = fromMs - anchor;
       const periods = Math.ceil(elapsed / interval);
       return anchor + periods * interval;
     }
 
     case "cron":
-      // Cron expression - simplified parsing
-      // For now, just schedule 1 minute ahead for "* * * * *" patterns
       return fromMs + 60000;
 
     default:
@@ -173,7 +154,6 @@ export function computeNextRun(schedule: CronJob["schedule"], fromMs: number = D
   }
 }
 
-// Run log management
 export function loadRunLogs(): CronRunLog[] {
   ensureDir();
   if (!existsSync(RUNS_FILE)) {
@@ -188,7 +168,6 @@ export function loadRunLogs(): CronRunLog[] {
 
 export function saveRunLogs(logs: CronRunLog[]): void {
   ensureDir();
-  // Keep only last MAX_RUN_LOGS
   const trimmed = logs.slice(-MAX_RUN_LOGS);
   writeFileSync(RUNS_FILE, JSON.stringify(trimmed, null, 2));
 }

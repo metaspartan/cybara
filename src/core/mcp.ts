@@ -2,11 +2,6 @@ import { tables, type MCPServer } from "./database";
 import { spawn, ChildProcess } from "child_process";
 import { EventEmitter } from "events";
 
-// ============================================
-// MCP SERVER MANAGER
-// Full MCP (Model Context Protocol) integration
-// ============================================
-
 interface MCPTool {
   name: string;
   description: string;
@@ -130,7 +125,6 @@ class MCPServerManager extends EventEmitter {
     const instance = this.instances.get(id);
     if (!instance) return false;
 
-    // Stop if running
     if (instance.process) {
       this.stop(id);
     }
@@ -156,12 +150,10 @@ class MCPServerManager extends EventEmitter {
     try {
       const { command, args } = instance.server;
 
-      // Parse command and args
       const cmdParts = command.split(/\s+/);
       const cmd = cmdParts[0];
       const cmdArgs = [...cmdParts.slice(1), ...(args?.split(/\s+/) || [])].filter(Boolean);
 
-      // Parse environment variables
       const env: Record<string, string> = Object.fromEntries(
         Object.entries(process.env).filter(
           (pair): pair is [string, string] => pair[1] !== undefined
@@ -317,7 +309,6 @@ class MCPServerManager extends EventEmitter {
     const instance = this.instances.get(id);
     if (!instance?.process?.stdin) return;
 
-    // Send JSON-RPC request for tools list
     const request = {
       jsonrpc: "2.0",
       id: Date.now(),
@@ -348,7 +339,6 @@ class MCPServerManager extends EventEmitter {
         reject(new Error("MCP tool call timeout"));
       }, 30000);
 
-      // Listen for response
       const responseHandler = (data: Buffer) => {
         try {
           const message = data.toString();
@@ -379,7 +369,6 @@ class MCPServerManager extends EventEmitter {
 
       instance.process?.stdout?.on("data", responseHandler);
 
-      // Send the tool call request
       const request = {
         jsonrpc: "2.0",
         id: requestId,
@@ -394,7 +383,6 @@ class MCPServerManager extends EventEmitter {
     });
   }
 
-  // Get all tools from all running MCP servers
   getAllTools(): Array<MCPTool & { serverId: string; serverName: string }> {
     const allTools: Array<MCPTool & { serverId: string; serverName: string }> = [];
 
@@ -413,7 +401,6 @@ class MCPServerManager extends EventEmitter {
     return allTools;
   }
 
-  // Get tool definitions for LLM integration
   getToolDefinitions(): Array<{
     name: string;
     description: string;

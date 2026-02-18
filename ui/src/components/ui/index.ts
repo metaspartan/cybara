@@ -1,4 +1,3 @@
-// UI Component exports
 export { GlassCard } from './GlassCard';
 export { GlassButton } from './GlassButton';
 export { Modal } from './Modal';
@@ -8,7 +7,6 @@ export { Badge } from './Badge';
 export { DataTable, Pagination } from './DataTable';
 export { Select } from './Select';
 
-// New components
 export { Button } from './Button';
 export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from './Card';
 export { ToastContainer } from './Toast';

@@ -71,5 +71,4 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
 
 Textarea.displayName = 'Textarea';
 
-// Re-export Select for convenience
 export { Select } from './Select';

@@ -1,5 +1,3 @@
-// In-memory vector store for semantic memory search
-// Persists to SQLite for durability
 
 import { Database } from "bun:sqlite";
 import { join } from "path";
@@ -36,7 +34,6 @@ export interface VectorSearchResult {
     source: "memory" | "sessions";
 }
 
-// Simple hash for content deduplication
 function hashContent(content: string): string {
     let hash = 0;
     for (let i = 0; i < content.length; i++) {
@@ -47,7 +44,6 @@ function hashContent(content: string): string {
     return hash.toString(16);
 }
 
-// Chunk markdown content into semantic units
 export function chunkMarkdown(
     content: string,
     maxTokens: number = 500
@@ -65,10 +61,8 @@ export function chunkMarkdown(
         const line = lines[i];
         const lineTokens = estimateTokens(line);
 
-        // Check if this is a section header
         const isHeader = /^#{1,6}\s/.test(line);
 
-        // Start new chunk on headers or when max tokens exceeded
         if (isHeader && currentChunk.length > 0) {
             chunks.push({
                 text: currentChunk.join("\n"),
@@ -93,7 +87,6 @@ export function chunkMarkdown(
         }
     }
 
-    // Don't forget the last chunk
     if (currentChunk.length > 0) {
         chunks.push({
             text: currentChunk.join("\n"),
@@ -112,7 +105,6 @@ export class VectorStore {
     private chunks: Map<string, MemoryChunk> = new Map();
 
     constructor() {
-        // Ensure directory exists
         if (!existsSync(MEMORY_DIR)) {
             mkdirSync(MEMORY_DIR, { recursive: true });
         }
@@ -121,7 +113,6 @@ export class VectorStore {
         this.initSchema();
         this.loadChunks();
 
-        // Initialize embedding provider asynchronously
         this.providerReady = this.initProvider();
     }
 
@@ -175,7 +166,7 @@ export class VectorStore {
                     hash: row.hash,
                 });
             } catch {
-                // Skip invalid entries
+            void 0;
             }
         }
 
@@ -197,9 +188,6 @@ export class VectorStore {
         await this.providerReady;
     }
 
-    /**
-     * Add or update a memory file in the vector store
-     */
     async indexFile(
         path: string,
         content: string,
@@ -211,21 +199,17 @@ export class VectorStore {
             return 0;
         }
 
-        // Remove old chunks for this path
         const oldChunks = Array.from(this.chunks.values()).filter(c => c.path === path);
         for (const chunk of oldChunks) {
             this.chunks.delete(chunk.id);
             this.db.run("DELETE FROM chunks WHERE id = ?", [chunk.id]);
         }
 
-        // Chunk the content
         const textChunks = chunkMarkdown(content);
         if (textChunks.length === 0) return 0;
 
-        // Generate embeddings
         const embeddings = await this.provider.embedBatch(textChunks.map(c => c.text));
 
-        // Store chunks
         const now = Date.now();
         const stmt = this.db.prepare(
             "INSERT OR REPLACE INTO chunks (id, path, start_line, end_line, content, embedding, source, created_at, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
@@ -270,9 +254,6 @@ export class VectorStore {
         return textChunks.length;
     }
 
-    /**
-     * Search for similar content using vector similarity
-     */
     async search(
         query: string,
         options: {
@@ -287,30 +268,25 @@ export class VectorStore {
         const minScore = options.minScore ?? 0.3;
 
         if (!this.provider || this.provider.id === "none") {
-            // Fallback to keyword search
             return this.keywordSearch(query, maxResults);
         }
 
-        // Get query embedding
         const queryEmbedding = await this.provider.embedQuery(query);
         if (queryEmbedding.length === 0) {
             return this.keywordSearch(query, maxResults);
         }
 
-        // Filter candidates by source if specified
         let candidates = Array.from(this.chunks.values());
         if (options.source) {
             candidates = candidates.filter(c => c.source === options.source);
         }
 
-        // Find similar chunks
         const similar = findTopKSimilar(
             queryEmbedding,
             candidates.map(c => ({ id: c.id, embedding: c.embedding })),
             maxResults * 2 // Get more for hybrid ranking
         );
 
-        // Map to results
         const vectorResults = similar
             .filter(s => s.score >= minScore)
             .map(s => {
@@ -326,17 +302,12 @@ export class VectorStore {
                 };
             });
 
-        // Hybrid: also get keyword results and merge
         const keywordResults = this.keywordSearch(query, maxResults);
         const merged = this.mergeResults(vectorResults, keywordResults, 0.7, 0.3);
 
         return merged.slice(0, maxResults);
     }
 
-    /**
-     * BM25 keyword search for better relevance ranking
-     * BM25 parameters: k1=1.5, b=0.75 (standard defaults)
-     */
     private keywordSearch(query: string, maxResults: number): VectorSearchResult[] {
         const terms = this.tokenize(query);
         if (terms.length === 0) return [];
@@ -344,25 +315,20 @@ export class VectorStore {
         const chunks = Array.from(this.chunks.values());
         if (chunks.length === 0) return [];
 
-        // BM25 parameters
         const k1 = 1.5;
         const b = 0.75;
 
-        // Calculate average document length
         const avgDl = chunks.reduce((sum, c) => sum + c.content.length, 0) / chunks.length;
 
-        // Calculate IDF for each term
         const idf = new Map<string, number>();
         for (const term of terms) {
             const docsWithTerm = chunks.filter(c =>
                 c.content.toLowerCase().includes(term)
             ).length;
-            // IDF formula: log((N - n + 0.5) / (n + 0.5) + 1)
             const idfScore = Math.log((chunks.length - docsWithTerm + 0.5) / (docsWithTerm + 0.5) + 1);
             idf.set(term, Math.max(0, idfScore)); // Ensure non-negative
         }
 
-        // Score each document
         const scored: Array<VectorSearchResult & { bm25Score: number }> = [];
 
         for (const chunk of chunks) {
@@ -371,14 +337,12 @@ export class VectorStore {
             let score = 0;
 
             for (const term of terms) {
-                // Term frequency
                 const regex = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
                 const matches = contentLower.match(regex);
                 const tf = matches ? matches.length : 0;
 
                 if (tf === 0) continue;
 
-                // BM25 score for this term
                 const termIdf = idf.get(term) || 0;
                 const numerator = tf * (k1 + 1);
                 const denominator = tf + k1 * (1 - b + b * (dl / avgDl));
@@ -399,7 +363,6 @@ export class VectorStore {
             }
         }
 
-        // Normalize scores to 0-1 range
         const maxScore = Math.max(...scored.map(s => s.score), 1);
         for (const s of scored) {
             s.score = s.score / maxScore;
@@ -410,9 +373,6 @@ export class VectorStore {
             .slice(0, maxResults);
     }
 
-    /**
-     * Tokenize text into search terms
-     */
     private tokenize(text: string): string[] {
         return text
             .toLowerCase()
@@ -421,9 +381,6 @@ export class VectorStore {
             .filter((t, i, arr) => arr.indexOf(t) === i); // Dedupe
     }
 
-    /**
-     * Merge vector and keyword results with weighted scores
-     */
     private mergeResults(
         vectorResults: VectorSearchResult[],
         keywordResults: VectorSearchResult[],
@@ -453,9 +410,6 @@ export class VectorStore {
             .sort((a, b) => b.score - a.score);
     }
 
-    /**
-     * Remove a file from the index
-     */
     removeFile(path: string): number {
         const oldChunks = Array.from(this.chunks.values()).filter(c => c.path === path);
         for (const chunk of oldChunks) {
@@ -466,9 +420,6 @@ export class VectorStore {
         return result.changes;
     }
 
-    /**
-     * Get store statistics
-     */
     stats(): {
         chunks: number;
         files: number;
@@ -489,7 +440,6 @@ export class VectorStore {
     }
 }
 
-// Singleton instance
 let vectorStoreInstance: VectorStore | null = null;
 
 export function getVectorStore(): VectorStore {

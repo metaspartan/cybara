@@ -1,6 +1,3 @@
-// Global status event system - no circular imports
-
-// Status types for the agent
 export type AgentStatus = "idle" | "thinking" | "tool_executing" | "generating" | "error";
 
 export interface StatusPayload {
@@ -9,7 +6,6 @@ export interface StatusPayload {
   detail?: string;
 }
 
-// Task event types for notifications
 export interface TaskEventPayload {
   type: "task_completed";
   taskId: string;
@@ -25,10 +21,8 @@ type StatusCallback = (data: StatusPayload) => void;
 
 const statusCallbacks = new Set<StatusCallback>();
 
-// SSE client controllers for real-time updates (now using Uint8Array for proper encoding)
 const sseClients = new Set<ReadableStreamDefaultController<Uint8Array>>();
 
-// Text encoder for SSE messages
 const encoder = new TextEncoder();
 
 export function addSSEClient(controller: ReadableStreamDefaultController<Uint8Array>): void {
@@ -49,7 +43,6 @@ export function onStatus(callback: StatusCallback): () => void {
 }
 
 export function broadcastStatus(status: StatusPayload): void {
-  // Call all registered callbacks
   for (const callback of statusCallbacks) {
     try {
       callback(status);
@@ -58,13 +51,11 @@ export function broadcastStatus(status: StatusPayload): void {
     }
   }
 
-  // Send to all SSE clients (encoded as Uint8Array)
   const message = encoder.encode(`data: ${JSON.stringify(status)}\n\n`);
   for (const client of sseClients) {
     try {
       client.enqueue(message);
     } catch {
-      // Client disconnected, remove
       sseClients.delete(client);
     }
   }
@@ -74,7 +65,6 @@ export function broadcastStatus(status: StatusPayload): void {
   );
 }
 
-// Broadcast task events (for completion notifications)
 export function broadcastTaskEvent(event: TaskEventPayload): void {
   const payload = { ...event, timestamp: Date.now() };
   const message = encoder.encode(`data: ${JSON.stringify(payload)}\n\n`);

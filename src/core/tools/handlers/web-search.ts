@@ -1,6 +1,3 @@
-// Tool handlers - web search
-// Supports Brave API (if key available) or DuckDuckGo HTML scraping as fallback
-
 const BRAVE_SEARCH_ENDPOINT = "https://api.search.brave.com/res/v1/web/search";
 const DDG_HTML_ENDPOINT = "https://html.duckduckgo.com/html/";
 const USER_AGENT =
@@ -10,7 +7,6 @@ const DEFAULT_SEARCH_COUNT = 5;
 const MAX_SEARCH_COUNT = 10;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-// Simple in-memory cache
 const searchCache = new Map<string, { results: unknown; timestamp: number }>();
 
 interface SearchResult {
@@ -44,7 +40,6 @@ function getFromCache(key: string): SearchResponse | null {
 
 function setCache(key: string, results: SearchResponse): void {
   searchCache.set(key, { results, timestamp: Date.now() });
-  // Cleanup old entries
   if (searchCache.size > 100) {
     const oldest = Array.from(searchCache.entries())
       .sort((a, b) => a[1].timestamp - b[1].timestamp)
@@ -53,7 +48,6 @@ function setCache(key: string, results: SearchResponse): void {
   }
 }
 
-// Brave Search API
 async function searchWithBrave(
   query: string,
   count: number,
@@ -102,7 +96,6 @@ async function searchWithBrave(
   };
 }
 
-// DuckDuckGo HTML scraping (fallback, no API key needed)
 async function searchWithDDG(query: string, count: number): Promise<SearchResponse> {
   const start = Date.now();
 
@@ -121,7 +114,6 @@ async function searchWithDDG(query: string, count: number): Promise<SearchRespon
 
   const html = await response.text();
 
-  // Parse results from HTML
   const results: SearchResult[] = [];
   const resultPattern =
     /<a rel="nofollow" class="result__a" href="([^"]*)"[^>]*>([^<]*)<\/a>[\s\S]*?<a class="result__snippet"[^>]*>([^<]*)<\/a>/g;
@@ -134,7 +126,6 @@ async function searchWithDDG(query: string, count: number): Promise<SearchRespon
 
     if (url && title) {
       let cleanUrl = url;
-      // DDG wraps URLs in their redirect, extract actual URL
       const uddgMatch = url.match(/uddg=([^&]+)/);
       if (uddgMatch) {
         cleanUrl = decodeURIComponent(uddgMatch[1]);
@@ -149,9 +140,7 @@ async function searchWithDDG(query: string, count: number): Promise<SearchRespon
     }
   }
 
-  // If regex didn't work, try simpler approach
   if (results.length === 0) {
-    // Fallback: extract any http/https links
     const linkPattern = /href="(https?:\/\/[^"]+)"[^>]*>([^<]+)/g;
     while ((match = linkPattern.exec(html)) !== null && results.length < count) {
       const url = match[1];
@@ -187,14 +176,12 @@ export async function handleWebSearch(args: Record<string, unknown>): Promise<Se
     throw new Error("query is required");
   }
 
-  // Check cache
   const cacheKey = getCacheKey(query, count);
   const cached = getFromCache(cacheKey);
   if (cached) {
     return cached;
   }
 
-  // Try Brave API first (if key available)
   const braveApiKey = process.env.BRAVE_API_KEY;
 
   try {
@@ -203,14 +190,12 @@ export async function handleWebSearch(args: Record<string, unknown>): Promise<Se
     if (braveApiKey) {
       result = await searchWithBrave(query, count, braveApiKey);
     } else {
-      // Fallback to DuckDuckGo
       result = await searchWithDDG(query, count);
     }
 
     setCache(cacheKey, result);
     return result;
   } catch (error) {
-    // If Brave fails, try DuckDuckGo
     if (braveApiKey) {
       try {
         const fallback = await searchWithDDG(query, count);

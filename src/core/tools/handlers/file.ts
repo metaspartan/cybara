@@ -1,14 +1,11 @@
-// Tool handlers - file operations
 import { readFileSync, existsSync, writeFileSync, mkdirSync, promises as fs } from "fs";
 import { join, dirname } from "path";
 import { glob } from "tinyglobby";
 import { homeDir } from "../../paths";
 import { trackMetric } from "../../metrics";
 
-// Default workspace is user's home directory (not projectRoot which fails in binaries)
 const workspace = homeDir;
 
-// Helper to expand tilde to actual home directory
 function expandTilde(path: string): string {
   if (path.startsWith("~")) {
     return path.replace(/^~/, homeDir);
@@ -37,7 +34,6 @@ export async function handleRead(
     lines = lines.slice(0, limit);
   }
 
-  // Track file read
   trackMetric("file_operation", "read", 1, { path });
   trackMetric("file_read", path, 1);
 
@@ -53,7 +49,6 @@ export async function handleWrite(
   const path = expandTilde(args.path as string);
   const content = args.content as string;
 
-  // Ensure parent directory exists
   const dir = dirname(path);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
@@ -61,7 +56,6 @@ export async function handleWrite(
 
   writeFileSync(path, content, "utf-8");
 
-  // Track file write
   trackMetric("file_operation", "write", 1, { path, bytes: content.length });
   trackMetric("file_write", path, 1);
 
@@ -87,7 +81,6 @@ export async function handleEdit(
   const newContent = content.replace(oldText, newText);
   writeFileSync(path, newContent, "utf-8");
 
-  // Track file edit
   trackMetric("file_operation", "edit", 1, { path });
   trackMetric("file_edit", path, 1);
 
@@ -100,15 +93,12 @@ export async function handleFileSearch(
   const pattern = args.pattern as string;
   let cwd = args.cwd as string | undefined;
 
-  // Expand tilde to home directory
   if (cwd && cwd.startsWith("~")) {
     cwd = cwd.replace(/^~/, homeDir);
   }
 
-  // Use provided cwd or require it for safety (avoid scanning entire home)
   const searchDir = cwd || workspace;
 
-  // Validate directory exists
   if (!existsSync(searchDir)) {
     return {
       files: [],
@@ -119,18 +109,15 @@ export async function handleFileSearch(
   }
 
   try {
-    // Use glob with reasonable limits
     const files = await glob(pattern, {
       cwd: searchDir,
       ignore: ["**/node_modules/**", "**/.git/**", "**/dist/**", "**/build/**"],
       onlyFiles: true,
     });
 
-    // Limit results to prevent OOM
     const MAX_RESULTS = 1000;
     const limitedFiles = files.slice(0, MAX_RESULTS);
 
-    // Track file search
     trackMetric("file_operation", "search", 1, { pattern, resultCount: limitedFiles.length });
     trackMetric("tool_call", "file_search", 1, { pattern, resultCount: limitedFiles.length });
 
@@ -171,7 +158,6 @@ export async function handleGrep(args: Record<string, unknown>): Promise<{
 
   const results: Array<{ path: string; line: number; content: string }> = [];
 
-  // Try ripgrep first if available
   const hasRipgrep = await checkRipgrepAvailable();
 
   if (hasRipgrep) {
@@ -186,7 +172,6 @@ export async function handleGrep(args: Record<string, unknown>): Promise<{
       maxResults
     );
   } else {
-    // Fallback to JavaScript implementation
     await searchDirectory(
       searchDir,
       pattern,
@@ -199,7 +184,6 @@ export async function handleGrep(args: Record<string, unknown>): Promise<{
     );
   }
 
-  // Track grep usage
   trackMetric("file_operation", "search", 1, { pattern, resultCount: results.length });
   trackMetric("tool_call", "grep", 1, {
     resultCount: results.length,
@@ -211,7 +195,6 @@ export async function handleGrep(args: Record<string, unknown>): Promise<{
 
 async function checkRipgrepAvailable(): Promise<boolean> {
   try {
-    // Use 'where' on Windows, 'which' or 'command -v' on Unix
     if (process.platform === "win32") {
       const result = Bun.spawnSync(["where", "rg"], { timeout: 5000 });
       return result.exitCode === 0;
@@ -234,7 +217,6 @@ async function searchWithRipgrep(
   maxResults: number
 ): Promise<void> {
   try {
-    // Build ripgrep command
     let cmd = `rg --json --max-count=${maxResults} --context=${context}`;
 
     if (!caseSensitive) {
@@ -250,7 +232,6 @@ async function searchWithRipgrep(
       cmd += ` -g "*.{${extPattern}}"`;
     }
 
-    // Add pattern and path
     cmd += ` ${JSON.stringify(pattern)} ${JSON.stringify(dir)}`;
 
     const result = Bun.spawnSync(["sh", "-c", cmd], {
@@ -259,7 +240,6 @@ async function searchWithRipgrep(
 
     const output = result.stdout.toString();
 
-    // Parse JSON output from ripgrep
     for (const line of output.split("\n")) {
       if (!line.trim()) continue;
 
@@ -273,11 +253,10 @@ async function searchWithRipgrep(
           });
         }
       } catch {
-        // Skip non-JSON lines
+        void 0;
       }
     }
   } catch (e) {
-    // If ripgrep fails, the caller will fall back to JS implementation
     console.error("[grep] ripgrep error:", e);
   }
 }
@@ -319,7 +298,6 @@ async function searchDirectory(
           );
         }
       } else if (entry.isFile()) {
-        // Check extension filter
         if (extensions) {
           const ext = "." + entry.name.split(".").pop();
           if (
@@ -330,14 +308,12 @@ async function searchDirectory(
           }
         }
 
-        // Search in file
         const content = await fs.readFile(fullPath, "utf-8");
         const lines = content.split("\n");
         const regex = caseSensitive ? new RegExp(pattern, "g") : new RegExp(pattern, "gi");
 
         for (let i = 0; i < lines.length; i++) {
           if (regex.test(lines[i])) {
-            // Get context lines
             const startLine = Math.max(0, i - context);
             const endLine = Math.min(lines.length - 1, i + context);
 
@@ -358,10 +334,6 @@ async function searchDirectory(
   }
 }
 
-/**
- * Apply a unified diff patch to multiple files
- * Supports standard unified diff format (git diff output)
- */
 export async function handleApplyPatch(args: Record<string, unknown>): Promise<{
   success: boolean;
   applied: Array<{ path: string; hunks: number }>;
@@ -377,7 +349,6 @@ export async function handleApplyPatch(args: Record<string, unknown>): Promise<{
   const applied: Array<{ path: string; hunks: number }> = [];
   const failed: Array<{ path: string; error: string }> = [];
 
-  // Parse unified diff format
   const filePatches = parsePatch(patch);
 
   for (const filePatch of filePatches) {
@@ -393,7 +364,6 @@ export async function handleApplyPatch(args: Record<string, unknown>): Promise<{
     }
   }
 
-  // Track patch application
   trackMetric("file_operation", "apply_patch", 1, {
     filesApplied: applied.length,
     filesFailed: failed.length,
@@ -428,14 +398,12 @@ function parsePatch(patch: string): FilePatch[] {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    // New file header: --- a/path or --- /dev/null
     if (line.startsWith("--- ")) {
       const oldPath = line
         .slice(4)
         .replace(/^[ab]\//, "")
         .trim();
 
-      // Look for +++ line
       if (i + 1 < lines.length && lines[i + 1].startsWith("+++ ")) {
         const newPath = lines[i + 1]
           .slice(4)
@@ -462,7 +430,6 @@ function parsePatch(patch: string): FilePatch[] {
       continue;
     }
 
-    // Hunk header: @@ -1,5 +1,6 @@
     if (line.startsWith("@@ ")) {
       if (currentHunk && currentFile) {
         currentFile.hunks.push(currentHunk);
@@ -481,7 +448,6 @@ function parsePatch(patch: string): FilePatch[] {
       continue;
     }
 
-    // Hunk content lines
     if (
       currentHunk &&
       (line.startsWith(" ") || line.startsWith("+") || line.startsWith("-") || line === "")
@@ -490,7 +456,6 @@ function parsePatch(patch: string): FilePatch[] {
     }
   }
 
-  // Push last hunk and file
   if (currentHunk && currentFile) {
     currentFile.hunks.push(currentHunk);
   }
@@ -505,7 +470,6 @@ async function applyFilePatch(
   filePatch: FilePatch,
   dryRun: boolean
 ): Promise<{ success: boolean; error?: string }> {
-  // Handle file deletion
   if (filePatch.isDelete) {
     if (!dryRun && existsSync(filePatch.path)) {
       await fs.unlink(filePatch.path);
@@ -513,7 +477,6 @@ async function applyFilePatch(
     return { success: true };
   }
 
-  // Handle new file
   if (filePatch.isNew) {
     const content = filePatch.hunks
       .flatMap((h) => h.lines.filter((l) => l.startsWith("+")).map((l) => l.slice(1)))
@@ -529,7 +492,6 @@ async function applyFilePatch(
     return { success: true };
   }
 
-  // Handle file modification
   if (!existsSync(filePatch.path)) {
     return { success: false, error: `File not found: ${filePatch.path}` };
   }
@@ -537,23 +499,19 @@ async function applyFilePatch(
   const content = readFileSync(filePatch.path, "utf-8");
   const lines = content.split("\n");
 
-  // Apply hunks in reverse order to preserve line numbers
   const sortedHunks = [...filePatch.hunks].sort((a, b) => b.oldStart - a.oldStart);
 
   for (const hunk of sortedHunks) {
     const startIdx = hunk.oldStart - 1;
     const deleteCount = hunk.oldLines;
 
-    // Build new lines from hunk
     const newLines: string[] = [];
     for (const line of hunk.lines) {
       if (line.startsWith(" ") || line.startsWith("+")) {
         newLines.push(line.slice(1));
       }
-      // Skip lines starting with "-" (deletions)
     }
 
-    // Apply the hunk
     lines.splice(startIdx, deleteCount, ...newLines);
   }
 

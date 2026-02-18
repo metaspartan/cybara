@@ -1,6 +1,3 @@
-// Bundled TypeScript Diagnostics
-// Uses TypeScript Compiler API directly - no external LSP process needed
-
 import * as ts from "typescript";
 import { dirname, resolve } from "path";
 import { existsSync } from "fs";
@@ -17,19 +14,12 @@ export interface BundledDiagnostic {
   source: "typescript";
 }
 
-// Cache for parsed tsconfig
 const configCache = new Map<string, ts.ParsedCommandLine>();
 
-/**
- * Find tsconfig.json for a file
- */
 function findTsConfig(filePath: string): string | undefined {
   return ts.findConfigFile(dirname(filePath), ts.sys.fileExists, "tsconfig.json");
 }
 
-/**
- * Parse and cache tsconfig
- */
 function getParsedConfig(configPath: string): ts.ParsedCommandLine {
   if (configCache.has(configPath)) {
     return configCache.get(configPath)!;
@@ -54,9 +44,6 @@ function getParsedConfig(configPath: string): ts.ParsedCommandLine {
   return parsed;
 }
 
-/**
- * Convert TS diagnostic category to severity string
- */
 function categoryToSeverity(category: ts.DiagnosticCategory): BundledDiagnostic["severity"] {
   switch (category) {
     case ts.DiagnosticCategory.Error:
@@ -71,9 +58,6 @@ function categoryToSeverity(category: ts.DiagnosticCategory): BundledDiagnostic[
   }
 }
 
-/**
- * Convert TS diagnostic to our format
- */
 function convertDiagnostic(diag: ts.Diagnostic): BundledDiagnostic | null {
   if (!diag.file || diag.start === undefined) {
     return null;
@@ -102,9 +86,6 @@ function convertDiagnostic(diag: ts.Diagnostic): BundledDiagnostic | null {
   };
 }
 
-/**
- * Get diagnostics for a single TypeScript file
- */
 export function getDiagnosticsForFile(filePath: string): BundledDiagnostic[] {
   const resolvedPath = resolve(filePath);
 
@@ -112,7 +93,6 @@ export function getDiagnosticsForFile(filePath: string): BundledDiagnostic[] {
     throw new Error(`File not found: ${filePath}`);
   }
 
-  // Find and parse tsconfig
   const configPath = findTsConfig(resolvedPath);
   let options: ts.CompilerOptions = {
     allowJs: true,
@@ -125,11 +105,9 @@ export function getDiagnosticsForFile(filePath: string): BundledDiagnostic[] {
   if (configPath) {
     const parsed = getParsedConfig(configPath);
     options = { ...parsed.options, noEmit: true };
-    // Only compile the requested file, but with project context
     rootNames = [resolvedPath];
   }
 
-  // Create program and get diagnostics
   const program = ts.createProgram(rootNames, options);
   const sourceFile = program.getSourceFile(resolvedPath);
 
@@ -137,7 +115,6 @@ export function getDiagnosticsForFile(filePath: string): BundledDiagnostic[] {
     return [];
   }
 
-  // Get all diagnostic types
   const diagnostics = [
     ...program.getSyntacticDiagnostics(sourceFile),
     ...program.getSemanticDiagnostics(sourceFile),
@@ -146,9 +123,6 @@ export function getDiagnosticsForFile(filePath: string): BundledDiagnostic[] {
   return diagnostics.map(convertDiagnostic).filter((d): d is BundledDiagnostic => d !== null);
 }
 
-/**
- * Get diagnostics for an entire TypeScript project
- */
 export function getDiagnosticsForProject(tsconfigPath?: string): BundledDiagnostic[] {
   const configPath =
     tsconfigPath || ts.findConfigFile(process.cwd(), ts.sys.fileExists, "tsconfig.json");
@@ -165,17 +139,11 @@ export function getDiagnosticsForProject(tsconfigPath?: string): BundledDiagnost
   return diagnostics.map(convertDiagnostic).filter((d): d is BundledDiagnostic => d !== null);
 }
 
-/**
- * Quick check if a file has any errors (faster than full diagnostics)
- */
 export function hasErrors(filePath: string): boolean {
   const diagnostics = getDiagnosticsForFile(filePath);
   return diagnostics.some((d) => d.severity === "error");
 }
 
-/**
- * Get summary of diagnostics
- */
 export function getDiagnosticsSummary(diagnostics: BundledDiagnostic[]): {
   errors: number;
   warnings: number;
@@ -200,16 +168,10 @@ export function getDiagnosticsSummary(diagnostics: BundledDiagnostic[]): {
   };
 }
 
-/**
- * Check if TypeScript is available (always true when bundled)
- */
 export function isTypeScriptAvailable(): boolean {
   return true;
 }
 
-/**
- * Clear config cache (useful after file changes)
- */
 export function clearConfigCache(): void {
   configCache.clear();
 }

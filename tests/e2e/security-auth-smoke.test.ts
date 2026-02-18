@@ -59,7 +59,6 @@ async function stopServer(proc: ReturnType<typeof Bun.spawn> | null): Promise<vo
   try {
     proc.kill("SIGTERM");
   } catch {
-    // Already exited.
   }
   await Promise.race([proc.exited, sleep(5000)]);
 }
@@ -71,7 +70,6 @@ async function waitForServerReady(baseUrl: string, timeoutMs = 30000): Promise<v
       const response = await fetch(`${baseUrl}/api/health`);
       if (response.ok) return;
     } catch {
-      // server still starting
     }
     await sleep(250);
   }

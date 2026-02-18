@@ -66,7 +66,6 @@ export function Channels() {
   const deleteChannel = useDeleteChannel();
   const toggleChannel = useToggleChannel();
 
-  // Fetch pairings when security modal is open
   useEffect(() => {
     if (securityChannel) {
       fetchPairings(securityChannel.id);
@@ -127,7 +126,6 @@ export function Channels() {
       const type = formData.get("type") as string;
       const name = formData.get("name") as string;
 
-      // Build config object from form fields
       const config: Record<string, unknown> = {};
       const channelType = availableChannels?.find((c) => c.id === type);
       channelType?.fields.forEach((field) => {
@@ -150,13 +148,11 @@ export function Channels() {
     try {
       const name = formData.get("name") as string;
 
-      // Build config object from form fields
       const config: Record<string, unknown> = {};
       const channelType = availableChannels?.find((c) => c.id === editingChannel.type);
       channelType?.fields.forEach((field) => {
         const value = formData.get(`config_${field.name}`) as string;
         if (value) {
-          // Skip masked password values - they indicate unchanged password
           if (field.type === "password" && value === "••••••••") {
             return;
           }
@@ -246,7 +242,6 @@ export function Channels() {
       }
     >
       <div className="space-y-6">
-        {/* Search */}
         <div className="flex gap-4">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
@@ -259,7 +254,6 @@ export function Channels() {
           </div>
         </div>
 
-        {/* Channels List */}
         {isLoading ? (
           <div className="space-y-4">
             {[...Array(3)].map((_, i) => (
@@ -371,7 +365,6 @@ export function Channels() {
           </div>
         )}
 
-        {/* Available Channels Info */}
         <Card>
           <CardHeader>
             <CardTitle>Supported Channels</CardTitle>
@@ -390,7 +383,6 @@ export function Channels() {
           </CardContent>
         </Card>
 
-        {/* Create Modal */}
         <ChannelModal
           isOpen={isCreateModalOpen}
           onClose={() => setIsCreateModalOpen(false)}
@@ -400,7 +392,6 @@ export function Channels() {
           isLoading={createChannel.isPending}
         />
 
-        {/* Edit Modal */}
         {editingChannel && (
           <ChannelModal
             isOpen={!!editingChannel}
@@ -414,7 +405,6 @@ export function Channels() {
           />
         )}
 
-        {/* Delete Confirmation */}
         <ConfirmDialog
           isOpen={!!deletingChannel}
           onClose={() => setDeletingChannel(null)}
@@ -426,7 +416,6 @@ export function Channels() {
           variant="danger"
         />
 
-        {/* Security Modal */}
         <Modal
           isOpen={!!securityChannel}
           onClose={() => {
@@ -438,7 +427,6 @@ export function Channels() {
           size="lg"
         >
           <div className="space-y-6">
-            {/* Approve Pairing Code */}
             <div className="p-4 rounded-xl bg-white/5 border border-white/10">
               <h4 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
                 <Key className="w-4 h-4" />
@@ -463,7 +451,6 @@ export function Channels() {
               </div>
             </div>
 
-            {/* Pending Pairings */}
             <div>
               <h4 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
                 <Clock className="w-4 h-4" />
@@ -562,11 +549,9 @@ function ChannelModal({
   isLoading,
   isEdit,
 }: ChannelModalProps) {
-  // Default to first available channel type for new channels
   const defaultType = availableChannels[0]?.id || "";
   const [selectedType, setSelectedType] = useState(channel?.type || defaultType);
 
-  // Reset selectedType when modal opens for create (not edit)
   useEffect(() => {
     if (isOpen && !isEdit && !channel) {
       setSelectedType(availableChannels[0]?.id || "");

@@ -1,13 +1,10 @@
 import { tables } from "./database";
 import { randomUUID } from "crypto";
 
-// Log levels
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
-// Log sources
 export type LogSource = "agent" | "channel" | "tool" | "system" | "skill" | "subagent";
 
-// Logger class for structured logging
 export class Logger {
   private source: LogSource;
 
@@ -30,7 +27,6 @@ export class Logger {
       console.error("[Logger] Failed to write log:", error);
     }
 
-    // Also log to console
     const timestamp = new Date().toISOString();
     const metaStr = metadata ? ` ${JSON.stringify(metadata)}` : "";
     console.log(`[${timestamp}] [${this.source}] [${level.toUpperCase()}] ${message}${metaStr}`);
@@ -53,7 +49,6 @@ export class Logger {
   }
 }
 
-// Create loggers for different components
 export const agentLogger = new Logger("agent");
 export const channelLogger = new Logger("channel");
 export const toolLogger = new Logger("tool");
@@ -61,7 +56,6 @@ export const systemLogger = new Logger("system");
 export const skillLogger = new Logger("skill");
 export const subagentLogger = new Logger("subagent");
 
-// Session message logging
 export async function logSessionMessage(
   sessionId: string,
   role: "user" | "assistant" | "system" | "tool",
@@ -91,7 +85,6 @@ export async function logSessionMessage(
   }
 }
 
-// Agent activity logging
 export async function logAgentActivity(
   agentId: string,
   action: string,
@@ -113,7 +106,6 @@ export async function logAgentActivity(
   }
 }
 
-// Channel message logging
 export async function logChannelMessage(
   channelType: string,
   direction: "incoming" | "outgoing",
@@ -141,7 +133,6 @@ export async function logChannelMessage(
   }
 }
 
-// Tool execution logging - for tracking all tool calls with results
 export async function logToolExecution(
   toolName: string,
   status: "success" | "error",
@@ -181,7 +172,6 @@ export async function logToolExecution(
   }
 }
 
-// Skill execution logging - for tracking skill usage
 export async function logSkillExecution(
   skillName: string,
   status: "success" | "error",
@@ -219,7 +209,6 @@ export async function logSkillExecution(
   }
 }
 
-// Query functions for logs
 export async function getSystemLogs(options?: {
   level?: LogLevel;
   source?: LogSource;
@@ -275,7 +264,6 @@ export async function searchAllLogs(query: string, limit = 100) {
   };
 }
 
-// Get recent activity summary
 export async function getRecentActivity(minutes = 60) {
   const since = new Date(Date.now() - minutes * 60 * 1000).toISOString();
 
@@ -294,5 +282,4 @@ export async function getRecentActivity(minutes = 60) {
   };
 }
 
-// Export default logger instance
 export default systemLogger;

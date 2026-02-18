@@ -21,7 +21,6 @@ import { securityCheck } from "./api/security";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Detect compiled binary: execPath won't contain 'bun' when compiled
 const isCompiledBinary = !process.execPath.endsWith("bun") && !process.execPath.includes("/bun");
 
 const uiPath = resolveUiPath({
@@ -70,8 +69,6 @@ function isFileLikePath(pathname: string): boolean {
 const platformConfig = config.getAll();
 const PORT = Number(process.env.PORT) || platformConfig.port || 4269;
 
-// Security: default to localhost-only binding
-// Use --expose or CYBARA_HOST=0.0.0.0 to allow LAN access
 const isExposed = process.argv.includes("--expose") || process.env.CYBARA_HOST === "0.0.0.0";
 const HOST =
   process.env.CYBARA_HOST || platformConfig.host || (isExposed ? "0.0.0.0" : "127.0.0.1");
@@ -80,12 +77,10 @@ function isTerminalEnabled(): boolean {
   return TERMINAL_CLI_FLAG || config.get<boolean>("terminal_enabled") === true;
 }
 
-// Log status broadcasts for debugging
 onStatus((status) => {
   console.log(`[Status] Event: ${status.status} at ${new Date(status.timestamp).toISOString()}`);
 });
 
-// SSE endpoint for status updates with heartbeat
 function createStatusStream(): ReadableStream<Uint8Array> {
   let unsubscribe: (() => void) | null = null;
   let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
@@ -96,31 +91,25 @@ function createStatusStream(): ReadableStream<Uint8Array> {
     start(controller) {
       controllerRef = controller;
 
-      // Send initial connection message
       const initMsg = `data: ${JSON.stringify({ status: "idle", timestamp: Date.now() })}\n\n`;
       controller.enqueue(encoder.encode(initMsg));
 
-      // Add to SSE clients
       addSSEClient(controller);
       console.log(`[SSE] Client connected`);
 
-      // Set up heartbeat to keep connection alive (every 30 seconds)
       heartbeatInterval = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(`: heartbeat\n\n`));
         } catch {
-          // Connection lost
           cleanup();
         }
       }, 30000);
 
-      // Set up status listener for this client
       unsubscribe = onStatus((status) => {
         try {
           const msg = `data: ${JSON.stringify(status)}\n\n`;
           controller.enqueue(encoder.encode(msg));
         } catch {
-          // Client disconnected
           cleanup();
         }
       });
@@ -140,7 +129,6 @@ function createStatusStream(): ReadableStream<Uint8Array> {
       }
     },
     cancel() {
-      // Client disconnected - cleanup
       if (heartbeatInterval) {
         clearInterval(heartbeatInterval);
       }
@@ -168,8 +156,16 @@ interface WsData {
   sessionId: string;
 }
 
-function getClientIp(headers: Record<string, string>): string {
-  return headers["x-forwarded-for"]?.split(",")[0]?.trim() || headers["x-real-ip"] || "127.0.0.1";
+function getClientIp(headers: Record<string, string>, directIp?: string): string {
+  if (directIp) return directIp;
+
+  const trustProxy =
+    process.env.CYBARA_TRUST_PROXY === "1" || process.env.CYBARA_TRUST_PROXY === "true";
+  if (trustProxy) {
+    return headers["x-forwarded-for"]?.split(",")[0]?.trim() || headers["x-real-ip"] || "127.0.0.1";
+  }
+
+  return "127.0.0.1";
 }
 
 function withOptionalQueryToken(headers: Record<string, string>, url: URL): Record<string, string> {
@@ -190,9 +186,9 @@ Bun.serve<WsData>({
     const url = new URL(req.url);
     const pathname = url.pathname;
     const requestHeaders = Object.fromEntries(req.headers.entries());
-    const clientIp = getClientIp(requestHeaders);
+    const directIp = server.requestIP?.(req)?.address;
+    const clientIp = getClientIp(requestHeaders, directIp);
 
-    // Terminal endpoints (session management + websocket)
     if (pathname.startsWith("/api/terminal")) {
       if (!isTerminalEnabled()) {
         return new Response(
@@ -233,7 +229,6 @@ Bun.serve<WsData>({
       }
     }
 
-    // SSE endpoint for status updates
     if (pathname === "/api/sse/status") {
       const sseHeaders = withOptionalQueryToken(requestHeaders, url);
       const security = securityCheck(req.method, pathname, sseHeaders, clientIp);
@@ -252,8 +247,7 @@ Bun.serve<WsData>({
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache, no-transform",
           Connection: "keep-alive",
-          "X-Accel-Buffering": "no", // Disable nginx buffering if proxied
-          "Access-Control-Allow-Origin": "*",
+          "X-Accel-Buffering": "no",
           ...security.headers,
         },
       });
@@ -273,6 +267,7 @@ Bun.serve<WsData>({
         url: req.url,
         headers: requestHeaders,
         body,
+        ip: clientIp,
       });
       return new Response(JSON.stringify(response.body), {
         status: response.status,
@@ -282,9 +277,7 @@ Bun.serve<WsData>({
 
     const fileLikePath = isFileLikePath(pathname);
 
-    // Serve static files from ui/dist directory (Vite build output)
     if (!uiExists) {
-      // Keep fallback HTML for app routes, but do not return HTML for missing assets.
       if (pathname === "/" || pathname === "/index.html" || !fileLikePath) {
         return new Response(uiContent, { headers: htmlHeaders });
       }
@@ -294,12 +287,10 @@ Bun.serve<WsData>({
       });
     }
 
-    // Serve index.html for root and all non-file routes (SPA routing)
     if (pathname === "/" || pathname === "/index.html" || !fileLikePath) {
       return new Response(uiContent, { headers: htmlHeaders });
     }
 
-    // Serve other static files (assets, etc.)
     const safePath = pathname.replace(/\.\./g, "").replace(/^\/+/, ""); // Prevent directory traversal
     const filePath = join(uiPath, safePath);
 
@@ -319,7 +310,6 @@ Bun.serve<WsData>({
       }
     }
 
-    // Missing static assets should not fall back to HTML (prevents JS MIME errors).
     if (fileLikePath) {
       return new Response("Static asset not found", {
         status: 404,
@@ -327,7 +317,6 @@ Bun.serve<WsData>({
       });
     }
 
-    // Fallback to index.html for client-side routing
     return new Response(uiContent, { headers: htmlHeaders });
   },
   websocket: {
@@ -335,7 +324,6 @@ Bun.serve<WsData>({
       const { sessionId } = ws.data as { sessionId: string };
       const session = getTerminalSession(sessionId) || createTerminalSession(sessionId);
 
-      // Start reading output from the PTY and forwarding to WebSocket
       startOutputReader(
         session,
         (data: string) => {
@@ -361,7 +349,6 @@ Bun.serve<WsData>({
       if (session) {
         session.lastActivity = Date.now();
         const data = typeof message === "string" ? message : Buffer.from(message).toString();
-        // Resize messages and regular input are both forwarded to the Python PTY script
         writeToTerminal(session, data);
       }
     },
@@ -384,14 +371,11 @@ console.log(`
 ╚═══════════════════════════════════════════════════════════════╝
 `);
 
-// Seed default providers
 providerManager.seedDefaults();
 
-// Initialize cron scheduler (Cybara parity)
 import { startScheduler, setAgentHandler, setWakeHandler } from "./core/cron";
 import { agentManager } from "./core/agent";
 
-// Set up agent handler for agentTurn jobs - enables agentic cron execution
 setAgentHandler(async (job) => {
   const agent = agentManager.list().find((a) => a.status === "running");
   if (!agent) return { success: false, error: "No running agent available" };
@@ -407,29 +391,23 @@ setAgentHandler(async (job) => {
   }
 });
 
-// Set up wake handler for systemEvent jobs
 setWakeHandler(async (text) => {
   console.log(`[Cron] Wake event received: ${text}`);
-  // System events are logged - can be extended to inject into sessions
 });
 
-// Start the scheduler
 startScheduler();
 console.log("[Cron] Scheduler initialized with agent execution support");
 
-// Initialize task scheduler (UI tasks)
 import { taskScheduler } from "./core/scheduler";
 taskScheduler.initialize();
 console.log("[Task] Scheduler initialized");
 
-// Subscribe to subagent lifecycle events for announcements (Cybara parity)
 import { onSubagentLifecycle } from "./core/subagent-registry";
 
 onSubagentLifecycle((event) => {
   if (event.type === "announce" && event.data?.message) {
     const sessionKey = event.data.requesterSessionKey as string;
     if (sessionKey) {
-      // Inject announcement into requester's session
       const announcement: ChatMessage = {
         role: "assistant",
         content: event.data.message as string,
@@ -444,7 +422,6 @@ onSubagentLifecycle((event) => {
 });
 console.log("[Subagent] Lifecycle listener registered");
 
-// Set up Telegram message handler to route to chat
 telegramBot.setMessageHandler(async (message, chatId, userId, channelId, fileInfo) => {
   try {
     const storedSessionId = telegramSessions.get(chatId.toString());
@@ -454,7 +431,6 @@ telegramBot.setMessageHandler(async (message, chatId, userId, channelId, fileInf
       `[Telegram] Message from chatId=${chatId}, storedSessionId=${storedSessionId}, using sessionId=${sessionId}`
     );
 
-    // If there's a file, prepend file info to the message
     const fullMessage = fileInfo?.hasFile
       ? `${message}\n\n[File attached: ${fileInfo.filePath}]`
       : message;
@@ -489,25 +465,20 @@ signalAdapter.setMessageHandler(channelChatHandler);
 whatsappAdapter.setMessageHandler(channelChatHandler);
 imessageAdapter.setMessageHandler(channelChatHandler);
 
-// Auto-setup Telegram if bot token is provided
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
 
 async function initializeChannels() {
-  // First initialize any existing channels from DB
   await channelManager.initializeAll();
 
-  // Auto-setup Telegram if token is available AND channel doesn't exist yet
   if (TELEGRAM_BOT_TOKEN) {
     try {
-      // Check if Telegram channel already exists (was initialized above)
       const existingChannels = channelManager.list();
       const hasTelegram = existingChannels.some((c) => c.type === "telegram");
 
       if (hasTelegram) {
         console.log(`[Telegram] Channel already initialized`);
       } else {
-        // Only create new channel if none exists
         const channel = await channelManager.setupTelegram(TELEGRAM_BOT_TOKEN, PUBLIC_URL);
         if (channel) {
           console.log(`[Telegram] Auto-configured bot: ${channel.name}`);

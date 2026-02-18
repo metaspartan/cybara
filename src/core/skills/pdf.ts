@@ -1,4 +1,3 @@
-// PDF skill - extract text from PDF files using pdftotext or native parsing
 
 export async function handlePdf(args: Record<string, unknown>): Promise<unknown> {
     const action = args.action as string;
@@ -15,7 +14,6 @@ export async function handlePdf(args: Record<string, unknown>): Promise<unknown>
 
     switch (action) {
         case "extract_text": {
-            // Try pdftotext first (from poppler)
             try {
                 const result = Bun.spawnSync(["pdftotext", "-layout", path, "-"], {
                     stdout: "pipe",
@@ -31,10 +29,9 @@ export async function handlePdf(args: Record<string, unknown>): Promise<unknown>
                     };
                 }
             } catch {
-                // pdftotext not available
+            void 0;
             }
 
-            // Fallback: Try using macOS textutil
             try {
                 const result = Bun.spawnSync(
                     ["textutil", "-convert", "txt", "-stdout", path],
@@ -51,7 +48,7 @@ export async function handlePdf(args: Record<string, unknown>): Promise<unknown>
                     };
                 }
             } catch {
-                // textutil also failed
+            void 0;
             }
 
             throw new Error(
@@ -60,7 +57,6 @@ export async function handlePdf(args: Record<string, unknown>): Promise<unknown>
         }
 
         case "metadata": {
-            // Get PDF info using pdfinfo
             try {
                 const result = Bun.spawnSync(["pdfinfo", path], {
                     stdout: "pipe",
@@ -80,10 +76,9 @@ export async function handlePdf(args: Record<string, unknown>): Promise<unknown>
                     return metadata;
                 }
             } catch {
-                // pdfinfo not available
+            void 0;
             }
 
-            // Fallback to basic file info
             const stat = await file.stat();
             return {
                 size_bytes: stat.size,
@@ -106,7 +101,7 @@ export async function handlePdf(args: Record<string, unknown>): Promise<unknown>
                     }
                 }
             } catch {
-                // pdfinfo not available
+            void 0;
             }
 
             throw new Error("Could not determine page count. Install poppler (brew install poppler).");

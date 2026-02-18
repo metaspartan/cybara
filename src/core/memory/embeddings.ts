@@ -1,5 +1,3 @@
-// Embedding provider abstraction for semantic memory search
-// Supports OpenAI, Gemini, Ollama, and fallback to keyword search
 
 export interface EmbeddingProvider {
     id: string;
@@ -15,7 +13,6 @@ export interface EmbeddingProviderResult {
     fallbackReason?: string;
 }
 
-// Cache for embeddings to avoid redundant API calls
 const embeddingCache = new Map<string, { embedding: number[]; timestamp: number }>();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -33,7 +30,6 @@ function getFromCache(key: string): number[] | null {
 
 function setCache(key: string, embedding: number[]): void {
     embeddingCache.set(key, { embedding, timestamp: Date.now() });
-    // Cleanup old entries
     if (embeddingCache.size > 1000) {
         const entries = Array.from(embeddingCache.entries())
             .sort((a, b) => a[1].timestamp - b[1].timestamp)
@@ -42,7 +38,6 @@ function setCache(key: string, embedding: number[]): void {
     }
 }
 
-// OpenAI Embeddings
 const OPENAI_EMBEDDING_ENDPOINT = "https://api.openai.com/v1/embeddings";
 const OPENAI_EMBEDDING_MODEL = "text-embedding-3-small";
 const OPENAI_EMBEDDING_DIMENSIONS = 1536;
@@ -103,7 +98,6 @@ async function createOpenAIEmbeddingBatch(texts: string[], apiKey: string): Prom
         throw new Error("Invalid OpenAI embedding response");
     }
 
-    // Sort by index to maintain order
     const sorted = data.data.sort((a, b) => a.index - b.index);
     return sorted.map(item => item.embedding || []);
 }
@@ -123,13 +117,11 @@ function createOpenAIProvider(apiKey: string): EmbeddingProvider {
             return embedding;
         },
         embedBatch: async (texts: string[]) => {
-            // Check cache first
             const results: (number[] | null)[] = texts.map(text => {
                 const cacheKey = getCacheKey("openai", OPENAI_EMBEDDING_MODEL, text);
                 return getFromCache(cacheKey);
             });
 
-            // Find uncached texts
             const uncachedIndices = results
                 .map((r, i) => r === null ? i : -1)
                 .filter(i => i !== -1);
@@ -138,7 +130,6 @@ function createOpenAIProvider(apiKey: string): EmbeddingProvider {
                 const uncachedTexts = uncachedIndices.map(i => texts[i]);
                 const newEmbeddings = await createOpenAIEmbeddingBatch(uncachedTexts, apiKey);
 
-                // Cache and merge results
                 uncachedIndices.forEach((originalIndex, newIndex) => {
                     const embedding = newEmbeddings[newIndex];
                     const cacheKey = getCacheKey("openai", OPENAI_EMBEDDING_MODEL, texts[originalIndex]);
@@ -152,7 +143,6 @@ function createOpenAIProvider(apiKey: string): EmbeddingProvider {
     };
 }
 
-// Ollama Embeddings (local)
 const OLLAMA_EMBEDDING_ENDPOINT = "http://localhost:11434/api/embeddings";
 const OLLAMA_EMBEDDING_MODEL = "nomic-embed-text";
 const OLLAMA_EMBEDDING_DIMENSIONS = 768;
@@ -200,7 +190,6 @@ function createOllamaProvider(): EmbeddingProvider {
             return embedding;
         },
         embedBatch: async (texts: string[]) => {
-            // Ollama doesn't have batch API, process sequentially
             const results: number[][] = [];
             for (const text of texts) {
                 const cacheKey = getCacheKey("ollama", OLLAMA_EMBEDDING_MODEL, text);
@@ -218,7 +207,6 @@ function createOllamaProvider(): EmbeddingProvider {
     };
 }
 
-// Null provider (no embeddings available)
 function createNullProvider(): EmbeddingProvider {
     return {
         id: "none",
@@ -229,7 +217,6 @@ function createNullProvider(): EmbeddingProvider {
     };
 }
 
-// Gemini Embeddings
 const GEMINI_EMBEDDING_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent";
 const GEMINI_EMBEDDING_MODEL = "text-embedding-004";
 const GEMINI_EMBEDDING_DIMENSIONS = 768;
@@ -280,7 +267,6 @@ function createGeminiProvider(apiKey: string): EmbeddingProvider {
             return embedding;
         },
         embedBatch: async (texts: string[]) => {
-            // Gemini doesn't have batch API, process sequentially
             const results: number[][] = [];
             for (const text of texts) {
                 const cacheKey = getCacheKey("gemini", GEMINI_EMBEDDING_MODEL, text);
@@ -298,7 +284,6 @@ function createGeminiProvider(apiKey: string): EmbeddingProvider {
     };
 }
 
-// Check if Ollama is available
 async function isOllamaAvailable(): Promise<boolean> {
     try {
         const response = await fetch("http://localhost:11434/api/tags", {
@@ -315,17 +300,11 @@ async function isOllamaAvailable(): Promise<boolean> {
     }
 }
 
-/**
- * Create an embedding provider with automatic fallback.
- * Priority: OpenAI > Gemini > Ollama > None
- */
 export async function createEmbeddingProvider(): Promise<EmbeddingProviderResult> {
-    // Try OpenAI first
     const openaiKey = process.env.OPENAI_API_KEY?.trim();
     if (openaiKey) {
         try {
             const provider = createOpenAIProvider(openaiKey);
-            // Test with a simple query
             await provider.embedQuery("test");
             return { provider, source: "openai" };
         } catch (error) {
@@ -333,7 +312,6 @@ export async function createEmbeddingProvider(): Promise<EmbeddingProviderResult
         }
     }
 
-    // Try Gemini second
     const geminiKey = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim();
     if (geminiKey) {
         try {
@@ -349,7 +327,6 @@ export async function createEmbeddingProvider(): Promise<EmbeddingProviderResult
         }
     }
 
-    // Try Ollama
     if (await isOllamaAvailable()) {
         try {
             const provider = createOllamaProvider();
@@ -364,7 +341,6 @@ export async function createEmbeddingProvider(): Promise<EmbeddingProviderResult
         }
     }
 
-    // No provider available
     return {
         provider: createNullProvider(),
         source: "none",
@@ -372,9 +348,6 @@ export async function createEmbeddingProvider(): Promise<EmbeddingProviderResult
     };
 }
 
-/**
- * Compute cosine similarity between two vectors.
- */
 export function cosineSimilarity(a: number[], b: number[]): number {
     if (a.length === 0 || b.length === 0) return 0;
     if (a.length !== b.length) return 0;
@@ -395,9 +368,6 @@ export function cosineSimilarity(a: number[], b: number[]): number {
     return dotProduct / magnitude;
 }
 
-/**
- * Find top-k most similar vectors using cosine similarity.
- */
 export function findTopKSimilar(
     queryVec: number[],
     candidates: Array<{ id: string; embedding: number[] }>,

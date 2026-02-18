@@ -1,7 +1,3 @@
-// iMessage Adapter - Production implementation using BlueBubbles API
-// Requires: BlueBubbles server running on macOS with Private API bundle
-// Server GitHub: https://github.com/BlueBubblesApp/bluebubbles-server
-
 import { io, type Socket } from "socket.io-client";
 import type { ChannelAdapter, ToolCallInfo, MessageHandler } from "../types";
 import { formatToolCallsPlain } from "../formatting";
@@ -9,7 +5,6 @@ import { logChannelMessage } from "../../logging";
 import { buildChannelSecurityConfig, securityManager } from "../security";
 import { handleChannelManagementCommand } from "../commands";
 
-// iMessage session storage (chatGuid -> sessionId)
 export const imessageSessions = new Map<string, string>();
 
 interface BlueBubblesMessage {
@@ -62,22 +57,18 @@ export class IMessageAdapter implements ChannelAdapter {
       throw new Error("password is required for iMessage adapter");
     }
 
-    // Check if already connected
     if (this.sockets.has(channelId)) {
       console.log(`[iMessage] Already connected for channel ${channelId}`);
       return;
     }
 
-    // Configure security based on channel config
     securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
 
     console.log(`[iMessage] Connecting to BlueBubbles server at ${serverUrl}...`);
 
-    // Normalize URL
     const baseUrl = serverUrl.replace(/\/$/, "");
     this.configs.set(channelId, { serverUrl: baseUrl, password });
 
-    // Connect via Socket.IO
     const socket = io(baseUrl, {
       auth: { password },
       transports: ["websocket", "polling"],
@@ -86,7 +77,6 @@ export class IMessageAdapter implements ChannelAdapter {
       reconnectionDelay: 1000,
     });
 
-    // Connection events
     socket.on("connect", () => {
       console.log(`[iMessage] Connected to BlueBubbles for channel ${channelId}`);
     });
@@ -99,25 +89,20 @@ export class IMessageAdapter implements ChannelAdapter {
       console.log(`[iMessage] Disconnected:`, reason);
     });
 
-    // Handle incoming messages
     socket.on("new-message", async (data: BlueBubblesEvent) => {
       await this.handleMessage(channelId, data.message);
     });
 
-    // Handle message updates (reactions, edits)
     socket.on("updated-message", async (data: BlueBubblesEvent) => {
       console.log(`[iMessage] Message updated:`, data.message.guid);
     });
 
-    // Handle typing indicators
     socket.on("typing-indicator", (data: { guid: string; display: boolean }) => {
       console.log(`[iMessage] Typing indicator:`, data.guid, data.display);
     });
 
-    // Store socket
     this.sockets.set(channelId, socket);
 
-    // Wait for connection
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error("Connection timeout"));
@@ -147,12 +132,10 @@ export class IMessageAdapter implements ChannelAdapter {
     const chatGuid = message.chatGuid;
     const sender = message.handle?.address || "unknown";
 
-    // 🔐 SECURITY CHECK: Verify sender is allowed
     const accessCheck = securityManager.checkAccess(channelId, sender, "imessage");
 
     if (!accessCheck.permitted) {
       if (accessCheck.reason === "new_pairing" || accessCheck.reason === "blocked") {
-        // Send pairing/blocked message
         await this.sendBlueBubblesMessage(
           channelId,
           chatGuid,
@@ -162,7 +145,6 @@ export class IMessageAdapter implements ChannelAdapter {
       return;
     }
 
-    // Handle attachments
     let hasFile = false;
     let fileType = "";
     let placeholder = "";
@@ -176,7 +158,6 @@ export class IMessageAdapter implements ChannelAdapter {
       if (!content) content = placeholder;
     }
 
-    // Log incoming message
     await logChannelMessage("imessage", "incoming", content, {
       channelId: chatGuid,
       senderId: sender,
@@ -187,14 +168,12 @@ export class IMessageAdapter implements ChannelAdapter {
       },
     });
 
-    // Get or create session
     let sessionId = imessageSessions.get(chatGuid);
     if (!sessionId) {
       sessionId = crypto.randomUUID();
       imessageSessions.set(chatGuid, sessionId);
     }
 
-    // Process message
     let response: string;
     try {
       const commandResponse = await handleChannelManagementCommand(content, {
@@ -223,13 +202,11 @@ export class IMessageAdapter implements ChannelAdapter {
       response = "❌ Sorry, I encountered an error processing your message. Please try again.";
     }
 
-    // Log outgoing message
     await logChannelMessage("imessage", "outgoing", response, {
       channelId: chatGuid,
       metadata: { replyToGuid: message.guid },
     });
 
-    // Send response via REST API
     await this.sendBlueBubblesMessage(channelId, chatGuid, response);
   }
 
@@ -304,14 +281,12 @@ export class IMessageAdapter implements ChannelAdapter {
     }
 
     if (thinking) {
-      // iMessage doesn't have special formatting
       text += `\n\n💭 Thinking: ${thinking}`;
     }
 
     return text;
   }
 
-  // Get server info
   async getServerInfo(channelId: string): Promise<Record<string, unknown> | null> {
     const config = this.configs.get(channelId);
     if (!config) return null;

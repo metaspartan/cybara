@@ -71,7 +71,6 @@ const ETH_RPC_CONFIG_KEY = "wallet_rpc_eth";
 const SOL_RPC_CONFIG_KEY = "wallet_rpc_sol";
 const BTC_API_CONFIG_KEY = "wallet_btc_api";
 
-// Canonical mainnet deployment addresses from Uniswap's official deployment docs.
 const UNISWAP_V2_ROUTER_ETH = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
 const UNISWAP_V3_ROUTER_ETH = "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45";
 const UNISWAP_V3_QUOTER_V2_ETH = "0x61fFE014bA17989E743c5F6cB21bF9697530B21e";
@@ -87,7 +86,6 @@ const JUPITER_PROGRAM_LABELS_API = "https://lite-api.jup.ag/swap/v1/program-id-t
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const USDC_SOL_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
-// Feed registry + denomination constants from Chainlink Feed Registry/Denominations contracts.
 const CHAINLINK_FEED_REGISTRY_ETH = "0x47Fb2585D2C56Fe188D0E6ec628a38b74fCeeeDf";
 const CHAINLINK_DENOMINATION_USD = "0x0000000000000000000000000000000000000348";
 const ZERO_EVM_ADDRESS = "0x0000000000000000000000000000000000000000";
@@ -495,19 +493,16 @@ type WalletSwapVenue = "uniswap_v2" | "uniswap_v3" | "jupiter";
 
 interface WalletSwapInput {
   venue: WalletSwapVenue | string;
-  // ETH venues
   tokenOut?: string;
   amountEth?: string;
   percent?: number;
   minAmountOut?: string;
   recipient?: string;
   feeTier?: number;
-  // Solana Jupiter venue
   inputMint?: string;
   outputMint?: string;
   amount?: string;
   amountRaw?: string;
-  // Shared
   index?: number;
   slippageBps?: number;
   deadlineSeconds?: number;
@@ -764,7 +759,7 @@ function normalizeHostList(values: unknown[]): string[] {
         hosts.push(url.host.toLowerCase());
       }
     } catch {
-      // Skip invalid host values when not strict.
+      void 0;
     }
   }
   return [...new Set(hosts)];
@@ -2032,7 +2027,7 @@ class WalletManager {
           });
         }
       } catch {
-        // Keep processing other signatures; malformed/unsupported tx parsing is skipped.
+        void 0;
       }
     }
 
@@ -2112,7 +2107,7 @@ class WalletManager {
               }
             }
           } catch {
-            // Keep base signature data if transaction details are unavailable.
+            void 0;
           }
 
           return {
@@ -3897,7 +3892,7 @@ class WalletManager {
         return amountOut;
       }
     } catch {
-      // Fall through to legacy quoter for networks/tools that still expose v1.
+      void 0;
     }
 
     const legacyQuoter = new Contract(
@@ -3957,7 +3952,7 @@ class WalletManager {
         return registryFeed;
       }
     } catch {
-      // Fall back to static feed map when registry lookup fails.
+      void 0;
     }
 
     return staticFeed;
@@ -4230,7 +4225,7 @@ class WalletManager {
             };
           }
         } catch {
-          // Try next candidate.
+          void 0;
         }
       }
 
@@ -4497,7 +4492,7 @@ class WalletManager {
           return parsed;
         }
       } catch {
-        // fall through
+        void 0;
       }
     }
 

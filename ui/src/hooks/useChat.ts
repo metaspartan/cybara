@@ -17,7 +17,6 @@ export function useChat(agentId?: string) {
   });
 
   const sendMessage = async (content: string) => {
-    // Add user message immediately
     const userMessage: ChatMessage = { role: 'user', content, timestamp: new Date().toISOString() };
     setState((prev) => ({
       ...prev,

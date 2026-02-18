@@ -43,7 +43,6 @@ async function waitForServerReady(url: string, timeoutMs = 30000): Promise<void>
       const res = await fetch(`${url}/api/health`);
       if (res.ok) return;
     } catch {
-      // server still starting
     }
     await sleep(250);
   }
@@ -98,7 +97,6 @@ describe("Server + CLI + UI smoke", () => {
       try {
         serverProc.kill("SIGTERM");
       } catch {
-        // already exited
       }
       await Promise.race([serverProc.exited, sleep(5000)]);
     }
@@ -127,7 +125,6 @@ describe("Server + CLI + UI smoke", () => {
     const html = await uiRes.text();
     expect(html.toLowerCase()).toContain("<html");
 
-    // When UI build assets are present, ensure module scripts are served as JavaScript.
     const moduleScript = html.match(/<script[^>]*type=["']module["'][^>]*src=["']([^"']+)["']/i);
     if (moduleScript?.[1]) {
       const assetPath = moduleScript[1].startsWith("http")

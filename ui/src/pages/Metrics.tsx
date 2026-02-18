@@ -31,7 +31,6 @@ import {
   type ModelMetrics,
 } from '@/hooks/useApi';
 
-// Format large numbers
 function formatNumber(num: number): string {
   if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M';
   if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
@@ -49,7 +48,6 @@ export function Metrics() {
 
   const isLoading = loadingOverview || loadingTokens || loadingFiles || loadingTools || loadingTimeSeries || loadingProviders || loadingModels;
 
-  // Calculate additional stats
   const stats = useMemo(() => {
     if (!overview) return null;
 
@@ -94,7 +92,6 @@ export function Metrics() {
       title="Metrics"
       subtitle="Track token usage, file operations, and system activity"
     >
-      {/* Overview Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <StatCard
           icon={<Cpu className="w-5 h-5" />}
@@ -127,7 +124,6 @@ export function Metrics() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        {/* Token Usage */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -175,7 +171,6 @@ export function Metrics() {
           </CardContent>
         </Card>
 
-        {/* File Operations */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -240,7 +235,6 @@ export function Metrics() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        {/* Tool Calls */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -277,7 +271,6 @@ export function Metrics() {
           </CardContent>
         </Card>
 
-        {/* Activity Summary */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -326,7 +319,6 @@ export function Metrics() {
           </CardContent>
         </Card>
 
-        {/* Provider Metrics */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -364,7 +356,6 @@ export function Metrics() {
         </Card>
       </div>
 
-      {/* Model Performance (TPS) */}
       <Card className="mb-8">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -392,7 +383,6 @@ export function Metrics() {
                       </div>
                     </div>
 
-                    {/* TPS Bar */}
                     <div className="h-2 bg-white/10 rounded-full overflow-hidden mb-3">
                       <div
                         className="h-full bg-emerald-500 rounded-full transition-all"
@@ -426,7 +416,6 @@ export function Metrics() {
         </CardContent>
       </Card>
 
-      {/* Time Series Chart */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -440,13 +429,11 @@ export function Metrics() {
             <>
               <div className="h-48 flex items-end gap-1">
                 {timeSeries.days.map((day, i) => {
-                  // Sum all numeric values for this day (token_usage, messages, tool_calls, etc.)
                   const allValues = Object.entries(day)
                     .filter(([k]) => k !== 'date')
                     .map(([, v]) => (typeof v === 'number' ? v : 0));
                   const dayTotal = allValues.reduce((sum, v) => sum + v, 0);
 
-                  // Get max across all days for scaling
                   const maxDay = Math.max(
                     ...timeSeries.days.map((d) =>
                       Object.entries(d)
@@ -488,7 +475,6 @@ export function Metrics() {
   );
 }
 
-// Stat Card Component
 function StatCard({ icon, label, value, color, bgColor }: {
   icon: React.ReactNode;
   label: string;
@@ -511,7 +497,6 @@ function StatCard({ icon, label, value, color, bgColor }: {
   );
 }
 
-// Token Bar Component
 function TokenBar({ label, value, total, color }: {
   label: string;
   value: number;
@@ -533,7 +518,6 @@ function TokenBar({ label, value, total, color }: {
   );
 }
 
-// File Stat Component
 function FileStat({ icon, label, value }: {
   icon: React.ReactNode;
   label: string;
@@ -548,7 +532,6 @@ function FileStat({ icon, label, value }: {
   );
 }
 
-// Activity Stat Component
 function ActivityStat({ icon, label, value }: {
   icon: React.ReactNode;
   label: string;

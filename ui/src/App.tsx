@@ -24,18 +24,15 @@ import { useProviders, useAgents } from '@/hooks/useApi';
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-// Redirect to setup if no providers/agents configured
 function SetupGuard({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { data: providers, isLoading: providersLoading } = useProviders();
   const { data: agents, isLoading: agentsLoading } = useAgents();
 
-  // Skip guard on setup page
   if (location.pathname === '/setup') {
     return <>{children}</>;
   }
 
-  // Show loading indicator while checking setup status
   if (providersLoading || agentsLoading) {
     return (
       <div className="flex-1 flex items-center justify-center bg-[#0a0a0f]">
@@ -44,7 +41,6 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Redirect to setup if no providers OR no agents
   const needsSetup = (!providers || providers.length === 0) || (!agents || agents.length === 0);
   if (needsSetup) {
     return <Navigate to="/setup" replace />;
@@ -53,16 +49,13 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// Main content wrapper that responds to sidebar state
 function MainContent({ children }: { children: React.ReactNode }) {
   const { collapsed } = useSidebar();
 
   return (
     <div className={cn(
       'flex-1 overflow-auto transition-all duration-300',
-      // Desktop: adjust margin based on sidebar width
       collapsed ? 'md:ml-16' : 'md:ml-64',
-      // Mobile: no margin (sidebar overlays)
       'ml-0'
     )}>
       {children}
@@ -100,10 +93,8 @@ function App() {
     <SidebarProvider>
       <div className="flex min-h-screen bg-[#0a0a0f] overflow-hidden">
         <Routes>
-          {/* Setup wizard - no sidebar */}
           <Route path="/setup" element={<Setup />} />
 
-          {/* Main app with sidebar */}
           <Route path="*" element={
             <>
               <Sidebar />

@@ -32,7 +32,6 @@ export interface AgentDefinition {
   config?: Record<string, unknown>;
 }
 
-// LLM API Response Interfaces
 interface OpenAIToolCall {
   id: string;
   type: "function";
@@ -90,7 +89,6 @@ interface AnthropicResponse {
   usage?: AnthropicUsage;
 }
 
-// Token tracking helper - now includes duration for TPS calculation
 function trackTokenUsage(
   model: string,
   provider: string,
@@ -102,7 +100,6 @@ function trackTokenUsage(
   try {
     const totalTokens = inputTokens + outputTokens;
 
-    // Track by model
     tables.metrics.add({
       id: crypto.randomUUID(),
       type: "token_usage_by_model",
@@ -110,7 +107,6 @@ function trackTokenUsage(
       value: totalTokens,
     });
 
-    // Track by provider with URL
     tables.metrics.add({
       id: crypto.randomUUID(),
       type: "token_usage_by_provider",
@@ -119,7 +115,6 @@ function trackTokenUsage(
       metadata: JSON.stringify({ url: providerUrl }),
     });
 
-    // Track totals
     tables.metrics.add({
       id: crypto.randomUUID(),
       type: "token_usage",
@@ -139,7 +134,6 @@ function trackTokenUsage(
       value: totalTokens,
     });
 
-    // Track API call with URL
     tables.metrics.add({
       id: crypto.randomUUID(),
       type: "api_call",
@@ -155,7 +149,6 @@ function trackTokenUsage(
       metadata: JSON.stringify({ url: providerUrl }),
     });
 
-    // Track agent activity with timestamp
     tables.metrics.add({ id: crypto.randomUUID(), type: "agent_execution", key: "all", value: 1 });
     tables.metrics.add({
       id: crypto.randomUUID(),
@@ -165,7 +158,6 @@ function trackTokenUsage(
       metadata: JSON.stringify({ timestamp: Date.now() }),
     });
 
-    // Track last activity timestamp separately
     tables.metrics.add({
       id: crypto.randomUUID(),
       type: "system_status",
@@ -173,11 +165,9 @@ function trackTokenUsage(
       value: Date.now(),
     });
 
-    // Track tokens per second (TPS) if duration is provided
     if (durationMs && durationMs > 0) {
       const tps = Math.round((outputTokens / durationMs) * 1000); // output tokens per second
 
-      // Track TPS by model
       tables.metrics.add({
         id: crypto.randomUUID(),
         type: "model_tps",
@@ -192,7 +182,6 @@ function trackTokenUsage(
         }),
       });
 
-      // Track duration by model
       tables.metrics.add({
         id: crypto.randomUUID(),
         type: "model_latency",
@@ -206,7 +195,6 @@ function trackTokenUsage(
       );
     }
 
-    // Broadcast status via event system
     broadcastStatus({ status: "thinking", timestamp: Date.now() });
 
     console.log(
@@ -217,7 +205,6 @@ function trackTokenUsage(
   }
 }
 
-// Built-in tools are resolved lazily to avoid circular-init hazards during module load.
 export function getBuiltinTools(): ToolDefinition[] {
   return getToolSchemasForLLM().map((tool) => ({
     name: tool.name,
@@ -226,7 +213,6 @@ export function getBuiltinTools(): ToolDefinition[] {
   }));
 }
 
-// Agent type configuration - matches Cybara's patterns
 export const AGENT_TYPES = {
   main: {
     description: "General-purpose assistant",
@@ -284,7 +270,6 @@ interface AgentExecutionOptions {
   userId?: string;
 }
 
-// Running agent state with conversation memory
 interface RunningAgentState {
   agent: Agent;
   startedAt: Date;
@@ -427,7 +412,6 @@ class AgentManager {
       const provider = a.provider_id ? providerManager.get(a.provider_id) : undefined;
       const typeConfig = a.type ? AGENT_TYPES[a.type as keyof typeof AGENT_TYPES] : undefined;
       const status = this.runningAgents.has(a.id) ? "running" : "stopped";
-      // Return provider_id as 'provider' for frontend compatibility
       return {
         ...a,
         status,
@@ -445,7 +429,6 @@ class AgentManager {
     if (!agent) return undefined;
     const typeConfig = agent.type ? AGENT_TYPES[agent.type as keyof typeof AGENT_TYPES] : undefined;
     const status = this.runningAgents.has(agent.id) ? "running" : "stopped";
-    // Return provider_id as 'provider' for frontend compatibility
     return {
       ...agent,
       status,
@@ -457,15 +440,12 @@ class AgentManager {
   create(definition: AgentDefinition): Agent {
     const id = crypto.randomUUID();
 
-    // Get type config for defaults
     const typeConfig = definition.type ? AGENT_TYPES[definition.type] : undefined;
 
-    // Resolve model alias
     const resolvedModel = definition.model
       ? resolveModelAlias(definition.model, undefined)
       : typeConfig?.defaultModel;
 
-    // Use provided system prompt or get from type config
     const systemPrompt =
       definition.system_prompt || typeConfig?.systemPrompt || AGENT_TYPE_PROMPTS.main;
 
@@ -495,7 +475,6 @@ class AgentManager {
     return agent;
   }
 
-  // Create a default agent with sensible defaults - matches Cybara's default agent
   createDefault(): Agent {
     const defaultProvider =
       providerManager.getPreferredProvider({ preferCredentialed: true }) ||
@@ -515,12 +494,10 @@ class AgentManager {
     });
   }
 
-  // Create agent using Cybara-style full system prompt
   async createWithSystemPrompt(definition: Omit<AgentDefinition, "system_prompt">): Promise<Agent> {
     const typeConfig = definition.type ? AGENT_TYPES[definition.type] : undefined;
     const homeDir = process.env.HOME || homedir();
 
-    // Load eligible skills
     const allSkills = await loadAllSkills({ workspaceDir: homeDir });
     const context = createEligibilityContext();
     const eligibleSkills = filterEligibleSkills(allSkills, context);
@@ -544,7 +521,6 @@ class AgentManager {
     const existing = this.get(id);
     if (!existing) return null;
 
-    // Resolve model alias if model is being updated
     let resolvedModel = updates.model;
     if (resolvedModel) {
       resolvedModel = resolveModelAlias(resolvedModel, undefined);
@@ -592,10 +568,8 @@ class AgentManager {
     const agent = this.get(id);
     if (!agent) return false;
 
-    // Build system prompt with current config
     const homeDir = process.env.HOME || homedir();
 
-    // Load eligible skills
     const allSkills = await loadAllSkills({ workspaceDir: homeDir });
     const context = createEligibilityContext();
     const eligibleSkills = filterEligibleSkills(allSkills, context);
@@ -609,7 +583,6 @@ class AgentManager {
       skills: eligibleSkills,
     });
 
-    // Initialize running state with system message
     const runningState: RunningAgentState = {
       agent: { ...agent, system_prompt: systemPrompt },
       startedAt: new Date(),
@@ -640,7 +613,6 @@ class AgentManager {
     return true;
   }
 
-  // Send a message to a running agent
   async message(id: string, content: string): Promise<{ response: string; thinking?: string }> {
     let state = this.runningAgents.get(id);
     if (!state) {
@@ -656,25 +628,20 @@ class AgentManager {
 
     state.lastActive = new Date();
 
-    // Add user message
     state.messages.push({ role: "user", content });
 
-    // Execute the agent
     const result = await this.executeWithState(state);
 
-    // Add assistant response to history
     state.messages.push({ role: "assistant", content: result.response });
 
     return result;
   }
 
-  // Execute agent with its current state
   private async executeWithState(
     state: RunningAgentState
   ): Promise<{ response: string; thinking?: string }> {
     const { agent, messages } = state;
 
-    // Get provider
     const provider = this.resolveProviderForAgent(agent, true);
     if (!provider) {
       return { response: this.generateFallbackResponse(messages) };
@@ -682,7 +649,6 @@ class AgentManager {
 
     const fullMessages = messages;
 
-    // Check if current provider supports function calling
     const supportsTools = true;
 
     let tools: ToolDefinition[] = [];
@@ -690,14 +656,12 @@ class AgentManager {
       tools = this.getAgentTools(agent);
     }
 
-    // Call LLM
     try {
       const result = await this.callLLM(provider, agent.model, fullMessages, tools);
       return { response: result.content, thinking: result.thinking };
     } catch (error) {
       console.error("[Agent] LLM call failed:", error);
 
-      // Try fallback provider
       if (agent.fallback_provider_id && provider.id !== agent.fallback_provider_id) {
         const fallbackProvider = providerManager.getWithCredentials(agent.fallback_provider_id);
         if (fallbackProvider) {
@@ -720,29 +684,24 @@ class AgentManager {
     }
   }
 
-  // Get conversation history for a running agent
   getHistory(id: string): AgentMessage[] {
     const state = this.runningAgents.get(id);
     if (!state) return [];
     return [...state.messages];
   }
 
-  // Clear conversation history for a running agent but keep system prompt
   clearHistory(id: string): boolean {
     const state = this.runningAgents.get(id);
     if (!state) return false;
 
-    // Keep only the system message
     state.messages = state.messages.filter((m) => m.role === "system");
     return true;
   }
 
-  // Check if agent is running
   isRunning(id: string): boolean {
     return this.runningAgents.has(id);
   }
 
-  // Get agent state (if running)
   getState(id: string): RunningAgentState | undefined {
     return this.runningAgents.get(id);
   }
@@ -787,7 +746,6 @@ class AgentManager {
     return all.some((a) => a.type === "main");
   }
 
-  // Execute agent with a message
   async execute(
     agentId: string,
     messages: AgentMessage[],
@@ -798,14 +756,11 @@ class AgentManager {
       throw new Error("Agent not found");
     }
 
-    // Get provider
     let provider = this.resolveProviderForAgent(agent, true);
     if (!provider) {
       return { content: this.generateFallbackResponse(messages) };
     }
 
-    // Preserve any caller-provided system prompt (e.g. session-level buildSystemPrompt output).
-    // Only inject a fallback system message when none is present.
     const hasSystemMessage = messages.some((message) => message.role === "system");
     const fallbackSystemPrompt =
       typeof agent.system_prompt === "string" && agent.system_prompt.trim()
@@ -822,19 +777,15 @@ class AgentManager {
           ...messages,
         ];
 
-    // Check if current provider supports function calling
-    // Kimi Code supports tool_calls in OpenAI-compatible format
     const supportsTools = true;
 
     const needTools = options?.useTools !== false;
 
-    // If tools are needed but provider doesn't support them, try fallback provider
     let tools: ToolDefinition[] = [];
     if (needTools) {
       if (supportsTools) {
         tools = this.getAgentTools(agent);
       } else if (agent.fallback_provider_id) {
-        // Try fallback provider for tool support
         const fallbackProvider = providerManager.getWithCredentials(agent.fallback_provider_id);
         if (fallbackProvider) {
           provider = fallbackProvider;
@@ -845,14 +796,12 @@ class AgentManager {
 
     const toolContext = this.buildToolExecutionContext(agent, options);
 
-    // Call LLM
     try {
       const result = await this.callLLM(provider, agent.model, fullMessages, tools, toolContext);
       return result;
     } catch (error) {
       console.error("[Agent] LLM call failed:", error);
 
-      // Try fallback provider if primary failed and we haven't tried it yet
       if (agent.fallback_provider_id && provider.id !== agent.fallback_provider_id) {
         const fallbackProvider = providerManager.getWithCredentials(agent.fallback_provider_id);
         if (fallbackProvider) {
@@ -880,13 +829,10 @@ class AgentManager {
     const filterEnabledTools = (tools: ToolDefinition[]): ToolDefinition[] =>
       tools.filter((tool) => isToolEnabledForAgent(tool.name));
 
-    // If agent has tools defined, try to parse them
     if (agent.tools) {
-      // Check if it's an array
       if (Array.isArray(agent.tools)) {
         return filterEnabledTools(agent.tools);
       }
-      // Check if it's a JSON string
       if (typeof agent.tools === "string") {
         try {
           const parsed = JSON.parse(agent.tools);
@@ -898,7 +844,6 @@ class AgentManager {
         }
       }
     }
-    // Fall back to built-in tools
     return filterEnabledTools(getBuiltinTools());
   }
 
@@ -937,7 +882,6 @@ class AgentManager {
     };
   }
 
-  // Public method to call LLM - can be used by API handlers
   async callLLM(
     provider: Awaited<ReturnType<typeof providerManager.get>>,
     model: string | undefined,
@@ -983,10 +927,8 @@ class AgentManager {
 
     const modelId = model || this.getDefaultModel(providerConfig);
 
-    // Extract custom headers from provider if available (e.g., User-Agent for Kimi Code)
     const customHeaders = (providerInfo as { headers?: Record<string, string> }).headers || {};
 
-    // MiniMax uses Anthropic Messages API format
     if (providerConfig === "minimax") {
       return this.callAnthropicAPI(
         baseUrl,
@@ -999,7 +941,6 @@ class AgentManager {
       );
     }
 
-    // Kimi Code uses OpenAI-compatible format with custom headers (User-Agent: KimiCLI/0.77)
     if (providerConfig === "kimi-code") {
       return this.callOpenAICompatAPI(
         baseUrl,
@@ -1013,7 +954,6 @@ class AgentManager {
       );
     }
 
-    // Anthropic uses Messages API
     if (providerConfig === "anthropic") {
       return this.callAnthropicAPI(
         baseUrl,
@@ -1026,7 +966,6 @@ class AgentManager {
       );
     }
 
-    // Other providers use standard OpenAI format
     return this.callOpenAIAPI(baseUrl, auth, modelId, messages, tools, toolContext);
   }
 
@@ -1103,7 +1042,6 @@ class AgentManager {
     thinking?: string;
     tool_calls?: Array<{ name: string; result: unknown }>;
   }> {
-    // MiniMax uses OpenAI /chat/completions but with x-api-key header
     const requestBody: Record<string, unknown> = {
       model: modelId,
       messages: messages.map((m) => ({
@@ -1132,21 +1070,17 @@ class AgentManager {
 
     console.log(`[Agent] Sending request with headers:`, JSON.stringify(Object.keys(headers)));
 
-    // Broadcast generating status before LLM call
     broadcastStatus({ status: "generating", timestamp: Date.now() });
 
-    // Start timing
     const startTime = performance.now();
 
     const data = await this.postOpenAIChatCompletions(baseUrl, headers, requestBody, "API error");
 
-    // End timing
     const durationMs = Math.round(performance.now() - startTime);
 
     const choice = data.choices?.[0];
     let message = choice?.message;
 
-    // Track token usage for OpenAI-compatible API with duration
     if (data.usage) {
       const inputTokens = data.usage.prompt_tokens || 0;
       const outputTokens = data.usage.completion_tokens || 0;
@@ -1164,10 +1098,8 @@ class AgentManager {
       throw new Error("No response from API");
     }
 
-    // AGENTIC LOOP: Continue executing tools until LLM stops calling them
     const maxIterations = 10; // Prevent infinite loops
     let iterations = 0;
-    // Use Record type for flexible message shape that includes tool_calls and tool_call_id
     const currentMessages: Record<string, unknown>[] = [
       ...messages.map((m) => ({
         role: m.role,
@@ -1181,9 +1113,7 @@ class AgentManager {
     while (iterations < maxIterations) {
       iterations++;
 
-      // Check if LLM wants to call tools
       if (!message.tool_calls || message.tool_calls.length === 0) {
-        // LLM is done - no more tool calls
         break;
       }
 
@@ -1191,7 +1121,6 @@ class AgentManager {
         `[Agent] Agentic loop iteration ${iterations}: ${message.tool_calls.length} tool calls`
       );
 
-      // Execute all tool calls from this iteration
       const toolResults: Array<{ tool_call_id: string; role: "tool"; content: string }> = [];
 
       for (const toolCall of message.tool_calls) {
@@ -1231,7 +1160,6 @@ class AgentManager {
         }
       }
 
-      // Add assistant message with tool calls and tool results to conversation
       currentMessages.push({
         role: "assistant",
         content: message.content || "",
@@ -1241,7 +1169,6 @@ class AgentManager {
         currentMessages.push(toolResult);
       }
 
-      // Call LLM again with updated conversation (includes tool results)
       const loopRequestBody: Record<string, unknown> = {
         model: modelId,
         messages: currentMessages,
@@ -1272,7 +1199,6 @@ class AgentManager {
         break;
       }
 
-      // Update final content with LLM's latest response
       if (message.content) {
         finalContent = message.content;
       }
@@ -1301,8 +1227,6 @@ class AgentManager {
     thinking?: string;
     tool_calls?: Array<{ name: string; result: unknown }>;
   }> {
-    // Build Anthropic Messages API format
-    // Extract system message separately as Anthropic expects it in a different field
     const systemMessage = messages.find((m) => m.role === "system");
     const chatMessages = messages
       .filter((m) => m.role !== "system")
@@ -1317,7 +1241,6 @@ class AgentManager {
       max_tokens: 4096,
     };
 
-    // Add system message as a separate field
     if (systemMessage) {
       requestBody.system = systemMessage.content;
     }
@@ -1328,7 +1251,6 @@ class AgentManager {
         description: t.description || "",
         input_schema: t.input_schema || { type: "object", properties: {} },
       }));
-      // Force tool selection to ensure tools are actually used
       requestBody.tool_choice = { type: "any" };
     }
 
@@ -1338,10 +1260,8 @@ class AgentManager {
       "anthropic-version": "2023-06-01",
     };
 
-    // Broadcast generating status before LLM call
     broadcastStatus({ status: "generating", timestamp: Date.now() });
 
-    // Start timing
     const startTime = performance.now();
 
     const response = await fetch(`${baseUrl}/messages`, {
@@ -1357,22 +1277,18 @@ class AgentManager {
 
     const data = (await response.json()) as AnthropicResponse;
 
-    // End timing
     const durationMs = Math.round(performance.now() - startTime);
 
-    // Track token usage for Anthropic API with duration
     if (data.usage) {
       const inputTokens = data.usage.input_tokens || 0;
       const outputTokens = data.usage.output_tokens || 0;
       trackTokenUsage(modelId, providerConfig, baseUrl, inputTokens, outputTokens, durationMs);
     }
 
-    // AGENTIC LOOP: Continue executing tools until LLM stops calling them
     const maxIterations = 10;
     let iterations = 0;
     let currentData = data;
 
-    // Build conversation for loop - Anthropic uses content arrays
     const currentMessages: Record<string, unknown>[] = chatMessages.map((m) => ({
       role: m.role,
       content: m.content,
@@ -1387,12 +1303,10 @@ class AgentManager {
     while (iterations < maxIterations) {
       iterations++;
 
-      // Check for tool_use blocks
       const toolUseBlocks =
         currentData.content?.filter((c: { type: string }) => c.type === "tool_use") || [];
 
       if (toolUseBlocks.length === 0) {
-        // No more tool calls - LLM is done
         break;
       }
 
@@ -1400,7 +1314,6 @@ class AgentManager {
         `[Agent] Anthropic agentic loop iteration ${iterations}: ${toolUseBlocks.length} tool calls`
       );
 
-      // Execute all tool calls
       const toolResults: Array<{ type: "tool_result"; tool_use_id: string; content: string }> = [];
 
       for (const toolUse of toolUseBlocks) {
@@ -1440,7 +1353,6 @@ class AgentManager {
         }
       }
 
-      // Add assistant message with tool use and user message with tool results
       currentMessages.push({
         role: "assistant",
         content: currentData.content, // Keep full content array including tool_use blocks
@@ -1450,7 +1362,6 @@ class AgentManager {
         content: toolResults, // Anthropic expects tool_result in user message
       });
 
-      // Call LLM again with tool results
       const loopRequestBody: Record<string, unknown> = {
         model: modelId,
         messages: currentMessages,
@@ -1482,7 +1393,6 @@ class AgentManager {
 
       currentData = (await loopResponse.json()) as AnthropicResponse;
 
-      // Update final content with LLM's latest text response
       const latestText = currentData.content?.find((c) => c.type === "text")?.text;
       if (latestText) {
         finalContent = latestText;
@@ -1508,7 +1418,6 @@ class AgentManager {
     tools: ToolDefinition[],
     toolContext?: ToolContext
   ): Promise<{ content: string; tool_calls?: Array<{ name: string; result: unknown }> }> {
-    // Build properly ordered messages: system first, then chat messages
     const systemMessage = messages.find((m) => m.role === "system");
     const chatMessages = messages
       .filter((m) => m.role !== "system")
@@ -1547,21 +1456,17 @@ class AgentManager {
       Authorization: `Bearer ${auth}`,
     };
 
-    // Broadcast generating status before LLM call
     broadcastStatus({ status: "generating", timestamp: Date.now() });
 
-    // Start timing
     const startTime = performance.now();
 
     const data = await this.postOpenAIChatCompletions(baseUrl, headers, requestBody, "API error");
 
-    // End timing
     const durationMs = Math.round(performance.now() - startTime);
 
     const choice = data.choices?.[0];
     let message = choice?.message;
 
-    // Track token usage for OpenAI API with duration
     if (data.usage) {
       const inputTokens = data.usage.prompt_tokens || 0;
       const outputTokens = data.usage.completion_tokens || 0;
@@ -1572,7 +1477,6 @@ class AgentManager {
       throw new Error("No response from API");
     }
 
-    // AGENTIC LOOP: Continue executing tools until LLM stops calling them
     const maxIterations = 10;
     let iterations = 0;
     const currentMessages: Record<string, unknown>[] = [...chatMessages];
@@ -1583,7 +1487,6 @@ class AgentManager {
     while (iterations < maxIterations) {
       iterations++;
 
-      // Check if LLM wants to call tools
       if (!message.tool_calls || message.tool_calls.length === 0) {
         break;
       }
@@ -1592,7 +1495,6 @@ class AgentManager {
         `[Agent] OpenAI agentic loop iteration ${iterations}: ${message.tool_calls.length} tool calls`
       );
 
-      // Execute all tool calls from this iteration
       const toolResults: Array<{ tool_call_id: string; role: "tool"; content: string }> = [];
 
       for (const toolCall of message.tool_calls) {
@@ -1632,7 +1534,6 @@ class AgentManager {
         }
       }
 
-      // Add assistant message with tool calls and tool results to conversation
       currentMessages.push({
         role: "assistant",
         content: message.content || "",
@@ -1642,7 +1543,6 @@ class AgentManager {
         currentMessages.push(toolResult);
       }
 
-      // Call LLM again with updated conversation (includes tool results)
       const loopRequestBody: Record<string, unknown> = {
         model: modelId,
         messages: currentMessages,
@@ -1673,7 +1573,6 @@ class AgentManager {
         break;
       }
 
-      // Update final content with LLM's latest response
       if (message.content) {
         finalContent = message.content;
       }
@@ -1715,7 +1614,6 @@ class AgentManager {
       return "I'm an AI assistant powered by Cybara. I can help with various tasks including writing code, answering questions, and more.";
     }
 
-    // Proper error fallback - don't mention "production environment"
     return "I apologize, but I encountered an issue processing your request. Please try again or rephrase your message.";
   }
 }

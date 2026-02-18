@@ -574,7 +574,6 @@ export function Wallet() {
       try {
         await refreshRpcStatusOnly();
       } catch {
-        // Keep saved settings even if live health check fails.
       }
       addToast('success', 'RPC settings updated');
     } catch (error) {

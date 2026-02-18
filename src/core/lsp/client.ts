@@ -1,6 +1,3 @@
-// LSP JSON-RPC Client
-// Communicates with language servers via stdio
-
 import { spawn, ChildProcess } from "child_process";
 import { EventEmitter } from "events";
 import type {
@@ -74,7 +71,6 @@ export class LSPClient extends EventEmitter {
           this.emit("exit", code, signal);
         });
 
-        // Give process time to start
         setTimeout(resolve, 100);
       } catch (err) {
         reject(err);
@@ -118,7 +114,6 @@ export class LSPClient extends EventEmitter {
     const result = await this.request<InitializeResult>("initialize", params);
     this.serverCapabilities = result.capabilities;
 
-    // Send initialized notification
     this.notify("initialized", {});
     this.initialized = true;
 
@@ -141,7 +136,6 @@ export class LSPClient extends EventEmitter {
     this.initialized = false;
   }
 
-  // Document lifecycle
   didOpen(params: DidOpenTextDocumentParams): void {
     this.notify("textDocument/didOpen", params);
   }
@@ -154,7 +148,6 @@ export class LSPClient extends EventEmitter {
     this.notify("textDocument/didClose", params);
   }
 
-  // Code intelligence
   async definition(params: TextDocumentPositionParams): Promise<Location | Location[] | null> {
     return this.request("textDocument/definition", params);
   }
@@ -167,7 +160,6 @@ export class LSPClient extends EventEmitter {
     return this.request("textDocument/hover", params);
   }
 
-  // Properties
   get isInitialized(): boolean {
     return this.initialized;
   }
@@ -176,7 +168,6 @@ export class LSPClient extends EventEmitter {
     return this.serverCapabilities;
   }
 
-  // Internal methods
   private request<T>(method: string, params: unknown): Promise<T> {
     return new Promise((resolve, reject) => {
       if (!this.process?.stdin) {
@@ -199,7 +190,6 @@ export class LSPClient extends EventEmitter {
 
       this.process.stdin.write(header + content);
 
-      // Timeout after 30 seconds
       setTimeout(() => {
         if (this.pendingRequests.has(id)) {
           this.pendingRequests.delete(id);
@@ -228,7 +218,6 @@ export class LSPClient extends EventEmitter {
     this.buffer += data;
 
     while (true) {
-      // Parse headers
       if (this.contentLength < 0) {
         const headerEnd = this.buffer.indexOf("\r\n\r\n");
         if (headerEnd < 0) return;
@@ -245,7 +234,6 @@ export class LSPClient extends EventEmitter {
         this.buffer = this.buffer.substring(headerEnd + 4);
       }
 
-      // Parse content
       if (this.buffer.length < this.contentLength) return;
 
       const content = this.buffer.substring(0, this.contentLength);
@@ -262,7 +250,6 @@ export class LSPClient extends EventEmitter {
   }
 
   private handleMessage(message: JsonRpcMessage): void {
-    // Response to a request
     if (message.id !== undefined && (message.result !== undefined || message.error !== undefined)) {
       const pending = this.pendingRequests.get(message.id);
       if (pending) {
@@ -276,7 +263,6 @@ export class LSPClient extends EventEmitter {
       return;
     }
 
-    // Notification from server
     if (message.method) {
       switch (message.method) {
         case "textDocument/publishDiagnostics":

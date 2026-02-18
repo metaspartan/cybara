@@ -19,7 +19,6 @@ export function TerminalPage() {
     const termRef = useRef<HTMLDivElement>(null);
     const activeTermRef = useRef<{ term: XTerminal; fitAddon: FitAddon } | null>(null);
 
-    // Check if terminal is enabled
     useEffect(() => {
         apiFetch('/api/terminal/sessions')
             .then(res => {
@@ -104,12 +103,10 @@ export function TerminalPage() {
         setActiveSession(prev => prev === id ? null : prev);
     }, []);
 
-    // Mount/unmount terminal on active session change
     useEffect(() => {
         const container = termRef.current;
         if (!container) return;
 
-        // Clear container
         container.innerHTML = '';
         activeTermRef.current = null;
 
@@ -122,13 +119,11 @@ export function TerminalPage() {
         activeTermRef.current = { term: session.term, fitAddon: session.fitAddon };
     }, [activeSession, sessions]);
 
-    // Handle resize
     useEffect(() => {
         const handleResize = () => {
             if (activeTermRef.current?.fitAddon) {
                 try {
                     activeTermRef.current.fitAddon.fit();
-                    // Send resize to backend PTY
                     const session = sessions.find(s => s.id === activeSession);
                     if (session?.ws?.readyState === WebSocket.OPEN && activeTermRef.current.term) {
                         const { cols, rows } = activeTermRef.current.term;
@@ -148,7 +143,6 @@ export function TerminalPage() {
         };
     }, [activeSession, sessions]);
 
-    // Auto-create first session
     useEffect(() => {
         if (terminalEnabled && sessions.length === 0) {
             createSession();
@@ -183,7 +177,6 @@ export function TerminalPage() {
 
     return (
         <div className="h-screen flex flex-col bg-[#0a0a0f]">
-            {/* Tab bar */}
             <div className="flex items-center gap-1 px-3 py-2 bg-white/[0.02] border-b border-white/10">
                 <SquareTerminal className="w-4 h-4 text-gray-500 mr-2" />
                 {sessions.map(s => (
@@ -213,7 +206,6 @@ export function TerminalPage() {
                 </button>
             </div>
 
-            {/* Terminal */}
             <div ref={termRef} className="flex-1 p-1" style={{ minHeight: 0 }} />
         </div>
     );

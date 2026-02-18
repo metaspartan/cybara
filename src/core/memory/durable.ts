@@ -1,15 +1,3 @@
-/**
- * Durable Memory Management
- * Cybara-compatible MEMORY.md for persistent user preferences, decisions, and long-term facts
- * 
- * Unlike daily logs (YYYY-MM-DD.md), MEMORY.md is curated and persists across sessions.
- * It stores:
- * - User preferences
- * - Important decisions
- * - Project conventions
- * - Long-term goals
- * - Critical facts that should never be forgotten
- */
 
 import { readFileSync, existsSync, writeFileSync, appendFileSync } from "fs";
 import { join } from "path";
@@ -19,9 +7,6 @@ import { getVectorStore } from "./vector-store";
 const MEMORY_FILE = "MEMORY.md";
 const MEMORY_PATH = join(memoryDir, MEMORY_FILE);
 
-/**
- * Memory entry structure for MEMORY.md
- */
 export interface DurableMemoryEntry {
     category: "preference" | "decision" | "convention" | "goal" | "fact";
     content: string;
@@ -29,16 +14,10 @@ export interface DurableMemoryEntry {
     source?: string;
 }
 
-/**
- * Get the path to MEMORY.md
- */
 export function getDurableMemoryPath(): string {
     return MEMORY_PATH;
 }
 
-/**
- * Initialize MEMORY.md if it doesn't exist
- */
 export function initDurableMemory(): void {
     if (!existsSync(MEMORY_PATH)) {
         const header = `# Durable Memory
@@ -54,22 +33,15 @@ Use memory_save_durable to add entries here.
     }
 }
 
-/**
- * Read all durable memories from MEMORY.md
- */
 export function readDurableMemory(): string {
     initDurableMemory();
     return readFileSync(MEMORY_PATH, "utf-8");
 }
 
-/**
- * Parse MEMORY.md into structured entries
- */
 export function parseDurableMemory(): DurableMemoryEntry[] {
     const content = readDurableMemory();
     const entries: DurableMemoryEntry[] = [];
 
-    // Match entries like: ## preference [2024-01-15 10:30:00]
     const entryRegex = /^## (\w+) \[([^\]]+)\](?: from (.+))?\n([\s\S]*?)(?=^## |\n---|$)/gm;
     let match;
 
@@ -85,9 +57,6 @@ export function parseDurableMemory(): DurableMemoryEntry[] {
     return entries;
 }
 
-/**
- * Save a new durable memory entry
- */
 export async function saveDurableMemory(entry: Omit<DurableMemoryEntry, "timestamp">): Promise<{
     success: boolean;
     path: string;
@@ -102,7 +71,6 @@ export async function saveDurableMemory(entry: Omit<DurableMemoryEntry, "timesta
 
     appendFileSync(MEMORY_PATH, entryText);
 
-    // Re-index MEMORY.md in vector store
     let indexed = false;
     try {
         const vectorStore = getVectorStore();
@@ -121,9 +89,6 @@ export async function saveDurableMemory(entry: Omit<DurableMemoryEntry, "timesta
     };
 }
 
-/**
- * Get a summary of durable memories by category
- */
 export function getDurableMemorySummary(): Record<string, number> {
     const entries = parseDurableMemory();
     const summary: Record<string, number> = {};
@@ -135,9 +100,6 @@ export function getDurableMemorySummary(): Record<string, number> {
     return summary;
 }
 
-/**
- * Search durable memories for specific content
- */
 export function searchDurableMemory(query: string): DurableMemoryEntry[] {
     const entries = parseDurableMemory();
     const lowerQuery = query.toLowerCase();
@@ -148,17 +110,9 @@ export function searchDurableMemory(query: string): DurableMemoryEntry[] {
     );
 }
 
-/**
- * Get recent context for system prompt injection
- * Returns MEMORY.md content + last 1-2 days of daily logs
- * 
- * @param maxLines Maximum lines to return
- * @param isPrivateSession If true, excludes MEMORY.md (for group chats/shared contexts)
- */
 export function getRecentMemoryContext(maxLines: number = 50, isPrivateSession: boolean = false): string {
     const lines: string[] = [];
 
-    // Add durable memories only in main sessions (not private/shared contexts)
     if (!isPrivateSession && existsSync(MEMORY_PATH)) {
         const durableContent = readFileSync(MEMORY_PATH, "utf-8");
         const durableLines = durableContent.split("\n").slice(0, Math.floor(maxLines / 2));
@@ -169,7 +123,6 @@ export function getRecentMemoryContext(maxLines: number = 50, isPrivateSession: 
         }
     }
 
-    // Add today's and yesterday's logs
     const today = new Date();
     const dates = [
         today.toISOString().split("T")[0],
@@ -195,14 +148,9 @@ export function getRecentMemoryContext(maxLines: number = 50, isPrivateSession: 
     return lines.join("\n");
 }
 
-/**
- * Check if a session should be treated as private (no MEMORY.md access)
- * Private sessions include group chats, Discord channels, shared contexts
- */
 export function isPrivateSessionContext(channel?: string): boolean {
     if (!channel) return false;
 
-    // Patterns that indicate shared/group contexts
     const privatePatterns = [
         /^discord:/i,      // Discord channels
         /^slack:/i,        // Slack channels

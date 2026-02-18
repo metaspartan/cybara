@@ -1,7 +1,3 @@
-/**
- * Skills Loader
- * Discovers and parses SKILL.md files from skill directories
- */
 
 import { readdir, readFile, stat, watch } from "fs/promises";
 import { existsSync } from "fs";
@@ -18,10 +14,6 @@ import type {
 
 const SKILL_FILENAME = "SKILL.md";
 
-/**
- * Parse YAML frontmatter from markdown content
- * Cybara uses single-line values in frontmatter
- */
 export function parseFrontmatter(content: string): { frontmatter: Record<string, unknown>; body: string } {
     const lines = content.split("\n");
 
@@ -54,29 +46,23 @@ export function parseFrontmatter(content: string): { frontmatter: Record<string,
         const key = line.slice(0, colonIndex).trim();
         let value: unknown = line.slice(colonIndex + 1).trim();
 
-        // Handle YAML multiline string (|)
         if (value === "|" || value === ">") {
-            // Collect indented lines that follow
             const multilineContent: string[] = [];
             let baseIndent = -1;
 
             for (let j = i + 1; j < frontmatterLines.length; j++) {
                 const nextLine = frontmatterLines[j];
 
-                // Check if line starts with whitespace (continuation)
                 const leadingSpaces = nextLine.match(/^(\s*)/)?.[1].length ?? 0;
 
-                // If line has no leading space and contains a colon, it's a new key
                 if (leadingSpaces === 0 && nextLine.includes(":")) {
                     break;
                 }
 
-                // Set base indent from first content line
                 if (baseIndent === -1 && nextLine.trim()) {
                     baseIndent = leadingSpaces;
                 }
 
-                // Add line content (strip base indentation)
                 if (baseIndent !== -1) {
                     multilineContent.push(nextLine.slice(baseIndent).trimEnd());
                 }
@@ -85,7 +71,6 @@ export function parseFrontmatter(content: string): { frontmatter: Record<string,
 
             value = multilineContent.join(" ").trim();
         } else if (typeof value === "string") {
-            // Handle quoted strings
             let strValue: string = value;
 
             if ((strValue.startsWith('"') && strValue.endsWith('"')) ||
@@ -93,12 +78,10 @@ export function parseFrontmatter(content: string): { frontmatter: Record<string,
                 strValue = strValue.slice(1, -1);
             }
 
-            // Parse JSON for metadata field
             if (key === "metadata" && strValue.startsWith("{")) {
                 try {
                     value = JSON.parse(strValue);
                 } catch {
-                    // Keep as string if invalid JSON
                     value = strValue;
                 }
             } else if (strValue === "true") {
@@ -116,16 +99,12 @@ export function parseFrontmatter(content: string): { frontmatter: Record<string,
     return { frontmatter, body };
 }
 
-/**
- * Parse a SKILL.md file into a SkillEntry
- */
 export function parseSkillFile(content: string, filePath: string, source: SkillEntry["source"]): SkillEntry | null {
     const { frontmatter, body } = parseFrontmatter(content);
 
     let name = frontmatter.name as string | undefined;
     let description = frontmatter.description as string | undefined;
 
-    // Fallback: extract name from first # heading in body
     if (!name) {
         const headingMatch = body.match(/^#\s+(.+?)(?:\s*[-–—]\s*.+)?$/m);
         if (headingMatch) {
@@ -133,13 +112,10 @@ export function parseSkillFile(content: string, filePath: string, source: SkillE
         }
     }
 
-    // Fallback: extract description from first non-empty paragraph after heading
     if (!description && body) {
-        // Split by double newlines to get paragraphs
         const paragraphs = body.split(/\n\n+/);
         for (const para of paragraphs) {
             const trimmed = para.trim();
-            // Skip headings, code blocks, and empty lines
             if (trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('```') && !trimmed.startsWith('|')) {
                 description = trimmed.slice(0, 200); // First 200 chars
                 break;
@@ -152,7 +128,6 @@ export function parseSkillFile(content: string, filePath: string, source: SkillE
         return null;
     }
 
-    // Extract metadata from frontmatter. Prefer `cybara`, then fallback to first object-shaped entry.
     const rawMetadata = frontmatter.metadata as Record<string, unknown> | undefined;
     const firstMetadataValue = rawMetadata
         ? Object.values(rawMetadata).find(
@@ -163,7 +138,6 @@ export function parseSkillFile(content: string, filePath: string, source: SkillE
     const metadata: SkillMetadata | undefined = (rawMetadata?.cybara as SkillMetadata | undefined)
         ?? firstMetadataValue;
 
-    // Build invocation policy
     const invocation: SkillInvocationPolicy = {
         userInvocable: frontmatter["user-invocable"] !== false,
         disableModelInvocation: frontmatter["disable-model-invocation"] === true,
@@ -186,9 +160,6 @@ export function parseSkillFile(content: string, filePath: string, source: SkillE
     };
 }
 
-/**
- * Scan a directory for SKILL.md files
- */
 export async function scanSkillsDirectory(
     dir: string,
     source: SkillEntry["source"]
@@ -210,49 +181,37 @@ export async function scanSkillsDirectory(
                     skills.push(skillEntry);
                 }
             } catch {
-                // SKILL.md doesn't exist in this subdirectory
+            void 0;
             }
         }
     } catch {
-        // Directory doesn't exist
+    void 0;
     }
 
     return skills;
 }
 
-/**
- * Get default skill directory paths
- * Handles both development mode and compiled binary mode
- */
 export function getSkillDirectories(workspaceDir?: string): {
     bundled: string;
     local: string;
     workspace: string | null;
 } {
-    // In compiled binaries, __dirname may not work correctly
-    // Detect compiled binary: execPath won't end with 'bun' when compiled
     const isCompiledBinary = !process.execPath.endsWith("bun") && !process.execPath.includes("/bun");
     let bundledPath: string;
 
     if (isCompiledBinary) {
-        // Compiled binary - look for skills relative to executable
         const execDir = dirname(process.execPath);
-        // Try: <exec_dir>/../skills (e.g., release/../skills = ./skills)
         const repoSkills = resolve(execDir, "..", "skills");
-        // Try: <exec_dir>/skills
         const sideSkills = join(execDir, "skills");
 
-        // Check which path exists (sync check, function is not async)
         if (existsSync(repoSkills)) {
             bundledPath = repoSkills;
         } else if (existsSync(sideSkills)) {
             bundledPath = sideSkills;
         } else {
-            // Fallback to looking in home dir for bundled copy
             bundledPath = join(homedir(), ".cybara", "bundled-skills");
         }
     } else {
-        // Development mode - use __dirname relative path
         bundledPath = resolve(__dirname, "../../../skills");
     }
 
@@ -263,10 +222,6 @@ export function getSkillDirectories(workspaceDir?: string): {
     };
 }
 
-/**
- * Load all skills with proper precedence
- * Workspace > Local > Bundled
- */
 export async function loadAllSkills(options: {
     workspaceDir?: string;
     extraDirs?: string[];
@@ -275,9 +230,6 @@ export async function loadAllSkills(options: {
     const dirs = getSkillDirectories(options.workspaceDir);
     const skillsByName = new Map<string, SkillEntry>();
 
-    // Load in precedence order (lowest first, higher overwrites)
-
-    // 1. Extra dirs (lowest priority)
     for (const dir of options.extraDirs ?? options.config?.load?.extraDirs ?? []) {
         const resolved = dir.startsWith("~") ? join(homedir(), dir.slice(1)) : dir;
         const skills = await scanSkillsDirectory(resolved, "bundled");
@@ -286,10 +238,8 @@ export async function loadAllSkills(options: {
         }
     }
 
-    // 2. Bundled skills
     const bundledSkills = await scanSkillsDirectory(dirs.bundled, "bundled");
     for (const skill of bundledSkills) {
-        // Check allowlist
         const allowlist = options.config?.allowBundled;
         if (allowlist && !allowlist.includes(skill.skill.name)) {
             continue;
@@ -297,13 +247,11 @@ export async function loadAllSkills(options: {
         skillsByName.set(skill.skill.name, skill);
     }
 
-    // 3. Local skills (~/.cybara/skills)
     const localSkills = await scanSkillsDirectory(dirs.local, "local");
     for (const skill of localSkills) {
         skillsByName.set(skill.skill.name, skill);
     }
 
-    // 4. Workspace skills (highest priority)
     if (dirs.workspace) {
         const workspaceSkills = await scanSkillsDirectory(dirs.workspace, "workspace");
         for (const skill of workspaceSkills) {
@@ -314,18 +262,12 @@ export async function loadAllSkills(options: {
     return Array.from(skillsByName.values());
 }
 
-/**
- * Check if a skill is enabled in config
- */
 export function isSkillEnabled(skillName: string, config?: SkillsConfig): boolean {
     const entry = config?.entries?.[skillName];
     if (entry?.enabled === false) return false;
     return true;
 }
 
-/**
- * Watch skill directories for changes
- */
 export async function watchSkillDirectories(
     options: {
         workspaceDir?: string;
@@ -374,11 +316,10 @@ export async function watchSkillDirectories(
                 }
             })();
         } catch {
-            // Directory doesn't exist yet
+        void 0;
         }
     };
 
-    // Watch all directories
     watchDir(dirs.bundled);
     watchDir(dirs.local);
     if (dirs.workspace) watchDir(dirs.workspace);
@@ -397,9 +338,6 @@ export async function watchSkillDirectories(
     };
 }
 
-/**
- * Format skills list for system prompt (Cybara XML format)
- */
 export function formatSkillsForPrompt(skills: SkillEntry[]): string {
     if (skills.length === 0) return "";
 

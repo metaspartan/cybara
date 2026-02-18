@@ -1,6 +1,3 @@
-// Slack Adapter - Production implementation using @slack/bolt with Socket Mode
-// Requires: @slack/bolt package, bot token (xoxb-), app token (xapp-), Socket Mode enabled
-
 import { App } from "@slack/bolt";
 import type { ChannelAdapter, ToolCallInfo, MessageHandler } from "../types";
 import { formatToolCallsPlain } from "../formatting";
@@ -8,7 +5,6 @@ import { logChannelMessage } from "../../logging";
 import { buildChannelSecurityConfig, securityManager } from "../security";
 import { handleChannelManagementCommand } from "../commands";
 
-// Slack message event type (inline since @slack/bolt doesn't export it directly)
 interface SlackMessageEvent {
   type: string;
   subtype?: string;
@@ -20,7 +16,6 @@ interface SlackMessageEvent {
   bot_id?: string;
 }
 
-// Slack session storage (channelId:chatId -> sessionId)
 export const slackSessions = new Map<string, string>();
 
 export class SlackAdapter implements ChannelAdapter {
@@ -51,10 +46,8 @@ export class SlackAdapter implements ChannelAdapter {
       throw new Error("app_token (xapp-...) is required for Socket Mode");
     }
 
-    // Configure security based on channel config
     securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
 
-    // Check if already running
     if (this.apps.has(channelId)) {
       console.log(`[Slack] App already running for channel ${channelId}`);
       return;
@@ -69,22 +62,18 @@ export class SlackAdapter implements ChannelAdapter {
       socketMode: true, // Use Socket Mode instead of HTTP endpoints
     });
 
-    // Handle direct messages
     app.message(async ({ message, say, client }) => {
       await this.handleMessage(channelId, message as SlackMessageEvent, say, client);
     });
 
-    // Handle app mentions in channels
     app.event("app_mention", async ({ event, say, client }) => {
       await this.handleMention(channelId, event as SlackMessageEvent, say, client);
     });
 
-    // Handle DM opened
     app.event("app_home_opened", async ({ event, client: _client }) => {
       console.log(`[Slack] App home opened by user ${event.user}`);
     });
 
-    // Global error handler
     app.error(async (error) => {
       console.error(`[Slack] App error:`, error);
     });
@@ -117,7 +106,6 @@ export class SlackAdapter implements ChannelAdapter {
     const userId = message.user;
     const chatId = message.channel;
 
-    // 🔐 SECURITY CHECK: Verify sender is allowed
     const accessCheck = securityManager.checkAccess(channelId, userId, "slack");
 
     if (!accessCheck.permitted) {
@@ -131,7 +119,6 @@ export class SlackAdapter implements ChannelAdapter {
       return;
     }
 
-    // Log incoming message
     await logChannelMessage("slack", "incoming", text, {
       channelId: chatId,
       senderId: userId,
@@ -141,7 +128,6 @@ export class SlackAdapter implements ChannelAdapter {
       },
     });
 
-    // Get or create session
     const sessionKey = `${channelId}:${chatId}`;
     let sessionId = slackSessions.get(sessionKey);
     if (!sessionId) {
@@ -149,7 +135,6 @@ export class SlackAdapter implements ChannelAdapter {
       slackSessions.set(sessionKey, sessionId);
     }
 
-    // Process message
     let response: string;
     try {
       const commandResponse = await handleChannelManagementCommand(text, {
@@ -178,13 +163,11 @@ export class SlackAdapter implements ChannelAdapter {
       response = "❌ Sorry, I encountered an error processing your message. Please try again.";
     }
 
-    // Log outgoing message
     await logChannelMessage("slack", "outgoing", response, {
       channelId: chatId,
       metadata: { replyToTs: message.ts },
     });
 
-    // Reply in thread if this is a threaded message, otherwise as new message
     try {
       await say(response);
     } catch (error) {
@@ -202,7 +185,6 @@ export class SlackAdapter implements ChannelAdapter {
     const userId = event.user;
     const chatId = event.channel;
 
-    // 🔐 SECURITY CHECK: Verify sender is allowed
     const accessCheck = securityManager.checkAccess(channelId, userId, "slack");
     if (!accessCheck.permitted) {
       if (accessCheck.reason === "new_pairing" || accessCheck.reason === "blocked") {
@@ -215,7 +197,6 @@ export class SlackAdapter implements ChannelAdapter {
       return;
     }
 
-    // Remove bot mention from text
     const cleanText = text.replace(/<@[A-Z0-9]+>/g, "").trim();
 
     if (!cleanText) {
@@ -223,7 +204,6 @@ export class SlackAdapter implements ChannelAdapter {
       return;
     }
 
-    // Log incoming message
     await logChannelMessage("slack", "incoming", cleanText, {
       channelId: chatId,
       senderId: userId,
@@ -234,7 +214,6 @@ export class SlackAdapter implements ChannelAdapter {
       },
     });
 
-    // Get or create session
     const sessionKey = `${channelId}:${chatId}`;
     let sessionId = slackSessions.get(sessionKey);
     if (!sessionId) {
@@ -242,7 +221,6 @@ export class SlackAdapter implements ChannelAdapter {
       slackSessions.set(sessionKey, sessionId);
     }
 
-    // Process message
     let response: string;
     try {
       const commandResponse = await handleChannelManagementCommand(cleanText, {
@@ -271,13 +249,11 @@ export class SlackAdapter implements ChannelAdapter {
       response = "❌ Sorry, I encountered an error processing your message. Please try again.";
     }
 
-    // Log outgoing message
     await logChannelMessage("slack", "outgoing", response, {
       channelId: chatId,
       metadata: { replyToTs: event.ts },
     });
 
-    // Send response
     try {
       await say(response);
     } catch (error) {
@@ -330,12 +306,10 @@ export class SlackAdapter implements ChannelAdapter {
     let text = content;
 
     if (toolCalls && toolCalls.length > 0) {
-      // Slack doesn't have special formatting, use plain
       text = formatToolCallsPlain(toolCalls) + "\n\n" + text;
     }
 
     if (thinking) {
-      // Use Slack's expandable section
       text += `\n\n💭 _${thinking}_`;
     }
 

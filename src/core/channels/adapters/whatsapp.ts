@@ -1,7 +1,3 @@
-// WhatsApp Adapter - Production implementation using whatsapp-web.js
-// Requires: whatsapp-web.js package, Puppeteer, QR code scanning
-// Note: Uses unofficial WhatsApp Web API, may violate ToS
-
 import { Client, LocalAuth, type Message } from "whatsapp-web.js";
 import qrcode from "qrcode-terminal";
 import { existsSync, mkdirSync } from "fs";
@@ -12,10 +8,8 @@ import { buildChannelSecurityConfig, securityManager } from "../security";
 import { getDefaultWhatsAppAuthPath } from "../paths";
 import { handleChannelManagementCommand } from "../commands";
 
-// WhatsApp session storage (chatId -> sessionId)
 export const whatsappSessions = new Map<string, string>();
 
-// QR code callback for external handling
 type QRCallback = (qr: string, channelId: string) => void;
 let qrCallback: QRCallback | null = null;
 
@@ -40,7 +34,6 @@ export class WhatsAppAdapter implements ChannelAdapter {
   }
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
-    // Check if already running
     if (this.clients.has(channelId)) {
       console.log(`[WhatsApp] Client already running for channel ${channelId}`);
       return;
@@ -48,10 +41,8 @@ export class WhatsAppAdapter implements ChannelAdapter {
 
     console.log(`[WhatsApp] Starting client for channel ${channelId}...`);
 
-    // Configure security based on channel config
     securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
 
-    // Create auth directory
     const authPath = (config.auth_path as string) || getDefaultWhatsAppAuthPath(channelId);
     if (!existsSync(authPath)) {
       mkdirSync(authPath, { recursive: true });
@@ -76,50 +67,41 @@ export class WhatsAppAdapter implements ChannelAdapter {
       },
     });
 
-    // QR Code event - need to scan to link
     client.on("qr", (qr) => {
       console.log(`[WhatsApp] Scan QR code to link device for channel ${channelId}:`);
       qrcode.generate(qr, { small: true });
 
-      // Call external handler if set
       if (qrCallback) {
         qrCallback(qr, channelId);
       }
     });
 
-    // Ready event
     client.on("ready", () => {
       console.log(`[WhatsApp] Client ready for channel ${channelId}`);
       this.readyStates.set(channelId, true);
     });
 
-    // Authenticated event
     client.on("authenticated", () => {
       console.log(`[WhatsApp] Client authenticated for channel ${channelId}`);
     });
 
-    // Authentication failure
     client.on("auth_failure", (msg) => {
       console.error(`[WhatsApp] Authentication failed for channel ${channelId}:`, msg);
       this.readyStates.set(channelId, false);
     });
 
-    // Disconnected
     client.on("disconnected", (reason) => {
       console.log(`[WhatsApp] Client disconnected for channel ${channelId}:`, reason);
       this.readyStates.set(channelId, false);
     });
 
-    // Handle incoming messages
     client.on("message", async (msg: Message) => {
       await this.handleMessage(channelId, msg);
     });
 
-    // Store client
     this.clients.set(channelId, client);
     this.readyStates.set(channelId, false);
 
-    // Initialize (this will trigger QR code if not authenticated)
     try {
       await client.initialize();
     } catch (error) {
@@ -142,7 +124,6 @@ export class WhatsAppAdapter implements ChannelAdapter {
     const chatId = msg.from;
     const userId = msg.author || msg.from; // author is set in groups
 
-    // 🔐 SECURITY CHECK: Verify sender is allowed
     const accessCheck = securityManager.checkAccess(channelId, userId, "whatsapp");
 
     if (!accessCheck.permitted) {
@@ -156,7 +137,6 @@ export class WhatsAppAdapter implements ChannelAdapter {
       return;
     }
 
-    // Handle media
     let hasFile = false;
     const filePath = "";
     let fileType = "";
@@ -170,7 +150,6 @@ export class WhatsAppAdapter implements ChannelAdapter {
           hasFile = true;
           fileType = media.mimetype;
           placeholder = `<media:${media.mimetype.split("/")[0]}>`;
-          // For now, include base64 reference (could save to file)
           content = text || placeholder;
         }
       } catch (error) {
@@ -178,7 +157,6 @@ export class WhatsAppAdapter implements ChannelAdapter {
       }
     }
 
-    // Log incoming message
     await logChannelMessage("whatsapp", "incoming", content, {
       channelId: chatId,
       senderId: userId,
@@ -190,14 +168,12 @@ export class WhatsAppAdapter implements ChannelAdapter {
       },
     });
 
-    // Get or create session
     let sessionId = whatsappSessions.get(chatId);
     if (!sessionId) {
       sessionId = crypto.randomUUID();
       whatsappSessions.set(chatId, sessionId);
     }
 
-    // Process message
     let response: string;
     try {
       const commandResponse = await handleChannelManagementCommand(text || "", {
@@ -226,18 +202,15 @@ export class WhatsAppAdapter implements ChannelAdapter {
       response = "❌ Sorry, I encountered an error processing your message. Please try again.";
     }
 
-    // Log outgoing message
     await logChannelMessage("whatsapp", "outgoing", response, {
       channelId: chatId,
       metadata: { replyToId: msg.id._serialized },
     });
 
-    // Send response
     try {
       await msg.reply(response);
     } catch (error) {
       console.error("[WhatsApp] Failed to send reply:", error);
-      // Try sending as new message
       try {
         const chat = await msg.getChat();
         await chat.sendMessage(response);
@@ -298,20 +271,16 @@ export class WhatsAppAdapter implements ChannelAdapter {
     }
 
     if (thinking) {
-      // WhatsApp doesn't have spoiler tags, use simple format
       text += `\n\n💭 _${thinking}_`;
     }
 
     return text;
   }
 
-  // Get QR code data URL for web display
   async getQRCode(channelId: string): Promise<string | null> {
     const client = this.clients.get(channelId);
     if (!client) return null;
 
-    // This is a simplified version - actual implementation would
-    // require capturing the QR from the qr event
     return null;
   }
 }

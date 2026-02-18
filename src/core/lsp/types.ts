@@ -1,6 +1,3 @@
-// LSP Protocol Types
-// Based on Language Server Protocol specification 3.17
-
 export interface Position {
   line: number;
   character: number;
@@ -187,7 +184,6 @@ export interface ReferenceParams extends TextDocumentPositionParams {
   context: { includeDeclaration: boolean };
 }
 
-// Language ID mapping
 export const LANGUAGE_IDS: Record<string, string> = {
   ".ts": "typescript",
   ".tsx": "typescriptreact",

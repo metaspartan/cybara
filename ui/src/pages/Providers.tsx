@@ -128,7 +128,6 @@ export function Providers() {
       }
     >
       <div className="space-y-6">
-        {/* Search */}
         <div className="flex gap-4">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
@@ -141,7 +140,6 @@ export function Providers() {
           </div>
         </div>
 
-        {/* Providers List */}
         {isLoading ? (
           <div className="space-y-4">
             {[...Array(3)].map((_, i) => (
@@ -221,7 +219,6 @@ export function Providers() {
           </div>
         )}
 
-        {/* Available Providers Info */}
         <Card>
           <CardHeader>
             <CardTitle>Available Provider Types</CardTitle>
@@ -240,7 +237,6 @@ export function Providers() {
           </CardContent>
         </Card>
 
-        {/* Create Modal */}
         <ProviderModal
           isOpen={isCreateModalOpen}
           onClose={() => setIsCreateModalOpen(false)}
@@ -250,7 +246,6 @@ export function Providers() {
           isLoading={createProvider.isPending}
         />
 
-        {/* Edit Modal */}
         <ProviderModal
           isOpen={!!editingProvider}
           onClose={() => setEditingProvider(null)}
@@ -262,7 +257,6 @@ export function Providers() {
           isEdit
         />
 
-        {/* Delete Confirmation */}
         <ConfirmDialog
           isOpen={!!deletingProvider}
           onClose={() => setDeletingProvider(null)}
@@ -298,7 +292,6 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
   const abortRef = useRef(false);
   const { addToast } = useUIStore();
 
-  // Reset state when modal opens/closes
   useEffect(() => {
     if (isOpen) {
       setSelectedProvider(provider?.provider || availableProviders[0]?.id || '');
@@ -308,7 +301,6 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
       setOauthError('');
       abortRef.current = false;
     } else {
-      // Cancel any running OAuth polling when modal closes
       abortRef.current = true;
     }
     return () => { abortRef.current = true; };
@@ -317,7 +309,6 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    // Inject oauth token if we got one
     if (oauthToken) {
       formData.set('access_token', oauthToken);
     }
@@ -328,7 +319,6 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
   const selectedProviderInfo = availableProviders.find(p => p.id === selectedProvider);
   const authType = selectedProviderInfo?.authType || 'api_key';
 
-  // Start OAuth device code flow
   const startDeviceCodeFlow = async () => {
     setOauthState('connecting');
     setOauthError('');
@@ -348,10 +338,8 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
       });
       setOauthState('polling');
 
-      // Open verification URL
       openExternal(data.verification_uri);
 
-      // Start polling
       const interval = Math.max(5000, (data.interval || 5) * 1000);
       const expiresAt = Date.now() + (data.expires_in || 900) * 1000;
       pollForToken(data.device_code, interval, expiresAt);
@@ -389,9 +377,7 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
           setOauthState('error');
           return;
         }
-        // pending or slow_down — continue polling
       } catch {
-        // Network error — continue polling
       }
     }
     if (!abortRef.current) {
@@ -407,7 +393,6 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
     }
   };
 
-  // Start OAuth redirect flow (for Google/Antigravity, OpenAI Codex, etc.)
   const startRedirectOAuthFlow = async () => {
     setOauthState('connecting');
     setOauthError('');
@@ -424,12 +409,10 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
 
       console.log('[OAuth] Got auth URL, opening in browser:', data.auth_url?.substring(0, 80) + '...');
 
-      // Open auth URL in system browser
       await openExternal(data.auth_url);
       console.log('[OAuth] openExternal completed, starting poll');
       setOauthState('polling');
 
-      // Poll for callback completion
       const oauthStateId = data.state;
       const expiresAt = Date.now() + 600_000; // 10 min timeout
       while (Date.now() < expiresAt && !abortRef.current) {
@@ -454,9 +437,7 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
             setOauthState('error');
             return;
           }
-          // pending — keep polling
         } catch {
-          // Network error — keep polling
         }
       }
       if (!abortRef.current) {
@@ -492,7 +473,6 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
           required
         />
 
-        {/* Auth section - adapts based on provider auth type */}
         {authType === 'api_key' && (
           <Input
             name="api_key"
@@ -506,7 +486,6 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
 
         {authType === 'oauth' && (
           <div className="space-y-3">
-            {/* Device code flow (GitHub Copilot, etc.) */}
             {selectedProviderInfo?.oauthFlow === 'device_code' && selectedProviderInfo?.hasOAuthConfig && (
               <>
                 {oauthState === 'idle' && (
@@ -581,7 +560,6 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
               </>
             )}
 
-            {/* OAuth providers with redirect flow (Google, OpenAI Codex, etc.) */}
             {selectedProviderInfo?.oauthFlow !== 'device_code' && selectedProviderInfo?.hasOAuthConfig && (
               <>
                 {oauthState === 'idle' && (
@@ -644,7 +622,6 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
               </>
             )}
 
-            {/* OAuth providers without oauthConfig (fallback to manual token) */}
             {selectedProviderInfo?.oauthFlow !== 'device_code' && !selectedProviderInfo?.hasOAuthConfig && (
               <div className="space-y-3">
                 {selectedProviderInfo?.oauthLoginUrl ? (
@@ -715,7 +692,6 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
           </div>
         )}
 
-        {/* Provider info footer */}
         {selectedProviderInfo && (
           <div className="text-xs text-gray-500 flex items-center gap-4">
             <span>{selectedProviderInfo.models.length} models available</span>

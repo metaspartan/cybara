@@ -42,7 +42,7 @@ function parseJsonArray(value: unknown): unknown[] {
       const parsed = JSON.parse(value);
       if (Array.isArray(parsed)) return parsed;
     } catch {
-      // fall through
+      void 0;
     }
   }
   return [];
@@ -59,7 +59,7 @@ function parseJsonObject(value: unknown): Record<string, unknown> {
         return parsed as Record<string, unknown>;
       }
     } catch {
-      // fall through
+      void 0;
     }
   }
   return {};
