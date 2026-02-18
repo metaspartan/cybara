@@ -23,6 +23,7 @@ import {
 } from "@solana/web3.js";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountInstruction,
   createTransferCheckedInstruction,
@@ -56,16 +57,31 @@ const ETH_RPC_CONFIG_KEY = "wallet_rpc_eth";
 const SOL_RPC_CONFIG_KEY = "wallet_rpc_sol";
 const BTC_API_CONFIG_KEY = "wallet_btc_api";
 
+// Canonical mainnet deployment addresses from Uniswap's official deployment docs.
 const UNISWAP_V2_ROUTER_ETH = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
 const UNISWAP_V3_ROUTER_ETH = "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45";
-const UNISWAP_V3_QUOTER_ETH = "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6";
+const UNISWAP_V3_QUOTER_V2_ETH = "0x61fFE014bA17989E743c5F6cB21bF9697530B21e";
+const UNISWAP_V3_QUOTER_LEGACY_ETH = "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6";
+const UNISWAP_UNIVERSAL_ROUTER_ETH = "0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af";
+const UNISWAP_PERMIT2_ETH = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
 const WETH_MAINNET = "0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2";
 const UNISWAP_TOKEN_LIST_URL = "https://tokens.uniswap.org";
 const PYTH_HERMES_API_BASE = "https://hermes.pyth.network/v2";
 const JUPITER_PRICE_API_BASE = "https://lite-api.jup.ag/price/v3";
 const JUPITER_SWAP_API_BASE = "https://lite-api.jup.ag/swap/v1";
+const JUPITER_PROGRAM_LABELS_API = "https://lite-api.jup.ag/swap/v1/program-id-to-label";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const USDC_SOL_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+
+// Feed registry + denomination constants from Chainlink Feed Registry/Denominations contracts.
+const CHAINLINK_FEED_REGISTRY_ETH = "0x47Fb2585D2C56Fe188D0E6ec628a38b74fCeeeDf";
+const CHAINLINK_DENOMINATION_USD = "0x0000000000000000000000000000000000000348";
+const ZERO_EVM_ADDRESS = "0x0000000000000000000000000000000000000000";
+const CHAINLINK_BASE_ASSETS: Record<string, string> = {
+  ETH: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+  BTC: "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB",
+  LINK: "0x514910771AF9Ca656af840dff83E8264EcF986CA",
+};
 
 const CHAINLINK_USD_FEEDS: Record<string, string> = {
   BTC: "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c",
@@ -298,7 +314,7 @@ interface WalletPriceQuoteResult {
 type WalletSwapVenue = "uniswap_v2" | "uniswap_v3" | "jupiter";
 
 interface WalletSwapInput {
-  venue: WalletSwapVenue;
+  venue: WalletSwapVenue | string;
   // ETH venues
   tokenOut?: string;
   amountEth?: string;
@@ -337,8 +353,53 @@ interface WalletSwapResult {
   slippageBps: number;
   dryRun: boolean;
   route?: string;
+  routePlan?: Array<{
+    label?: string;
+    ammKey?: string;
+    inputMint?: string;
+    outputMint?: string;
+    inAmount?: string;
+    outAmount?: string;
+  }>;
   txid?: string;
   explorerUrl?: string;
+}
+
+interface WalletEndpointDirectory {
+  ethereum: {
+    wrappedNative: string;
+    dex: {
+      uniswapV2Router: string;
+      uniswapV3Router02: string;
+      uniswapV3QuoterV2: string;
+      uniswapV3QuoterLegacy: string;
+      uniswapUniversalRouter: string;
+      permit2: string;
+    };
+    oracles: {
+      chainlinkFeedRegistry: string;
+      usdDenomination: string;
+      chainlinkUsdFeeds: Record<string, string>;
+      chainlinkBaseAssets: Record<string, string>;
+    };
+  };
+  solana: {
+    nativeMint: string;
+    commonMints: Record<string, string>;
+    programs: {
+      systemProgram: string;
+      tokenProgram: string;
+      token2022Program: string;
+      associatedTokenProgram: string;
+      memoProgram: string;
+    };
+  };
+  services: {
+    pythHermes: string;
+    jupiterPriceApi: string;
+    jupiterSwapApi: string;
+    jupiterProgramLabelsApi: string;
+  };
 }
 
 interface WalletSendTokenInput {
@@ -542,12 +603,39 @@ function resolvePair(input: { symbol?: string; pair?: string }): { base: string;
     }
   }
 
-  const symbol = typeof input.symbol === "string" ? normalizeTicker(input.symbol) : "";
+  const rawSymbol = typeof input.symbol === "string" ? input.symbol.trim() : "";
+  if (rawSymbol && isEvmAddress(rawSymbol)) {
+    return { base: rawSymbol, quote: "USD" };
+  }
+
+  const symbol = rawSymbol ? normalizeTicker(rawSymbol) : "";
   if (symbol) {
     return { base: symbol, quote: "USD" };
   }
 
   throw new Error("Validation error: symbol or pair is required");
+}
+
+function normalizeSwapVenue(input: string): WalletSwapVenue {
+  const venue = input.trim().toLowerCase();
+  if (venue === "uniswap_v2" || venue === "uniswap-v2" || venue === "uni_v2" || venue === "v2") {
+    return "uniswap_v2";
+  }
+  if (
+    venue === "uniswap_v3" ||
+    venue === "uniswap-v3" ||
+    venue === "uniswap" ||
+    venue === "uni" ||
+    venue === "v3"
+  ) {
+    return "uniswap_v3";
+  }
+  if (venue === "jupiter" || venue === "jup") {
+    return "jupiter";
+  }
+  throw new Error(
+    "Validation error: Unsupported swap venue. Use uniswap_v2, uniswap_v3, or jupiter"
+  );
 }
 
 function normalizeFeedId(value: string): string {
@@ -682,6 +770,10 @@ class WalletManager {
       decimals: number;
       chainId: number;
     }>;
+  } | null = null;
+  private jupiterProgramLabelsCache: {
+    loadedAtMs: number;
+    labels: Record<string, string>;
   } | null = null;
 
   getStatus(): WalletStatus {
@@ -1030,6 +1122,11 @@ class WalletManager {
     return await this.getPriceQuote(input);
   }
 
+  getEndpointDirectoryForAgent(): WalletEndpointDirectory {
+    this.assertAgentAccessEnabled();
+    return this.getEndpointDirectory();
+  }
+
   async swapForAgent(input: WalletSwapInput): Promise<WalletSwapResult> {
     this.assertAgentAccessEnabled();
     if (input.dryRun !== true) {
@@ -1039,6 +1136,49 @@ class WalletManager {
       }
     }
     return await this.swap(input);
+  }
+
+  getEndpointDirectory(): WalletEndpointDirectory {
+    return {
+      ethereum: {
+        wrappedNative: WETH_MAINNET,
+        dex: {
+          uniswapV2Router: UNISWAP_V2_ROUTER_ETH,
+          uniswapV3Router02: UNISWAP_V3_ROUTER_ETH,
+          uniswapV3QuoterV2: UNISWAP_V3_QUOTER_V2_ETH,
+          uniswapV3QuoterLegacy: UNISWAP_V3_QUOTER_LEGACY_ETH,
+          uniswapUniversalRouter: UNISWAP_UNIVERSAL_ROUTER_ETH,
+          permit2: UNISWAP_PERMIT2_ETH,
+        },
+        oracles: {
+          chainlinkFeedRegistry: CHAINLINK_FEED_REGISTRY_ETH,
+          usdDenomination: CHAINLINK_DENOMINATION_USD,
+          chainlinkUsdFeeds: { ...CHAINLINK_USD_FEEDS },
+          chainlinkBaseAssets: { ...CHAINLINK_BASE_ASSETS },
+        },
+      },
+      solana: {
+        nativeMint: SOL_MINT,
+        commonMints: {
+          SOL: SOL_MINT,
+          USDC: USDC_SOL_MINT,
+          USDT: "Es9vMFrzaCERmJfr8j7Xw4eE3f7zQht4p59SJ4f5kL7Q",
+        },
+        programs: {
+          systemProgram: SystemProgram.programId.toBase58(),
+          tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+          token2022Program: TOKEN_2022_PROGRAM_ID.toBase58(),
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID.toBase58(),
+          memoProgram: MEMO_PROGRAM_ID.toBase58(),
+        },
+      },
+      services: {
+        pythHermes: PYTH_HERMES_API_BASE,
+        jupiterPriceApi: JUPITER_PRICE_API_BASE,
+        jupiterSwapApi: JUPITER_SWAP_API_BASE,
+        jupiterProgramLabelsApi: JUPITER_PROGRAM_LABELS_API,
+      },
+    };
   }
 
   getAccounts(query?: AccountsQuery): WalletAccount[] {
@@ -1759,15 +1899,21 @@ class WalletManager {
         throw new Error("Validation error: Chainlink source currently supports USD quote only");
       }
 
+      const provider = new JsonRpcProvider(input.rpcUrl?.trim() || this.getEthRpc());
       const configuredFeed = typeof input.feedAddress === "string" ? input.feedAddress.trim() : "";
-      const feedAddress = configuredFeed || CHAINLINK_USD_FEEDS[base];
+      const feedAddress =
+        configuredFeed ||
+        (await this.resolveChainlinkFeedAddress({
+          base,
+          quote,
+          provider,
+        }));
       if (!feedAddress || !isEvmAddress(feedAddress)) {
         throw new Error(
           `Validation error: No Chainlink feed configured for ${base}/${quote}; provide feedAddress`
         );
       }
 
-      const provider = new JsonRpcProvider(input.rpcUrl?.trim() || this.getEthRpc());
       const feed = new Contract(
         feedAddress,
         [
@@ -1882,7 +2028,12 @@ class WalletManager {
     if (source === "jupiter") return await tryJupiter();
 
     const attempts: Array<() => Promise<WalletPriceQuoteResult>> = [];
-    if (base in CHAINLINK_USD_FEEDS || input.feedAddress) {
+    if (
+      base in CHAINLINK_USD_FEEDS ||
+      base in CHAINLINK_BASE_ASSETS ||
+      isEvmAddress(base) ||
+      input.feedAddress
+    ) {
       attempts.push(tryChainlink);
     }
     attempts.push(tryPyth);
@@ -1901,9 +2052,7 @@ class WalletManager {
   }
 
   async swap(input: WalletSwapInput): Promise<WalletSwapResult> {
-    const venue = String(input.venue || "")
-      .trim()
-      .toLowerCase() as WalletSwapVenue;
+    const venue = normalizeSwapVenue(String(input.venue || ""));
     if (venue === "uniswap_v2") {
       const result = await this.swapEthOnUniswap({
         tokenOut: String(input.tokenOut || ""),
@@ -1942,7 +2091,6 @@ class WalletManager {
     if (venue === "jupiter") {
       return await this.swapOnJupiter(input);
     }
-
     throw new Error(
       "Validation error: Unsupported swap venue. Use uniswap_v2, uniswap_v3, or jupiter"
     );
@@ -2026,23 +2174,13 @@ class WalletManager {
       throw new Error("Validation error: recipient must be a valid ETH address");
     }
 
-    const quoter = new Contract(
-      UNISWAP_V3_QUOTER_ETH,
-      [
-        "function quoteExactInputSingle(address tokenIn,address tokenOut,uint24 fee,uint256 amountIn,uint160 sqrtPriceLimitX96) returns (uint256 amountOut)",
-      ],
-      provider
-    );
-    const quoteMethod = (
-      quoter as unknown as Record<string, { staticCall?: (...args: unknown[]) => Promise<unknown> }>
-    ).quoteExactInputSingle;
-    const quoteValue =
-      quoteMethod && typeof quoteMethod.staticCall === "function"
-        ? await quoteMethod.staticCall(WETH_MAINNET, tokenOut.address, feeTier, amountInWei, 0)
-        : await (
-            quoter as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>
-          ).quoteExactInputSingle(WETH_MAINNET, tokenOut.address, feeTier, amountInWei, 0);
-    const quotedAmountOutRaw = parseBigIntOrZero(quoteValue);
+    const quotedAmountOutRaw = await this.quoteUniswapV3ExactInputSingle({
+      provider,
+      tokenIn: WETH_MAINNET,
+      tokenOut: tokenOut.address,
+      feeTier,
+      amountIn: amountInWei,
+    });
 
     if (quotedAmountOutRaw <= 0n) {
       throw new Error("Validation error: Could not quote output amount from Uniswap V3");
@@ -2154,7 +2292,16 @@ class WalletManager {
       errorCode?: string;
       outAmount?: string;
       otherAmountThreshold?: string;
-      routePlan?: Array<{ swapInfo?: { label?: string } }>;
+      routePlan?: Array<{
+        swapInfo?: {
+          label?: string;
+          ammKey?: string;
+          inputMint?: string;
+          outputMint?: string;
+          inAmount?: string;
+          outAmount?: string;
+        };
+      }>;
       [key: string]: unknown;
     }>(quoteUrl.toString());
 
@@ -2171,6 +2318,34 @@ class WalletManager {
     const minAmountOutRaw = parseBigIntOrZero(
       quoteResponse.otherAmountThreshold || quoteResponse.outAmount
     );
+    const programLabels = await this.getJupiterProgramLabels();
+    const routePlan =
+      quoteResponse.routePlan
+        ?.map((leg) => {
+          const swapInfo = leg.swapInfo;
+          if (!swapInfo) return undefined;
+          const ammKey = typeof swapInfo.ammKey === "string" ? swapInfo.ammKey : undefined;
+          const resolvedLabel =
+            typeof swapInfo.label === "string" && swapInfo.label.trim()
+              ? swapInfo.label
+              : ammKey
+                ? programLabels[ammKey]
+                : undefined;
+          return {
+            label: resolvedLabel,
+            ammKey,
+            inputMint: typeof swapInfo.inputMint === "string" ? swapInfo.inputMint : undefined,
+            outputMint: typeof swapInfo.outputMint === "string" ? swapInfo.outputMint : undefined,
+            inAmount: typeof swapInfo.inAmount === "string" ? swapInfo.inAmount : undefined,
+            outAmount: typeof swapInfo.outAmount === "string" ? swapInfo.outAmount : undefined,
+          };
+        })
+        ?.filter((leg): leg is NonNullable<typeof leg> => Boolean(leg)) || [];
+    const routeSummary =
+      routePlan
+        .map((leg) => leg.label || leg.ammKey)
+        .filter((item): item is string => Boolean(item))
+        .join(" -> ") || "jupiter";
 
     const baseResult: WalletSwapResult = {
       venue: "jupiter",
@@ -2186,7 +2361,8 @@ class WalletManager {
       minAmountOutRaw: minAmountOutRaw.toString(),
       slippageBps,
       dryRun,
-      route: quoteResponse.routePlan?.[0]?.swapInfo?.label || "jupiter",
+      route: routeSummary,
+      routePlan,
     };
 
     if (dryRun) {
@@ -2868,6 +3044,116 @@ class WalletManager {
     return `m/44'/501'/${index}'/0'`;
   }
 
+  private async quoteUniswapV3ExactInputSingle(input: {
+    provider: JsonRpcProvider;
+    tokenIn: string;
+    tokenOut: string;
+    feeTier: number;
+    amountIn: bigint;
+  }): Promise<bigint> {
+    try {
+      const quoterV2 = new Contract(
+        UNISWAP_V3_QUOTER_V2_ETH,
+        [
+          "function quoteExactInputSingle((address tokenIn,address tokenOut,uint256 amountIn,uint24 fee,uint160 sqrtPriceLimitX96) params) returns (uint256 amountOut,uint160 sqrtPriceX96After,uint32 initializedTicksCrossed,uint256 gasEstimate)",
+        ],
+        input.provider
+      );
+      const quoteMethod = (
+        quoterV2 as unknown as Record<
+          string,
+          { staticCall?: (...args: unknown[]) => Promise<unknown> } | undefined
+        >
+      ).quoteExactInputSingle;
+      const params = {
+        tokenIn: input.tokenIn,
+        tokenOut: input.tokenOut,
+        amountIn: input.amountIn,
+        fee: input.feeTier,
+        sqrtPriceLimitX96: 0,
+      };
+      const quoteValue =
+        quoteMethod && typeof quoteMethod.staticCall === "function"
+          ? await quoteMethod.staticCall(params)
+          : await (
+              quoterV2 as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>
+            ).quoteExactInputSingle(params);
+
+      const amountOut = parseBigIntOrZero(
+        Array.isArray(quoteValue)
+          ? quoteValue[0]
+          : ((quoteValue as { amountOut?: unknown })?.amountOut ?? quoteValue)
+      );
+      if (amountOut > 0n) {
+        return amountOut;
+      }
+    } catch {
+      // Fall through to legacy quoter for networks/tools that still expose v1.
+    }
+
+    const legacyQuoter = new Contract(
+      UNISWAP_V3_QUOTER_LEGACY_ETH,
+      [
+        "function quoteExactInputSingle(address tokenIn,address tokenOut,uint24 fee,uint256 amountIn,uint160 sqrtPriceLimitX96) returns (uint256 amountOut)",
+      ],
+      input.provider
+    );
+    const legacyMethod = (
+      legacyQuoter as unknown as Record<
+        string,
+        { staticCall?: (...args: unknown[]) => Promise<unknown> } | undefined
+      >
+    ).quoteExactInputSingle;
+    const legacyValue =
+      legacyMethod && typeof legacyMethod.staticCall === "function"
+        ? await legacyMethod.staticCall(
+            input.tokenIn,
+            input.tokenOut,
+            input.feeTier,
+            input.amountIn,
+            0
+          )
+        : await (
+            legacyQuoter as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>
+          ).quoteExactInputSingle(input.tokenIn, input.tokenOut, input.feeTier, input.amountIn, 0);
+    return parseBigIntOrZero(legacyValue);
+  }
+
+  private async resolveChainlinkFeedAddress(input: {
+    base: string;
+    quote: string;
+    provider: JsonRpcProvider;
+  }): Promise<string> {
+    const rawBase = String(input.base || "").trim();
+    const base = normalizeTicker(rawBase);
+    const quote = normalizeTicker(input.quote);
+    if (quote !== "USD") {
+      return "";
+    }
+
+    const staticFeed = CHAINLINK_USD_FEEDS[base] || "";
+    const baseAsset = isEvmAddress(rawBase) ? rawBase : CHAINLINK_BASE_ASSETS[base];
+    if (!baseAsset || !isEvmAddress(baseAsset)) {
+      return staticFeed;
+    }
+
+    try {
+      const registry = new Contract(
+        CHAINLINK_FEED_REGISTRY_ETH,
+        ["function getFeed(address base, address quote) view returns (address feed)"],
+        input.provider
+      );
+      const registryFeed = String(await registry.getFeed(baseAsset, CHAINLINK_DENOMINATION_USD));
+      if (isEvmAddress(registryFeed) && registryFeed.toLowerCase() !== ZERO_EVM_ADDRESS) {
+        return registryFeed;
+      }
+    } catch {
+      // Fall back to static feed map when registry lookup fails.
+    }
+
+    return staticFeed;
+  }
+
   private resolveSolMint(input: string): string {
     const normalized = input.trim();
     if (isEvmAddress(normalized)) {
@@ -3486,6 +3772,27 @@ class WalletManager {
     return tokens;
   }
 
+  private async getJupiterProgramLabels(): Promise<Record<string, string>> {
+    const cached = this.jupiterProgramLabelsCache;
+    if (cached && Date.now() - cached.loadedAtMs < 5 * 60_000) {
+      return cached.labels;
+    }
+
+    try {
+      const payload = await fetchJson<Record<string, string>>(JUPITER_PROGRAM_LABELS_API);
+      const labels = Object.fromEntries(
+        Object.entries(payload).filter(
+          ([programId, label]) =>
+            Boolean(programId) && typeof label === "string" && Boolean(label.trim())
+        )
+      );
+      this.jupiterProgramLabelsCache = { loadedAtMs: Date.now(), labels };
+      return labels;
+    } catch {
+      return cached?.labels || {};
+    }
+  }
+
   private async storeMnemonic(
     mnemonic: string,
     password: string
@@ -3682,5 +3989,6 @@ export type {
   WalletSwapVenue,
   WalletSwapInput,
   WalletSwapResult,
+  WalletEndpointDirectory,
   WalletSendResult,
 };

@@ -107,8 +107,9 @@ const walletMockState = {
     quoteCurrency?: string;
     rpcUrl?: string;
   }>,
+  endpointDirectoryCalls: 0,
   dynamicSwapCalls: [] as Array<{
-    venue: "uniswap_v2" | "uniswap_v3" | "jupiter";
+    venue: string;
     tokenOut?: string;
     amountEth?: string;
     percent?: number;
@@ -424,8 +425,20 @@ mock.module("../../src/core/wallet", () => ({
         price: "123.45",
       };
     },
+    getEndpointDirectory: () => {
+      walletMockState.endpointDirectoryCalls += 1;
+      return {
+        ethereum: { wrappedNative: "0xC02aaA39", dex: {}, oracles: {} },
+        solana: {
+          nativeMint: "So11111111111111111111111111111111111111112",
+          commonMints: {},
+          programs: {},
+        },
+        services: {},
+      };
+    },
     swap: async (input: {
-      venue: "uniswap_v2" | "uniswap_v3" | "jupiter";
+      venue: string;
       tokenOut?: string;
       amountEth?: string;
       percent?: number;
@@ -450,11 +463,10 @@ mock.module("../../src/core/wallet", () => ({
         venue: input.venue,
         chain: input.venue === "jupiter" ? "sol" : "eth",
         from: "mock-from",
-        inputToken: input.venue === "jupiter" ? "So11111111111111111111111111111111111111112" : "ETH",
+        inputToken:
+          input.venue === "jupiter" ? "So11111111111111111111111111111111111111112" : "ETH",
         outputToken:
-          input.venue === "jupiter"
-            ? "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
-            : "LINK",
+          input.venue === "jupiter" ? "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" : "LINK",
         amountIn: "1",
         amountInRaw: "1000000000",
         quotedAmountOut: "100",
@@ -510,6 +522,7 @@ function resetState() {
   walletMockState.solInstructionCalls = [];
   walletMockState.swapCalls = [];
   walletMockState.priceCalls = [];
+  walletMockState.endpointDirectoryCalls = 0;
   walletMockState.dynamicSwapCalls = [];
   walletMockState.signCalls = [];
   walletMockState.deleteCalls = [];
@@ -670,6 +683,10 @@ describe("Wallet route contracts (mocked manager)", () => {
     const agentAccessRes = await api("PUT", "/api/wallet/agent-access", { enabled: true });
     expect(agentAccessRes.status).toBe(200);
     expect(walletMockState.agentAccessCalls).toEqual([true]);
+
+    const endpointsRes = await api("GET", "/api/wallet/endpoints");
+    expect(endpointsRes.status).toBe(200);
+    expect(walletMockState.endpointDirectoryCalls).toBe(1);
   });
 
   test("send-token, eth-contract, sol-instruction, and swap routes forward payloads", async () => {
@@ -804,6 +821,15 @@ describe("Wallet route contracts (mocked manager)", () => {
       skipPreflight: true,
     });
     expect(dynamicSwapRes.status).toBe(200);
+
+    const executeSwapRes = await api("POST", "/api/wallet/swap", {
+      venue: "uniswap",
+      tokenOut: "LINK",
+      amountEth: "0.2",
+      execute: true,
+    });
+    expect(executeSwapRes.status).toBe(200);
+
     expect(walletMockState.dynamicSwapCalls).toEqual([
       {
         venue: "jupiter",
@@ -825,6 +851,27 @@ describe("Wallet route contracts (mocked manager)", () => {
         computeUnitPriceMicroLamports: undefined,
         skipPreflight: true,
         dryRun: true,
+      },
+      {
+        venue: "uniswap",
+        tokenOut: "LINK",
+        amountEth: "0.2",
+        percent: undefined,
+        minAmountOut: undefined,
+        recipient: undefined,
+        feeTier: undefined,
+        inputMint: undefined,
+        outputMint: undefined,
+        amount: undefined,
+        amountRaw: undefined,
+        index: undefined,
+        slippageBps: undefined,
+        deadlineSeconds: undefined,
+        rpcUrl: undefined,
+        wrapUnwrapSol: undefined,
+        computeUnitPriceMicroLamports: undefined,
+        skipPreflight: false,
+        dryRun: false,
       },
     ]);
   });

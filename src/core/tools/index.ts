@@ -767,7 +767,10 @@ Use for tasks that may take longer or require separate context.`,
             "eth_contract_call",
             "sol_program_instruction",
             "swap_eth_uniswap",
+            "endpoints",
+            "price",
             "price_quote",
+            "swap",
             "swap_quote",
             "swap_execute",
           ],
@@ -990,41 +993,51 @@ Use for tasks that may take longer or require separate context.`,
         dryRun: {
           type: "boolean",
           description:
-            "When true, swap actions return quote/minOut without broadcasting a transaction",
+            "When true, swap actions return quote/minOut without broadcasting a transaction. For action=swap, default is true unless execute=true.",
+        },
+        execute: {
+          type: "boolean",
+          description:
+            "For action=swap only: when true, broadcasts the swap transaction (sets dryRun=false unless explicitly overridden)",
+        },
+        broadcast: {
+          type: "boolean",
+          description: "Alias for execute in action=swap",
         },
         source: {
           type: "string",
           enum: ["auto", "chainlink", "pyth", "jupiter"],
-          description: "Price source for action=price_quote",
+          description: "Price source for action=price or action=price_quote",
         },
         symbol: {
           type: "string",
-          description: "Asset symbol (e.g., BTC, ETH, SOL) for action=price_quote",
+          description: "Asset symbol (e.g., BTC, ETH, SOL) for action=price/action=price_quote",
         },
         pair: {
           type: "string",
-          description: "Asset pair (e.g., BTC/USD) for action=price_quote",
+          description: "Asset pair (e.g., BTC/USD) for action=price/action=price_quote",
         },
         feedAddress: {
           type: "string",
-          description: "Chainlink feed contract address override for action=price_quote",
+          description:
+            "Chainlink feed contract address override for action=price/action=price_quote",
         },
         feedId: {
           type: "string",
-          description: "Alias for pythFeedId in action=price_quote",
+          description: "Alias for pythFeedId in action=price/action=price_quote",
         },
         pythFeedId: {
           type: "string",
-          description: "Explicit Pyth feed id for action=price_quote",
+          description: "Explicit Pyth feed id for action=price/action=price_quote",
         },
         quoteCurrency: {
           type: "string",
-          description: "Quote currency for action=price_quote (default USD)",
+          description: "Quote currency for action=price/action=price_quote (default USD)",
         },
         venue: {
           type: "string",
           enum: ["uniswap_v2", "uniswap_v3", "jupiter"],
-          description: "Swap venue for swap_quote/swap_execute",
+          description: "Swap venue for swap/swap_quote/swap_execute",
         },
         feeTier: {
           type: "number",

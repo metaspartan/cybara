@@ -408,6 +408,7 @@ describe("UI API client wiring", () => {
       amount: "1.5",
       dryRun: true,
     });
+    await walletApi.endpoints();
     await walletApi.signMessage("hello", "eth", 5);
     await walletApi.getAgentPolicy();
     await walletApi.updateAgentPolicy({
@@ -420,7 +421,7 @@ describe("UI API client wiring", () => {
     await walletApi.setAgentAccess(true);
     await walletApi.deleteWallet("secretpass");
 
-    expect(calls).toHaveLength(22);
+    expect(calls).toHaveLength(23);
     expect(calls[0].url).toBe("/api/wallet/status");
     expect(calls[1].url).toBe("/api/wallet/rpc");
     expect(calls[2].url).toBe("/api/wallet/rpc/status");
@@ -509,28 +510,29 @@ describe("UI API client wiring", () => {
       amount: "1.5",
       dryRun: true,
     });
-    expect(calls[17].url).toBe("/api/wallet/sign");
-    expect(calls[17].init?.method).toBe("POST");
-    expect(JSON.parse(String(calls[17].init?.body))).toEqual({
+    expect(calls[17].url).toBe("/api/wallet/endpoints");
+    expect(calls[18].url).toBe("/api/wallet/sign");
+    expect(calls[18].init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[18].init?.body))).toEqual({
       message: "hello",
       chain: "eth",
       index: 5,
     });
-    expect(calls[18].url).toBe("/api/wallet/agent-policy");
     expect(calls[19].url).toBe("/api/wallet/agent-policy");
-    expect(calls[19].init?.method).toBe("PUT");
-    expect(JSON.parse(String(calls[19].init?.body))).toEqual({
+    expect(calls[20].url).toBe("/api/wallet/agent-policy");
+    expect(calls[20].init?.method).toBe("PUT");
+    expect(JSON.parse(String(calls[20].init?.body))).toEqual({
       allowNativeSend: true,
       allowTokenSend: true,
       allowEthSwaps: true,
       allowedEthContracts: ["0x0000000000000000000000000000000000000001"],
       allowedSolPrograms: ["11111111111111111111111111111111"],
     });
-    expect(calls[20].url).toBe("/api/wallet/agent-access");
-    expect(calls[20].init?.method).toBe("PUT");
-    expect(calls[21].url).toBe("/api/wallet");
-    expect(calls[21].init?.method).toBe("DELETE");
-    expect(JSON.parse(String(calls[21].init?.body))).toEqual({
+    expect(calls[21].url).toBe("/api/wallet/agent-access");
+    expect(calls[21].init?.method).toBe("PUT");
+    expect(calls[22].url).toBe("/api/wallet");
+    expect(calls[22].init?.method).toBe("DELETE");
+    expect(JSON.parse(String(calls[22].init?.body))).toEqual({
       password: "secretpass",
     });
   });

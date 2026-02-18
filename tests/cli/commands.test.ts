@@ -757,10 +757,43 @@ function route(method: string, url: URL, body: string): Response {
     });
   }
 
+  if (method === "GET" && pathname === "/api/wallet/endpoints") {
+    return json({
+      ethereum: {
+        wrappedNative: "0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2",
+        dex: {
+          uniswapV2Router: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
+          uniswapV3Router02: "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
+        },
+        oracles: {
+          chainlinkFeedRegistry: "0x47Fb2585D2C56Fe188D0E6ec628a38b74fCeeeDf",
+          usdDenomination: "0x0000000000000000000000000000000000000348",
+          chainlinkUsdFeeds: {
+            BTC: "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c",
+          },
+        },
+      },
+      solana: {
+        nativeMint: "So11111111111111111111111111111111111111112",
+        commonMints: {
+          SOL: "So11111111111111111111111111111111111111112",
+          USDC: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        },
+        programs: {
+          tokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        },
+      },
+      services: {
+        pythHermes: "https://hermes.pyth.network/v2",
+        jupiterPriceApi: "https://lite-api.jup.ag/price/v3",
+      },
+    });
+  }
+
   if (method === "POST" && pathname === "/api/wallet/swap") {
     const parsed = body
       ? (JSON.parse(body) as {
-          venue?: "uniswap_v2" | "uniswap_v3" | "jupiter";
+          venue?: string;
           tokenOut?: string;
           inputMint?: string;
           outputMint?: string;
@@ -785,18 +818,9 @@ function route(method: string, url: URL, body: string): Response {
         parsed.venue === "jupiter"
           ? walletState.primaryAddresses?.sol
           : walletState.primaryAddresses?.eth,
-      inputToken:
-        parsed.venue === "jupiter"
-          ? parsed.inputMint
-          : "ETH",
-      outputToken:
-        parsed.venue === "jupiter"
-          ? parsed.outputMint
-          : parsed.tokenOut,
-      amountIn:
-        parsed.venue === "jupiter"
-          ? parsed.amount || "1"
-          : parsed.amountEth || "0.5",
+      inputToken: parsed.venue === "jupiter" ? parsed.inputMint : "ETH",
+      outputToken: parsed.venue === "jupiter" ? parsed.outputMint : parsed.tokenOut,
+      amountIn: parsed.venue === "jupiter" ? parsed.amount || "1" : parsed.amountEth || "0.5",
       amountInRaw: "1000000000",
       quotedAmountOut: "100",
       quotedAmountOutRaw: "100000000",
@@ -1102,11 +1126,28 @@ describe("CLI Commands", () => {
     expect(swapExecute.stdout).toContain("txid: swap-tx-1");
     expect(swapExecute.stdout).toContain("explorer: https://etherscan.io/tx/swap-tx-1");
 
-    const priceQuote = await runCli(["wallet", "price", "--source", "chainlink", "--symbol", "BTC"]);
+    const priceQuote = await runCli([
+      "wallet",
+      "price",
+      "--source",
+      "chainlink",
+      "--symbol",
+      "BTC",
+    ]);
     expect(priceQuote.exitCode).toBe(0);
     expect(priceQuote.stdout).toContain("PRICE QUOTE");
     expect(priceQuote.stdout).toContain("pair: BTC/USD");
     expect(priceQuote.stdout).toContain("price: 123.45");
+
+    const priceQuotePositional = await runCli(["wallet", "price", "BTC"]);
+    expect(priceQuotePositional.exitCode).toBe(0);
+    expect(priceQuotePositional.stdout).toContain("pair: BTC/USD");
+
+    const dynamicSwapSimple = await runCli(["wallet", "swap", "LINK", "--amount-eth", "0.2"]);
+    expect(dynamicSwapSimple.exitCode).toBe(0);
+    expect(dynamicSwapSimple.stdout).toContain("SWAP RESULT");
+    expect(dynamicSwapSimple.stdout).toContain("mode: quote-only");
+    expect(dynamicSwapSimple.stdout).toContain("venue: uniswap_v3");
 
     const dynamicSwapQuote = await runCli([
       "wallet",
@@ -1142,6 +1183,28 @@ describe("CLI Commands", () => {
     expect(dynamicSwapExecute.stdout).toContain("mode: execute");
     expect(dynamicSwapExecute.stdout).toContain("venue: jupiter");
     expect(dynamicSwapExecute.stdout).toContain("txid: dynamic-swap-tx-1");
+
+    const dynamicSwapSimpleExecute = await runCli([
+      "wallet",
+      "swap",
+      "--venue",
+      "jup",
+      "--input-mint",
+      "So11111111111111111111111111111111111111112",
+      "--output-mint",
+      "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "--amount",
+      "1.2",
+      "--execute",
+    ]);
+    expect(dynamicSwapSimpleExecute.exitCode).toBe(0);
+    expect(dynamicSwapSimpleExecute.stdout).toContain("mode: execute");
+    expect(dynamicSwapSimpleExecute.stdout).toContain("venue: jupiter");
+
+    const endpoints = await runCli(["wallet", "endpoints"]);
+    expect(endpoints.exitCode).toBe(0);
+    expect(endpoints.stdout).toContain("WALLET ENDPOINT DIRECTORY");
+    expect(endpoints.stdout).toContain("chainlink_feed_registry");
 
     const contractCall = await runCli([
       "wallet",
@@ -1367,7 +1430,21 @@ describe("CLI Commands", () => {
 
     const badWalletSwapQuote = await runCli(["wallet", "swap-quote", "--venue", "jupiter"]);
     expect(badWalletSwapQuote.exitCode).toBe(1);
-    expect(badWalletSwapQuote.stderr).toContain("Jupiter venue requires --input-mint and --output-mint");
+    expect(badWalletSwapQuote.stderr).toContain(
+      "Jupiter venue requires --input-mint and --output-mint"
+    );
+
+    const badWalletSwapFlags = await runCli([
+      "wallet",
+      "swap",
+      "LINK",
+      "--amount-eth",
+      "0.1",
+      "--execute",
+      "--quote-only",
+    ]);
+    expect(badWalletSwapFlags.exitCode).toBe(1);
+    expect(badWalletSwapFlags.stderr).toContain("Use either --execute or --quote-only/--dry-run");
   });
 
   test("lsp list/install/uninstall commands are wired", async () => {

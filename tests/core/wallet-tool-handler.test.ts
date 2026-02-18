@@ -82,8 +82,9 @@ const walletToolMockState = {
     quoteCurrency?: string;
     rpcUrl?: string;
   }>,
+  endpointDirectoryCalls: 0,
   dynamicSwapCalls: [] as Array<{
-    venue: "uniswap_v2" | "uniswap_v3" | "jupiter";
+    venue: string;
     tokenOut?: string;
     amountEth?: string;
     percent?: number;
@@ -119,6 +120,7 @@ function resetState() {
   walletToolMockState.solInstructionCalls = [];
   walletToolMockState.swapCalls = [];
   walletToolMockState.priceQuoteCalls = [];
+  walletToolMockState.endpointDirectoryCalls = 0;
   walletToolMockState.dynamicSwapCalls = [];
 }
 
@@ -252,10 +254,27 @@ mock.module("../../src/core/wallet", () => ({
       rpcUrl?: string;
     }) => {
       walletToolMockState.priceQuoteCalls.push(input);
-      return { source: input.source || "auto", base: input.symbol || "BTC", quote: "USD", price: "123.45" };
+      return {
+        source: input.source || "auto",
+        base: input.symbol || "BTC",
+        quote: "USD",
+        price: "123.45",
+      };
+    },
+    getEndpointDirectoryForAgent: () => {
+      walletToolMockState.endpointDirectoryCalls += 1;
+      return {
+        ethereum: { wrappedNative: "0xC02aaA39...", dex: {}, oracles: {} },
+        solana: {
+          nativeMint: "So11111111111111111111111111111111111111112",
+          commonMints: {},
+          programs: {},
+        },
+        services: {},
+      };
     },
     swapForAgent: async (input: {
-      venue: "uniswap_v2" | "uniswap_v3" | "jupiter";
+      venue: string;
       tokenOut?: string;
       amountEth?: string;
       percent?: number;
@@ -280,8 +299,10 @@ mock.module("../../src/core/wallet", () => ({
         venue: input.venue,
         chain: input.venue === "jupiter" ? "sol" : "eth",
         from: "mock-from",
-        inputToken: input.venue === "jupiter" ? "So11111111111111111111111111111111111111112" : "ETH",
-        outputToken: input.venue === "jupiter" ? "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" : "LINK",
+        inputToken:
+          input.venue === "jupiter" ? "So11111111111111111111111111111111111111112" : "ETH",
+        outputToken:
+          input.venue === "jupiter" ? "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" : "LINK",
         amountIn: "1",
         amountInRaw: "1000000000",
         quotedAmountOut: "100",
@@ -526,6 +547,28 @@ describe("Wallet tool handler", () => {
     ]);
   });
 
+  test("price action aliases price_quote", async () => {
+    const result = await handleWallet({
+      action: "price",
+      source: "chainlink",
+      symbol: "ETH",
+    });
+
+    expect(result).toEqual({ source: "chainlink", base: "ETH", quote: "USD", price: "123.45" });
+    expect(walletToolMockState.priceQuoteCalls).toEqual([
+      {
+        source: "chainlink",
+        symbol: "ETH",
+        pair: undefined,
+        feedAddress: undefined,
+        pythFeedId: undefined,
+        mint: undefined,
+        quoteCurrency: undefined,
+        rpcUrl: undefined,
+      },
+    ]);
+  });
+
   test("swap_quote and swap_execute forward dynamic venue payloads", async () => {
     const quote = await handleWallet({
       action: "swap_quote",
@@ -594,6 +637,53 @@ describe("Wallet tool handler", () => {
         dryRun: false,
       },
     ]);
+  });
+
+  test("swap action defaults to dry-run and supports execute flag", async () => {
+    const quote = await handleWallet({
+      action: "swap",
+      tokenOut: "LINK",
+      amountEth: "0.1",
+    });
+    expect((quote as { dryRun?: boolean }).dryRun).toBe(true);
+
+    const execute = await handleWallet({
+      action: "swap",
+      venue: "jup",
+      inputMint: "So11111111111111111111111111111111111111112",
+      outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      amount: "1",
+      execute: true,
+    });
+    expect((execute as { dryRun?: boolean }).dryRun).toBe(false);
+
+    expect(walletToolMockState.dynamicSwapCalls[0]).toMatchObject({
+      venue: "uniswap_v3",
+      tokenOut: "LINK",
+      amountEth: "0.1",
+      dryRun: true,
+    });
+    expect(walletToolMockState.dynamicSwapCalls[1]).toMatchObject({
+      venue: "jup",
+      inputMint: "So11111111111111111111111111111111111111112",
+      outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      amount: "1",
+      dryRun: false,
+    });
+  });
+
+  test("endpoints action returns endpoint directory", async () => {
+    const result = await handleWallet({ action: "endpoints" });
+    expect(result).toEqual({
+      ethereum: { wrappedNative: "0xC02aaA39...", dex: {}, oracles: {} },
+      solana: {
+        nativeMint: "So11111111111111111111111111111111111111112",
+        commonMints: {},
+        programs: {},
+      },
+      services: {},
+    });
+    expect(walletToolMockState.endpointDirectoryCalls).toBe(1);
   });
 
   test("unknown action returns validation error", async () => {

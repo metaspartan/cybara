@@ -465,9 +465,10 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
       lines.push(
         "### Wallet Tool (funds and contracts)",
         "- Always begin with read-only steps: wallet status/balances/quotes before any write action.",
-        "- For market context, use `price_quote` (auto/chainlink/pyth/jupiter) before deciding on swaps or transfers.",
+        "- For market context, use `price` or `price_quote` (auto/chainlink/pyth/jupiter) before deciding on swaps or transfers.",
+        "- Use `endpoints` when you need canonical router/oracle/program IDs before interacting with protocols.",
         "- For swaps, prefer wallet action `swap_eth_uniswap` with `dryRun: true` first, then execute with explicit amount/percent and slippage.",
-        "- For dynamic routing, prefer `swap_quote` first, then `swap_execute` with explicit venue (uniswap_v2/uniswap_v3/jupiter).",
+        "- For dynamic routing, prefer `swap`/`swap_quote` with dry-run first, then execute (`swap_execute` or `swap` with `execute: true`) using explicit venue (uniswap_v2/uniswap_v3/jupiter).",
         "- For ETH contract calls, prefer explicit `methodSignature` for overloaded methods and run `readOnly: true` first before write execution.",
         "- For dynamic contract interactions, verify contract address and method ABI/signature from trusted docs before submission.",
         "- For Solana program instructions, include full account metas and choose a single data encoding (`dataBase64`/`dataHex`/`dataUtf8`).",

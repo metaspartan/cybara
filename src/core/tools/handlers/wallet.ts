@@ -134,6 +134,9 @@ export async function handleWallet(args: Record<string, unknown>): Promise<unkno
     case "status":
       return walletManager.getStatusForAgent();
 
+    case "endpoints":
+      return walletManager.getEndpointDirectoryForAgent();
+
     case "address":
       return walletManager.getAgentAddress();
 
@@ -273,6 +276,7 @@ export async function handleWallet(args: Record<string, unknown>): Promise<unkno
         dryRun: parseBoolean(args.dryRun),
       });
 
+    case "price":
     case "price_quote":
       return await walletManager.getPriceQuoteForAgent({
         source:
@@ -295,7 +299,7 @@ export async function handleWallet(args: Record<string, unknown>): Promise<unkno
 
     case "swap_quote":
       return await walletManager.swapForAgent({
-        venue: String(args.venue || "uniswap_v2").toLowerCase() as
+        venue: String(args.venue || "uniswap_v3").toLowerCase() as
           | "uniswap_v2"
           | "uniswap_v3"
           | "jupiter",
@@ -326,7 +330,7 @@ export async function handleWallet(args: Record<string, unknown>): Promise<unkno
 
     case "swap_execute":
       return await walletManager.swapForAgent({
-        venue: String(args.venue || "uniswap_v2").toLowerCase() as
+        venue: String(args.venue || "uniswap_v3").toLowerCase() as
           | "uniswap_v2"
           | "uniswap_v3"
           | "jupiter",
@@ -354,6 +358,40 @@ export async function handleWallet(args: Record<string, unknown>): Promise<unkno
         skipPreflight: parseBoolean(args.skipPreflight),
         dryRun: false,
       });
+
+    case "swap": {
+      const explicitDryRun = parseOptionalBoolean(args.dryRun);
+      const execute = parseBoolean(args.execute) || parseBoolean(args.broadcast);
+      return await walletManager.swapForAgent({
+        venue: String(args.venue || "uniswap_v3").toLowerCase() as
+          | "uniswap_v2"
+          | "uniswap_v3"
+          | "jupiter",
+        tokenOut:
+          typeof args.tokenOut === "string"
+            ? args.tokenOut
+            : typeof args.tokenAddress === "string"
+              ? args.tokenAddress
+              : undefined,
+        amountEth: typeof args.amountEth === "string" ? args.amountEth : undefined,
+        percent: parseOptionalNumber(args.percent),
+        minAmountOut: typeof args.minAmountOut === "string" ? args.minAmountOut : undefined,
+        recipient: typeof args.recipient === "string" ? args.recipient : undefined,
+        feeTier: parseOptionalNumber(args.feeTier),
+        inputMint: typeof args.inputMint === "string" ? args.inputMint : undefined,
+        outputMint: typeof args.outputMint === "string" ? args.outputMint : undefined,
+        amount: typeof args.amount === "string" ? args.amount : undefined,
+        amountRaw: typeof args.amountRaw === "string" ? args.amountRaw : undefined,
+        index: parseNumber(args.index, 0),
+        slippageBps: parseOptionalNumber(args.slippageBps),
+        deadlineSeconds: parseOptionalNumber(args.deadlineSeconds),
+        rpcUrl: typeof args.rpcUrl === "string" ? args.rpcUrl : undefined,
+        wrapUnwrapSol: parseOptionalBoolean(args.wrapUnwrapSol),
+        computeUnitPriceMicroLamports: parseOptionalNumber(args.computeUnitPriceMicroLamports),
+        skipPreflight: parseBoolean(args.skipPreflight),
+        dryRun: explicitDryRun ?? !execute,
+      });
+    }
 
     default:
       throw new Error(`Validation error: Unknown wallet action: ${action}`);

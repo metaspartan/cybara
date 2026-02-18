@@ -520,7 +520,7 @@ export const walletApi = {
       body: JSON.stringify(payload),
     }),
   swap: (payload: {
-    venue: "uniswap_v2" | "uniswap_v3" | "jupiter";
+    venue: "uniswap_v2" | "uniswap_v3" | "jupiter" | "uniswap" | "jup" | string;
     tokenOut?: string;
     tokenAddress?: string;
     amountEth?: string;
@@ -540,6 +540,8 @@ export const walletApi = {
     computeUnitPriceMicroLamports?: number;
     skipPreflight?: boolean;
     dryRun?: boolean;
+    execute?: boolean;
+    broadcast?: boolean;
   }) =>
     fetchApi<{
       venue: "uniswap_v2" | "uniswap_v3" | "jupiter";
@@ -556,12 +558,39 @@ export const walletApi = {
       slippageBps: number;
       dryRun: boolean;
       route?: string;
+      routePlan?: Array<{
+        label?: string;
+        ammKey?: string;
+        inputMint?: string;
+        outputMint?: string;
+        inAmount?: string;
+        outAmount?: string;
+      }>;
       txid?: string;
       explorerUrl?: string;
     }>("/wallet/swap", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  endpoints: () =>
+    fetchApi<{
+      ethereum: {
+        wrappedNative: string;
+        dex: Record<string, string>;
+        oracles: {
+          chainlinkFeedRegistry: string;
+          usdDenomination: string;
+          chainlinkUsdFeeds: Record<string, string>;
+          chainlinkBaseAssets: Record<string, string>;
+        };
+      };
+      solana: {
+        nativeMint: string;
+        commonMints: Record<string, string>;
+        programs: Record<string, string>;
+      };
+      services: Record<string, string>;
+    }>("/wallet/endpoints"),
   signMessage: (message: string, chain: WalletChain = "eth", index = 0) =>
     fetchApi<{ address: string; signature: string }>("/wallet/sign", {
       method: "POST",

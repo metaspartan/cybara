@@ -685,15 +685,19 @@ const routes: Record<string, RouteHandler> = {
       rpcUrl: typeof data.rpcUrl === "string" ? data.rpcUrl : undefined,
     });
   },
+  "GET /api/wallet/endpoints": () => {
+    return walletManager.getEndpointDirectory();
+  },
   "POST /api/wallet/swap": async (body) => {
     const data = (body || {}) as Partial<WalletSwapInput> & {
       tokenAddress?: string;
+      execute?: boolean;
+      broadcast?: boolean;
     };
+    const explicitDryRun = typeof data.dryRun === "boolean" ? data.dryRun : undefined;
+    const execute = data.execute === true || data.broadcast === true;
     return await walletManager.swap({
-      venue:
-        data.venue === "uniswap_v2" || data.venue === "uniswap_v3" || data.venue === "jupiter"
-          ? data.venue
-          : "uniswap_v2",
+      venue: typeof data.venue === "string" ? data.venue : "uniswap_v3",
       tokenOut:
         typeof data.tokenOut === "string"
           ? data.tokenOut
@@ -716,7 +720,7 @@ const routes: Record<string, RouteHandler> = {
       wrapUnwrapSol: typeof data.wrapUnwrapSol === "boolean" ? data.wrapUnwrapSol : undefined,
       computeUnitPriceMicroLamports: parseOptionalNumber(data.computeUnitPriceMicroLamports),
       skipPreflight: data.skipPreflight === true,
-      dryRun: data.dryRun === true,
+      dryRun: explicitDryRun ?? !execute,
     });
   },
   "POST /api/wallet/sign": async (body) => {

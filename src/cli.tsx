@@ -2188,17 +2188,28 @@ async function rawWalletSwapEthUniswap(args: string[]): Promise<void> {
 
 async function rawWalletPrice(args: string[]): Promise<void> {
   const source = getFlagValue(args, "--source");
-  const symbol = getFlagValue(args, "--symbol");
-  const pair = getFlagValue(args, "--pair");
+  let symbol = getFlagValue(args, "--symbol");
+  let pair = getFlagValue(args, "--pair");
   const feedAddress = getFlagValue(args, "--feed-address");
   const feedId = getFlagValue(args, "--feed-id") || getFlagValue(args, "--pyth-feed-id");
-  const mint = getFlagValue(args, "--mint");
+  let mint = getFlagValue(args, "--mint");
   const quoteCurrency = getFlagValue(args, "--quote");
   const rpcUrl = getFlagValue(args, "--rpc");
+  const positional = args[0] && !args[0].startsWith("--") ? args[0] : undefined;
+
+  if (!symbol && !pair && !mint && positional) {
+    if (positional.includes("/")) {
+      pair = positional;
+    } else if (positional.length >= 32) {
+      mint = positional;
+    } else {
+      symbol = positional;
+    }
+  }
 
   if (!symbol && !pair && !mint) {
     console.error(
-      "Usage: cybara wallet price [--source auto|chainlink|pyth|jupiter] (--symbol SYMBOL | --pair BASE/QUOTE | --mint SOL_MINT) [--feed-address ADDR] [--feed-id ID] [--quote USD] [--rpc URL]"
+      "Usage: cybara wallet price [BTC|BTC/USD|<SOL_MINT>] [--source auto|chainlink|pyth|jupiter] [--symbol SYMBOL | --pair BASE/QUOTE | --mint SOL_MINT] [--feed-address ADDR] [--feed-id ID] [--quote USD] [--rpc URL]"
     );
     process.exit(1);
   }
@@ -2237,9 +2248,75 @@ async function rawWalletPrice(args: string[]): Promise<void> {
   if (data.mint) console.log(`mint: ${data.mint}`);
 }
 
-async function rawWalletSwap(args: string[], execute = false): Promise<void> {
-  const venue = getFlagValue(args, "--venue");
-  const tokenOut = getFlagValue(args, "--token") || getFlagValue(args, "--token-out");
+async function rawWalletEndpoints(): Promise<void> {
+  const data = await walletRequest<{
+    ethereum: {
+      wrappedNative: string;
+      dex: Record<string, string>;
+      oracles: {
+        chainlinkFeedRegistry: string;
+        usdDenomination: string;
+        chainlinkUsdFeeds: Record<string, string>;
+      };
+    };
+    solana: {
+      nativeMint: string;
+      commonMints: Record<string, string>;
+      programs: Record<string, string>;
+    };
+    services: Record<string, string>;
+  }>("GET", "/api/wallet/endpoints");
+
+  console.log("WALLET ENDPOINT DIRECTORY");
+  console.log("=========================");
+  console.log("Ethereum:");
+  console.log(`  wrapped_native: ${data.ethereum.wrappedNative}`);
+  for (const [key, value] of Object.entries(data.ethereum.dex || {})) {
+    console.log(`  ${key}: ${value}`);
+  }
+  console.log(`  chainlink_feed_registry: ${data.ethereum.oracles.chainlinkFeedRegistry}`);
+  console.log(`  chainlink_usd_denomination: ${data.ethereum.oracles.usdDenomination}`);
+  for (const [symbol, address] of Object.entries(data.ethereum.oracles.chainlinkUsdFeeds || {})) {
+    console.log(`  chainlink_${symbol.toLowerCase()}_usd: ${address}`);
+  }
+  console.log("Solana:");
+  console.log(`  native_mint: ${data.solana.nativeMint}`);
+  for (const [symbol, mint] of Object.entries(data.solana.commonMints || {})) {
+    console.log(`  mint_${symbol.toLowerCase()}: ${mint}`);
+  }
+  for (const [key, value] of Object.entries(data.solana.programs || {})) {
+    console.log(`  ${key}: ${value}`);
+  }
+  console.log("Services:");
+  for (const [key, value] of Object.entries(data.services || {})) {
+    console.log(`  ${key}: ${value}`);
+  }
+}
+
+function normalizeWalletSwapVenue(
+  value: string | undefined
+): "uniswap_v2" | "uniswap_v3" | "jupiter" | null {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (!normalized) return null;
+  if (normalized === "uniswap_v2" || normalized === "uniswap-v2" || normalized === "v2")
+    return "uniswap_v2";
+  if (
+    normalized === "uniswap_v3" ||
+    normalized === "uniswap-v3" ||
+    normalized === "uniswap" ||
+    normalized === "uni" ||
+    normalized === "v3"
+  )
+    return "uniswap_v3";
+  if (normalized === "jupiter" || normalized === "jup") return "jupiter";
+  return null;
+}
+
+async function rawWalletSwap(args: string[], executeOverride?: boolean): Promise<void> {
+  const venueFlag = getFlagValue(args, "--venue");
+  const normalizedVenue = normalizeWalletSwapVenue(venueFlag);
   const amountEth = getFlagValue(args, "--amount-eth");
   const percent = getFlagValue(args, "--percent");
   const minAmountOut = getFlagValue(args, "--min-out");
@@ -2256,23 +2333,41 @@ async function rawWalletSwap(args: string[], execute = false): Promise<void> {
   const wrapUnwrapSol = getFlagValue(args, "--wrap-sol");
   const computePrice = getFlagValue(args, "--compute-price-microlamports");
   const skipPreflight = args.includes("--skip-preflight");
+  const explicitExecuteFlag = args.includes("--execute");
+  const quoteOnlyFlag = args.includes("--quote-only") || args.includes("--dry-run");
+  const positional = args[0] && !args[0].startsWith("--") ? args[0] : undefined;
+  const tokenOutFlag = getFlagValue(args, "--token") || getFlagValue(args, "--token-out");
+  const tokenOut =
+    tokenOutFlag || (positional && !inputMint && !outputMint ? positional : undefined);
 
-  const selectedVenue = (venue || "").toLowerCase();
-  if (!selectedVenue || !["uniswap_v2", "uniswap_v3", "jupiter"].includes(selectedVenue)) {
+  if (venueFlag && !normalizedVenue) {
     console.error(
-      "Usage: cybara wallet swap-quote --venue <uniswap_v2|uniswap_v3|jupiter> [venue-specific flags]"
+      "Usage: cybara wallet swap [--venue <uniswap_v2|uniswap_v3|jupiter>] [--execute] [venue-specific flags]"
     );
-    console.error("ETH venues: --token <symbol|address> (--percent N | --amount-eth ETH)");
-    console.error("Jupiter: --input-mint <mint> --output-mint <mint> (--amount N | --amount-raw RAW | --percent N)");
     process.exit(1);
+  }
+
+  if (explicitExecuteFlag && quoteOnlyFlag && executeOverride === undefined) {
+    console.error("Use either --execute or --quote-only/--dry-run, not both");
+    process.exit(1);
+  }
+
+  const selectedVenue = normalizedVenue || (inputMint || outputMint ? "jupiter" : "uniswap_v3");
+  let shouldExecute = executeOverride ?? explicitExecuteFlag;
+  if (quoteOnlyFlag) {
+    shouldExecute = false;
   }
 
   if ((selectedVenue === "uniswap_v2" || selectedVenue === "uniswap_v3") && !tokenOut) {
-    console.error("ETH swap venues require --token <symbol|address>");
+    console.error("ETH swap venues require --token <symbol|address> (or first positional arg)");
     process.exit(1);
   }
 
-  if ((selectedVenue === "uniswap_v2" || selectedVenue === "uniswap_v3") && !percent && !amountEth) {
+  if (
+    (selectedVenue === "uniswap_v2" || selectedVenue === "uniswap_v3") &&
+    !percent &&
+    !amountEth
+  ) {
     console.error("ETH swap venues require either --percent or --amount-eth");
     process.exit(1);
   }
@@ -2284,7 +2379,7 @@ async function rawWalletSwap(args: string[], execute = false): Promise<void> {
 
   const payload: Record<string, unknown> = {
     venue: selectedVenue,
-    dryRun: !execute,
+    dryRun: !shouldExecute,
   };
   if (tokenOut) payload.tokenOut = tokenOut;
   if (amountEth) payload.amountEth = amountEth;
@@ -2316,6 +2411,7 @@ async function rawWalletSwap(args: string[], execute = false): Promise<void> {
     slippageBps: number;
     dryRun: boolean;
     route?: string;
+    routePlan?: Array<{ label?: string; ammKey?: string; inputMint?: string; outputMint?: string }>;
     txid?: string;
     explorerUrl?: string;
   }>("POST", "/api/wallet/swap", payload);
@@ -2331,6 +2427,17 @@ async function rawWalletSwap(args: string[], execute = false): Promise<void> {
   console.log(`min_out: ${data.minAmountOut} ${data.outputToken}`);
   console.log(`slippage_bps: ${data.slippageBps}`);
   if (data.route) console.log(`route: ${data.route}`);
+  if (Array.isArray(data.routePlan) && data.routePlan.length > 0) {
+    console.log("route_plan:");
+    for (const [indexValue, leg] of data.routePlan.entries()) {
+      const title = leg.label || leg.ammKey || `leg_${indexValue + 1}`;
+      console.log(`  ${indexValue + 1}. ${title}`);
+      if (leg.ammKey) console.log(`     amm: ${leg.ammKey}`);
+      if (leg.inputMint && leg.outputMint) {
+        console.log(`     ${leg.inputMint} -> ${leg.outputMint}`);
+      }
+    }
+  }
   if (data.txid) console.log(`txid: ${data.txid}`);
   if (data.explorerUrl) console.log(`explorer: ${data.explorerUrl}`);
 }
@@ -2496,9 +2603,11 @@ function rawHelp(): void {
   console.log("    wallet send <chain> --to <addr> --amount <value>");
   console.log("    wallet send-token <eth|sol> --token <addr|mint> --to <addr> --amount <value>");
   console.log("    wallet swap-eth-uniswap --token <symbol|addr> --percent 50 [--execute]");
-  console.log("    wallet price --source auto --symbol BTC");
-  console.log("    wallet swap-quote --venue <uniswap_v2|uniswap_v3|jupiter> ...");
-  console.log("    wallet swap-execute --venue <uniswap_v2|uniswap_v3|jupiter> ...");
+  console.log("    wallet price [BTC|BTC/USD|<SOL_MINT>] [--source auto|chainlink|pyth|jupiter]");
+  console.log("    wallet swap [<TOKEN>] [--venue uniswap_v3|uniswap_v2|jupiter] [--execute]");
+  console.log("    wallet endpoints");
+  console.log("    wallet swap-quote ...        # legacy alias for wallet swap (quote)");
+  console.log("    wallet swap-execute ...      # legacy alias for wallet swap --execute");
   console.log(
     "    wallet contract-call --contract <addr> (--abi '<json_or_sig>' | --signature '<name(types)>') [--method <name>]"
   );
@@ -3491,11 +3600,17 @@ async function main() {
         case "price":
           await rawWalletPrice(walletArgs);
           break;
+        case "swap":
+          await rawWalletSwap(walletArgs);
+          break;
         case "swap-quote":
           await rawWalletSwap(walletArgs, false);
           break;
         case "swap-execute":
           await rawWalletSwap(walletArgs, true);
+          break;
+        case "endpoints":
+          await rawWalletEndpoints();
           break;
         case "contract-call":
           await rawWalletEthContractCall(walletArgs);
@@ -3537,13 +3652,17 @@ async function main() {
             "  cybara wallet swap-eth-uniswap --token <symbol|address> (--percent N | --amount-eth ETH) [--execute]"
           );
           console.log(
-            "  cybara wallet price [--source auto|chainlink|pyth|jupiter] (--symbol BTC | --pair BTC/USD | --mint <solMint>)"
+            "  cybara wallet price [BTC|BTC/USD|<solMint>] [--source auto|chainlink|pyth|jupiter]"
           );
           console.log(
-            "  cybara wallet swap-quote --venue <uniswap_v2|uniswap_v3|jupiter> [--token <ethToken>] [--input-mint <mint> --output-mint <mint>] ..."
+            "  cybara wallet swap [<ethToken>] [--venue <uniswap_v3|uniswap_v2|jupiter>] [--execute] [--quote-only]"
+          );
+          console.log("  cybara wallet endpoints");
+          console.log(
+            "  cybara wallet swap-quote --venue <uniswap_v2|uniswap_v3|jupiter> ... (legacy alias)"
           );
           console.log(
-            "  cybara wallet swap-execute --venue <uniswap_v2|uniswap_v3|jupiter> [same args as swap-quote]"
+            "  cybara wallet swap-execute --venue <uniswap_v2|uniswap_v3|jupiter> ... (legacy alias)"
           );
           console.log(
             "  cybara wallet contract-call --contract <address> (--abi '<json_or_signature>' | --signature '<name(types)>') [--method <name>]"

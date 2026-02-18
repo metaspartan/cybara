@@ -408,6 +408,13 @@ Options:
 - `pythFeedId` (or `feedId`) for Pyth override
 - `mint` for Jupiter token pricing
 
+### Wallet Endpoint Directory
+```http
+GET /api/wallet/endpoints
+```
+
+Returns canonical router/oracle/program IDs and service endpoints used by wallet tools.
+
 ### Dynamic Swap Quote / Execute (Uniswap V2, Uniswap V3, Jupiter)
 ```http
 POST /api/wallet/swap
@@ -438,7 +445,11 @@ Content-Type: application/json
 }
 ```
 
-Set `dryRun: false` to execute.
+Execution controls:
+- Quote mode: `dryRun: true` (default when `execute`/`broadcast` are omitted)
+- Execute mode: set `execute: true` (or `broadcast: true`) or set `dryRun: false`
+
+Venue aliases are accepted (`uniswap`, `uniswap-v3`, `jup`, etc.) and normalized server-side.
 
 ## Browser
 
