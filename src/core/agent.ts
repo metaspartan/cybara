@@ -1030,6 +1030,65 @@ class AgentManager {
     return this.callOpenAIAPI(baseUrl, auth, modelId, messages, tools, toolContext);
   }
 
+  private shouldRetryWithMaxCompletionTokens(status: number, errorText: string): boolean {
+    if (status !== 400) return false;
+    const normalized = errorText.toLowerCase();
+    return (
+      normalized.includes("max_tokens") &&
+      normalized.includes("max_completion_tokens") &&
+      (normalized.includes("unsupported parameter") || normalized.includes("not supported"))
+    );
+  }
+
+  private toMaxCompletionTokensRequestBody(
+    requestBody: Record<string, unknown>
+  ): Record<string, unknown> {
+    const nextBody: Record<string, unknown> = { ...requestBody };
+    const tokenLimit =
+      typeof nextBody.max_tokens === "number"
+        ? nextBody.max_tokens
+        : typeof nextBody.max_completion_tokens === "number"
+          ? nextBody.max_completion_tokens
+          : 4096;
+
+    delete nextBody.max_tokens;
+    nextBody.max_completion_tokens = tokenLimit;
+    return nextBody;
+  }
+
+  private async postOpenAIChatCompletions(
+    baseUrl: string,
+    headers: Record<string, string>,
+    requestBody: Record<string, unknown>,
+    errorPrefix: string
+  ): Promise<OpenAIResponse> {
+    const post = async (body: Record<string, unknown>) =>
+      await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+
+    const response = await post(requestBody);
+    if (response.ok) {
+      return (await response.json()) as OpenAIResponse;
+    }
+
+    const errorText = await response.text();
+    if (this.shouldRetryWithMaxCompletionTokens(response.status, errorText)) {
+      console.log("[Agent] Retrying OpenAI request with max_completion_tokens");
+      const retryBody = this.toMaxCompletionTokensRequestBody(requestBody);
+      const retryResponse = await post(retryBody);
+      if (retryResponse.ok) {
+        return (await retryResponse.json()) as OpenAIResponse;
+      }
+      const retryErrorText = await retryResponse.text();
+      throw new Error(`${errorPrefix}: ${retryResponse.status} - ${retryErrorText}`);
+    }
+
+    throw new Error(`${errorPrefix}: ${response.status} - ${errorText}`);
+  }
+
   private async callOpenAICompatAPI(
     baseUrl: string,
     auth: string,
@@ -1079,18 +1138,7 @@ class AgentManager {
     // Start timing
     const startTime = performance.now();
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`API error: ${response.status} - ${error}`);
-    }
-
-    const data = (await response.json()) as OpenAIResponse;
+    const data = await this.postOpenAIChatCompletions(baseUrl, headers, requestBody, "API error");
 
     // End timing
     const durationMs = Math.round(performance.now() - startTime);
@@ -1211,18 +1259,12 @@ class AgentManager {
         }));
       }
 
-      const loopResponse = await fetch(`${baseUrl}/chat/completions`, {
-        method: "POST",
+      const loopData = await this.postOpenAIChatCompletions(
+        baseUrl,
         headers,
-        body: JSON.stringify(loopRequestBody),
-      });
-
-      if (!loopResponse.ok) {
-        const loopError = await loopResponse.text();
-        throw new Error(`API error in agentic loop: ${loopResponse.status} - ${loopError}`);
-      }
-
-      const loopData = (await loopResponse.json()) as OpenAIResponse;
+        loopRequestBody,
+        "API error in agentic loop"
+      );
       const loopChoice = loopData.choices?.[0];
       message = loopChoice?.message as OpenAIMessage;
 
@@ -1511,18 +1553,7 @@ class AgentManager {
     // Start timing
     const startTime = performance.now();
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`API error: ${response.status} - ${error}`);
-    }
-
-    const data = (await response.json()) as OpenAIResponse;
+    const data = await this.postOpenAIChatCompletions(baseUrl, headers, requestBody, "API error");
 
     // End timing
     const durationMs = Math.round(performance.now() - startTime);
@@ -1629,18 +1660,12 @@ class AgentManager {
         }));
       }
 
-      const loopResponse = await fetch(`${baseUrl}/chat/completions`, {
-        method: "POST",
+      const loopData = await this.postOpenAIChatCompletions(
+        baseUrl,
         headers,
-        body: JSON.stringify(loopRequestBody),
-      });
-
-      if (!loopResponse.ok) {
-        const loopError = await loopResponse.text();
-        throw new Error(`API error in agentic loop: ${loopResponse.status} - ${loopError}`);
-      }
-
-      const loopData = (await loopResponse.json()) as OpenAIResponse;
+        loopRequestBody,
+        "API error in agentic loop"
+      );
       const loopChoice = loopData.choices?.[0];
       message = loopChoice?.message as OpenAIMessage;
 

@@ -215,4 +215,77 @@ describe("Agent tool allowlist guardrails", () => {
       "Permission denied"
     );
   });
+
+  test("retries with max_completion_tokens when provider rejects max_tokens", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "OpenAI Retry Provider",
+      api_key: "sk-test-retry",
+      base_url: "https://api.openai.com/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "OpenAI Retry Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-5.2",
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    const requestBodies: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      requestBodies.push(body as Record<string, unknown>);
+
+      if (requestBodies.length === 1) {
+        return new Response(
+          JSON.stringify({
+            error: {
+              message:
+                "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.",
+              type: "invalid_request_error",
+              param: "max_tokens",
+              code: "unsupported_parameter",
+            },
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          id: "resp-retry",
+          object: "chat.completion",
+          model: "gpt-5.2",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "705",
+              },
+            },
+          ],
+          usage: { prompt_tokens: 12, completion_tokens: 1, total_tokens: 13 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "What is 37*19? only number" }],
+      { useTools: false, sessionId: "openai-retry-session" }
+    );
+
+    expect(result.content).toBe("705");
+    expect(requestBodies.length).toBe(2);
+    expect(requestBodies[0].max_tokens).toBe(4096);
+    expect("max_completion_tokens" in requestBodies[0]).toBe(false);
+    expect("max_tokens" in requestBodies[1]).toBe(false);
+    expect(requestBodies[1].max_completion_tokens).toBe(4096);
+  });
 });
