@@ -120,4 +120,46 @@ describe("Agent execute system prompt handling", () => {
       (agentManager as unknown as { callLLM: CallLLMShape }).callLLM = originalCallLLM;
     }
   });
+
+  test("respects model override when provided in execution options", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Model Override Provider",
+      api_key: "test-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Model Override Agent",
+      provider_id: provider.id,
+      model: "default-model",
+      tools: [],
+      type: "main",
+    });
+    createdAgentIds.push(agent.id);
+
+    let capturedModel: string | undefined;
+
+    const originalCallLLM = agentManager.callLLM.bind(agentManager) as CallLLMShape;
+    (agentManager as unknown as { callLLM: CallLLMShape }).callLLM = async (
+      _provider,
+      model
+    ) => {
+      capturedModel = model;
+      return { content: "ok" };
+    };
+
+    try {
+      const result = await agentManager.execute(
+        agent.id,
+        [{ role: "user", content: "test override" }],
+        { useTools: false, modelOverride: "  override-model  " }
+      );
+
+      expect(result.content).toBe("ok");
+      expect(capturedModel).toBe("override-model");
+    } finally {
+      (agentManager as unknown as { callLLM: CallLLMShape }).callLLM = originalCallLLM;
+    }
+  });
 });

@@ -5,7 +5,6 @@ import { fileURLToPath } from "url";
 import type { CronJobCreate, CronJobPatch } from "../../cron/types";
 import * as cron from "../../cron";
 import { agentManager } from "../../agent";
-import { providerManager } from "../../providers";
 import * as subagentRegistry from "../../subagent-registry";
 import type { SubagentRunRecord } from "../../subagent-registry";
 
@@ -13,6 +12,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 interface SubagentSession {
   id: string;
+  agentId?: string;
   parentSessionId?: string;
   task: string;
   model?: string;
@@ -33,6 +33,10 @@ export function getSubagentSession(sessionKey: string): SubagentSession | undefi
 
 export function getAllSubagentSessions(): SubagentSession[] {
   return Array.from(sessions.values());
+}
+
+export function resetSubagentSessionsForTests(): void {
+  sessions.clear();
 }
 
 export async function handleSessionsSpawn(args: Record<string, unknown>): Promise<{
@@ -88,6 +92,7 @@ export async function handleSessionsSpawn(args: Record<string, unknown>): Promis
 
   const session: SubagentSession = {
     id: childSessionKey,
+    agentId: requestedAgentId,
     parentSessionId: requesterSessionKey,
     task,
     model: modelOverride,
@@ -159,16 +164,14 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
   }
 
   try {
-    const agent = agentManager.list().find((a) => a.status === "running") || agentManager.list()[0];
+    const availableAgents = agentManager.list();
+    const agent =
+      typeof session.agentId === "string" && session.agentId.trim().length > 0
+        ? availableAgents.find((a) => a.id === session.agentId)
+        : availableAgents.find((a) => a.status === "running") || availableAgents[0];
+
     if (!agent) {
       throw new Error("No agent available for subagent execution");
-    }
-
-    const provider = agent.provider_id
-      ? providerManager.getWithCredentials(agent.provider_id)
-      : undefined;
-    if (!provider) {
-      throw new Error("No provider available for subagent execution");
     }
 
     const agentMessages = session.messages.map((m) => ({
@@ -176,19 +179,17 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
       content: m.content,
     }));
 
-    const { getToolSchemasForLLM } = await import("../../tools/index");
-    const tools = getToolSchemasForLLM();
-
     console.log(
-      `[Subagent] Executing ${sessionId} with full agentic loop (${tools.length} tools available)`
+      `[Subagent] Executing ${sessionId} using agent ${agent.id}${session.model ? ` (model override: ${session.model})` : ""}`
     );
 
-    const result = await agentManager.callLLM(
-      provider,
-      session.model || agent.model,
-      agentMessages,
-      tools
-    );
+    const result = await agentManager.execute(agent.id, agentMessages, {
+      useTools: true,
+      sessionId,
+      channel: "subagent",
+      userId: "subagent",
+      modelOverride: session.model,
+    });
 
     session.messages.push({
       role: "assistant",

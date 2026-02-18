@@ -268,6 +268,7 @@ interface AgentExecutionOptions {
   sessionId?: string;
   channel?: string;
   userId?: string;
+  modelOverride?: string;
 }
 
 interface RunningAgentState {
@@ -796,8 +797,13 @@ class AgentManager {
 
     const toolContext = this.buildToolExecutionContext(agent, options);
 
+    const selectedModel =
+      typeof options?.modelOverride === "string" && options.modelOverride.trim().length > 0
+        ? options.modelOverride.trim()
+        : agent.model;
+
     try {
-      const result = await this.callLLM(provider, agent.model, fullMessages, tools, toolContext);
+      const result = await this.callLLM(provider, selectedModel, fullMessages, tools, toolContext);
       return result;
     } catch (error) {
       console.error("[Agent] LLM call failed:", error);
@@ -808,7 +814,7 @@ class AgentManager {
           try {
             const fallbackResult = await this.callLLM(
               fallbackProvider,
-              agent.model,
+              selectedModel,
               fullMessages,
               tools,
               toolContext
@@ -927,9 +933,15 @@ class AgentManager {
 
     const modelId = model || this.getDefaultModel(providerConfig);
 
+    const providerDefinition = providerCatalog[providerConfig as ProviderType] as
+      | { api?: string; headers?: Record<string, string> }
+      | undefined;
+    const apiFamily = providerDefinition?.api || "openai-completions";
+    const providerHeaders = providerDefinition?.headers || {};
     const customHeaders = (providerInfo as { headers?: Record<string, string> }).headers || {};
+    const mergedHeaders = { ...providerHeaders, ...customHeaders };
 
-    if (providerConfig === "minimax") {
+    if (apiFamily === "anthropic-messages") {
       return this.callAnthropicAPI(
         baseUrl,
         auth,
@@ -941,32 +953,35 @@ class AgentManager {
       );
     }
 
-    if (providerConfig === "kimi-code") {
+    if (apiFamily === "openai-completions" || apiFamily === "openai-responses") {
       return this.callOpenAICompatAPI(
         baseUrl,
         auth,
         modelId,
         messages,
         tools,
-        customHeaders,
+        mergedHeaders,
         providerConfig,
         toolContext
       );
     }
 
-    if (providerConfig === "anthropic") {
-      return this.callAnthropicAPI(
-        baseUrl,
-        auth,
-        modelId,
-        messages,
-        tools,
-        providerConfig,
-        toolContext
+    if (apiFamily === "google-generative-ai") {
+      throw new Error(
+        `Provider '${providerConfig}' requires Google Generative AI support, which is not yet implemented in the agent runtime`
       );
     }
 
-    return this.callOpenAIAPI(baseUrl, auth, modelId, messages, tools, toolContext);
+    return this.callOpenAICompatAPI(
+      baseUrl,
+      auth,
+      modelId,
+      messages,
+      tools,
+      mergedHeaders,
+      providerConfig,
+      toolContext
+    );
   }
 
   private shouldRetryWithMaxCompletionTokens(status: number, errorText: string): boolean {
