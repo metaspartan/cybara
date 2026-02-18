@@ -9,6 +9,7 @@ import type { ChannelAdapter, MessageHandlerFileInfo, ToolCallInfo } from "../ty
 import { formatToolCallsForTelegram, escapeMarkdown } from "../formatting";
 import { buildChannelSecurityConfig, securityManager } from "../security";
 import { getTelegramInboundMediaDir } from "../paths";
+import { handleChannelManagementCommand } from "../commands";
 
 // Telegram session storage
 export const telegramSessions = new Map<string, string>();
@@ -39,10 +40,15 @@ const TELEGRAM_COMMANDS: TelegramBotCommand[] = [
   { command: "help", description: "Show available commands and usage" },
   { command: "new", description: "Start a new conversation session" },
   { command: "agents", description: "List available agents" },
+  { command: "agent", description: "Show or switch default agent - /agent <id|name|number>" },
   { command: "status", description: "Check bot and agent status" },
   { command: "metrics", description: "Show token usage and statistics" },
-  { command: "switch", description: "Switch between agents - /switch <agent_name>" },
-  { command: "session", description: "Manage chat sessions - /session list|new|clear" },
+  { command: "providers", description: "List configured providers" },
+  { command: "provider", description: "Show or switch provider - /provider <id|name|number>" },
+  { command: "models", description: "List models for the current provider" },
+  { command: "model", description: "Show or switch model - /model <id|number>" },
+  { command: "switch", description: "Switch to a previous session - /switch <number>" },
+  { command: "sessions", description: "List and manage chat sessions" },
   { command: "memory", description: "Show recent memories/context" },
   { command: "tools", description: "List available tools" },
   { command: "cancel", description: "Cancel current operation" },
@@ -283,6 +289,11 @@ Just send me a message to start chatting!`;
 
 *Agents & Sessions:*
 /agents - List available agents
+/agent <id|name|number> - Switch default agent
+/providers - List providers
+/provider <id|name|number> - Switch provider
+/models - List provider models
+/model <id|number> - Switch model
 /status - Check bot and agent status
 /sessions - List your recent sessions
 /switch <number> - Switch to a previous session
@@ -435,8 +446,24 @@ Your request has been cancelled. I'm ready for a new command.
 
 Use /help to see available commands.`;
 
-    default:
+    default: {
+      const sharedCommandResponse = await handleChannelManagementCommand(
+        `/${command}${args.length > 0 ? ` ${args.join(" ")}` : ""}`,
+        {
+          channelId,
+          chatId,
+          platform: "telegram",
+          createSessionId: () => crypto.randomUUID(),
+          setSessionId: (sessionId: string) => {
+            telegramSessions.set(chatId.toString(), sessionId);
+          },
+        }
+      );
+      if (sharedCommandResponse) {
+        return sharedCommandResponse;
+      }
       return `❓ Unknown command: /${command}\n\nUse /help to see available commands.`;
+    }
   }
 }
 

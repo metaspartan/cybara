@@ -224,4 +224,34 @@ describe("WhatsApp adapter mocked flows", () => {
     expect(replies).toHaveLength(0);
     expect(chatSends).toEqual(["fallback-response"]);
   });
+
+  test("handles slash management commands without invoking chat handler", async () => {
+    const adapter = new WhatsAppAdapter();
+    const channelId = makeChannelId("wa-command");
+    const replies: string[] = [];
+    const chatSends: string[] = [];
+    let handlerCalls = 0;
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    const message = createFakeWhatsAppMessage(
+      {
+        body: "/help",
+        id: { _serialized: "wamid-command" },
+      },
+      replies,
+      chatSends
+    );
+
+    await invokeWhatsAppMessage(adapter, channelId, message);
+
+    expect(handlerCalls).toBe(0);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toContain("Available management commands");
+    expect(chatSends).toHaveLength(0);
+  });
 });

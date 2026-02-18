@@ -10,6 +10,7 @@ import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { buildChannelSecurityConfig, securityManager } from "../security";
 import { getDefaultWhatsAppAuthPath } from "../paths";
+import { handleChannelManagementCommand } from "../commands";
 
 // WhatsApp session storage (chatId -> sessionId)
 export const whatsappSessions = new Map<string, string>();
@@ -199,12 +200,27 @@ export class WhatsAppAdapter implements ChannelAdapter {
     // Process message
     let response: string;
     try {
-      response = await this.messageHandler(content, chatId, sessionId, {
-        hasFile,
-        filePath,
-        fileType,
-        placeholder,
+      const commandResponse = await handleChannelManagementCommand(text || "", {
+        channelId,
+        chatId,
+        platform: "whatsapp",
+        createSessionId: () => crypto.randomUUID(),
+        setSessionId: (nextSessionId: string) => {
+          sessionId = nextSessionId;
+          whatsappSessions.set(chatId, nextSessionId);
+        },
       });
+
+      if (commandResponse !== null) {
+        response = commandResponse;
+      } else {
+        response = await this.messageHandler(content, chatId, sessionId, {
+          hasFile,
+          filePath,
+          fileType,
+          placeholder,
+        });
+      }
     } catch (error) {
       console.error("[WhatsApp] Error handling message:", error);
       response = "❌ Sorry, I encountered an error processing your message. Please try again.";

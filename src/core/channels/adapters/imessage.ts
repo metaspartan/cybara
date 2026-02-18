@@ -7,6 +7,7 @@ import type { ChannelAdapter, ToolCallInfo, MessageHandler } from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { buildChannelSecurityConfig, securityManager } from "../security";
+import { handleChannelManagementCommand } from "../commands";
 
 // iMessage session storage (chatGuid -> sessionId)
 export const imessageSessions = new Map<string, string>();
@@ -196,12 +197,27 @@ export class IMessageAdapter implements ChannelAdapter {
     // Process message
     let response: string;
     try {
-      response = await this.messageHandler(content, chatGuid, sessionId, {
-        hasFile,
-        filePath: "",
-        fileType,
-        placeholder,
+      const commandResponse = await handleChannelManagementCommand(content, {
+        channelId,
+        chatId: chatGuid,
+        platform: "imessage",
+        createSessionId: () => crypto.randomUUID(),
+        setSessionId: (nextSessionId: string) => {
+          sessionId = nextSessionId;
+          imessageSessions.set(chatGuid, nextSessionId);
+        },
       });
+
+      if (commandResponse !== null) {
+        response = commandResponse;
+      } else {
+        response = await this.messageHandler(content, chatGuid, sessionId, {
+          hasFile,
+          filePath: "",
+          fileType,
+          placeholder,
+        });
+      }
     } catch (error) {
       console.error("[iMessage] Error handling message:", error);
       response = "❌ Sorry, I encountered an error processing your message. Please try again.";

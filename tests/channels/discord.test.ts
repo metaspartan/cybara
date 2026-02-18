@@ -225,4 +225,34 @@ describe("Discord adapter mocked message flows", () => {
       expect(chunk.length).toBeLessThanOrEqual(2000);
     }
   });
+
+  test("routes slash management commands without invoking chat handler", async () => {
+    const adapter = new DiscordAdapter();
+    const channelId = makeChannelId("discord-command");
+    const replies: string[] = [];
+    const followUps: string[] = [];
+    let handlerCalls = 0;
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    const message = createFakeDiscordMessage(
+      {
+        guild: null,
+        content: "/help",
+      },
+      replies,
+      followUps
+    );
+
+    await handleDiscordMessage(adapter, channelId, message);
+
+    expect(handlerCalls).toBe(0);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toContain("Available management commands");
+    expect(followUps).toHaveLength(0);
+  });
 });

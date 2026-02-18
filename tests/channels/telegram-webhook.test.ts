@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import db, { tables } from "../../src/core/database";
 import { securityManager } from "../../src/core/channels/security";
 import { processTelegramWebhook, telegramBot } from "../../src/core/channels/adapters/telegram";
+import { config } from "../../src/core/config";
 
 function makeChannelId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -160,6 +161,68 @@ describe("Telegram webhook mocked flows", () => {
       expect(errorMessages.some((msg) => msg.includes("Error processing update"))).toBe(false);
     } finally {
       console.error = originalError;
+    }
+  });
+
+  test("handles /model command and updates the default agent model", async () => {
+    const providerId = makeChannelId("telegram-provider");
+    const agentId = makeChannelId("telegram-agent");
+
+    tables.providers.create({
+      id: providerId,
+      provider: "openai",
+      name: "Telegram Command Provider",
+      base_url: "https://api.openai.com/v1",
+      api_key: "test-key",
+      is_default: false,
+    });
+    tables.providerModels.upsert({
+      id: makeChannelId("telegram-provider-model-1"),
+      provider_id: providerId,
+      model_id: "model-one",
+      model_name: "model-one",
+    });
+    tables.providerModels.upsert({
+      id: makeChannelId("telegram-provider-model-2"),
+      provider_id: providerId,
+      model_id: "model-two",
+      model_name: "model-two",
+    });
+    tables.agents.create({
+      id: agentId,
+      name: "Telegram Command Agent",
+      type: "main",
+      model: "model-one",
+      provider_id: providerId,
+      status: "stopped",
+      memory_enabled: false,
+    });
+    config.set("default_agent_id", agentId);
+
+    let handlerCalls = 0;
+    telegramBot.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should not run";
+    });
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+
+    try {
+      const ok = await processTelegramWebhook(channelId, makeTelegramUpdate("/model 2"));
+
+      expect(ok).toBe(true);
+      expect(handlerCalls).toBe(0);
+
+      const updatedAgent = tables.agents.get(agentId) as { model?: string } | undefined;
+      expect(updatedAgent?.model).toBe("model-two");
+
+      const sendMessageCall = fetchCalls.find((call) => call.url.includes("/sendMessage"));
+      expect(sendMessageCall).toBeDefined();
+      const payload = sendMessageCall?.body as { text?: string };
+      expect(payload.text).toContain("model-two");
+    } finally {
+      config.set("default_agent_id", "");
+      tables.agents.delete(agentId);
+      tables.providers.delete(providerId);
     }
   });
 });

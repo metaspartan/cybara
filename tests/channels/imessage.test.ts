@@ -261,4 +261,42 @@ describe("iMessage adapter mocked flows", () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]).toContain("encountered an error");
   });
+
+  test("handles slash management commands without invoking chat handler", async () => {
+    const adapter = new IMessageAdapter();
+    const channelId = makeChannelId("imsg-command");
+    const sent: string[] = [];
+    let handlerCalls = 0;
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+    (
+      adapter as unknown as {
+        sendBlueBubblesMessage: (
+          _id: string,
+          _chatGuid: string,
+          message: string
+        ) => Promise<boolean>;
+      }
+    ).sendBlueBubblesMessage = async (_id, _chatGuid, message) => {
+      sent.push(message);
+      return true;
+    };
+
+    await invokeIMessage(
+      adapter,
+      channelId,
+      makeMessage({
+        text: "/help",
+        handle: { address: "allowed@icloud.com", service: "iMessage" },
+      })
+    );
+
+    expect(handlerCalls).toBe(0);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("Available management commands");
+  });
 });

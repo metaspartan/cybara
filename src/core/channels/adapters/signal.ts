@@ -9,6 +9,7 @@ import type { ChannelAdapter, ToolCallInfo, MessageHandler } from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { buildChannelSecurityConfig, securityManager } from "../security";
+import { handleChannelManagementCommand } from "../commands";
 
 // Signal session storage (phoneNumber -> sessionId)
 export const signalSessions = new Map<string, string>();
@@ -258,12 +259,27 @@ export class SignalAdapter implements ChannelAdapter {
     // Process message
     let response: string;
     try {
-      response = await this.messageHandler(text, sender, sessionId, {
-        hasFile: false,
-        filePath: "",
-        fileType: "",
-        placeholder: "",
+      const commandResponse = await handleChannelManagementCommand(text, {
+        channelId,
+        chatId: sender,
+        platform: "signal",
+        createSessionId: () => crypto.randomUUID(),
+        setSessionId: (nextSessionId: string) => {
+          sessionId = nextSessionId;
+          signalSessions.set(sender, nextSessionId);
+        },
       });
+
+      if (commandResponse !== null) {
+        response = commandResponse;
+      } else {
+        response = await this.messageHandler(text, sender, sessionId, {
+          hasFile: false,
+          filePath: "",
+          fileType: "",
+          placeholder: "",
+        });
+      }
     } catch (error) {
       console.error("[Signal] Error handling message:", error);
       response = "❌ Sorry, I encountered an error processing your message. Please try again.";

@@ -233,4 +233,36 @@ describe("Slack adapter mocked flows", () => {
     expect(handlerInputs).toEqual(["deploy status"]);
     expect(sayMessages).toEqual(["handled"]);
   });
+
+  test("handles slash management commands without invoking chat handler", async () => {
+    const adapter = new SlackAdapter();
+    const channelId = makeChannelId("slack-command");
+    const sayMessages: string[] = [];
+    let handlerCalls = 0;
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    await invokeSlackMessage(
+      adapter,
+      channelId,
+      {
+        type: "message",
+        text: "/help",
+        user: "U-COMMAND",
+        channel: "C5",
+        ts: "5.001",
+      },
+      async (text: string) => {
+        sayMessages.push(text);
+      }
+    );
+
+    expect(handlerCalls).toBe(0);
+    expect(sayMessages).toHaveLength(1);
+    expect(sayMessages[0]).toContain("Available management commands");
+  });
 });

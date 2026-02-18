@@ -3,7 +3,16 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { handleRequest } from "./api/routes";
 import { config } from "./core/config";
-import { channelManager, telegramBot, telegramSessions } from "./core/channels";
+import {
+  channelManager,
+  telegramBot,
+  telegramSessions,
+  discordAdapter,
+  slackAdapter,
+  signalAdapter,
+  whatsappAdapter,
+  imessageAdapter,
+} from "./core/channels";
 import { handleChat, sendToSession, type ChatMessage } from "./api/chat";
 import { providerManager } from "./core/providers";
 import { onStatus, addSSEClient, removeSSEClient } from "./core/status";
@@ -460,6 +469,25 @@ telegramBot.setMessageHandler(async (message, chatId, userId, channelId, fileInf
     return "Sorry, I encountered an error processing your message.";
   }
 });
+
+const channelChatHandler = async (
+  message: string,
+  _chatId: string | number,
+  sessionId: string,
+  fileInfo: { hasFile: boolean; filePath: string }
+): Promise<string> => {
+  const fullMessage = fileInfo.hasFile
+    ? `${message}\n\n[File attached: ${fileInfo.filePath}]`
+    : message;
+  const response = await handleChat({ message: fullMessage, sessionId });
+  return response.message.content;
+};
+
+discordAdapter.setMessageHandler(channelChatHandler);
+slackAdapter.setMessageHandler(channelChatHandler);
+signalAdapter.setMessageHandler(channelChatHandler);
+whatsappAdapter.setMessageHandler(channelChatHandler);
+imessageAdapter.setMessageHandler(channelChatHandler);
 
 // Auto-setup Telegram if bot token is provided
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;

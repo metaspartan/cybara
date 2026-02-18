@@ -160,6 +160,25 @@ Configure per channel:
 }
 ```
 
+## In-Channel Commands
+
+Cybara supports management commands directly from messaging channels:
+
+- `/help` - Show command help
+- `/status` - Show system status
+- `/new` - Start a fresh session
+- `/agents` - List agents
+- `/agent <id|name|number>` - Set default agent
+- `/providers` - List providers
+- `/provider <id|name|number>` - Set provider for default agent
+- `/models` - List models for the default agent's provider
+- `/model <id|number>` - Set model for the default agent
+
+Telegram also supports session navigation:
+
+- `/sessions` - List recent sessions
+- `/switch <number>` - Switch to a recent session
+
 ## Multi-Channel Routing
 
 When multiple channels are configured, the agent automatically routes to the source channel. For proactive sends:

@@ -158,4 +158,34 @@ describe("Signal adapter mocked flows", () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]).toContain("encountered an error");
   });
+
+  test("handles slash management commands without invoking chat handler", async () => {
+    const adapter = new SignalAdapter();
+    const channelId = makeChannelId("signal-command");
+    const sent: string[] = [];
+    let handlerCalls = 0;
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+    (
+      adapter as unknown as {
+        sendSignalMessage: (_id: string, _recipient: string, message: string) => Promise<boolean>;
+      }
+    ).sendSignalMessage = async (_id, _recipient, message) => {
+      sent.push(message);
+      return true;
+    };
+
+    await invokeSignalEnvelope(adapter, channelId, {
+      sourceNumber: "+15550005555",
+      dataMessage: { message: "/help" },
+    });
+
+    expect(handlerCalls).toBe(0);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("Available management commands");
+  });
 });

@@ -6,6 +6,7 @@ import type { ChannelAdapter, ToolCallInfo, MessageHandler } from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { buildChannelSecurityConfig, securityManager } from "../security";
+import { handleChannelManagementCommand } from "../commands";
 
 // Slack message event type (inline since @slack/bolt doesn't export it directly)
 interface SlackMessageEvent {
@@ -151,12 +152,27 @@ export class SlackAdapter implements ChannelAdapter {
     // Process message
     let response: string;
     try {
-      response = await this.messageHandler(text, chatId, sessionId, {
-        hasFile: false,
-        filePath: "",
-        fileType: "",
-        placeholder: "",
+      const commandResponse = await handleChannelManagementCommand(text, {
+        channelId,
+        chatId,
+        platform: "slack",
+        createSessionId: () => crypto.randomUUID(),
+        setSessionId: (nextSessionId: string) => {
+          sessionId = nextSessionId;
+          slackSessions.set(sessionKey, nextSessionId);
+        },
       });
+
+      if (commandResponse !== null) {
+        response = commandResponse;
+      } else {
+        response = await this.messageHandler(text, chatId, sessionId, {
+          hasFile: false,
+          filePath: "",
+          fileType: "",
+          placeholder: "",
+        });
+      }
     } catch (error) {
       console.error("[Slack] Error handling message:", error);
       response = "❌ Sorry, I encountered an error processing your message. Please try again.";
@@ -216,12 +232,27 @@ export class SlackAdapter implements ChannelAdapter {
     // Process message
     let response: string;
     try {
-      response = await this.messageHandler(cleanText, chatId, sessionId, {
-        hasFile: false,
-        filePath: "",
-        fileType: "",
-        placeholder: "",
+      const commandResponse = await handleChannelManagementCommand(cleanText, {
+        channelId,
+        chatId,
+        platform: "slack",
+        createSessionId: () => crypto.randomUUID(),
+        setSessionId: (nextSessionId: string) => {
+          sessionId = nextSessionId;
+          slackSessions.set(sessionKey, nextSessionId);
+        },
       });
+
+      if (commandResponse !== null) {
+        response = commandResponse;
+      } else {
+        response = await this.messageHandler(cleanText, chatId, sessionId, {
+          hasFile: false,
+          filePath: "",
+          fileType: "",
+          placeholder: "",
+        });
+      }
     } catch (error) {
       console.error("[Slack] Error handling mention:", error);
       response = "❌ Sorry, I encountered an error processing your message. Please try again.";
