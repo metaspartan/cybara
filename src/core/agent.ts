@@ -1,6 +1,6 @@
 import { tables, type Agent, type ToolDefinition } from "./database";
 import { providerManager, getProviderBaseUrl, getDefaultModel } from "./providers";
-import { isToolEnabledForAgent, toolSchemas } from "./tools/index";
+import { getToolSchemasForLLM, isToolEnabledForAgent, type ToolContext } from "./tools/index";
 import { executeTool, hasTool } from "./tools/handlers/index";
 import {
   buildSystemPrompt,
@@ -209,55 +209,50 @@ function trackTokenUsage(
   }
 }
 
-// Built-in tools - get from the tools registry
-export const builtinTools: ToolDefinition[] = Object.values(toolSchemas).map((t) => ({
-  name: t.name,
-  description: t.description,
-  input_schema: t.input_schema,
-}));
+// Built-in tools are resolved lazily to avoid circular-init hazards during module load.
+export function getBuiltinTools(): ToolDefinition[] {
+  return getToolSchemasForLLM().map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    input_schema: tool.input_schema,
+  }));
+}
 
 // Agent type configuration - matches Clawdbot's patterns
 export const AGENT_TYPES = {
   main: {
     description: "General-purpose assistant",
     defaultModel: "MiniMax-M2.5",
-    tools: builtinTools,
     systemPrompt: AGENT_TYPE_PROMPTS.main,
   },
   research: {
     description: "Research and information gathering",
     defaultModel: "MiniMax-M2.5",
-    tools: builtinTools,
     systemPrompt: AGENT_TYPE_PROMPTS.research,
   },
   coder: {
     description: "Coding and software development",
     defaultModel: "MiniMax-M2.5",
-    tools: builtinTools,
     systemPrompt: AGENT_TYPE_PROMPTS.coder,
   },
   planner: {
     description: "Planning and task breakdown",
     defaultModel: "MiniMax-M2.5",
-    tools: builtinTools,
     systemPrompt: AGENT_TYPE_PROMPTS.planner,
   },
   ops: {
     description: "Operations and system administration",
     defaultModel: "MiniMax-M2.5",
-    tools: builtinTools,
     systemPrompt: AGENT_TYPE_PROMPTS.ops,
   },
   subagent: {
     description: "Subagent for delegated tasks",
     defaultModel: "MiniMax-M2.5",
-    tools: builtinTools,
     systemPrompt: AGENT_TYPE_PROMPTS.main,
   },
   worker: {
     description: "Worker for background tasks",
     defaultModel: "MiniMax-M2.5",
-    tools: builtinTools,
     systemPrompt: AGENT_TYPE_PROMPTS.main,
   },
 };
@@ -271,6 +266,14 @@ export interface AgentMessage {
     arguments: Record<string, unknown>;
   }>;
   tool_call_id?: string;
+}
+
+interface AgentExecutionOptions {
+  stream?: boolean;
+  useTools?: boolean;
+  sessionId?: string;
+  channel?: string;
+  userId?: string;
 }
 
 // Running agent state with conversation memory
@@ -319,6 +322,15 @@ function parseToolArguments(raw: unknown): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+function normalizePermissionList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const normalized = value
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  return [...new Set(normalized)];
 }
 
 class AgentManager {
@@ -380,7 +392,7 @@ class AgentManager {
       provider_id: definition.provider_id,
       fallback_provider_id: definition.fallback_provider_id,
       system_prompt: systemPrompt,
-      tools: definition.tools || typeConfig?.tools || builtinTools,
+      tools: definition.tools ?? getBuiltinTools(),
       config: definition.config || {},
       status: "stopped",
       memory_enabled: definition.memory_enabled || false,
@@ -404,7 +416,7 @@ class AgentManager {
       model: providerInfo?.models?.[0]?.id || "MiniMax-M2.5",
       provider_id: defaultProvider?.id,
       system_prompt: AGENT_TYPE_PROMPTS.research,
-      tools: builtinTools,
+      tools: getBuiltinTools(),
       memory_enabled: true,
     });
   }
@@ -424,7 +436,7 @@ class AgentManager {
       agentData: undefined,
       config: {},
       modelDisplay: definition.model || typeConfig?.defaultModel || "MiniMax-M2.5",
-      tools: (definition.tools || builtinTools).map((t) => t.name),
+      tools: (definition.tools ?? getBuiltinTools()).map((t) => t.name),
       skills: eligibleSkills,
     });
 
@@ -664,7 +676,7 @@ class AgentManager {
   async execute(
     agentId: string,
     messages: AgentMessage[],
-    options?: { stream?: boolean; useTools?: boolean }
+    options?: AgentExecutionOptions
   ): Promise<{ content: string; tool_calls?: Array<{ name: string; result: unknown }> }> {
     const agent = this.get(agentId);
     if (!agent) {
@@ -720,9 +732,11 @@ class AgentManager {
       }
     }
 
+    const toolContext = this.buildToolExecutionContext(agent, options);
+
     // Call LLM
     try {
-      const result = await this.callLLM(provider, agent.model, fullMessages, tools);
+      const result = await this.callLLM(provider, agent.model, fullMessages, tools, toolContext);
       return result;
     } catch (error) {
       console.error("[Agent] LLM call failed:", error);
@@ -736,7 +750,8 @@ class AgentManager {
               fallbackProvider,
               agent.model,
               fullMessages,
-              tools
+              tools,
+              toolContext
             );
             return fallbackResult;
           } catch (fallbackError) {
@@ -772,7 +787,42 @@ class AgentManager {
       }
     }
     // Fall back to built-in tools
-    return filterEnabledTools(builtinTools);
+    return filterEnabledTools(getBuiltinTools());
+  }
+
+  private getAgentToolPermissions(agent: Agent): {
+    permissions: string[];
+    enforcePermissions: boolean;
+  } {
+    const parsedConfig = parseAgentConfig(agent.config, agent.id);
+    const explicitPermissions = normalizePermissionList(
+      parsedConfig.tool_permissions ?? parsedConfig.toolPermissions
+    );
+    const enforceExplicit =
+      parsedConfig.enforce_tool_permissions === true ||
+      parsedConfig.enforceToolPermissions === true;
+
+    if (explicitPermissions.length > 0) {
+      return { permissions: explicitPermissions, enforcePermissions: true };
+    }
+
+    if (enforceExplicit) {
+      return { permissions: [], enforcePermissions: true };
+    }
+
+    return { permissions: [], enforcePermissions: false };
+  }
+
+  private buildToolExecutionContext(agent: Agent, options?: AgentExecutionOptions): ToolContext {
+    const permissions = this.getAgentToolPermissions(agent);
+    return {
+      agentId: agent.id,
+      sessionId: options?.sessionId,
+      channel: options?.channel,
+      userId: options?.userId,
+      permissions: permissions.permissions,
+      enforcePermissions: permissions.enforcePermissions,
+    };
   }
 
   // Public method to call LLM - can be used by API handlers
@@ -780,20 +830,22 @@ class AgentManager {
     provider: Awaited<ReturnType<typeof providerManager.get>>,
     model: string | undefined,
     messages: AgentMessage[],
-    tools: ToolDefinition[]
+    tools: ToolDefinition[],
+    toolContext?: ToolContext
   ): Promise<{
     content: string;
     thinking?: string;
     tool_calls?: Array<{ name: string; result: unknown }>;
   }> {
-    return this.callLLMInternal(provider, model, messages, tools);
+    return this.callLLMInternal(provider, model, messages, tools, toolContext);
   }
 
   private async callLLMInternal(
     provider: ReturnType<typeof providerManager.get>,
     model: string | undefined,
     messages: AgentMessage[],
-    tools: ToolDefinition[]
+    tools: ToolDefinition[],
+    toolContext?: ToolContext
   ): Promise<{
     content: string;
     thinking?: string;
@@ -824,21 +876,46 @@ class AgentManager {
 
     // MiniMax uses Anthropic Messages API format
     if (providerConfig === "minimax") {
-      return this.callAnthropicAPI(baseUrl, auth, modelId, messages, tools, providerConfig);
+      return this.callAnthropicAPI(
+        baseUrl,
+        auth,
+        modelId,
+        messages,
+        tools,
+        providerConfig,
+        toolContext
+      );
     }
 
     // Kimi Code uses OpenAI-compatible format with custom headers (User-Agent: KimiCLI/0.77)
     if (providerConfig === "kimi-code") {
-      return this.callOpenAICompatAPI(baseUrl, auth, modelId, messages, tools, customHeaders);
+      return this.callOpenAICompatAPI(
+        baseUrl,
+        auth,
+        modelId,
+        messages,
+        tools,
+        customHeaders,
+        providerConfig,
+        toolContext
+      );
     }
 
     // Anthropic uses Messages API
     if (providerConfig === "anthropic") {
-      return this.callAnthropicAPI(baseUrl, auth, modelId, messages, tools, providerConfig);
+      return this.callAnthropicAPI(
+        baseUrl,
+        auth,
+        modelId,
+        messages,
+        tools,
+        providerConfig,
+        toolContext
+      );
     }
 
     // Other providers use standard OpenAI format
-    return this.callOpenAIAPI(baseUrl, auth, modelId, messages, tools);
+    return this.callOpenAIAPI(baseUrl, auth, modelId, messages, tools, toolContext);
   }
 
   private async callOpenAICompatAPI(
@@ -848,7 +925,8 @@ class AgentManager {
     messages: AgentMessage[],
     tools: ToolDefinition[],
     customHeaders?: Record<string, string>,
-    providerConfig?: string
+    providerConfig?: string,
+    toolContext?: ToolContext
   ): Promise<{
     content: string;
     thinking?: string;
@@ -936,6 +1014,7 @@ class AgentManager {
         content: m.content,
       })),
     ];
+    const allowedToolNames = new Set(tools.map((tool) => tool.name));
     const allToolCalls: Array<{ name: string; result: unknown }> = [];
     let finalContent = message.content || "";
 
@@ -960,24 +1039,35 @@ class AgentManager {
         const toolCallId = toolCall.id;
         const args = parseToolArguments(toolCall.function?.arguments);
 
-        if (toolName && hasTool(toolName)) {
-          try {
-            broadcastStatus({ status: "tool_executing", timestamp: Date.now(), detail: toolName });
-            const result = await executeTool(toolName, args);
-            allToolCalls.push({ name: toolName, result });
-            toolResults.push({
-              tool_call_id: toolCallId,
-              role: "tool",
-              content: JSON.stringify(result),
-            });
-          } catch (error) {
-            allToolCalls.push({ name: toolName, result: { error: (error as Error).message } });
-            toolResults.push({
-              tool_call_id: toolCallId,
-              role: "tool",
-              content: JSON.stringify({ error: (error as Error).message }),
-            });
-          }
+        if (!toolName) continue;
+        if (!hasTool(toolName)) continue;
+        if (!allowedToolNames.has(toolName)) {
+          const error = `Tool not enabled for this agent: ${toolName}`;
+          allToolCalls.push({ name: toolName, result: { error } });
+          toolResults.push({
+            tool_call_id: toolCallId,
+            role: "tool",
+            content: JSON.stringify({ error }),
+          });
+          continue;
+        }
+
+        try {
+          broadcastStatus({ status: "tool_executing", timestamp: Date.now(), detail: toolName });
+          const result = await executeTool(toolName, args, toolContext);
+          allToolCalls.push({ name: toolName, result });
+          toolResults.push({
+            tool_call_id: toolCallId,
+            role: "tool",
+            content: JSON.stringify(result),
+          });
+        } catch (error) {
+          allToolCalls.push({ name: toolName, result: { error: (error as Error).message } });
+          toolResults.push({
+            tool_call_id: toolCallId,
+            role: "tool",
+            content: JSON.stringify({ error: (error as Error).message }),
+          });
         }
       }
 
@@ -1050,7 +1140,8 @@ class AgentManager {
     modelId: string,
     messages: AgentMessage[],
     tools: ToolDefinition[],
-    providerConfig: string
+    providerConfig: string,
+    toolContext?: ToolContext
   ): Promise<{
     content: string;
     thinking?: string;
@@ -1132,6 +1223,7 @@ class AgentManager {
       role: m.role,
       content: m.content,
     }));
+    const allowedToolNames = new Set(tools.map((tool) => tool.name));
 
     const allToolCalls: Array<{ name: string; result: unknown }> = [];
     let finalContent = currentData.content?.find((c) => c.type === "text")?.text || "";
@@ -1162,24 +1254,35 @@ class AgentManager {
         const toolUseId = toolUse.id || ""; // Fallback to empty string if undefined
         const args = toolUse.input || {};
 
-        if (toolName && hasTool(toolName)) {
-          try {
-            broadcastStatus({ status: "tool_executing", timestamp: Date.now(), detail: toolName });
-            const result = await executeTool(toolName, args);
-            allToolCalls.push({ name: toolName, result });
-            toolResults.push({
-              type: "tool_result",
-              tool_use_id: toolUseId,
-              content: JSON.stringify(result),
-            });
-          } catch (error) {
-            allToolCalls.push({ name: toolName, result: { error: (error as Error).message } });
-            toolResults.push({
-              type: "tool_result",
-              tool_use_id: toolUseId,
-              content: JSON.stringify({ error: (error as Error).message }),
-            });
-          }
+        if (!toolName) continue;
+        if (!hasTool(toolName)) continue;
+        if (!allowedToolNames.has(toolName)) {
+          const error = `Tool not enabled for this agent: ${toolName}`;
+          allToolCalls.push({ name: toolName, result: { error } });
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: toolUseId,
+            content: JSON.stringify({ error }),
+          });
+          continue;
+        }
+
+        try {
+          broadcastStatus({ status: "tool_executing", timestamp: Date.now(), detail: toolName });
+          const result = await executeTool(toolName, args, toolContext);
+          allToolCalls.push({ name: toolName, result });
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: toolUseId,
+            content: JSON.stringify(result),
+          });
+        } catch (error) {
+          allToolCalls.push({ name: toolName, result: { error: (error as Error).message } });
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: toolUseId,
+            content: JSON.stringify({ error: (error as Error).message }),
+          });
         }
       }
 
@@ -1248,7 +1351,8 @@ class AgentManager {
     auth: string,
     modelId: string,
     messages: AgentMessage[],
-    tools: ToolDefinition[]
+    tools: ToolDefinition[],
+    toolContext?: ToolContext
   ): Promise<{ content: string; tool_calls?: Array<{ name: string; result: unknown }> }> {
     // Build properly ordered messages: system first, then chat messages
     const systemMessage = messages.find((m) => m.role === "system");
@@ -1329,6 +1433,7 @@ class AgentManager {
     const maxIterations = 10;
     let iterations = 0;
     const currentMessages: Record<string, unknown>[] = [...chatMessages];
+    const allowedToolNames = new Set(tools.map((tool) => tool.name));
     const allToolCalls: Array<{ name: string; result: unknown }> = [];
     let finalContent = message.content || "";
 
@@ -1352,24 +1457,35 @@ class AgentManager {
         const toolCallId = toolCall.id;
         const args = parseToolArguments(toolCall.function?.arguments);
 
-        if (toolName && hasTool(toolName)) {
-          try {
-            broadcastStatus({ status: "tool_executing", timestamp: Date.now(), detail: toolName });
-            const result = await executeTool(toolName, args);
-            allToolCalls.push({ name: toolName, result });
-            toolResults.push({
-              tool_call_id: toolCallId,
-              role: "tool",
-              content: JSON.stringify(result),
-            });
-          } catch (error) {
-            allToolCalls.push({ name: toolName, result: { error: (error as Error).message } });
-            toolResults.push({
-              tool_call_id: toolCallId,
-              role: "tool",
-              content: JSON.stringify({ error: (error as Error).message }),
-            });
-          }
+        if (!toolName) continue;
+        if (!hasTool(toolName)) continue;
+        if (!allowedToolNames.has(toolName)) {
+          const error = `Tool not enabled for this agent: ${toolName}`;
+          allToolCalls.push({ name: toolName, result: { error } });
+          toolResults.push({
+            tool_call_id: toolCallId,
+            role: "tool",
+            content: JSON.stringify({ error }),
+          });
+          continue;
+        }
+
+        try {
+          broadcastStatus({ status: "tool_executing", timestamp: Date.now(), detail: toolName });
+          const result = await executeTool(toolName, args, toolContext);
+          allToolCalls.push({ name: toolName, result });
+          toolResults.push({
+            tool_call_id: toolCallId,
+            role: "tool",
+            content: JSON.stringify(result),
+          });
+        } catch (error) {
+          allToolCalls.push({ name: toolName, result: { error: (error as Error).message } });
+          toolResults.push({
+            tool_call_id: toolCallId,
+            role: "tool",
+            content: JSON.stringify({ error: (error as Error).message }),
+          });
         }
       }
 

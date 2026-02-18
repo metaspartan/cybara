@@ -64,11 +64,16 @@ bun test tests/runtime
 
 # Tauri desktop wiring guards
 bun test tests/tauri
+
+# Agent/tool governance guardrails (circular import, allowlist, permissions)
+bun test tests/core/tool-schema-import.test.ts tests/core/agent-tool-allowlist.test.ts tests/core/tool-permissions.test.ts
 ```
 
 ## Coverage Areas
 
 - Channel adapters: Discord, Telegram webhook, Slack, WhatsApp, Signal, iMessage
+- Slack mention security: `app_mention` now enforces pairing/allowlist checks (no access-policy bypass via mentions)
+- Agent/tool guardrails: lazy built-in tool import stability, agent tool allowlist enforcement, optional permission enforcement contexts
 - Channel security and pairing flows
 - Channel manager lifecycle (start/stop/update/delete/masking)
 - CLI command wiring: providers, channels, pairing, MCP, tasks, skills, sessions, memory, logs, subagents
@@ -83,6 +88,8 @@ bun test tests/tauri
 - API route integration extras: health/live/ready + setup/info, provider catalog + OAuth validation/callback-status, channel type metadata + telegram webhook contracts, MCP lifecycle + registry contracts, LSP status/diagnostics/install validation, tool catalog/execute validation, subagent list/get/spawn/kill contracts, skills categories/status/registry search, task lifecycle, builtin skill execution, IDE/git route contracts (including HOME sandbox sibling-prefix and symlink escape blocking), system prompt/identity persistence, open-url scheme/localhost blocking
 - Metrics route resilience: malformed `metrics.metadata` JSON does not break providers/tokens/files/tools endpoints
 - Channel/session/task/agent/config JSON resilience: malformed `channels.config`, `session_messages.metadata`, `tasks.config`, `agents.config`, `config.value` (`systemPrompt`/`identity`), and runtime agent prompt config no longer break API recovery/listing/update/start flows
+- Telegram command behavior: `/model` and `/memory` summary/search command contracts
+- Cross-channel management command routing: adapter-level `/model` execution path regression checks (Slack + shared command layer)
 - Live E2E smoke: server startup, CLI↔API calls, UI route serving, terminal REST+WebSocket flow
 - Live E2E contracts: chat -> session persistence -> log queries/stats -> metrics dashboards/system status
 - Live E2E stateful workflow: CLI provider/config/channels/tasks commands against a real server, plus sessions/memory visibility

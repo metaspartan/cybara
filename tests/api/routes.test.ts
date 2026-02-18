@@ -716,6 +716,38 @@ describe("Tools API", () => {
     expect(unknownTool.status).toBe(400);
     expect(unknownTool.data.code).toBe("VALIDATION_ERROR");
   });
+
+  test("POST /api/tools/execute supports optional context permission enforcement", async () => {
+    const toolFile = join(testHome, `tool-permission-${Date.now()}.txt`);
+    writeFileSync(toolFile, "permission-test", "utf8");
+
+    const denied = await api("POST", "/api/tools/execute", {
+      name: "read",
+      args: { path: toolFile },
+      context: {
+        agentId: "api-tools-test",
+        sessionId: "api-tools-session",
+        permissions: ["net:fetch"],
+        enforcePermissions: true,
+      },
+    });
+    expect(denied.status).toBe(400);
+    expect(denied.data.code).toBe("VALIDATION_ERROR");
+    expect(String(denied.data.error || "")).toContain("Permission denied");
+
+    const allowed = await api("POST", "/api/tools/execute", {
+      name: "read",
+      args: { path: toolFile },
+      context: {
+        agentId: "api-tools-test",
+        sessionId: "api-tools-session",
+        permissions: ["fs:read"],
+        enforcePermissions: true,
+      },
+    });
+    expect(allowed.status).toBe(200);
+    expect(allowed.data.content).toBe("permission-test");
+  });
 });
 
 describe("LSP API", () => {

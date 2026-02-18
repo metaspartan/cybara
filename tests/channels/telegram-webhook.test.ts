@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import db, { tables } from "../../src/core/database";
 import { securityManager } from "../../src/core/channels/security";
 import { processTelegramWebhook, telegramBot } from "../../src/core/channels/adapters/telegram";
@@ -36,6 +36,34 @@ type FetchCall = {
 };
 
 const originalFetch = globalThis.fetch;
+const memoryMockState = {
+  context: "## Durable Memory\n- prefers bun tooling",
+  files: [{ name: "2026-02-18.md", date: "2026-02-18", size: 128 }],
+  searchResults: [
+    {
+      file: "2026-02-18.md",
+      content: "release notes prepared for wallet permissions rollout",
+      score: 0.91,
+      method: "keyword",
+    },
+  ] as Array<{ file: string; content: string; score: number; method: string }>,
+  searchMethod: "keyword",
+};
+
+mock.module("../../src/core/tools/handlers/memory", () => ({
+  handleMemoryContext: async () => ({
+    context: memoryMockState.context,
+    lines: memoryMockState.context.split("\n").length,
+  }),
+  handleMemoryList: async () => ({
+    files: [...memoryMockState.files],
+  }),
+  handleMemorySearch: async () => ({
+    results: [...memoryMockState.searchResults],
+    query: "mock-query",
+    searchMethod: memoryMockState.searchMethod,
+  }),
+}));
 
 describe("Telegram webhook mocked flows", () => {
   let channelId = "";
@@ -44,6 +72,17 @@ describe("Telegram webhook mocked flows", () => {
   beforeEach(() => {
     channelId = makeChannelId("telegram-webhook");
     fetchCalls = [];
+    memoryMockState.context = "## Durable Memory\n- prefers bun tooling";
+    memoryMockState.files = [{ name: "2026-02-18.md", date: "2026-02-18", size: 128 }];
+    memoryMockState.searchResults = [
+      {
+        file: "2026-02-18.md",
+        content: "release notes prepared for wallet permissions rollout",
+        score: 0.91,
+        method: "keyword",
+      },
+    ];
+    memoryMockState.searchMethod = "keyword";
 
     tables.channels.create({
       id: channelId,
@@ -224,5 +263,48 @@ describe("Telegram webhook mocked flows", () => {
       tables.agents.delete(agentId);
       tables.providers.delete(providerId);
     }
+  });
+
+  test("handles /memory command for summary and search without invoking chat handler", async () => {
+    let handlerCalls = 0;
+    telegramBot.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should not run";
+    });
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+
+    const summaryOk = await processTelegramWebhook(channelId, makeTelegramUpdate("/memory"));
+    expect(summaryOk).toBe(true);
+    expect(handlerCalls).toBe(0);
+
+    const summaryCall = fetchCalls.find((call) => call.url.includes("/sendMessage"));
+    expect(summaryCall).toBeDefined();
+    const summaryPayload = summaryCall?.body as { text?: string };
+    expect(summaryPayload.text).toContain("Recent Memory Context");
+    expect(summaryPayload.text).toContain("2026-02-18.md");
+
+    fetchCalls = [];
+    memoryMockState.searchResults = [
+      {
+        file: "2026-02-17.md",
+        content: "wallet policy migration complete",
+        score: 0.88,
+        method: "semantic",
+      },
+    ];
+    memoryMockState.searchMethod = "semantic";
+
+    const searchOk = await processTelegramWebhook(
+      channelId,
+      makeTelegramUpdate("/memory wallet policy")
+    );
+    expect(searchOk).toBe(true);
+    expect(handlerCalls).toBe(0);
+
+    const searchCall = fetchCalls.find((call) => call.url.includes("/sendMessage"));
+    expect(searchCall).toBeDefined();
+    const searchPayload = searchCall?.body as { text?: string };
+    expect(searchPayload.text).toContain("Memory Search");
+    expect(searchPayload.text).toContain("2026-02-17.md");
   });
 });

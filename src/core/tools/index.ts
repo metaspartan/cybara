@@ -15,6 +15,8 @@ export interface ToolContext {
   sessionId?: string;
   channel?: string;
   userId?: string;
+  permissions?: string[];
+  enforcePermissions?: boolean;
 }
 
 export interface Tool {
@@ -1678,12 +1680,19 @@ export function getToolHandler(name: string): ToolHandler | undefined {
   return _toolHandlers.get(name);
 }
 
+export function getToolRequiredPermissions(name: string): string[] {
+  const tool = toolSchemas[name];
+  if (!tool || !Array.isArray(tool.permissions)) return [];
+  return tool.permissions;
+}
+
 // Check tool permissions
 export function checkToolPermissions(
   permissions: string[] = [],
   contextPermissions: string[] = []
 ): boolean {
   if (permissions.length === 0) return true;
+  if (contextPermissions.includes("*")) return true;
   return permissions.some((p) => contextPermissions.includes(p));
 }
 

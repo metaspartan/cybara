@@ -398,6 +398,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
       }));
       const result = await agentManager.execute(agent.id, executionMessages, {
         useTools: tools,
+        sessionId: session.id,
       });
       responseContent = result.content;
 

@@ -202,6 +202,19 @@ export class SlackAdapter implements ChannelAdapter {
     const userId = event.user;
     const chatId = event.channel;
 
+    // 🔐 SECURITY CHECK: Verify sender is allowed
+    const accessCheck = securityManager.checkAccess(channelId, userId, "slack");
+    if (!accessCheck.permitted) {
+      if (accessCheck.reason === "new_pairing" || accessCheck.reason === "blocked") {
+        try {
+          await say(accessCheck.message || `🔐 Pairing code: ${accessCheck.code}`);
+        } catch (e) {
+          console.error("[Slack] Failed to send security message:", e);
+        }
+      }
+      return;
+    }
+
     // Remove bot mention from text
     const cleanText = text.replace(/<@[A-Z0-9]+>/g, "").trim();
 

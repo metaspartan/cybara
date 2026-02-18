@@ -413,11 +413,60 @@ Estimated cost: $${(tokenUsage * 0.00001).toFixed(2)} (varies by provider)`;
     }
 
     case "memory": {
-      return `🧠 *Memory*
+      try {
+        const { handleMemoryContext, handleMemoryList, handleMemorySearch } =
+          await import("../../tools/handlers/memory");
+        const query = args.join(" ").trim();
 
-Memory feature coming soon.
+        if (query) {
+          const search = await handleMemorySearch({ query, maxResults: 5 });
+          if (!search.results.length) {
+            return `🧠 *Memory Search*
 
-Memories will be automatically created when you share important context with the agent.`;
+No matches found for: \`${query}\`
+
+Try another query or use /memory without arguments for recent context.`;
+          }
+
+          const matches = search.results
+            .slice(0, 5)
+            .map((entry, index) => {
+              const preview = entry.content.replace(/\s+/g, " ").trim().slice(0, 140);
+              return `${index + 1}. *${entry.file}* (${Math.round(entry.score * 100)}%)\n${preview}`;
+            })
+            .join("\n\n");
+
+          return `🧠 *Memory Search* (\`${search.searchMethod}\`)
+
+Query: \`${query}\`
+
+${matches}`;
+        }
+
+        const [context, files] = await Promise.all([
+          handleMemoryContext({ maxLines: 20 }),
+          handleMemoryList(),
+        ]);
+        const preview = context.context.trim();
+        const fileList = files.files
+          .slice(0, 5)
+          .map((file) => `• \`${file.name}\``)
+          .join("\n");
+
+        return `🧠 *Recent Memory Context*
+
+${preview || "_No memory context available yet._"}
+
+*Memory files:* ${files.files.length}
+${fileList || "• _none yet_"}
+
+Use \`/memory <query>\` to search memories.`;
+      } catch (error) {
+        console.error("[Telegram] Memory command failed:", error);
+        return `🧠 *Memory*
+
+Memory is currently unavailable. Please try again shortly.`;
+      }
     }
 
     case "tools": {

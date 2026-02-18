@@ -1,6 +1,6 @@
 import { config } from "../core/config";
 import { tables } from "../core/database";
-import { agentManager, builtinTools } from "../core/agent";
+import { agentManager, getBuiltinTools } from "../core/agent";
 import { providerManager, providers, type ProviderType } from "../core/providers";
 import {
   channelManager,
@@ -34,7 +34,7 @@ import {
   getChatRateLimitStatus,
   type ChatMessage,
 } from "../api/chat";
-import { getToolSchemasForLLM, getCircuitState } from "../core/tools/index";
+import { getToolSchemasForLLM, getCircuitState, type ToolContext } from "../core/tools/index";
 import { executeTool, hasTool } from "../core/tools/handlers/index";
 import { handleSessionsSpawn } from "../core/tools/handlers/channel";
 import {
@@ -870,7 +870,7 @@ const routes: Record<string, RouteHandler> = {
   },
 
   // ===== TOOLS =====
-  "GET /api/tools/builtin": () => builtinTools,
+  "GET /api/tools/builtin": () => getBuiltinTools(),
   "GET /api/tools": () => getToolSchemasForLLM(),
   "GET /api/tools/:name": (_body, params) => {
     const schemas = getToolSchemasForLLM();
@@ -878,18 +878,45 @@ const routes: Record<string, RouteHandler> = {
     return found || { error: "Tool not found" };
   },
   "POST /api/tools/execute": async (body) => {
-    const data = body as { name: string; args: Record<string, unknown> };
+    const data = body as {
+      name: string;
+      args: Record<string, unknown>;
+      context?: Partial<ToolContext>;
+    };
     if (!data.name) throw new Error("Tool name is required");
 
     if (!hasTool(data.name)) {
       throw new Error(`Invalid tool: ${data.name}`);
     }
 
+    const contextPermissions = Array.isArray(data.context?.permissions)
+      ? data.context.permissions.filter(
+          (entry): entry is string => typeof entry === "string" && entry.trim().length > 0
+        )
+      : undefined;
+    const context: ToolContext = {
+      agentId:
+        typeof data.context?.agentId === "string" && data.context.agentId.trim()
+          ? data.context.agentId
+          : "api",
+      sessionId:
+        typeof data.context?.sessionId === "string" && data.context.sessionId.trim()
+          ? data.context.sessionId
+          : "api",
+      channel:
+        typeof data.context?.channel === "string" && data.context.channel.trim()
+          ? data.context.channel
+          : "api",
+      userId:
+        typeof data.context?.userId === "string" && data.context.userId.trim()
+          ? data.context.userId
+          : "user",
+      permissions: contextPermissions,
+      enforcePermissions: data.context?.enforcePermissions === true,
+    };
+
     return await executeTool(data.name, data.args, {
-      agentId: "api",
-      sessionId: "api",
-      channel: "api",
-      userId: "user",
+      ...context,
     });
   },
 

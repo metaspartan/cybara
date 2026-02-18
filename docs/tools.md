@@ -1,6 +1,23 @@
 # Cybara Tools Reference
 
-Agents have access to 47 tools for file, process, browser, memory, data, and messaging operations.
+Agents have access to 48 tools for file, process, browser, memory, data, and messaging operations.
+
+## Permission Context
+
+Tool schemas include permission tags (for example `fs:read`, `fs:write`, `wallet:use`).
+Execution can enforce those tags when a context includes:
+
+```json
+{
+  "context": {
+    "permissions": ["fs:read"],
+    "enforcePermissions": true
+  }
+}
+```
+
+This is supported by `POST /api/tools/execute` and by agentic tool loops when an agent config sets
+`tool_permissions`/`toolPermissions` (and optional `enforce_tool_permissions`/`enforceToolPermissions`).
 
 ## File Operations
 

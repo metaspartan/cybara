@@ -13,7 +13,12 @@ export * from "./web-search";
 export * from "./wallet";
 
 // Re-export from main tools index
-export { getToolSchemasForLLM, toolSchemas } from "../index";
+export {
+  checkToolPermissions,
+  getToolRequiredPermissions,
+  getToolSchemasForLLM,
+  toolSchemas,
+} from "../index";
 
 // Tool execution dispatcher
 import {
@@ -65,7 +70,7 @@ import {
 } from "./lsp";
 import { trackToolCall } from "../../metrics";
 import { logToolExecution } from "../../logging";
-import type { ToolContext } from "../index";
+import { checkToolPermissions, getToolRequiredPermissions, type ToolContext } from "../index";
 
 const toolHandlers: Record<string, (args: Record<string, unknown>) => Promise<unknown>> = {
   // File tools
@@ -200,6 +205,15 @@ export async function executeTool(
 
   if (!handler) {
     throw new Error(`Unknown tool: ${name}`);
+  }
+
+  const requiredPermissions = getToolRequiredPermissions(name);
+  const contextPermissions = context?.permissions || [];
+  const shouldEnforcePermissions = context?.enforcePermissions === true;
+  if (shouldEnforcePermissions && !checkToolPermissions(requiredPermissions, contextPermissions)) {
+    const needed =
+      requiredPermissions.length > 0 ? requiredPermissions.join(", ") : "no specific permission";
+    throw new Error(`Validation error: Permission denied for tool '${name}' (requires ${needed})`);
   }
 
   const startTime = Date.now();
