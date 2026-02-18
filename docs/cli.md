@@ -131,6 +131,9 @@ cybara wallet tx <eth|btc|sol> [--index N] [--limit N] # Transaction history
 cybara wallet send <eth|btc|sol> --to <addr> --amount <value> [--index N]
 cybara wallet send-token <eth|sol> --token <addr|mint> --to <addr> --amount <value> [--index N]
 cybara wallet swap-eth-uniswap --token <symbol|addr> (--percent N | --amount-eth ETH) [--execute]
+cybara wallet price [--source auto|chainlink|pyth|jupiter] (--symbol BTC | --pair BTC/USD | --mint <SOL_MINT>)
+cybara wallet swap-quote --venue <uniswap_v2|uniswap_v3|jupiter> [venue-specific args]
+cybara wallet swap-execute --venue <uniswap_v2|uniswap_v3|jupiter> [venue-specific args]
 cybara wallet contract-call --contract <addr> (--abi '<json_or_sig>' | --signature '<name(types)>') [--method <name>] [--args '[...]'] [--read]
 cybara wallet sol-instruction --program <id> (--keys '[...]' | --accounts '[...]') [--data-base64 DATA | --data-hex HEX | --data-utf8 TEXT]
 cybara wallet agent-access <on|off>                     # Enable/disable agent wallet tool access

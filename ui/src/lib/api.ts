@@ -494,6 +494,74 @@ export const walletApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  priceQuote: (payload: {
+    source?: "auto" | "chainlink" | "pyth" | "jupiter";
+    symbol?: string;
+    pair?: string;
+    feedAddress?: string;
+    feedId?: string;
+    pythFeedId?: string;
+    mint?: string;
+    quoteCurrency?: string;
+    rpcUrl?: string;
+  }) =>
+    fetchApi<{
+      source: "chainlink" | "pyth" | "jupiter";
+      base: string;
+      quote: string;
+      price: string;
+      confidence?: string;
+      publishTime?: string;
+      feedAddress?: string;
+      feedId?: string;
+      mint?: string;
+    }>("/wallet/price", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  swap: (payload: {
+    venue: "uniswap_v2" | "uniswap_v3" | "jupiter";
+    tokenOut?: string;
+    tokenAddress?: string;
+    amountEth?: string;
+    percent?: number;
+    minAmountOut?: string;
+    recipient?: string;
+    feeTier?: number;
+    inputMint?: string;
+    outputMint?: string;
+    amount?: string;
+    amountRaw?: string;
+    index?: number;
+    slippageBps?: number;
+    deadlineSeconds?: number;
+    rpcUrl?: string;
+    wrapUnwrapSol?: boolean;
+    computeUnitPriceMicroLamports?: number;
+    skipPreflight?: boolean;
+    dryRun?: boolean;
+  }) =>
+    fetchApi<{
+      venue: "uniswap_v2" | "uniswap_v3" | "jupiter";
+      chain: "eth" | "sol";
+      from: string;
+      inputToken: string;
+      outputToken: string;
+      amountIn: string;
+      amountInRaw: string;
+      quotedAmountOut: string;
+      quotedAmountOutRaw: string;
+      minAmountOut: string;
+      minAmountOutRaw: string;
+      slippageBps: number;
+      dryRun: boolean;
+      route?: string;
+      txid?: string;
+      explorerUrl?: string;
+    }>("/wallet/swap", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   signMessage: (message: string, chain: WalletChain = "eth", index = 0) =>
     fetchApi<{ address: string; signature: string }>("/wallet/sign", {
       method: "POST",

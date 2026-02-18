@@ -741,6 +741,79 @@ function route(method: string, url: URL, body: string): Response {
     });
   }
 
+  if (method === "POST" && pathname === "/api/wallet/price") {
+    const parsed = body
+      ? (JSON.parse(body) as { source?: string; symbol?: string; pair?: string; mint?: string })
+      : {};
+    if (!parsed.symbol && !parsed.pair && !parsed.mint) {
+      return json({ error: "invalid payload" }, 400);
+    }
+    return json({
+      source: parsed.source || "auto",
+      base: parsed.symbol || "BTC",
+      quote: "USD",
+      price: "123.45",
+      feedId: "0xfeed",
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/wallet/swap") {
+    const parsed = body
+      ? (JSON.parse(body) as {
+          venue?: "uniswap_v2" | "uniswap_v3" | "jupiter";
+          tokenOut?: string;
+          inputMint?: string;
+          outputMint?: string;
+          amountEth?: string;
+          amount?: string;
+          dryRun?: boolean;
+        })
+      : {};
+
+    if (
+      !parsed.venue ||
+      (parsed.venue !== "jupiter" && !parsed.tokenOut) ||
+      (parsed.venue === "jupiter" && (!parsed.inputMint || !parsed.outputMint))
+    ) {
+      return json({ error: "invalid payload" }, 400);
+    }
+
+    return json({
+      venue: parsed.venue,
+      chain: parsed.venue === "jupiter" ? "sol" : "eth",
+      from:
+        parsed.venue === "jupiter"
+          ? walletState.primaryAddresses?.sol
+          : walletState.primaryAddresses?.eth,
+      inputToken:
+        parsed.venue === "jupiter"
+          ? parsed.inputMint
+          : "ETH",
+      outputToken:
+        parsed.venue === "jupiter"
+          ? parsed.outputMint
+          : parsed.tokenOut,
+      amountIn:
+        parsed.venue === "jupiter"
+          ? parsed.amount || "1"
+          : parsed.amountEth || "0.5",
+      amountInRaw: "1000000000",
+      quotedAmountOut: "100",
+      quotedAmountOutRaw: "100000000",
+      minAmountOut: "99",
+      minAmountOutRaw: "99000000",
+      slippageBps: 100,
+      dryRun: parsed.dryRun === true,
+      route: parsed.venue === "jupiter" ? "Jupiter Router" : "uniswap",
+      txid: parsed.dryRun ? undefined : "dynamic-swap-tx-1",
+      explorerUrl: parsed.dryRun
+        ? undefined
+        : parsed.venue === "jupiter"
+          ? "https://solscan.io/tx/dynamic-swap-tx-1"
+          : "https://etherscan.io/tx/dynamic-swap-tx-1",
+    });
+  }
+
   if (method === "POST" && pathname === "/api/wallet/sign") {
     return json({ address: walletState.primaryAddresses?.eth, signature: "0xsignature" });
   }
@@ -1029,6 +1102,47 @@ describe("CLI Commands", () => {
     expect(swapExecute.stdout).toContain("txid: swap-tx-1");
     expect(swapExecute.stdout).toContain("explorer: https://etherscan.io/tx/swap-tx-1");
 
+    const priceQuote = await runCli(["wallet", "price", "--source", "chainlink", "--symbol", "BTC"]);
+    expect(priceQuote.exitCode).toBe(0);
+    expect(priceQuote.stdout).toContain("PRICE QUOTE");
+    expect(priceQuote.stdout).toContain("pair: BTC/USD");
+    expect(priceQuote.stdout).toContain("price: 123.45");
+
+    const dynamicSwapQuote = await runCli([
+      "wallet",
+      "swap-quote",
+      "--venue",
+      "uniswap_v3",
+      "--token",
+      "LINK",
+      "--amount-eth",
+      "0.2",
+      "--fee-tier",
+      "3000",
+    ]);
+    expect(dynamicSwapQuote.exitCode).toBe(0);
+    expect(dynamicSwapQuote.stdout).toContain("SWAP RESULT");
+    expect(dynamicSwapQuote.stdout).toContain("mode: quote-only");
+    expect(dynamicSwapQuote.stdout).toContain("venue: uniswap_v3");
+
+    const dynamicSwapExecute = await runCli([
+      "wallet",
+      "swap-execute",
+      "--venue",
+      "jupiter",
+      "--input-mint",
+      "So11111111111111111111111111111111111111112",
+      "--output-mint",
+      "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "--amount",
+      "1.2",
+    ]);
+    expect(dynamicSwapExecute.exitCode).toBe(0);
+    expect(dynamicSwapExecute.stdout).toContain("SWAP RESULT");
+    expect(dynamicSwapExecute.stdout).toContain("mode: execute");
+    expect(dynamicSwapExecute.stdout).toContain("venue: jupiter");
+    expect(dynamicSwapExecute.stdout).toContain("txid: dynamic-swap-tx-1");
+
     const contractCall = await runCli([
       "wallet",
       "contract-call",
@@ -1246,6 +1360,14 @@ describe("CLI Commands", () => {
     ]);
     expect(badWalletSolInstruction.exitCode).toBe(1);
     expect(badWalletSolInstruction.stderr).toContain("Use only one instruction data encoding");
+
+    const badWalletPrice = await runCli(["wallet", "price", "--source", "pyth"]);
+    expect(badWalletPrice.exitCode).toBe(1);
+    expect(badWalletPrice.stderr).toContain("Usage: cybara wallet price");
+
+    const badWalletSwapQuote = await runCli(["wallet", "swap-quote", "--venue", "jupiter"]);
+    expect(badWalletSwapQuote.exitCode).toBe(1);
+    expect(badWalletSwapQuote.stderr).toContain("Jupiter venue requires --input-mint and --output-mint");
   });
 
   test("lsp list/install/uninstall commands are wired", async () => {

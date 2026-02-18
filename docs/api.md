@@ -390,6 +390,56 @@ Content-Type: application/json
 
 Set `dryRun: false` (or omit) to broadcast the swap transaction.
 
+### Price Quote (Chainlink / Pyth / Jupiter)
+```http
+POST /api/wallet/price
+Content-Type: application/json
+
+{
+  "source": "auto",
+  "symbol": "BTC"
+}
+```
+
+Options:
+- `source`: `auto`, `chainlink`, `pyth`, or `jupiter`
+- `symbol` or `pair` (e.g., `BTC` or `BTC/USD`)
+- `feedAddress` for Chainlink override
+- `pythFeedId` (or `feedId`) for Pyth override
+- `mint` for Jupiter token pricing
+
+### Dynamic Swap Quote / Execute (Uniswap V2, Uniswap V3, Jupiter)
+```http
+POST /api/wallet/swap
+Content-Type: application/json
+
+{
+  "venue": "uniswap_v3",
+  "tokenOut": "LINK",
+  "amountEth": "0.25",
+  "feeTier": 3000,
+  "slippageBps": 100,
+  "dryRun": true
+}
+```
+
+Jupiter example:
+```http
+POST /api/wallet/swap
+Content-Type: application/json
+
+{
+  "venue": "jupiter",
+  "inputMint": "So11111111111111111111111111111111111111112",
+  "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "amount": "1.0",
+  "slippageBps": 100,
+  "dryRun": true
+}
+```
+
+Set `dryRun: false` to execute.
+
 ## Browser
 
 ### Get Status

@@ -97,6 +97,37 @@ const walletMockState = {
     rpcUrl?: string;
     dryRun?: boolean;
   }>,
+  priceCalls: [] as Array<{
+    source?: "auto" | "chainlink" | "pyth" | "jupiter";
+    symbol?: string;
+    pair?: string;
+    feedAddress?: string;
+    pythFeedId?: string;
+    mint?: string;
+    quoteCurrency?: string;
+    rpcUrl?: string;
+  }>,
+  dynamicSwapCalls: [] as Array<{
+    venue: "uniswap_v2" | "uniswap_v3" | "jupiter";
+    tokenOut?: string;
+    amountEth?: string;
+    percent?: number;
+    minAmountOut?: string;
+    recipient?: string;
+    feeTier?: number;
+    inputMint?: string;
+    outputMint?: string;
+    amount?: string;
+    amountRaw?: string;
+    index?: number;
+    slippageBps?: number;
+    deadlineSeconds?: number;
+    rpcUrl?: string;
+    wrapUnwrapSol?: boolean;
+    computeUnitPriceMicroLamports?: number;
+    skipPreflight?: boolean;
+    dryRun?: boolean;
+  }>,
   signCalls: [] as Array<{ message: string; chain: WalletChain; index: number }>,
   deleteCalls: [] as Array<string | undefined>,
   agentAccessCalls: [] as boolean[],
@@ -375,6 +406,65 @@ mock.module("../../src/core/wallet", () => ({
         explorerUrl: input.dryRun ? undefined : "https://etherscan.io/tx/swap-tx-1",
       };
     },
+    getPriceQuote: async (input: {
+      source?: "auto" | "chainlink" | "pyth" | "jupiter";
+      symbol?: string;
+      pair?: string;
+      feedAddress?: string;
+      pythFeedId?: string;
+      mint?: string;
+      quoteCurrency?: string;
+      rpcUrl?: string;
+    }) => {
+      walletMockState.priceCalls.push(input);
+      return {
+        source: input.source || "auto",
+        base: input.symbol || "BTC",
+        quote: "USD",
+        price: "123.45",
+      };
+    },
+    swap: async (input: {
+      venue: "uniswap_v2" | "uniswap_v3" | "jupiter";
+      tokenOut?: string;
+      amountEth?: string;
+      percent?: number;
+      minAmountOut?: string;
+      recipient?: string;
+      feeTier?: number;
+      inputMint?: string;
+      outputMint?: string;
+      amount?: string;
+      amountRaw?: string;
+      index?: number;
+      slippageBps?: number;
+      deadlineSeconds?: number;
+      rpcUrl?: string;
+      wrapUnwrapSol?: boolean;
+      computeUnitPriceMicroLamports?: number;
+      skipPreflight?: boolean;
+      dryRun?: boolean;
+    }) => {
+      walletMockState.dynamicSwapCalls.push(input);
+      return {
+        venue: input.venue,
+        chain: input.venue === "jupiter" ? "sol" : "eth",
+        from: "mock-from",
+        inputToken: input.venue === "jupiter" ? "So11111111111111111111111111111111111111112" : "ETH",
+        outputToken:
+          input.venue === "jupiter"
+            ? "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+            : "LINK",
+        amountIn: "1",
+        amountInRaw: "1000000000",
+        quotedAmountOut: "100",
+        quotedAmountOutRaw: "100000000",
+        minAmountOut: "99",
+        minAmountOutRaw: "99000000",
+        slippageBps: input.slippageBps || 100,
+        dryRun: input.dryRun === true,
+      };
+    },
     signMessage: async (message: string, chain: WalletChain, index: number) => {
       walletMockState.signCalls.push({ message, chain, index });
       return { address: "0xabc", signature: "0xsig" };
@@ -419,6 +509,8 @@ function resetState() {
   walletMockState.ethContractCalls = [];
   walletMockState.solInstructionCalls = [];
   walletMockState.swapCalls = [];
+  walletMockState.priceCalls = [];
+  walletMockState.dynamicSwapCalls = [];
   walletMockState.signCalls = [];
   walletMockState.deleteCalls = [];
   walletMockState.agentAccessCalls = [];
@@ -678,6 +770,60 @@ describe("Wallet route contracts (mocked manager)", () => {
         index: 1,
         recipient: undefined,
         rpcUrl: undefined,
+        dryRun: true,
+      },
+    ]);
+
+    const priceRes = await api("POST", "/api/wallet/price", {
+      source: "pyth",
+      symbol: "BTC",
+      feedId: "0xfeed",
+      quoteCurrency: "USD",
+    });
+    expect(priceRes.status).toBe(200);
+    expect(walletMockState.priceCalls).toEqual([
+      {
+        source: "pyth",
+        symbol: "BTC",
+        pair: undefined,
+        feedAddress: undefined,
+        pythFeedId: "0xfeed",
+        mint: undefined,
+        quoteCurrency: "USD",
+        rpcUrl: undefined,
+      },
+    ]);
+
+    const dynamicSwapRes = await api("POST", "/api/wallet/swap", {
+      venue: "jupiter",
+      inputMint: "So11111111111111111111111111111111111111112",
+      outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      amount: "1.25",
+      slippageBps: 120,
+      dryRun: true,
+      skipPreflight: true,
+    });
+    expect(dynamicSwapRes.status).toBe(200);
+    expect(walletMockState.dynamicSwapCalls).toEqual([
+      {
+        venue: "jupiter",
+        tokenOut: undefined,
+        amountEth: undefined,
+        percent: undefined,
+        minAmountOut: undefined,
+        recipient: undefined,
+        feeTier: undefined,
+        inputMint: "So11111111111111111111111111111111111111112",
+        outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        amount: "1.25",
+        amountRaw: undefined,
+        index: undefined,
+        slippageBps: 120,
+        deadlineSeconds: undefined,
+        rpcUrl: undefined,
+        wrapUnwrapSol: undefined,
+        computeUnitPriceMicroLamports: undefined,
+        skipPreflight: true,
         dryRun: true,
       },
     ]);

@@ -61,6 +61,8 @@ import {
   walletManager,
   type WalletChain,
   type WalletAgentPolicy,
+  type WalletPriceQuoteInput,
+  type WalletSwapInput,
   type WalletSwapEthUniswapInput,
   type WalletTokenChain,
   type SolInstructionAccountMeta,
@@ -654,6 +656,66 @@ const routes: Record<string, RouteHandler> = {
       index: typeof data.index === "number" ? data.index : undefined,
       recipient: typeof data.recipient === "string" ? data.recipient : undefined,
       rpcUrl: typeof data.rpcUrl === "string" ? data.rpcUrl : undefined,
+      dryRun: data.dryRun === true,
+    });
+  },
+  "POST /api/wallet/price": async (body) => {
+    const data = (body || {}) as Partial<WalletPriceQuoteInput> & {
+      feedId?: string;
+    };
+    return await walletManager.getPriceQuote({
+      source:
+        data.source === "auto" ||
+        data.source === "chainlink" ||
+        data.source === "pyth" ||
+        data.source === "jupiter"
+          ? data.source
+          : undefined,
+      symbol: typeof data.symbol === "string" ? data.symbol : undefined,
+      pair: typeof data.pair === "string" ? data.pair : undefined,
+      feedAddress: typeof data.feedAddress === "string" ? data.feedAddress : undefined,
+      pythFeedId:
+        typeof data.pythFeedId === "string"
+          ? data.pythFeedId
+          : typeof data.feedId === "string"
+            ? data.feedId
+            : undefined,
+      mint: typeof data.mint === "string" ? data.mint : undefined,
+      quoteCurrency: typeof data.quoteCurrency === "string" ? data.quoteCurrency : undefined,
+      rpcUrl: typeof data.rpcUrl === "string" ? data.rpcUrl : undefined,
+    });
+  },
+  "POST /api/wallet/swap": async (body) => {
+    const data = (body || {}) as Partial<WalletSwapInput> & {
+      tokenAddress?: string;
+    };
+    return await walletManager.swap({
+      venue:
+        data.venue === "uniswap_v2" || data.venue === "uniswap_v3" || data.venue === "jupiter"
+          ? data.venue
+          : "uniswap_v2",
+      tokenOut:
+        typeof data.tokenOut === "string"
+          ? data.tokenOut
+          : typeof data.tokenAddress === "string"
+            ? data.tokenAddress
+            : undefined,
+      amountEth: typeof data.amountEth === "string" ? data.amountEth : undefined,
+      percent: parseOptionalNumber(data.percent),
+      minAmountOut: typeof data.minAmountOut === "string" ? data.minAmountOut : undefined,
+      recipient: typeof data.recipient === "string" ? data.recipient : undefined,
+      feeTier: parseOptionalNumber(data.feeTier),
+      inputMint: typeof data.inputMint === "string" ? data.inputMint : undefined,
+      outputMint: typeof data.outputMint === "string" ? data.outputMint : undefined,
+      amount: typeof data.amount === "string" ? data.amount : undefined,
+      amountRaw: typeof data.amountRaw === "string" ? data.amountRaw : undefined,
+      index: parseOptionalNumber(data.index),
+      slippageBps: parseOptionalNumber(data.slippageBps),
+      deadlineSeconds: parseOptionalNumber(data.deadlineSeconds),
+      rpcUrl: typeof data.rpcUrl === "string" ? data.rpcUrl : undefined,
+      wrapUnwrapSol: typeof data.wrapUnwrapSol === "boolean" ? data.wrapUnwrapSol : undefined,
+      computeUnitPriceMicroLamports: parseOptionalNumber(data.computeUnitPriceMicroLamports),
+      skipPreflight: data.skipPreflight === true,
       dryRun: data.dryRun === true,
     });
   },

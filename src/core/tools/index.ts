@@ -745,7 +745,7 @@ Use for tasks that may take longer or require separate context.`,
   wallet: {
     name: "wallet",
     description:
-      "Use the local encrypted multi-chain wallet (ETH, BTC, SOL): native/token balances, native/token history, sends, message signing, ERC-20/SPL token transfers, ETH contract calls, raw Solana program instructions, and guarded Uniswap ETH swaps. Requires wallet agent access enabled and an unlocked wallet.",
+      "Use the local encrypted multi-chain wallet (ETH, BTC, SOL): native/token balances/history, sends, message signing, ERC-20/SPL transfers, ETH contract calls, Solana program instructions, price quotes (Chainlink/Pyth/Jupiter), and dynamic swap quote/execute flows (Uniswap v2/v3, Jupiter). Requires wallet agent access enabled and an unlocked wallet.",
     category: "core",
     input_schema: {
       type: "object",
@@ -767,6 +767,9 @@ Use for tasks that may take longer or require separate context.`,
             "eth_contract_call",
             "sol_program_instruction",
             "swap_eth_uniswap",
+            "price_quote",
+            "swap_quote",
+            "swap_execute",
           ],
           description: "Wallet action",
         },
@@ -956,38 +959,92 @@ Use for tasks that may take longer or require separate context.`,
         tokenOut: {
           type: "string",
           description:
-            "Output token for swap_eth_uniswap; accepts ERC-20 address or symbol (e.g. LINK)",
+            "Output token for swap_eth_uniswap/swap_quote/swap_execute; accepts ERC-20 address or symbol (e.g. LINK)",
         },
         amountEth: {
           type: "string",
           description:
-            "Exact ETH amount to swap for swap_eth_uniswap (use either amountEth or percent)",
+            "Exact ETH amount to swap for swap_eth_uniswap/swap_quote/swap_execute (use either amountEth or percent)",
         },
         percent: {
           type: "number",
           description:
-            "Percent of current ETH balance to swap for swap_eth_uniswap (0-100, e.g. 50)",
+            "Percent of current balance to swap for swap_eth_uniswap/swap_quote/swap_execute (0-100, e.g. 50)",
         },
         minAmountOut: {
           type: "string",
-          description: "Optional explicit minimum token-out amount; overrides slippageBps quote",
+          description: "Optional explicit minimum output amount; overrides slippageBps quote",
         },
         slippageBps: {
           type: "number",
-          description: "Slippage tolerance in basis points for swap_eth_uniswap (default 100)",
+          description: "Slippage tolerance in basis points for swap actions (default 100)",
         },
         deadlineSeconds: {
           type: "number",
-          description: "Swap expiry window in seconds for swap_eth_uniswap (default 900)",
+          description: "Swap expiry window in seconds for ETH swap actions (default 900)",
         },
         recipient: {
           type: "string",
-          description: "Optional recipient address for swap_eth_uniswap output tokens",
+          description: "Optional recipient address for ETH swap output tokens",
         },
         dryRun: {
           type: "boolean",
           description:
-            "When true, swap_eth_uniswap returns quote/minOut without broadcasting a transaction",
+            "When true, swap actions return quote/minOut without broadcasting a transaction",
+        },
+        source: {
+          type: "string",
+          enum: ["auto", "chainlink", "pyth", "jupiter"],
+          description: "Price source for action=price_quote",
+        },
+        symbol: {
+          type: "string",
+          description: "Asset symbol (e.g., BTC, ETH, SOL) for action=price_quote",
+        },
+        pair: {
+          type: "string",
+          description: "Asset pair (e.g., BTC/USD) for action=price_quote",
+        },
+        feedAddress: {
+          type: "string",
+          description: "Chainlink feed contract address override for action=price_quote",
+        },
+        feedId: {
+          type: "string",
+          description: "Alias for pythFeedId in action=price_quote",
+        },
+        pythFeedId: {
+          type: "string",
+          description: "Explicit Pyth feed id for action=price_quote",
+        },
+        quoteCurrency: {
+          type: "string",
+          description: "Quote currency for action=price_quote (default USD)",
+        },
+        venue: {
+          type: "string",
+          enum: ["uniswap_v2", "uniswap_v3", "jupiter"],
+          description: "Swap venue for swap_quote/swap_execute",
+        },
+        feeTier: {
+          type: "number",
+          description: "Uniswap v3 fee tier (100, 500, 3000, or 10000)",
+        },
+        inputMint: {
+          type: "string",
+          description: "Solana input mint for Jupiter swap actions",
+        },
+        outputMint: {
+          type: "string",
+          description: "Solana output mint for Jupiter swap actions",
+        },
+        amountRaw: {
+          type: "string",
+          description: "Exact swap input amount in raw base units (string integer)",
+        },
+        wrapUnwrapSol: {
+          type: "boolean",
+          description: "For Jupiter swaps, wrap/unwrap native SOL automatically (default true)",
         },
       },
       required: ["action"],

@@ -72,6 +72,37 @@ const walletToolMockState = {
     rpcUrl?: string;
     dryRun?: boolean;
   }>,
+  priceQuoteCalls: [] as Array<{
+    source?: string;
+    symbol?: string;
+    pair?: string;
+    feedAddress?: string;
+    pythFeedId?: string;
+    mint?: string;
+    quoteCurrency?: string;
+    rpcUrl?: string;
+  }>,
+  dynamicSwapCalls: [] as Array<{
+    venue: "uniswap_v2" | "uniswap_v3" | "jupiter";
+    tokenOut?: string;
+    amountEth?: string;
+    percent?: number;
+    minAmountOut?: string;
+    recipient?: string;
+    feeTier?: number;
+    inputMint?: string;
+    outputMint?: string;
+    amount?: string;
+    amountRaw?: string;
+    index?: number;
+    slippageBps?: number;
+    deadlineSeconds?: number;
+    rpcUrl?: string;
+    wrapUnwrapSol?: boolean;
+    computeUnitPriceMicroLamports?: number;
+    skipPreflight?: boolean;
+    dryRun?: boolean;
+  }>,
 };
 
 function resetState() {
@@ -87,6 +118,8 @@ function resetState() {
   walletToolMockState.ethContractCalls = [];
   walletToolMockState.solInstructionCalls = [];
   walletToolMockState.swapCalls = [];
+  walletToolMockState.priceQuoteCalls = [];
+  walletToolMockState.dynamicSwapCalls = [];
 }
 
 mock.module("../../src/core/wallet", () => ({
@@ -207,6 +240,57 @@ mock.module("../../src/core/wallet", () => ({
     }) => {
       walletToolMockState.swapCalls.push(input);
       return { dryRun: input.dryRun === true, quotedAmountOut: "123.45", toTokenSymbol: "LINK" };
+    },
+    getPriceQuoteForAgent: async (input: {
+      source?: string;
+      symbol?: string;
+      pair?: string;
+      feedAddress?: string;
+      pythFeedId?: string;
+      mint?: string;
+      quoteCurrency?: string;
+      rpcUrl?: string;
+    }) => {
+      walletToolMockState.priceQuoteCalls.push(input);
+      return { source: input.source || "auto", base: input.symbol || "BTC", quote: "USD", price: "123.45" };
+    },
+    swapForAgent: async (input: {
+      venue: "uniswap_v2" | "uniswap_v3" | "jupiter";
+      tokenOut?: string;
+      amountEth?: string;
+      percent?: number;
+      minAmountOut?: string;
+      recipient?: string;
+      feeTier?: number;
+      inputMint?: string;
+      outputMint?: string;
+      amount?: string;
+      amountRaw?: string;
+      index?: number;
+      slippageBps?: number;
+      deadlineSeconds?: number;
+      rpcUrl?: string;
+      wrapUnwrapSol?: boolean;
+      computeUnitPriceMicroLamports?: number;
+      skipPreflight?: boolean;
+      dryRun?: boolean;
+    }) => {
+      walletToolMockState.dynamicSwapCalls.push(input);
+      return {
+        venue: input.venue,
+        chain: input.venue === "jupiter" ? "sol" : "eth",
+        from: "mock-from",
+        inputToken: input.venue === "jupiter" ? "So11111111111111111111111111111111111111112" : "ETH",
+        outputToken: input.venue === "jupiter" ? "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" : "LINK",
+        amountIn: "1",
+        amountInRaw: "1000000000",
+        quotedAmountOut: "100",
+        quotedAmountOutRaw: "100000000",
+        minAmountOut: "99",
+        minAmountOutRaw: "99000000",
+        slippageBps: input.slippageBps ?? 100,
+        dryRun: input.dryRun === true,
+      };
     },
   },
 }));
@@ -413,6 +497,101 @@ describe("Wallet tool handler", () => {
         recipient: undefined,
         rpcUrl: undefined,
         dryRun: true,
+      },
+    ]);
+  });
+
+  test("price_quote parses source/feed aliases", async () => {
+    const result = await handleWallet({
+      action: "price_quote",
+      source: "pyth",
+      symbol: "BTC",
+      feedId: "0xfeed",
+      quoteCurrency: "USD",
+      rpcUrl: "https://eth-rpc.example",
+    });
+
+    expect(result).toEqual({ source: "pyth", base: "BTC", quote: "USD", price: "123.45" });
+    expect(walletToolMockState.priceQuoteCalls).toEqual([
+      {
+        source: "pyth",
+        symbol: "BTC",
+        pair: undefined,
+        feedAddress: undefined,
+        pythFeedId: "0xfeed",
+        mint: undefined,
+        quoteCurrency: "USD",
+        rpcUrl: "https://eth-rpc.example",
+      },
+    ]);
+  });
+
+  test("swap_quote and swap_execute forward dynamic venue payloads", async () => {
+    const quote = await handleWallet({
+      action: "swap_quote",
+      venue: "uniswap_v3",
+      tokenOut: "LINK",
+      amountEth: "0.5",
+      feeTier: "3000",
+      slippageBps: "75",
+      index: "1",
+    });
+    expect((quote as { dryRun?: boolean }).dryRun).toBe(true);
+
+    const execute = await handleWallet({
+      action: "swap_execute",
+      venue: "jupiter",
+      inputMint: "So11111111111111111111111111111111111111112",
+      outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      amount: "1.25",
+      slippageBps: "120",
+      wrapUnwrapSol: "true",
+      skipPreflight: "true",
+    });
+    expect((execute as { dryRun?: boolean }).dryRun).toBe(false);
+
+    expect(walletToolMockState.dynamicSwapCalls).toEqual([
+      {
+        venue: "uniswap_v3",
+        tokenOut: "LINK",
+        amountEth: "0.5",
+        percent: undefined,
+        minAmountOut: undefined,
+        recipient: undefined,
+        feeTier: 3000,
+        inputMint: undefined,
+        outputMint: undefined,
+        amount: undefined,
+        amountRaw: undefined,
+        index: 1,
+        slippageBps: 75,
+        deadlineSeconds: undefined,
+        rpcUrl: undefined,
+        wrapUnwrapSol: undefined,
+        computeUnitPriceMicroLamports: undefined,
+        skipPreflight: false,
+        dryRun: true,
+      },
+      {
+        venue: "jupiter",
+        tokenOut: undefined,
+        amountEth: undefined,
+        percent: undefined,
+        minAmountOut: undefined,
+        recipient: undefined,
+        feeTier: undefined,
+        inputMint: "So11111111111111111111111111111111111111112",
+        outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        amount: "1.25",
+        amountRaw: undefined,
+        index: 0,
+        slippageBps: 120,
+        deadlineSeconds: undefined,
+        rpcUrl: undefined,
+        wrapUnwrapSol: true,
+        computeUnitPriceMicroLamports: undefined,
+        skipPreflight: true,
+        dryRun: false,
       },
     ]);
   });

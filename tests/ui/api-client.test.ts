@@ -397,6 +397,17 @@ describe("UI API client wiring", () => {
       dryRun: true,
       index: 1,
     });
+    await walletApi.priceQuote({
+      source: "chainlink",
+      symbol: "BTC",
+    });
+    await walletApi.swap({
+      venue: "jupiter",
+      inputMint: "So11111111111111111111111111111111111111112",
+      outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      amount: "1.5",
+      dryRun: true,
+    });
     await walletApi.signMessage("hello", "eth", 5);
     await walletApi.getAgentPolicy();
     await walletApi.updateAgentPolicy({
@@ -409,7 +420,7 @@ describe("UI API client wiring", () => {
     await walletApi.setAgentAccess(true);
     await walletApi.deleteWallet("secretpass");
 
-    expect(calls).toHaveLength(20);
+    expect(calls).toHaveLength(22);
     expect(calls[0].url).toBe("/api/wallet/status");
     expect(calls[1].url).toBe("/api/wallet/rpc");
     expect(calls[2].url).toBe("/api/wallet/rpc/status");
@@ -483,28 +494,43 @@ describe("UI API client wiring", () => {
       dryRun: true,
       index: 1,
     });
-    expect(calls[15].url).toBe("/api/wallet/sign");
+    expect(calls[15].url).toBe("/api/wallet/price");
     expect(calls[15].init?.method).toBe("POST");
     expect(JSON.parse(String(calls[15].init?.body))).toEqual({
+      source: "chainlink",
+      symbol: "BTC",
+    });
+    expect(calls[16].url).toBe("/api/wallet/swap");
+    expect(calls[16].init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[16].init?.body))).toEqual({
+      venue: "jupiter",
+      inputMint: "So11111111111111111111111111111111111111112",
+      outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      amount: "1.5",
+      dryRun: true,
+    });
+    expect(calls[17].url).toBe("/api/wallet/sign");
+    expect(calls[17].init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[17].init?.body))).toEqual({
       message: "hello",
       chain: "eth",
       index: 5,
     });
-    expect(calls[16].url).toBe("/api/wallet/agent-policy");
-    expect(calls[17].url).toBe("/api/wallet/agent-policy");
-    expect(calls[17].init?.method).toBe("PUT");
-    expect(JSON.parse(String(calls[17].init?.body))).toEqual({
+    expect(calls[18].url).toBe("/api/wallet/agent-policy");
+    expect(calls[19].url).toBe("/api/wallet/agent-policy");
+    expect(calls[19].init?.method).toBe("PUT");
+    expect(JSON.parse(String(calls[19].init?.body))).toEqual({
       allowNativeSend: true,
       allowTokenSend: true,
       allowEthSwaps: true,
       allowedEthContracts: ["0x0000000000000000000000000000000000000001"],
       allowedSolPrograms: ["11111111111111111111111111111111"],
     });
-    expect(calls[18].url).toBe("/api/wallet/agent-access");
-    expect(calls[18].init?.method).toBe("PUT");
-    expect(calls[19].url).toBe("/api/wallet");
-    expect(calls[19].init?.method).toBe("DELETE");
-    expect(JSON.parse(String(calls[19].init?.body))).toEqual({
+    expect(calls[20].url).toBe("/api/wallet/agent-access");
+    expect(calls[20].init?.method).toBe("PUT");
+    expect(calls[21].url).toBe("/api/wallet");
+    expect(calls[21].init?.method).toBe("DELETE");
+    expect(JSON.parse(String(calls[21].init?.body))).toEqual({
       password: "secretpass",
     });
   });

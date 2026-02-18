@@ -18,6 +18,7 @@ import {
   SystemProgram,
   Transaction,
   TransactionInstruction,
+  VersionedTransaction,
   sendAndConfirmTransaction,
 } from "@solana/web3.js";
 import {
@@ -56,8 +57,22 @@ const SOL_RPC_CONFIG_KEY = "wallet_rpc_sol";
 const BTC_API_CONFIG_KEY = "wallet_btc_api";
 
 const UNISWAP_V2_ROUTER_ETH = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
+const UNISWAP_V3_ROUTER_ETH = "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45";
+const UNISWAP_V3_QUOTER_ETH = "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6";
 const WETH_MAINNET = "0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2";
 const UNISWAP_TOKEN_LIST_URL = "https://tokens.uniswap.org";
+const PYTH_HERMES_API_BASE = "https://hermes.pyth.network/v2";
+const JUPITER_PRICE_API_BASE = "https://lite-api.jup.ag/price/v3";
+const JUPITER_SWAP_API_BASE = "https://lite-api.jup.ag/swap/v1";
+const SOL_MINT = "So11111111111111111111111111111111111111112";
+const USDC_SOL_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+
+const CHAINLINK_USD_FEEDS: Record<string, string> = {
+  BTC: "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c",
+  ETH: "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419",
+  SOL: "0x4ffC43a60e009B551865A93d232E33Fce9f01507",
+  LINK: "0x2c1d072e956AFFC0D435Cb7AC38EF18d24d9127c",
+};
 
 const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 
@@ -255,6 +270,77 @@ interface WalletSwapEthUniswapResult {
   dryRun: boolean;
 }
 
+type WalletPriceSource = "auto" | "chainlink" | "pyth" | "jupiter";
+
+interface WalletPriceQuoteInput {
+  source?: WalletPriceSource;
+  symbol?: string;
+  pair?: string;
+  feedAddress?: string;
+  pythFeedId?: string;
+  mint?: string;
+  quoteCurrency?: string;
+  rpcUrl?: string;
+}
+
+interface WalletPriceQuoteResult {
+  source: "chainlink" | "pyth" | "jupiter";
+  base: string;
+  quote: string;
+  price: string;
+  confidence?: string;
+  publishTime?: string;
+  feedAddress?: string;
+  feedId?: string;
+  mint?: string;
+}
+
+type WalletSwapVenue = "uniswap_v2" | "uniswap_v3" | "jupiter";
+
+interface WalletSwapInput {
+  venue: WalletSwapVenue;
+  // ETH venues
+  tokenOut?: string;
+  amountEth?: string;
+  percent?: number;
+  minAmountOut?: string;
+  recipient?: string;
+  feeTier?: number;
+  // Solana Jupiter venue
+  inputMint?: string;
+  outputMint?: string;
+  amount?: string;
+  amountRaw?: string;
+  // Shared
+  index?: number;
+  slippageBps?: number;
+  deadlineSeconds?: number;
+  rpcUrl?: string;
+  dryRun?: boolean;
+  wrapUnwrapSol?: boolean;
+  computeUnitPriceMicroLamports?: number;
+  skipPreflight?: boolean;
+}
+
+interface WalletSwapResult {
+  venue: WalletSwapVenue;
+  chain: "eth" | "sol";
+  from: string;
+  inputToken: string;
+  outputToken: string;
+  amountIn: string;
+  amountInRaw: string;
+  quotedAmountOut: string;
+  quotedAmountOutRaw: string;
+  minAmountOut: string;
+  minAmountOutRaw: string;
+  slippageBps: number;
+  dryRun: boolean;
+  route?: string;
+  txid?: string;
+  explorerUrl?: string;
+}
+
 interface WalletSendTokenInput {
   chain: WalletTokenChain;
   tokenAddress: string;
@@ -441,6 +527,35 @@ function normalizeContractResult(value: unknown): unknown {
   }
 
   return value;
+}
+
+function normalizeTicker(value: string): string {
+  return value.trim().toUpperCase().replace(/\s+/g, "");
+}
+
+function resolvePair(input: { symbol?: string; pair?: string }): { base: string; quote: string } {
+  const pair = typeof input.pair === "string" ? normalizeTicker(input.pair) : "";
+  if (pair.includes("/")) {
+    const [base, quote] = pair.split("/");
+    if (base && quote) {
+      return { base, quote };
+    }
+  }
+
+  const symbol = typeof input.symbol === "string" ? normalizeTicker(input.symbol) : "";
+  if (symbol) {
+    return { base: symbol, quote: "USD" };
+  }
+
+  throw new Error("Validation error: symbol or pair is required");
+}
+
+function normalizeFeedId(value: string): string {
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) {
+    throw new Error("Validation error: pyth feed id is required");
+  }
+  return trimmed.startsWith("0x") ? trimmed : `0x${trimmed}`;
 }
 
 function normalizeEthMethodSelector(input: string): string {
@@ -908,6 +1023,22 @@ class WalletManager {
       throw new Error("Validation error: Agent ETH swaps are disabled by wallet policy");
     }
     return await this.swapEthOnUniswap(input);
+  }
+
+  async getPriceQuoteForAgent(input: WalletPriceQuoteInput): Promise<WalletPriceQuoteResult> {
+    this.assertAgentAccessEnabled();
+    return await this.getPriceQuote(input);
+  }
+
+  async swapForAgent(input: WalletSwapInput): Promise<WalletSwapResult> {
+    this.assertAgentAccessEnabled();
+    if (input.dryRun !== true) {
+      const policy = this.getAgentPolicy();
+      if (!policy.allowEthSwaps) {
+        throw new Error("Validation error: Agent swaps are disabled by wallet policy");
+      }
+    }
+    return await this.swap(input);
   }
 
   getAccounts(query?: AccountsQuery): WalletAccount[] {
@@ -1606,6 +1737,516 @@ class WalletManager {
     };
   }
 
+  async getPriceQuote(input: WalletPriceQuoteInput): Promise<WalletPriceQuoteResult> {
+    const requestedSource = String(input.source || "auto")
+      .trim()
+      .toLowerCase() as WalletPriceSource;
+    const source: WalletPriceSource =
+      requestedSource === "chainlink" ||
+      requestedSource === "pyth" ||
+      requestedSource === "jupiter" ||
+      requestedSource === "auto"
+        ? requestedSource
+        : "auto";
+
+    const { base, quote } = resolvePair({
+      symbol: input.symbol,
+      pair: input.pair,
+    });
+
+    const tryChainlink = async (): Promise<WalletPriceQuoteResult> => {
+      if (quote !== "USD") {
+        throw new Error("Validation error: Chainlink source currently supports USD quote only");
+      }
+
+      const configuredFeed = typeof input.feedAddress === "string" ? input.feedAddress.trim() : "";
+      const feedAddress = configuredFeed || CHAINLINK_USD_FEEDS[base];
+      if (!feedAddress || !isEvmAddress(feedAddress)) {
+        throw new Error(
+          `Validation error: No Chainlink feed configured for ${base}/${quote}; provide feedAddress`
+        );
+      }
+
+      const provider = new JsonRpcProvider(input.rpcUrl?.trim() || this.getEthRpc());
+      const feed = new Contract(
+        feedAddress,
+        [
+          "function decimals() view returns (uint8)",
+          "function latestRoundData() view returns (uint80,int256,uint256,uint256,uint80)",
+        ],
+        provider
+      );
+
+      const [decimalsRaw, roundData] = await Promise.all([feed.decimals(), feed.latestRoundData()]);
+      const decimals = Number(decimalsRaw);
+      const answer = parseBigIntOrZero((roundData as { answer?: unknown }).answer);
+      const updatedAtRaw = parseBigIntOrZero((roundData as { updatedAt?: unknown }).updatedAt);
+
+      if (answer <= 0n) {
+        throw new Error("Validation error: Chainlink feed returned a non-positive price");
+      }
+
+      return {
+        source: "chainlink",
+        base,
+        quote,
+        price: formatUnits(answer, Number.isFinite(decimals) ? decimals : 8),
+        feedAddress,
+        publishTime:
+          updatedAtRaw > 0n ? new Date(Number(updatedAtRaw) * 1000).toISOString() : undefined,
+      };
+    };
+
+    const tryPyth = async (): Promise<WalletPriceQuoteResult> => {
+      if (quote !== "USD") {
+        throw new Error("Validation error: Pyth source currently supports USD quote only");
+      }
+
+      const feedId = await this.resolvePythFeedId({
+        pythFeedId: input.pythFeedId,
+        symbol: base,
+        pair: `${base}/${quote}`,
+      });
+
+      const url = `${PYTH_HERMES_API_BASE}/updates/price/latest?ids[]=${encodeURIComponent(
+        feedId
+      )}&parsed=true`;
+      const payload = await fetchJson<{
+        parsed?: Array<{
+          id?: string;
+          price?: {
+            price?: string;
+            conf?: string;
+            expo?: number;
+            publish_time?: number;
+          };
+        }>;
+      }>(url);
+
+      const parsed = payload.parsed?.[0];
+      const price = parsed?.price;
+      if (!price || typeof price.price !== "string" || typeof price.expo !== "number") {
+        throw new Error("Validation error: Pyth feed did not return parsed price data");
+      }
+
+      return {
+        source: "pyth",
+        base,
+        quote,
+        price: this.formatScaledSignedInteger(price.price, price.expo),
+        confidence:
+          typeof price.conf === "string"
+            ? this.formatScaledSignedInteger(price.conf, price.expo)
+            : undefined,
+        publishTime:
+          typeof price.publish_time === "number"
+            ? new Date(price.publish_time * 1000).toISOString()
+            : undefined,
+        feedId,
+      };
+    };
+
+    const tryJupiter = async (): Promise<WalletPriceQuoteResult> => {
+      if (quote !== "USD") {
+        throw new Error("Validation error: Jupiter source currently supports USD quote only");
+      }
+
+      const mint = this.resolveSolMint(String(input.mint || "").trim() || base);
+      const payload = await fetchJson<
+        Record<
+          string,
+          {
+            usdPrice?: number;
+            createdAt?: string;
+          }
+        >
+      >(`${JUPITER_PRICE_API_BASE}?ids=${encodeURIComponent(mint)}`);
+
+      const entry = payload[mint];
+      if (!entry || typeof entry.usdPrice !== "number" || !Number.isFinite(entry.usdPrice)) {
+        throw new Error("Validation error: Jupiter price API returned no usable price");
+      }
+
+      return {
+        source: "jupiter",
+        base,
+        quote,
+        price: String(entry.usdPrice),
+        mint,
+        publishTime: typeof entry.createdAt === "string" ? entry.createdAt : undefined,
+      };
+    };
+
+    if (source === "chainlink") return await tryChainlink();
+    if (source === "pyth") return await tryPyth();
+    if (source === "jupiter") return await tryJupiter();
+
+    const attempts: Array<() => Promise<WalletPriceQuoteResult>> = [];
+    if (base in CHAINLINK_USD_FEEDS || input.feedAddress) {
+      attempts.push(tryChainlink);
+    }
+    attempts.push(tryPyth);
+    attempts.push(tryJupiter);
+
+    let lastError: Error | null = null;
+    for (const attempt of attempts) {
+      try {
+        return await attempt();
+      } catch (error) {
+        lastError = error as Error;
+      }
+    }
+
+    throw lastError || new Error("Validation error: Could not resolve a price source");
+  }
+
+  async swap(input: WalletSwapInput): Promise<WalletSwapResult> {
+    const venue = String(input.venue || "")
+      .trim()
+      .toLowerCase() as WalletSwapVenue;
+    if (venue === "uniswap_v2") {
+      const result = await this.swapEthOnUniswap({
+        tokenOut: String(input.tokenOut || ""),
+        amountEth: input.amountEth,
+        percent: input.percent,
+        minAmountOut: input.minAmountOut,
+        slippageBps: input.slippageBps,
+        deadlineSeconds: input.deadlineSeconds,
+        index: input.index,
+        recipient: input.recipient,
+        rpcUrl: input.rpcUrl,
+        dryRun: input.dryRun,
+      });
+      return {
+        venue: "uniswap_v2",
+        chain: "eth",
+        from: result.from,
+        inputToken: "ETH",
+        outputToken: result.toTokenSymbol,
+        amountIn: result.amountInEth,
+        amountInRaw: result.amountInWei,
+        quotedAmountOut: result.quotedAmountOut,
+        quotedAmountOutRaw: result.quotedAmountOutRaw,
+        minAmountOut: result.minAmountOut,
+        minAmountOutRaw: result.minAmountOutRaw,
+        slippageBps: result.slippageBps,
+        dryRun: result.dryRun,
+        txid: result.txid,
+        explorerUrl: result.explorerUrl,
+      };
+    }
+
+    if (venue === "uniswap_v3") {
+      return await this.swapEthOnUniswapV3(input);
+    }
+    if (venue === "jupiter") {
+      return await this.swapOnJupiter(input);
+    }
+
+    throw new Error(
+      "Validation error: Unsupported swap venue. Use uniswap_v2, uniswap_v3, or jupiter"
+    );
+  }
+
+  private async swapEthOnUniswapV3(input: WalletSwapInput): Promise<WalletSwapResult> {
+    const tokenOutInput = String(input.tokenOut || "").trim();
+    if (!tokenOutInput) {
+      throw new Error("Validation error: tokenOut is required for uniswap_v3 swaps");
+    }
+
+    const index = normalizeStartIndex(input.index);
+    const amountEth = String(input.amountEth || "").trim();
+    const percent =
+      typeof input.percent === "number" && Number.isFinite(input.percent)
+        ? Number(input.percent)
+        : undefined;
+    const dryRun = input.dryRun === true;
+    if (!amountEth && percent === undefined) {
+      throw new Error("Validation error: amountEth or percent is required");
+    }
+    if (amountEth && percent !== undefined) {
+      throw new Error("Validation error: Specify either amountEth or percent, not both");
+    }
+
+    const feeTierRaw =
+      typeof input.feeTier === "number" && Number.isFinite(input.feeTier)
+        ? Math.floor(input.feeTier)
+        : 3000;
+    const allowedFeeTiers = new Set<number>([100, 500, 3000, 10_000]);
+    const feeTier = allowedFeeTiers.has(feeTierRaw) ? feeTierRaw : 3000;
+    const slippageBps =
+      typeof input.slippageBps === "number" && Number.isFinite(input.slippageBps)
+        ? Math.min(5_000, Math.max(10, Math.floor(input.slippageBps)))
+        : 100;
+    const deadlineSeconds =
+      typeof input.deadlineSeconds === "number" && Number.isFinite(input.deadlineSeconds)
+        ? Math.min(7_200, Math.max(60, Math.floor(input.deadlineSeconds)))
+        : 900;
+
+    const unlocked = this.requireUnlocked();
+    const provider = new JsonRpcProvider(input.rpcUrl?.trim() || this.getEthRpc());
+    const account = this.deriveEthWallet(unlocked.mnemonic, index);
+    const signer = account.wallet.connect(provider);
+    const from = account.address;
+    const balanceWei = await provider.getBalance(from);
+    const gasReserveWei = parseEther("0.003");
+
+    if (balanceWei <= gasReserveWei) {
+      throw new Error("Validation error: Not enough ETH balance available after gas reserve");
+    }
+
+    let amountInWei: bigint;
+    if (percent !== undefined) {
+      if (percent <= 0 || percent > 100) {
+        throw new Error("Validation error: percent must be greater than 0 and at most 100");
+      }
+      const scaledPercent = BigInt(Math.round(percent * 10_000));
+      amountInWei = (balanceWei * scaledPercent) / 1_000_000n;
+    } else {
+      amountInWei = parseEther(amountEth);
+    }
+    if (amountInWei <= 0n) {
+      throw new Error("Validation error: Swap input amount must be greater than zero");
+    }
+    if (amountInWei + gasReserveWei > balanceWei) {
+      if (percent !== undefined) {
+        amountInWei = balanceWei - gasReserveWei;
+      } else {
+        throw new Error("Validation error: Insufficient ETH balance after reserving gas");
+      }
+    }
+
+    const tokenOut = await this.resolveEthTokenTarget(tokenOutInput, provider);
+    if (tokenOut.address.toLowerCase() === WETH_MAINNET.toLowerCase()) {
+      throw new Error("Validation error: tokenOut must be a non-WETH ERC-20 token");
+    }
+
+    const recipient = String(input.recipient || from).trim();
+    if (!isEvmAddress(recipient)) {
+      throw new Error("Validation error: recipient must be a valid ETH address");
+    }
+
+    const quoter = new Contract(
+      UNISWAP_V3_QUOTER_ETH,
+      [
+        "function quoteExactInputSingle(address tokenIn,address tokenOut,uint24 fee,uint256 amountIn,uint160 sqrtPriceLimitX96) returns (uint256 amountOut)",
+      ],
+      provider
+    );
+    const quoteMethod = (
+      quoter as unknown as Record<string, { staticCall?: (...args: unknown[]) => Promise<unknown> }>
+    ).quoteExactInputSingle;
+    const quoteValue =
+      quoteMethod && typeof quoteMethod.staticCall === "function"
+        ? await quoteMethod.staticCall(WETH_MAINNET, tokenOut.address, feeTier, amountInWei, 0)
+        : await (
+            quoter as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>
+          ).quoteExactInputSingle(WETH_MAINNET, tokenOut.address, feeTier, amountInWei, 0);
+    const quotedAmountOutRaw = parseBigIntOrZero(quoteValue);
+
+    if (quotedAmountOutRaw <= 0n) {
+      throw new Error("Validation error: Could not quote output amount from Uniswap V3");
+    }
+
+    const minAmountOutRaw =
+      typeof input.minAmountOut === "string" && input.minAmountOut.trim()
+        ? parseAmountToUnits(input.minAmountOut.trim(), tokenOut.decimals)
+        : (quotedAmountOutRaw * BigInt(10_000 - slippageBps)) / 10_000n;
+
+    const deadlineEpoch = Math.floor(Date.now() / 1000) + deadlineSeconds;
+    const baseResult: WalletSwapResult = {
+      venue: "uniswap_v3",
+      chain: "eth",
+      from,
+      inputToken: "ETH",
+      outputToken: tokenOut.symbol,
+      amountIn: formatEther(amountInWei),
+      amountInRaw: amountInWei.toString(),
+      quotedAmountOut: formatUnits(quotedAmountOutRaw, tokenOut.decimals),
+      quotedAmountOutRaw: quotedAmountOutRaw.toString(),
+      minAmountOut: formatUnits(minAmountOutRaw, tokenOut.decimals),
+      minAmountOutRaw: minAmountOutRaw.toString(),
+      slippageBps,
+      dryRun,
+      route: `uniswap_v3_fee_${feeTier}`,
+    };
+
+    if (dryRun) {
+      return baseResult;
+    }
+
+    const router = new Contract(
+      UNISWAP_V3_ROUTER_ETH,
+      [
+        "function exactInputSingle((address tokenIn,address tokenOut,uint24 fee,address recipient,uint256 deadline,uint256 amountIn,uint256 amountOutMinimum,uint160 sqrtPriceLimitX96)) payable returns (uint256 amountOut)",
+      ],
+      signer
+    );
+
+    const tx = await (
+      router as unknown as Record<
+        string,
+        (
+          params: Record<string, unknown>,
+          overrides?: Record<string, unknown>
+        ) => Promise<{ hash: string }>
+      >
+    ).exactInputSingle(
+      {
+        tokenIn: WETH_MAINNET,
+        tokenOut: tokenOut.address,
+        fee: feeTier,
+        recipient,
+        deadline: deadlineEpoch,
+        amountIn: amountInWei,
+        amountOutMinimum: minAmountOutRaw,
+        sqrtPriceLimitX96: 0,
+      },
+      { value: amountInWei }
+    );
+
+    return {
+      ...baseResult,
+      dryRun: false,
+      txid: tx.hash,
+      explorerUrl: `https://etherscan.io/tx/${tx.hash}`,
+    };
+  }
+
+  private async swapOnJupiter(input: WalletSwapInput): Promise<WalletSwapResult> {
+    const outputMint = String(input.outputMint || "").trim();
+    if (!outputMint) {
+      throw new Error("Validation error: outputMint is required for jupiter swaps");
+    }
+    const inputMint = String(input.inputMint || SOL_MINT).trim();
+    const index = normalizeStartIndex(input.index);
+    const dryRun = input.dryRun === true;
+    const slippageBps =
+      typeof input.slippageBps === "number" && Number.isFinite(input.slippageBps)
+        ? Math.min(5_000, Math.max(10, Math.floor(input.slippageBps)))
+        : 100;
+
+    const unlocked = this.requireUnlocked();
+    const connection = new Connection(input.rpcUrl?.trim() || this.getSolRpc(), "confirmed");
+    const signer = this.deriveSolKeypair(unlocked.mnemonic, index);
+    const from = signer.publicKey.toBase58();
+
+    const inputDecimals = await this.getSolMintDecimals(connection, inputMint);
+    const outputDecimals = await this.getSolMintDecimals(connection, outputMint);
+    const amountRaw = await this.resolveJupiterAmountRaw({
+      connection,
+      owner: signer.publicKey,
+      inputMint,
+      inputAmount: input.amount,
+      inputAmountRaw: input.amountRaw,
+      inputPercent: input.percent,
+      inputDecimals,
+    });
+
+    const quoteUrl = new URL(`${JUPITER_SWAP_API_BASE}/quote`);
+    quoteUrl.searchParams.set("inputMint", inputMint);
+    quoteUrl.searchParams.set("outputMint", outputMint);
+    quoteUrl.searchParams.set("amount", amountRaw.toString());
+    quoteUrl.searchParams.set("slippageBps", String(slippageBps));
+
+    const quoteResponse = await fetchJson<{
+      error?: string;
+      errorCode?: string;
+      outAmount?: string;
+      otherAmountThreshold?: string;
+      routePlan?: Array<{ swapInfo?: { label?: string } }>;
+      [key: string]: unknown;
+    }>(quoteUrl.toString());
+
+    if (quoteResponse.error) {
+      throw new Error(
+        `Validation error: Jupiter quote failed (${quoteResponse.errorCode || "error"}): ${quoteResponse.error}`
+      );
+    }
+
+    const outAmountRaw = parseBigIntOrZero(quoteResponse.outAmount);
+    if (outAmountRaw <= 0n) {
+      throw new Error("Validation error: Jupiter quote returned zero output amount");
+    }
+    const minAmountOutRaw = parseBigIntOrZero(
+      quoteResponse.otherAmountThreshold || quoteResponse.outAmount
+    );
+
+    const baseResult: WalletSwapResult = {
+      venue: "jupiter",
+      chain: "sol",
+      from,
+      inputToken: inputMint,
+      outputToken: outputMint,
+      amountIn: formatUnits(amountRaw, inputDecimals),
+      amountInRaw: amountRaw.toString(),
+      quotedAmountOut: formatUnits(outAmountRaw, outputDecimals),
+      quotedAmountOutRaw: outAmountRaw.toString(),
+      minAmountOut: formatUnits(minAmountOutRaw, outputDecimals),
+      minAmountOutRaw: minAmountOutRaw.toString(),
+      slippageBps,
+      dryRun,
+      route: quoteResponse.routePlan?.[0]?.swapInfo?.label || "jupiter",
+    };
+
+    if (dryRun) {
+      return baseResult;
+    }
+
+    const swapResponse = await fetch(`${JUPITER_SWAP_API_BASE}/swap`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "user-agent": "cybara-wallet/1.0",
+      },
+      body: JSON.stringify({
+        quoteResponse,
+        userPublicKey: from,
+        wrapAndUnwrapSol: input.wrapUnwrapSol !== false,
+        dynamicComputeUnitLimit: true,
+        prioritizationFeeLamports:
+          typeof input.computeUnitPriceMicroLamports === "number" &&
+          Number.isFinite(input.computeUnitPriceMicroLamports) &&
+          input.computeUnitPriceMicroLamports > 0
+            ? {
+                priorityLevelWithMaxLamports: { priorityLevel: "veryHigh", maxLamports: 2_000_000 },
+              }
+            : undefined,
+      }),
+      signal: AbortSignal.timeout(20_000),
+    });
+
+    if (!swapResponse.ok) {
+      const reason = await swapResponse.text();
+      throw new Error(
+        `Validation error: Jupiter swap request failed (${swapResponse.status}): ${reason}`
+      );
+    }
+
+    const swapPayload = (await swapResponse.json()) as { swapTransaction?: string };
+    if (!swapPayload.swapTransaction) {
+      throw new Error("Validation error: Jupiter did not return a swap transaction");
+    }
+
+    const versionedTx = VersionedTransaction.deserialize(
+      Buffer.from(swapPayload.swapTransaction, "base64")
+    );
+    versionedTx.sign([signer]);
+
+    const signature = await connection.sendRawTransaction(versionedTx.serialize(), {
+      skipPreflight: input.skipPreflight === true,
+      maxRetries: 3,
+    });
+    await connection.confirmTransaction(signature, "confirmed");
+
+    return {
+      ...baseResult,
+      dryRun: false,
+      txid: signature,
+      explorerUrl: `https://solscan.io/tx/${signature}`,
+    };
+  }
+
   async callEthContract(input: EthContractCallInput): Promise<unknown> {
     const contractAddress = String(input.contractAddress || "").trim();
     const methodInput = String(input.method || "").trim();
@@ -2225,6 +2866,176 @@ class WalletManager {
 
   private getSolPath(index: number): string {
     return `m/44'/501'/${index}'/0'`;
+  }
+
+  private resolveSolMint(input: string): string {
+    const normalized = input.trim();
+    if (isEvmAddress(normalized)) {
+      throw new Error("Validation error: Expected a Solana mint, got an EVM address");
+    }
+
+    const upper = normalizeTicker(normalized);
+    const commonMints: Record<string, string> = {
+      SOL: SOL_MINT,
+      USDC: USDC_SOL_MINT,
+      USDT: "Es9vMFrzaCERmJfr8j7Xw4eE3f7zQht4p59SJ4f5kL7Q",
+    };
+
+    const mint = commonMints[upper] || normalized;
+    try {
+      return new PublicKey(mint).toBase58();
+    } catch {
+      throw new Error(`Validation error: Invalid Solana mint '${input}'`);
+    }
+  }
+
+  private async resolvePythFeedId(input: {
+    pythFeedId?: string;
+    symbol?: string;
+    pair?: string;
+  }): Promise<string> {
+    if (typeof input.pythFeedId === "string" && input.pythFeedId.trim()) {
+      return normalizeFeedId(input.pythFeedId);
+    }
+
+    const pair = input.pair ? normalizeTicker(input.pair) : "";
+    const symbol = input.symbol ? normalizeTicker(input.symbol) : "";
+    const query = pair || `${symbol}/USD`;
+    if (!query || !query.includes("/")) {
+      throw new Error("Validation error: Could not resolve Pyth feed query");
+    }
+
+    const searchUrl = `${PYTH_HERMES_API_BASE}/price_feeds?query=${encodeURIComponent(
+      query
+    )}&asset_type=crypto`;
+    const searchResults =
+      await fetchJson<
+        Array<{ id?: string; attributes?: { display_symbol?: string; symbol?: string } }>
+      >(searchUrl);
+
+    const exactMatch = searchResults.find((feed) => {
+      const display = normalizeTicker(String(feed.attributes?.display_symbol || ""));
+      return display === query;
+    });
+    const selected = exactMatch || searchResults[0];
+    if (!selected?.id || typeof selected.id !== "string") {
+      throw new Error(`Validation error: Could not resolve Pyth feed id for '${query}'`);
+    }
+
+    return normalizeFeedId(selected.id);
+  }
+
+  private formatScaledSignedInteger(rawValue: string, exponent: number): string {
+    const trimmed = rawValue.trim();
+    if (!trimmed) return "0";
+
+    const isNegative = trimmed.startsWith("-");
+    const absValue = BigInt(isNegative ? trimmed.slice(1) : trimmed);
+    const sign = isNegative ? "-" : "";
+
+    if (exponent >= 0) {
+      return `${sign}${(absValue * 10n ** BigInt(exponent)).toString()}`;
+    }
+
+    const decimals = Math.abs(exponent);
+    const scale = 10n ** BigInt(decimals);
+    const whole = absValue / scale;
+    const fraction = (absValue % scale).toString().padStart(decimals, "0").replace(/0+$/, "");
+    if (!fraction) {
+      return `${sign}${whole.toString()}`;
+    }
+    return `${sign}${whole.toString()}.${fraction}`;
+  }
+
+  private async getSolMintDecimals(connection: Connection, mint: string): Promise<number> {
+    const normalizedMint = this.resolveSolMint(mint);
+    if (normalizedMint === SOL_MINT) {
+      return 9;
+    }
+    const mintAccount = await getMint(connection, new PublicKey(normalizedMint));
+    return Number(mintAccount.decimals);
+  }
+
+  private async resolveJupiterAmountRaw(input: {
+    connection: Connection;
+    owner: PublicKey;
+    inputMint: string;
+    inputAmount?: string;
+    inputAmountRaw?: string;
+    inputPercent?: number;
+    inputDecimals: number;
+  }): Promise<bigint> {
+    const amountRawInput =
+      typeof input.inputAmountRaw === "string" ? input.inputAmountRaw.trim() : "";
+    const amountInput = typeof input.inputAmount === "string" ? input.inputAmount.trim() : "";
+    const percent =
+      typeof input.inputPercent === "number" && Number.isFinite(input.inputPercent)
+        ? input.inputPercent
+        : undefined;
+
+    if (!amountRawInput && !amountInput && percent === undefined) {
+      throw new Error("Validation error: amount, amountRaw, or percent is required");
+    }
+    if (
+      [Boolean(amountRawInput), Boolean(amountInput), percent !== undefined].filter(Boolean)
+        .length > 1
+    ) {
+      throw new Error("Validation error: Use only one of amount, amountRaw, or percent");
+    }
+
+    if (amountRawInput) {
+      if (!/^\d+$/.test(amountRawInput)) {
+        throw new Error("Validation error: amountRaw must be a positive integer string");
+      }
+      const parsed = BigInt(amountRawInput);
+      if (parsed <= 0n) {
+        throw new Error("Validation error: amountRaw must be greater than zero");
+      }
+      return parsed;
+    }
+
+    if (amountInput) {
+      const parsed = parseAmountToUnits(amountInput, input.inputDecimals);
+      if (parsed <= 0n) {
+        throw new Error("Validation error: amount must be greater than zero");
+      }
+      return parsed;
+    }
+
+    const normalizedInputMint = this.resolveSolMint(input.inputMint);
+    let balanceRaw = 0n;
+    if (normalizedInputMint === SOL_MINT) {
+      balanceRaw = BigInt(await input.connection.getBalance(input.owner, "confirmed"));
+    } else {
+      const ata = getAssociatedTokenAddressSync(
+        new PublicKey(normalizedInputMint),
+        input.owner,
+        false,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+      try {
+        const balance = await input.connection.getTokenAccountBalance(ata, "confirmed");
+        balanceRaw = BigInt(balance.value.amount || "0");
+      } catch {
+        balanceRaw = 0n;
+      }
+    }
+
+    if (balanceRaw <= 0n) {
+      throw new Error("Validation error: Input token balance is zero");
+    }
+
+    const safePercent = Math.min(100, Math.max(0, Number(percent)));
+    if (safePercent <= 0) {
+      throw new Error("Validation error: percent must be greater than zero");
+    }
+    const scaledPercent = BigInt(Math.round(safePercent * 10_000));
+    const amountRaw = (balanceRaw * scaledPercent) / 1_000_000n;
+    if (amountRaw <= 0n) {
+      throw new Error("Validation error: percent resolves to zero input amount");
+    }
+    return amountRaw;
   }
 
   private parseEthContractAbi(abiInput: string | undefined, methodSignature: string): unknown {
@@ -2865,5 +3676,11 @@ export type {
   SolProgramInstructionInput,
   WalletSwapEthUniswapInput,
   WalletSwapEthUniswapResult,
+  WalletPriceSource,
+  WalletPriceQuoteInput,
+  WalletPriceQuoteResult,
+  WalletSwapVenue,
+  WalletSwapInput,
+  WalletSwapResult,
   WalletSendResult,
 };

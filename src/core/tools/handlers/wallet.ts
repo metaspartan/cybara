@@ -82,10 +82,23 @@ function parseInstructionKeys(value: unknown): SolInstructionAccountMeta[] {
 
 function parseBoolean(value: unknown): boolean {
   if (value === true) return true;
+  if (value === false) return false;
   if (typeof value === "string") {
     return value.trim().toLowerCase() === "true";
   }
   return false;
+}
+
+function parseOptionalBoolean(value: unknown): boolean | undefined {
+  if (value === true || value === false) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  return undefined;
 }
 
 function parseNumber(value: unknown, fallback: number): number {
@@ -258,6 +271,88 @@ export async function handleWallet(args: Record<string, unknown>): Promise<unkno
         recipient: typeof args.recipient === "string" ? args.recipient : undefined,
         rpcUrl: typeof args.rpcUrl === "string" ? args.rpcUrl : undefined,
         dryRun: parseBoolean(args.dryRun),
+      });
+
+    case "price_quote":
+      return await walletManager.getPriceQuoteForAgent({
+        source:
+          typeof args.source === "string"
+            ? (args.source as "auto" | "chainlink" | "pyth" | "jupiter")
+            : undefined,
+        symbol: typeof args.symbol === "string" ? args.symbol : undefined,
+        pair: typeof args.pair === "string" ? args.pair : undefined,
+        feedAddress: typeof args.feedAddress === "string" ? args.feedAddress : undefined,
+        pythFeedId:
+          typeof args.pythFeedId === "string"
+            ? args.pythFeedId
+            : typeof args.feedId === "string"
+              ? args.feedId
+              : undefined,
+        mint: typeof args.mint === "string" ? args.mint : undefined,
+        quoteCurrency: typeof args.quoteCurrency === "string" ? args.quoteCurrency : undefined,
+        rpcUrl: typeof args.rpcUrl === "string" ? args.rpcUrl : undefined,
+      });
+
+    case "swap_quote":
+      return await walletManager.swapForAgent({
+        venue: String(args.venue || "uniswap_v2").toLowerCase() as
+          | "uniswap_v2"
+          | "uniswap_v3"
+          | "jupiter",
+        tokenOut:
+          typeof args.tokenOut === "string"
+            ? args.tokenOut
+            : typeof args.tokenAddress === "string"
+              ? args.tokenAddress
+              : undefined,
+        amountEth: typeof args.amountEth === "string" ? args.amountEth : undefined,
+        percent: parseOptionalNumber(args.percent),
+        minAmountOut: typeof args.minAmountOut === "string" ? args.minAmountOut : undefined,
+        recipient: typeof args.recipient === "string" ? args.recipient : undefined,
+        feeTier: parseOptionalNumber(args.feeTier),
+        inputMint: typeof args.inputMint === "string" ? args.inputMint : undefined,
+        outputMint: typeof args.outputMint === "string" ? args.outputMint : undefined,
+        amount: typeof args.amount === "string" ? args.amount : undefined,
+        amountRaw: typeof args.amountRaw === "string" ? args.amountRaw : undefined,
+        index: parseNumber(args.index, 0),
+        slippageBps: parseOptionalNumber(args.slippageBps),
+        deadlineSeconds: parseOptionalNumber(args.deadlineSeconds),
+        rpcUrl: typeof args.rpcUrl === "string" ? args.rpcUrl : undefined,
+        wrapUnwrapSol: parseOptionalBoolean(args.wrapUnwrapSol),
+        computeUnitPriceMicroLamports: parseOptionalNumber(args.computeUnitPriceMicroLamports),
+        skipPreflight: parseBoolean(args.skipPreflight),
+        dryRun: true,
+      });
+
+    case "swap_execute":
+      return await walletManager.swapForAgent({
+        venue: String(args.venue || "uniswap_v2").toLowerCase() as
+          | "uniswap_v2"
+          | "uniswap_v3"
+          | "jupiter",
+        tokenOut:
+          typeof args.tokenOut === "string"
+            ? args.tokenOut
+            : typeof args.tokenAddress === "string"
+              ? args.tokenAddress
+              : undefined,
+        amountEth: typeof args.amountEth === "string" ? args.amountEth : undefined,
+        percent: parseOptionalNumber(args.percent),
+        minAmountOut: typeof args.minAmountOut === "string" ? args.minAmountOut : undefined,
+        recipient: typeof args.recipient === "string" ? args.recipient : undefined,
+        feeTier: parseOptionalNumber(args.feeTier),
+        inputMint: typeof args.inputMint === "string" ? args.inputMint : undefined,
+        outputMint: typeof args.outputMint === "string" ? args.outputMint : undefined,
+        amount: typeof args.amount === "string" ? args.amount : undefined,
+        amountRaw: typeof args.amountRaw === "string" ? args.amountRaw : undefined,
+        index: parseNumber(args.index, 0),
+        slippageBps: parseOptionalNumber(args.slippageBps),
+        deadlineSeconds: parseOptionalNumber(args.deadlineSeconds),
+        rpcUrl: typeof args.rpcUrl === "string" ? args.rpcUrl : undefined,
+        wrapUnwrapSol: parseOptionalBoolean(args.wrapUnwrapSol),
+        computeUnitPriceMicroLamports: parseOptionalNumber(args.computeUnitPriceMicroLamports),
+        skipPreflight: parseBoolean(args.skipPreflight),
+        dryRun: false,
       });
 
     default:

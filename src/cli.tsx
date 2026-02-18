@@ -2186,6 +2186,155 @@ async function rawWalletSwapEthUniswap(args: string[]): Promise<void> {
   if (data.explorerUrl) console.log(`explorer: ${data.explorerUrl}`);
 }
 
+async function rawWalletPrice(args: string[]): Promise<void> {
+  const source = getFlagValue(args, "--source");
+  const symbol = getFlagValue(args, "--symbol");
+  const pair = getFlagValue(args, "--pair");
+  const feedAddress = getFlagValue(args, "--feed-address");
+  const feedId = getFlagValue(args, "--feed-id") || getFlagValue(args, "--pyth-feed-id");
+  const mint = getFlagValue(args, "--mint");
+  const quoteCurrency = getFlagValue(args, "--quote");
+  const rpcUrl = getFlagValue(args, "--rpc");
+
+  if (!symbol && !pair && !mint) {
+    console.error(
+      "Usage: cybara wallet price [--source auto|chainlink|pyth|jupiter] (--symbol SYMBOL | --pair BASE/QUOTE | --mint SOL_MINT) [--feed-address ADDR] [--feed-id ID] [--quote USD] [--rpc URL]"
+    );
+    process.exit(1);
+  }
+
+  const payload: Record<string, unknown> = {};
+  if (source) payload.source = source;
+  if (symbol) payload.symbol = symbol;
+  if (pair) payload.pair = pair;
+  if (feedAddress) payload.feedAddress = feedAddress;
+  if (feedId) payload.feedId = feedId;
+  if (mint) payload.mint = mint;
+  if (quoteCurrency) payload.quoteCurrency = quoteCurrency;
+  if (rpcUrl) payload.rpcUrl = rpcUrl;
+
+  const data = await walletRequest<{
+    source: string;
+    base: string;
+    quote: string;
+    price: string;
+    confidence?: string;
+    publishTime?: string;
+    feedAddress?: string;
+    feedId?: string;
+    mint?: string;
+  }>("POST", "/api/wallet/price", payload);
+
+  console.log("PRICE QUOTE");
+  console.log("===========");
+  console.log(`source: ${data.source}`);
+  console.log(`pair: ${data.base}/${data.quote}`);
+  console.log(`price: ${data.price}`);
+  if (data.confidence) console.log(`confidence: ${data.confidence}`);
+  if (data.publishTime) console.log(`publish_time: ${data.publishTime}`);
+  if (data.feedAddress) console.log(`feed_address: ${data.feedAddress}`);
+  if (data.feedId) console.log(`feed_id: ${data.feedId}`);
+  if (data.mint) console.log(`mint: ${data.mint}`);
+}
+
+async function rawWalletSwap(args: string[], execute = false): Promise<void> {
+  const venue = getFlagValue(args, "--venue");
+  const tokenOut = getFlagValue(args, "--token") || getFlagValue(args, "--token-out");
+  const amountEth = getFlagValue(args, "--amount-eth");
+  const percent = getFlagValue(args, "--percent");
+  const minAmountOut = getFlagValue(args, "--min-out");
+  const slippageBps = getFlagValue(args, "--slippage-bps");
+  const deadlineSeconds = getFlagValue(args, "--deadline");
+  const recipient = getFlagValue(args, "--recipient");
+  const feeTier = getFlagValue(args, "--fee-tier");
+  const inputMint = getFlagValue(args, "--input-mint");
+  const outputMint = getFlagValue(args, "--output-mint");
+  const amount = getFlagValue(args, "--amount");
+  const amountRaw = getFlagValue(args, "--amount-raw");
+  const index = getFlagValue(args, "--index");
+  const rpcUrl = getFlagValue(args, "--rpc");
+  const wrapUnwrapSol = getFlagValue(args, "--wrap-sol");
+  const computePrice = getFlagValue(args, "--compute-price-microlamports");
+  const skipPreflight = args.includes("--skip-preflight");
+
+  const selectedVenue = (venue || "").toLowerCase();
+  if (!selectedVenue || !["uniswap_v2", "uniswap_v3", "jupiter"].includes(selectedVenue)) {
+    console.error(
+      "Usage: cybara wallet swap-quote --venue <uniswap_v2|uniswap_v3|jupiter> [venue-specific flags]"
+    );
+    console.error("ETH venues: --token <symbol|address> (--percent N | --amount-eth ETH)");
+    console.error("Jupiter: --input-mint <mint> --output-mint <mint> (--amount N | --amount-raw RAW | --percent N)");
+    process.exit(1);
+  }
+
+  if ((selectedVenue === "uniswap_v2" || selectedVenue === "uniswap_v3") && !tokenOut) {
+    console.error("ETH swap venues require --token <symbol|address>");
+    process.exit(1);
+  }
+
+  if ((selectedVenue === "uniswap_v2" || selectedVenue === "uniswap_v3") && !percent && !amountEth) {
+    console.error("ETH swap venues require either --percent or --amount-eth");
+    process.exit(1);
+  }
+
+  if (selectedVenue === "jupiter" && (!inputMint || !outputMint)) {
+    console.error("Jupiter venue requires --input-mint and --output-mint");
+    process.exit(1);
+  }
+
+  const payload: Record<string, unknown> = {
+    venue: selectedVenue,
+    dryRun: !execute,
+  };
+  if (tokenOut) payload.tokenOut = tokenOut;
+  if (amountEth) payload.amountEth = amountEth;
+  if (percent) payload.percent = Number(percent);
+  if (minAmountOut) payload.minAmountOut = minAmountOut;
+  if (slippageBps) payload.slippageBps = Number(slippageBps);
+  if (deadlineSeconds) payload.deadlineSeconds = Number(deadlineSeconds);
+  if (recipient) payload.recipient = recipient;
+  if (feeTier) payload.feeTier = Number(feeTier);
+  if (inputMint) payload.inputMint = inputMint;
+  if (outputMint) payload.outputMint = outputMint;
+  if (amount) payload.amount = amount;
+  if (amountRaw) payload.amountRaw = amountRaw;
+  if (index) payload.index = Number(index);
+  if (rpcUrl) payload.rpcUrl = rpcUrl;
+  if (wrapUnwrapSol) payload.wrapUnwrapSol = wrapUnwrapSol.toLowerCase() !== "false";
+  if (computePrice) payload.computeUnitPriceMicroLamports = Number(computePrice);
+  if (skipPreflight) payload.skipPreflight = true;
+
+  const data = await walletRequest<{
+    venue: string;
+    chain: string;
+    from: string;
+    inputToken: string;
+    outputToken: string;
+    amountIn: string;
+    quotedAmountOut: string;
+    minAmountOut: string;
+    slippageBps: number;
+    dryRun: boolean;
+    route?: string;
+    txid?: string;
+    explorerUrl?: string;
+  }>("POST", "/api/wallet/swap", payload);
+
+  console.log("SWAP RESULT");
+  console.log("===========");
+  console.log(`mode: ${data.dryRun ? "quote-only" : "execute"}`);
+  console.log(`venue: ${data.venue}`);
+  console.log(`chain: ${data.chain.toUpperCase()}`);
+  console.log(`from: ${data.from}`);
+  console.log(`input: ${data.amountIn} ${data.inputToken}`);
+  console.log(`quote_out: ${data.quotedAmountOut} ${data.outputToken}`);
+  console.log(`min_out: ${data.minAmountOut} ${data.outputToken}`);
+  console.log(`slippage_bps: ${data.slippageBps}`);
+  if (data.route) console.log(`route: ${data.route}`);
+  if (data.txid) console.log(`txid: ${data.txid}`);
+  if (data.explorerUrl) console.log(`explorer: ${data.explorerUrl}`);
+}
+
 async function rawWalletAgentAccess(mode?: string): Promise<void> {
   if (mode !== "on" && mode !== "off") {
     console.error("Usage: cybara wallet agent-access <on|off>");
@@ -2347,6 +2496,9 @@ function rawHelp(): void {
   console.log("    wallet send <chain> --to <addr> --amount <value>");
   console.log("    wallet send-token <eth|sol> --token <addr|mint> --to <addr> --amount <value>");
   console.log("    wallet swap-eth-uniswap --token <symbol|addr> --percent 50 [--execute]");
+  console.log("    wallet price --source auto --symbol BTC");
+  console.log("    wallet swap-quote --venue <uniswap_v2|uniswap_v3|jupiter> ...");
+  console.log("    wallet swap-execute --venue <uniswap_v2|uniswap_v3|jupiter> ...");
   console.log(
     "    wallet contract-call --contract <addr> (--abi '<json_or_sig>' | --signature '<name(types)>') [--method <name>]"
   );
@@ -3336,6 +3488,15 @@ async function main() {
         case "swap-eth-uniswap":
           await rawWalletSwapEthUniswap(walletArgs);
           break;
+        case "price":
+          await rawWalletPrice(walletArgs);
+          break;
+        case "swap-quote":
+          await rawWalletSwap(walletArgs, false);
+          break;
+        case "swap-execute":
+          await rawWalletSwap(walletArgs, true);
+          break;
         case "contract-call":
           await rawWalletEthContractCall(walletArgs);
           break;
@@ -3374,6 +3535,15 @@ async function main() {
           );
           console.log(
             "  cybara wallet swap-eth-uniswap --token <symbol|address> (--percent N | --amount-eth ETH) [--execute]"
+          );
+          console.log(
+            "  cybara wallet price [--source auto|chainlink|pyth|jupiter] (--symbol BTC | --pair BTC/USD | --mint <solMint>)"
+          );
+          console.log(
+            "  cybara wallet swap-quote --venue <uniswap_v2|uniswap_v3|jupiter> [--token <ethToken>] [--input-mint <mint> --output-mint <mint>] ..."
+          );
+          console.log(
+            "  cybara wallet swap-execute --venue <uniswap_v2|uniswap_v3|jupiter> [same args as swap-quote]"
           );
           console.log(
             "  cybara wallet contract-call --contract <address> (--abi '<json_or_signature>' | --signature '<name(types)>') [--method <name>]"

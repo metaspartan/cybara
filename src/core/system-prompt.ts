@@ -29,7 +29,7 @@ export const CORE_TOOL_SUMMARIES: Record<string, string> = {
   cron: "Manage cron jobs and wake events (use for reminders; write systemEvent text that reads like a reminder when it fires)",
   message: "Send messages and channel actions",
   wallet:
-    "Read balances and history, send native/token transfers, run contract/program calls, and execute guarded Uniswap ETH swaps",
+    "Read balances/history, send native/token transfers, run contract/program calls, query prices (Chainlink/Pyth/Jupiter), and execute guarded swap flows (Uniswap/Jupiter)",
   gateway: "Restart, apply config, or run updates on the running process",
   agents_list: "List agent ids allowed for sessions_spawn",
   sessions_list: "List other sessions (incl. sub-agents) with filters",
@@ -465,7 +465,9 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
       lines.push(
         "### Wallet Tool (funds and contracts)",
         "- Always begin with read-only steps: wallet status/balances/quotes before any write action.",
+        "- For market context, use `price_quote` (auto/chainlink/pyth/jupiter) before deciding on swaps or transfers.",
         "- For swaps, prefer wallet action `swap_eth_uniswap` with `dryRun: true` first, then execute with explicit amount/percent and slippage.",
+        "- For dynamic routing, prefer `swap_quote` first, then `swap_execute` with explicit venue (uniswap_v2/uniswap_v3/jupiter).",
         "- For ETH contract calls, prefer explicit `methodSignature` for overloaded methods and run `readOnly: true` first before write execution.",
         "- For dynamic contract interactions, verify contract address and method ABI/signature from trusted docs before submission.",
         "- For Solana program instructions, include full account metas and choose a single data encoding (`dataBase64`/`dataHex`/`dataUtf8`).",
