@@ -48,6 +48,23 @@ function parseJsonArray(value: unknown): unknown[] {
   return [];
 }
 
+function parseJsonObject(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value === "string" && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return {};
+}
+
 function parseInstructionKeys(value: unknown): SolInstructionAccountMeta[] {
   const keys = parseJsonArray(value);
   const parsed: SolInstructionAccountMeta[] = [];
@@ -136,6 +153,9 @@ export async function handleWallet(args: Record<string, unknown>): Promise<unkno
 
     case "endpoints":
       return walletManager.getEndpointDirectoryForAgent();
+
+    case "dapp_capabilities":
+      return walletManager.getDappDirectoryForAgent();
 
     case "address":
       return walletManager.getAgentAddress();
@@ -295,6 +315,43 @@ export async function handleWallet(args: Record<string, unknown>): Promise<unkno
         mint: typeof args.mint === "string" ? args.mint : undefined,
         quoteCurrency: typeof args.quoteCurrency === "string" ? args.quoteCurrency : undefined,
         rpcUrl: typeof args.rpcUrl === "string" ? args.rpcUrl : undefined,
+      });
+
+    case "rpc_call":
+      return await walletManager.rpcCallForAgent({
+        chain: parseWalletChain(args.chain, "eth") === "sol" ? "sol" : "eth",
+        method: String(args.method || ""),
+        params: parseJsonArray(args.params),
+        rpcUrl: typeof args.rpcUrl === "string" ? args.rpcUrl : undefined,
+        id:
+          typeof args.id === "string" || typeof args.id === "number"
+            ? (args.id as string | number)
+            : undefined,
+      });
+
+    case "x402_request":
+      return await walletManager.x402RequestForAgent({
+        url: String(args.url || ""),
+        method: typeof args.method === "string" ? args.method : undefined,
+        headers:
+          typeof args.headers === "string" || (args.headers && typeof args.headers === "object")
+            ? (parseJsonObject(args.headers) as Record<string, string>)
+            : undefined,
+        body: args.body,
+        network: typeof args.network === "string" ? args.network : undefined,
+        maxAmountAtomic:
+          typeof args.maxAmountAtomic === "string" ? args.maxAmountAtomic : undefined,
+        index: parseNumber(args.index, 0),
+        timeoutMs: parseOptionalNumber(args.timeoutMs),
+        dryRun: parseBoolean(args.dryRun),
+        parseJsonResponse: parseOptionalBoolean(args.parseJsonResponse),
+      });
+
+    case "dapp":
+    case "dapp_call":
+      return await walletManager.executeDappForAgent({
+        adapter: String(args.adapter || ""),
+        payload: parseJsonObject(args.payload || args.input || {}),
       });
 
     case "swap_quote":

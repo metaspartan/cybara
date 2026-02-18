@@ -369,8 +369,13 @@ Update payload example:
   "allowEthContractWrite": false,
   "allowSolProgramInstruction": false,
   "allowEthSwaps": true,
+  "allowDappInteraction": true,
+  "allowX402Payments": false,
   "allowedEthContracts": ["0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"],
-  "allowedSolPrograms": []
+  "allowedSolPrograms": [],
+  "allowedDappHosts": ["app.uniswap.org", "jup.ag"],
+  "allowedX402Networks": ["eip155:1", "eip155:8453"],
+  "x402MaxAmountAtomic": "1000000"
 }
 ```
 
@@ -414,6 +419,64 @@ GET /api/wallet/endpoints
 ```
 
 Returns canonical router/oracle/program IDs and service endpoints used by wallet tools.
+
+### Dapp Adapter Directory
+```http
+GET /api/wallet/dapps
+```
+
+Returns discoverable wallet dapp adapters (`adapter`, `chain`, `write`, `description`) and operator notes.
+
+### Raw Chain RPC Call
+```http
+POST /api/wallet/rpc-call
+Content-Type: application/json
+
+{
+  "chain": "eth",
+  "method": "eth_blockNumber",
+  "params": [],
+  "id": 7
+}
+```
+
+Supports `eth` and `sol` with optional `rpcUrl` override.
+
+### Dynamic Dapp Adapter Call
+```http
+POST /api/wallet/dapp
+Content-Type: application/json
+
+{
+  "adapter": "uniswap_v3",
+  "payload": {
+    "action": "quote",
+    "tokenOut": "LINK",
+    "amountEth": "0.25"
+  }
+}
+```
+
+`payload` can be any JSON object accepted by the target adapter.
+
+### x402 HTTP Payment Flow
+```http
+POST /api/wallet/x402
+Content-Type: application/json
+
+{
+  "url": "https://merchant.example/x402/resource",
+  "method": "POST",
+  "headers": { "content-type": "application/json" },
+  "body": { "prompt": "run task" },
+  "network": "eip155:1",
+  "maxAmountAtomic": "250000",
+  "dryRun": true
+}
+```
+
+When `dryRun: true`, the endpoint returns 402 requirement details without signing/broadcasting a payment.  
+When `dryRun: false`, it attempts payment if policy permits.
 
 ### Dynamic Swap Quote / Execute (Uniswap V2, Uniswap V3, Jupiter)
 ```http

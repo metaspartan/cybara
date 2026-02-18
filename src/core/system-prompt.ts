@@ -469,9 +469,12 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
         "- Use `endpoints` when you need canonical router/oracle/program IDs before interacting with protocols.",
         "- For swaps, prefer wallet action `swap_eth_uniswap` with `dryRun: true` first, then execute with explicit amount/percent and slippage.",
         "- For dynamic routing, prefer `swap`/`swap_quote` with dry-run first, then execute (`swap_execute` or `swap` with `execute: true`) using explicit venue (uniswap_v2/uniswap_v3/jupiter).",
+        "- For broader protocol coverage, use `dapp_capabilities` then `dapp_call` with explicit adapter (`rpc_call`, `eth_contract_call`, `sol_program_instruction`, `swap`, `price`, `x402_http`).",
+        "- Prefer `rpc_call` for on-chain read discovery (method/params) before relying on off-chain APIs.",
         "- For ETH contract calls, prefer explicit `methodSignature` for overloaded methods and run `readOnly: true` first before write execution.",
         "- For dynamic contract interactions, verify contract address and method ABI/signature from trusted docs before submission.",
         "- For Solana program instructions, include full account metas and choose a single data encoding (`dataBase64`/`dataHex`/`dataUtf8`).",
+        "- For x402 paid HTTP requests, run with `dryRun: true` first, verify requirement amount/network/asset/payTo, then execute with explicit max amount.",
         "- For token sends, verify chain + token address/mint + decimals assumptions before submitting.",
         "- Surface tx hash and explorer URL after successful writes.",
         ""

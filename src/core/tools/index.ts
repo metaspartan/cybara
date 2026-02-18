@@ -745,7 +745,7 @@ Use for tasks that may take longer or require separate context.`,
   wallet: {
     name: "wallet",
     description:
-      "Use the local encrypted multi-chain wallet (ETH, BTC, SOL): native/token balances/history, sends, message signing, ERC-20/SPL transfers, ETH contract calls, Solana program instructions, price quotes (Chainlink/Pyth/Jupiter), and dynamic swap quote/execute flows (Uniswap v2/v3, Jupiter). Requires wallet agent access enabled and an unlocked wallet.",
+      "Use the local encrypted multi-chain wallet (ETH, BTC, SOL): native/token balances/history, sends, message signing, ERC-20/SPL transfers, ETH contract calls, Solana program instructions, direct RPC reads, price quotes (Chainlink/Pyth/Jupiter), dynamic swap quote/execute flows (Uniswap v2/v3, Jupiter), generic dapp adapter dispatch, and x402 paid HTTP requests. Requires wallet agent access enabled and an unlocked wallet.",
     category: "core",
     input_schema: {
       type: "object",
@@ -768,6 +768,11 @@ Use for tasks that may take longer or require separate context.`,
             "sol_program_instruction",
             "swap_eth_uniswap",
             "endpoints",
+            "dapp_capabilities",
+            "rpc_call",
+            "dapp",
+            "dapp_call",
+            "x402_request",
             "price",
             "price_quote",
             "swap",
@@ -851,7 +856,7 @@ Use for tasks that may take longer or require separate context.`,
         method: {
           type: "string",
           description:
-            "Contract method name for eth_contract_call (or full selector like 'swapExactETHForTokens(uint256,address[],address,uint256)')",
+            "Contract method name for eth_contract_call (or full selector like 'swapExactETHForTokens(uint256,address[],address,uint256)'). Also used as JSON-RPC method for action=rpc_call.",
         },
         methodSignature: {
           type: "string",
@@ -1058,6 +1063,63 @@ Use for tasks that may take longer or require separate context.`,
         wrapUnwrapSol: {
           type: "boolean",
           description: "For Jupiter swaps, wrap/unwrap native SOL automatically (default true)",
+        },
+        adapter: {
+          type: "string",
+          enum: [
+            "rpc_call",
+            "eth_contract_call",
+            "sol_program_instruction",
+            "swap",
+            "price",
+            "x402_http",
+          ],
+          description:
+            "Generic dapp adapter used by action=dapp/dapp_call (rpc_call, eth_contract_call, sol_program_instruction, swap, price, x402_http)",
+        },
+        payload: {
+          type: "object",
+          description: "JSON payload object for action=dapp/dapp_call",
+        },
+        input: {
+          type: "object",
+          description: "Alias for payload in action=dapp/dapp_call",
+        },
+        id: {
+          type: "string",
+          description: "Optional JSON-RPC id for action=rpc_call",
+        },
+        params: {
+          type: "array",
+          items: {},
+          description: "JSON-RPC params array for action=rpc_call",
+        },
+        url: {
+          type: "string",
+          description: "Target URL for action=x402_request",
+        },
+        headers: {
+          type: "object",
+          description: "HTTP headers object for action=x402_request",
+        },
+        body: {
+          description: "Request body for action=x402_request",
+        },
+        network: {
+          type: "string",
+          description: "Optional x402 network selector (e.g., eip155:8453)",
+        },
+        maxAmountAtomic: {
+          type: "string",
+          description: "Maximum x402 payment amount in atomic units for action=x402_request",
+        },
+        timeoutMs: {
+          type: "number",
+          description: "HTTP timeout override for action=x402_request",
+        },
+        parseJsonResponse: {
+          type: "boolean",
+          description: "Parse action=x402_request response as JSON when content-type is JSON",
         },
       },
       required: ["action"],

@@ -13,8 +13,13 @@ const walletMockState = {
     allowEthContractWrite?: boolean;
     allowSolProgramInstruction?: boolean;
     allowEthSwaps?: boolean;
+    allowDappInteraction?: boolean;
+    allowX402Payments?: boolean;
     allowedEthContracts?: string[];
     allowedSolPrograms?: string[];
+    allowedDappHosts?: string[];
+    allowedX402Networks?: string[];
+    x402MaxAmountAtomic?: string;
   }>,
   createCalls: [] as string[],
   importCalls: [] as Array<{ mnemonic: string; password: string }>,
@@ -108,6 +113,27 @@ const walletMockState = {
     rpcUrl?: string;
   }>,
   endpointDirectoryCalls: 0,
+  dappDirectoryCalls: 0,
+  rpcCallCalls: [] as Array<{
+    chain: "eth" | "sol";
+    method: string;
+    params?: unknown[];
+    rpcUrl?: string;
+    id?: string | number;
+  }>,
+  dappCalls: [] as Array<{ adapter: string; payload: Record<string, unknown> }>,
+  x402Calls: [] as Array<{
+    url: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: unknown;
+    network?: string;
+    maxAmountAtomic?: string;
+    index?: number;
+    timeoutMs?: number;
+    dryRun?: boolean;
+    parseJsonResponse?: boolean;
+  }>,
   dynamicSwapCalls: [] as Array<{
     venue: string;
     tokenOut?: string;
@@ -176,8 +202,13 @@ mock.module("../../src/core/wallet", () => ({
         allowEthContractWrite: false,
         allowSolProgramInstruction: false,
         allowEthSwaps: false,
+        allowDappInteraction: false,
+        allowX402Payments: false,
         allowedEthContracts: [],
         allowedSolPrograms: [],
+        allowedDappHosts: [],
+        allowedX402Networks: [],
+        x402MaxAmountAtomic: "1000000",
       };
     },
     setRpcConfig: (input: { ethRpc?: string; solRpc?: string; btcApi?: string }) => {
@@ -190,8 +221,13 @@ mock.module("../../src/core/wallet", () => ({
       allowEthContractWrite?: boolean;
       allowSolProgramInstruction?: boolean;
       allowEthSwaps?: boolean;
+      allowDappInteraction?: boolean;
+      allowX402Payments?: boolean;
       allowedEthContracts?: string[];
       allowedSolPrograms?: string[];
+      allowedDappHosts?: string[];
+      allowedX402Networks?: string[];
+      x402MaxAmountAtomic?: string;
     }) => {
       walletMockState.setAgentPolicyCalls.push(input);
       return {
@@ -202,8 +238,13 @@ mock.module("../../src/core/wallet", () => ({
           allowEthContractWrite: input.allowEthContractWrite === true,
           allowSolProgramInstruction: input.allowSolProgramInstruction === true,
           allowEthSwaps: input.allowEthSwaps === true,
+          allowDappInteraction: input.allowDappInteraction === true,
+          allowX402Payments: input.allowX402Payments === true,
           allowedEthContracts: input.allowedEthContracts || [],
           allowedSolPrograms: input.allowedSolPrograms || [],
+          allowedDappHosts: input.allowedDappHosts || [],
+          allowedX402Networks: input.allowedX402Networks || [],
+          x402MaxAmountAtomic: input.x402MaxAmountAtomic || "1000000",
         },
       };
     },
@@ -437,6 +478,77 @@ mock.module("../../src/core/wallet", () => ({
         services: {},
       };
     },
+    getDappDirectory: () => {
+      walletMockState.dappDirectoryCalls += 1;
+      return {
+        adapters: [
+          {
+            adapter: "uniswap_v3",
+            chain: "eth",
+            write: true,
+            description: "Uniswap V3 quote and execute adapter",
+          },
+          {
+            adapter: "jupiter",
+            chain: "sol",
+            write: true,
+            description: "Jupiter quote and execute adapter",
+          },
+        ],
+        notes: ["Enable wallet agent policy for autonomous writes."],
+      };
+    },
+    rpcCall: async (input: {
+      chain: "eth" | "sol";
+      method: string;
+      params?: unknown[];
+      rpcUrl?: string;
+      id?: string | number;
+    }) => {
+      walletMockState.rpcCallCalls.push(input);
+      return {
+        chain: input.chain,
+        rpcUrl: input.rpcUrl || (input.chain === "eth" ? "https://eth.example" : "https://sol.example"),
+        method: input.method,
+        id: input.id ?? 1,
+        result: { ok: true },
+      };
+    },
+    executeDapp: async (input: { adapter: string; payload: Record<string, unknown> }) => {
+      walletMockState.dappCalls.push(input);
+      return { adapter: input.adapter, ok: true, payload: input.payload };
+    },
+    x402Request: async (input: {
+      url: string;
+      method?: string;
+      headers?: Record<string, string>;
+      body?: unknown;
+      network?: string;
+      maxAmountAtomic?: string;
+      index?: number;
+      timeoutMs?: number;
+      dryRun?: boolean;
+      parseJsonResponse?: boolean;
+    }) => {
+      walletMockState.x402Calls.push(input);
+      return {
+        url: input.url,
+        method: (input.method || "GET").toUpperCase(),
+        status: input.dryRun ? 402 : 200,
+        paid: input.dryRun !== true,
+        attemptedPayment: true,
+        paymentRequirement: {
+          x402Version: 2,
+          scheme: "exact",
+          network: input.network || "eip155:1",
+          amount: "10000",
+          asset: "0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+          payTo: "0x0000000000000000000000000000000000000001",
+          maxTimeoutSeconds: 300,
+        },
+        body: { ok: true },
+      };
+    },
     swap: async (input: {
       venue: string;
       tokenOut?: string;
@@ -523,6 +635,10 @@ function resetState() {
   walletMockState.swapCalls = [];
   walletMockState.priceCalls = [];
   walletMockState.endpointDirectoryCalls = 0;
+  walletMockState.dappDirectoryCalls = 0;
+  walletMockState.rpcCallCalls = [];
+  walletMockState.dappCalls = [];
+  walletMockState.x402Calls = [];
   walletMockState.dynamicSwapCalls = [];
   walletMockState.signCalls = [];
   walletMockState.deleteCalls = [];
@@ -687,6 +803,70 @@ describe("Wallet route contracts (mocked manager)", () => {
     const endpointsRes = await api("GET", "/api/wallet/endpoints");
     expect(endpointsRes.status).toBe(200);
     expect(walletMockState.endpointDirectoryCalls).toBe(1);
+  });
+
+  test("dapp directory, rpc-call, dapp, and x402 routes forward payloads", async () => {
+    const dappsRes = await api("GET", "/api/wallet/dapps");
+    expect(dappsRes.status).toBe(200);
+    expect(walletMockState.dappDirectoryCalls).toBe(1);
+
+    const rpcCallRes = await api("POST", "/api/wallet/rpc-call", {
+      chain: "eth",
+      method: "eth_blockNumber",
+      params: [],
+      rpcUrl: "https://eth.alt",
+      id: 42,
+    });
+    expect(rpcCallRes.status).toBe(200);
+    expect(walletMockState.rpcCallCalls).toEqual([
+      {
+        chain: "eth",
+        method: "eth_blockNumber",
+        params: [],
+        rpcUrl: "https://eth.alt",
+        id: 42,
+      },
+    ]);
+
+    const dappRes = await api("POST", "/api/wallet/dapp", {
+      adapter: "uniswap_v3",
+      payload: { action: "quote", pair: "ETH/USDC" },
+    });
+    expect(dappRes.status).toBe(200);
+    expect(walletMockState.dappCalls).toEqual([
+      {
+        adapter: "uniswap_v3",
+        payload: { action: "quote", pair: "ETH/USDC" },
+      },
+    ]);
+
+    const x402Res = await api("POST", "/api/wallet/x402", {
+      url: "https://merchant.example/x402",
+      method: "POST",
+      headers: { "x-test": "1" },
+      body: { hello: "world" },
+      network: "eip155:1",
+      maxAmountAtomic: "150000",
+      index: 2,
+      timeoutMs: 15000,
+      dryRun: true,
+      parseJsonResponse: false,
+    });
+    expect(x402Res.status).toBe(200);
+    expect(walletMockState.x402Calls).toEqual([
+      {
+        url: "https://merchant.example/x402",
+        method: "POST",
+        headers: { "x-test": "1" },
+        body: { hello: "world" },
+        network: "eip155:1",
+        maxAmountAtomic: "150000",
+        index: 2,
+        timeoutMs: 15000,
+        dryRun: true,
+        parseJsonResponse: false,
+      },
+    ]);
   });
 
   test("send-token, eth-contract, sol-instruction, and swap routes forward payloads", async () => {
@@ -923,8 +1103,13 @@ describe("Wallet route contracts (mocked manager)", () => {
       allowNativeSend: true,
       allowTokenSend: true,
       allowEthSwaps: true,
+      allowDappInteraction: true,
+      allowX402Payments: true,
       allowedEthContracts: ["0x0000000000000000000000000000000000000001"],
       allowedSolPrograms: ["11111111111111111111111111111111"],
+      allowedDappHosts: ["merchant.example"],
+      allowedX402Networks: ["eip155:1"],
+      x402MaxAmountAtomic: "250000",
     });
     expect(policyRes.status).toBe(200);
     expect(walletMockState.setAgentPolicyCalls).toEqual([
@@ -934,8 +1119,13 @@ describe("Wallet route contracts (mocked manager)", () => {
         allowEthContractWrite: undefined,
         allowSolProgramInstruction: undefined,
         allowEthSwaps: true,
+        allowDappInteraction: true,
+        allowX402Payments: true,
         allowedEthContracts: ["0x0000000000000000000000000000000000000001"],
         allowedSolPrograms: ["11111111111111111111111111111111"],
+        allowedDappHosts: ["merchant.example"],
+        allowedX402Networks: ["eip155:1"],
+        x402MaxAmountAtomic: "250000",
       },
     ]);
   });

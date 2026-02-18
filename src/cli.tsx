@@ -1608,8 +1608,13 @@ interface CliWalletAgentPolicy {
   allowEthContractWrite: boolean;
   allowSolProgramInstruction: boolean;
   allowEthSwaps: boolean;
+  allowDappInteraction: boolean;
+  allowX402Payments: boolean;
   allowedEthContracts: string[];
   allowedSolPrograms: string[];
+  allowedDappHosts: string[];
+  allowedX402Networks: string[];
+  x402MaxAmountAtomic: string;
 }
 
 function getFlagValue(args: string[], flag: string): string | undefined {
@@ -1661,6 +1666,8 @@ async function rawWalletStatus(): Promise<void> {
   console.log(`agent_native_send: ${policy.allowNativeSend ? "enabled" : "disabled"}`);
   console.log(`agent_token_send: ${policy.allowTokenSend ? "enabled" : "disabled"}`);
   console.log(`agent_eth_swaps: ${policy.allowEthSwaps ? "enabled" : "disabled"}`);
+  console.log(`agent_dapp: ${policy.allowDappInteraction ? "enabled" : "disabled"}`);
+  console.log(`agent_x402: ${policy.allowX402Payments ? "enabled" : "disabled"}`);
   console.log(`unlock_expires: ${formatWalletTimestamp(status.unlockExpiresAt)}`);
   if (status.address) {
     console.log(`primary_eth: ${status.address}`);
@@ -2293,6 +2300,244 @@ async function rawWalletEndpoints(): Promise<void> {
   }
 }
 
+async function rawWalletDapps(): Promise<void> {
+  const data = await walletRequest<{
+    adapters: Array<{ adapter: string; chain: string; write: boolean; description: string }>;
+    notes: string[];
+  }>("GET", "/api/wallet/dapps");
+
+  console.log("WALLET DAPP ADAPTERS");
+  console.log("====================");
+  for (const adapter of data.adapters || []) {
+    console.log(`- ${adapter.adapter}`);
+    console.log(`  chain: ${adapter.chain}`);
+    console.log(`  write: ${adapter.write ? "yes" : "no"}`);
+    console.log(`  ${adapter.description}`);
+  }
+  if (Array.isArray(data.notes) && data.notes.length > 0) {
+    console.log("");
+    console.log("notes:");
+    for (const note of data.notes) {
+      console.log(`- ${note}`);
+    }
+  }
+}
+
+async function rawWalletRpcCall(args: string[]): Promise<void> {
+  const chain = args[0];
+  const methodFlag = getFlagValue(args, "--method");
+  const positionalMethod = args[1] && !args[1].startsWith("--") ? args[1] : undefined;
+  const method = methodFlag || positionalMethod;
+  const paramsJson = getFlagValue(args, "--params");
+  const rpcUrl = getFlagValue(args, "--rpc");
+  const id = getFlagValue(args, "--id");
+
+  if ((chain !== "eth" && chain !== "sol") || !method) {
+    console.error(
+      "Usage: cybara wallet rpc-call <eth|sol> --method <rpc_method> [--params '[...]'] [--rpc URL] [--id VALUE]"
+    );
+    process.exit(1);
+  }
+
+  let params: unknown[] = [];
+  if (paramsJson) {
+    try {
+      const parsed = JSON.parse(paramsJson);
+      if (!Array.isArray(parsed)) {
+        throw new Error("params must be a JSON array");
+      }
+      params = parsed;
+    } catch (error) {
+      console.error(`Invalid --params JSON: ${(error as Error).message}`);
+      process.exit(1);
+    }
+  }
+
+  const payload: Record<string, unknown> = {
+    chain,
+    method,
+    params,
+  };
+  if (rpcUrl) payload.rpcUrl = rpcUrl;
+  if (id) payload.id = /^\d+$/.test(id) ? Number(id) : id;
+
+  const data = await walletRequest<{
+    chain: string;
+    rpcUrl: string;
+    method: string;
+    id?: string | number;
+    result?: unknown;
+    error?: unknown;
+  }>("POST", "/api/wallet/rpc-call", payload);
+
+  console.log("RPC CALL RESULT");
+  console.log("===============");
+  console.log(`chain: ${data.chain.toUpperCase()}`);
+  console.log(`rpc: ${data.rpcUrl}`);
+  console.log(`method: ${data.method}`);
+  if (data.id !== undefined) console.log(`id: ${data.id}`);
+  if (data.error !== undefined) {
+    console.log("error:");
+    console.log(JSON.stringify(data.error, null, 2));
+  } else {
+    console.log("result:");
+    console.log(JSON.stringify(data.result, null, 2));
+  }
+}
+
+async function rawWalletDapp(args: string[]): Promise<void> {
+  const adapter = getFlagValue(args, "--adapter");
+  const jsonPayload = getFlagValue(args, "--json") || getFlagValue(args, "--payload");
+  if (!adapter || !jsonPayload) {
+    console.error("Usage: cybara wallet dapp --adapter <adapter> --json '<payload_json>'");
+    process.exit(1);
+  }
+
+  let payload: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(jsonPayload);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("payload must be a JSON object");
+    }
+    payload = parsed as Record<string, unknown>;
+  } catch (error) {
+    console.error(`Invalid --json payload: ${(error as Error).message}`);
+    process.exit(1);
+  }
+
+  const data = await walletRequest<unknown>("POST", "/api/wallet/dapp", {
+    adapter,
+    payload,
+  });
+
+  console.log("DAPP RESULT");
+  console.log("===========");
+  console.log(JSON.stringify(data, null, 2));
+}
+
+async function rawWalletX402(args: string[]): Promise<void> {
+  const url = getFlagValue(args, "--url");
+  const method = getFlagValue(args, "--method");
+  const headersJson = getFlagValue(args, "--headers");
+  const bodyJson = getFlagValue(args, "--body-json");
+  const bodyRaw = getFlagValue(args, "--body");
+  const network = getFlagValue(args, "--network");
+  const maxAmountAtomic = getFlagValue(args, "--max-amount-atomic");
+  const index = getFlagValue(args, "--index");
+  const timeoutMs = getFlagValue(args, "--timeout-ms");
+  const dryRun = args.includes("--dry-run");
+
+  if (!url) {
+    console.error(
+      "Usage: cybara wallet x402 --url <https_url> [--method GET|POST] [--headers '{...}'] [--body-json '{...}' | --body TEXT] [--network eip155:8453] [--max-amount-atomic N] [--index N] [--timeout-ms N] [--dry-run]"
+    );
+    process.exit(1);
+  }
+  if (bodyJson && bodyRaw) {
+    console.error("Use only one of --body-json or --body");
+    process.exit(1);
+  }
+
+  let headers: Record<string, string> | undefined;
+  if (headersJson) {
+    try {
+      const parsed = JSON.parse(headersJson);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("headers must be a JSON object");
+      }
+      headers = Object.fromEntries(
+        Object.entries(parsed as Record<string, unknown>).map(([key, value]) => [
+          key,
+          String(value),
+        ])
+      );
+    } catch (error) {
+      console.error(`Invalid --headers JSON: ${(error as Error).message}`);
+      process.exit(1);
+    }
+  }
+
+  let body: unknown = undefined;
+  if (bodyJson) {
+    try {
+      body = JSON.parse(bodyJson);
+    } catch (error) {
+      console.error(`Invalid --body-json payload: ${(error as Error).message}`);
+      process.exit(1);
+    }
+  } else if (bodyRaw !== undefined) {
+    body = bodyRaw;
+  }
+
+  const payload: Record<string, unknown> = { url };
+  if (method) payload.method = method;
+  if (headers) payload.headers = headers;
+  if (body !== undefined) payload.body = body;
+  if (network) payload.network = network;
+  if (maxAmountAtomic) payload.maxAmountAtomic = maxAmountAtomic;
+  if (index) payload.index = Number(index);
+  if (timeoutMs) payload.timeoutMs = Number(timeoutMs);
+  if (dryRun) payload.dryRun = true;
+
+  const data = await walletRequest<{
+    url: string;
+    method: string;
+    status: number;
+    paid: boolean;
+    attemptedPayment: boolean;
+    paymentHeaderUsed?: string;
+    paymentRequirement?: {
+      x402Version: number;
+      scheme: string;
+      network: string;
+      amount: string;
+      asset: string;
+      payTo: string;
+      maxTimeoutSeconds: number;
+    };
+    settlement?: {
+      success?: boolean;
+      errorReason?: string;
+      transaction?: string;
+      network?: string;
+      payer?: string;
+    };
+    body?: unknown;
+  }>("POST", "/api/wallet/x402", payload);
+
+  console.log("X402 RESULT");
+  console.log("===========");
+  console.log(`url: ${data.url}`);
+  console.log(`method: ${data.method}`);
+  console.log(`status: ${data.status}`);
+  console.log(`attempted_payment: ${data.attemptedPayment ? "yes" : "no"}`);
+  console.log(`paid: ${data.paid ? "yes" : "no"}`);
+  if (data.paymentHeaderUsed) console.log(`payment_header: ${data.paymentHeaderUsed}`);
+  if (data.paymentRequirement) {
+    console.log("payment_requirement:");
+    console.log(
+      `  x402v${data.paymentRequirement.x402Version} ${data.paymentRequirement.scheme} ${data.paymentRequirement.network}`
+    );
+    console.log(`  amount: ${data.paymentRequirement.amount}`);
+    console.log(`  asset: ${data.paymentRequirement.asset}`);
+    console.log(`  payTo: ${data.paymentRequirement.payTo}`);
+  }
+  if (data.settlement) {
+    console.log("settlement:");
+    console.log(`  success: ${data.settlement.success === true ? "yes" : "no"}`);
+    if (data.settlement.errorReason) console.log(`  error: ${data.settlement.errorReason}`);
+    if (data.settlement.transaction) console.log(`  tx: ${data.settlement.transaction}`);
+    if (data.settlement.network) console.log(`  network: ${data.settlement.network}`);
+    if (data.settlement.payer) console.log(`  payer: ${data.settlement.payer}`);
+  }
+  if (data.body !== undefined) {
+    console.log("body:");
+    console.log(
+      typeof data.body === "string" ? data.body : JSON.stringify(data.body, null, 2)
+    );
+  }
+}
+
 function normalizeWalletSwapVenue(
   value: string | undefined
 ): "uniswap_v2" | "uniswap_v3" | "jupiter" | null {
@@ -2467,12 +2712,21 @@ async function rawWalletAgentPolicy(subCmd?: string, args: string[] = []): Promi
       `allow_sol_program_instruction: ${policy.allowSolProgramInstruction ? "yes" : "no"}`
     );
     console.log(`allow_eth_swaps: ${policy.allowEthSwaps ? "yes" : "no"}`);
+    console.log(`allow_dapp_interaction: ${policy.allowDappInteraction ? "yes" : "no"}`);
+    console.log(`allow_x402_payments: ${policy.allowX402Payments ? "yes" : "no"}`);
     console.log(
       `allowed_eth_contracts: ${policy.allowedEthContracts.length ? policy.allowedEthContracts.join(", ") : "(none)"}`
     );
     console.log(
       `allowed_sol_programs: ${policy.allowedSolPrograms.length ? policy.allowedSolPrograms.join(", ") : "(none)"}`
     );
+    console.log(
+      `allowed_dapp_hosts: ${policy.allowedDappHosts.length ? policy.allowedDappHosts.join(", ") : "(none)"}`
+    );
+    console.log(
+      `allowed_x402_networks: ${policy.allowedX402Networks.length ? policy.allowedX402Networks.join(", ") : "(none)"}`
+    );
+    console.log(`x402_max_amount_atomic: ${policy.x402MaxAmountAtomic}`);
     return;
   }
 
@@ -2606,6 +2860,10 @@ function rawHelp(): void {
   console.log("    wallet price [BTC|BTC/USD|<SOL_MINT>] [--source auto|chainlink|pyth|jupiter]");
   console.log("    wallet swap [<TOKEN>] [--venue uniswap_v3|uniswap_v2|jupiter] [--execute]");
   console.log("    wallet endpoints");
+  console.log("    wallet dapps");
+  console.log("    wallet rpc-call <eth|sol> --method <rpc_method> [--params '[...]']");
+  console.log("    wallet dapp --adapter <adapter> --json '{...}'");
+  console.log("    wallet x402 --url <https_url> [--method GET|POST] [--dry-run]");
   console.log("    wallet swap-quote ...        # legacy alias for wallet swap (quote)");
   console.log("    wallet swap-execute ...      # legacy alias for wallet swap --execute");
   console.log(
@@ -3612,6 +3870,18 @@ async function main() {
         case "endpoints":
           await rawWalletEndpoints();
           break;
+        case "dapps":
+          await rawWalletDapps();
+          break;
+        case "rpc-call":
+          await rawWalletRpcCall(walletArgs);
+          break;
+        case "dapp":
+          await rawWalletDapp(walletArgs);
+          break;
+        case "x402":
+          await rawWalletX402(walletArgs);
+          break;
         case "contract-call":
           await rawWalletEthContractCall(walletArgs);
           break;
@@ -3658,6 +3928,14 @@ async function main() {
             "  cybara wallet swap [<ethToken>] [--venue <uniswap_v3|uniswap_v2|jupiter>] [--execute] [--quote-only]"
           );
           console.log("  cybara wallet endpoints");
+          console.log("  cybara wallet dapps");
+          console.log(
+            "  cybara wallet rpc-call <eth|sol> --method <rpc_method> [--params '[...]'] [--rpc URL]"
+          );
+          console.log("  cybara wallet dapp --adapter <adapter> --json '{...}'");
+          console.log(
+            "  cybara wallet x402 --url <https_url> [--method GET|POST] [--headers '{...}'] [--body-json '{...}' | --body TEXT] [--network eip155:8453] [--max-amount-atomic N] [--dry-run]"
+          );
           console.log(
             "  cybara wallet swap-quote --venue <uniswap_v2|uniswap_v3|jupiter> ... (legacy alias)"
           );

@@ -134,6 +134,10 @@ cybara wallet swap-eth-uniswap --token <symbol|addr> (--percent N | --amount-eth
 cybara wallet price [BTC|BTC/USD|<SOL_MINT>] [--source auto|chainlink|pyth|jupiter]
 cybara wallet swap [<TOKEN>] [--venue uniswap_v3|uniswap_v2|jupiter] [--execute]
 cybara wallet endpoints
+cybara wallet dapps                                     # List supported dapp adapters
+cybara wallet rpc-call <eth|sol> --method <rpc_method> [--params '[...]'] [--rpc URL]
+cybara wallet dapp --adapter <adapter> --json '{...}'  # Dynamic adapter payload
+cybara wallet x402 --url <https_url> [--method GET|POST] [--network eip155:1] [--dry-run]
 cybara wallet swap-quote --venue <uniswap_v2|uniswap_v3|jupiter> [venue-specific args]  # legacy alias
 cybara wallet swap-execute --venue <uniswap_v2|uniswap_v3|jupiter> [venue-specific args] # legacy alias
 cybara wallet contract-call --contract <addr> (--abi '<json_or_sig>' | --signature '<name(types)>') [--method <name>] [--args '[...]'] [--read]

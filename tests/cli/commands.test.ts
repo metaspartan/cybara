@@ -42,8 +42,13 @@ const walletAgentPolicyState = {
   allowEthContractWrite: false,
   allowSolProgramInstruction: false,
   allowEthSwaps: false,
+  allowDappInteraction: false,
+  allowX402Payments: false,
   allowedEthContracts: [] as string[],
   allowedSolPrograms: [] as string[],
+  allowedDappHosts: [] as string[],
+  allowedX402Networks: [] as string[],
+  x402MaxAmountAtomic: "1000000",
 };
 
 function json(data: unknown, status = 200): Response {
@@ -467,6 +472,10 @@ function route(method: string, url: URL, body: string): Response {
       walletAgentPolicyState.allowSolProgramInstruction = parsed.allowSolProgramInstruction;
     if (typeof parsed.allowEthSwaps === "boolean")
       walletAgentPolicyState.allowEthSwaps = parsed.allowEthSwaps;
+    if (typeof parsed.allowDappInteraction === "boolean")
+      walletAgentPolicyState.allowDappInteraction = parsed.allowDappInteraction;
+    if (typeof parsed.allowX402Payments === "boolean")
+      walletAgentPolicyState.allowX402Payments = parsed.allowX402Payments;
     if (Array.isArray(parsed.allowedEthContracts))
       walletAgentPolicyState.allowedEthContracts = parsed.allowedEthContracts.filter(
         (value): value is string => typeof value === "string"
@@ -475,6 +484,16 @@ function route(method: string, url: URL, body: string): Response {
       walletAgentPolicyState.allowedSolPrograms = parsed.allowedSolPrograms.filter(
         (value): value is string => typeof value === "string"
       );
+    if (Array.isArray(parsed.allowedDappHosts))
+      walletAgentPolicyState.allowedDappHosts = parsed.allowedDappHosts.filter(
+        (value): value is string => typeof value === "string"
+      );
+    if (Array.isArray(parsed.allowedX402Networks))
+      walletAgentPolicyState.allowedX402Networks = parsed.allowedX402Networks.filter(
+        (value): value is string => typeof value === "string"
+      );
+    if (typeof parsed.x402MaxAmountAtomic === "string")
+      walletAgentPolicyState.x402MaxAmountAtomic = parsed.x402MaxAmountAtomic;
     return json({ success: true, policy: walletAgentPolicyState });
   }
 
@@ -787,6 +806,112 @@ function route(method: string, url: URL, body: string): Response {
         pythHermes: "https://hermes.pyth.network/v2",
         jupiterPriceApi: "https://lite-api.jup.ag/price/v3",
       },
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/wallet/dapps") {
+    return json({
+      adapters: [
+        {
+          adapter: "uniswap_v3",
+          chain: "eth",
+          write: true,
+          description: "Uniswap V3 quote and swap router integration",
+        },
+        {
+          adapter: "jupiter",
+          chain: "sol",
+          write: true,
+          description: "Jupiter quote and swap integration",
+        },
+      ],
+      notes: ["Enable agent wallet access and agent dapp policy before autonomous execution."],
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/wallet/rpc-call") {
+    const parsed = body
+      ? (JSON.parse(body) as {
+          chain?: "eth" | "sol";
+          method?: string;
+          params?: unknown[];
+          rpcUrl?: string;
+          id?: string | number;
+        })
+      : {};
+    if (!parsed.method || (parsed.chain !== "eth" && parsed.chain !== "sol")) {
+      return json({ error: "invalid payload" }, 400);
+    }
+    return json({
+      chain: parsed.chain,
+      rpcUrl:
+        parsed.rpcUrl ||
+        (parsed.chain === "eth" ? walletRpcState.ethRpc : walletRpcState.solRpc),
+      method: parsed.method,
+      id: parsed.id ?? 1,
+      result:
+        parsed.method === "eth_blockNumber"
+          ? "0x14fb90e"
+          : {
+              ok: true,
+              params: Array.isArray(parsed.params) ? parsed.params : [],
+            },
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/wallet/dapp") {
+    const parsed = body
+      ? (JSON.parse(body) as { adapter?: string; payload?: Record<string, unknown> })
+      : {};
+    if (!parsed.adapter) {
+      return json({ error: "invalid payload" }, 400);
+    }
+    return json({
+      adapter: parsed.adapter,
+      ok: true,
+      route: "mock-route",
+      payload: parsed.payload || {},
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/wallet/x402") {
+    const parsed = body
+      ? (JSON.parse(body) as {
+          url?: string;
+          method?: string;
+          network?: string;
+          dryRun?: boolean;
+          maxAmountAtomic?: string;
+        })
+      : {};
+    if (!parsed.url) {
+      return json({ error: "invalid payload" }, 400);
+    }
+    return json({
+      url: parsed.url,
+      method: (parsed.method || "GET").toUpperCase(),
+      status: parsed.dryRun ? 402 : 200,
+      paid: parsed.dryRun !== true,
+      attemptedPayment: true,
+      paymentHeaderUsed: parsed.dryRun ? undefined : "PAYMENT-SIGNATURE",
+      paymentRequirement: {
+        x402Version: 2,
+        scheme: "exact",
+        network: parsed.network || "eip155:1",
+        amount: parsed.maxAmountAtomic || "10000",
+        asset: "0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        payTo: "0x0000000000000000000000000000000000000001",
+        maxTimeoutSeconds: 300,
+      },
+      settlement: parsed.dryRun
+        ? undefined
+        : {
+            success: true,
+            transaction: "0xsettled",
+            network: parsed.network || "eip155:1",
+            payer: walletState.primaryAddresses?.eth,
+          },
+      body: parsed.dryRun ? { message: "payment required" } : { message: "paid" },
     });
   }
 
@@ -1206,6 +1331,54 @@ describe("CLI Commands", () => {
     expect(endpoints.stdout).toContain("WALLET ENDPOINT DIRECTORY");
     expect(endpoints.stdout).toContain("chainlink_feed_registry");
 
+    const dapps = await runCli(["wallet", "dapps"]);
+    expect(dapps.exitCode).toBe(0);
+    expect(dapps.stdout).toContain("WALLET DAPP ADAPTERS");
+    expect(dapps.stdout).toContain("uniswap_v3");
+    expect(dapps.stdout).toContain("jupiter");
+
+    const rpcCall = await runCli([
+      "wallet",
+      "rpc-call",
+      "eth",
+      "--method",
+      "eth_blockNumber",
+      "--params",
+      "[]",
+      "--id",
+      "7",
+    ]);
+    expect(rpcCall.exitCode).toBe(0);
+    expect(rpcCall.stdout).toContain("RPC CALL RESULT");
+    expect(rpcCall.stdout).toContain("method: eth_blockNumber");
+    expect(rpcCall.stdout).toContain("id: 7");
+
+    const dappCall = await runCli([
+      "wallet",
+      "dapp",
+      "--adapter",
+      "uniswap_v3",
+      "--json",
+      '{"action":"quote","pair":"ETH/USDC"}',
+    ]);
+    expect(dappCall.exitCode).toBe(0);
+    expect(dappCall.stdout).toContain("DAPP RESULT");
+    expect(dappCall.stdout).toContain('"adapter": "uniswap_v3"');
+
+    const x402DryRun = await runCli([
+      "wallet",
+      "x402",
+      "--url",
+      "https://merchant.example/x402",
+      "--network",
+      "eip155:1",
+      "--dry-run",
+    ]);
+    expect(x402DryRun.exitCode).toBe(0);
+    expect(x402DryRun.stdout).toContain("X402 RESULT");
+    expect(x402DryRun.stdout).toContain("attempted_payment: yes");
+    expect(x402DryRun.stdout).toContain("paid: no");
+
     const contractCall = await runCli([
       "wallet",
       "contract-call",
@@ -1271,7 +1444,7 @@ describe("CLI Commands", () => {
       "agent-policy",
       "set",
       "--json",
-      '{"allowNativeSend":true,"allowTokenSend":true,"allowEthSwaps":true}',
+      '{"allowNativeSend":true,"allowTokenSend":true,"allowEthSwaps":true,"allowDappInteraction":true,"allowX402Payments":true,"allowedDappHosts":["merchant.example"],"allowedX402Networks":["eip155:1"],"x402MaxAmountAtomic":"250000"}',
     ]);
     expect(policySet.exitCode).toBe(0);
     expect(policySet.stdout).toContain("Wallet agent policy updated");

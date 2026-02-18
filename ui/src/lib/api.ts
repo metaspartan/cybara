@@ -297,8 +297,13 @@ export interface WalletAgentPolicy {
   allowEthContractWrite: boolean;
   allowSolProgramInstruction: boolean;
   allowEthSwaps: boolean;
+  allowDappInteraction: boolean;
+  allowX402Payments: boolean;
   allowedEthContracts: string[];
   allowedSolPrograms: string[];
+  allowedDappHosts: string[];
+  allowedX402Networks: string[];
+  x402MaxAmountAtomic: string;
 }
 
 export interface WalletSwapEthUniswapResult {
@@ -591,6 +596,77 @@ export const walletApi = {
       };
       services: Record<string, string>;
     }>("/wallet/endpoints"),
+  dapps: () =>
+    fetchApi<{
+      adapters: Array<{ adapter: string; chain: string; write: boolean; description: string }>;
+      notes: string[];
+    }>("/wallet/dapps"),
+  rpcCall: (payload: {
+    chain: "eth" | "sol";
+    method: string;
+    params?: unknown[];
+    rpcUrl?: string;
+    id?: string | number;
+  }) =>
+    fetchApi<{
+      chain: "eth" | "sol";
+      rpcUrl: string;
+      method: string;
+      id?: string | number;
+      result?: unknown;
+      error?: unknown;
+    }>("/wallet/rpc-call", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  dapp: (payload: { adapter: string; payload?: Record<string, unknown> }) =>
+    fetchApi<unknown>("/wallet/dapp", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  x402: (payload: {
+    url: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: unknown;
+    network?: string;
+    maxAmountAtomic?: string;
+    index?: number;
+    timeoutMs?: number;
+    dryRun?: boolean;
+    parseJsonResponse?: boolean;
+  }) =>
+    fetchApi<{
+      url: string;
+      method: string;
+      status: number;
+      paid: boolean;
+      attemptedPayment: boolean;
+      paymentHeaderUsed?: string;
+      paymentRequirement?: {
+        x402Version: number;
+        scheme: string;
+        network: string;
+        amount: string;
+        asset: string;
+        payTo: string;
+        maxTimeoutSeconds: number;
+        extra?: Record<string, unknown>;
+      };
+      settlement?: {
+        success?: boolean;
+        errorReason?: string;
+        errorMessage?: string;
+        payer?: string;
+        transaction?: string;
+        network?: string;
+      };
+      responseHeaders: Record<string, string>;
+      body?: unknown;
+    }>("/wallet/x402", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   signMessage: (message: string, chain: WalletChain = "eth", index = 0) =>
     fetchApi<{ address: string; signature: string }>("/wallet/sign", {
       method: "POST",

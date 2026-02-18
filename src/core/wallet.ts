@@ -77,6 +77,34 @@ const USDC_SOL_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const CHAINLINK_FEED_REGISTRY_ETH = "0x47Fb2585D2C56Fe188D0E6ec628a38b74fCeeeDf";
 const CHAINLINK_DENOMINATION_USD = "0x0000000000000000000000000000000000000348";
 const ZERO_EVM_ADDRESS = "0x0000000000000000000000000000000000000000";
+const X402_REQUIRED_HEADER = "PAYMENT-REQUIRED";
+const X402_SIGNATURE_HEADER = "PAYMENT-SIGNATURE";
+const X402_RESPONSE_HEADER = "PAYMENT-RESPONSE";
+const X402_LEGACY_SIGNATURE_HEADER = "X-PAYMENT";
+const X402_LEGACY_RESPONSE_HEADER = "X-PAYMENT-RESPONSE";
+const X402_AGENT_MAX_DEFAULT_ATOMIC = "1000000";
+const X402_AGENT_SUPPORTED_SCHEMES = new Set<string>(["exact"]);
+const X402_V1_EVM_NETWORK_CHAIN_IDS: Record<string, number> = {
+  base: 8453,
+  "base-mainnet": 8453,
+  "base-sepolia": 84532,
+  mainnet: 1,
+  ethereum: 1,
+  sepolia: 11155111,
+  arbitrum: 42161,
+  optimism: 10,
+  polygon: 137,
+};
+const X402_EIP3009_AUTHORIZATION_TYPES: Record<string, Array<{ name: string; type: string }>> = {
+  TransferWithAuthorization: [
+    { name: "from", type: "address" },
+    { name: "to", type: "address" },
+    { name: "value", type: "uint256" },
+    { name: "validAfter", type: "uint256" },
+    { name: "validBefore", type: "uint256" },
+    { name: "nonce", type: "bytes32" },
+  ],
+};
 const CHAINLINK_BASE_ASSETS: Record<string, string> = {
   ETH: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
   BTC: "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB",
@@ -249,8 +277,154 @@ interface WalletAgentPolicy {
   allowEthContractWrite: boolean;
   allowSolProgramInstruction: boolean;
   allowEthSwaps: boolean;
+  allowDappInteraction: boolean;
+  allowX402Payments: boolean;
   allowedEthContracts: string[];
   allowedSolPrograms: string[];
+  allowedDappHosts: string[];
+  allowedX402Networks: string[];
+  x402MaxAmountAtomic: string;
+}
+
+type WalletDappAdapter =
+  | "rpc_call"
+  | "eth_contract_call"
+  | "sol_program_instruction"
+  | "swap"
+  | "price"
+  | "x402_http";
+
+interface WalletRpcCallInput {
+  chain: "eth" | "sol";
+  method: string;
+  params?: unknown[];
+  rpcUrl?: string;
+  id?: string | number;
+}
+
+interface WalletRpcCallResult {
+  chain: "eth" | "sol";
+  rpcUrl: string;
+  method: string;
+  id?: string | number;
+  result?: unknown;
+  error?: unknown;
+}
+
+interface WalletDappCallInput {
+  adapter: WalletDappAdapter | string;
+  payload?: Record<string, unknown>;
+}
+
+interface WalletDappAdapterCapability {
+  adapter: WalletDappAdapter;
+  chain: "eth" | "sol" | "multi";
+  write: boolean;
+  description: string;
+}
+
+interface WalletDappDirectory {
+  adapters: WalletDappAdapterCapability[];
+  notes: string[];
+}
+
+interface WalletX402RequestInput {
+  url: string;
+  method?: string;
+  headers?: Record<string, string>;
+  body?: unknown;
+  network?: string;
+  maxAmountAtomic?: string;
+  index?: number;
+  timeoutMs?: number;
+  dryRun?: boolean;
+  parseJsonResponse?: boolean;
+}
+
+interface WalletX402RequirementV2 {
+  scheme: string;
+  network: string;
+  amount: string;
+  asset: string;
+  payTo: string;
+  maxTimeoutSeconds: number;
+  extra?: Record<string, unknown>;
+}
+
+interface WalletX402PaymentRequiredV2 {
+  x402Version: 2;
+  error?: string;
+  resource?: {
+    url?: string;
+    description?: string;
+    mimeType?: string;
+  };
+  accepts: WalletX402RequirementV2[];
+  extensions?: Record<string, unknown>;
+}
+
+interface WalletX402RequirementV1 {
+  scheme: string;
+  network: string;
+  maxAmountRequired: string;
+  payTo: string;
+  maxTimeoutSeconds: number;
+  asset: string;
+  extra?: Record<string, unknown>;
+}
+
+interface WalletX402PaymentRequiredV1 {
+  x402Version: 1;
+  error?: string;
+  accepts: WalletX402RequirementV1[];
+}
+
+interface WalletX402SettlementResponse {
+  success?: boolean;
+  errorReason?: string;
+  errorMessage?: string;
+  payer?: string;
+  transaction?: string;
+  network?: string;
+}
+
+interface WalletX402RequestResult {
+  url: string;
+  method: string;
+  status: number;
+  paid: boolean;
+  attemptedPayment: boolean;
+  paymentHeaderUsed?: string;
+  paymentRequirement?: {
+    x402Version: number;
+    scheme: string;
+    network: string;
+    amount: string;
+    asset: string;
+    payTo: string;
+    maxTimeoutSeconds: number;
+    extra?: Record<string, unknown>;
+  };
+  settlement?: WalletX402SettlementResponse;
+  responseHeaders: Record<string, string>;
+  body?: unknown;
+}
+
+interface WalletX402SelectedRequirement {
+  x402Version: 1 | 2;
+  scheme: string;
+  network: string;
+  amount: string;
+  asset: string;
+  payTo: string;
+  maxTimeoutSeconds: number;
+  extra?: Record<string, unknown>;
+  resource?: {
+    url?: string;
+    description?: string;
+    mimeType?: string;
+  };
+  extensions?: Record<string, unknown>;
 }
 
 interface WalletSwapEthUniswapInput {
@@ -543,11 +717,67 @@ function parseBigIntOrZero(value: unknown): bigint {
   }
 }
 
+function parseOptionalNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
 function normalizeAddressList(values: unknown[]): string[] {
   const normalized = values
     .map((value) => (typeof value === "string" ? value.trim() : ""))
     .filter(Boolean);
   return [...new Set(normalized)];
+}
+
+function normalizeStringList(values: unknown[]): string[] {
+  const normalized = values
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
+  return [...new Set(normalized)];
+}
+
+function normalizeHostList(values: unknown[]): string[] {
+  const hosts: string[] = [];
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const candidate = value.trim().toLowerCase();
+    if (!candidate) continue;
+    try {
+      if (candidate.includes("://")) {
+        hosts.push(new URL(candidate).host.toLowerCase());
+      } else {
+        const url = new URL(`https://${candidate}`);
+        hosts.push(url.host.toLowerCase());
+      }
+    } catch {
+      // Skip invalid host values when not strict.
+    }
+  }
+  return [...new Set(hosts)];
+}
+
+function normalizeNetworkList(values: unknown[]): string[] {
+  return normalizeStringList(values).map((value) => value.toLowerCase());
+}
+
+function parsePositiveAtomicAmount(value: string, label: string): bigint {
+  const normalized = value.trim();
+  if (!/^\d+$/.test(normalized)) {
+    throw new Error(`Validation error: ${label} must be a positive integer string`);
+  }
+  const amount = BigInt(normalized);
+  if (amount <= 0n) {
+    throw new Error(`Validation error: ${label} must be greater than zero`);
+  }
+  return amount;
 }
 
 function assertWalletChain(chain: string): WalletChain {
@@ -636,6 +866,25 @@ function normalizeSwapVenue(input: string): WalletSwapVenue {
   throw new Error(
     "Validation error: Unsupported swap venue. Use uniswap_v2, uniswap_v3, or jupiter"
   );
+}
+
+function normalizeHttpMethod(value?: string): string {
+  const method = String(value || "GET")
+    .trim()
+    .toUpperCase();
+  return method || "GET";
+}
+
+function parseEip155ChainId(networkInput: string): number | undefined {
+  const network = networkInput.trim().toLowerCase();
+  if (!network) return undefined;
+  if (network.startsWith("eip155:")) {
+    const parsed = Number(network.slice("eip155:".length));
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.floor(parsed);
+    }
+  }
+  return X402_V1_EVM_NETWORK_CHAIN_IDS[network];
 }
 
 function normalizeFeedId(value: string): string {
@@ -934,8 +1183,13 @@ class WalletManager {
         allowSolProgramInstruction:
           input.allowSolProgramInstruction ?? current.allowSolProgramInstruction,
         allowEthSwaps: input.allowEthSwaps ?? current.allowEthSwaps,
+        allowDappInteraction: input.allowDappInteraction ?? current.allowDappInteraction,
+        allowX402Payments: input.allowX402Payments ?? current.allowX402Payments,
         allowedEthContracts: input.allowedEthContracts ?? current.allowedEthContracts,
         allowedSolPrograms: input.allowedSolPrograms ?? current.allowedSolPrograms,
+        allowedDappHosts: input.allowedDappHosts ?? current.allowedDappHosts,
+        allowedX402Networks: input.allowedX402Networks ?? current.allowedX402Networks,
+        x402MaxAmountAtomic: input.x402MaxAmountAtomic ?? current.x402MaxAmountAtomic,
       },
       true
     );
@@ -1127,6 +1381,207 @@ class WalletManager {
     return this.getEndpointDirectory();
   }
 
+  getDappDirectoryForAgent(): WalletDappDirectory {
+    this.assertAgentAccessEnabled();
+    return this.getDappDirectory();
+  }
+
+  async rpcCallForAgent(input: WalletRpcCallInput): Promise<WalletRpcCallResult> {
+    this.assertAgentAccessEnabled();
+    return await this.rpcCall(input);
+  }
+
+  async x402RequestForAgent(input: WalletX402RequestInput): Promise<WalletX402RequestResult> {
+    this.assertAgentAccessEnabled();
+    const policy = this.getAgentPolicy();
+    if (!policy.allowX402Payments) {
+      throw new Error("Validation error: Agent x402 payments are disabled by wallet policy");
+    }
+    this.assertAgentUrlAllowedByPolicy(input.url, policy, "x402");
+    if (policy.allowedX402Networks.length > 0 && !input.network) {
+      throw new Error(
+        "Validation error: x402 network is required by wallet policy (allowedX402Networks)"
+      );
+    }
+    if (
+      policy.allowedX402Networks.length > 0 &&
+      input.network &&
+      !policy.allowedX402Networks.includes(input.network.toLowerCase())
+    ) {
+      throw new Error(
+        "Validation error: Requested x402 network is not allowlisted by wallet policy"
+      );
+    }
+    return await this.x402Request({
+      ...input,
+      maxAmountAtomic: input.maxAmountAtomic || policy.x402MaxAmountAtomic,
+    });
+  }
+
+  async executeDappForAgent(input: WalletDappCallInput): Promise<unknown> {
+    this.assertAgentAccessEnabled();
+    const policy = this.getAgentPolicy();
+    if (!policy.allowDappInteraction) {
+      throw new Error("Validation error: Agent dapp interactions are disabled by wallet policy");
+    }
+
+    const adapter = this.normalizeDappAdapter(input.adapter);
+    const payload = input.payload || {};
+    switch (adapter) {
+      case "eth_contract_call": {
+        const contractAddress = String(payload.contractAddress || "")
+          .trim()
+          .toLowerCase();
+        const readOnly = payload.readOnly === true;
+        if (!readOnly && !policy.allowEthContractWrite) {
+          throw new Error(
+            "Validation error: Agent ETH contract writes are disabled by wallet policy"
+          );
+        }
+        if (
+          !readOnly &&
+          policy.allowedEthContracts.length > 0 &&
+          !policy.allowedEthContracts.includes(contractAddress)
+        ) {
+          throw new Error("Validation error: Contract address is not allowlisted for agent writes");
+        }
+        return await this.callEthContract({
+          contractAddress: String(payload.contractAddress || ""),
+          abi: typeof payload.abi === "string" ? payload.abi : undefined,
+          method: String(payload.method || payload.methodSignature || ""),
+          methodSignature:
+            typeof payload.methodSignature === "string" ? payload.methodSignature : undefined,
+          args: Array.isArray(payload.args) ? payload.args : [],
+          index: parseOptionalNumber(payload.index),
+          value: typeof payload.value === "string" ? payload.value : undefined,
+          gasLimit:
+            typeof payload.gasLimit === "number" || typeof payload.gasLimit === "string"
+              ? (payload.gasLimit as number | string)
+              : undefined,
+          gasPriceGwei: typeof payload.gasPriceGwei === "string" ? payload.gasPriceGwei : undefined,
+          maxFeePerGasGwei:
+            typeof payload.maxFeePerGasGwei === "string" ? payload.maxFeePerGasGwei : undefined,
+          maxPriorityFeePerGasGwei:
+            typeof payload.maxPriorityFeePerGasGwei === "string"
+              ? payload.maxPriorityFeePerGasGwei
+              : undefined,
+          nonce: parseOptionalNumber(payload.nonce),
+          readOnly,
+          rpcUrl: typeof payload.rpcUrl === "string" ? payload.rpcUrl : undefined,
+        });
+      }
+      case "sol_program_instruction": {
+        const programId = String(payload.programId || "").trim();
+        if (!policy.allowSolProgramInstruction) {
+          throw new Error(
+            "Validation error: Agent Solana program instructions are disabled by wallet policy"
+          );
+        }
+        if (
+          policy.allowedSolPrograms.length > 0 &&
+          !policy.allowedSolPrograms.includes(programId)
+        ) {
+          throw new Error("Validation error: Solana program is not allowlisted for agent writes");
+        }
+        return await this.sendSolProgramInstruction({
+          programId,
+          keys: Array.isArray(payload.keys)
+            ? (payload.keys as SolInstructionAccountMeta[])
+            : Array.isArray(payload.accounts)
+              ? (payload.accounts as SolInstructionAccountMeta[])
+              : [],
+          dataBase64: typeof payload.dataBase64 === "string" ? payload.dataBase64 : undefined,
+          dataHex: typeof payload.dataHex === "string" ? payload.dataHex : undefined,
+          dataUtf8: typeof payload.dataUtf8 === "string" ? payload.dataUtf8 : undefined,
+          index: parseOptionalNumber(payload.index),
+          rpcUrl: typeof payload.rpcUrl === "string" ? payload.rpcUrl : undefined,
+          computeUnitLimit: parseOptionalNumber(payload.computeUnitLimit),
+          computeUnitPriceMicroLamports: parseOptionalNumber(payload.computeUnitPriceMicroLamports),
+          skipPreflight: payload.skipPreflight === true,
+        });
+      }
+      case "swap": {
+        const dryRun = payload.dryRun === true;
+        if (!dryRun && !policy.allowEthSwaps) {
+          throw new Error("Validation error: Agent swaps are disabled by wallet policy");
+        }
+        return await this.swap({
+          venue: String(payload.venue || "uniswap_v3"),
+          tokenOut: typeof payload.tokenOut === "string" ? payload.tokenOut : undefined,
+          amountEth: typeof payload.amountEth === "string" ? payload.amountEth : undefined,
+          percent: parseOptionalNumber(payload.percent),
+          minAmountOut: typeof payload.minAmountOut === "string" ? payload.minAmountOut : undefined,
+          recipient: typeof payload.recipient === "string" ? payload.recipient : undefined,
+          feeTier: parseOptionalNumber(payload.feeTier),
+          inputMint: typeof payload.inputMint === "string" ? payload.inputMint : undefined,
+          outputMint: typeof payload.outputMint === "string" ? payload.outputMint : undefined,
+          amount: typeof payload.amount === "string" ? payload.amount : undefined,
+          amountRaw: typeof payload.amountRaw === "string" ? payload.amountRaw : undefined,
+          index: parseOptionalNumber(payload.index),
+          slippageBps: parseOptionalNumber(payload.slippageBps),
+          deadlineSeconds: parseOptionalNumber(payload.deadlineSeconds),
+          rpcUrl: typeof payload.rpcUrl === "string" ? payload.rpcUrl : undefined,
+          wrapUnwrapSol:
+            typeof payload.wrapUnwrapSol === "boolean" ? payload.wrapUnwrapSol : undefined,
+          computeUnitPriceMicroLamports: parseOptionalNumber(payload.computeUnitPriceMicroLamports),
+          skipPreflight: payload.skipPreflight === true,
+          dryRun,
+        });
+      }
+      case "x402_http":
+        return await this.x402RequestForAgent({
+          url: String(payload.url || ""),
+          method: typeof payload.method === "string" ? payload.method : undefined,
+          headers:
+            payload.headers && typeof payload.headers === "object"
+              ? (payload.headers as Record<string, string>)
+              : undefined,
+          body: payload.body,
+          network: typeof payload.network === "string" ? payload.network : undefined,
+          maxAmountAtomic:
+            typeof payload.maxAmountAtomic === "string" ? payload.maxAmountAtomic : undefined,
+          index: parseOptionalNumber(payload.index),
+          timeoutMs: parseOptionalNumber(payload.timeoutMs),
+          dryRun: payload.dryRun === true,
+          parseJsonResponse:
+            typeof payload.parseJsonResponse === "boolean" ? payload.parseJsonResponse : undefined,
+        });
+      case "price":
+        return await this.getPriceQuote({
+          source:
+            payload.source === "auto" ||
+            payload.source === "chainlink" ||
+            payload.source === "pyth" ||
+            payload.source === "jupiter"
+              ? payload.source
+              : undefined,
+          symbol: typeof payload.symbol === "string" ? payload.symbol : undefined,
+          pair: typeof payload.pair === "string" ? payload.pair : undefined,
+          feedAddress: typeof payload.feedAddress === "string" ? payload.feedAddress : undefined,
+          pythFeedId: typeof payload.pythFeedId === "string" ? payload.pythFeedId : undefined,
+          mint: typeof payload.mint === "string" ? payload.mint : undefined,
+          quoteCurrency:
+            typeof payload.quoteCurrency === "string" ? payload.quoteCurrency : undefined,
+          rpcUrl: typeof payload.rpcUrl === "string" ? payload.rpcUrl : undefined,
+        });
+      case "rpc_call":
+        return await this.rpcCall({
+          chain: payload.chain === "sol" ? "sol" : "eth",
+          method: String(payload.method || ""),
+          params: Array.isArray(payload.params) ? payload.params : [],
+          rpcUrl: typeof payload.rpcUrl === "string" ? payload.rpcUrl : undefined,
+          id:
+            typeof payload.id === "string" || typeof payload.id === "number"
+              ? payload.id
+              : undefined,
+        });
+      default:
+        throw new Error(
+          `Validation error: Unsupported dapp adapter '${String(input.adapter || "")}'`
+        );
+    }
+  }
+
   async swapForAgent(input: WalletSwapInput): Promise<WalletSwapResult> {
     this.assertAgentAccessEnabled();
     if (input.dryRun !== true) {
@@ -1178,6 +1633,55 @@ class WalletManager {
         jupiterSwapApi: JUPITER_SWAP_API_BASE,
         jupiterProgramLabelsApi: JUPITER_PROGRAM_LABELS_API,
       },
+    };
+  }
+
+  getDappDirectory(): WalletDappDirectory {
+    return {
+      adapters: [
+        {
+          adapter: "rpc_call",
+          chain: "multi",
+          write: false,
+          description: "Direct JSON-RPC call to ETH/SOL nodes for dynamic on-chain reads",
+        },
+        {
+          adapter: "eth_contract_call",
+          chain: "eth",
+          write: true,
+          description:
+            "Dynamic EVM smart contract calls/writes with ABI + method signature support",
+        },
+        {
+          adapter: "sol_program_instruction",
+          chain: "sol",
+          write: true,
+          description: "Dynamic Solana program instruction execution with custom account metas",
+        },
+        {
+          adapter: "swap",
+          chain: "multi",
+          write: true,
+          description: "Dynamic swap routing via Uniswap v2/v3 and Jupiter",
+        },
+        {
+          adapter: "price",
+          chain: "multi",
+          write: false,
+          description: "Price lookup via Chainlink/Pyth/Jupiter sources",
+        },
+        {
+          adapter: "x402_http",
+          chain: "multi",
+          write: true,
+          description:
+            "HTTP call with automatic x402 payment-required handling and EVM EIP-3009 signing",
+        },
+      ],
+      notes: [
+        "x402 currently supports EVM exact scheme using EIP-3009 transfer authorization payloads",
+        "Permit2 assetTransferMethod is not yet supported in this wallet implementation",
+      ],
     };
   }
 
@@ -2582,6 +3086,294 @@ class WalletManager {
     };
   }
 
+  async rpcCall(input: WalletRpcCallInput): Promise<WalletRpcCallResult> {
+    const chain = input.chain === "sol" ? "sol" : "eth";
+    const method = String(input.method || "").trim();
+    if (!method) {
+      throw new Error("Validation error: RPC method is required");
+    }
+    const params = Array.isArray(input.params) ? input.params : [];
+    const rpcUrl =
+      chain === "sol"
+        ? input.rpcUrl?.trim() || this.getSolRpc()
+        : input.rpcUrl?.trim() || this.getEthRpc();
+    const id = input.id ?? 1;
+
+    const response = await fetch(rpcUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "user-agent": "cybara-wallet/1.0",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id,
+        method,
+        params,
+      }),
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (!response.ok) {
+      const reason = await response.text().catch(() => "");
+      throw new Error(
+        `Validation error: RPC request failed (${response.status})${reason ? `: ${reason}` : ""}`
+      );
+    }
+
+    const payload = (await response.json()) as {
+      id?: string | number;
+      result?: unknown;
+      error?: unknown;
+    };
+    return {
+      chain,
+      rpcUrl,
+      method,
+      id: payload.id,
+      result: payload.result,
+      error: payload.error,
+    };
+  }
+
+  async x402Request(input: WalletX402RequestInput): Promise<WalletX402RequestResult> {
+    const urlInput = String(input.url || "").trim();
+    if (!urlInput) {
+      throw new Error("Validation error: x402 url is required");
+    }
+    this.validateHttpUrl(urlInput, "x402 URL");
+    const url = new URL(urlInput);
+    const method = normalizeHttpMethod(input.method);
+    const timeoutMs =
+      typeof input.timeoutMs === "number" && Number.isFinite(input.timeoutMs)
+        ? Math.min(60_000, Math.max(1_000, Math.floor(input.timeoutMs)))
+        : 20_000;
+    const parseJsonResponse = input.parseJsonResponse !== false;
+
+    const headers = new Headers();
+    headers.set("user-agent", "cybara-wallet/1.0");
+    for (const [key, value] of Object.entries(input.headers || {})) {
+      if (!key || typeof value !== "string") continue;
+      headers.set(key, value);
+    }
+
+    let bodyPayload: RequestInit["body"] | undefined;
+    if (input.body !== undefined && method !== "GET" && method !== "HEAD") {
+      if (typeof input.body === "string") {
+        bodyPayload = input.body;
+      } else if (input.body instanceof Uint8Array || input.body instanceof ArrayBuffer) {
+        bodyPayload = input.body as RequestInit["body"];
+      } else {
+        bodyPayload = JSON.stringify(input.body);
+        if (!headers.has("content-type")) {
+          headers.set("content-type", "application/json");
+        }
+      }
+    }
+
+    const baseRequest = {
+      method,
+      headers,
+      body: bodyPayload,
+      signal: AbortSignal.timeout(timeoutMs),
+    } satisfies RequestInit;
+
+    const firstResponse = await fetch(url.toString(), baseRequest);
+    if (firstResponse.status !== 402) {
+      return await this.buildX402Result({
+        response: firstResponse,
+        url: url.toString(),
+        method,
+        paid: false,
+        attemptedPayment: false,
+        paymentRequirement: undefined,
+        settlement: this.decodeX402SettlementResponse(firstResponse.headers),
+        parseJsonResponse,
+      });
+    }
+
+    const required = await this.decodeX402PaymentRequired(firstResponse);
+    const selectedRequirement = this.selectX402Requirement(required, input.network);
+    const maxAmountAtomic =
+      typeof input.maxAmountAtomic === "string" && input.maxAmountAtomic.trim()
+        ? input.maxAmountAtomic.trim()
+        : X402_AGENT_MAX_DEFAULT_ATOMIC;
+    const maxAllowed = parsePositiveAtomicAmount(maxAmountAtomic, "maxAmountAtomic");
+    const requirementAmount = parsePositiveAtomicAmount(
+      selectedRequirement.amount,
+      "x402 payment amount"
+    );
+    if (requirementAmount > maxAllowed) {
+      throw new Error(
+        `Validation error: x402 required amount (${selectedRequirement.amount}) exceeds maxAmountAtomic (${maxAmountAtomic})`
+      );
+    }
+
+    if (input.dryRun === true) {
+      return {
+        url: url.toString(),
+        method,
+        status: 402,
+        paid: false,
+        attemptedPayment: false,
+        paymentRequirement: selectedRequirement,
+        responseHeaders: this.serializeResponseHeaders(firstResponse.headers),
+        body: undefined,
+      };
+    }
+
+    const paymentHeader = await this.createX402PaymentHeader({
+      version: selectedRequirement.x402Version,
+      requirement: selectedRequirement,
+      index: normalizeStartIndex(input.index),
+      requestUrl: url.toString(),
+    });
+
+    const retryHeaders = new Headers(headers);
+    retryHeaders.set(paymentHeader.name, paymentHeader.value);
+    const secondResponse = await fetch(url.toString(), {
+      method,
+      headers: retryHeaders,
+      body: bodyPayload,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
+    return await this.buildX402Result({
+      response: secondResponse,
+      url: url.toString(),
+      method,
+      paid: secondResponse.status < 400,
+      attemptedPayment: true,
+      paymentHeaderUsed: paymentHeader.name,
+      paymentRequirement: selectedRequirement,
+      settlement: this.decodeX402SettlementResponse(secondResponse.headers),
+      parseJsonResponse,
+    });
+  }
+
+  async executeDapp(input: WalletDappCallInput): Promise<unknown> {
+    const adapter = this.normalizeDappAdapter(input.adapter);
+    const payload = input.payload || {};
+
+    switch (adapter) {
+      case "rpc_call":
+        return await this.rpcCall({
+          chain: payload.chain === "sol" ? "sol" : "eth",
+          method: String(payload.method || ""),
+          params: Array.isArray(payload.params) ? payload.params : [],
+          rpcUrl: typeof payload.rpcUrl === "string" ? payload.rpcUrl : undefined,
+          id:
+            typeof payload.id === "string" || typeof payload.id === "number"
+              ? payload.id
+              : undefined,
+        });
+      case "eth_contract_call":
+        return await this.callEthContract({
+          contractAddress: String(payload.contractAddress || ""),
+          abi: typeof payload.abi === "string" ? payload.abi : undefined,
+          method: String(payload.method || payload.methodSignature || ""),
+          methodSignature:
+            typeof payload.methodSignature === "string" ? payload.methodSignature : undefined,
+          args: Array.isArray(payload.args) ? payload.args : [],
+          index: parseOptionalNumber(payload.index),
+          value: typeof payload.value === "string" ? payload.value : undefined,
+          gasLimit:
+            typeof payload.gasLimit === "number" || typeof payload.gasLimit === "string"
+              ? (payload.gasLimit as number | string)
+              : undefined,
+          gasPriceGwei: typeof payload.gasPriceGwei === "string" ? payload.gasPriceGwei : undefined,
+          maxFeePerGasGwei:
+            typeof payload.maxFeePerGasGwei === "string" ? payload.maxFeePerGasGwei : undefined,
+          maxPriorityFeePerGasGwei:
+            typeof payload.maxPriorityFeePerGasGwei === "string"
+              ? payload.maxPriorityFeePerGasGwei
+              : undefined,
+          nonce: parseOptionalNumber(payload.nonce),
+          readOnly: payload.readOnly === true,
+          rpcUrl: typeof payload.rpcUrl === "string" ? payload.rpcUrl : undefined,
+        });
+      case "sol_program_instruction":
+        return await this.sendSolProgramInstruction({
+          programId: String(payload.programId || ""),
+          keys: Array.isArray(payload.keys)
+            ? (payload.keys as SolInstructionAccountMeta[])
+            : Array.isArray(payload.accounts)
+              ? (payload.accounts as SolInstructionAccountMeta[])
+              : [],
+          dataBase64: typeof payload.dataBase64 === "string" ? payload.dataBase64 : undefined,
+          dataHex: typeof payload.dataHex === "string" ? payload.dataHex : undefined,
+          dataUtf8: typeof payload.dataUtf8 === "string" ? payload.dataUtf8 : undefined,
+          index: parseOptionalNumber(payload.index),
+          rpcUrl: typeof payload.rpcUrl === "string" ? payload.rpcUrl : undefined,
+          computeUnitLimit: parseOptionalNumber(payload.computeUnitLimit),
+          computeUnitPriceMicroLamports: parseOptionalNumber(payload.computeUnitPriceMicroLamports),
+          skipPreflight: payload.skipPreflight === true,
+        });
+      case "swap":
+        return await this.swap({
+          venue: String(payload.venue || "uniswap_v3"),
+          tokenOut: typeof payload.tokenOut === "string" ? payload.tokenOut : undefined,
+          amountEth: typeof payload.amountEth === "string" ? payload.amountEth : undefined,
+          percent: parseOptionalNumber(payload.percent),
+          minAmountOut: typeof payload.minAmountOut === "string" ? payload.minAmountOut : undefined,
+          recipient: typeof payload.recipient === "string" ? payload.recipient : undefined,
+          feeTier: parseOptionalNumber(payload.feeTier),
+          inputMint: typeof payload.inputMint === "string" ? payload.inputMint : undefined,
+          outputMint: typeof payload.outputMint === "string" ? payload.outputMint : undefined,
+          amount: typeof payload.amount === "string" ? payload.amount : undefined,
+          amountRaw: typeof payload.amountRaw === "string" ? payload.amountRaw : undefined,
+          index: parseOptionalNumber(payload.index),
+          slippageBps: parseOptionalNumber(payload.slippageBps),
+          deadlineSeconds: parseOptionalNumber(payload.deadlineSeconds),
+          rpcUrl: typeof payload.rpcUrl === "string" ? payload.rpcUrl : undefined,
+          wrapUnwrapSol:
+            typeof payload.wrapUnwrapSol === "boolean" ? payload.wrapUnwrapSol : undefined,
+          computeUnitPriceMicroLamports: parseOptionalNumber(payload.computeUnitPriceMicroLamports),
+          skipPreflight: payload.skipPreflight === true,
+          dryRun: payload.dryRun !== false,
+        });
+      case "price":
+        return await this.getPriceQuote({
+          source:
+            payload.source === "auto" ||
+            payload.source === "chainlink" ||
+            payload.source === "pyth" ||
+            payload.source === "jupiter"
+              ? payload.source
+              : undefined,
+          symbol: typeof payload.symbol === "string" ? payload.symbol : undefined,
+          pair: typeof payload.pair === "string" ? payload.pair : undefined,
+          feedAddress: typeof payload.feedAddress === "string" ? payload.feedAddress : undefined,
+          pythFeedId: typeof payload.pythFeedId === "string" ? payload.pythFeedId : undefined,
+          mint: typeof payload.mint === "string" ? payload.mint : undefined,
+          quoteCurrency:
+            typeof payload.quoteCurrency === "string" ? payload.quoteCurrency : undefined,
+          rpcUrl: typeof payload.rpcUrl === "string" ? payload.rpcUrl : undefined,
+        });
+      case "x402_http":
+        return await this.x402Request({
+          url: String(payload.url || ""),
+          method: typeof payload.method === "string" ? payload.method : undefined,
+          headers:
+            payload.headers && typeof payload.headers === "object"
+              ? (payload.headers as Record<string, string>)
+              : undefined,
+          body: payload.body,
+          network: typeof payload.network === "string" ? payload.network : undefined,
+          maxAmountAtomic:
+            typeof payload.maxAmountAtomic === "string" ? payload.maxAmountAtomic : undefined,
+          index: parseOptionalNumber(payload.index),
+          timeoutMs: parseOptionalNumber(payload.timeoutMs),
+          dryRun: payload.dryRun === true,
+          parseJsonResponse:
+            typeof payload.parseJsonResponse === "boolean" ? payload.parseJsonResponse : undefined,
+        });
+      default:
+        throw new Error(
+          `Validation error: Unsupported dapp adapter '${String(input.adapter || "")}'`
+        );
+    }
+  }
+
   private async sendEth(input: {
     mnemonic: string;
     to: string;
@@ -3484,8 +4276,13 @@ class WalletManager {
       allowEthContractWrite: false,
       allowSolProgramInstruction: false,
       allowEthSwaps: false,
+      allowDappInteraction: false,
+      allowX402Payments: false,
       allowedEthContracts: [],
       allowedSolPrograms: [],
+      allowedDappHosts: [],
+      allowedX402Networks: [],
+      x402MaxAmountAtomic: X402_AGENT_MAX_DEFAULT_ATOMIC,
     };
   }
 
@@ -3501,6 +4298,8 @@ class WalletManager {
     const allowEthContractWrite = source.allowEthContractWrite === true;
     const allowSolProgramInstruction = source.allowSolProgramInstruction === true;
     const allowEthSwaps = source.allowEthSwaps === true;
+    const allowDappInteraction = source.allowDappInteraction === true;
+    const allowX402Payments = source.allowX402Payments === true;
 
     const allowedEthContractsRaw = Array.isArray(source.allowedEthContracts)
       ? normalizeAddressList(source.allowedEthContracts)
@@ -3529,14 +4328,390 @@ class WalletManager {
       }
     }
 
+    const allowedDappHostsRaw = Array.isArray(source.allowedDappHosts)
+      ? normalizeHostList(source.allowedDappHosts)
+      : defaults.allowedDappHosts;
+    if (strict && Array.isArray(source.allowedDappHosts)) {
+      for (const hostValue of source.allowedDappHosts) {
+        if (typeof hostValue !== "string" || !hostValue.trim()) {
+          throw new Error("Validation error: Invalid dapp host entry");
+        }
+      }
+    }
+
+    const allowedX402NetworksRaw = Array.isArray(source.allowedX402Networks)
+      ? normalizeNetworkList(source.allowedX402Networks)
+      : defaults.allowedX402Networks;
+    if (strict && Array.isArray(source.allowedX402Networks)) {
+      for (const networkValue of source.allowedX402Networks) {
+        if (typeof networkValue !== "string" || !networkValue.trim()) {
+          throw new Error("Validation error: Invalid x402 network entry");
+        }
+      }
+    }
+
+    let x402MaxAmountAtomic = defaults.x402MaxAmountAtomic;
+    if (typeof source.x402MaxAmountAtomic === "string" && source.x402MaxAmountAtomic.trim()) {
+      if (!/^\d+$/.test(source.x402MaxAmountAtomic.trim())) {
+        if (strict) {
+          throw new Error("Validation error: x402MaxAmountAtomic must be a positive integer");
+        }
+      } else {
+        const parsed = BigInt(source.x402MaxAmountAtomic.trim());
+        if (parsed <= 0n) {
+          if (strict) {
+            throw new Error("Validation error: x402MaxAmountAtomic must be greater than zero");
+          }
+        } else {
+          x402MaxAmountAtomic = parsed.toString();
+        }
+      }
+    }
+
     return {
       allowNativeSend,
       allowTokenSend,
       allowEthContractWrite,
       allowSolProgramInstruction,
       allowEthSwaps,
+      allowDappInteraction,
+      allowX402Payments,
       allowedEthContracts: [...new Set(allowedEthContracts)],
       allowedSolPrograms: [...new Set(allowedSolPrograms)],
+      allowedDappHosts: [...new Set(allowedDappHostsRaw)],
+      allowedX402Networks: [...new Set(allowedX402NetworksRaw)],
+      x402MaxAmountAtomic,
+    };
+  }
+
+  private assertAgentUrlAllowedByPolicy(
+    urlInput: string,
+    policy: WalletAgentPolicy,
+    context: "dapp" | "x402"
+  ): void {
+    this.validateHttpUrl(urlInput, "URL");
+    if (policy.allowedDappHosts.length === 0) {
+      return;
+    }
+    const host = new URL(urlInput).host.toLowerCase();
+    if (!policy.allowedDappHosts.includes(host)) {
+      throw new Error(
+        `Validation error: ${context.toUpperCase()} host '${host}' is not allowlisted by wallet policy`
+      );
+    }
+  }
+
+  private normalizeDappAdapter(adapterInput: string): WalletDappAdapter {
+    const adapter = String(adapterInput || "")
+      .trim()
+      .toLowerCase();
+    if (adapter === "rpc_call" || adapter === "rpc" || adapter === "rpc-call") {
+      return "rpc_call";
+    }
+    if (
+      adapter === "eth_contract_call" ||
+      adapter === "evm_contract" ||
+      adapter === "evm_contract_call" ||
+      adapter === "contract"
+    ) {
+      return "eth_contract_call";
+    }
+    if (
+      adapter === "sol_program_instruction" ||
+      adapter === "sol_instruction" ||
+      adapter === "solana_program_instruction"
+    ) {
+      return "sol_program_instruction";
+    }
+    if (adapter === "swap") return "swap";
+    if (adapter === "price" || adapter === "price_quote") return "price";
+    if (adapter === "x402_http" || adapter === "x402" || adapter === "pay") {
+      return "x402_http";
+    }
+    throw new Error(`Validation error: Unsupported dapp adapter '${adapterInput}'`);
+  }
+
+  private async decodeX402PaymentRequired(
+    response: Response
+  ): Promise<WalletX402PaymentRequiredV2 | WalletX402PaymentRequiredV1> {
+    const encoded = response.headers.get(X402_REQUIRED_HEADER);
+    if (encoded && encoded.trim()) {
+      try {
+        const decoded = Buffer.from(encoded.trim(), "base64").toString("utf8");
+        const parsed = JSON.parse(decoded) as
+          | WalletX402PaymentRequiredV2
+          | WalletX402PaymentRequiredV1;
+        if (
+          parsed &&
+          Array.isArray(parsed.accepts) &&
+          (parsed.x402Version === 1 || parsed.x402Version === 2)
+        ) {
+          return parsed;
+        }
+      } catch {
+        throw new Error("Validation error: Invalid PAYMENT-REQUIRED header payload");
+      }
+    }
+
+    const bodyText = await response.text().catch(() => "");
+    if (bodyText.trim()) {
+      try {
+        const parsed = JSON.parse(bodyText) as
+          | WalletX402PaymentRequiredV2
+          | WalletX402PaymentRequiredV1;
+        if (
+          parsed &&
+          Array.isArray(parsed.accepts) &&
+          (parsed.x402Version === 1 || parsed.x402Version === 2)
+        ) {
+          return parsed;
+        }
+      } catch {
+        // fall through
+      }
+    }
+
+    throw new Error("Validation error: Could not decode x402 payment requirements");
+  }
+
+  private selectX402Requirement(
+    required: WalletX402PaymentRequiredV2 | WalletX402PaymentRequiredV1,
+    requestedNetwork?: string
+  ): WalletX402SelectedRequirement {
+    const requested = requestedNetwork?.trim().toLowerCase();
+    const candidates: WalletX402SelectedRequirement[] = [];
+
+    if (required.x402Version === 2) {
+      for (const entry of required.accepts || []) {
+        const scheme = String(entry.scheme || "").toLowerCase();
+        if (!X402_AGENT_SUPPORTED_SCHEMES.has(scheme)) continue;
+        if (!parseEip155ChainId(String(entry.network || ""))) continue;
+        candidates.push({
+          x402Version: 2,
+          scheme,
+          network: String(entry.network || ""),
+          amount: String(entry.amount || ""),
+          asset: String(entry.asset || ""),
+          payTo: String(entry.payTo || ""),
+          maxTimeoutSeconds: Number.isFinite(Number(entry.maxTimeoutSeconds))
+            ? Math.max(30, Number(entry.maxTimeoutSeconds))
+            : 60,
+          extra: entry.extra,
+          resource: required.resource,
+          extensions: required.extensions,
+        });
+      }
+    } else {
+      for (const entry of required.accepts || []) {
+        const scheme = String(entry.scheme || "").toLowerCase();
+        if (!X402_AGENT_SUPPORTED_SCHEMES.has(scheme)) continue;
+        if (!parseEip155ChainId(String(entry.network || ""))) continue;
+        candidates.push({
+          x402Version: 1,
+          scheme,
+          network: String(entry.network || ""),
+          amount: String(entry.maxAmountRequired || ""),
+          asset: String(entry.asset || ""),
+          payTo: String(entry.payTo || ""),
+          maxTimeoutSeconds: Number.isFinite(Number(entry.maxTimeoutSeconds))
+            ? Math.max(30, Number(entry.maxTimeoutSeconds))
+            : 60,
+          extra: entry.extra,
+        });
+      }
+    }
+
+    const filtered = requested
+      ? candidates.filter((candidate) => candidate.network.toLowerCase() === requested)
+      : candidates;
+    const selected = filtered[0];
+    if (!selected) {
+      throw new Error(
+        requested
+          ? `Validation error: No x402 requirement for network '${requestedNetwork}'`
+          : "Validation error: No supported EVM x402 payment requirement found"
+      );
+    }
+    return selected;
+  }
+
+  private async createX402PaymentHeader(input: {
+    version: 1 | 2;
+    requirement: WalletX402SelectedRequirement;
+    index: number;
+    requestUrl: string;
+  }): Promise<{ name: string; value: string }> {
+    const requirement = input.requirement;
+    if (!isEvmAddress(requirement.asset)) {
+      throw new Error("Validation error: x402 payment asset must be an EVM token address");
+    }
+    if (!isEvmAddress(requirement.payTo)) {
+      throw new Error("Validation error: x402 payTo must be a valid EVM address");
+    }
+
+    const chainId = parseEip155ChainId(requirement.network);
+    if (!chainId) {
+      throw new Error(`Validation error: Unsupported x402 network '${requirement.network}'`);
+    }
+
+    const transferMethod = String(requirement.extra?.assetTransferMethod || "eip3009")
+      .trim()
+      .toLowerCase();
+    if (transferMethod !== "eip3009") {
+      throw new Error(
+        `Validation error: Unsupported x402 assetTransferMethod '${transferMethod}'. Only eip3009 is currently supported`
+      );
+    }
+
+    const domainName = String(requirement.extra?.name || "").trim();
+    const domainVersion = String(requirement.extra?.version || "").trim();
+    if (!domainName || !domainVersion) {
+      throw new Error(
+        "Validation error: x402 requirement missing EIP-712 domain fields (extra.name/version)"
+      );
+    }
+
+    const amount = parsePositiveAtomicAmount(requirement.amount, "x402 payment amount");
+    const unlocked = this.requireUnlocked();
+    const signer = this.deriveEthWallet(unlocked.mnemonic, normalizeStartIndex(input.index)).wallet;
+
+    const now = Math.floor(Date.now() / 1000);
+    const validBefore = now + Math.min(86_400, Math.max(30, requirement.maxTimeoutSeconds));
+    const nonceBytes = crypto.getRandomValues(new Uint8Array(32));
+    const nonce = `0x${Buffer.from(nonceBytes).toString("hex")}`;
+    const authorization = {
+      from: signer.address,
+      to: requirement.payTo,
+      value: amount.toString(),
+      validAfter: String(Math.max(0, now - 600)),
+      validBefore: String(validBefore),
+      nonce,
+    };
+
+    const signature = await signer.signTypedData(
+      {
+        name: domainName,
+        version: domainVersion,
+        chainId,
+        verifyingContract: requirement.asset,
+      },
+      X402_EIP3009_AUTHORIZATION_TYPES,
+      {
+        from: authorization.from,
+        to: authorization.to,
+        value: amount,
+        validAfter: BigInt(authorization.validAfter),
+        validBefore: BigInt(authorization.validBefore),
+        nonce: authorization.nonce,
+      }
+    );
+
+    const payloadV2 = {
+      x402Version: 2,
+      resource: requirement.resource || { url: input.requestUrl },
+      accepted: {
+        scheme: requirement.scheme,
+        network: requirement.network,
+        amount: requirement.amount,
+        asset: requirement.asset,
+        payTo: requirement.payTo,
+        maxTimeoutSeconds: requirement.maxTimeoutSeconds,
+        extra: requirement.extra || {},
+      },
+      payload: {
+        signature,
+        authorization,
+      },
+      extensions: requirement.extensions,
+    };
+
+    const payloadV1 = {
+      x402Version: 1,
+      scheme: requirement.scheme,
+      network: requirement.network,
+      payload: {
+        signature,
+        authorization,
+      },
+    };
+
+    const encoded = Buffer.from(
+      JSON.stringify(input.version === 2 ? payloadV2 : payloadV1),
+      "utf8"
+    ).toString("base64");
+    return {
+      name: input.version === 2 ? X402_SIGNATURE_HEADER : X402_LEGACY_SIGNATURE_HEADER,
+      value: encoded,
+    };
+  }
+
+  private decodeX402SettlementResponse(headers: Headers): WalletX402SettlementResponse | undefined {
+    const encoded =
+      headers.get(X402_RESPONSE_HEADER) || headers.get(X402_LEGACY_RESPONSE_HEADER) || "";
+    if (!encoded.trim()) {
+      return undefined;
+    }
+    try {
+      const decoded = Buffer.from(encoded.trim(), "base64").toString("utf8");
+      const parsed = JSON.parse(decoded) as WalletX402SettlementResponse;
+      return parsed;
+    } catch {
+      return { success: false, errorReason: "invalid_settlement_response" };
+    }
+  }
+
+  private serializeResponseHeaders(headers: Headers): Record<string, string> {
+    const collected: Record<string, string> = {};
+    for (const [name, value] of headers.entries()) {
+      collected[name] = value;
+    }
+    return collected;
+  }
+
+  private async buildX402Result(input: {
+    response: Response;
+    url: string;
+    method: string;
+    paid: boolean;
+    attemptedPayment: boolean;
+    paymentHeaderUsed?: string;
+    paymentRequirement?: WalletX402SelectedRequirement;
+    settlement?: WalletX402SettlementResponse;
+    parseJsonResponse: boolean;
+  }): Promise<WalletX402RequestResult> {
+    const contentType = input.response.headers.get("content-type") || "";
+    const bodyText = await input.response.text().catch(() => "");
+    let body: unknown = bodyText;
+    if (input.parseJsonResponse && bodyText && contentType.includes("application/json")) {
+      try {
+        body = JSON.parse(bodyText) as unknown;
+      } catch {
+        body = bodyText;
+      }
+    }
+
+    return {
+      url: input.url,
+      method: input.method,
+      status: input.response.status,
+      paid: input.paid,
+      attemptedPayment: input.attemptedPayment,
+      paymentHeaderUsed: input.paymentHeaderUsed,
+      paymentRequirement: input.paymentRequirement
+        ? {
+            x402Version: input.paymentRequirement.x402Version,
+            scheme: input.paymentRequirement.scheme,
+            network: input.paymentRequirement.network,
+            amount: input.paymentRequirement.amount,
+            asset: input.paymentRequirement.asset,
+            payTo: input.paymentRequirement.payTo,
+            maxTimeoutSeconds: input.paymentRequirement.maxTimeoutSeconds,
+            extra: input.paymentRequirement.extra,
+          }
+        : undefined,
+      settlement: input.settlement,
+      responseHeaders: this.serializeResponseHeaders(input.response.headers),
+      body,
     };
   }
 
@@ -3991,4 +5166,12 @@ export type {
   WalletSwapResult,
   WalletEndpointDirectory,
   WalletSendResult,
+  WalletRpcCallInput,
+  WalletRpcCallResult,
+  WalletDappAdapter,
+  WalletDappAdapterCapability,
+  WalletDappCallInput,
+  WalletDappDirectory,
+  WalletX402RequestInput,
+  WalletX402RequestResult,
 };

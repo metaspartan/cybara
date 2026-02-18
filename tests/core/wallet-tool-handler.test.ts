@@ -83,6 +83,27 @@ const walletToolMockState = {
     rpcUrl?: string;
   }>,
   endpointDirectoryCalls: 0,
+  dappCapabilityCalls: 0,
+  rpcCallCalls: [] as Array<{
+    chain: "eth" | "sol";
+    method: string;
+    params?: unknown[];
+    rpcUrl?: string;
+    id?: string | number;
+  }>,
+  dappCalls: [] as Array<{ adapter: string; payload?: Record<string, unknown> }>,
+  x402Calls: [] as Array<{
+    url: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: unknown;
+    network?: string;
+    maxAmountAtomic?: string;
+    index?: number;
+    timeoutMs?: number;
+    dryRun?: boolean;
+    parseJsonResponse?: boolean;
+  }>,
   dynamicSwapCalls: [] as Array<{
     venue: string;
     tokenOut?: string;
@@ -121,6 +142,10 @@ function resetState() {
   walletToolMockState.swapCalls = [];
   walletToolMockState.priceQuoteCalls = [];
   walletToolMockState.endpointDirectoryCalls = 0;
+  walletToolMockState.dappCapabilityCalls = 0;
+  walletToolMockState.rpcCallCalls = [];
+  walletToolMockState.dappCalls = [];
+  walletToolMockState.x402Calls = [];
   walletToolMockState.dynamicSwapCalls = [];
 }
 
@@ -271,6 +296,61 @@ mock.module("../../src/core/wallet", () => ({
           programs: {},
         },
         services: {},
+      };
+    },
+    getDappDirectoryForAgent: () => {
+      walletToolMockState.dappCapabilityCalls += 1;
+      return {
+        adapters: [
+          {
+            adapter: "rpc_call",
+            chain: "multi",
+            write: false,
+            description: "Direct chain rpc",
+          },
+        ],
+        notes: ["mock-note"],
+      };
+    },
+    rpcCallForAgent: async (input: {
+      chain: "eth" | "sol";
+      method: string;
+      params?: unknown[];
+      rpcUrl?: string;
+      id?: string | number;
+    }) => {
+      walletToolMockState.rpcCallCalls.push(input);
+      return {
+        chain: input.chain,
+        rpcUrl: input.rpcUrl || "https://rpc",
+        method: input.method,
+        id: input.id,
+        result: { ok: true },
+      };
+    },
+    executeDappForAgent: async (input: { adapter: string; payload?: Record<string, unknown> }) => {
+      walletToolMockState.dappCalls.push(input);
+      return { adapter: input.adapter, ok: true };
+    },
+    x402RequestForAgent: async (input: {
+      url: string;
+      method?: string;
+      headers?: Record<string, string>;
+      body?: unknown;
+      network?: string;
+      maxAmountAtomic?: string;
+      index?: number;
+      timeoutMs?: number;
+      dryRun?: boolean;
+      parseJsonResponse?: boolean;
+    }) => {
+      walletToolMockState.x402Calls.push(input);
+      return {
+        url: input.url,
+        method: input.method || "GET",
+        status: 200,
+        paid: true,
+        attemptedPayment: true,
       };
     },
     swapForAgent: async (input: {
@@ -684,6 +764,106 @@ describe("Wallet tool handler", () => {
       services: {},
     });
     expect(walletToolMockState.endpointDirectoryCalls).toBe(1);
+  });
+
+  test("dapp_capabilities action returns adapter directory", async () => {
+    const result = await handleWallet({ action: "dapp_capabilities" });
+    expect(result).toEqual({
+      adapters: [
+        {
+          adapter: "rpc_call",
+          chain: "multi",
+          write: false,
+          description: "Direct chain rpc",
+        },
+      ],
+      notes: ["mock-note"],
+    });
+    expect(walletToolMockState.dappCapabilityCalls).toBe(1);
+  });
+
+  test("rpc_call parses method/params/id payload", async () => {
+    const result = await handleWallet({
+      action: "rpc_call",
+      chain: "sol",
+      method: "getBalance",
+      params: '["So11111111111111111111111111111111111111112"]',
+      id: "42",
+      rpcUrl: "https://sol-rpc.example",
+    });
+    expect(result).toEqual({
+      chain: "sol",
+      rpcUrl: "https://sol-rpc.example",
+      method: "getBalance",
+      id: "42",
+      result: { ok: true },
+    });
+    expect(walletToolMockState.rpcCallCalls).toEqual([
+      {
+        chain: "sol",
+        method: "getBalance",
+        params: ["So11111111111111111111111111111111111111112"],
+        id: "42",
+        rpcUrl: "https://sol-rpc.example",
+      },
+    ]);
+  });
+
+  test("dapp_call forwards adapter and JSON payload", async () => {
+    const result = await handleWallet({
+      action: "dapp_call",
+      adapter: "swap",
+      payload: '{"venue":"uniswap_v3","tokenOut":"LINK","amountEth":"0.2","dryRun":true}',
+    });
+    expect(result).toEqual({ adapter: "swap", ok: true });
+    expect(walletToolMockState.dappCalls).toEqual([
+      {
+        adapter: "swap",
+        payload: {
+          venue: "uniswap_v3",
+          tokenOut: "LINK",
+          amountEth: "0.2",
+          dryRun: true,
+        },
+      },
+    ]);
+  });
+
+  test("x402_request parses url/network/max amount and dry-run fields", async () => {
+    const result = await handleWallet({
+      action: "x402_request",
+      url: "https://api.example.com/protected",
+      method: "POST",
+      headers: '{"x-api-key":"demo"}',
+      body: { query: "hello" },
+      network: "eip155:8453",
+      maxAmountAtomic: "250000",
+      timeoutMs: "9000",
+      dryRun: "true",
+      parseJsonResponse: "false",
+      index: "2",
+    });
+    expect(result).toEqual({
+      url: "https://api.example.com/protected",
+      method: "POST",
+      status: 200,
+      paid: true,
+      attemptedPayment: true,
+    });
+    expect(walletToolMockState.x402Calls).toEqual([
+      {
+        url: "https://api.example.com/protected",
+        method: "POST",
+        headers: { "x-api-key": "demo" },
+        body: { query: "hello" },
+        network: "eip155:8453",
+        maxAmountAtomic: "250000",
+        index: 2,
+        timeoutMs: 9000,
+        dryRun: true,
+        parseJsonResponse: false,
+      },
+    ]);
   });
 
   test("unknown action returns validation error", async () => {

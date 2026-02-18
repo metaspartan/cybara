@@ -66,6 +66,9 @@ import {
   type WalletSwapEthUniswapInput,
   type WalletTokenChain,
   type SolInstructionAccountMeta,
+  type WalletDappCallInput,
+  type WalletX402RequestInput,
+  type WalletRpcCallInput,
 } from "../core/wallet";
 import {
   normalizeTimestamp,
@@ -452,12 +455,20 @@ const routes: Record<string, RouteHandler> = {
       allowEthContractWrite: data.allowEthContractWrite,
       allowSolProgramInstruction: data.allowSolProgramInstruction,
       allowEthSwaps: data.allowEthSwaps,
+      allowDappInteraction: data.allowDappInteraction,
+      allowX402Payments: data.allowX402Payments,
       allowedEthContracts: Array.isArray(data.allowedEthContracts)
         ? data.allowedEthContracts
         : undefined,
       allowedSolPrograms: Array.isArray(data.allowedSolPrograms)
         ? data.allowedSolPrograms
         : undefined,
+      allowedDappHosts: Array.isArray(data.allowedDappHosts) ? data.allowedDappHosts : undefined,
+      allowedX402Networks: Array.isArray(data.allowedX402Networks)
+        ? data.allowedX402Networks
+        : undefined,
+      x402MaxAmountAtomic:
+        typeof data.x402MaxAmountAtomic === "string" ? data.x402MaxAmountAtomic : undefined,
     });
   },
   "POST /api/wallet/create": async (body) => {
@@ -687,6 +698,57 @@ const routes: Record<string, RouteHandler> = {
   },
   "GET /api/wallet/endpoints": () => {
     return walletManager.getEndpointDirectory();
+  },
+  "GET /api/wallet/dapps": () => {
+    return walletManager.getDappDirectory();
+  },
+  "POST /api/wallet/rpc-call": async (body) => {
+    const data = (body || {}) as Partial<WalletRpcCallInput>;
+    return await walletManager.rpcCall({
+      chain: data.chain === "sol" ? "sol" : "eth",
+      method: String(data.method || ""),
+      params: parseJsonArray(data.params),
+      rpcUrl: typeof data.rpcUrl === "string" ? data.rpcUrl : undefined,
+      id: typeof data.id === "string" || typeof data.id === "number" ? data.id : undefined,
+    });
+  },
+  "POST /api/wallet/dapp": async (body) => {
+    const data = (body || {}) as Partial<WalletDappCallInput> & {
+      payload?: Record<string, unknown> | string;
+      input?: Record<string, unknown> | string;
+    };
+    const payload = (parseJsonObject(data.payload) ||
+      parseJsonObject(data.input) ||
+      (data.payload && typeof data.payload === "object" && !Array.isArray(data.payload)
+        ? (data.payload as Record<string, unknown>)
+        : undefined) ||
+      (data.input && typeof data.input === "object" && !Array.isArray(data.input)
+        ? (data.input as Record<string, unknown>)
+        : undefined) ||
+      {}) as Record<string, unknown>;
+    return await walletManager.executeDapp({
+      adapter: typeof data.adapter === "string" ? data.adapter : "",
+      payload,
+    });
+  },
+  "POST /api/wallet/x402": async (body) => {
+    const data = (body || {}) as Partial<WalletX402RequestInput>;
+    return await walletManager.x402Request({
+      url: String(data.url || ""),
+      method: typeof data.method === "string" ? data.method : undefined,
+      headers:
+        data.headers && typeof data.headers === "object" && !Array.isArray(data.headers)
+          ? (data.headers as Record<string, string>)
+          : undefined,
+      body: data.body,
+      network: typeof data.network === "string" ? data.network : undefined,
+      maxAmountAtomic: typeof data.maxAmountAtomic === "string" ? data.maxAmountAtomic : undefined,
+      index: parseOptionalNumber(data.index),
+      timeoutMs: parseOptionalNumber(data.timeoutMs),
+      dryRun: data.dryRun === true,
+      parseJsonResponse:
+        typeof data.parseJsonResponse === "boolean" ? data.parseJsonResponse : undefined,
+    });
   },
   "POST /api/wallet/swap": async (body) => {
     const data = (body || {}) as Partial<WalletSwapInput> & {
