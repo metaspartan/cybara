@@ -34,7 +34,12 @@ import {
   getChatRateLimitStatus,
   type ChatMessage,
 } from "../api/chat";
-import { getToolSchemasForLLM, getCircuitState, type ToolContext } from "../core/tools/index";
+import {
+  getToolSchemasForLLM,
+  getDangerousToolNames,
+  getCircuitState,
+  type ToolContext,
+} from "../core/tools/index";
 import { executeTool, hasTool } from "../core/tools/handlers/index";
 import { handleSessionsSpawn } from "../core/tools/handlers/channel";
 import {
@@ -123,6 +128,13 @@ interface ProviderMetricSummary {
   url: string;
 }
 
+interface MetricTrend {
+  current: number;
+  previous: number;
+  changePct: number;
+  direction: "up" | "down" | "flat";
+}
+
 const WALLET_CHAIN_SET = new Set<WalletChain>(["eth", "btc", "sol"]);
 const WALLET_TOKEN_CHAIN_SET = new Set<WalletTokenChain>(["eth", "sol"]);
 
@@ -143,6 +155,47 @@ function parseJsonObject(value: unknown): Record<string, unknown> | null {
 
 function parseMetricMetadata(metadata?: string): Record<string, unknown> | null {
   return parseJsonObject(metadata);
+}
+
+function metricTimestampToMs(createdAt?: string): number | null {
+  if (!createdAt) return null;
+  const hasTimezone =
+    createdAt.includes("Z") || createdAt.includes("+") || createdAt.slice(10).includes("-");
+  const normalized = hasTimezone ? createdAt : createdAt.replace(" ", "T") + "Z";
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function sumMetricValues(
+  entries: MetricsEntry[],
+  predicate: (entry: MetricsEntry, timestampMs: number | null) => boolean
+): number {
+  let total = 0;
+  for (const entry of entries) {
+    const timestampMs = metricTimestampToMs(entry.created_at);
+    if (!predicate(entry, timestampMs)) continue;
+    total += Number(entry.value || 0);
+  }
+  return total;
+}
+
+function buildMetricTrend(current: number, previous: number): MetricTrend {
+  let changePct = 0;
+  if (previous > 0) {
+    changePct = ((current - previous) / previous) * 100;
+  } else if (current > 0) {
+    changePct = 100;
+  }
+
+  const rounded = Number(changePct.toFixed(2));
+  const direction: MetricTrend["direction"] = rounded > 0 ? "up" : rounded < 0 ? "down" : "flat";
+
+  return {
+    current,
+    previous,
+    changePct: rounded,
+    direction,
+  };
 }
 
 function parseWalletChains(input: unknown): WalletChain[] | undefined {
@@ -839,10 +892,17 @@ const routes: Record<string, RouteHandler> = {
     return walletManager.setAgentAccessEnabled(data.enabled === true);
   },
 
-  "GET /api/config": () => config.getAll(),
+  "GET /api/config": () => ({
+    ...config.getAll(),
+    dangerous_tool_policy: config.getDangerousToolPolicy(),
+  }),
   "PUT /api/config": (body) => {
     const data = body as Record<string, unknown>;
     for (const [key, value] of Object.entries(data)) {
+      if (key === "dangerous_tool_policy") {
+        config.setDangerousToolPolicy(value);
+        continue;
+      }
       config.set(key, value);
     }
     return { success: true };
@@ -905,6 +965,10 @@ const routes: Record<string, RouteHandler> = {
 
   "GET /api/tools/builtin": () => getBuiltinTools(),
   "GET /api/tools": () => getToolSchemasForLLM(),
+  "GET /api/tools/dangerous": () => ({
+    policy: config.getDangerousToolPolicy(),
+    tools: getDangerousToolNames(),
+  }),
   "GET /api/tools/:name": (_body, params) => {
     const schemas = getToolSchemasForLLM();
     const found = schemas.find((t) => t.name === params!.name);
@@ -946,6 +1010,7 @@ const routes: Record<string, RouteHandler> = {
           : "user",
       permissions: contextPermissions,
       enforcePermissions: data.context?.enforcePermissions === true,
+      allowDangerousTools: data.context?.allowDangerousTools === true,
     };
 
     return await executeTool(data.name, data.args, {
@@ -2695,6 +2760,190 @@ const routes: Record<string, RouteHandler> = {
   },
 
   "GET /api/metrics/models": () => ({ models: getModelMetrics() }),
+
+  "GET /api/metrics/insights": () => {
+    const metrics = tables.metrics;
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const last24hStart = now - dayMs;
+    const prev24hStart = now - dayMs * 2;
+
+    const inputTokens = metrics.getTotal("token_usage", "input") || 0;
+    const outputTokens = metrics.getTotal("token_usage", "output") || 0;
+    const cacheTokens = metrics.getTotal("token_usage", "cache") || 0;
+    const totalTokens = inputTokens + outputTokens + cacheTokens;
+
+    const tokenUsageEntries = metrics.getByType("token_usage") as MetricsEntry[];
+    const tokenAllLast24h = sumMetricValues(
+      tokenUsageEntries,
+      (entry, timestampMs) =>
+        entry.key === "all" &&
+        timestampMs !== null &&
+        timestampMs >= last24hStart &&
+        timestampMs < now
+    );
+    const tokenAllPrevious24h = sumMetricValues(
+      tokenUsageEntries,
+      (entry, timestampMs) =>
+        entry.key === "all" &&
+        timestampMs !== null &&
+        timestampMs >= prev24hStart &&
+        timestampMs < last24hStart
+    );
+
+    const modelTotals = metrics.getTopKeys("token_usage_by_model") as MetricTopKey[];
+    const topModel = modelTotals[0];
+    const topModelSharePct =
+      topModel && totalTokens > 0 ? Number(((topModel.total / totalTokens) * 100).toFixed(2)) : 0;
+
+    const providerTokenEntries = metrics.getByType("token_usage_by_provider") as MetricsEntry[];
+    const providerApiEntries = metrics.getByType("api_call") as MetricsEntry[];
+    const providerMap = new Map<string, { provider: string; tokens: number; calls: number }>();
+
+    for (const entry of providerTokenEntries) {
+      const provider = entry.key;
+      if (!provider || provider === "all" || provider === "input" || provider === "output")
+        continue;
+      const current = providerMap.get(provider) || { provider, tokens: 0, calls: 0 };
+      current.tokens += entry.value || 0;
+      current.calls += 1;
+      providerMap.set(provider, current);
+    }
+
+    for (const entry of providerApiEntries) {
+      const provider = entry.key;
+      if (!provider || provider === "all" || provider === "success" || provider === "error")
+        continue;
+      const current = providerMap.get(provider) || { provider, tokens: 0, calls: 0 };
+      current.calls += entry.value || 0;
+      providerMap.set(provider, current);
+    }
+
+    const providerEfficiency = Array.from(providerMap.values())
+      .map((entry) => ({
+        provider: entry.provider,
+        tokens: entry.tokens,
+        calls: entry.calls,
+        tokensPerCall: entry.calls > 0 ? Number((entry.tokens / entry.calls).toFixed(2)) : 0,
+        sharePct: totalTokens > 0 ? Number(((entry.tokens / totalTokens) * 100).toFixed(2)) : 0,
+      }))
+      .sort((a, b) => b.tokens - a.tokens);
+
+    const toolCallEntries = (metrics.getByType("tool_call") as MetricsEntry[]).filter(
+      (entry) => entry.key !== "all"
+    );
+    const toolErrorEntries = metrics.getByType("tool_error") as MetricsEntry[];
+    const totalToolCalls = toolCallEntries.reduce((sum, entry) => sum + (entry.value || 0), 0);
+    const totalToolErrors = toolErrorEntries.reduce((sum, entry) => sum + (entry.value || 0), 0);
+    const toolSuccessRatePct =
+      totalToolCalls > 0
+        ? Number((((totalToolCalls - totalToolErrors) / totalToolCalls) * 100).toFixed(2))
+        : 100;
+
+    const toolUsage24hMap = new Map<string, number>();
+    for (const entry of toolCallEntries) {
+      const timestampMs = metricTimestampToMs(entry.created_at);
+      if (timestampMs === null || timestampMs < last24hStart) continue;
+      toolUsage24hMap.set(entry.key, (toolUsage24hMap.get(entry.key) || 0) + (entry.value || 0));
+    }
+    const toolUsage24h = Array.from(toolUsage24hMap.entries())
+      .map(([tool, calls]) => ({ tool, calls }))
+      .sort((a, b) => b.calls - a.calls);
+
+    const modelInsightMap = new Map<
+      string,
+      {
+        model: string;
+        provider: string;
+        avgTps: number;
+        maxTps: number;
+        minTps: number;
+        avgLatencyMs: number;
+        totalTokens: number;
+        callCount: number;
+      }
+    >();
+
+    for (const modelMetric of getModelMetrics()) {
+      modelInsightMap.set(modelMetric.model, { ...modelMetric });
+    }
+
+    for (const topModelEntry of modelTotals) {
+      const existing = modelInsightMap.get(topModelEntry.key);
+      if (existing) {
+        existing.totalTokens = Math.max(existing.totalTokens, topModelEntry.total);
+      } else {
+        modelInsightMap.set(topModelEntry.key, {
+          model: topModelEntry.key,
+          provider: "unknown",
+          avgTps: 0,
+          maxTps: 0,
+          minTps: 0,
+          avgLatencyMs: 0,
+          totalTokens: topModelEntry.total,
+          callCount: 0,
+        });
+      }
+    }
+
+    const modelInsights = Array.from(modelInsightMap.values())
+      .map((model) => ({
+        ...model,
+        tokenSharePct:
+          totalTokens > 0 ? Number(((model.totalTokens / totalTokens) * 100).toFixed(2)) : 0,
+      }))
+      .sort((a, b) => b.totalTokens - a.totalTokens);
+
+    const contextWarningEntries = metrics.getByType("context_warning") as MetricsEntry[];
+    let contextWarnings24h = 0;
+    let criticalContextWarnings24h = 0;
+    for (const entry of contextWarningEntries) {
+      const timestampMs = metricTimestampToMs(entry.created_at);
+      if (timestampMs === null || timestampMs < last24hStart) continue;
+      contextWarnings24h += 1;
+      const metadata = parseMetricMetadata(entry.metadata);
+      if (metadata?.level === "critical") {
+        criticalContextWarnings24h += 1;
+      }
+    }
+
+    return {
+      tokenBreakdown: {
+        total: totalTokens,
+        input: inputTokens,
+        output: outputTokens,
+        cache: cacheTokens,
+        inputPct: totalTokens > 0 ? Number(((inputTokens / totalTokens) * 100).toFixed(2)) : 0,
+        outputPct: totalTokens > 0 ? Number(((outputTokens / totalTokens) * 100).toFixed(2)) : 0,
+        cachePct: totalTokens > 0 ? Number(((cacheTokens / totalTokens) * 100).toFixed(2)) : 0,
+      },
+      tokenTrend24h: buildMetricTrend(tokenAllLast24h, tokenAllPrevious24h),
+      cacheEfficiency: {
+        cacheTokens,
+        cacheSharePct: totalTokens > 0 ? Number(((cacheTokens / totalTokens) * 100).toFixed(2)) : 0,
+      },
+      topModel:
+        topModel && topModel.key
+          ? {
+              model: topModel.key,
+              tokens: topModel.total,
+              sharePct: topModelSharePct,
+            }
+          : null,
+      providerEfficiency,
+      modelInsights,
+      toolReliability: {
+        totalCalls: totalToolCalls,
+        totalErrors: totalToolErrors,
+        successRatePct: toolSuccessRatePct,
+      },
+      toolUsage24h,
+      contextHealth24h: {
+        warnings: contextWarnings24h,
+        criticalWarnings: criticalContextWarnings24h,
+      },
+    };
+  },
 
   "POST /api/metrics/track": (body) => {
     const data = body as {

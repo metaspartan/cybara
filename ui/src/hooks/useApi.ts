@@ -893,10 +893,76 @@ export interface ModelMetrics {
   }>;
 }
 
+export interface MetricsInsights {
+  tokenBreakdown: {
+    total: number;
+    input: number;
+    output: number;
+    cache: number;
+    inputPct: number;
+    outputPct: number;
+    cachePct: number;
+  };
+  tokenTrend24h: {
+    current: number;
+    previous: number;
+    changePct: number;
+    direction: "up" | "down" | "flat";
+  };
+  cacheEfficiency: {
+    cacheTokens: number;
+    cacheSharePct: number;
+  };
+  topModel: {
+    model: string;
+    tokens: number;
+    sharePct: number;
+  } | null;
+  providerEfficiency: Array<{
+    provider: string;
+    tokens: number;
+    calls: number;
+    tokensPerCall: number;
+    sharePct: number;
+  }>;
+  modelInsights: Array<{
+    model: string;
+    provider: string;
+    avgTps: number;
+    maxTps: number;
+    minTps: number;
+    avgLatencyMs: number;
+    totalTokens: number;
+    callCount: number;
+    tokenSharePct: number;
+  }>;
+  toolReliability: {
+    totalCalls: number;
+    totalErrors: number;
+    successRatePct: number;
+  };
+  toolUsage24h: Array<{
+    tool: string;
+    calls: number;
+  }>;
+  contextHealth24h: {
+    warnings: number;
+    criticalWarnings: number;
+  };
+}
+
 export function useMetricsModels() {
   return useQuery({
     queryKey: ['metrics', 'models'],
     queryFn: () => fetchApi<ModelMetrics>('/metrics/models'),
+    refetchInterval: 5000,
+  });
+}
+
+export function useMetricsInsights() {
+  return useQuery({
+    queryKey: ['metrics', 'insights'],
+    queryFn: () => fetchApi<MetricsInsights>('/metrics/insights'),
     refetchInterval: 5000,
   });
 }

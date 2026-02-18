@@ -96,6 +96,9 @@ function ThemeSettings() {
 
 function FeatureSettings() {
   const [terminalEnabled, setTerminalEnabled] = useState(false);
+  const [dangerousToolPolicyEnabled, setDangerousToolPolicyEnabled] = useState(false);
+  const [dangerousToolPolicyMode, setDangerousToolPolicyMode] = useState<'audit' | 'block'>('audit');
+  const [savingDangerousPolicy, setSavingDangerousPolicy] = useState(false);
   const [loading, setLoading] = useState(true);
   const { addToast } = useUIStore();
 
@@ -104,6 +107,11 @@ function FeatureSettings() {
       .then((result) => {
         const data = result.success ? result.data : undefined;
         setTerminalEnabled(data?.terminal_enabled === true);
+        const policy = data?.dangerous_tool_policy as
+          | { enabled?: boolean; mode?: string }
+          | undefined;
+        setDangerousToolPolicyEnabled(policy?.enabled === true);
+        setDangerousToolPolicyMode(policy?.mode === 'block' ? 'block' : 'audit');
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -120,6 +128,33 @@ function FeatureSettings() {
     } catch {
       addToast('error', 'Failed to update terminal setting');
       setTerminalEnabled(!enabled);
+    }
+  };
+
+  const updateDangerousPolicy = async (next: { enabled: boolean; mode: 'audit' | 'block' }) => {
+    const previous = {
+      enabled: dangerousToolPolicyEnabled,
+      mode: dangerousToolPolicyMode,
+    };
+
+    setDangerousToolPolicyEnabled(next.enabled);
+    setDangerousToolPolicyMode(next.mode);
+    setSavingDangerousPolicy(true);
+    try {
+      const result = await settingsApi.updateConfig({ dangerous_tool_policy: next });
+      if (!result.success || !result.data?.success) {
+        throw new Error(result.error || 'Config update failed');
+      }
+      addToast(
+        'success',
+        `Dangerous tool policy ${next.enabled ? `${next.mode} mode` : 'disabled'}`
+      );
+    } catch {
+      setDangerousToolPolicyEnabled(previous.enabled);
+      setDangerousToolPolicyMode(previous.mode);
+      addToast('error', 'Failed to update dangerous tool policy');
+    } finally {
+      setSavingDangerousPolicy(false);
     }
   };
 
@@ -154,6 +189,54 @@ function FeatureSettings() {
                 }`}
             />
           </button>
+        </div>
+
+        <div className="py-3 border-b border-white/10">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-white font-medium">Dangerous Tool Policy</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Guardrails for high-impact tools like shell execution, wallet signing, and external actions.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={dangerousToolPolicyEnabled}
+              disabled={loading || savingDangerousPolicy}
+              onClick={() =>
+                updateDangerousPolicy({
+                  enabled: !dangerousToolPolicyEnabled,
+                  mode: dangerousToolPolicyMode,
+                })
+              }
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${dangerousToolPolicyEnabled ? 'bg-amber-500' : 'bg-white/10'
+                } ${(loading || savingDangerousPolicy) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${dangerousToolPolicyEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+              />
+            </button>
+          </div>
+          {dangerousToolPolicyEnabled && (
+            <div className="mt-3 max-w-xs">
+              <label className="block text-xs text-gray-400 mb-1">Mode</label>
+              <Select
+                value={dangerousToolPolicyMode}
+                onChange={(value) =>
+                  updateDangerousPolicy({
+                    enabled: true,
+                    mode: value === 'block' ? 'block' : 'audit',
+                  })
+                }
+                options={[
+                  { value: 'audit', label: 'Audit (log only)' },
+                  { value: 'block', label: 'Block dangerous tools' },
+                ]}
+              />
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

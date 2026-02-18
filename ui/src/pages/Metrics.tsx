@@ -22,6 +22,7 @@ import {
   useMetricsTimeSeries,
   useMetricsProviders,
   useMetricsModels,
+  useMetricsInsights,
   type MetricsOverview,
   type TokenMetrics,
   type FileMetrics,
@@ -29,6 +30,7 @@ import {
   type TimeSeriesData,
   type ProviderMetrics,
   type ModelMetrics,
+  type MetricsInsights,
 } from '@/hooks/useApi';
 
 function formatNumber(num: number): string {
@@ -45,8 +47,10 @@ export function Metrics() {
   const { data: timeSeries, isLoading: loadingTimeSeries } = useMetricsTimeSeries();
   const { data: providers, isLoading: loadingProviders } = useMetricsProviders();
   const { data: modelMetrics, isLoading: loadingModels } = useMetricsModels();
+  const { data: insights, isLoading: loadingInsights } = useMetricsInsights();
 
-  const isLoading = loadingOverview || loadingTokens || loadingFiles || loadingTools || loadingTimeSeries || loadingProviders || loadingModels;
+  const isLoading = loadingOverview || loadingTokens || loadingFiles || loadingTools || loadingTimeSeries || loadingProviders || loadingModels || loadingInsights;
+  const insightsData = insights as MetricsInsights | undefined;
 
   const stats = useMemo(() => {
     if (!overview) return null;
@@ -121,6 +125,80 @@ export function Metrics() {
           color="text-green-400"
           bgColor="bg-green-500/20"
         />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-indigo-400" />
+              Token Insights
+            </CardTitle>
+            <CardDescription>24h trend, cache share, and top model concentration</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-lg bg-white/5 p-3">
+                <p className="text-xs text-gray-500 mb-1">24h Trend</p>
+                <p className={`text-lg font-semibold ${insightsData?.tokenTrend24h.direction === 'up' ? 'text-emerald-400' : insightsData?.tokenTrend24h.direction === 'down' ? 'text-red-400' : 'text-gray-300'}`}>
+                  {insightsData?.tokenTrend24h.changePct ?? 0}%
+                </p>
+              </div>
+              <div className="rounded-lg bg-white/5 p-3">
+                <p className="text-xs text-gray-500 mb-1">Cache Share</p>
+                <p className="text-lg font-semibold text-purple-300">
+                  {insightsData?.cacheEfficiency.cacheSharePct ?? 0}%
+                </p>
+              </div>
+              <div className="rounded-lg bg-white/5 p-3">
+                <p className="text-xs text-gray-500 mb-1">Top Model Share</p>
+                <p className="text-lg font-semibold text-amber-300">
+                  {insightsData?.topModel?.sharePct ?? 0}%
+                </p>
+              </div>
+            </div>
+            <div className="pt-3 border-t border-white/10">
+              <p className="text-sm text-gray-400 mb-1">Most used model</p>
+              <p className="text-sm text-white font-medium">
+                {insightsData?.topModel?.model || "No model data yet"}
+              </p>
+              {insightsData?.topModel && (
+                <p className="text-xs text-gray-500 mt-1">
+                  {formatNumber(insightsData.topModel.tokens)} tokens tracked
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Gauge className="w-5 h-5 text-cyan-400" />
+              Provider Efficiency
+            </CardTitle>
+            <CardDescription>Tokens per provider call with share breakdown</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {insightsData?.providerEfficiency.slice(0, 6).map((provider, i) => (
+                <div key={i} className="rounded-lg bg-white/5 p-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-sm text-white">{provider.provider}</p>
+                    <p className="text-xs text-gray-400">{provider.sharePct}% share</p>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-cyan-300">{formatNumber(provider.tokensPerCall)} tok/call</span>
+                    <span className="text-gray-500">{formatNumber(provider.calls)} calls</span>
+                  </div>
+                </div>
+              ))}
+              {(!insightsData?.providerEfficiency || insightsData.providerEfficiency.length === 0) && (
+                <p className="text-sm text-gray-500 text-center py-4">No provider efficiency data yet</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
@@ -268,6 +346,22 @@ export function Metrics() {
                 <p className="text-sm text-gray-500 text-center py-4">No tool data yet</p>
               )}
             </div>
+            {insightsData?.toolReliability && (
+              <div className="mt-4 pt-4 border-t border-white/10 grid grid-cols-3 gap-2 text-xs">
+                <div className="rounded bg-white/5 p-2 text-center">
+                  <p className="text-gray-500">Success</p>
+                  <p className="text-emerald-400 font-semibold">{insightsData.toolReliability.successRatePct}%</p>
+                </div>
+                <div className="rounded bg-white/5 p-2 text-center">
+                  <p className="text-gray-500">Calls</p>
+                  <p className="text-white font-semibold">{formatNumber(insightsData.toolReliability.totalCalls)}</p>
+                </div>
+                <div className="rounded bg-white/5 p-2 text-center">
+                  <p className="text-gray-500">Errors</p>
+                  <p className="text-red-400 font-semibold">{formatNumber(insightsData.toolReliability.totalErrors)}</p>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 

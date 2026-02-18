@@ -67,6 +67,7 @@ describe("UI hooks API wiring", () => {
     expect(source).toContain("fetchApi<TimeSeriesData>('/metrics/time-series')");
     expect(source).toContain("fetchApi<ProviderMetrics>('/metrics/providers')");
     expect(source).toContain("fetchApi<ModelMetrics>('/metrics/models')");
+    expect(source).toContain("fetchApi<MetricsInsights>('/metrics/insights')");
     expect(source).toContain("fetchApi<{ success: boolean; id: string }>('/metrics/track'");
   });
 

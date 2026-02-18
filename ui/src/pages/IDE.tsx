@@ -373,7 +373,7 @@ function CodeViewer({
         return () => clearInterval(interval);
     }, [autoRefresh, path, fetchContent, fetchDiagnostics, isEditing]);
 
-    const handleSave = async () => {
+    const handleSave = useCallback(async () => {
         if (!path) return;
 
         setIsSaving(true);
@@ -398,12 +398,33 @@ function CodeViewer({
             setSaveError(String(e));
         }
         setIsSaving(false);
-    };
+    }, [path, editContent, onSaveSuccess, fetchDiagnostics]);
 
     const handleCancelEdit = () => {
         setEditContent(content || '');
         setIsEditing(false);
         setSaveError(null);
+    };
+
+    const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+            e.preventDefault();
+            void handleSave();
+            return;
+        }
+
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            const target = e.currentTarget;
+            const start = target.selectionStart;
+            const end = target.selectionEnd;
+            const nextContent = `${editContent.slice(0, start)}  ${editContent.slice(end)}`;
+            setEditContent(nextContent);
+            requestAnimationFrame(() => {
+                target.selectionStart = start + 2;
+                target.selectionEnd = start + 2;
+            });
+        }
     };
 
     if (!path) {
@@ -448,6 +469,7 @@ function CodeViewer({
 
     const errorCount = diagnostics.filter(d => d.severity === 'error').length;
     const warningCount = diagnostics.filter(d => d.severity === 'warning').length;
+    const hasUnsavedChanges = isEditing && editContent !== (content || '');
 
     return (
         <div className="flex-1 flex flex-col overflow-hidden">
@@ -457,6 +479,7 @@ function CodeViewer({
                     <span className="text-sm font-medium text-white">{filename}</span>
                     <Badge variant="default" className="text-xs">{language}</Badge>
                     {isEditing && <Badge variant="warning" className="text-xs">Editing</Badge>}
+                    {hasUnsavedChanges && <Badge variant="error" className="text-xs">Unsaved</Badge>}
                     {diagnostics.length > 0 && (
                         <button
                             onClick={() => setShowDiagnostics(!showDiagnostics)}
@@ -490,7 +513,7 @@ function CodeViewer({
                                         variant="ghost"
                                         size="sm"
                                         onClick={handleSave}
-                                        disabled={isSaving}
+                                        disabled={isSaving || !hasUnsavedChanges}
                                         className="text-emerald-400 hover:text-emerald-300"
                                     >
                                         {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -541,6 +564,7 @@ function CodeViewer({
                         <textarea
                             value={editContent}
                             onChange={(e) => setEditContent(e.target.value)}
+                            onKeyDown={handleEditorKeyDown}
                             className="flex-1 p-4 bg-transparent font-mono text-sm text-gray-300 resize-none !outline-none focus:!outline-none leading-[1.5em]"
                             spellCheck={false}
                             onScroll={(e) => {

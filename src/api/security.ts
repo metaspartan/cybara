@@ -214,7 +214,10 @@ export function authenticateRequest(headers: Record<string, string>, ip: string)
 }
 
 function isPrivateIpv6(ip: string): boolean {
-  const normalized = ip.toLowerCase().replace(/^\[|\]$/g, "").split("%")[0];
+  const normalized = ip
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .split("%")[0];
   if (normalized === "::1" || normalized === "::") return true;
 
   if (normalized.startsWith("::ffff:")) {
@@ -240,7 +243,10 @@ function isInCidr(ip: string, cidr: string): boolean {
 }
 
 export function isPrivateOrBlockedIP(ip: string): boolean {
-  const normalized = ip.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  const normalized = ip
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "");
   if (!normalized) return true;
 
   if (normalized.includes(":")) {

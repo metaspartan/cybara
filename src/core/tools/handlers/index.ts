@@ -65,9 +65,15 @@ import {
   handleLSPHover,
   handleLSPLanguages,
 } from "./lsp";
-import { trackToolCall } from "../../metrics";
+import { trackMetric, trackToolCall } from "../../metrics";
 import { logToolExecution } from "../../logging";
-import { checkToolPermissions, getToolRequiredPermissions, type ToolContext } from "../index";
+import { config } from "../../config";
+import {
+  checkToolPermissions,
+  getToolRequiredPermissions,
+  isDangerousTool,
+  type ToolContext,
+} from "../index";
 
 const toolHandlers: Record<string, (args: Record<string, unknown>) => Promise<unknown>> = {
   read: handleRead,
@@ -178,6 +184,14 @@ const toolHandlers: Record<string, (args: Record<string, unknown>) => Promise<un
   languages: handleLSPLanguages,
 };
 
+function getDangerousToolPolicy(): { enabled: boolean; mode: "audit" | "block" } {
+  const policy = config.getDangerousToolPolicy();
+  return {
+    enabled: policy.enabled === true,
+    mode: policy.mode === "block" ? "block" : "audit",
+  };
+}
+
 export async function executeTool(
   name: string,
   args: Record<string, unknown>,
@@ -196,6 +210,37 @@ export async function executeTool(
     const needed =
       requiredPermissions.length > 0 ? requiredPermissions.join(", ") : "no specific permission";
     throw new Error(`Validation error: Permission denied for tool '${name}' (requires ${needed})`);
+  }
+
+  const dangerousPolicy = getDangerousToolPolicy();
+  const isDangerous = isDangerousTool(name);
+  const allowDangerous = context?.allowDangerousTools === true;
+  if (isDangerous && dangerousPolicy.enabled && !allowDangerous) {
+    if (dangerousPolicy.mode === "block") {
+      trackMetric("dangerous_tool_usage", name, 1, {
+        blocked: true,
+        mode: dangerousPolicy.mode,
+        sessionId: context?.sessionId,
+        agentId: context?.agentId,
+      });
+      throw new Error(
+        `Validation error: Dangerous tool '${name}' blocked by policy. Disable dangerous tool policy in Settings or allow dangerous tools explicitly for this execution.`
+      );
+    }
+    trackMetric("dangerous_tool_usage", name, 1, {
+      blocked: false,
+      mode: dangerousPolicy.mode,
+      sessionId: context?.sessionId,
+      agentId: context?.agentId,
+    });
+  } else if (isDangerous && allowDangerous) {
+    trackMetric("dangerous_tool_usage", name, 1, {
+      blocked: false,
+      mode: dangerousPolicy.mode,
+      override: true,
+      sessionId: context?.sessionId,
+      agentId: context?.agentId,
+    });
   }
 
   const startTime = Date.now();

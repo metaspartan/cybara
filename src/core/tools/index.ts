@@ -12,6 +12,7 @@ export interface ToolContext {
   userId?: string;
   permissions?: string[];
   enforcePermissions?: boolean;
+  allowDangerousTools?: boolean;
 }
 
 export interface Tool {
@@ -41,6 +42,26 @@ interface RateLimitConfig {
 }
 
 const rateLimits: Record<string, { count: number; resetTime: number }> = {};
+
+const dangerousPermissionPrefixes = ["exec:", "wallet:", "message:", "gateway:", "cron:"];
+const dangerousPermissions = new Set([
+  "browser:control",
+  "env:write",
+  "telegram:media",
+  "clipboard:access",
+]);
+const dangerousToolNames = new Set([
+  "exec",
+  "process",
+  "git",
+  "browser",
+  "wallet",
+  "message",
+  "gateway",
+  "cron",
+  "env",
+  "http",
+]);
 
 export function checkRateLimit(
   key: string,
@@ -1623,6 +1644,20 @@ export function getToolRequiredPermissions(name: string): string[] {
   const tool = toolSchemas[name];
   if (!tool || !Array.isArray(tool.permissions)) return [];
   return tool.permissions;
+}
+
+export function isDangerousTool(name: string): boolean {
+  if (dangerousToolNames.has(name)) return true;
+  const permissions = getToolRequiredPermissions(name);
+  return permissions.some(
+    (permission) =>
+      dangerousPermissions.has(permission) ||
+      dangerousPermissionPrefixes.some((prefix) => permission.startsWith(prefix))
+  );
+}
+
+export function getDangerousToolNames(): string[] {
+  return Object.keys(toolSchemas).filter((name) => isDangerousTool(name));
 }
 
 export function checkToolPermissions(

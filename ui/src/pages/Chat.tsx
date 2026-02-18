@@ -14,9 +14,10 @@ import { formatRelativeTime } from '@/lib/utils';
 interface ToolCall {
   id: string;
   name: string;
-  arguments: Record<string, unknown>;
+  arguments?: Record<string, unknown>;
+  args?: Record<string, unknown>;
   result?: unknown;
-  status: 'pending' | 'success' | 'error';
+  status: 'pending' | 'executing' | 'completed' | 'failed' | 'success' | 'error';
 }
 
 interface ChatMessage {
@@ -74,8 +75,16 @@ function SubagentCallItem({ subagent }: { subagent: { id: string; task: string; 
   );
 }
 
+function normalizeToolStatus(status: ToolCall['status']): 'pending' | 'success' | 'error' {
+  if (status === 'executing' || status === 'pending') return 'pending';
+  if (status === 'failed' || status === 'error') return 'error';
+  return 'success';
+}
+
 function ToolCallItem({ tool }: { tool: ToolCall }) {
   const [expanded, setExpanded] = useState(false);
+  const normalizedStatus = normalizeToolStatus(tool.status);
+  const toolArgs = tool.arguments || tool.args || {};
 
   const statusIcons = {
     pending: <div className="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />,
@@ -90,12 +99,12 @@ function ToolCallItem({ tool }: { tool: ToolCall }) {
   };
 
   return (
-    <div className={`rounded-lg backdrop-blur-sm overflow-hidden ${statusStyles[tool.status]}`}>
+    <div className={`rounded-lg backdrop-blur-sm overflow-hidden ${statusStyles[normalizedStatus]}`}>
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full px-3 py-2 flex items-center gap-2 text-xs cursor-pointer hover:bg-white/5 transition-colors"
       >
-        {statusIcons[tool.status]}
+        {statusIcons[normalizedStatus]}
         <Wrench className="w-3 h-3 opacity-60" />
         <span className="font-medium truncate">{tool.name}</span>
         <span className="flex-1" />
@@ -106,7 +115,7 @@ function ToolCallItem({ tool }: { tool: ToolCall }) {
           <div className="mt-2">
             <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wider">Arguments</p>
             <pre className="text-[11px] text-gray-400 bg-black/40 rounded-md p-2 overflow-x-auto">
-              {JSON.stringify(tool.arguments, null, 2)}
+              {JSON.stringify(toolArgs, null, 2)}
             </pre>
           </div>
           {tool.result !== undefined && (
@@ -127,7 +136,7 @@ function ThinkingBlock({ thinking }: { thinking: string }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="mb-3">
+    <div>
       <button
         onClick={() => setExpanded(!expanded)}
         className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-400 transition-colors"
@@ -139,6 +148,38 @@ function ThinkingBlock({ thinking }: { thinking: string }) {
       {expanded && (
         <div className="mt-2 p-3 rounded-lg bg-white/5 border border-white/10">
           <p className="text-sm text-gray-400 whitespace-pre-wrap">{thinking}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AssistantMetaInline({ message }: { message: ChatMessage }) {
+  const hasThinking = !!message.thinking;
+  const hasSubagentCalls = !!message.subagent_calls && message.subagent_calls.length > 0;
+  const hasToolCalls = !!message.tool_calls && message.tool_calls.length > 0;
+
+  if (!hasThinking && !hasSubagentCalls && !hasToolCalls) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-2 mb-3">
+      {hasThinking && <ThinkingBlock thinking={message.thinking as string} />}
+
+      {hasSubagentCalls && (
+        <div className="space-y-1.5">
+          {message.subagent_calls?.map((subagent) => (
+            <SubagentCallItem key={subagent.id} subagent={subagent} />
+          ))}
+        </div>
+      )}
+
+      {hasToolCalls && (
+        <div className="space-y-1.5">
+          {message.tool_calls?.map((tool) => (
+            <ToolCallItem key={tool.id} tool={tool} />
+          ))}
         </div>
       )}
     </div>
@@ -728,28 +769,11 @@ export function Chat() {
                     }
                   </div>
                   <div className={`max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] ${message.role === 'user' ? 'text-right' : ''}`}>
-                    {message.thinking && <ThinkingBlock thinking={message.thinking} />}
-
-                    {message.subagent_calls && message.subagent_calls.length > 0 && (
-                      <div className="space-y-1.5 mb-2">
-                        {message.subagent_calls.map((subagent) => (
-                          <SubagentCallItem key={subagent.id} subagent={subagent} />
-                        ))}
-                      </div>
-                    )}
-
-                    {message.tool_calls && message.tool_calls.length > 0 && (
-                      <div className="space-y-1.5 mb-2">
-                        {message.tool_calls.map((tool) => (
-                          <ToolCallItem key={tool.id} tool={tool} />
-                        ))}
-                      </div>
-                    )}
-
                     <div className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${message.role === 'user'
                       ? 'bg-[rgba(var(--accent-primary),0.15)] border border-[rgba(var(--accent-primary),0.2)]'
                       : 'bg-white/[0.03] border border-white/5'
                       }`}>
+                      {message.role !== 'user' && <AssistantMetaInline message={message} />}
                       <MessageContent content={message.content} />
                     </div>
 

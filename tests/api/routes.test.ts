@@ -859,6 +859,16 @@ describe("Tools API", () => {
     expect(typeof data).toBe("object");
   });
 
+  test("GET /api/tools/dangerous returns policy and dangerous tool list", async () => {
+    const { status, data } = await api("GET", "/api/tools/dangerous");
+    expect(status).toBe(200);
+    expect(Array.isArray(data.tools)).toBe(true);
+    expect(data.tools).toContain("exec");
+    expect(typeof data.policy).toBe("object");
+    expect(typeof data.policy.enabled).toBe("boolean");
+    expect(["audit", "block"]).toContain(data.policy.mode);
+  });
+
   test("POST /api/tools/execute should validate missing/unknown tool names", async () => {
     const missingName = await api("POST", "/api/tools/execute", {});
     expect(missingName.status).toBe(400);
@@ -902,6 +912,35 @@ describe("Tools API", () => {
     });
     expect(allowed.status).toBe(200);
     expect(allowed.data.content).toBe("permission-test");
+  });
+
+  test("POST /api/tools/execute blocks dangerous tools when policy is enabled", async () => {
+    const applyPolicy = await api("PUT", "/api/config", {
+      dangerous_tool_policy: { enabled: true, mode: "block" },
+    });
+    expect(applyPolicy.status).toBe(200);
+
+    const blocked = await api("POST", "/api/tools/execute", {
+      name: "exec",
+      args: { command: "echo policy-blocked" },
+      context: { agentId: "dangerous-policy-test" },
+    });
+    expect(blocked.status).toBe(400);
+    expect(blocked.data.code).toBe("VALIDATION_ERROR");
+    expect(String(blocked.data.error || "")).toContain("Dangerous tool 'exec' blocked by policy");
+
+    const allowedWithOverride = await api("POST", "/api/tools/execute", {
+      name: "exec",
+      args: { command: "echo policy-allowed" },
+      context: { agentId: "dangerous-policy-test", allowDangerousTools: true },
+    });
+    expect(allowedWithOverride.status).toBe(200);
+    expect(String(allowedWithOverride.data.output || "")).toContain("policy-allowed");
+
+    const resetPolicy = await api("PUT", "/api/config", {
+      dangerous_tool_policy: { enabled: false, mode: "audit" },
+    });
+    expect(resetPolicy.status).toBe(200);
   });
 });
 
@@ -1151,6 +1190,53 @@ describe("Metrics API", () => {
     expect(toolRow).toBeDefined();
     expect(toolRow?.metadata).toBeNull();
   });
+
+  test("metrics insights endpoint returns efficiency and trend summaries", async () => {
+    const suffix = Date.now().toString();
+    const provider = `insight_provider_${suffix}`;
+    const model = `insight_model_${suffix}`;
+    const tool = `insight_tool_${suffix}`;
+    const tokenTotal = 9_000_000;
+
+    insertRawMetric("token_usage", "all", tokenTotal);
+    insertRawMetric("token_usage", "input", 3_000_000);
+    insertRawMetric("token_usage", "output", 6_000_000);
+    insertRawMetric("token_usage_by_model", model, tokenTotal);
+    insertRawMetric(
+      "token_usage_by_provider",
+      provider,
+      tokenTotal,
+      JSON.stringify({ url: `https://${provider}.example/v1` })
+    );
+    insertRawMetric("api_call", provider, 3, JSON.stringify({ url: `https://${provider}.example/v1` }));
+    insertRawMetric("tool_call", tool, 5);
+    insertRawMetric("tool_error", tool, 1);
+
+    const insightsRes = await api("GET", "/api/metrics/insights");
+    expect(insightsRes.status).toBe(200);
+    expect(insightsRes.data.tokenBreakdown.total).toBeGreaterThan(0);
+    expect(typeof insightsRes.data.tokenTrend24h.changePct).toBe("number");
+    expect(["up", "down", "flat"]).toContain(insightsRes.data.tokenTrend24h.direction);
+
+    const providerRow = (insightsRes.data.providerEfficiency || []).find(
+      (row: { provider: string }) => row.provider === provider
+    ) as { provider: string; tokens: number; calls: number; tokensPerCall: number } | undefined;
+    expect(providerRow).toBeDefined();
+    expect(providerRow?.tokens).toBeGreaterThanOrEqual(tokenTotal);
+    expect(providerRow?.calls).toBeGreaterThan(0);
+    expect(typeof providerRow?.tokensPerCall).toBe("number");
+
+    const toolRow = (insightsRes.data.toolUsage24h || []).find(
+      (row: { tool: string }) => row.tool === tool
+    ) as { tool: string; calls: number } | undefined;
+    expect(toolRow).toBeDefined();
+    expect(toolRow?.calls).toBeGreaterThanOrEqual(5);
+
+    expect(typeof insightsRes.data.toolReliability.successRatePct).toBe("number");
+    expect(insightsRes.data.modelInsights.some((entry: { model: string }) => entry.model === model)).toBe(
+      true
+    );
+  });
 });
 
 describe("Config API", () => {
@@ -1159,6 +1245,9 @@ describe("Config API", () => {
     expect(status).toBe(200);
     expect(typeof data).toBe("object");
     expect(data).not.toBeNull();
+    expect(typeof data.dangerous_tool_policy).toBe("object");
+    expect(typeof data.dangerous_tool_policy.enabled).toBe("boolean");
+    expect(["audit", "block"]).toContain(data.dangerous_tool_policy.mode);
   });
 
   test("GET /api/config tolerates malformed stored JSON values", async () => {
@@ -1182,6 +1271,26 @@ describe("Config API", () => {
     const getRes = await api("GET", "/api/config");
     expect(getRes.status).toBe(200);
     expect(getRes.data[key]).toBe(value);
+  });
+
+  test("PUT /api/config normalizes dangerous tool policy payloads", async () => {
+    const putRes = await api("PUT", "/api/config", {
+      dangerous_tool_policy: { enabled: true, mode: "invalid-mode" },
+    });
+    expect(putRes.status).toBe(200);
+    expect(putRes.data.success).toBe(true);
+
+    const getRes = await api("GET", "/api/config");
+    expect(getRes.status).toBe(200);
+    expect(getRes.data.dangerous_tool_policy).toEqual({
+      enabled: true,
+      mode: "audit",
+    });
+
+    const resetRes = await api("PUT", "/api/config", {
+      dangerous_tool_policy: { enabled: false, mode: "audit" },
+    });
+    expect(resetRes.status).toBe(200);
   });
 });
 
