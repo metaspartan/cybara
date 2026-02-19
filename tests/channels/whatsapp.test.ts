@@ -596,6 +596,10 @@ describe("WhatsApp adapter mocked flows", () => {
     expect(handlerCalls).toBe(0);
     expect(spawnArgs).toHaveLength(1);
     expect(spawnArgs[0]?.task).toBe("summarize backlog");
+    expect(spawnArgs[0]?.label).toBe("channel:whatsapp");
+    const requesterSessionKey = whatsappSessions.get(message.from);
+    expect(requesterSessionKey).toBeDefined();
+    expect(spawnArgs[0]?._requesterSessionKey).toBe(requesterSessionKey);
     expect(replies).toHaveLength(1);
     expect(replies[0]).toContain("Subagent spawned successfully.");
     expect(replies[0]).toContain("run-wa-subagents");

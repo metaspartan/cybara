@@ -538,6 +538,10 @@ describe("Signal adapter mocked flows", () => {
     expect(handlerCalls).toBe(0);
     expect(spawnArgs).toHaveLength(1);
     expect(spawnArgs[0]?.task).toBe("summarize backlog");
+    expect(spawnArgs[0]?.label).toBe("channel:signal");
+    const requesterSessionKey = signalSessions.get("+15550009999");
+    expect(requesterSessionKey).toBeDefined();
+    expect(spawnArgs[0]?._requesterSessionKey).toBe(requesterSessionKey);
     expect(sent).toHaveLength(1);
     expect(sent[0]).toContain("Subagent spawned successfully.");
     expect(sent[0]).toContain("run-signal-subagents");

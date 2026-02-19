@@ -689,6 +689,8 @@ describe("Telegram webhook mocked flows", () => {
     expect(handlerCalls).toBe(0);
     expect(spawnArgs).toHaveLength(1);
     expect(spawnArgs[0]?.task).toBe("summarize deployment status");
+    expect(spawnArgs[0]?.label).toBe("channel:telegram");
+    expect(spawnArgs[0]?._requesterSessionKey).toBe("telegram:880011");
 
     const sendMessageCall = fetchCalls.find((call) => call.url.includes("/sendMessage"));
     expect(sendMessageCall).toBeDefined();

@@ -1113,7 +1113,8 @@ class AgentManager {
         tools,
         mergedHeaders,
         providerConfig,
-        toolContext
+        toolContext,
+        { preferMaxCompletionTokens: apiFamily === "openai-responses" }
       );
     }
 
@@ -1161,6 +1162,17 @@ class AgentManager {
     return nextBody;
   }
 
+  private applyOpenAITokenLimit(
+    requestBody: Record<string, unknown>,
+    preferMaxCompletionTokens: boolean
+  ): void {
+    if (preferMaxCompletionTokens) {
+      requestBody.max_completion_tokens = 4096;
+      return;
+    }
+    requestBody.max_tokens = 4096;
+  }
+
   private async postOpenAIChatCompletions(
     baseUrl: string,
     headers: Record<string, string>,
@@ -1202,20 +1214,22 @@ class AgentManager {
     tools: ToolDefinition[],
     customHeaders?: Record<string, string>,
     providerConfig?: string,
-    toolContext?: ToolContext
+    toolContext?: ToolContext,
+    options?: { preferMaxCompletionTokens?: boolean }
   ): Promise<{
     content: string;
     thinking?: string;
     tool_calls?: Array<{ name: string; result: unknown }>;
   }> {
+    const preferMaxCompletionTokens = options?.preferMaxCompletionTokens === true;
     const requestBody: Record<string, unknown> = {
       model: modelId,
       messages: messages.map((m) => ({
         role: m.role,
         content: m.content,
       })),
-      max_tokens: 4096,
     };
+    this.applyOpenAITokenLimit(requestBody, preferMaxCompletionTokens);
 
     if (tools && Array.isArray(tools) && tools.length > 0) {
       requestBody.tools = tools.map((t) => ({
@@ -1327,8 +1341,8 @@ class AgentManager {
       const loopRequestBody: Record<string, unknown> = {
         model: modelId,
         messages: currentMessages,
-        max_tokens: 4096,
       };
+      this.applyOpenAITokenLimit(loopRequestBody, preferMaxCompletionTokens);
 
       if (tools && Array.isArray(tools) && tools.length > 0) {
         loopRequestBody.tools = tools.map((t) => ({

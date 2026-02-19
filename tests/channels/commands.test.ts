@@ -75,6 +75,16 @@ beforeEach(() => {
 });
 
 describe("channel management commands", () => {
+  test("supports ! prefix aliases for command routing", async () => {
+    const response = await handleChannelManagementCommand("!status", {
+      channelId: "channel-bang",
+      chatId: "chat-bang",
+      platform: "discord",
+    });
+
+    expect(response).toContain("Status:");
+  });
+
   test("switches default agent and rotates session", async () => {
     const providerId = createProvider("Command Provider");
     createAgent("Worker One", providerId, "model-a");
@@ -121,6 +131,26 @@ describe("channel management commands", () => {
     expect(sessionId).toBe("session-model-2");
   });
 
+  test("parses Telegram-style @bot command suffix when setting model", async () => {
+    const providerId = createProvider("Mention Provider");
+    addProviderModel(providerId, "mention-model-one");
+    addProviderModel(providerId, "mention-model-two");
+    const agentId = createAgent("Mention Agent", providerId, "mention-model-one");
+    config.set("default_agent_id", agentId);
+
+    const response = await handleChannelManagementCommand("/model@cybara_bot 2", {
+      channelId: "channel-mention",
+      chatId: "chat-mention",
+      platform: "telegram",
+      createSessionId: () => "session-mention-2",
+      setSessionId: () => {},
+    });
+
+    const updatedAgent = tables.agents.get(agentId) as { model?: string } | undefined;
+    expect(response).toContain("mention-model-two");
+    expect(updatedAgent?.model).toBe("mention-model-two");
+  });
+
   test("switches provider and applies fallback model from target provider", async () => {
     const providerA = createProvider("Provider A");
     addProviderModel(providerA, "a-model");
@@ -164,5 +194,30 @@ describe("channel management commands", () => {
     expect(response).toContain("Run ID:");
     expect(response).toContain("Session:");
     expect(response).toContain("summarize recent logs");
+  });
+
+  test("supports singular /subagent alias for spawning", async () => {
+    const spawnArgs: Array<Record<string, unknown>> = [];
+    setChannelSubagentSpawnHandler(async (args) => {
+      spawnArgs.push(args);
+      return {
+        status: "accepted",
+        childSessionKey: "agent:default:subagent:alias",
+        runId: "run-subagent-alias",
+        task: String(args.task || ""),
+      };
+    });
+
+    const response = await handleChannelManagementCommand("/subagent spawn summarize alias path", {
+      channelId: "channel-subagent-alias",
+      chatId: "chat-subagent-alias",
+      platform: "slack",
+      sessionId: "session-subagent-alias",
+    });
+
+    expect(spawnArgs).toHaveLength(1);
+    expect(spawnArgs[0]?._requesterSessionKey).toBe("session-subagent-alias");
+    expect(response).toContain("Subagent spawned successfully.");
+    expect(response).toContain("run-subagent-alias");
   });
 });

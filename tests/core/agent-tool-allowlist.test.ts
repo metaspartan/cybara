@@ -218,18 +218,18 @@ describe("Agent tool allowlist guardrails", () => {
 
   test("retries with max_completion_tokens when provider rejects max_tokens", async () => {
     const provider = providerManager.create({
-      provider: "openai",
-      name: "OpenAI Retry Provider",
+      provider: "openrouter",
+      name: "OpenRouter Retry Provider",
       api_key: "sk-test-retry",
-      base_url: "https://api.openai.com/v1",
+      base_url: "https://openrouter.ai/api/v1",
     });
     createdProviderIds.push(provider.id);
 
     const agent = agentManager.create({
-      name: "OpenAI Retry Agent",
+      name: "OpenRouter Retry Agent",
       type: "main",
       provider_id: provider.id,
-      model: "gpt-5.2",
+      model: "openai/gpt-5.2",
       memory_enabled: false,
     });
     createdAgentIds.push(agent.id);
@@ -287,5 +287,61 @@ describe("Agent tool allowlist guardrails", () => {
     expect("max_completion_tokens" in requestBodies[0]).toBe(false);
     expect("max_tokens" in requestBodies[1]).toBe(false);
     expect(requestBodies[1].max_completion_tokens).toBe(4096);
+  });
+
+  test("uses max_completion_tokens first for openai-responses providers", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "OpenAI Responses Provider",
+      api_key: "sk-test-responses",
+      base_url: "https://api.openai.com/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "OpenAI Responses Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-5.2",
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    const requestBodies: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      requestBodies.push(body as Record<string, unknown>);
+
+      return new Response(
+        JSON.stringify({
+          id: "resp-openai-responses",
+          object: "chat.completion",
+          model: "gpt-5.2",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "13",
+              },
+            },
+          ],
+          usage: { prompt_tokens: 7, completion_tokens: 1, total_tokens: 8 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "What is 9+4? only number" }],
+      { useTools: false, sessionId: "openai-responses-session" }
+    );
+
+    expect(result.content).toBe("13");
+    expect(requestBodies.length).toBe(1);
+    expect("max_tokens" in requestBodies[0]).toBe(false);
+    expect(requestBodies[0].max_completion_tokens).toBe(4096);
   });
 });

@@ -46,6 +46,34 @@ describe("TypeScript import/type style guard", () => {
     expect(offenders).toEqual([]);
   });
 
+  test("does not use dynamic import() expressions in TypeScript sources", () => {
+    const offenders: string[] = [];
+
+    for (const file of getAllTypeScriptFiles()) {
+      const content = readFileSync(file, "utf-8");
+      const sourceFile = ts.createSourceFile(
+        file,
+        content,
+        ts.ScriptTarget.Latest,
+        true,
+        file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+      );
+
+      const visit = (node: ts.Node): void => {
+        if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+          const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+          offenders.push(`${file}:${position.line + 1}`);
+          return;
+        }
+        ts.forEachChild(node, visit);
+      };
+
+      visit(sourceFile);
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
   test("keeps import declarations at the top of each TypeScript file", () => {
     const offenders: string[] = [];
 

@@ -691,6 +691,10 @@ describe("Slack adapter mocked flows", () => {
     expect(handlerCalls).toBe(0);
     expect(spawnArgs).toHaveLength(1);
     expect(spawnArgs[0]?.task).toBe("summarize backlog");
+    expect(spawnArgs[0]?.label).toBe("channel:slack");
+    const requesterSessionKey = slackSessions.get(`${channelId}:C-SUBAGENT`);
+    expect(requesterSessionKey).toBeDefined();
+    expect(spawnArgs[0]?._requesterSessionKey).toBe(requesterSessionKey);
     expect(sayMessages).toHaveLength(1);
     expect(sayMessages[0]).toContain("Subagent spawned successfully.");
     expect(sayMessages[0]).toContain("run-slack-subagents");
