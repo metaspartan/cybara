@@ -12,6 +12,11 @@ describe("Model alias compatibility", () => {
     expect(resolveModelAlias("gpt-5.2-codex", "openai-codex")).toBe("gpt-5.3-codex");
   });
 
+  test("maps MiniMax aliases to M2.5 generation defaults", () => {
+    expect(resolveModelAlias("minimax")).toBe("MiniMax-M2.5");
+    expect(resolveModelAlias("minimax-m2.5-lightning")).toBe("MiniMax-M2.5-Lightning");
+  });
+
   test("keeps unknown models unchanged", () => {
     expect(resolveModelAlias("custom-provider-model")).toBe("custom-provider-model");
   });

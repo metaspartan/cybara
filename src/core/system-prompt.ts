@@ -1037,8 +1037,10 @@ export function getDefaultSystemPrompt(agentType: string): string {
 export function resolveModelAlias(modelId: string, provider?: string): string {
   const aliases: Record<string, string> = {
     // MiniMax aliases
+    "minimax-m2.5": "MiniMax-M2.5",
+    "minimax-m2.5-lightning": "MiniMax-M2.5-Lightning",
     "minimax-m2.1": "MiniMax-M2.1",
-    minimax: "MiniMax-M2.1",
+    minimax: "MiniMax-M2.5",
 
     // OpenAI aliases
     "gpt-4o": "gpt-4o",
@@ -1068,8 +1070,8 @@ export function resolveModelAlias(modelId: string, provider?: string): string {
     "gemini-3-flash": "gemini-3-flash-preview",
 
     // Generic aliases
-    default: "MiniMax-M2.1",
-    fast: "MiniMax-M2.1",
+    default: "MiniMax-M2.5",
+    fast: "MiniMax-M2.5-Lightning",
     smart: "claude-opus-4-6",
   };
 
