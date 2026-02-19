@@ -5,7 +5,13 @@ import { fileURLToPath } from "url";
 import type { CronJobCreate, CronJobPatch } from "../../cron/types";
 import * as cron from "../../cron";
 import { agentManager } from "../../agent";
-import { channelManager, type ChannelAdapter, type ChannelType } from "../../channels";
+import {
+  channelManager,
+  discordSessions,
+  slackSessions,
+  type ChannelAdapter,
+  type ChannelType,
+} from "../../channels";
 import type { Channel } from "../../database";
 import * as subagentRegistry from "../../subagent-registry";
 import type { SubagentRunRecord } from "../../subagent-registry";
@@ -377,6 +383,7 @@ export async function handleAgentsList(): Promise<{
 type MessageToolContext = {
   channel?: string;
   userId?: string;
+  sessionId?: string;
 };
 
 type MessageAction = "send" | "broadcast" | "react" | "unreact";
@@ -466,6 +473,51 @@ function resolveChannelsForAction(args: {
   }
 
   return allEnabled;
+}
+
+function resolveChannelIdFromDelimitedSessionMap(
+  sessionMap: Map<string, string>,
+  sessionId: string | undefined,
+  chatId: string | undefined
+): string | undefined {
+  if (!sessionId) return undefined;
+
+  const matches: string[] = [];
+  for (const [key, value] of sessionMap.entries()) {
+    if (value !== sessionId) continue;
+    const separatorIndex = key.indexOf(":");
+    if (separatorIndex <= 0) continue;
+
+    const channelId = key.slice(0, separatorIndex);
+    const sessionChatId = key.slice(separatorIndex + 1);
+    if (chatId && sessionChatId !== chatId) {
+      continue;
+    }
+    matches.push(channelId);
+  }
+
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+function resolveChannelIdFromContext(
+  channelType: ChannelType | undefined,
+  context?: MessageToolContext
+): string | undefined {
+  const sessionId = asNonEmptyString(context?.sessionId);
+  const chatId = asNonEmptyString(context?.userId);
+  if (!channelType || !sessionId) {
+    return undefined;
+  }
+
+  if (channelType === "discord") {
+    return resolveChannelIdFromDelimitedSessionMap(discordSessions, sessionId, chatId);
+  }
+
+  if (channelType === "slack") {
+    return resolveChannelIdFromDelimitedSessionMap(slackSessions, sessionId, chatId);
+  }
+
+  return undefined;
 }
 
 function resolveTarget(args: Record<string, unknown>, context?: MessageToolContext): string {
@@ -582,7 +634,8 @@ export async function handleMessage(
     resolveChannelType(args.channel) ||
     resolveChannelType(args.platform) ||
     resolveChannelType(context?.channel);
-  const requestedChannelId = asNonEmptyString(args.channelId);
+  const requestedChannelId =
+    asNonEmptyString(args.channelId) || resolveChannelIdFromContext(requestedChannelType, context);
   const channels = resolveChannelsForAction({
     channelId: requestedChannelId,
     channelType: requestedChannelType,

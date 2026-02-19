@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { channelManager, type ChannelAdapter } from "../../src/core/channels";
+import { channelManager, discordSessions, type ChannelAdapter } from "../../src/core/channels";
 import { tables } from "../../src/core/database";
 import { handleMessage } from "../../src/core/tools/handlers/channel";
 
@@ -35,6 +35,7 @@ afterEach(() => {
       tables.channels.delete(channelId);
     }
   }
+  discordSessions.clear();
 });
 
 describe("message tool routing", () => {
@@ -201,5 +202,54 @@ describe("message tool routing", () => {
         message: "hello",
       })
     ).rejects.toThrow("Provide channel or channelId");
+  });
+
+  test("react resolves discord channel from current session context", async () => {
+    const firstDiscordChannelId = createChannel("discord", "Discord One");
+    createChannel("discord", "Discord Two");
+
+    discordSessions.set(`${firstDiscordChannelId}:chat-context`, "session-context");
+
+    const adapter = channelManager.getAdapter("discord") as (ChannelAdapter & {
+      sendReaction?: (
+        channelId: string,
+        chatId: string | number,
+        messageId: string,
+        emoji: string,
+        options?: Record<string, unknown>
+      ) => Promise<boolean>;
+    }) | null;
+    expect(adapter).toBeDefined();
+    if (!adapter) {
+      throw new Error("discord adapter not available");
+    }
+
+    const originalSendReaction = adapter.sendReaction;
+    let resolvedChannelId: string | undefined;
+    adapter.sendReaction = async (channelId) => {
+      resolvedChannelId = channelId;
+      return true;
+    };
+    restorers.push(() => {
+      adapter.sendReaction = originalSendReaction;
+    });
+
+    const result = await handleMessage(
+      {
+        action: "react",
+        target: "chat-context",
+        messageId: "msg-context",
+        emoji: "🔥",
+      },
+      {
+        channel: "discord",
+        userId: "chat-context",
+        sessionId: "session-context",
+      }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.channelId).toBe(firstDiscordChannelId);
+    expect(resolvedChannelId).toBe(firstDiscordChannelId);
   });
 });
