@@ -11,6 +11,7 @@ import { tables } from "../../src/core/database";
 
 const createdAgents: string[] = [];
 const createdProviders: string[] = [];
+const createdChannels: string[] = [];
 
 function id(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -56,6 +57,9 @@ function addProviderModel(providerId: string, modelId: string): void {
 
 afterEach(() => {
   config.set("default_agent_id", "");
+  for (const channelId of createdChannels.splice(0)) {
+    tables.channels.delete(channelId);
+  }
   for (const agentId of createdAgents.splice(0)) {
     tables.agents.delete(agentId);
   }
@@ -70,6 +74,8 @@ describe("Discord adapter intent configuration", () => {
     expect(DISCORD_REQUIRED_INTENTS).toContain(GatewayIntentBits.GuildMessages);
     expect(DISCORD_REQUIRED_INTENTS).toContain(GatewayIntentBits.MessageContent);
     expect(DISCORD_REQUIRED_INTENTS).toContain(GatewayIntentBits.DirectMessages);
+    expect(DISCORD_REQUIRED_INTENTS).toContain(GatewayIntentBits.GuildMessageReactions);
+    expect(DISCORD_REQUIRED_INTENTS).toContain(GatewayIntentBits.DirectMessageReactions);
   });
 
   test("does not request GuildMembers intent", () => {
@@ -146,6 +152,25 @@ async function handleDiscordMessage(
       handleMessage: (id: string, msg: FakeDiscordMessage) => Promise<void>;
     }
   ).handleMessage(channelId, message);
+}
+
+async function handleDiscordReaction(
+  adapter: DiscordAdapter,
+  channelId: string,
+  reaction: unknown,
+  user: unknown,
+  action: "added" | "removed"
+): Promise<void> {
+  await (
+    adapter as unknown as {
+      handleReactionEvent: (
+        id: string,
+        reactionEvent: unknown,
+        reactionUser: unknown,
+        reactionAction: "added" | "removed"
+      ) => Promise<void>;
+    }
+  ).handleReactionEvent(channelId, reaction, user, action);
 }
 
 describe("Discord adapter mocked message flows", () => {
@@ -349,5 +374,61 @@ describe("Discord adapter mocked message flows", () => {
     expect(replies).toHaveLength(1);
     expect(replies[0]).toContain("model-two");
     expect(followUps).toHaveLength(0);
+  });
+
+  test("logs reaction events for configured channels", async () => {
+    const adapter = new DiscordAdapter();
+    const channelId = makeChannelId("discord-reaction");
+    const chatId = makeChannelId("discord-chat");
+    const messageId = makeChannelId("discord-msg");
+
+    tables.channels.create({
+      id: channelId,
+      type: "discord",
+      name: "Discord Reaction Test",
+      enabled: true,
+      config: {
+        bot_token: "test-token",
+        reaction_notifications: "all",
+      },
+    });
+    createdChannels.push(channelId);
+
+    const reaction = {
+      partial: false,
+      message: {
+        partial: false,
+        id: messageId,
+        channel: { id: chatId },
+        guild: { id: "guild-1" },
+      },
+      emoji: {
+        name: "🔥",
+        id: null,
+      },
+    };
+    const user = {
+      bot: false,
+      id: "user-1",
+      username: "alice",
+    };
+
+    await handleDiscordReaction(adapter, channelId, reaction, user, "added");
+
+    const logs = tables.channelLogs.getByChannel("discord", chatId) as Array<{
+      content: string;
+      metadata?: string;
+    }>;
+    const reactionLog = logs.find((entry) =>
+      entry.content.includes("Discord reaction added by alice")
+    );
+
+    expect(reactionLog).toBeDefined();
+    const metadata = reactionLog?.metadata ? JSON.parse(reactionLog.metadata) : {};
+    expect(metadata.event).toBe("reaction");
+    expect(metadata.action).toBe("added");
+    expect(metadata.emoji).toBe("🔥");
+    expect(metadata.messageId).toBe(messageId);
+    expect(metadata.isDM).toBe(false);
   });
 });

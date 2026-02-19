@@ -1363,6 +1363,35 @@ describe("Config API", () => {
     });
     expect(resetRes.status).toBe(200);
   });
+
+  test("PUT /api/config normalizes web tool url policy payloads", async () => {
+    const putRes = await api("PUT", "/api/config", {
+      web_tool_url_policy: {
+        enabled: true,
+        fetch_allowlist: ["EXAMPLE.com", "  *.Allowed.io  ", "", 123],
+        search_result_allowlist: ["NEWS.EXAMPLE.com", null, "*.ALLOWED.io"],
+      },
+    });
+    expect(putRes.status).toBe(200);
+    expect(putRes.data.success).toBe(true);
+
+    const getRes = await api("GET", "/api/config");
+    expect(getRes.status).toBe(200);
+    expect(getRes.data.web_tool_url_policy).toEqual({
+      enabled: true,
+      fetch_allowlist: ["example.com", "*.allowed.io"],
+      search_result_allowlist: ["news.example.com", "*.allowed.io"],
+    });
+
+    const resetRes = await api("PUT", "/api/config", {
+      web_tool_url_policy: {
+        enabled: false,
+        fetch_allowlist: [],
+        search_result_allowlist: [],
+      },
+    });
+    expect(resetRes.status).toBe(200);
+  });
 });
 
 describe("Browser API", () => {

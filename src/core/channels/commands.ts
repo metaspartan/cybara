@@ -28,8 +28,32 @@ export interface ChannelCommandContext {
   channelId: string;
   chatId: string | number;
   platform: string;
+  sessionId?: string;
   createSessionId?: () => string;
   setSessionId?: (sessionId: string) => void;
+}
+
+export interface ChannelSubagentSpawnResult {
+  status: string;
+  childSessionKey: string;
+  runId: string;
+  task: string;
+  modelApplied?: boolean;
+  warning?: string;
+}
+
+export type ChannelSubagentSpawnHandler = (
+  args: Record<string, unknown>
+) => Promise<ChannelSubagentSpawnResult>;
+
+let channelSubagentSpawnHandler: ChannelSubagentSpawnHandler | null = null;
+
+export function setChannelSubagentSpawnHandler(handler: ChannelSubagentSpawnHandler): void {
+  channelSubagentSpawnHandler = handler;
+}
+
+export function clearChannelSubagentSpawnHandler(): void {
+  channelSubagentSpawnHandler = null;
 }
 
 interface ParsedCommand {
@@ -144,6 +168,7 @@ function formatCommandHelp(): string {
     "/provider [id|name|number] - Show or set default agent provider",
     "/models - List models for current agent provider",
     "/model [id|number] - Show or set model for default agent",
+    "/subagents spawn <task> - Spawn a deterministic subagent run",
   ].join("\n");
 }
 
@@ -443,6 +468,47 @@ export async function handleChannelManagementCommand(
       lines.push(`Started a new session (${rotated.slice(0, 8)}...) so changes apply immediately.`);
     }
     return lines.join("\n");
+  }
+
+  if (command === "subagents" || command === "subagent") {
+    if (args.length === 0 || args[0]?.toLowerCase() === "help") {
+      return ["Subagent commands:", "/subagents spawn <task> - Start a one-off subagent run"].join(
+        "\n"
+      );
+    }
+
+    const action = (args[0] || "").toLowerCase();
+    if (action !== "spawn") {
+      return `Unsupported subagent action "${args[0]}". Use /subagents spawn <task>.`;
+    }
+
+    const task = args.slice(1).join(" ").trim();
+    if (!task) {
+      return "Task is required. Usage: /subagents spawn <task>";
+    }
+
+    if (!channelSubagentSpawnHandler) {
+      return "Subagent spawn is not configured for this runtime.";
+    }
+
+    const requesterSessionKey =
+      context.sessionId || `${context.platform}:${context.channelId}:${String(context.chatId)}`;
+    const spawned = await channelSubagentSpawnHandler({
+      task,
+      _requesterSessionKey: requesterSessionKey,
+      label: `channel:${context.platform}`,
+    });
+
+    if (spawned.status !== "accepted") {
+      return spawned.warning || `Subagent spawn failed with status: ${spawned.status}`;
+    }
+
+    return [
+      `Subagent spawned successfully.`,
+      `Run ID: ${spawned.runId}`,
+      `Session: ${spawned.childSessionKey}`,
+      `Task: ${spawned.task}`,
+    ].join("\n");
   }
 
   return null;

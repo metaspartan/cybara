@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, type ComponentPropsWithoutRef } from 'react';
 import {
   Send, Bot, User, Trash2, Wrench, Sparkles, ChevronDown, ChevronUp,
   Zap, Plus, Square, Loader2, MessageSquare, RefreshCw, X
@@ -187,17 +187,20 @@ function AssistantMetaInline({ message }: { message: ChatMessage }) {
 }
 
 function MessageContent({ content }: { content: string }) {
+  type MarkdownPreProps = ComponentPropsWithoutRef<'pre'>;
+  type MarkdownCodeProps = ComponentPropsWithoutRef<'code'> & { inline?: boolean };
+
   return (
     <div className="prose prose-invert prose-sm max-w-none">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          pre: ({ children, ...props }: any) => (
+          pre: ({ children, ...props }: MarkdownPreProps) => (
             <pre className="bg-black/40 rounded-lg p-3 overflow-x-auto my-2" {...props}>
               {children}
             </pre>
           ),
-          code({ className, children, ...props }: any) {
+          code({ className, children, ...props }: MarkdownCodeProps) {
             if (className) {
               return <code className={className} {...props}>{children}</code>;
             }

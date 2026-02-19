@@ -798,7 +798,7 @@ export interface MetricsOverview {
 export interface TokenMetrics {
   topModels: Array<{ model: string; tokens: number }>;
   topProviders: Array<{ provider: string; tokens: number }>;
-  recentUsage: Array<{ timestamp: string; tokens: number; metadata: any }>;
+  recentUsage: Array<{ timestamp: string; tokens: number; metadata: unknown }>;
   totalTokens: number;
   estimatedCost: number;
 }
@@ -807,13 +807,13 @@ export interface FileMetrics {
   mostRead: Array<{ path: string; count: number }>;
   mostWritten: Array<{ path: string; count: number }>;
   mostEdited: Array<{ path: string; count: number }>;
-  recentOperations: Array<{ timestamp: string; type: string; value: number; metadata: any }>;
+  recentOperations: Array<{ timestamp: string; type: string; value: number; metadata: unknown }>;
 }
 
 export interface ToolMetrics {
   mostUsed: Array<{ tool: string; calls: number }>;
   mostErrors: Array<{ tool: string; errors: number }>;
-  recentCalls: Array<{ timestamp: string; tool: string; duration: number; metadata: any }>;
+  recentCalls: Array<{ timestamp: string; tool: string; duration: number; metadata: unknown }>;
 }
 
 export interface ProviderMetrics {
@@ -828,7 +828,7 @@ export interface ProviderMetrics {
 export interface TimeSeriesData {
   days: Array<{
     date: string;
-    [key: string]: any;
+    [key: string]: unknown;
   }>;
 }
 

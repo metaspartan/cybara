@@ -1,5 +1,25 @@
 import { telegramBot, channelManager } from "../channels";
 import { config } from "../config";
+import { getSkillExecutors } from "../skills/index";
+import { handleCanvas } from "./handlers/canvas";
+import { handleClipboard } from "./handlers/clipboard";
+import { handleData } from "./handlers/data";
+import { handleEnv } from "./handlers/env";
+import { handleRead, handleWrite, handleEdit, handleFileSearch, handleGrep } from "./handlers/file";
+import { handleHttp } from "./handlers/http";
+import {
+  handleLSPDiagnostics,
+  handleLSPDefinition,
+  handleLSPReferences,
+  handleLSPHover,
+  handleLSPLanguages,
+} from "./handlers/lsp";
+import {
+  handleMemorySearch,
+  handleMemoryGet,
+  handleMemorySave,
+  handleMemoryList,
+} from "./handlers/memory";
 
 export interface ToolHandler {
   (args: Record<string, unknown>, context?: ToolContext): Promise<unknown>;
@@ -1671,54 +1691,28 @@ export function checkToolPermissions(
 
 export type ToolName = keyof typeof toolSchemas;
 
-import { handleRead, handleWrite, handleEdit, handleFileSearch, handleGrep } from "./handlers/file";
-
 _toolHandlers.set("read", handleRead);
 _toolHandlers.set("write", handleWrite);
 _toolHandlers.set("edit", handleEdit);
 _toolHandlers.set("file_search", handleFileSearch);
 _toolHandlers.set("grep", handleGrep);
 
-import {
-  handleMemorySearch,
-  handleMemoryGet,
-  handleMemorySave,
-  handleMemoryList,
-} from "./handlers/memory";
-
 _toolHandlers.set("memory_search", handleMemorySearch);
 _toolHandlers.set("memory_get", handleMemoryGet);
 _toolHandlers.set("memory_save", handleMemorySave);
 _toolHandlers.set("memory_list", handleMemoryList);
-
-import { handleClipboard } from "./handlers/clipboard";
-import { handleHttp } from "./handlers/http";
-import { handleData } from "./handlers/data";
-import { handleEnv } from "./handlers/env";
 
 _toolHandlers.set("clipboard", handleClipboard);
 _toolHandlers.set("http", handleHttp);
 _toolHandlers.set("data", handleData);
 _toolHandlers.set("env", handleEnv);
 
-import {
-  handleLSPDiagnostics,
-  handleLSPDefinition,
-  handleLSPReferences,
-  handleLSPHover,
-  handleLSPLanguages,
-} from "./handlers/lsp";
-
 _toolHandlers.set("lsp_diagnostics", handleLSPDiagnostics);
 _toolHandlers.set("lsp_definition", handleLSPDefinition);
 _toolHandlers.set("lsp_references", handleLSPReferences);
 _toolHandlers.set("lsp_hover", handleLSPHover);
 _toolHandlers.set("lsp_languages", handleLSPLanguages);
-
-import { handleCanvas } from "./handlers/canvas";
 _toolHandlers.set("canvas", handleCanvas);
-
-import { getSkillExecutors } from "../skills/index";
 getSkillExecutors()
   .then((executors) => {
     for (const [name, executor] of Object.entries(executors)) {

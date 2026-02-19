@@ -82,7 +82,7 @@ async function request(
   headers?: Record<string, string>
 ): Promise<{
   status: number;
-  data: any;
+  data: unknown;
   headers: Headers;
 }> {
   const response = await fetch(`${baseUrl}${path}`, { headers });
@@ -161,6 +161,16 @@ async function expectWebSocketOpenFailure(url: string, timeoutMs = 10000): Promi
       resolve();
     };
   });
+}
+
+function extractErrorMessage(data: unknown): string {
+  if (data && typeof data === "object" && "error" in data) {
+    const error = (data as { error?: unknown }).error;
+    if (typeof error === "string") {
+      return error;
+    }
+  }
+  return "";
 }
 
 describe("Security auth e2e", () => {
@@ -253,7 +263,7 @@ describe("Security auth e2e", () => {
       });
       await waitForServerReady(baseUrl);
 
-      let chatLimited: { status: number; data: any; headers: Headers } | null = null;
+      let chatLimited: { status: number; data: unknown; headers: Headers } | null = null;
       for (let i = 0; i < 80; i++) {
         const res = await request(baseUrl, "/api/chat/sessions", {
           Authorization: `Bearer ${apiKey}`,
@@ -266,11 +276,11 @@ describe("Security auth e2e", () => {
       }
 
       expect(chatLimited).toBeDefined();
-      expect(chatLimited?.data?.error).toContain("Rate limit exceeded");
+      expect(extractErrorMessage(chatLimited?.data)).toContain("Rate limit exceeded");
       expect(chatLimited?.headers.get("retry-after")).not.toBeNull();
       expect(chatLimited?.headers.get("x-ratelimit-remaining")).toBe("0");
 
-      let oauthLimited: { status: number; data: any; headers: Headers } | null = null;
+      let oauthLimited: { status: number; data: unknown; headers: Headers } | null = null;
       for (let i = 0; i < 15; i++) {
         const res = await fetch(`${baseUrl}/api/providers/oauth/callback-status`, {
           method: "POST",
@@ -290,11 +300,11 @@ describe("Security auth e2e", () => {
       }
 
       expect(oauthLimited).toBeDefined();
-      expect(oauthLimited?.data?.error).toContain("Rate limit exceeded");
+      expect(extractErrorMessage(oauthLimited?.data)).toContain("Rate limit exceeded");
       expect(oauthLimited?.headers.get("retry-after")).not.toBeNull();
       expect(oauthLimited?.headers.get("x-ratelimit-remaining")).toBe("0");
 
-      let pairingLimited: { status: number; data: any; headers: Headers } | null = null;
+      let pairingLimited: { status: number; data: unknown; headers: Headers } | null = null;
       for (let i = 0; i < 20; i++) {
         const res = await fetch(`${baseUrl}/api/channels/test-channel/pairings/verify`, {
           method: "POST",
@@ -314,7 +324,7 @@ describe("Security auth e2e", () => {
       }
 
       expect(pairingLimited).toBeDefined();
-      expect(pairingLimited?.data?.error).toContain("Rate limit exceeded");
+      expect(extractErrorMessage(pairingLimited?.data)).toContain("Rate limit exceeded");
       expect(pairingLimited?.headers.get("retry-after")).not.toBeNull();
       expect(pairingLimited?.headers.get("x-ratelimit-remaining")).toBe("0");
 

@@ -180,6 +180,7 @@ export class IMessageAdapter implements ChannelAdapter {
         channelId,
         chatId: chatGuid,
         platform: "imessage",
+        sessionId,
         createSessionId: () => crypto.randomUUID(),
         setSessionId: (nextSessionId: string) => {
           sessionId = nextSessionId;

@@ -1,6 +1,9 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { createRequire } from "module";
 import { tables } from "../../src/core/database";
 import { securityManager } from "../../src/core/channels/security";
+
+const require = createRequire(import.meta.url);
 
 let handleRequest: (req: {
   method: string;
@@ -25,8 +28,10 @@ async function api(method: string, path: string, body?: unknown) {
 }
 
 describe("Channel security route contracts", () => {
-  beforeAll(async () => {
-    const routes = await import("../../src/api/routes");
+  beforeAll(() => {
+    const routes = require("../../src/api/routes") as {
+      handleRequest: typeof handleRequest;
+    };
     handleRequest = routes.handleRequest;
   });
 

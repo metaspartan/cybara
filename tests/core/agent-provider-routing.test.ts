@@ -70,6 +70,56 @@ describe("Agent provider API-family routing", () => {
     expect(requestBody.messages).toEqual([{ role: "user", content: "hello synthetic" }]);
   });
 
+  test("adds anthropic 1M beta header when agent model params enable context1m", async () => {
+    let requestHeaders = new Headers();
+
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestHeaders = new Headers(init?.headers);
+      return new Response(
+        JSON.stringify({
+          id: "msg-1m",
+          type: "message",
+          role: "assistant",
+          model: "claude-opus-4-6",
+          content: [{ type: "text", text: "context1m-ok" }],
+          usage: { input_tokens: 12, output_tokens: 2 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "anthropic",
+      name: "Anthropic Context1M Provider",
+      api_key: "anthropic-test-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Anthropic Context1M Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "claude-opus-4-6",
+      tools: [],
+      config: {
+        model_params: {
+          context1m: true,
+        },
+      },
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "hello context1m" }],
+      { useTools: false, sessionId: "anthropic-context1m-session" }
+    );
+
+    expect(result.content).toBe("context1m-ok");
+    expect(requestHeaders.get("x-api-key")).toBe("anthropic-test-key");
+    expect(requestHeaders.get("anthropic-beta")).toContain("context-1m-2025-08-07");
+  });
+
   test("routes openai-family providers through /chat/completions and keeps system message in messages", async () => {
     let requestUrl = "";
     let requestBody: Record<string, unknown> = {};

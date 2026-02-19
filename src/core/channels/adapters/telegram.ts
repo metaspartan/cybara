@@ -7,14 +7,21 @@ import { formatToolCallsForTelegram, escapeMarkdown } from "../formatting";
 import { buildChannelSecurityConfig, securityManager } from "../security";
 import { getTelegramInboundMediaDir } from "../paths";
 import { handleChannelManagementCommand } from "../commands";
+import {
+  getChannelRuntimeMemoryContext,
+  listChannelRuntimeMemoryFiles,
+  listChannelRuntimeSessions,
+  listChannelRuntimeTools,
+  searchChannelRuntimeMemory,
+  sendChannelRuntimeMessage,
+} from "../chat-runtime";
 
 export const telegramSessions = new Map<string, string>();
 
 async function getUserSessions(
   _userId: string
 ): Promise<Array<{ id: string; messageCount: number; lastActive: string }>> {
-  const { listSessions } = await import("../../../api/chat");
-  const allSessions = await listSessions();
+  const allSessions = await listChannelRuntimeSessions();
   return allSessions
     .map((s) => ({
       id: s.id,
@@ -28,6 +35,14 @@ interface TelegramBotCommand {
   command: string;
   description: string;
 }
+
+type TelegramReactionNotificationScope = "off" | "all" | "private" | "groups";
+
+type TelegramReactionType = {
+  type?: string;
+  emoji?: string;
+  custom_emoji_id?: string;
+};
 
 const TELEGRAM_COMMANDS: TelegramBotCommand[] = [
   { command: "start", description: "Start interacting with the bot" },
@@ -94,7 +109,7 @@ async function setupTelegramWebhook(botToken: string, webhookUrl: string): Promi
   try {
     const result = await telegramApi(botToken, "setWebhook", {
       url: webhookUrl,
-      allowed_updates: ["message", "callback_query"],
+      allowed_updates: ["message", "callback_query", "message_reaction"],
     });
     console.log("[Telegram] Webhook set:", result);
     return result.ok === true;
@@ -227,6 +242,30 @@ export interface TelegramUpdate {
       chat: { id: number };
     };
     data: string;
+  };
+  message_reaction?: {
+    chat: {
+      id: number;
+      type: "private" | "group" | "supergroup" | "channel";
+      title?: string;
+      username?: string;
+    };
+    message_id: number;
+    date: number;
+    old_reaction?: TelegramReactionType[];
+    new_reaction?: TelegramReactionType[];
+    user?: {
+      id: number;
+      is_bot: boolean;
+      first_name: string;
+      username?: string;
+    };
+    actor_chat?: {
+      id: number;
+      type: "private" | "group" | "supergroup" | "channel";
+      title?: string;
+      username?: string;
+    };
   };
 }
 
@@ -399,12 +438,10 @@ Estimated cost: $${(tokenUsage * 0.00001).toFixed(2)} (varies by provider)`;
 
     case "memory": {
       try {
-        const { handleMemoryContext, handleMemoryList, handleMemorySearch } =
-          await import("../../tools/handlers/memory");
         const query = args.join(" ").trim();
 
         if (query) {
-          const search = await handleMemorySearch({ query, maxResults: 5 });
+          const search = await searchChannelRuntimeMemory({ query, maxResults: 5 });
           if (!search.results.length) {
             return `🧠 *Memory Search*
 
@@ -429,8 +466,8 @@ ${matches}`;
         }
 
         const [context, files] = await Promise.all([
-          handleMemoryContext({ maxLines: 20 }),
-          handleMemoryList(),
+          getChannelRuntimeMemoryContext({ maxLines: 20 }),
+          listChannelRuntimeMemoryFiles(),
         ]);
         const preview = context.context.trim();
         const fileList = files.files
@@ -455,8 +492,8 @@ Memory is currently unavailable. Please try again shortly.`;
     }
 
     case "tools": {
-      const { toolSchemas } = await import("../../tools/index");
-      const toolList = Object.keys(toolSchemas).slice(0, 10);
+      const allTools = listChannelRuntimeTools();
+      const toolList = allTools.slice(0, 10);
 
       if (toolList.length === 0) {
         return `🛠️ *Tools*
@@ -466,7 +503,7 @@ No tools available.`;
 
       const toolsDisplay = toolList.map((t) => `• /\`${t}\``).join("\n");
 
-      return `🛠️ *Available Tools* (${Object.keys(toolSchemas).length} total)
+      return `🛠️ *Available Tools* (${allTools.length} total)
 
 ${toolsDisplay}
 
@@ -487,6 +524,7 @@ Use /help to see available commands.`;
           channelId,
           chatId,
           platform: "telegram",
+          sessionId: telegramSessions.get(chatId.toString()) || `telegram:${chatId}`,
           createSessionId: () => crypto.randomUUID(),
           setSessionId: (sessionId: string) => {
             telegramSessions.set(chatId.toString(), sessionId);
@@ -619,6 +657,37 @@ function parseStoredTelegramConfig(config: unknown, channelId?: string): Record<
   return {};
 }
 
+function normalizeTelegramReactionScope(value: unknown): TelegramReactionNotificationScope {
+  if (value === "all" || value === "private" || value === "groups") {
+    return value;
+  }
+  return "off";
+}
+
+function shouldNotifyTelegramReactions(
+  scope: TelegramReactionNotificationScope,
+  chatType: "private" | "group" | "supergroup" | "channel"
+): boolean {
+  if (scope === "off") return false;
+  if (scope === "all") return true;
+  if (scope === "private") return chatType === "private";
+  if (scope === "groups") return chatType === "group" || chatType === "supergroup";
+  return false;
+}
+
+function formatTelegramReactionList(reactions: TelegramReactionType[] | undefined): string {
+  if (!Array.isArray(reactions) || reactions.length === 0) return "none";
+  return reactions
+    .map((reaction) => {
+      if (typeof reaction.emoji === "string" && reaction.emoji.trim()) return reaction.emoji;
+      if (typeof reaction.custom_emoji_id === "string" && reaction.custom_emoji_id.trim()) {
+        return `custom:${reaction.custom_emoji_id}`;
+      }
+      return reaction.type || "unknown";
+    })
+    .join(", ");
+}
+
 export class TelegramBotManager implements ChannelAdapter {
   type = "telegram" as const;
   name = "Telegram";
@@ -632,6 +701,7 @@ export class TelegramBotManager implements ChannelAdapter {
       pollingTimer?: ReturnType<typeof setTimeout>;
     }
   > = new Map();
+  private reactionScopes: Map<string, TelegramReactionNotificationScope> = new Map();
   private messageHandler: InternalMessageHandler = async () => "No handler configured";
 
   setMessageHandler(handler: InternalMessageHandler) {
@@ -645,6 +715,7 @@ export class TelegramBotManager implements ChannelAdapter {
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
     const botToken = config.bot_token as string;
     const webhookUrl = config.webhook_url as string | undefined;
+    const reactionScope = normalizeTelegramReactionScope(config.reaction_notifications);
 
     if (!botToken) {
       throw new Error("bot_token is required");
@@ -659,6 +730,7 @@ export class TelegramBotManager implements ChannelAdapter {
     await registerTelegramCommands(botToken);
 
     securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
+    this.reactionScopes.set(channelId, reactionScope);
 
     const isLocalhost =
       !webhookUrl || webhookUrl.includes("localhost") || webhookUrl.includes("127.0.0.1");
@@ -692,7 +764,7 @@ export class TelegramBotManager implements ChannelAdapter {
         const result = await telegramApi(botToken, "getUpdates", {
           offset,
           timeout: 30,
-          allowed_updates: ["message", "callback_query"],
+          allowed_updates: ["message", "callback_query", "message_reaction"],
         });
 
         if (result.ok && result.result) {
@@ -727,6 +799,7 @@ export class TelegramBotManager implements ChannelAdapter {
     }
 
     this.bots.delete(channelId);
+    this.reactionScopes.delete(channelId);
   }
 
   isRunning(channelId: string): boolean {
@@ -775,6 +848,11 @@ export class TelegramBotManager implements ChannelAdapter {
     channelId: string,
     botToken: string
   ): Promise<void> {
+    if (update.message_reaction) {
+      await this.handleMessageReactionUpdate(channelId, update.message_reaction);
+      return;
+    }
+
     if (update.callback_query) {
       await this.handleCallbackQuery(update.callback_query, channelId, botToken);
       return;
@@ -1058,6 +1136,66 @@ export class TelegramBotManager implements ChannelAdapter {
 
     await sendTelegramMessage(botToken, chatId, escapeTelegramMarkdown(response), {
       parse_mode: "Markdown",
+    });
+  }
+
+  private resolveReactionScope(channelId: string): TelegramReactionNotificationScope {
+    const cachedScope = this.reactionScopes.get(channelId);
+    if (cachedScope) return cachedScope;
+
+    const channel = tables.channels.get(channelId) as { config?: unknown } | null;
+    const parsedConfig = parseStoredTelegramConfig(channel?.config, channelId);
+    const scope = normalizeTelegramReactionScope(parsedConfig.reaction_notifications);
+    this.reactionScopes.set(channelId, scope);
+    return scope;
+  }
+
+  private async handleMessageReactionUpdate(
+    channelId: string,
+    reactionUpdate: NonNullable<TelegramUpdate["message_reaction"]>
+  ): Promise<void> {
+    const chatId = reactionUpdate.chat.id;
+    const chatType = reactionUpdate.chat.type;
+    const scope = this.resolveReactionScope(channelId);
+
+    const actorId =
+      typeof reactionUpdate.user?.id === "number"
+        ? String(reactionUpdate.user.id)
+        : typeof reactionUpdate.actor_chat?.id === "number"
+          ? String(reactionUpdate.actor_chat.id)
+          : "unknown";
+    const actorName =
+      reactionUpdate.user?.username ||
+      reactionUpdate.user?.first_name ||
+      reactionUpdate.actor_chat?.title ||
+      reactionUpdate.actor_chat?.username ||
+      actorId;
+
+    const oldReactions = formatTelegramReactionList(reactionUpdate.old_reaction);
+    const newReactions = formatTelegramReactionList(reactionUpdate.new_reaction);
+    const eventMessage = `[System Event] Telegram reaction by ${actorName} on message ${reactionUpdate.message_id}: old=[${oldReactions}] new=[${newReactions}]`;
+
+    await logChannelMessage("telegram", "incoming", eventMessage, {
+      channelId: String(chatId),
+      senderId: actorId,
+      metadata: {
+        event: "reaction",
+        chatType,
+        messageId: reactionUpdate.message_id,
+        oldReaction: reactionUpdate.old_reaction || [],
+        newReaction: reactionUpdate.new_reaction || [],
+      },
+    });
+
+    if (!shouldNotifyTelegramReactions(scope, chatType)) {
+      return;
+    }
+
+    const sessionKey = telegramSessions.get(String(chatId)) || `telegram:${chatId}`;
+    sendChannelRuntimeMessage(sessionKey, {
+      role: "system",
+      content: eventMessage,
+      timestamp: new Date().toISOString(),
     });
   }
 

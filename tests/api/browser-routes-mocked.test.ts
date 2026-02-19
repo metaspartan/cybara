@@ -1,4 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
 
 type NavigateCall = {
   id: string;
@@ -110,8 +113,10 @@ async function api(method: string, path: string, body?: unknown) {
 }
 
 describe("Browser route contracts (mocked manager)", () => {
-  beforeAll(async () => {
-    const routes = await import("../../src/api/routes");
+  beforeAll(() => {
+    const routes = require("../../src/api/routes") as {
+      handleRequest: typeof handleRequest;
+    };
     handleRequest = routes.handleRequest;
   });
 

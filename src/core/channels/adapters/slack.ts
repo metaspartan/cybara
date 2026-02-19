@@ -141,6 +141,7 @@ export class SlackAdapter implements ChannelAdapter {
         channelId,
         chatId,
         platform: "slack",
+        sessionId,
         createSessionId: () => crypto.randomUUID(),
         setSessionId: (nextSessionId: string) => {
           sessionId = nextSessionId;
@@ -227,6 +228,7 @@ export class SlackAdapter implements ChannelAdapter {
         channelId,
         chatId,
         platform: "slack",
+        sessionId,
         createSessionId: () => crypto.randomUUID(),
         setSessionId: (nextSessionId: string) => {
           sessionId = nextSessionId;

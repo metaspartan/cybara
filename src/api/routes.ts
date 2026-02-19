@@ -59,8 +59,10 @@ import { buildSystemPrompt } from "../core/system-prompt";
 import * as pwManager from "../core/browser/pw-manager";
 import { homedir } from "os";
 import { dirname, isAbsolute, resolve } from "path";
+import { createHash, randomBytes } from "crypto";
 import { securityCheck, validateUrl } from "./security";
 import { browseDirectory, readFileContent, writeFileContent, createItem } from "./ide-api";
+import { getGitStatus, getGitBranch, getGitDiff } from "./git-api";
 import { createLogger } from "../core/logger";
 import { openUrlInBrowser } from "../core/runtime/open-url";
 import { trackApiCall, trackFileOperation, trackMetric } from "../core/metrics";
@@ -901,12 +903,17 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/config": () => ({
     ...config.getAll(),
     dangerous_tool_policy: config.getDangerousToolPolicy(),
+    web_tool_url_policy: config.getWebToolUrlPolicy(),
   }),
   "PUT /api/config": (body) => {
     const data = body as Record<string, unknown>;
     for (const [key, value] of Object.entries(data)) {
       if (key === "dangerous_tool_policy") {
         config.setDangerousToolPolicy(value);
+        continue;
+      }
+      if (key === "web_tool_url_policy") {
+        config.setWebToolUrlPolicy(value);
         continue;
       }
       config.set(key, value);
@@ -1416,7 +1423,6 @@ const routes: Record<string, RouteHandler> = {
       throw new Error(`Provider ${providerType} does not support OAuth redirect flow`);
     }
 
-    const { createHash, randomBytes } = await import("crypto");
     const pkceVerifier = randomBytes(32).toString("hex");
     const pkceChallenge = createHash("sha256").update(pkceVerifier).digest("base64url");
 
@@ -1886,20 +1892,17 @@ const routes: Record<string, RouteHandler> = {
   },
 
   "GET /api/git/status": async (_body, params) => {
-    const { getGitStatus } = await import("./git-api");
     const path = (params?.path as string | undefined) || "~";
     return await getGitStatus(path);
   },
 
   "GET /api/git/branch": async (_body, params) => {
-    const { getGitBranch } = await import("./git-api");
     const path = (params?.path as string | undefined) || "~";
     const branch = await getGitBranch(path);
     return { branch };
   },
 
   "GET /api/git/diff": async (_body, params) => {
-    const { getGitDiff } = await import("./git-api");
     const path = params?.path as string | undefined;
     const staged = params?.staged === "true";
     if (!path) {

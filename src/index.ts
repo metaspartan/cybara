@@ -1,8 +1,21 @@
 import { readFileSync, existsSync, statSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { agentManager } from "./core/agent";
+import { handleChat, listSessions, sendToSession, type ChatMessage } from "./api/chat";
 import { handleRequest } from "./api/routes";
+import {
+  createTerminalSession,
+  getTerminalSession,
+  destroyTerminalSession,
+  listTerminalSessions,
+  writeToTerminal,
+  startOutputReader,
+} from "./api/terminal";
 import { config } from "./core/config";
+import { startScheduler, setAgentHandler, setWakeHandler } from "./core/cron";
+import { setChannelSubagentSpawnHandler } from "./core/channels/commands";
+import { configureChannelChatRuntime } from "./core/channels/chat-runtime";
 import {
   channelManager,
   telegramBot,
@@ -13,9 +26,17 @@ import {
   whatsappAdapter,
   imessageAdapter,
 } from "./core/channels";
-import { handleChat, sendToSession, type ChatMessage } from "./api/chat";
+import { handleSessionsSpawn } from "./core/tools/handlers/channel";
+import {
+  handleMemoryContext,
+  handleMemoryList,
+  handleMemorySearch,
+} from "./core/tools/handlers/memory";
+import { toolSchemas } from "./core/tools/index";
 import { providerManager } from "./core/providers";
+import { taskScheduler } from "./core/scheduler";
 import { onStatus, addSSEClient, removeSSEClient } from "./core/status";
+import { onSubagentLifecycle } from "./core/subagent-registry";
 import { resolveUiPath } from "./core/runtime/ui-path";
 import { securityCheck } from "./api/security";
 
@@ -142,15 +163,6 @@ function createStatusStream(): ReadableStream<Uint8Array> {
     },
   });
 }
-
-import {
-  createTerminalSession,
-  getTerminalSession,
-  destroyTerminalSession,
-  listTerminalSessions,
-  writeToTerminal,
-  startOutputReader,
-} from "./api/terminal";
 
 interface WsData {
   sessionId: string;
@@ -373,9 +385,6 @@ console.log(`
 
 providerManager.seedDefaults();
 
-import { startScheduler, setAgentHandler, setWakeHandler } from "./core/cron";
-import { agentManager } from "./core/agent";
-
 setAgentHandler(async (job) => {
   const agent = agentManager.list().find((a) => a.status === "running");
   if (!agent) return { success: false, error: "No running agent available" };
@@ -397,12 +406,8 @@ setWakeHandler(async (text) => {
 
 startScheduler();
 console.log("[Cron] Scheduler initialized with agent execution support");
-
-import { taskScheduler } from "./core/scheduler";
 taskScheduler.initialize();
 console.log("[Task] Scheduler initialized");
-
-import { onSubagentLifecycle } from "./core/subagent-registry";
 
 onSubagentLifecycle((event) => {
   if (event.type === "announce" && event.data?.message) {
@@ -422,6 +427,16 @@ onSubagentLifecycle((event) => {
 });
 console.log("[Subagent] Lifecycle listener registered");
 
+setChannelSubagentSpawnHandler(handleSessionsSpawn);
+configureChannelChatRuntime({
+  listSessions,
+  sendToSession,
+  memorySearch: handleMemorySearch,
+  memoryContext: handleMemoryContext,
+  memoryList: handleMemoryList,
+  listTools: () => Object.keys(toolSchemas),
+});
+
 telegramBot.setMessageHandler(async (message, chatId, userId, channelId, fileInfo) => {
   try {
     const storedSessionId = telegramSessions.get(chatId.toString());
@@ -438,6 +453,9 @@ telegramBot.setMessageHandler(async (message, chatId, userId, channelId, fileInf
     const response = await handleChat({
       message: fullMessage,
       sessionId,
+      channel: "telegram",
+      userId: String(userId),
+      source: "channel:telegram",
     });
     return response.message.content;
   } catch (error) {
@@ -446,24 +464,32 @@ telegramBot.setMessageHandler(async (message, chatId, userId, channelId, fileInf
   }
 });
 
-const channelChatHandler = async (
-  message: string,
-  _chatId: string | number,
-  sessionId: string,
-  fileInfo: { hasFile: boolean; filePath: string }
-): Promise<string> => {
-  const fullMessage = fileInfo.hasFile
-    ? `${message}\n\n[File attached: ${fileInfo.filePath}]`
-    : message;
-  const response = await handleChat({ message: fullMessage, sessionId });
-  return response.message.content;
-};
+const createChannelChatHandler =
+  (channelName: string) =>
+  async (
+    message: string,
+    chatId: string | number,
+    sessionId: string,
+    fileInfo: { hasFile: boolean; filePath: string }
+  ): Promise<string> => {
+    const fullMessage = fileInfo.hasFile
+      ? `${message}\n\n[File attached: ${fileInfo.filePath}]`
+      : message;
+    const response = await handleChat({
+      message: fullMessage,
+      sessionId,
+      channel: channelName,
+      userId: String(chatId),
+      source: `channel:${channelName}`,
+    });
+    return response.message.content;
+  };
 
-discordAdapter.setMessageHandler(channelChatHandler);
-slackAdapter.setMessageHandler(channelChatHandler);
-signalAdapter.setMessageHandler(channelChatHandler);
-whatsappAdapter.setMessageHandler(channelChatHandler);
-imessageAdapter.setMessageHandler(channelChatHandler);
+discordAdapter.setMessageHandler(createChannelChatHandler("discord"));
+slackAdapter.setMessageHandler(createChannelChatHandler("slack"));
+signalAdapter.setMessageHandler(createChannelChatHandler("signal"));
+whatsappAdapter.setMessageHandler(createChannelChatHandler("whatsapp"));
+imessageAdapter.setMessageHandler(createChannelChatHandler("imessage"));
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;

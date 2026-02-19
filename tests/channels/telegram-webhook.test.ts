@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import db, { tables } from "../../src/core/database";
 import { securityManager } from "../../src/core/channels/security";
 import { processTelegramWebhook, telegramBot } from "../../src/core/channels/adapters/telegram";
+import { configureChannelChatRuntime, resetChannelChatRuntime } from "../../src/core/channels/chat-runtime";
 import { config } from "../../src/core/config";
 
 function makeChannelId(prefix: string): string {
@@ -25,6 +26,28 @@ function makeTelegramUpdate(text: string) {
       },
       date: Math.floor(Date.now() / 1000),
       text,
+    },
+  };
+}
+
+function makeTelegramReactionUpdate() {
+  return {
+    update_id: Date.now(),
+    message_reaction: {
+      chat: {
+        id: 880011,
+        type: "private" as const,
+      },
+      message_id: 101,
+      date: Math.floor(Date.now() / 1000),
+      old_reaction: [{ type: "emoji", emoji: "👍" }],
+      new_reaction: [{ type: "emoji", emoji: "🔥" }],
+      user: {
+        id: 555001,
+        is_bot: false,
+        first_name: "Alice",
+        username: "alice",
+      },
     },
   };
 }
@@ -63,6 +86,26 @@ mock.module("../../src/core/tools/handlers/memory", () => ({
     query: "mock-query",
     searchMethod: memoryMockState.searchMethod,
   }),
+  handleMemoryGet: async () => ({
+    content: memoryMockState.context,
+    file: "2026-02-18.md",
+  }),
+  handleMemorySave: async () => ({
+    success: true,
+    file: "2026-02-18.md",
+    bytesWritten: 64,
+  }),
+  getTodayMemoryPath: () => "/tmp/cybara-memory-2026-02-18.md",
+  initializeTodayMemory: () => {},
+  handleMemorySaveDurable: async () => ({
+    success: true,
+    file: "2026-02-18.md",
+    bytesWritten: 64,
+  }),
+  handleHeartbeatState: async () => ({
+    status: "ok",
+    runs: [],
+  }),
 }));
 
 describe("Telegram webhook mocked flows", () => {
@@ -92,6 +135,22 @@ describe("Telegram webhook mocked flows", () => {
       config: { bot_token: "test-bot-token" },
     });
 
+    configureChannelChatRuntime({
+      memoryContext: async () => ({
+        context: memoryMockState.context,
+        lines: memoryMockState.context.split("\n").length,
+      }),
+      memoryList: async () => ({
+        files: [...memoryMockState.files],
+      }),
+      memorySearch: async (args) => ({
+        results: [...memoryMockState.searchResults],
+        query: String(args.query || ""),
+        searchMethod: memoryMockState.searchMethod,
+      }),
+      listTools: () => ["read", "write", "memory_search", "memory_context"],
+    });
+
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
       let body: unknown = null;
@@ -118,6 +177,7 @@ describe("Telegram webhook mocked flows", () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
     tables.channels.delete(channelId);
+    resetChannelChatRuntime();
   });
 
   test("returns false for unknown channel id", async () => {
@@ -306,5 +366,36 @@ describe("Telegram webhook mocked flows", () => {
     const searchPayload = searchCall?.body as { text?: string };
     expect(searchPayload.text).toContain("Memory Search");
     expect(searchPayload.text).toContain("2026-02-17.md");
+  });
+
+  test("processes reaction updates and logs reaction events without invoking chat handler", async () => {
+    let handlerCalls = 0;
+    telegramBot.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should not run";
+    });
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    tables.channels.update(channelId, {
+      config: {
+        bot_token: "test-bot-token",
+        reaction_notifications: "all",
+      },
+    });
+
+    const ok = await processTelegramWebhook(channelId, makeTelegramReactionUpdate());
+
+    expect(ok).toBe(true);
+    expect(handlerCalls).toBe(0);
+    expect(fetchCalls).toHaveLength(0);
+
+    const logs = tables.channelLogs.getByChannel("telegram", "880011") as Array<{
+      content: string;
+      metadata?: string;
+    }>;
+    const reactionLog = logs.find((entry) => entry.content.includes("Telegram reaction by alice"));
+    expect(reactionLog).toBeDefined();
+    const metadata = reactionLog?.metadata ? JSON.parse(reactionLog.metadata) : {};
+    expect(metadata.event).toBe("reaction");
+    expect(metadata.messageId).toBe(101);
   });
 });

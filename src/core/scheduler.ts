@@ -1,5 +1,7 @@
 import { tables, type Task } from "./database";
 import { agentManager } from "./agent";
+import { handleChat } from "../api/chat";
+import { broadcastTaskEvent } from "./status";
 
 function parseTaskConfig(config: unknown, taskId?: string): Record<string, unknown> {
   if (typeof config === "string") {
@@ -161,8 +163,6 @@ class TaskScheduler {
         throw new Error("No agent available for task execution");
       }
 
-      const { handleChat } = await import("../api/chat");
-
       console.log(`[Task] Calling agent ${agent.name} with: "${action.slice(0, 100)}..."`);
       const result = await handleChat({
         message: action,
@@ -179,7 +179,6 @@ class TaskScheduler {
         result_preview: resultPreview,
       });
 
-      const { broadcastTaskEvent } = await import("./status");
       broadcastTaskEvent({
         type: "task_completed",
         taskId: task.id,
@@ -206,7 +205,6 @@ class TaskScheduler {
         error: errorMsg.slice(0, 500),
       });
 
-      const { broadcastTaskEvent } = await import("./status");
       broadcastTaskEvent({
         type: "task_completed",
         taskId: task.id,

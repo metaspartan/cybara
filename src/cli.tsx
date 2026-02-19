@@ -7,6 +7,7 @@ import Spinner from "ink-spinner";
 import { spawn } from "child_process";
 import { readFileSync } from "fs";
 import { join } from "path";
+import { createInterface } from "readline";
 
 const API_BASE = process.env.CYBARA_API || "http://localhost:4269";
 
@@ -1584,8 +1585,7 @@ async function rawChannels(): Promise<void> {
 }
 
 async function rawChat(sessionArg?: string): Promise<void> {
-  const readline = await import("readline");
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
 
   // Pick or create session
   let sessionId = sessionArg;

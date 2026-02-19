@@ -1,9 +1,21 @@
-import { Client, GatewayIntentBits, Events, Partials, type Message } from "discord.js";
+import {
+  Client,
+  GatewayIntentBits,
+  Events,
+  Partials,
+  type Message,
+  type MessageReaction,
+  type PartialMessageReaction,
+  type User,
+  type PartialUser,
+} from "discord.js";
 import type { ChannelAdapter, ToolCallInfo, MessageHandler } from "../types";
 import { formatToolCallsForDiscord } from "../formatting";
 import { logChannelMessage } from "../../logging";
+import { tables } from "../../database";
 import { buildChannelSecurityConfig, securityManager } from "../security";
 import { handleChannelManagementCommand } from "../commands";
+import { sendChannelRuntimeMessage } from "../chat-runtime";
 
 export const discordSessions = new Map<string, string>();
 
@@ -12,13 +24,36 @@ export const DISCORD_REQUIRED_INTENTS = [
   GatewayIntentBits.GuildMessages,
   GatewayIntentBits.MessageContent,
   GatewayIntentBits.DirectMessages,
+  GatewayIntentBits.GuildMessageReactions,
+  GatewayIntentBits.DirectMessageReactions,
 ] as const;
+
+type DiscordReactionNotificationScope = "off" | "all" | "dm" | "guild";
+
+function normalizeDiscordReactionScope(value: unknown): DiscordReactionNotificationScope {
+  if (value === "all" || value === "dm" || value === "guild") {
+    return value;
+  }
+  return "off";
+}
+
+function shouldNotifyDiscordReactions(
+  scope: DiscordReactionNotificationScope,
+  isDM: boolean
+): boolean {
+  if (scope === "off") return false;
+  if (scope === "all") return true;
+  if (scope === "dm") return isDM;
+  if (scope === "guild") return !isDM;
+  return false;
+}
 
 export class DiscordAdapter implements ChannelAdapter {
   type = "discord" as const;
   name = "Discord";
 
   private clients = new Map<string, Client>();
+  private reactionScopes = new Map<string, DiscordReactionNotificationScope>();
   private messageHandler: MessageHandler = async () => "No handler configured";
 
   setMessageHandler(handler: MessageHandler) {
@@ -31,6 +66,7 @@ export class DiscordAdapter implements ChannelAdapter {
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
     const botToken = config.bot_token as string;
+    const reactionScope = normalizeDiscordReactionScope(config.reaction_notifications);
     if (!botToken) {
       throw new Error("bot_token is required for Discord adapter");
     }
@@ -48,7 +84,7 @@ export class DiscordAdapter implements ChannelAdapter {
       intents: [
         ...DISCORD_REQUIRED_INTENTS, // MessageContent must be enabled in Discord Developer Portal
       ],
-      partials: [Partials.Channel, Partials.Message, Partials.User],
+      partials: [Partials.Channel, Partials.Message, Partials.User, Partials.Reaction],
     });
 
     client.once(Events.ClientReady, (readyClient) => {
@@ -58,6 +94,12 @@ export class DiscordAdapter implements ChannelAdapter {
 
     client.on(Events.MessageCreate, async (message: Message) => {
       await this.handleMessage(channelId, message);
+    });
+    client.on(Events.MessageReactionAdd, async (reaction, user) => {
+      await this.handleReactionEvent(channelId, reaction, user, "added");
+    });
+    client.on(Events.MessageReactionRemove, async (reaction, user) => {
+      await this.handleReactionEvent(channelId, reaction, user, "removed");
     });
 
     client.on(Events.Error, (error) => {
@@ -71,6 +113,7 @@ export class DiscordAdapter implements ChannelAdapter {
     try {
       await client.login(botToken);
       this.clients.set(channelId, client);
+      this.reactionScopes.set(channelId, reactionScope);
       console.log(`[Discord] Successfully started for channel ${channelId}`);
     } catch (error) {
       console.error(`[Discord] Failed to login:`, error);
@@ -173,6 +216,7 @@ export class DiscordAdapter implements ChannelAdapter {
         channelId,
         chatId,
         platform: "discord",
+        sessionId,
         createSessionId: () => crypto.randomUUID(),
         setSessionId: (nextSessionId: string) => {
           sessionId = nextSessionId;
@@ -201,6 +245,99 @@ export class DiscordAdapter implements ChannelAdapter {
     });
 
     await this.sendLongMessage(message, response);
+  }
+
+  private resolveReactionScope(channelId: string): DiscordReactionNotificationScope {
+    const cachedScope = this.reactionScopes.get(channelId);
+    if (cachedScope) return cachedScope;
+
+    const channel = tables.channels.get(channelId) as { config?: unknown } | null;
+    let parsedConfig: Record<string, unknown> = {};
+    if (typeof channel?.config === "string") {
+      try {
+        const parsed = JSON.parse(channel.config);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          parsedConfig = parsed as Record<string, unknown>;
+        }
+      } catch {
+        parsedConfig = {};
+      }
+    } else if (
+      channel?.config &&
+      typeof channel.config === "object" &&
+      !Array.isArray(channel.config)
+    ) {
+      parsedConfig = channel.config as Record<string, unknown>;
+    }
+
+    const scope = normalizeDiscordReactionScope(parsedConfig.reaction_notifications);
+    this.reactionScopes.set(channelId, scope);
+    return scope;
+  }
+
+  private async handleReactionEvent(
+    channelId: string,
+    reaction: MessageReaction | PartialMessageReaction,
+    user: User | PartialUser,
+    action: "added" | "removed"
+  ): Promise<void> {
+    if (user.bot) return;
+
+    try {
+      if (reaction.partial) {
+        await reaction.fetch();
+      }
+      if (reaction.message.partial) {
+        await reaction.message.fetch();
+      }
+    } catch (error) {
+      console.error("[Discord] Failed to hydrate reaction event:", error);
+      return;
+    }
+
+    const message = reaction.message;
+    const chatId = message.channel.id;
+    const isDM = !message.guild;
+    const scope = this.resolveReactionScope(channelId);
+
+    const emoji =
+      typeof reaction.emoji.name === "string" && reaction.emoji.name.trim()
+        ? reaction.emoji.id
+          ? `${reaction.emoji.name}:${reaction.emoji.id}`
+          : reaction.emoji.name
+        : reaction.emoji.id || "unknown";
+    const actorId = user.id;
+    const actorName = user.username || actorId;
+    const eventMessage = `[System Event] Discord reaction ${action} by ${actorName} on message ${message.id}: ${emoji}`;
+
+    await logChannelMessage("discord", "incoming", eventMessage, {
+      channelId: chatId,
+      senderId: actorId,
+      metadata: {
+        event: "reaction",
+        action,
+        emoji,
+        messageId: message.id,
+        guildId: message.guild?.id || null,
+        isDM,
+      },
+    });
+
+    if (!shouldNotifyDiscordReactions(scope, isDM)) {
+      return;
+    }
+
+    const sessionKey = `${channelId}:${chatId}`;
+    const sessionId = discordSessions.get(sessionKey);
+    if (!sessionId) {
+      return;
+    }
+
+    sendChannelRuntimeMessage(sessionId, {
+      role: "system",
+      content: eventMessage,
+      timestamp: new Date().toISOString(),
+    });
   }
 
   private async sendLongMessage(message: Message, response: string): Promise<void> {
@@ -251,6 +388,7 @@ export class DiscordAdapter implements ChannelAdapter {
     console.log(`[Discord] Stopping bot for channel ${channelId}...`);
     client.destroy();
     this.clients.delete(channelId);
+    this.reactionScopes.delete(channelId);
     console.log(`[Discord] Stopped for channel ${channelId}`);
   }
 

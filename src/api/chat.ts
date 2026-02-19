@@ -28,6 +28,8 @@ import {
   trackMemoryFlush,
 } from "../core/metrics";
 import { shouldRunMemoryFlush, resolveMemoryFlushSettings } from "../core/memory/flush";
+import { broadcastStatus } from "../core/status";
+import { emitAgentHook } from "../core/agent-hooks";
 
 export interface ToolCallInfo {
   id: string;
@@ -53,6 +55,9 @@ export interface ChatRequest {
   sessionId?: string;
   stream?: boolean;
   tools?: boolean;
+  channel?: string;
+  userId?: string;
+  source?: string;
 }
 
 export interface ChatResponse {
@@ -168,10 +173,8 @@ export function stripThinkingTags(content: string): { content: string; thinking:
 
 const chatRateLimitConfig = { windowMs: 60000, maxRequests: 60 }; // 60 requests per minute
 
-import { broadcastStatus } from "../core/status";
-
 export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
-  const { message, agentId, sessionId, tools = true } = request;
+  const { message, agentId, sessionId, tools = true, channel, userId, source } = request;
 
   broadcastStatus({ status: "thinking", timestamp: Date.now() });
 
@@ -231,6 +234,12 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   }
 
   const agent = agentManager.get(session.agentId);
+  const hookContext = {
+    agentId: agent?.id,
+    sessionId: session.id,
+    channel,
+    userId,
+  };
 
   const userMessage: ChatMessage = {
     role: "user",
@@ -238,6 +247,15 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     timestamp: new Date().toISOString(),
   };
   session.messages.push(userMessage);
+
+  await emitAgentHook({
+    type: "message:received",
+    context: hookContext,
+    message,
+    metadata: {
+      source: source || "chat_api",
+    },
+  });
 
   await logSessionMessage(session.id, "user", message, {
     agentId: agent?.id,
@@ -280,7 +298,13 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
           provider,
           agent.model,
           flushMessages,
-          [] // No tools - just let agent respond naturally (it can write to files if needed)
+          [], // No tools - just let agent respond naturally (it can write to files if needed)
+          {
+            agentId: agent.id,
+            sessionId: session.id,
+            channel,
+            userId,
+          }
         );
 
         session.lastFlushCompactionCount = session.compactionCount || 0;
@@ -398,7 +422,13 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
                 name: t.name,
                 description: t.description,
                 inputSchema: t.input_schema,
-              }))
+              })),
+              {
+                agentId: agent.id,
+                sessionId: session.id,
+                channel,
+                userId,
+              }
             );
             responseContent = summaryResult.content;
 
@@ -447,7 +477,13 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
                     providerForSummary,
                     agent?.model,
                     finalMessages,
-                    [] // No more tools - final response only
+                    [], // No more tools - final response only
+                    {
+                      agentId: agent.id,
+                      sessionId: session.id,
+                      channel,
+                      userId,
+                    }
                   );
                   responseContent = finalResult.content;
                 } catch {
@@ -522,6 +558,16 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
 
   await persistSession(session.id, session.agentId, session.messages);
   session.persisted = true;
+
+  await emitAgentHook({
+    type: "message:sent",
+    context: hookContext,
+    message: cleanContent,
+    metadata: {
+      source: source || "chat_api",
+      toolCalls: allToolCalls.length,
+    },
+  });
 
   if (agent) {
     await logAgentActivity(

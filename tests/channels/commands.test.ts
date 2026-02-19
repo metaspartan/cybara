@@ -1,7 +1,16 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { config } from "../../src/core/config";
-import { handleChannelManagementCommand } from "../../src/core/channels/commands";
+import {
+  clearChannelSubagentSpawnHandler,
+  handleChannelManagementCommand,
+  setChannelSubagentSpawnHandler,
+} from "../../src/core/channels/commands";
 import { tables } from "../../src/core/database";
+import {
+  handleSessionsSpawn,
+  resetSubagentSessionsForTests,
+} from "../../src/core/tools/handlers/channel";
+import { resetSubagentRegistryForTests } from "../../src/core/subagent-registry";
 
 function id(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -50,12 +59,19 @@ function addProviderModel(providerId: string, modelId: string): void {
 
 afterEach(() => {
   config.set("default_agent_id", "");
+  clearChannelSubagentSpawnHandler();
+  resetSubagentSessionsForTests();
+  resetSubagentRegistryForTests();
   for (const agentId of createdAgents.splice(0)) {
     tables.agents.delete(agentId);
   }
   for (const providerId of createdProviders.splice(0)) {
     tables.providers.delete(providerId);
   }
+});
+
+beforeEach(() => {
+  setChannelSubagentSpawnHandler(handleSessionsSpawn);
 });
 
 describe("channel management commands", () => {
@@ -129,5 +145,24 @@ describe("channel management commands", () => {
     expect(response).toContain("Provider B");
     expect(updatedAgent?.provider_id).toBe(providerB);
     expect(updatedAgent?.model).toBe("b-model");
+  });
+
+  test("spawns subagents from command surface with session context", async () => {
+    const response = await handleChannelManagementCommand(
+      "/subagents spawn summarize recent logs",
+      {
+        channelId: "channel-4",
+        chatId: "chat-4",
+        platform: "discord",
+        sessionId: "session-command-subagent",
+        createSessionId: () => "session-command-subagent-rotated",
+        setSessionId: () => {},
+      }
+    );
+
+    expect(response).toContain("Subagent spawned successfully.");
+    expect(response).toContain("Run ID:");
+    expect(response).toContain("Session:");
+    expect(response).toContain("summarize recent logs");
   });
 });

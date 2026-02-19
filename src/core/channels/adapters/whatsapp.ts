@@ -180,6 +180,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
         channelId,
         chatId,
         platform: "whatsapp",
+        sessionId,
         createSessionId: () => crypto.randomUUID(),
         setSessionId: (nextSessionId: string) => {
           sessionId = nextSessionId;

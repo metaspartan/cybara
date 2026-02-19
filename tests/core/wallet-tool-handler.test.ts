@@ -1,4 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
 
 const walletToolMockState = {
   accountsCalls: [] as Array<{ chains?: string[]; count?: number; startIndex?: number }>,
@@ -399,8 +402,10 @@ mock.module("../../src/core/wallet", () => ({
 let handleWallet: (args: Record<string, unknown>) => Promise<unknown>;
 
 describe("Wallet tool handler", () => {
-  beforeAll(async () => {
-    const walletTool = await import("../../src/core/tools/handlers/wallet");
+  beforeAll(() => {
+    const walletTool = require("../../src/core/tools/handlers/wallet") as {
+      handleWallet: typeof handleWallet;
+    };
     handleWallet = walletTool.handleWallet;
   });
 

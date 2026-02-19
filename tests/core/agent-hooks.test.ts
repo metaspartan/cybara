@@ -7,14 +7,19 @@ import {
 } from "../../src/core/agent-hooks";
 import { providerManager } from "../../src/core/providers";
 import type { ToolDefinition } from "../../src/core/database";
+import { deleteSession, handleChat } from "../../src/api/chat";
 
 const createdAgentIds: string[] = [];
 const createdProviderIds: string[] = [];
+const createdSessionIds: string[] = [];
 const originalFetch = globalThis.fetch;
 
-afterEach(() => {
+afterEach(async () => {
   globalThis.fetch = originalFetch;
   resetAgentHooksForTests();
+  for (const sessionId of createdSessionIds.splice(0)) {
+    await deleteSession(sessionId);
+  }
   for (const agentId of createdAgentIds.splice(0)) {
     agentManager.delete(agentId);
   }
@@ -243,5 +248,78 @@ describe("Agent hooks", () => {
     expect(errorEvent.context.agentId).toBe(agent.id);
     expect(errorEvent.error).toContain("API error");
     expect(errorEvent.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  test("emits message lifecycle events for chat runtime", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Hooks Chat Provider",
+      api_key: "sk-hooks-chat",
+      base_url: "https://api.openai.com/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Hooks Chat Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-hooks-chat",
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    const events: AgentHookEvent[] = [];
+    registerAgentHook((event) => {
+      events.push(event);
+    });
+
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          id: "resp-chat-hooks",
+          object: "chat.completion",
+          model: "gpt-hooks-chat",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: "chat hooks ok" },
+            },
+          ],
+          usage: { prompt_tokens: 11, completion_tokens: 3, total_tokens: 14 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )) as typeof fetch;
+
+    const sessionId = `chat-hooks-${Date.now()}`;
+    createdSessionIds.push(sessionId);
+
+    const result = await handleChat({
+      message: "hello from channel",
+      agentId: agent.id,
+      sessionId,
+      channel: "discord",
+      userId: "user-42",
+      source: "channel:discord",
+      tools: false,
+    });
+
+    expect(result.message.content).toBe("chat hooks ok");
+
+    const receivedEvent = events.find((event) => event.type === "message:received");
+    expect(receivedEvent).toBeDefined();
+    if (!receivedEvent || receivedEvent.type !== "message:received") return;
+    expect(receivedEvent.context.agentId).toBe(agent.id);
+    expect(receivedEvent.context.sessionId).toBe(sessionId);
+    expect(receivedEvent.context.channel).toBe("discord");
+    expect(receivedEvent.context.userId).toBe("user-42");
+    expect(receivedEvent.message).toBe("hello from channel");
+
+    const sentEvent = events.find((event) => event.type === "message:sent");
+    expect(sentEvent).toBeDefined();
+    if (!sentEvent || sentEvent.type !== "message:sent") return;
+    expect(sentEvent.context.agentId).toBe(agent.id);
+    expect(sentEvent.context.sessionId).toBe(sessionId);
+    expect(sentEvent.message).toBe("chat hooks ok");
   });
 });

@@ -1,4 +1,4 @@
-import { type SpawnOptions } from "child_process";
+import { spawn, type SpawnOptions } from "child_process";
 
 export interface SpawnChildLike {
   unref?: () => void;
@@ -40,8 +40,7 @@ export function getOpenCommandForPlatform(
 
 export async function openUrlInBrowser(url: string, options: OpenUrlOptions = {}): Promise<void> {
   const platform = options.platform ?? process.platform;
-  const spawnFn =
-    options.spawnFn ?? ((await import("child_process")).spawn as unknown as SpawnLike);
+  const spawnFn = options.spawnFn ?? (spawn as unknown as SpawnLike);
 
   const command = getOpenCommandForPlatform(platform, url);
   const child = spawnFn(command.command, command.args, command.options);

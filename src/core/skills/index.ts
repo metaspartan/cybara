@@ -2,6 +2,9 @@ import { readFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 
 import { join, dirname, basename, extname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { homedir } from "os";
+import { handleCalc, handleConvert } from "./calc";
+import { handlePdf } from "./pdf";
+import { handleOcr, handleImageDescribe } from "./ocr";
 
 export type {
   SkillInstallSpec,
@@ -268,10 +271,6 @@ export function createLocalSkill(data: {
 export interface SkillExecutor {
   (args: Record<string, unknown>): Promise<unknown>;
 }
-
-import { handleCalc, handleConvert } from "./calc";
-import { handlePdf } from "./pdf";
-import { handleOcr, handleImageDescribe } from "./ocr";
 
 const builtinExecutors: Record<string, SkillExecutor> = {
   calc: handleCalc,

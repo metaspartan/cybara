@@ -60,6 +60,20 @@ export interface AgentToolBlockedEvent {
   reason: string;
 }
 
+export interface AgentMessageReceivedEvent {
+  type: "message:received";
+  context: AgentHookContext;
+  message: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AgentMessageSentEvent {
+  type: "message:sent";
+  context: AgentHookContext;
+  message: string;
+  metadata?: Record<string, unknown>;
+}
+
 export type AgentHookEvent =
   | AgentLLMRequestEvent
   | AgentLLMResponseEvent
@@ -67,7 +81,9 @@ export type AgentHookEvent =
   | AgentToolBeforeEvent
   | AgentToolAfterEvent
   | AgentToolErrorEvent
-  | AgentToolBlockedEvent;
+  | AgentToolBlockedEvent
+  | AgentMessageReceivedEvent
+  | AgentMessageSentEvent;
 
 export interface AgentHookDecision {
   block?: boolean;

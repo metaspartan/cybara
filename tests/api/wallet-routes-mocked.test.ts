@@ -1,5 +1,8 @@
 import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { createRequire } from "module";
 import type { WalletChain } from "../../src/core/wallet";
+
+const require = createRequire(import.meta.url);
 
 const walletMockState = {
   getStatusCalls: 0,
@@ -655,8 +658,10 @@ async function api(method: string, path: string, body?: unknown) {
 }
 
 describe("Wallet route contracts (mocked manager)", () => {
-  beforeAll(async () => {
-    const routes = await import("../../src/api/routes");
+  beforeAll(() => {
+    const routes = require("../../src/api/routes") as {
+      handleRequest: typeof handleRequest;
+    };
     handleRequest = routes.handleRequest;
   });
 

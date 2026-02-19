@@ -15,6 +15,7 @@ import {
 import { writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
+import { enforceWebFetchAllowlist } from "./web-policy";
 
 const SCREENSHOTS_DIR = join(
   process.env.HOME || process.env.USERPROFILE || homedir(),
@@ -1233,6 +1234,14 @@ export async function handleWebFetch(
   if (!url) {
     throw new Error("URL is required");
   }
+
+  try {
+    new URL(url);
+  } catch {
+    throw new Error(`Invalid URL: ${url}`);
+  }
+
+  enforceWebFetchAllowlist(url);
 
   try {
     const response = await fetch(url, {

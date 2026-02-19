@@ -170,7 +170,7 @@ export function Tools() {
                           Parameters
                         </h4>
                         <div className="space-y-2">
-                          {Object.entries(tool.input_schema.properties || {}).map(([key, prop]: [string, any]) => (
+                          {Object.entries(tool.input_schema.properties || {}).map(([key, prop]: [string, { type: string; description?: string }]) => (
                             <div key={key} className="flex items-start gap-2 text-sm">
                               <code className="px-2 py-0.5 rounded bg-white/10 text-blue-300 text-xs">
                                 {key}

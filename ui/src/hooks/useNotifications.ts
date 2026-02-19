@@ -1,4 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
+import {
+    isPermissionGranted as tauriIsPermissionGranted,
+    requestPermission as tauriRequestPermission,
+    sendNotification as tauriSendNotification,
+} from '@tauri-apps/plugin-notification';
 import { appendApiTokenParam } from '@/lib/auth';
 
 interface TaskEvent {
@@ -17,16 +22,14 @@ const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
 async function sendTauriNotification(title: string, body?: string) {
     if (!isTauri) return;
     try {
-        const { sendNotification, isPermissionGranted, requestPermission } = await import('@tauri-apps/plugin-notification');
-
-        let granted = await isPermissionGranted();
+        let granted = await tauriIsPermissionGranted();
         if (!granted) {
-            const permission = await requestPermission();
+            const permission = await tauriRequestPermission();
             granted = permission === 'granted';
         }
 
         if (granted) {
-            sendNotification({ title, body: body || '' });
+            tauriSendNotification({ title, body: body || '' });
         }
     } catch (e) {
         console.warn('Tauri notification failed:', e);
@@ -41,10 +44,9 @@ export function useNotifications() {
     const requestPermission = useCallback(async () => {
         if (isTauri) {
             try {
-                const { isPermissionGranted, requestPermission: tauriRequest } = await import('@tauri-apps/plugin-notification');
-                let granted = await isPermissionGranted();
+                let granted = await tauriIsPermissionGranted();
                 if (!granted) {
-                    const result = await tauriRequest();
+                    const result = await tauriRequestPermission();
                     granted = result === 'granted';
                 }
                 setPermission(granted ? 'granted' : 'denied');
@@ -80,11 +82,11 @@ export function useNotifications() {
 
     useEffect(() => {
         if (isTauri) {
-            import('@tauri-apps/plugin-notification').then(({ isPermissionGranted }) => {
-                isPermissionGranted().then(granted => {
+            tauriIsPermissionGranted()
+                .then(granted => {
                     setPermission(granted ? 'granted' : 'default');
-                });
-            }).catch(() => { });
+                })
+                .catch(() => { });
         }
     }, []);
 

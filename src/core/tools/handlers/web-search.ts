@@ -1,3 +1,5 @@
+import { filterWebSearchResultsByAllowlist } from "./web-policy";
+
 const BRAVE_SEARCH_ENDPOINT = "https://api.search.brave.com/res/v1/web/search";
 const DDG_HTML_ENDPOINT = "https://html.duckduckgo.com/html/";
 const USER_AGENT =
@@ -193,12 +195,17 @@ export async function handleWebSearch(args: Record<string, unknown>): Promise<Se
       result = await searchWithDDG(query, count);
     }
 
+    result.results = filterWebSearchResultsByAllowlist(result.results);
+    result.count = result.results.length;
+
     setCache(cacheKey, result);
     return result;
   } catch (error) {
     if (braveApiKey) {
       try {
         const fallback = await searchWithDDG(query, count);
+        fallback.results = filterWebSearchResultsByAllowlist(fallback.results);
+        fallback.count = fallback.results.length;
         setCache(cacheKey, fallback);
         return fallback;
       } catch (fallbackError) {

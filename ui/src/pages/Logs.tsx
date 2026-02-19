@@ -44,6 +44,27 @@ interface LogStats {
   hours: number;
 }
 
+interface SessionMessageLog {
+  id: string;
+  role: string;
+  content: string;
+  created_at: string;
+}
+
+interface AgentActionLog {
+  id: string;
+  action: string;
+  details?: string;
+  created_at: string;
+}
+
+interface ChannelMessageLog {
+  id: string;
+  direction?: string;
+  content: string;
+  created_at: string;
+}
+
 const levelIcons = {
   debug: <Terminal className="w-4 h-4 text-gray-400" />,
   info: <Info className="w-4 h-4 text-blue-400" />,
@@ -113,27 +134,35 @@ export function Logs() {
     try {
       const response = await logsApi.search(searchQuery);
       if (response.success) {
+        const searchData = response.data as
+          | {
+              system?: LogEntry[];
+              sessionMessages?: SessionMessageLog[];
+              agent?: AgentActionLog[];
+              channel?: ChannelMessageLog[];
+            }
+          | undefined;
         const allLogs: LogEntry[] = [
-          ...(response.data?.system || []).map((l: any) => ({ ...l })),
-          ...(response.data?.sessionMessages || []).map((l: any) => ({
+          ...(searchData?.system || []).map((l: LogEntry) => ({ ...l })),
+          ...(searchData?.sessionMessages || []).map((l: SessionMessageLog) => ({
             id: l.id,
             level: 'info' as const,
             source: 'session',
             message: `${l.role}: ${l.content.substring(0, 100)}${l.content.length > 100 ? '...' : ''}`,
             created_at: l.created_at
           })),
-          ...(response.data?.agent || []).map((l: any) => ({
+          ...(searchData?.agent || []).map((l: AgentActionLog) => ({
             id: l.id,
             level: 'info' as const,
             source: 'agent',
             message: `Action: ${l.action}${l.details ? ` - ${l.details}` : ''}`,
             created_at: l.created_at
           })),
-          ...(response.data?.channel || []).map((l: any) => ({
+          ...(searchData?.channel || []).map((l: ChannelMessageLog) => ({
             id: l.id,
             level: 'info' as const,
             source: 'channel',
-            message: `${l.direction}: ${l.content.substring(0, 100)}${l.content.length > 100 ? '...' : ''}`,
+            message: `${l.direction || 'message'}: ${l.content.substring(0, 100)}${l.content.length > 100 ? '...' : ''}`,
             created_at: l.created_at
           })),
         ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());

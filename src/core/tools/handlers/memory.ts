@@ -4,7 +4,14 @@ import {
   getVectorStore,
   saveDurableMemory,
   getRecentMemoryContext,
+  loadHeartbeatState,
+  recordCheck,
+  getDueChecks,
+  isQuietHours,
+  getHeartbeatSummary,
+  setQuietHours,
   type DurableMemoryEntry,
+  type HeartbeatState,
 } from "../../memory";
 import { memoryDir } from "../../paths";
 
@@ -322,20 +329,11 @@ export async function handleMemoryContext(
 
 export async function handleHeartbeatState(args: Record<string, unknown>): Promise<{
   action: string;
-  state?: import("../../memory").HeartbeatState;
+  state?: HeartbeatState;
   dueChecks?: string[];
   summary?: string;
   isQuiet?: boolean;
 }> {
-  const {
-    loadHeartbeatState,
-    recordCheck,
-    getDueChecks,
-    isQuietHours,
-    getHeartbeatSummary,
-    setQuietHours,
-  } = await import("../../memory");
-
   const action = (args.action as string) || "status";
 
   switch (action) {

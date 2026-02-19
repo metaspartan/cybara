@@ -242,6 +242,7 @@ export class SignalAdapter implements ChannelAdapter {
         channelId,
         chatId: sender,
         platform: "signal",
+        sessionId,
         createSessionId: () => crypto.randomUUID(),
         setSessionId: (nextSessionId: string) => {
           sessionId = nextSessionId;

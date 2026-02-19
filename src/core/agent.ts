@@ -90,6 +90,8 @@ interface AnthropicResponse {
   usage?: AnthropicUsage;
 }
 
+const ANTHROPIC_CONTEXT_1M_BETA = "context-1m-2025-08-07";
+
 function trackTokenUsage(
   model: string,
   provider: string,
@@ -326,6 +328,13 @@ function normalizePermissionList(value: unknown): string[] {
     .map((entry) => entry.trim())
     .filter(Boolean);
   return [...new Set(normalized)];
+}
+
+function parseModelParams(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
 }
 
 class AgentManager {
@@ -889,6 +898,28 @@ class AgentManager {
     };
   }
 
+  private resolveModelParams(toolContext?: ToolContext): Record<string, unknown> {
+    const agentId = toolContext?.agentId;
+    if (!agentId) return {};
+
+    const agent = this.get(agentId);
+    if (!agent) return {};
+
+    const parsedConfig = parseAgentConfig(agent.config, agent.id);
+    return parseModelParams(parsedConfig.model_params ?? parsedConfig.modelParams);
+  }
+
+  private mergeHeaderToken(existing: string | undefined, token: string): string {
+    const normalized = (existing || "")
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (!normalized.includes(token)) {
+      normalized.push(token);
+    }
+    return normalized.join(", ");
+  }
+
   private buildHookContext(
     provider: string | undefined,
     model: string | undefined,
@@ -1058,6 +1089,7 @@ class AgentManager {
     const providerHeaders = providerDefinition?.headers || {};
     const customHeaders = (providerInfo as { headers?: Record<string, string> }).headers || {};
     const mergedHeaders = { ...providerHeaders, ...customHeaders };
+    const modelParams = this.resolveModelParams(toolContext);
 
     if (apiFamily === "anthropic-messages") {
       return this.callAnthropicAPI(
@@ -1067,7 +1099,8 @@ class AgentManager {
         messages,
         tools,
         providerConfig,
-        toolContext
+        toolContext,
+        modelParams
       );
     }
 
@@ -1343,7 +1376,8 @@ class AgentManager {
     messages: AgentMessage[],
     tools: ToolDefinition[],
     providerConfig: string,
-    toolContext?: ToolContext
+    toolContext?: ToolContext,
+    modelParams?: Record<string, unknown>
   ): Promise<{
     content: string;
     thinking?: string;
@@ -1381,6 +1415,13 @@ class AgentManager {
       "x-api-key": auth,
       "anthropic-version": "2023-06-01",
     };
+
+    if (modelParams?.context1m === true) {
+      headers["anthropic-beta"] = this.mergeHeaderToken(
+        headers["anthropic-beta"],
+        ANTHROPIC_CONTEXT_1M_BETA
+      );
+    }
 
     broadcastStatus({ status: "generating", timestamp: Date.now() });
 

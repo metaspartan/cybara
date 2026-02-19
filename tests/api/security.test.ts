@@ -1,19 +1,20 @@
-import { beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import * as security from "../../src/api/security";
 
-type SecurityModule = typeof import("../../src/api/security");
-
-let security: SecurityModule;
+let previousApiKey: string | undefined;
 
 describe("API security module", () => {
-  beforeAll(async () => {
-    const prior = process.env.CYBARA_API_KEY;
+  beforeAll(() => {
+    previousApiKey = process.env.CYBARA_API_KEY;
     process.env.CYBARA_API_KEY = "cybara_test_key_for_security_suite";
-    security = (await import(`../../src/api/security?test=${Date.now()}`)) as SecurityModule;
-    if (prior === undefined) {
+  });
+
+  afterAll(() => {
+    if (previousApiKey === undefined) {
       delete process.env.CYBARA_API_KEY;
-    } else {
-      process.env.CYBARA_API_KEY = prior;
+      return;
     }
+    process.env.CYBARA_API_KEY = previousApiKey;
   });
 
   test("authenticateRequest allows localhost bypass in dev", () => {
