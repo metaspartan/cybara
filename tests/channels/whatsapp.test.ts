@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { WhatsAppAdapter, whatsappSessions } from "../../src/core/channels/adapters/whatsapp";
+import {
+  clearChannelSubagentSpawnHandler,
+  setChannelSubagentSpawnHandler,
+} from "../../src/core/channels/commands";
 import { securityManager } from "../../src/core/channels/security";
 import { config } from "../../src/core/config";
 import { tables } from "../../src/core/database";
@@ -102,6 +106,7 @@ async function invokeWhatsAppMessage(
 
 afterEach(() => {
   config.set("default_agent_id", "");
+  clearChannelSubagentSpawnHandler();
   for (const agentId of createdAgents.splice(0)) {
     tables.agents.delete(agentId);
   }
@@ -551,6 +556,49 @@ describe("WhatsApp adapter mocked flows", () => {
     expect(updatedAgent?.model).toBe("b-model");
     expect(replies).toHaveLength(1);
     expect(replies[0]).toContain("WhatsApp Provider B");
+    expect(chatSends).toHaveLength(0);
+  });
+
+  test("routes /subagents spawn command through adapter without invoking chat handler", async () => {
+    const adapter = new WhatsAppAdapter();
+    const channelId = makeChannelId("wa-subagents-command");
+    const replies: string[] = [];
+    const chatSends: string[] = [];
+    let handlerCalls = 0;
+    const spawnArgs: Array<Record<string, unknown>> = [];
+
+    setChannelSubagentSpawnHandler(async (args) => {
+      spawnArgs.push(args);
+      return {
+        status: "accepted",
+        childSessionKey: "agent:default:subagent:whatsapp",
+        runId: "run-wa-subagents",
+        task: String(args.task || ""),
+      };
+    });
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    const message = createFakeWhatsAppMessage(
+      {
+        body: "/subagents spawn summarize backlog",
+      },
+      replies,
+      chatSends
+    );
+
+    await invokeWhatsAppMessage(adapter, channelId, message);
+
+    expect(handlerCalls).toBe(0);
+    expect(spawnArgs).toHaveLength(1);
+    expect(spawnArgs[0]?.task).toBe("summarize backlog");
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toContain("Subagent spawned successfully.");
+    expect(replies[0]).toContain("run-wa-subagents");
     expect(chatSends).toHaveLength(0);
   });
 });

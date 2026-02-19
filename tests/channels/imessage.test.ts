@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { IMessageAdapter, imessageSessions } from "../../src/core/channels/adapters/imessage";
+import {
+  clearChannelSubagentSpawnHandler,
+  setChannelSubagentSpawnHandler,
+} from "../../src/core/channels/commands";
 import { securityManager } from "../../src/core/channels/security";
 import { config } from "../../src/core/config";
 import { tables } from "../../src/core/database";
@@ -81,6 +85,7 @@ async function invokeIMessage(
 
 afterEach(() => {
   config.set("default_agent_id", "");
+  clearChannelSubagentSpawnHandler();
   for (const agentId of createdAgents.splice(0)) {
     tables.agents.delete(agentId);
   }
@@ -660,5 +665,57 @@ describe("iMessage adapter mocked flows", () => {
     expect(updatedAgent?.model).toBe("b-model");
     expect(sent).toHaveLength(1);
     expect(sent[0]).toContain("iMessage Provider B");
+  });
+
+  test("routes /subagents spawn command through adapter without invoking chat handler", async () => {
+    const adapter = new IMessageAdapter();
+    const channelId = makeChannelId("imsg-subagents-command");
+    const sent: string[] = [];
+    let handlerCalls = 0;
+    const spawnArgs: Array<Record<string, unknown>> = [];
+
+    setChannelSubagentSpawnHandler(async (args) => {
+      spawnArgs.push(args);
+      return {
+        status: "accepted",
+        childSessionKey: "agent:default:subagent:imessage",
+        runId: "run-imsg-subagents",
+        task: String(args.task || ""),
+      };
+    });
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+    (
+      adapter as unknown as {
+        sendBlueBubblesMessage: (
+          _id: string,
+          _chatGuid: string,
+          message: string
+        ) => Promise<boolean>;
+      }
+    ).sendBlueBubblesMessage = async (_id, _chatGuid, message) => {
+      sent.push(message);
+      return true;
+    };
+
+    await invokeIMessage(
+      adapter,
+      channelId,
+      makeMessage({
+        text: "/subagents spawn summarize backlog",
+        handle: { address: "allowed@icloud.com", service: "iMessage" },
+      })
+    );
+
+    expect(handlerCalls).toBe(0);
+    expect(spawnArgs).toHaveLength(1);
+    expect(spawnArgs[0]?.task).toBe("summarize backlog");
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("Subagent spawned successfully.");
+    expect(sent[0]).toContain("run-imsg-subagents");
   });
 });

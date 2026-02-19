@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { SlackAdapter, slackSessions } from "../../src/core/channels/adapters/slack";
+import {
+  clearChannelSubagentSpawnHandler,
+  setChannelSubagentSpawnHandler,
+} from "../../src/core/channels/commands";
 import { configureChannelChatRuntime, resetChannelChatRuntime } from "../../src/core/channels/chat-runtime";
 import { securityManager } from "../../src/core/channels/security";
 import { config } from "../../src/core/config";
@@ -64,6 +68,7 @@ function addProviderModel(providerId: string, modelId: string): void {
 
 afterEach(() => {
   config.set("default_agent_id", "");
+  clearChannelSubagentSpawnHandler();
   for (const agentId of createdAgents.splice(0)) {
     tables.agents.delete(agentId);
   }
@@ -643,6 +648,52 @@ describe("Slack adapter mocked flows", () => {
     expect(updatedAgent?.model).toBe("b-model");
     expect(sayMessages).toHaveLength(1);
     expect(sayMessages[0]).toContain("Slack Provider B");
+  });
+
+  test("routes /subagents spawn command through adapter without invoking chat handler", async () => {
+    const adapter = new SlackAdapter();
+    const channelId = makeChannelId("slack-subagents-command");
+    const sayMessages: string[] = [];
+    let handlerCalls = 0;
+    const spawnArgs: Array<Record<string, unknown>> = [];
+
+    setChannelSubagentSpawnHandler(async (args) => {
+      spawnArgs.push(args);
+      return {
+        status: "accepted",
+        childSessionKey: "agent:default:subagent:slack",
+        runId: "run-slack-subagents",
+        task: String(args.task || ""),
+      };
+    });
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    await invokeSlackMessage(
+      adapter,
+      channelId,
+      {
+        type: "message",
+        text: "/subagents spawn summarize backlog",
+        user: "U-COMMAND",
+        channel: "C-SUBAGENT",
+        ts: "9.101",
+      },
+      async (text: string) => {
+        sayMessages.push(text);
+      }
+    );
+
+    expect(handlerCalls).toBe(0);
+    expect(spawnArgs).toHaveLength(1);
+    expect(spawnArgs[0]?.task).toBe("summarize backlog");
+    expect(sayMessages).toHaveLength(1);
+    expect(sayMessages[0]).toContain("Subagent spawned successfully.");
+    expect(sayMessages[0]).toContain("run-slack-subagents");
   });
 
   test("logs reaction events and injects system reaction updates into active session", async () => {

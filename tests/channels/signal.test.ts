@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { SignalAdapter, signalSessions } from "../../src/core/channels/adapters/signal";
+import {
+  clearChannelSubagentSpawnHandler,
+  setChannelSubagentSpawnHandler,
+} from "../../src/core/channels/commands";
 import { securityManager } from "../../src/core/channels/security";
 import { config } from "../../src/core/config";
 import { tables } from "../../src/core/database";
@@ -75,6 +79,7 @@ async function invokeSignalEnvelope(
 
 afterEach(() => {
   config.set("default_agent_id", "");
+  clearChannelSubagentSpawnHandler();
   for (const agentId of createdAgents.splice(0)) {
     tables.agents.delete(agentId);
   }
@@ -492,5 +497,49 @@ describe("Signal adapter mocked flows", () => {
     expect(updatedAgent?.model).toBe("b-model");
     expect(sent).toHaveLength(1);
     expect(sent[0]).toContain("Signal Provider B");
+  });
+
+  test("routes /subagents spawn command through adapter without invoking chat handler", async () => {
+    const adapter = new SignalAdapter();
+    const channelId = makeChannelId("signal-subagents-command");
+    const sent: string[] = [];
+    let handlerCalls = 0;
+    const spawnArgs: Array<Record<string, unknown>> = [];
+
+    setChannelSubagentSpawnHandler(async (args) => {
+      spawnArgs.push(args);
+      return {
+        status: "accepted",
+        childSessionKey: "agent:default:subagent:signal",
+        runId: "run-signal-subagents",
+        task: String(args.task || ""),
+      };
+    });
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+    (
+      adapter as unknown as {
+        sendSignalMessage: (_id: string, _recipient: string, message: string) => Promise<boolean>;
+      }
+    ).sendSignalMessage = async (_id, _recipient, message) => {
+      sent.push(message);
+      return true;
+    };
+
+    await invokeSignalEnvelope(adapter, channelId, {
+      sourceNumber: "+15550009999",
+      dataMessage: { message: "/subagents spawn summarize backlog" },
+    });
+
+    expect(handlerCalls).toBe(0);
+    expect(spawnArgs).toHaveLength(1);
+    expect(spawnArgs[0]?.task).toBe("summarize backlog");
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("Subagent spawned successfully.");
+    expect(sent[0]).toContain("run-signal-subagents");
   });
 });
