@@ -2,8 +2,10 @@ import { App } from "@slack/bolt";
 import type { ChannelAdapter, ToolCallInfo, MessageHandler } from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
+import { tables } from "../../database";
 import { buildChannelSecurityConfig, securityManager } from "../security";
 import { handleChannelManagementCommand } from "../commands";
+import { sendChannelRuntimeMessage } from "../chat-runtime";
 
 interface SlackMessageEvent {
   type: string;
@@ -18,11 +20,41 @@ interface SlackMessageEvent {
 
 export const slackSessions = new Map<string, string>();
 
+type SlackReactionNotificationScope = "off" | "all" | "dm" | "channel";
+
+interface SlackReactionEvent {
+  user?: string;
+  reaction?: string;
+  item?: {
+    type?: string;
+    channel?: string;
+    ts?: string;
+  };
+  item_user?: string;
+  event_ts?: string;
+}
+
+function normalizeSlackReactionScope(value: unknown): SlackReactionNotificationScope {
+  if (value === "all" || value === "dm" || value === "channel") {
+    return value;
+  }
+  return "off";
+}
+
+function shouldNotifySlackReactions(scope: SlackReactionNotificationScope, isDM: boolean): boolean {
+  if (scope === "off") return false;
+  if (scope === "all") return true;
+  if (scope === "dm") return isDM;
+  if (scope === "channel") return !isDM;
+  return false;
+}
+
 export class SlackAdapter implements ChannelAdapter {
   type = "slack" as const;
   name = "Slack";
 
   private apps = new Map<string, App>();
+  private reactionScopes = new Map<string, SlackReactionNotificationScope>();
   private messageHandler: MessageHandler = async () => "No handler configured";
 
   setMessageHandler(handler: MessageHandler) {
@@ -37,6 +69,7 @@ export class SlackAdapter implements ChannelAdapter {
     const botToken = config.bot_token as string;
     const appToken = config.app_token as string;
     const signingSecret = config.signing_secret as string;
+    const reactionScope = normalizeSlackReactionScope(config.reaction_notifications);
 
     if (!botToken) {
       throw new Error("bot_token (xoxb-...) is required for Slack adapter");
@@ -69,6 +102,12 @@ export class SlackAdapter implements ChannelAdapter {
     app.event("app_mention", async ({ event, say, client }) => {
       await this.handleMention(channelId, event as SlackMessageEvent, say, client);
     });
+    app.event("reaction_added", async ({ event }) => {
+      await this.handleReactionEvent(channelId, event as SlackReactionEvent, "added");
+    });
+    app.event("reaction_removed", async ({ event }) => {
+      await this.handleReactionEvent(channelId, event as SlackReactionEvent, "removed");
+    });
 
     app.event("app_home_opened", async ({ event, client: _client }) => {
       console.log(`[Slack] App home opened by user ${event.user}`);
@@ -81,6 +120,7 @@ export class SlackAdapter implements ChannelAdapter {
     try {
       await app.start();
       this.apps.set(channelId, app);
+      this.reactionScopes.set(channelId, reactionScope);
       console.log(`[Slack] Successfully started for channel ${channelId}`);
     } catch (error) {
       console.error(`[Slack] Failed to start:`, error);
@@ -263,6 +303,81 @@ export class SlackAdapter implements ChannelAdapter {
     }
   }
 
+  private resolveReactionScope(channelId: string): SlackReactionNotificationScope {
+    const cachedScope = this.reactionScopes.get(channelId);
+    if (cachedScope) return cachedScope;
+
+    const channel = tables.channels.get(channelId) as { config?: unknown } | null;
+    let parsedConfig: Record<string, unknown> = {};
+    if (typeof channel?.config === "string") {
+      try {
+        const parsed = JSON.parse(channel.config);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          parsedConfig = parsed as Record<string, unknown>;
+        }
+      } catch {
+        parsedConfig = {};
+      }
+    } else if (
+      channel?.config &&
+      typeof channel.config === "object" &&
+      !Array.isArray(channel.config)
+    ) {
+      parsedConfig = channel.config as Record<string, unknown>;
+    }
+
+    const scope = normalizeSlackReactionScope(parsedConfig.reaction_notifications);
+    this.reactionScopes.set(channelId, scope);
+    return scope;
+  }
+
+  private async handleReactionEvent(
+    channelId: string,
+    event: SlackReactionEvent,
+    action: "added" | "removed"
+  ): Promise<void> {
+    const chatId = event.item?.channel;
+    const messageTs = event.item?.ts;
+    const actorId = event.user;
+    if (!chatId || !messageTs || !actorId) {
+      return;
+    }
+
+    const reaction = event.reaction || "unknown";
+    const isDM = chatId.startsWith("D");
+    const scope = this.resolveReactionScope(channelId);
+
+    const eventMessage = `[System Event] Slack reaction ${action} by ${actorId} on message ${messageTs}: :${reaction}:`;
+    await logChannelMessage("slack", "incoming", eventMessage, {
+      channelId: chatId,
+      senderId: actorId,
+      metadata: {
+        event: "reaction",
+        action,
+        reaction,
+        messageTs,
+        isDM,
+        itemUser: event.item_user || null,
+        eventTs: event.event_ts || null,
+      },
+    });
+
+    if (!shouldNotifySlackReactions(scope, isDM)) {
+      return;
+    }
+
+    const sessionId = slackSessions.get(`${channelId}:${chatId}`);
+    if (!sessionId) {
+      return;
+    }
+
+    sendChannelRuntimeMessage(sessionId, {
+      role: "system",
+      content: eventMessage,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   async stop(channelId: string): Promise<void> {
     const app = this.apps.get(channelId);
     if (!app) {
@@ -273,6 +388,7 @@ export class SlackAdapter implements ChannelAdapter {
     console.log(`[Slack] Stopping app for channel ${channelId}...`);
     await app.stop();
     this.apps.delete(channelId);
+    this.reactionScopes.delete(channelId);
     console.log(`[Slack] Stopped for channel ${channelId}`);
   }
 

@@ -5,6 +5,11 @@ import {
   DISCORD_REQUIRED_INTENTS,
   discordSessions,
 } from "../../src/core/channels/adapters/discord";
+import {
+  clearChannelSubagentSpawnHandler,
+  setChannelSubagentSpawnHandler,
+} from "../../src/core/channels/commands";
+import { configureChannelChatRuntime, resetChannelChatRuntime } from "../../src/core/channels/chat-runtime";
 import { securityManager } from "../../src/core/channels/security";
 import { config } from "../../src/core/config";
 import { tables } from "../../src/core/database";
@@ -57,6 +62,8 @@ function addProviderModel(providerId: string, modelId: string): void {
 
 afterEach(() => {
   config.set("default_agent_id", "");
+  clearChannelSubagentSpawnHandler();
+  discordSessions.clear();
   for (const channelId of createdChannels.splice(0)) {
     tables.channels.delete(channelId);
   }
@@ -66,6 +73,7 @@ afterEach(() => {
   for (const providerId of createdProviders.splice(0)) {
     tables.providers.delete(providerId);
   }
+  resetChannelChatRuntime();
 });
 
 describe("Discord adapter intent configuration", () => {
@@ -376,6 +384,50 @@ describe("Discord adapter mocked message flows", () => {
     expect(followUps).toHaveLength(0);
   });
 
+  test("routes /subagents spawn command through adapter without invoking chat handler", async () => {
+    const adapter = new DiscordAdapter();
+    const channelId = makeChannelId("discord-subagents-command");
+    const replies: string[] = [];
+    const followUps: string[] = [];
+    let handlerCalls = 0;
+    const spawnArgs: Array<Record<string, unknown>> = [];
+
+    setChannelSubagentSpawnHandler(async (args) => {
+      spawnArgs.push(args);
+      return {
+        status: "accepted",
+        childSessionKey: "agent:default:subagent:test",
+        runId: "run-discord-subagents",
+        task: String(args.task || ""),
+      };
+    });
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    const message = createFakeDiscordMessage(
+      {
+        guild: null,
+        content: "/subagents spawn summarize release notes",
+      },
+      replies,
+      followUps
+    );
+
+    await handleDiscordMessage(adapter, channelId, message);
+
+    expect(handlerCalls).toBe(0);
+    expect(spawnArgs).toHaveLength(1);
+    expect(spawnArgs[0]?.task).toBe("summarize release notes");
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toContain("Subagent spawned successfully.");
+    expect(replies[0]).toContain("run-discord-subagents");
+    expect(followUps).toHaveLength(0);
+  });
+
   test("logs reaction events for configured channels", async () => {
     const adapter = new DiscordAdapter();
     const channelId = makeChannelId("discord-reaction");
@@ -430,5 +482,211 @@ describe("Discord adapter mocked message flows", () => {
     expect(metadata.emoji).toBe("🔥");
     expect(metadata.messageId).toBe(messageId);
     expect(metadata.isDM).toBe(false);
+  });
+
+  test("injects reaction events into active runtime sessions when enabled", async () => {
+    const adapter = new DiscordAdapter();
+    const channelId = makeChannelId("discord-reaction-runtime");
+    const chatId = makeChannelId("discord-chat-runtime");
+    const injected: Array<{ sessionId: string; content: string }> = [];
+
+    tables.channels.create({
+      id: channelId,
+      type: "discord",
+      name: "Discord Reaction Runtime",
+      enabled: true,
+      config: {
+        bot_token: "test-token",
+        reaction_notifications: "all",
+      },
+    });
+    createdChannels.push(channelId);
+
+    configureChannelChatRuntime({
+      sendToSession: (sessionId, message) => {
+        injected.push({ sessionId, content: message.content });
+        return true;
+      },
+    });
+
+    discordSessions.set(`${channelId}:${chatId}`, "session-discord-reaction");
+
+    await handleDiscordReaction(
+      adapter,
+      channelId,
+      {
+        partial: false,
+        message: {
+          partial: false,
+          id: makeChannelId("discord-msg-runtime"),
+          channel: { id: chatId },
+          guild: { id: "guild-runtime" },
+        },
+        emoji: { name: "✅", id: null },
+      },
+      {
+        bot: false,
+        id: "user-runtime",
+        username: "bob",
+      },
+      "added"
+    );
+
+    expect(injected).toHaveLength(1);
+    expect(injected[0].sessionId).toBe("session-discord-reaction");
+    expect(injected[0].content).toContain("Discord reaction added by bob");
+  });
+
+  test("does not inject guild reactions when scope is dm-only", async () => {
+    const adapter = new DiscordAdapter();
+    const channelId = makeChannelId("discord-reaction-dm-only");
+    const chatId = makeChannelId("discord-chat-dm-only");
+    const injected: string[] = [];
+
+    tables.channels.create({
+      id: channelId,
+      type: "discord",
+      name: "Discord DM Scope",
+      enabled: true,
+      config: {
+        bot_token: "test-token",
+        reaction_notifications: "dm",
+      },
+    });
+    createdChannels.push(channelId);
+
+    configureChannelChatRuntime({
+      sendToSession: (sessionId) => {
+        injected.push(sessionId);
+        return true;
+      },
+    });
+
+    discordSessions.set(`${channelId}:${chatId}`, "session-discord-dm-only");
+
+    await handleDiscordReaction(
+      adapter,
+      channelId,
+      {
+        partial: false,
+        message: {
+          partial: false,
+          id: makeChannelId("discord-msg-dm-only"),
+          channel: { id: chatId },
+          guild: { id: "guild-dm-only" },
+        },
+        emoji: { name: "👀", id: null },
+      },
+      {
+        bot: false,
+        id: "user-dm-only",
+        username: "eve",
+      },
+      "added"
+    );
+
+    expect(injected).toHaveLength(0);
+  });
+
+  test("injects DM reactions when scope is dm-only", async () => {
+    const adapter = new DiscordAdapter();
+    const channelId = makeChannelId("discord-reaction-dm-allow");
+    const chatId = makeChannelId("discord-chat-dm-allow");
+    const injected: string[] = [];
+
+    tables.channels.create({
+      id: channelId,
+      type: "discord",
+      name: "Discord DM Scope Allow",
+      enabled: true,
+      config: {
+        bot_token: "test-token",
+        reaction_notifications: "dm",
+      },
+    });
+    createdChannels.push(channelId);
+
+    configureChannelChatRuntime({
+      sendToSession: (sessionId) => {
+        injected.push(sessionId);
+        return true;
+      },
+    });
+
+    discordSessions.set(`${channelId}:${chatId}`, "session-discord-dm-allow");
+
+    await handleDiscordReaction(
+      adapter,
+      channelId,
+      {
+        partial: false,
+        message: {
+          partial: false,
+          id: makeChannelId("discord-msg-dm-allow"),
+          channel: { id: chatId },
+          guild: null,
+        },
+        emoji: { name: "👍", id: null },
+      },
+      {
+        bot: false,
+        id: "user-dm-allow",
+        username: "sam",
+      },
+      "added"
+    );
+
+    expect(injected).toEqual(["session-discord-dm-allow"]);
+  });
+
+  test("does not inject reactions when discord reaction notifications are off", async () => {
+    const adapter = new DiscordAdapter();
+    const channelId = makeChannelId("discord-reaction-off");
+    const chatId = makeChannelId("discord-chat-off");
+    const injected: string[] = [];
+
+    tables.channels.create({
+      id: channelId,
+      type: "discord",
+      name: "Discord Reaction Off",
+      enabled: true,
+      config: {
+        bot_token: "test-token",
+        reaction_notifications: "off",
+      },
+    });
+    createdChannels.push(channelId);
+
+    configureChannelChatRuntime({
+      sendToSession: (sessionId) => {
+        injected.push(sessionId);
+        return true;
+      },
+    });
+
+    discordSessions.set(`${channelId}:${chatId}`, "session-discord-off");
+
+    await handleDiscordReaction(
+      adapter,
+      channelId,
+      {
+        partial: false,
+        message: {
+          partial: false,
+          id: makeChannelId("discord-msg-off"),
+          channel: { id: chatId },
+          guild: null,
+        },
+        emoji: { name: "❌", id: null },
+      },
+      {
+        bot: false,
+        id: "user-off",
+        username: "alex",
+      },
+      "added"
+    );
+
+    expect(injected).toHaveLength(0);
   });
 });

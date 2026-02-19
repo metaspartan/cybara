@@ -1,6 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { WhatsAppAdapter, whatsappSessions } from "../../src/core/channels/adapters/whatsapp";
 import { securityManager } from "../../src/core/channels/security";
+import { config } from "../../src/core/config";
+import { tables } from "../../src/core/database";
 
 type FakeWhatsAppMessage = {
   fromMe: boolean;
@@ -17,6 +19,47 @@ type FakeWhatsAppMessage = {
 
 function makeChannelId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+const createdAgents: string[] = [];
+const createdProviders: string[] = [];
+
+function createProvider(name: string): string {
+  const providerId = makeChannelId("wa-provider");
+  tables.providers.create({
+    id: providerId,
+    provider: "openai",
+    name,
+    base_url: "https://api.openai.com/v1",
+    api_key: "test-key",
+    is_default: false,
+  });
+  createdProviders.push(providerId);
+  return providerId;
+}
+
+function createAgent(name: string, providerId: string, model: string): string {
+  const agentId = makeChannelId("wa-agent");
+  tables.agents.create({
+    id: agentId,
+    name,
+    type: "main",
+    model,
+    provider_id: providerId,
+    status: "stopped",
+    memory_enabled: false,
+  });
+  createdAgents.push(agentId);
+  return agentId;
+}
+
+function addProviderModel(providerId: string, modelId: string): void {
+  tables.providerModels.upsert({
+    id: makeChannelId("wa-provider-model"),
+    provider_id: providerId,
+    model_id: modelId,
+    model_name: modelId,
+  });
 }
 
 function createFakeWhatsAppMessage(
@@ -56,6 +99,16 @@ async function invokeWhatsAppMessage(
     }
   ).handleMessage(channelId, message);
 }
+
+afterEach(() => {
+  config.set("default_agent_id", "");
+  for (const agentId of createdAgents.splice(0)) {
+    tables.agents.delete(agentId);
+  }
+  for (const providerId of createdProviders.splice(0)) {
+    tables.providers.delete(providerId);
+  }
+});
 
 describe("WhatsApp adapter mocked flows", () => {
   test("ignores own messages", async () => {
@@ -252,6 +305,43 @@ describe("WhatsApp adapter mocked flows", () => {
     expect(handlerCalls).toBe(0);
     expect(replies).toHaveLength(1);
     expect(replies[0]).toContain("Available management commands");
+    expect(chatSends).toHaveLength(0);
+  });
+
+  test("routes /model command and updates default agent model", async () => {
+    const adapter = new WhatsAppAdapter();
+    const channelId = makeChannelId("wa-model-command");
+    const replies: string[] = [];
+    const chatSends: string[] = [];
+    let handlerCalls = 0;
+
+    const providerId = createProvider("WhatsApp Model Provider");
+    addProviderModel(providerId, "model-one");
+    addProviderModel(providerId, "model-two");
+    const agentId = createAgent("WhatsApp Model Agent", providerId, "model-one");
+    config.set("default_agent_id", agentId);
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    const message = createFakeWhatsAppMessage(
+      {
+        body: "/model 2",
+      },
+      replies,
+      chatSends
+    );
+
+    await invokeWhatsAppMessage(adapter, channelId, message);
+
+    const updatedAgent = tables.agents.get(agentId) as { model?: string } | undefined;
+    expect(handlerCalls).toBe(0);
+    expect(updatedAgent?.model).toBe("model-two");
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toContain("model-two");
     expect(chatSends).toHaveLength(0);
   });
 });

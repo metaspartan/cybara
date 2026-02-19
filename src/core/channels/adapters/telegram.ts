@@ -17,18 +17,72 @@ import {
 } from "../chat-runtime";
 
 export const telegramSessions = new Map<string, string>();
+const telegramUserSessionHistory = new Map<string, string[]>();
+const telegramSessionLastActive = new Map<string, string>();
+const MAX_TRACKED_TELEGRAM_SESSIONS_PER_USER = 25;
+
+function resolveTelegramUserKey(chatId: number | string, fromUserId?: number | string): string {
+  return String(fromUserId ?? chatId);
+}
+
+function rememberTelegramUserSession(
+  userKey: string,
+  sessionId: string,
+  lastActive = new Date().toISOString()
+): void {
+  telegramSessionLastActive.set(sessionId, lastActive);
+  const current = telegramUserSessionHistory.get(userKey) || [];
+  const next = [sessionId, ...current.filter((existingId) => existingId !== sessionId)].slice(
+    0,
+    MAX_TRACKED_TELEGRAM_SESSIONS_PER_USER
+  );
+  telegramUserSessionHistory.set(userKey, next);
+}
+
+function setTelegramChatSession(
+  chatId: number | string,
+  sessionId: string,
+  userKey?: string,
+  lastActive?: string
+): void {
+  telegramSessions.set(String(chatId), sessionId);
+  if (userKey) {
+    rememberTelegramUserSession(userKey, sessionId, lastActive);
+  }
+}
 
 async function getUserSessions(
-  _userId: string
+  userId: string
 ): Promise<Array<{ id: string; messageCount: number; lastActive: string }>> {
   const allSessions = await listChannelRuntimeSessions();
-  return allSessions
-    .map((s) => ({
-      id: s.id,
-      messageCount: s.messageCount,
-      lastActive: s.createdAt,
-    }))
-    .slice(0, 10);
+  const runtimeById = new Map(allSessions.map((session) => [session.id, session]));
+  const trackedSessionIds = telegramUserSessionHistory.get(userId) || [];
+
+  const sessions = trackedSessionIds.map((sessionId) => {
+    const runtime = runtimeById.get(sessionId);
+    if (runtime) {
+      return {
+        id: runtime.id,
+        messageCount: runtime.messageCount,
+        lastActive: runtime.createdAt,
+      };
+    }
+
+    return {
+      id: sessionId,
+      messageCount: 0,
+      lastActive: telegramSessionLastActive.get(sessionId) || new Date(0).toISOString(),
+    };
+  });
+
+  sessions.sort((a, b) => new Date(b.lastActive).getTime() - new Date(a.lastActive).getTime());
+  return sessions.slice(0, 10);
+}
+
+export function resetTelegramSessionTrackingForTests(): void {
+  telegramSessions.clear();
+  telegramUserSessionHistory.clear();
+  telegramSessionLastActive.clear();
 }
 
 interface TelegramBotCommand {
@@ -288,6 +342,8 @@ async function handleTelegramCommand(
   chatId: number,
   fromUserId?: number
 ): Promise<string> {
+  const userKey = resolveTelegramUserKey(chatId, fromUserId);
+
   switch (command) {
     case "start":
       return `👋 *Welcome to Cybara!*
@@ -366,7 +422,7 @@ Use /new anytime to start a fresh conversation.`;
 
     case "new": {
       const newSessionId = crypto.randomUUID();
-      telegramSessions.set(chatId.toString(), newSessionId);
+      setTelegramChatSession(chatId, newSessionId, userKey);
       return `🆕 *New Session Started*
 
 Session ID: \`${newSessionId.slice(0, 8)}...\`
@@ -375,8 +431,10 @@ I'm ready for a fresh conversation. What would you like to talk about?`;
     }
 
     case "sessions": {
-      const userIdForSessions = fromUserId?.toString() || chatId.toString();
-      const userSessions = await getUserSessions(userIdForSessions);
+      const activeSessionId = telegramSessions.get(String(chatId)) || `telegram:${chatId}`;
+      rememberTelegramUserSession(userKey, activeSessionId);
+
+      const userSessions = await getUserSessions(userKey);
       if (userSessions.length === 0) {
         return `📋 *Your Sessions*
 
@@ -403,13 +461,15 @@ Use /new to start a fresh conversation.`;
       if (isNaN(sessionNum) || sessionNum < 1) {
         return `❌ Please provide a session number.\n\nExample: /switch 1`;
       }
-      const userIdForSwitch = fromUserId?.toString() || chatId.toString();
-      const sessions = await getUserSessions(userIdForSwitch);
+      const activeSessionId = telegramSessions.get(String(chatId)) || `telegram:${chatId}`;
+      rememberTelegramUserSession(userKey, activeSessionId);
+
+      const sessions = await getUserSessions(userKey);
       if (sessionNum > sessions.length) {
         return `❌ Session ${sessionNum} not found.\n\nUse /sessions to see your available sessions.`;
       }
       const targetSession = sessions[sessionNum - 1];
-      telegramSessions.set(chatId.toString(), targetSession.id);
+      setTelegramChatSession(chatId, targetSession.id, userKey);
       return `🔄 *Switched to Session ${sessionNum}*
 
 Session ID: \`${targetSession.id.slice(0, 8)}...\`
@@ -527,7 +587,7 @@ Use /help to see available commands.`;
           sessionId: telegramSessions.get(chatId.toString()) || `telegram:${chatId}`,
           createSessionId: () => crypto.randomUUID(),
           setSessionId: (sessionId: string) => {
-            telegramSessions.set(chatId.toString(), sessionId);
+            setTelegramChatSession(chatId, sessionId, userKey);
           },
         }
       );
@@ -1035,6 +1095,10 @@ export class TelegramBotManager implements ChannelAdapter {
       );
     } else {
       try {
+        const userKey = resolveTelegramUserKey(chatId, userId);
+        const activeSessionId = telegramSessions.get(String(chatId)) || `telegram:${chatId}`;
+        setTelegramChatSession(chatId, activeSessionId, userKey);
+
         const messageWithFile = hasFile ? `${content}\n\n[File: ${filePath}]` : content;
         response = await this.messageHandler(messageWithFile, chatId, userId, channelId, {
           hasFile,

@@ -1,6 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { SignalAdapter, signalSessions } from "../../src/core/channels/adapters/signal";
 import { securityManager } from "../../src/core/channels/security";
+import { config } from "../../src/core/config";
+import { tables } from "../../src/core/database";
 
 type SignalEnvelope = {
   sourceNumber?: string;
@@ -18,6 +20,47 @@ function makeChannelId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+const createdAgents: string[] = [];
+const createdProviders: string[] = [];
+
+function createProvider(name: string): string {
+  const providerId = makeChannelId("signal-provider");
+  tables.providers.create({
+    id: providerId,
+    provider: "openai",
+    name,
+    base_url: "https://api.openai.com/v1",
+    api_key: "test-key",
+    is_default: false,
+  });
+  createdProviders.push(providerId);
+  return providerId;
+}
+
+function createAgent(name: string, providerId: string, model: string): string {
+  const agentId = makeChannelId("signal-agent");
+  tables.agents.create({
+    id: agentId,
+    name,
+    type: "main",
+    model,
+    provider_id: providerId,
+    status: "stopped",
+    memory_enabled: false,
+  });
+  createdAgents.push(agentId);
+  return agentId;
+}
+
+function addProviderModel(providerId: string, modelId: string): void {
+  tables.providerModels.upsert({
+    id: makeChannelId("signal-provider-model"),
+    provider_id: providerId,
+    model_id: modelId,
+    model_name: modelId,
+  });
+}
+
 async function invokeSignalEnvelope(
   adapter: SignalAdapter,
   channelId: string,
@@ -29,6 +72,16 @@ async function invokeSignalEnvelope(
     }
   ).handleEnvelope(channelId, envelope);
 }
+
+afterEach(() => {
+  config.set("default_agent_id", "");
+  for (const agentId of createdAgents.splice(0)) {
+    tables.agents.delete(agentId);
+  }
+  for (const providerId of createdProviders.splice(0)) {
+    tables.providers.delete(providerId);
+  }
+});
 
 describe("Signal adapter mocked flows", () => {
   test("ignores envelopes without text message", async () => {
@@ -187,5 +240,43 @@ describe("Signal adapter mocked flows", () => {
     expect(handlerCalls).toBe(0);
     expect(sent).toHaveLength(1);
     expect(sent[0]).toContain("Available management commands");
+  });
+
+  test("routes /model command and updates default agent model", async () => {
+    const adapter = new SignalAdapter();
+    const channelId = makeChannelId("signal-model-command");
+    const sent: string[] = [];
+    let handlerCalls = 0;
+
+    const providerId = createProvider("Signal Model Provider");
+    addProviderModel(providerId, "model-one");
+    addProviderModel(providerId, "model-two");
+    const agentId = createAgent("Signal Model Agent", providerId, "model-one");
+    config.set("default_agent_id", agentId);
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+    (
+      adapter as unknown as {
+        sendSignalMessage: (_id: string, _recipient: string, message: string) => Promise<boolean>;
+      }
+    ).sendSignalMessage = async (_id, _recipient, message) => {
+      sent.push(message);
+      return true;
+    };
+
+    await invokeSignalEnvelope(adapter, channelId, {
+      sourceNumber: "+15550006666",
+      dataMessage: { message: "/model 2" },
+    });
+
+    const updatedAgent = tables.agents.get(agentId) as { model?: string } | undefined;
+    expect(handlerCalls).toBe(0);
+    expect(updatedAgent?.model).toBe("model-two");
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("model-two");
   });
 });

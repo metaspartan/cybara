@@ -1,7 +1,15 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import db, { tables } from "../../src/core/database";
 import { securityManager } from "../../src/core/channels/security";
-import { processTelegramWebhook, telegramBot } from "../../src/core/channels/adapters/telegram";
+import {
+  processTelegramWebhook,
+  resetTelegramSessionTrackingForTests,
+  telegramBot,
+} from "../../src/core/channels/adapters/telegram";
+import {
+  clearChannelSubagentSpawnHandler,
+  setChannelSubagentSpawnHandler,
+} from "../../src/core/channels/commands";
 import { configureChannelChatRuntime, resetChannelChatRuntime } from "../../src/core/channels/chat-runtime";
 import { config } from "../../src/core/config";
 
@@ -73,6 +81,9 @@ const memoryMockState = {
   searchMethod: "keyword",
 };
 
+let runtimeSessionsState: Array<{ id: string; messageCount: number; createdAt: string }> = [];
+let runtimeInjectedMessages: Array<{ sessionId: string; content: string }> = [];
+
 mock.module("../../src/core/tools/handlers/memory", () => ({
   handleMemoryContext: async () => ({
     context: memoryMockState.context,
@@ -126,6 +137,8 @@ describe("Telegram webhook mocked flows", () => {
       },
     ];
     memoryMockState.searchMethod = "keyword";
+    runtimeSessionsState = [];
+    runtimeInjectedMessages = [];
 
     tables.channels.create({
       id: channelId,
@@ -136,6 +149,11 @@ describe("Telegram webhook mocked flows", () => {
     });
 
     configureChannelChatRuntime({
+      listSessions: async () => runtimeSessionsState,
+      sendToSession: (sessionId, message) => {
+        runtimeInjectedMessages.push({ sessionId, content: message.content });
+        return true;
+      },
       memoryContext: async () => ({
         context: memoryMockState.context,
         lines: memoryMockState.context.split("\n").length,
@@ -177,6 +195,8 @@ describe("Telegram webhook mocked flows", () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
     tables.channels.delete(channelId);
+    clearChannelSubagentSpawnHandler();
+    resetTelegramSessionTrackingForTests();
     resetChannelChatRuntime();
   });
 
@@ -325,6 +345,43 @@ describe("Telegram webhook mocked flows", () => {
     }
   });
 
+  test("routes /subagents spawn command through webhook command handling", async () => {
+    const spawnArgs: Array<Record<string, unknown>> = [];
+    let handlerCalls = 0;
+
+    setChannelSubagentSpawnHandler(async (args) => {
+      spawnArgs.push(args);
+      return {
+        status: "accepted",
+        childSessionKey: "agent:default:subagent:telegram",
+        runId: "run-telegram-subagents",
+        task: String(args.task || ""),
+      };
+    });
+
+    telegramBot.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should not run";
+    });
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+
+    const ok = await processTelegramWebhook(
+      channelId,
+      makeTelegramUpdate("/subagents spawn summarize deployment status")
+    );
+
+    expect(ok).toBe(true);
+    expect(handlerCalls).toBe(0);
+    expect(spawnArgs).toHaveLength(1);
+    expect(spawnArgs[0]?.task).toBe("summarize deployment status");
+
+    const sendMessageCall = fetchCalls.find((call) => call.url.includes("/sendMessage"));
+    expect(sendMessageCall).toBeDefined();
+    const payload = sendMessageCall?.body as { text?: string };
+    expect(payload.text).toContain("Subagent spawned successfully.");
+    expect(payload.text).toContain("run-telegram-subagents");
+  });
+
   test("handles /memory command for summary and search without invoking chat handler", async () => {
     let handlerCalls = 0;
     telegramBot.setMessageHandler(async () => {
@@ -368,6 +425,34 @@ describe("Telegram webhook mocked flows", () => {
     expect(searchPayload.text).toContain("2026-02-17.md");
   });
 
+  test("lists only sessions tracked for this telegram user", async () => {
+    telegramBot.setMessageHandler(async () => "should not run");
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+
+    runtimeSessionsState = [
+      {
+        id: "telegram:880011",
+        messageCount: 5,
+        createdAt: "2026-02-18T10:00:00.000Z",
+      },
+      {
+        id: "foreign-session-12345678",
+        messageCount: 9,
+        createdAt: "2026-02-18T11:00:00.000Z",
+      },
+    ];
+
+    const ok = await processTelegramWebhook(channelId, makeTelegramUpdate("/sessions"));
+    expect(ok).toBe(true);
+
+    const sendMessageCall = fetchCalls.find((call) => call.url.includes("/sendMessage"));
+    expect(sendMessageCall).toBeDefined();
+    const payload = sendMessageCall?.body as { text?: string };
+    expect(payload.text).toContain("Your Sessions");
+    expect(payload.text).toContain("telegram");
+    expect(payload.text).not.toContain("foreign-session");
+  });
+
   test("processes reaction updates and logs reaction events without invoking chat handler", async () => {
     let handlerCalls = 0;
     telegramBot.setMessageHandler(async () => {
@@ -397,5 +482,24 @@ describe("Telegram webhook mocked flows", () => {
     const metadata = reactionLog?.metadata ? JSON.parse(reactionLog.metadata) : {};
     expect(metadata.event).toBe("reaction");
     expect(metadata.messageId).toBe(101);
+    expect(runtimeInjectedMessages).toHaveLength(1);
+    expect(runtimeInjectedMessages[0].sessionId).toBe("telegram:880011");
+    expect(runtimeInjectedMessages[0].content).toContain("Telegram reaction by alice");
+  });
+
+  test("does not inject runtime reactions when reaction notifications are off", async () => {
+    telegramBot.setMessageHandler(async () => "should not run");
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    tables.channels.update(channelId, {
+      config: {
+        bot_token: "test-bot-token",
+        reaction_notifications: "off",
+      },
+    });
+
+    const ok = await processTelegramWebhook(channelId, makeTelegramReactionUpdate());
+
+    expect(ok).toBe(true);
+    expect(runtimeInjectedMessages).toHaveLength(0);
   });
 });

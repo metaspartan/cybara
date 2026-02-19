@@ -1,6 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { IMessageAdapter, imessageSessions } from "../../src/core/channels/adapters/imessage";
 import { securityManager } from "../../src/core/channels/security";
+import { config } from "../../src/core/config";
+import { tables } from "../../src/core/database";
 
 type BlueBubblesMessage = {
   guid: string;
@@ -24,6 +26,47 @@ function makeChannelId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+const createdAgents: string[] = [];
+const createdProviders: string[] = [];
+
+function createProvider(name: string): string {
+  const providerId = makeChannelId("imsg-provider");
+  tables.providers.create({
+    id: providerId,
+    provider: "openai",
+    name,
+    base_url: "https://api.openai.com/v1",
+    api_key: "test-key",
+    is_default: false,
+  });
+  createdProviders.push(providerId);
+  return providerId;
+}
+
+function createAgent(name: string, providerId: string, model: string): string {
+  const agentId = makeChannelId("imsg-agent");
+  tables.agents.create({
+    id: agentId,
+    name,
+    type: "main",
+    model,
+    provider_id: providerId,
+    status: "stopped",
+    memory_enabled: false,
+  });
+  createdAgents.push(agentId);
+  return agentId;
+}
+
+function addProviderModel(providerId: string, modelId: string): void {
+  tables.providerModels.upsert({
+    id: makeChannelId("imsg-provider-model"),
+    provider_id: providerId,
+    model_id: modelId,
+    model_name: modelId,
+  });
+}
+
 async function invokeIMessage(
   adapter: IMessageAdapter,
   channelId: string,
@@ -35,6 +78,16 @@ async function invokeIMessage(
     }
   ).handleMessage(channelId, message);
 }
+
+afterEach(() => {
+  config.set("default_agent_id", "");
+  for (const agentId of createdAgents.splice(0)) {
+    tables.agents.delete(agentId);
+  }
+  for (const providerId of createdProviders.splice(0)) {
+    tables.providers.delete(providerId);
+  }
+});
 
 function makeMessage(overrides: Partial<BlueBubblesMessage>): BlueBubblesMessage {
   return {
@@ -298,5 +351,51 @@ describe("iMessage adapter mocked flows", () => {
     expect(handlerCalls).toBe(0);
     expect(sent).toHaveLength(1);
     expect(sent[0]).toContain("Available management commands");
+  });
+
+  test("routes /model command and updates default agent model", async () => {
+    const adapter = new IMessageAdapter();
+    const channelId = makeChannelId("imsg-model-command");
+    const sent: string[] = [];
+    let handlerCalls = 0;
+
+    const providerId = createProvider("iMessage Model Provider");
+    addProviderModel(providerId, "model-one");
+    addProviderModel(providerId, "model-two");
+    const agentId = createAgent("iMessage Model Agent", providerId, "model-one");
+    config.set("default_agent_id", agentId);
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+    (
+      adapter as unknown as {
+        sendBlueBubblesMessage: (
+          _id: string,
+          _chatGuid: string,
+          message: string
+        ) => Promise<boolean>;
+      }
+    ).sendBlueBubblesMessage = async (_id, _chatGuid, message) => {
+      sent.push(message);
+      return true;
+    };
+
+    await invokeIMessage(
+      adapter,
+      channelId,
+      makeMessage({
+        text: "/model 2",
+        handle: { address: "allowed@icloud.com", service: "iMessage" },
+      })
+    );
+
+    const updatedAgent = tables.agents.get(agentId) as { model?: string } | undefined;
+    expect(handlerCalls).toBe(0);
+    expect(updatedAgent?.model).toBe("model-two");
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("model-two");
   });
 });

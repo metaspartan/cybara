@@ -87,6 +87,14 @@ export const channels = {
         options: ["pairing", "allowlist", "open", "disabled"],
         default: "pairing",
       },
+      {
+        name: "reaction_notifications",
+        label: "Reaction Notifications",
+        type: "select",
+        required: false,
+        options: ["off", "all", "dm", "channel"],
+        default: "off",
+      },
     ],
   },
   signal: {
