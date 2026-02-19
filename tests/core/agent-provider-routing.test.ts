@@ -68,6 +68,7 @@ describe("Agent provider API-family routing", () => {
     expect(requestHeaders.get("x-api-key")).toBe("synthetic-test-key");
     expect(requestBody.system).toBe("SYSTEM_FROM_AGENT");
     expect(requestBody.messages).toEqual([{ role: "user", content: "hello synthetic" }]);
+    expect(requestBody.max_tokens).toBe(65536);
   });
 
   test("adds anthropic 1M beta header when agent model params enable context1m", async () => {
@@ -181,6 +182,8 @@ describe("Agent provider API-family routing", () => {
     const messages = (requestBody.messages as Array<{ role: string; content: string }>) || [];
     expect(messages[0]).toEqual({ role: "system", content: "OPENAI_SYSTEM" });
     expect(messages[1]).toEqual({ role: "user", content: "hello openai" });
+    expect("max_tokens" in requestBody).toBe(false);
+    expect(requestBody.max_completion_tokens).toBe(100000);
   });
 
   test("applies static provider headers for openai-compatible requests", async () => {

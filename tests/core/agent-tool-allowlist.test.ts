@@ -233,6 +233,11 @@ describe("Agent tool allowlist guardrails", () => {
       memory_enabled: false,
     });
     createdAgentIds.push(agent.id);
+    const expectedTokenLimit =
+      providerManager
+        .getModels(provider.id)
+        .find((entry) => entry.model_id === "openai/gpt-5.2")
+        ?.max_tokens || 100000;
 
     const requestBodies: Array<Record<string, unknown>> = [];
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -283,10 +288,10 @@ describe("Agent tool allowlist guardrails", () => {
 
     expect(result.content).toBe("705");
     expect(requestBodies.length).toBe(2);
-    expect(requestBodies[0].max_tokens).toBe(4096);
+    expect(requestBodies[0].max_tokens).toBe(expectedTokenLimit);
     expect("max_completion_tokens" in requestBodies[0]).toBe(false);
     expect("max_tokens" in requestBodies[1]).toBe(false);
-    expect(requestBodies[1].max_completion_tokens).toBe(4096);
+    expect(requestBodies[1].max_completion_tokens).toBe(expectedTokenLimit);
   });
 
   test("uses max_completion_tokens first for openai-responses providers", async () => {
@@ -306,6 +311,11 @@ describe("Agent tool allowlist guardrails", () => {
       memory_enabled: false,
     });
     createdAgentIds.push(agent.id);
+    const expectedTokenLimit =
+      providerManager
+        .getModels(provider.id)
+        .find((entry) => entry.model_id === "gpt-5.2")
+        ?.max_tokens || 100000;
 
     const requestBodies: Array<Record<string, unknown>> = [];
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -342,6 +352,6 @@ describe("Agent tool allowlist guardrails", () => {
     expect(result.content).toBe("13");
     expect(requestBodies.length).toBe(1);
     expect("max_tokens" in requestBodies[0]).toBe(false);
-    expect(requestBodies[0].max_completion_tokens).toBe(4096);
+    expect(requestBodies[0].max_completion_tokens).toBe(expectedTokenLimit);
   });
 });

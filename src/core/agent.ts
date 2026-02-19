@@ -91,6 +91,7 @@ interface AnthropicResponse {
 }
 
 const ANTHROPIC_CONTEXT_1M_BETA = "context-1m-2025-08-07";
+const DEFAULT_MODEL_MAX_OUTPUT_TOKENS = 8192;
 
 function trackTokenUsage(
   model: string,
@@ -1067,6 +1068,7 @@ class AgentManager {
     }
 
     const providerInfo = provider as {
+      id?: string;
       provider: string;
       base_url?: string;
       api_key?: string;
@@ -1090,6 +1092,11 @@ class AgentManager {
     const customHeaders = (providerInfo as { headers?: Record<string, string> }).headers || {};
     const mergedHeaders = { ...providerHeaders, ...customHeaders };
     const modelParams = this.resolveModelParams(toolContext);
+    const modelMaxOutputTokens = this.resolveModelMaxOutputTokens(
+      providerConfig,
+      providerInfo.id,
+      modelId
+    );
 
     if (apiFamily === "anthropic-messages") {
       return this.callAnthropicAPI(
@@ -1099,6 +1106,7 @@ class AgentManager {
         messages,
         tools,
         providerConfig,
+        modelMaxOutputTokens,
         toolContext,
         modelParams
       );
@@ -1114,7 +1122,10 @@ class AgentManager {
         mergedHeaders,
         providerConfig,
         toolContext,
-        { preferMaxCompletionTokens: apiFamily === "openai-responses" }
+        {
+          preferMaxCompletionTokens: apiFamily === "openai-responses",
+          maxOutputTokens: modelMaxOutputTokens,
+        }
       );
     }
 
@@ -1132,8 +1143,63 @@ class AgentManager {
       tools,
       mergedHeaders,
       providerConfig,
-      toolContext
+      toolContext,
+      { maxOutputTokens: modelMaxOutputTokens }
     );
+  }
+
+  private resolveModelMaxOutputTokens(
+    providerConfig: string,
+    providerId: string | undefined,
+    modelId: string
+  ): number {
+    const normalizePositiveInt = (value: unknown): number | undefined => {
+      if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return undefined;
+      return Math.max(1, Math.floor(value));
+    };
+    const clampToContextWindow = (
+      maxTokens: number | undefined,
+      contextWindow: number | undefined
+    ) =>
+      contextWindow
+        ? Math.min(maxTokens ?? DEFAULT_MODEL_MAX_OUTPUT_TOKENS, contextWindow)
+        : maxTokens;
+
+    const normalizedModelId = modelId.trim().toLowerCase();
+    if (providerId) {
+      const providerModels = providerManager.getModels(providerId) as Array<{
+        model_id?: string | null;
+        model_name?: string | null;
+        context_window?: number | null;
+        max_tokens?: number | null;
+      }>;
+      const providerMatch = providerModels.find((entry) => {
+        const candidateIds = [entry.model_id, entry.model_name].filter(
+          (value): value is string => typeof value === "string" && value.trim().length > 0
+        );
+        return candidateIds.some((value) => value.trim().toLowerCase() === normalizedModelId);
+      });
+      if (providerMatch) {
+        const outputLimit = normalizePositiveInt(providerMatch.max_tokens);
+        const contextLimit = normalizePositiveInt(providerMatch.context_window);
+        const resolved = clampToContextWindow(outputLimit, contextLimit);
+        if (resolved) return resolved;
+      }
+    }
+
+    const staticProvider = providerCatalog[providerConfig as ProviderType];
+    const staticModel = staticProvider?.models?.find(
+      (entry: { id?: string }) =>
+        typeof entry.id === "string" && entry.id.trim().toLowerCase() === normalizedModelId
+    ) as { maxTokens?: number; context?: number } | undefined;
+    if (staticModel) {
+      const outputLimit = normalizePositiveInt(staticModel.maxTokens);
+      const contextLimit = normalizePositiveInt(staticModel.context);
+      const resolved = clampToContextWindow(outputLimit, contextLimit);
+      if (resolved) return resolved;
+    }
+
+    return DEFAULT_MODEL_MAX_OUTPUT_TOKENS;
   }
 
   private shouldRetryWithMaxCompletionTokens(status: number, errorText: string): boolean {
@@ -1155,7 +1221,7 @@ class AgentManager {
         ? nextBody.max_tokens
         : typeof nextBody.max_completion_tokens === "number"
           ? nextBody.max_completion_tokens
-          : 4096;
+          : DEFAULT_MODEL_MAX_OUTPUT_TOKENS;
 
     delete nextBody.max_tokens;
     nextBody.max_completion_tokens = tokenLimit;
@@ -1164,13 +1230,18 @@ class AgentManager {
 
   private applyOpenAITokenLimit(
     requestBody: Record<string, unknown>,
-    preferMaxCompletionTokens: boolean
+    preferMaxCompletionTokens: boolean,
+    maxOutputTokens: number
   ): void {
+    const tokenLimit =
+      Number.isFinite(maxOutputTokens) && maxOutputTokens > 0
+        ? Math.floor(maxOutputTokens)
+        : DEFAULT_MODEL_MAX_OUTPUT_TOKENS;
     if (preferMaxCompletionTokens) {
-      requestBody.max_completion_tokens = 4096;
+      requestBody.max_completion_tokens = tokenLimit;
       return;
     }
-    requestBody.max_tokens = 4096;
+    requestBody.max_tokens = tokenLimit;
   }
 
   private async postOpenAIChatCompletions(
@@ -1215,13 +1286,17 @@ class AgentManager {
     customHeaders?: Record<string, string>,
     providerConfig?: string,
     toolContext?: ToolContext,
-    options?: { preferMaxCompletionTokens?: boolean }
+    options?: { preferMaxCompletionTokens?: boolean; maxOutputTokens?: number }
   ): Promise<{
     content: string;
     thinking?: string;
     tool_calls?: Array<{ name: string; result: unknown }>;
   }> {
     const preferMaxCompletionTokens = options?.preferMaxCompletionTokens === true;
+    const maxOutputTokens =
+      typeof options?.maxOutputTokens === "number" && Number.isFinite(options.maxOutputTokens)
+        ? options.maxOutputTokens
+        : DEFAULT_MODEL_MAX_OUTPUT_TOKENS;
     const requestBody: Record<string, unknown> = {
       model: modelId,
       messages: messages.map((m) => ({
@@ -1229,7 +1304,7 @@ class AgentManager {
         content: m.content,
       })),
     };
-    this.applyOpenAITokenLimit(requestBody, preferMaxCompletionTokens);
+    this.applyOpenAITokenLimit(requestBody, preferMaxCompletionTokens, maxOutputTokens);
 
     if (tools && Array.isArray(tools) && tools.length > 0) {
       requestBody.tools = tools.map((t) => ({
@@ -1342,7 +1417,7 @@ class AgentManager {
         model: modelId,
         messages: currentMessages,
       };
-      this.applyOpenAITokenLimit(loopRequestBody, preferMaxCompletionTokens);
+      this.applyOpenAITokenLimit(loopRequestBody, preferMaxCompletionTokens, maxOutputTokens);
 
       if (tools && Array.isArray(tools) && tools.length > 0) {
         loopRequestBody.tools = tools.map((t) => ({
@@ -1390,6 +1465,7 @@ class AgentManager {
     messages: AgentMessage[],
     tools: ToolDefinition[],
     providerConfig: string,
+    maxOutputTokens: number,
     toolContext?: ToolContext,
     modelParams?: Record<string, unknown>
   ): Promise<{
@@ -1408,7 +1484,7 @@ class AgentManager {
     const requestBody: Record<string, unknown> = {
       model: modelId,
       messages: chatMessages,
-      max_tokens: 4096,
+      max_tokens: maxOutputTokens,
     };
 
     if (systemMessage) {
@@ -1531,7 +1607,7 @@ class AgentManager {
       const loopRequestBody: Record<string, unknown> = {
         model: modelId,
         messages: currentMessages,
-        max_tokens: 4096,
+        max_tokens: maxOutputTokens,
       };
 
       if (systemMessage) {
@@ -1584,6 +1660,7 @@ class AgentManager {
     tools: ToolDefinition[],
     toolContext?: ToolContext
   ): Promise<{ content: string; tool_calls?: Array<{ name: string; result: unknown }> }> {
+    const maxOutputTokens = this.resolveModelMaxOutputTokens("openai", undefined, modelId);
     const systemMessage = messages.find((m) => m.role === "system");
     const chatMessages = messages
       .filter((m) => m.role !== "system")
@@ -1602,7 +1679,7 @@ class AgentManager {
     const requestBody: Record<string, unknown> = {
       model: modelId,
       messages: chatMessages,
-      max_tokens: 4096,
+      max_tokens: maxOutputTokens,
     };
 
     if (tools && Array.isArray(tools) && tools.length > 0) {
@@ -1701,7 +1778,7 @@ class AgentManager {
       const loopRequestBody: Record<string, unknown> = {
         model: modelId,
         messages: currentMessages,
-        max_tokens: 4096,
+        max_tokens: maxOutputTokens,
       };
 
       if (tools && Array.isArray(tools) && tools.length > 0) {
