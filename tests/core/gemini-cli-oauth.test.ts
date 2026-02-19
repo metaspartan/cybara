@@ -8,6 +8,7 @@ import {
 } from "../../src/core/gemini-cli-oauth";
 
 const PATH_KEY = "PATH";
+const BIN_HINTS_KEY = "CYBARA_GEMINI_CLI_BIN_HINTS";
 const CLIENT_ID_ENV_KEYS = [
   "CYBARA_GEMINI_OAUTH_CLIENT_ID",
   "OPENCLAW_GEMINI_OAUTH_CLIENT_ID",
@@ -20,6 +21,7 @@ const CLIENT_SECRET_ENV_KEYS = [
 ] as const;
 
 const originalPath = process.env[PATH_KEY];
+const originalBinHints = process.env[BIN_HINTS_KEY];
 const originalClientIdEnv = new Map<string, string | undefined>();
 const originalClientSecretEnv = new Map<string, string | undefined>();
 
@@ -46,6 +48,8 @@ afterEach(() => {
 
   if (originalPath === undefined) delete process.env[PATH_KEY];
   else process.env[PATH_KEY] = originalPath;
+  if (originalBinHints === undefined) delete process.env[BIN_HINTS_KEY];
+  else process.env[BIN_HINTS_KEY] = originalBinHints;
 
   clearGeminiCliOAuthClientCacheForTests();
 
@@ -124,6 +128,57 @@ describe("Gemini CLI OAuth client config resolution", () => {
     expect(config).toEqual({
       clientId: "999999999-xyz.apps.googleusercontent.com",
       clientSecret: "GOCSPX-binary-secret",
+      source: "gemini-cli",
+    });
+  });
+
+  test("discovers Gemini CLI from CYBARA_GEMINI_CLI_BIN_HINTS when PATH is restricted", () => {
+    const root = mkdtempSync(join(tmpdir(), "cybara-gemini-cli-oauth-hint-"));
+    tempDirs.push(root);
+
+    const binDir = join(root, "bin");
+    const cliDistDir = join(root, "lib", "node_modules", "@google", "gemini-cli", "dist");
+    const oauthDir = join(
+      root,
+      "lib",
+      "node_modules",
+      "@google",
+      "gemini-cli",
+      "node_modules",
+      "@google",
+      "gemini-cli-core",
+      "dist",
+      "src",
+      "code_assist"
+    );
+
+    mkdirSync(binDir, { recursive: true });
+    mkdirSync(cliDistDir, { recursive: true });
+    mkdirSync(oauthDir, { recursive: true });
+
+    const realGeminiPath = join(cliDistDir, "index.js");
+    writeFileSync(realGeminiPath, "console.log('gemini');\n", "utf8");
+    const oauth2Path = join(oauthDir, "oauth2.js");
+    writeFileSync(
+      oauth2Path,
+      [
+        'const clientId = "111111111-abc.apps.googleusercontent.com";',
+        'const clientSecret = "GOCSPX-hint-secret";',
+      ].join("\n"),
+      "utf8"
+    );
+
+    const shimPath = join(binDir, "gemini");
+    symlinkSync(realGeminiPath, shimPath);
+    chmodSync(shimPath, 0o755);
+
+    process.env[PATH_KEY] = join(tmpdir(), `cybara-empty-path-${Date.now()}`);
+    process.env[BIN_HINTS_KEY] = binDir;
+
+    const config = resolveGeminiCliOAuthClientConfig();
+    expect(config).toEqual({
+      clientId: "111111111-abc.apps.googleusercontent.com",
+      clientSecret: "GOCSPX-hint-secret",
       source: "gemini-cli",
     });
   });

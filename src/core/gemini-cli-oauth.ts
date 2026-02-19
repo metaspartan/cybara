@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, realpathSync } from "fs";
 import { delimiter, dirname, join } from "path";
+import { homedir } from "os";
 
 const CLIENT_ID_ENV_KEYS = [
   "CYBARA_GEMINI_OAUTH_CLIENT_ID",
@@ -33,7 +34,19 @@ function readFirstEnvValue(keys: readonly string[]): string | undefined {
 
 function findInPath(name: string): string | undefined {
   const pathValue = process.env.PATH || "";
-  const dirs = pathValue.split(delimiter).filter((entry) => entry.length > 0);
+  const pathDirs = pathValue.split(delimiter).filter((entry) => entry.length > 0);
+  const hintDirs = (process.env.CYBARA_GEMINI_CLI_BIN_HINTS || "")
+    .split(delimiter)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  const home = homedir();
+  const commonDirs = [
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    join(home, ".local", "bin"),
+    join(home, "bin"),
+  ];
+  const dirs = Array.from(new Set([...pathDirs, ...hintDirs, ...commonDirs]));
   const extensions = process.platform === "win32" ? [".cmd", ".bat", ".exe", ""] : [""];
 
   for (const dir of dirs) {
@@ -103,35 +116,36 @@ function resolveGeminiCliOAuth2ScriptPath(geminiExecutablePath: string): string 
   const resolvedExecutablePath = realpathSync(geminiExecutablePath);
   const geminiCliDir = dirname(dirname(resolvedExecutablePath));
 
-  const knownPaths = [
-    join(
-      geminiCliDir,
-      "node_modules",
-      "@google",
-      "gemini-cli-core",
-      "dist",
-      "src",
-      "code_assist",
-      "oauth2.js"
-    ),
-    join(
-      geminiCliDir,
-      "node_modules",
-      "@google",
-      "gemini-cli-core",
-      "dist",
-      "code_assist",
-      "oauth2.js"
-    ),
-  ];
+  const roots = [geminiCliDir, dirname(geminiCliDir), dirname(dirname(geminiCliDir))];
 
-  for (const candidate of knownPaths) {
-    if (existsSync(candidate)) {
-      return candidate;
+  for (const root of roots) {
+    const knownPaths = [
+      join(
+        root,
+        "node_modules",
+        "@google",
+        "gemini-cli-core",
+        "dist",
+        "src",
+        "code_assist",
+        "oauth2.js"
+      ),
+      join(root, "node_modules", "@google", "gemini-cli-core", "dist", "code_assist", "oauth2.js"),
+    ];
+
+    for (const candidate of knownPaths) {
+      if (existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
+    const discovered = findFileByName(root, "oauth2.js", 12);
+    if (discovered) {
+      return discovered;
     }
   }
 
-  return findFileByName(geminiCliDir, "oauth2.js", 8);
+  return undefined;
 }
 
 function resolveGeminiCliOAuthFromBinary(): GeminiCliOAuthClientConfig | null {

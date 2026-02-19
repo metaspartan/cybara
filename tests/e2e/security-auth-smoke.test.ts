@@ -282,13 +282,13 @@ describe("Security auth e2e", () => {
 
       let oauthLimited: { status: number; data: unknown; headers: Headers } | null = null;
       for (let i = 0; i < 15; i++) {
-        const res = await fetch(`${baseUrl}/api/providers/oauth/callback-status`, {
+        const res = await fetch(`${baseUrl}/api/providers/oauth/start`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ state: `missing-state-${Date.now()}-${i}` }),
+          body: JSON.stringify({ providerType: `missing-provider-${Date.now()}-${i}` }),
         });
         const data = await res.json();
         const wrapped = { status: res.status, data, headers: res.headers };
@@ -296,7 +296,7 @@ describe("Security auth e2e", () => {
           oauthLimited = wrapped;
           break;
         }
-        expect(wrapped.status).toBe(200);
+        expect(wrapped.status).toBe(400);
       }
 
       expect(oauthLimited).toBeDefined();

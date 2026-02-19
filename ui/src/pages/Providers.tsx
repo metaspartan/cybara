@@ -414,9 +414,11 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
       setOauthState('polling');
 
       const oauthStateId = data.state;
+      let pollDelayMs = 3000;
       const expiresAt = Date.now() + 600_000; // 10 min timeout
       while (Date.now() < expiresAt && !abortRef.current) {
-        await new Promise(r => setTimeout(r, 3000));
+        await new Promise(r => setTimeout(r, pollDelayMs));
+        pollDelayMs = 3000;
         if (abortRef.current) return;
         try {
           const pollRes = await apiFetch('/api/providers/oauth/callback-status', {
@@ -425,6 +427,17 @@ function ProviderModal({ isOpen, onClose, onSubmit, title, provider, availablePr
             body: JSON.stringify({ state: oauthStateId }),
           });
           const pollData = await pollRes.json();
+
+          if (pollRes.status === 429) {
+            const retryAfterHeader = pollRes.headers.get('retry-after');
+            const retryAfterSec = retryAfterHeader ? Number.parseInt(retryAfterHeader, 10) : 3;
+            if (Number.isFinite(retryAfterSec) && retryAfterSec > 0) {
+              pollDelayMs = Math.max(3000, retryAfterSec * 1000);
+            } else {
+              pollDelayMs = 10000;
+            }
+            continue;
+          }
 
           if (pollData.status === 'success' && pollData.access_token) {
             setOauthToken(pollData.access_token);

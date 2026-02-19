@@ -380,6 +380,10 @@ function getRateLimitType(method: string, path: string): keyof typeof config.rat
     return "pairing";
   }
 
+  if (path === "/api/providers/oauth/callback-status" || path === "/api/providers/oauth/poll") {
+    return "global";
+  }
+
   if (path.startsWith("/api/providers/oauth/")) {
     return "auth";
   }

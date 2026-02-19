@@ -1848,14 +1848,24 @@ const routes: Record<string, RouteHandler> = {
 
     if (resolvedProviderType === "google-gemini-cli") {
       const clientConfig = resolveGeminiCliOAuthClientConfig();
-      if (!clientConfig?.clientId) {
-        throw new Error(
-          "Provider google-gemini-cli requires Gemini CLI OAuth credentials. Install Gemini CLI or set CYBARA_GEMINI_OAUTH_CLIENT_ID."
-        );
-      }
-      oauthConfig.clientId = clientConfig.clientId;
-      if (clientConfig.clientSecret && !oauthConfig.clientSecret) {
-        oauthConfig.clientSecret = clientConfig.clientSecret;
+      if (clientConfig?.clientId) {
+        oauthConfig.clientId = clientConfig.clientId;
+        if (clientConfig.clientSecret && !oauthConfig.clientSecret) {
+          oauthConfig.clientSecret = clientConfig.clientSecret;
+        }
+      } else {
+        const antigravityConfig = (providers.antigravity as Record<string, unknown>)
+          ?.oauthConfig as { clientId?: string; clientSecret?: string } | undefined;
+        if (antigravityConfig?.clientId) {
+          oauthConfig.clientId = antigravityConfig.clientId;
+          if (antigravityConfig.clientSecret && !oauthConfig.clientSecret) {
+            oauthConfig.clientSecret = antigravityConfig.clientSecret;
+          }
+        } else {
+          throw new Error(
+            "Validation error: Provider google-gemini-cli requires Gemini CLI OAuth credentials. Install Gemini CLI or set CYBARA_GEMINI_OAUTH_CLIENT_ID."
+          );
+        }
       }
     }
 
