@@ -156,6 +156,14 @@ export const providers = {
     authType: "api_key",
     models: [
       {
+        id: "gemini-3.1-pro-preview",
+        name: "Gemini 3.1 Pro",
+        context: 1048576,
+        maxTokens: 65536,
+        reasoning: false,
+        input: ["text", "image", "audio", "video"],
+      },
+      {
         id: "gemini-3-pro-preview",
         name: "Gemini 3 Pro",
         context: 1048576,
