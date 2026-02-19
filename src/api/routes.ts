@@ -533,6 +533,43 @@ function normalizeOptionalString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function formatChannelTestError(channelType: string, error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  const normalized = raw.toLowerCase();
+
+  if (channelType === "discord") {
+    if (
+      normalized.includes("invalid token") ||
+      normalized.includes("tokeninvalid") ||
+      normalized.includes("unauthorized")
+    ) {
+      return "Discord login failed: invalid bot token. Use the Bot token from Discord Developer Portal (without a 'Bot ' prefix).";
+    }
+
+    if (
+      normalized.includes("disallowed intents") ||
+      normalized.includes("used disallowed intents") ||
+      normalized.includes("privileged intent")
+    ) {
+      return "Discord login failed: required gateway intents are disabled. Enable Message Content Intent in Discord Developer Portal > Bot.";
+    }
+
+    if (
+      normalized.includes("enotfound") ||
+      normalized.includes("eai_again") ||
+      normalized.includes("fetch failed") ||
+      normalized.includes("network") ||
+      normalized.includes("timed out")
+    ) {
+      return `Discord network error: ${raw}`;
+    }
+
+    return `Discord test failed: ${raw}`;
+  }
+
+  return raw;
+}
+
 function validateProviderCredentialShape(
   providerType: string,
   credentials: { apiKey?: string; accessToken?: string }
@@ -2272,14 +2309,42 @@ const routes: Record<string, RouteHandler> = {
     }
 
     if (!adapter.isRunning(channel.id) && channel.enabled) {
-      await adapter.start(channel.id, config as Record<string, unknown>);
+      try {
+        await adapter.start(channel.id, config as Record<string, unknown>);
+      } catch (error) {
+        return {
+          success: false,
+          error: formatChannelTestError(channel.type, error),
+          running: adapter.isRunning(channel.id),
+          type: channel.type,
+          enabled: channel.enabled,
+        };
+      }
+    }
+
+    const running = adapter.isRunning(channel.id);
+
+    if (!channel.enabled && !running) {
+      return {
+        success: false,
+        running,
+        type: channel.type,
+        enabled: channel.enabled,
+        message: "Channel is disabled. Enable it to run a live connection test.",
+      };
     }
 
     return {
-      success: adapter.isRunning(channel.id),
-      running: adapter.isRunning(channel.id),
+      success: running,
+      running,
       type: channel.type,
       enabled: channel.enabled,
+      ...(channel.type === "discord" && running
+        ? {
+            message:
+              "Discord connection looks good. Invite the bot to your server before expecting messages in guild channels.",
+          }
+        : {}),
     };
   },
   "DELETE /api/channels/:id": (_body, params) => ({ success: channelManager.delete(params!.id) }),

@@ -68,9 +68,12 @@ export const channelsApi = {
     fetchApi<Channel>(`/channels/${id}`, { method: "PUT", body: JSON.stringify(channel) }),
   delete: (id: string) => fetchApi<void>(`/channels/${id}`, { method: "DELETE" }),
   test: (id: string) =>
-    fetchApi<{ success: boolean; running?: boolean; error?: string }>(`/channels/${id}/test`, {
+    fetchApi<{ success: boolean; running?: boolean; error?: string; message?: string }>(
+      `/channels/${id}/test`,
+      {
       method: "POST",
-    }),
+      }
+    ),
   getPairings: (id: string) =>
     fetchApi<{
       pairings: Array<{

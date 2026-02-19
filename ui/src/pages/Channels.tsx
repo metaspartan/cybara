@@ -197,9 +197,15 @@ export function Channels() {
     try {
       const result = await channelsApi.test(channel.id);
       if (result.success && result.data?.success) {
-        addToast("success", `${channel.name} connection test successful`);
+        addToast("success", result.data.message || `${channel.name} connection test successful`);
       } else {
-        addToast("error", result.error || result.data?.error || `${channel.name} connection test failed`);
+        addToast(
+          "error",
+          result.error ||
+            result.data?.error ||
+            result.data?.message ||
+            `${channel.name} connection test failed`
+        );
       }
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Failed to test channel");

@@ -65,7 +65,8 @@ export class DiscordAdapter implements ChannelAdapter {
   }
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
-    const botToken = config.bot_token as string;
+    const rawToken = typeof config.bot_token === "string" ? config.bot_token.trim() : "";
+    const botToken = rawToken.startsWith("Bot ") ? rawToken.slice(4).trim() : rawToken;
     const reactionScope = normalizeDiscordReactionScope(config.reaction_notifications);
     if (!botToken) {
       throw new Error("bot_token is required for Discord adapter");
