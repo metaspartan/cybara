@@ -424,6 +424,145 @@ export class DiscordAdapter implements ChannelAdapter {
     }
   }
 
+  private normalizeReactionEmoji(emoji: string): string {
+    const trimmed = emoji.trim();
+    if (!trimmed) return trimmed;
+
+    const customEmojiMatch = trimmed.match(/^<a?:([^:>]+):(\d+)>$/);
+    if (customEmojiMatch) {
+      return `${customEmojiMatch[1]}:${customEmojiMatch[2]}`;
+    }
+
+    return trimmed;
+  }
+
+  private getCustomEmojiId(emoji: string): string | undefined {
+    const customEmojiMatch = emoji.match(/^<a?:[^:>]+:(\d+)>$/);
+    if (customEmojiMatch) {
+      return customEmojiMatch[1];
+    }
+    const emojiParts = emoji.split(":");
+    if (emojiParts.length >= 2) {
+      const maybeId = emojiParts[emojiParts.length - 1];
+      if (/^\d+$/.test(maybeId)) {
+        return maybeId;
+      }
+    }
+    return undefined;
+  }
+
+  private async fetchReactionMessage(
+    channelId: string,
+    chatId: string | number,
+    messageId: string
+  ): Promise<Message | null> {
+    const client = this.clients.get(channelId);
+    if (!client?.isReady()) {
+      console.error("[Discord] fetchReactionMessage: No ready client for channel", channelId);
+      return null;
+    }
+
+    try {
+      const channel = await client.channels.fetch(String(chatId));
+      if (!channel?.isTextBased() || !("messages" in channel)) {
+        console.error("[Discord] Reaction target is not a text channel:", chatId);
+        return null;
+      }
+
+      const message = await channel.messages.fetch(String(messageId));
+      return message;
+    } catch (error) {
+      console.error("[Discord] Failed to fetch reaction message:", error);
+      return null;
+    }
+  }
+
+  async sendReaction(
+    channelId: string,
+    chatId: string | number,
+    messageId: string,
+    emoji: string,
+    _options?: Record<string, unknown>
+  ): Promise<boolean> {
+    const normalizedEmoji = this.normalizeReactionEmoji(emoji);
+    if (!normalizedEmoji) {
+      console.error("[Discord] sendReaction: emoji is required");
+      return false;
+    }
+
+    const message = await this.fetchReactionMessage(channelId, chatId, messageId);
+    if (!message) return false;
+
+    try {
+      await message.react(normalizedEmoji);
+      return true;
+    } catch (error) {
+      console.error("[Discord] Failed to send reaction:", error);
+      return false;
+    }
+  }
+
+  async removeReaction(
+    channelId: string,
+    chatId: string | number,
+    messageId: string,
+    emoji: string,
+    options?: Record<string, unknown>
+  ): Promise<boolean> {
+    const client = this.clients.get(channelId);
+    if (!client?.isReady()) {
+      console.error("[Discord] removeReaction: No ready client for channel", channelId);
+      return false;
+    }
+
+    const message = await this.fetchReactionMessage(channelId, chatId, messageId);
+    if (!message) return false;
+
+    const normalizedEmoji = this.normalizeReactionEmoji(emoji);
+    const customEmojiId = this.getCustomEmojiId(emoji);
+    const botUserId = client.user?.id;
+    const explicitUserId =
+      typeof options?.userId === "string" && options.userId.trim()
+        ? options.userId.trim()
+        : undefined;
+    const removeUserId = explicitUserId || botUserId;
+
+    if (!removeUserId) {
+      console.error("[Discord] removeReaction: Unable to resolve user id for removal");
+      return false;
+    }
+
+    const reaction =
+      message.reactions.resolve(normalizedEmoji) ||
+      message.reactions.cache.find((entry) => {
+        if (customEmojiId && entry.emoji.id) {
+          return entry.emoji.id === customEmojiId;
+        }
+        if (entry.emoji.name && entry.emoji.name === normalizedEmoji) {
+          return true;
+        }
+        if (entry.emoji.id && entry.emoji.name) {
+          return `${entry.emoji.name}:${entry.emoji.id}` === normalizedEmoji;
+        }
+        return false;
+      });
+
+    if (!reaction) {
+      console.warn(
+        `[Discord] removeReaction: Reaction not found for message ${messageId} (${normalizedEmoji})`
+      );
+      return false;
+    }
+
+    try {
+      await reaction.users.remove(removeUserId);
+      return true;
+    } catch (error) {
+      console.error("[Discord] Failed to remove reaction:", error);
+      return false;
+    }
+  }
+
   formatResponse(content: string, toolCalls?: ToolCallInfo[], thinking?: string): string {
     let text = content;
 

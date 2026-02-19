@@ -75,7 +75,10 @@ export {
   toolSchemas,
 } from "../index";
 
-const toolHandlers: Record<string, (args: Record<string, unknown>) => Promise<unknown>> = {
+const toolHandlers: Record<
+  string,
+  (args: Record<string, unknown>, context?: ToolContext) => Promise<unknown>
+> = {
   read: handleRead,
   write: handleWrite,
   edit: handleEdit,
@@ -248,7 +251,7 @@ export async function executeTool(
 
   try {
     console.log(`[Tool] Executing ${name} with args:`, argsPreview);
-    const result = await handler(args);
+    const result = await handler(args, context);
     const duration = Date.now() - startTime;
     console.log(`[Tool] ${name} completed successfully in ${duration}ms`);
 
@@ -288,13 +291,13 @@ export function getToolNames(): string[] {
 
 export function registerToolHandler(
   name: string,
-  handler: (args: Record<string, unknown>) => Promise<unknown>
+  handler: (args: Record<string, unknown>, context?: ToolContext) => Promise<unknown>
 ): void {
   toolHandlers[name] = handler;
 }
 
 export function getToolHandler(
   name: string
-): ((args: Record<string, unknown>) => Promise<unknown>) | undefined {
+): ((args: Record<string, unknown>, context?: ToolContext) => Promise<unknown>) | undefined {
   return toolHandlers[name];
 }

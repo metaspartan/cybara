@@ -905,4 +905,90 @@ describe("Discord adapter mocked message flows", () => {
 
     expect(injected).toHaveLength(0);
   });
+
+  test("sendReaction normalizes custom emoji syntax and reacts to message", async () => {
+    const adapter = new DiscordAdapter();
+    const channelId = makeChannelId("discord-send-reaction");
+    const reacted: string[] = [];
+
+    const fakeMessage = {
+      react: async (emoji: string) => {
+        reacted.push(emoji);
+      },
+    };
+    const fakeChannel = {
+      isTextBased: () => true,
+      messages: {
+        fetch: async (_messageId: string) => fakeMessage,
+      },
+    };
+    const fakeClient = {
+      isReady: () => true,
+      channels: {
+        fetch: async (_chatId: string) => fakeChannel,
+      },
+      user: {
+        id: "discord-bot-user",
+      },
+    };
+
+    (
+      adapter as unknown as {
+        clients: Map<string, unknown>;
+      }
+    ).clients.set(channelId, fakeClient);
+
+    const success = await adapter.sendReaction(channelId, "chat-reaction", "message-1", "<:fire:123>");
+
+    expect(success).toBe(true);
+    expect(reacted).toEqual(["fire:123"]);
+  });
+
+  test("removeReaction defaults to bot user when no explicit userId is provided", async () => {
+    const adapter = new DiscordAdapter();
+    const channelId = makeChannelId("discord-remove-reaction");
+    const removedUsers: string[] = [];
+
+    const fakeReaction = {
+      users: {
+        remove: async (userId: string) => {
+          removedUsers.push(userId);
+        },
+      },
+    };
+    const fakeMessage = {
+      reactions: {
+        resolve: (_emoji: string) => fakeReaction,
+        cache: {
+          find: (_predicate: (entry: unknown) => boolean) => undefined,
+        },
+      },
+    };
+    const fakeChannel = {
+      isTextBased: () => true,
+      messages: {
+        fetch: async (_messageId: string) => fakeMessage,
+      },
+    };
+    const fakeClient = {
+      isReady: () => true,
+      channels: {
+        fetch: async (_chatId: string) => fakeChannel,
+      },
+      user: {
+        id: "discord-bot-user",
+      },
+    };
+
+    (
+      adapter as unknown as {
+        clients: Map<string, unknown>;
+      }
+    ).clients.set(channelId, fakeClient);
+
+    const success = await adapter.removeReaction(channelId, "chat-reaction", "message-2", "✅");
+
+    expect(success).toBe(true);
+    expect(removedUsers).toEqual(["discord-bot-user"]);
+  });
 });

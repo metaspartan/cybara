@@ -183,6 +183,22 @@ export interface ChannelAdapter {
     options?: Record<string, unknown>
   ): Promise<boolean>;
 
+  sendReaction?(
+    channelId: string,
+    chatId: string | number,
+    messageId: string,
+    emoji: string,
+    options?: Record<string, unknown>
+  ): Promise<boolean>;
+
+  removeReaction?(
+    channelId: string,
+    chatId: string | number,
+    messageId: string,
+    emoji: string,
+    options?: Record<string, unknown>
+  ): Promise<boolean>;
+
   formatResponse(content: string, toolCalls?: ToolCallInfo[], thinking?: string): string;
 
   sendPhoto?(

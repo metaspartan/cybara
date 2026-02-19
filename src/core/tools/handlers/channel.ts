@@ -5,6 +5,8 @@ import { fileURLToPath } from "url";
 import type { CronJobCreate, CronJobPatch } from "../../cron/types";
 import * as cron from "../../cron";
 import { agentManager } from "../../agent";
+import { channelManager, type ChannelAdapter, type ChannelType } from "../../channels";
+import type { Channel } from "../../database";
 import * as subagentRegistry from "../../subagent-registry";
 import type { SubagentRunRecord } from "../../subagent-registry";
 
@@ -372,34 +374,285 @@ export async function handleAgentsList(): Promise<{
   }
 }
 
-export async function handleMessage(
+type MessageToolContext = {
+  channel?: string;
+  userId?: string;
+};
+
+type MessageAction = "send" | "broadcast" | "react" | "unreact";
+
+type MessageToolResult = {
+  success: boolean;
+  action: string;
+  target: string;
+  message?: string;
+  channel?: string;
+  channelId?: string;
+  delivered?: number;
+  attempted?: number;
+};
+
+function asNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function resolveChannelType(value: unknown): ChannelType | undefined {
+  const normalized = asNonEmptyString(value)?.toLowerCase();
+  if (
+    normalized === "telegram" ||
+    normalized === "whatsapp" ||
+    normalized === "discord" ||
+    normalized === "slack" ||
+    normalized === "signal" ||
+    normalized === "imessage" ||
+    normalized === "web"
+  ) {
+    return normalized;
+  }
+  return undefined;
+}
+
+type EnabledChannel = {
+  id: string;
+  type: ChannelType;
+  enabled: boolean;
+};
+
+function resolveEnabledChannels(): EnabledChannel[] {
+  return (channelManager.list() as Channel[])
+    .filter((entry) => entry.enabled)
+    .map((entry) => ({
+      id: entry.id,
+      type: entry.type as ChannelType,
+      enabled: Boolean(entry.enabled),
+    }));
+}
+
+function resolveChannelsForAction(args: {
+  channelId?: string;
+  channelType?: ChannelType;
+  action: MessageAction;
+}): EnabledChannel[] {
+  const allEnabled = resolveEnabledChannels();
+
+  if (args.channelId) {
+    const selected = allEnabled.find((entry) => entry.id === args.channelId);
+    if (!selected) {
+      throw new Error(`No active channel found for channelId '${args.channelId}'`);
+    }
+    return [selected];
+  }
+
+  if (args.channelType) {
+    const matching = allEnabled.filter((entry) => entry.type === args.channelType);
+    if (matching.length === 0) {
+      throw new Error(`No active ${args.channelType} channel found`);
+    }
+    return matching;
+  }
+
+  if (args.action === "react" || args.action === "unreact") {
+    const discordChannels = allEnabled.filter((entry) => entry.type === "discord");
+    if (discordChannels.length === 0) {
+      throw new Error("No active discord channel found");
+    }
+    return discordChannels;
+  }
+
+  if (allEnabled.length === 0) {
+    throw new Error("No active channels found");
+  }
+
+  return allEnabled;
+}
+
+function resolveTarget(args: Record<string, unknown>, context?: MessageToolContext): string {
+  const explicitTarget = asNonEmptyString(args.target) || asNonEmptyString(args.to);
+  if (explicitTarget) return explicitTarget;
+
+  if (typeof args.chatId === "string" || typeof args.chatId === "number") {
+    return String(args.chatId);
+  }
+
+  if (asNonEmptyString(context?.userId)) {
+    return context!.userId!.trim();
+  }
+
+  throw new Error("target is required (or provide to/chatId)");
+}
+
+function resolveMessageText(args: Record<string, unknown>): string {
+  const message =
+    asNonEmptyString(args.message) || asNonEmptyString(args.text) || asNonEmptyString(args.content);
+  if (!message) {
+    throw new Error("message is required (or provide text/content)");
+  }
+  return message;
+}
+
+type ReactionAdapter = ChannelAdapter & {
+  sendReaction?: (
+    channelId: string,
+    chatId: string | number,
+    messageId: string,
+    emoji: string,
+    options?: Record<string, unknown>
+  ) => Promise<boolean>;
+  removeReaction?: (
+    channelId: string,
+    chatId: string | number,
+    messageId: string,
+    emoji: string,
+    options?: Record<string, unknown>
+  ) => Promise<boolean>;
+};
+
+async function sendSingleMessage(
+  channel: EnabledChannel,
+  target: string,
+  messageText: string,
   args: Record<string, unknown>
-): Promise<{ success: boolean; action: string; target: string; message?: string }> {
-  const action = args.action as string;
-  const target = args.target as string;
-
-  if (!action || !target) {
-    throw new Error("action and target are required");
+): Promise<boolean> {
+  const adapter = channelManager.getAdapter(channel.type);
+  if (!adapter) {
+    throw new Error(`Adapter not available for channel type '${channel.type}'`);
   }
 
-  switch (action) {
-    case "send":
-      return {
-        success: true,
-        action: "send",
-        target,
-        message: `Message sent to ${target}`,
-      };
-    case "broadcast":
-      return {
-        success: true,
-        action: "broadcast",
-        target,
-        message: `Broadcast sent to ${target}`,
-      };
-    default:
-      throw new Error(`Unknown message action: ${action}`);
+  return await adapter.sendMessage(channel.id, target, messageText, {
+    contentType: args.contentType,
+    buffer: args.buffer,
+    replyToId: args.replyToId,
+  });
+}
+
+async function runReactionAction(
+  action: "react" | "unreact",
+  channel: EnabledChannel,
+  target: string,
+  messageId: string,
+  emoji: string,
+  options?: Record<string, unknown>
+): Promise<boolean> {
+  if (channel.type !== "discord") {
+    throw new Error(`'${action}' is currently only supported for discord channels`);
   }
+
+  const adapter = channelManager.getAdapter("discord") as ReactionAdapter | undefined;
+  if (!adapter) {
+    throw new Error("Discord adapter is not available");
+  }
+
+  if (action === "react") {
+    if (!adapter.sendReaction) {
+      throw new Error("Discord adapter does not support sendReaction");
+    }
+    return await adapter.sendReaction(channel.id, target, messageId, emoji, options);
+  }
+
+  if (!adapter.removeReaction) {
+    throw new Error("Discord adapter does not support removeReaction");
+  }
+
+  return await adapter.removeReaction(channel.id, target, messageId, emoji, options);
+}
+
+export async function handleMessage(
+  args: Record<string, unknown>,
+  context?: MessageToolContext
+): Promise<MessageToolResult> {
+  const actionRaw = asNonEmptyString(args.action);
+  if (!actionRaw) {
+    throw new Error("action is required");
+  }
+
+  const normalizedAction = actionRaw.toLowerCase();
+  const action: MessageAction =
+    normalizedAction === "send" ||
+    normalizedAction === "broadcast" ||
+    normalizedAction === "react" ||
+    normalizedAction === "unreact"
+      ? normalizedAction
+      : (() => {
+          throw new Error(`Unknown message action: ${actionRaw}`);
+        })();
+
+  const requestedChannelType =
+    resolveChannelType(args.channel) ||
+    resolveChannelType(args.platform) ||
+    resolveChannelType(context?.channel);
+  const requestedChannelId = asNonEmptyString(args.channelId);
+  const channels = resolveChannelsForAction({
+    channelId: requestedChannelId,
+    channelType: requestedChannelType,
+    action,
+  });
+
+  if ((action === "send" || action === "react" || action === "unreact") && channels.length > 1) {
+    throw new Error(
+      `Multiple active channels match request (${channels.length}). Provide channel or channelId to disambiguate.`
+    );
+  }
+
+  const target = resolveTarget(args, context);
+
+  if (action === "send") {
+    const channel = channels[0];
+    const messageText = resolveMessageText(args);
+    const success = await sendSingleMessage(channel, target, messageText, args);
+    return {
+      success,
+      action,
+      target,
+      channel: channel.type,
+      channelId: channel.id,
+      message: success
+        ? `Message sent to ${target} via ${channel.type}`
+        : `Failed to send message to ${target} via ${channel.type}`,
+    };
+  }
+
+  if (action === "broadcast") {
+    const messageText = resolveMessageText(args);
+    const results = await Promise.all(
+      channels.map(async (channel) => await sendSingleMessage(channel, target, messageText, args))
+    );
+    const delivered = results.filter(Boolean).length;
+    return {
+      success: delivered > 0,
+      action,
+      target,
+      delivered,
+      attempted: channels.length,
+      message: `Broadcast delivered to ${delivered}/${channels.length} channels for target ${target}`,
+    };
+  }
+
+  const messageId = asNonEmptyString(args.messageId) || asNonEmptyString(args.replyToId);
+  if (!messageId) {
+    throw new Error("messageId is required for react/unreact actions");
+  }
+  const emoji = asNonEmptyString(args.emoji) || asNonEmptyString(args.reaction);
+  if (!emoji) {
+    throw new Error("emoji is required for react/unreact actions");
+  }
+
+  const channel = channels[0];
+  const success = await runReactionAction(action, channel, target, messageId, emoji, {
+    userId: args.userId,
+  });
+
+  return {
+    success,
+    action,
+    target,
+    channel: channel.type,
+    channelId: channel.id,
+    message: success
+      ? `${action === "react" ? "Reaction added" : "Reaction removed"} on ${messageId}`
+      : `Failed to ${action} on ${messageId}`,
+  };
 }
 
 export async function handleCanvas(

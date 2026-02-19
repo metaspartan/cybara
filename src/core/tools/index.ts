@@ -1132,18 +1132,53 @@ Use for tasks that may take longer or require separate context.`,
 
   message: {
     name: "message",
-    description: "Send messages via messaging channels",
+    description:
+      "Send messages across channels and run channel actions (discord react/unreact supported)",
     category: "channel",
     input_schema: {
       type: "object",
       properties: {
-        action: { type: "string", enum: ["send", "broadcast"], description: "Message action" },
-        target: { type: "string", description: "Recipient/channel target" },
-        message: { type: "string", description: "Message content" },
+        action: {
+          type: "string",
+          enum: ["send", "broadcast", "react", "unreact"],
+          description: "Message action",
+        },
+        channel: {
+          type: "string",
+          description:
+            "Optional channel type (telegram|discord|slack|signal|whatsapp|imessage|web).",
+        },
+        channelId: {
+          type: "string",
+          description: "Optional internal channel id to target a specific configured channel.",
+        },
+        target: {
+          type: "string",
+          description: "Chat/channel target id. Alias: to",
+        },
+        to: {
+          type: "string",
+          description: "Alias for target",
+        },
+        message: { type: "string", description: "Message content. Alias: text/content" },
+        text: { type: "string", description: "Alias for message" },
+        content: { type: "string", description: "Alias for message" },
+        messageId: {
+          type: "string",
+          description: "Required for react/unreact. Message id to react to.",
+        },
+        emoji: {
+          type: "string",
+          description: "Required for react/unreact. Unicode or custom discord emoji.",
+        },
+        userId: {
+          type: "string",
+          description: "Optional user id for unreact (defaults to bot user).",
+        },
         contentType: { type: "string", description: "Content type" },
         buffer: { type: "string", description: "Base64 attachment" },
       },
-      required: ["action", "target"],
+      required: ["action"],
     },
     permissions: ["message:send"],
   },
