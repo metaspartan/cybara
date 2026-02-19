@@ -7,6 +7,7 @@ import {
   resolveProviderType,
   type ProviderType,
 } from "../core/providers";
+import { resolveGeminiCliOAuthClientConfig } from "../core/gemini-cli-oauth";
 import {
   channelManager,
   channels,
@@ -1829,7 +1830,7 @@ const routes: Record<string, RouteHandler> = {
     >;
     if (!providerConfig) throw new Error(`Validation error: unknown provider '${providerType}'`);
 
-    const oauthConfig = providerConfig.oauthConfig as
+    const oauthConfigRaw = providerConfig.oauthConfig as
       | {
           authorizeUrl?: string;
           tokenUrl?: string;
@@ -1841,7 +1842,24 @@ const routes: Record<string, RouteHandler> = {
         }
       | undefined;
 
-    if (!oauthConfig?.authorizeUrl || !oauthConfig?.tokenUrl) {
+    const oauthConfig = {
+      ...(oauthConfigRaw || {}),
+    };
+
+    if (resolvedProviderType === "google-gemini-cli") {
+      const clientConfig = resolveGeminiCliOAuthClientConfig();
+      if (!clientConfig?.clientId) {
+        throw new Error(
+          "Provider google-gemini-cli requires Gemini CLI OAuth credentials. Install Gemini CLI or set CYBARA_GEMINI_OAUTH_CLIENT_ID."
+        );
+      }
+      oauthConfig.clientId = clientConfig.clientId;
+      if (clientConfig.clientSecret && !oauthConfig.clientSecret) {
+        oauthConfig.clientSecret = clientConfig.clientSecret;
+      }
+    }
+
+    if (!oauthConfig.authorizeUrl || !oauthConfig.tokenUrl) {
       throw new Error(`Provider ${providerType} does not support OAuth redirect flow`);
     }
 

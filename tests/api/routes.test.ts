@@ -628,6 +628,19 @@ describe("Providers API", () => {
     expect(typeof data[0].id).toBe("string");
     expect(typeof data[0].name).toBe("string");
     expect(Array.isArray(data[0].models)).toBe(true);
+
+    const geminiCli = (
+      data as Array<{
+        id: string;
+        authType: string;
+        oauthFlow: string | null;
+        hasOAuthConfig: boolean;
+      }>
+    ).find((provider) => provider.id === "google-gemini-cli");
+    expect(geminiCli).toBeDefined();
+    expect(geminiCli?.authType).toBe("oauth");
+    expect(geminiCli?.oauthFlow).toBe("redirect");
+    expect(geminiCli?.hasOAuthConfig).toBe(true);
   });
 
   test("GET /api/providers/health should return provider health", async () => {

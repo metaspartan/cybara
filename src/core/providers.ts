@@ -207,10 +207,18 @@ export const providers = {
     },
     models: [
       {
+        id: "gemini-3.1-pro-preview",
+        name: "Gemini 3.1 Pro",
+        context: 1048576,
+        maxTokens: 65536,
+        reasoning: true,
+        input: ["text", "image", "audio", "video"],
+      },
+      {
         id: "gemini-3-pro-preview",
         name: "Gemini 3 Pro",
         context: 1048576,
-        maxTokens: 32768,
+        maxTokens: 65536,
         reasoning: true,
         input: ["text", "image", "audio", "video"],
       },
@@ -218,7 +226,7 @@ export const providers = {
         id: "gemini-3-flash-preview",
         name: "Gemini 3 Flash",
         context: 1048576,
-        maxTokens: 8192,
+        maxTokens: 65536,
         reasoning: false,
         input: ["text", "image", "audio", "video"],
       },
@@ -1207,8 +1215,24 @@ export const providers = {
     api: "google-generative-ai",
     authType: "oauth",
     oauthFlow: "redirect" as const,
-    oauthLoginUrl: "https://aistudio.google.com/apikey",
+    oauthConfig: {
+      authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+      tokenUrl: "https://oauth2.googleapis.com/token",
+      scope:
+        "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile",
+      callbackPort: 8085,
+      callbackPath: "/oauth2callback",
+    },
+    oauthLoginUrl: "https://github.com/google-gemini/gemini-cli",
     models: [
+      {
+        id: "gemini-3.1-pro-preview",
+        name: "Gemini 3.1 Pro",
+        context: 1048576,
+        maxTokens: 65536,
+        reasoning: true,
+        input: ["text", "image", "audio", "video"],
+      },
       {
         id: "gemini-3-pro-preview",
         name: "Gemini 3 Pro",
@@ -1386,6 +1410,7 @@ export type ProviderType = keyof typeof providers;
 
 const PROVIDER_TYPE_ALIASES: Record<string, ProviderType> = {
   "google-antigravity": "antigravity",
+  "gemini-cli": "google-gemini-cli",
   "github-copilot": "github_copilot",
   opencode: "opencode_zen",
   zai: "z.ai",
@@ -1676,6 +1701,8 @@ export function getDefaultModel(providerType: string): string {
     google: "gemini-3-pro-preview",
     antigravity: "gemini-3-pro-preview",
     "google-antigravity": "gemini-3-pro-preview",
+    "google-gemini-cli": "gemini-3-pro-preview",
+    "gemini-cli": "gemini-3-pro-preview",
     groq: "llama-3.3-70b-versatile",
     openrouter: "anthropic/claude-sonnet-4-6",
     ollama: "llama3",

@@ -17,6 +17,8 @@ describe("Provider model defaults and API-family parity", () => {
     expect(getDefaultModel("zai")).toBe("glm-5");
     expect(getDefaultModel("antigravity")).toBe("gemini-3-pro-preview");
     expect(getDefaultModel("google-antigravity")).toBe("gemini-3-pro-preview");
+    expect(getDefaultModel("google-gemini-cli")).toBe("gemini-3-pro-preview");
+    expect(getDefaultModel("gemini-cli")).toBe("gemini-3-pro-preview");
     expect(getDefaultModel("opencode_zen")).toBe("claude-sonnet-4-6");
     expect(getDefaultModel("opencode")).toBe("claude-sonnet-4-6");
     expect(getDefaultModel("openai-codex")).toBe("gpt-5.3-codex");
@@ -29,6 +31,7 @@ describe("Provider model defaults and API-family parity", () => {
   test("normalizes OpenClaw-style provider aliases", () => {
     expect(resolveProviderType("github-copilot")).toBe("github_copilot");
     expect(resolveProviderType("google-antigravity")).toBe("antigravity");
+    expect(resolveProviderType("gemini-cli")).toBe("google-gemini-cli");
     expect(resolveProviderType("opencode")).toBe("opencode_zen");
     expect(resolveProviderType("zai")).toBe("z.ai");
     expect(resolveProviderType("kimi-coding")).toBe("kimi-code");
@@ -74,6 +77,20 @@ describe("Provider model defaults and API-family parity", () => {
     expect(
       providers.nvidia.models.some((model) => model.id === "nvidia/llama-3.1-nemotron-70b-instruct")
     ).toBe(true);
+  });
+
+  test("configures google-gemini-cli for redirect OAuth like OpenClaw", () => {
+    expect(providers["google-gemini-cli"].authType).toBe("oauth");
+    expect(providers["google-gemini-cli"].oauthFlow).toBe("redirect");
+    expect(providers["google-gemini-cli"].oauthConfig).toBeDefined();
+    expect(providers["google-gemini-cli"].oauthConfig?.authorizeUrl).toBe(
+      "https://accounts.google.com/o/oauth2/v2/auth"
+    );
+    expect(providers["google-gemini-cli"].oauthConfig?.tokenUrl).toBe(
+      "https://oauth2.googleapis.com/token"
+    );
+    expect(providers["google-gemini-cli"].oauthConfig?.callbackPort).toBe(8085);
+    expect(providers["google-gemini-cli"].oauthConfig?.callbackPath).toBe("/oauth2callback");
   });
 
   test("uses current MiniMax IDs and output/context caps", () => {
