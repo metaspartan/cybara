@@ -51,6 +51,46 @@ const walletAgentPolicyState = {
   x402MaxAmountAtomic: "1000000",
 };
 
+const loopRuns = new Map<
+  string,
+  {
+    id: string;
+    agentId: string;
+    label: string;
+    objective: string;
+    status: string;
+    stopReason?: string;
+    createdAt: string;
+    updatedAt: string;
+    maxIterations: number;
+    maxDurationSeconds: number;
+    useTools: boolean;
+    iterationsCompleted: number;
+    steps: Array<{ iteration: number; durationMs: number; toolCallCount: number; done: boolean }>;
+    finalResponse?: string;
+  }
+>([
+  [
+    "loop-1",
+    {
+      id: "loop-1",
+      agentId: "agent-1",
+      label: "Initial loop",
+      objective: "Summarize latest system status",
+      status: "completed",
+      stopReason: "done",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      maxIterations: 4,
+      maxDurationSeconds: 120,
+      useTools: true,
+      iterationsCompleted: 2,
+      steps: [{ iteration: 1, durationMs: 12, toolCallCount: 1, done: false }],
+      finalResponse: "Status summarized.",
+    },
+  ],
+]);
+
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -298,6 +338,66 @@ function route(method: string, url: URL, body: string): Response {
   }
 
   if (method === "POST" && pathname === "/api/subagents/sub-2/kill") {
+    return json({ success: true });
+  }
+
+  if (method === "GET" && pathname === "/api/loops") {
+    return json({ runs: [...loopRuns.values()] });
+  }
+
+  if (method === "GET" && pathname === "/api/agents/agent-1/loops") {
+    return json({ runs: [...loopRuns.values()].filter((run) => run.agentId === "agent-1") });
+  }
+
+  if (method === "POST" && pathname === "/api/agents/agent-1/loops") {
+    const parsed = body
+      ? (JSON.parse(body) as {
+          objective?: string;
+          maxIterations?: number;
+          maxDurationSeconds?: number;
+          model?: string;
+          useTools?: boolean;
+          label?: string;
+        })
+      : {};
+    if (!parsed.objective || !parsed.objective.trim()) {
+      return json({ success: false, error: "objective is required" }, 400);
+    }
+    const id = `loop-${loopRuns.size + 1}`;
+    const now = new Date().toISOString();
+    const run = {
+      id,
+      agentId: "agent-1",
+      label: parsed.label || parsed.objective.slice(0, 80),
+      objective: parsed.objective,
+      status: "running",
+      createdAt: now,
+      updatedAt: now,
+      maxIterations: parsed.maxIterations || 6,
+      maxDurationSeconds: parsed.maxDurationSeconds || 300,
+      modelOverride: parsed.model,
+      useTools: parsed.useTools !== false,
+      iterationsCompleted: 0,
+      steps: [] as Array<{ iteration: number; durationMs: number; toolCallCount: number; done: boolean }>,
+    };
+    loopRuns.set(id, run);
+    return json({ success: true, runId: id, run });
+  }
+
+  if (method === "GET" && pathname.startsWith("/api/loops/")) {
+    const id = pathname.split("/")[3];
+    const run = id ? loopRuns.get(id) : undefined;
+    if (!run) return json({ success: false, error: "Loop run not found" }, 404);
+    return json({ success: true, run });
+  }
+
+  if (method === "POST" && pathname.startsWith("/api/loops/") && pathname.endsWith("/cancel")) {
+    const id = pathname.split("/")[3];
+    const run = id ? loopRuns.get(id) : undefined;
+    if (!run) return json({ success: false, error: "Loop run not found" }, 404);
+    run.status = "cancelled";
+    run.stopReason = "cancelled";
+    run.updatedAt = new Date().toISOString();
     return json({ success: true });
   }
 
@@ -1550,6 +1650,26 @@ describe("CLI Commands", () => {
     expect(mcpPopular.stdout).toContain("POPULAR MCP SERVERS");
   });
 
+  test("loop command group is wired", async () => {
+    const list = await runCli(["loop", "list"]);
+    expect(list.exitCode).toBe(0);
+    expect(list.stdout).toContain("CYBARA AGENT LOOPS");
+    expect(list.stdout).toContain("loop-1");
+
+    const start = await runCli(["loop", "start", "agent-1", "Draft incident report"]);
+    expect(start.exitCode).toBe(0);
+    expect(start.stdout).toContain("Started loop: loop-");
+
+    const show = await runCli(["loop", "show", "loop-1"]);
+    expect(show.exitCode).toBe(0);
+    expect(show.stdout).toContain("CYBARA LOOP RUN");
+    expect(show.stdout).toContain("loop-1");
+
+    const cancel = await runCli(["loop", "cancel", "loop-1"]);
+    expect(cancel.exitCode).toBe(0);
+    expect(cancel.stdout).toContain("Cancellation requested: loop-1");
+  });
+
   test("usage and validation errors return non-zero for invalid args", async () => {
     const badMcpSearch = await runCli(["mcp", "search"]);
     expect(badMcpSearch.exitCode).toBe(1);
@@ -1649,6 +1769,10 @@ describe("CLI Commands", () => {
     const badLspInstall = await runCli(["lsp", "install"]);
     expect(badLspInstall.exitCode).toBe(1);
     expect(badLspInstall.stderr).toContain("ERROR: Please specify a language to install");
+
+    const badLoopStart = await runCli(["loop", "start"]);
+    expect(badLoopStart.exitCode).toBe(1);
+    expect(badLoopStart.stderr).toContain("ERROR: Please specify an agent ID");
   });
 
   test("status exits non-zero when API is unreachable", async () => {

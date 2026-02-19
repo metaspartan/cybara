@@ -17,6 +17,7 @@ import {
 import { broadcastStatus } from "./status";
 import { homedir } from "os";
 import { loadAllSkills, createEligibilityContext, filterEligibleSkills } from "./skills";
+import { emitAgentHook, type AgentHookContext } from "./agent-hooks";
 
 export interface AgentDefinition {
   name: string;
@@ -888,6 +889,91 @@ class AgentManager {
     };
   }
 
+  private buildHookContext(
+    provider: string | undefined,
+    model: string | undefined,
+    toolContext?: ToolContext
+  ): AgentHookContext {
+    return {
+      agentId: toolContext?.agentId,
+      sessionId: toolContext?.sessionId,
+      channel: toolContext?.channel,
+      userId: toolContext?.userId,
+      provider,
+      model,
+    };
+  }
+
+  private normalizeErrorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    return String(error || "Unknown error");
+  }
+
+  private async executeToolWithHooks(
+    toolName: string,
+    args: Record<string, unknown>,
+    allowedToolNames: Set<string>,
+    toolContext: ToolContext | undefined,
+    hookContext: AgentHookContext
+  ): Promise<{ skipped: boolean; result?: unknown }> {
+    if (!hasTool(toolName)) {
+      return { skipped: true };
+    }
+
+    if (!allowedToolNames.has(toolName)) {
+      const reason = `Tool not enabled for this agent: ${toolName}`;
+      await emitAgentHook({
+        type: "tool_blocked",
+        context: hookContext,
+        toolName,
+        args,
+        reason,
+      });
+      return { skipped: false, result: { error: reason } };
+    }
+
+    const hookDecision = await emitAgentHook({
+      type: "tool_before",
+      context: hookContext,
+      toolName,
+      args,
+    });
+    if (hookDecision?.block) {
+      const reason = hookDecision.reason || `Tool blocked by hook: ${toolName}`;
+      await emitAgentHook({
+        type: "tool_blocked",
+        context: hookContext,
+        toolName,
+        args,
+        reason,
+      });
+      return { skipped: false, result: { error: reason } };
+    }
+
+    try {
+      broadcastStatus({ status: "tool_executing", timestamp: Date.now(), detail: toolName });
+      const result = await executeTool(toolName, args, toolContext);
+      await emitAgentHook({
+        type: "tool_after",
+        context: hookContext,
+        toolName,
+        args,
+        result,
+      });
+      return { skipped: false, result };
+    } catch (error) {
+      const errorMessage = this.normalizeErrorMessage(error);
+      await emitAgentHook({
+        type: "tool_error",
+        context: hookContext,
+        toolName,
+        args,
+        error: errorMessage,
+      });
+      return { skipped: false, result: { error: errorMessage } };
+    }
+  }
+
   async callLLM(
     provider: Awaited<ReturnType<typeof providerManager.get>>,
     model: string | undefined,
@@ -899,7 +985,39 @@ class AgentManager {
     thinking?: string;
     tool_calls?: Array<{ name: string; result: unknown }>;
   }> {
-    return this.callLLMInternal(provider, model, messages, tools, toolContext);
+    const providerName =
+      provider && typeof provider === "object" && "provider" in provider
+        ? String((provider as { provider?: unknown }).provider || "")
+        : "";
+    const hookContext = this.buildHookContext(providerName || undefined, model, toolContext);
+
+    await emitAgentHook({
+      type: "llm_request",
+      context: hookContext,
+      messages: messages.map((message) => ({ role: message.role, content: message.content })),
+      toolNames: tools.map((tool) => tool.name),
+    });
+
+    const startedAt = performance.now();
+    try {
+      const result = await this.callLLMInternal(provider, model, messages, tools, toolContext);
+      await emitAgentHook({
+        type: "llm_response",
+        context: hookContext,
+        content: result.content,
+        toolNames: (result.tool_calls || []).map((toolCall) => toolCall.name),
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+      return result;
+    } catch (error) {
+      await emitAgentHook({
+        type: "llm_error",
+        context: hookContext,
+        error: this.normalizeErrorMessage(error),
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+      throw error;
+    }
   }
 
   private async callLLMInternal(
@@ -1124,6 +1242,7 @@ class AgentManager {
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
     const allToolCalls: Array<{ name: string; result: unknown }> = [];
     let finalContent = message.content || "";
+    const hookContext = this.buildHookContext(providerConfig, modelId, toolContext);
 
     while (iterations < maxIterations) {
       iterations++;
@@ -1144,35 +1263,23 @@ class AgentManager {
         const args = parseToolArguments(toolCall.function?.arguments);
 
         if (!toolName) continue;
-        if (!hasTool(toolName)) continue;
-        if (!allowedToolNames.has(toolName)) {
-          const error = `Tool not enabled for this agent: ${toolName}`;
-          allToolCalls.push({ name: toolName, result: { error } });
-          toolResults.push({
-            tool_call_id: toolCallId,
-            role: "tool",
-            content: JSON.stringify({ error }),
-          });
+        const executed = await this.executeToolWithHooks(
+          toolName,
+          args,
+          allowedToolNames,
+          toolContext,
+          hookContext
+        );
+        if (executed.skipped || executed.result === undefined) {
           continue;
         }
 
-        try {
-          broadcastStatus({ status: "tool_executing", timestamp: Date.now(), detail: toolName });
-          const result = await executeTool(toolName, args, toolContext);
-          allToolCalls.push({ name: toolName, result });
-          toolResults.push({
-            tool_call_id: toolCallId,
-            role: "tool",
-            content: JSON.stringify(result),
-          });
-        } catch (error) {
-          allToolCalls.push({ name: toolName, result: { error: (error as Error).message } });
-          toolResults.push({
-            tool_call_id: toolCallId,
-            role: "tool",
-            content: JSON.stringify({ error: (error as Error).message }),
-          });
-        }
+        allToolCalls.push({ name: toolName, result: executed.result });
+        toolResults.push({
+          tool_call_id: toolCallId,
+          role: "tool",
+          content: JSON.stringify(executed.result),
+        });
       }
 
       currentMessages.push({
@@ -1314,6 +1421,7 @@ class AgentManager {
     let finalContent = currentData.content?.find((c) => c.type === "text")?.text || "";
     const thinking =
       currentData.content?.find((c) => c.type === ("thinking" as string))?.text || undefined;
+    const hookContext = this.buildHookContext(providerConfig, modelId, toolContext);
 
     while (iterations < maxIterations) {
       iterations++;
@@ -1337,35 +1445,23 @@ class AgentManager {
         const args = toolUse.input || {};
 
         if (!toolName) continue;
-        if (!hasTool(toolName)) continue;
-        if (!allowedToolNames.has(toolName)) {
-          const error = `Tool not enabled for this agent: ${toolName}`;
-          allToolCalls.push({ name: toolName, result: { error } });
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: toolUseId,
-            content: JSON.stringify({ error }),
-          });
+        const executed = await this.executeToolWithHooks(
+          toolName,
+          args,
+          allowedToolNames,
+          toolContext,
+          hookContext
+        );
+        if (executed.skipped || executed.result === undefined) {
           continue;
         }
 
-        try {
-          broadcastStatus({ status: "tool_executing", timestamp: Date.now(), detail: toolName });
-          const result = await executeTool(toolName, args, toolContext);
-          allToolCalls.push({ name: toolName, result });
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: toolUseId,
-            content: JSON.stringify(result),
-          });
-        } catch (error) {
-          allToolCalls.push({ name: toolName, result: { error: (error as Error).message } });
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: toolUseId,
-            content: JSON.stringify({ error: (error as Error).message }),
-          });
-        }
+        allToolCalls.push({ name: toolName, result: executed.result });
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: toolUseId,
+          content: JSON.stringify(executed.result),
+        });
       }
 
       currentMessages.push({
@@ -1498,6 +1594,7 @@ class AgentManager {
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
     const allToolCalls: Array<{ name: string; result: unknown }> = [];
     let finalContent = message.content || "";
+    const hookContext = this.buildHookContext("openai", modelId, toolContext);
 
     while (iterations < maxIterations) {
       iterations++;
@@ -1518,35 +1615,23 @@ class AgentManager {
         const args = parseToolArguments(toolCall.function?.arguments);
 
         if (!toolName) continue;
-        if (!hasTool(toolName)) continue;
-        if (!allowedToolNames.has(toolName)) {
-          const error = `Tool not enabled for this agent: ${toolName}`;
-          allToolCalls.push({ name: toolName, result: { error } });
-          toolResults.push({
-            tool_call_id: toolCallId,
-            role: "tool",
-            content: JSON.stringify({ error }),
-          });
+        const executed = await this.executeToolWithHooks(
+          toolName,
+          args,
+          allowedToolNames,
+          toolContext,
+          hookContext
+        );
+        if (executed.skipped || executed.result === undefined) {
           continue;
         }
 
-        try {
-          broadcastStatus({ status: "tool_executing", timestamp: Date.now(), detail: toolName });
-          const result = await executeTool(toolName, args, toolContext);
-          allToolCalls.push({ name: toolName, result });
-          toolResults.push({
-            tool_call_id: toolCallId,
-            role: "tool",
-            content: JSON.stringify(result),
-          });
-        } catch (error) {
-          allToolCalls.push({ name: toolName, result: { error: (error as Error).message } });
-          toolResults.push({
-            tool_call_id: toolCallId,
-            role: "tool",
-            content: JSON.stringify({ error: (error as Error).message }),
-          });
-        }
+        allToolCalls.push({ name: toolName, result: executed.result });
+        toolResults.push({
+          tool_call_id: toolCallId,
+          role: "tool",
+          content: JSON.stringify(executed.result),
+        });
       }
 
       currentMessages.push({

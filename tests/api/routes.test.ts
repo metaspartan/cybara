@@ -487,6 +487,53 @@ describe("Agents API", () => {
     await api("POST", `/api/agents/${agentId}/stop`);
     await api("DELETE", `/api/agents/${agentId}`);
   });
+
+  test("agent loop endpoints start/list/get/cancel runs", async () => {
+    const created = await api("POST", "/api/agents", {
+      name: `loop-agent-${Date.now()}`,
+      type: "main",
+      model: "gpt-5-mini",
+    });
+    expect(created.status).toBe(200);
+    const agentId = created.data.id as string;
+
+    const start = await api("POST", `/api/agents/${agentId}/loops`, {
+      objective: "Draft a concise status summary",
+      maxIterations: 2,
+      maxDurationSeconds: 30,
+      useTools: false,
+    });
+    expect(start.status).toBe(200);
+    expect(start.data.success).toBe(true);
+    expect(typeof start.data.runId).toBe("string");
+    const runId = start.data.runId as string;
+
+    const byAgent = await api("GET", `/api/agents/${agentId}/loops`);
+    expect(byAgent.status).toBe(200);
+    expect(Array.isArray(byAgent.data.runs)).toBe(true);
+    expect(byAgent.data.runs.some((run: { id: string }) => run.id === runId)).toBe(true);
+
+    const listAll = await api("GET", "/api/loops");
+    expect(listAll.status).toBe(200);
+    expect(Array.isArray(listAll.data.runs)).toBe(true);
+    expect(listAll.data.runs.some((run: { id: string }) => run.id === runId)).toBe(true);
+
+    const getRun = await api("GET", `/api/loops/${runId}`);
+    expect(getRun.status).toBe(200);
+    expect(getRun.data.success).toBe(true);
+    expect(getRun.data.run.id).toBe(runId);
+
+    const cancel = await api("POST", `/api/loops/${runId}/cancel`);
+    expect(cancel.status).toBe(200);
+    expect(cancel.data.success).toBe(true);
+
+    const getAfterCancel = await api("GET", `/api/loops/${runId}`);
+    expect(getAfterCancel.status).toBe(200);
+    expect(getAfterCancel.data.success).toBe(true);
+    expect(typeof getAfterCancel.data.run.status).toBe("string");
+
+    await api("DELETE", `/api/agents/${agentId}`);
+  });
 });
 
 describe("Providers API", () => {
@@ -1110,6 +1157,30 @@ describe("Subagents API", () => {
     const killMissingRes = await api("POST", `/api/subagents/missing-${Date.now()}/kill`);
     expect(killMissingRes.status).toBe(200);
     expect(killMissingRes.data.success).toBe(false);
+  });
+
+  test("spawn route forwards optional agent/model metadata and returns session/run identifiers", async () => {
+    const requestedAgentId = `requested-agent-${Date.now()}`;
+    const spawnRes = await api("POST", "/api/subagents/spawn", {
+      task: "api spawn metadata wiring",
+      agentId: requestedAgentId,
+      model: "gpt-test-model",
+      timeout: 5,
+      label: "metadata test",
+    });
+
+    expect(spawnRes.status).toBe(200);
+    expect(spawnRes.data.success).toBe(true);
+    expect(spawnRes.data.status).toBe("accepted");
+    expect(typeof spawnRes.data.subagentId).toBe("string");
+    expect(typeof spawnRes.data.sessionKey).toBe("string");
+    expect((spawnRes.data.sessionKey as string).startsWith(`agent:${requestedAgentId}:subagent:`)).toBe(
+      true
+    );
+
+    const getRes = await api("GET", `/api/subagents/${spawnRes.data.subagentId}`);
+    expect(getRes.status).toBe(200);
+    expect(getRes.data.id).toBe(spawnRes.data.subagentId);
   });
 });
 

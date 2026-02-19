@@ -33,6 +33,8 @@ const CLI_COMMANDS = [
   "logs",
   "subagent",
   "subagents",
+  "loop",
+  "loops",
   "browser",
   "channels",
   "channel",
@@ -175,6 +177,7 @@ Usage:
   cybara memory [query]     List or search memory
   cybara logs [count]       Show system logs from API
   cybara subagent           Subagent management (list, spawn, kill)
+  cybara loop               Autonomous loop runs (list, start, show, cancel)
   cybara browser            Browser status and tabs
   cybara channels           List configured channels
   cybara mcp [cmd]          MCP server management

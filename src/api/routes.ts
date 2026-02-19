@@ -65,6 +65,12 @@ import { createLogger } from "../core/logger";
 import { openUrlInBrowser } from "../core/runtime/open-url";
 import { trackApiCall, trackFileOperation, trackMetric } from "../core/metrics";
 import {
+  startAgentLoop,
+  listAgentLoopRuns,
+  getAgentLoopRun,
+  cancelAgentLoopRun,
+} from "../core/agent-loop";
+import {
   walletManager,
   type WalletChain,
   type WalletAgentPolicy,
@@ -936,6 +942,41 @@ const routes: Record<string, RouteHandler> = {
     const result = await agentManager.message(params!.id, data.message);
     return result;
   },
+  "POST /api/agents/:id/loops": async (body, params) => {
+    const data = body as {
+      objective?: string;
+      label?: string;
+      maxIterations?: number;
+      maxDurationSeconds?: number;
+      maxDuration?: number;
+      model?: string;
+      useTools?: boolean;
+    };
+
+    if (!data.objective || !data.objective.trim()) {
+      return { success: false, error: "objective is required" };
+    }
+
+    try {
+      const run = startAgentLoop({
+        agentId: params!.id,
+        objective: data.objective,
+        label: data.label,
+        maxIterations: data.maxIterations,
+        maxDurationSeconds:
+          typeof data.maxDurationSeconds === "number" ? data.maxDurationSeconds : data.maxDuration,
+        modelOverride: data.model,
+        useTools: data.useTools,
+      });
+
+      return { success: true, runId: run.id, run };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  },
+  "GET /api/agents/:id/loops": (_body, params) => ({
+    runs: listAgentLoopRuns(params!.id),
+  }),
   "GET /api/agents/:id/history": (_body, params) => {
     return { messages: agentManager.getHistory(params!.id) };
   },
@@ -2365,6 +2406,19 @@ const routes: Record<string, RouteHandler> = {
   "POST /api/subagents/:id/kill": (_body, params) => {
     const released = subagentRegistry.releaseSubagentRun(params!.id);
     return { success: released, message: released ? "Subagent killed" : "Subagent not found" };
+  },
+  "GET /api/loops": () => ({
+    runs: listAgentLoopRuns(),
+  }),
+  "GET /api/loops/:id": (_body, params) => {
+    const run = getAgentLoopRun(params!.id);
+    if (!run) return { success: false, error: "Loop run not found" };
+    return { success: true, run };
+  },
+  "POST /api/loops/:id/cancel": (_body, params) => {
+    const cancelled = cancelAgentLoopRun(params!.id);
+    if (!cancelled) return { success: false, error: "Loop run not found" };
+    return { success: true };
   },
 
   "GET /api/system-prompt": () => {
