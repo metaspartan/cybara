@@ -10,7 +10,7 @@ function id(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function createChannel(type: "web" | "discord", name: string): string {
+function createChannel(type: "web" | "discord" | "slack" | "telegram", name: string): string {
   const channelId = id(type);
   tables.channels.create({
     id: channelId,
@@ -80,15 +80,17 @@ describe("message tool routing", () => {
 
   test("react routes to discord adapter", async () => {
     const discordChannelId = createChannel("discord", "Discord React Test");
-    const adapter = channelManager.getAdapter("discord") as (ChannelAdapter & {
-      sendReaction?: (
-        channelId: string,
-        chatId: string | number,
-        messageId: string,
-        emoji: string,
-        options?: Record<string, unknown>
-      ) => Promise<boolean>;
-    }) | null;
+    const adapter = channelManager.getAdapter("discord") as
+      | (ChannelAdapter & {
+          sendReaction?: (
+            channelId: string,
+            chatId: string | number,
+            messageId: string,
+            emoji: string,
+            options?: Record<string, unknown>
+          ) => Promise<boolean>;
+        })
+      | null;
     expect(adapter).toBeDefined();
     if (!adapter) {
       throw new Error("discord adapter not available");
@@ -130,17 +132,127 @@ describe("message tool routing", () => {
     });
   });
 
+  test("react routes to slack adapter", async () => {
+    const slackChannelId = createChannel("slack", "Slack React Test");
+    const adapter = channelManager.getAdapter("slack") as
+      | (ChannelAdapter & {
+          sendReaction?: (
+            channelId: string,
+            chatId: string | number,
+            messageId: string,
+            emoji: string,
+            options?: Record<string, unknown>
+          ) => Promise<boolean>;
+        })
+      | null;
+    expect(adapter).toBeDefined();
+    if (!adapter) {
+      throw new Error("slack adapter not available");
+    }
+
+    const originalSendReaction = adapter.sendReaction;
+    let calledWith:
+      | { channelId: string; target: string; messageId: string; emoji: string }
+      | undefined;
+    adapter.sendReaction = async (channelId, chatId, messageId, emoji) => {
+      calledWith = {
+        channelId,
+        target: String(chatId),
+        messageId,
+        emoji,
+      };
+      return true;
+    };
+    restorers.push(() => {
+      adapter.sendReaction = originalSendReaction;
+    });
+
+    const result = await handleMessage({
+      action: "react",
+      channelId: slackChannelId,
+      target: "slack-chat-1",
+      messageId: "1710000000.001",
+      emoji: ":eyes:",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.channel).toBe("slack");
+    expect(result.channelId).toBe(slackChannelId);
+    expect(calledWith).toEqual({
+      channelId: slackChannelId,
+      target: "slack-chat-1",
+      messageId: "1710000000.001",
+      emoji: ":eyes:",
+    });
+  });
+
+  test("react routes to telegram adapter", async () => {
+    const telegramChannelId = createChannel("telegram", "Telegram React Test");
+    const adapter = channelManager.getAdapter("telegram") as
+      | (ChannelAdapter & {
+          sendReaction?: (
+            channelId: string,
+            chatId: string | number,
+            messageId: string,
+            emoji: string,
+            options?: Record<string, unknown>
+          ) => Promise<boolean>;
+        })
+      | null;
+    expect(adapter).toBeDefined();
+    if (!adapter) {
+      throw new Error("telegram adapter not available");
+    }
+
+    const originalSendReaction = adapter.sendReaction;
+    let calledWith:
+      | { channelId: string; target: string; messageId: string; emoji: string }
+      | undefined;
+    adapter.sendReaction = async (channelId, chatId, messageId, emoji) => {
+      calledWith = {
+        channelId,
+        target: String(chatId),
+        messageId,
+        emoji,
+      };
+      return true;
+    };
+    restorers.push(() => {
+      adapter.sendReaction = originalSendReaction;
+    });
+
+    const result = await handleMessage({
+      action: "react",
+      channelId: telegramChannelId,
+      target: "880011",
+      messageId: "101",
+      emoji: "🔥",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.channel).toBe("telegram");
+    expect(result.channelId).toBe(telegramChannelId);
+    expect(calledWith).toEqual({
+      channelId: telegramChannelId,
+      target: "880011",
+      messageId: "101",
+      emoji: "🔥",
+    });
+  });
+
   test("unreact passes userId through to discord adapter", async () => {
     const discordChannelId = createChannel("discord", "Discord Unreact Test");
-    const adapter = channelManager.getAdapter("discord") as (ChannelAdapter & {
-      removeReaction?: (
-        channelId: string,
-        chatId: string | number,
-        messageId: string,
-        emoji: string,
-        options?: Record<string, unknown>
-      ) => Promise<boolean>;
-    }) | null;
+    const adapter = channelManager.getAdapter("discord") as
+      | (ChannelAdapter & {
+          removeReaction?: (
+            channelId: string,
+            chatId: string | number,
+            messageId: string,
+            emoji: string,
+            options?: Record<string, unknown>
+          ) => Promise<boolean>;
+        })
+      | null;
     expect(adapter).toBeDefined();
     if (!adapter) {
       throw new Error("discord adapter not available");
@@ -210,15 +322,17 @@ describe("message tool routing", () => {
 
     discordSessions.set(`${firstDiscordChannelId}:chat-context`, "session-context");
 
-    const adapter = channelManager.getAdapter("discord") as (ChannelAdapter & {
-      sendReaction?: (
-        channelId: string,
-        chatId: string | number,
-        messageId: string,
-        emoji: string,
-        options?: Record<string, unknown>
-      ) => Promise<boolean>;
-    }) | null;
+    const adapter = channelManager.getAdapter("discord") as
+      | (ChannelAdapter & {
+          sendReaction?: (
+            channelId: string,
+            chatId: string | number,
+            messageId: string,
+            emoji: string,
+            options?: Record<string, unknown>
+          ) => Promise<boolean>;
+        })
+      | null;
     expect(adapter).toBeDefined();
     if (!adapter) {
       throw new Error("discord adapter not available");

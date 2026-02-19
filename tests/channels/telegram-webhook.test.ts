@@ -11,7 +11,10 @@ import {
   clearChannelSubagentSpawnHandler,
   setChannelSubagentSpawnHandler,
 } from "../../src/core/channels/commands";
-import { configureChannelChatRuntime, resetChannelChatRuntime } from "../../src/core/channels/chat-runtime";
+import {
+  configureChannelChatRuntime,
+  resetChannelChatRuntime,
+} from "../../src/core/channels/chat-runtime";
 import { config } from "../../src/core/config";
 
 function makeChannelId(prefix: string): string {
@@ -198,6 +201,11 @@ describe("Telegram webhook mocked flows", () => {
     tables.channels.delete(channelId);
     clearChannelSubagentSpawnHandler();
     resetTelegramSessionTrackingForTests();
+    (
+      telegramBot as unknown as {
+        bots: Map<string, unknown>;
+      }
+    ).bots.clear();
     resetChannelChatRuntime();
   });
 
@@ -818,5 +826,73 @@ describe("Telegram webhook mocked flows", () => {
 
     expect(ok).toBe(true);
     expect(runtimeInjectedMessages).toHaveLength(0);
+  });
+
+  test("sendReaction calls Telegram setMessageReaction with emoji payload", async () => {
+    (
+      telegramBot as unknown as {
+        bots: Map<
+          string,
+          {
+            token: string;
+            channelId: string;
+            mode: "webhook" | "polling";
+          }
+        >;
+      }
+    ).bots.set(channelId, {
+      token: "test-bot-token",
+      channelId,
+      mode: "webhook",
+    });
+
+    fetchCalls = [];
+    const ok = await telegramBot.sendReaction(channelId, 880011, "101", "🔥");
+    expect(ok).toBe(true);
+
+    const reactionCall = fetchCalls.find((call) => call.url.includes("/setMessageReaction"));
+    expect(reactionCall).toBeDefined();
+    const payload = reactionCall?.body as {
+      chat_id?: number | string;
+      message_id?: number;
+      reaction?: Array<{ type?: string; emoji?: string }>;
+    };
+    expect(payload.chat_id).toBe(880011);
+    expect(payload.message_id).toBe(101);
+    expect(payload.reaction).toEqual([{ type: "emoji", emoji: "🔥" }]);
+  });
+
+  test("removeReaction calls Telegram setMessageReaction with empty reaction list", async () => {
+    (
+      telegramBot as unknown as {
+        bots: Map<
+          string,
+          {
+            token: string;
+            channelId: string;
+            mode: "webhook" | "polling";
+          }
+        >;
+      }
+    ).bots.set(channelId, {
+      token: "test-bot-token",
+      channelId,
+      mode: "webhook",
+    });
+
+    fetchCalls = [];
+    const ok = await telegramBot.removeReaction(channelId, 880011, "101", "🔥");
+    expect(ok).toBe(true);
+
+    const reactionCall = fetchCalls.find((call) => call.url.includes("/setMessageReaction"));
+    expect(reactionCall).toBeDefined();
+    const payload = reactionCall?.body as {
+      chat_id?: number | string;
+      message_id?: number;
+      reaction?: unknown[];
+    };
+    expect(payload.chat_id).toBe(880011);
+    expect(payload.message_id).toBe(101);
+    expect(payload.reaction).toEqual([]);
   });
 });

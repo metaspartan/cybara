@@ -816,7 +816,7 @@ function buildMessagingSection(params: {
       "### message tool",
       "- Use `message` for proactive sends + channel actions (polls, reactions, etc.).",
       "- For `action=send`, include `target` (or `to`) and `message` (or `text`).",
-      '- For Discord reactions, use `action=react|unreact` with `channel:"discord"`, `target`, `messageId`, and `emoji`.',
+      "- For reactions, use `action=react|unreact` with `channel` (`discord`, `slack`, or `telegram`), plus `target`, `messageId`, and `emoji`.",
       `- If you use \`message\` (\`action=send\`) to deliver your user-visible reply, respond with ONLY: ${SILENT_REPLY_TOKEN} (avoid duplicate replies).`
     );
 

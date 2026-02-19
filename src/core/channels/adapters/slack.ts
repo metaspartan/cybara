@@ -420,6 +420,76 @@ export class SlackAdapter implements ChannelAdapter {
     }
   }
 
+  private normalizeReactionName(emoji: string): string {
+    const trimmed = emoji.trim();
+    if (!trimmed) return "";
+    return trimmed.replace(/^:+|:+$/g, "");
+  }
+
+  async sendReaction(
+    channelId: string,
+    chatId: string | number,
+    messageId: string,
+    emoji: string,
+    _options?: Record<string, unknown>
+  ): Promise<boolean> {
+    const app = this.apps.get(channelId);
+    if (!app) {
+      console.error("[Slack] sendReaction: No app for channel", channelId);
+      return false;
+    }
+
+    const reactionName = this.normalizeReactionName(emoji);
+    if (!reactionName) {
+      console.error("[Slack] sendReaction: emoji is required");
+      return false;
+    }
+
+    try {
+      await app.client.reactions.add({
+        channel: String(chatId),
+        timestamp: String(messageId),
+        name: reactionName,
+      });
+      return true;
+    } catch (error) {
+      console.error("[Slack] Failed to send reaction:", error);
+      return false;
+    }
+  }
+
+  async removeReaction(
+    channelId: string,
+    chatId: string | number,
+    messageId: string,
+    emoji: string,
+    _options?: Record<string, unknown>
+  ): Promise<boolean> {
+    const app = this.apps.get(channelId);
+    if (!app) {
+      console.error("[Slack] removeReaction: No app for channel", channelId);
+      return false;
+    }
+
+    const reactionName = this.normalizeReactionName(emoji);
+    if (!reactionName) {
+      console.error("[Slack] removeReaction: emoji is required");
+      return false;
+    }
+
+    try {
+      await app.client.reactions.remove({
+        channel: String(chatId),
+        timestamp: String(messageId),
+        name: reactionName,
+      });
+      return true;
+    } catch (error) {
+      console.error("[Slack] Failed to remove reaction:", error);
+      return false;
+    }
+  }
+
   formatResponse(content: string, toolCalls?: ToolCallInfo[], thinking?: string): string {
     let text = content;
 

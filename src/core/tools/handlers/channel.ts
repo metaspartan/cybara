@@ -461,11 +461,17 @@ function resolveChannelsForAction(args: {
   }
 
   if (args.action === "react" || args.action === "unreact") {
-    const discordChannels = allEnabled.filter((entry) => entry.type === "discord");
-    if (discordChannels.length === 0) {
-      throw new Error("No active discord channel found");
+    const reactionCapable = allEnabled.filter((entry) => {
+      const adapter = channelManager.getAdapter(entry.type) as ReactionAdapter | undefined;
+      if (!adapter) return false;
+      return args.action === "react"
+        ? Boolean(adapter.sendReaction)
+        : Boolean(adapter.removeReaction);
+    });
+    if (reactionCapable.length === 0) {
+      throw new Error(`No active channels support '${args.action}'`);
     }
-    return discordChannels;
+    return reactionCapable;
   }
 
   if (allEnabled.length === 0) {
@@ -587,24 +593,20 @@ async function runReactionAction(
   emoji: string,
   options?: Record<string, unknown>
 ): Promise<boolean> {
-  if (channel.type !== "discord") {
-    throw new Error(`'${action}' is currently only supported for discord channels`);
-  }
-
-  const adapter = channelManager.getAdapter("discord") as ReactionAdapter | undefined;
+  const adapter = channelManager.getAdapter(channel.type) as ReactionAdapter | undefined;
   if (!adapter) {
-    throw new Error("Discord adapter is not available");
+    throw new Error(`Channel adapter '${channel.type}' is not available`);
   }
 
   if (action === "react") {
     if (!adapter.sendReaction) {
-      throw new Error("Discord adapter does not support sendReaction");
+      throw new Error(`Channel '${channel.type}' does not support react`);
     }
     return await adapter.sendReaction(channel.id, target, messageId, emoji, options);
   }
 
   if (!adapter.removeReaction) {
-    throw new Error("Discord adapter does not support removeReaction");
+    throw new Error(`Channel '${channel.type}' does not support unreact`);
   }
 
   return await adapter.removeReaction(channel.id, target, messageId, emoji, options);

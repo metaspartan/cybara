@@ -98,6 +98,12 @@ type TelegramReactionType = {
   custom_emoji_id?: string;
 };
 
+type TelegramOutboundReaction = {
+  type: "emoji" | "custom_emoji";
+  emoji?: string;
+  custom_emoji_id?: string;
+};
+
 const TELEGRAM_COMMANDS: TelegramBotCommand[] = [
   { command: "start", description: "Start interacting with the bot" },
   { command: "help", description: "Show available commands and usage" },
@@ -885,6 +891,102 @@ export class TelegramBotManager implements ChannelAdapter {
         reply_markup?: Record<string, unknown>;
       }
     );
+  }
+
+  private parseTelegramMessageId(messageId: string): number | null {
+    const parsed = Number.parseInt(String(messageId), 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return null;
+    }
+    return parsed;
+  }
+
+  private buildTelegramReaction(emoji: string): TelegramOutboundReaction | null {
+    const trimmed = emoji.trim();
+    if (!trimmed) return null;
+
+    const customMatch = trimmed.match(/^custom:([A-Za-z0-9_-]+)$/i);
+    if (customMatch) {
+      return {
+        type: "custom_emoji",
+        custom_emoji_id: customMatch[1],
+      };
+    }
+
+    return {
+      type: "emoji",
+      emoji: trimmed,
+    };
+  }
+
+  async sendReaction(
+    channelId: string,
+    chatId: string | number,
+    messageId: string,
+    emoji: string,
+    _options?: Record<string, unknown>
+  ): Promise<boolean> {
+    const bot = this.bots.get(channelId);
+    if (!bot) {
+      console.error("[Telegram] sendReaction: No bot found for channel", channelId);
+      return false;
+    }
+
+    const parsedMessageId = this.parseTelegramMessageId(messageId);
+    if (!parsedMessageId) {
+      console.error("[Telegram] sendReaction: Invalid messageId", messageId);
+      return false;
+    }
+
+    const reaction = this.buildTelegramReaction(emoji);
+    if (!reaction) {
+      console.error("[Telegram] sendReaction: emoji is required");
+      return false;
+    }
+
+    try {
+      const result = await telegramApi(bot.token, "setMessageReaction", {
+        chat_id: chatId,
+        message_id: parsedMessageId,
+        reaction: [reaction],
+      });
+      return result.ok === true;
+    } catch (error) {
+      console.error("[Telegram] Failed to send reaction:", error);
+      return false;
+    }
+  }
+
+  async removeReaction(
+    channelId: string,
+    chatId: string | number,
+    messageId: string,
+    _emoji: string,
+    _options?: Record<string, unknown>
+  ): Promise<boolean> {
+    const bot = this.bots.get(channelId);
+    if (!bot) {
+      console.error("[Telegram] removeReaction: No bot found for channel", channelId);
+      return false;
+    }
+
+    const parsedMessageId = this.parseTelegramMessageId(messageId);
+    if (!parsedMessageId) {
+      console.error("[Telegram] removeReaction: Invalid messageId", messageId);
+      return false;
+    }
+
+    try {
+      const result = await telegramApi(bot.token, "setMessageReaction", {
+        chat_id: chatId,
+        message_id: parsedMessageId,
+        reaction: [],
+      });
+      return result.ok === true;
+    } catch (error) {
+      console.error("[Telegram] Failed to remove reaction:", error);
+      return false;
+    }
   }
 
   formatResponse(content: string, toolCalls?: ToolCallInfo[], thinking?: string): string {

@@ -61,17 +61,31 @@ describe("UI page API wiring", () => {
 
     expect(source).toContain("apiFetch(`/api/ide/browse?path=${encodeURIComponent(path)}`)");
     expect(source).toContain("apiFetch(`/api/ide/read?path=${encodeURIComponent(path)}`)");
-    expect(source).toContain("apiFetch('/api/ide/write'");
-    expect(source).toContain("apiFetch('/api/ide/create'");
-    expect(source).toContain("apiFetch(`/api/lsp/diagnostics/file?path=${encodeURIComponent(path)}`)");
-    expect(source).toContain("apiFetch('/api/lsp/languages')");
+    expect(source).toContain('apiFetch("/api/ide/write",');
+    expect(source).toContain('apiFetch("/api/ide/create",');
+    expect(source).toContain(
+      "apiFetch(`/api/lsp/diagnostics/file?path=${encodeURIComponent(path)}`)"
+    );
+    expect(source).toContain('apiFetch("/api/lsp/languages")');
     expect(source).toContain("apiFetch(`/api/git/status?path=${encodeURIComponent(path)}`)");
+  });
+
+  test("IDE page includes quick navigation controls for filtering and line jump", () => {
+    const source = readPage("IDE.tsx");
+
+    expect(source).toContain('placeholder="Filter files"');
+    expect(source).toContain('setTreeFilter("")');
+    expect(source).toContain("lineJumpInputRef.current?.focus()");
+    expect(source).toContain('e.key.toLowerCase() === "g"');
+    expect(source).toContain("data-line-number={i + 1}");
   });
 
   test("Terminal page uses token-aware websocket URL helper", () => {
     const source = readPage("Terminal.tsx");
 
-    expect(source).toContain("appendApiTokenParam(`/api/terminal/ws?session=${encodeURIComponent(id)}`)");
+    expect(source).toContain(
+      "appendApiTokenParam(`/api/terminal/ws?session=${encodeURIComponent(id)}`)"
+    );
     expect(source).toContain("apiFetch('/api/terminal/sessions')");
     expect(source).toContain("new WebSocket(`${proto}//${window.location.host}${wsPath}`)");
   });
@@ -154,8 +168,8 @@ describe("UI page API wiring", () => {
   test("Agents page sends provider_id in create/update payloads", () => {
     const source = readPage("Agents.tsx");
 
-    expect(source).toContain("provider_id: formData.get(\"provider_id\") as string");
-    expect(source).toContain("formData.set(\"provider_id\", selectedProvider);");
-    expect(source).not.toContain("provider: formData.get(\"provider\") as string");
+    expect(source).toContain('provider_id: formData.get("provider_id") as string');
+    expect(source).toContain('formData.set("provider_id", selectedProvider);');
+    expect(source).not.toContain('provider: formData.get("provider") as string');
   });
 });

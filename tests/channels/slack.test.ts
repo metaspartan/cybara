@@ -4,7 +4,10 @@ import {
   clearChannelSubagentSpawnHandler,
   setChannelSubagentSpawnHandler,
 } from "../../src/core/channels/commands";
-import { configureChannelChatRuntime, resetChannelChatRuntime } from "../../src/core/channels/chat-runtime";
+import {
+  configureChannelChatRuntime,
+  resetChannelChatRuntime,
+} from "../../src/core/channels/chat-runtime";
 import { securityManager } from "../../src/core/channels/security";
 import { config } from "../../src/core/config";
 import { tables } from "../../src/core/database";
@@ -941,5 +944,81 @@ describe("Slack adapter mocked flows", () => {
     );
 
     expect(injected).toEqual(["session-slack-channel-scope"]);
+  });
+
+  test("sendReaction normalizes colon-wrapped emoji names", async () => {
+    const adapter = new SlackAdapter();
+    const channelId = makeChannelId("slack-send-reaction");
+    const calls: Array<{ channel: string; timestamp: string; name: string }> = [];
+
+    (
+      adapter as unknown as {
+        apps: Map<
+          string,
+          { client: { reactions: { add: (args: Record<string, string>) => Promise<void> } } }
+        >;
+      }
+    ).apps.set(channelId, {
+      client: {
+        reactions: {
+          add: async (args: Record<string, string>) => {
+            calls.push({
+              channel: args.channel,
+              timestamp: args.timestamp,
+              name: args.name,
+            });
+          },
+        },
+      },
+    });
+
+    const ok = await adapter.sendReaction(channelId, "C-REACTION", "1710000300.300", ":eyes:");
+
+    expect(ok).toBe(true);
+    expect(calls).toEqual([
+      {
+        channel: "C-REACTION",
+        timestamp: "1710000300.300",
+        name: "eyes",
+      },
+    ]);
+  });
+
+  test("removeReaction normalizes colon-wrapped emoji names", async () => {
+    const adapter = new SlackAdapter();
+    const channelId = makeChannelId("slack-remove-reaction");
+    const calls: Array<{ channel: string; timestamp: string; name: string }> = [];
+
+    (
+      adapter as unknown as {
+        apps: Map<
+          string,
+          { client: { reactions: { remove: (args: Record<string, string>) => Promise<void> } } }
+        >;
+      }
+    ).apps.set(channelId, {
+      client: {
+        reactions: {
+          remove: async (args: Record<string, string>) => {
+            calls.push({
+              channel: args.channel,
+              timestamp: args.timestamp,
+              name: args.name,
+            });
+          },
+        },
+      },
+    });
+
+    const ok = await adapter.removeReaction(channelId, "C-REACTION", "1710000301.301", ":eyes:");
+
+    expect(ok).toBe(true);
+    expect(calls).toEqual([
+      {
+        channel: "C-REACTION",
+        timestamp: "1710000301.301",
+        name: "eyes",
+      },
+    ]);
   });
 });

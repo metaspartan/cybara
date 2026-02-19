@@ -1169,7 +1169,8 @@ Use for tasks that may take longer or require separate context.`,
         },
         emoji: {
           type: "string",
-          description: "Required for react/unreact. Unicode or custom discord emoji.",
+          description:
+            "Required for react/unreact. Discord/Telegram emoji or Slack reaction name (with or without colons).",
         },
         userId: {
           type: "string",
