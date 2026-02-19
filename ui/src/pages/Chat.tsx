@@ -1,4 +1,11 @@
-import { useState, useRef, useEffect, useCallback, type ComponentPropsWithoutRef } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  isValidElement,
+  type ComponentPropsWithoutRef,
+} from "react";
 import {
   Send,
   Bot,
@@ -18,6 +25,7 @@ import {
   CheckCircle2,
   AlertTriangle,
 } from "lucide-react";
+import { Highlight, themes } from "prism-react-renderer";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useChat, useSessions, useDeleteSession, useLoadSession } from "@/hooks/useChat";
@@ -479,41 +487,151 @@ function AssistantMetaInline({ message }: { message: ChatMessage }) {
   );
 }
 
+const CODE_LANGUAGE_ALIASES: Record<string, string> = {
+  ts: "typescript",
+  tsx: "tsx",
+  js: "javascript",
+  jsx: "jsx",
+  sh: "bash",
+  zsh: "bash",
+  shell: "bash",
+  md: "markdown",
+  yml: "yaml",
+  py: "python",
+  rb: "ruby",
+  rs: "rust",
+  csharp: "c",
+};
+
+function extractTextContent(node: unknown): string {
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node);
+  }
+  if (Array.isArray(node)) {
+    return node.map((child) => extractTextContent(child)).join("");
+  }
+  if (isValidElement(node)) {
+    return extractTextContent((node.props as { children?: unknown }).children);
+  }
+  return "";
+}
+
+function normalizeCodeLanguage(rawLanguage?: string): string {
+  if (!rawLanguage) return "plaintext";
+  const key = rawLanguage.trim().toLowerCase();
+  return CODE_LANGUAGE_ALIASES[key] || key || "plaintext";
+}
+
+function DiffCodeBlock({ code }: { code: string }) {
+  const lines = code.split(/\r?\n/);
+
+  return (
+    <div className="my-3 rounded-xl border border-white/10 bg-slate-950/70 overflow-hidden">
+      <div className="px-3 py-1.5 border-b border-white/10 text-[11px] uppercase tracking-[0.08em] text-gray-400 bg-white/5">
+        Diff
+      </div>
+      <pre className="m-0 overflow-x-auto text-[13px] leading-6 font-mono">
+        {lines.map((line, index) => (
+          <div
+            key={`diff-${index}`}
+            className={cn(
+              "px-3 whitespace-pre",
+              line.startsWith("+++") || line.startsWith("---") || line.startsWith("@@")
+                ? "bg-blue-500/10 text-blue-200"
+                : line.startsWith("+")
+                  ? "bg-green-500/10 text-green-200"
+                  : line.startsWith("-")
+                    ? "bg-red-500/10 text-red-200"
+                    : "text-gray-300"
+            )}
+          >
+            {line || "\u00A0"}
+          </div>
+        ))}
+      </pre>
+    </div>
+  );
+}
+
+function SyntaxCodeBlock({ code, language }: { code: string; language: string }) {
+  return (
+    <div className="my-3 rounded-xl border border-white/10 bg-black/50 overflow-hidden">
+      <div className="px-3 py-1.5 border-b border-white/10 text-[11px] uppercase tracking-[0.08em] text-gray-400 bg-white/5">
+        {language}
+      </div>
+      <Highlight theme={themes.nightOwl} code={code || " "} language={language}>
+        {({ className, style, tokens, getLineProps, getTokenProps }) => (
+          <pre
+            className={cn(className, "m-0 p-3 overflow-x-auto text-[13px] leading-6")}
+            style={{ ...style, background: "transparent" }}
+          >
+            {tokens.map((line, lineIndex) => (
+              <div key={`line-${lineIndex}`} {...getLineProps({ line })}>
+                {line.length > 0
+                  ? line.map((token, tokenIndex) => (
+                      <span key={`${lineIndex}-${tokenIndex}`} {...getTokenProps({ token })} />
+                    ))
+                  : "\u00A0"}
+              </div>
+            ))}
+          </pre>
+        )}
+      </Highlight>
+    </div>
+  );
+}
+
 function MessageContent({ content }: { content: string }) {
   type MarkdownPreProps = ComponentPropsWithoutRef<"pre">;
   type MarkdownCodeProps = ComponentPropsWithoutRef<"code"> & { inline?: boolean };
 
   return (
-    <div className="prose prose-invert prose-sm max-w-none">
+    <div className="max-w-none text-sm text-gray-200 leading-6">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          pre: ({ children, ...props }: MarkdownPreProps) => (
-            <pre className="bg-black/40 rounded-lg p-3 overflow-x-auto my-2" {...props}>
-              {children}
-            </pre>
-          ),
-          code({ className, children, ...props }: MarkdownCodeProps) {
-            if (className) {
+          pre: ({ children }: MarkdownPreProps) => <>{children}</>,
+          code({ className, children, inline, ...props }: MarkdownCodeProps) {
+            const rawCode = extractTextContent(children).replace(/\n$/, "");
+            if (inline) {
               return (
-                <code className={className} {...props}>
-                  {children}
+                <code
+                  className="bg-white/10 rounded px-1.5 py-0.5 text-[0.85em] font-mono"
+                  {...props}
+                >
+                  {rawCode}
                 </code>
               );
             }
-            return (
-              <code
-                className="bg-white/10 rounded px-1.5 py-0.5 text-[0.85em] font-mono"
-                {...props}
-              >
-                {children}
-              </code>
-            );
+
+            const languageMatch = className ? /language-([^\s]+)/.exec(className) : null;
+            const language = normalizeCodeLanguage(languageMatch?.[1]);
+            if (language === "diff" || language === "patch") {
+              return <DiffCodeBlock code={rawCode} />;
+            }
+
+            return <SyntaxCodeBlock code={rawCode} language={language} />;
           },
           p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
           ul: ({ children }) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
           ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
           li: ({ children }) => <li className="mb-1">{children}</li>,
+          table: ({ children }) => (
+            <div className="my-3 overflow-x-auto rounded-xl border border-white/10 bg-white/[0.03]">
+              <table className="w-full text-sm border-collapse">{children}</table>
+            </div>
+          ),
+          thead: ({ children }) => <thead className="bg-white/5">{children}</thead>,
+          tbody: ({ children }) => <tbody>{children}</tbody>,
+          tr: ({ children }) => (
+            <tr className="border-b border-white/10 last:border-b-0">{children}</tr>
+          ),
+          th: ({ children }) => (
+            <th className="text-left font-semibold text-gray-100 px-3 py-2 align-top">
+              {children}
+            </th>
+          ),
+          td: ({ children }) => <td className="px-3 py-2 align-top text-gray-300">{children}</td>,
           h1: ({ children }) => <h1 className="text-xl font-bold mb-2">{children}</h1>,
           h2: ({ children }) => <h2 className="text-lg font-bold mb-2">{children}</h2>,
           h3: ({ children }) => <h3 className="text-base font-bold mb-2">{children}</h3>,

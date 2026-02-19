@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import db, { tables } from "../../src/core/database";
 import {
   getDefaultModel,
   getProviderBaseUrl,
+  providerManager,
   providers,
   resolveProviderType,
 } from "../../src/core/providers";
@@ -69,8 +71,12 @@ describe("Provider model defaults and API-family parity", () => {
   });
 
   test("includes newly added provider catalogs from OpenClaw parity set", () => {
-    expect(providers["minimax-portal"].models.some((model) => model.id === "MiniMax-M2.5")).toBe(true);
-    expect(providers.together.models.some((model) => model.id === "moonshotai/Kimi-K2.5")).toBe(true);
+    expect(providers["minimax-portal"].models.some((model) => model.id === "MiniMax-M2.5")).toBe(
+      true
+    );
+    expect(providers.together.models.some((model) => model.id === "moonshotai/Kimi-K2.5")).toBe(
+      true
+    );
     expect(providers.huggingface.models.some((model) => model.id === "openai/gpt-oss-120b")).toBe(
       true
     );
@@ -120,5 +126,35 @@ describe("Provider model defaults and API-family parity", () => {
         "ernie-4.5",
       ])
     );
+  });
+
+  test("merges static catalog models into stale provider model cache", () => {
+    const providerId = `google-cache-${crypto.randomUUID()}`;
+
+    tables.providers.create({
+      id: providerId,
+      provider: "google",
+      name: "Google Cache Test",
+      base_url: providers.google.baseUrl,
+      is_default: false,
+    });
+
+    tables.providerModels.upsert({
+      id: `${providerId}-legacy`,
+      provider_id: providerId,
+      model_id: "gemini-3-pro-preview",
+      model_name: "Gemini 3 Pro",
+      context_window: 1048576,
+      max_tokens: 65536,
+      reasoning: false,
+      input_types: ["text", "image", "audio", "video"],
+    });
+
+    const modelIds = providerManager.getModels(providerId).map((model) => model.model_id);
+    expect(modelIds).toContain("gemini-3.1-pro-preview");
+    expect(modelIds).toContain("gemini-3-pro-preview");
+
+    db.query("DELETE FROM provider_models WHERE provider_id = ?").run(providerId);
+    tables.providers.delete(providerId);
   });
 });

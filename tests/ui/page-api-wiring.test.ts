@@ -183,5 +183,10 @@ describe("UI page API wiring", () => {
       "<LiveActivityTimeline status={liveStatus} activities={liveActivities} />"
     );
     expect(source).toContain("formatToolIntent(");
+    expect(source).toContain("Highlight, themes");
+    expect(source).toContain('language === "diff" || language === "patch"');
+    expect(source).toContain("table: ({ children }) => (");
+    expect(source).toContain("th: ({ children }) => (");
+    expect(source).toContain("<SyntaxCodeBlock");
   });
 });

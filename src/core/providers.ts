@@ -1622,8 +1622,67 @@ class ProviderManager {
     return result.changes > 0;
   }
 
+  private mergeStaticCatalogModels(providerId: string, cached: ProviderModel[]): ProviderModel[] {
+    const providerRow = tables.providers.get(providerId) as Provider | undefined;
+    if (!providerRow) return cached;
+
+    const resolvedType = resolveProviderType(providerRow.provider);
+    if (!resolvedType) return cached;
+
+    const staticCatalog = providers[resolvedType]?.models;
+    if (!staticCatalog || staticCatalog.length === 0) return cached;
+
+    const cachedByModelId = new Map<string, ProviderModel>();
+    for (const model of cached) {
+      const key = model.model_id?.trim().toLowerCase();
+      if (!key || cachedByModelId.has(key)) continue;
+      cachedByModelId.set(key, model);
+    }
+
+    const merged: ProviderModel[] = [];
+    const seen = new Set<string>();
+
+    for (const model of staticCatalog) {
+      const key = model.id.toLowerCase();
+      const existing = cachedByModelId.get(key);
+      if (existing) {
+        merged.push({
+          ...existing,
+          model_name: existing.model_name || model.name,
+          context_window: existing.context_window ?? model.context,
+          max_tokens: existing.max_tokens ?? model.maxTokens,
+          reasoning: existing.reasoning ?? model.reasoning,
+        });
+        seen.add(key);
+        continue;
+      }
+
+      merged.push({
+        id: `catalog:${providerId}:${model.id}`,
+        provider_id: providerId,
+        model_id: model.id,
+        model_name: model.name,
+        context_window: model.context,
+        max_tokens: model.maxTokens,
+        reasoning: model.reasoning,
+        input_types: [...model.input],
+      });
+      seen.add(key);
+    }
+
+    for (const model of cached) {
+      const key = model.model_id?.trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      merged.push(model);
+      seen.add(key);
+    }
+
+    return merged;
+  }
+
   getModels(providerId: string): ProviderModel[] {
-    return tables.providerModels.byProvider(providerId) as ProviderModel[];
+    const cached = tables.providerModels.byProvider(providerId) as ProviderModel[];
+    return this.mergeStaticCatalogModels(providerId, cached);
   }
 
   async discoverOllamaModels(): Promise<ProviderModel[]> {
