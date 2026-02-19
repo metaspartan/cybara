@@ -378,6 +378,151 @@ describe("Slack adapter mocked flows", () => {
     expect(sayMessages[0]).toContain("Available management commands");
   });
 
+  test("routes /status command through adapter without invoking chat handler", async () => {
+    const adapter = new SlackAdapter();
+    const channelId = makeChannelId("slack-status-command");
+    const sayMessages: string[] = [];
+    let handlerCalls = 0;
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    await invokeSlackMessage(
+      adapter,
+      channelId,
+      {
+        type: "message",
+        text: "/status",
+        user: "U-COMMAND",
+        channel: "C6",
+        ts: "6.001",
+      },
+      async (text: string) => {
+        sayMessages.push(text);
+      }
+    );
+
+    expect(handlerCalls).toBe(0);
+    expect(sayMessages).toHaveLength(1);
+    expect(sayMessages[0]).toContain("Status:");
+    expect(sayMessages[0]).toContain("Agents:");
+  });
+
+  test("routes /agents command through adapter without invoking chat handler", async () => {
+    const adapter = new SlackAdapter();
+    const channelId = makeChannelId("slack-agents-command");
+    const sayMessages: string[] = [];
+    let handlerCalls = 0;
+
+    const providerId = createProvider("Slack Agents Provider");
+    createAgent("Slack Agents Target", providerId, "model-one");
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    await invokeSlackMessage(
+      adapter,
+      channelId,
+      {
+        type: "message",
+        text: "/agents",
+        user: "U-COMMAND",
+        channel: "C6A",
+        ts: "6.051",
+      },
+      async (text: string) => {
+        sayMessages.push(text);
+      }
+    );
+
+    expect(handlerCalls).toBe(0);
+    expect(sayMessages).toHaveLength(1);
+    expect(sayMessages[0]).toContain("Agents:");
+    expect(sayMessages[0]).toContain("Slack Agents Target");
+  });
+
+  test("routes /providers command through adapter without invoking chat handler", async () => {
+    const adapter = new SlackAdapter();
+    const channelId = makeChannelId("slack-providers-command");
+    const sayMessages: string[] = [];
+    let handlerCalls = 0;
+
+    const providerId = createProvider("Slack Providers Target");
+    const agentId = createAgent("Slack Providers Agent", providerId, "model-one");
+    config.set("default_agent_id", agentId);
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    await invokeSlackMessage(
+      adapter,
+      channelId,
+      {
+        type: "message",
+        text: "/providers",
+        user: "U-COMMAND",
+        channel: "C6B",
+        ts: "6.061",
+      },
+      async (text: string) => {
+        sayMessages.push(text);
+      }
+    );
+
+    expect(handlerCalls).toBe(0);
+    expect(sayMessages).toHaveLength(1);
+    expect(sayMessages[0]).toContain("Providers");
+    expect(sayMessages[0]).toContain("Slack Providers Target");
+  });
+
+  test("routes /new command through adapter and rotates session id", async () => {
+    const adapter = new SlackAdapter();
+    const channelId = makeChannelId("slack-new-command");
+    const chatId = "C-NEW";
+    const sessionKey = `${channelId}:${chatId}`;
+    const initialSessionId = "session-slack-initial";
+    const sayMessages: string[] = [];
+    let handlerCalls = 0;
+
+    slackSessions.set(sessionKey, initialSessionId);
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    await invokeSlackMessage(
+      adapter,
+      channelId,
+      {
+        type: "message",
+        text: "/new",
+        user: "U-COMMAND",
+        channel: chatId,
+        ts: "6.101",
+      },
+      async (text: string) => {
+        sayMessages.push(text);
+      }
+    );
+
+    const rotatedSessionId = slackSessions.get(sessionKey);
+    expect(handlerCalls).toBe(0);
+    expect(rotatedSessionId).toBeDefined();
+    expect(rotatedSessionId).not.toBe(initialSessionId);
+    expect(sayMessages).toHaveLength(1);
+    expect(sayMessages[0]).toContain("Started a new session");
+  });
+
   test("routes /model command through adapter and updates default agent model", async () => {
     const adapter = new SlackAdapter();
     const channelId = makeChannelId("slack-model-command");
@@ -416,6 +561,88 @@ describe("Slack adapter mocked flows", () => {
     expect(updatedAgent?.model).toBe("model-two");
     expect(sayMessages).toHaveLength(1);
     expect(sayMessages[0]).toContain("model-two");
+  });
+
+  test("routes /agent command through adapter and updates default agent selection", async () => {
+    const adapter = new SlackAdapter();
+    const channelId = makeChannelId("slack-agent-command");
+    const sayMessages: string[] = [];
+    let handlerCalls = 0;
+
+    const providerId = createProvider("Slack Agent Provider");
+    const firstAgentId = createAgent("Slack Agent One", providerId, "model-one");
+    const secondAgentId = createAgent("Slack Agent Two", providerId, "model-two");
+    config.set("default_agent_id", firstAgentId);
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    await invokeSlackMessage(
+      adapter,
+      channelId,
+      {
+        type: "message",
+        text: `/agent ${secondAgentId}`,
+        user: "U-COMMAND",
+        channel: "C8",
+        ts: "8.001",
+      },
+      async (text: string) => {
+        sayMessages.push(text);
+      }
+    );
+
+    expect(handlerCalls).toBe(0);
+    expect(config.get<string>("default_agent_id")).toBe(secondAgentId);
+    expect(sayMessages).toHaveLength(1);
+    expect(sayMessages[0]).toContain("Slack Agent Two");
+  });
+
+  test("routes /provider command through adapter and updates default agent provider/model", async () => {
+    const adapter = new SlackAdapter();
+    const channelId = makeChannelId("slack-provider-command");
+    const sayMessages: string[] = [];
+    let handlerCalls = 0;
+
+    const providerA = createProvider("Slack Provider A");
+    addProviderModel(providerA, "a-model");
+    const providerB = createProvider("Slack Provider B");
+    addProviderModel(providerB, "b-model");
+    const agentId = createAgent("Slack Provider Agent", providerA, "a-model");
+    config.set("default_agent_id", agentId);
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    await invokeSlackMessage(
+      adapter,
+      channelId,
+      {
+        type: "message",
+        text: `/provider ${providerB}`,
+        user: "U-COMMAND",
+        channel: "C9",
+        ts: "9.001",
+      },
+      async (text: string) => {
+        sayMessages.push(text);
+      }
+    );
+
+    const updatedAgent = tables.agents.get(agentId) as
+      | { provider_id?: string; model?: string }
+      | undefined;
+    expect(handlerCalls).toBe(0);
+    expect(updatedAgent?.provider_id).toBe(providerB);
+    expect(updatedAgent?.model).toBe("b-model");
+    expect(sayMessages).toHaveLength(1);
+    expect(sayMessages[0]).toContain("Slack Provider B");
   });
 
   test("logs reaction events and injects system reaction updates into active session", async () => {

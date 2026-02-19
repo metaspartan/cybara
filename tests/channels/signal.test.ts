@@ -242,6 +242,142 @@ describe("Signal adapter mocked flows", () => {
     expect(sent[0]).toContain("Available management commands");
   });
 
+  test("routes /status command and avoids chat handler", async () => {
+    const adapter = new SignalAdapter();
+    const channelId = makeChannelId("signal-status-command");
+    const sent: string[] = [];
+    let handlerCalls = 0;
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+    (
+      adapter as unknown as {
+        sendSignalMessage: (_id: string, _recipient: string, message: string) => Promise<boolean>;
+      }
+    ).sendSignalMessage = async (_id, _recipient, message) => {
+      sent.push(message);
+      return true;
+    };
+
+    await invokeSignalEnvelope(adapter, channelId, {
+      sourceNumber: "+15550005556",
+      dataMessage: { message: "/status" },
+    });
+
+    expect(handlerCalls).toBe(0);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("Status:");
+    expect(sent[0]).toContain("Agents:");
+  });
+
+  test("routes /agents command and avoids chat handler", async () => {
+    const adapter = new SignalAdapter();
+    const channelId = makeChannelId("signal-agents-command");
+    const sent: string[] = [];
+    let handlerCalls = 0;
+
+    const providerId = createProvider("Signal Agents Provider");
+    createAgent("Signal Agents Target", providerId, "model-one");
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+    (
+      adapter as unknown as {
+        sendSignalMessage: (_id: string, _recipient: string, message: string) => Promise<boolean>;
+      }
+    ).sendSignalMessage = async (_id, _recipient, message) => {
+      sent.push(message);
+      return true;
+    };
+
+    await invokeSignalEnvelope(adapter, channelId, {
+      sourceNumber: "+15550005558",
+      dataMessage: { message: "/agents" },
+    });
+
+    expect(handlerCalls).toBe(0);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("Agents:");
+    expect(sent[0]).toContain("Signal Agents Target");
+  });
+
+  test("routes /providers command and avoids chat handler", async () => {
+    const adapter = new SignalAdapter();
+    const channelId = makeChannelId("signal-providers-command");
+    const sent: string[] = [];
+    let handlerCalls = 0;
+
+    const providerId = createProvider("Signal Providers Target");
+    const agentId = createAgent("Signal Providers Agent", providerId, "model-one");
+    config.set("default_agent_id", agentId);
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+    (
+      adapter as unknown as {
+        sendSignalMessage: (_id: string, _recipient: string, message: string) => Promise<boolean>;
+      }
+    ).sendSignalMessage = async (_id, _recipient, message) => {
+      sent.push(message);
+      return true;
+    };
+
+    await invokeSignalEnvelope(adapter, channelId, {
+      sourceNumber: "+15550005559",
+      dataMessage: { message: "/providers" },
+    });
+
+    expect(handlerCalls).toBe(0);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("Providers");
+    expect(sent[0]).toContain("Signal Providers Target");
+  });
+
+  test("routes /new command and rotates signal session id", async () => {
+    const adapter = new SignalAdapter();
+    const channelId = makeChannelId("signal-new-command");
+    const sender = "+15550005557";
+    const initialSessionId = "session-signal-initial";
+    const sent: string[] = [];
+    let handlerCalls = 0;
+
+    signalSessions.set(sender, initialSessionId);
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+    (
+      adapter as unknown as {
+        sendSignalMessage: (_id: string, _recipient: string, message: string) => Promise<boolean>;
+      }
+    ).sendSignalMessage = async (_id, _recipient, message) => {
+      sent.push(message);
+      return true;
+    };
+
+    await invokeSignalEnvelope(adapter, channelId, {
+      sourceNumber: sender,
+      dataMessage: { message: "/new" },
+    });
+
+    const rotatedSessionId = signalSessions.get(sender);
+    expect(handlerCalls).toBe(0);
+    expect(rotatedSessionId).toBeDefined();
+    expect(rotatedSessionId).not.toBe(initialSessionId);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("Started a new session");
+  });
+
   test("routes /model command and updates default agent model", async () => {
     const adapter = new SignalAdapter();
     const channelId = makeChannelId("signal-model-command");
@@ -278,5 +414,83 @@ describe("Signal adapter mocked flows", () => {
     expect(updatedAgent?.model).toBe("model-two");
     expect(sent).toHaveLength(1);
     expect(sent[0]).toContain("model-two");
+  });
+
+  test("routes /agent command and updates default agent selection", async () => {
+    const adapter = new SignalAdapter();
+    const channelId = makeChannelId("signal-agent-command");
+    const sent: string[] = [];
+    let handlerCalls = 0;
+
+    const providerId = createProvider("Signal Agent Provider");
+    const firstAgentId = createAgent("Signal Agent One", providerId, "model-one");
+    const secondAgentId = createAgent("Signal Agent Two", providerId, "model-two");
+    config.set("default_agent_id", firstAgentId);
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+    (
+      adapter as unknown as {
+        sendSignalMessage: (_id: string, _recipient: string, message: string) => Promise<boolean>;
+      }
+    ).sendSignalMessage = async (_id, _recipient, message) => {
+      sent.push(message);
+      return true;
+    };
+
+    await invokeSignalEnvelope(adapter, channelId, {
+      sourceNumber: "+15550007777",
+      dataMessage: { message: `/agent ${secondAgentId}` },
+    });
+
+    expect(handlerCalls).toBe(0);
+    expect(config.get<string>("default_agent_id")).toBe(secondAgentId);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("Signal Agent Two");
+  });
+
+  test("routes /provider command and updates default agent provider/model", async () => {
+    const adapter = new SignalAdapter();
+    const channelId = makeChannelId("signal-provider-command");
+    const sent: string[] = [];
+    let handlerCalls = 0;
+
+    const providerA = createProvider("Signal Provider A");
+    addProviderModel(providerA, "a-model");
+    const providerB = createProvider("Signal Provider B");
+    addProviderModel(providerB, "b-model");
+    const agentId = createAgent("Signal Provider Agent", providerA, "a-model");
+    config.set("default_agent_id", agentId);
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+    (
+      adapter as unknown as {
+        sendSignalMessage: (_id: string, _recipient: string, message: string) => Promise<boolean>;
+      }
+    ).sendSignalMessage = async (_id, _recipient, message) => {
+      sent.push(message);
+      return true;
+    };
+
+    await invokeSignalEnvelope(adapter, channelId, {
+      sourceNumber: "+15550008888",
+      dataMessage: { message: `/provider ${providerB}` },
+    });
+
+    const updatedAgent = tables.agents.get(agentId) as
+      | { provider_id?: string; model?: string }
+      | undefined;
+    expect(handlerCalls).toBe(0);
+    expect(updatedAgent?.provider_id).toBe(providerB);
+    expect(updatedAgent?.model).toBe("b-model");
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("Signal Provider B");
   });
 });

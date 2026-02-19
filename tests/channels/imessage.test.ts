@@ -353,6 +353,175 @@ describe("iMessage adapter mocked flows", () => {
     expect(sent[0]).toContain("Available management commands");
   });
 
+  test("routes /status command and avoids chat handler", async () => {
+    const adapter = new IMessageAdapter();
+    const channelId = makeChannelId("imsg-status-command");
+    const sent: string[] = [];
+    let handlerCalls = 0;
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+    (
+      adapter as unknown as {
+        sendBlueBubblesMessage: (
+          _id: string,
+          _chatGuid: string,
+          message: string
+        ) => Promise<boolean>;
+      }
+    ).sendBlueBubblesMessage = async (_id, _chatGuid, message) => {
+      sent.push(message);
+      return true;
+    };
+
+    await invokeIMessage(
+      adapter,
+      channelId,
+      makeMessage({
+        text: "/status",
+        handle: { address: "allowed@icloud.com", service: "iMessage" },
+      })
+    );
+
+    expect(handlerCalls).toBe(0);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("Status:");
+    expect(sent[0]).toContain("Agents:");
+  });
+
+  test("routes /agents command and avoids chat handler", async () => {
+    const adapter = new IMessageAdapter();
+    const channelId = makeChannelId("imsg-agents-command");
+    const sent: string[] = [];
+    let handlerCalls = 0;
+
+    const providerId = createProvider("iMessage Agents Provider");
+    createAgent("iMessage Agents Target", providerId, "model-one");
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+    (
+      adapter as unknown as {
+        sendBlueBubblesMessage: (
+          _id: string,
+          _chatGuid: string,
+          message: string
+        ) => Promise<boolean>;
+      }
+    ).sendBlueBubblesMessage = async (_id, _chatGuid, message) => {
+      sent.push(message);
+      return true;
+    };
+
+    await invokeIMessage(
+      adapter,
+      channelId,
+      makeMessage({
+        text: "/agents",
+        handle: { address: "allowed@icloud.com", service: "iMessage" },
+      })
+    );
+
+    expect(handlerCalls).toBe(0);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("Agents:");
+    expect(sent[0]).toContain("iMessage Agents Target");
+  });
+
+  test("routes /providers command and avoids chat handler", async () => {
+    const adapter = new IMessageAdapter();
+    const channelId = makeChannelId("imsg-providers-command");
+    const sent: string[] = [];
+    let handlerCalls = 0;
+
+    const providerId = createProvider("iMessage Providers Target");
+    const agentId = createAgent("iMessage Providers Agent", providerId, "model-one");
+    config.set("default_agent_id", agentId);
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+    (
+      adapter as unknown as {
+        sendBlueBubblesMessage: (
+          _id: string,
+          _chatGuid: string,
+          message: string
+        ) => Promise<boolean>;
+      }
+    ).sendBlueBubblesMessage = async (_id, _chatGuid, message) => {
+      sent.push(message);
+      return true;
+    };
+
+    await invokeIMessage(
+      adapter,
+      channelId,
+      makeMessage({
+        text: "/providers",
+        handle: { address: "allowed@icloud.com", service: "iMessage" },
+      })
+    );
+
+    expect(handlerCalls).toBe(0);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("Providers");
+    expect(sent[0]).toContain("iMessage Providers Target");
+  });
+
+  test("routes /new command and rotates iMessage session id", async () => {
+    const adapter = new IMessageAdapter();
+    const channelId = makeChannelId("imsg-new-command");
+    const chatGuid = "chat-new";
+    const initialSessionId = "session-imsg-initial";
+    const sent: string[] = [];
+    let handlerCalls = 0;
+
+    imessageSessions.set(chatGuid, initialSessionId);
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+    (
+      adapter as unknown as {
+        sendBlueBubblesMessage: (
+          _id: string,
+          _chatGuid: string,
+          message: string
+        ) => Promise<boolean>;
+      }
+    ).sendBlueBubblesMessage = async (_id, _chatGuid, message) => {
+      sent.push(message);
+      return true;
+    };
+
+    await invokeIMessage(
+      adapter,
+      channelId,
+      makeMessage({
+        chatGuid,
+        text: "/new",
+        handle: { address: "allowed@icloud.com", service: "iMessage" },
+      })
+    );
+
+    const rotatedSessionId = imessageSessions.get(chatGuid);
+    expect(handlerCalls).toBe(0);
+    expect(rotatedSessionId).toBeDefined();
+    expect(rotatedSessionId).not.toBe(initialSessionId);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("Started a new session");
+  });
+
   test("routes /model command and updates default agent model", async () => {
     const adapter = new IMessageAdapter();
     const channelId = makeChannelId("imsg-model-command");
@@ -397,5 +566,99 @@ describe("iMessage adapter mocked flows", () => {
     expect(updatedAgent?.model).toBe("model-two");
     expect(sent).toHaveLength(1);
     expect(sent[0]).toContain("model-two");
+  });
+
+  test("routes /agent command and updates default agent selection", async () => {
+    const adapter = new IMessageAdapter();
+    const channelId = makeChannelId("imsg-agent-command");
+    const sent: string[] = [];
+    let handlerCalls = 0;
+
+    const providerId = createProvider("iMessage Agent Provider");
+    const firstAgentId = createAgent("iMessage Agent One", providerId, "model-one");
+    const secondAgentId = createAgent("iMessage Agent Two", providerId, "model-two");
+    config.set("default_agent_id", firstAgentId);
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+    (
+      adapter as unknown as {
+        sendBlueBubblesMessage: (
+          _id: string,
+          _chatGuid: string,
+          message: string
+        ) => Promise<boolean>;
+      }
+    ).sendBlueBubblesMessage = async (_id, _chatGuid, message) => {
+      sent.push(message);
+      return true;
+    };
+
+    await invokeIMessage(
+      adapter,
+      channelId,
+      makeMessage({
+        text: `/agent ${secondAgentId}`,
+        handle: { address: "allowed@icloud.com", service: "iMessage" },
+      })
+    );
+
+    expect(handlerCalls).toBe(0);
+    expect(config.get<string>("default_agent_id")).toBe(secondAgentId);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("iMessage Agent Two");
+  });
+
+  test("routes /provider command and updates default agent provider/model", async () => {
+    const adapter = new IMessageAdapter();
+    const channelId = makeChannelId("imsg-provider-command");
+    const sent: string[] = [];
+    let handlerCalls = 0;
+
+    const providerA = createProvider("iMessage Provider A");
+    addProviderModel(providerA, "a-model");
+    const providerB = createProvider("iMessage Provider B");
+    addProviderModel(providerB, "b-model");
+    const agentId = createAgent("iMessage Provider Agent", providerA, "a-model");
+    config.set("default_agent_id", agentId);
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+    (
+      adapter as unknown as {
+        sendBlueBubblesMessage: (
+          _id: string,
+          _chatGuid: string,
+          message: string
+        ) => Promise<boolean>;
+      }
+    ).sendBlueBubblesMessage = async (_id, _chatGuid, message) => {
+      sent.push(message);
+      return true;
+    };
+
+    await invokeIMessage(
+      adapter,
+      channelId,
+      makeMessage({
+        text: `/provider ${providerB}`,
+        handle: { address: "allowed@icloud.com", service: "iMessage" },
+      })
+    );
+
+    const updatedAgent = tables.agents.get(agentId) as
+      | { provider_id?: string; model?: string }
+      | undefined;
+    expect(handlerCalls).toBe(0);
+    expect(updatedAgent?.provider_id).toBe(providerB);
+    expect(updatedAgent?.model).toBe("b-model");
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("iMessage Provider B");
   });
 });

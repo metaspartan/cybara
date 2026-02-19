@@ -4,6 +4,7 @@ import { securityManager } from "../../src/core/channels/security";
 import {
   processTelegramWebhook,
   resetTelegramSessionTrackingForTests,
+  telegramSessions,
   telegramBot,
 } from "../../src/core/channels/adapters/telegram";
 import {
@@ -342,6 +343,320 @@ describe("Telegram webhook mocked flows", () => {
       config.set("default_agent_id", "");
       tables.agents.delete(agentId);
       tables.providers.delete(providerId);
+    }
+  });
+
+  test("handles /status command without invoking chat handler", async () => {
+    let handlerCalls = 0;
+    telegramBot.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should not run";
+    });
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+
+    const ok = await processTelegramWebhook(channelId, makeTelegramUpdate("/status"));
+
+    expect(ok).toBe(true);
+    expect(handlerCalls).toBe(0);
+
+    const sendMessageCall = fetchCalls.find((call) => call.url.includes("/sendMessage"));
+    expect(sendMessageCall).toBeDefined();
+    const payload = sendMessageCall?.body as { text?: string };
+    expect(payload.text).toContain("*Status*");
+    expect(payload.text).toContain("*Agents:*");
+  });
+
+  test("handles /agents command without invoking chat handler", async () => {
+    const providerId = makeChannelId("telegram-agents-provider");
+    const agentId = makeChannelId("telegram-agents-target");
+
+    tables.providers.create({
+      id: providerId,
+      provider: "openai",
+      name: "Telegram Agents Provider",
+      base_url: "https://api.openai.com/v1",
+      api_key: "test-key",
+      is_default: false,
+    });
+    tables.agents.create({
+      id: agentId,
+      name: "Telegram Agents Target",
+      type: "main",
+      model: "model-one",
+      provider_id: providerId,
+      status: "stopped",
+      memory_enabled: false,
+    });
+
+    let handlerCalls = 0;
+    telegramBot.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should not run";
+    });
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+
+    try {
+      const ok = await processTelegramWebhook(channelId, makeTelegramUpdate("/agents"));
+
+      expect(ok).toBe(true);
+      expect(handlerCalls).toBe(0);
+
+      const sendMessageCall = fetchCalls.find((call) => call.url.includes("/sendMessage"));
+      expect(sendMessageCall).toBeDefined();
+      const payload = sendMessageCall?.body as { text?: string };
+      expect(payload.text).toContain("Available Agents");
+      expect(payload.text).toContain("Telegram Agents Target");
+    } finally {
+      tables.agents.delete(agentId);
+      tables.providers.delete(providerId);
+    }
+  });
+
+  test("handles /providers command without invoking chat handler", async () => {
+    const providerId = makeChannelId("telegram-providers-target");
+    const agentId = makeChannelId("telegram-providers-agent");
+
+    tables.providers.create({
+      id: providerId,
+      provider: "openai",
+      name: "Telegram Providers Target",
+      base_url: "https://api.openai.com/v1",
+      api_key: "test-key",
+      is_default: false,
+    });
+    tables.agents.create({
+      id: agentId,
+      name: "Telegram Providers Agent",
+      type: "main",
+      model: "model-one",
+      provider_id: providerId,
+      status: "stopped",
+      memory_enabled: false,
+    });
+    config.set("default_agent_id", agentId);
+
+    let handlerCalls = 0;
+    telegramBot.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should not run";
+    });
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+
+    try {
+      const ok = await processTelegramWebhook(channelId, makeTelegramUpdate("/providers"));
+
+      expect(ok).toBe(true);
+      expect(handlerCalls).toBe(0);
+
+      const sendMessageCall = fetchCalls.find((call) => call.url.includes("/sendMessage"));
+      expect(sendMessageCall).toBeDefined();
+      const payload = sendMessageCall?.body as { text?: string };
+      expect(payload.text).toContain("Providers");
+      expect(payload.text).toContain("Telegram Providers Target");
+    } finally {
+      config.set("default_agent_id", "");
+      tables.agents.delete(agentId);
+      tables.providers.delete(providerId);
+    }
+  });
+
+  test("handles /new command and rotates telegram chat session id", async () => {
+    let handlerCalls = 0;
+    telegramBot.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should not run";
+    });
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+
+    const chatKey = "880011";
+    const initialSessionId = "session-telegram-initial";
+    telegramSessions.set(chatKey, initialSessionId);
+
+    const ok = await processTelegramWebhook(channelId, makeTelegramUpdate("/new"));
+
+    expect(ok).toBe(true);
+    expect(handlerCalls).toBe(0);
+    const rotatedSessionId = telegramSessions.get(chatKey);
+    expect(rotatedSessionId).toBeDefined();
+    expect(rotatedSessionId).not.toBe(initialSessionId);
+
+    const sendMessageCall = fetchCalls.find((call) => call.url.includes("/sendMessage"));
+    expect(sendMessageCall).toBeDefined();
+    const payload = sendMessageCall?.body as { text?: string };
+    expect(payload.text).toContain("New Session Started");
+  });
+
+  test("handles /switch command and restores previous telegram session", async () => {
+    let handlerCalls = 0;
+    telegramBot.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should not run";
+    });
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+
+    const firstNewOk = await processTelegramWebhook(channelId, makeTelegramUpdate("/new"));
+    expect(firstNewOk).toBe(true);
+    const firstSessionId = telegramSessions.get("880011");
+    expect(firstSessionId).toBeDefined();
+
+    fetchCalls = [];
+
+    const secondNewOk = await processTelegramWebhook(channelId, makeTelegramUpdate("/new"));
+    expect(secondNewOk).toBe(true);
+    const secondSessionId = telegramSessions.get("880011");
+    expect(secondSessionId).toBeDefined();
+    expect(secondSessionId).not.toBe(firstSessionId);
+
+    fetchCalls = [];
+
+    const switchOk = await processTelegramWebhook(channelId, makeTelegramUpdate("/switch 2"));
+    expect(switchOk).toBe(true);
+    expect(handlerCalls).toBe(0);
+    expect(telegramSessions.get("880011")).toBe(firstSessionId);
+
+    const sendMessageCalls = fetchCalls.filter((call) => call.url.includes("/sendMessage"));
+    expect(sendMessageCalls.length).toBeGreaterThan(0);
+    const switchPayload = sendMessageCalls.at(-1)?.body as { text?: string } | undefined;
+    expect(switchPayload?.text).toContain("Switched to Session 2");
+  });
+
+  test("handles /agent command and updates default agent selection", async () => {
+    const providerId = makeChannelId("telegram-agent-provider");
+    const firstAgentId = makeChannelId("telegram-agent-one");
+    const secondAgentId = makeChannelId("telegram-agent-two");
+
+    tables.providers.create({
+      id: providerId,
+      provider: "openai",
+      name: "Telegram Agent Provider",
+      base_url: "https://api.openai.com/v1",
+      api_key: "test-key",
+      is_default: false,
+    });
+    tables.agents.create({
+      id: firstAgentId,
+      name: "Telegram Agent One",
+      type: "main",
+      model: "model-one",
+      provider_id: providerId,
+      status: "stopped",
+      memory_enabled: false,
+    });
+    tables.agents.create({
+      id: secondAgentId,
+      name: "Telegram Agent Two",
+      type: "main",
+      model: "model-two",
+      provider_id: providerId,
+      status: "stopped",
+      memory_enabled: false,
+    });
+    config.set("default_agent_id", firstAgentId);
+
+    let handlerCalls = 0;
+    telegramBot.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should not run";
+    });
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+
+    try {
+      const ok = await processTelegramWebhook(
+        channelId,
+        makeTelegramUpdate(`/agent ${secondAgentId}`)
+      );
+
+      expect(ok).toBe(true);
+      expect(handlerCalls).toBe(0);
+      expect(config.get<string>("default_agent_id")).toBe(secondAgentId);
+
+      const sendMessageCall = fetchCalls.find((call) => call.url.includes("/sendMessage"));
+      expect(sendMessageCall).toBeDefined();
+      const payload = sendMessageCall?.body as { text?: string };
+      expect(payload.text).toContain("Telegram Agent Two");
+    } finally {
+      config.set("default_agent_id", "");
+      tables.agents.delete(firstAgentId);
+      tables.agents.delete(secondAgentId);
+      tables.providers.delete(providerId);
+    }
+  });
+
+  test("handles /provider command and updates default agent provider/model", async () => {
+    const providerA = makeChannelId("telegram-provider-a");
+    const providerB = makeChannelId("telegram-provider-b");
+    const agentId = makeChannelId("telegram-provider-agent");
+
+    tables.providers.create({
+      id: providerA,
+      provider: "openai",
+      name: "Telegram Provider A",
+      base_url: "https://api.openai.com/v1",
+      api_key: "test-key",
+      is_default: false,
+    });
+    tables.providers.create({
+      id: providerB,
+      provider: "openai",
+      name: "Telegram Provider B",
+      base_url: "https://api.openai.com/v1",
+      api_key: "test-key",
+      is_default: false,
+    });
+    tables.providerModels.upsert({
+      id: makeChannelId("telegram-provider-a-model"),
+      provider_id: providerA,
+      model_id: "a-model",
+      model_name: "a-model",
+    });
+    tables.providerModels.upsert({
+      id: makeChannelId("telegram-provider-b-model"),
+      provider_id: providerB,
+      model_id: "b-model",
+      model_name: "b-model",
+    });
+    tables.agents.create({
+      id: agentId,
+      name: "Telegram Provider Agent",
+      type: "main",
+      model: "a-model",
+      provider_id: providerA,
+      status: "stopped",
+      memory_enabled: false,
+    });
+    config.set("default_agent_id", agentId);
+
+    let handlerCalls = 0;
+    telegramBot.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should not run";
+    });
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+
+    try {
+      const ok = await processTelegramWebhook(
+        channelId,
+        makeTelegramUpdate(`/provider ${providerB}`)
+      );
+
+      expect(ok).toBe(true);
+      expect(handlerCalls).toBe(0);
+
+      const updatedAgent = tables.agents.get(agentId) as
+        | { provider_id?: string; model?: string }
+        | undefined;
+      expect(updatedAgent?.provider_id).toBe(providerB);
+      expect(updatedAgent?.model).toBe("b-model");
+
+      const sendMessageCall = fetchCalls.find((call) => call.url.includes("/sendMessage"));
+      expect(sendMessageCall).toBeDefined();
+      const payload = sendMessageCall?.body as { text?: string };
+      expect(payload.text).toContain("Telegram Provider B");
+    } finally {
+      config.set("default_agent_id", "");
+      tables.agents.delete(agentId);
+      tables.providers.delete(providerA);
+      tables.providers.delete(providerB);
     }
   });
 

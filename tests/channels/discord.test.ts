@@ -346,6 +346,140 @@ describe("Discord adapter mocked message flows", () => {
     expect(followUps).toHaveLength(0);
   });
 
+  test("routes /status command through adapter without invoking chat handler", async () => {
+    const adapter = new DiscordAdapter();
+    const channelId = makeChannelId("discord-status-command");
+    const replies: string[] = [];
+    const followUps: string[] = [];
+    let handlerCalls = 0;
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    const message = createFakeDiscordMessage(
+      {
+        guild: null,
+        content: "/status",
+      },
+      replies,
+      followUps
+    );
+
+    await handleDiscordMessage(adapter, channelId, message);
+
+    expect(handlerCalls).toBe(0);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toContain("Status:");
+    expect(replies[0]).toContain("Agents:");
+    expect(followUps).toHaveLength(0);
+  });
+
+  test("routes /agents command through adapter without invoking chat handler", async () => {
+    const adapter = new DiscordAdapter();
+    const channelId = makeChannelId("discord-agents-command");
+    const replies: string[] = [];
+    const followUps: string[] = [];
+    let handlerCalls = 0;
+
+    const providerId = createProvider("Discord Agents Provider");
+    createAgent("Discord Agents Target", providerId, "model-one");
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    const message = createFakeDiscordMessage(
+      {
+        guild: null,
+        content: "/agents",
+      },
+      replies,
+      followUps
+    );
+
+    await handleDiscordMessage(adapter, channelId, message);
+
+    expect(handlerCalls).toBe(0);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toContain("Agents:");
+    expect(replies[0]).toContain("Discord Agents Target");
+  });
+
+  test("routes /providers command through adapter without invoking chat handler", async () => {
+    const adapter = new DiscordAdapter();
+    const channelId = makeChannelId("discord-providers-command");
+    const replies: string[] = [];
+    const followUps: string[] = [];
+    let handlerCalls = 0;
+
+    const providerId = createProvider("Discord Providers Target");
+    const agentId = createAgent("Discord Providers Agent", providerId, "model-one");
+    config.set("default_agent_id", agentId);
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    const message = createFakeDiscordMessage(
+      {
+        guild: null,
+        content: "/providers",
+      },
+      replies,
+      followUps
+    );
+
+    await handleDiscordMessage(adapter, channelId, message);
+
+    expect(handlerCalls).toBe(0);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toContain("Providers");
+    expect(replies[0]).toContain("Discord Providers Target");
+  });
+
+  test("routes /new command through adapter and rotates session id", async () => {
+    const adapter = new DiscordAdapter();
+    const channelId = makeChannelId("discord-new-command");
+    const replies: string[] = [];
+    const followUps: string[] = [];
+    let handlerCalls = 0;
+    const sessionKey = `${channelId}:chat-1`;
+    const initialSessionId = "session-discord-initial";
+
+    discordSessions.set(sessionKey, initialSessionId);
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    const message = createFakeDiscordMessage(
+      {
+        guild: null,
+        content: "/new",
+      },
+      replies,
+      followUps
+    );
+
+    await handleDiscordMessage(adapter, channelId, message);
+
+    const rotatedSessionId = discordSessions.get(sessionKey);
+    expect(handlerCalls).toBe(0);
+    expect(rotatedSessionId).toBeDefined();
+    expect(rotatedSessionId).not.toBe(initialSessionId);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toContain("Started a new session");
+    expect(followUps).toHaveLength(0);
+  });
+
   test("routes /model command through adapter and updates default agent model", async () => {
     const adapter = new DiscordAdapter();
     const channelId = makeChannelId("discord-model-command");
@@ -381,6 +515,84 @@ describe("Discord adapter mocked message flows", () => {
     expect(updatedAgent?.model).toBe("model-two");
     expect(replies).toHaveLength(1);
     expect(replies[0]).toContain("model-two");
+    expect(followUps).toHaveLength(0);
+  });
+
+  test("routes /agent command through adapter and updates default agent selection", async () => {
+    const adapter = new DiscordAdapter();
+    const channelId = makeChannelId("discord-agent-command");
+    const replies: string[] = [];
+    const followUps: string[] = [];
+    let handlerCalls = 0;
+
+    const providerId = createProvider("Discord Agent Provider");
+    const firstAgentId = createAgent("Discord Agent One", providerId, "model-one");
+    const secondAgentId = createAgent("Discord Agent Two", providerId, "model-two");
+    config.set("default_agent_id", firstAgentId);
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    const message = createFakeDiscordMessage(
+      {
+        guild: null,
+        content: `/agent ${secondAgentId}`,
+      },
+      replies,
+      followUps
+    );
+
+    await handleDiscordMessage(adapter, channelId, message);
+
+    expect(handlerCalls).toBe(0);
+    expect(config.get<string>("default_agent_id")).toBe(secondAgentId);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toContain("Discord Agent Two");
+    expect(followUps).toHaveLength(0);
+  });
+
+  test("routes /provider command through adapter and updates default agent provider/model", async () => {
+    const adapter = new DiscordAdapter();
+    const channelId = makeChannelId("discord-provider-command");
+    const replies: string[] = [];
+    const followUps: string[] = [];
+    let handlerCalls = 0;
+
+    const providerA = createProvider("Discord Provider A");
+    addProviderModel(providerA, "a-model");
+    const providerB = createProvider("Discord Provider B");
+    addProviderModel(providerB, "b-model");
+    const agentId = createAgent("Discord Provider Agent", providerA, "a-model");
+    config.set("default_agent_id", agentId);
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    const message = createFakeDiscordMessage(
+      {
+        guild: null,
+        content: `/provider ${providerB}`,
+      },
+      replies,
+      followUps
+    );
+
+    await handleDiscordMessage(adapter, channelId, message);
+
+    const updatedAgent = tables.agents.get(agentId) as
+      | { provider_id?: string; model?: string }
+      | undefined;
+    expect(handlerCalls).toBe(0);
+    expect(updatedAgent?.provider_id).toBe(providerB);
+    expect(updatedAgent?.model).toBe("b-model");
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toContain("Discord Provider B");
     expect(followUps).toHaveLength(0);
   });
 

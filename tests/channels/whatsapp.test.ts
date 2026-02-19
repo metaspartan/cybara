@@ -308,6 +308,139 @@ describe("WhatsApp adapter mocked flows", () => {
     expect(chatSends).toHaveLength(0);
   });
 
+  test("routes /status command and avoids chat handler", async () => {
+    const adapter = new WhatsAppAdapter();
+    const channelId = makeChannelId("wa-status-command");
+    const replies: string[] = [];
+    const chatSends: string[] = [];
+    let handlerCalls = 0;
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    const message = createFakeWhatsAppMessage(
+      {
+        body: "/status",
+      },
+      replies,
+      chatSends
+    );
+
+    await invokeWhatsAppMessage(adapter, channelId, message);
+
+    expect(handlerCalls).toBe(0);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toContain("Status:");
+    expect(replies[0]).toContain("Agents:");
+    expect(chatSends).toHaveLength(0);
+  });
+
+  test("routes /agents command and avoids chat handler", async () => {
+    const adapter = new WhatsAppAdapter();
+    const channelId = makeChannelId("wa-agents-command");
+    const replies: string[] = [];
+    const chatSends: string[] = [];
+    let handlerCalls = 0;
+
+    const providerId = createProvider("WhatsApp Agents Provider");
+    createAgent("WhatsApp Agents Target", providerId, "model-one");
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    const message = createFakeWhatsAppMessage(
+      {
+        body: "/agents",
+      },
+      replies,
+      chatSends
+    );
+
+    await invokeWhatsAppMessage(adapter, channelId, message);
+
+    expect(handlerCalls).toBe(0);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toContain("Agents:");
+    expect(replies[0]).toContain("WhatsApp Agents Target");
+    expect(chatSends).toHaveLength(0);
+  });
+
+  test("routes /providers command and avoids chat handler", async () => {
+    const adapter = new WhatsAppAdapter();
+    const channelId = makeChannelId("wa-providers-command");
+    const replies: string[] = [];
+    const chatSends: string[] = [];
+    let handlerCalls = 0;
+
+    const providerId = createProvider("WhatsApp Providers Target");
+    const agentId = createAgent("WhatsApp Providers Agent", providerId, "model-one");
+    config.set("default_agent_id", agentId);
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    const message = createFakeWhatsAppMessage(
+      {
+        body: "/providers",
+      },
+      replies,
+      chatSends
+    );
+
+    await invokeWhatsAppMessage(adapter, channelId, message);
+
+    expect(handlerCalls).toBe(0);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toContain("Providers");
+    expect(replies[0]).toContain("WhatsApp Providers Target");
+    expect(chatSends).toHaveLength(0);
+  });
+
+  test("routes /new command and rotates whatsapp session id", async () => {
+    const adapter = new WhatsAppAdapter();
+    const channelId = makeChannelId("wa-new-command");
+    const chatId = "15550001234@c.us";
+    const initialSessionId = "session-wa-initial";
+    const replies: string[] = [];
+    const chatSends: string[] = [];
+    let handlerCalls = 0;
+
+    whatsappSessions.set(chatId, initialSessionId);
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    const message = createFakeWhatsAppMessage(
+      {
+        from: chatId,
+        body: "/new",
+      },
+      replies,
+      chatSends
+    );
+
+    await invokeWhatsAppMessage(adapter, channelId, message);
+
+    const rotatedSessionId = whatsappSessions.get(chatId);
+    expect(handlerCalls).toBe(0);
+    expect(rotatedSessionId).toBeDefined();
+    expect(rotatedSessionId).not.toBe(initialSessionId);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toContain("Started a new session");
+    expect(chatSends).toHaveLength(0);
+  });
+
   test("routes /model command and updates default agent model", async () => {
     const adapter = new WhatsAppAdapter();
     const channelId = makeChannelId("wa-model-command");
@@ -342,6 +475,82 @@ describe("WhatsApp adapter mocked flows", () => {
     expect(updatedAgent?.model).toBe("model-two");
     expect(replies).toHaveLength(1);
     expect(replies[0]).toContain("model-two");
+    expect(chatSends).toHaveLength(0);
+  });
+
+  test("routes /agent command and updates default agent selection", async () => {
+    const adapter = new WhatsAppAdapter();
+    const channelId = makeChannelId("wa-agent-command");
+    const replies: string[] = [];
+    const chatSends: string[] = [];
+    let handlerCalls = 0;
+
+    const providerId = createProvider("WhatsApp Agent Provider");
+    const firstAgentId = createAgent("WA Agent One", providerId, "model-one");
+    const secondAgentId = createAgent("WA Agent Two", providerId, "model-two");
+    config.set("default_agent_id", firstAgentId);
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    const message = createFakeWhatsAppMessage(
+      {
+        body: `/agent ${secondAgentId}`,
+      },
+      replies,
+      chatSends
+    );
+
+    await invokeWhatsAppMessage(adapter, channelId, message);
+
+    expect(handlerCalls).toBe(0);
+    expect(config.get<string>("default_agent_id")).toBe(secondAgentId);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toContain("WA Agent Two");
+    expect(chatSends).toHaveLength(0);
+  });
+
+  test("routes /provider command and updates default agent provider/model", async () => {
+    const adapter = new WhatsAppAdapter();
+    const channelId = makeChannelId("wa-provider-command");
+    const replies: string[] = [];
+    const chatSends: string[] = [];
+    let handlerCalls = 0;
+
+    const providerA = createProvider("WhatsApp Provider A");
+    addProviderModel(providerA, "a-model");
+    const providerB = createProvider("WhatsApp Provider B");
+    addProviderModel(providerB, "b-model");
+    const agentId = createAgent("WA Provider Agent", providerA, "a-model");
+    config.set("default_agent_id", agentId);
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+
+    const message = createFakeWhatsAppMessage(
+      {
+        body: `/provider ${providerB}`,
+      },
+      replies,
+      chatSends
+    );
+
+    await invokeWhatsAppMessage(adapter, channelId, message);
+
+    const updatedAgent = tables.agents.get(agentId) as
+      | { provider_id?: string; model?: string }
+      | undefined;
+    expect(handlerCalls).toBe(0);
+    expect(updatedAgent?.provider_id).toBe(providerB);
+    expect(updatedAgent?.model).toBe("b-model");
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toContain("WhatsApp Provider B");
     expect(chatSends).toHaveLength(0);
   });
 });
