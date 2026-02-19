@@ -5,6 +5,7 @@ import { homedir } from "os";
 import { handleCalc, handleConvert } from "./calc";
 import { handlePdf } from "./pdf";
 import { handleOcr, handleImageDescribe } from "./ocr";
+import { parseSkillFile } from "./loader";
 
 export type {
   SkillInstallSpec,
@@ -102,30 +103,19 @@ function loadSkillFromFile(skillPath: string): Skill | null {
     let name = folderName;
     let description = "";
 
-    const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
-    if (frontmatterMatch) {
-      const frontmatter = frontmatterMatch[1];
-
-      const nameMatch = frontmatter.match(/^name:\s*(.+)$/m);
-      if (nameMatch) {
-        name = nameMatch[1].trim();
-      }
-
-      const descMatch = frontmatter.match(/^description:\s*\|?\s*\n?([\s\S]*?)(?=\n[a-z]+:|$)/m);
-      if (descMatch) {
-        description = descMatch[1].trim().split("\n").map(l => l.trim()).join(" ").slice(0, 300);
-      } else {
-        const singleDescMatch = frontmatter.match(/^description:\s*(.+)$/m);
-        if (singleDescMatch) {
-          description = singleDescMatch[1].trim().slice(0, 300);
-        }
-      }
-    }
-
-    if (!description) {
-      const headingMatch = content.match(/#\s+([^\n]+)\n([^#]+)/);
+    const parsed = parseSkillFile(content, skillPath, "workspace");
+    if (parsed) {
+      name = parsed.skill.name;
+      description = parsed.skill.description;
+    } else {
+      const headingMatch = content.match(/^#\s+(.+?)(?:\s*[-–—]\s*.+)?$/m);
       if (headingMatch) {
-        description = headingMatch[2].trim().slice(0, 200);
+        name = headingMatch[1].trim();
+      }
+
+      const bodyDescMatch = content.match(/#\s+([^\n]+)\n([^#]+)/);
+      if (bodyDescMatch) {
+        description = bodyDescMatch[2].trim().slice(0, 200);
       }
     }
 
@@ -192,11 +182,12 @@ export function getSkills(): Skill[] {
 
 export function getSkill(name: string): Skill | undefined {
   const skills = getSkills();
-  const normalizedName = name.toLowerCase().replace(/\s+/g, "-");
+  const normalizedName = name.toLowerCase().trim().replace(/[\s_]+/g, "-");
   return skills.find(
     (s) =>
-      s.name.toLowerCase().replace(/\s+/g, "-") === normalizedName ||
-      basename(s.location, extname(s.location)) === normalizedName
+      s.name.toLowerCase().trim().replace(/[\s_]+/g, "-") === normalizedName ||
+      basename(dirname(s.location)).toLowerCase().trim().replace(/[\s_]+/g, "-") === normalizedName ||
+      basename(s.location, extname(s.location)).toLowerCase().trim().replace(/[\s_]+/g, "-") === normalizedName
   );
 }
 

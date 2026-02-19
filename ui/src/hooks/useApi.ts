@@ -380,35 +380,117 @@ export interface RegistrySkillInfo {
   description: string;
   author?: string;
   downloads?: number;
+  installsCurrent?: number;
+  installsAllTime?: number;
   stars?: number;
+  version?: string;
   tags?: string[];
+  updatedAt?: number;
   registry: string;
 }
 
-export function useSkillsRegistrySearch(query: string) {
+export type SkillsRegistrySort =
+  | 'updated'
+  | 'downloads'
+  | 'stars'
+  | 'rating'
+  | 'installsCurrent'
+  | 'installs'
+  | 'installsAllTime'
+  | 'trending';
+
+export interface SkillsRegistryQueryOptions {
+  registry?: string;
+  dedupe?: boolean;
+  limit?: number;
+  sort?: SkillsRegistrySort;
+  maxPages?: number;
+}
+
+interface SkillsRegistryResponse {
+  skills: RegistrySkillInfo[];
+  registries?: string[];
+  counts?: Record<string, number>;
+}
+
+function buildSkillsRegistryQueryString(params: SkillsRegistryQueryOptions & { q?: string }): string {
+  const search = new URLSearchParams();
+  if (params.q?.trim()) search.set('q', params.q.trim());
+  if (params.registry?.trim()) search.set('registry', params.registry.trim());
+  if (typeof params.dedupe === 'boolean') search.set('dedupe', String(params.dedupe));
+  if (typeof params.limit === 'number' && Number.isFinite(params.limit)) {
+    search.set('limit', String(Math.max(1, Math.min(200, Math.floor(params.limit)))));
+  }
+  if (params.sort) search.set('sort', params.sort);
+  if (typeof params.maxPages === 'number' && Number.isFinite(params.maxPages)) {
+    search.set('maxPages', String(Math.max(1, Math.min(3, Math.floor(params.maxPages)))));
+  }
+  const query = search.toString();
+  return query.length > 0 ? `?${query}` : '';
+}
+
+export function useSkillsRegistrySearch(query: string, options: SkillsRegistryQueryOptions = {}) {
+  const queryString = buildSkillsRegistryQueryString({ ...options, q: query });
   return useQuery({
-    queryKey: ['skills', 'registry', 'search', query],
-    queryFn: () => fetchApi<{ skills: RegistrySkillInfo[]; registries?: string[] }>(`/skills/registry/search?q=${encodeURIComponent(query)}`),
+    queryKey: [
+      'skills',
+      'registry',
+      'search',
+      query,
+      options.registry ?? null,
+      options.dedupe ?? true,
+      options.limit ?? null,
+      options.sort ?? null,
+      options.maxPages ?? null,
+    ],
+    queryFn: () => fetchApi<SkillsRegistryResponse>(`/skills/registry/search${queryString}`),
     enabled: query.length > 0,
   });
 }
 
-export function useSkillsRegistryBrowse() {
+export function useSkillsRegistryBrowse(options: SkillsRegistryQueryOptions = {}) {
+  const queryString = buildSkillsRegistryQueryString(options);
   return useQuery({
-    queryKey: ['skills', 'registry', 'browse'],
-    queryFn: () => fetchApi<{ skills: RegistrySkillInfo[]; registries?: string[] }>('/skills/registry/browse'),
+    queryKey: [
+      'skills',
+      'registry',
+      'browse',
+      options.registry ?? null,
+      options.dedupe ?? true,
+      options.limit ?? null,
+      options.sort ?? null,
+      options.maxPages ?? null,
+    ],
+    queryFn: () => fetchApi<SkillsRegistryResponse>(`/skills/registry/browse${queryString}`),
   });
 }
 
 export function useInstallSkill() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ slug, registry }: { slug: string; registry?: string }) =>
-      fetchApi<{ success: boolean; path?: string; error?: string }>('/skills/install', {
+    mutationFn: ({
+      slug,
+      registry,
+      allowSuspicious,
+    }: {
+      slug: string;
+      registry?: string;
+      allowSuspicious?: boolean;
+    }) =>
+      fetchApi<{
+        success: boolean;
+        path?: string;
+        error?: string;
+        blockedReason?: 'malware' | 'suspicious';
+        requiresConfirmation?: boolean;
+      }>('/skills/install', {
         method: 'POST',
-        body: JSON.stringify({ slug, registry }),
+        body: JSON.stringify({ slug, registry, allowSuspicious }),
       }),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (!result.success) {
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ['skills'] });
     },
   });
@@ -803,6 +885,88 @@ export interface TokenMetrics {
   estimatedCost: number;
 }
 
+export interface TokenAnalysisMetrics {
+  summary: {
+    callCount: number;
+    totalTokens: number;
+    totalInputTokens: number;
+    totalOutputTokens: number;
+    averageTokensPerCall: number;
+    medianTokensPerCall: number;
+    inputToOutputRatio: number | null;
+    outputToInputRatio: number | null;
+  };
+  promptOutputDistribution: {
+    sampleCount: number;
+    bands: Array<{
+      band: string;
+      calls: number;
+      sharePct: number;
+    }>;
+  };
+  tokenHeatmap: {
+    timezone: string;
+    maxBucketTokens: number;
+    hottestHour: {
+      date: string;
+      dayLabel: string;
+      hour: number;
+      tokens: number;
+      calls: number;
+    } | null;
+    days: Array<{
+      date: string;
+      dayLabel: string;
+      hours: Array<{
+        hour: number;
+        tokens: number;
+        calls: number;
+        intensity: number;
+      }>;
+    }>;
+  };
+  hourlyVelocity24h: Array<{
+    hour: string;
+    tokens: number;
+    calls: number;
+  }>;
+  tokenCloud: Array<{
+    token: string;
+    category: "model" | "provider" | "tool" | "term" | "pattern";
+    weight: number;
+    sharePct: number;
+  }>;
+  modelThoughtProfiles: Array<{
+    model: string;
+    provider: string;
+    totalTokens: number;
+    calls: number;
+    promptSharePct: number;
+    responseSharePct: number;
+    avgTokensPerCall: number;
+    avgLatencyMs: number;
+    avgTps: number;
+    behavior: string;
+  }>;
+  topTokenBursts: Array<{
+    timestamp: string;
+    model: string;
+    provider: string;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    durationMs: number | null;
+    tokensPerSecond: number | null;
+  }>;
+  windows: {
+    analyzedDays: number;
+    velocityHours: number;
+    newestCallAt: string | null;
+    oldestCallAt: string | null;
+    recent24hTokens: number;
+  };
+}
+
 export interface FileMetrics {
   mostRead: Array<{ path: string; count: number }>;
   mostWritten: Array<{ path: string; count: number }>;
@@ -845,6 +1009,14 @@ export function useMetricsTokens() {
     queryKey: ['metrics', 'tokens'],
     queryFn: () => fetchApi<TokenMetrics>('/metrics/tokens'),
     refetchInterval: 5000,
+  });
+}
+
+export function useMetricsTokenAnalysis() {
+  return useQuery({
+    queryKey: ['metrics', 'token-analysis'],
+    queryFn: () => fetchApi<TokenAnalysisMetrics>('/metrics/token-analysis'),
+    refetchInterval: 10000,
   });
 }
 

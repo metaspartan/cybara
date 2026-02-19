@@ -153,12 +153,26 @@ function trackTokenUsage(
 ) {
   try {
     const totalTokens = inputTokens + outputTokens;
+    const callId = crypto.randomUUID();
+    const timestamp = Date.now();
+    const tokenMetadata = {
+      callId,
+      model,
+      provider,
+      providerUrl,
+      inputTokens,
+      outputTokens,
+      totalTokens,
+      durationMs: durationMs ?? null,
+      timestamp,
+    };
 
     tables.metrics.add({
       id: crypto.randomUUID(),
       type: "token_usage_by_model",
       key: model,
       value: totalTokens,
+      metadata: JSON.stringify(tokenMetadata),
     });
 
     tables.metrics.add({
@@ -166,7 +180,7 @@ function trackTokenUsage(
       type: "token_usage_by_provider",
       key: provider,
       value: totalTokens,
-      metadata: JSON.stringify({ url: providerUrl }),
+      metadata: JSON.stringify({ ...tokenMetadata, url: providerUrl }),
     });
 
     tables.metrics.add({
@@ -174,18 +188,21 @@ function trackTokenUsage(
       type: "token_usage",
       key: "input",
       value: inputTokens,
+      metadata: JSON.stringify({ ...tokenMetadata, direction: "input" }),
     });
     tables.metrics.add({
       id: crypto.randomUUID(),
       type: "token_usage",
       key: "output",
       value: outputTokens,
+      metadata: JSON.stringify({ ...tokenMetadata, direction: "output" }),
     });
     tables.metrics.add({
       id: crypto.randomUUID(),
       type: "token_usage",
       key: "all",
       value: totalTokens,
+      metadata: JSON.stringify(tokenMetadata),
     });
 
     tables.metrics.add({
@@ -203,20 +220,28 @@ function trackTokenUsage(
       metadata: JSON.stringify({ url: providerUrl }),
     });
 
+    tables.metrics.add({
+      id: crypto.randomUUID(),
+      type: "api_call",
+      key: provider,
+      value: 1,
+      metadata: JSON.stringify({ url: providerUrl }),
+    });
+
     tables.metrics.add({ id: crypto.randomUUID(), type: "agent_execution", key: "all", value: 1 });
     tables.metrics.add({
       id: crypto.randomUUID(),
       type: "agent_execution",
       key: "message",
       value: 1,
-      metadata: JSON.stringify({ timestamp: Date.now() }),
+      metadata: JSON.stringify({ timestamp }),
     });
 
     tables.metrics.add({
       id: crypto.randomUUID(),
       type: "system_status",
       key: "last_activity",
-      value: Date.now(),
+      value: timestamp,
     });
 
     if (durationMs && durationMs > 0) {
@@ -227,13 +252,7 @@ function trackTokenUsage(
         type: "model_tps",
         key: model,
         value: tps,
-        metadata: JSON.stringify({
-          provider,
-          inputTokens,
-          outputTokens,
-          durationMs,
-          timestamp: Date.now(),
-        }),
+        metadata: JSON.stringify(tokenMetadata),
       });
 
       tables.metrics.add({
@@ -241,7 +260,7 @@ function trackTokenUsage(
         type: "model_latency",
         key: model,
         value: durationMs,
-        metadata: JSON.stringify({ provider }),
+        metadata: JSON.stringify({ ...tokenMetadata, provider }),
       });
 
       console.log(
@@ -999,7 +1018,15 @@ class AgentManager {
     hookContext: AgentHookContext
   ): Promise<{ skipped: boolean; result?: unknown }> {
     if (!hasTool(toolName)) {
-      return { skipped: true };
+      const reason = `Tool not found: ${toolName}`;
+      await emitAgentHook({
+        type: "tool_blocked",
+        context: hookContext,
+        toolName,
+        args,
+        reason,
+      });
+      return { skipped: false, result: { error: reason } };
     }
 
     if (!allowedToolNames.has(toolName)) {
@@ -1921,7 +1948,7 @@ class AgentManager {
         description: t.description || "",
         input_schema: t.input_schema || { type: "object", properties: {} },
       }));
-      requestBody.tool_choice = { type: "any" };
+      requestBody.tool_choice = { type: "auto" };
     }
 
     const headers: Record<string, string> = {
@@ -1982,7 +2009,12 @@ class AgentManager {
       iterations++;
 
       const toolUseBlocks =
-        currentData.content?.filter((c: { type: string }) => c.type === "tool_use") || [];
+        (currentData.content?.filter((c: { type: string }) => c.type === "tool_use") as Array<{
+          type: "tool_use";
+          id?: string;
+          name?: string;
+          input?: Record<string, unknown>;
+        }>) || [];
 
       if (toolUseBlocks.length === 0) {
         break;
@@ -1993,13 +2025,27 @@ class AgentManager {
       );
 
       const toolResults: Array<{ type: "tool_result"; tool_use_id: string; content: string }> = [];
+      const expectedToolUseIds = new Set<string>();
 
       for (const toolUse of toolUseBlocks) {
-        const toolName = toolUse.name;
-        const toolUseId = toolUse.id || ""; // Fallback to empty string if undefined
+        const toolName = typeof toolUse.name === "string" ? toolUse.name : "";
+        const toolUseId = typeof toolUse.id === "string" ? toolUse.id : "";
+        if (!toolUseId) {
+          console.warn("[Agent] Anthropic tool_use missing id; skipping unmatched tool block");
+          continue;
+        }
+        expectedToolUseIds.add(toolUseId);
         const args = toolUse.input || {};
 
-        if (!toolName) continue;
+        if (!toolName) {
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: toolUseId,
+            content: JSON.stringify({ error: "Tool use block missing tool name" }),
+          });
+          continue;
+        }
+
         const executed = await this.executeToolWithHooks(
           toolName,
           args,
@@ -2007,25 +2053,48 @@ class AgentManager {
           toolContext,
           hookContext
         );
-        if (executed.skipped || executed.result === undefined) {
-          continue;
+        const resultPayload =
+          executed.skipped || executed.result === undefined
+            ? { error: `Tool execution skipped for ${toolName}` }
+            : executed.result;
+        if (!executed.skipped && executed.result !== undefined) {
+          allToolCalls.push({ name: toolName, result: executed.result });
         }
-
-        allToolCalls.push({ name: toolName, result: executed.result });
         toolResults.push({
           type: "tool_result",
           tool_use_id: toolUseId,
-          content: JSON.stringify(executed.result),
+          content: JSON.stringify(resultPayload),
         });
       }
 
+      const returnedToolUseIds = new Set(toolResults.map((toolResult) => toolResult.tool_use_id));
+      for (const expectedId of expectedToolUseIds) {
+        if (returnedToolUseIds.has(expectedId)) continue;
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: expectedId,
+          content: JSON.stringify({ error: "Missing tool result synthesized by Cybara" }),
+        });
+      }
+
+      if (toolResults.length === 0) {
+        console.warn("[Agent] Anthropic tool loop produced no tool results; stopping loop early");
+        break;
+      }
+
+      const toolResultIds = new Set(toolResults.map((toolResult) => toolResult.tool_use_id));
+      const assistantLoopContent = (currentData.content || []).filter(
+        (block: { type?: string; id?: string }) =>
+          block.type !== "tool_use" || (typeof block.id === "string" && toolResultIds.has(block.id))
+      );
+
       currentMessages.push({
         role: "assistant",
-        content: currentData.content, // Keep full content array including tool_use blocks
+        content: assistantLoopContent,
       });
       currentMessages.push({
         role: "user",
-        content: toolResults, // Anthropic expects tool_result in user message
+        content: toolResults,
       });
 
       const loopRequestBody: Record<string, unknown> = {

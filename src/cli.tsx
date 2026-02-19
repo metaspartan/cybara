@@ -61,6 +61,60 @@ interface MetricsResponse {
   agentExecutions: { totalExecutions: number; totalMessages: number };
 }
 
+interface TokenAnalysisResponse {
+  summary: {
+    callCount: number;
+    totalTokens: number;
+    totalInputTokens: number;
+    totalOutputTokens: number;
+    averageTokensPerCall: number;
+    medianTokensPerCall: number;
+    inputToOutputRatio: number | null;
+    outputToInputRatio: number | null;
+  };
+  tokenHeatmap: {
+    hottestHour: {
+      date: string;
+      dayLabel: string;
+      hour: number;
+      tokens: number;
+      calls: number;
+    } | null;
+  };
+  promptOutputDistribution: {
+    sampleCount: number;
+    bands: Array<{ band: string; calls: number; sharePct: number }>;
+  };
+  tokenCloud: Array<{
+    token: string;
+    category: "model" | "provider" | "tool" | "term" | "pattern";
+    weight: number;
+    sharePct: number;
+  }>;
+  modelThoughtProfiles: Array<{
+    model: string;
+    provider: string;
+    totalTokens: number;
+    calls: number;
+    promptSharePct: number;
+    responseSharePct: number;
+    avgTokensPerCall: number;
+    avgLatencyMs: number;
+    avgTps: number;
+    behavior: string;
+  }>;
+  topTokenBursts: Array<{
+    timestamp: string;
+    model: string;
+    provider: string;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    durationMs: number | null;
+    tokensPerSecond: number | null;
+  }>;
+}
+
 interface TaskItem {
   id: string;
   name: string;
@@ -162,6 +216,80 @@ async function rawMetrics(): Promise<void> {
   console.log(`  total: ${data.apiCalls?.totalCalls || 0}`);
   console.log(`  success: ${data.apiCalls?.successfulCalls || 0}`);
   console.log(`  failed: ${data.apiCalls?.failedCalls || 0}`);
+}
+
+async function rawMetricsAnalysis(): Promise<void> {
+  const data = await fetchAPI<TokenAnalysisResponse>("/api/metrics/token-analysis");
+  if (!data) {
+    console.error("ERROR: Failed to fetch token analysis from", API_BASE);
+    process.exit(1);
+  }
+
+  console.log("CYBARA TOKEN ANALYSIS");
+  console.log("=====================");
+  console.log("");
+  console.log("SUMMARY");
+  console.log(`  calls: ${data.summary?.callCount || 0}`);
+  console.log(`  total_tokens: ${data.summary?.totalTokens || 0}`);
+  console.log(`  avg_tokens_per_call: ${data.summary?.averageTokensPerCall || 0}`);
+  console.log(`  median_tokens_per_call: ${data.summary?.medianTokensPerCall || 0}`);
+  console.log(
+    `  input_to_output_ratio: ${data.summary?.inputToOutputRatio !== null && data.summary?.inputToOutputRatio !== undefined ? `${data.summary.inputToOutputRatio}:1` : "n/a"}`
+  );
+  console.log("");
+
+  console.log("HEATMAP");
+  const hottest = data.tokenHeatmap?.hottestHour;
+  if (hottest) {
+    console.log(
+      `  hottest_window: ${hottest.dayLabel} ${String(hottest.hour).padStart(2, "0")}:00 (${hottest.tokens} tokens, ${hottest.calls} calls)`
+    );
+  } else {
+    console.log("  hottest_window: n/a");
+  }
+  console.log("");
+
+  console.log("PROMPT/OUTPUT BANDS");
+  for (const band of data.promptOutputDistribution?.bands || []) {
+    console.log(`  ${band.band}: ${band.calls} calls (${band.sharePct}%)`);
+  }
+  console.log("");
+
+  console.log("TOKEN CLOUD");
+  const cloud = (data.tokenCloud || []).slice(0, 12);
+  if (cloud.length === 0) {
+    console.log("  no data");
+  } else {
+    for (const entry of cloud) {
+      console.log(`  ${entry.token} [${entry.category}] ${entry.sharePct}%`);
+    }
+  }
+  console.log("");
+
+  console.log("MODEL THOUGHT PROFILES");
+  const profiles = (data.modelThoughtProfiles || []).slice(0, 8);
+  if (profiles.length === 0) {
+    console.log("  no data");
+  } else {
+    for (const profile of profiles) {
+      console.log(
+        `  ${profile.model} (${profile.provider}) ${profile.behavior} | prompt=${profile.promptSharePct}% output=${profile.responseSharePct}% tps=${profile.avgTps} latency=${profile.avgLatencyMs}ms`
+      );
+    }
+  }
+  console.log("");
+
+  console.log("TOP TOKEN BURSTS");
+  const bursts = (data.topTokenBursts || []).slice(0, 5);
+  if (bursts.length === 0) {
+    console.log("  no data");
+  } else {
+    for (const burst of bursts) {
+      console.log(
+        `  ${burst.timestamp} ${burst.model} (${burst.provider}) ${burst.totalTokens} tokens`
+      );
+    }
+  }
 }
 
 async function rawAgents(): Promise<void> {
@@ -3032,6 +3160,8 @@ function rawHelp(): void {
   console.log("  chat        Interactive chat with AI");
   console.log("  status      Show system status");
   console.log("  metrics     Show token usage and metrics");
+  console.log("    metrics             Usage summary");
+  console.log("    metrics analysis    Advanced token analysis");
   console.log("  agents      List configured agents");
   console.log("  config      Config commands");
   console.log("    config            Show all config");
@@ -3886,7 +4016,11 @@ async function main() {
       await rawStatus();
       break;
     case "metrics":
-      await rawMetrics();
+      if (args[1] === "analysis" || args[1] === "token-analysis") {
+        await rawMetricsAnalysis();
+      } else {
+        await rawMetrics();
+      }
       break;
     case "agents":
       await rawAgents();

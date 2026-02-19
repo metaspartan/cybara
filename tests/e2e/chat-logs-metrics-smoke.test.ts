@@ -236,6 +236,18 @@ describe("Chat + Logs + Metrics e2e smoke", () => {
       { type: "token_usage", key: "input", value: 120 },
       { type: "token_usage", key: "output", value: 45 },
       {
+        type: "token_usage",
+        key: "all",
+        value: 165,
+        metadata: {
+          inputTokens: 120,
+          outputTokens: 45,
+          model: "claude-sonnet-4-20250514",
+          provider: "anthropic",
+          durationMs: 2400,
+        },
+      },
+      {
         type: "token_usage_by_model",
         key: "claude-sonnet-4-20250514",
         value: 165,
@@ -316,5 +328,14 @@ describe("Chat + Logs + Metrics e2e smoke", () => {
     const modelsRes = await api("GET", "/api/metrics/models");
     expect(modelsRes.status).toBe(200);
     expect(Array.isArray(modelsRes.data.models)).toBe(true);
+
+    const tokenAnalysisRes = await api("GET", "/api/metrics/token-analysis");
+    expect(tokenAnalysisRes.status).toBe(200);
+    expect(typeof tokenAnalysisRes.data.summary.callCount).toBe("number");
+    expect(tokenAnalysisRes.data.summary.totalTokens).toBeGreaterThanOrEqual(165);
+    expect(Array.isArray(tokenAnalysisRes.data.tokenHeatmap.days)).toBe(true);
+    expect(tokenAnalysisRes.data.tokenHeatmap.days.length).toBe(7);
+    expect(Array.isArray(tokenAnalysisRes.data.tokenCloud)).toBe(true);
+    expect(Array.isArray(tokenAnalysisRes.data.modelThoughtProfiles)).toBe(true);
   });
 });

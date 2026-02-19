@@ -23,8 +23,10 @@ import {
   useMetricsProviders,
   useMetricsModels,
   useMetricsInsights,
+  useMetricsTokenAnalysis,
   type MetricsOverview,
   type TokenMetrics,
+  type TokenAnalysisMetrics,
   type FileMetrics,
   type ToolMetrics,
   type TimeSeriesData,
@@ -48,9 +50,11 @@ export function Metrics() {
   const { data: providers, isLoading: loadingProviders } = useMetricsProviders();
   const { data: modelMetrics, isLoading: loadingModels } = useMetricsModels();
   const { data: insights, isLoading: loadingInsights } = useMetricsInsights();
+  const { data: tokenAnalysis, isLoading: loadingTokenAnalysis } = useMetricsTokenAnalysis();
 
-  const isLoading = loadingOverview || loadingTokens || loadingFiles || loadingTools || loadingTimeSeries || loadingProviders || loadingModels || loadingInsights;
+  const isLoading = loadingOverview || loadingTokens || loadingFiles || loadingTools || loadingTimeSeries || loadingProviders || loadingModels || loadingInsights || loadingTokenAnalysis;
   const insightsData = insights as MetricsInsights | undefined;
+  const tokenAnalysisData = tokenAnalysis as TokenAnalysisMetrics | undefined;
 
   const stats = useMemo(() => {
     if (!overview) return null;
@@ -73,6 +77,39 @@ export function Metrics() {
         : 0,
     };
   }, [overview]);
+
+  const cybaraSignals = useMemo(() => {
+    const totalToolCalls = overview?.toolCalls.totalCalls || 0;
+    const totalMessages = overview?.agentActivity.totalMessages || 0;
+    const memoryToolCalls = (tools?.mostUsed || [])
+      .filter((entry) => entry.tool.startsWith('memory_'))
+      .reduce((sum, entry) => sum + entry.calls, 0);
+
+    const toolsPerMessage = totalMessages > 0 ? Number((totalToolCalls / totalMessages).toFixed(2)) : 0;
+    const memorySharePct = totalToolCalls > 0 ? Number(((memoryToolCalls / totalToolCalls) * 100).toFixed(2)) : 0;
+    const topProviderShare = insightsData?.providerEfficiency?.[0]?.sharePct || 0;
+    const providerBalance = Number((Math.max(0, 100 - topProviderShare)).toFixed(2));
+
+    const behaviorTotals = new Map<string, number>();
+    for (const profile of tokenAnalysisData?.modelThoughtProfiles || []) {
+      behaviorTotals.set(profile.behavior, (behaviorTotals.get(profile.behavior) || 0) + profile.totalTokens);
+    }
+    const behaviorEntries = Array.from(behaviorTotals.entries()).sort((a, b) => b[1] - a[1]);
+    const dominantBehavior = behaviorEntries[0]?.[0] || 'n/a';
+
+    const outputHeavyShare = (tokenAnalysisData?.promptOutputDistribution?.bands || [])
+      .filter((band) => band.band === 'output_heavy' || band.band === 'very_output_heavy')
+      .reduce((sum, band) => sum + band.sharePct, 0);
+
+    return {
+      toolsPerMessage,
+      memorySharePct,
+      providerBalance,
+      dominantBehavior,
+      outputHeavyShare: Number(outputHeavyShare.toFixed(2)),
+      topBurst: tokenAnalysisData?.topTokenBursts?.[0],
+    };
+  }, [overview, tools, insightsData, tokenAnalysisData]);
 
   if (isLoading) {
     return (
@@ -125,6 +162,170 @@ export function Metrics() {
           color="text-green-400"
           bgColor="bg-green-500/20"
         />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
+        <Card className="xl:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="w-5 h-5 text-cyan-400" />
+              Token Heatmap
+            </CardTitle>
+            <CardDescription>7-day intensity map by hour with hottest usage window</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {tokenAnalysisData?.tokenHeatmap?.days && tokenAnalysisData.tokenHeatmap.days.length > 0 ? (
+              <>
+                <div className="space-y-2">
+                  {tokenAnalysisData.tokenHeatmap.days.map((day) => (
+                    <div key={day.date} className="grid grid-cols-[64px,1fr] gap-2 items-center">
+                      <p className="text-xs text-gray-400">{day.dayLabel}</p>
+                      <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))' }}>
+                        {day.hours.map((hour) => (
+                          <div
+                            key={`${day.date}-${hour.hour}`}
+                            className="h-3 rounded-sm border border-white/5"
+                            style={{
+                              backgroundColor: `rgba(34, 211, 238, ${0.08 + hour.intensity * 0.92})`,
+                            }}
+                            title={`${day.date} ${String(hour.hour).padStart(2, '0')}:00 - ${formatNumber(hour.tokens)} tokens (${hour.calls} calls)`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {tokenAnalysisData.tokenHeatmap.hottestHour && (
+                  <div className="rounded-lg bg-white/5 p-3 text-xs text-gray-300">
+                    Hottest window: {tokenAnalysisData.tokenHeatmap.hottestHour.dayLabel} {String(tokenAnalysisData.tokenHeatmap.hottestHour.hour).padStart(2, '0')}:00
+                    {' '}with {formatNumber(tokenAnalysisData.tokenHeatmap.hottestHour.tokens)} tokens
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-gray-500">No heatmap data yet</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-emerald-400" />
+              Prompt vs Output
+            </CardTitle>
+            <CardDescription>Token flow ratios and distribution</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="rounded-lg bg-white/5 p-3">
+              <p className="text-xs text-gray-500 mb-1">Input:Output</p>
+              <p className="text-lg font-semibold text-white">
+                {tokenAnalysisData?.summary?.inputToOutputRatio !== null && tokenAnalysisData?.summary?.inputToOutputRatio !== undefined
+                  ? `${tokenAnalysisData.summary.inputToOutputRatio}:1`
+                  : 'n/a'}
+              </p>
+            </div>
+            <div className="rounded-lg bg-white/5 p-3">
+              <p className="text-xs text-gray-500 mb-2">Distribution</p>
+              <div className="space-y-2">
+                {tokenAnalysisData?.promptOutputDistribution?.bands?.map((band) => (
+                  <div key={band.band}>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="text-gray-300">{band.band.split('_').join(' ')}</span>
+                      <span className="text-gray-500">{band.sharePct}%</span>
+                    </div>
+                    <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                      <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${Math.min(100, band.sharePct)}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-lg bg-white/5 p-3 grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <p className="text-gray-500">Avg/call</p>
+                <p className="text-white">{formatNumber(tokenAnalysisData?.summary?.averageTokensPerCall || 0)}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Median</p>
+                <p className="text-white">{formatNumber(tokenAnalysisData?.summary?.medianTokensPerCall || 0)}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Cpu className="w-5 h-5 text-amber-400" />
+              Token Cloud
+            </CardTitle>
+            <CardDescription>Most active models, providers, tools, and recurring terms</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {tokenAnalysisData?.tokenCloud && tokenAnalysisData.tokenCloud.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {tokenAnalysisData.tokenCloud.map((entry) => {
+                  const size = Math.min(26, 11 + entry.sharePct * 0.5);
+                  const color = entry.category === 'model'
+                    ? 'text-cyan-300'
+                    : entry.category === 'provider'
+                      ? 'text-emerald-300'
+                      : entry.category === 'tool'
+                        ? 'text-violet-300'
+                        : entry.category === 'pattern'
+                          ? 'text-orange-300'
+                        : 'text-amber-300';
+                  return (
+                    <span
+                      key={`${entry.category}-${entry.token}`}
+                      className={`px-2 py-1 rounded-md bg-white/5 border border-white/10 ${color}`}
+                      style={{ fontSize: `${size}px`, lineHeight: 1.1 }}
+                      title={`${entry.category} · ${entry.sharePct}%`}
+                    >
+                      {entry.token}
+                    </span>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">No token cloud data yet</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Gauge className="w-5 h-5 text-rose-400" />
+              Model Thought Profiles
+            </CardTitle>
+            <CardDescription>Prompt/output style, latency, and throughput by model</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {tokenAnalysisData?.modelThoughtProfiles?.slice(0, 8).map((profile) => (
+                <div key={`${profile.provider}-${profile.model}`} className="rounded-lg bg-white/5 p-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-sm text-white">{profile.model}</p>
+                    <span className="text-[11px] uppercase tracking-wide text-rose-300">{profile.behavior}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-gray-400">
+                    <span>{profile.promptSharePct}% prompt</span>
+                    <span>{profile.responseSharePct}% output</span>
+                    <span>{profile.avgTps} tok/s</span>
+                    <span>{profile.avgLatencyMs}ms</span>
+                  </div>
+                </div>
+              ))}
+              {(!tokenAnalysisData?.modelThoughtProfiles || tokenAnalysisData.modelThoughtProfiles.length === 0) && (
+                <p className="text-sm text-gray-500">No model thought profile data yet</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
@@ -445,6 +646,57 @@ export function Metrics() {
               </div>
             ) : (
               <p className="text-sm text-gray-500 text-center py-4">No provider data yet</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Cpu className="w-5 h-5 text-indigo-400" />
+              Cybara Signal
+            </CardTitle>
+            <CardDescription>Autonomy and model behavior telemetry unique to Cybara</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg bg-white/5 p-3">
+                <p className="text-xs text-gray-500 mb-1">Autonomy</p>
+                <p className="text-lg font-semibold text-indigo-300">{cybaraSignals.toolsPerMessage}</p>
+                <p className="text-[11px] text-gray-500">tools/message</p>
+              </div>
+              <div className="rounded-lg bg-white/5 p-3">
+                <p className="text-xs text-gray-500 mb-1">Memory Share</p>
+                <p className="text-lg font-semibold text-emerald-300">{cybaraSignals.memorySharePct}%</p>
+                <p className="text-[11px] text-gray-500">memory tool calls</p>
+              </div>
+              <div className="rounded-lg bg-white/5 p-3">
+                <p className="text-xs text-gray-500 mb-1">Provider Balance</p>
+                <p className="text-lg font-semibold text-cyan-300">{cybaraSignals.providerBalance}</p>
+                <p className="text-[11px] text-gray-500">100 - top provider share</p>
+              </div>
+              <div className="rounded-lg bg-white/5 p-3">
+                <p className="text-xs text-gray-500 mb-1">Output-Heavy</p>
+                <p className="text-lg font-semibold text-amber-300">{cybaraSignals.outputHeavyShare}%</p>
+                <p className="text-[11px] text-gray-500">response-forward calls</p>
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-white/5 p-3 border border-white/10">
+              <p className="text-xs text-gray-500 mb-1">Dominant Thinking Style</p>
+              <p className="text-sm font-medium text-white">{cybaraSignals.dominantBehavior}</p>
+            </div>
+
+            {cybaraSignals.topBurst && (
+              <div className="rounded-lg bg-white/5 p-3 border border-white/10">
+                <p className="text-xs text-gray-500 mb-1">Top Burst</p>
+                <p className="text-sm text-indigo-300">
+                  {formatNumber(cybaraSignals.topBurst.totalTokens)} tokens in one call
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {cybaraSignals.topBurst.model} · {cybaraSignals.topBurst.provider}
+                </p>
+              </div>
             )}
           </CardContent>
         </Card>

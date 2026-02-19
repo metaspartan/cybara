@@ -121,6 +121,110 @@ describe("Agent provider API-family routing", () => {
     expect(requestHeaders.get("anthropic-beta")).toContain("context-1m-2025-08-07");
   });
 
+  test("anthropic loop emits matching tool_result ids even for unknown tool names", async () => {
+    const requestBodies: Array<Record<string, unknown>> = [];
+    let requestCount = 0;
+
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestCount += 1;
+      const requestBody = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      requestBodies.push(requestBody);
+
+      if (requestCount === 1) {
+        return new Response(
+          JSON.stringify({
+            id: "msg-tool-1",
+            type: "message",
+            role: "assistant",
+            model: "claude-sonnet-4-20250514",
+            content: [
+              { type: "text", text: "Calling a tool now." },
+              {
+                type: "tool_use",
+                id: "toolu_calc_1",
+                name: "calculate",
+                input: { expression: "(389234532578 * 3.14) / 2" },
+              },
+            ],
+            usage: { input_tokens: 20, output_tokens: 10 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      if (requestCount === 2) {
+        return new Response(
+          JSON.stringify({
+            id: "msg-tool-2",
+            type: "message",
+            role: "assistant",
+            model: "claude-sonnet-4-20250514",
+            content: [{ type: "text", text: "I could not run that tool, but I can still help." }],
+            usage: { input_tokens: 18, output_tokens: 12 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(JSON.stringify({ error: "unexpected extra request" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "anthropic",
+      name: "Anthropic Tool Loop Provider",
+      api_key: "anthropic-tool-loop-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Anthropic Tool Loop Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "claude-sonnet-4-20250514",
+      tools: [
+        {
+          name: "calc",
+          description: "Evaluate math",
+          input_schema: {
+            type: "object",
+            properties: {
+              expression: { type: "string" },
+            },
+            required: ["expression"],
+          },
+        },
+      ],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Calculate (389234532578 * 3.14) / 2" }],
+      { useTools: true, sessionId: "anthropic-tool-loop-session" }
+    );
+
+    expect(result.content).toContain("I could not run that tool");
+    expect(requestCount).toBe(2);
+
+    const firstBody = requestBodies[0] as Record<string, unknown>;
+    expect(firstBody.tool_choice).toEqual({ type: "auto" });
+
+    const secondBody = requestBodies[1] as Record<string, unknown>;
+    const secondMessages = (secondBody.messages as Array<Record<string, unknown>>) || [];
+    const lastMessage = secondMessages[secondMessages.length - 1] || {};
+    expect(lastMessage.role).toBe("user");
+
+    const toolResults = (lastMessage.content as Array<Record<string, unknown>>) || [];
+    const toolResult = toolResults.find((entry) => entry.type === "tool_result");
+    expect(toolResult).toBeDefined();
+    expect(toolResult?.tool_use_id).toBe("toolu_calc_1");
+    expect(typeof toolResult?.content).toBe("string");
+    expect(String(toolResult?.content)).toContain("Tool not found: calculate");
+  });
+
   test("routes openai-family providers through /chat/completions and keeps system message in messages", async () => {
     let requestUrl = "";
     let requestBody: Record<string, unknown> = {};

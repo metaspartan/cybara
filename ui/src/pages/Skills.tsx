@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Wrench,
   ChevronRight,
@@ -15,7 +15,10 @@ import {
   Download,
   RefreshCw,
   Trash2,
-  Package
+  Package,
+  Calendar,
+  User,
+  Hash,
 } from 'lucide-react';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -30,25 +33,76 @@ import {
   useInstallSkill,
   useUninstallSkill,
   useCreateSkill,
-  type SkillStatusInfo
+  type RegistrySkillInfo,
+  type SkillStatusInfo,
+  type SkillsRegistrySort,
 } from '../hooks/useApi';
 import { useUIStore } from '../stores/uiStore';
 
+type SkillsPageTab = 'installed' | 'registry';
+
+interface InstalledSkillMatch {
+  source: SkillStatusInfo['source'];
+  name: string;
+  location: string;
+}
+
+function normalizeSkillKey(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function getLocationLeaf(location: string): string {
+  const parts = location.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] ?? '';
+}
+
+function formatRegistryName(registry: string): string {
+  if (registry === 'clawhub') return 'ClawHub';
+  return registry;
+}
+
+function formatSourceLabel(source: SkillStatusInfo['source']): string {
+  if (source === 'workspace') return 'Workspace';
+  if (source === 'local') return 'Local';
+  return 'Bundled';
+}
+
+function getSourcePriority(source: SkillStatusInfo['source']): number {
+  if (source === 'workspace') return 3;
+  if (source === 'local') return 2;
+  return 1;
+}
+
+function formatUpdatedAt(updatedAt?: number): string | null {
+  if (typeof updatedAt !== 'number' || !Number.isFinite(updatedAt)) {
+    return null;
+  }
+  return new Date(updatedAt).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 export function Skills() {
+  const [activeTab, setActiveTab] = useState<SkillsPageTab>('installed');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showRegistryModal, setShowRegistryModal] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState<SkillStatusInfo | null>(null);
 
   const { data: skillsData, isLoading, refetch } = useSkillsStatus();
-  const { addToast } = useUIStore();
 
   const skills = skillsData?.skills || [];
   const summary = skillsData?.summary;
 
-  const filteredSkills = skills.filter(skill => {
-    const matchesSearch = skill.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+  const filteredSkills = skills.filter((skill) => {
+    const matchesSearch =
+      skill.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       skill.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesSource = !selectedSource || skill.source === selectedSource;
     return matchesSearch && matchesSource;
@@ -87,13 +141,6 @@ export function Skills() {
             Refresh
           </Button>
           <Button
-            variant="secondary"
-            leftIcon={<Package className="w-4 h-4" />}
-            onClick={() => setShowRegistryModal(true)}
-          >
-            Browse Registry
-          </Button>
-          <Button
             leftIcon={<Plus className="w-4 h-4" />}
             onClick={() => setShowAddModal(true)}
           >
@@ -103,8 +150,27 @@ export function Skills() {
       }
     >
       <div className="space-y-6">
-        {summary && (
-          <div className="grid grid-cols-4 gap-4">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant={activeTab === 'installed' ? 'primary' : 'ghost'}
+            size="sm"
+            leftIcon={<Wrench className="w-4 h-4" />}
+            onClick={() => setActiveTab('installed')}
+          >
+            Installed
+          </Button>
+          <Button
+            variant={activeTab === 'registry' ? 'primary' : 'ghost'}
+            size="sm"
+            leftIcon={<Package className="w-4 h-4" />}
+            onClick={() => setActiveTab('registry')}
+          >
+            Registry
+          </Button>
+        </div>
+
+        {activeTab === 'installed' && summary && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <Card>
               <CardContent className="p-4 text-center">
                 <div className="text-2xl font-bold text-white">{summary.total}</div>
@@ -132,93 +198,101 @@ export function Skills() {
           </div>
         )}
 
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-            <Input
-              placeholder="Search skills..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            <Button
-              variant={selectedSource === null ? 'primary' : 'ghost'}
-              size="sm"
-              onClick={() => setSelectedSource(null)}
-            >
-              All
-            </Button>
-            {['workspace', 'local', 'bundled'].map((source) => (
-              <Button
-                key={source}
-                variant={selectedSource === source ? 'primary' : 'ghost'}
-                size="sm"
-                onClick={() => setSelectedSource(source)}
-              >
-                {source.charAt(0).toUpperCase() + source.slice(1)}
-              </Button>
-            ))}
-          </div>
-        </div>
+        {activeTab === 'installed' && (
+          <>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                <Input
+                  placeholder="Search installed skills..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                <Button
+                  variant={selectedSource === null ? 'primary' : 'ghost'}
+                  size="sm"
+                  onClick={() => setSelectedSource(null)}
+                >
+                  All
+                </Button>
+                {['workspace', 'local', 'bundled'].map((source) => (
+                  <Button
+                    key={source}
+                    variant={selectedSource === source ? 'primary' : 'ghost'}
+                    size="sm"
+                    onClick={() => setSelectedSource(source)}
+                  >
+                    {source.charAt(0).toUpperCase() + source.slice(1)}
+                  </Button>
+                ))}
+              </div>
+            </div>
 
-        {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[...Array(6)].map((_, i) => (
-              <Card key={i} className="h-40 animate-pulse">
-                <CardContent className="p-6">
-                  <div className="h-4 bg-white/10 rounded w-1/3 mb-4" />
-                  <div className="h-3 bg-white/10 rounded w-full mb-2" />
-                  <div className="h-3 bg-white/10 rounded w-2/3" />
+            {isLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[...Array(6)].map((_, i) => (
+                  <Card key={i} className="h-40 animate-pulse">
+                    <CardContent className="p-6">
+                      <div className="h-4 bg-white/10 rounded w-1/3 mb-4" />
+                      <div className="h-3 bg-white/10 rounded w-full mb-2" />
+                      <div className="h-3 bg-white/10 rounded w-2/3" />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : filteredSkills.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <Wrench className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-white mb-2">No skills found</h3>
+                  <p className="text-gray-400">Try adjusting your search or add a new skill</p>
                 </CardContent>
               </Card>
-            ))}
-          </div>
-        ) : filteredSkills.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <Wrench className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-white mb-2">No skills found</h3>
-              <p className="text-gray-400">Try adjusting your search or add a new skill</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredSkills.map((skill) => (
-              <Card
-                key={skill.name}
-                className={cn(
-                  'cursor-pointer transition-all',
-                  !skill.eligible && 'opacity-70'
-                )}
-                onClick={() => setSelectedSkill(skill)}
-              >
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className={cn(
-                        'w-10 h-10 rounded-lg bg-gradient-to-br flex items-center justify-center text-white font-bold',
-                        getSourceColor(skill.source)
-                      )}>
-                        {skill.name.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <h3 className="font-medium text-white">{skill.name}</h3>
-                        <div className="flex gap-2 mt-1">
-                          <Badge variant="info" size="sm" className="capitalize">{skill.source}</Badge>
-                          {getStatusBadge(skill)}
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredSkills.map((skill) => (
+                  <Card
+                    key={skill.name}
+                    className={cn(
+                      'cursor-pointer transition-all',
+                      !skill.eligible && 'opacity-70'
+                    )}
+                    onClick={() => setSelectedSkill(skill)}
+                  >
+                    <CardContent className="p-6">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            'w-10 h-10 rounded-lg bg-gradient-to-br flex items-center justify-center text-white font-bold',
+                            getSourceColor(skill.source)
+                          )}>
+                            {skill.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <h3 className="font-medium text-white">{skill.name}</h3>
+                            <div className="flex gap-2 mt-1">
+                              <Badge variant="info" size="sm" className="capitalize">{skill.source}</Badge>
+                              {getStatusBadge(skill)}
+                            </div>
+                          </div>
                         </div>
+                        <ChevronRight className="w-5 h-5 text-gray-500" />
                       </div>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-gray-500" />
-                  </div>
 
-                  <p className="text-sm text-gray-400 line-clamp-2">{skill.description}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                      <p className="text-sm text-gray-400 line-clamp-2">{skill.description}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {activeTab === 'registry' && (
+          <RegistryBrowserPanel installedSkills={skills} />
         )}
 
         <SkillDetailModal
@@ -230,11 +304,6 @@ export function Skills() {
         <AddSkillModal
           isOpen={showAddModal}
           onClose={() => setShowAddModal(false)}
-        />
-
-        <RegistryBrowserModal
-          isOpen={showRegistryModal}
-          onClose={() => setShowRegistryModal(false)}
         />
       </div>
     </PageLayout>
@@ -558,19 +627,32 @@ function AddSkillModal({ isOpen, onClose }: AddSkillModalProps) {
   );
 }
 
-interface RegistryBrowserModalProps {
-  isOpen: boolean;
-  onClose: () => void;
+interface RegistryBrowserPanelProps {
+  installedSkills: SkillStatusInfo[];
 }
 
-function RegistryBrowserModal({ isOpen, onClose }: RegistryBrowserModalProps) {
+function RegistryBrowserPanel({ installedSkills }: RegistryBrowserPanelProps) {
   const [activeTab, setActiveTab] = useState<'browse' | 'search'>('browse');
   const [searchInput, setSearchInput] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
   const [registryFilter, setRegistryFilter] = useState<string | null>(null);
+  const [resultFilter, setResultFilter] = useState('');
+  const [sort, setSort] = useState<SkillsRegistrySort>('downloads');
+  const [maxPages, setMaxPages] = useState(2);
+  const [installingKey, setInstallingKey] = useState<string | null>(null);
+  const [confirmingSuspicious, setConfirmingSuspicious] = useState(false);
+  const [suspiciousPrompt, setSuspiciousPrompt] = useState<{ slug: string; registry: string } | null>(null);
+  const [selectedRegistrySkill, setSelectedRegistrySkill] = useState<RegistrySkillInfo | null>(null);
 
-  const { data: browseData, isLoading: browseLoading } = useSkillsRegistryBrowse();
-  const { data: searchResults, isLoading: searchLoading } = useSkillsRegistrySearch(submittedQuery);
+  const queryOptions = useMemo(() => ({
+    registry: registryFilter ?? undefined,
+    sort,
+    limit: 200,
+    maxPages: sort === 'updated' ? maxPages : 1,
+  }), [maxPages, registryFilter, sort]);
+
+  const { data: browseData, isLoading: browseLoading } = useSkillsRegistryBrowse(queryOptions);
+  const { data: searchResults, isLoading: searchLoading } = useSkillsRegistrySearch(submittedQuery, queryOptions);
   const installSkill = useInstallSkill();
   const { addToast } = useUIStore();
 
@@ -579,16 +661,83 @@ function RegistryBrowserModal({ isOpen, onClose }: RegistryBrowserModalProps) {
     ? browseData?.skills || []
     : searchResults?.skills || [];
 
-  const filteredSkills = registryFilter
-    ? skills.filter(s => s.registry === registryFilter)
-    : skills;
+  const registries = useMemo(() => {
+    const fromBrowse = browseData?.registries ?? [];
+    const fromSearch = searchResults?.registries ?? [];
+    const fromSkills = skills.map((skill) => skill.registry);
+    return Array.from(new Set([...fromBrowse, ...fromSearch, ...fromSkills])).sort((a, b) => a.localeCompare(b));
+  }, [browseData?.registries, searchResults?.registries, skills]);
 
-  const registries = ['clawhub', 'skills.sh'];
+  const resultFilterQuery = resultFilter.trim().toLowerCase();
+  const filteredSkills = skills.filter((skill) => {
+    if (!resultFilterQuery) return true;
+    return (
+      skill.name.toLowerCase().includes(resultFilterQuery) ||
+      skill.slug.toLowerCase().includes(resultFilterQuery) ||
+      skill.description.toLowerCase().includes(resultFilterQuery) ||
+      (skill.author?.toLowerCase().includes(resultFilterQuery) ?? false) ||
+      (skill.tags?.some((tag) => tag.toLowerCase().includes(resultFilterQuery)) ?? false)
+    );
+  });
+
+  const counts = activeTab === 'browse'
+    ? browseData?.counts
+    : searchResults?.counts;
+
+  const installedByKey = useMemo(() => {
+    const map = new Map<string, InstalledSkillMatch>();
+    for (const skill of installedSkills) {
+      const keys = new Set<string>();
+      const normalizedName = normalizeSkillKey(skill.name);
+      if (normalizedName) keys.add(normalizedName);
+      const normalizedDirName = normalizeSkillKey(getLocationLeaf(skill.location));
+      if (normalizedDirName) keys.add(normalizedDirName);
+      for (const key of keys) {
+        const existing = map.get(key);
+        if (!existing || getSourcePriority(skill.source) > getSourcePriority(existing.source)) {
+          map.set(key, {
+            source: skill.source,
+            name: skill.name,
+            location: skill.location,
+          });
+        }
+      }
+    }
+    return map;
+  }, [installedSkills]);
+
+  const getInstalledState = (skill: RegistrySkillInfo): InstalledSkillMatch | null => {
+    const slugMatch = installedByKey.get(normalizeSkillKey(skill.slug));
+    if (slugMatch) return slugMatch;
+    const nameMatch = installedByKey.get(normalizeSkillKey(skill.name));
+    if (nameMatch) return nameMatch;
+    return null;
+  };
+
+  useEffect(() => {
+    if (filteredSkills.length === 0) {
+      setSelectedRegistrySkill(null);
+      return;
+    }
+
+    if (!selectedRegistrySkill) {
+      setSelectedRegistrySkill(filteredSkills[0]);
+      return;
+    }
+
+    const stillVisible = filteredSkills.some((skill) =>
+      skill.slug === selectedRegistrySkill.slug && skill.registry === selectedRegistrySkill.registry
+    );
+
+    if (!stillVisible) {
+      setSelectedRegistrySkill(filteredSkills[0]);
+    }
+  }, [filteredSkills, selectedRegistrySkill]);
+
+  const selectedInstallState = selectedRegistrySkill ? getInstalledState(selectedRegistrySkill) : null;
 
   const handleSearch = () => {
-    if (searchInput.trim()) {
-      setSubmittedQuery(searchInput.trim());
-    }
+    setSubmittedQuery(searchInput.trim());
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -598,21 +747,67 @@ function RegistryBrowserModal({ isOpen, onClose }: RegistryBrowserModalProps) {
   };
 
   const handleInstall = async (slug: string, registry: string) => {
+    const key = `${registry}:${slug}`;
+    setInstallingKey(key);
     try {
-      const result = await installSkill.mutateAsync({ slug, registry });
+      const result = await installSkill.mutateAsync({ slug, registry, allowSuspicious: false });
+      if (!result.success && result.blockedReason === 'suspicious' && result.requiresConfirmation) {
+        setSuspiciousPrompt({ slug, registry });
+        return;
+      }
+
       if (result.success) {
         addToast('success', `Skill "${slug}" installed successfully`);
-      } else {
-        addToast('error', result.error || 'Failed to install skill');
+        return;
       }
+
+      if (result.blockedReason === 'malware') {
+        addToast('error', result.error || `Blocked: "${slug}" is flagged as malicious`);
+        return;
+      }
+
+      addToast('error', result.error || 'Failed to install skill');
     } catch (error) {
       addToast('error', error instanceof Error ? error.message : 'Failed to install skill');
+    } finally {
+      setInstallingKey(null);
     }
   };
 
+  const handleConfirmSuspiciousInstall = async () => {
+    if (!suspiciousPrompt) return;
+
+    const { slug, registry } = suspiciousPrompt;
+    const key = `${registry}:${slug}`;
+
+    setConfirmingSuspicious(true);
+    setInstallingKey(key);
+    try {
+      const forcedResult = await installSkill.mutateAsync({
+        slug,
+        registry,
+        allowSuspicious: true,
+      });
+      if (forcedResult.success) {
+        addToast('success', `Skill "${slug}" installed (override accepted)`);
+        setSuspiciousPrompt(null);
+      } else {
+        addToast('error', forcedResult.error || 'Failed to install skill');
+      }
+    } catch (error) {
+      addToast('error', error instanceof Error ? error.message : 'Failed to install skill');
+    } finally {
+      setConfirmingSuspicious(false);
+      setInstallingKey(null);
+    }
+  };
+
+  const updatedLabel = selectedRegistrySkill ? formatUpdatedAt(selectedRegistrySkill.updatedAt) : null;
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Browse Skill Registries" size="xl">
-      <div className="space-y-4">
+    <>
+      <Card>
+        <CardContent className="p-4 sm:p-6 space-y-4">
         <div className="flex gap-2 border-b border-white/10 pb-2">
           <button
             className={cn(
@@ -655,13 +850,43 @@ function RegistryBrowserModal({ isOpen, onClose }: RegistryBrowserModalProps) {
             </div>
             <Button
               onClick={handleSearch}
-              disabled={!searchInput.trim()}
-              isLoading={searchLoading && submittedQuery === searchInput.trim()}
+              disabled={searchInput.trim().length === 0}
+              isLoading={searchLoading && submittedQuery.length > 0}
             >
               Search
             </Button>
           </div>
         )}
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          <Input
+            value={resultFilter}
+            onChange={(e) => setResultFilter(e.target.value)}
+            placeholder="Filter current results..."
+          />
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SkillsRegistrySort)}
+            className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-indigo-500/50"
+          >
+            <option value="downloads">Sort: Downloads</option>
+            <option value="trending">Sort: Trending</option>
+            <option value="stars">Sort: Stars</option>
+            <option value="updated">Sort: Updated</option>
+            <option value="installsCurrent">Sort: Installs (Current)</option>
+            <option value="installsAllTime">Sort: Installs (All Time)</option>
+          </select>
+          <select
+            value={String(maxPages)}
+            onChange={(e) => setMaxPages(Number(e.target.value))}
+            disabled={sort !== 'updated'}
+            className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-indigo-500/50 disabled:opacity-50"
+          >
+            <option value="1">Page Depth: 1</option>
+            <option value="2">Page Depth: 2</option>
+            <option value="3">Page Depth: 3</option>
+          </select>
+        </div>
 
         <div className="flex gap-2 flex-wrap">
           <button
@@ -675,7 +900,7 @@ function RegistryBrowserModal({ isOpen, onClose }: RegistryBrowserModalProps) {
           >
             All Registries
           </button>
-          {registries.map(reg => (
+          {registries.map((reg) => (
             <button
               key={reg}
               className={cn(
@@ -686,7 +911,8 @@ function RegistryBrowserModal({ isOpen, onClose }: RegistryBrowserModalProps) {
               )}
               onClick={() => setRegistryFilter(registryFilter === reg ? null : reg)}
             >
-              {reg === 'clawhub' ? 'ClawHub' : reg}
+              {formatRegistryName(reg)}
+              {counts?.[reg] ? ` (${counts[reg]})` : ''}
             </button>
           ))}
         </div>
@@ -712,35 +938,171 @@ function RegistryBrowserModal({ isOpen, onClose }: RegistryBrowserModalProps) {
             </p>
           </div>
         ) : (
-          <div className="space-y-2 max-h-96 overflow-y-auto">
-            {filteredSkills.map((skill) => (
-              <Card key={`${skill.registry}-${skill.slug}`}>
-                <CardContent className="p-3 flex items-center justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-medium text-white truncate">{skill.name}</h4>
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,1fr)] gap-4">
+            <div className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
+              {filteredSkills.map((skill) => {
+                const installState = getInstalledState(skill);
+                const isSelected =
+                  selectedRegistrySkill?.slug === skill.slug &&
+                  selectedRegistrySkill.registry === skill.registry;
+
+                return (
+                  <Card
+                    key={`${skill.registry}-${skill.slug}`}
+                    className={cn(
+                      'cursor-pointer transition-all border',
+                      isSelected ? 'border-indigo-500/60 bg-indigo-500/5' : 'border-transparent'
+                    )}
+                    onClick={() => setSelectedRegistrySkill(skill)}
+                  >
+                    <CardContent className="p-3 flex items-center justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-medium text-white truncate">{skill.name}</h4>
+                          <Badge variant="default" size="sm">
+                            {formatRegistryName(skill.registry)}
+                          </Badge>
+                          {installState && (
+                            <Badge variant="success" size="sm">
+                              Installed ({formatSourceLabel(installState.source)})
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-500 truncate">/{skill.slug}</p>
+                        <p className="text-sm text-gray-400 truncate">{skill.description}</p>
+                        <div className="flex gap-4 mt-1 text-xs text-gray-500 flex-wrap">
+                          {skill.author && <span>by {skill.author}</span>}
+                          {skill.downloads !== undefined && <span>{skill.downloads.toLocaleString()} installs</span>}
+                          {skill.stars !== undefined && <span>⭐ {skill.stars}</span>}
+                          {skill.version && <span>v{skill.version}</span>}
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant={installState ? 'secondary' : 'primary'}
+                        leftIcon={<Download className="w-4 h-4" />}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleInstall(skill.slug, skill.registry);
+                        }}
+                        isLoading={
+                          installSkill.isPending &&
+                          installingKey === `${skill.registry}:${skill.slug}`
+                        }
+                      >
+                        {installState ? 'Reinstall' : 'Install'}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+
+            <Card className="h-fit xl:sticky xl:top-4">
+              <CardContent className="p-5 space-y-4">
+                {!selectedRegistrySkill ? (
+                  <div className="py-10 text-center">
+                    <Package className="w-10 h-10 text-gray-600 mx-auto mb-3" />
+                    <p className="text-gray-400 text-sm">Select a skill to view details</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-lg font-semibold text-white">{selectedRegistrySkill.name}</h3>
+                        <p className="text-sm text-gray-500">/{selectedRegistrySkill.slug}</p>
+                      </div>
                       <Badge variant="default" size="sm">
-                        {skill.registry === 'clawhub' ? 'ClawHub' : skill.registry}
+                        {formatRegistryName(selectedRegistrySkill.registry)}
                       </Badge>
                     </div>
-                    <p className="text-sm text-gray-400 truncate">{skill.description}</p>
-                    <div className="flex gap-4 mt-1 text-xs text-gray-500">
-                      {skill.author && <span>by {skill.author}</span>}
-                      {skill.downloads !== undefined && <span>{skill.downloads.toLocaleString()} installs</span>}
-                      {skill.stars !== undefined && <span>⭐ {skill.stars}</span>}
+
+                    {selectedInstallState ? (
+                      <Badge variant="success" size="sm">
+                        Installed from {formatSourceLabel(selectedInstallState.source)}
+                      </Badge>
+                    ) : (
+                      <Badge variant="warning" size="sm">
+                        Not installed
+                      </Badge>
+                    )}
+
+                    <p className="text-sm text-gray-300">{selectedRegistrySkill.description}</p>
+
+                    <div className="space-y-2 text-sm">
+                      {selectedRegistrySkill.author && (
+                        <div className="flex items-center gap-2 text-gray-300">
+                          <User className="w-4 h-4 text-gray-500" />
+                          <span>{selectedRegistrySkill.author}</span>
+                        </div>
+                      )}
+                      {selectedRegistrySkill.version && (
+                        <div className="flex items-center gap-2 text-gray-300">
+                          <Hash className="w-4 h-4 text-gray-500" />
+                          <span>Version {selectedRegistrySkill.version}</span>
+                        </div>
+                      )}
+                      {updatedLabel && (
+                        <div className="flex items-center gap-2 text-gray-300">
+                          <Calendar className="w-4 h-4 text-gray-500" />
+                          <span>Updated {updatedLabel}</span>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    leftIcon={<Download className="w-4 h-4" />}
-                    onClick={() => handleInstall(skill.slug, skill.registry)}
-                    isLoading={installSkill.isPending}
-                  >
-                    Install
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                        <p className="text-xs text-gray-500">Downloads</p>
+                        <p className="text-base font-semibold text-white">
+                          {selectedRegistrySkill.downloads?.toLocaleString() ?? 'n/a'}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                        <p className="text-xs text-gray-500">Stars</p>
+                        <p className="text-base font-semibold text-white">
+                          {selectedRegistrySkill.stars?.toLocaleString() ?? 'n/a'}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                        <p className="text-xs text-gray-500">Current Installs</p>
+                        <p className="text-base font-semibold text-white">
+                          {selectedRegistrySkill.installsCurrent?.toLocaleString() ?? 'n/a'}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                        <p className="text-xs text-gray-500">All-Time Installs</p>
+                        <p className="text-base font-semibold text-white">
+                          {selectedRegistrySkill.installsAllTime?.toLocaleString() ?? 'n/a'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {selectedRegistrySkill.tags && selectedRegistrySkill.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {selectedRegistrySkill.tags.map((tag) => (
+                          <Badge key={`${selectedRegistrySkill.slug}-${tag}`} variant="info" size="sm">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+
+                    <Button
+                      leftIcon={<Download className="w-4 h-4" />}
+                      variant={selectedInstallState ? 'secondary' : 'primary'}
+                      className="w-full"
+                      onClick={() => void handleInstall(selectedRegistrySkill.slug, selectedRegistrySkill.registry)}
+                      isLoading={
+                        installSkill.isPending &&
+                        installingKey === `${selectedRegistrySkill.registry}:${selectedRegistrySkill.slug}`
+                      }
+                    >
+                      {selectedInstallState ? 'Reinstall Skill' : 'Install Skill'}
+                    </Button>
+                  </>
+                )}
+              </CardContent>
+            </Card>
           </div>
         )}
 
@@ -748,12 +1110,60 @@ function RegistryBrowserModal({ isOpen, onClose }: RegistryBrowserModalProps) {
           <p className="text-xs text-gray-500">
             {filteredSkills.length} skills shown
           </p>
-          <Button variant="ghost" onClick={onClose}>
-            Close
-          </Button>
         </div>
-      </div>
-    </Modal>
+        </CardContent>
+      </Card>
+
+      <Modal
+        isOpen={suspiciousPrompt !== null}
+        onClose={() => {
+          if (confirmingSuspicious) return;
+          if (suspiciousPrompt) {
+            addToast('warning', `Install cancelled for "${suspiciousPrompt.slug}"`);
+          }
+          setSuspiciousPrompt(null);
+        }}
+        title="Suspicious Skill Warning"
+        description="VirusTotal marked this skill as suspicious. Install only if you trust the source."
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+            <p className="text-sm text-amber-200">
+              {suspiciousPrompt
+                ? `Skill: ${suspiciousPrompt.slug} (${formatRegistryName(suspiciousPrompt.registry)})`
+                : 'Unknown skill'}
+            </p>
+          </div>
+
+          <p className="text-sm text-gray-300">
+            Cybara blocked this install pending explicit approval. Continue only if you have reviewed the skill and trust the publisher.
+          </p>
+
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                if (suspiciousPrompt) {
+                  addToast('warning', `Install cancelled for "${suspiciousPrompt.slug}"`);
+                }
+                setSuspiciousPrompt(null);
+              }}
+              disabled={confirmingSuspicious}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => void handleConfirmSuspiciousInstall()}
+              isLoading={confirmingSuspicious}
+            >
+              Install Anyway
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </>
   );
 }
 

@@ -123,6 +123,68 @@ function route(method: string, url: URL, body: string): Response {
     });
   }
 
+  if (method === "GET" && pathname === "/api/metrics/token-analysis") {
+    return json({
+      summary: {
+        callCount: 5,
+        totalTokens: 420,
+        totalInputTokens: 260,
+        totalOutputTokens: 160,
+        averageTokensPerCall: 84,
+        medianTokensPerCall: 80,
+        inputToOutputRatio: 1.625,
+        outputToInputRatio: 0.6154,
+      },
+      tokenHeatmap: {
+        hottestHour: {
+          date: "2026-02-19",
+          dayLabel: "Thu",
+          hour: 14,
+          tokens: 120,
+          calls: 2,
+        },
+      },
+      promptOutputDistribution: {
+        sampleCount: 5,
+        bands: [
+          { band: "input_heavy", calls: 2, sharePct: 40 },
+          { band: "balanced", calls: 3, sharePct: 60 },
+        ],
+      },
+      tokenCloud: [
+        { token: "gpt-5.2", category: "model", weight: 220, sharePct: 22 },
+        { token: "openai", category: "provider", weight: 180, sharePct: 18 },
+        { token: "read_file", category: "tool", weight: 120, sharePct: 12 },
+      ],
+      modelThoughtProfiles: [
+        {
+          model: "gpt-5.2",
+          provider: "openai",
+          totalTokens: 320,
+          calls: 3,
+          promptSharePct: 62.5,
+          responseSharePct: 37.5,
+          avgTokensPerCall: 106.67,
+          avgLatencyMs: 2200,
+          avgTps: 36,
+          behavior: "balanced",
+        },
+      ],
+      topTokenBursts: [
+        {
+          timestamp: "2026-02-19T14:05:00.000Z",
+          model: "gpt-5.2",
+          provider: "openai",
+          inputTokens: 70,
+          outputTokens: 50,
+          totalTokens: 120,
+          durationMs: 1400,
+          tokensPerSecond: 35.7,
+        },
+      ],
+    });
+  }
+
   if (method === "GET" && pathname === "/api/agents") {
     return json([
       {
@@ -1160,6 +1222,16 @@ describe("CLI Commands", () => {
     expect(stdout).toContain("CYBARA METRICS");
     expect(stdout).toContain("TOKEN USAGE");
     expect(stdout).toContain("total: 42");
+  });
+
+  test("metrics analysis command renders advanced token analytics", async () => {
+    const { exitCode, stdout } = await runCli(["metrics", "analysis"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("CYBARA TOKEN ANALYSIS");
+    expect(stdout).toContain("input_to_output_ratio: 1.625:1");
+    expect(stdout).toContain("hottest_window: Thu 14:00");
+    expect(stdout).toContain("MODEL THOUGHT PROFILES");
+    expect(stdout).toContain("gpt-5.2");
   });
 
   test("provider list/available commands are wired", async () => {

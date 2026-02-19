@@ -16,7 +16,7 @@ export interface SkillRegistry {
     baseUrl: string;
 
     /** Search for skills by query */
-    search(query: string): Promise<RegistrySkill[]>;
+    search(query: string, options?: RegistrySearchOptions): Promise<RegistrySkill[]>;
 
     /** Get skill details by slug/name */
     get(slug: string): Promise<RegistrySkillDetails | null>;
@@ -25,20 +25,53 @@ export interface SkillRegistry {
     download(slug: string): Promise<SkillDownload>;
 
     /** List popular/recent skills (for browse) */
-    list?(): Promise<RegistrySkill[]>;
+    list?(options?: RegistryBrowseOptions): Promise<RegistrySkill[] | RegistryListResult>;
 
     /** Check for updates to installed skills */
     checkUpdates?(installed: InstalledSkillInfo[]): Promise<UpdateInfo[]>;
 }
+
+export type RegistrySort =
+    | "updated"
+    | "downloads"
+    | "stars"
+    | "rating"
+    | "installsCurrent"
+    | "installs"
+    | "installsAllTime"
+    | "trending";
+
+export type RegistrySearchOptions = {
+    limit?: number;
+};
+
+export type RegistryBrowseOptions = {
+    limit?: number;
+    sort?: RegistrySort;
+    cursor?: string;
+};
+
+export type RegistryListResult = {
+    items: RegistrySkill[];
+    nextCursor?: string | null;
+};
 
 export type RegistrySkill = {
     slug: string;
     name: string;
     description: string;
     author?: string;
+    version?: string;
     downloads?: number;
+    installsCurrent?: number;
+    installsAllTime?: number;
     stars?: number;
     tags?: string[];
+    updatedAt?: number;
+    moderation?: {
+        isSuspicious: boolean;
+        isMalwareBlocked: boolean;
+    } | null;
 };
 
 export type RegistrySkillDetails = RegistrySkill & {
@@ -71,6 +104,33 @@ export type UpdateInfo = {
     registry: string;
 };
 
+const REGISTRY_MAX_LIMIT = 200;
+const REGISTRY_DEFAULT_LIMIT = 100;
+const REGISTRY_DEFAULT_MAX_PAGES = 3;
+
+function sanitizeLimit(value: number | undefined, fallback = REGISTRY_DEFAULT_LIMIT): number {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+        return fallback;
+    }
+    const normalized = Math.floor(value);
+    return Math.max(1, Math.min(REGISTRY_MAX_LIMIT, normalized));
+}
+
+function sanitizeMaxPages(value: number | undefined): number {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+        return 1;
+    }
+    const normalized = Math.floor(value);
+    return Math.max(1, Math.min(REGISTRY_DEFAULT_MAX_PAGES, normalized));
+}
+
+function mapClawHubTags(input: unknown): string[] | undefined {
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+        return undefined;
+    }
+    return Object.keys(input as Record<string, unknown>);
+}
+
 /**
  * ClawdHub Registry Implementation
  * https://clawhub.ai - Official Cybara skill registry
@@ -96,13 +156,14 @@ export class ClawdHubRegistry implements SkillRegistry {
         this.cache.set(key, { data, expires: Date.now() + this.CACHE_TTL });
     }
 
-    async search(query: string): Promise<RegistrySkill[]> {
-        const cacheKey = `search:${query}`;
+    async search(query: string, options?: RegistrySearchOptions): Promise<RegistrySkill[]> {
+        const limit = sanitizeLimit(options?.limit, REGISTRY_DEFAULT_LIMIT);
+        const cacheKey = `search:${query}:${limit}`;
         const cached = this.getCached<RegistrySkill[]>(cacheKey);
         if (cached) return cached;
 
         try {
-            const url = `${this.baseUrl}/api/v1/search?q=${encodeURIComponent(query)}`;
+            const url = `${this.baseUrl}/api/v1/search?q=${encodeURIComponent(query)}&limit=${limit}`;
             const res = await fetch(url);
             if (!res.ok) return [];
             const data = await res.json() as {
@@ -120,6 +181,7 @@ export class ClawdHubRegistry implements SkillRegistry {
                 name: r.displayName ?? r.slug ?? "",
                 description: r.summary ?? "",
                 version: r.version ?? undefined,
+                updatedAt: typeof r.updatedAt === "number" ? r.updatedAt : undefined,
             })).filter(r => r.slug);
             this.setCache(cacheKey, results);
             return results;
@@ -150,6 +212,10 @@ export class ClawdHubRegistry implements SkillRegistry {
                     handle?: string | null;
                     displayName?: string | null;
                 } | null;
+                moderation?: {
+                    isSuspicious?: boolean;
+                    isMalwareBlocked?: boolean;
+                } | null;
             };
             if (!data.skill) return null;
             return {
@@ -158,6 +224,12 @@ export class ClawdHubRegistry implements SkillRegistry {
                 description: data.skill.summary ?? "",
                 version: data.latestVersion?.version ?? "latest",
                 author: data.owner?.displayName ?? data.owner?.handle ?? undefined,
+                moderation: data.moderation
+                    ? {
+                        isSuspicious: data.moderation.isSuspicious === true,
+                        isMalwareBlocked: data.moderation.isMalwareBlocked === true,
+                    }
+                    : null,
             };
         } catch {
             return null;
@@ -252,37 +324,62 @@ export class ClawdHubRegistry implements SkillRegistry {
     }
 
     /** List recent skills (for browse) */
-    async list(): Promise<RegistrySkill[]> {
-        const cacheKey = "list";
-        const cached = this.getCached<RegistrySkill[]>(cacheKey);
+    async list(options?: RegistryBrowseOptions): Promise<RegistryListResult> {
+        const limit = sanitizeLimit(options?.limit, REGISTRY_DEFAULT_LIMIT);
+        const sort = options?.sort ?? "downloads";
+        const cursor = options?.cursor?.trim() || "";
+        const cacheKey = `list:${sort}:${limit}:${cursor}`;
+        const cached = this.getCached<RegistryListResult>(cacheKey);
         if (cached) return cached;
 
         try {
-            const url = `${this.baseUrl}/api/v1/skills`;
+            const searchParams = new URLSearchParams();
+            searchParams.set("limit", String(limit));
+            searchParams.set("sort", sort);
+            if (cursor.length > 0) {
+                searchParams.set("cursor", cursor);
+            }
+            const url = `${this.baseUrl}/api/v1/skills?${searchParams.toString()}`;
             const res = await fetch(url);
-            if (!res.ok) return [];
+            if (!res.ok) return { items: [], nextCursor: null };
             const data = await res.json() as {
                 items?: Array<{
                     slug: string;
                     displayName: string;
                     summary?: string | null;
-                    stats?: { downloads?: number; stars?: number };
+                    stats?: {
+                        downloads?: number;
+                        stars?: number;
+                        installsCurrent?: number;
+                        installsAllTime?: number;
+                    };
+                    tags?: Record<string, string>;
+                    updatedAt?: number;
                     latestVersion?: { version: string } | null;
                 }>;
+                nextCursor?: string | null;
             };
-            const results = (data.items ?? []).map(s => ({
+            const items = (data.items ?? []).map(s => ({
                 slug: s.slug,
                 name: s.displayName,
                 description: s.summary ?? "",
                 downloads: s.stats?.downloads,
+                installsCurrent: s.stats?.installsCurrent,
+                installsAllTime: s.stats?.installsAllTime,
                 stars: s.stats?.stars,
+                tags: mapClawHubTags(s.tags),
+                updatedAt: typeof s.updatedAt === "number" ? s.updatedAt : undefined,
                 version: s.latestVersion?.version,
             }));
-            this.setCache(cacheKey, results);
-            return results;
+            const result: RegistryListResult = {
+                items,
+                nextCursor: typeof data.nextCursor === "string" ? data.nextCursor : null,
+            };
+            this.setCache(cacheKey, result);
+            return result;
         } catch (err) {
             console.warn(`[ClawHub] List failed:`, err);
-            return [];
+            return { items: [], nextCursor: null };
         }
     }
 }
@@ -312,8 +409,9 @@ export class SkillsShRegistry implements SkillRegistry {
         this.cache.set(key, { data, expires: Date.now() + this.CACHE_TTL });
     }
 
-    async search(query: string): Promise<RegistrySkill[]> {
-        const cacheKey = `search:${query}`;
+    async search(query: string, options?: RegistrySearchOptions): Promise<RegistrySkill[]> {
+        const limit = sanitizeLimit(options?.limit, 50);
+        const cacheKey = `search:${query}:${limit}`;
         const cached = this.getCached<RegistrySkill[]>(cacheKey);
         if (cached) return cached;
 
@@ -334,7 +432,7 @@ export class SkillsShRegistry implements SkillRegistry {
                 name: s.name || s.id,
                 description: `Source: ${s.topSource ?? "unknown"}`,
                 downloads: s.installs,
-            }));
+            })).slice(0, limit);
             this.setCache(cacheKey, results);
             return results;
         } catch (err) {
@@ -345,7 +443,7 @@ export class SkillsShRegistry implements SkillRegistry {
 
     async get(slug: string): Promise<RegistrySkillDetails | null> {
         try {
-            const skills = await this.search(slug);
+            const skills = await this.search(slug, { limit: 50 });
             const match = skills.find(s => s.slug === slug);
             if (!match) return null;
             return {
@@ -359,7 +457,7 @@ export class SkillsShRegistry implements SkillRegistry {
 
     async download(slug: string): Promise<SkillDownload> {
         // First, try to get the source info from search
-        const skills = await this.search(slug);
+        const skills = await this.search(slug, { limit: 100 });
         const match = skills.find(s => s.slug === slug);
 
         if (!match?.description?.startsWith("Source: ")) {
@@ -447,8 +545,9 @@ export class SkillsShRegistry implements SkillRegistry {
     }
 
     /** List popular skills (for browse) */
-    async list(): Promise<RegistrySkill[]> {
-        const cacheKey = "list";
+    async list(options?: RegistryBrowseOptions): Promise<RegistrySkill[]> {
+        const limit = sanitizeLimit(options?.limit, 100);
+        const cacheKey = `list:${limit}`;
         const cached = this.getCached<RegistrySkill[]>(cacheKey);
         if (cached) return cached;
 
@@ -469,7 +568,7 @@ export class SkillsShRegistry implements SkillRegistry {
                 name: s.name || s.id,
                 description: `Source: ${s.topSource ?? "unknown"}`,
                 downloads: s.installs,
-            }));
+            })).slice(0, limit);
             this.setCache(cacheKey, results);
             return results;
         } catch (err) {
@@ -487,8 +586,9 @@ export class CybaraHubRegistry implements SkillRegistry {
     name = "cybarahub";
     baseUrl = "https://hub.cybara.ai/api";
 
-    async search(query: string): Promise<RegistrySkill[]> {
-        const url = `${this.baseUrl}/skills/search?q=${encodeURIComponent(query)}`;
+    async search(query: string, options?: RegistrySearchOptions): Promise<RegistrySkill[]> {
+        const limit = sanitizeLimit(options?.limit, 50);
+        const url = `${this.baseUrl}/skills/search?q=${encodeURIComponent(query)}&limit=${limit}`;
         const res = await fetch(url);
         if (!res.ok) return [];
         const data = await res.json() as { skills?: RegistrySkill[] };
@@ -509,6 +609,15 @@ export class CybaraHubRegistry implements SkillRegistry {
         return res.json() as Promise<SkillDownload>;
     }
 }
+
+export type RegistryAggregateOptions = {
+    registry?: string;
+    dedupe?: boolean;
+    limit?: number;
+    sort?: RegistrySort;
+    cursor?: string;
+    maxPages?: number;
+};
 
 /**
  * Multi-registry manager
@@ -542,6 +651,50 @@ export class SkillRegistryManager {
         return Array.from(this.registries.values());
     }
 
+    private getTargetRegistries(registryName?: string): SkillRegistry[] {
+        if (registryName) {
+            const selected = this.get(registryName);
+            return selected ? [selected] : [];
+        }
+        return this.list();
+    }
+
+    private normalizeListResult(result: RegistrySkill[] | RegistryListResult): RegistryListResult {
+        if (Array.isArray(result)) {
+            return { items: result, nextCursor: null };
+        }
+        return {
+            items: result.items ?? [],
+            nextCursor: result.nextCursor ?? null,
+        };
+    }
+
+    private priorityOrder(resultsByRegistry: Map<string, Array<RegistrySkill & { registry: string }>>): string[] {
+        const knownNames = this.list().map((registry) => registry.name);
+        const combined = [this.defaultRegistry, ...knownNames, ...Array.from(resultsByRegistry.keys())];
+        const seen = new Set<string>();
+        const ordered: string[] = [];
+        for (const name of combined) {
+            if (!name || seen.has(name)) continue;
+            seen.add(name);
+            ordered.push(name);
+        }
+        return ordered;
+    }
+
+    private flattenByPriority(
+        resultsByRegistry: Map<string, Array<RegistrySkill & { registry: string }>>
+    ): Array<RegistrySkill & { registry: string }> {
+        const flattened: Array<RegistrySkill & { registry: string }> = [];
+        for (const registryName of this.priorityOrder(resultsByRegistry)) {
+            const skills = resultsByRegistry.get(registryName);
+            if (skills?.length) {
+                flattened.push(...skills);
+            }
+        }
+        return flattened;
+    }
+
     private async withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
         let timeoutId: ReturnType<typeof setTimeout>;
         const timeout = new Promise<null>((resolve) => {
@@ -553,13 +706,15 @@ export class SkillRegistryManager {
     /**
      * Search across all registries
      */
-    async searchAll(query: string): Promise<Array<RegistrySkill & { registry: string }>> {
+    async searchAll(query: string, options: RegistryAggregateOptions = {}): Promise<Array<RegistrySkill & { registry: string }>> {
         const resultsByRegistry = new Map<string, Array<RegistrySkill & { registry: string }>>();
+        const registries = this.getTargetRegistries(options.registry);
+        const limit = sanitizeLimit(options.limit, REGISTRY_DEFAULT_LIMIT);
 
         await Promise.all(
-            this.list().map(async (registry) => {
+            registries.map(async (registry) => {
                 try {
-                    const skills = await this.withTimeout(registry.search(query), this.SEARCH_TIMEOUT);
+                    const skills = await this.withTimeout(registry.search(query, { limit }), this.SEARCH_TIMEOUT);
                     if (skills) {
                         resultsByRegistry.set(registry.name, skills.map(s => ({ ...s, registry: registry.name })));
                     }
@@ -569,23 +724,60 @@ export class SkillRegistryManager {
             })
         );
 
-        // Dedupe by slug, prefer clawhub over skills.sh
+        if (options.dedupe === false) {
+            return this.flattenByPriority(resultsByRegistry);
+        }
+
         return this.dedupeByRegistry(resultsByRegistry);
     }
 
     /**
      * Browse (list) skills from all registries that support it
      */
-    async browseAll(): Promise<Array<RegistrySkill & { registry: string }>> {
+    async browseAll(options: RegistryAggregateOptions = {}): Promise<Array<RegistrySkill & { registry: string }>> {
         const resultsByRegistry = new Map<string, Array<RegistrySkill & { registry: string }>>();
+        const registries = this.getTargetRegistries(options.registry);
+        const limit = sanitizeLimit(options.limit, REGISTRY_DEFAULT_LIMIT);
+        const maxPages = sanitizeMaxPages(options.maxPages);
+        const sort = options.sort;
+        const initialCursor = options.cursor;
 
         await Promise.all(
-            this.list().map(async (registry) => {
+            registries.map(async (registry) => {
                 try {
                     if (registry.list) {
-                        const skills = await this.withTimeout(registry.list(), this.SEARCH_TIMEOUT);
-                        if (skills) {
-                            resultsByRegistry.set(registry.name, skills.map(s => ({ ...s, registry: registry.name })));
+                        const collected: Array<RegistrySkill & { registry: string }> = [];
+                        let cursor = initialCursor;
+
+                        for (let page = 0; page < maxPages; page++) {
+                            const pageResult = await this.withTimeout(
+                                registry.list({ limit, sort, cursor }),
+                                this.SEARCH_TIMEOUT
+                            );
+                            if (!pageResult) {
+                                break;
+                            }
+
+                            const normalized = this.normalizeListResult(pageResult);
+                            if (normalized.items.length > 0) {
+                                collected.push(...normalized.items.map((s) => ({ ...s, registry: registry.name })));
+                            }
+
+                            const nextCursor = normalized.nextCursor ?? null;
+                            if (!nextCursor) {
+                                break;
+                            }
+
+                            cursor = nextCursor;
+
+                            // ClawHub only supports cursor pagination for sort=updated.
+                            if (sort && sort !== "updated") {
+                                break;
+                            }
+                        }
+
+                        if (collected.length > 0) {
+                            resultsByRegistry.set(registry.name, collected);
                         }
                     }
                 } catch (err) {
@@ -594,24 +786,23 @@ export class SkillRegistryManager {
             })
         );
 
-        // Dedupe by slug, prefer clawhub over skills.sh
+        if (options.dedupe === false) {
+            return this.flattenByPriority(resultsByRegistry);
+        }
+
         return this.dedupeByRegistry(resultsByRegistry);
     }
 
     /**
-     * Dedupe skills by slug, preferring clawhub registry
+     * Dedupe skills by slug, preferring default registry order.
      */
     private dedupeByRegistry(resultsByRegistry: Map<string, Array<RegistrySkill & { registry: string }>>): Array<RegistrySkill & { registry: string }> {
         const bySlug = new Map<string, RegistrySkill & { registry: string }>();
 
-        // Priority order - clawhub first (preferred)
-        const priorityOrder = ["clawhub", "skills.sh"];
-
-        for (const registryName of priorityOrder) {
+        for (const registryName of this.priorityOrder(resultsByRegistry)) {
             const skills = resultsByRegistry.get(registryName);
             if (skills) {
                 for (const skill of skills) {
-                    // Only add if not already present (earlier registry wins)
                     if (!bySlug.has(skill.slug)) {
                         bySlug.set(skill.slug, skill);
                     }
@@ -630,8 +821,15 @@ export class SkillRegistryManager {
         options: {
             registry?: string;
             targetDir?: string;
+            allowSuspicious?: boolean;
         } = {}
-    ): Promise<{ success: boolean; path?: string; error?: string }> {
+    ): Promise<{
+        success: boolean;
+        path?: string;
+        error?: string;
+        blockedReason?: "malware" | "suspicious";
+        requiresConfirmation?: boolean;
+    }> {
         const registry = options.registry
             ? this.get(options.registry)
             : this.getDefault();
@@ -641,6 +839,24 @@ export class SkillRegistryManager {
         }
 
         try {
+            const details = await registry.get(slug).catch(() => null);
+            const moderation = details?.moderation;
+            if (moderation?.isMalwareBlocked) {
+                return {
+                    success: false,
+                    blockedReason: "malware",
+                    error: `Blocked: "${slug}" is flagged as malicious by VirusTotal.`,
+                };
+            }
+            if (moderation?.isSuspicious && !options.allowSuspicious) {
+                return {
+                    success: false,
+                    blockedReason: "suspicious",
+                    requiresConfirmation: true,
+                    error: `Warning: "${slug}" is flagged as suspicious by VirusTotal. Confirm to install anyway.`,
+                };
+            }
+
             const download = await registry.download(slug);
             const targetDir = options.targetDir ?? join(homedir(), ".cybara", "skills", slug);
 

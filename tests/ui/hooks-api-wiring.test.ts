@@ -36,8 +36,11 @@ describe("UI hooks API wiring", () => {
     expect(source).toContain("fetchApi<Skill[]>('/skills')");
     expect(source).toContain("fetchApi<string[]>('/skills/categories')");
     expect(source).toContain("fetchApi<SkillsStatusResponse>('/skills/status')");
-    expect(source).toContain("fetchApi<{ skills: RegistrySkillInfo[]; registries?: string[] }>(`/skills/registry/search?q=${encodeURIComponent(query)}`)");
-    expect(source).toContain("fetchApi<{ success: boolean; path?: string; error?: string }>('/skills/install'");
+    expect(source).toContain("fetchApi<SkillsRegistryResponse>(`/skills/registry/search${queryString}`)");
+    expect(source).toContain("fetchApi<SkillsRegistryResponse>(`/skills/registry/browse${queryString}`)");
+    expect(source).toContain("fetchApi<{");
+    expect(source).toContain("blockedReason?: 'malware' | 'suspicious';");
+    expect(source).toContain("}>('/skills/install'");
     expect(source).toContain("fetchApi<{ updates: Array<{ slug: string; updated: boolean; error?: string }> }>('/skills/update', { method: 'POST' })");
 
     expect(source).toContain("fetchApi<{ files: string[]; memories: Array<{ file: string; entries: MemoryEntry[] }> }>('/memory')");

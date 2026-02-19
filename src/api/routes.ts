@@ -148,6 +148,25 @@ interface MetricTrend {
   direction: "up" | "down" | "flat";
 }
 
+interface TokenCallSnapshot {
+  timestamp: string;
+  timestampMs: number | null;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  model: string;
+  provider: string;
+  durationMs: number | null;
+  tokensPerSecond: number | null;
+}
+
+interface TokenCloudEntry {
+  token: string;
+  category: "model" | "provider" | "tool" | "term" | "pattern";
+  weight: number;
+  sharePct: number;
+}
+
 const WALLET_CHAIN_SET = new Set<WalletChain>(["eth", "btc", "sol"]);
 const WALLET_TOKEN_CHAIN_SET = new Set<WalletTokenChain>(["eth", "sol"]);
 
@@ -209,6 +228,245 @@ function buildMetricTrend(current: number, previous: number): MetricTrend {
     changePct: rounded,
     direction,
   };
+}
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function toNonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function localDateKeyFromMs(timestampMs: number): string {
+  const date = new Date(timestampMs);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function buildTokenCallSnapshots(tokenUsageEntries: MetricsEntry[]): TokenCallSnapshot[] {
+  const inputByTimestamp = new Map<string, number>();
+  const outputByTimestamp = new Map<string, number>();
+
+  for (const entry of tokenUsageEntries) {
+    if (!entry.created_at) continue;
+    if (entry.key === "input") {
+      inputByTimestamp.set(
+        entry.created_at,
+        (inputByTimestamp.get(entry.created_at) || 0) + Number(entry.value || 0)
+      );
+    } else if (entry.key === "output") {
+      outputByTimestamp.set(
+        entry.created_at,
+        (outputByTimestamp.get(entry.created_at) || 0) + Number(entry.value || 0)
+      );
+    }
+  }
+
+  const snapshots: TokenCallSnapshot[] = [];
+  for (const entry of tokenUsageEntries) {
+    if (entry.key !== "all" || !entry.created_at) continue;
+
+    const metadata = parseMetricMetadata(entry.metadata);
+    const inputFromMetadata = toFiniteNumber(metadata?.inputTokens);
+    const outputFromMetadata = toFiniteNumber(metadata?.outputTokens);
+    const durationMs = toFiniteNumber(metadata?.durationMs);
+    const model =
+      toNonEmptyString(metadata?.model) ||
+      toNonEmptyString(metadata?.modelId) ||
+      toNonEmptyString(metadata?.modelName) ||
+      "unknown";
+    const provider = toNonEmptyString(metadata?.provider) || "unknown";
+
+    const inputTokens =
+      inputFromMetadata ?? toFiniteNumber(inputByTimestamp.get(entry.created_at)) ?? 0;
+    const outputTokens =
+      outputFromMetadata ?? toFiniteNumber(outputByTimestamp.get(entry.created_at)) ?? 0;
+    const totalTokens = Number(entry.value || inputTokens + outputTokens);
+    const tokensPerSecond =
+      durationMs && durationMs > 0 ? Number(((outputTokens / durationMs) * 1000).toFixed(2)) : null;
+
+    snapshots.push({
+      timestamp: entry.created_at,
+      timestampMs: metricTimestampToMs(entry.created_at),
+      inputTokens,
+      outputTokens,
+      totalTokens,
+      model,
+      provider,
+      durationMs,
+      tokensPerSecond,
+    });
+  }
+
+  snapshots.sort((a, b) => (a.timestampMs || 0) - (b.timestampMs || 0));
+  return snapshots;
+}
+
+function buildAssistantOutputCloud(
+  entries: Array<{ content?: string }>,
+  totalOutputTokens: number,
+  averageTokensPerCall: number
+): TokenCloudEntry[] {
+  const stopWords = new Set([
+    "about",
+    "after",
+    "again",
+    "agent",
+    "also",
+    "and",
+    "any",
+    "are",
+    "because",
+    "been",
+    "before",
+    "being",
+    "between",
+    "both",
+    "but",
+    "can",
+    "could",
+    "cybara",
+    "does",
+    "dont",
+    "each",
+    "for",
+    "from",
+    "have",
+    "hello",
+    "here",
+    "how",
+    "into",
+    "just",
+    "like",
+    "main",
+    "make",
+    "model",
+    "more",
+    "need",
+    "not",
+    "now",
+    "our",
+    "out",
+    "please",
+    "should",
+    "some",
+    "that",
+    "the",
+    "their",
+    "them",
+    "then",
+    "there",
+    "they",
+    "this",
+    "use",
+    "using",
+    "what",
+    "when",
+    "where",
+    "which",
+    "with",
+    "would",
+    "you",
+    "your",
+  ]);
+
+  const termWeights = new Map<string, number>();
+  const patternWeights = new Map<string, number>();
+  const cappedEntries = entries.slice(0, 600);
+  const totalChars = cappedEntries.reduce((sum, entry) => sum + (entry.content?.length || 0), 0);
+
+  for (const entry of cappedEntries) {
+    if (!entry.content) continue;
+    const content = entry.content.slice(0, 2000).toLowerCase();
+    const tokens = content.match(/[a-z][a-z0-9_-]{2,}/g) || [];
+    const cleanTokens = tokens.filter((term) => !stopWords.has(term) && !/^\d+$/.test(term));
+    if (cleanTokens.length === 0) continue;
+
+    const estimatedOutputTokens =
+      totalChars > 0
+        ? Math.max(1, (entry.content.length / totalChars) * Math.max(totalOutputTokens, 1))
+        : Math.max(averageTokensPerCall, 1);
+
+    const termCounts = new Map<string, number>();
+    for (const term of cleanTokens) {
+      termCounts.set(term, (termCounts.get(term) || 0) + 1);
+    }
+
+    const totalTermHits = cleanTokens.length;
+    for (const [term, count] of termCounts) {
+      if (stopWords.has(term)) continue;
+      const weight = (count / totalTermHits) * estimatedOutputTokens;
+      termWeights.set(term, (termWeights.get(term) || 0) + weight);
+    }
+
+    if (cleanTokens.length >= 2) {
+      const patternCounts = new Map<string, number>();
+      for (let i = 0; i < cleanTokens.length - 1; i++) {
+        const first = cleanTokens[i];
+        const second = cleanTokens[i + 1];
+        if (!first || !second) continue;
+        if (first === second) continue;
+        const pattern = `${first} ${second}`;
+        patternCounts.set(pattern, (patternCounts.get(pattern) || 0) + 1);
+      }
+
+      const totalPatternHits = Math.max(
+        1,
+        Array.from(patternCounts.values()).reduce((sum, count) => sum + count, 0)
+      );
+      for (const [pattern, count] of patternCounts) {
+        const weight = (count / totalPatternHits) * estimatedOutputTokens * 0.75;
+        patternWeights.set(pattern, (patternWeights.get(pattern) || 0) + weight);
+      }
+    }
+  }
+
+  const termCloud = Array.from(termWeights.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 14)
+    .map(([token, weight]) => ({
+      token,
+      category: "term" as const,
+      weight: Number(weight.toFixed(2)),
+      sharePct: 0,
+    }));
+
+  const patternCloud = Array.from(patternWeights.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([pattern, weight]) => ({
+      token: pattern,
+      category: "pattern" as const,
+      weight: Number(weight.toFixed(2)),
+      sharePct: 0,
+    }));
+
+  return [...termCloud, ...patternCloud];
+}
+
+function classifyModelBehavior(
+  promptSharePct: number,
+  avgTps: number,
+  avgLatencyMs: number,
+  avgTokensPerCall: number
+): string {
+  if (promptSharePct >= 75 && avgLatencyMs >= 3000) return "deliberative";
+  if (promptSharePct <= 35 && avgTps >= 35) return "expansive";
+  if (avgTps >= 55 && avgLatencyMs <= 2200) return "rapid";
+  if (avgTokensPerCall >= 6000) return "deep-context";
+  return "balanced";
 }
 
 function parseWalletChains(input: unknown): WalletChain[] | undefined {
@@ -2233,19 +2491,67 @@ const routes: Record<string, RouteHandler> = {
     };
   },
   "GET /api/skills/registry/search": async (_body, params) => {
-    const query = params?.q || "";
-    if (!query) return { skills: [], registries: registryManager.list().map((r) => r.name) };
-    const results = await registryManager.searchAll(query);
-    return { skills: results };
+    const registries = registryManager.list().map((r) => r.name);
+    const query = typeof params?.q === "string" ? params.q.trim() : "";
+    const registry = typeof params?.registry === "string" ? params.registry : undefined;
+    const dedupe = params?.dedupe !== "false";
+    const limitRaw = Number.parseInt(String(params?.limit ?? ""), 10);
+    const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(200, limitRaw)) : undefined;
+
+    if (!query) {
+      return { skills: [], registries, counts: {} };
+    }
+
+    const results = await registryManager.searchAll(query, { registry, dedupe, limit });
+    const counts = results.reduce<Record<string, number>>((acc, skill) => {
+      acc[skill.registry] = (acc[skill.registry] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    return { skills: results, registries, counts };
   },
-  "GET /api/skills/registry/browse": async () => {
-    const results = await registryManager.browseAll();
-    return { skills: results, registries: registryManager.list().map((r) => r.name) };
+  "GET /api/skills/registry/browse": async (_body, params) => {
+    const registries = registryManager.list().map((r) => r.name);
+    const registry = typeof params?.registry === "string" ? params.registry : undefined;
+    const dedupe = params?.dedupe !== "false";
+    const limitRaw = Number.parseInt(String(params?.limit ?? ""), 10);
+    const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(200, limitRaw)) : undefined;
+    const maxPagesRaw = Number.parseInt(String(params?.maxPages ?? ""), 10);
+    const maxPages = Number.isFinite(maxPagesRaw)
+      ? Math.max(1, Math.min(3, maxPagesRaw))
+      : undefined;
+    const sortParam = typeof params?.sort === "string" ? params.sort : undefined;
+    const validSorts = [
+      "updated",
+      "downloads",
+      "stars",
+      "rating",
+      "installsCurrent",
+      "installs",
+      "installsAllTime",
+      "trending",
+    ] as const;
+    const sort =
+      sortParam && (validSorts as readonly string[]).includes(sortParam)
+        ? (sortParam as (typeof validSorts)[number])
+        : "downloads";
+
+    const results = await registryManager.browseAll({ registry, dedupe, limit, maxPages, sort });
+    const counts = results.reduce<Record<string, number>>((acc, skill) => {
+      acc[skill.registry] = (acc[skill.registry] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    return { skills: results, registries, counts };
   },
   "POST /api/skills/install": async (body) => {
-    const { slug, registry } = body as { slug: string; registry?: string };
+    const { slug, registry, allowSuspicious } = body as {
+      slug: string;
+      registry?: string;
+      allowSuspicious?: boolean;
+    };
     if (!slug) throw new Error("Skill slug is required");
-    const result = await registryManager.install(slug, { registry });
+    const result = await registryManager.install(slug, { registry, allowSuspicious });
     if (result.success) {
       clearSkillsCache(); // Invalidate cache so new skill appears in list
     }
@@ -3013,6 +3319,341 @@ const routes: Record<string, RouteHandler> = {
       contextHealth24h: {
         warnings: contextWarnings24h,
         criticalWarnings: criticalContextWarnings24h,
+      },
+    };
+  },
+
+  "GET /api/metrics/token-analysis": () => {
+    const metrics = tables.metrics;
+    const now = Date.now();
+    const hourMs = 60 * 60 * 1000;
+    const dayMs = 24 * hourMs;
+
+    const tokenUsageEntries = metrics.getByType("token_usage") as MetricsEntry[];
+    const tokenCallSnapshots = buildTokenCallSnapshots(tokenUsageEntries);
+    const tokenCalls = tokenCallSnapshots.filter(
+      (entry) => entry.totalTokens > 0 || entry.inputTokens > 0 || entry.outputTokens > 0
+    );
+
+    const totalInput = tokenCalls.reduce((sum, entry) => sum + entry.inputTokens, 0);
+    const totalOutput = tokenCalls.reduce((sum, entry) => sum + entry.outputTokens, 0);
+    const totalTokens = tokenCalls.reduce((sum, entry) => sum + entry.totalTokens, 0);
+    const callCount = tokenCalls.length;
+    const averageTokensPerCall = callCount > 0 ? Number((totalTokens / callCount).toFixed(2)) : 0;
+
+    const sortedCallTotals = tokenCalls.map((entry) => entry.totalTokens).sort((a, b) => a - b);
+    const medianTokensPerCall =
+      sortedCallTotals.length === 0
+        ? 0
+        : sortedCallTotals.length % 2 === 1
+          ? sortedCallTotals[(sortedCallTotals.length - 1) / 2]!
+          : Number(
+              (
+                (sortedCallTotals[sortedCallTotals.length / 2 - 1]! +
+                  sortedCallTotals[sortedCallTotals.length / 2]!) /
+                2
+              ).toFixed(2)
+            );
+
+    const ratioBands = [
+      { band: "very_input_heavy", min: 4, max: Number.POSITIVE_INFINITY, calls: 0 },
+      { band: "input_heavy", min: 2, max: 4, calls: 0 },
+      { band: "balanced", min: 0.75, max: 2, calls: 0 },
+      { band: "output_heavy", min: 0.35, max: 0.75, calls: 0 },
+      { band: "very_output_heavy", min: 0, max: 0.35, calls: 0 },
+    ];
+
+    let ratioSampleCount = 0;
+    for (const entry of tokenCalls) {
+      if (entry.inputTokens <= 0 && entry.outputTokens <= 0) continue;
+      const ratio = entry.outputTokens > 0 ? entry.inputTokens / entry.outputTokens : Infinity;
+      const match =
+        ratioBands.find((band) => ratio >= band.min && ratio < band.max) ||
+        (ratio === Infinity ? ratioBands[0] : undefined);
+      if (match) {
+        match.calls += 1;
+        ratioSampleCount += 1;
+      }
+    }
+
+    const startOfHeatmapWindow = new Date();
+    startOfHeatmapWindow.setHours(0, 0, 0, 0);
+    startOfHeatmapWindow.setDate(startOfHeatmapWindow.getDate() - 6);
+    const heatmapStartMs = startOfHeatmapWindow.getTime();
+
+    const heatmapByDate = new Map<
+      string,
+      { dayLabel: string; hourTotals: number[]; hourCalls: number[] }
+    >();
+    for (let offset = 0; offset < 7; offset++) {
+      const date = new Date(startOfHeatmapWindow);
+      date.setDate(startOfHeatmapWindow.getDate() + offset);
+      const dateKey = localDateKeyFromMs(date.getTime());
+      heatmapByDate.set(dateKey, {
+        dayLabel: date.toLocaleDateString(undefined, { weekday: "short" }),
+        hourTotals: Array.from({ length: 24 }, () => 0),
+        hourCalls: Array.from({ length: 24 }, () => 0),
+      });
+    }
+
+    for (const entry of tokenCalls) {
+      if (entry.timestampMs === null || entry.timestampMs < heatmapStartMs) continue;
+      const dateKey = localDateKeyFromMs(entry.timestampMs);
+      const bucket = heatmapByDate.get(dateKey);
+      if (!bucket) continue;
+      const hour = new Date(entry.timestampMs).getHours();
+      bucket.hourTotals[hour] += entry.totalTokens;
+      bucket.hourCalls[hour] += 1;
+    }
+
+    let maxHeatmapBucket = 0;
+    for (const bucket of heatmapByDate.values()) {
+      for (const total of bucket.hourTotals) {
+        if (total > maxHeatmapBucket) maxHeatmapBucket = total;
+      }
+    }
+
+    const heatmapDays = Array.from(heatmapByDate.entries()).map(([date, bucket]) => ({
+      date,
+      dayLabel: bucket.dayLabel,
+      hours: bucket.hourTotals.map((tokens, hour) => ({
+        hour,
+        tokens,
+        calls: bucket.hourCalls[hour] || 0,
+        intensity: maxHeatmapBucket > 0 ? Number((tokens / maxHeatmapBucket).toFixed(4)) : 0,
+      })),
+    }));
+
+    let hottestHour: {
+      date: string;
+      dayLabel: string;
+      hour: number;
+      tokens: number;
+      calls: number;
+    } | null = null;
+
+    for (const day of heatmapDays) {
+      for (const hour of day.hours) {
+        if (!hottestHour || hour.tokens > hottestHour.tokens) {
+          hottestHour = {
+            date: day.date,
+            dayLabel: day.dayLabel,
+            hour: hour.hour,
+            tokens: hour.tokens,
+            calls: hour.calls,
+          };
+        }
+      }
+    }
+
+    const velocityHours = Array.from({ length: 24 }, (_, index) => {
+      const end = now - (23 - index) * hourMs;
+      const start = end - hourMs;
+      let tokens = 0;
+      let calls = 0;
+      for (const entry of tokenCalls) {
+        if (entry.timestampMs === null) continue;
+        if (entry.timestampMs >= start && entry.timestampMs < end) {
+          tokens += entry.totalTokens;
+          calls += 1;
+        }
+      }
+
+      const labelDate = new Date(end);
+      const label = `${String(labelDate.getHours()).padStart(2, "0")}:00`;
+      return { hour: label, tokens, calls };
+    });
+
+    const modelCloudEntries = (metrics.getTopKeys("token_usage_by_model") as MetricTopKey[]).map(
+      (entry) => ({
+        token: entry.key,
+        category: "model" as const,
+        weight: entry.total,
+        sharePct: 0,
+      })
+    );
+
+    const providerCloudEntries = (
+      metrics.getTopKeys("token_usage_by_provider") as MetricTopKey[]
+    ).map((entry) => ({
+      token: entry.key,
+      category: "provider" as const,
+      weight: Number((entry.total * 0.8).toFixed(2)),
+      sharePct: 0,
+    }));
+
+    const toolCloudEntries = (metrics.getTopKeys("tool_call") as MetricTopKey[])
+      .filter((entry) => entry.key !== "all")
+      .map((entry) => ({
+        token: entry.key,
+        category: "tool" as const,
+        weight: Number((entry.total * Math.max(averageTokensPerCall, 1) * 0.6).toFixed(2)),
+        sharePct: 0,
+      }));
+
+    const recentMessages = tables.sessionMessages.list() as Array<{
+      role?: string;
+      content?: string;
+    }>;
+    const assistantMessages = recentMessages.filter(
+      (entry) =>
+        entry.role === "assistant" &&
+        typeof entry.content === "string" &&
+        entry.content.trim().length > 0
+    );
+    const termCloudEntries = buildAssistantOutputCloud(
+      assistantMessages,
+      totalOutput,
+      Math.max(averageTokensPerCall, 1)
+    );
+
+    const combinedCloud: TokenCloudEntry[] = [
+      ...modelCloudEntries,
+      ...providerCloudEntries,
+      ...toolCloudEntries,
+      ...termCloudEntries,
+    ];
+
+    const totalCloudWeight = combinedCloud.reduce((sum, entry) => sum + entry.weight, 0);
+    const tokenCloud = combinedCloud
+      .map((entry) => ({
+        ...entry,
+        sharePct:
+          totalCloudWeight > 0 ? Number(((entry.weight / totalCloudWeight) * 100).toFixed(2)) : 0,
+      }))
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, 36);
+
+    const modelBehaviorMap = new Map<
+      string,
+      {
+        model: string;
+        provider: string;
+        inputTokens: number;
+        outputTokens: number;
+        totalTokens: number;
+        calls: number;
+        durationTotalMs: number;
+        durationSamples: number;
+      }
+    >();
+
+    for (const entry of tokenCalls) {
+      const key = `${entry.provider}:${entry.model}`;
+      const current = modelBehaviorMap.get(key) || {
+        model: entry.model,
+        provider: entry.provider,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        calls: 0,
+        durationTotalMs: 0,
+        durationSamples: 0,
+      };
+
+      current.inputTokens += entry.inputTokens;
+      current.outputTokens += entry.outputTokens;
+      current.totalTokens += entry.totalTokens;
+      current.calls += 1;
+
+      if (entry.durationMs !== null && entry.durationMs > 0) {
+        current.durationTotalMs += entry.durationMs;
+        current.durationSamples += 1;
+      }
+
+      modelBehaviorMap.set(key, current);
+    }
+
+    const modelThoughtProfiles = Array.from(modelBehaviorMap.values())
+      .map((entry) => {
+        const promptSharePct =
+          entry.totalTokens > 0
+            ? Number(((entry.inputTokens / entry.totalTokens) * 100).toFixed(2))
+            : 0;
+        const responseSharePct =
+          entry.totalTokens > 0
+            ? Number(((entry.outputTokens / entry.totalTokens) * 100).toFixed(2))
+            : 0;
+        const avgTokensPerCall =
+          entry.calls > 0 ? Number((entry.totalTokens / entry.calls).toFixed(2)) : 0;
+        const avgLatencyMs =
+          entry.durationSamples > 0
+            ? Number((entry.durationTotalMs / entry.durationSamples).toFixed(2))
+            : 0;
+        const avgTps =
+          entry.durationTotalMs > 0
+            ? Number(((entry.outputTokens / entry.durationTotalMs) * 1000).toFixed(2))
+            : 0;
+
+        return {
+          model: entry.model,
+          provider: entry.provider,
+          totalTokens: entry.totalTokens,
+          calls: entry.calls,
+          promptSharePct,
+          responseSharePct,
+          avgTokensPerCall,
+          avgLatencyMs,
+          avgTps,
+          behavior: classifyModelBehavior(promptSharePct, avgTps, avgLatencyMs, avgTokensPerCall),
+        };
+      })
+      .sort((a, b) => b.totalTokens - a.totalTokens)
+      .slice(0, 12);
+
+    const topTokenBursts = [...tokenCalls]
+      .sort((a, b) => b.totalTokens - a.totalTokens)
+      .slice(0, 10)
+      .map((entry) => ({
+        timestamp: entry.timestamp,
+        model: entry.model,
+        provider: entry.provider,
+        inputTokens: entry.inputTokens,
+        outputTokens: entry.outputTokens,
+        totalTokens: entry.totalTokens,
+        durationMs: entry.durationMs,
+        tokensPerSecond: entry.tokensPerSecond,
+      }));
+
+    return {
+      summary: {
+        callCount,
+        totalTokens,
+        totalInputTokens: totalInput,
+        totalOutputTokens: totalOutput,
+        averageTokensPerCall,
+        medianTokensPerCall,
+        inputToOutputRatio: totalOutput > 0 ? Number((totalInput / totalOutput).toFixed(4)) : null,
+        outputToInputRatio: totalInput > 0 ? Number((totalOutput / totalInput).toFixed(4)) : null,
+      },
+      promptOutputDistribution: {
+        sampleCount: ratioSampleCount,
+        bands: ratioBands.map((band) => ({
+          band: band.band,
+          calls: band.calls,
+          sharePct:
+            ratioSampleCount > 0 ? Number(((band.calls / ratioSampleCount) * 100).toFixed(2)) : 0,
+        })),
+      },
+      tokenHeatmap: {
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "local",
+        maxBucketTokens: maxHeatmapBucket,
+        hottestHour,
+        days: heatmapDays,
+      },
+      hourlyVelocity24h: velocityHours,
+      tokenCloud,
+      modelThoughtProfiles,
+      topTokenBursts,
+      windows: {
+        analyzedDays: 7,
+        velocityHours: 24,
+        newestCallAt: tokenCalls[tokenCalls.length - 1]?.timestamp || null,
+        oldestCallAt: tokenCalls[0]?.timestamp || null,
+        recent24hTokens: tokenCalls.reduce((sum, entry) => {
+          if (entry.timestampMs === null || entry.timestampMs < now - dayMs) return sum;
+          return sum + entry.totalTokens;
+        }, 0),
       },
     };
   },
