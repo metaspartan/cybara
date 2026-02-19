@@ -555,6 +555,21 @@ describe("Providers API", () => {
     expect(String(bad.data.error)).toContain("OpenAI API key must start with 'sk-'");
   });
 
+  test("POST /api/providers accepts OpenClaw-style provider aliases", async () => {
+    const created = await api("POST", "/api/providers", {
+      provider: "opencode",
+      name: `alias-opencode-${Date.now()}`,
+      api_key: `sk-alias-${Date.now()}`,
+    });
+    expect(created.status).toBe(200);
+    const providerId = created.data.id as string;
+
+    const row = getRawProviderRecord(providerId);
+    expect(row?.provider).toBe("opencode_zen");
+
+    await api("DELETE", `/api/providers/${providerId}`);
+  });
+
   test("PUT /api/providers/:id preserves existing credentials when api_key is blank", async () => {
     const provider = await api("POST", "/api/providers", {
       provider: "openai",

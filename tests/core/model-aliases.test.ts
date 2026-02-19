@@ -14,7 +14,9 @@ describe("Model alias compatibility", () => {
 
   test("maps MiniMax aliases to M2.5 generation defaults", () => {
     expect(resolveModelAlias("minimax")).toBe("MiniMax-M2.5");
+    expect(resolveModelAlias("minimax-m2.5-highspeed")).toBe("MiniMax-M2.5-highspeed");
     expect(resolveModelAlias("minimax-m2.5-lightning")).toBe("MiniMax-M2.5-Lightning");
+    expect(resolveModelAlias("fast")).toBe("MiniMax-M2.5-highspeed");
   });
 
   test("keeps unknown models unchanged", () => {

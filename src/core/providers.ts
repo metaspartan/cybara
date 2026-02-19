@@ -241,40 +241,64 @@ export const providers = {
       {
         id: "MiniMax-M2.5",
         name: "MiniMax M2.5",
-        context: 200000,
-        maxTokens: 8192,
+        context: 204800,
+        maxTokens: 64000,
+        reasoning: true,
+        input: ["text"],
+      },
+      {
+        id: "MiniMax-M2.5-highspeed",
+        name: "MiniMax M2.5 HighSpeed",
+        context: 204800,
+        maxTokens: 64000,
         reasoning: true,
         input: ["text"],
       },
       {
         id: "MiniMax-M2.5-Lightning",
-        name: "MiniMax M2.5 Lightning",
-        context: 200000,
-        maxTokens: 8192,
+        name: "MiniMax M2.5 Lightning (Legacy Alias)",
+        context: 204800,
+        maxTokens: 64000,
+        reasoning: true,
+        input: ["text"],
+      },
+      {
+        id: "MiniMax-M2",
+        name: "MiniMax M2",
+        context: 204800,
+        maxTokens: 64000,
         reasoning: true,
         input: ["text"],
       },
       {
         id: "MiniMax-M2.1",
         name: "MiniMax M2.1",
-        context: 200000,
-        maxTokens: 8192,
+        context: 204800,
+        maxTokens: 64000,
+        reasoning: false,
+        input: ["text"],
+      },
+      {
+        id: "MiniMax-M2.1-highspeed",
+        name: "MiniMax M2.1 HighSpeed",
+        context: 204800,
+        maxTokens: 64000,
         reasoning: false,
         input: ["text"],
       },
       {
         id: "MiniMax-VL-01",
         name: "MiniMax VL 01",
-        context: 200000,
+        context: 204800,
         maxTokens: 8192,
         reasoning: false,
         input: ["text", "image"],
       },
       {
         id: "MiniMax-M2.1-lightning",
-        name: "MiniMax M2.1 Lightning",
-        context: 200000,
-        maxTokens: 8192,
+        name: "MiniMax M2.1 Lightning (Legacy Alias)",
+        context: 204800,
+        maxTokens: 64000,
         reasoning: false,
         input: ["text"],
       },
@@ -282,7 +306,7 @@ export const providers = {
   },
   "minimax-portal": {
     name: "MiniMax Portal",
-    baseUrl: "https://api.minimax.io/anthropic",
+    baseUrl: "https://api.minimax.io/anthropic/v1",
     api: "anthropic-messages",
     authType: "oauth",
     oauthFlow: "redirect" as const,
@@ -291,16 +315,40 @@ export const providers = {
       {
         id: "MiniMax-M2.5",
         name: "MiniMax M2.5",
-        context: 200000,
-        maxTokens: 8192,
+        context: 204800,
+        maxTokens: 64000,
+        reasoning: true,
+        input: ["text"],
+      },
+      {
+        id: "MiniMax-M2.5-highspeed",
+        name: "MiniMax M2.5 HighSpeed",
+        context: 204800,
+        maxTokens: 64000,
+        reasoning: true,
+        input: ["text"],
+      },
+      {
+        id: "MiniMax-M2",
+        name: "MiniMax M2",
+        context: 204800,
+        maxTokens: 64000,
         reasoning: true,
         input: ["text"],
       },
       {
         id: "MiniMax-M2.1",
         name: "MiniMax M2.1",
-        context: 200000,
-        maxTokens: 8192,
+        context: 204800,
+        maxTokens: 64000,
+        reasoning: false,
+        input: ["text"],
+      },
+      {
+        id: "MiniMax-M2.1-highspeed",
+        name: "MiniMax M2.1 HighSpeed",
+        context: 204800,
+        maxTokens: 64000,
         reasoning: false,
         input: ["text"],
       },
@@ -705,6 +753,13 @@ export const providers = {
     baseUrl: "http://127.0.0.1:8000/v1",
     api: "openai-completions",
     authType: "none",
+    models: [],
+  },
+  litellm: {
+    name: "LiteLLM",
+    baseUrl: "http://127.0.0.1:4000/v1",
+    api: "openai-completions",
+    authType: "api_key",
     models: [],
   },
   "cloudflare-ai-gateway": {
@@ -1321,6 +1376,24 @@ export const providers = {
 
 export type ProviderType = keyof typeof providers;
 
+const PROVIDER_TYPE_ALIASES: Record<string, ProviderType> = {
+  "google-antigravity": "antigravity",
+  "github-copilot": "github_copilot",
+  opencode: "opencode_zen",
+  zai: "z.ai",
+  "z-ai": "z.ai",
+  "zai-coding": "z.ai-coding",
+  "kimi-coding": "kimi-code",
+};
+
+export function resolveProviderType(value: string | undefined): ProviderType | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (normalized in providers) return normalized as ProviderType;
+  return PROVIDER_TYPE_ALIASES[normalized];
+}
+
 class ProviderManager {
   private mergeWithStaticConfig(dbProvider: Provider): Provider {
     const staticConfig = providers[dbProvider.provider as ProviderType];
@@ -1414,8 +1487,9 @@ class ProviderManager {
     const direct = this.getWithCredentials(input);
     if (direct) return direct.id;
 
+    const resolvedProviderType = resolveProviderType(input) ?? input;
     const byType = (tables.providers.all() as Provider[]).filter(
-      (provider) => provider.provider === input
+      (provider) => provider.provider === resolvedProviderType
     );
     const preferred = this.pickPreferredProvider(byType, {
       preferCredentialed: true,
@@ -1580,7 +1654,8 @@ class ProviderManager {
 export const providerManager = new ProviderManager();
 
 export function getProviderBaseUrl(providerType: string): string {
-  const config = providers[providerType as ProviderType];
+  const resolvedProviderType = resolveProviderType(providerType) ?? (providerType as ProviderType);
+  const config = providers[resolvedProviderType];
   return config?.baseUrl || "https://api.openai.com/v1";
 }
 
@@ -1597,22 +1672,32 @@ export function getDefaultModel(providerType: string): string {
     openrouter: "anthropic/claude-sonnet-4-6",
     ollama: "llama3",
     vllm: "Qwen/Qwen2.5-Coder-32B-Instruct",
+    litellm: "gpt-4o",
     together: "moonshotai/Kimi-K2.5",
     huggingface: "openai/gpt-oss-120b",
     "cloudflare-ai-gateway": "claude-sonnet-4-5",
     venice: "llama-3.3-70b",
     "z.ai": "glm-5",
+    zai: "glm-5",
     "z.ai-coding": "glm-5",
     xiaomi: "mimo-v2-flash",
     opencode_zen: "claude-sonnet-4-6",
+    opencode: "claude-sonnet-4-6",
     moonshot: "kimi-k2.5",
     "kimi-code": "kimi-for-coding",
+    "kimi-coding": "kimi-for-coding",
     "qwen-portal": "coder-model",
     synthetic: "hf:MiniMaxAI/MiniMax-M2.1",
     "openai-codex": "gpt-5.3-codex",
     github_copilot: "gpt-4o",
+    "github-copilot": "gpt-4o",
     qianfan: "deepseek-v3.2",
     nvidia: "nvidia/llama-3.1-nemotron-70b-instruct",
   };
-  return defaults[providerType] || "gpt-4o";
+  const resolvedProviderType = resolveProviderType(providerType);
+  if (resolvedProviderType) {
+    return defaults[resolvedProviderType] || "gpt-4o";
+  }
+  const normalizedProviderType = providerType.trim().toLowerCase();
+  return defaults[normalizedProviderType] || "gpt-4o";
 }

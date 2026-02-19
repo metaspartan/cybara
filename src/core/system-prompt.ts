@@ -1038,8 +1038,12 @@ export function resolveModelAlias(modelId: string, provider?: string): string {
   const aliases: Record<string, string> = {
     // MiniMax aliases
     "minimax-m2.5": "MiniMax-M2.5",
+    "minimax-m2.5-highspeed": "MiniMax-M2.5-highspeed",
     "minimax-m2.5-lightning": "MiniMax-M2.5-Lightning",
+    "minimax-m2": "MiniMax-M2",
     "minimax-m2.1": "MiniMax-M2.1",
+    "minimax-m2.1-highspeed": "MiniMax-M2.1-highspeed",
+    "minimax-m2.1-lightning": "MiniMax-M2.1-lightning",
     minimax: "MiniMax-M2.5",
 
     // OpenAI aliases
@@ -1071,7 +1075,7 @@ export function resolveModelAlias(modelId: string, provider?: string): string {
 
     // Generic aliases
     default: "MiniMax-M2.5",
-    fast: "MiniMax-M2.5-Lightning",
+    fast: "MiniMax-M2.5-highspeed",
     smart: "claude-opus-4-6",
   };
 

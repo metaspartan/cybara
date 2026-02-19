@@ -1,7 +1,12 @@
 import { config } from "../core/config";
 import { tables } from "../core/database";
 import { agentManager, getBuiltinTools } from "../core/agent";
-import { providerManager, providers, type ProviderType } from "../core/providers";
+import {
+  providerManager,
+  providers,
+  resolveProviderType,
+  type ProviderType,
+} from "../core/providers";
 import {
   channelManager,
   channels,
@@ -1229,10 +1234,14 @@ const routes: Record<string, RouteHandler> = {
 
     const apiKey = normalizeOptionalString(data.api_key);
     const accessToken = normalizeOptionalString(data.access_token);
-    validateProviderCredentialShape(data.provider, { apiKey, accessToken });
+    const resolvedProviderType = resolveProviderType(data.provider);
+    if (!resolvedProviderType) {
+      throw new Error(`Validation error: unknown provider '${data.provider}'`);
+    }
+    validateProviderCredentialShape(resolvedProviderType, { apiKey, accessToken });
 
     return providerManager.create({
-      provider: data.provider as Parameters<typeof providerManager.create>[0]["provider"],
+      provider: resolvedProviderType as Parameters<typeof providerManager.create>[0]["provider"],
       name: normalizeOptionalString(data.name) || data.name,
       api_key: apiKey,
       access_token: accessToken,
@@ -1295,7 +1304,8 @@ const routes: Record<string, RouteHandler> = {
 
   "POST /api/providers/oauth/device-code": async (body) => {
     const { providerType } = body as { providerType: string };
-    const config = providers[providerType as ProviderType] as Record<string, unknown>;
+    const resolvedProviderType = resolveProviderType(providerType);
+    const config = providers[resolvedProviderType as ProviderType] as Record<string, unknown>;
     if (!config) throw new Error(`Validation error: unknown provider '${providerType}'`);
 
     const oauthConfig = config.oauthConfig as
@@ -1340,7 +1350,8 @@ const routes: Record<string, RouteHandler> = {
 
   "POST /api/providers/oauth/poll": async (body) => {
     const { providerType, deviceCode } = body as { providerType: string; deviceCode: string };
-    const config = providers[providerType as ProviderType] as Record<string, unknown>;
+    const resolvedProviderType = resolveProviderType(providerType);
+    const config = providers[resolvedProviderType as ProviderType] as Record<string, unknown>;
     if (!config) throw new Error(`Validation error: unknown provider '${providerType}'`);
 
     const oauthConfig = config.oauthConfig as { clientId?: string; tokenUrl?: string } | undefined;
@@ -1404,7 +1415,11 @@ const routes: Record<string, RouteHandler> = {
 
   "POST /api/providers/oauth/start": async (body) => {
     const { providerType } = body as { providerType: string };
-    const providerConfig = providers[providerType as ProviderType] as Record<string, unknown>;
+    const resolvedProviderType = resolveProviderType(providerType);
+    const providerConfig = providers[resolvedProviderType as ProviderType] as Record<
+      string,
+      unknown
+    >;
     if (!providerConfig) throw new Error(`Validation error: unknown provider '${providerType}'`);
 
     const oauthConfig = providerConfig.oauthConfig as
