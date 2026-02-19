@@ -1,9 +1,22 @@
-export type AgentStatus = "idle" | "thinking" | "tool_executing" | "generating" | "error";
+export type AgentStatus =
+  | "idle"
+  | "thinking"
+  | "tool_executing"
+  | "tool_completed"
+  | "generating"
+  | "error";
+
+export type ToolStatusPhase = "start" | "result" | "error";
 
 export interface StatusPayload {
   status: AgentStatus;
   timestamp: number;
   detail?: string;
+  sessionId?: string;
+  agentId?: string;
+  toolName?: string;
+  toolPhase?: ToolStatusPhase;
+  durationMs?: number;
 }
 
 export interface TaskEventPayload {

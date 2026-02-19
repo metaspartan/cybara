@@ -14,7 +14,7 @@ import {
   resolveModelAlias,
   getDefaultSystemPrompt,
 } from "./system-prompt";
-import { broadcastStatus } from "./status";
+import { broadcastStatus, type AgentStatus, type StatusPayload } from "./status";
 import { homedir } from "os";
 import { loadAllSkills, createEligibilityContext, filterEligibleSkills } from "./skills";
 import { emitAgentHook, type AgentHookContext } from "./agent-hooks";
@@ -352,6 +352,12 @@ interface RunningAgentState {
   lastActive: Date;
 }
 
+interface AgentToolCallResult {
+  name: string;
+  args?: Record<string, unknown>;
+  result: unknown;
+}
+
 function parseAgentConfig(config: unknown, agentId?: string): Record<string, unknown> {
   if (typeof config === "string") {
     try {
@@ -389,6 +395,179 @@ function parseToolArguments(raw: unknown): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+function readStringArg(args: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = args[key];
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+  return undefined;
+}
+
+function readNumberArg(args: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = args[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return undefined;
+}
+
+function summarizeCommand(command: string): string {
+  const compact = command
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(" ");
+  if (!compact) return "command";
+  if (compact.length > 72) return `${compact.slice(0, 69)}...`;
+  return compact;
+}
+
+function formatToolActivityDetail(
+  toolName: string,
+  args: Record<string, unknown>,
+  phase: "start" | "result" | "error"
+): string {
+  const key = toolName.toLowerCase();
+  const path = readStringArg(args, ["path", "file_path", "filePath"]);
+
+  if (key === "read") {
+    if (path) {
+      const offset = readNumberArg(args, ["offset"]);
+      const limit = readNumberArg(args, ["limit"]);
+      if (offset !== undefined && limit !== undefined && limit > 0) {
+        const startLine = Math.max(1, Math.floor(offset));
+        const lineCount = Math.max(1, Math.floor(limit));
+        const endLine = startLine + lineCount - 1;
+        return phase === "start"
+          ? `Exploring ${path} (lines ${startLine}-${endLine})`
+          : phase === "result"
+            ? `Explored ${path} (lines ${startLine}-${endLine})`
+            : `Read failed for ${path}`;
+      }
+      return phase === "start"
+        ? `Exploring ${path}`
+        : phase === "result"
+          ? `Explored ${path}`
+          : `Read failed for ${path}`;
+    }
+    return phase === "start"
+      ? "Exploring files..."
+      : phase === "result"
+        ? "Exploration complete"
+        : "Read failed";
+  }
+
+  if (key === "write" || key === "edit") {
+    if (path) {
+      if (phase === "start") return key === "edit" ? `Editing ${path}` : `Writing ${path}`;
+      if (phase === "result") return `Edited ${path}`;
+      return `Edit failed for ${path}`;
+    }
+    if (phase === "start") return key === "edit" ? "Editing file..." : "Writing file...";
+    if (phase === "result") return "Edit complete";
+    return "Edit failed";
+  }
+
+  if (key === "file_search" || key === "grep") {
+    const pattern = readStringArg(args, ["pattern", "query"]);
+    const basePath = readStringArg(args, ["path"]);
+    if (pattern && basePath) {
+      return phase === "start"
+        ? `Searching ${basePath} for "${pattern}"`
+        : phase === "result"
+          ? `Searched ${basePath} for "${pattern}"`
+          : `Search failed in ${basePath}`;
+    }
+    if (pattern) {
+      return phase === "start"
+        ? `Searching for "${pattern}"`
+        : phase === "result"
+          ? `Search complete for "${pattern}"`
+          : `Search failed for "${pattern}"`;
+    }
+    return phase === "start"
+      ? "Searching files..."
+      : phase === "result"
+        ? "Search complete"
+        : "Search failed";
+  }
+
+  if (key === "web_search") {
+    const query = readStringArg(args, ["query"]);
+    if (query) {
+      return phase === "start"
+        ? `Searching web for "${query}"`
+        : phase === "result"
+          ? `Web search complete for "${query}"`
+          : `Web search failed for "${query}"`;
+    }
+    return phase === "start"
+      ? "Searching the web..."
+      : phase === "result"
+        ? "Web search complete"
+        : "Web search failed";
+  }
+
+  if (key === "web_fetch") {
+    const url = readStringArg(args, ["url"]);
+    if (url) {
+      return phase === "start"
+        ? `Fetching ${url}`
+        : phase === "result"
+          ? `Fetched ${url}`
+          : `Fetch failed for ${url}`;
+    }
+    return phase === "start"
+      ? "Fetching webpage..."
+      : phase === "result"
+        ? "Fetch complete"
+        : "Fetch failed";
+  }
+
+  if (key === "exec" || key === "process" || key === "git") {
+    const command = readStringArg(args, ["command", "cmd"]);
+    if (command) {
+      const summary = summarizeCommand(command);
+      return phase === "start"
+        ? `Running ${summary}`
+        : phase === "result"
+          ? `Ran ${summary}`
+          : `Command failed: ${summary}`;
+    }
+    return phase === "start"
+      ? "Running command..."
+      : phase === "result"
+        ? "Command complete"
+        : "Command failed";
+  }
+
+  if (key === "browser") {
+    const action = readStringArg(args, ["action"]);
+    if (action) {
+      return phase === "start"
+        ? `Browser: ${action}`
+        : phase === "result"
+          ? `Browser ${action} complete`
+          : `Browser ${action} failed`;
+    }
+    return phase === "start"
+      ? "Browser action..."
+      : phase === "result"
+        ? "Browser action complete"
+        : "Browser action failed";
+  }
+
+  if (phase === "start") return `${toolName} running...`;
+  if (phase === "result") return `${toolName} complete`;
+  return `${toolName} failed`;
 }
 
 function normalizePermissionList(value: unknown): string[] {
@@ -831,7 +1010,7 @@ class AgentManager {
     agentId: string,
     messages: AgentMessage[],
     options?: AgentExecutionOptions
-  ): Promise<{ content: string; tool_calls?: Array<{ name: string; result: unknown }> }> {
+  ): Promise<{ content: string; tool_calls?: AgentToolCallResult[] }> {
     const agent = this.get(agentId);
     if (!agent) {
       throw new Error("Agent not found");
@@ -1005,6 +1184,36 @@ class AgentManager {
     };
   }
 
+  private buildStatusPayload(
+    status: AgentStatus,
+    toolContext?: ToolContext,
+    detail?: string,
+    extra?: Partial<StatusPayload>
+  ): StatusPayload {
+    const payload: StatusPayload = {
+      status,
+      timestamp: Date.now(),
+      detail,
+      sessionId: toolContext?.sessionId,
+      agentId: toolContext?.agentId,
+    };
+
+    if (extra) {
+      Object.assign(payload, extra);
+    }
+
+    return payload;
+  }
+
+  private broadcastAgentStatus(
+    status: AgentStatus,
+    toolContext?: ToolContext,
+    detail?: string,
+    extra?: Partial<StatusPayload>
+  ): void {
+    broadcastStatus(this.buildStatusPayload(status, toolContext, detail, extra));
+  }
+
   private normalizeErrorMessage(error: unknown): string {
     if (error instanceof Error) return error.message;
     return String(error || "Unknown error");
@@ -1060,8 +1269,27 @@ class AgentManager {
     }
 
     try {
-      broadcastStatus({ status: "tool_executing", timestamp: Date.now(), detail: toolName });
+      const startedAt = Date.now();
+      this.broadcastAgentStatus(
+        "tool_executing",
+        toolContext,
+        formatToolActivityDetail(toolName, args, "start"),
+        {
+          toolName,
+          toolPhase: "start",
+        }
+      );
       const result = await executeTool(toolName, args, toolContext);
+      this.broadcastAgentStatus(
+        "tool_completed",
+        toolContext,
+        formatToolActivityDetail(toolName, args, "result"),
+        {
+          toolName,
+          toolPhase: "result",
+          durationMs: Date.now() - startedAt,
+        }
+      );
       await emitAgentHook({
         type: "tool_after",
         context: hookContext,
@@ -1072,6 +1300,15 @@ class AgentManager {
       return { skipped: false, result };
     } catch (error) {
       const errorMessage = this.normalizeErrorMessage(error);
+      this.broadcastAgentStatus(
+        "error",
+        toolContext,
+        formatToolActivityDetail(toolName, args, "error"),
+        {
+          toolName,
+          toolPhase: "error",
+        }
+      );
       await emitAgentHook({
         type: "tool_error",
         context: hookContext,
@@ -1092,7 +1329,7 @@ class AgentManager {
   ): Promise<{
     content: string;
     thinking?: string;
-    tool_calls?: Array<{ name: string; result: unknown }>;
+    tool_calls?: AgentToolCallResult[];
   }> {
     const providerName =
       provider && typeof provider === "object" && "provider" in provider
@@ -1138,7 +1375,7 @@ class AgentManager {
   ): Promise<{
     content: string;
     thinking?: string;
-    tool_calls?: Array<{ name: string; result: unknown }>;
+    tool_calls?: AgentToolCallResult[];
   }> {
     if (!provider) {
       throw new Error("Provider not found");
@@ -1398,7 +1635,7 @@ class AgentManager {
   ): Promise<{
     content: string;
     thinking?: string;
-    tool_calls?: Array<{ name: string; result: unknown }>;
+    tool_calls?: AgentToolCallResult[];
   }> {
     const preferMaxCompletionTokens = options?.preferMaxCompletionTokens === true;
     const maxOutputTokens =
@@ -1435,7 +1672,7 @@ class AgentManager {
 
     console.log(`[Agent] Sending request with headers:`, JSON.stringify(Object.keys(headers)));
 
-    broadcastStatus({ status: "generating", timestamp: Date.now() });
+    this.broadcastAgentStatus("generating", toolContext, "Generating response...");
 
     const startTime = performance.now();
 
@@ -1472,7 +1709,7 @@ class AgentManager {
       })),
     ];
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
-    const allToolCalls: Array<{ name: string; result: unknown }> = [];
+    const allToolCalls: AgentToolCallResult[] = [];
     let finalContent = message.content || "";
     const hookContext = this.buildHookContext(providerConfig, modelId, toolContext);
 
@@ -1506,7 +1743,7 @@ class AgentManager {
           continue;
         }
 
-        allToolCalls.push({ name: toolName, result: executed.result });
+        allToolCalls.push({ name: toolName, args, result: executed.result });
         toolResults.push({
           tool_call_id: toolCallId,
           role: "tool",
@@ -1580,7 +1817,7 @@ class AgentManager {
   ): Promise<{
     content: string;
     thinking?: string;
-    tool_calls?: Array<{ name: string; result: unknown }>;
+    tool_calls?: AgentToolCallResult[];
   }> {
     const systemMessage = messages.find((message) => message.role === "system");
     const chatMessages = messages.filter((message) => message.role !== "system");
@@ -1599,11 +1836,11 @@ class AgentManager {
     const maxIterations = 10;
     let iterations = 0;
     let finalContent = "";
-    const allToolCalls: Array<{ name: string; result: unknown }> = [];
+    const allToolCalls: AgentToolCallResult[] = [];
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
     const hookContext = this.buildHookContext(providerConfig, modelId, toolContext);
 
-    broadcastStatus({ status: "generating", timestamp: Date.now() });
+    this.broadcastAgentStatus("generating", toolContext, "Generating response...");
 
     while (iterations < maxIterations) {
       iterations++;
@@ -1698,7 +1935,7 @@ class AgentManager {
           continue;
         }
 
-        allToolCalls.push({ name: toolCall.name, result: executed.result });
+        allToolCalls.push({ name: toolCall.name, args, result: executed.result });
         const responsePayload =
           executed.result && typeof executed.result === "object"
             ? (executed.result as Record<string, unknown>)
@@ -1757,7 +1994,7 @@ class AgentManager {
   ): Promise<{
     content: string;
     thinking?: string;
-    tool_calls?: Array<{ name: string; result: unknown }>;
+    tool_calls?: AgentToolCallResult[];
   }> {
     const region = this.resolveBedrockRegion(baseUrl);
     const client = new BedrockRuntimeClient({ region });
@@ -1771,11 +2008,11 @@ class AgentManager {
     const maxIterations = 10;
     let iterations = 0;
     let finalContent = "";
-    const allToolCalls: Array<{ name: string; result: unknown }> = [];
+    const allToolCalls: AgentToolCallResult[] = [];
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
     const hookContext = this.buildHookContext(providerConfig, modelId, toolContext);
 
-    broadcastStatus({ status: "generating", timestamp: Date.now() });
+    this.broadcastAgentStatus("generating", toolContext, "Generating response...");
 
     while (iterations < maxIterations) {
       iterations++;
@@ -1872,7 +2109,7 @@ class AgentManager {
           continue;
         }
 
-        allToolCalls.push({ name: toolUse.name, result: executed.result });
+        allToolCalls.push({ name: toolUse.name, args, result: executed.result });
         const normalizedResult =
           executed.result && typeof executed.result === "object"
             ? (executed.result as Record<string, unknown>)
@@ -1922,7 +2159,7 @@ class AgentManager {
   ): Promise<{
     content: string;
     thinking?: string;
-    tool_calls?: Array<{ name: string; result: unknown }>;
+    tool_calls?: AgentToolCallResult[];
   }> {
     const systemMessage = messages.find((m) => m.role === "system");
     const chatMessages = messages
@@ -1964,7 +2201,7 @@ class AgentManager {
       );
     }
 
-    broadcastStatus({ status: "generating", timestamp: Date.now() });
+    this.broadcastAgentStatus("generating", toolContext, "Generating response...");
 
     const startTime = performance.now();
 
@@ -1999,7 +2236,7 @@ class AgentManager {
     }));
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
 
-    const allToolCalls: Array<{ name: string; result: unknown }> = [];
+    const allToolCalls: AgentToolCallResult[] = [];
     let finalContent = currentData.content?.find((c) => c.type === "text")?.text || "";
     const thinking =
       currentData.content?.find((c) => c.type === ("thinking" as string))?.text || undefined;
@@ -2058,7 +2295,7 @@ class AgentManager {
             ? { error: `Tool execution skipped for ${toolName}` }
             : executed.result;
         if (!executed.skipped && executed.result !== undefined) {
-          allToolCalls.push({ name: toolName, result: executed.result });
+          allToolCalls.push({ name: toolName, args, result: executed.result });
         }
         toolResults.push({
           type: "tool_result",
@@ -2152,7 +2389,7 @@ class AgentManager {
     messages: AgentMessage[],
     tools: ToolDefinition[],
     toolContext?: ToolContext
-  ): Promise<{ content: string; tool_calls?: Array<{ name: string; result: unknown }> }> {
+  ): Promise<{ content: string; tool_calls?: AgentToolCallResult[] }> {
     const maxOutputTokens = this.resolveModelMaxOutputTokens("openai", undefined, modelId);
     const systemMessage = messages.find((m) => m.role === "system");
     const chatMessages = messages
@@ -2192,7 +2429,7 @@ class AgentManager {
       Authorization: `Bearer ${auth}`,
     };
 
-    broadcastStatus({ status: "generating", timestamp: Date.now() });
+    this.broadcastAgentStatus("generating", toolContext, "Generating response...");
 
     const startTime = performance.now();
 
@@ -2217,7 +2454,7 @@ class AgentManager {
     let iterations = 0;
     const currentMessages: Record<string, unknown>[] = [...chatMessages];
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
-    const allToolCalls: Array<{ name: string; result: unknown }> = [];
+    const allToolCalls: AgentToolCallResult[] = [];
     let finalContent = message.content || "";
     const hookContext = this.buildHookContext("openai", modelId, toolContext);
 
@@ -2251,7 +2488,7 @@ class AgentManager {
           continue;
         }
 
-        allToolCalls.push({ name: toolName, result: executed.result });
+        allToolCalls.push({ name: toolName, args, result: executed.result });
         toolResults.push({
           tool_call_id: toolCallId,
           role: "tool",

@@ -1,15 +1,37 @@
-import { useState, useRef, useEffect, type ComponentPropsWithoutRef } from 'react';
+import { useState, useRef, useEffect, useCallback, type ComponentPropsWithoutRef } from "react";
 import {
-  Send, Bot, User, Trash2, Wrench, Sparkles, ChevronDown, ChevronUp,
-  Zap, Plus, Square, Loader2, MessageSquare, RefreshCw, X
-} from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { useChat, useSessions, useDeleteSession, useLoadSession } from '@/hooks/useChat';
-import { useAgents, useSubagents, useSpawnSubagent, useKillSubagent, type Subagent } from '@/hooks/useApi';
-import { PageLayout } from '@/components/layout';
-import { GlassCard, GlassButton, Input, Badge, Modal } from '@/components/ui';
-import { formatRelativeTime } from '@/lib/utils';
+  Send,
+  Bot,
+  User,
+  Trash2,
+  Wrench,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  Zap,
+  Plus,
+  Square,
+  Loader2,
+  MessageSquare,
+  RefreshCw,
+  X,
+  CheckCircle2,
+  AlertTriangle,
+} from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { useChat, useSessions, useDeleteSession, useLoadSession } from "@/hooks/useChat";
+import {
+  useAgents,
+  useSubagents,
+  useSpawnSubagent,
+  useKillSubagent,
+  type Subagent,
+} from "@/hooks/useApi";
+import { PageLayout } from "@/components/layout";
+import { GlassCard, GlassButton, Input, Badge, Modal } from "@/components/ui";
+import { formatRelativeTime } from "@/lib/utils";
+import { appendApiTokenParam } from "@/lib/auth";
 
 interface ToolCall {
   id: string;
@@ -17,11 +39,11 @@ interface ToolCall {
   arguments?: Record<string, unknown>;
   args?: Record<string, unknown>;
   result?: unknown;
-  status: 'pending' | 'executing' | 'completed' | 'failed' | 'success' | 'error';
+  status: "pending" | "executing" | "completed" | "failed" | "success" | "error";
 }
 
 interface ChatMessage {
-  role: 'user' | 'assistant' | 'system';
+  role: "user" | "assistant" | "system";
   content: string;
   timestamp?: string;
   tool_calls?: ToolCall[];
@@ -33,14 +55,198 @@ interface ChatMessage {
   }[];
 }
 
-function SubagentCallItem({ subagent }: { subagent: { id: string; task: string; status: string } }) {
+interface StatusStreamEvent {
+  status?: string;
+  timestamp?: number;
+  detail?: string;
+  sessionId?: string;
+  agentId?: string;
+  toolName?: string;
+  toolPhase?: "start" | "result" | "error";
+  durationMs?: number;
+  type?: string;
+}
+
+interface LiveActivityItem {
+  id: string;
+  phase: "start" | "result" | "error";
+  text: string;
+  timestamp: number;
+}
+
+function readStringArg(args: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = args[key];
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+  return undefined;
+}
+
+function readNumberArg(args: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = args[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return undefined;
+}
+
+function summarizeCommand(command: string): string {
+  const compact = command
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(" ");
+  if (!compact) return "command";
+  if (compact.length > 72) return `${compact.slice(0, 69)}...`;
+  return compact;
+}
+
+function formatToolIntent(
+  toolName: string,
+  args: Record<string, unknown>,
+  phase: "start" | "result" | "error",
+  fallbackDetail?: string
+): string {
+  if (fallbackDetail && fallbackDetail.trim()) {
+    return fallbackDetail.trim();
+  }
+
+  const key = toolName.toLowerCase();
+  const path = readStringArg(args, ["path", "file_path", "filePath"]);
+
+  if (key === "read") {
+    if (path) {
+      const offset = readNumberArg(args, ["offset"]);
+      const limit = readNumberArg(args, ["limit"]);
+      if (offset !== undefined && limit !== undefined && limit > 0) {
+        const startLine = Math.max(1, Math.floor(offset));
+        const endLine = startLine + Math.max(1, Math.floor(limit)) - 1;
+        if (phase === "start") return `Exploring ${path} (lines ${startLine}-${endLine})`;
+        if (phase === "result") return `Explored ${path} (lines ${startLine}-${endLine})`;
+        return `Read failed for ${path}`;
+      }
+      if (phase === "start") return `Exploring ${path}`;
+      if (phase === "result") return `Explored ${path}`;
+      return `Read failed for ${path}`;
+    }
+    if (phase === "start") return "Exploring files...";
+    if (phase === "result") return "Exploration complete";
+    return "Read failed";
+  }
+
+  if (key === "write" || key === "edit") {
+    if (path) {
+      if (phase === "start") return key === "edit" ? `Editing ${path}` : `Writing ${path}`;
+      if (phase === "result") return `Edited ${path}`;
+      return `Edit failed for ${path}`;
+    }
+    if (phase === "start") return key === "edit" ? "Editing file..." : "Writing file...";
+    if (phase === "result") return "Edit complete";
+    return "Edit failed";
+  }
+
+  if (key === "file_search" || key === "grep") {
+    const pattern = readStringArg(args, ["pattern", "query"]);
+    const basePath = readStringArg(args, ["path"]);
+    if (pattern && basePath) {
+      if (phase === "start") return `Searching ${basePath} for "${pattern}"`;
+      if (phase === "result") return `Searched ${basePath} for "${pattern}"`;
+      return `Search failed in ${basePath}`;
+    }
+    if (pattern) {
+      if (phase === "start") return `Searching for "${pattern}"`;
+      if (phase === "result") return `Search complete for "${pattern}"`;
+      return `Search failed for "${pattern}"`;
+    }
+    if (phase === "start") return "Searching files...";
+    if (phase === "result") return "Search complete";
+    return "Search failed";
+  }
+
+  if (key === "web_search") {
+    const query = readStringArg(args, ["query"]);
+    if (query) {
+      if (phase === "start") return `Searching web for "${query}"`;
+      if (phase === "result") return `Web search complete for "${query}"`;
+      return `Web search failed for "${query}"`;
+    }
+    if (phase === "start") return "Searching the web...";
+    if (phase === "result") return "Web search complete";
+    return "Web search failed";
+  }
+
+  if (key === "web_fetch") {
+    const url = readStringArg(args, ["url"]);
+    if (url) {
+      if (phase === "start") return `Fetching ${url}`;
+      if (phase === "result") return `Fetched ${url}`;
+      return `Fetch failed for ${url}`;
+    }
+    if (phase === "start") return "Fetching webpage...";
+    if (phase === "result") return "Fetch complete";
+    return "Fetch failed";
+  }
+
+  if (key === "exec" || key === "process" || key === "git") {
+    const command = readStringArg(args, ["command", "cmd"]);
+    if (command) {
+      const summary = summarizeCommand(command);
+      if (phase === "start") return `Running ${summary}`;
+      if (phase === "result") return `Ran ${summary}`;
+      return `Command failed: ${summary}`;
+    }
+    if (phase === "start") return "Running command...";
+    if (phase === "result") return "Command complete";
+    return "Command failed";
+  }
+
+  if (key === "browser") {
+    const action = readStringArg(args, ["action"]);
+    if (action) {
+      if (phase === "start") return `Browser: ${action}`;
+      if (phase === "result") return `Browser ${action} complete`;
+      return `Browser ${action} failed`;
+    }
+    if (phase === "start") return "Browser action...";
+    if (phase === "result") return "Browser action complete";
+    return "Browser action failed";
+  }
+
+  if (phase === "start") return `${toolName} running...`;
+  if (phase === "result") return `${toolName} complete`;
+  return `${toolName} failed`;
+}
+
+function SubagentCallItem({
+  subagent,
+}: {
+  subagent: { id: string; task: string; status: string };
+}) {
   const [expanded, setExpanded] = useState(false);
 
   const statusConfig = {
-    running: { color: 'text-amber-400 border-amber-500/30 bg-amber-500/10', icon: <Loader2 className="w-3 h-3 animate-spin" /> },
-    completed: { color: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10', icon: <div className="w-2 h-2 rounded-full bg-emerald-400" /> },
-    failed: { color: 'text-red-400 border-red-500/30 bg-red-500/10', icon: <div className="w-2 h-2 rounded-full bg-red-400" /> },
-    killed: { color: 'text-gray-400 border-gray-500/30 bg-gray-500/10', icon: <div className="w-2 h-2 rounded-full bg-gray-400" /> },
+    running: {
+      color: "text-amber-400 border-amber-500/30 bg-amber-500/10",
+      icon: <Loader2 className="w-3 h-3 animate-spin" />,
+    },
+    completed: {
+      color: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10",
+      icon: <div className="w-2 h-2 rounded-full bg-emerald-400" />,
+    },
+    failed: {
+      color: "text-red-400 border-red-500/30 bg-red-500/10",
+      icon: <div className="w-2 h-2 rounded-full bg-red-400" />,
+    },
+    killed: {
+      color: "text-gray-400 border-gray-500/30 bg-gray-500/10",
+      icon: <div className="w-2 h-2 rounded-full bg-gray-400" />,
+    },
   };
 
   const config = statusConfig[subagent.status as keyof typeof statusConfig] || statusConfig.running;
@@ -64,8 +270,19 @@ function SubagentCallItem({ subagent }: { subagent: { id: string; task: string; 
             <p className="text-sm text-gray-300">{subagent.task}</p>
           </div>
           <div className="mt-2 flex items-center gap-2">
-            <p className="text-xs text-gray-500">ID: <code className="text-gray-400">{subagent.id}</code></p>
-            <Badge variant={subagent.status === 'completed' ? 'success' : subagent.status === 'failed' ? 'error' : 'default'} size="sm">
+            <p className="text-xs text-gray-500">
+              ID: <code className="text-gray-400">{subagent.id}</code>
+            </p>
+            <Badge
+              variant={
+                subagent.status === "completed"
+                  ? "success"
+                  : subagent.status === "failed"
+                    ? "error"
+                    : "default"
+              }
+              size="sm"
+            >
               {subagent.status}
             </Badge>
           </div>
@@ -75,40 +292,58 @@ function SubagentCallItem({ subagent }: { subagent: { id: string; task: string; 
   );
 }
 
-function normalizeToolStatus(status: ToolCall['status']): 'pending' | 'success' | 'error' {
-  if (status === 'executing' || status === 'pending') return 'pending';
-  if (status === 'failed' || status === 'error') return 'error';
-  return 'success';
+function normalizeToolStatus(status: ToolCall["status"]): "pending" | "success" | "error" {
+  if (status === "executing" || status === "pending") return "pending";
+  if (status === "failed" || status === "error") return "error";
+  return "success";
 }
 
 function ToolCallItem({ tool }: { tool: ToolCall }) {
   const [expanded, setExpanded] = useState(false);
   const normalizedStatus = normalizeToolStatus(tool.status);
   const toolArgs = tool.arguments || tool.args || {};
+  const phase: "start" | "result" | "error" =
+    normalizedStatus === "pending" ? "start" : normalizedStatus === "success" ? "result" : "error";
+  const summary = formatToolIntent(tool.name, toolArgs, phase);
 
   const statusIcons = {
-    pending: <div className="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />,
-    success: <div className="w-3.5 h-3.5 rounded-full bg-emerald-500/30 flex items-center justify-center"><div className="w-1.5 h-1.5 rounded-full bg-emerald-400" /></div>,
-    error: <div className="w-3.5 h-3.5 rounded-full bg-red-500/30 flex items-center justify-center"><div className="w-1.5 h-1.5 rounded-full bg-red-400" /></div>,
+    pending: (
+      <div className="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+    ),
+    success: (
+      <div className="w-3.5 h-3.5 rounded-full bg-emerald-500/30 flex items-center justify-center">
+        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+      </div>
+    ),
+    error: (
+      <div className="w-3.5 h-3.5 rounded-full bg-red-500/30 flex items-center justify-center">
+        <div className="w-1.5 h-1.5 rounded-full bg-red-400" />
+      </div>
+    ),
   };
 
   const statusStyles = {
-    pending: 'bg-amber-500/5 border border-white/[0.06] text-amber-300',
-    success: 'bg-emerald-500/5 border border-white/[0.06] text-emerald-300',
-    error: 'bg-red-500/5 border border-white/[0.06] text-red-300',
+    pending: "bg-amber-500/5 border border-white/[0.06] text-amber-300",
+    success: "bg-emerald-500/5 border border-white/[0.06] text-emerald-300",
+    error: "bg-red-500/5 border border-white/[0.06] text-red-300",
   };
 
   return (
-    <div className={`rounded-lg backdrop-blur-sm overflow-hidden ${statusStyles[normalizedStatus]}`}>
+    <div
+      className={`rounded-lg backdrop-blur-sm overflow-hidden ${statusStyles[normalizedStatus]}`}
+    >
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full px-3 py-2 flex items-center gap-2 text-xs cursor-pointer hover:bg-white/5 transition-colors"
       >
         {statusIcons[normalizedStatus]}
         <Wrench className="w-3 h-3 opacity-60" />
-        <span className="font-medium truncate">{tool.name}</span>
-        <span className="flex-1" />
-        {expanded ? <ChevronUp className="w-3.5 h-3.5 opacity-50" /> : <ChevronDown className="w-3.5 h-3.5 opacity-50" />}
+        <span className="font-medium truncate flex-1 text-left">{summary}</span>
+        {expanded ? (
+          <ChevronUp className="w-3.5 h-3.5 opacity-50" />
+        ) : (
+          <ChevronDown className="w-3.5 h-3.5 opacity-50" />
+        )}
       </button>
       {expanded && (
         <div className="px-3 pb-3 border-t border-white/5">
@@ -122,7 +357,9 @@ function ToolCallItem({ tool }: { tool: ToolCall }) {
             <div className="mt-2">
               <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wider">Result</p>
               <pre className="text-[11px] text-gray-400 bg-black/40 rounded-md p-2 overflow-x-auto max-h-40">
-                {typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result, null, 2)}
+                {typeof tool.result === "string"
+                  ? tool.result
+                  : JSON.stringify(tool.result, null, 2)}
               </pre>
             </div>
           )}
@@ -148,6 +385,62 @@ function ThinkingBlock({ thinking }: { thinking: string }) {
       {expanded && (
         <div className="mt-2 p-3 rounded-lg bg-white/5 border border-white/10">
           <p className="text-sm text-gray-400 whitespace-pre-wrap">{thinking}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LiveActivityTimeline({
+  status,
+  activities,
+}: {
+  status: "thinking" | "generating" | "idle";
+  activities: LiveActivityItem[];
+}) {
+  const statusLabel = status === "generating" ? "Generating response..." : "Thinking...";
+  const recentActivities = activities.slice(-6);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 text-xs text-gray-400">
+        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        <span>{statusLabel}</span>
+      </div>
+      {recentActivities.length > 0 ? (
+        <div className="space-y-1.5">
+          {recentActivities.map((activity) => (
+            <div
+              key={activity.id}
+              className="flex items-center gap-2 text-[11px] text-gray-400 rounded-md bg-white/5 border border-white/10 px-2 py-1.5"
+            >
+              {activity.phase === "start" && (
+                <Loader2 className="w-3 h-3 animate-spin text-amber-400 flex-shrink-0" />
+              )}
+              {activity.phase === "result" && (
+                <CheckCircle2 className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+              )}
+              {activity.phase === "error" && (
+                <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
+              )}
+              <span className="truncate">{activity.text}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex gap-1 px-1">
+          <span
+            className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce"
+            style={{ animationDelay: "0ms" }}
+          />
+          <span
+            className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce"
+            style={{ animationDelay: "150ms" }}
+          />
+          <span
+            className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce"
+            style={{ animationDelay: "300ms" }}
+          />
         </div>
       )}
     </div>
@@ -187,8 +480,8 @@ function AssistantMetaInline({ message }: { message: ChatMessage }) {
 }
 
 function MessageContent({ content }: { content: string }) {
-  type MarkdownPreProps = ComponentPropsWithoutRef<'pre'>;
-  type MarkdownCodeProps = ComponentPropsWithoutRef<'code'> & { inline?: boolean };
+  type MarkdownPreProps = ComponentPropsWithoutRef<"pre">;
+  type MarkdownCodeProps = ComponentPropsWithoutRef<"code"> & { inline?: boolean };
 
   return (
     <div className="prose prose-invert prose-sm max-w-none">
@@ -202,10 +495,17 @@ function MessageContent({ content }: { content: string }) {
           ),
           code({ className, children, ...props }: MarkdownCodeProps) {
             if (className) {
-              return <code className={className} {...props}>{children}</code>;
+              return (
+                <code className={className} {...props}>
+                  {children}
+                </code>
+              );
             }
             return (
-              <code className="bg-white/10 rounded px-1.5 py-0.5 text-[0.85em] font-mono" {...props}>
+              <code
+                className="bg-white/10 rounded px-1.5 py-0.5 text-[0.85em] font-mono"
+                {...props}
+              >
                 {children}
               </code>
             );
@@ -218,7 +518,12 @@ function MessageContent({ content }: { content: string }) {
           h2: ({ children }) => <h2 className="text-lg font-bold mb-2">{children}</h2>,
           h3: ({ children }) => <h3 className="text-base font-bold mb-2">{children}</h3>,
           a: ({ href, children }) => (
-            <a href={href} className="text-indigo-400 hover:text-indigo-300 underline" target="_blank" rel="noopener noreferrer">
+            <a
+              href={href}
+              className="text-indigo-400 hover:text-indigo-300 underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               {children}
             </a>
           ),
@@ -250,14 +555,14 @@ function SubagentPanel({
   const { data: subagents, isLoading, refetch } = useSubagents();
   const spawnSubagent = useSpawnSubagent();
   const killSubagent = useKillSubagent();
-  const [newTask, setNewTask] = useState('');
+  const [newTask, setNewTask] = useState("");
   const [showSpawnModal, setShowSpawnModal] = useState(false);
   const [selectedSubagent, setSelectedSubagent] = useState<Subagent | null>(null);
 
   const handleSpawn = async () => {
     if (!newTask.trim()) return;
     await spawnSubagent.mutateAsync({ task: newTask, label: `Task: ${newTask.slice(0, 30)}...` });
-    setNewTask('');
+    setNewTask("");
     setShowSpawnModal(false);
     refetch();
   };
@@ -278,13 +583,22 @@ function SubagentPanel({
             )}
           </div>
           <div className="flex items-center">
-            <button onClick={() => refetch()} className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer">
+            <button
+              onClick={() => refetch()}
+              className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
+            >
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
-            <button onClick={() => setShowSpawnModal(true)} className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer">
+            <button
+              onClick={() => setShowSpawnModal(true)}
+              className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
+            >
               <Plus className="w-3.5 h-3.5" />
             </button>
-            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer">
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
+            >
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -325,15 +639,19 @@ function SubagentPanel({
                   <div className="flex items-center gap-1">
                     <Badge
                       variant={
-                        subagent.status === 'completed' ? 'success' :
-                          subagent.status === 'failed' ? 'error' :
-                            subagent.status === 'killed' ? 'default' : 'default'
+                        subagent.status === "completed"
+                          ? "success"
+                          : subagent.status === "failed"
+                            ? "error"
+                            : subagent.status === "killed"
+                              ? "default"
+                              : "default"
                       }
                       size="sm"
                     >
                       {subagent.status}
                     </Badge>
-                    {subagent.status === 'running' && (
+                    {subagent.status === "running" && (
                       <button
                         className="p-1 rounded hover:bg-red-500/20 text-red-400 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                         onClick={(e) => {
@@ -377,7 +695,11 @@ function SubagentPanel({
               onClick={handleSpawn}
               disabled={!newTask.trim() || spawnSubagent.isPending}
             >
-              {spawnSubagent.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Zap className="w-4 h-4 mr-2" />}
+              {spawnSubagent.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <Zap className="w-4 h-4 mr-2" />
+              )}
               Spawn Subagent
             </GlassButton>
           </div>
@@ -397,9 +719,13 @@ function SubagentPanel({
                 <p className="text-xs text-gray-500 mb-1">Status</p>
                 <Badge
                   variant={
-                    selectedSubagent.status === 'completed' ? 'success' :
-                      selectedSubagent.status === 'failed' ? 'error' :
-                        selectedSubagent.status === 'running' ? 'default' : 'default'
+                    selectedSubagent.status === "completed"
+                      ? "success"
+                      : selectedSubagent.status === "failed"
+                        ? "error"
+                        : selectedSubagent.status === "running"
+                          ? "default"
+                          : "default"
                   }
                 >
                   {selectedSubagent.status}
@@ -407,7 +733,9 @@ function SubagentPanel({
               </div>
               <div>
                 <p className="text-xs text-gray-500 mb-1">Created</p>
-                <p className="text-sm text-white">{new Date(selectedSubagent.createdAt).toLocaleString()}</p>
+                <p className="text-sm text-white">
+                  {new Date(selectedSubagent.createdAt).toLocaleString()}
+                </p>
               </div>
             </div>
 
@@ -421,12 +749,15 @@ function SubagentPanel({
             {selectedSubagent.result && (
               <div>
                 <p className="text-xs text-gray-500 mb-1">Result</p>
-                <div className={`p-3 rounded-lg border ${selectedSubagent.status === 'completed'
-                  ? 'bg-emerald-500/10 border-emerald-500/30'
-                  : 'bg-red-500/10 border-red-500/30'
-                  }`}>
+                <div
+                  className={`p-3 rounded-lg border ${
+                    selectedSubagent.status === "completed"
+                      ? "bg-emerald-500/10 border-emerald-500/30"
+                      : "bg-red-500/10 border-red-500/30"
+                  }`}
+                >
                   <pre className="text-sm text-gray-300 whitespace-pre-wrap overflow-x-auto max-h-48 overflow-y-auto">
-                    {typeof selectedSubagent.result === 'string'
+                    {typeof selectedSubagent.result === "string"
                       ? selectedSubagent.result
                       : JSON.stringify(selectedSubagent.result, null, 2)}
                   </pre>
@@ -461,7 +792,7 @@ function SubagentPanel({
                   View Session
                 </button>
               )}
-              {selectedSubagent.status === 'running' && (
+              {selectedSubagent.status === "running" && (
                 <button
                   className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/30 transition-all disabled:opacity-50"
                   onClick={async () => {
@@ -471,7 +802,11 @@ function SubagentPanel({
                   }}
                   disabled={killSubagent.isPending}
                 >
-                  {killSubagent.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Square className="w-4 h-4 mr-2" />}
+                  {killSubagent.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : (
+                    <Square className="w-4 h-4 mr-2" />
+                  )}
                   Kill
                 </button>
               )}
@@ -514,7 +849,7 @@ function SessionsPanel({
         onLoadSession(sessionId, result.messagesList as ChatMessage[]);
       }
     } catch (error) {
-      console.error('Failed to load session:', error);
+      console.error("Failed to load session:", error);
     }
   };
 
@@ -534,13 +869,22 @@ function SessionsPanel({
             )}
           </div>
           <div className="flex items-center">
-            <button onClick={onNewSession} className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer">
+            <button
+              onClick={onNewSession}
+              className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
+            >
               <Plus className="w-3.5 h-3.5" />
             </button>
-            <button onClick={() => refetch()} className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer">
+            <button
+              onClick={() => refetch()}
+              className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
+            >
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
-            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer">
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
+            >
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -570,10 +914,11 @@ function SessionsPanel({
             sessions?.map((session) => (
               <div
                 key={session.id}
-                className={`p-2.5 rounded-lg transition-all cursor-pointer group ${currentSessionId === session.id
-                  ? 'bg-[rgba(var(--accent-primary),0.12)] border border-[rgba(var(--accent-primary),0.3)]'
-                  : 'bg-white/[0.03] border border-white/5 hover:border-white/15'
-                  }`}
+                className={`p-2.5 rounded-lg transition-all cursor-pointer group ${
+                  currentSessionId === session.id
+                    ? "bg-[rgba(var(--accent-primary),0.12)] border border-[rgba(var(--accent-primary),0.3)]"
+                    : "bg-white/[0.03] border border-white/5 hover:border-white/15"
+                }`}
                 onClick={() => handleLoadSession(session.id)}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -651,30 +996,114 @@ function SessionsPanel({
 export function Chat() {
   const { data: agents = [] } = useAgents();
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
-  const { messages, isLoading, sendMessage, clearChat, loadSession, sessionId } = useChat(selectedAgentId);
+  const { messages, isLoading, sendMessage, clearChat, loadSession, sessionId } =
+    useChat(selectedAgentId);
   const loadSessionMutation = useLoadSession();
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [showSubagentPanel, setShowSubagentPanel] = useState(false);
   const [showSessionsPanel, setShowSessionsPanel] = useState(false);
+  const [liveStatus, setLiveStatus] = useState<"thinking" | "generating" | "idle">("idle");
+  const [liveActivities, setLiveActivities] = useState<LiveActivityItem[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const activeSessionRef = useRef<string | null>(null);
+  const activeAgentRef = useRef<string | undefined>(undefined);
+  const loadingRef = useRef(false);
+  const wasLoadingRef = useRef(false);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
+  useEffect(() => {
+    activeSessionRef.current = sessionId;
+    activeAgentRef.current = selectedAgentId;
+    loadingRef.current = isLoading;
+  }, [sessionId, selectedAgentId, isLoading]);
+
+  useEffect(() => {
+    if (isLoading && !wasLoadingRef.current) {
+      setLiveActivities([]);
+      setLiveStatus("thinking");
+    }
+    if (!isLoading && wasLoadingRef.current) {
+      setLiveStatus("idle");
+    }
+    wasLoadingRef.current = isLoading;
+  }, [isLoading]);
+
+  const appendLiveActivity = useCallback((phase: "start" | "result" | "error", text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setLiveActivities((previous) => {
+      const next: LiveActivityItem = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        phase,
+        text: trimmed,
+        timestamp: Date.now(),
+      };
+      return [...previous.slice(-11), next];
+    });
+  }, []);
+
+  useEffect(() => {
+    const eventSource = new EventSource(appendApiTokenParam("/api/sse/status"));
+
+    eventSource.onmessage = (event) => {
+      let payload: StatusStreamEvent;
+      try {
+        payload = JSON.parse(event.data) as StatusStreamEvent;
+      } catch {
+        return;
+      }
+
+      if (!payload || typeof payload !== "object") return;
+      if (payload.type && payload.type !== "status") return;
+      if (!loadingRef.current) return;
+      const status = typeof payload.status === "string" ? payload.status : "";
+      if (!status) return;
+
+      const activeSession = activeSessionRef.current;
+      const activeAgent = activeAgentRef.current;
+
+      if (activeSession && payload.sessionId && payload.sessionId !== activeSession) return;
+      if (activeSession && !payload.sessionId) return;
+      if (activeAgent && payload.agentId && payload.agentId !== activeAgent) return;
+
+      if (status === "thinking") {
+        setLiveStatus("thinking");
+        return;
+      }
+      if (status === "generating") {
+        setLiveStatus("generating");
+        return;
+      }
+      if (status === "tool_executing" || status === "tool_completed" || status === "error") {
+        const phase: "start" | "result" | "error" =
+          status === "tool_executing" ? "start" : status === "tool_completed" ? "result" : "error";
+        const toolName = payload.toolName || "tool";
+        const text = formatToolIntent(toolName, {}, phase, payload.detail);
+        appendLiveActivity(phase, text);
+      }
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [appendLiveActivity]);
+
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
     const message = input;
-    setInput('');
+    setInput("");
     await sendMessage(message);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
@@ -682,17 +1111,20 @@ export function Chat() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const sessionParam = params.get('session');
+    const sessionParam = params.get("session");
 
     if (sessionParam && sessionParam !== sessionId) {
-      loadSessionMutation.mutateAsync(sessionParam).then((result) => {
-        if (result?.messagesList) {
-          loadSession(sessionParam, result.messagesList as ChatMessage[]);
-          window.history.replaceState({}, '', '/chat');
-        }
-      }).catch((error) => {
-        console.error('Failed to load session from URL:', error);
-      });
+      loadSessionMutation
+        .mutateAsync(sessionParam)
+        .then((result) => {
+          if (result?.messagesList) {
+            loadSession(sessionParam, result.messagesList as ChatMessage[]);
+            window.history.replaceState({}, "", "/chat");
+          }
+        })
+        .catch((error) => {
+          console.error("Failed to load session from URL:", error);
+        });
     }
   }, []); // Only run on mount
 
@@ -706,31 +1138,41 @@ export function Chat() {
           {sessionId && (
             <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span className="text-[10px] text-emerald-400 font-mono">{sessionId.slice(0, 6)}...</span>
+              <span className="text-[10px] text-emerald-400 font-mono">
+                {sessionId.slice(0, 6)}...
+              </span>
             </div>
           )}
         </div>
         <div className="flex items-center gap-1 sm:gap-2">
           <select
-            value={selectedAgentId || ''}
+            value={selectedAgentId || ""}
             onChange={(e) => setSelectedAgentId(e.target.value || undefined)}
             className="text-xs bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white !outline-none focus:border-white/20 cursor-pointer"
           >
             <option value="">Default</option>
             {agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>{agent.name}</option>
+              <option key={agent.id} value={agent.id}>
+                {agent.name}
+              </option>
             ))}
           </select>
           <button
             onClick={() => setShowSessionsPanel(!showSessionsPanel)}
-            className={cn("p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer", showSessionsPanel ? "accent-text" : "text-gray-500")}
+            className={cn(
+              "p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
+              showSessionsPanel ? "accent-text" : "text-gray-500"
+            )}
             title="Sessions"
           >
             <MessageSquare className="w-4 h-4" />
           </button>
           <button
             onClick={() => setShowSubagentPanel(!showSubagentPanel)}
-            className={cn("p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer", showSubagentPanel ? "text-amber-400" : "text-gray-500")}
+            className={cn(
+              "p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
+              showSubagentPanel ? "text-amber-400" : "text-gray-500"
+            )}
             title="Subagents"
           >
             <Zap className="w-4 h-4" />
@@ -753,30 +1195,41 @@ export function Chat() {
                 <div className="text-center text-gray-500">
                   <Sparkles className="w-8 h-8 mx-auto mb-3 opacity-30" />
                   <p className="text-sm font-medium">Start a conversation</p>
-                  <p className="text-xs mt-1 text-gray-600">Ask questions, get help with code, or chat with your agents</p>
+                  <p className="text-xs mt-1 text-gray-600">
+                    Ask questions, get help with code, or chat with your agents
+                  </p>
                 </div>
               </div>
             ) : (
               typedMessages.map((message, index) => (
                 <div
                   key={index}
-                  className={`flex gap-3 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}
+                  className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}
                 >
-                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${message.role === 'user'
-                    ? 'bg-[rgba(var(--accent-primary),0.2)]'
-                    : 'bg-emerald-500/20'
-                    }`}>
-                    {message.role === 'user'
-                      ? <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 accent-text" />
-                      : <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
-                    }
+                  <div
+                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                      message.role === "user"
+                        ? "bg-[rgba(var(--accent-primary),0.2)]"
+                        : "bg-emerald-500/20"
+                    }`}
+                  >
+                    {message.role === "user" ? (
+                      <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 accent-text" />
+                    ) : (
+                      <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
+                    )}
                   </div>
-                  <div className={`max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] ${message.role === 'user' ? 'text-right' : ''}`}>
-                    <div className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${message.role === 'user'
-                      ? 'bg-[rgba(var(--accent-primary),0.15)] border border-[rgba(var(--accent-primary),0.2)]'
-                      : 'bg-white/[0.03] border border-white/5'
-                      }`}>
-                      {message.role !== 'user' && <AssistantMetaInline message={message} />}
+                  <div
+                    className={`max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] ${message.role === "user" ? "text-right" : ""}`}
+                  >
+                    <div
+                      className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${
+                        message.role === "user"
+                          ? "bg-[rgba(var(--accent-primary),0.15)] border border-[rgba(var(--accent-primary),0.2)]"
+                          : "bg-white/[0.03] border border-white/5"
+                      }`}
+                    >
+                      {message.role !== "user" && <AssistantMetaInline message={message} />}
                       <MessageContent content={message.content} />
                     </div>
 
@@ -794,12 +1247,8 @@ export function Chat() {
                 <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
                   <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
                 </div>
-                <div className="bg-white/[0.03] border border-white/5 rounded-xl px-4 py-3">
-                  <div className="flex gap-1">
-                    <span className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                  </div>
+                <div className="max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] bg-white/[0.03] border border-white/5 rounded-xl px-4 py-3">
+                  <LiveActivityTimeline status={liveStatus} activities={liveActivities} />
                 </div>
               </div>
             )}
@@ -854,7 +1303,7 @@ export function Chat() {
                   setShowSubagentPanel(false);
                 }
               } catch (error) {
-                console.error('Failed to load subagent session:', error);
+                console.error("Failed to load subagent session:", error);
               }
             }}
           />
@@ -865,5 +1314,5 @@ export function Chat() {
 }
 
 function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(' ');
+  return classes.filter(Boolean).join(" ");
 }

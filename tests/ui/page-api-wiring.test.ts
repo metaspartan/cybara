@@ -172,4 +172,16 @@ describe("UI page API wiring", () => {
     expect(source).toContain('formData.set("provider_id", selectedProvider);');
     expect(source).not.toContain('provider: formData.get("provider") as string');
   });
+
+  test("Chat page wires live activity timeline to SSE status events", () => {
+    const source = readPage("Chat.tsx");
+
+    expect(source).toContain('appendApiTokenParam("/api/sse/status")');
+    expect(source).toContain('status === "tool_executing"');
+    expect(source).toContain('status === "tool_completed"');
+    expect(source).toContain(
+      "<LiveActivityTimeline status={liveStatus} activities={liveActivities} />"
+    );
+    expect(source).toContain("formatToolIntent(");
+  });
 });

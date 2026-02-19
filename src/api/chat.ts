@@ -176,8 +176,6 @@ const chatRateLimitConfig = { windowMs: 60000, maxRequests: 60 }; // 60 requests
 export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   const { message, agentId, sessionId, tools = true, channel, userId, source } = request;
 
-  broadcastStatus({ status: "thinking", timestamp: Date.now() });
-
   const rateLimit = checkRateLimit("chat", chatRateLimitConfig);
   if (!rateLimit.allowed) {
     return {
@@ -247,6 +245,14 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     timestamp: new Date().toISOString(),
   };
   session.messages.push(userMessage);
+
+  broadcastStatus({
+    status: "thinking",
+    timestamp: Date.now(),
+    detail: "Thinking...",
+    sessionId: session.id,
+    agentId: agent?.id,
+  });
 
   await emitAgentHook({
     type: "message:received",
@@ -384,7 +390,10 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
           allToolCalls.push({
             id: `call_${crypto.randomUUID().slice(0, 8)}`,
             name: tc.name,
-            args: {},
+            args:
+              tc.args && typeof tc.args === "object" && !Array.isArray(tc.args)
+                ? (tc.args as Record<string, unknown>)
+                : {},
             status: "completed",
             result: tc.result,
             duration: 0,
@@ -437,7 +446,10 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
                 allToolCalls.push({
                   id: `call_${crypto.randomUUID().slice(0, 8)}`,
                   name: tc.name,
-                  args: {},
+                  args:
+                    tc.args && typeof tc.args === "object" && !Array.isArray(tc.args)
+                      ? (tc.args as Record<string, unknown>)
+                      : {},
                   status: "completed",
                   result: tc.result,
                   duration: 0,
@@ -583,7 +595,13 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   }
 
   console.log("[Chat] Broadcasting idle status");
-  broadcastStatus({ status: "idle", timestamp: Date.now() });
+  broadcastStatus({
+    status: "idle",
+    timestamp: Date.now(),
+    detail: "Idle",
+    sessionId: session.id,
+    agentId: agent?.id,
+  });
 
   return {
     sessionId: session.id,
