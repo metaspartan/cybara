@@ -18,6 +18,15 @@ import { broadcastStatus } from "./status";
 import { homedir } from "os";
 import { loadAllSkills, createEligibilityContext, filterEligibleSkills } from "./skills";
 import { emitAgentHook, type AgentHookContext } from "./agent-hooks";
+import {
+  BedrockRuntimeClient,
+  ConverseCommand,
+  type ConverseCommandInput,
+  type ContentBlock as BedrockContentBlock,
+  type Message as BedrockMessage,
+  type ToolUseBlock,
+} from "@aws-sdk/client-bedrock-runtime";
+import type { DocumentType as SmithyDocumentType } from "@smithy/types";
 
 export interface AgentDefinition {
   name: string;
@@ -88,6 +97,47 @@ interface AnthropicResponse {
   content: AnthropicContentBlock[];
   model: string;
   usage?: AnthropicUsage;
+}
+
+interface GooglePartText {
+  text?: string;
+}
+
+interface GooglePartFunctionCall {
+  functionCall?: {
+    name?: string;
+    args?: unknown;
+  };
+}
+
+interface GooglePartFunctionResponse {
+  functionResponse?: {
+    name?: string;
+    response?: Record<string, unknown>;
+  };
+}
+
+type GooglePart = GooglePartText & GooglePartFunctionCall & GooglePartFunctionResponse;
+
+interface GoogleContent {
+  role?: "user" | "model";
+  parts?: GooglePart[];
+}
+
+interface GoogleCandidate {
+  content?: GoogleContent;
+  finishReason?: string;
+}
+
+interface GoogleUsageMetadata {
+  promptTokenCount?: number;
+  candidatesTokenCount?: number;
+  totalTokenCount?: number;
+}
+
+interface GoogleResponse {
+  candidates?: GoogleCandidate[];
+  usageMetadata?: GoogleUsageMetadata;
 }
 
 const ANTHROPIC_CONTEXT_1M_BETA = "context-1m-2025-08-07";
@@ -1077,16 +1127,18 @@ class AgentManager {
     const providerConfig = providerInfo.provider;
     const baseUrl = providerInfo.base_url || this.getProviderBaseUrl(providerConfig);
     const auth = providerInfo.api_key || providerInfo.access_token;
+    const providerDefinition = providerCatalog[providerConfig as ProviderType] as
+      | { api?: string; headers?: Record<string, string>; authType?: string }
+      | undefined;
+    const providerAuthType = providerDefinition?.authType || "api_key";
+    const requiresTokenAuth = providerAuthType !== "none" && providerAuthType !== "aws-sdk";
 
-    if (!auth) {
+    if (requiresTokenAuth && !auth) {
       throw new Error("No API key available");
     }
+    const resolvedAuth = auth || "";
 
     const modelId = model || this.getDefaultModel(providerConfig);
-
-    const providerDefinition = providerCatalog[providerConfig as ProviderType] as
-      | { api?: string; headers?: Record<string, string> }
-      | undefined;
     const apiFamily = providerDefinition?.api || "openai-completions";
     const providerHeaders = providerDefinition?.headers || {};
     const customHeaders = (providerInfo as { headers?: Record<string, string> }).headers || {};
@@ -1101,7 +1153,7 @@ class AgentManager {
     if (apiFamily === "anthropic-messages") {
       return this.callAnthropicAPI(
         baseUrl,
-        auth,
+        resolvedAuth,
         modelId,
         messages,
         tools,
@@ -1112,10 +1164,20 @@ class AgentManager {
       );
     }
 
-    if (apiFamily === "openai-completions" || apiFamily === "openai-responses") {
+    if (
+      apiFamily === "openai-completions" ||
+      apiFamily === "openai-responses" ||
+      apiFamily === "openai-codex-responses" ||
+      apiFamily === "ollama" ||
+      apiFamily === "github-copilot"
+    ) {
+      const preferMaxCompletionTokens =
+        apiFamily === "openai-responses" ||
+        apiFamily === "openai-codex-responses" ||
+        apiFamily === "github-copilot";
       return this.callOpenAICompatAPI(
         baseUrl,
-        auth,
+        resolvedAuth,
         modelId,
         messages,
         tools,
@@ -1123,21 +1185,40 @@ class AgentManager {
         providerConfig,
         toolContext,
         {
-          preferMaxCompletionTokens: apiFamily === "openai-responses",
+          preferMaxCompletionTokens,
           maxOutputTokens: modelMaxOutputTokens,
         }
       );
     }
 
     if (apiFamily === "google-generative-ai") {
-      throw new Error(
-        `Provider '${providerConfig}' requires Google Generative AI support, which is not yet implemented in the agent runtime`
+      return this.callGoogleGenerativeAI(
+        baseUrl,
+        resolvedAuth,
+        modelId,
+        messages,
+        tools,
+        providerConfig,
+        modelMaxOutputTokens,
+        toolContext
+      );
+    }
+
+    if (apiFamily === "bedrock-converse-stream") {
+      return this.callBedrockConverse(
+        modelId,
+        messages,
+        tools,
+        providerConfig,
+        modelMaxOutputTokens,
+        toolContext,
+        baseUrl
       );
     }
 
     return this.callOpenAICompatAPI(
       baseUrl,
-      auth,
+      resolvedAuth,
       modelId,
       messages,
       tools,
@@ -1319,9 +1400,11 @@ class AgentManager {
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${auth}`,
       ...customHeaders, // Merge custom headers (e.g., User-Agent for Kimi Code)
     };
+    if (auth) {
+      headers.Authorization = `Bearer ${auth}`;
+    }
 
     console.log(`[Agent] Sending request with headers:`, JSON.stringify(Object.keys(headers)));
 
@@ -1450,6 +1533,347 @@ class AgentManager {
 
     if (iterations >= maxIterations) {
       console.log(`[Agent] Agentic loop reached max iterations (${maxIterations})`);
+    }
+
+    return {
+      content: finalContent.trim(),
+      tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
+    };
+  }
+
+  private async callGoogleGenerativeAI(
+    baseUrl: string,
+    auth: string,
+    modelId: string,
+    messages: AgentMessage[],
+    tools: ToolDefinition[],
+    providerConfig: string,
+    maxOutputTokens: number,
+    toolContext?: ToolContext
+  ): Promise<{
+    content: string;
+    thinking?: string;
+    tool_calls?: Array<{ name: string; result: unknown }>;
+  }> {
+    const systemMessage = messages.find((message) => message.role === "system");
+    const chatMessages = messages.filter((message) => message.role !== "system");
+    const contents: GoogleContent[] = chatMessages.map((message) => ({
+      role: message.role === "assistant" ? "model" : "user",
+      parts: [{ text: message.content }],
+    }));
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "x-goog-api-key": auth,
+    };
+
+    const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
+    const endpoint = `${normalizedBaseUrl}/models/${encodeURIComponent(modelId)}:generateContent`;
+    const maxIterations = 10;
+    let iterations = 0;
+    let finalContent = "";
+    const allToolCalls: Array<{ name: string; result: unknown }> = [];
+    const allowedToolNames = new Set(tools.map((tool) => tool.name));
+    const hookContext = this.buildHookContext(providerConfig, modelId, toolContext);
+
+    broadcastStatus({ status: "generating", timestamp: Date.now() });
+
+    while (iterations < maxIterations) {
+      iterations++;
+
+      const requestBody: Record<string, unknown> = {
+        contents,
+        generationConfig: {
+          maxOutputTokens,
+        },
+      };
+
+      if (systemMessage) {
+        requestBody.systemInstruction = {
+          parts: [{ text: systemMessage.content }],
+        };
+      }
+
+      if (tools.length > 0) {
+        requestBody.tools = [
+          {
+            functionDeclarations: tools.map((tool) => ({
+              name: tool.name,
+              description: tool.description || "",
+              parameters: tool.input_schema || { type: "object", properties: {} },
+            })),
+          },
+        ];
+      }
+
+      const startTime = performance.now();
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API error: ${response.status} - ${errorText}`);
+      }
+
+      const data = (await response.json()) as GoogleResponse;
+      const durationMs = Math.round(performance.now() - startTime);
+      const usage = data.usageMetadata;
+      if (usage) {
+        const inputTokens = usage.promptTokenCount || 0;
+        const outputTokens = usage.candidatesTokenCount || 0;
+        trackTokenUsage(modelId, providerConfig, baseUrl, inputTokens, outputTokens, durationMs);
+      }
+
+      const candidate = data.candidates?.[0];
+      const parts = candidate?.content?.parts || [];
+      const text = parts
+        .map((part) => (typeof part.text === "string" ? part.text : ""))
+        .filter((entry) => entry.length > 0)
+        .join("\n")
+        .trim();
+      if (text) {
+        finalContent = text;
+      }
+
+      const toolCalls = parts
+        .map((part) => part.functionCall)
+        .filter(
+          (
+            functionCall
+          ): functionCall is {
+            name: string;
+            args?: unknown;
+          } =>
+            !!functionCall && typeof functionCall.name === "string" && functionCall.name.length > 0
+        );
+
+      if (toolCalls.length === 0) {
+        break;
+      }
+
+      const toolResponses: GooglePart[] = [];
+      for (const toolCall of toolCalls) {
+        const args =
+          toolCall.args && typeof toolCall.args === "object"
+            ? (toolCall.args as Record<string, unknown>)
+            : parseToolArguments(toolCall.args);
+        const executed = await this.executeToolWithHooks(
+          toolCall.name,
+          args,
+          allowedToolNames,
+          toolContext,
+          hookContext
+        );
+        if (executed.skipped || executed.result === undefined) {
+          continue;
+        }
+
+        allToolCalls.push({ name: toolCall.name, result: executed.result });
+        const responsePayload =
+          executed.result && typeof executed.result === "object"
+            ? (executed.result as Record<string, unknown>)
+            : { result: executed.result };
+        toolResponses.push({
+          functionResponse: {
+            name: toolCall.name,
+            response: responsePayload,
+          },
+        });
+      }
+
+      if (toolResponses.length === 0) {
+        break;
+      }
+
+      contents.push({
+        role: "model",
+        parts,
+      });
+      contents.push({
+        role: "user",
+        parts: toolResponses,
+      });
+    }
+
+    if (iterations >= maxIterations) {
+      console.log(`[Agent] Google agentic loop reached max iterations (${maxIterations})`);
+    }
+
+    return {
+      content: finalContent.trim(),
+      tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
+    };
+  }
+
+  private resolveBedrockRegion(baseUrl?: string): string {
+    if (typeof baseUrl === "string" && baseUrl.trim().length > 0) {
+      const match = baseUrl.match(/bedrock-runtime\.([a-z0-9-]+)\.amazonaws\.com/i);
+      const region = match?.[1];
+      if (typeof region === "string" && region && region !== "{region}") {
+        return region;
+      }
+    }
+    return process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1";
+  }
+
+  private async callBedrockConverse(
+    modelId: string,
+    messages: AgentMessage[],
+    tools: ToolDefinition[],
+    providerConfig: string,
+    maxOutputTokens: number,
+    toolContext?: ToolContext,
+    baseUrl?: string
+  ): Promise<{
+    content: string;
+    thinking?: string;
+    tool_calls?: Array<{ name: string; result: unknown }>;
+  }> {
+    const region = this.resolveBedrockRegion(baseUrl);
+    const client = new BedrockRuntimeClient({ region });
+    const systemMessage = messages.find((message) => message.role === "system");
+    const conversation: BedrockMessage[] = messages
+      .filter((message) => message.role !== "system")
+      .map((message) => ({
+        role: message.role === "assistant" ? "assistant" : "user",
+        content: [{ text: message.content }],
+      }));
+    const maxIterations = 10;
+    let iterations = 0;
+    let finalContent = "";
+    const allToolCalls: Array<{ name: string; result: unknown }> = [];
+    const allowedToolNames = new Set(tools.map((tool) => tool.name));
+    const hookContext = this.buildHookContext(providerConfig, modelId, toolContext);
+
+    broadcastStatus({ status: "generating", timestamp: Date.now() });
+
+    while (iterations < maxIterations) {
+      iterations++;
+
+      const requestPayload: ConverseCommandInput = {
+        modelId,
+        messages: conversation,
+        inferenceConfig: {
+          maxTokens: maxOutputTokens,
+        },
+      };
+
+      if (systemMessage) {
+        requestPayload.system = [{ text: systemMessage.content }];
+      }
+
+      if (tools.length > 0) {
+        const bedrockTools = tools.map((tool) => ({
+          toolSpec: {
+            name: tool.name,
+            description: tool.description || "",
+            inputSchema: {
+              json: (tool.input_schema || { type: "object", properties: {} }) as SmithyDocumentType,
+            },
+          },
+        })) as NonNullable<ConverseCommandInput["toolConfig"]>["tools"];
+
+        requestPayload.toolConfig = {
+          tools: bedrockTools,
+        };
+      }
+
+      const startTime = performance.now();
+      const response = await client.send(new ConverseCommand(requestPayload));
+      const durationMs = Math.round(performance.now() - startTime);
+      const usage = response.usage;
+      if (usage) {
+        const inputTokens = usage.inputTokens || 0;
+        const outputTokens = usage.outputTokens || 0;
+        trackTokenUsage(
+          modelId,
+          providerConfig,
+          baseUrl || "",
+          inputTokens,
+          outputTokens,
+          durationMs
+        );
+      }
+
+      const outputMessage = response.output?.message;
+      const outputContent: BedrockContentBlock[] = outputMessage?.content || [];
+      const textParts = outputContent
+        .map((block) => ("text" in block && typeof block.text === "string" ? block.text : ""))
+        .filter((text) => text.length > 0);
+      const text = textParts.join("\n").trim();
+      if (text) {
+        finalContent = text;
+      }
+
+      const toolUseBlocks: Array<{
+        toolUseId: string;
+        name: string;
+        input?: unknown;
+      }> = outputContent
+        .map((block) => ("toolUse" in block ? block.toolUse : undefined))
+        .filter(
+          (toolUse): toolUse is ToolUseBlock =>
+            !!toolUse && typeof toolUse.name === "string" && toolUse.name.length > 0
+        )
+        .map((toolUse) => ({
+          toolUseId: toolUse.toolUseId || "",
+          name: toolUse.name as string,
+          input: toolUse.input,
+        }));
+
+      if (toolUseBlocks.length === 0) {
+        break;
+      }
+
+      const toolResults: BedrockContentBlock[] = [];
+      for (const toolUse of toolUseBlocks) {
+        const args =
+          toolUse.input && typeof toolUse.input === "object"
+            ? (toolUse.input as Record<string, unknown>)
+            : parseToolArguments(toolUse.input);
+        const executed = await this.executeToolWithHooks(
+          toolUse.name,
+          args,
+          allowedToolNames,
+          toolContext,
+          hookContext
+        );
+        if (executed.skipped || executed.result === undefined) {
+          continue;
+        }
+
+        allToolCalls.push({ name: toolUse.name, result: executed.result });
+        const normalizedResult =
+          executed.result && typeof executed.result === "object"
+            ? (executed.result as Record<string, unknown>)
+            : { result: executed.result };
+        toolResults.push({
+          toolResult: {
+            toolUseId: toolUse.toolUseId,
+            content: [{ json: normalizedResult as SmithyDocumentType }],
+          },
+        });
+      }
+
+      if (toolResults.length === 0) {
+        break;
+      }
+
+      conversation.push({
+        role: "assistant",
+        content: outputContent,
+      });
+      conversation.push({
+        role: "user",
+        content: toolResults,
+      });
+    }
+
+    if (iterations >= maxIterations) {
+      console.log(`[Agent] Bedrock agentic loop reached max iterations (${maxIterations})`);
     }
 
     return {

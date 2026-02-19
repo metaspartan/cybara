@@ -34,6 +34,7 @@
     "tauri:sidecar": "bun run scripts/build-sidecar.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.993.0",
     "@scure/bip39": "^2.0.1",
     "@slack/bolt": "^4.6.0",
     "@solana/spl-token": "^0.4.14",

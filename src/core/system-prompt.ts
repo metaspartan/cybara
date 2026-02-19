@@ -1044,15 +1044,22 @@ export function resolveModelAlias(modelId: string, provider?: string): string {
     "gpt-4o": "gpt-4o",
     "gpt-4": "gpt-4o",
     "gpt-5": "gpt-5.2",
+    "gpt-5-codex": "gpt-5.3-codex",
+    "gpt-5.2-codex": "gpt-5.3-codex",
+    "openai-codex/gpt-5.2-codex": "gpt-5.3-codex",
     o1: "o1",
     o3: "o3",
 
     // Anthropic aliases
-    "claude-opus": "claude-opus-4-5",
-    "claude-sonnet": "claude-sonnet-4-5",
+    "claude-opus": "claude-opus-4-6",
+    "claude-sonnet": "claude-sonnet-4-6",
     "claude-haiku": "claude-haiku-4-5",
-    opus: "claude-opus-4-5",
-    sonnet: "claude-sonnet-4-5",
+    "claude-opus-4.6": "claude-opus-4-6",
+    "claude-sonnet-4.6": "claude-sonnet-4-6",
+    "anthropic/claude-opus-4-6": "claude-opus-4-6",
+    "anthropic/claude-sonnet-4-6": "claude-sonnet-4-6",
+    opus: "claude-opus-4-6",
+    sonnet: "claude-sonnet-4-6",
     haiku: "claude-haiku-4-5",
 
     // Google aliases
@@ -1063,7 +1070,7 @@ export function resolveModelAlias(modelId: string, provider?: string): string {
     // Generic aliases
     default: "MiniMax-M2.1",
     fast: "MiniMax-M2.1",
-    smart: "claude-opus-4-5",
+    smart: "claude-opus-4-6",
   };
 
   const key = `${provider || ""}/${modelId}`.toLowerCase();

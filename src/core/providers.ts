@@ -92,6 +92,14 @@ export const providers = {
     authType: "api_key",
     models: [
       {
+        id: "claude-sonnet-4-6",
+        name: "Claude Sonnet 4.6",
+        context: 1000000,
+        maxTokens: 128000,
+        reasoning: false,
+        input: ["text", "image"],
+      },
+      {
         id: "claude-opus-4-6",
         name: "Claude Opus 4.6",
         context: 1000000,
@@ -526,7 +534,7 @@ export const providers = {
   ollama: {
     name: "Ollama (Local)",
     baseUrl: "http://localhost:11434/v1",
-    api: "openai-completions",
+    api: "ollama",
     authType: "none",
     models: [],
   },
@@ -542,7 +550,64 @@ export const providers = {
       tokenUrl: "https://github.com/login/oauth/access_token",
       scope: "read:user",
     },
-    models: [],
+    models: [
+      {
+        id: "gpt-4o",
+        name: "gpt-4o",
+        context: 128000,
+        maxTokens: 8192,
+        reasoning: false,
+        input: ["text", "image"],
+      },
+      {
+        id: "gpt-4.1",
+        name: "gpt-4.1",
+        context: 128000,
+        maxTokens: 8192,
+        reasoning: false,
+        input: ["text", "image"],
+      },
+      {
+        id: "gpt-4.1-mini",
+        name: "gpt-4.1-mini",
+        context: 128000,
+        maxTokens: 8192,
+        reasoning: false,
+        input: ["text", "image"],
+      },
+      {
+        id: "gpt-4.1-nano",
+        name: "gpt-4.1-nano",
+        context: 128000,
+        maxTokens: 8192,
+        reasoning: false,
+        input: ["text", "image"],
+      },
+      {
+        id: "o1",
+        name: "o1",
+        context: 128000,
+        maxTokens: 8192,
+        reasoning: false,
+        input: ["text", "image"],
+      },
+      {
+        id: "o1-mini",
+        name: "o1-mini",
+        context: 128000,
+        maxTokens: 8192,
+        reasoning: false,
+        input: ["text", "image"],
+      },
+      {
+        id: "o3-mini",
+        name: "o3-mini",
+        context: 128000,
+        maxTokens: 8192,
+        reasoning: false,
+        input: ["text", "image"],
+      },
+    ],
   },
   bedrock: {
     name: "AWS Bedrock",
@@ -590,6 +655,14 @@ export const providers = {
     authType: "api_key",
     models: [
       {
+        id: "anthropic/claude-sonnet-4-6",
+        name: "Claude Sonnet 4.6",
+        context: 1000000,
+        maxTokens: 128000,
+        reasoning: false,
+        input: ["text", "image"],
+      },
+      {
         id: "anthropic/claude-opus-4-6",
         name: "Claude Opus 4.6",
         context: 1000000,
@@ -621,6 +694,14 @@ export const providers = {
     api: "anthropic-messages",
     authType: "api_key",
     models: [
+      {
+        id: "claude-sonnet-4-6",
+        name: "Claude Sonnet 4.6",
+        context: 1000000,
+        maxTokens: 128000,
+        reasoning: false,
+        input: ["text", "image"],
+      },
       {
         id: "claude-opus-4-6",
         name: "Claude Opus 4.6",
@@ -797,11 +878,20 @@ export const providers = {
   "openai-codex": {
     name: "OpenAI Codex (ChatGPT)",
     baseUrl: "https://api.openai.com/v1",
-    api: "openai-responses",
+    api: "openai-codex-responses",
     authType: "oauth",
     oauthFlow: "redirect" as const,
     oauthLoginUrl: "https://platform.openai.com/api-keys",
     models: [
+      {
+        id: "gpt-5.3-codex",
+        name: "GPT-5.3 Codex",
+        context: 400000,
+        maxTokens: 100000,
+        reasoning: true,
+        input: ["text"],
+        code: true,
+      },
       {
         id: "gpt-5.2",
         name: "GPT-5.2",
@@ -1263,23 +1353,26 @@ export function getProviderBaseUrl(providerType: string): string {
 
 export function getDefaultModel(providerType: string): string {
   const defaults: Record<string, string> = {
-    openai: "gpt-5.1",
-    anthropic: "claude-sonnet-4",
+    openai: "gpt-5.2",
+    anthropic: "claude-sonnet-4-6",
     minimax: "MiniMax-M2.5",
     google: "gemini-2.0-flash-exp",
+    antigravity: "gemini-3-pro-preview",
     "google-antigravity": "gemini-3-pro-preview",
     groq: "llama-3.3-70b-versatile",
-    openrouter: "anthropic/claude-opus-4-5",
+    openrouter: "anthropic/claude-sonnet-4-6",
     ollama: "llama3",
     venice: "llama-3.3-70b",
     "z.ai": "glm-5",
     "z.ai-coding": "glm-5",
     xiaomi: "mimo-v2-flash",
-    opencode_zen: "claude-opus-4-5",
+    opencode_zen: "claude-sonnet-4-6",
     moonshot: "kimi-k2-0905-preview",
     "kimi-code": "kimi-for-coding",
     "qwen-portal": "coder-model",
     synthetic: "hf:MiniMaxAI/MiniMax-M2.1",
+    "openai-codex": "gpt-5.3-codex",
+    github_copilot: "gpt-4o",
   };
   return defaults[providerType] || "gpt-4o";
 }

@@ -238,4 +238,122 @@ describe("Agent provider API-family routing", () => {
     expect(requestHeaders.get("Authorization")).toBe("Bearer kimi-test-key");
     expect(requestHeaders.get("User-Agent")).toBe("KimiCLI/0.77");
   });
+
+  test("routes openai-codex-responses providers with max_completion_tokens", async () => {
+    let requestUrl = "";
+    let requestBody: Record<string, unknown> = {};
+    let requestHeaders = new Headers();
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      requestUrl = String(input);
+      requestHeaders = new Headers(init?.headers);
+      requestBody = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+
+      return new Response(
+        JSON.stringify({
+          id: "resp-codex",
+          object: "chat.completion",
+          model: "gpt-5.3-codex",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "codex-ok",
+              },
+            },
+          ],
+          usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "openai-codex",
+      name: "OpenAI Codex Responses Provider",
+      access_token: "codex-test-token",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "OpenAI Codex Responses Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-5.3-codex",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "hello codex" }],
+      { useTools: false, sessionId: "openai-codex-route-session" }
+    );
+
+    expect(result.content).toBe("codex-ok");
+    expect(requestUrl.endsWith("/chat/completions")).toBe(true);
+    expect(requestHeaders.get("Authorization")).toBe("Bearer codex-test-token");
+    expect("max_tokens" in requestBody).toBe(false);
+    expect(requestBody.max_completion_tokens).toBe(100000);
+  });
+
+  test("routes ollama API family without forcing authorization header", async () => {
+    let requestUrl = "";
+    let requestBody: Record<string, unknown> = {};
+    let requestHeaders = new Headers();
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      requestUrl = String(input);
+      requestHeaders = new Headers(init?.headers);
+      requestBody = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+
+      return new Response(
+        JSON.stringify({
+          id: "resp-ollama",
+          object: "chat.completion",
+          model: "llama3",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "ollama-ok",
+              },
+            },
+          ],
+          usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "ollama",
+      name: "Ollama Routing Provider",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Ollama Routing Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "llama3",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "hello ollama" }],
+      { useTools: false, sessionId: "ollama-route-session" }
+    );
+
+    expect(result.content).toBe("ollama-ok");
+    expect(requestUrl.endsWith("/chat/completions")).toBe(true);
+    expect(requestHeaders.get("Authorization")).toBeNull();
+    expect(requestBody.max_tokens).toBe(8192);
+  });
 });
