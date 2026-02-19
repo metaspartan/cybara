@@ -358,6 +358,70 @@ interface AgentToolCallResult {
   result: unknown;
 }
 
+function normalizeGoogleModelId(modelId: string): string {
+  let normalized = modelId.trim();
+  if (!normalized) return modelId;
+
+  if (normalized.startsWith("models/")) {
+    normalized = normalized.slice("models/".length);
+  }
+
+  const providerPrefix = /^(google|gemini|google-gemini-cli|antigravity|google-antigravity)\//i;
+  if (providerPrefix.test(normalized)) {
+    normalized = normalized.replace(providerPrefix, "");
+  }
+
+  if (normalized === "gemini-3-pro") return "gemini-3-pro-preview";
+  if (normalized === "gemini-3-flash") return "gemini-3-flash-preview";
+  return normalized;
+}
+
+function parseGoogleAuthHeaders(
+  auth: string,
+  providerAuthType: string
+): { headers: Record<string, string> } {
+  const trimmed = auth.trim();
+
+  if (trimmed.startsWith("{")) {
+    const parsedToken = (() => {
+      try {
+        const parsed = JSON.parse(trimmed) as { token?: string };
+        if (typeof parsed.token === "string" && parsed.token.trim()) {
+          return parsed.token.trim();
+        }
+      } catch {
+        return undefined;
+      }
+      return undefined;
+    })();
+    if (parsedToken) {
+      return {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${parsedToken}`,
+        },
+      };
+    }
+  }
+
+  const normalizedAuthType = providerAuthType.trim().toLowerCase();
+  if (normalizedAuthType === "oauth" || normalizedAuthType === "token") {
+    return {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${trimmed}`,
+      },
+    };
+  }
+
+  return {
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": trimmed,
+    },
+  };
+}
+
 function parseAgentConfig(config: unknown, agentId?: string): Record<string, unknown> {
   if (typeof config === "string") {
     try {
@@ -1459,6 +1523,7 @@ class AgentManager {
       return this.callGoogleGenerativeAI(
         baseUrl,
         resolvedAuth,
+        providerAuthType,
         modelId,
         messages,
         tools,
@@ -1808,6 +1873,7 @@ class AgentManager {
   private async callGoogleGenerativeAI(
     baseUrl: string,
     auth: string,
+    providerAuthType: string,
     modelId: string,
     messages: AgentMessage[],
     tools: ToolDefinition[],
@@ -1826,13 +1892,11 @@ class AgentManager {
       parts: [{ text: message.content }],
     }));
 
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      "x-goog-api-key": auth,
-    };
+    const headers = parseGoogleAuthHeaders(auth, providerAuthType).headers;
+    const normalizedModelId = normalizeGoogleModelId(modelId);
 
     const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
-    const endpoint = `${normalizedBaseUrl}/models/${encodeURIComponent(modelId)}:generateContent`;
+    const endpoint = `${normalizedBaseUrl}/models/${encodeURIComponent(normalizedModelId)}:generateContent`;
     const maxIterations = 10;
     let iterations = 0;
     let finalContent = "";

@@ -533,6 +533,36 @@ function normalizeOptionalString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function normalizeSecretString(value: unknown): string | undefined {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) return undefined;
+  const compact = normalized.replace(/\r?\n/g, "");
+  return compact.trim() || undefined;
+}
+
+function buildGoogleAuthHeaders(
+  providerAuthType: string,
+  credentials: { apiKey?: string; accessToken?: string }
+): Record<string, string> {
+  const apiKey = credentials.apiKey?.trim();
+  const accessToken = credentials.accessToken?.trim();
+  const normalizedAuthType = providerAuthType.trim().toLowerCase();
+  if (normalizedAuthType === "oauth" || normalizedAuthType === "token") {
+    if (!accessToken) {
+      return {};
+    }
+    return { Authorization: `Bearer ${accessToken}` };
+  }
+  if (!apiKey) {
+    return {};
+  }
+  return { "x-goog-api-key": apiKey };
+}
+
+function isLikelyGoogleApiKey(value: string): boolean {
+  return /^AIza[0-9A-Za-z_-]+$/.test(value.trim());
+}
+
 function formatChannelTestError(channelType: string, error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
   const normalized = raw.toLowerCase();
@@ -576,6 +606,22 @@ function validateProviderCredentialShape(
 ): void {
   if (providerType === "openai" && credentials.apiKey && !credentials.apiKey.startsWith("sk-")) {
     throw new Error("Validation error: OpenAI API key must start with 'sk-'");
+  }
+
+  if (providerType === "google" && credentials.apiKey) {
+    const trimmed = credentials.apiKey.trim();
+    if (/^https?:\/\//i.test(trimmed)) {
+      throw new Error(
+        "Validation error: Google API key looks like a URL. Paste an AI Studio key (starts with 'AIza')."
+      );
+    }
+    const looksLikeOAuthJson = trimmed.startsWith("{") && trimmed.endsWith("}");
+    const looksLikeApiKey = isLikelyGoogleApiKey(trimmed);
+    if (!looksLikeOAuthJson && !looksLikeApiKey) {
+      throw new Error(
+        "Validation error: Google API key format is invalid. Expected AI Studio key starting with 'AIza'."
+      );
+    }
   }
 }
 
@@ -1508,6 +1554,72 @@ const routes: Record<string, RouteHandler> = {
       }
     }
 
+    if (providerInfo.api === "google-generative-ai") {
+      const baseUrl = (
+        provider.base_url ||
+        providerInfo.baseUrl ||
+        "https://generativelanguage.googleapis.com/v1beta"
+      ).replace(/\/+$/, "");
+      if ((providerInfo.authType || "api_key") === "api_key") {
+        const storedApiKey = provider.api_key?.trim();
+        if (!storedApiKey) {
+          return {
+            success: false,
+            provider: provider.provider,
+            message: "Google API key is missing",
+          };
+        }
+        if (/^https?:\/\//i.test(storedApiKey) || !isLikelyGoogleApiKey(storedApiKey)) {
+          return {
+            success: false,
+            provider: provider.provider,
+            message:
+              "Stored Google API key appears invalid. Paste an AI Studio key that starts with 'AIza'.",
+          };
+        }
+      }
+      const authHeaders = buildGoogleAuthHeaders(providerInfo.authType || "api_key", {
+        apiKey: provider.api_key ?? undefined,
+        accessToken: provider.access_token ?? undefined,
+      });
+      const probeModelId = providerInfo.models?.[0]?.id || "gemini-3-pro-preview";
+      if (!authHeaders.Authorization && !authHeaders["x-goog-api-key"]) {
+        return {
+          success: false,
+          provider: provider.provider,
+          message: "Google credentials are missing",
+        };
+      }
+
+      try {
+        const response = await fetch(`${baseUrl}/models/${encodeURIComponent(probeModelId)}`, {
+          method: "GET",
+          headers: authHeaders,
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!response.ok) {
+          const text = await response.text();
+          const safeText = text.slice(0, 300);
+          return {
+            success: false,
+            provider: provider.provider,
+            message: `Google auth/model check failed: HTTP ${response.status}${safeText ? ` - ${safeText}` : ""}`,
+          };
+        }
+        return {
+          success: true,
+          provider: provider.provider,
+          message: "Google credentials verified",
+        };
+      } catch (error) {
+        return {
+          success: false,
+          provider: provider.provider,
+          message: `Google test failed: ${(error as Error).message}`,
+        };
+      }
+    }
+
     return {
       success: true,
       provider: provider.provider,
@@ -1527,8 +1639,8 @@ const routes: Record<string, RouteHandler> = {
       is_default?: boolean;
     };
 
-    const apiKey = normalizeOptionalString(data.api_key);
-    const accessToken = normalizeOptionalString(data.access_token);
+    const apiKey = normalizeSecretString(data.api_key);
+    const accessToken = normalizeSecretString(data.access_token);
     const resolvedProviderType = resolveProviderType(data.provider);
     if (!resolvedProviderType) {
       throw new Error(`Validation error: unknown provider '${data.provider}'`);
@@ -1571,14 +1683,14 @@ const routes: Record<string, RouteHandler> = {
     }
 
     if ("api_key" in data) {
-      const normalizedApiKey = normalizeOptionalString(data.api_key);
+      const normalizedApiKey = normalizeSecretString(data.api_key);
       if (normalizedApiKey) {
         updates.api_key = normalizedApiKey;
       }
     }
 
     if ("access_token" in data) {
-      const normalizedAccessToken = normalizeOptionalString(data.access_token);
+      const normalizedAccessToken = normalizeSecretString(data.access_token);
       if (normalizedAccessToken) {
         updates.access_token = normalizedAccessToken;
       }

@@ -290,6 +290,120 @@ describe("Agent provider API-family routing", () => {
     expect(requestBody.max_completion_tokens).toBe(100000);
   });
 
+  test("routes google providers through generateContent with x-goog-api-key and model normalization", async () => {
+    let requestUrl = "";
+    let requestBody: Record<string, unknown> = {};
+    let requestHeaders = new Headers();
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      requestUrl = String(input);
+      requestHeaders = new Headers(init?.headers);
+      requestBody = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+
+      return new Response(
+        JSON.stringify({
+          candidates: [
+            {
+              content: {
+                parts: [{ text: "google-ok" }],
+              },
+            },
+          ],
+          usageMetadata: {
+            promptTokenCount: 8,
+            candidatesTokenCount: 3,
+            totalTokenCount: 11,
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "google",
+      name: "Google Routing Provider",
+      api_key: "AIza-test-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Google Routing Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "google/gemini-3-pro",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "hello google" }],
+      { useTools: false, sessionId: "google-route-session" }
+    );
+
+    expect(result.content).toBe("google-ok");
+    expect(requestUrl.endsWith("/models/gemini-3-pro-preview:generateContent")).toBe(true);
+    expect(requestHeaders.get("x-goog-api-key")).toBe("AIza-test-key");
+    expect(requestHeaders.get("Authorization")).toBeNull();
+
+    const contents = (requestBody.contents as Array<Record<string, unknown>>) || [];
+    expect(contents[0]).toEqual({
+      role: "user",
+      parts: [{ text: "hello google" }],
+    });
+  });
+
+  test("routes OAuth-backed google providers with bearer auth headers", async () => {
+    let requestHeaders = new Headers();
+
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestHeaders = new Headers(init?.headers);
+      return new Response(
+        JSON.stringify({
+          candidates: [
+            {
+              content: {
+                parts: [{ text: "google-oauth-ok" }],
+              },
+            },
+          ],
+          usageMetadata: {
+            promptTokenCount: 7,
+            candidatesTokenCount: 2,
+            totalTokenCount: 9,
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "antigravity",
+      name: "Google OAuth Provider",
+      access_token: "ya29.test-oauth-token",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Google OAuth Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gemini-3-pro-preview",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "hello antigravity" }],
+      { useTools: false, sessionId: "google-oauth-route-session" }
+    );
+
+    expect(result.content).toBe("google-oauth-ok");
+    expect(requestHeaders.get("Authorization")).toBe("Bearer ya29.test-oauth-token");
+    expect(requestHeaders.get("x-goog-api-key")).toBeNull();
+  });
+
   test("applies static provider headers for openai-compatible requests", async () => {
     let requestHeaders = new Headers();
 

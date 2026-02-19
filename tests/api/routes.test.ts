@@ -555,6 +555,28 @@ describe("Providers API", () => {
     expect(String(bad.data.error)).toContain("OpenAI API key must start with 'sk-'");
   });
 
+  test("POST /api/providers rejects invalid Google key shapes", async () => {
+    const badUrl = await api("POST", "/api/providers", {
+      provider: "google",
+      name: `bad-google-key-url-${Date.now()}`,
+      api_key: "https://aistudio.google.com/apikey",
+    });
+
+    expect(badUrl.status).toBe(400);
+    expect(badUrl.data.code).toBe("VALIDATION_ERROR");
+    expect(String(badUrl.data.error)).toContain("Google API key looks like a URL");
+
+    const badFormat = await api("POST", "/api/providers", {
+      provider: "google",
+      name: `bad-google-key-format-${Date.now()}`,
+      api_key: "not-a-google-key",
+    });
+
+    expect(badFormat.status).toBe(400);
+    expect(badFormat.data.code).toBe("VALIDATION_ERROR");
+    expect(String(badFormat.data.error)).toContain("Google API key format is invalid");
+  });
+
   test("POST /api/providers accepts OpenClaw-style provider aliases", async () => {
     const created = await api("POST", "/api/providers", {
       provider: "opencode",
