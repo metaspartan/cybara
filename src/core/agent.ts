@@ -143,6 +143,28 @@ interface GoogleResponse {
 
 const ANTHROPIC_CONTEXT_1M_BETA = "context-1m-2025-08-07";
 const DEFAULT_MODEL_MAX_OUTPUT_TOKENS = 8192;
+const MAX_AGENTIC_CONFIGURED_ITERATIONS = 10000;
+const DEFAULT_AGENTIC_MAX_RUNTIME_MS = 10 * 60 * 1000;
+const MAX_AGENTIC_MAX_RUNTIME_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_TOOL_LOOP_WARNING_THRESHOLD = 10;
+const DEFAULT_TOOL_LOOP_CRITICAL_THRESHOLD = 20;
+const DEFAULT_TOOL_LOOP_GLOBAL_CIRCUIT_BREAKER_THRESHOLD = 30;
+const LOOP_WARNING_BUCKET_SIZE = 10;
+
+type AgenticLoopPolicy = {
+  maxIterations?: number;
+  maxRuntimeMs: number;
+  loopDetectionEnabled: boolean;
+  warningThreshold: number;
+  criticalThreshold: number;
+  globalCircuitBreakerThreshold: number;
+};
+
+type AgenticLoopState = {
+  previousFingerprint?: string;
+  noProgressStreak: number;
+  warningBucket: number;
+};
 
 function trackTokenUsage(
   model: string,
@@ -480,6 +502,32 @@ function toOpenAIReplayAssistantMessage(message: OpenAIMessage): Record<string, 
   }
 
   return replayMessage;
+}
+
+function stableSerializeForLoop(value: unknown): string {
+  if (value === null || value === undefined) return String(value);
+  if (typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableSerializeForLoop(entry)).join(",")}]`;
+  }
+  const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+    a.localeCompare(b)
+  );
+  return `{${entries
+    .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableSerializeForLoop(entryValue)}`)
+    .join(",")}}`;
+}
+
+function buildToolIterationFingerprint(toolCalls: AgentToolCallResult[]): string {
+  return toolCalls
+    .map(
+      (toolCall) =>
+        `${toolCall.name}:${stableSerializeForLoop(toolCall.args || {})}:${stableSerializeForLoop(
+          toolCall.result
+        )}`
+    )
+    .sort()
+    .join("|");
 }
 
 function readStringArg(args: Record<string, unknown>, keys: string[]): string | undefined {
@@ -1243,6 +1291,336 @@ class AgentManager {
     return parseModelParams(parsedConfig.model_params ?? parsedConfig.modelParams);
   }
 
+  private parsePositiveInt(value: unknown): number | undefined {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return Math.floor(value);
+    }
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return Math.floor(parsed);
+      }
+    }
+    return undefined;
+  }
+
+  private parseBoolean(value: unknown): boolean | undefined {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") {
+      if (value === 1) return true;
+      if (value === 0) return false;
+      return undefined;
+    }
+    if (typeof value !== "string") return undefined;
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return undefined;
+    if (["1", "true", "yes", "on", "enabled"].includes(normalized)) return true;
+    if (["0", "false", "no", "off", "disabled"].includes(normalized)) return false;
+    return undefined;
+  }
+
+  private clampPositiveInt(value: number, max: number): number {
+    return Math.min(max, Math.max(1, value));
+  }
+
+  private resolveAgenticLoopPolicy(toolContext?: ToolContext): AgenticLoopPolicy {
+    const clampIterations = (value: number) =>
+      this.clampPositiveInt(value, MAX_AGENTIC_CONFIGURED_ITERATIONS);
+    const clampRuntimeMs = (value: number) =>
+      this.clampPositiveInt(value, MAX_AGENTIC_MAX_RUNTIME_MS);
+    const clampThreshold = (value: number) => this.clampPositiveInt(value, 1000);
+
+    const modelParams = this.resolveModelParams(toolContext);
+
+    const agentId = toolContext?.agentId;
+    const agent = agentId ? this.get(agentId) : undefined;
+    const parsedConfig = agent ? parseAgentConfig(agent.config, agent.id) : {};
+    const toolsConfig =
+      parsedConfig.tools &&
+      typeof parsedConfig.tools === "object" &&
+      !Array.isArray(parsedConfig.tools)
+        ? (parsedConfig.tools as Record<string, unknown>)
+        : {};
+    const loopDetectionConfig =
+      toolsConfig.loopDetection &&
+      typeof toolsConfig.loopDetection === "object" &&
+      !Array.isArray(toolsConfig.loopDetection)
+        ? (toolsConfig.loopDetection as Record<string, unknown>)
+        : {};
+
+    const modelParamIterations = this.parsePositiveInt(
+      modelParams.max_tool_iterations ??
+        modelParams.maxToolIterations ??
+        modelParams.max_tool_calls ??
+        modelParams.maxToolCalls ??
+        modelParams.tool_loop_iterations ??
+        modelParams.toolLoopIterations ??
+        modelParams.max_iterations ??
+        modelParams.maxIterations
+    );
+    const configIterations = this.parsePositiveInt(
+      parsedConfig.max_tool_iterations ??
+        parsedConfig.maxToolIterations ??
+        parsedConfig.max_tool_calls ??
+        parsedConfig.maxToolCalls ??
+        parsedConfig.tool_loop_iterations ??
+        parsedConfig.toolLoopIterations ??
+        parsedConfig.max_agentic_iterations ??
+        parsedConfig.maxAgenticIterations
+    );
+    const envIterations = this.parsePositiveInt(process.env.CYBARA_AGENTIC_MAX_ITERATIONS);
+    const modelRuntimeMs = this.parsePositiveInt(
+      modelParams.max_tool_runtime_ms ??
+        modelParams.maxToolRuntimeMs ??
+        modelParams.max_agentic_runtime_ms ??
+        modelParams.maxAgenticRuntimeMs ??
+        modelParams.tool_loop_runtime_ms ??
+        modelParams.toolLoopRuntimeMs ??
+        modelParams.agentic_timeout_ms ??
+        modelParams.agenticTimeoutMs
+    );
+    const modelRuntimeSeconds = this.parsePositiveInt(
+      modelParams.max_tool_runtime_seconds ??
+        modelParams.maxToolRuntimeSeconds ??
+        modelParams.max_agentic_runtime_seconds ??
+        modelParams.maxAgenticRuntimeSeconds ??
+        modelParams.tool_loop_runtime_seconds ??
+        modelParams.toolLoopRuntimeSeconds ??
+        modelParams.agentic_timeout_seconds ??
+        modelParams.agenticTimeoutSeconds
+    );
+    const configRuntimeMs = this.parsePositiveInt(
+      parsedConfig.max_tool_runtime_ms ??
+        parsedConfig.maxToolRuntimeMs ??
+        parsedConfig.max_agentic_runtime_ms ??
+        parsedConfig.maxAgenticRuntimeMs ??
+        parsedConfig.tool_loop_runtime_ms ??
+        parsedConfig.toolLoopRuntimeMs ??
+        parsedConfig.agentic_timeout_ms ??
+        parsedConfig.agenticTimeoutMs
+    );
+    const configRuntimeSeconds = this.parsePositiveInt(
+      parsedConfig.max_tool_runtime_seconds ??
+        parsedConfig.maxToolRuntimeSeconds ??
+        parsedConfig.max_agentic_runtime_seconds ??
+        parsedConfig.maxAgenticRuntimeSeconds ??
+        parsedConfig.tool_loop_runtime_seconds ??
+        parsedConfig.toolLoopRuntimeSeconds ??
+        parsedConfig.agentic_timeout_seconds ??
+        parsedConfig.agenticTimeoutSeconds
+    );
+    const envRuntimeMs = this.parsePositiveInt(process.env.CYBARA_AGENTIC_MAX_RUNTIME_MS);
+    const envRuntimeSeconds = this.parsePositiveInt(process.env.CYBARA_AGENTIC_MAX_RUNTIME_SECONDS);
+
+    const warningThresholdValue = this.parsePositiveInt(
+      modelParams.tool_loop_warning_threshold ??
+        modelParams.toolLoopWarningThreshold ??
+        modelParams.loop_warning_threshold ??
+        modelParams.loopWarningThreshold ??
+        parsedConfig.tool_loop_warning_threshold ??
+        parsedConfig.toolLoopWarningThreshold ??
+        loopDetectionConfig.warningThreshold ??
+        process.env.CYBARA_TOOL_LOOP_WARNING_THRESHOLD
+    );
+    const criticalThresholdValue = this.parsePositiveInt(
+      modelParams.tool_loop_critical_threshold ??
+        modelParams.toolLoopCriticalThreshold ??
+        modelParams.loop_critical_threshold ??
+        modelParams.loopCriticalThreshold ??
+        parsedConfig.tool_loop_critical_threshold ??
+        parsedConfig.toolLoopCriticalThreshold ??
+        loopDetectionConfig.criticalThreshold ??
+        process.env.CYBARA_TOOL_LOOP_CRITICAL_THRESHOLD
+    );
+    const globalCircuitBreakerValue = this.parsePositiveInt(
+      modelParams.tool_loop_global_circuit_breaker_threshold ??
+        modelParams.toolLoopGlobalCircuitBreakerThreshold ??
+        modelParams.loop_global_circuit_breaker_threshold ??
+        modelParams.loopGlobalCircuitBreakerThreshold ??
+        parsedConfig.tool_loop_global_circuit_breaker_threshold ??
+        parsedConfig.toolLoopGlobalCircuitBreakerThreshold ??
+        loopDetectionConfig.globalCircuitBreakerThreshold ??
+        process.env.CYBARA_TOOL_LOOP_GLOBAL_CIRCUIT_BREAKER_THRESHOLD
+    );
+    const loopDetectionEnabled = this.parseBoolean(
+      modelParams.tool_loop_detection_enabled ??
+        modelParams.toolLoopDetectionEnabled ??
+        modelParams.loop_detection_enabled ??
+        modelParams.loopDetectionEnabled ??
+        parsedConfig.tool_loop_detection_enabled ??
+        parsedConfig.toolLoopDetectionEnabled ??
+        loopDetectionConfig.enabled ??
+        process.env.CYBARA_TOOL_LOOP_DETECTION_ENABLED
+    );
+
+    const warningThreshold = clampThreshold(
+      warningThresholdValue ?? DEFAULT_TOOL_LOOP_WARNING_THRESHOLD
+    );
+    let criticalThreshold = clampThreshold(
+      criticalThresholdValue ?? DEFAULT_TOOL_LOOP_CRITICAL_THRESHOLD
+    );
+    let globalCircuitBreakerThreshold = clampThreshold(
+      globalCircuitBreakerValue ?? DEFAULT_TOOL_LOOP_GLOBAL_CIRCUIT_BREAKER_THRESHOLD
+    );
+
+    if (criticalThreshold <= warningThreshold) {
+      criticalThreshold = warningThreshold + 1;
+    }
+    if (globalCircuitBreakerThreshold <= criticalThreshold) {
+      globalCircuitBreakerThreshold = criticalThreshold + 1;
+    }
+
+    const maxIterationsRaw = modelParamIterations ?? configIterations ?? envIterations;
+    const maxIterations = maxIterationsRaw ? clampIterations(maxIterationsRaw) : undefined;
+
+    const maxRuntimeMs = clampRuntimeMs(
+      modelRuntimeMs ??
+        (modelRuntimeSeconds ? modelRuntimeSeconds * 1000 : undefined) ??
+        configRuntimeMs ??
+        (configRuntimeSeconds ? configRuntimeSeconds * 1000 : undefined) ??
+        envRuntimeMs ??
+        (envRuntimeSeconds ? envRuntimeSeconds * 1000 : undefined) ??
+        DEFAULT_AGENTIC_MAX_RUNTIME_MS
+    );
+
+    return {
+      maxIterations,
+      maxRuntimeMs,
+      loopDetectionEnabled: loopDetectionEnabled ?? false,
+      warningThreshold,
+      criticalThreshold,
+      globalCircuitBreakerThreshold,
+    };
+  }
+
+  private updateNoProgressLoopState(
+    loopState: AgenticLoopState,
+    iterationToolCalls: AgentToolCallResult[]
+  ): number {
+    if (iterationToolCalls.length === 0) {
+      loopState.previousFingerprint = undefined;
+      loopState.noProgressStreak = 0;
+      loopState.warningBucket = -1;
+      return 0;
+    }
+
+    const iterationFingerprint = buildToolIterationFingerprint(iterationToolCalls);
+    if (!iterationFingerprint) {
+      loopState.previousFingerprint = undefined;
+      loopState.noProgressStreak = 0;
+      loopState.warningBucket = -1;
+      return 0;
+    }
+
+    if (iterationFingerprint === loopState.previousFingerprint) {
+      loopState.noProgressStreak += 1;
+    } else {
+      loopState.noProgressStreak = 1;
+      loopState.warningBucket = -1;
+    }
+    loopState.previousFingerprint = iterationFingerprint;
+    return loopState.noProgressStreak;
+  }
+
+  private evaluateNoProgressLoop(
+    providerLabel: string,
+    noProgressStreak: number,
+    loopState: AgenticLoopState,
+    loopPolicy: AgenticLoopPolicy
+  ): { stop: boolean; message?: string } {
+    if (!loopPolicy.loopDetectionEnabled) {
+      return { stop: false };
+    }
+    if (noProgressStreak <= 0) {
+      return { stop: false };
+    }
+
+    if (noProgressStreak >= loopPolicy.globalCircuitBreakerThreshold) {
+      console.warn(
+        `[Agent] ${providerLabel} tool loop global circuit breaker triggered (${noProgressStreak} repeated no-progress iterations); stopping early`
+      );
+      return {
+        stop: true,
+        message:
+          "I stopped because tool calls were repeating with no progress and hit the global loop circuit breaker. Please refine the request and try again.",
+      };
+    }
+
+    if (noProgressStreak >= loopPolicy.criticalThreshold) {
+      console.warn(
+        `[Agent] ${providerLabel} tool loop reached critical no-progress threshold (${noProgressStreak} iterations); stopping early`
+      );
+      return {
+        stop: true,
+        message:
+          "I stopped because tool calls were repeating with no progress. Please refine the request and try again.",
+      };
+    }
+
+    if (noProgressStreak >= loopPolicy.warningThreshold) {
+      const warningBucket = Math.floor(noProgressStreak / LOOP_WARNING_BUCKET_SIZE);
+      if (warningBucket > loopState.warningBucket) {
+        loopState.warningBucket = warningBucket;
+        console.warn(
+          `[Agent] ${providerLabel} tool loop warning: ${noProgressStreak} repeated no-progress iterations`
+        );
+      }
+    }
+
+    return { stop: false };
+  }
+
+  private resolveAgenticLoopLimit(
+    loopPolicy: AgenticLoopPolicy,
+    iterations: number,
+    loopStartedAt: number
+  ): "maxIterations" | "runtime" | undefined {
+    if (typeof loopPolicy.maxIterations === "number" && iterations >= loopPolicy.maxIterations) {
+      return "maxIterations";
+    }
+    if (Date.now() - loopStartedAt >= loopPolicy.maxRuntimeMs) {
+      return "runtime";
+    }
+    return undefined;
+  }
+
+  private formatRuntimeLimitLabel(ms: number): string {
+    if (!Number.isFinite(ms) || ms <= 0) return "unknown";
+    const totalSeconds = Math.max(1, Math.round(ms / 1000));
+    if (totalSeconds < 60) return `${totalSeconds}s`;
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (seconds === 0) return `${minutes}m`;
+    return `${minutes}m ${seconds}s`;
+  }
+
+  private applyAgenticLoopLimitMessage(
+    providerLabel: string,
+    limitReason: "maxIterations" | "runtime",
+    loopPolicy: AgenticLoopPolicy,
+    finalContent: string
+  ): string {
+    if (limitReason === "maxIterations") {
+      console.log(
+        `[Agent] ${providerLabel} agentic loop reached configured max iterations (${loopPolicy.maxIterations})`
+      );
+      if (!finalContent.trim()) {
+        return `I reached the configured tool-iteration limit (${loopPolicy.maxIterations}) for this turn. Ask me to continue and I'll resume from here.`;
+      }
+      return finalContent;
+    }
+
+    console.log(
+      `[Agent] ${providerLabel} agentic loop reached runtime limit (${this.formatRuntimeLimitLabel(
+        loopPolicy.maxRuntimeMs
+      )})`
+    );
+    if (!finalContent.trim()) {
+      return `I reached the tool-loop runtime limit (${this.formatRuntimeLimitLabel(loopPolicy.maxRuntimeMs)}) for this turn. Ask me to continue and I'll resume from here.`;
+    }
+    return finalContent;
+  }
+
   private mergeHeaderToken(existing: string | undefined, token: string): string {
     const normalized = (existing || "")
       .split(",")
@@ -1786,7 +2164,8 @@ class AgentManager {
       throw new Error("No response from API");
     }
 
-    const maxIterations = 10; // Prevent infinite loops
+    const loopPolicy = this.resolveAgenticLoopPolicy(toolContext);
+    const loopStartedAt = Date.now();
     let iterations = 0;
     const currentMessages: Record<string, unknown>[] = [
       ...messages.map((m) => ({
@@ -1798,8 +2177,18 @@ class AgentManager {
     const allToolCalls: AgentToolCallResult[] = [];
     let finalContent = message.content || "";
     const hookContext = this.buildHookContext(providerConfig, modelId, toolContext);
+    const loopState: AgenticLoopState = {
+      previousFingerprint: undefined,
+      noProgressStreak: 0,
+      warningBucket: -1,
+    };
+    let limitReason: "maxIterations" | "runtime" | undefined;
 
-    while (iterations < maxIterations) {
+    while (true) {
+      limitReason = this.resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
+      if (limitReason) {
+        break;
+      }
       iterations++;
 
       if (!message.tool_calls || message.tool_calls.length === 0) {
@@ -1811,6 +2200,7 @@ class AgentManager {
       );
 
       const toolResults: Array<{ tool_call_id: string; role: "tool"; content: string }> = [];
+      const iterationToolCalls: AgentToolCallResult[] = [];
 
       for (const toolCall of message.tool_calls) {
         const toolName = toolCall.function?.name;
@@ -1829,12 +2219,33 @@ class AgentManager {
           continue;
         }
 
-        allToolCalls.push({ name: toolName, args, result: executed.result });
+        const toolCallRecord = { name: toolName, args, result: executed.result };
+        allToolCalls.push(toolCallRecord);
+        iterationToolCalls.push(toolCallRecord);
         toolResults.push({
           tool_call_id: toolCallId,
           role: "tool",
           content: JSON.stringify(executed.result),
         });
+      }
+
+      if (iterationToolCalls.length === 0) {
+        console.warn("[Agent] Tool loop produced no tool results; stopping loop early");
+        break;
+      }
+
+      const noProgressStreak = this.updateNoProgressLoopState(loopState, iterationToolCalls);
+      const loopEvaluation = this.evaluateNoProgressLoop(
+        providerConfig || "openai-compat",
+        noProgressStreak,
+        loopState,
+        loopPolicy
+      );
+      if (loopEvaluation.stop) {
+        if (!finalContent.trim()) {
+          finalContent = loopEvaluation.message || "I stopped due to a tool loop safety guard.";
+        }
+        break;
       }
 
       currentMessages.push(toOpenAIReplayAssistantMessage(message));
@@ -1877,8 +2288,13 @@ class AgentManager {
       }
     }
 
-    if (iterations >= maxIterations) {
-      console.log(`[Agent] Agentic loop reached max iterations (${maxIterations})`);
+    if (limitReason) {
+      finalContent = this.applyAgenticLoopLimitMessage(
+        providerConfig || "openai-compat",
+        limitReason,
+        loopPolicy,
+        finalContent
+      );
     }
 
     return {
@@ -1914,16 +2330,27 @@ class AgentManager {
 
     const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
     const endpoint = `${normalizedBaseUrl}/models/${encodeURIComponent(normalizedModelId)}:generateContent`;
-    const maxIterations = 10;
+    const loopPolicy = this.resolveAgenticLoopPolicy(toolContext);
+    const loopStartedAt = Date.now();
     let iterations = 0;
     let finalContent = "";
     const allToolCalls: AgentToolCallResult[] = [];
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
     const hookContext = this.buildHookContext(providerConfig, modelId, toolContext);
+    const loopState: AgenticLoopState = {
+      previousFingerprint: undefined,
+      noProgressStreak: 0,
+      warningBucket: -1,
+    };
+    let limitReason: "maxIterations" | "runtime" | undefined;
 
     this.broadcastAgentStatus("generating", toolContext, "Generating response...");
 
-    while (iterations < maxIterations) {
+    while (true) {
+      limitReason = this.resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
+      if (limitReason) {
+        break;
+      }
       iterations++;
 
       const requestBody: Record<string, unknown> = {
@@ -2000,6 +2427,7 @@ class AgentManager {
       }
 
       const toolResponses: GooglePart[] = [];
+      const iterationToolCalls: AgentToolCallResult[] = [];
       for (const toolCall of toolCalls) {
         const args =
           toolCall.args && typeof toolCall.args === "object"
@@ -2016,7 +2444,9 @@ class AgentManager {
           continue;
         }
 
-        allToolCalls.push({ name: toolCall.name, args, result: executed.result });
+        const toolCallRecord = { name: toolCall.name, args, result: executed.result };
+        allToolCalls.push(toolCallRecord);
+        iterationToolCalls.push(toolCallRecord);
         const responsePayload =
           executed.result && typeof executed.result === "object"
             ? (executed.result as Record<string, unknown>)
@@ -2033,6 +2463,20 @@ class AgentManager {
         break;
       }
 
+      const noProgressStreak = this.updateNoProgressLoopState(loopState, iterationToolCalls);
+      const loopEvaluation = this.evaluateNoProgressLoop(
+        "google",
+        noProgressStreak,
+        loopState,
+        loopPolicy
+      );
+      if (loopEvaluation.stop) {
+        if (!finalContent.trim()) {
+          finalContent = loopEvaluation.message || "I stopped due to a tool loop safety guard.";
+        }
+        break;
+      }
+
       contents.push({
         role: "model",
         parts,
@@ -2043,8 +2487,13 @@ class AgentManager {
       });
     }
 
-    if (iterations >= maxIterations) {
-      console.log(`[Agent] Google agentic loop reached max iterations (${maxIterations})`);
+    if (limitReason) {
+      finalContent = this.applyAgenticLoopLimitMessage(
+        "google",
+        limitReason,
+        loopPolicy,
+        finalContent
+      );
     }
 
     return {
@@ -2086,16 +2535,27 @@ class AgentManager {
         role: message.role === "assistant" ? "assistant" : "user",
         content: [{ text: message.content }],
       }));
-    const maxIterations = 10;
+    const loopPolicy = this.resolveAgenticLoopPolicy(toolContext);
+    const loopStartedAt = Date.now();
     let iterations = 0;
     let finalContent = "";
     const allToolCalls: AgentToolCallResult[] = [];
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
     const hookContext = this.buildHookContext(providerConfig, modelId, toolContext);
+    const loopState: AgenticLoopState = {
+      previousFingerprint: undefined,
+      noProgressStreak: 0,
+      warningBucket: -1,
+    };
+    let limitReason: "maxIterations" | "runtime" | undefined;
 
     this.broadcastAgentStatus("generating", toolContext, "Generating response...");
 
-    while (iterations < maxIterations) {
+    while (true) {
+      limitReason = this.resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
+      if (limitReason) {
+        break;
+      }
       iterations++;
 
       const requestPayload: ConverseCommandInput = {
@@ -2174,6 +2634,7 @@ class AgentManager {
       }
 
       const toolResults: BedrockContentBlock[] = [];
+      const iterationToolCalls: AgentToolCallResult[] = [];
       for (const toolUse of toolUseBlocks) {
         const args =
           toolUse.input && typeof toolUse.input === "object"
@@ -2190,7 +2651,9 @@ class AgentManager {
           continue;
         }
 
-        allToolCalls.push({ name: toolUse.name, args, result: executed.result });
+        const toolCallRecord = { name: toolUse.name, args, result: executed.result };
+        allToolCalls.push(toolCallRecord);
+        iterationToolCalls.push(toolCallRecord);
         const normalizedResult =
           executed.result && typeof executed.result === "object"
             ? (executed.result as Record<string, unknown>)
@@ -2207,6 +2670,20 @@ class AgentManager {
         break;
       }
 
+      const noProgressStreak = this.updateNoProgressLoopState(loopState, iterationToolCalls);
+      const loopEvaluation = this.evaluateNoProgressLoop(
+        "bedrock",
+        noProgressStreak,
+        loopState,
+        loopPolicy
+      );
+      if (loopEvaluation.stop) {
+        if (!finalContent.trim()) {
+          finalContent = loopEvaluation.message || "I stopped due to a tool loop safety guard.";
+        }
+        break;
+      }
+
       conversation.push({
         role: "assistant",
         content: outputContent,
@@ -2217,8 +2694,13 @@ class AgentManager {
       });
     }
 
-    if (iterations >= maxIterations) {
-      console.log(`[Agent] Bedrock agentic loop reached max iterations (${maxIterations})`);
+    if (limitReason) {
+      finalContent = this.applyAgenticLoopLimitMessage(
+        "bedrock",
+        limitReason,
+        loopPolicy,
+        finalContent
+      );
     }
 
     return {
@@ -2307,7 +2789,8 @@ class AgentManager {
       trackTokenUsage(modelId, providerConfig, baseUrl, inputTokens, outputTokens, durationMs);
     }
 
-    const maxIterations = 10;
+    const loopPolicy = this.resolveAgenticLoopPolicy(toolContext);
+    const loopStartedAt = Date.now();
     let iterations = 0;
     let currentData = data;
 
@@ -2322,8 +2805,18 @@ class AgentManager {
     const thinking =
       currentData.content?.find((c) => c.type === ("thinking" as string))?.text || undefined;
     const hookContext = this.buildHookContext(providerConfig, modelId, toolContext);
+    const loopState: AgenticLoopState = {
+      previousFingerprint: undefined,
+      noProgressStreak: 0,
+      warningBucket: -1,
+    };
+    let limitReason: "maxIterations" | "runtime" | undefined;
 
-    while (iterations < maxIterations) {
+    while (true) {
+      limitReason = this.resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
+      if (limitReason) {
+        break;
+      }
       iterations++;
 
       const toolUseBlocks =
@@ -2344,6 +2837,7 @@ class AgentManager {
 
       const toolResults: Array<{ type: "tool_result"; tool_use_id: string; content: string }> = [];
       const expectedToolUseIds = new Set<string>();
+      const iterationToolCalls: AgentToolCallResult[] = [];
 
       for (const toolUse of toolUseBlocks) {
         const toolName = typeof toolUse.name === "string" ? toolUse.name : "";
@@ -2356,10 +2850,16 @@ class AgentManager {
         const args = toolUse.input || {};
 
         if (!toolName) {
+          const missingNamePayload = { error: "Tool use block missing tool name" };
+          iterationToolCalls.push({
+            name: "__missing_tool_name__",
+            args,
+            result: missingNamePayload,
+          });
           toolResults.push({
             type: "tool_result",
             tool_use_id: toolUseId,
-            content: JSON.stringify({ error: "Tool use block missing tool name" }),
+            content: JSON.stringify(missingNamePayload),
           });
           continue;
         }
@@ -2375,6 +2875,7 @@ class AgentManager {
           executed.skipped || executed.result === undefined
             ? { error: `Tool execution skipped for ${toolName}` }
             : executed.result;
+        iterationToolCalls.push({ name: toolName, args, result: resultPayload });
         if (!executed.skipped && executed.result !== undefined) {
           allToolCalls.push({ name: toolName, args, result: executed.result });
         }
@@ -2398,6 +2899,22 @@ class AgentManager {
       if (toolResults.length === 0) {
         console.warn("[Agent] Anthropic tool loop produced no tool results; stopping loop early");
         break;
+      }
+
+      if (iterationToolCalls.length > 0) {
+        const noProgressStreak = this.updateNoProgressLoopState(loopState, iterationToolCalls);
+        const loopEvaluation = this.evaluateNoProgressLoop(
+          "anthropic",
+          noProgressStreak,
+          loopState,
+          loopPolicy
+        );
+        if (loopEvaluation.stop) {
+          if (!finalContent.trim()) {
+            finalContent = loopEvaluation.message || "I stopped due to a tool loop safety guard.";
+          }
+          break;
+        }
       }
 
       const toolResultIds = new Set(toolResults.map((toolResult) => toolResult.tool_use_id));
@@ -2452,8 +2969,13 @@ class AgentManager {
       }
     }
 
-    if (iterations >= maxIterations) {
-      console.log(`[Agent] Anthropic agentic loop reached max iterations (${maxIterations})`);
+    if (limitReason) {
+      finalContent = this.applyAgenticLoopLimitMessage(
+        "anthropic",
+        limitReason,
+        loopPolicy,
+        finalContent
+      );
     }
 
     return {
@@ -2531,15 +3053,26 @@ class AgentManager {
       throw new Error("No response from API");
     }
 
-    const maxIterations = 10;
+    const loopPolicy = this.resolveAgenticLoopPolicy(toolContext);
+    const loopStartedAt = Date.now();
     let iterations = 0;
     const currentMessages: Record<string, unknown>[] = [...chatMessages];
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
     const allToolCalls: AgentToolCallResult[] = [];
     let finalContent = message.content || "";
     const hookContext = this.buildHookContext("openai", modelId, toolContext);
+    const loopState: AgenticLoopState = {
+      previousFingerprint: undefined,
+      noProgressStreak: 0,
+      warningBucket: -1,
+    };
+    let limitReason: "maxIterations" | "runtime" | undefined;
 
-    while (iterations < maxIterations) {
+    while (true) {
+      limitReason = this.resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
+      if (limitReason) {
+        break;
+      }
       iterations++;
 
       if (!message.tool_calls || message.tool_calls.length === 0) {
@@ -2551,6 +3084,7 @@ class AgentManager {
       );
 
       const toolResults: Array<{ tool_call_id: string; role: "tool"; content: string }> = [];
+      const iterationToolCalls: AgentToolCallResult[] = [];
 
       for (const toolCall of message.tool_calls) {
         const toolName = toolCall.function?.name;
@@ -2569,12 +3103,33 @@ class AgentManager {
           continue;
         }
 
-        allToolCalls.push({ name: toolName, args, result: executed.result });
+        const toolCallRecord = { name: toolName, args, result: executed.result };
+        allToolCalls.push(toolCallRecord);
+        iterationToolCalls.push(toolCallRecord);
         toolResults.push({
           tool_call_id: toolCallId,
           role: "tool",
           content: JSON.stringify(executed.result),
         });
+      }
+
+      if (iterationToolCalls.length === 0) {
+        console.warn("[Agent] OpenAI tool loop produced no tool results; stopping loop early");
+        break;
+      }
+
+      const noProgressStreak = this.updateNoProgressLoopState(loopState, iterationToolCalls);
+      const loopEvaluation = this.evaluateNoProgressLoop(
+        "openai",
+        noProgressStreak,
+        loopState,
+        loopPolicy
+      );
+      if (loopEvaluation.stop) {
+        if (!finalContent.trim()) {
+          finalContent = loopEvaluation.message || "I stopped due to a tool loop safety guard.";
+        }
+        break;
       }
 
       currentMessages.push(toOpenAIReplayAssistantMessage(message));
@@ -2617,8 +3172,13 @@ class AgentManager {
       }
     }
 
-    if (iterations >= maxIterations) {
-      console.log(`[Agent] OpenAI agentic loop reached max iterations (${maxIterations})`);
+    if (limitReason) {
+      finalContent = this.applyAgenticLoopLimitMessage(
+        "openai",
+        limitReason,
+        loopPolicy,
+        finalContent
+      );
     }
 
     return {

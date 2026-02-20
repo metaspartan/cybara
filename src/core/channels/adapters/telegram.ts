@@ -769,6 +769,7 @@ export class TelegramBotManager implements ChannelAdapter {
   > = new Map();
   private reactionScopes: Map<string, TelegramReactionNotificationScope> = new Map();
   private messageHandler: InternalMessageHandler = async () => "No handler configured";
+  private typingRefreshMs = 4000;
 
   setMessageHandler(handler: InternalMessageHandler) {
     this.messageHandler = handler;
@@ -1171,47 +1172,42 @@ export class TelegramBotManager implements ChannelAdapter {
       },
     });
 
+    const stopTyping = this.startTypingKeepAlive(botToken, chatId);
     let response: string;
-
     try {
-      await telegramApi(botToken, "sendChatAction", {
-        chat_id: chatId,
-        action: "typing",
-      });
-    } catch {
-      void 0;
-    }
+      if (content.startsWith("/")) {
+        const [commandWithBot, ...args] = content.slice(1).split(/\s+/);
+        const command = commandWithBot.split("@")[0];
 
-    if (content.startsWith("/")) {
-      const [commandWithBot, ...args] = content.slice(1).split(/\s+/);
-      const command = commandWithBot.split("@")[0];
+        response = await handleTelegramCommand(
+          command,
+          args,
+          update,
+          channelId,
+          this.messageHandler,
+          chatId,
+          userId
+        );
+      } else {
+        try {
+          const userKey = resolveTelegramUserKey(chatId, userId);
+          const activeSessionId = telegramSessions.get(String(chatId)) || `telegram:${chatId}`;
+          setTelegramChatSession(chatId, activeSessionId, userKey);
 
-      response = await handleTelegramCommand(
-        command,
-        args,
-        update,
-        channelId,
-        this.messageHandler,
-        chatId,
-        userId
-      );
-    } else {
-      try {
-        const userKey = resolveTelegramUserKey(chatId, userId);
-        const activeSessionId = telegramSessions.get(String(chatId)) || `telegram:${chatId}`;
-        setTelegramChatSession(chatId, activeSessionId, userKey);
-
-        const messageWithFile = hasFile ? `${content}\n\n[File: ${filePath}]` : content;
-        response = await this.messageHandler(messageWithFile, chatId, userId, channelId, {
-          hasFile,
-          filePath,
-          fileType,
-          placeholder,
-        });
-      } catch (error) {
-        console.error("[Telegram] Error handling message:", error);
-        response = "❌ Sorry, I encountered an error processing your message. Please try again.";
+          const messageWithFile = hasFile ? `${content}\n\n[File: ${filePath}]` : content;
+          response = await this.messageHandler(messageWithFile, chatId, userId, channelId, {
+            hasFile,
+            filePath,
+            fileType,
+            placeholder,
+          });
+        } catch (error) {
+          console.error("[Telegram] Error handling message:", error);
+          response = "❌ Sorry, I encountered an error processing your message. Please try again.";
+        }
       }
+    } finally {
+      stopTyping();
     }
 
     await logChannelMessage("telegram", "outgoing", response, {
@@ -1246,6 +1242,31 @@ export class TelegramBotManager implements ChannelAdapter {
       parse_mode: "Markdown",
       reply_to_message_id: message.message_id,
     });
+  }
+
+  private startTypingKeepAlive(botToken: string, chatId: number | string): () => void {
+    let stopped = false;
+    const sendTyping = async () => {
+      if (stopped) return;
+      try {
+        await telegramApi(botToken, "sendChatAction", {
+          chat_id: chatId,
+          action: "typing",
+        });
+      } catch {
+        void 0;
+      }
+    };
+
+    void sendTyping();
+    const timer = setInterval(() => {
+      void sendTyping();
+    }, this.typingRefreshMs);
+
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
   }
 
   private async handleCallbackQuery(

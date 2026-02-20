@@ -289,6 +289,48 @@ describe("Discord adapter mocked message flows", () => {
     expect(replies).toContain("echo:hello two");
   });
 
+  test("keeps typing indicator alive while long handler work is running", async () => {
+    const adapter = new DiscordAdapter();
+    const channelId = makeChannelId("discord-typing-loop");
+    const replies: string[] = [];
+    const followUps: string[] = [];
+    let typingCalls = 0;
+
+    (
+      adapter as unknown as {
+        typingRefreshMs: number;
+      }
+    ).typingRefreshMs = 10;
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 35));
+      return "done";
+    });
+
+    const message = createFakeDiscordMessage(
+      {
+        guild: null,
+        channel: {
+          id: "chat-typing",
+          sendTyping: async () => {
+            typingCalls += 1;
+          },
+          send: async (chunk: string) => {
+            followUps.push(chunk);
+          },
+        },
+      },
+      replies,
+      followUps
+    );
+
+    await handleDiscordMessage(adapter, channelId, message);
+
+    expect(typingCalls).toBeGreaterThanOrEqual(2);
+    expect(replies).toContain("done");
+  });
+
   test("splits long responses into reply + follow-up chunks under Discord limits", async () => {
     const adapter = new DiscordAdapter();
     const channelId = makeChannelId("discord-long");

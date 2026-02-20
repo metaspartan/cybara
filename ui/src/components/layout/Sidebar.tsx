@@ -65,11 +65,25 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 }
 
 function useAgentStatus() {
-  const [status, setStatus] = useState<'idle' | 'thinking' | 'active'>('idle');
+  const [status, setStatus] = useState<'idle' | 'active'>('idle');
   const eventSourceRef = useRef<EventSource | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    const clearIdleFallback = () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+
+    const scheduleIdleFallback = () => {
+      clearIdleFallback();
+      timeoutRef.current = setTimeout(() => {
+        setStatus('idle');
+      }, 45000);
+    };
+
     const connectSSE = () => {
       const eventSource = new EventSource(appendApiTokenParam('/api/sse/status'));
       eventSourceRef.current = eventSource;
@@ -77,20 +91,27 @@ function useAgentStatus() {
       eventSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          const statusValue = data.status || data;
+          const statusValue = typeof data?.status === 'string' ? data.status : typeof data === 'string' ? data : '';
 
-          if (statusValue && (statusValue === 'thinking' || statusValue === 'idle')) {
-            setStatus(statusValue);
+          if (!statusValue) return;
 
-            if (timeoutRef.current) {
-              clearTimeout(timeoutRef.current);
-            }
+          if (statusValue === 'idle') {
+            clearIdleFallback();
+            setStatus('idle');
+            return;
+          }
 
-            if (statusValue === 'thinking') {
-              timeoutRef.current = setTimeout(() => {
-                setStatus('idle');
-              }, 30000);
-            }
+          const activeStatuses = new Set([
+            'thinking',
+            'generating',
+            'tool_executing',
+            'tool_completed',
+            'error',
+          ]);
+
+          if (activeStatuses.has(statusValue)) {
+            setStatus('active');
+            scheduleIdleFallback();
           }
         } catch {
           // Ignore parse errors
@@ -109,9 +130,7 @@ function useAgentStatus() {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
       }
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
+      clearIdleFallback();
     };
   }, []);
 
@@ -243,7 +262,7 @@ export function Sidebar() {
               <div
                 className={cn(
                   'w-10 h-10 rounded-xl overflow-hidden transition-all duration-300',
-                  status === 'thinking' && 'ring-2 ring-amber-400/60 ring-offset-2 ring-offset-[#12121a]'
+                  status === 'active' && 'ring-2 ring-amber-400/60 ring-offset-2 ring-offset-[#12121a]'
                 )}
               >
                 <img
@@ -254,7 +273,7 @@ export function Sidebar() {
                   )}
                 />
               </div>
-              {status === 'thinking' && (
+              {status === 'active' && (
                 <div className="absolute -inset-1 rounded-xl bg-amber-400/20" />
               )}
             </div>

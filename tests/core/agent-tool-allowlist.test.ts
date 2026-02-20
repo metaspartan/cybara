@@ -471,4 +471,183 @@ describe("Agent tool allowlist guardrails", () => {
     expect(assistantToolMessage).toBeDefined();
     expect(assistantToolMessage?.reasoning_content).toBe("internal reasoning trace");
   });
+
+  test("stops openai-compatible tool loops after repeated no-progress calls", async () => {
+    const provider = providerManager.create({
+      provider: "kimi-code",
+      name: "Kimi No Progress Provider",
+      api_key: "kimi-test-key",
+      base_url: "https://api.kimi.com/coding/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const execTool: ToolDefinition = {
+      name: "exec",
+      description: "Execute shell commands",
+      input_schema: {
+        type: "object",
+        properties: { command: { type: "string" } },
+        required: ["command"],
+      },
+    };
+
+    const agent = agentManager.create({
+      name: "Kimi No Progress Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "kimi-for-coding",
+      tools: [execTool],
+      memory_enabled: false,
+      config: {
+        model_params: {
+          tool_loop_detection_enabled: true,
+          tool_loop_warning_threshold: 2,
+          tool_loop_critical_threshold: 3,
+        },
+      },
+    });
+    createdAgentIds.push(agent.id);
+
+    let completionCalls = 0;
+    globalThis.fetch = (async () => {
+      completionCalls += 1;
+      return new Response(
+        JSON.stringify({
+          id: `resp-np-${completionCalls}`,
+          object: "chat.completion",
+          model: "kimi-for-coding",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "tool_calls",
+              message: {
+                role: "assistant",
+                content: null,
+                tool_calls: [
+                  {
+                    id: `call-np-${completionCalls}`,
+                    type: "function",
+                    function: {
+                      name: "exec",
+                      arguments: JSON.stringify({}),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 10, completion_tokens: 3, total_tokens: 13 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "keep going" }],
+      { useTools: true, sessionId: "kimi-no-progress-session" }
+    );
+
+    expect(completionCalls).toBe(3);
+    expect(result.content).toContain("repeating with no progress");
+    expect(result.tool_calls?.length).toBe(3);
+  });
+
+  test("does not impose a default hard iteration cap when loop is still progressing", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "OpenAI Long Loop Provider",
+      api_key: "openai-long-loop-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "OpenAI Long Loop Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-5.2",
+      tools: [
+        {
+          name: "calc",
+          description: "Evaluate math",
+          input_schema: {
+            type: "object",
+            properties: {
+              expression: { type: "string" },
+            },
+            required: ["expression"],
+          },
+        },
+      ],
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    let completionCalls = 0;
+    globalThis.fetch = (async () => {
+      completionCalls += 1;
+
+      if (completionCalls <= 15) {
+        return new Response(
+          JSON.stringify({
+            id: `resp-long-${completionCalls}`,
+            object: "chat.completion",
+            model: "gpt-5.2",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "tool_calls",
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: `call-long-${completionCalls}`,
+                      type: "function",
+                      function: {
+                        name: "missing_tool",
+                        arguments: JSON.stringify({ step: completionCalls }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+            usage: { prompt_tokens: 10, completion_tokens: 3, total_tokens: 13 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          id: "resp-long-final",
+          object: "chat.completion",
+          model: "gpt-5.2",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "long-loop-done",
+              },
+            },
+          ],
+          usage: { prompt_tokens: 7, completion_tokens: 2, total_tokens: 9 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "keep iterating until done" }],
+      { useTools: true, sessionId: "openai-long-loop-session" }
+    );
+
+    expect(completionCalls).toBe(16);
+    expect(result.content).toBe("long-loop-done");
+    expect(result.tool_calls?.length).toBe(15);
+  });
 });

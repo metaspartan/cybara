@@ -12,13 +12,23 @@ function expandTilde(path: string | undefined): string | undefined {
 export async function handleExec(
   args: Record<string, unknown>
 ): Promise<{ output: string; exitCode: number; cwd?: string }> {
-  const command = args.command as string;
+  const command =
+    typeof args.command === "string"
+      ? (args.command as string).trim()
+      : typeof args.cmd === "string"
+        ? (args.cmd as string).trim()
+        : "";
   const timeout = args.timeout as number | undefined;
   const workdir = expandTilde(args.workdir as string | undefined);
   const env = args.env as Record<string, string> | undefined;
 
   if (!command) {
-    throw new Error("Command is required");
+    return {
+      output:
+        'Error: command is required. Provide a non-empty command string (for example: {"command":"ls -la"}).',
+      exitCode: 2,
+      cwd: workdir,
+    };
   }
 
   if (workdir && !existsSync(workdir)) {
@@ -64,8 +74,22 @@ export async function handleExec(
 export async function handleExecAsync(
   args: Record<string, unknown>
 ): Promise<{ pid: number; output: string; exitCode: number }> {
-  const command = args.command as string;
+  const command =
+    typeof args.command === "string"
+      ? (args.command as string).trim()
+      : typeof args.cmd === "string"
+        ? (args.cmd as string).trim()
+        : "";
   const workdir = expandTilde(args.workdir as string | undefined);
+
+  if (!command) {
+    return {
+      pid: 0,
+      output:
+        'Error: command is required. Provide a non-empty command string (for example: {"command":"ls -la"}).',
+      exitCode: 2,
+    };
+  }
 
   const proc = Bun.spawn(["sh", "-c", command], {
     cwd: workdir || homeDir,

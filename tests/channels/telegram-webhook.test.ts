@@ -203,6 +203,11 @@ describe("Telegram webhook mocked flows", () => {
     resetTelegramSessionTrackingForTests();
     (
       telegramBot as unknown as {
+        typingRefreshMs: number;
+      }
+    ).typingRefreshMs = 4000;
+    (
+      telegramBot as unknown as {
         bots: Map<string, unknown>;
       }
     ).bots.clear();
@@ -270,6 +275,30 @@ describe("Telegram webhook mocked flows", () => {
     expect(payload.text).toBe("pong");
     expect(payload.parse_mode).toBe("Markdown");
     expect(payload.reply_to_message_id).toBe(101);
+  });
+
+  test("keeps Telegram typing indicator alive while handler is still running", async () => {
+    (
+      telegramBot as unknown as {
+        typingRefreshMs: number;
+      }
+    ).typingRefreshMs = 10;
+
+    telegramBot.setMessageHandler(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 35));
+      return "slow pong";
+    });
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+
+    const ok = await processTelegramWebhook(channelId, makeTelegramUpdate("ping"));
+
+    expect(ok).toBe(true);
+    const typingCalls = fetchCalls.filter((call) => call.url.includes("/sendChatAction")).length;
+    expect(typingCalls).toBeGreaterThanOrEqual(2);
+
+    const sendMessageCall = fetchCalls.find((call) => call.url.includes("/sendMessage"));
+    const payload = sendMessageCall?.body as { text?: string };
+    expect(payload.text).toBe("slow pong");
   });
 
   test("malformed stored channel config uses missing-token path instead of parse-error catch path", async () => {

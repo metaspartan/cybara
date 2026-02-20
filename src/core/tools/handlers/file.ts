@@ -90,7 +90,7 @@ export async function handleEdit(
 export async function handleFileSearch(
   args: Record<string, unknown>
 ): Promise<{ files: string[]; pattern: string; cwd: string; error?: string }> {
-  const pattern = args.pattern as string;
+  const pattern = typeof args.pattern === "string" ? args.pattern.trim() : "";
   let cwd = args.cwd as string | undefined;
 
   if (cwd && cwd.startsWith("~")) {
@@ -98,6 +98,16 @@ export async function handleFileSearch(
   }
 
   const searchDir = cwd || workspace;
+
+  if (!pattern) {
+    return {
+      files: [],
+      pattern: "",
+      cwd: searchDir,
+      error:
+        'pattern is required. Provide a glob pattern (for example: "**/*.ts" or "src/**/*.md").',
+    };
+  }
 
   if (!existsSync(searchDir)) {
     return {

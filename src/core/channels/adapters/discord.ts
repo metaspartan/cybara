@@ -55,6 +55,7 @@ export class DiscordAdapter implements ChannelAdapter {
   private clients = new Map<string, Client>();
   private reactionScopes = new Map<string, DiscordReactionNotificationScope>();
   private messageHandler: MessageHandler = async () => "No handler configured";
+  private typingRefreshMs = 7000;
 
   setMessageHandler(handler: MessageHandler) {
     this.messageHandler = handler;
@@ -196,13 +197,7 @@ export class DiscordAdapter implements ChannelAdapter {
       },
     });
 
-    try {
-      if ("sendTyping" in message.channel) {
-        await message.channel.sendTyping();
-      }
-    } catch {
-      void 0;
-    }
+    const stopTyping = this.startTypingKeepAlive(message.channel);
 
     const sessionKey = `${channelId}:${chatId}`;
     let sessionId = discordSessions.get(sessionKey);
@@ -211,41 +206,69 @@ export class DiscordAdapter implements ChannelAdapter {
       discordSessions.set(sessionKey, sessionId);
     }
 
-    let response: string;
     try {
-      const commandResponse = await handleChannelManagementCommand(content, {
-        channelId,
-        chatId,
-        platform: "discord",
-        sessionId,
-        createSessionId: () => crypto.randomUUID(),
-        setSessionId: (nextSessionId: string) => {
-          sessionId = nextSessionId;
-          discordSessions.set(sessionKey, nextSessionId);
-        },
+      let response: string;
+      try {
+        const commandResponse = await handleChannelManagementCommand(content, {
+          channelId,
+          chatId,
+          platform: "discord",
+          sessionId,
+          createSessionId: () => crypto.randomUUID(),
+          setSessionId: (nextSessionId: string) => {
+            sessionId = nextSessionId;
+            discordSessions.set(sessionKey, nextSessionId);
+          },
+        });
+
+        if (commandResponse !== null) {
+          response = commandResponse;
+        } else {
+          response = await this.messageHandler(content, chatId, sessionId, {
+            hasFile,
+            filePath,
+            fileType,
+            placeholder,
+          });
+        }
+      } catch (error) {
+        console.error("[Discord] Error handling message:", error);
+        response = "❌ Sorry, I encountered an error processing your message. Please try again.";
+      }
+
+      await logChannelMessage("discord", "outgoing", response, {
+        channelId: chatId,
+        metadata: { replyToMessageId: message.id },
       });
 
-      if (commandResponse !== null) {
-        response = commandResponse;
-      } else {
-        response = await this.messageHandler(content, chatId, sessionId, {
-          hasFile,
-          filePath,
-          fileType,
-          placeholder,
-        });
-      }
-    } catch (error) {
-      console.error("[Discord] Error handling message:", error);
-      response = "❌ Sorry, I encountered an error processing your message. Please try again.";
+      await this.sendLongMessage(message, response);
+    } finally {
+      stopTyping();
     }
+  }
 
-    await logChannelMessage("discord", "outgoing", response, {
-      channelId: chatId,
-      metadata: { replyToMessageId: message.id },
-    });
+  private startTypingKeepAlive(channel: Message["channel"]): () => void {
+    let stopped = false;
+    const sendTyping = async () => {
+      if (stopped) return;
+      try {
+        if ("sendTyping" in channel) {
+          await channel.sendTyping();
+        }
+      } catch {
+        void 0;
+      }
+    };
 
-    await this.sendLongMessage(message, response);
+    void sendTyping();
+    const timer = setInterval(() => {
+      void sendTyping();
+    }, this.typingRefreshMs);
+
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
   }
 
   private resolveReactionScope(channelId: string): DiscordReactionNotificationScope {

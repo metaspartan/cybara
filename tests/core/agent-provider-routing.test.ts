@@ -225,6 +225,215 @@ describe("Agent provider API-family routing", () => {
     expect(String(toolResult?.content)).toContain("Tool not found: calculate");
   });
 
+  test("anthropic loop respects model_params max_tool_iterations override", async () => {
+    let requestCount = 0;
+
+    globalThis.fetch = (async () => {
+      requestCount += 1;
+      return new Response(
+        JSON.stringify({
+          id: `msg-max-iter-${requestCount}`,
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-20250514",
+          content: [
+            {
+              type: "tool_use",
+              id: `toolu_max_iter_${requestCount}`,
+              name: "calc",
+              input: { expression: `${requestCount}+1` },
+            },
+          ],
+          usage: { input_tokens: 10, output_tokens: 4 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "anthropic",
+      name: "Anthropic Max Iteration Provider",
+      api_key: "anthropic-max-iter-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Anthropic Max Iteration Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "claude-sonnet-4-20250514",
+      tools: [
+        {
+          name: "calc",
+          description: "Evaluate math",
+          input_schema: {
+            type: "object",
+            properties: {
+              expression: { type: "string" },
+            },
+            required: ["expression"],
+          },
+        },
+      ],
+      config: {
+        model_params: {
+          max_tool_iterations: 3,
+        },
+      },
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "run until limit" }],
+      { useTools: true, sessionId: "anthropic-max-iteration-session" }
+    );
+
+    expect(requestCount).toBe(4);
+    expect(result.tool_calls?.length).toBe(3);
+    expect(result.content).toContain("tool-iteration limit (3)");
+  });
+
+  test("anthropic loop accepts max_tool_calls alias for iteration cap", async () => {
+    let requestCount = 0;
+
+    globalThis.fetch = (async () => {
+      requestCount += 1;
+      return new Response(
+        JSON.stringify({
+          id: `msg-max-calls-${requestCount}`,
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-20250514",
+          content: [
+            {
+              type: "tool_use",
+              id: `toolu_max_calls_${requestCount}`,
+              name: "calc",
+              input: { expression: `${requestCount}+2` },
+            },
+          ],
+          usage: { input_tokens: 10, output_tokens: 4 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "anthropic",
+      name: "Anthropic Max Calls Alias Provider",
+      api_key: "anthropic-max-calls-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Anthropic Max Calls Alias Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "claude-sonnet-4-20250514",
+      tools: [
+        {
+          name: "calc",
+          description: "Evaluate math",
+          input_schema: {
+            type: "object",
+            properties: {
+              expression: { type: "string" },
+            },
+            required: ["expression"],
+          },
+        },
+      ],
+      config: {
+        model_params: {
+          max_tool_calls: 2,
+        },
+      },
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "run until alias limit" }],
+      { useTools: true, sessionId: "anthropic-max-calls-session" }
+    );
+
+    expect(requestCount).toBe(3);
+    expect(result.tool_calls?.length).toBe(2);
+    expect(result.content).toContain("tool-iteration limit (2)");
+  });
+
+  test("anthropic loop stops repeated no-progress cycles early", async () => {
+    let requestCount = 0;
+
+    globalThis.fetch = (async () => {
+      requestCount += 1;
+      return new Response(
+        JSON.stringify({
+          id: `msg-no-progress-${requestCount}`,
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-20250514",
+          content: [
+            {
+              type: "tool_use",
+              id: `toolu_no_progress_${requestCount}`,
+              name: "calc",
+              input: { expression: "1+1" },
+            },
+          ],
+          usage: { input_tokens: 9, output_tokens: 3 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "anthropic",
+      name: "Anthropic No Progress Provider",
+      api_key: "anthropic-no-progress-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Anthropic No Progress Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "claude-sonnet-4-20250514",
+      tools: [
+        {
+          name: "calc",
+          description: "Evaluate math",
+          input_schema: {
+            type: "object",
+            properties: {
+              expression: { type: "string" },
+            },
+            required: ["expression"],
+          },
+        },
+      ],
+      config: {
+        model_params: {
+          tool_loop_detection_enabled: true,
+          tool_loop_warning_threshold: 2,
+          tool_loop_critical_threshold: 3,
+        },
+      },
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "run with repeated call" }],
+      { useTools: true, sessionId: "anthropic-no-progress-session" }
+    );
+
+    expect(requestCount).toBe(3);
+    expect(result.tool_calls?.length).toBe(3);
+    expect(result.content).toContain("repeating with no progress");
+  });
+
   test("routes openai-family providers through /chat/completions and keeps system message in messages", async () => {
     let requestUrl = "";
     let requestBody: Record<string, unknown> = {};
