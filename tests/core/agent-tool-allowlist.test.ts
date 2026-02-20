@@ -354,4 +354,121 @@ describe("Agent tool allowlist guardrails", () => {
     expect("max_tokens" in requestBodies[0]).toBe(false);
     expect(requestBodies[0].max_completion_tokens).toBe(expectedTokenLimit);
   });
+
+  test("preserves assistant reasoning_content in openai-compatible tool loops", async () => {
+    const provider = providerManager.create({
+      provider: "kimi-code",
+      name: "Kimi Coding Provider",
+      api_key: "kimi-test-key",
+      base_url: "https://api.kimi.com/coding/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const calcTool: ToolDefinition = {
+      name: "calc",
+      description: "Evaluate math expressions",
+      input_schema: {
+        type: "object",
+        properties: { expression: { type: "string" } },
+        required: ["expression"],
+      },
+    };
+
+    const agent = agentManager.create({
+      name: "Kimi Reasoning Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "kimi-for-coding",
+      tools: [calcTool],
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    let completionCalls = 0;
+    let loopRequestBody: Record<string, unknown> | undefined;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      completionCalls += 1;
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+
+      if (completionCalls === 1) {
+        return new Response(
+          JSON.stringify({
+            id: "resp-kimi-1",
+            object: "chat.completion",
+            model: "kimi-for-coding",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "tool_calls",
+                message: {
+                  role: "assistant",
+                  content: null,
+                  reasoning_content: "internal reasoning trace",
+                  tool_calls: [
+                    {
+                      id: "call-kimi-1",
+                      type: "function",
+                      function: {
+                        name: "calc",
+                        arguments: JSON.stringify({ expression: "1+1" }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+            usage: { prompt_tokens: 8, completion_tokens: 3, total_tokens: 11 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      loopRequestBody = body;
+      return new Response(
+        JSON.stringify({
+          id: "resp-kimi-2",
+          object: "chat.completion",
+          model: "kimi-for-coding",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "done",
+              },
+            },
+          ],
+          usage: { prompt_tokens: 4, completion_tokens: 1, total_tokens: 5 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "calculate 1+1" }],
+      { useTools: true, sessionId: "kimi-reasoning-session" }
+    );
+
+    expect(result.content).toBe("done");
+    expect(completionCalls).toBe(2);
+    expect(loopRequestBody).toBeDefined();
+
+    const loopMessages = Array.isArray(loopRequestBody?.messages)
+      ? (loopRequestBody.messages as Array<Record<string, unknown>>)
+      : [];
+
+    let assistantToolMessage: Record<string, unknown> | undefined;
+    for (let index = loopMessages.length - 1; index >= 0; index -= 1) {
+      const candidate = loopMessages[index];
+      if (candidate.role === "assistant" && Array.isArray(candidate.tool_calls)) {
+        assistantToolMessage = candidate;
+        break;
+      }
+    }
+
+    expect(assistantToolMessage).toBeDefined();
+    expect(assistantToolMessage?.reasoning_content).toBe("internal reasoning trace");
+  });
 });

@@ -188,5 +188,10 @@ describe("UI page API wiring", () => {
     expect(source).toContain("table: ({ children }) => (");
     expect(source).toContain("th: ({ children }) => (");
     expect(source).toContain("<SyntaxCodeBlock");
+    expect(source).toContain("function CopyCodeButton");
+    expect(source).toContain("function InlineCodeWithCopy");
+    expect(source).toContain("navigator.clipboard.writeText");
+    expect(source).toContain('title={copied ? "Copied" : "Copy inline code"}');
+    expect(source).toContain("const inferredInline = !className && !rawCode.includes(\"\\n\")");
   });
 });

@@ -24,6 +24,8 @@ import {
   X,
   CheckCircle2,
   AlertTriangle,
+  Copy,
+  Check,
 } from "lucide-react";
 import { Highlight, themes } from "prism-react-renderer";
 import ReactMarkdown from "react-markdown";
@@ -501,6 +503,8 @@ const CODE_LANGUAGE_ALIASES: Record<string, string> = {
   rb: "ruby",
   rs: "rust",
   csharp: "c",
+  plain: "plaintext",
+  text: "plaintext",
 };
 
 function extractTextContent(node: unknown): string {
@@ -522,13 +526,107 @@ function normalizeCodeLanguage(rawLanguage?: string): string {
   return CODE_LANGUAGE_ALIASES[key] || key || "plaintext";
 }
 
+function CopyCodeButton({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timeoutId = window.setTimeout(() => setCopied(false), 1500);
+    return () => window.clearTimeout(timeoutId);
+  }, [copied]);
+
+  const handleCopy = useCallback(async () => {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+    } catch (error) {
+      console.error("Failed to copy code block:", error);
+    }
+  }, [code]);
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleCopy()}
+      className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+      title={copied ? "Copied" : "Copy code"}
+      aria-label={copied ? "Copied code block" : "Copy code block"}
+    >
+      {copied ? (
+        <>
+          <Check className="w-3 h-3" />
+          Copied
+        </>
+      ) : (
+        <>
+          <Copy className="w-3 h-3" />
+          Copy
+        </>
+      )}
+    </button>
+  );
+}
+
+function InlineCodeWithCopy({
+  code,
+  className,
+  codeProps,
+}: {
+  code: string;
+  className?: string;
+  codeProps?: ComponentPropsWithoutRef<"code">;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timeoutId = window.setTimeout(() => setCopied(false), 1200);
+    return () => window.clearTimeout(timeoutId);
+  }, [copied]);
+
+  const handleCopy = useCallback(async () => {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+    } catch (error) {
+      console.error("Failed to copy inline code:", error);
+    }
+  }, [code]);
+
+  return (
+    <span className="inline-flex max-w-full items-center align-baseline whitespace-normal rounded-md border border-white/15 bg-white/[0.08]">
+      <code
+        className={cn(
+          "px-1.5 py-0.5 text-[0.85em] font-mono whitespace-pre-wrap break-all align-baseline text-indigo-100",
+          className
+        )}
+        {...codeProps}
+      >
+        {code}
+      </code>
+      <button
+        type="button"
+        onClick={() => void handleCopy()}
+        className="mr-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-white/10 bg-white/[0.03] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors align-baseline cursor-pointer"
+        title={copied ? "Copied" : "Copy inline code"}
+        aria-label={copied ? "Copied inline code" : "Copy inline code"}
+      >
+        {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+      </button>
+    </span>
+  );
+}
+
 function DiffCodeBlock({ code }: { code: string }) {
   const lines = code.split(/\r?\n/);
 
   return (
     <div className="my-3 rounded-xl border border-white/10 bg-slate-950/70 overflow-hidden">
-      <div className="px-3 py-1.5 border-b border-white/10 text-[11px] uppercase tracking-[0.08em] text-gray-400 bg-white/5">
-        Diff
+      <div className="flex items-center justify-between gap-2 px-3 py-1.5 border-b border-white/10 text-[11px] uppercase tracking-[0.08em] text-gray-400 bg-white/5">
+        <span>diff</span>
+        <CopyCodeButton code={code} />
       </div>
       <pre className="m-0 overflow-x-auto text-[13px] leading-6 font-mono">
         {lines.map((line, index) => (
@@ -554,10 +652,12 @@ function DiffCodeBlock({ code }: { code: string }) {
 }
 
 function SyntaxCodeBlock({ code, language }: { code: string; language: string }) {
+  const displayLanguage = language === "plaintext" ? "text" : language;
   return (
     <div className="my-3 rounded-xl border border-white/10 bg-black/50 overflow-hidden">
-      <div className="px-3 py-1.5 border-b border-white/10 text-[11px] uppercase tracking-[0.08em] text-gray-400 bg-white/5">
-        {language}
+      <div className="flex items-center justify-between gap-2 px-3 py-1.5 border-b border-white/10 text-[11px] uppercase tracking-[0.08em] text-gray-400 bg-white/5">
+        <span>{displayLanguage}</span>
+        <CopyCodeButton code={code} />
       </div>
       <Highlight theme={themes.nightOwl} code={code || " "} language={language}>
         {({ className, style, tokens, getLineProps, getTokenProps }) => (
@@ -593,15 +693,9 @@ function MessageContent({ content }: { content: string }) {
           pre: ({ children }: MarkdownPreProps) => <>{children}</>,
           code({ className, children, inline, ...props }: MarkdownCodeProps) {
             const rawCode = extractTextContent(children).replace(/\n$/, "");
-            if (inline) {
-              return (
-                <code
-                  className="bg-white/10 rounded px-1.5 py-0.5 text-[0.85em] font-mono"
-                  {...props}
-                >
-                  {rawCode}
-                </code>
-              );
+            const inferredInline = !className && !rawCode.includes("\n");
+            if (inline ?? inferredInline) {
+              return <InlineCodeWithCopy code={rawCode} className={className} codeProps={props} />;
             }
 
             const languageMatch = className ? /language-([^\s]+)/.exec(className) : null;

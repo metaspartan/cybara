@@ -55,6 +55,7 @@ interface OpenAIMessage {
   role: string;
   content: string | null;
   tool_calls?: OpenAIToolCall[];
+  [key: string]: unknown;
 }
 
 interface OpenAIChoice {
@@ -459,6 +460,26 @@ function parseToolArguments(raw: unknown): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+function toOpenAIReplayAssistantMessage(message: OpenAIMessage): Record<string, unknown> {
+  const replayMessage: Record<string, unknown> = {
+    role: typeof message.role === "string" && message.role.trim() ? message.role : "assistant",
+    content: typeof message.content === "string" ? message.content : "",
+  };
+
+  if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+    replayMessage.tool_calls = message.tool_calls;
+  }
+
+  for (const [key, value] of Object.entries(message)) {
+    if (key === "role" || key === "content" || key === "tool_calls") continue;
+    if (value !== undefined) {
+      replayMessage[key] = value;
+    }
+  }
+
+  return replayMessage;
 }
 
 function readStringArg(args: Record<string, unknown>, keys: string[]): string | undefined {
@@ -1816,11 +1837,7 @@ class AgentManager {
         });
       }
 
-      currentMessages.push({
-        role: "assistant",
-        content: message.content || "",
-        tool_calls: message.tool_calls,
-      });
+      currentMessages.push(toOpenAIReplayAssistantMessage(message));
       for (const toolResult of toolResults) {
         currentMessages.push(toolResult);
       }
@@ -2560,11 +2577,7 @@ class AgentManager {
         });
       }
 
-      currentMessages.push({
-        role: "assistant",
-        content: message.content || "",
-        tool_calls: message.tool_calls,
-      });
+      currentMessages.push(toOpenAIReplayAssistantMessage(message));
       for (const toolResult of toolResults) {
         currentMessages.push(toolResult);
       }
