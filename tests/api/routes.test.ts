@@ -637,10 +637,22 @@ describe("Providers API", () => {
         hasOAuthConfig: boolean;
       }>
     ).find((provider) => provider.id === "google-gemini-cli");
+    const openaiCodex = (
+      data as Array<{
+        id: string;
+        authType: string;
+        oauthFlow: string | null;
+        hasOAuthConfig: boolean;
+      }>
+    ).find((provider) => provider.id === "openai-codex");
     expect(geminiCli).toBeDefined();
     expect(geminiCli?.authType).toBe("oauth");
     expect(geminiCli?.oauthFlow).toBe("redirect");
     expect(geminiCli?.hasOAuthConfig).toBe(true);
+    expect(openaiCodex).toBeDefined();
+    expect(openaiCodex?.authType).toBe("oauth");
+    expect(openaiCodex?.oauthFlow).toBe("redirect");
+    expect(openaiCodex?.hasOAuthConfig).toBe(true);
   });
 
   test("GET /api/providers/health should return provider health", async () => {

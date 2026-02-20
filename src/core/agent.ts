@@ -78,6 +78,25 @@ interface OpenAIResponse {
   usage?: OpenAIUsage;
 }
 
+interface OpenAICodexToolCall {
+  id: string;
+  callId: string;
+  itemId?: string;
+  name: string;
+  args: Record<string, unknown>;
+}
+
+interface OpenAICodexUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
+interface OpenAICodexTurnResult {
+  content: string;
+  toolCalls: OpenAICodexToolCall[];
+  usage?: OpenAICodexUsage;
+}
+
 interface AnthropicContentBlock {
   type: "text" | "tool_use";
   text?: string;
@@ -142,6 +161,8 @@ interface GoogleResponse {
 }
 
 const ANTHROPIC_CONTEXT_1M_BETA = "context-1m-2025-08-07";
+const OPENAI_CODEX_JWT_CLAIM_PATH = "https://api.openai.com/auth";
+const OPENAI_CODEX_OAUTH_MODEL_PREFIXES = ["gpt-5.3-codex", "gpt-5.2-codex"] as const;
 const DEFAULT_MODEL_MAX_OUTPUT_TOKENS = 8192;
 const MAX_AGENTIC_CONFIGURED_ITERATIONS = 10000;
 const DEFAULT_AGENTIC_MAX_RUNTIME_MS = 10 * 60 * 1000;
@@ -484,6 +505,48 @@ function parseToolArguments(raw: unknown): Record<string, unknown> {
   }
 }
 
+async function* parseServerSentEvents(
+  body: ReadableStream<Uint8Array>
+): AsyncGenerator<Record<string, unknown>> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let delimiter = buffer.indexOf("\n\n");
+      while (delimiter !== -1) {
+        const chunk = buffer.slice(0, delimiter);
+        buffer = buffer.slice(delimiter + 2);
+
+        const dataLines = chunk
+          .split("\n")
+          .filter((line) => line.startsWith("data:"))
+          .map((line) => line.slice(5).trim())
+          .filter((line) => line.length > 0 && line !== "[DONE]");
+
+        if (dataLines.length > 0) {
+          const data = dataLines.join("\n");
+          try {
+            const parsed = JSON.parse(data) as Record<string, unknown>;
+            yield parsed;
+          } catch {
+            // Ignore malformed SSE chunks
+          }
+        }
+
+        delimiter = buffer.indexOf("\n\n");
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 function toOpenAIReplayAssistantMessage(message: OpenAIMessage): Record<string, unknown> {
   const replayMessage: Record<string, unknown> = {
     role: typeof message.role === "string" && message.role.trim() ? message.role : "assistant",
@@ -732,6 +795,9 @@ class AgentManager {
     if (lower.includes("invalid_api_key") || lower.includes("incorrect api key")) {
       return "OpenAI API key was rejected. Update your OpenAI provider key in Providers.";
     }
+    if (lower.includes("openai codex oauth provider")) {
+      return "This model requires OpenAI Codex OAuth. Configure an OpenAI Codex provider and try again.";
+    }
     if (lower.includes("model_not_found") || lower.includes("does not exist")) {
       return "Configured model is not available for this provider. Select another model and try again.";
     }
@@ -749,6 +815,56 @@ class AgentManager {
     }
 
     return "I apologize, but I encountered an issue processing your request. Please try again or rephrase your message.";
+  }
+
+  private shouldUseOpenAICodexProvider(
+    provider: ReturnType<typeof providerManager.getWithCredentials> | undefined,
+    model: string | undefined
+  ): boolean {
+    if (!provider || provider.provider !== "openai" || typeof model !== "string") {
+      return false;
+    }
+    const normalizedModel = model.trim().toLowerCase();
+    if (!normalizedModel) {
+      return false;
+    }
+    return OPENAI_CODEX_OAUTH_MODEL_PREFIXES.some(
+      (prefix) => normalizedModel === prefix || normalizedModel.startsWith(`${prefix}-`)
+    );
+  }
+
+  private resolveProviderModelForExecution(
+    provider: NonNullable<ReturnType<typeof providerManager.getWithCredentials>>,
+    model: string | undefined
+  ): {
+    provider: NonNullable<ReturnType<typeof providerManager.getWithCredentials>>;
+    model: string | undefined;
+  } {
+    if (!this.shouldUseOpenAICodexProvider(provider, model)) {
+      return { provider, model };
+    }
+
+    const codexProviderId = providerManager.resolveProviderId("openai-codex");
+    if (!codexProviderId) {
+      throw new Error(
+        "Model requires OpenAI Codex OAuth provider, but no openai-codex provider is configured."
+      );
+    }
+
+    const codexProvider = providerManager.getWithCredentials(codexProviderId);
+    if (!codexProvider) {
+      throw new Error(
+        "Model requires OpenAI Codex OAuth provider, but no credentialed openai-codex provider is available."
+      );
+    }
+
+    if (provider.id !== codexProvider.id) {
+      console.log(
+        `[Agent] Normalized model ${model} from provider ${provider.provider} to ${codexProvider.provider}`
+      );
+    }
+
+    return { provider: codexProvider, model };
   }
 
   private resolveProviderForAgent(
@@ -1049,19 +1165,23 @@ class AgentManager {
       tools = this.getAgentTools(agent);
     }
 
+    const resolvedExecution = this.resolveProviderModelForExecution(provider, agent.model);
+    const activeProvider = resolvedExecution.provider;
+    const activeModel = resolvedExecution.model;
+
     try {
-      const result = await this.callLLM(provider, agent.model, fullMessages, tools);
+      const result = await this.callLLM(activeProvider, activeModel, fullMessages, tools);
       return { response: result.content, thinking: result.thinking };
     } catch (error) {
       console.error("[Agent] LLM call failed:", error);
 
-      if (agent.fallback_provider_id && provider.id !== agent.fallback_provider_id) {
+      if (agent.fallback_provider_id && activeProvider.id !== agent.fallback_provider_id) {
         const fallbackProvider = providerManager.getWithCredentials(agent.fallback_provider_id);
         if (fallbackProvider) {
           try {
             const fallbackResult = await this.callLLM(
               fallbackProvider,
-              agent.model,
+              activeModel,
               fullMessages,
               tools
             );
@@ -1194,19 +1314,29 @@ class AgentManager {
         ? options.modelOverride.trim()
         : agent.model;
 
+    const resolvedExecution = this.resolveProviderModelForExecution(provider, selectedModel);
+    const activeProvider = resolvedExecution.provider;
+    const activeModel = resolvedExecution.model;
+
     try {
-      const result = await this.callLLM(provider, selectedModel, fullMessages, tools, toolContext);
+      const result = await this.callLLM(
+        activeProvider,
+        activeModel,
+        fullMessages,
+        tools,
+        toolContext
+      );
       return result;
     } catch (error) {
       console.error("[Agent] LLM call failed:", error);
 
-      if (agent.fallback_provider_id && provider.id !== agent.fallback_provider_id) {
+      if (agent.fallback_provider_id && activeProvider.id !== agent.fallback_provider_id) {
         const fallbackProvider = providerManager.getWithCredentials(agent.fallback_provider_id);
         if (fallbackProvider) {
           try {
             const fallbackResult = await this.callLLM(
               fallbackProvider,
-              selectedModel,
+              activeModel,
               fullMessages,
               tools,
               toolContext
@@ -1891,17 +2021,27 @@ class AgentManager {
       );
     }
 
+    if (apiFamily === "openai-codex-responses") {
+      return this.callOpenAICodexResponses(
+        baseUrl,
+        resolvedAuth,
+        modelId,
+        messages,
+        tools,
+        mergedHeaders,
+        providerConfig,
+        toolContext
+      );
+    }
+
     if (
       apiFamily === "openai-completions" ||
       apiFamily === "openai-responses" ||
-      apiFamily === "openai-codex-responses" ||
       apiFamily === "ollama" ||
       apiFamily === "github-copilot"
     ) {
       const preferMaxCompletionTokens =
-        apiFamily === "openai-responses" ||
-        apiFamily === "openai-codex-responses" ||
-        apiFamily === "github-copilot";
+        apiFamily === "openai-responses" || apiFamily === "github-copilot";
       return this.callOpenAICompatAPI(
         baseUrl,
         resolvedAuth,
@@ -2291,6 +2431,583 @@ class AgentManager {
     if (limitReason) {
       finalContent = this.applyAgenticLoopLimitMessage(
         providerConfig || "openai-compat",
+        limitReason,
+        loopPolicy,
+        finalContent
+      );
+    }
+
+    return {
+      content: finalContent.trim(),
+      tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
+    };
+  }
+
+  private resolveOpenAICodexBaseUrl(baseUrl: string): string {
+    const trimmed = (baseUrl || "").trim().replace(/\/+$/, "");
+    if (!trimmed) return "https://chatgpt.com/backend-api";
+    if (trimmed.includes("api.openai.com")) return "https://chatgpt.com/backend-api";
+    return trimmed;
+  }
+
+  private resolveOpenAICodexResponsesUrl(baseUrl: string): string {
+    const normalized = this.resolveOpenAICodexBaseUrl(baseUrl).replace(/\/+$/, "");
+    if (normalized.endsWith("/codex/responses")) return normalized;
+    if (normalized.endsWith("/codex")) return `${normalized}/responses`;
+    return `${normalized}/codex/responses`;
+  }
+
+  private getOpenAICodexModelCandidates(modelId: string): string[] {
+    const normalized = modelId.trim().toLowerCase();
+    const candidates: string[] = [modelId];
+
+    if (normalized === "gpt-5-codex") {
+      candidates.push("gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.2");
+    } else if (normalized === "gpt-5.3-codex-spark") {
+      candidates.push("gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.2");
+    } else if (normalized === "gpt-5.3-codex") {
+      candidates.push("gpt-5.2-codex", "gpt-5.2");
+    } else if (normalized === "gpt-5.2-codex") {
+      candidates.push("gpt-5.2");
+    }
+
+    const seen = new Set<string>();
+    return candidates.filter((candidate) => {
+      const key = candidate.trim().toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  private shouldRetryOpenAICodexModel(status: number, errorText: string): boolean {
+    if (status !== 404) return false;
+    const normalized = errorText.toLowerCase();
+    return (
+      normalized.includes("model_not_found") ||
+      normalized.includes("does not exist") ||
+      normalized.includes("no access to this model")
+    );
+  }
+
+  private extractOpenAICodexAccountId(token: string): string | undefined {
+    const trimmed = token.trim();
+    if (!trimmed) return undefined;
+    const parts = trimmed.split(".");
+    if (parts.length !== 3) return undefined;
+    try {
+      const payloadPart = parts[1]
+        .replace(/-/g, "+")
+        .replace(/_/g, "/")
+        .padEnd(Math.ceil(parts[1].length / 4) * 4, "=");
+      const payload = JSON.parse(Buffer.from(payloadPart, "base64").toString("utf8")) as Record<
+        string,
+        unknown
+      >;
+      const authClaim = payload[OPENAI_CODEX_JWT_CLAIM_PATH] as Record<string, unknown> | undefined;
+      const accountId = authClaim?.chatgpt_account_id;
+      if (typeof accountId === "string" && accountId.trim().length > 0) {
+        return accountId.trim();
+      }
+    } catch {
+      return undefined;
+    }
+    return undefined;
+  }
+
+  private buildOpenAICodexInputFromMessages(messages: AgentMessage[]): {
+    instructions?: string;
+    input: Array<Record<string, unknown>>;
+  } {
+    const systemMessage = messages.find((message) => message.role === "system");
+    const input: Array<Record<string, unknown>> = [];
+
+    for (const message of messages) {
+      if (message.role === "system") continue;
+
+      if (message.role === "user") {
+        input.push({
+          role: "user",
+          content: [{ type: "input_text", text: message.content }],
+        });
+        continue;
+      }
+
+      if (message.role === "assistant") {
+        if (message.content.trim().length > 0) {
+          input.push({
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: message.content }],
+            status: "completed",
+          });
+        }
+        for (const toolCall of message.tool_calls || []) {
+          input.push({
+            type: "function_call",
+            id: toolCall.id.split("|")[1] || toolCall.id,
+            call_id: toolCall.id.split("|")[0] || toolCall.id,
+            name: toolCall.name,
+            arguments: JSON.stringify(toolCall.arguments || {}),
+          });
+        }
+        continue;
+      }
+
+      if (message.role === "tool") {
+        const rawToolCallId = message.tool_call_id || "";
+        const callId =
+          rawToolCallId.split("|")[0] || rawToolCallId || `call_${crypto.randomUUID()}`;
+        input.push({
+          type: "function_call_output",
+          call_id: callId,
+          output: message.content || "{}",
+        });
+      }
+    }
+
+    return {
+      instructions: systemMessage?.content,
+      input,
+    };
+  }
+
+  private buildOpenAICodexToolDefinitions(tools: ToolDefinition[]): Array<Record<string, unknown>> {
+    if (!Array.isArray(tools) || tools.length === 0) return [];
+    return tools.map((tool) => ({
+      type: "function",
+      name: tool.name,
+      description: tool.description || "",
+      parameters: tool.input_schema || { type: "object", properties: {} },
+    }));
+  }
+
+  private async parseOpenAICodexTurnResponse(response: Response): Promise<OpenAICodexTurnResult> {
+    const contentType = response.headers.get("content-type")?.toLowerCase() || "";
+
+    if (contentType.includes("application/json")) {
+      const json = (await response.json()) as Record<string, unknown>;
+      const choice = (json.choices as OpenAIChoice[] | undefined)?.[0];
+      if (choice?.message) {
+        return {
+          content: choice.message.content || "",
+          toolCalls: (choice.message.tool_calls || []).map((toolCall) => ({
+            id: toolCall.id,
+            callId: toolCall.id.split("|")[0] || toolCall.id,
+            itemId: toolCall.id.split("|")[1] || undefined,
+            name: toolCall.function?.name || "",
+            args: parseToolArguments(toolCall.function?.arguments),
+          })),
+          usage: json.usage
+            ? {
+                inputTokens: Number((json.usage as OpenAIUsage).prompt_tokens || 0),
+                outputTokens: Number((json.usage as OpenAIUsage).completion_tokens || 0),
+              }
+            : undefined,
+        };
+      }
+    }
+
+    if (!response.body) {
+      throw new Error("No response body");
+    }
+
+    let outputText = "";
+    let usage: OpenAICodexUsage | undefined;
+    let activeToolCallKey: string | undefined;
+    const toolCalls = new Map<
+      string,
+      {
+        callId: string;
+        itemId?: string;
+        name: string;
+        argsJson: string;
+      }
+    >();
+
+    const findToolCallKeyByItemId = (itemId: string): string | undefined => {
+      for (const [key, value] of toolCalls.entries()) {
+        if (value.itemId === itemId) return key;
+      }
+      return undefined;
+    };
+
+    for await (const event of parseServerSentEvents(response.body)) {
+      const type = typeof event.type === "string" ? event.type : "";
+
+      if (type === "response.output_text.delta") {
+        if (typeof event.delta === "string") {
+          outputText += event.delta;
+        }
+        continue;
+      }
+
+      if (type === "response.output_item.added") {
+        const item = event.item as Record<string, unknown> | undefined;
+        if (item?.type === "function_call") {
+          const callId =
+            typeof item.call_id === "string" && item.call_id.trim().length > 0
+              ? item.call_id
+              : `call_${crypto.randomUUID()}`;
+          const itemId =
+            typeof item.id === "string" && item.id.trim().length > 0 ? item.id.trim() : undefined;
+          const key = `${callId}|${itemId || callId}`;
+          toolCalls.set(key, {
+            callId,
+            itemId,
+            name: typeof item.name === "string" ? item.name : "",
+            argsJson: typeof item.arguments === "string" ? item.arguments : "",
+          });
+          activeToolCallKey = key;
+        }
+        continue;
+      }
+
+      if (type === "response.function_call_arguments.delta") {
+        const itemId =
+          typeof event.item_id === "string" && event.item_id.trim().length > 0
+            ? event.item_id.trim()
+            : undefined;
+        const key = (itemId && findToolCallKeyByItemId(itemId)) || activeToolCallKey;
+        if (key && typeof event.delta === "string") {
+          const existing = toolCalls.get(key);
+          if (existing) {
+            existing.argsJson += event.delta;
+            toolCalls.set(key, existing);
+          }
+        }
+        continue;
+      }
+
+      if (type === "response.function_call_arguments.done") {
+        const itemId =
+          typeof event.item_id === "string" && event.item_id.trim().length > 0
+            ? event.item_id.trim()
+            : undefined;
+        const key = (itemId && findToolCallKeyByItemId(itemId)) || activeToolCallKey;
+        if (key && typeof event.arguments === "string") {
+          const existing = toolCalls.get(key);
+          if (existing) {
+            existing.argsJson = event.arguments;
+            toolCalls.set(key, existing);
+          }
+        }
+        continue;
+      }
+
+      if (type === "response.output_item.done") {
+        const item = event.item as Record<string, unknown> | undefined;
+        if (item?.type === "message" && outputText.trim().length === 0) {
+          const contentBlocks = Array.isArray(item.content)
+            ? (item.content as Array<Record<string, unknown>>)
+            : [];
+          const text = contentBlocks
+            .map((block) => {
+              if (block.type === "output_text" && typeof block.text === "string") return block.text;
+              if (block.type === "refusal" && typeof block.refusal === "string")
+                return block.refusal;
+              return "";
+            })
+            .filter((entry) => entry.length > 0)
+            .join("");
+          if (text) {
+            outputText = text;
+          }
+        }
+        if (item?.type === "function_call") {
+          const callId =
+            typeof item.call_id === "string" && item.call_id.trim().length > 0
+              ? item.call_id
+              : `call_${crypto.randomUUID()}`;
+          const itemId =
+            typeof item.id === "string" && item.id.trim().length > 0 ? item.id.trim() : undefined;
+          const key = `${callId}|${itemId || callId}`;
+          const existing = toolCalls.get(key);
+          toolCalls.set(key, {
+            callId,
+            itemId,
+            name:
+              (existing?.name && existing.name.trim().length > 0
+                ? existing.name
+                : typeof item.name === "string"
+                  ? item.name
+                  : "") || "",
+            argsJson:
+              (typeof item.arguments === "string" && item.arguments) || existing?.argsJson || "{}",
+          });
+          activeToolCallKey = undefined;
+        }
+        continue;
+      }
+
+      if (type === "response.completed") {
+        const completed = event.response as Record<string, unknown> | undefined;
+        const usageObj = completed?.usage as Record<string, unknown> | undefined;
+        if (usageObj) {
+          const inputTokens =
+            typeof usageObj.input_tokens === "number" && Number.isFinite(usageObj.input_tokens)
+              ? Math.floor(usageObj.input_tokens)
+              : 0;
+          const outputTokens =
+            typeof usageObj.output_tokens === "number" && Number.isFinite(usageObj.output_tokens)
+              ? Math.floor(usageObj.output_tokens)
+              : 0;
+          usage = { inputTokens, outputTokens };
+        }
+        continue;
+      }
+
+      if (type === "response.failed") {
+        const failed = event.response as Record<string, unknown> | undefined;
+        const failedError = failed?.error as Record<string, unknown> | undefined;
+        const message =
+          (typeof failedError?.message === "string" && failedError.message) ||
+          "OpenAI Codex response failed";
+        throw new Error(message);
+      }
+
+      if (type === "error") {
+        const message =
+          (typeof event.message === "string" && event.message) || "OpenAI Codex stream error";
+        throw new Error(message);
+      }
+    }
+
+    return {
+      content: outputText.trim(),
+      toolCalls: Array.from(toolCalls.entries())
+        .map(([key, value]) => ({
+          id: key,
+          callId: value.callId,
+          itemId: value.itemId,
+          name: value.name,
+          args: parseToolArguments(value.argsJson || "{}"),
+        }))
+        .filter((toolCall) => toolCall.name.trim().length > 0),
+      usage,
+    };
+  }
+
+  private async postOpenAICodexTurn(
+    url: string,
+    headers: Record<string, string>,
+    requestBody: Record<string, unknown>,
+    requestedModel: string
+  ): Promise<OpenAICodexTurnResult & { resolvedModel: string }> {
+    const candidates = this.getOpenAICodexModelCandidates(requestedModel);
+    let finalError = "OpenAI Codex request failed";
+
+    for (let index = 0; index < candidates.length; index++) {
+      const candidate = candidates[index];
+      const body = { ...requestBody, model: candidate };
+      const response = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        finalError = `API error: ${response.status} - ${errorText}`;
+        if (
+          index < candidates.length - 1 &&
+          this.shouldRetryOpenAICodexModel(response.status, errorText)
+        ) {
+          console.warn(
+            `[Agent] OpenAI Codex model ${candidate} unavailable, retrying with ${candidates[index + 1]}`
+          );
+          continue;
+        }
+        throw new Error(finalError);
+      }
+
+      const parsed = await this.parseOpenAICodexTurnResponse(response);
+      return { ...parsed, resolvedModel: candidate };
+    }
+
+    throw new Error(finalError);
+  }
+
+  private async callOpenAICodexResponses(
+    baseUrl: string,
+    auth: string,
+    modelId: string,
+    messages: AgentMessage[],
+    tools: ToolDefinition[],
+    customHeaders?: Record<string, string>,
+    providerConfig?: string,
+    toolContext?: ToolContext
+  ): Promise<{
+    content: string;
+    thinking?: string;
+    tool_calls?: AgentToolCallResult[];
+  }> {
+    const codexUrl = this.resolveOpenAICodexResponsesUrl(baseUrl);
+    const { instructions, input } = this.buildOpenAICodexInputFromMessages(messages);
+    const inputItems: Array<Record<string, unknown>> = [...input];
+    const toolDefinitions = this.buildOpenAICodexToolDefinitions(tools);
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+      ...customHeaders,
+    };
+    if (auth) {
+      headers.Authorization = `Bearer ${auth}`;
+    }
+    const accountId = this.extractOpenAICodexAccountId(auth);
+    if (accountId) {
+      headers["chatgpt-account-id"] = accountId;
+    }
+    if (!headers["OpenAI-Beta"] && !headers["openai-beta"]) {
+      headers["OpenAI-Beta"] = "responses=experimental";
+    }
+    if (!headers.originator && !headers.Originator) {
+      headers.originator = "cybara";
+    }
+
+    this.broadcastAgentStatus("generating", toolContext, "Generating response...");
+
+    const loopPolicy = this.resolveAgenticLoopPolicy(toolContext);
+    const loopStartedAt = Date.now();
+    let iterations = 0;
+    let activeModelId = modelId;
+    let finalContent = "";
+    const allToolCalls: AgentToolCallResult[] = [];
+    const allowedToolNames = new Set(tools.map((tool) => tool.name));
+    const hookContext = this.buildHookContext(providerConfig, activeModelId, toolContext);
+    const loopState: AgenticLoopState = {
+      previousFingerprint: undefined,
+      noProgressStreak: 0,
+      warningBucket: -1,
+    };
+    let limitReason: "maxIterations" | "runtime" | undefined;
+
+    while (true) {
+      limitReason = this.resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
+      if (limitReason) {
+        break;
+      }
+      iterations++;
+
+      const requestBody: Record<string, unknown> = {
+        model: activeModelId,
+        store: false,
+        stream: true,
+        input: inputItems,
+        text: { verbosity: "medium" },
+        include: ["reasoning.encrypted_content"],
+        tool_choice: "auto",
+        parallel_tool_calls: true,
+      };
+      if (instructions && instructions.trim().length > 0) {
+        requestBody.instructions = instructions;
+      }
+      if (toolDefinitions.length > 0) {
+        requestBody.tools = toolDefinitions;
+      }
+      if (toolContext?.sessionId) {
+        requestBody.prompt_cache_key = toolContext.sessionId;
+      }
+
+      const startTime = performance.now();
+      const turn = await this.postOpenAICodexTurn(codexUrl, headers, requestBody, activeModelId);
+      activeModelId = turn.resolvedModel;
+      const durationMs = Math.round(performance.now() - startTime);
+
+      if (turn.usage) {
+        trackTokenUsage(
+          activeModelId,
+          providerConfig || "openai-codex",
+          codexUrl,
+          turn.usage.inputTokens,
+          turn.usage.outputTokens,
+          durationMs
+        );
+      }
+
+      if (turn.content.trim().length > 0) {
+        finalContent = turn.content.trim();
+      }
+
+      if (turn.toolCalls.length === 0) {
+        break;
+      }
+
+      const iterationToolCalls: AgentToolCallResult[] = [];
+      const functionCallItems: Array<Record<string, unknown>> = [];
+      const functionCallOutputs: Array<Record<string, unknown>> = [];
+
+      if (turn.content.trim().length > 0) {
+        inputItems.push({
+          type: "message",
+          role: "assistant",
+          status: "completed",
+          content: [{ type: "output_text", text: turn.content }],
+        });
+      }
+
+      for (const toolCall of turn.toolCalls) {
+        functionCallItems.push({
+          type: "function_call",
+          id: toolCall.itemId || toolCall.callId,
+          call_id: toolCall.callId,
+          name: toolCall.name,
+          arguments: JSON.stringify(toolCall.args || {}),
+        });
+
+        const executed = await this.executeToolWithHooks(
+          toolCall.name,
+          toolCall.args,
+          allowedToolNames,
+          toolContext,
+          hookContext
+        );
+        if (executed.skipped || executed.result === undefined) {
+          continue;
+        }
+
+        const toolCallRecord = {
+          name: toolCall.name,
+          args: toolCall.args,
+          result: executed.result,
+        };
+        allToolCalls.push(toolCallRecord);
+        iterationToolCalls.push(toolCallRecord);
+        functionCallOutputs.push({
+          type: "function_call_output",
+          call_id: toolCall.callId,
+          output: JSON.stringify(executed.result),
+        });
+      }
+
+      if (iterationToolCalls.length === 0) {
+        console.warn(
+          "[Agent] OpenAI Codex tool loop produced no tool results; stopping loop early"
+        );
+        break;
+      }
+
+      const noProgressStreak = this.updateNoProgressLoopState(loopState, iterationToolCalls);
+      const loopEvaluation = this.evaluateNoProgressLoop(
+        providerConfig || "openai-codex",
+        noProgressStreak,
+        loopState,
+        loopPolicy
+      );
+      if (loopEvaluation.stop) {
+        if (!finalContent.trim()) {
+          finalContent = loopEvaluation.message || "I stopped due to a tool loop safety guard.";
+        }
+        break;
+      }
+
+      inputItems.push(...functionCallItems, ...functionCallOutputs);
+    }
+
+    if (limitReason) {
+      finalContent = this.applyAgenticLoopLimitMessage(
+        providerConfig || "openai-codex",
         limitReason,
         loopPolicy,
         finalContent

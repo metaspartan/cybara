@@ -1132,46 +1132,94 @@ export const providers = {
     ],
   },
   "openai-codex": {
-    name: "OpenAI Codex (ChatGPT)",
-    baseUrl: "https://api.openai.com/v1",
+    name: "OpenAI Codex (ChatGPT OAuth)",
+    baseUrl: "https://chatgpt.com/backend-api",
     api: "openai-codex-responses",
     authType: "oauth",
     oauthFlow: "redirect" as const,
-    oauthLoginUrl: "https://platform.openai.com/api-keys",
+    oauthConfig: {
+      clientId: "app_EMoamEEZ73f0CkXaXp7hrann",
+      authorizeUrl: "https://auth.openai.com/oauth/authorize",
+      tokenUrl: "https://auth.openai.com/oauth/token",
+      scope: "openid profile email offline_access",
+      callbackPort: 1455,
+      callbackPath: "/auth/callback",
+      authorizeParams: {
+        id_token_add_organizations: "true",
+        codex_cli_simplified_flow: "true",
+        originator: "cybara",
+      },
+    },
+    oauthLoginUrl: "https://chatgpt.com/",
     models: [
       {
         id: "gpt-5.3-codex",
         name: "GPT-5.3 Codex",
-        context: 400000,
-        maxTokens: 100000,
+        context: 272000,
+        maxTokens: 128000,
         reasoning: true,
-        input: ["text"],
+        input: ["text", "image"],
         code: true,
       },
       {
         id: "gpt-5.2",
         name: "GPT-5.2",
-        context: 200000,
-        maxTokens: 100000,
+        context: 272000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
+      },
+      {
+        id: "gpt-5.2-codex",
+        name: "GPT-5.2 Codex",
+        context: 272000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
+        code: true,
+      },
+      {
+        id: "gpt-5.3-codex-spark",
+        name: "GPT-5.3 Codex Spark",
+        context: 128000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text"],
+        code: true,
+      },
+      {
+        id: "gpt-5.1",
+        name: "GPT-5.1",
+        context: 272000,
+        maxTokens: 128000,
         reasoning: true,
         input: ["text", "image"],
       },
       {
         id: "gpt-5.1-codex",
         name: "GPT-5.1 Codex",
-        context: 400000,
-        maxTokens: 65536,
-        reasoning: false,
-        input: ["text"],
+        context: 272000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
         code: true,
       },
       {
         id: "gpt-5.1-codex-mini",
         name: "GPT-5.1 Codex Mini",
-        context: 400000,
-        maxTokens: 65536,
-        reasoning: false,
-        input: ["text"],
+        context: 272000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
+        code: true,
+      },
+      {
+        id: "gpt-5.1-codex-max",
+        name: "GPT-5.1 Codex Max",
+        context: 272000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
         code: true,
       },
     ],
@@ -1431,8 +1479,15 @@ class ProviderManager {
   private mergeWithStaticConfig(dbProvider: Provider): Provider {
     const staticConfig = providers[dbProvider.provider as ProviderType];
     if (!staticConfig) return dbProvider;
+    const baseUrl =
+      dbProvider.provider === "openai-codex" &&
+      typeof dbProvider.base_url === "string" &&
+      dbProvider.base_url.trim().toLowerCase() === "https://api.openai.com/v1"
+        ? staticConfig.baseUrl
+        : dbProvider.base_url;
     return {
       ...dbProvider,
+      base_url: baseUrl,
       headers: (staticConfig as { headers?: Record<string, string> }).headers,
     };
   }

@@ -666,7 +666,7 @@ describe("Agent provider API-family routing", () => {
     expect(requestHeaders.get("User-Agent")).toBe("KimiCLI/0.77");
   });
 
-  test("routes openai-codex-responses providers with max_completion_tokens", async () => {
+  test("routes openai-codex-responses providers to codex responses endpoint", async () => {
     let requestUrl = "";
     let requestBody: Record<string, unknown> = {};
     let requestHeaders = new Headers();
@@ -677,30 +677,35 @@ describe("Agent provider API-family routing", () => {
       requestBody = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
 
       return new Response(
-        JSON.stringify({
-          id: "resp-codex",
-          object: "chat.completion",
-          model: "gpt-5.3-codex",
-          choices: [
-            {
-              index: 0,
-              finish_reason: "stop",
-              message: {
-                role: "assistant",
-                content: "codex-ok",
+        [
+          `data: ${JSON.stringify({ type: "response.output_text.delta", delta: "codex-ok" })}`,
+          "",
+          `data: ${JSON.stringify({
+            type: "response.completed",
+            response: {
+              status: "completed",
+              usage: {
+                input_tokens: 5,
+                output_tokens: 2,
+                total_tokens: 7,
               },
             },
-          ],
-          usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
+          })}`,
+          "",
+        ].join("\n"),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } }
       );
     }) as typeof fetch;
+
+    const tokenPayload = Buffer.from(
+      JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "acct_test" } })
+    ).toString("base64url");
+    const oauthToken = `e30.${tokenPayload}.sig`;
 
     const provider = providerManager.create({
       provider: "openai-codex",
       name: "OpenAI Codex Responses Provider",
-      access_token: "codex-test-token",
+      access_token: oauthToken,
     });
     createdProviderIds.push(provider.id);
 
@@ -720,10 +725,142 @@ describe("Agent provider API-family routing", () => {
     );
 
     expect(result.content).toBe("codex-ok");
-    expect(requestUrl.endsWith("/chat/completions")).toBe(true);
-    expect(requestHeaders.get("Authorization")).toBe("Bearer codex-test-token");
+    expect(requestUrl.endsWith("/codex/responses")).toBe(true);
+    expect(requestHeaders.get("Authorization")).toBe(`Bearer ${oauthToken}`);
+    expect(requestHeaders.get("chatgpt-account-id")).toBe("acct_test");
+    expect(requestHeaders.get("OpenAI-Beta")).toBe("responses=experimental");
+    expect(requestBody.model).toBe("gpt-5.3-codex");
+    expect(requestBody.store).toBe(false);
+    expect(requestBody.stream).toBe(true);
     expect("max_tokens" in requestBody).toBe(false);
-    expect(requestBody.max_completion_tokens).toBe(100000);
+    expect("max_completion_tokens" in requestBody).toBe(false);
+  });
+
+  test("normalizes openai gpt-5.3-codex model selection to openai-codex provider", async () => {
+    const seenAuthHeaders: string[] = [];
+    const seenUrls: string[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      seenUrls.push(String(input));
+      seenAuthHeaders.push(headers.get("Authorization") || "");
+
+      return new Response(
+        [
+          `data: ${JSON.stringify({
+            type: "response.output_text.delta",
+            delta: "normalized-codex-ok",
+          })}`,
+          "",
+          `data: ${JSON.stringify({
+            type: "response.completed",
+            response: { status: "completed", usage: { input_tokens: 5, output_tokens: 2 } },
+          })}`,
+          "",
+        ].join("\n"),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } }
+      );
+    }) as typeof fetch;
+
+    const openaiProvider = providerManager.create({
+      provider: "openai",
+      name: "OpenAI API Key Provider",
+      api_key: "openai-api-key",
+    });
+    createdProviderIds.push(openaiProvider.id);
+
+    const codexProvider = providerManager.create({
+      provider: "openai-codex",
+      name: "OpenAI Codex OAuth Provider",
+      access_token: "codex-oauth-token",
+    });
+    createdProviderIds.push(codexProvider.id);
+
+    const agent = agentManager.create({
+      name: "OpenAI Codex Normalized Agent",
+      type: "main",
+      provider_id: openaiProvider.id,
+      model: "gpt-5.3-codex",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "normalize provider/model route" }],
+      { useTools: false, sessionId: "openai-codex-normalize-session" }
+    );
+
+    expect(result.content).toBe("normalized-codex-ok");
+    expect(seenUrls[0]?.endsWith("/codex/responses")).toBe(true);
+    expect(seenAuthHeaders[0]).toBe("Bearer codex-oauth-token");
+    expect(seenAuthHeaders).not.toContain("Bearer openai-api-key");
+  });
+
+  test("retries openai-codex model candidates when upstream returns model_not_found", async () => {
+    const requestedModels: string[] = [];
+    let callCount = 0;
+
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      callCount++;
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      requestedModels.push(String(body.model || ""));
+
+      if (callCount === 1) {
+        return new Response(
+          JSON.stringify({
+            error: {
+              message: "The model `gpt-5.3-codex` does not exist or you do not have access to it.",
+              type: "invalid_request_error",
+              code: "model_not_found",
+            },
+          }),
+          { status: 404, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(
+        [
+          `data: ${JSON.stringify({ type: "response.output_text.delta", delta: "fallback-ok" })}`,
+          "",
+          `data: ${JSON.stringify({
+            type: "response.completed",
+            response: {
+              status: "completed",
+              usage: { input_tokens: 6, output_tokens: 2, total_tokens: 8 },
+            },
+          })}`,
+          "",
+        ].join("\n"),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "openai-codex",
+      name: "OpenAI Codex Retry Provider",
+      access_token: "codex-oauth-token",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "OpenAI Codex Retry Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-5.3-codex",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "retry codex model" }],
+      { useTools: false, sessionId: "openai-codex-retry-session" }
+    );
+
+    expect(result.content).toBe("fallback-ok");
+    expect(callCount).toBe(2);
+    expect(requestedModels).toEqual(["gpt-5.3-codex", "gpt-5.2-codex"]);
   });
 
   test("routes ollama API family without forcing authorization header", async () => {

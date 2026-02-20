@@ -53,6 +53,10 @@ describe("Provider model defaults and API-family parity", () => {
   test("includes GPT-5.3 Codex in the OpenAI Codex model catalog", () => {
     const codexModelIds = providers["openai-codex"].models.map((model) => model.id);
     expect(codexModelIds).toContain("gpt-5.3-codex");
+    expect(codexModelIds).toContain("gpt-5.2-codex");
+    expect(codexModelIds).toContain("gpt-5.3-codex-spark");
+    expect(codexModelIds).toContain("gpt-5.1-codex-max");
+    expect(providers["openai-codex"].baseUrl).toBe("https://chatgpt.com/backend-api");
   });
 
   test("includes default GitHub Copilot model ids for broad plan compatibility", () => {
@@ -97,6 +101,21 @@ describe("Provider model defaults and API-family parity", () => {
     );
     expect(providers["google-gemini-cli"].oauthConfig?.callbackPort).toBe(8085);
     expect(providers["google-gemini-cli"].oauthConfig?.callbackPath).toBe("/oauth2callback");
+  });
+
+  test("configures openai-codex for ChatGPT OAuth like OpenClaw", () => {
+    expect(providers["openai-codex"].authType).toBe("oauth");
+    expect(providers["openai-codex"].oauthFlow).toBe("redirect");
+    expect(providers["openai-codex"].oauthConfig).toBeDefined();
+    expect(providers["openai-codex"].oauthConfig?.authorizeUrl).toBe(
+      "https://auth.openai.com/oauth/authorize"
+    );
+    expect(providers["openai-codex"].oauthConfig?.tokenUrl).toBe(
+      "https://auth.openai.com/oauth/token"
+    );
+    expect(providers["openai-codex"].oauthConfig?.clientId).toBe("app_EMoamEEZ73f0CkXaXp7hrann");
+    expect(providers["openai-codex"].oauthConfig?.callbackPort).toBe(1455);
+    expect(providers["openai-codex"].oauthConfig?.callbackPath).toBe("/auth/callback");
   });
 
   test("uses current MiniMax IDs and output/context caps", () => {

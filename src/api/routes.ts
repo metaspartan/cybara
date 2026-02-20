@@ -1839,6 +1839,7 @@ const routes: Record<string, RouteHandler> = {
           scope?: string;
           callbackPort?: number;
           callbackPath?: string;
+          authorizeParams?: Record<string, string>;
         }
       | undefined;
 
@@ -1871,6 +1872,9 @@ const routes: Record<string, RouteHandler> = {
 
     if (!oauthConfig.authorizeUrl || !oauthConfig.tokenUrl) {
       throw new Error(`Provider ${providerType} does not support OAuth redirect flow`);
+    }
+    if (!oauthConfig.clientId || typeof oauthConfig.clientId !== "string") {
+      throw new Error(`Provider ${providerType} OAuth config is missing clientId`);
     }
 
     const pkceVerifier = randomBytes(32).toString("hex");
@@ -1973,15 +1977,27 @@ const routes: Record<string, RouteHandler> = {
 
     const authParams = new URLSearchParams({
       response_type: "code",
-      client_id: oauthConfig.clientId || "",
+      client_id: oauthConfig.clientId,
       redirect_uri: redirectUri,
-      scope: oauthConfig.scope || "",
       code_challenge: pkceChallenge,
       code_challenge_method: "S256",
       state,
-      access_type: "offline",
-      prompt: "consent",
     });
+    if (oauthConfig.scope && typeof oauthConfig.scope === "string") {
+      authParams.set("scope", oauthConfig.scope);
+    }
+    const authorizeUrl = oauthConfig.authorizeUrl.toLowerCase();
+    if (authorizeUrl.includes("accounts.google.com")) {
+      authParams.set("access_type", "offline");
+      authParams.set("prompt", "consent");
+    }
+    if (oauthConfig.authorizeParams) {
+      for (const [key, value] of Object.entries(oauthConfig.authorizeParams)) {
+        if (typeof value === "string" && value.length > 0) {
+          authParams.set(key, value);
+        }
+      }
+    }
 
     const authUrl = `${oauthConfig.authorizeUrl}?${authParams.toString()}`;
 
