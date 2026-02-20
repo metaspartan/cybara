@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   Terminal,
   Search,
@@ -96,6 +97,7 @@ export function Logs() {
   const [filterLevel, setFilterLevel] = useState<string | null>(null);
   const [filterSource, setFilterSource] = useState<string | null>(null);
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
+  const parentRef = useRef<HTMLDivElement>(null);
 
   const fetchLogs = async () => {
     setIsLoading(true);
@@ -136,11 +138,11 @@ export function Logs() {
       if (response.success) {
         const searchData = response.data as
           | {
-              system?: LogEntry[];
-              sessionMessages?: SessionMessageLog[];
-              agent?: AgentActionLog[];
-              channel?: ChannelMessageLog[];
-            }
+            system?: LogEntry[];
+            sessionMessages?: SessionMessageLog[];
+            agent?: AgentActionLog[];
+            channel?: ChannelMessageLog[];
+          }
           | undefined;
         const allLogs: LogEntry[] = [
           ...(searchData?.system || []).map((l: LogEntry) => ({ ...l })),
@@ -190,6 +192,13 @@ export function Logs() {
     a.download = `logs-${new Date().toISOString()}.json`;
     a.click();
   };
+
+  const virtualizer = useVirtualizer({
+    count: filteredLogs.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 72,
+    overscan: 10,
+  });
 
   return (
     <PageLayout
@@ -318,47 +327,66 @@ export function Logs() {
                 <p className="text-gray-400">No logs found</p>
               </div>
             ) : (
-              <div className="divide-y divide-white/10">
-                {filteredLogs.map((log) => (
-                  <div
-                    key={log.id}
-                    className="p-4 hover:bg-white/5 cursor-pointer transition-colors"
-                    onClick={() => setExpandedLog(expandedLog === log.id ? null : log.id)}
-                  >
-                    <div className="flex items-start gap-3">
-                      {levelIcons[log.level]}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Badge className={levelColors[log.level]} size="sm">
-                            {log.level}
-                          </Badge>
-                          <Badge variant="default" size="sm" className="flex items-center gap-1">
-                            {sourceIcons[log.source] || <Terminal className="w-3 h-3" />}
-                            {log.source}
-                          </Badge>
-                          <span className="text-xs text-gray-500">
-                            {new Date(log.created_at).toLocaleString()}
-                          </span>
-                        </div>
-                        <p className="text-sm text-white truncate">{log.message}</p>
+              <div
+                ref={parentRef}
+                className="h-[600px] overflow-auto"
+              >
+                <div
+                  style={{
+                    height: `${virtualizer.getTotalSize()}px`,
+                    width: '100%',
+                    position: 'relative',
+                  }}
+                >
+                  {virtualizer.getVirtualItems().map((virtualItem) => {
+                    const log = filteredLogs[virtualItem.index];
+                    return (
+                      <div
+                        key={virtualItem.key}
+                        data-index={virtualItem.index}
+                        ref={virtualizer.measureElement}
+                        className="absolute top-0 left-0 w-full p-3 sm:p-4 hover:bg-white/5 cursor-pointer transition-colors border-b border-white/10"
+                        style={{
+                          transform: `translateY(${virtualItem.start}px)`,
+                        }}
+                        onClick={() => setExpandedLog(expandedLog === log.id ? null : log.id)}
+                      >
+                        <div className="flex items-start gap-3">
+                          {levelIcons[log.level]}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Badge className={levelColors[log.level]} size="sm">
+                                {log.level}
+                              </Badge>
+                              <Badge variant="default" size="sm" className="flex items-center gap-1">
+                                {sourceIcons[log.source] || <Terminal className="w-3 h-3" />}
+                                {log.source}
+                              </Badge>
+                              <span className="text-xs text-gray-500">
+                                {new Date(log.created_at).toLocaleString()}
+                              </span>
+                            </div>
+                            <p className="text-sm text-white truncate">{log.message}</p>
 
-                        {expandedLog === log.id && log.metadata && (
-                          <div className="mt-3 p-3 rounded-lg bg-black/30">
-                            <p className="text-xs text-gray-400 mb-1">Metadata:</p>
-                            <pre className="text-xs text-gray-300 overflow-auto max-h-40">
-                              {JSON.stringify(JSON.parse(log.metadata), null, 2)}
-                            </pre>
+                            {expandedLog === log.id && log.metadata && (
+                              <div className="mt-2 p-2 rounded-lg bg-black/30">
+                                <p className="text-xs text-gray-400 mb-1">Metadata:</p>
+                                <pre className="text-xs text-gray-300 overflow-auto max-h-40">
+                                  {JSON.stringify(JSON.parse(log.metadata), null, 2)}
+                                </pre>
+                              </div>
+                            )}
                           </div>
-                        )}
+                          {expandedLog === log.id ? (
+                            <ChevronDown className="w-4 h-4 text-gray-500" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-gray-500" />
+                          )}
+                        </div>
                       </div>
-                      {expandedLog === log.id ? (
-                        <ChevronDown className="w-4 h-4 text-gray-500" />
-                      ) : (
-                        <ChevronRight className="w-4 h-4 text-gray-500" />
-                      )}
-                    </div>
-                  </div>
-                ))}
+                    );
+                  })}
+                </div>
               </div>
             )}
           </CardContent>

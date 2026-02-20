@@ -223,7 +223,7 @@ export function Agents() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
             <Card key={i}>
-              <CardContent className="p-6 animate-pulse">
+              <CardContent className="animate-pulse">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-10 h-10 rounded-lg bg-white/10" />
                   <div className="h-5 bg-white/10 rounded w-24" />
@@ -323,7 +323,7 @@ function AgentCard({
 
   return (
     <Card hover>
-      <CardContent className="p-6">
+      <CardContent>
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
             <div
@@ -481,11 +481,10 @@ function ChatModal({
                 className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-[80%] rounded-xl px-4 py-2 ${
-                    msg.role === "user"
+                  className={`max-w-[80%] rounded-xl px-4 py-2 ${msg.role === "user"
                       ? "bg-indigo-500/20 text-indigo-100"
                       : "bg-white/5 text-gray-200"
-                  }`}
+                    }`}
                 >
                   <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                 </div>

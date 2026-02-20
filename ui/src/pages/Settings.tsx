@@ -285,7 +285,7 @@ export function Settings() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {stats.map((stat) => (
             <Card key={stat.label} variant="liquid">
-              <CardContent className="p-6">
+              <CardContent>
                 <div className="flex items-center gap-3">
                   <div className={cn('w-12 h-12 rounded-xl flex items-center justify-center bg-white/5', stat.color)}>
                     <stat.icon className="w-6 h-6" />

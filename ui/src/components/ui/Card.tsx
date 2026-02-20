@@ -31,7 +31,7 @@ export function Card({ children, className, hover = false, glass = true, variant
 
 export function CardHeader({ children, className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn('px-6 py-4 border-b border-white/10', className)} {...props}>
+    <div className={cn('px-4 sm:px-5 py-3 border-b border-white/10', className)} {...props}>
       {children}
     </div>
   );
@@ -55,7 +55,7 @@ export function CardDescription({ children, className, ...props }: React.HTMLAtt
 
 export function CardContent({ children, className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn('p-6', className)} {...props}>
+    <div className={cn('p-4 sm:p-5', className)} {...props}>
       {children}
     </div>
   );
@@ -63,7 +63,7 @@ export function CardContent({ children, className, ...props }: React.HTMLAttribu
 
 export function CardFooter({ children, className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn('px-6 py-4 border-t border-white/10 flex items-center gap-3', className)} {...props}>
+    <div className={cn('px-4 sm:px-5 py-3 border-t border-white/10 flex items-center gap-3', className)} {...props}>
       {children}
     </div>
   );

@@ -1,7 +1,7 @@
-import { 
-  Bot, 
-  Cloud, 
-  MessageSquare, 
+import {
+  Bot,
+  Cloud,
+  MessageSquare,
   Clock,
   Activity,
   ArrowRight,
@@ -44,7 +44,7 @@ export function Dashboard() {
     { name: 'Tasks', value: info?.stats.tasks.total || 0, icon: Clock, href: '/tasks', color: 'from-amber-500 to-orange-500' },
   ];
 
-  const checks = health?.checks 
+  const checks = health?.checks
     ? Object.entries(health.checks).filter(([key]) => key !== 'memory')
     : [];
 
@@ -55,7 +55,7 @@ export function Dashboard() {
           {stats.map((stat) => (
             <Link key={stat.name} to={stat.href} className="block focus:outline-none active:outline-none">
               <Card className="h-full" variant="liquid">
-                <CardContent className="p-6">
+                <CardContent>
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-sm font-medium text-gray-400">{stat.name}</p>
@@ -86,7 +86,7 @@ export function Dashboard() {
             </CardHeader>
             <CardContent className="space-y-3">
               <Link to="/agents" className="block focus:outline-none active:outline-none">
-                <div className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer">
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer">
                   <div className="w-10 h-10 rounded-lg bg-indigo-500/20 flex items-center justify-center">
                     <Bot className="w-5 h-5 text-indigo-400" />
                   </div>
@@ -99,7 +99,7 @@ export function Dashboard() {
               </Link>
 
               <Link to="/providers" className="block focus:outline-none active:outline-none">
-                <div className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer">
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer">
                   <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
                     <Cloud className="w-5 h-5 text-blue-400" />
                   </div>
@@ -112,7 +112,7 @@ export function Dashboard() {
               </Link>
 
               <Link to="/channels" className="block focus:outline-none active:outline-none">
-                <div className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer">
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer">
                   <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">
                     <MessageSquare className="w-5 h-5 text-emerald-400" />
                   </div>
@@ -153,7 +153,7 @@ export function Dashboard() {
                   providers: <Cloud className="w-4 h-4" />,
                   memory: <Cpu className="w-4 h-4" />,
                 };
-                
+
                 return (
                   <div key={key} className="flex items-center justify-between p-3 rounded-xl bg-white/5">
                     <div className="flex items-center gap-3">
