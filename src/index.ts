@@ -194,6 +194,7 @@ function withOptionalQueryToken(headers: Record<string, string>, url: URL): Reco
 Bun.serve<WsData>({
   port: PORT,
   hostname: HOST,
+  idleTimeout: 255,
   fetch: async (req, server) => {
     const url = new URL(req.url);
     const pathname = url.pathname;

@@ -386,6 +386,7 @@ interface AgentExecutionOptions {
   channel?: string;
   userId?: string;
   modelOverride?: string;
+  requireToolUse?: boolean;
 }
 
 interface RunningAgentState {
@@ -1407,6 +1408,7 @@ class AgentManager {
       userId: options?.userId,
       permissions: permissions.permissions,
       enforcePermissions: permissions.enforcePermissions,
+      requireToolUse: options?.requireToolUse === true,
     };
   }
 
@@ -2264,6 +2266,9 @@ class AgentManager {
           parameters: t.input_schema || { type: "object", properties: {} },
         },
       }));
+      if (toolContext?.requireToolUse === true) {
+        requestBody.tool_choice = "required";
+      }
     }
 
     const headers: Record<string, string> = {
@@ -2897,7 +2902,7 @@ class AgentManager {
         input: inputItems,
         text: { verbosity: "medium" },
         include: ["reasoning.encrypted_content"],
-        tool_choice: "auto",
+        tool_choice: toolContext?.requireToolUse === true && iterations === 1 ? "required" : "auto",
         parallel_tool_calls: true,
       };
       if (instructions && instructions.trim().length > 0) {

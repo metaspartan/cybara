@@ -30,6 +30,10 @@ import {
 import { shouldRunMemoryFlush, resolveMemoryFlushSettings } from "../core/memory/flush";
 import { broadcastStatus } from "../core/status";
 import { emitAgentHook } from "../core/agent-hooks";
+import {
+  buildToolExecutionFallbackMessage,
+  shouldEnforceToolUseForMessage,
+} from "./chat-tool-summary";
 
 export interface ToolCallInfo {
   id: string;
@@ -378,13 +382,41 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
         role: sessionMessage.role,
         content: sessionMessage.content,
       }));
-      const result = await agentManager.execute(agent.id, executionMessages, {
+      let result = await agentManager.execute(agent.id, executionMessages, {
         useTools: tools,
         sessionId: session.id,
       });
       responseContent = result.content;
 
-      const toolResults = result.tool_calls || [];
+      let toolResults = result.tool_calls || [];
+      const shouldForceToolExecution = tools && shouldEnforceToolUseForMessage(message);
+      if (shouldForceToolExecution && toolResults.length === 0) {
+        try {
+          const forcedMessages: AgentMessage[] = [
+            ...executionMessages,
+            {
+              role: "user",
+              content:
+                "Execute the request now using available tools. Do not provide only a plan or intent. Perform concrete tool calls and then summarize the results.",
+            },
+          ];
+          const forcedResult = await agentManager.execute(agent.id, forcedMessages, {
+            useTools: true,
+            sessionId: session.id,
+            requireToolUse: true,
+          });
+          if ((forcedResult.tool_calls || []).length > 0) {
+            result = forcedResult;
+            responseContent = forcedResult.content;
+            toolResults = forcedResult.tool_calls || [];
+          }
+        } catch (toolRetryError) {
+          console.warn(
+            `[Chat] Forced tool-execution retry failed: ${(toolRetryError as Error).message}`
+          );
+        }
+      }
+
       if (toolResults.length > 0) {
         for (const tc of toolResults) {
           allToolCalls.push({
@@ -403,7 +435,11 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
         const toolResultsText = toolResults
           .map(
             (tc) =>
-              `Tool: ${tc.name}\nResult: ${typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result)}`
+              `Tool: ${tc.name}\nResult: ${
+                typeof tc.result === "string"
+                  ? tc.result.slice(0, 2000)
+                  : JSON.stringify(tc.result).slice(0, 2000)
+              }`
           )
           .join("\n\n");
 
@@ -505,8 +541,8 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
             }
           }
         } catch {
-          console.log("[Chat] Could not generate summary, using formatted tool output");
-          responseContent = `Here are the results from the tool execution:\n\n${toolResultsText}`;
+          console.log("[Chat] Could not generate summary, returning concise tool digest");
+          responseContent = buildToolExecutionFallbackMessage(toolResults);
         }
       }
 

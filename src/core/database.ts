@@ -404,6 +404,23 @@ db.exec(`
 
 const prepare = (sql: string) => db.prepare(sql);
 
+function serializeJsonColumn(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    try {
+      JSON.parse(trimmed);
+      return trimmed;
+    } catch {
+      return JSON.stringify(trimmed);
+    }
+  }
+
+  return JSON.stringify(value);
+}
+
 const stmts = {
   config: {
     get: prepare("SELECT value FROM config WHERE key = ?"),
@@ -675,8 +692,8 @@ export const tables = {
         a.model || null,
         a.provider_id || null,
         a.system_prompt || null,
-        a.tools ? JSON.stringify(a.tools) : null,
-        a.config ? JSON.stringify(a.config) : null,
+        serializeJsonColumn(a.tools),
+        serializeJsonColumn(a.config),
         a.status || "stopped",
         a.memory_enabled ? 1 : 0,
         a.fallback_provider_id || null
@@ -688,8 +705,8 @@ export const tables = {
         a.model || null,
         a.provider_id || null,
         a.system_prompt || null,
-        a.tools ? JSON.stringify(a.tools) : null,
-        a.config ? JSON.stringify(a.config) : null,
+        serializeJsonColumn(a.tools),
+        serializeJsonColumn(a.config),
         a.status || null,
         a.memory_enabled ? 1 : 0,
         a.fallback_provider_id || null,
