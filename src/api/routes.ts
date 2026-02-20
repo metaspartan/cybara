@@ -1886,6 +1886,49 @@ const routes: Record<string, RouteHandler> = {
     const callbackPath = oauthConfig.callbackPath || "/callback";
     const redirectUri = `http://localhost:${callbackPort}${callbackPath}`;
 
+    const renderOAuthCallbackHtml = (title: string, message: string, tone: "success" | "error") =>
+      `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${title}</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(circle at top, #1f2937 0%, #020617 60%);
+        color: #e5e7eb;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      .card {
+        width: min(520px, calc(100vw - 2rem));
+        border: 1px solid rgba(255,255,255,0.12);
+        background: rgba(15,23,42,0.7);
+        border-radius: 14px;
+        padding: 24px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.35);
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 22px;
+        line-height: 1.2;
+        color: ${tone === "success" ? "#86efac" : "#fca5a5"};
+      }
+      p { margin: 0; color: #cbd5e1; font-size: 15px; line-height: 1.5; }
+    </style>
+  </head>
+  <body>
+    <main class="card" role="main" aria-live="polite">
+      <h1>${title}</h1>
+      <p>${message}</p>
+    </main>
+  </body>
+</html>`;
+
     const callbackServer = Bun.serve({
       port: callbackPort,
       fetch: async (req) => {
@@ -1905,8 +1948,8 @@ const routes: Record<string, RouteHandler> = {
             oauthCallbacks.delete(state);
           }, 5000);
           return new Response(
-            "<html><body style='font-family:system-ui;text-align:center;padding:60px;background:#0a0a0a;color:#fff'><h2>❌ Authorization Failed</h2><p>You can close this tab.</p></body></html>",
-            { headers: { "Content-Type": "text/html" } }
+            renderOAuthCallbackHtml("Authorization failed", "You can close this tab.", "error"),
+            { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } }
           );
         }
 
@@ -1967,8 +2010,12 @@ const routes: Record<string, RouteHandler> = {
           oauthCallbacks.delete(state);
         }, 5000);
         return new Response(
-          "<html><body style='font-family:system-ui;text-align:center;padding:60px;background:#0a0a0a;color:#fff'><h2>✅ Connected!</h2><p>You can close this tab and return to Cybara.</p></body></html>",
-          { headers: { "Content-Type": "text/html" } }
+          renderOAuthCallbackHtml(
+            "Connected",
+            "You can close this tab and return to Cybara.",
+            "success"
+          ),
+          { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } }
         );
       },
     });

@@ -42,6 +42,13 @@ import { PageLayout } from "@/components/layout";
 import { GlassCard, GlassButton, Input, Badge, Modal } from "@/components/ui";
 import { formatRelativeTime } from "@/lib/utils";
 import { appendApiTokenParam } from "@/lib/auth";
+import {
+  buildActivitiesFromToolCalls,
+  finalizeCompletedActivities,
+  mergeActivityLists,
+  normalizeActivityTextForPhase,
+  type LiveActivityItem,
+} from "@/lib/chatActivities";
 
 interface ToolCall {
   id: string;
@@ -77,11 +84,19 @@ interface StatusStreamEvent {
   type?: string;
 }
 
-interface LiveActivityItem {
-  id: string;
-  phase: "start" | "result" | "error";
-  text: string;
-  timestamp: number;
+interface PendingProcessCapture {
+  assistantCountBefore: number;
+  activities: LiveActivityItem[];
+  sessionId: string | null;
+  agentId?: string;
+}
+
+function getMessageProcessKey(
+  sessionKey: string | null,
+  message: ChatMessage,
+  fallbackIndex: number
+): string {
+  return `${sessionKey || "default"}:${message.timestamp || fallbackIndex}`;
 }
 
 function readStringArg(args: Record<string, unknown>, keys: string[]): string | undefined {
@@ -124,7 +139,7 @@ function formatToolIntent(
   fallbackDetail?: string
 ): string {
   if (fallbackDetail && fallbackDetail.trim()) {
-    return fallbackDetail.trim();
+    return normalizeActivityTextForPhase(fallbackDetail.trim(), phase);
   }
 
   const key = toolName.toLowerCase();
@@ -457,18 +472,79 @@ function LiveActivityTimeline({
   );
 }
 
-function AssistantMetaInline({ message }: { message: ChatMessage }) {
+function ActivityStepCard({ activity, isLast }: { activity: LiveActivityItem; isLast: boolean }) {
+  const phaseStyles = {
+    start: "border-amber-500/30 bg-amber-500/10 text-amber-200",
+    result: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
+    error: "border-rose-500/30 bg-rose-500/10 text-rose-200",
+  } as const;
+
+  const phaseIcon =
+    activity.phase === "start" ? (
+      <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-300" />
+    ) : activity.phase === "result" ? (
+      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
+    ) : (
+      <AlertTriangle className="w-3.5 h-3.5 text-rose-300" />
+    );
+
+  return (
+    <div className="relative pl-6">
+      {!isLast && (
+        <div className="absolute left-[10px] top-5 h-[calc(100%-8px)] w-px bg-white/10" />
+      )}
+      <div className="absolute left-0 top-1.5 h-5 w-5 rounded-full border border-white/10 bg-[#090b13] flex items-center justify-center">
+        {phaseIcon}
+      </div>
+      <div
+        className={cn(
+          "rounded-lg border px-3 py-2 text-xs leading-5 backdrop-blur-sm",
+          phaseStyles[activity.phase]
+        )}
+      >
+        {activity.text}
+      </div>
+    </div>
+  );
+}
+
+function AssistantMetaInline({
+  message,
+  processActivities,
+}: {
+  message: ChatMessage;
+  processActivities?: LiveActivityItem[];
+}) {
   const hasThinking = !!message.thinking;
   const hasSubagentCalls = !!message.subagent_calls && message.subagent_calls.length > 0;
   const hasToolCalls = !!message.tool_calls && message.tool_calls.length > 0;
+  const hasProcessActivities = !!processActivities && processActivities.length > 0;
 
-  if (!hasThinking && !hasSubagentCalls && !hasToolCalls) {
+  if (!hasThinking && !hasSubagentCalls && !hasToolCalls && !hasProcessActivities) {
     return null;
   }
 
   return (
-    <div className="space-y-2 mb-3">
+    <div className="space-y-2 mt-3">
       {hasThinking && <ThinkingBlock thinking={message.thinking as string} />}
+
+      {hasProcessActivities && (
+        <div className="rounded-lg border border-white/10 bg-white/[0.02] px-2.5 py-2.5">
+          <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-[0.08em] text-gray-500">
+            <Sparkles className="w-3 h-3" />
+            <span>Process</span>
+          </div>
+          <div className="space-y-1.5">
+            {processActivities?.map((activity, index) => (
+              <ActivityStepCard
+                key={activity.id}
+                activity={activity}
+                isLast={index === processActivities.length - 1}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {hasSubagentCalls && (
         <div className="space-y-1.5">
@@ -526,6 +602,22 @@ function normalizeCodeLanguage(rawLanguage?: string): string {
   return CODE_LANGUAGE_ALIASES[key] || key || "plaintext";
 }
 
+function looksLikeDiffCode(code: string, language: string): boolean {
+  if (language === "diff" || language === "patch") {
+    return true;
+  }
+  const previewLines = code.split(/\r?\n/).slice(0, 12);
+  return previewLines.some((line) => {
+    const trimmed = line.trim();
+    return (
+      trimmed.startsWith("diff --git") ||
+      trimmed.startsWith("@@") ||
+      trimmed.startsWith("+++ ") ||
+      trimmed.startsWith("--- ")
+    );
+  });
+}
+
 function CopyCodeButton({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -568,7 +660,7 @@ function CopyCodeButton({ code }: { code: string }) {
   );
 }
 
-function InlineCodeWithCopy({
+function InlineCodeSnippet({
   code,
   className,
   codeProps,
@@ -577,73 +669,76 @@ function InlineCodeWithCopy({
   className?: string;
   codeProps?: ComponentPropsWithoutRef<"code">;
 }) {
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    if (!copied) return;
-    const timeoutId = window.setTimeout(() => setCopied(false), 1200);
-    return () => window.clearTimeout(timeoutId);
-  }, [copied]);
-
-  const handleCopy = useCallback(async () => {
-    if (!code) return;
-    try {
-      await navigator.clipboard.writeText(code);
-      setCopied(true);
-    } catch (error) {
-      console.error("Failed to copy inline code:", error);
-    }
-  }, [code]);
-
   return (
-    <span className="inline-flex max-w-full items-center align-baseline whitespace-normal rounded-md border border-white/15 bg-white/[0.08]">
-      <code
-        className={cn(
-          "px-1.5 py-0.5 text-[0.85em] font-mono whitespace-pre-wrap break-all align-baseline text-indigo-100",
-          className
-        )}
-        {...codeProps}
-      >
-        {code}
-      </code>
-      <button
-        type="button"
-        onClick={() => void handleCopy()}
-        className="mr-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-white/10 bg-white/[0.03] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors align-baseline cursor-pointer"
-        title={copied ? "Copied" : "Copy inline code"}
-        aria-label={copied ? "Copied inline code" : "Copy inline code"}
-      >
-        {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-      </button>
-    </span>
+    <code
+      className={cn(
+        "inline rounded-md border border-white/15 bg-white/[0.07] px-1.5 py-0.5 align-baseline font-mono text-[0.85em] text-indigo-100 whitespace-normal break-words",
+        className
+      )}
+      {...codeProps}
+    >
+      {code}
+    </code>
   );
 }
 
 function DiffCodeBlock({ code }: { code: string }) {
   const lines = code.split(/\r?\n/);
 
+  const lineMeta = lines.map((line) => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("diff --git") || trimmed.startsWith("index ")) {
+      return {
+        prefix: "·",
+        className: "bg-white/[0.02] text-gray-300",
+      };
+    }
+    if (trimmed.startsWith("@@") || trimmed.startsWith("+++ ") || trimmed.startsWith("--- ")) {
+      return {
+        prefix: "↕",
+        className: "bg-blue-500/10 text-blue-200",
+      };
+    }
+    if (line.startsWith("+")) {
+      return {
+        prefix: "+",
+        className: "bg-emerald-500/10 text-emerald-200",
+      };
+    }
+    if (line.startsWith("-")) {
+      return {
+        prefix: "−",
+        className: "bg-rose-500/10 text-rose-200",
+      };
+    }
+    return {
+      prefix: " ",
+      className: "text-gray-300",
+    };
+  });
+
   return (
-    <div className="my-3 rounded-xl border border-white/10 bg-slate-950/70 overflow-hidden">
-      <div className="flex items-center justify-between gap-2 px-3 py-1.5 border-b border-white/10 text-[11px] uppercase tracking-[0.08em] text-gray-400 bg-white/5">
+    <div className="my-3 overflow-hidden rounded-xl border border-white/10 bg-slate-950/70">
+      <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] uppercase tracking-[0.08em] text-gray-400">
         <span>diff</span>
         <CopyCodeButton code={code} />
       </div>
-      <pre className="m-0 overflow-x-auto text-[13px] leading-6 font-mono">
+      <pre className="m-0 overflow-x-auto font-mono text-[13px] leading-6">
         {lines.map((line, index) => (
           <div
             key={`diff-${index}`}
             className={cn(
-              "px-3 whitespace-pre",
-              line.startsWith("+++") || line.startsWith("---") || line.startsWith("@@")
-                ? "bg-blue-500/10 text-blue-200"
-                : line.startsWith("+")
-                  ? "bg-green-500/10 text-green-200"
-                  : line.startsWith("-")
-                    ? "bg-red-500/10 text-red-200"
-                    : "text-gray-300"
+              "grid grid-cols-[48px_20px_minmax(0,1fr)] items-start px-2",
+              lineMeta[index]?.className
             )}
           >
-            {line || "\u00A0"}
+            <span className="select-none pr-2 text-right text-[11px] text-gray-500">
+              {index + 1}
+            </span>
+            <span className="select-none text-center text-[12px] text-gray-400">
+              {lineMeta[index]?.prefix}
+            </span>
+            <span className="whitespace-pre">{line || "\u00A0"}</span>
           </div>
         ))}
       </pre>
@@ -653,16 +748,22 @@ function DiffCodeBlock({ code }: { code: string }) {
 
 function SyntaxCodeBlock({ code, language }: { code: string; language: string }) {
   const displayLanguage = language === "plaintext" ? "text" : language;
+  const lineCount = code ? code.split(/\r?\n/).length : 0;
   return (
-    <div className="my-3 rounded-xl border border-white/10 bg-black/50 overflow-hidden">
-      <div className="flex items-center justify-between gap-2 px-3 py-1.5 border-b border-white/10 text-[11px] uppercase tracking-[0.08em] text-gray-400 bg-white/5">
-        <span>{displayLanguage}</span>
+    <div className="my-3 overflow-hidden rounded-xl border border-white/10 bg-black/55 shadow-[0_8px_24px_rgba(0,0,0,0.22)]">
+      <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] uppercase tracking-[0.08em] text-gray-400">
+        <span className="inline-flex items-center gap-2">
+          <span>{displayLanguage}</span>
+          <span className="text-[10px] normal-case tracking-normal text-gray-500">
+            {lineCount} lines
+          </span>
+        </span>
         <CopyCodeButton code={code} />
       </div>
       <Highlight theme={themes.nightOwl} code={code || " "} language={language}>
         {({ className, style, tokens, getLineProps, getTokenProps }) => (
           <pre
-            className={cn(className, "m-0 p-3 overflow-x-auto text-[13px] leading-6")}
+            className={cn(className, "m-0 overflow-x-auto p-3 text-[13px] leading-6")}
             style={{ ...style, background: "transparent" }}
           >
             {tokens.map((line, lineIndex) => (
@@ -695,12 +796,12 @@ function MessageContent({ content }: { content: string }) {
             const rawCode = extractTextContent(children).replace(/\n$/, "");
             const inferredInline = !className && !rawCode.includes("\n");
             if (inline ?? inferredInline) {
-              return <InlineCodeWithCopy code={rawCode} className={className} codeProps={props} />;
+              return <InlineCodeSnippet code={rawCode} className={className} codeProps={props} />;
             }
 
             const languageMatch = className ? /language-([^\s]+)/.exec(className) : null;
             const language = normalizeCodeLanguage(languageMatch?.[1]);
-            if (language === "diff" || language === "patch") {
+            if (looksLikeDiffCode(rawCode, language)) {
               return <DiffCodeBlock code={rawCode} />;
             }
 
@@ -1210,17 +1311,23 @@ export function Chat() {
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
   const { messages, isLoading, sendMessage, clearChat, loadSession, sessionId } =
     useChat(selectedAgentId);
+  const typedMessages = messages as ChatMessage[];
   const loadSessionMutation = useLoadSession();
   const [input, setInput] = useState("");
   const [showSubagentPanel, setShowSubagentPanel] = useState(false);
   const [showSessionsPanel, setShowSessionsPanel] = useState(false);
   const [liveStatus, setLiveStatus] = useState<"thinking" | "generating" | "idle">("idle");
   const [liveActivities, setLiveActivities] = useState<LiveActivityItem[]>([]);
+  const [messageProcessMap, setMessageProcessMap] = useState<Record<string, LiveActivityItem[]>>(
+    {}
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeSessionRef = useRef<string | null>(null);
   const activeAgentRef = useRef<string | undefined>(undefined);
   const loadingRef = useRef(false);
   const wasLoadingRef = useRef(false);
+  const acceptEventsUntilRef = useRef(0);
+  const pendingProcessCaptureRef = useRef<PendingProcessCapture | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1237,25 +1344,113 @@ export function Chat() {
   }, [sessionId, selectedAgentId, isLoading]);
 
   useEffect(() => {
+    const assistantCount = typedMessages.reduce(
+      (count, message) => count + (message.role === "assistant" ? 1 : 0),
+      0
+    );
+
     if (isLoading && !wasLoadingRef.current) {
       setLiveActivities([]);
       setLiveStatus("thinking");
+      acceptEventsUntilRef.current = 0;
+      pendingProcessCaptureRef.current = {
+        assistantCountBefore: assistantCount,
+        activities: [],
+        sessionId,
+        agentId: selectedAgentId,
+      };
     }
+
     if (!isLoading && wasLoadingRef.current) {
+      acceptEventsUntilRef.current = Date.now() + 1500;
+      if (pendingProcessCaptureRef.current) {
+        pendingProcessCaptureRef.current = {
+          ...pendingProcessCaptureRef.current,
+          activities: liveActivities.map((activity) => ({ ...activity })),
+        };
+      }
       setLiveStatus("idle");
     }
+
     wasLoadingRef.current = isLoading;
-  }, [isLoading]);
+  }, [isLoading, liveActivities, sessionId, selectedAgentId, typedMessages]);
+
+  useEffect(() => {
+    const pending = pendingProcessCaptureRef.current;
+    if (!pending) return;
+
+    const sessionMismatch = !!pending.sessionId && !!sessionId && pending.sessionId !== sessionId;
+    const agentMismatch =
+      !!pending.agentId && !!selectedAgentId && pending.agentId !== selectedAgentId;
+    if (sessionMismatch || agentMismatch) {
+      pendingProcessCaptureRef.current = null;
+      return;
+    }
+
+    const assistantEntries = typedMessages
+      .map((message, index) => ({ message, index }))
+      .filter((entry) => entry.message.role === "assistant");
+
+    if (assistantEntries.length <= pending.assistantCountBefore) {
+      return;
+    }
+
+    const target = assistantEntries[pending.assistantCountBefore];
+    const processKey = getMessageProcessKey(sessionId, target.message, target.index);
+    const toolActivities = buildActivitiesFromToolCalls(
+      target.message.tool_calls,
+      formatToolIntent
+    );
+    const mergedActivities = mergeActivityLists(pending.activities, toolActivities);
+    const finalizedActivities = finalizeCompletedActivities(mergedActivities);
+
+    if (finalizedActivities.length > 0) {
+      setMessageProcessMap((previous) => ({
+        ...Object.fromEntries(Object.entries(previous).slice(-199)),
+        [processKey]: finalizedActivities,
+      }));
+    }
+
+    pendingProcessCaptureRef.current = null;
+  }, [sessionId, selectedAgentId, typedMessages]);
 
   const appendLiveActivity = useCallback((phase: "start" | "result" | "error", text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
     setLiveActivities((previous) => {
+      const normalizedText = normalizeActivityTextForPhase(trimmed, phase);
+      const nextTimestamp = Date.now();
+
+      if (phase !== "start") {
+        for (let index = previous.length - 1; index >= 0; index -= 1) {
+          const candidate = previous[index];
+          if (candidate.phase !== "start") continue;
+          if (normalizeActivityTextForPhase(candidate.text, phase) !== normalizedText) continue;
+          const updated = [...previous];
+          updated[index] = {
+            ...candidate,
+            phase,
+            text: normalizedText,
+            timestamp: nextTimestamp,
+          };
+          return updated.slice(-12);
+        }
+      }
+
+      const previousLast = previous[previous.length - 1];
+      if (
+        previousLast &&
+        previousLast.phase === phase &&
+        normalizeActivityTextForPhase(previousLast.text, phase) === normalizedText
+      ) {
+        return previous;
+      }
+
       const next: LiveActivityItem = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         phase,
-        text: trimmed,
-        timestamp: Date.now(),
+        text: normalizedText,
+        timestamp: nextTimestamp,
       };
       return [...previous.slice(-11), next];
     });
@@ -1274,7 +1469,7 @@ export function Chat() {
 
       if (!payload || typeof payload !== "object") return;
       if (payload.type && payload.type !== "status") return;
-      if (!loadingRef.current) return;
+      if (!loadingRef.current && Date.now() > acceptEventsUntilRef.current) return;
       const status = typeof payload.status === "string" ? payload.status : "";
       if (!status) return;
 
@@ -1339,8 +1534,6 @@ export function Chat() {
         });
     }
   }, []); // Only run on mount
-
-  const typedMessages = messages as ChatMessage[];
 
   return (
     <div className="h-screen flex flex-col bg-[#050508]">
@@ -1413,46 +1606,66 @@ export function Chat() {
                 </div>
               </div>
             ) : (
-              typedMessages.map((message, index) => (
-                <div
-                  key={index}
-                  className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}
-                >
+              typedMessages.map((message, index) => {
+                const processKey = getMessageProcessKey(sessionId, message, index);
+                const toolActivities = buildActivitiesFromToolCalls(
+                  message.tool_calls,
+                  formatToolIntent
+                );
+                const mergedActivities = mergeActivityLists(
+                  messageProcessMap[processKey] || [],
+                  toolActivities
+                );
+                const processActivities =
+                  mergedActivities.length > 0
+                    ? finalizeCompletedActivities(mergedActivities)
+                    : undefined;
+                return (
                   <div
-                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      message.role === "user"
-                        ? "bg-[rgba(var(--accent-primary),0.2)]"
-                        : "bg-emerald-500/20"
-                    }`}
-                  >
-                    {message.role === "user" ? (
-                      <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 accent-text" />
-                    ) : (
-                      <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
-                    )}
-                  </div>
-                  <div
-                    className={`max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] ${message.role === "user" ? "text-right" : ""}`}
+                    key={index}
+                    className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}
                   >
                     <div
-                      className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${
+                      className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
                         message.role === "user"
-                          ? "bg-[rgba(var(--accent-primary),0.15)] border border-[rgba(var(--accent-primary),0.2)]"
-                          : "bg-white/[0.03] border border-white/5"
+                          ? "bg-[rgba(var(--accent-primary),0.2)]"
+                          : "bg-emerald-500/20"
                       }`}
                     >
-                      {message.role !== "user" && <AssistantMetaInline message={message} />}
-                      <MessageContent content={message.content} />
+                      {message.role === "user" ? (
+                        <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 accent-text" />
+                      ) : (
+                        <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
+                      )}
                     </div>
+                    <div
+                      className={`max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] ${message.role === "user" ? "text-right" : ""}`}
+                    >
+                      <div
+                        className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${
+                          message.role === "user"
+                            ? "bg-[rgba(var(--accent-primary),0.15)] border border-[rgba(var(--accent-primary),0.2)]"
+                            : "bg-white/[0.03] border border-white/5"
+                        }`}
+                      >
+                        <MessageContent content={message.content} />
+                        {message.role !== "user" && (
+                          <AssistantMetaInline
+                            message={message}
+                            processActivities={processActivities}
+                          />
+                        )}
+                      </div>
 
-                    {message.timestamp && (
-                      <p className="text-[10px] text-gray-600 mt-1.5">
-                        {formatRelativeTime(message.timestamp)}
-                      </p>
-                    )}
+                      {message.timestamp && (
+                        <p className="text-[10px] text-gray-600 mt-1.5">
+                          {formatRelativeTime(message.timestamp)}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
             {isLoading && (
               <div className="flex gap-3">
