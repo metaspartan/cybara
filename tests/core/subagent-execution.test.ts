@@ -15,6 +15,7 @@ type ExecuteShape = (
   options?: {
     useTools?: boolean;
     sessionId?: string;
+    workspaceDir?: string;
     channel?: string;
     userId?: string;
     modelOverride?: string;
@@ -83,6 +84,7 @@ describe("Subagent execution wiring", () => {
           options?: {
             useTools?: boolean;
             sessionId?: string;
+            workspaceDir?: string;
             channel?: string;
             userId?: string;
             modelOverride?: string;
@@ -125,6 +127,7 @@ describe("Subagent execution wiring", () => {
       expect(captured?.options?.channel).toBe("subagent");
       expect(captured?.options?.userId).toBe("subagent");
       expect(captured?.options?.sessionId).toBe(spawnResult.childSessionKey);
+      expect(captured?.options?.workspaceDir).toBeUndefined();
       expect(captured?.options?.modelOverride).toBe(requestedModel);
       const lastMessage =
         captured && captured.messages.length > 0
@@ -253,5 +256,72 @@ describe("Subagent execution wiring", () => {
 
     expect(nestedSpawn.status).toBe("forbidden");
     expect(nestedSpawn.warning).toContain("not allowed from sub-agent sessions");
+  });
+
+  test("propagates requester session/workspace from tool context when args omit them", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Subagent Context Provider",
+      api_key: "subagent-context-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const targetAgent = agentManager.create({
+      name: "Context Agent",
+      type: "subagent",
+      provider_id: provider.id,
+      model: "model-context",
+      tools: [],
+    });
+    createdAgentIds.push(targetAgent.id);
+
+    const workspaceDir = process.cwd();
+    const requesterSessionKey = "chat:session:abc123";
+
+    let captured:
+      | {
+          options?: {
+            sessionId?: string;
+            workspaceDir?: string;
+          };
+        }
+      | undefined;
+
+    const originalExecute = agentManager.execute.bind(agentManager) as ExecuteShape;
+    (agentManager as unknown as { execute: ExecuteShape }).execute = async (
+      _agentId,
+      _messages,
+      options
+    ) => {
+      captured = { options };
+      return { content: "done" };
+    };
+
+    try {
+      const spawnResult = await handleSessionsSpawn(
+        {
+          task: "context propagation",
+          agentId: targetAgent.id,
+        },
+        {
+          agentId: targetAgent.id,
+          sessionId: requesterSessionKey,
+          workspaceDir,
+        }
+      );
+
+      expect(spawnResult.status).toBe("accepted");
+      await waitFor(
+        () => getSubagentSession(spawnResult.childSessionKey)?.status === "completed",
+        2000
+      );
+
+      const subagentSession = getSubagentSession(spawnResult.childSessionKey);
+      expect(subagentSession?.parentSessionId).toBe(requesterSessionKey);
+      expect(subagentSession?.workspaceDir).toBe(workspaceDir);
+      expect(captured?.options?.workspaceDir).toBe(workspaceDir);
+    } finally {
+      (agentManager as unknown as { execute: ExecuteShape }).execute = originalExecute;
+    }
   });
 });

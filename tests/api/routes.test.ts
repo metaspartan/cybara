@@ -1190,6 +1190,42 @@ describe("Session API", () => {
     expect(Array.isArray(data)).toBe(true);
   });
 
+  test("session workspace can be set and loaded via session routes", async () => {
+    const initialWorkspace = process.cwd();
+    const create = await api("POST", "/api/chat", {
+      message: `workspace-session-${Date.now()}`,
+      workspaceDir: initialWorkspace,
+    });
+    expect(create.status).toBe(200);
+    const sessionId = create.data.sessionId as string;
+    expect(typeof sessionId).toBe("string");
+
+    const detailBefore = await api("GET", `/api/sessions/${sessionId}`);
+    expect(detailBefore.status).toBe(200);
+    expect(detailBefore.data.workspace_dir).toBe(initialWorkspace);
+
+    const nextWorkspace = process.env.HOME || initialWorkspace;
+    const update = await api("PUT", `/api/sessions/${sessionId}/workspace`, {
+      workspaceDir: nextWorkspace,
+    });
+    expect(update.status).toBe(200);
+    expect(update.data.success).toBe(true);
+    expect(update.data.sessionId).toBe(sessionId);
+    expect(update.data.workspaceDir).toBe(nextWorkspace);
+
+    const detailAfter = await api("GET", `/api/sessions/${sessionId}`);
+    expect(detailAfter.status).toBe(200);
+    expect(detailAfter.data.workspace_dir).toBe(nextWorkspace);
+
+    const sessions = await api("GET", "/api/sessions");
+    expect(sessions.status).toBe(200);
+    const found = (sessions.data as Array<{ id: string; workspace_dir?: string | null }>).find(
+      (entry) => entry.id === sessionId
+    );
+    expect(found).toBeDefined();
+    expect(found?.workspace_dir).toBe(nextWorkspace);
+  });
+
   test("GET /api/sessions/:sessionId keeps artifact tool calls visible even when tool list is truncated", async () => {
     const sessionId = `session-artifact-trunc-${Date.now()}`;
     const agentId = `agent-artifact-trunc-${Date.now()}`;

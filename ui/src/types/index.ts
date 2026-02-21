@@ -157,6 +157,8 @@ export interface ChatSession {
   agentId: string;
   title: string;
   status: string;
+  workspaceDir?: string;
+  workspace_dir?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -191,6 +193,8 @@ export interface Session {
   agentId: string;
   title: string;
   status: string;
+  workspaceDir?: string;
+  workspace_dir?: string;
   createdAt: string;
   updatedAt: string;
 }

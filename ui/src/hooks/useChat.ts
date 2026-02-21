@@ -6,6 +6,7 @@ import type { ChatMessage } from '@/types';
 interface ChatState {
   messages: ChatMessage[];
   sessionId: string | null;
+  workspaceDir: string | null;
   isLoading: boolean;
 }
 
@@ -19,11 +20,14 @@ export function useChat(agentId?: string) {
   const [state, setState] = useState<ChatState>({
     messages: [],
     sessionId: null,
+    workspaceDir: null,
     isLoading: false,
   });
 
-  const sendMessage = async (content: string) => {
+  const sendMessage = async (content: string, options?: { workspaceDir?: string | null }) => {
     const userMessage: ChatMessage = { role: 'user', content, timestamp: new Date().toISOString() };
+    const requestedWorkspaceDir =
+      options?.workspaceDir !== undefined ? options.workspaceDir : state.workspaceDir;
     setState((prev) => ({
       ...prev,
       messages: [...prev.messages, userMessage],
@@ -32,13 +36,28 @@ export function useChat(agentId?: string) {
     
     try {
       const response = agentId 
-        ? await agentsApi.chat(agentId, content, state.sessionId || undefined)
-        : await chatApi.send(content, undefined, state.sessionId || undefined);
+        ? await agentsApi.chat(
+            agentId,
+            content,
+            state.sessionId || undefined,
+            requestedWorkspaceDir || undefined
+          )
+        : await chatApi.send(
+            content,
+            undefined,
+            state.sessionId || undefined,
+            requestedWorkspaceDir || undefined
+          );
         
       if (response.success && response.data) {
+        const resolvedWorkspaceDir =
+          response.data.workspaceDir !== undefined
+            ? response.data.workspaceDir
+            : requestedWorkspaceDir;
         setState((prev) => ({
           messages: [...prev.messages, response.data!.message],
           sessionId: response.data!.sessionId,
+          workspaceDir: resolvedWorkspaceDir ?? null,
           isLoading: false,
         }));
         return response.data;
@@ -54,16 +73,28 @@ export function useChat(agentId?: string) {
     setState({
       messages: [],
       sessionId: null,
+      workspaceDir: null,
       isLoading: false,
     });
   };
 
-  const loadSession = useCallback((sessionId: string, messages: ChatMessage[]) => {
-    setState({
-      messages,
-      sessionId,
-      isLoading: false,
-    });
+  const loadSession = useCallback(
+    (sessionId: string, messages: ChatMessage[], workspaceDir?: string | null) => {
+      setState({
+        messages,
+        sessionId,
+        workspaceDir: workspaceDir ?? null,
+        isLoading: false,
+      });
+    },
+    []
+  );
+
+  const setWorkspaceDir = useCallback((workspaceDir: string | null) => {
+    setState((prev) => ({
+      ...prev,
+      workspaceDir,
+    }));
   }, []);
 
   const revertToMessage = async (target: RevertMessageInput) => {
@@ -104,10 +135,12 @@ export function useChat(agentId?: string) {
   return {
     messages: state.messages,
     sessionId: state.sessionId,
+    workspaceDir: state.workspaceDir,
     isLoading: state.isLoading,
     sendMessage,
     clearChat,
     loadSession,
+    setWorkspaceDir,
     revertToMessage,
   };
 }

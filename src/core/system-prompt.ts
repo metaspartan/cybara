@@ -714,6 +714,7 @@ function buildWorkspaceSection(workspaceDir?: string): string[] {
     "## Workspace",
     `Your working directory is: ${dir}`,
     `You have full access to the entire ${dir} directory and can create, read, write, and execute anywhere within it.`,
+    "When a session-specific workspace folder is provided, use it as the default root for file/process/git tools unless the user asks otherwise.",
     "",
   ];
 }

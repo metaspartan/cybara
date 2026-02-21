@@ -38,6 +38,7 @@ import {
   listSessions,
   deleteSession,
   revertSessionToMessage,
+  updateSessionWorkspace,
   getChatRateLimitStatus,
   type ChatMessage,
 } from "../api/chat";
@@ -1493,11 +1494,12 @@ const routes: Record<string, RouteHandler> = {
   },
 
   "POST /api/agents/:id/chat": async (body, params) => {
-    const data = body as { message: string; sessionId?: string };
+    const data = body as { message: string; sessionId?: string; workspaceDir?: string };
     return await handleChat({
       message: data.message,
       agentId: params!.id,
       sessionId: data.sessionId,
+      workspaceDir: data.workspaceDir,
     });
   },
 
@@ -1546,6 +1548,10 @@ const routes: Record<string, RouteHandler> = {
         typeof data.context?.userId === "string" && data.context.userId.trim()
           ? data.context.userId
           : "user",
+      workspaceDir:
+        typeof data.context?.workspaceDir === "string" && data.context.workspaceDir.trim()
+          ? data.context.workspaceDir
+          : undefined,
       permissions: contextPermissions,
       enforcePermissions: data.context?.enforcePermissions === true,
       allowDangerousTools: data.context?.allowDangerousTools === true,
@@ -2790,6 +2796,7 @@ const routes: Record<string, RouteHandler> = {
       message: string;
       agentId?: string;
       sessionId?: string;
+      workspaceDir?: string;
       stream?: boolean;
       tools?: boolean;
     };
@@ -3017,6 +3024,10 @@ const routes: Record<string, RouteHandler> = {
           agent_id: session.agentId,
           created_at: normalizeTimestamp(session.createdAt),
           updated_at: normalizeTimestamp(updatedAt),
+          workspace_dir:
+            "workspaceDir" in session && typeof session.workspaceDir === "string"
+              ? session.workspaceDir
+              : null,
           message_count: session.messageCount,
           last_message: lastMessage
             ? {
@@ -3063,8 +3074,30 @@ const routes: Record<string, RouteHandler> = {
       agent_id: session.agentId,
       created_at: normalizeTimestamp(session.createdAt),
       updated_at: normalizeTimestamp(session.createdAt),
+      workspace_dir:
+        "workspaceDir" in session && typeof session.workspaceDir === "string"
+          ? session.workspaceDir
+          : null,
       messagesList: sanitizedMessages,
     };
+  },
+  "PUT /api/sessions/:sessionId/workspace": async (body, params) => {
+    const data = (body || {}) as { workspaceDir?: string | null };
+    try {
+      const updated = await updateSessionWorkspace(
+        params!.sessionId,
+        typeof data.workspaceDir === "string" ? data.workspaceDir : null
+      );
+      return {
+        success: true,
+        ...updated,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to update session workspace",
+      };
+    }
   },
   "GET /api/sessions/:sessionId/artifacts": (_body, params) => {
     const sessionId = params!.sessionId;

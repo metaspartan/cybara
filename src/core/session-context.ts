@@ -2,6 +2,9 @@ import db, { tables } from "./database";
 import { agentManager } from "./agent";
 import { providerManager, providers } from "./providers";
 import type { ChatMessage } from "../api/chat";
+import { existsSync, statSync } from "fs";
+import { homedir } from "os";
+import { isAbsolute, resolve } from "path";
 
 interface PersistedSessionMessage {
   role: string;
@@ -23,6 +26,26 @@ function parseSessionMessageMetadata(metadata?: string): SessionMessageMetadata 
   } catch {
     return {};
   }
+}
+
+export function normalizeSessionWorkspaceDir(workspaceDir?: string | null): string | null {
+  if (typeof workspaceDir !== "string") return null;
+
+  const trimmed = workspaceDir.trim();
+  if (!trimmed) return null;
+
+  const expanded = trimmed.startsWith("~") ? trimmed.replace(/^~(?=$|\/|\\)/, homedir()) : trimmed;
+  const absolute = isAbsolute(expanded) ? resolve(expanded) : resolve(process.cwd(), expanded);
+
+  if (!existsSync(absolute)) {
+    throw new Error(`Workspace directory does not exist: ${absolute}`);
+  }
+  const stats = statSync(absolute);
+  if (!stats.isDirectory()) {
+    throw new Error(`Workspace path is not a directory: ${absolute}`);
+  }
+
+  return absolute;
 }
 
 const DEFAULT_CONTEXT_TOKENS = 200_000;
@@ -304,19 +327,30 @@ function createFallbackSummary(messages: ChatMessage[]): string {
 export async function persistSession(
   sessionId: string,
   agentId: string,
-  messages: ChatMessage[]
+  messages: ChatMessage[],
+  workspaceDir?: string | null
 ): Promise<void> {
   try {
+    const hasWorkspaceUpdate = workspaceDir !== undefined;
+    const normalizedWorkspaceDir = hasWorkspaceUpdate
+      ? normalizeSessionWorkspaceDir(workspaceDir)
+      : null;
     const existing = db.prepare("SELECT id FROM chat_sessions WHERE id = ?").get(sessionId);
 
     if (existing) {
-      db.prepare("UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(
-        sessionId
-      );
+      if (hasWorkspaceUpdate) {
+        db.prepare(
+          "UPDATE chat_sessions SET workspace_dir = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        ).run(normalizedWorkspaceDir, sessionId);
+      } else {
+        db.prepare("UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(
+          sessionId
+        );
+      }
     } else {
       db.prepare(
-        "INSERT INTO chat_sessions (id, agent_id, messages, created_at, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
-      ).run(sessionId, agentId, JSON.stringify(messages.slice(0, 2))); // Store preview
+        "INSERT INTO chat_sessions (id, agent_id, messages, workspace_dir, created_at, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+      ).run(sessionId, agentId, JSON.stringify(messages.slice(0, 2)), normalizedWorkspaceDir); // Store preview
     }
 
     console.log(
@@ -329,7 +363,7 @@ export async function persistSession(
 
 export async function loadPersistedSession(
   sessionId: string
-): Promise<{ agentId: string; messages: ChatMessage[] } | null> {
+): Promise<{ agentId: string; messages: ChatMessage[]; workspaceDir: string | null } | null> {
   try {
     const sessionMessages =
       (tables.sessionMessages?.getBySession(sessionId) as PersistedSessionMessage[]) || [];
@@ -346,11 +380,24 @@ export async function loadPersistedSession(
     }));
 
     let agentId = (sessionMessages[0] as { agent_id?: string })?.agent_id;
+    let workspaceDir: string | null = null;
     if (!agentId) {
       const session = db
-        .prepare("SELECT agent_id FROM chat_sessions WHERE id = ?")
-        .get(sessionId) as { agent_id?: string } | null;
+        .prepare("SELECT agent_id, workspace_dir FROM chat_sessions WHERE id = ?")
+        .get(sessionId) as { agent_id?: string; workspace_dir?: string | null } | null;
       agentId = session?.agent_id;
+      workspaceDir =
+        typeof session?.workspace_dir === "string" && session.workspace_dir.trim().length > 0
+          ? session.workspace_dir
+          : null;
+    } else {
+      const session = db
+        .prepare("SELECT workspace_dir FROM chat_sessions WHERE id = ?")
+        .get(sessionId) as { workspace_dir?: string | null } | null;
+      workspaceDir =
+        typeof session?.workspace_dir === "string" && session.workspace_dir.trim().length > 0
+          ? session.workspace_dir
+          : null;
     }
 
     console.log(
@@ -360,6 +407,7 @@ export async function loadPersistedSession(
     return {
       agentId: agentId || "default",
       messages,
+      workspaceDir,
     };
   } catch (error) {
     console.error("[Session] Failed to load persisted session:", error);
@@ -374,6 +422,7 @@ export async function listPersistedSessions(): Promise<
     createdAt: string;
     updatedAt: string;
     messageCount: number;
+    workspaceDir: string | null;
   }>
 > {
   try {
@@ -385,6 +434,7 @@ export async function listPersistedSessions(): Promise<
         cs.agent_id as agentId,
         cs.created_at as createdAt,
         cs.updated_at as updatedAt,
+        cs.workspace_dir as workspaceDir,
         COUNT(sm.id) as messageCount
       FROM chat_sessions cs
       LEFT JOIN session_messages sm ON cs.id = sm.session_id
@@ -398,6 +448,7 @@ export async function listPersistedSessions(): Promise<
       createdAt: string;
       updatedAt: string;
       messageCount: number;
+      workspaceDir: string | null;
     }>;
 
     return sessions;
@@ -405,6 +456,19 @@ export async function listPersistedSessions(): Promise<
     console.error("[Session] Failed to list persisted sessions:", error);
     return [];
   }
+}
+
+export async function getPersistedSessionWorkspace(sessionId: string): Promise<string | null> {
+  return tables.chatSessions.getWorkspace(sessionId);
+}
+
+export async function setPersistedSessionWorkspace(
+  sessionId: string,
+  workspaceDir: string | null
+): Promise<string | null> {
+  const normalizedWorkspaceDir = normalizeSessionWorkspaceDir(workspaceDir);
+  tables.chatSessions.updateWorkspace(sessionId, normalizedWorkspaceDir);
+  return normalizedWorkspaceDir;
 }
 
 export async function deletePersistedSession(sessionId: string): Promise<boolean> {

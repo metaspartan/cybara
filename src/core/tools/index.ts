@@ -29,6 +29,7 @@ export interface ToolHandler {
 export interface ToolContext {
   agentId: string;
   sessionId?: string;
+  workspaceDir?: string;
   channel?: string;
   userId?: string;
   permissions?: string[];

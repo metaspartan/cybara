@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import type { CronJobCreate, CronJobPatch } from "../../cron/types";
 import * as cron from "../../cron";
 import { agentManager } from "../../agent";
+import type { ToolContext } from "../index";
 import {
   channelManager,
   discordSessions,
@@ -22,6 +23,7 @@ interface SubagentSession {
   id: string;
   agentId?: string;
   parentSessionId?: string;
+  workspaceDir?: string;
   task: string;
   model?: string;
   timeout?: number;
@@ -47,7 +49,10 @@ export function resetSubagentSessionsForTests(): void {
   sessions.clear();
 }
 
-export async function handleSessionsSpawn(args: Record<string, unknown>): Promise<{
+export async function handleSessionsSpawn(
+  args: Record<string, unknown>,
+  context?: ToolContext
+): Promise<{
   status: string;
   childSessionKey: string;
   runId: string;
@@ -67,7 +72,12 @@ export async function handleSessionsSpawn(args: Record<string, unknown>): Promis
         : 0;
   const cleanup = args.cleanup === "delete" ? "delete" : "keep";
 
-  const requesterSessionKey = (args._requesterSessionKey as string) || "main";
+  const requesterSessionKey =
+    (args._requesterSessionKey as string) || (context?.sessionId as string) || "main";
+  const requestedWorkspaceDir =
+    (typeof args.workspaceDir === "string" && args.workspaceDir.trim()) ||
+    (typeof context?.workspaceDir === "string" && context.workspaceDir.trim()) ||
+    undefined;
 
   if (!task) {
     throw new Error("task is required");
@@ -109,7 +119,13 @@ export async function handleSessionsSpawn(args: Record<string, unknown>): Promis
     messages: [
       {
         role: "system",
-        content: buildSubagentSystemPrompt(requesterSessionKey, childSessionKey, task, label),
+        content: buildSubagentSystemPrompt(
+          requesterSessionKey,
+          childSessionKey,
+          task,
+          label,
+          requestedWorkspaceDir
+        ),
         timestamp: new Date().toISOString(),
       },
       {
@@ -119,6 +135,7 @@ export async function handleSessionsSpawn(args: Record<string, unknown>): Promis
       },
     ],
     createdAt: new Date().toISOString(),
+    workspaceDir: requestedWorkspaceDir,
   };
 
   sessions.set(childSessionKey, session);
@@ -141,7 +158,8 @@ function buildSubagentSystemPrompt(
   requesterSessionKey: string,
   childSessionKey: string,
   task: string,
-  label?: string
+  label?: string,
+  workspaceDir?: string
 ): string {
   const lines = [
     "You are a sub-agent running a specific task.",
@@ -157,6 +175,7 @@ function buildSubagentSystemPrompt(
     "",
     `Requester session: ${requesterSessionKey}`,
     `Your session: ${childSessionKey}`,
+    workspaceDir ? `Workspace directory: ${workspaceDir}` : "",
   ];
 
   return lines.filter(Boolean).join("\n");
@@ -194,6 +213,7 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
     const result = await agentManager.execute(agent.id, agentMessages, {
       useTools: true,
       sessionId,
+      workspaceDir: session.workspaceDir,
       channel: "subagent",
       userId: "subagent",
       modelOverride: session.model,
@@ -301,6 +321,7 @@ export async function handleSessionsList(): Promise<{
     status: string;
     createdAt: string;
     completedAt?: string;
+    workspaceDir?: string;
     messageCount: number;
   }>;
 }> {
@@ -311,6 +332,7 @@ export async function handleSessionsList(): Promise<{
       status: s.status,
       createdAt: s.createdAt,
       completedAt: s.completedAt,
+      workspaceDir: s.workspaceDir,
       messageCount: s.messages.length,
     })),
   };
@@ -320,6 +342,7 @@ export async function handleSessionStatus(args: Record<string, unknown>): Promis
   sessionId: string;
   status: string;
   model?: string;
+  workspaceDir?: string;
   messageCount: number;
   tokenEstimate: number;
   createdAt: string;
@@ -352,6 +375,7 @@ export async function handleSessionStatus(args: Record<string, unknown>): Promis
     sessionId: session.id,
     status: session.status,
     model: session.model,
+    workspaceDir: session.workspaceDir,
     messageCount: session.messages.length,
     tokenEstimate,
     createdAt: session.createdAt,

@@ -49,6 +49,8 @@ import {
 import { trackMetric, trackToolCall } from "../../metrics";
 import { logToolExecution } from "../../logging";
 import { config } from "../../config";
+import { homedir } from "os";
+import { isAbsolute, resolve } from "path";
 import {
   checkToolPermissions,
   getToolRequiredPermissions,
@@ -202,6 +204,81 @@ function getToolApprovalMode(): "always_allow" | "ask" {
   return config.getToolApprovalMode();
 }
 
+function normalizeWorkspaceDirectory(workspaceDir?: string): string | undefined {
+  if (typeof workspaceDir !== "string") return undefined;
+  const trimmed = workspaceDir.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.startsWith("~")) {
+    return resolve(trimmed.replace(/^~(?=$|\/|\\)/, homedir()));
+  }
+  return isAbsolute(trimmed) ? resolve(trimmed) : resolve(process.cwd(), trimmed);
+}
+
+function resolveWorkspacePath(path: string, workspaceDir: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) return trimmed;
+  if (trimmed.startsWith("~")) {
+    return resolve(trimmed.replace(/^~(?=$|\/|\\)/, homedir()));
+  }
+  return isAbsolute(trimmed) ? resolve(trimmed) : resolve(workspaceDir, trimmed);
+}
+
+function hasNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function applyWorkspaceDefaults(
+  toolName: string,
+  args: Record<string, unknown>,
+  context?: ToolContext
+): Record<string, unknown> {
+  const normalizedWorkspaceDir = normalizeWorkspaceDirectory(context?.workspaceDir);
+  let nextArgs: Record<string, unknown> | null = null;
+  const setArg = (key: string, value: unknown) => {
+    if (!nextArgs) {
+      nextArgs = { ...args };
+    }
+    nextArgs[key] = value;
+  };
+
+  if (toolName === "sessions_spawn") {
+    if (!hasNonEmptyString(args._requesterSessionKey) && hasNonEmptyString(context?.sessionId)) {
+      setArg("_requesterSessionKey", context?.sessionId);
+    }
+    if (!hasNonEmptyString(args.workspaceDir) && normalizedWorkspaceDir) {
+      setArg("workspaceDir", normalizedWorkspaceDir);
+    }
+  }
+
+  if (!normalizedWorkspaceDir) {
+    return nextArgs || args;
+  }
+
+  if ((toolName === "exec" || toolName === "git") && !hasNonEmptyString(args.workdir)) {
+    setArg("workdir", normalizedWorkspaceDir);
+  }
+
+  if (toolName === "file_search" && !hasNonEmptyString(args.cwd)) {
+    setArg("cwd", normalizedWorkspaceDir);
+  }
+
+  if (toolName === "grep" && !hasNonEmptyString(args.path)) {
+    setArg("path", normalizedWorkspaceDir);
+  }
+
+  if (
+    (toolName === "read" || toolName === "write" || toolName === "edit") &&
+    hasNonEmptyString(args.path)
+  ) {
+    const resolvedPath = resolveWorkspacePath(args.path, normalizedWorkspaceDir);
+    if (resolvedPath !== args.path) {
+      setArg("path", resolvedPath);
+    }
+  }
+
+  return nextArgs || args;
+}
+
 export async function executeTool(
   name: string,
   args: Record<string, unknown>,
@@ -267,12 +344,13 @@ export async function executeTool(
     );
   }
 
+  const resolvedArgs = applyWorkspaceDefaults(name, args, context);
   const startTime = Date.now();
-  const argsPreview = JSON.stringify(args).slice(0, 200);
+  const argsPreview = JSON.stringify(resolvedArgs).slice(0, 200);
 
   try {
     console.log(`[Tool] Executing ${name} with args:`, argsPreview);
-    const result = await handler(args, context);
+    const result = await handler(resolvedArgs, context);
     const duration = Date.now() - startTime;
     console.log(`[Tool] ${name} completed successfully in ${duration}ms`);
 

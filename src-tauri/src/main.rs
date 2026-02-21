@@ -17,6 +17,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // Check if server is already running (e.g., started by beforeDevCommand)
             if is_server_running() {

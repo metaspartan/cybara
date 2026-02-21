@@ -19,6 +19,7 @@ import {
   deletePersistedSession,
   estimateMessagesTokens,
   getContextWindow,
+  normalizeSessionWorkspaceDir,
 } from "../core/session-context";
 import { handleMemorySave } from "../core/tools/handlers/memory";
 import {
@@ -57,6 +58,7 @@ export interface ChatRequest {
   message: string;
   agentId?: string;
   sessionId?: string;
+  workspaceDir?: string;
   stream?: boolean;
   tools?: boolean;
   channel?: string;
@@ -67,6 +69,7 @@ export interface ChatRequest {
 export interface ChatResponse {
   sessionId: string;
   message: ChatMessage;
+  workspaceDir?: string | null;
   agent?: {
     id: string;
     name: string;
@@ -82,6 +85,7 @@ const chatSessions = new Map<
     agentId: string;
     messages: ChatMessage[];
     createdAt: string;
+    workspaceDir?: string | null;
     persisted: boolean;
     compactionCount?: number; // Track compaction cycles for memory flush
     lastFlushCompactionCount?: number; // Last compaction cycle we flushed
@@ -100,6 +104,7 @@ async function loadPersistedSessions() {
           agentId: session.agentId,
           messages: session.messages,
           createdAt: sessionInfo.createdAt,
+          workspaceDir: session.workspaceDir,
           persisted: true,
         });
         console.log(`[Chat] Loaded persisted session ${sessionInfo.id.slice(0, 8)}...`);
@@ -178,7 +183,18 @@ export function stripThinkingTags(content: string): { content: string; thinking:
 const chatRateLimitConfig = { windowMs: 60000, maxRequests: 60 }; // 60 requests per minute
 
 export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
-  const { message, agentId, sessionId, tools = true, channel, userId, source } = request;
+  const {
+    message,
+    agentId,
+    sessionId,
+    tools = true,
+    channel,
+    userId,
+    source,
+    workspaceDir,
+  } = request;
+  const requestedWorkspaceDir =
+    workspaceDir !== undefined ? normalizeSessionWorkspaceDir(workspaceDir) : undefined;
 
   const rateLimit = checkRateLimit("chat", chatRateLimitConfig);
   if (!rateLimit.allowed) {
@@ -228,11 +244,16 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
         },
       ],
       createdAt: new Date().toISOString(),
+      workspaceDir: requestedWorkspaceDir ?? null,
       persisted: false,
     };
     chatSessions.set(newSessionId, session);
 
     trackSessionEvent(newSessionId, "created", { agentId: agent.id, model: agent.model });
+  }
+
+  if (requestedWorkspaceDir !== undefined) {
+    session.workspaceDir = requestedWorkspaceDir;
   }
 
   const agent = agentManager.get(session.agentId);
@@ -314,6 +335,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
             sessionId: session.id,
             channel,
             userId,
+            workspaceDir: session.workspaceDir || undefined,
           }
         );
 
@@ -385,6 +407,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
       let result = await agentManager.execute(agent.id, executionMessages, {
         useTools: tools,
         sessionId: session.id,
+        workspaceDir: session.workspaceDir || undefined,
       });
       responseContent = result.content;
 
@@ -404,6 +427,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
             useTools: true,
             sessionId: session.id,
             requireToolUse: true,
+            workspaceDir: session.workspaceDir || undefined,
           });
           if ((forcedResult.tool_calls || []).length > 0) {
             result = forcedResult;
@@ -473,6 +497,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
                 sessionId: session.id,
                 channel,
                 userId,
+                workspaceDir: session.workspaceDir || undefined,
               }
             );
             responseContent = summaryResult.content;
@@ -531,6 +556,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
                       sessionId: session.id,
                       channel,
                       userId,
+                      workspaceDir: session.workspaceDir || undefined,
                     }
                   );
                   responseContent = finalResult.content;
@@ -604,7 +630,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     },
   });
 
-  await persistSession(session.id, session.agentId, session.messages);
+  await persistSession(session.id, session.agentId, session.messages, session.workspaceDir);
   session.persisted = true;
 
   await emitAgentHook({
@@ -641,6 +667,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
 
   return {
     sessionId: session.id,
+    workspaceDir: session.workspaceDir ?? null,
     message: assistantMessage,
     agent: agent
       ? {
@@ -681,6 +708,7 @@ export async function getSession(sessionId: string) {
       agentId: persisted.agentId,
       messages: persisted.messages,
       createdAt: new Date().toISOString(),
+      workspaceDir: persisted.workspaceDir,
       persisted: true,
     };
     chatSessions.set(sessionId, restoredSession);
@@ -696,13 +724,20 @@ export async function getSessionMessages(sessionId: string): Promise<ChatMessage
 }
 
 export async function listSessions(): Promise<
-  Array<{ id: string; agentId: string; messageCount: number; createdAt: string }>
+  Array<{
+    id: string;
+    agentId: string;
+    messageCount: number;
+    createdAt: string;
+    workspaceDir: string | null;
+  }>
 > {
   const memorySessions = Array.from(chatSessions.values()).map((s) => ({
     id: s.id,
     agentId: s.agentId,
     messageCount: s.messages.length,
     createdAt: s.createdAt,
+    workspaceDir: s.workspaceDir ?? null,
   }));
 
   const persistedSessions = await listPersistedSessions();
@@ -716,6 +751,7 @@ export async function listSessions(): Promise<
         agentId: ps.agentId,
         messageCount: ps.messageCount,
         createdAt: ps.createdAt,
+        workspaceDir: ps.workspaceDir ?? null,
       });
     }
   }
@@ -846,6 +882,12 @@ export async function revertSessionToMessage(
   const inMemorySession = chatSessions.get(sessionId);
   const agentId = inMemorySession?.agentId || session.agentId || "default";
   const createdAt = inMemorySession?.createdAt || session.createdAt || new Date().toISOString();
+  const workspaceDir =
+    inMemorySession?.workspaceDir !== undefined
+      ? (inMemorySession.workspaceDir ?? null)
+      : "workspaceDir" in session && typeof session.workspaceDir === "string"
+        ? session.workspaceDir
+        : null;
 
   if (inMemorySession) {
     inMemorySession.messages = keptMessages;
@@ -856,13 +898,14 @@ export async function revertSessionToMessage(
       agentId,
       messages: keptMessages,
       createdAt,
+      workspaceDir,
       persisted: true,
     });
   }
 
   if (removedCount > 0) {
     await deletePersistedSession(sessionId);
-    await persistSession(sessionId, agentId, keptMessages);
+    await persistSession(sessionId, agentId, keptMessages, workspaceDir);
     for (const message of keptMessages) {
       await logSessionMessage(sessionId, message.role, message.content, {
         agentId,
@@ -882,6 +925,46 @@ export async function revertSessionToMessage(
 
 export function getChatRateLimitStatus() {
   return getRateLimitStatus("chat");
+}
+
+export async function updateSessionWorkspace(
+  sessionId: string,
+  workspaceDir: string | null
+): Promise<{ sessionId: string; workspaceDir: string | null }> {
+  const normalizedWorkspaceDir = normalizeSessionWorkspaceDir(workspaceDir);
+  const session = await getSession(sessionId);
+  if (!session) {
+    throw new Error("Session not found");
+  }
+
+  if ((session as { isSubagent?: boolean }).isSubagent) {
+    throw new Error("Cannot update workspace for subagent sessions");
+  }
+
+  const inMemorySession = chatSessions.get(sessionId);
+  const agentId = inMemorySession?.agentId || session.agentId || "default";
+  const createdAt = inMemorySession?.createdAt || session.createdAt || new Date().toISOString();
+  const messages = session.messages || [];
+
+  if (inMemorySession) {
+    inMemorySession.workspaceDir = normalizedWorkspaceDir;
+    inMemorySession.persisted = true;
+  } else {
+    chatSessions.set(sessionId, {
+      id: sessionId,
+      agentId,
+      messages,
+      createdAt,
+      workspaceDir: normalizedWorkspaceDir,
+      persisted: true,
+    });
+  }
+
+  await persistSession(sessionId, agentId, messages, normalizedWorkspaceDir);
+  return {
+    sessionId,
+    workspaceDir: normalizedWorkspaceDir,
+  };
 }
 
 export function sendToSession(sessionKey: string, message: ChatMessage): boolean {

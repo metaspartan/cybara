@@ -40,11 +40,14 @@ export const agentsApi = {
   update: (id: string, agent: Partial<Agent>) =>
     fetchApi<Agent>(`/agents/${id}`, { method: "PUT", body: JSON.stringify(agent) }),
   delete: (id: string) => fetchApi<void>(`/agents/${id}`, { method: "DELETE" }),
-  chat: (id: string, message: string, sessionId?: string) =>
-    fetchApi<{ message: ChatMessage; sessionId: string }>(`/agents/${id}/chat`, {
+  chat: (id: string, message: string, sessionId?: string, workspaceDir?: string | null) =>
+    fetchApi<{ message: ChatMessage; sessionId: string; workspaceDir?: string | null }>(
+      `/agents/${id}/chat`,
+      {
       method: "POST",
-      body: JSON.stringify({ message, sessionId }),
-    }),
+      body: JSON.stringify({ message, sessionId, workspaceDir }),
+      }
+    ),
 };
 
 export const providersApi = {
@@ -750,10 +753,10 @@ export const skillsApi = {
 };
 
 export const chatApi = {
-  send: (message: string, agentId?: string, sessionId?: string) =>
-    fetchApi<{ message: ChatMessage; sessionId: string }>("/chat", {
+  send: (message: string, agentId?: string, sessionId?: string, workspaceDir?: string | null) =>
+    fetchApi<{ message: ChatMessage; sessionId: string; workspaceDir?: string | null }>("/chat", {
       method: "POST",
-      body: JSON.stringify({ message, agentId, sessionId }),
+      body: JSON.stringify({ message, agentId, sessionId, workspaceDir }),
     }),
   getSessions: () =>
     fetchApi<
@@ -762,6 +765,7 @@ export const chatApi = {
         agent_id: string;
         created_at: string;
         updated_at: string;
+        workspace_dir?: string | null;
         message_count?: number;
         last_message?: { role: string; content: string };
       }[]
@@ -772,6 +776,7 @@ export const chatApi = {
       agent_id: string;
       created_at: string;
       updated_at: string;
+      workspace_dir?: string | null;
       messagesList: ChatMessage[];
     }>(
       "/sessions/" +
@@ -799,6 +804,14 @@ export const chatApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  updateSessionWorkspace: (id: string, workspaceDir: string | null) =>
+    fetchApi<{ success: boolean; sessionId: string; workspaceDir: string | null; error?: string }>(
+      "/sessions/" + id + "/workspace",
+      {
+        method: "PUT",
+        body: JSON.stringify({ workspaceDir }),
+      }
+    ),
   deleteSession: (id: string) => fetchApi<void>("/sessions/" + id, { method: "DELETE" }),
 };
 
@@ -852,6 +865,7 @@ export const sessionsApi = {
         agent_id: string;
         created_at: string;
         updated_at: string;
+        workspace_dir?: string | null;
         message_count?: number;
         last_message?: { role: string; content: string };
       }[]
@@ -863,6 +877,7 @@ export const sessionsApi = {
       messages?: string;
       created_at: string;
       updated_at: string;
+      workspace_dir?: string | null;
       messagesList: ChatMessage[];
     }>(
       "/sessions/" +

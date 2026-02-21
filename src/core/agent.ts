@@ -382,6 +382,7 @@ interface AgentExecutionOptions {
   stream?: boolean;
   useTools?: boolean;
   sessionId?: string;
+  workspaceDir?: string;
   channel?: string;
   userId?: string;
   modelOverride?: string;
@@ -1336,6 +1337,10 @@ class AgentManager {
           },
           ...messages,
         ];
+    const workspaceAwareMessages = this.injectWorkspaceSystemMessage(
+      fullMessages,
+      options?.workspaceDir
+    );
 
     const supportsTools = true;
 
@@ -1369,7 +1374,7 @@ class AgentManager {
       const result = await this.callLLM(
         activeProvider,
         activeModel,
-        fullMessages,
+        workspaceAwareMessages,
         tools,
         toolContext
       );
@@ -1384,7 +1389,7 @@ class AgentManager {
             const fallbackResult = await this.callLLM(
               fallbackProvider,
               activeModel,
-              fullMessages,
+              workspaceAwareMessages,
               tools,
               toolContext
             );
@@ -1450,12 +1455,42 @@ class AgentManager {
     return {
       agentId: agent.id,
       sessionId: options?.sessionId,
+      workspaceDir: options?.workspaceDir,
       channel: options?.channel,
       userId: options?.userId,
       permissions: permissions.permissions,
       enforcePermissions: permissions.enforcePermissions,
       requireToolUse: options?.requireToolUse === true,
     };
+  }
+
+  private injectWorkspaceSystemMessage(
+    messages: AgentMessage[],
+    workspaceDir?: string
+  ): AgentMessage[] {
+    if (!workspaceDir || !workspaceDir.trim()) {
+      return messages;
+    }
+
+    const workspaceInstruction =
+      `Session workspace directory: ${workspaceDir}\n` +
+      "Use this directory as the default root for file/process/git tools unless the user explicitly asks for another path.";
+
+    const hasWorkspaceSystemMessage = messages.some(
+      (message) =>
+        message.role === "system" && message.content.includes("Session workspace directory:")
+    );
+    if (hasWorkspaceSystemMessage) {
+      return messages;
+    }
+
+    return [
+      {
+        role: "system",
+        content: workspaceInstruction,
+      },
+      ...messages,
+    ];
   }
 
   private resolveModelParams(toolContext?: ToolContext): Record<string, unknown> {

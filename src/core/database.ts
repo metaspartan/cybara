@@ -148,6 +148,7 @@ try {
     id TEXT PRIMARY KEY,
     agent_id TEXT NOT NULL,
     messages TEXT NOT NULL,
+    workspace_dir TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -258,6 +259,13 @@ try {
   try {
     db.exec("ALTER TABLE agents ADD COLUMN fallback_provider_id TEXT");
     console.log("[Database] Migration: Added fallback_provider_id column");
+  } catch {
+    // Column already exists, ignore
+  }
+
+  try {
+    db.exec("ALTER TABLE chat_sessions ADD COLUMN workspace_dir TEXT");
+    console.log("[Database] Migration: Added workspace_dir column to chat_sessions");
   } catch {
     // Column already exists, ignore
   }
@@ -381,6 +389,7 @@ db.exec(`
     id TEXT PRIMARY KEY,
     agent_id TEXT NOT NULL,
     messages TEXT NOT NULL,
+    workspace_dir TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -513,8 +522,12 @@ const stmts = {
   chatSessions: {
     get: prepare("SELECT * FROM chat_sessions WHERE id = ?"),
     upsert: prepare(
-      "INSERT OR REPLACE INTO chat_sessions (id, agent_id, messages, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+      "INSERT OR REPLACE INTO chat_sessions (id, agent_id, messages, workspace_dir, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
     ),
+    updateWorkspace: prepare(
+      "UPDATE chat_sessions SET workspace_dir = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+    ),
+    getWorkspace: prepare("SELECT workspace_dir FROM chat_sessions WHERE id = ?"),
     delete: prepare("DELETE FROM chat_sessions WHERE id = ?"),
     list: prepare("SELECT * FROM chat_sessions ORDER BY updated_at DESC"),
   },
@@ -791,9 +804,21 @@ export const tables = {
         session.id,
         session.agent_id,
         session.messages,
+        session.workspace_dir || null,
         session.created_at,
         new Date().toISOString()
       ),
+    updateWorkspace: (id: string, workspaceDir: string | null) =>
+      stmts.chatSessions?.updateWorkspace.run(workspaceDir, id),
+    getWorkspace: (id: string): string | null => {
+      const row = stmts.chatSessions?.getWorkspace.get(id) as {
+        workspace_dir?: string | null;
+      } | null;
+      if (!row) return null;
+      return typeof row.workspace_dir === "string" && row.workspace_dir.trim().length > 0
+        ? row.workspace_dir
+        : null;
+    },
     delete: (id: string) => stmts.chatSessions?.delete.run(id),
     all: () => stmts.chatSessions?.list.all() || [],
   },
@@ -1002,6 +1027,7 @@ export interface ChatSessionDB {
   id: string;
   agent_id: string;
   messages: string;
+  workspace_dir?: string | null;
   created_at: string;
   updated_at?: string;
 }

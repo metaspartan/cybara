@@ -28,9 +28,12 @@ import {
   Check,
   RotateCcw,
   FileText,
+  Folder,
+  FolderOpen,
   ArrowLeft,
   ArrowDown,
 } from "lucide-react";
+import { open as tauriOpenDialog } from "@tauri-apps/plugin-dialog";
 import { Highlight, themes } from "prism-react-renderer";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -156,6 +159,16 @@ function readNumberArg(args: Record<string, unknown>, keys: string[]): number | 
     }
   }
   return undefined;
+}
+
+function formatWorkspaceLabel(path: string, maxLength = 44): string {
+  const normalized = path.replace(/\\/g, "/");
+  const segments = normalized.split("/").filter(Boolean);
+  const tail = segments.length > 0 ? segments[segments.length - 1] : normalized;
+  if (normalized.length <= maxLength) return normalized;
+  if (tail.length + 4 >= maxLength) return `.../${tail.slice(-(maxLength - 4))}`;
+  const prefixLength = Math.max(0, maxLength - tail.length - 4);
+  return `${normalized.slice(0, prefixLength)}.../${tail}`;
 }
 
 function summarizeCommand(command: string): string {
@@ -1431,7 +1444,7 @@ function DiffCodeBlock({ code }: { code: string }) {
         <span>diff</span>
         <CopyCodeButton code={code} />
       </div>
-      <pre className="m-0 overflow-x-auto font-mono text-[13px] leading-6">
+      <pre className="m-0 overflow-x-auto font-mono text-xs leading-6">
         {lines.map((line, index) => (
           <div
             key={`diff-${index}`}
@@ -1471,15 +1484,15 @@ function SyntaxCodeBlock({ code, language }: { code: string; language: string })
       <Highlight theme={themes.nightOwl} code={code || " "} language={language}>
         {({ className, style, tokens, getLineProps, getTokenProps }) => (
           <pre
-            className={cn(className, "m-0 overflow-x-auto p-3 text-[13px] leading-6")}
+            className={cn(className, "m-0 overflow-x-auto p-3 text-xs leading-6")}
             style={{ ...style, background: "transparent" }}
           >
             {tokens.map((line, lineIndex) => (
               <div key={`line-${lineIndex}`} {...getLineProps({ line })}>
                 {line.length > 0
                   ? line.map((token, tokenIndex) => (
-                      <span key={`${lineIndex}-${tokenIndex}`} {...getTokenProps({ token })} />
-                    ))
+                    <span key={`${lineIndex}-${tokenIndex}`} {...getTokenProps({ token })} />
+                  ))
                   : "\u00A0"}
               </div>
             ))}
@@ -1495,7 +1508,7 @@ function MessageContent({ content }: { content: string }) {
   type MarkdownCodeProps = ComponentPropsWithoutRef<"code"> & { inline?: boolean };
 
   return (
-    <div className="max-w-none text-[13px] text-gray-200 leading-5">
+    <div className="max-w-none text-xs text-gray-200 leading-5">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -1521,7 +1534,7 @@ function MessageContent({ content }: { content: string }) {
           li: ({ children }) => <li className="mb-1">{children}</li>,
           table: ({ children }) => (
             <div className="my-3 overflow-x-auto rounded-xl border border-white/10 bg-white/[0.03]">
-              <table className="w-full text-[13px] border-collapse">{children}</table>
+              <table className="w-full text-xs border-collapse">{children}</table>
             </div>
           ),
           thead: ({ children }) => <thead className="bg-white/5">{children}</thead>,
@@ -1870,11 +1883,10 @@ function SubagentPanel({
               <div>
                 <p className="text-xs text-gray-500 mb-1">Result</p>
                 <div
-                  className={`p-3 rounded-lg border ${
-                    selectedSubagent.status === "completed"
+                  className={`p-3 rounded-lg border ${selectedSubagent.status === "completed"
                       ? "bg-emerald-500/10 border-emerald-500/30"
                       : "bg-red-500/10 border-red-500/30"
-                  }`}
+                    }`}
                 >
                   <pre className="text-sm text-gray-300 whitespace-pre-wrap overflow-x-auto max-h-48 overflow-y-auto">
                     {typeof selectedSubagent.result === "string"
@@ -1954,7 +1966,7 @@ function SessionsPanel({
   isOpen: boolean;
   onClose: () => void;
   currentSessionId: string | null;
-  onLoadSession: (sessionId: string, messages: ChatMessage[]) => void;
+  onLoadSession: (sessionId: string, messages: ChatMessage[], workspaceDir?: string | null) => void;
   onNewSession: () => void;
 }) {
   const { data: sessions, isLoading, refetch } = useSessions();
@@ -1966,7 +1978,11 @@ function SessionsPanel({
     try {
       const result = await loadSession.mutateAsync(sessionId);
       if (result?.messagesList) {
-        onLoadSession(sessionId, result.messagesList as ChatMessage[]);
+        onLoadSession(
+          sessionId,
+          result.messagesList as ChatMessage[],
+          (result as { workspace_dir?: string | null }).workspace_dir || null
+        );
       }
     } catch (error) {
       console.error("Failed to load session:", error);
@@ -2034,11 +2050,10 @@ function SessionsPanel({
             sessions?.map((session) => (
               <div
                 key={session.id}
-                className={`p-2.5 rounded-lg transition-all cursor-pointer group ${
-                  currentSessionId === session.id
+                className={`p-2.5 rounded-lg transition-all cursor-pointer group ${currentSessionId === session.id
                     ? "bg-[rgba(var(--accent-primary),0.12)] border border-[rgba(var(--accent-primary),0.3)]"
                     : "bg-white/[0.03] border border-white/5 hover:border-white/15"
-                }`}
+                  }`}
                 onClick={() => handleLoadSession(session.id)}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -2052,6 +2067,12 @@ function SessionsPanel({
                     <p className="text-[10px] text-gray-500 mt-0.5">
                       {session.message_count || 0} messages
                     </p>
+                    {typeof (session as { workspace_dir?: string | null }).workspace_dir ===
+                      "string" && (
+                        <p className="text-[10px] text-blue-300/90 mt-0.5 truncate">
+                          {(session as { workspace_dir?: string }).workspace_dir}
+                        </p>
+                      )}
                     {session.last_message && (
                       <p className="text-[10px] text-gray-500 mt-0.5 truncate">
                         {session.last_message.content.slice(0, 40)}...
@@ -2116,11 +2137,21 @@ function SessionsPanel({
 export function Chat() {
   const { data: agents = [] } = useAgents();
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
-  const { messages, isLoading, sendMessage, clearChat, loadSession, sessionId, revertToMessage } =
-    useChat(selectedAgentId);
+  const {
+    messages,
+    isLoading,
+    sendMessage,
+    clearChat,
+    loadSession,
+    sessionId,
+    workspaceDir,
+    setWorkspaceDir,
+    revertToMessage,
+  } = useChat(selectedAgentId);
   const typedMessages = messages as ChatMessage[];
   const loadSessionMutation = useLoadSession();
   const [input, setInput] = useState("");
+  const [workspaceSaving, setWorkspaceSaving] = useState(false);
   const [revertTarget, setRevertTarget] = useState<RevertTarget | null>(null);
   const [reverting, setReverting] = useState(false);
   const [showSubagentPanel, setShowSubagentPanel] = useState(false);
@@ -2343,8 +2374,75 @@ export function Chat() {
     if (!input.trim() || isLoading) return;
     const message = input;
     setInput("");
-    await sendMessage(message);
+    await sendMessage(message, { workspaceDir });
   };
+
+  const applySessionWorkspace = useCallback(
+    async (nextWorkspaceDir: string | null) => {
+      const previousWorkspaceDir = workspaceDir;
+      setWorkspaceDir(nextWorkspaceDir);
+
+      if (!sessionId) {
+        return;
+      }
+
+      setWorkspaceSaving(true);
+      try {
+        const response = await chatApi.updateSessionWorkspace(sessionId, nextWorkspaceDir);
+        if (!response.success || !response.data || response.data.success === false) {
+          const message =
+            (response.data && "error" in response.data ? response.data.error : null) ||
+            response.error ||
+            "Failed to update session workspace";
+          throw new Error(message || "Failed to update session workspace");
+        }
+        setWorkspaceDir(response.data.workspaceDir || null);
+      } catch (error) {
+        setWorkspaceDir(previousWorkspaceDir || null);
+        console.error("Failed to update session workspace:", error);
+      } finally {
+        setWorkspaceSaving(false);
+      }
+    },
+    [sessionId, setWorkspaceDir, workspaceDir]
+  );
+
+  const handleSelectWorkspace = useCallback(async () => {
+    try {
+      const isTauriRuntime = typeof window !== "undefined" && "__TAURI__" in window;
+      let selectedPath: string | null = null;
+
+      if (isTauriRuntime) {
+        const selected = await tauriOpenDialog({
+          directory: true,
+          multiple: false,
+          defaultPath: workspaceDir || undefined,
+          title: "Select Session Workspace",
+        });
+        if (typeof selected === "string" && selected.trim()) {
+          selectedPath = selected.trim();
+        } else if (Array.isArray(selected)) {
+          const first = selected.find(
+            (entry): entry is string => typeof entry === "string" && entry.trim().length > 0
+          );
+          if (first) {
+            selectedPath = first.trim();
+          }
+        }
+      } else {
+        const manual = window.prompt("Enter workspace folder path", workspaceDir || "");
+        if (typeof manual === "string" && manual.trim()) {
+          selectedPath = manual.trim();
+        }
+      }
+
+      if (selectedPath) {
+        await applySessionWorkspace(selectedPath);
+      }
+    } catch (error) {
+      console.error("Failed to select workspace:", error);
+    }
+  }, [applySessionWorkspace, workspaceDir]);
 
   const openArtifactViewer = useCallback(async (artifact: ArtifactSummaryView) => {
     setArtifactViewerTarget(artifact);
@@ -2414,7 +2512,11 @@ export function Chat() {
       try {
         const response = await chatApi.getSession(sessionId, { includeFullToolCalls: true });
         if (response.success && response.data?.messagesList) {
-          loadSession(sessionId, response.data.messagesList as ChatMessage[]);
+          loadSession(
+            sessionId,
+            response.data.messagesList as ChatMessage[],
+            (response.data as { workspace_dir?: string | null }).workspace_dir || workspaceDir
+          );
         }
       } catch (error) {
         console.error("Failed to load full tool call history:", error);
@@ -2422,7 +2524,7 @@ export function Chat() {
         setLoadingMoreToolCallsKey((previous) => (previous === messageKey ? null : previous));
       }
     },
-    [loadSession, sessionId]
+    [loadSession, sessionId, workspaceDir]
   );
 
   useEffect(() => {
@@ -2468,13 +2570,17 @@ export function Chat() {
         .mutateAsync(sessionParam)
         .then((result) => {
           if (result?.messagesList) {
-            loadSession(sessionParam, result.messagesList as ChatMessage[]);
+            loadSession(
+              sessionParam,
+              result.messagesList as ChatMessage[],
+              (result as { workspace_dir?: string | null }).workspace_dir || null
+            );
             window.history.replaceState({}, "", "/chat");
           }
         })
         .catch((error) => {
           console.error("Failed to load session from URL:", error);
-      });
+        });
     }
   }, []); // Only run on mount
 
@@ -2494,6 +2600,14 @@ export function Chat() {
               </span>
             </div>
           )}
+          {workspaceDir && (
+            <div className="hidden md:flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-500/10 border border-blue-500/30">
+              <Folder className="w-3 h-3 text-blue-300" />
+              <span className="text-[10px] text-blue-300 font-mono">
+                {formatWorkspaceLabel(workspaceDir, 30)}
+              </span>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-1 sm:gap-2">
           <select
@@ -2508,6 +2622,32 @@ export function Chat() {
               </option>
             ))}
           </select>
+          <button
+            onClick={() => void handleSelectWorkspace()}
+            disabled={workspaceSaving}
+            className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-[11px] text-gray-300 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            title="Select workspace folder for this session"
+          >
+            {workspaceSaving ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <FolderOpen className="w-3.5 h-3.5" />
+            )}
+            <span className="hidden lg:inline">
+              {workspaceDir ? formatWorkspaceLabel(workspaceDir, 40) : "Select Workspace"}
+            </span>
+          </button>
+          {workspaceDir && (
+            <button
+              type="button"
+              onClick={() => void applySessionWorkspace(null)}
+              disabled={workspaceSaving}
+              className="p-1.5 sm:p-2 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              title="Clear session workspace"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
           <button
             onClick={() => setShowSessionsPanel(!showSessionsPanel)}
             className={cn(
@@ -2588,11 +2728,10 @@ export function Chat() {
                         className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}
                       >
                         <div
-                          className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                            message.role === "user"
+                          className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${message.role === "user"
                               ? "bg-[rgba(var(--accent-primary),0.2)]"
                               : "bg-emerald-500/20"
-                          }`}
+                            }`}
                         >
                           {message.role === "user" ? (
                             <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 accent-text" />
@@ -2604,11 +2743,10 @@ export function Chat() {
                           className={`max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] ${message.role === "user" ? "text-right" : ""}`}
                         >
                           <div
-                            className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${
-                              message.role === "user"
+                            className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${message.role === "user"
                                 ? "bg-[rgba(var(--accent-primary),0.15)] border border-[rgba(var(--accent-primary),0.2)]"
                                 : "bg-white/[0.03] border border-white/5"
-                            }`}
+                              }`}
                           >
                             {message.role !== "user" && (
                               <AssistantMetaInline
@@ -2704,7 +2842,7 @@ export function Chat() {
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Type a message..."
-                    className="flex-1 px-3 sm:px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-[13px] text-white placeholder-gray-500 !outline-none focus:border-white/20 transition-colors"
+                    className="flex-1 px-3 sm:px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-xs text-white placeholder-gray-500 !outline-none focus:border-white/20 transition-colors"
                   />
                   <button
                     onClick={handleSend}
@@ -2724,8 +2862,8 @@ export function Chat() {
             isOpen={showSessionsPanel}
             onClose={() => setShowSessionsPanel(false)}
             currentSessionId={sessionId}
-            onLoadSession={(id, msgs) => {
-              loadSession(id, msgs);
+            onLoadSession={(id, msgs, loadedWorkspaceDir) => {
+              loadSession(id, msgs, loadedWorkspaceDir);
               setShowSessionsPanel(false);
             }}
             onNewSession={() => {
@@ -2743,7 +2881,11 @@ export function Chat() {
               try {
                 const result = await loadSessionMutation.mutateAsync(sessionKey);
                 if (result?.messagesList) {
-                  loadSession(sessionKey, result.messagesList as ChatMessage[]);
+                  loadSession(
+                    sessionKey,
+                    result.messagesList as ChatMessage[],
+                    (result as { workspace_dir?: string | null }).workspace_dir || null
+                  );
                   setShowSubagentPanel(false);
                 }
               } catch (error) {
