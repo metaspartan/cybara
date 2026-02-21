@@ -1008,7 +1008,7 @@ function LiveActivityTimeline({
       : status === "generating"
         ? "Generating response..."
         : "Thinking...";
-  const recentActivities = activities.slice(-20);
+  const visibleActivities = activities;
 
   return (
     <div className="space-y-2">
@@ -1016,9 +1016,9 @@ function LiveActivityTimeline({
         <Loader2 className="w-3.5 h-3.5 animate-spin" />
         <span>{statusLabel}</span>
       </div>
-      {recentActivities.length > 0 ? (
+      {visibleActivities.length > 0 ? (
         <div className="space-y-1">
-          {recentActivities.map((activity) => (
+          {visibleActivities.map((activity) => (
             <div
               key={activity.id}
               className={cn(
@@ -1062,11 +1062,11 @@ function LiveActivityTimeline({
 function ProcessActivityList({ activities }: { activities: LiveActivityItem[] }) {
   if (activities.length === 0) return null;
 
-  const recentActivities = activities.slice(-20);
+  const visibleActivities = activities;
 
   return (
     <div className="space-y-1">
-      {recentActivities.map((activity) => (
+      {visibleActivities.map((activity) => (
         <div
           key={activity.id}
           className={cn(
@@ -1195,7 +1195,6 @@ function getHiddenToolCallsCount(message: ChatMessage): number {
 }
 
 const TOOL_CALL_PREVIEW_LIMIT = 50;
-const LIVE_ACTIVITY_PREVIEW_LIMIT = 50;
 
 function getTotalToolCallsCount(message: ChatMessage): number {
   if (
@@ -1275,6 +1274,19 @@ function parseTimestampMs(value: unknown): number | undefined {
   return undefined;
 }
 
+function parseDurationMs(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return 0;
+}
+
 function resolveWorkedDurationMs(
   processActivities?: LiveActivityItem[],
   toolCalls?: ToolCall[],
@@ -1286,10 +1298,26 @@ function resolveWorkedDurationMs(
   const activityTimestamps = (processActivities || [])
     .map((activity) => activity.timestamp)
     .filter((timestamp): timestamp is number => Number.isFinite(timestamp));
+  const assistantTimestampMs = parseTimestampMs(options?.assistantTimestamp);
+  const turnStartedAtMs = options?.turnStartedAtMs;
+
   if (activityTimestamps.length >= 2) {
     const minTimestamp = Math.min(...activityTimestamps);
     const maxTimestamp = Math.max(...activityTimestamps);
     const duration = maxTimestamp - minTimestamp;
+    if (duration > 0) return duration;
+  }
+
+  if (activityTimestamps.length > 0) {
+    const minTimestamp = Math.min(...activityTimestamps);
+    const maxTimestamp = Math.max(...activityTimestamps);
+    const inferredStart =
+      typeof turnStartedAtMs === "number" && Number.isFinite(turnStartedAtMs)
+        ? Math.min(turnStartedAtMs, minTimestamp)
+        : minTimestamp;
+    const inferredEnd =
+      typeof assistantTimestampMs === "number" ? Math.max(assistantTimestampMs, maxTimestamp) : maxTimestamp;
+    const duration = inferredEnd - inferredStart;
     if (duration > 0) return duration;
   }
 
@@ -1301,7 +1329,7 @@ function resolveWorkedDurationMs(
     const maxEnd = (toolCalls || []).reduce((currentMax, toolCall) => {
       const startedAt = parseTimestampMs(toolCall.started_at);
       if (typeof startedAt !== "number") return currentMax;
-      const duration = typeof toolCall.duration === "number" ? toolCall.duration : 0;
+      const duration = parseDurationMs(toolCall.duration);
       const end = duration > 0 ? startedAt + duration : startedAt;
       return Math.max(currentMax, end);
     }, minStart);
@@ -1310,13 +1338,11 @@ function resolveWorkedDurationMs(
   }
 
   const toolDurationTotal = (toolCalls || []).reduce((sum, toolCall) => {
-    const duration = typeof toolCall.duration === "number" ? toolCall.duration : 0;
+    const duration = parseDurationMs(toolCall.duration);
     return duration > 0 ? sum + duration : sum;
   }, 0);
   if (toolDurationTotal > 0) return toolDurationTotal;
 
-  const assistantTimestampMs = parseTimestampMs(options?.assistantTimestamp);
-  const turnStartedAtMs = options?.turnStartedAtMs;
   if (
     typeof assistantTimestampMs === "number" &&
     typeof turnStartedAtMs === "number" &&
@@ -1494,7 +1520,7 @@ function AssistantMetaInline({
   });
   const normalizedProcessActivities =
     processActivities && processActivities.length > 0
-      ? finalizeCompletedActivities(processActivities).slice(-8)
+      ? finalizeCompletedActivities(processActivities)
       : [];
   const hasWorkSectionContent = hasToolCalls || normalizedProcessActivities.length > 0;
   const hasSummarySectionContent = hasFileChangeSummary || hasArtifacts;
@@ -1509,7 +1535,7 @@ function AssistantMetaInline({
         <div className="text-[12px] text-gray-500 px-0.5">
           <span>
             Worked for{" "}
-            {workedDurationMs ? formatWorkedDuration(workedDurationMs) : "0h 00m 00s"}
+            {workedDurationMs !== undefined ? formatWorkedDuration(workedDurationMs) : "0h 00m 00s"}
           </span>
         </div>
       )}
@@ -2578,6 +2604,7 @@ export function Chat() {
   const wasLoadingRef = useRef(false);
   const acceptEventsUntilRef = useRef(0);
   const pendingProcessCaptureRef = useRef<PendingProcessCapture | null>(null);
+  const runActivityBufferRef = useRef<LiveActivityItem[]>([]);
   const homeWorkspaceDir =
     typeof info?.homeDir === "string" && info.homeDir.trim().length > 0 ? info.homeDir.trim() : null;
   const fallbackWorkspaceDir =
@@ -2660,6 +2687,7 @@ export function Chat() {
     );
 
     if (isLoading && !wasLoadingRef.current) {
+      runActivityBufferRef.current = [];
       setLiveActivities([]);
       setLiveStatus("thinking");
       acceptEventsUntilRef.current = 0;
@@ -2673,10 +2701,12 @@ export function Chat() {
 
     if (!isLoading && wasLoadingRef.current) {
       acceptEventsUntilRef.current = Date.now() + 1500;
+      const runActivities =
+        runActivityBufferRef.current.length > 0 ? runActivityBufferRef.current : liveActivities;
       if (pendingProcessCaptureRef.current) {
         pendingProcessCaptureRef.current = {
           ...pendingProcessCaptureRef.current,
-          activities: liveActivities.map((activity) => ({ ...activity })),
+          activities: runActivities.map((activity) => ({ ...activity })),
         };
       }
       setLiveStatus("idle");
@@ -2729,11 +2759,12 @@ export function Chat() {
       const trimmed = text.trim();
       if (!trimmed) return;
 
-      setLiveActivities((previous) => {
-        const normalizedText = normalizeActivityTextForPhase(trimmed, phase);
-        const nextTimestamp = Date.now();
-        const normalizedToolName = typeof toolName === "string" ? toolName.trim().toLowerCase() : "";
+      const normalizedText = normalizeActivityTextForPhase(trimmed, phase);
+      const nextTimestamp = Date.now();
+      const normalizedToolName = typeof toolName === "string" ? toolName.trim().toLowerCase() : "";
+      const nextId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+      const applyActivityEvent = (previous: LiveActivityItem[]): LiveActivityItem[] => {
         if (phase !== "start") {
           if (normalizedToolName) {
             for (let index = previous.length - 1; index >= 0; index -= 1) {
@@ -2747,7 +2778,7 @@ export function Chat() {
                 text: normalizedText,
                 timestamp: nextTimestamp,
               };
-              return updated.slice(-LIVE_ACTIVITY_PREVIEW_LIMIT);
+              return updated;
             }
           }
 
@@ -2762,7 +2793,7 @@ export function Chat() {
               text: normalizedText,
               timestamp: nextTimestamp,
             };
-            return updated.slice(-LIVE_ACTIVITY_PREVIEW_LIMIT);
+            return updated;
           }
         }
 
@@ -2777,14 +2808,17 @@ export function Chat() {
         }
 
         const next: LiveActivityItem = {
-          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          id: nextId,
           phase,
           text: normalizedText,
           timestamp: nextTimestamp,
           toolName: normalizedToolName || undefined,
         };
-        return [...previous.slice(-(LIVE_ACTIVITY_PREVIEW_LIMIT - 1)), next];
-      });
+        return [...previous, next];
+      };
+
+      runActivityBufferRef.current = applyActivityEvent(runActivityBufferRef.current);
+      setLiveActivities((previous) => applyActivityEvent(previous));
     },
     []
   );
@@ -2926,7 +2960,10 @@ export function Chat() {
       }
       if (status === "idle") {
         setLiveStatus("idle");
-        setLiveActivities([]);
+        if (!loadingRef.current) {
+          setLiveActivities([]);
+          runActivityBufferRef.current = [];
+        }
         return;
       }
       if (status === "tool_executing" || status === "tool_completed" || status === "error") {
