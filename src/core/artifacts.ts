@@ -242,6 +242,31 @@ export function listArtifacts(sessionId: string): ArtifactSummary[] {
   return summaries;
 }
 
+export function listAllArtifacts(): ArtifactSummary[] {
+  ensureDir(ARTIFACTS_ROOT);
+  if (!existsSync(ARTIFACTS_ROOT)) return [];
+
+  const sessionDirs = readdirSync(ARTIFACTS_ROOT, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name);
+
+  const summaries: ArtifactSummary[] = [];
+  for (const sessionId of sessionDirs) {
+    try {
+      summaries.push(...listArtifacts(sessionId));
+    } catch {
+      continue;
+    }
+  }
+
+  return summaries.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export function getArtifactsRootDir(): string {
+  ensureDir(ARTIFACTS_ROOT);
+  return ARTIFACTS_ROOT;
+}
+
 export function readArtifact(input: { sessionId: string; name: string; maxChars?: number }): {
   artifact: ArtifactSummary;
   content: string;

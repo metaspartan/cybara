@@ -876,6 +876,16 @@ export interface MetricsOverview {
     totalExecutions: number;
     totalMessages: number;
   };
+  sessions?: {
+    totalSessions: number;
+    memoryFlushes: number;
+    memoryFlushFailures: number;
+    compactions: number;
+  };
+  contextHealth?: {
+    warnings: number;
+    criticalWarnings: number;
+  };
 }
 
 export interface TokenMetrics {
@@ -997,6 +1007,36 @@ export interface TimeSeriesData {
   }>;
 }
 
+export interface MetricsStorage {
+  totalBytes: number;
+  directories: {
+    cybaraDir: string;
+    dataDir: string;
+    logsDir: string;
+    memoryDir: string;
+    secureDir: string;
+    artifactsDir: string;
+    userSkillsDir: string;
+  };
+  components: {
+    database: {
+      path: string;
+      bytes: number;
+      files: {
+        main: { path: string; bytes: number };
+        wal: { path: string; bytes: number };
+        shm: { path: string; bytes: number };
+      };
+    };
+    artifacts: { path: string; bytes: number };
+    logs: { path: string; bytes: number };
+    memory: { path: string; bytes: number };
+    secure: { path: string; bytes: number };
+    skills: { path: string; bytes: number };
+    data: { path: string; bytes: number };
+  };
+}
+
 export function useMetricsOverview() {
   return useQuery({
     queryKey: ['metrics', 'overview'],
@@ -1042,6 +1082,14 @@ export function useMetricsTimeSeries() {
     queryKey: ['metrics', 'time-series'],
     queryFn: () => fetchApi<TimeSeriesData>('/metrics/time-series'),
     refetchInterval: 30000, // Time series doesn't change often, refresh every 30s
+  });
+}
+
+export function useMetricsStorage() {
+  return useQuery({
+    queryKey: ['metrics', 'storage'],
+    queryFn: () => fetchApi<MetricsStorage>('/metrics/storage'),
+    refetchInterval: 30000,
   });
 }
 

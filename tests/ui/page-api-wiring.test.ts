@@ -107,6 +107,16 @@ describe("UI page API wiring", () => {
     expect(source).not.toContain("apiFetch('/api/memory'");
   });
 
+  test("Artifacts page loads registry and content through chatApi artifact helpers", () => {
+    const source = readPage("Artifacts.tsx");
+
+    expect(source).toContain("chatApi.listArtifacts()");
+    expect(source).toContain("chatApi.readSessionArtifact(selected.sessionId, selected.fileName)");
+    expect(source).toContain("rawView");
+    expect(source).toContain("Markdown");
+    expect(source).toContain("Raw");
+  });
+
   test("Logs and Sessions pages use shared API clients", () => {
     const logsSource = readPage("Logs.tsx");
     const sessionsSource = readPage("Sessions.tsx");
@@ -181,7 +191,7 @@ describe("UI page API wiring", () => {
     expect(source).toContain('status === "tool_executing"');
     expect(source).toContain('status === "tool_completed"');
     expect(source).toContain(
-      "<LiveActivityTimeline status={liveStatus} activities={liveActivities} />"
+      "<LiveActivityTimeline status={timelineStatus} activities={liveActivities} />"
     );
     expect(source).toContain("formatToolIntent(");
     expect(source).toContain("Highlight, themes");
@@ -199,5 +209,7 @@ describe("UI page API wiring", () => {
     expect(source).toContain("pendingProcessCaptureRef");
     expect(source).toContain("buildActivitiesFromToolCalls");
     expect(source).toContain("finalizeCompletedActivities");
+    expect(source).toContain("chatApi.getSessionStatus(");
+    expect(source).toContain("showWorkingTimeline");
   });
 });

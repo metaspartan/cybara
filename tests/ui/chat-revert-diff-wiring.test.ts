@@ -21,11 +21,18 @@ describe("Chat revert and diff wiring", () => {
   test("renders file-change summary and diff blocks from tool calls", () => {
     const source = readChatSource();
     expect(source).toContain("summarizeMessageFileChanges");
+    expect(source).toContain("summarizeSessionFileChanges");
     expect(source).toContain("files changed");
     expect(source).toContain("<DiffCodeBlock code={file.diff} />");
     expect(source).toContain("Worked for");
     expect(source).toContain("section=\"work\"");
     expect(source).toContain("section=\"summary\"");
+    expect(source).toContain("function SessionDiffPanel");
+    expect(source).toContain("No file diffs in this session yet");
+    expect(source).toContain("showDiffPanel");
+    expect(source).toContain("findPriorUserTimestampMs");
+    expect(source).toContain("turnStartedAtMs");
+    expect(source).toContain("assistantTimestamp: message.timestamp");
   });
 
   test("shows hidden tool-call summary with view-more loading full history on demand", () => {
@@ -53,7 +60,18 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain("activeSessionIds");
     expect(source).toContain("currentSessionLoading");
     expect(source).toContain("setActiveSessionIds");
+    expect(source).toContain("chatApi.getSessionStatus(");
+    expect(source).toContain("hydrateSessionStatus");
     expect(source).toContain("status === \"idle\" || status === \"error\"");
     expect(source).toContain("<Loader2 className=\"w-3 h-3 animate-spin text-amber-400 flex-shrink-0\" />");
+  });
+
+  test("restores last active session when chat page is reopened", () => {
+    const source = readChatSource();
+    expect(source).toContain("cybara:lastSessionId");
+    expect(source).toContain("readPersistedSessionId");
+    expect(source).toContain("persistSessionId(sessionId)");
+    expect(source).toContain("const initialSessionId = sessionParam || persistedSessionId");
+    expect(source).toContain("Failed to restore initial chat session:");
   });
 });

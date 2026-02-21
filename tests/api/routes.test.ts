@@ -1545,6 +1545,68 @@ describe("Session API", () => {
     expect(readMissing.data.count).toBe(0);
     expect(Array.isArray(readMissing.data.artifacts)).toBe(true);
   });
+
+  test("GET /api/status/sessions returns active-session snapshot shape", async () => {
+    const all = await api("GET", "/api/status/sessions");
+    expect(all.status).toBe(200);
+    expect(Array.isArray(all.data.activeSessions)).toBe(true);
+    expect(Array.isArray(all.data.activeSessionIds)).toBe(true);
+    expect(typeof all.data.count).toBe("number");
+
+    const sessionId = `missing-session-${Date.now()}`;
+    const scoped = await api(
+      "GET",
+      `/api/status/sessions?sessionId=${encodeURIComponent(sessionId)}`
+    );
+    expect(scoped.status).toBe(200);
+    expect(scoped.data.sessionId).toBe(sessionId);
+    expect(typeof scoped.data.active).toBe("boolean");
+    expect(Array.isArray(scoped.data.activeSessionIds)).toBe(true);
+  });
+
+  test("GET /api/artifacts lists artifacts across sessions", async () => {
+    const sessionA = `artifact-global-a-${Date.now()}`;
+    const sessionB = `artifact-global-b-${Date.now()}`;
+
+    const createdA = await api("POST", "/api/tools/execute", {
+      name: "artifacts",
+      args: {
+        action: "create",
+        kind: "notes",
+        name: "global-a",
+        content: "# Global A\n",
+      },
+      context: { sessionId: sessionA },
+    });
+    expect(createdA.status).toBe(200);
+
+    const createdB = await api("POST", "/api/tools/execute", {
+      name: "artifacts",
+      args: {
+        action: "create",
+        kind: "notes",
+        name: "global-b",
+        content: "# Global B\n",
+      },
+      context: { sessionId: sessionB },
+    });
+    expect(createdB.status).toBe(200);
+
+    const allArtifacts = await api("GET", "/api/artifacts");
+    expect(allArtifacts.status).toBe(200);
+    expect(Array.isArray(allArtifacts.data.artifacts)).toBe(true);
+    const summaries = allArtifacts.data.artifacts as Array<{ sessionId: string; fileName: string }>;
+    expect(
+      summaries.some(
+        (summary) => summary.sessionId === sessionA && summary.fileName === "global-a.md.resolved"
+      )
+    ).toBe(true);
+    expect(
+      summaries.some(
+        (summary) => summary.sessionId === sessionB && summary.fileName === "global-b.md.resolved"
+      )
+    ).toBe(true);
+  });
 });
 
 describe("Tasks API", () => {
@@ -1666,6 +1728,20 @@ describe("Metrics API", () => {
     expect(typeof data).toBe("object");
     expect(data).toHaveProperty("memory");
     expect(data).toHaveProperty("uptime");
+  });
+
+  test("GET /api/metrics/storage returns storage usage details", async () => {
+    const storage = await api("GET", "/api/metrics/storage");
+    expect(storage.status).toBe(200);
+    expect(typeof storage.data.totalBytes).toBe("number");
+    expect(storage.data.totalBytes).toBeGreaterThanOrEqual(0);
+    expect(typeof storage.data.directories).toBe("object");
+    expect(typeof storage.data.components).toBe("object");
+    expect(typeof storage.data.components.database.bytes).toBe("number");
+    expect(storage.data.components.database.path).toContain("platform.db");
+    expect(typeof storage.data.components.artifacts.bytes).toBe("number");
+    expect(typeof storage.data.components.logs.bytes).toBe("number");
+    expect(typeof storage.data.components.memory.bytes).toBe("number");
   });
 
   test("metrics detail endpoints tolerate malformed metadata rows", async () => {

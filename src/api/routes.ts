@@ -66,8 +66,9 @@ import {
 import { buildSystemPrompt } from "../core/system-prompt";
 import * as pwManager from "../core/browser/pw-manager";
 import { homedir } from "os";
-import { dirname, isAbsolute, resolve } from "path";
+import { dirname, isAbsolute, resolve, join } from "path";
 import { createHash, randomBytes } from "crypto";
+import { existsSync, readdirSync, statSync } from "fs";
 import { securityCheck, validateUrl } from "./security";
 import { browseDirectory, readFileContent, writeFileContent, createItem } from "./ide-api";
 import { getGitStatus, getGitBranch, getGitDiff } from "./git-api";
@@ -80,7 +81,15 @@ import {
   getAgentLoopRun,
   cancelAgentLoopRun,
 } from "../core/agent-loop";
-import { listArtifacts, readArtifact, deleteArtifact } from "../core/artifacts";
+import {
+  listArtifacts,
+  readArtifact,
+  deleteArtifact,
+  listAllArtifacts,
+  getArtifactsRootDir,
+} from "../core/artifacts";
+import { getSessionStatusSnapshot, listSessionStatusSnapshots } from "../core/status";
+import { cybaraDir, dataDir, logsDir, memoryDir, secureDir, userSkillsDir } from "../core/paths";
 import {
   walletManager,
   type WalletChain,
@@ -259,6 +268,110 @@ function localDateKeyFromMs(timestampMs: number): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function safeFileSizeBytes(path: string): number {
+  try {
+    if (!existsSync(path)) return 0;
+    return statSync(path).size;
+  } catch {
+    return 0;
+  }
+}
+
+function safeDirSizeBytes(path: string): number {
+  try {
+    if (!existsSync(path)) return 0;
+    const stack = [path];
+    let total = 0;
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (!current) continue;
+      let entries;
+      try {
+        entries = readdirSync(current, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const entry of entries) {
+        const fullPath = join(current, entry.name);
+        try {
+          if (entry.isDirectory()) {
+            stack.push(fullPath);
+            continue;
+          }
+          if (entry.isFile()) {
+            total += statSync(fullPath).size;
+          }
+        } catch {
+          continue;
+        }
+      }
+    }
+    return total;
+  } catch {
+    return 0;
+  }
+}
+
+function buildStorageMetrics() {
+  const dbMainPath = join(dataDir, "platform.db");
+  const dbWalPath = join(dataDir, "platform.db-wal");
+  const dbShmPath = join(dataDir, "platform.db-shm");
+  const artifactsDir = getArtifactsRootDir();
+
+  const databaseMainBytes = safeFileSizeBytes(dbMainPath);
+  const databaseWalBytes = safeFileSizeBytes(dbWalPath);
+  const databaseShmBytes = safeFileSizeBytes(dbShmPath);
+  const databaseBytes = databaseMainBytes + databaseWalBytes + databaseShmBytes;
+  const artifactsBytes = safeDirSizeBytes(artifactsDir);
+  const logsBytes = safeDirSizeBytes(logsDir);
+  const memoryBytes = safeDirSizeBytes(memoryDir);
+  const secureBytes = safeDirSizeBytes(secureDir);
+  const skillsBytes = safeDirSizeBytes(userSkillsDir);
+  const dataBytes = safeDirSizeBytes(dataDir);
+  const cybaraHomeBytes = safeDirSizeBytes(cybaraDir);
+
+  return {
+    totalBytes: cybaraHomeBytes,
+    directories: {
+      cybaraDir,
+      dataDir,
+      logsDir,
+      memoryDir,
+      secureDir,
+      artifactsDir,
+      userSkillsDir,
+    },
+    components: {
+      database: {
+        path: dbMainPath,
+        bytes: databaseBytes,
+        files: {
+          main: { path: dbMainPath, bytes: databaseMainBytes },
+          wal: { path: dbWalPath, bytes: databaseWalBytes },
+          shm: { path: dbShmPath, bytes: databaseShmBytes },
+        },
+      },
+      artifacts: { path: artifactsDir, bytes: artifactsBytes },
+      logs: { path: logsDir, bytes: logsBytes },
+      memory: { path: memoryDir, bytes: memoryBytes },
+      secure: { path: secureDir, bytes: secureBytes },
+      skills: { path: userSkillsDir, bytes: skillsBytes },
+      data: { path: dataDir, bytes: dataBytes },
+    },
+  };
+}
+
+const ACTIVE_SESSION_STATUSES = new Set([
+  "thinking",
+  "generating",
+  "tool_executing",
+  "tool_completed",
+]);
+
+function isSessionStatusActive(status?: string): boolean {
+  return typeof status === "string" && ACTIVE_SESSION_STATUSES.has(status);
 }
 
 function buildTokenCallSnapshots(tokenUsageEntries: MetricsEntry[]): TokenCallSnapshot[] {
@@ -3152,6 +3265,21 @@ const routes: Record<string, RouteHandler> = {
       ...result,
     };
   },
+  "GET /api/artifacts": (_body, params) => {
+    const sessionId =
+      typeof params?.sessionId === "string" && params.sessionId.trim().length > 0
+        ? params.sessionId.trim()
+        : null;
+    if (sessionId) {
+      return {
+        sessionId,
+        artifacts: listArtifacts(sessionId),
+      };
+    }
+    return {
+      artifacts: listAllArtifacts(),
+    };
+  },
   "POST /api/sessions/:sessionId/revert": async (body, params) => {
     const data = (body || {}) as {
       messageIndex?: number | string;
@@ -3422,6 +3550,30 @@ const routes: Record<string, RouteHandler> = {
     return { success: true, message: "Browser closed" };
   },
 
+  "GET /api/status/sessions": (_body, params) => {
+    const sessionId =
+      typeof params?.sessionId === "string" && params.sessionId.trim().length > 0
+        ? params.sessionId.trim()
+        : null;
+    const activeSnapshots = listSessionStatusSnapshots();
+
+    if (sessionId) {
+      const snapshot = getSessionStatusSnapshot(sessionId);
+      return {
+        sessionId,
+        active: snapshot ? isSessionStatusActive(snapshot.status) : false,
+        session: snapshot,
+        activeSessionIds: activeSnapshots.map((entry) => entry.sessionId),
+      };
+    }
+
+    return {
+      activeSessions: activeSnapshots,
+      activeSessionIds: activeSnapshots.map((entry) => entry.sessionId),
+      count: activeSnapshots.length,
+    };
+  },
+
   "GET /api/system/status": () => {
     const metrics = tables.metrics;
 
@@ -3513,6 +3665,10 @@ const routes: Record<string, RouteHandler> = {
       sessions: sessionStats,
       contextHealth: contextStats,
     };
+  },
+
+  "GET /api/metrics/storage": () => {
+    return buildStorageMetrics();
   },
 
   "GET /api/metrics/tokens": () => {

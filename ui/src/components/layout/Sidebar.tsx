@@ -23,6 +23,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Wallet as WalletIcon,
+  FileText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, createContext, useContext } from 'react';
@@ -174,6 +175,7 @@ const navCategories = [
     items: [
       { path: '/memory', icon: Brain, label: 'Memory' },
       { path: '/wallet', icon: WalletIcon, label: 'Wallet' },
+      { path: '/artifacts', icon: FileText, label: 'Artifacts' },
       { path: '/metrics', icon: BarChart3, label: 'Metrics' },
       { path: '/tasks', icon: ListTodo, label: 'Tasks' },
       { path: '/logs', icon: Logs, label: 'Logs' },

@@ -3,6 +3,7 @@ import {
   useRef,
   useEffect,
   useCallback,
+  useMemo,
   isValidElement,
   type ComponentPropsWithoutRef,
 } from "react";
@@ -127,6 +128,32 @@ interface StatusStreamEvent {
   type?: string;
 }
 
+interface SessionStatusActivity {
+  id: string;
+  phase: "start" | "result" | "error";
+  text: string;
+  timestamp: number;
+  toolName?: string;
+}
+
+interface SessionStatusSnapshot {
+  sessionId: string;
+  status: string;
+  timestamp: number;
+  detail?: string;
+  agentId?: string;
+  activities: SessionStatusActivity[];
+}
+
+interface SessionStatusResponse {
+  activeSessions?: SessionStatusSnapshot[];
+  activeSessionIds: string[];
+  count?: number;
+  session?: SessionStatusSnapshot | null;
+  active?: boolean;
+  sessionId?: string;
+}
+
 interface PendingProcessCapture {
   assistantCountBefore: number;
   activities: LiveActivityItem[];
@@ -135,6 +162,7 @@ interface PendingProcessCapture {
 }
 
 const LAST_WORKSPACE_STORAGE_KEY = "cybara:lastWorkspaceDir";
+const LAST_SESSION_STORAGE_KEY = "cybara:lastSessionId";
 
 function getMessageProcessKey(
   sessionKey: string | null,
@@ -172,6 +200,32 @@ function persistWorkspaceDir(workspaceDir: string | null): void {
     const trimmed = workspaceDir.trim();
     if (!trimmed) return;
     window.localStorage.setItem(LAST_WORKSPACE_STORAGE_KEY, trimmed);
+  } catch {
+    // Ignore local storage errors
+  }
+}
+
+function readPersistedSessionId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(LAST_SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const trimmed = raw.trim();
+    return trimmed || null;
+  } catch {
+    return null;
+  }
+}
+
+function persistSessionId(sessionId: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    const trimmed = typeof sessionId === "string" ? sessionId.trim() : "";
+    if (!trimmed) {
+      window.localStorage.removeItem(LAST_SESSION_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(LAST_SESSION_STORAGE_KEY, trimmed);
   } catch {
     // Ignore local storage errors
   }
@@ -359,6 +413,40 @@ function formatToolIntent(
   if (phase === "start") return `${toolName} running...`;
   if (phase === "result") return `${toolName} complete`;
   return `${toolName} failed`;
+}
+
+function normalizeSessionStatus(status: string): "thinking" | "generating" | "idle" {
+  if (status === "generating") return "generating";
+  if (
+    status === "thinking" ||
+    status === "tool_executing" ||
+    status === "tool_completed" ||
+    status === "error"
+  ) {
+    return "thinking";
+  }
+  return "idle";
+}
+
+function toLiveActivityItems(activities: SessionStatusActivity[] | undefined): LiveActivityItem[] {
+  if (!Array.isArray(activities) || activities.length === 0) return [];
+  return activities
+    .filter(
+      (activity) =>
+        !!activity &&
+        typeof activity.id === "string" &&
+        typeof activity.text === "string" &&
+        typeof activity.timestamp === "number"
+    )
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .map((activity) => ({
+      id: activity.id,
+      phase: activity.phase,
+      text: activity.text,
+      timestamp: activity.timestamp,
+      toolName: activity.toolName,
+    }))
+    .slice(-12);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -697,6 +785,15 @@ function summarizeMessageFileChanges(toolCalls?: ToolCall[]): FileChangeSummary 
   const totalAdded = files.reduce((sum, file) => sum + file.added, 0);
   const totalRemoved = files.reduce((sum, file) => sum + file.removed, 0);
   return { files, totalAdded, totalRemoved };
+}
+
+function summarizeSessionFileChanges(messages: ChatMessage[]): FileChangeSummary | null {
+  const toolCalls: ToolCall[] = [];
+  for (const message of messages) {
+    if (!Array.isArray(message.tool_calls) || message.tool_calls.length === 0) continue;
+    toolCalls.push(...getToolCallsInTimelineOrder(message.tool_calls));
+  }
+  return summarizeMessageFileChanges(toolCalls);
 }
 
 function SubagentCallItem({
@@ -1122,9 +1219,30 @@ function formatWorkedDuration(durationMs: number): string {
   return `${hours}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
 }
 
+function parseTimestampMs(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const asNumber = Number(value);
+    if (Number.isFinite(asNumber)) {
+      return asNumber;
+    }
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
 function resolveWorkedDurationMs(
   processActivities?: LiveActivityItem[],
-  toolCalls?: ToolCall[]
+  toolCalls?: ToolCall[],
+  options?: {
+    assistantTimestamp?: string;
+    turnStartedAtMs?: number;
+  }
 ): number | undefined {
   const activityTimestamps = (processActivities || [])
     .map((activity) => activity.timestamp)
@@ -1136,11 +1254,40 @@ function resolveWorkedDurationMs(
     if (duration > 0) return duration;
   }
 
+  const toolStartTimestamps = (toolCalls || [])
+    .map((toolCall) => parseTimestampMs(toolCall.started_at))
+    .filter((timestamp): timestamp is number => typeof timestamp === "number");
+  if (toolStartTimestamps.length > 0) {
+    const minStart = Math.min(...toolStartTimestamps);
+    const maxEnd = (toolCalls || []).reduce((currentMax, toolCall) => {
+      const startedAt = parseTimestampMs(toolCall.started_at);
+      if (typeof startedAt !== "number") return currentMax;
+      const duration = typeof toolCall.duration === "number" ? toolCall.duration : 0;
+      const end = duration > 0 ? startedAt + duration : startedAt;
+      return Math.max(currentMax, end);
+    }, minStart);
+    const rangedDuration = maxEnd - minStart;
+    if (rangedDuration > 0) return rangedDuration;
+  }
+
   const toolDurationTotal = (toolCalls || []).reduce((sum, toolCall) => {
     const duration = typeof toolCall.duration === "number" ? toolCall.duration : 0;
     return duration > 0 ? sum + duration : sum;
   }, 0);
   if (toolDurationTotal > 0) return toolDurationTotal;
+
+  const assistantTimestampMs = parseTimestampMs(options?.assistantTimestamp);
+  const turnStartedAtMs = options?.turnStartedAtMs;
+  if (
+    typeof assistantTimestampMs === "number" &&
+    typeof turnStartedAtMs === "number" &&
+    Number.isFinite(turnStartedAtMs)
+  ) {
+    const fallbackDuration = assistantTimestampMs - turnStartedAtMs;
+    if (fallbackDuration > 0) {
+      return fallbackDuration;
+    }
+  }
 
   return undefined;
 }
@@ -1157,6 +1304,18 @@ function resolveArtifactAction(toolCall: ToolCall): string | undefined {
     return parsedResult.action.toLowerCase();
   }
 
+  return undefined;
+}
+
+function findPriorUserTimestampMs(messages: ChatMessage[], currentIndex: number): number | undefined {
+  for (let index = currentIndex - 1; index >= 0; index -= 1) {
+    const candidate = messages[index];
+    if (!candidate || candidate.role !== "user") continue;
+    const timestamp = parseTimestampMs(candidate.timestamp);
+    if (typeof timestamp === "number") {
+      return timestamp;
+    }
+  }
   return undefined;
 }
 
@@ -1264,6 +1423,7 @@ function AssistantMetaInline({
   message,
   processActivities,
   sessionId,
+  turnStartedAtMs,
   onOpenArtifact,
   onViewMoreToolCalls,
   loadingMoreToolCalls,
@@ -1272,6 +1432,7 @@ function AssistantMetaInline({
   message: ChatMessage;
   processActivities?: LiveActivityItem[];
   sessionId?: string | null;
+  turnStartedAtMs?: number;
   onOpenArtifact?: (artifact: ArtifactSummaryView) => void;
   onViewMoreToolCalls?: () => void;
   loadingMoreToolCalls?: boolean;
@@ -1288,7 +1449,10 @@ function AssistantMetaInline({
   const totalToolCallsCount = getTotalToolCallsCount(message);
   const hasTruncatedToolCalls =
     hiddenToolCallsCount > 0 && totalToolCallsCount > TOOL_CALL_PREVIEW_LIMIT;
-  const workedDurationMs = resolveWorkedDurationMs(processActivities, message.tool_calls);
+  const workedDurationMs = resolveWorkedDurationMs(processActivities, message.tool_calls, {
+    assistantTimestamp: message.timestamp,
+    turnStartedAtMs,
+  });
   const normalizedProcessActivities =
     processActivities && processActivities.length > 0
       ? finalizeCompletedActivities(processActivities).slice(-8)
@@ -1747,6 +1911,115 @@ function ArtifactViewerPanel({
   );
 }
 
+function SessionDiffPanel({
+  isOpen,
+  summary,
+  selectedPath,
+  onSelectPath,
+  onClose,
+}: {
+  isOpen: boolean;
+  summary: FileChangeSummary | null;
+  selectedPath: string | null;
+  onSelectPath: (path: string) => void;
+  onClose: () => void;
+}) {
+  if (!isOpen) return null;
+
+  const selectedFile =
+    summary?.files.find((file) => file.path === selectedPath) ||
+    summary?.files[0] ||
+    null;
+
+  return (
+    <div className="w-80 glass-strong border-l border-white/5 flex flex-col">
+      <div className="px-3 py-2.5 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
+        <div className="flex items-center gap-2">
+          <FileText className="w-3.5 h-3.5 text-indigo-300" />
+          <h3 className="text-sm font-medium text-white">File Diffs</h3>
+          {summary && summary.files.length > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 text-gray-400">
+              {summary.files.length}
+            </span>
+          )}
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
+          title="Close file diff panel"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {!summary || summary.files.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center px-4 text-center text-gray-500">
+          <div>
+            <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
+            <p className="text-xs">No file diffs in this session yet</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="px-3 py-2 text-[11px] text-gray-400 border-b border-white/5 bg-black/10">
+            <span className="text-emerald-300">+{summary.totalAdded}</span>
+            <span className="mx-1 text-gray-500">/</span>
+            <span className="text-rose-300">-{summary.totalRemoved}</span>
+            <span className="ml-2">across {summary.files.length} files</span>
+          </div>
+
+          <div className="max-h-56 overflow-y-auto p-2 space-y-1.5 border-b border-white/5">
+            {summary.files.map((file) => {
+              const isSelected = selectedFile?.path === file.path;
+              return (
+                <button
+                  key={`${file.path}-${file.type}`}
+                  type="button"
+                  onClick={() => onSelectPath(file.path)}
+                  className={cn(
+                    "w-full text-left rounded-lg border px-2.5 py-2 transition-colors cursor-pointer",
+                    isSelected
+                      ? "bg-indigo-500/15 border-indigo-500/30"
+                      : "bg-white/[0.02] border-white/10 hover:bg-white/[0.06]"
+                  )}
+                >
+                  <p className="text-[11px] text-gray-100 truncate">{file.path}</p>
+                  <p className="mt-1 text-[10px] text-gray-500 uppercase tracking-[0.08em]">
+                    {file.type}
+                  </p>
+                  <div className="mt-1 text-[10px]">
+                    <span className="text-emerald-300">+{file.added}</span>
+                    <span className="ml-2 text-rose-300">-{file.removed}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-y-auto p-2.5">
+            {selectedFile ? (
+              <div className="rounded-lg border border-white/10 bg-black/20 overflow-hidden">
+                <div className="px-2.5 py-2 border-b border-white/10">
+                  <p className="text-[11px] text-gray-200 truncate">{selectedFile.path}</p>
+                </div>
+                {selectedFile.diff ? (
+                  <DiffCodeBlock code={selectedFile.diff} />
+                ) : (
+                  <div className="p-3 text-[11px] text-gray-500">
+                    No line-by-line diff captured for this file change.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-[11px] text-gray-500">Select a file to view its diff.</div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function SubagentPanel({
   isOpen,
   onClose,
@@ -1955,8 +2228,8 @@ function SubagentPanel({
                 <p className="text-xs text-gray-500 mb-1">Result</p>
                 <div
                   className={`p-3 rounded-lg border ${selectedSubagent.status === "completed"
-                      ? "bg-emerald-500/10 border-emerald-500/30"
-                      : "bg-red-500/10 border-red-500/30"
+                    ? "bg-emerald-500/10 border-emerald-500/30"
+                    : "bg-red-500/10 border-red-500/30"
                     }`}
                 >
                   <pre className="text-sm text-gray-300 whitespace-pre-wrap overflow-x-auto max-h-48 overflow-y-auto">
@@ -2130,8 +2403,8 @@ function SessionsPanel({
                 <div
                   key={session.id}
                   className={`p-2.5 rounded-lg transition-all cursor-pointer group ${currentSessionId === session.id
-                      ? "bg-[rgba(var(--accent-primary),0.12)] border border-[rgba(var(--accent-primary),0.3)]"
-                      : "bg-white/[0.03] border border-white/5 hover:border-white/15"
+                    ? "bg-[rgba(var(--accent-primary),0.12)] border border-[rgba(var(--accent-primary),0.3)]"
+                    : "bg-white/[0.03] border border-white/5 hover:border-white/15"
                     }`}
                   onClick={() => handleLoadSession(session.id)}
                 >
@@ -2242,6 +2515,8 @@ export function Chat() {
   const [reverting, setReverting] = useState(false);
   const [showSubagentPanel, setShowSubagentPanel] = useState(false);
   const [showSessionsPanel, setShowSessionsPanel] = useState(false);
+  const [showDiffPanel, setShowDiffPanel] = useState(false);
+  const [selectedDiffPath, setSelectedDiffPath] = useState<string | null>(null);
   const [activeSessionIds, setActiveSessionIds] = useState<string[]>([]);
   const [artifactViewerTarget, setArtifactViewerTarget] = useState<ArtifactSummaryView | null>(null);
   const [artifactViewerLoading, setArtifactViewerLoading] = useState(false);
@@ -2269,6 +2544,10 @@ export function Chat() {
   const fallbackWorkspaceDir =
     !sessionId && (lastWorkspaceDir || homeWorkspaceDir) ? (lastWorkspaceDir || homeWorkspaceDir) : null;
   const effectiveWorkspaceDir = workspaceDir || fallbackWorkspaceDir || null;
+  const sessionFileChanges = useMemo(
+    () => summarizeSessionFileChanges(typedMessages),
+    [typedMessages]
+  );
 
   useEffect(() => {
     setLastWorkspaceDir(readPersistedWorkspaceDir());
@@ -2279,6 +2558,28 @@ export function Chat() {
     persistWorkspaceDir(workspaceDir);
     setLastWorkspaceDir(workspaceDir);
   }, [workspaceDir]);
+
+  useEffect(() => {
+    persistSessionId(sessionId);
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!sessionFileChanges || sessionFileChanges.files.length === 0) {
+      if (selectedDiffPath !== null) {
+        setSelectedDiffPath(null);
+      }
+      return;
+    }
+
+    if (
+      selectedDiffPath &&
+      sessionFileChanges.files.some((file) => file.path === selectedDiffPath)
+    ) {
+      return;
+    }
+
+    setSelectedDiffPath(sessionFileChanges.files[0]?.path || null);
+  }, [selectedDiffPath, sessionFileChanges]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -2449,6 +2750,70 @@ export function Chat() {
     []
   );
 
+  const hydrateSessionStatus = useCallback(
+    async (targetSessionId?: string | null) => {
+      const resolvedSessionId =
+        typeof targetSessionId === "string" && targetSessionId.trim().length > 0
+          ? targetSessionId.trim()
+          : null;
+
+      try {
+        const response = await chatApi.getSessionStatus(resolvedSessionId || undefined);
+        if (!response.success || !response.data) return;
+        const payload = response.data as SessionStatusResponse;
+        const nextActiveIds = Array.isArray(payload.activeSessionIds) ? payload.activeSessionIds : [];
+        setActiveSessionIds(nextActiveIds);
+
+        if (!resolvedSessionId) return;
+        const snapshot = payload.session;
+        const isActive =
+          !!snapshot &&
+          (payload.active === true ||
+            snapshot.status === "thinking" ||
+            snapshot.status === "generating" ||
+            snapshot.status === "tool_executing" ||
+            snapshot.status === "tool_completed");
+
+        if (!isActive || !snapshot) {
+          if (!loadingRef.current && activeSessionRef.current === resolvedSessionId) {
+            setLiveStatus("idle");
+            setLiveActivities([]);
+          }
+          return;
+        }
+
+        if (activeSessionRef.current !== resolvedSessionId) return;
+        setLiveStatus(normalizeSessionStatus(snapshot.status));
+        const snapshotActivities = toLiveActivityItems(snapshot.activities);
+        if (snapshotActivities.length > 0) {
+          setLiveActivities(snapshotActivities);
+        } else if (!loadingRef.current) {
+          setLiveActivities([]);
+        }
+      } catch (error) {
+        console.error("Failed to hydrate session status:", error);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!sessionId) {
+      setLiveStatus("idle");
+      setLiveActivities([]);
+      return;
+    }
+
+    void hydrateSessionStatus(sessionId);
+    const intervalId = window.setInterval(() => {
+      void hydrateSessionStatus(sessionId);
+    }, 4000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [hydrateSessionStatus, sessionId]);
+
   useEffect(() => {
     const eventSource = new EventSource(appendApiTokenParam("/api/sse/status"));
 
@@ -2462,7 +2827,6 @@ export function Chat() {
 
       if (!payload || typeof payload !== "object") return;
       if (payload.type && payload.type !== "status") return;
-      if (!loadingRef.current && Date.now() > acceptEventsUntilRef.current) return;
       const status = typeof payload.status === "string" ? payload.status : "";
       if (!status) return;
       const payloadSessionId =
@@ -2485,6 +2849,16 @@ export function Chat() {
       }
 
       const activeSession = activeSessionRef.current;
+      const isEventForVisibleSession =
+        !!activeSession && !!payloadSessionId && payloadSessionId === activeSession;
+      if (
+        !loadingRef.current &&
+        Date.now() > acceptEventsUntilRef.current &&
+        !isEventForVisibleSession
+      ) {
+        return;
+      }
+
       const activeAgent = activeAgentRef.current;
 
       if (activeSession && payload.sessionId && payload.sessionId !== activeSession) return;
@@ -2497,6 +2871,11 @@ export function Chat() {
       }
       if (status === "generating") {
         setLiveStatus("generating");
+        return;
+      }
+      if (status === "idle") {
+        setLiveStatus("idle");
+        setLiveActivities([]);
         return;
       }
       if (status === "tool_executing" || status === "tool_completed" || status === "error") {
@@ -2514,7 +2893,8 @@ export function Chat() {
   }, [appendLiveActivity]);
 
   const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+    const sessionCurrentlyActive = !!sessionId && activeSessionIds.includes(sessionId);
+    if (!input.trim() || isLoading || sessionCurrentlyActive) return;
     const message = input;
     setInput("");
     await sendMessage(message, { workspaceDir: effectiveWorkspaceDir || undefined });
@@ -2727,29 +3107,44 @@ export function Chat() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const sessionParam = params.get("session");
+    const sessionParamRaw = params.get("session");
+    const sessionParam =
+      typeof sessionParamRaw === "string" && sessionParamRaw.trim().length > 0
+        ? sessionParamRaw.trim()
+        : null;
+    const persistedSessionId = readPersistedSessionId();
+    const initialSessionId = sessionParam || persistedSessionId;
 
-    if (sessionParam && sessionParam !== sessionId) {
+    if (initialSessionId && initialSessionId !== sessionId) {
       loadSessionMutation
-        .mutateAsync(sessionParam)
+        .mutateAsync(initialSessionId)
         .then((result) => {
           if (result?.messagesList) {
             loadSession(
-              sessionParam,
+              initialSessionId,
               result.messagesList as ChatMessage[],
               (result as { workspace_dir?: string | null }).workspace_dir || null
             );
-            window.history.replaceState({}, "", "/chat");
+            if (sessionParam) {
+              window.history.replaceState({}, "", "/chat");
+            }
           }
         })
         .catch((error) => {
-          console.error("Failed to load session from URL:", error);
+          console.error("Failed to restore initial chat session:", error);
+          if (!sessionParam) {
+            persistSessionId(null);
+          }
         });
     }
   }, []); // Only run on mount
 
   const revertRemovedCount = revertTarget ? Math.max(0, typedMessages.length - revertTarget.index) : 0;
   const revertFollowingCount = Math.max(0, revertRemovedCount - 1);
+  const currentSessionIsActive = !!sessionId && activeSessionIds.includes(sessionId);
+  const showWorkingTimeline = isLoading || currentSessionIsActive;
+  const timelineStatus =
+    showWorkingTimeline && liveStatus === "idle" ? "thinking" : liveStatus;
 
   return (
     <div className="h-screen flex flex-col bg-[#050508]">
@@ -2814,6 +3209,21 @@ export function Chat() {
               <X className="w-4 h-4" />
             </button>
           )}
+          <button
+            onClick={() => setShowDiffPanel(!showDiffPanel)}
+            className={cn(
+              "relative p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
+              showDiffPanel ? "text-indigo-300" : "text-gray-500"
+            )}
+            title="File diffs"
+          >
+            <FileText className="w-4 h-4" />
+            {sessionFileChanges && sessionFileChanges.files.length > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] rounded-full bg-indigo-500/80 px-1 text-[9px] leading-[15px] text-white text-center">
+                {sessionFileChanges.files.length}
+              </span>
+            )}
+          </button>
           <button
             onClick={() => setShowSessionsPanel(!showSessionsPanel)}
             className={cn(
@@ -2884,6 +3294,7 @@ export function Chat() {
                 ) : (
                   typedMessages.map((message, index) => {
                     const processKey = getMessageProcessKey(sessionId, message, index);
+                    const turnStartedAtMs = findPriorUserTimestampMs(typedMessages, index);
                     const toolActivities = buildActivitiesFromToolCalls(
                       message.tool_calls,
                       formatToolIntent
@@ -2911,8 +3322,8 @@ export function Chat() {
                       >
                         <div
                           className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${message.role === "user"
-                              ? "bg-[rgba(var(--accent-primary),0.2)]"
-                              : "bg-emerald-500/20"
+                            ? "bg-[rgba(var(--accent-primary),0.2)]"
+                            : "bg-emerald-500/20"
                             }`}
                         >
                           {message.role === "user" ? (
@@ -2926,8 +3337,8 @@ export function Chat() {
                         >
                           <div
                             className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${message.role === "user"
-                                ? "bg-[rgba(var(--accent-primary),0.15)] border border-[rgba(var(--accent-primary),0.2)]"
-                                : "bg-white/[0.03] border border-white/5"
+                              ? "border border-[rgba(var(--accent-primary),0.2)]"
+                              : "border border-white/5"
                               }`}
                           >
                             {message.role !== "user" && (
@@ -2935,6 +3346,7 @@ export function Chat() {
                                 message={message}
                                 processActivities={processActivities}
                                 sessionId={sessionId}
+                                turnStartedAtMs={turnStartedAtMs}
                                 onOpenArtifact={openArtifactViewer}
                                 onViewMoreToolCalls={() =>
                                   void loadFullToolCallsForMessage(index, message)
@@ -2976,6 +3388,7 @@ export function Chat() {
                                 message={message}
                                 processActivities={processActivities}
                                 sessionId={sessionId}
+                                turnStartedAtMs={turnStartedAtMs}
                                 onOpenArtifact={openArtifactViewer}
                                 onViewMoreToolCalls={() =>
                                   void loadFullToolCallsForMessage(index, message)
@@ -2996,13 +3409,13 @@ export function Chat() {
                     );
                   })
                 )}
-                {isLoading && (
+                {showWorkingTimeline && (
                   <div className="flex gap-3">
                     <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
                       <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
                     </div>
                     <div className="max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] bg-white/[0.03] border border-white/5 rounded-xl px-4 py-3">
-                      <LiveActivityTimeline status={liveStatus} activities={liveActivities} />
+                      <LiveActivityTimeline status={timelineStatus} activities={liveActivities} />
                     </div>
                   </div>
                 )}
@@ -3032,11 +3445,12 @@ export function Chat() {
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Type a message..."
+                    disabled={showWorkingTimeline}
                     className="flex-1 px-3 sm:px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-xs text-white placeholder-gray-500 !outline-none focus:border-white/20 transition-colors"
                   />
                   <button
                     onClick={handleSend}
-                    disabled={!input.trim() || isLoading}
+                    disabled={!input.trim() || showWorkingTimeline}
                     className="px-3 sm:px-4 py-2.5 rounded-xl accent-button disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                   >
                     <Send className="w-4 h-4" />
@@ -3062,6 +3476,16 @@ export function Chat() {
               clearChat();
               setShowSessionsPanel(false);
             }}
+          />
+        )}
+
+        {!artifactViewerTarget && showDiffPanel && (
+          <SessionDiffPanel
+            isOpen={showDiffPanel}
+            summary={sessionFileChanges}
+            selectedPath={selectedDiffPath}
+            onSelectPath={setSelectedDiffPath}
+            onClose={() => setShowDiffPanel(false)}
           />
         )}
 

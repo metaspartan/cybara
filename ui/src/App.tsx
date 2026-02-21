@@ -19,6 +19,7 @@ import { LSP } from '@/pages/LSP';
 import { IDE } from '@/pages/IDE';
 import { TerminalPage } from '@/pages/Terminal';
 import { Wallet } from '@/pages/Wallet';
+import { Artifacts } from '@/pages/Artifacts';
 import { Setup } from '@/pages/Setup';
 import { useProviders, useAgents } from '@/hooks/useApi';
 import { Loader2 } from 'lucide-react';
@@ -84,6 +85,7 @@ function AppRoutes() {
       <Route path="/logs" element={<Logs />} />
       <Route path="/sessions" element={<Sessions />} />
       <Route path="/wallet" element={<Wallet />} />
+      <Route path="/artifacts" element={<Artifacts />} />
     </Routes>
   );
 }

@@ -30,6 +30,23 @@ export interface TaskEventPayload {
   timestamp?: number;
 }
 
+export interface SessionActivitySnapshot {
+  id: string;
+  phase: ToolStatusPhase;
+  text: string;
+  timestamp: number;
+  toolName?: string;
+}
+
+export interface SessionStatusSnapshot {
+  sessionId: string;
+  status: AgentStatus;
+  timestamp: number;
+  detail?: string;
+  agentId?: string;
+  activities: SessionActivitySnapshot[];
+}
+
 type StatusCallback = (data: StatusPayload) => void;
 
 const statusCallbacks = new Set<StatusCallback>();
@@ -37,6 +54,102 @@ const statusCallbacks = new Set<StatusCallback>();
 const sseClients = new Set<ReadableStreamDefaultController<Uint8Array>>();
 
 const encoder = new TextEncoder();
+const sessionStatusSnapshots = new Map<string, SessionStatusSnapshot>();
+const ACTIVE_STATUSES = new Set<AgentStatus>([
+  "thinking",
+  "generating",
+  "tool_executing",
+  "tool_completed",
+]);
+const STATUS_STALE_MS = 15 * 60 * 1000;
+const MAX_SESSION_ACTIVITY_ITEMS = 80;
+
+function isActiveStatus(status: AgentStatus): boolean {
+  return ACTIVE_STATUSES.has(status);
+}
+
+function sanitizeActivityText(detail?: string): string {
+  if (!detail || typeof detail !== "string") return "";
+  const trimmed = detail.trim();
+  if (!trimmed) return "";
+  if (trimmed.length <= 240) return trimmed;
+  return `${trimmed.slice(0, 237)}...`;
+}
+
+function statusToPhase(status: AgentStatus): ToolStatusPhase | null {
+  if (status === "tool_executing") return "start";
+  if (status === "tool_completed") return "result";
+  if (status === "error") return "error";
+  return null;
+}
+
+function upsertSessionStatusSnapshot(payload: StatusPayload): void {
+  const sessionId = typeof payload.sessionId === "string" ? payload.sessionId.trim() : "";
+  if (!sessionId) return;
+
+  const previous = sessionStatusSnapshots.get(sessionId);
+  const nextActivities = previous?.activities ? [...previous.activities] : [];
+  const phase = statusToPhase(payload.status);
+  const activityText = sanitizeActivityText(payload.detail);
+
+  if (phase && activityText) {
+    nextActivities.push({
+      id: `${payload.timestamp}-${Math.random().toString(36).slice(2, 8)}`,
+      phase,
+      text: activityText,
+      timestamp: payload.timestamp,
+      toolName: payload.toolName,
+    });
+    if (nextActivities.length > MAX_SESSION_ACTIVITY_ITEMS) {
+      nextActivities.splice(0, nextActivities.length - MAX_SESSION_ACTIVITY_ITEMS);
+    }
+  }
+
+  if (payload.status === "idle") {
+    sessionStatusSnapshots.delete(sessionId);
+    return;
+  }
+
+  sessionStatusSnapshots.set(sessionId, {
+    sessionId,
+    status: payload.status,
+    timestamp: payload.timestamp,
+    detail: sanitizeActivityText(payload.detail),
+    agentId: payload.agentId,
+    activities: nextActivities,
+  });
+}
+
+function cleanupStaleSnapshots(now = Date.now()): void {
+  for (const [sessionId, snapshot] of sessionStatusSnapshots.entries()) {
+    if (now - snapshot.timestamp > STATUS_STALE_MS) {
+      sessionStatusSnapshots.delete(sessionId);
+    }
+  }
+}
+
+export function listSessionStatusSnapshots(): SessionStatusSnapshot[] {
+  cleanupStaleSnapshots();
+  return Array.from(sessionStatusSnapshots.values())
+    .filter((snapshot) => isActiveStatus(snapshot.status))
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .map((snapshot) => ({
+      ...snapshot,
+      activities: snapshot.activities.map((activity) => ({ ...activity })),
+    }));
+}
+
+export function getSessionStatusSnapshot(sessionId: string): SessionStatusSnapshot | null {
+  cleanupStaleSnapshots();
+  const key = sessionId.trim();
+  if (!key) return null;
+  const snapshot = sessionStatusSnapshots.get(key);
+  if (!snapshot) return null;
+  return {
+    ...snapshot,
+    activities: snapshot.activities.map((activity) => ({ ...activity })),
+  };
+}
 
 export function addSSEClient(controller: ReadableStreamDefaultController<Uint8Array>): void {
   sseClients.add(controller);
@@ -56,6 +169,8 @@ export function onStatus(callback: StatusCallback): () => void {
 }
 
 export function broadcastStatus(status: StatusPayload): void {
+  upsertSessionStatusSnapshot(status);
+
   for (const callback of statusCallbacks) {
     try {
       callback(status);

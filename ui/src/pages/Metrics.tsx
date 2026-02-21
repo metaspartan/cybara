@@ -5,6 +5,7 @@ import {
   Cpu,
   Zap,
   HardDrive,
+  Database,
   TrendingUp,
   Activity,
   Terminal,
@@ -24,6 +25,7 @@ import {
   useMetricsModels,
   useMetricsInsights,
   useMetricsTokenAnalysis,
+  useMetricsStorage,
   type MetricsOverview,
   type TokenMetrics,
   type TokenAnalysisMetrics,
@@ -33,12 +35,20 @@ import {
   type ProviderMetrics,
   type ModelMetrics,
   type MetricsInsights,
+  type MetricsStorage,
 } from '@/hooks/useApi';
 
 function formatNumber(num: number): string {
   if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M';
   if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
   return num.toString();
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
 }
 
 export function Metrics() {
@@ -51,10 +61,12 @@ export function Metrics() {
   const { data: modelMetrics, isLoading: loadingModels } = useMetricsModels();
   const { data: insights, isLoading: loadingInsights } = useMetricsInsights();
   const { data: tokenAnalysis, isLoading: loadingTokenAnalysis } = useMetricsTokenAnalysis();
+  const { data: storage, isLoading: loadingStorage } = useMetricsStorage();
 
-  const isLoading = loadingOverview || loadingTokens || loadingFiles || loadingTools || loadingTimeSeries || loadingProviders || loadingModels || loadingInsights || loadingTokenAnalysis;
+  const isLoading = loadingOverview || loadingTokens || loadingFiles || loadingTools || loadingTimeSeries || loadingProviders || loadingModels || loadingInsights || loadingTokenAnalysis || loadingStorage;
   const insightsData = insights as MetricsInsights | undefined;
   const tokenAnalysisData = tokenAnalysis as TokenAnalysisMetrics | undefined;
+  const storageData = storage as MetricsStorage | undefined;
 
   const stats = useMemo(() => {
     if (!overview) return null;
@@ -133,7 +145,7 @@ export function Metrics() {
       title="Metrics"
       subtitle="Track token usage, file operations, and system activity"
     >
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
         <StatCard
           icon={<Cpu className="w-5 h-5" />}
           label="Total Tokens"
@@ -161,6 +173,13 @@ export function Metrics() {
           value={formatNumber(overview?.agentActivity.totalMessages || 0)}
           color="text-green-400"
           bgColor="bg-green-500/20"
+        />
+        <StatCard
+          icon={<Database className="w-5 h-5" />}
+          label="Storage Used"
+          value={formatBytes(storageData?.totalBytes || 0)}
+          color="text-cyan-300"
+          bgColor="bg-cyan-500/20"
         />
       </div>
 
@@ -758,6 +777,51 @@ export function Metrics() {
               <p>No model performance data yet</p>
               <p className="text-sm">Use the chat to generate TPS metrics</p>
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="mb-8">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <HardDrive className="w-5 h-5 text-cyan-300" />
+            Storage Footprint
+          </CardTitle>
+          <CardDescription>Local disk usage for Cybara data and runtime files</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {storageData ? (
+            <div className="space-y-3">
+              <div className="rounded-lg bg-white/5 p-3">
+                <p className="text-xs text-gray-500 mb-1">Total Local Storage</p>
+                <p className="text-xl font-semibold text-white">{formatBytes(storageData.totalBytes)}</p>
+                <p className="text-[11px] text-gray-500 mt-1">{storageData.directories.cybaraDir}</p>
+              </div>
+              {[
+                { label: 'Database (main + WAL + SHM)', bytes: storageData.components.database.bytes, path: storageData.components.database.path },
+                { label: 'Artifacts', bytes: storageData.components.artifacts.bytes, path: storageData.components.artifacts.path },
+                { label: 'Logs', bytes: storageData.components.logs.bytes, path: storageData.components.logs.path },
+                { label: 'Memory', bytes: storageData.components.memory.bytes, path: storageData.components.memory.path },
+                { label: 'Skills', bytes: storageData.components.skills.bytes, path: storageData.components.skills.path },
+                { label: 'Secure', bytes: storageData.components.secure.bytes, path: storageData.components.secure.path },
+              ].map((entry) => {
+                const sharePct = storageData.totalBytes > 0 ? (entry.bytes / storageData.totalBytes) * 100 : 0;
+                return (
+                  <div key={entry.label} className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+                    <div className="flex items-center justify-between text-sm mb-1.5">
+                      <span className="text-gray-200">{entry.label}</span>
+                      <span className="text-cyan-300">{formatBytes(entry.bytes)}</span>
+                    </div>
+                    <div className="h-1.5 bg-white/10 rounded-full overflow-hidden mb-1.5">
+                      <div className="h-full bg-cyan-500 rounded-full" style={{ width: `${Math.min(100, sharePct)}%` }} />
+                    </div>
+                    <p className="text-[11px] text-gray-500 truncate">{entry.path}</p>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">No storage data available.</p>
           )}
         </CardContent>
       </Card>

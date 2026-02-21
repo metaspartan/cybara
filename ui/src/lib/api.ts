@@ -812,6 +812,76 @@ export const chatApi = {
         body: JSON.stringify({ workspaceDir }),
       }
     ),
+  getSessionStatus: (sessionId?: string) =>
+    fetchApi<{
+      activeSessions?: Array<{
+        sessionId: string;
+        status: string;
+        timestamp: number;
+        detail?: string;
+        agentId?: string;
+        activities: Array<{
+          id: string;
+          phase: "start" | "result" | "error";
+          text: string;
+          timestamp: number;
+          toolName?: string;
+        }>;
+      }>;
+      activeSessionIds: string[];
+      count?: number;
+      session?: {
+        sessionId: string;
+        status: string;
+        timestamp: number;
+        detail?: string;
+        agentId?: string;
+        activities: Array<{
+          id: string;
+          phase: "start" | "result" | "error";
+          text: string;
+          timestamp: number;
+          toolName?: string;
+        }>;
+      } | null;
+      active?: boolean;
+      sessionId?: string;
+    }>("/status/sessions" + (sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "")),
+  listArtifacts: (sessionId?: string) =>
+    fetchApi<{
+      artifacts: Array<{
+        sessionId: string;
+        name: string;
+        fileName: string;
+        path: string;
+        kind: "task" | "implementation" | "walkthrough" | "notes" | "custom";
+        title: string;
+        size: number;
+        createdAt: string;
+        updatedAt: string;
+      }>;
+      sessionId?: string;
+    }>("/artifacts" + (sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "")),
+  readSessionArtifact: (sessionId: string, artifactName: string) =>
+    fetchApi<{
+      sessionId: string;
+      artifact: {
+        sessionId: string;
+        name: string;
+        fileName: string;
+        path: string;
+        kind: "task" | "implementation" | "walkthrough" | "notes" | "custom";
+        title: string;
+        size: number;
+        createdAt: string;
+        updatedAt: string;
+      };
+      content: string;
+      truncated: boolean;
+      totalChars: number;
+    }>(
+      `/sessions/${encodeURIComponent(sessionId)}/artifacts/${encodeURIComponent(artifactName)}`
+    ),
   deleteSession: (id: string) => fetchApi<void>("/sessions/" + id, { method: "DELETE" }),
 };
 
