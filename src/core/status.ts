@@ -76,6 +76,23 @@ function sanitizeActivityText(detail?: string): string {
   return `${trimmed.slice(0, 237)}...`;
 }
 
+function isMeaningfulThoughtDetail(detail: string): boolean {
+  const normalized = detail.trim().toLowerCase();
+  if (!normalized) return false;
+  if (
+    normalized === "thinking..." ||
+    normalized === "thinking" ||
+    normalized === "generating response..." ||
+    normalized === "generating response" ||
+    normalized === "idle" ||
+    normalized === "working..." ||
+    normalized === "working"
+  ) {
+    return false;
+  }
+  return true;
+}
+
 function statusToPhase(status: AgentStatus): ToolStatusPhase | null {
   if (status === "tool_executing") return "start";
   if (status === "tool_completed") return "result";
@@ -91,6 +108,7 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
   const nextActivities = previous?.activities ? [...previous.activities] : [];
   const phase = statusToPhase(payload.status);
   const activityText = sanitizeActivityText(payload.detail);
+  const isThoughtStatus = payload.status === "thinking" || payload.status === "generating";
 
   if (phase && activityText) {
     nextActivities.push({
@@ -102,6 +120,24 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
     });
     if (nextActivities.length > MAX_SESSION_ACTIVITY_ITEMS) {
       nextActivities.splice(0, nextActivities.length - MAX_SESSION_ACTIVITY_ITEMS);
+    }
+  } else if (isThoughtStatus && activityText && isMeaningfulThoughtDetail(activityText)) {
+    const lastActivity = nextActivities[nextActivities.length - 1];
+    const duplicateThought =
+      lastActivity &&
+      lastActivity.toolName === "__thought" &&
+      lastActivity.text.trim().toLowerCase() === activityText.toLowerCase();
+    if (!duplicateThought) {
+      nextActivities.push({
+        id: `${payload.timestamp}-${Math.random().toString(36).slice(2, 8)}`,
+        phase: "result",
+        text: activityText,
+        timestamp: payload.timestamp,
+        toolName: "__thought",
+      });
+      if (nextActivities.length > MAX_SESSION_ACTIVITY_ITEMS) {
+        nextActivities.splice(0, nextActivities.length - MAX_SESSION_ACTIVITY_ITEMS);
+      }
     }
   }
 

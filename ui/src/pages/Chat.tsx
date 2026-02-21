@@ -471,7 +471,7 @@ function toLiveActivityItems(activities: SessionStatusActivity[] | undefined): L
       timestamp: activity.timestamp,
       toolName: activity.toolName,
     }))
-    .slice(-12);
+    .slice(-50);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1008,7 +1008,7 @@ function LiveActivityTimeline({
       : status === "generating"
         ? "Generating response..."
         : "Thinking...";
-  const recentActivities = activities.slice(-6);
+  const recentActivities = activities.slice(-20);
 
   return (
     <div className="space-y-2">
@@ -1017,12 +1017,12 @@ function LiveActivityTimeline({
         <span>{statusLabel}</span>
       </div>
       {recentActivities.length > 0 ? (
-        <div className="space-y-1">
+        <div className="space-y-1 max-h-56 overflow-y-auto pr-1">
           {recentActivities.map((activity) => (
             <div
               key={activity.id}
               className={cn(
-                "flex items-start gap-2 text-[12px] px-0.5",
+                "flex items-start gap-2 text-[11px] px-0.5",
                 activity.toolName === "__thought" ? "text-gray-200" : "text-gray-400"
               )}
             >
@@ -1062,15 +1062,15 @@ function LiveActivityTimeline({
 function ProcessActivityList({ activities }: { activities: LiveActivityItem[] }) {
   if (activities.length === 0) return null;
 
-  const recentActivities = activities.slice(-8);
+  const recentActivities = activities.slice(-20);
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
       {recentActivities.map((activity) => (
         <div
           key={activity.id}
           className={cn(
-            "flex items-start gap-1.5 text-[12px] px-0.5",
+            "flex items-start gap-1.5 text-[11px] px-0.5",
             activity.toolName === "__thought" ? "text-gray-200" : "text-gray-400"
           )}
         >
@@ -1195,6 +1195,7 @@ function getHiddenToolCallsCount(message: ChatMessage): number {
 }
 
 const TOOL_CALL_PREVIEW_LIMIT = 50;
+const LIVE_ACTIVITY_PREVIEW_LIMIT = 50;
 
 function getTotalToolCallsCount(message: ChatMessage): number {
   if (
@@ -2746,7 +2747,7 @@ export function Chat() {
                 text: normalizedText,
                 timestamp: nextTimestamp,
               };
-              return updated.slice(-12);
+              return updated.slice(-LIVE_ACTIVITY_PREVIEW_LIMIT);
             }
           }
 
@@ -2761,7 +2762,7 @@ export function Chat() {
               text: normalizedText,
               timestamp: nextTimestamp,
             };
-            return updated.slice(-12);
+            return updated.slice(-LIVE_ACTIVITY_PREVIEW_LIMIT);
           }
         }
 
@@ -2782,7 +2783,7 @@ export function Chat() {
           timestamp: nextTimestamp,
           toolName: normalizedToolName || undefined,
         };
-        return [...previous.slice(-11), next];
+        return [...previous.slice(-(LIVE_ACTIVITY_PREVIEW_LIMIT - 1)), next];
       });
     },
     []

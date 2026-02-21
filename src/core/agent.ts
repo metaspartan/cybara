@@ -627,6 +627,18 @@ function summarizeCommand(command: string): string {
   return compact;
 }
 
+function summarizeProgressThought(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const compact = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(" ");
+  if (!compact) return undefined;
+  if (compact.length <= 220) return compact;
+  return `${compact.slice(0, 217)}...`;
+}
+
 function toDisplayPath(path: string): string {
   const normalized = path.replace(/\\/g, "/").trim();
   if (!normalized) return "file";
@@ -700,7 +712,8 @@ function formatToolActivityDetail(
 
     if (path) {
       const startPath = displayPath || toDisplayPath(path);
-      if (phase === "start") return key === "edit" ? `Editing ${startPath}` : `Writing ${startPath}`;
+      if (phase === "start")
+        return key === "edit" ? `Editing ${startPath}` : `Writing ${startPath}`;
       if (phase === "result") {
         if (addedLines !== undefined && removedLines !== undefined && displayPath) {
           return `Edited ${displayPath} +${addedLines} -${removedLines}`;
@@ -722,8 +735,7 @@ function formatToolActivityDetail(
   if (key === "file_search" || key === "grep") {
     if (phase === "result" && isObjectRecord(result)) {
       const files = Array.isArray(result.files) ? result.files : undefined;
-      const count =
-        toFiniteNumber(result.count) || (files ? files.length : undefined);
+      const count = toFiniteNumber(result.count) || (files ? files.length : undefined);
       if (count !== undefined) {
         const safeCount = Math.max(0, Math.floor(count));
         return `Explored ${safeCount} file${safeCount === 1 ? "" : "s"}, 1 search`;
@@ -2458,6 +2470,7 @@ class AgentManager {
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
     const allToolCalls: AgentToolCallResult[] = [];
     let finalContent = message.content || "";
+    let lastProgressThought = "";
     const hookContext = this.buildHookContext(providerConfig, modelId, toolContext);
     const loopState: AgenticLoopState = {
       previousFingerprint: undefined,
@@ -2475,6 +2488,12 @@ class AgentManager {
 
       if (!message.tool_calls || message.tool_calls.length === 0) {
         break;
+      }
+
+      const progressThought = summarizeProgressThought(message.content);
+      if (progressThought && progressThought !== lastProgressThought) {
+        this.broadcastAgentStatus("thinking", toolContext, progressThought);
+        lastProgressThought = progressThought;
       }
 
       console.log(
@@ -3015,6 +3034,7 @@ class AgentManager {
     let iterations = 0;
     let activeModelId = modelId;
     let finalContent = "";
+    let lastProgressThought = "";
     const allToolCalls: AgentToolCallResult[] = [];
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
     const hookContext = this.buildHookContext(providerConfig, activeModelId, toolContext);
@@ -3074,6 +3094,12 @@ class AgentManager {
 
       if (turn.toolCalls.length === 0) {
         break;
+      }
+
+      const progressThought = summarizeProgressThought(turn.content);
+      if (progressThought && progressThought !== lastProgressThought) {
+        this.broadcastAgentStatus("thinking", toolContext, progressThought);
+        lastProgressThought = progressThought;
       }
 
       const iterationToolCalls: AgentToolCallResult[] = [];
@@ -3193,6 +3219,7 @@ class AgentManager {
     const loopStartedAt = Date.now();
     let iterations = 0;
     let finalContent = "";
+    let lastProgressThought = "";
     const allToolCalls: AgentToolCallResult[] = [];
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
     const hookContext = this.buildHookContext(providerConfig, modelId, toolContext);
@@ -3283,6 +3310,12 @@ class AgentManager {
 
       if (toolCalls.length === 0) {
         break;
+      }
+
+      const progressThought = summarizeProgressThought(text);
+      if (progressThought && progressThought !== lastProgressThought) {
+        this.broadcastAgentStatus("thinking", toolContext, progressThought);
+        lastProgressThought = progressThought;
       }
 
       const toolResponses: GooglePart[] = [];
@@ -3398,6 +3431,7 @@ class AgentManager {
     const loopStartedAt = Date.now();
     let iterations = 0;
     let finalContent = "";
+    let lastProgressThought = "";
     const allToolCalls: AgentToolCallResult[] = [];
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
     const hookContext = this.buildHookContext(providerConfig, modelId, toolContext);
@@ -3490,6 +3524,12 @@ class AgentManager {
 
       if (toolUseBlocks.length === 0) {
         break;
+      }
+
+      const progressThought = summarizeProgressThought(text);
+      if (progressThought && progressThought !== lastProgressThought) {
+        this.broadcastAgentStatus("thinking", toolContext, progressThought);
+        lastProgressThought = progressThought;
       }
 
       const toolResults: BedrockContentBlock[] = [];
@@ -3661,6 +3701,7 @@ class AgentManager {
 
     const allToolCalls: AgentToolCallResult[] = [];
     let finalContent = currentData.content?.find((c) => c.type === "text")?.text || "";
+    let lastProgressThought = "";
     const thinking =
       currentData.content?.find((c) => c.type === ("thinking" as string))?.text || undefined;
     const hookContext = this.buildHookContext(providerConfig, modelId, toolContext);
@@ -3688,6 +3729,14 @@ class AgentManager {
 
       if (toolUseBlocks.length === 0) {
         break;
+      }
+
+      const progressThought = summarizeProgressThought(
+        currentData.content?.find((c) => c.type === "text")?.text
+      );
+      if (progressThought && progressThought !== lastProgressThought) {
+        this.broadcastAgentStatus("thinking", toolContext, progressThought);
+        lastProgressThought = progressThought;
       }
 
       console.log(
@@ -3919,6 +3968,7 @@ class AgentManager {
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
     const allToolCalls: AgentToolCallResult[] = [];
     let finalContent = message.content || "";
+    let lastProgressThought = "";
     const hookContext = this.buildHookContext("openai", modelId, toolContext);
     const loopState: AgenticLoopState = {
       previousFingerprint: undefined,
@@ -3936,6 +3986,12 @@ class AgentManager {
 
       if (!message.tool_calls || message.tool_calls.length === 0) {
         break;
+      }
+
+      const progressThought = summarizeProgressThought(message.content);
+      if (progressThought && progressThought !== lastProgressThought) {
+        this.broadcastAgentStatus("thinking", toolContext, progressThought);
+        lastProgressThought = progressThought;
       }
 
       console.log(
