@@ -40,6 +40,7 @@ import remarkGfm from "remark-gfm";
 import { useChat, useSessions, useDeleteSession, useLoadSession } from "@/hooks/useChat";
 import {
   useAgents,
+  useInfo,
   useSubagents,
   useSpawnSubagent,
   useKillSubagent,
@@ -65,6 +66,8 @@ interface ToolCall {
   args?: Record<string, unknown>;
   result?: unknown;
   duration?: number;
+  timeline_index?: number;
+  started_at?: number;
   status: "pending" | "executing" | "completed" | "failed" | "success" | "error";
 }
 
@@ -131,6 +134,8 @@ interface PendingProcessCapture {
   agentId?: string;
 }
 
+const LAST_WORKSPACE_STORAGE_KEY = "cybara:lastWorkspaceDir";
+
 function getMessageProcessKey(
   sessionKey: string | null,
   message: ChatMessage,
@@ -147,6 +152,29 @@ function readStringArg(args: Record<string, unknown>, keys: string[]): string | 
     if (trimmed) return trimmed;
   }
   return undefined;
+}
+
+function readPersistedWorkspaceDir(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(LAST_WORKSPACE_STORAGE_KEY);
+    if (!raw) return null;
+    const trimmed = raw.trim();
+    return trimmed || null;
+  } catch {
+    return null;
+  }
+}
+
+function persistWorkspaceDir(workspaceDir: string | null): void {
+  if (typeof window === "undefined" || !workspaceDir) return;
+  try {
+    const trimmed = workspaceDir.trim();
+    if (!trimmed) return;
+    window.localStorage.setItem(LAST_WORKSPACE_STORAGE_KEY, trimmed);
+  } catch {
+    // Ignore local storage errors
+  }
 }
 
 function readNumberArg(args: Record<string, unknown>, keys: string[]): number | undefined {
@@ -748,17 +776,12 @@ function normalizeToolStatus(status: ToolCall["status"]): "pending" | "success" 
 
 function ToolCallItem({
   tool,
-  sessionId,
-  onOpenArtifact,
 }: {
   tool: ToolCall;
-  sessionId?: string | null;
-  onOpenArtifact?: (artifact: ArtifactSummaryView) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const normalizedStatus = normalizeToolStatus(tool.status);
   const toolArgs = tool.arguments || tool.args || {};
-  const artifactSummaries = inferArtifactSummaries(tool, sessionId);
   const phase: "start" | "result" | "error" =
     normalizedStatus === "pending" ? "start" : normalizedStatus === "success" ? "result" : "error";
   const summary = formatToolIntent(tool.name, toolArgs, phase);
@@ -780,9 +803,9 @@ function ToolCallItem({
   };
 
   const statusStyles = {
-    pending: "bg-amber-500/5 border border-white/[0.06] text-amber-300",
-    success: "bg-emerald-500/5 border border-white/[0.06] text-emerald-300",
-    error: "bg-red-500/5 border border-white/[0.06] text-red-300",
+    pending: "bg-white/[0.02] border border-white/[0.08] text-gray-200",
+    success: "bg-white/[0.02] border border-white/[0.08] text-gray-200",
+    error: "bg-rose-500/10 border border-rose-500/30 text-rose-200",
   };
 
   return (
@@ -792,7 +815,7 @@ function ToolCallItem({
       >
         <button
           onClick={() => setExpanded(!expanded)}
-          className="w-full px-3 py-2 flex items-center gap-2 text-xs cursor-pointer hover:bg-white/5 transition-colors"
+          className="w-full px-3 py-2 flex items-center gap-2 text-[11px] cursor-pointer hover:bg-white/5 transition-colors"
         >
           {statusIcons[normalizedStatus]}
           <Wrench className="w-3 h-3 opacity-60" />
@@ -803,18 +826,6 @@ function ToolCallItem({
             <ChevronDown className="w-3.5 h-3.5 opacity-50" />
           )}
         </button>
-        {!expanded && artifactSummaries.length > 0 && (
-          <div className="px-3 pb-2">
-            <button
-              type="button"
-              onClick={() => onOpenArtifact?.(artifactSummaries[0])}
-              className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
-            >
-              <FileText className="w-3 h-3" />
-              View {artifactSummaries[0].fileName}
-            </button>
-          </div>
-        )}
         {expanded && (
           <div className="px-3 pb-3 border-t border-white/5">
             <div className="mt-2">
@@ -823,31 +834,6 @@ function ToolCallItem({
                 {JSON.stringify(toolArgs, null, 2)}
               </pre>
             </div>
-            {artifactSummaries.length > 0 && (
-              <div className="mt-2">
-                <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wider">Artifact</p>
-                <div className="space-y-1.5">
-                  {artifactSummaries.map((artifact) => (
-                    <div
-                      key={`${artifact.sessionId}:${artifact.fileName}`}
-                      className="flex items-center justify-between gap-2 rounded-md border border-white/10 bg-black/30 px-2 py-2"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-[11px] text-gray-300 truncate">{artifact.fileName}</p>
-                        <p className="text-[10px] text-gray-500 truncate">{artifact.sessionId}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => onOpenArtifact?.(artifact)}
-                        className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
-                      >
-                        Preview
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
             {tool.result !== undefined && (
               <div className="mt-2">
                 <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wider">Result</p>
@@ -894,7 +880,12 @@ function LiveActivityTimeline({
   status: "thinking" | "generating" | "idle";
   activities: LiveActivityItem[];
 }) {
-  const statusLabel = status === "generating" ? "Generating response..." : "Thinking...";
+  const statusLabel =
+    activities.length > 0
+      ? "Working..."
+      : status === "generating"
+        ? "Generating response..."
+        : "Thinking...";
   const recentActivities = activities.slice(-6);
 
   return (
@@ -939,6 +930,27 @@ function LiveActivityTimeline({
           />
         </div>
       )}
+    </div>
+  );
+}
+
+function ProcessActivityList({ activities }: { activities: LiveActivityItem[] }) {
+  if (activities.length === 0) return null;
+
+  const recentActivities = activities.slice(-8);
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-2">
+      <div className="space-y-1">
+        {recentActivities.map((activity) => (
+          <div key={activity.id} className="flex items-center gap-1.5 text-[11px] text-gray-400">
+            {activity.phase === "start" && <Loader2 className="h-3 w-3 animate-spin text-amber-400" />}
+            {activity.phase === "result" && <CheckCircle2 className="h-3 w-3 text-emerald-400" />}
+            {activity.phase === "error" && <AlertTriangle className="h-3 w-3 text-rose-400" />}
+            <span className="truncate">{activity.text}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1047,6 +1059,61 @@ function getHiddenToolCallsCount(message: ChatMessage): number {
   return 0;
 }
 
+const TOOL_CALL_PREVIEW_LIMIT = 50;
+
+function getTotalToolCallsCount(message: ChatMessage): number {
+  if (
+    typeof message._tool_calls_total_count === "number" &&
+    Number.isFinite(message._tool_calls_total_count) &&
+    message._tool_calls_total_count > 0
+  ) {
+    return Math.floor(message._tool_calls_total_count);
+  }
+  return Array.isArray(message.tool_calls) ? message.tool_calls.length : 0;
+}
+
+function getToolCallsInTimelineOrder(toolCalls?: ToolCall[]): ToolCall[] {
+  if (!Array.isArray(toolCalls) || toolCalls.length <= 1) {
+    return toolCalls ? [...toolCalls] : [];
+  }
+
+  const hasTimelineIndexes = toolCalls.some(
+    (toolCall) => typeof toolCall.timeline_index === "number" && Number.isFinite(toolCall.timeline_index)
+  );
+  if (hasTimelineIndexes) {
+    return [...toolCalls].sort((a, b) => {
+      const rankA =
+        typeof a.timeline_index === "number" && Number.isFinite(a.timeline_index)
+          ? a.timeline_index
+          : Number.MAX_SAFE_INTEGER;
+      const rankB =
+        typeof b.timeline_index === "number" && Number.isFinite(b.timeline_index)
+          ? b.timeline_index
+          : Number.MAX_SAFE_INTEGER;
+      return rankA - rankB;
+    });
+  }
+
+  const hasStartTimestamps = toolCalls.some(
+    (toolCall) => typeof toolCall.started_at === "number" && Number.isFinite(toolCall.started_at)
+  );
+  if (hasStartTimestamps) {
+    return [...toolCalls].sort((a, b) => {
+      const rankA =
+        typeof a.started_at === "number" && Number.isFinite(a.started_at)
+          ? a.started_at
+          : Number.MAX_SAFE_INTEGER;
+      const rankB =
+        typeof b.started_at === "number" && Number.isFinite(b.started_at)
+          ? b.started_at
+          : Number.MAX_SAFE_INTEGER;
+      return rankA - rankB;
+    });
+  }
+
+  return [...toolCalls];
+}
+
 function formatWorkedDuration(durationMs: number): string {
   const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
   const hours = Math.floor(totalSeconds / 3600);
@@ -1121,12 +1188,9 @@ function hasArtifactMutationResult(toolCall: ToolCall): boolean {
   return false;
 }
 
-function collectMessageArtifacts(
-  message: ChatMessage,
-  sessionId?: string | null
-): ArtifactSummaryView[] {
+function collectMessageArtifacts(toolCalls: ToolCall[] | undefined, sessionId?: string | null): ArtifactSummaryView[] {
   const artifacts: ArtifactSummaryView[] = [];
-  for (const toolCall of message.tool_calls || []) {
+  for (const toolCall of toolCalls || []) {
     const isArtifactTool = toolCall.name === "artifacts" || toolCall.name === "artifact";
     if (!isArtifactTool) continue;
 
@@ -1214,15 +1278,22 @@ function AssistantMetaInline({
   section?: "work" | "summary";
 }) {
   const isWorkSection = section === "work";
-  const hasToolCalls = !!message.tool_calls && message.tool_calls.length > 0;
-  const fileChangeSummary = summarizeMessageFileChanges(message.tool_calls);
+  const orderedToolCalls = getToolCallsInTimelineOrder(message.tool_calls);
+  const hasToolCalls = orderedToolCalls.length > 0;
+  const fileChangeSummary = summarizeMessageFileChanges(orderedToolCalls);
   const hasFileChangeSummary = !!fileChangeSummary;
-  const artifactSummary = collectMessageArtifacts(message, sessionId);
+  const artifactSummary = collectMessageArtifacts(orderedToolCalls, sessionId);
   const hasArtifacts = artifactSummary.length > 0;
   const hiddenToolCallsCount = getHiddenToolCallsCount(message);
-  const hasTruncatedToolCalls = hiddenToolCallsCount > 0;
+  const totalToolCallsCount = getTotalToolCallsCount(message);
+  const hasTruncatedToolCalls =
+    hiddenToolCallsCount > 0 && totalToolCallsCount > TOOL_CALL_PREVIEW_LIMIT;
   const workedDurationMs = resolveWorkedDurationMs(processActivities, message.tool_calls);
-  const hasWorkSectionContent = hasToolCalls;
+  const normalizedProcessActivities =
+    processActivities && processActivities.length > 0
+      ? finalizeCompletedActivities(processActivities).slice(-8)
+      : [];
+  const hasWorkSectionContent = hasToolCalls || normalizedProcessActivities.length > 0;
   const hasSummarySectionContent = hasFileChangeSummary || hasArtifacts;
 
   if ((isWorkSection && !hasWorkSectionContent) || (!isWorkSection && !hasSummarySectionContent)) {
@@ -1240,6 +1311,10 @@ function AssistantMetaInline({
         </div>
       )}
 
+      {isWorkSection && normalizedProcessActivities.length > 0 && (
+        <ProcessActivityList activities={normalizedProcessActivities} />
+      )}
+
       {!isWorkSection && hasFileChangeSummary && fileChangeSummary && (
         <FileChangesCard summary={fileChangeSummary} />
       )}
@@ -1249,19 +1324,15 @@ function AssistantMetaInline({
 
       {isWorkSection && hasToolCalls && (
         <div className="space-y-1.5">
-          {message.tool_calls?.map((tool) => (
-            <ToolCallItem
-              key={tool.id}
-              tool={tool}
-              sessionId={sessionId}
-              onOpenArtifact={onOpenArtifact}
-            />
+          {orderedToolCalls.map((tool) => (
+            <ToolCallItem key={tool.id} tool={tool} />
           ))}
           {hasTruncatedToolCalls && (
             <div className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-[11px] text-gray-400">
               <span>
                 ...and {hiddenToolCallsCount} more tool call
-                {hiddenToolCallsCount === 1 ? "" : "s"} hidden
+                {hiddenToolCallsCount === 1 ? "" : "s"} hidden (showing first{" "}
+                {TOOL_CALL_PREVIEW_LIMIT})
               </span>
               <button
                 type="button"
@@ -1508,7 +1579,7 @@ function MessageContent({ content }: { content: string }) {
   type MarkdownCodeProps = ComponentPropsWithoutRef<"code"> & { inline?: boolean };
 
   return (
-    <div className="max-w-none text-xs text-gray-200 leading-5">
+    <div className="max-w-none text-[11px] text-gray-200 leading-[1.45rem]">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -1960,12 +2031,16 @@ function SessionsPanel({
   isOpen,
   onClose,
   currentSessionId,
+  activeSessionIds,
+  currentSessionLoading,
   onLoadSession,
   onNewSession,
 }: {
   isOpen: boolean;
   onClose: () => void;
   currentSessionId: string | null;
+  activeSessionIds: string[];
+  currentSessionLoading: boolean;
   onLoadSession: (sessionId: string, messages: ChatMessage[], workspaceDir?: string | null) => void;
   onNewSession: () => void;
 }) {
@@ -2047,50 +2122,59 @@ function SessionsPanel({
               <p className="text-[10px] mt-1 text-gray-600">Start chatting to create one</p>
             </div>
           ) : (
-            sessions?.map((session) => (
-              <div
-                key={session.id}
-                className={`p-2.5 rounded-lg transition-all cursor-pointer group ${currentSessionId === session.id
-                    ? "bg-[rgba(var(--accent-primary),0.12)] border border-[rgba(var(--accent-primary),0.3)]"
-                    : "bg-white/[0.03] border border-white/5 hover:border-white/15"
-                  }`}
-                onClick={() => handleLoadSession(session.id)}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs text-white font-medium flex items-center gap-1.5">
-                      {currentSessionId === session.id && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                      )}
-                      Session {session.id.slice(0, 8)}...
-                    </p>
-                    <p className="text-[10px] text-gray-500 mt-0.5">
-                      {session.message_count || 0} messages
-                    </p>
-                    {typeof (session as { workspace_dir?: string | null }).workspace_dir ===
-                      "string" && (
-                        <p className="text-[10px] text-blue-300/90 mt-0.5 truncate">
-                          {(session as { workspace_dir?: string }).workspace_dir}
+            sessions?.map((session) => {
+              const isSessionActive =
+                activeSessionIds.includes(session.id) ||
+                (currentSessionLoading && currentSessionId === session.id);
+              return (
+                <div
+                  key={session.id}
+                  className={`p-2.5 rounded-lg transition-all cursor-pointer group ${currentSessionId === session.id
+                      ? "bg-[rgba(var(--accent-primary),0.12)] border border-[rgba(var(--accent-primary),0.3)]"
+                      : "bg-white/[0.03] border border-white/5 hover:border-white/15"
+                    }`}
+                  onClick={() => handleLoadSession(session.id)}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-white font-medium flex items-center gap-1.5">
+                        {isSessionActive ? (
+                          <Loader2 className="w-3 h-3 animate-spin text-amber-400 flex-shrink-0" />
+                        ) : (
+                          currentSessionId === session.id && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
+                          )
+                        )}
+                        Session {session.id.slice(0, 8)}...
+                      </p>
+                      <p className="text-[10px] text-gray-500 mt-0.5">
+                        {session.message_count || 0} messages
+                      </p>
+                      {typeof (session as { workspace_dir?: string | null }).workspace_dir ===
+                        "string" && (
+                          <p className="text-[10px] text-blue-300/90 mt-0.5 truncate">
+                            {(session as { workspace_dir?: string }).workspace_dir}
+                          </p>
+                        )}
+                      {session.last_message && (
+                        <p className="text-[10px] text-gray-500 mt-0.5 truncate">
+                          {session.last_message.content.slice(0, 40)}...
                         </p>
                       )}
-                    {session.last_message && (
-                      <p className="text-[10px] text-gray-500 mt-0.5 truncate">
-                        {session.last_message.content.slice(0, 40)}...
-                      </p>
-                    )}
+                    </div>
+                    <button
+                      className="p-1 rounded hover:bg-red-500/20 text-red-400 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowDeleteModal(session.id);
+                      }}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
                   </div>
-                  <button
-                    className="p-1 rounded hover:bg-red-500/20 text-red-400 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowDeleteModal(session.id);
-                    }}
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
@@ -2136,7 +2220,9 @@ function SessionsPanel({
 
 export function Chat() {
   const { data: agents = [] } = useAgents();
+  const { data: info } = useInfo();
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
+  const [lastWorkspaceDir, setLastWorkspaceDir] = useState<string | null>(null);
   const {
     messages,
     isLoading,
@@ -2156,6 +2242,7 @@ export function Chat() {
   const [reverting, setReverting] = useState(false);
   const [showSubagentPanel, setShowSubagentPanel] = useState(false);
   const [showSessionsPanel, setShowSessionsPanel] = useState(false);
+  const [activeSessionIds, setActiveSessionIds] = useState<string[]>([]);
   const [artifactViewerTarget, setArtifactViewerTarget] = useState<ArtifactSummaryView | null>(null);
   const [artifactViewerLoading, setArtifactViewerLoading] = useState(false);
   const [artifactViewerError, setArtifactViewerError] = useState<string | null>(null);
@@ -2177,6 +2264,21 @@ export function Chat() {
   const wasLoadingRef = useRef(false);
   const acceptEventsUntilRef = useRef(0);
   const pendingProcessCaptureRef = useRef<PendingProcessCapture | null>(null);
+  const homeWorkspaceDir =
+    typeof info?.homeDir === "string" && info.homeDir.trim().length > 0 ? info.homeDir.trim() : null;
+  const fallbackWorkspaceDir =
+    !sessionId && (lastWorkspaceDir || homeWorkspaceDir) ? (lastWorkspaceDir || homeWorkspaceDir) : null;
+  const effectiveWorkspaceDir = workspaceDir || fallbackWorkspaceDir || null;
+
+  useEffect(() => {
+    setLastWorkspaceDir(readPersistedWorkspaceDir());
+  }, []);
+
+  useEffect(() => {
+    if (!workspaceDir) return;
+    persistWorkspaceDir(workspaceDir);
+    setLastWorkspaceDir(workspaceDir);
+  }, [workspaceDir]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -2282,47 +2384,70 @@ export function Chat() {
     pendingProcessCaptureRef.current = null;
   }, [sessionId, selectedAgentId, typedMessages]);
 
-  const appendLiveActivity = useCallback((phase: "start" | "result" | "error", text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    setLiveActivities((previous) => {
-      const normalizedText = normalizeActivityTextForPhase(trimmed, phase);
-      const nextTimestamp = Date.now();
+  const appendLiveActivity = useCallback(
+    (phase: "start" | "result" | "error", text: string, toolName?: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
 
-      if (phase !== "start") {
-        for (let index = previous.length - 1; index >= 0; index -= 1) {
-          const candidate = previous[index];
-          if (candidate.phase !== "start") continue;
-          if (normalizeActivityTextForPhase(candidate.text, phase) !== normalizedText) continue;
-          const updated = [...previous];
-          updated[index] = {
-            ...candidate,
-            phase,
-            text: normalizedText,
-            timestamp: nextTimestamp,
-          };
-          return updated.slice(-12);
+      setLiveActivities((previous) => {
+        const normalizedText = normalizeActivityTextForPhase(trimmed, phase);
+        const nextTimestamp = Date.now();
+        const normalizedToolName = typeof toolName === "string" ? toolName.trim().toLowerCase() : "";
+
+        if (phase !== "start") {
+          if (normalizedToolName) {
+            for (let index = previous.length - 1; index >= 0; index -= 1) {
+              const candidate = previous[index];
+              if (candidate.phase !== "start") continue;
+              if ((candidate.toolName || "").trim().toLowerCase() !== normalizedToolName) continue;
+              const updated = [...previous];
+              updated[index] = {
+                ...candidate,
+                phase,
+                text: normalizedText,
+                timestamp: nextTimestamp,
+              };
+              return updated.slice(-12);
+            }
+          }
+
+          for (let index = previous.length - 1; index >= 0; index -= 1) {
+            const candidate = previous[index];
+            if (candidate.phase !== "start") continue;
+            if (normalizeActivityTextForPhase(candidate.text, phase) !== normalizedText) continue;
+            const updated = [...previous];
+            updated[index] = {
+              ...candidate,
+              phase,
+              text: normalizedText,
+              timestamp: nextTimestamp,
+            };
+            return updated.slice(-12);
+          }
         }
-      }
 
-      const previousLast = previous[previous.length - 1];
-      if (
-        previousLast &&
-        previousLast.phase === phase &&
-        normalizeActivityTextForPhase(previousLast.text, phase) === normalizedText
-      ) {
-        return previous;
-      }
+        const previousLast = previous[previous.length - 1];
+        if (
+          previousLast &&
+          previousLast.phase === phase &&
+          normalizeActivityTextForPhase(previousLast.text, phase) === normalizedText &&
+          (normalizedToolName ? (previousLast.toolName || "").trim().toLowerCase() === normalizedToolName : true)
+        ) {
+          return previous;
+        }
 
-      const next: LiveActivityItem = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        phase,
-        text: normalizedText,
-        timestamp: nextTimestamp,
-      };
-      return [...previous.slice(-11), next];
-    });
-  }, []);
+        const next: LiveActivityItem = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          phase,
+          text: normalizedText,
+          timestamp: nextTimestamp,
+          toolName: normalizedToolName || undefined,
+        };
+        return [...previous.slice(-11), next];
+      });
+    },
+    []
+  );
 
   useEffect(() => {
     const eventSource = new EventSource(appendApiTokenParam("/api/sse/status"));
@@ -2340,6 +2465,24 @@ export function Chat() {
       if (!loadingRef.current && Date.now() > acceptEventsUntilRef.current) return;
       const status = typeof payload.status === "string" ? payload.status : "";
       if (!status) return;
+      const payloadSessionId =
+        typeof payload.sessionId === "string" && payload.sessionId.trim() ? payload.sessionId : null;
+
+      if (payloadSessionId) {
+        if (
+          status === "thinking" ||
+          status === "generating" ||
+          status === "tool_executing" ||
+          status === "tool_completed"
+        ) {
+          setActiveSessionIds((previous) =>
+            previous.includes(payloadSessionId) ? previous : [...previous, payloadSessionId]
+          );
+        }
+        if (status === "idle" || status === "error") {
+          setActiveSessionIds((previous) => previous.filter((id) => id !== payloadSessionId));
+        }
+      }
 
       const activeSession = activeSessionRef.current;
       const activeAgent = activeAgentRef.current;
@@ -2361,7 +2504,7 @@ export function Chat() {
           status === "tool_executing" ? "start" : status === "tool_completed" ? "result" : "error";
         const toolName = payload.toolName || "tool";
         const text = formatToolIntent(toolName, {}, phase, payload.detail);
-        appendLiveActivity(phase, text);
+        appendLiveActivity(phase, text, payload.toolName);
       }
     };
 
@@ -2374,13 +2517,17 @@ export function Chat() {
     if (!input.trim() || isLoading) return;
     const message = input;
     setInput("");
-    await sendMessage(message, { workspaceDir });
+    await sendMessage(message, { workspaceDir: effectiveWorkspaceDir || undefined });
   };
 
   const applySessionWorkspace = useCallback(
     async (nextWorkspaceDir: string | null) => {
       const previousWorkspaceDir = workspaceDir;
       setWorkspaceDir(nextWorkspaceDir);
+      if (nextWorkspaceDir) {
+        persistWorkspaceDir(nextWorkspaceDir);
+        setLastWorkspaceDir(nextWorkspaceDir);
+      }
 
       if (!sessionId) {
         return;
@@ -2396,7 +2543,12 @@ export function Chat() {
             "Failed to update session workspace";
           throw new Error(message || "Failed to update session workspace");
         }
-        setWorkspaceDir(response.data.workspaceDir || null);
+        const resolvedWorkspaceDir = response.data.workspaceDir || null;
+        setWorkspaceDir(resolvedWorkspaceDir);
+        if (resolvedWorkspaceDir) {
+          persistWorkspaceDir(resolvedWorkspaceDir);
+          setLastWorkspaceDir(resolvedWorkspaceDir);
+        }
       } catch (error) {
         setWorkspaceDir(previousWorkspaceDir || null);
         console.error("Failed to update session workspace:", error);
@@ -2409,14 +2561,16 @@ export function Chat() {
 
   const handleSelectWorkspace = useCallback(async () => {
     try {
-      const isTauriRuntime = typeof window !== "undefined" && "__TAURI__" in window;
+      const isTauriRuntime =
+        typeof window !== "undefined" &&
+        ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
       let selectedPath: string | null = null;
 
       if (isTauriRuntime) {
         const selected = await tauriOpenDialog({
           directory: true,
           multiple: false,
-          defaultPath: workspaceDir || undefined,
+          defaultPath: effectiveWorkspaceDir || undefined,
           title: "Select Session Workspace",
         });
         if (typeof selected === "string" && selected.trim()) {
@@ -2430,7 +2584,7 @@ export function Chat() {
           }
         }
       } else {
-        const manual = window.prompt("Enter workspace folder path", workspaceDir || "");
+        const manual = window.prompt("Enter workspace folder path", effectiveWorkspaceDir || "");
         if (typeof manual === "string" && manual.trim()) {
           selectedPath = manual.trim();
         }
@@ -2441,8 +2595,17 @@ export function Chat() {
       }
     } catch (error) {
       console.error("Failed to select workspace:", error);
+      if (typeof window !== "undefined") {
+        const manual = window.prompt(
+          "Unable to open native folder picker. Enter workspace folder path manually:",
+          effectiveWorkspaceDir || ""
+        );
+        if (typeof manual === "string" && manual.trim()) {
+          await applySessionWorkspace(manual.trim());
+        }
+      }
     }
-  }, [applySessionWorkspace, workspaceDir]);
+  }, [applySessionWorkspace, effectiveWorkspaceDir]);
 
   const openArtifactViewer = useCallback(async (artifact: ArtifactSummaryView) => {
     setArtifactViewerTarget(artifact);
@@ -2506,6 +2669,7 @@ export function Chat() {
     async (index: number, message: ChatMessage) => {
       if (!sessionId) return;
       if (getHiddenToolCallsCount(message) <= 0) return;
+      if (getTotalToolCallsCount(message) <= TOOL_CALL_PREVIEW_LIMIT) return;
 
       const messageKey = getMessageProcessKey(sessionId, message, index);
       setLoadingMoreToolCallsKey(messageKey);
@@ -2515,7 +2679,7 @@ export function Chat() {
           loadSession(
             sessionId,
             response.data.messagesList as ChatMessage[],
-            (response.data as { workspace_dir?: string | null }).workspace_dir || workspaceDir
+            (response.data as { workspace_dir?: string | null }).workspace_dir || effectiveWorkspaceDir
           );
         }
       } catch (error) {
@@ -2524,7 +2688,7 @@ export function Chat() {
         setLoadingMoreToolCallsKey((previous) => (previous === messageKey ? null : previous));
       }
     },
-    [loadSession, sessionId, workspaceDir]
+    [effectiveWorkspaceDir, loadSession, sessionId]
   );
 
   useEffect(() => {
@@ -2600,11 +2764,11 @@ export function Chat() {
               </span>
             </div>
           )}
-          {workspaceDir && (
+          {effectiveWorkspaceDir && (
             <div className="hidden md:flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-500/10 border border-blue-500/30">
               <Folder className="w-3 h-3 text-blue-300" />
               <span className="text-[10px] text-blue-300 font-mono">
-                {formatWorkspaceLabel(workspaceDir, 30)}
+                {formatWorkspaceLabel(effectiveWorkspaceDir, 30)}
               </span>
             </div>
           )}
@@ -2634,7 +2798,9 @@ export function Chat() {
               <FolderOpen className="w-3.5 h-3.5" />
             )}
             <span className="hidden lg:inline">
-              {workspaceDir ? formatWorkspaceLabel(workspaceDir, 40) : "Select Workspace"}
+              {effectiveWorkspaceDir
+                ? formatWorkspaceLabel(effectiveWorkspaceDir, 40)
+                : "Select Workspace"}
             </span>
           </button>
           {workspaceDir && (
@@ -2705,6 +2871,14 @@ export function Chat() {
                       <p className="text-xs mt-1 text-gray-600">
                         Ask questions, get help with code, or chat with your agents
                       </p>
+                      {effectiveWorkspaceDir && (
+                        <div className="mt-3 inline-flex items-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-2.5 py-1.5">
+                          <Folder className="h-3.5 w-3.5 text-blue-300" />
+                          <span className="text-[11px] text-blue-200 font-mono">
+                            Workspace: {effectiveWorkspaceDir}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -2722,6 +2896,14 @@ export function Chat() {
                       mergedActivities.length > 0
                         ? finalizeCompletedActivities(mergedActivities)
                         : undefined;
+                    const hasAssistantToolCalls =
+                      message.role !== "user" &&
+                      Array.isArray(message.tool_calls) &&
+                      message.tool_calls.length > 0;
+                    const hasAssistantThinking =
+                      message.role !== "user" &&
+                      typeof message.thinking === "string" &&
+                      message.thinking.trim().length > 0;
                     return (
                       <div
                         key={index}
@@ -2760,6 +2942,14 @@ export function Chat() {
                                 loadingMoreToolCalls={loadingMoreToolCallsKey === processKey}
                                 section="work"
                               />
+                            )}
+                            {hasAssistantToolCalls && (
+                              <div className="my-2 border-t border-white/12" />
+                            )}
+                            {hasAssistantThinking && (
+                              <div className="mb-2">
+                                <ThinkingBlock thinking={message.thinking || ""} />
+                              </div>
                             )}
                             <MessageContent content={message.content} />
                             {message.role === "user" && sessionId && (
@@ -2862,6 +3052,8 @@ export function Chat() {
             isOpen={showSessionsPanel}
             onClose={() => setShowSessionsPanel(false)}
             currentSessionId={sessionId}
+            activeSessionIds={activeSessionIds}
+            currentSessionLoading={isLoading}
             onLoadSession={(id, msgs, loadedWorkspaceDir) => {
               loadSession(id, msgs, loadedWorkspaceDir);
               setShowSessionsPanel(false);
@@ -2900,14 +3092,14 @@ export function Chat() {
           onClose={() => {
             if (!reverting) setRevertTarget(null);
           }}
-          title="Revert Session To This Message"
+          title="Confirm Revert"
           size="md"
         >
           <div className="space-y-4">
             <p className="text-sm text-gray-300">
-              This will remove this message and {revertFollowingCount} following message
-              {revertFollowingCount === 1 ? "" : "s"} from this session, then place this text back
-              in the input box for resend.
+              Are you sure you want to revert here? This will remove this message and{" "}
+              {revertFollowingCount} following message{revertFollowingCount === 1 ? "" : "s"} from
+              this session, then place this text back in the input box for resend.
             </p>
             {revertTarget && (
               <div className="rounded-lg border border-white/10 bg-black/30 p-3">

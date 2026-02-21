@@ -803,11 +803,12 @@ function sanitizeSessionMessages(
   options?: { maxToolCalls?: number }
 ): SessionMessageView[] {
   const MAX_RESULT_SIZE = 500;
+  const DEFAULT_MAX_TOOL_CALLS = 50;
   const maxToolCallsRaw = options?.maxToolCalls;
   const MAX_TOOL_CALLS =
     typeof maxToolCallsRaw === "number" && Number.isFinite(maxToolCallsRaw)
       ? Math.max(0, Math.floor(maxToolCallsRaw))
-      : 20;
+      : DEFAULT_MAX_TOOL_CALLS;
 
   return messages.map((msg) => {
     if (!msg || !msg.tool_calls || !Array.isArray(msg.tool_calls) || msg.tool_calls.length === 0) {
@@ -849,14 +850,37 @@ function sanitizeSessionMessages(
 
     const selectedToolCalls =
       MAX_TOOL_CALLS <= 0
-        ? indexedToolCalls.map((entry) => entry.toolCall)
+        ? indexedToolCalls.map((entry) => ({
+            toolCall: entry.toolCall,
+            sourceIndex: entry.index,
+          }))
         : [...selectedIndexes]
             .sort((a, b) => a - b)
-            .map((index) => indexedToolCalls[index]?.toolCall)
-            .filter((toolCall): toolCall is NonNullable<typeof toolCall> => !!toolCall);
+            .map((index) => {
+              const entry = indexedToolCalls[index];
+              if (!entry) return null;
+              return {
+                toolCall: entry.toolCall,
+                sourceIndex: entry.index,
+              };
+            })
+            .filter(
+              (
+                entry
+              ): entry is {
+                toolCall: NonNullable<SessionMessageView["tool_calls"]>[number];
+                sourceIndex: number;
+              } => !!entry
+            );
 
-    const sanitizedToolCalls = selectedToolCalls.map((tc) => {
+    const sanitizedToolCalls = selectedToolCalls.map(({ toolCall: tc, sourceIndex }) => {
       const sanitized = { ...tc };
+      if (
+        typeof (sanitized as { timeline_index?: unknown }).timeline_index !== "number" ||
+        !Number.isFinite((sanitized as { timeline_index?: unknown }).timeline_index as number)
+      ) {
+        (sanitized as { timeline_index: number }).timeline_index = sourceIndex;
+      }
 
       if (tc.result !== undefined) {
         try {
@@ -999,6 +1023,7 @@ const routes: Record<string, RouteHandler> = {
     name: "Cybara",
     version: "1.0.0",
     setupComplete: config.isSetupComplete(),
+    homeDir: process.env.HOME || homedir(),
     stats: {
       agents: agentManager.getStats(),
       providers: providerManager.getStats(),
@@ -3055,7 +3080,7 @@ const routes: Record<string, RouteHandler> = {
 
     const MAX_CONTENT_SIZE = 10000; // 10KB per message max
     const sanitizedMessages = sanitizeSessionMessages(messages, {
-      maxToolCalls: includeFullToolCalls ? 0 : 20,
+      maxToolCalls: includeFullToolCalls ? 0 : 50,
     }).map((m) => {
       const truncatedContent =
         typeof m.content === "string" && m.content.length > MAX_CONTENT_SIZE

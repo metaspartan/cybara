@@ -44,6 +44,7 @@ export interface ToolCallInfo {
   result?: unknown;
   error?: string;
   duration?: number;
+  timeline_index?: number;
 }
 
 export interface ChatMessage {
@@ -443,6 +444,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
 
       if (toolResults.length > 0) {
         for (const tc of toolResults) {
+          const timelineIndex = allToolCalls.length;
           allToolCalls.push({
             id: `call_${crypto.randomUUID().slice(0, 8)}`,
             name: tc.name,
@@ -453,6 +455,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
             status: "completed",
             result: tc.result,
             duration: 0,
+            timeline_index: timelineIndex,
           });
         }
 
@@ -504,6 +507,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
 
             if (summaryResult.tool_calls && summaryResult.tool_calls.length > 0) {
               for (const tc of summaryResult.tool_calls) {
+                const timelineIndex = allToolCalls.length;
                 allToolCalls.push({
                   id: `call_${crypto.randomUUID().slice(0, 8)}`,
                   name: tc.name,
@@ -514,6 +518,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
                   status: "completed",
                   result: tc.result,
                   duration: 0,
+                  timeline_index: timelineIndex,
                 });
               }
 

@@ -73,4 +73,31 @@ describe("chat activity lifecycle helpers", () => {
     expect(finalized[0]?.text).toBe("Searched files...");
     expect(finalized[1]?.phase).toBe("error");
   });
+
+  test("treats completion for the same tool as the matching in-flight start step", () => {
+    const merged = mergeActivityLists(
+      [
+        {
+          id: "start-1",
+          phase: "start",
+          text: "Searching files...",
+          timestamp: 1,
+          toolName: "file_search",
+        },
+      ],
+      [
+        {
+          id: "result-1",
+          phase: "result",
+          text: "Search complete",
+          timestamp: 2,
+          toolName: "file_search",
+        },
+      ]
+    );
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.phase).toBe("result");
+    expect(merged[0]?.text).toBe("Search complete");
+  });
 });

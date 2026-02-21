@@ -282,6 +282,7 @@ describe("Setup & Info API", () => {
     expect(status).toBe(200);
     expect(data.name).toBe("Cybara");
     expect(typeof data.version).toBe("string");
+    expect(typeof data.homeDir).toBe("string");
     expect(data.stats).toBeDefined();
   });
 
@@ -1226,17 +1227,17 @@ describe("Session API", () => {
     expect(found?.workspace_dir).toBe(nextWorkspace);
   });
 
-  test("GET /api/sessions/:sessionId keeps artifact tool calls visible even when tool list is truncated", async () => {
+  test("GET /api/sessions/:sessionId keeps artifact tool calls visible when tool list exceeds preview limit", async () => {
     const sessionId = `session-artifact-trunc-${Date.now()}`;
     const agentId = `agent-artifact-trunc-${Date.now()}`;
-    const toolCalls = Array.from({ length: 25 }, (_, index) => ({
+    const toolCalls = Array.from({ length: 55 }, (_, index) => ({
       id: `call-${index}`,
       name: "exec",
       args: { command: `echo ${index}` },
       status: "completed",
       result: { output: `exec-${index}` },
     }));
-    toolCalls[24] = {
+    toolCalls[54] = {
       id: "call-artifact",
       name: "artifacts",
       args: { action: "create", name: "task" },
@@ -1283,8 +1284,16 @@ describe("Session API", () => {
     ) as { tool_calls?: Array<Record<string, unknown>>; _truncated?: string } | undefined;
     expect(assistant).toBeDefined();
     expect(Array.isArray(assistant?.tool_calls)).toBe(true);
-    expect(assistant?.tool_calls?.length).toBeLessThanOrEqual(20);
+    expect(assistant?.tool_calls?.length).toBeLessThanOrEqual(50);
     expect(typeof assistant?._truncated).toBe("string");
+    const previewTimelineIndexes = (assistant?.tool_calls || []).map((toolCall) => {
+      const value = (toolCall as { timeline_index?: unknown }).timeline_index;
+      return typeof value === "number" ? value : null;
+    });
+    expect(previewTimelineIndexes.every((value) => typeof value === "number")).toBe(true);
+    for (let i = 1; i < previewTimelineIndexes.length; i += 1) {
+      expect((previewTimelineIndexes[i] || 0) >= (previewTimelineIndexes[i - 1] || 0)).toBe(true);
+    }
 
     const artifactCall = assistant?.tool_calls?.find((toolCall) => toolCall.name === "artifacts");
     expect(artifactCall).toBeDefined();
@@ -1302,7 +1311,14 @@ describe("Session API", () => {
     expect(assistantFull).toBeDefined();
     expect(assistantFull?._truncated).toBeUndefined();
     expect(Array.isArray(assistantFull?.tool_calls)).toBe(true);
-    expect(assistantFull?.tool_calls?.length).toBe(25);
+    expect(assistantFull?.tool_calls?.length).toBe(55);
+    const fullToolCalls = assistantFull?.tool_calls || [];
+    const fullFirstTimelineIndex = (fullToolCalls[0] as { timeline_index?: unknown })?.timeline_index;
+    const fullLastTimelineIndex = (
+      fullToolCalls[fullToolCalls.length - 1] as { timeline_index?: unknown }
+    )?.timeline_index;
+    expect(fullFirstTimelineIndex).toBe(0);
+    expect(fullLastTimelineIndex).toBe(54);
   });
 
   test("POST /api/sessions/:sessionId/revert truncates later conversation history", async () => {

@@ -591,6 +591,7 @@ export interface InfoData {
   name: string;
   version: string;
   setupComplete: boolean;
+  homeDir?: string;
   stats: {
     agents: { total: number; running?: number; stopped?: number };
     providers: { total: number; withAuth?: number };

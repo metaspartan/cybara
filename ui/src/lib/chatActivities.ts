@@ -5,6 +5,7 @@ export interface LiveActivityItem {
   phase: ActivityPhase;
   text: string;
   timestamp: number;
+  toolName?: string;
 }
 
 export interface ToolCallLike {
@@ -43,11 +44,13 @@ function toCanonicalVerb(text: string, phase: ActivityPhase): string {
 }
 
 function activityDedupKey(activity: LiveActivityItem): string {
-  return `${activity.phase}:${normalizeText(activity.text).toLowerCase()}`;
+  const toolPrefix = activity.toolName ? `${activity.toolName.toLowerCase()}:` : "";
+  return `${activity.phase}:${toolPrefix}${normalizeText(activity.text).toLowerCase()}`;
 }
 
 function canonicalActivityKey(activity: LiveActivityItem): string {
-  return normalizeText(toCanonicalVerb(activity.text, "result")).toLowerCase();
+  const toolPrefix = activity.toolName ? `${activity.toolName.toLowerCase()}:` : "";
+  return `${toolPrefix}${normalizeText(toCanonicalVerb(activity.text, "result")).toLowerCase()}`;
 }
 
 function normalizeToolPhase(status: ToolCallLike["status"]): ActivityPhase {
@@ -89,6 +92,7 @@ export function buildActivitiesFromToolCalls(
       phase,
       text: trimmedText,
       timestamp: startedAt + index,
+      toolName: call.name,
     });
   }
 
@@ -103,11 +107,14 @@ export function mergeActivityLists(
   const hasCompletionForStart = (activity: LiveActivityItem): boolean => {
     if (activity.phase !== "start") return false;
     const key = canonicalActivityKey(activity);
+    const normalizedToolName = activity.toolName?.toLowerCase();
     return allActivities.some(
-      (candidate) =>
-        candidate.phase !== "start" &&
-        candidate.timestamp >= activity.timestamp &&
-        canonicalActivityKey(candidate) === key
+      (candidate) => {
+        if (candidate.phase === "start") return false;
+        if (candidate.timestamp < activity.timestamp) return false;
+        if (normalizedToolName && candidate.toolName?.toLowerCase() === normalizedToolName) return true;
+        return canonicalActivityKey(candidate) === key;
+      }
     );
   };
 
