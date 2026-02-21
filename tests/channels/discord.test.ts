@@ -3,6 +3,7 @@ import { GatewayIntentBits } from "discord.js";
 import {
   DiscordAdapter,
   DISCORD_REQUIRED_INTENTS,
+  buildDiscordSlashCommands,
   discordSessions,
 } from "../../src/core/channels/adapters/discord";
 import {
@@ -88,6 +89,20 @@ describe("Discord adapter intent configuration", () => {
 
   test("does not request GuildMembers intent", () => {
     expect(DISCORD_REQUIRED_INTENTS).not.toContain(GatewayIntentBits.GuildMembers);
+  });
+
+  test("defines native slash commands including /new and /permissions", () => {
+    const commands = buildDiscordSlashCommands();
+    const names = commands.map((command) => command.name);
+
+    expect(names).toContain("new");
+    expect(names).toContain("permissions");
+    expect(names).toContain("subagents");
+
+    const subagents = commands.find((command) => command.name === "subagents");
+    const subagentOptions = Array.isArray(subagents?.options) ? subagents.options : [];
+    const taskOption = subagentOptions.find((option) => option.name === "task");
+    expect(taskOption).toBeDefined();
   });
 });
 

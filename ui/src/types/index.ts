@@ -147,6 +147,9 @@ export interface ChatMessage {
   timestamp?: string;
   thinking?: string;
   tool_calls?: ToolCallInfo[];
+  _truncated?: string;
+  _tool_calls_hidden_count?: number;
+  _tool_calls_total_count?: number;
 }
 
 export interface ChatSession {

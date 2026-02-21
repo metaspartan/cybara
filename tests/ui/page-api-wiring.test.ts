@@ -31,6 +31,7 @@ describe("UI page API wiring", () => {
     expect(source).toContain("settingsApi.getConfig()");
     expect(source).toContain("settingsApi.updateConfig({ terminal_enabled: enabled })");
     expect(source).toContain("settingsApi.updateConfig({ dangerous_tool_policy: next })");
+    expect(source).toContain("settingsApi.updateConfig({ tool_approval_mode: nextMode })");
     expect(source).toContain("setTerminalEnabled(enabled);");
     expect(source).toContain("setTerminalEnabled(!enabled);");
     expect(source).not.toContain("apiFetch(");

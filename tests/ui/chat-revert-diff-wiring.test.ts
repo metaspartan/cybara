@@ -23,4 +23,11 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain("files changed");
     expect(source).toContain("<DiffCodeBlock code={file.diff} />");
   });
+
+  test("shows hidden tool-call summary with view-more loading full history on demand", () => {
+    const source = readChatSource();
+    expect(source).toContain("...and {hiddenToolCallsCount} more tool call");
+    expect(source).toContain("View more");
+    expect(source).toContain("chatApi.getSession(sessionId, { includeFullToolCalls: true })");
+  });
 });

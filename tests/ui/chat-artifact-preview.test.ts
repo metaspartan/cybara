@@ -21,8 +21,19 @@ describe("Chat artifact preview wiring", () => {
     const source = readChatSource();
     expect(source).toContain("/api/sessions/${encodeURIComponent(artifact.sessionId)}/artifacts/");
     expect(source).toContain("parseArtifactSummaries(result?.availableArtifacts)");
+    expect(source).toContain("tryParseJsonRecord(tool.result)");
     expect(source).toContain("View {artifactSummaries[0].fileName}");
     expect(source).toContain("Preview");
     expect(source).toContain("Loading artifact...");
+  });
+
+  test("renders artifact viewer as a full chat-area panel with markdown/raw toggle", () => {
+    const source = readChatSource();
+    expect(source).toContain("function ArtifactViewerPanel");
+    expect(source).toContain("Back to chat");
+    expect(source).toContain("Markdown");
+    expect(source).toContain("Raw");
+    expect(source).toContain("{artifactViewerTarget ? (");
+    expect(source).toContain("onOpenArtifact={openArtifactViewer}");
   });
 });

@@ -98,6 +98,8 @@ function FeatureSettings() {
   const [terminalEnabled, setTerminalEnabled] = useState(false);
   const [dangerousToolPolicyEnabled, setDangerousToolPolicyEnabled] = useState(false);
   const [dangerousToolPolicyMode, setDangerousToolPolicyMode] = useState<'audit' | 'block'>('audit');
+  const [toolApprovalMode, setToolApprovalMode] = useState<'always_allow' | 'ask'>('always_allow');
+  const [savingToolApprovalMode, setSavingToolApprovalMode] = useState(false);
   const [savingDangerousPolicy, setSavingDangerousPolicy] = useState(false);
   const [loading, setLoading] = useState(true);
   const { addToast } = useUIStore();
@@ -110,8 +112,10 @@ function FeatureSettings() {
         const policy = data?.dangerous_tool_policy as
           | { enabled?: boolean; mode?: string }
           | undefined;
+        const modeRaw = typeof data?.tool_approval_mode === 'string' ? data.tool_approval_mode : '';
         setDangerousToolPolicyEnabled(policy?.enabled === true);
         setDangerousToolPolicyMode(policy?.mode === 'block' ? 'block' : 'audit');
+        setToolApprovalMode(modeRaw === 'ask' ? 'ask' : 'always_allow');
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -155,6 +159,29 @@ function FeatureSettings() {
       addToast('error', 'Failed to update dangerous tool policy');
     } finally {
       setSavingDangerousPolicy(false);
+    }
+  };
+
+  const updateToolApprovalMode = async (nextMode: 'always_allow' | 'ask') => {
+    const previousMode = toolApprovalMode;
+    setToolApprovalMode(nextMode);
+    setSavingToolApprovalMode(true);
+    try {
+      const result = await settingsApi.updateConfig({ tool_approval_mode: nextMode });
+      if (!result.success || !result.data?.success) {
+        throw new Error(result.error || 'Config update failed');
+      }
+      addToast(
+        'success',
+        nextMode === 'ask'
+          ? 'Tool approvals set to Ask Me'
+          : 'Tool approvals set to Always Allow'
+      );
+    } catch {
+      setToolApprovalMode(previousMode);
+      addToast('error', 'Failed to update tool approval mode');
+    } finally {
+      setSavingToolApprovalMode(false);
     }
   };
 
@@ -237,6 +264,30 @@ function FeatureSettings() {
               />
             </div>
           )}
+        </div>
+
+        <div className="py-3 border-b border-white/10">
+          <p className="text-sm text-white font-medium">Tool Approvals</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Choose how dangerous tools are handled across chat, Telegram, Discord, Slack, Signal, iMessage, and WhatsApp.
+          </p>
+          <div className="mt-3 max-w-xs">
+            <Select
+              value={toolApprovalMode}
+              onChange={(value) =>
+                void updateToolApprovalMode(value === 'ask' ? 'ask' : 'always_allow')
+              }
+              options={[
+                { value: 'always_allow', label: 'Always Allow' },
+                { value: 'ask', label: 'Ask Me First' },
+              ]}
+              disabled={loading || savingToolApprovalMode}
+            />
+          </div>
+          <p className="text-[11px] text-gray-500 mt-2">
+            Channel shortcut: <code className="text-indigo-400">/permissions ask</code> or{' '}
+            <code className="text-indigo-400">/permissions allow</code>
+          </p>
         </div>
       </CardContent>
     </Card>

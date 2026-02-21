@@ -198,6 +198,10 @@ function getDangerousToolPolicy(): { enabled: boolean; mode: "audit" | "block" }
   };
 }
 
+function getToolApprovalMode(): "always_allow" | "ask" {
+  return config.getToolApprovalMode();
+}
+
 export async function executeTool(
   name: string,
   args: Record<string, unknown>,
@@ -219,6 +223,7 @@ export async function executeTool(
   }
 
   const dangerousPolicy = getDangerousToolPolicy();
+  const toolApprovalMode = getToolApprovalMode();
   const isDangerous = isDangerousTool(name);
   const allowDangerous = context?.allowDangerousTools === true;
   if (isDangerous && dangerousPolicy.enabled && !allowDangerous) {
@@ -247,6 +252,19 @@ export async function executeTool(
       sessionId: context?.sessionId,
       agentId: context?.agentId,
     });
+  }
+
+  if (isDangerous && toolApprovalMode === "ask" && !allowDangerous) {
+    trackMetric("dangerous_tool_usage", name, 1, {
+      blocked: true,
+      mode: dangerousPolicy.mode,
+      approvalMode: toolApprovalMode,
+      sessionId: context?.sessionId,
+      agentId: context?.agentId,
+    });
+    throw new Error(
+      `Validation error: Tool '${name}' requires approval while tool approval mode is set to ask. Use /permissions allow in channels or set Tool Approvals to Always Allow in Settings, then retry.`
+    );
   }
 
   const startTime = Date.now();

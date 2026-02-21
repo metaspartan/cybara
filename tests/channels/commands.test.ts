@@ -59,6 +59,7 @@ function addProviderModel(providerId: string, modelId: string): void {
 
 afterEach(() => {
   config.set("default_agent_id", "");
+  config.set("tool_approval_mode", "always_allow");
   clearChannelSubagentSpawnHandler();
   resetSubagentSessionsForTests();
   resetSubagentRegistryForTests();
@@ -219,5 +220,33 @@ describe("channel management commands", () => {
     expect(spawnArgs[0]?._requesterSessionKey).toBe("session-subagent-alias");
     expect(response).toContain("Subagent spawned successfully.");
     expect(response).toContain("run-subagent-alias");
+  });
+
+  test("shows and updates tool permission mode via /permissions command", async () => {
+    config.set("tool_approval_mode", "always_allow");
+
+    const before = await handleChannelManagementCommand("/permissions", {
+      channelId: "channel-permissions",
+      chatId: "chat-permissions",
+      platform: "discord",
+    });
+    expect(before).toContain("Tool permission mode:");
+    expect(before).toContain("allow");
+
+    const askResult = await handleChannelManagementCommand("/permissions ask", {
+      channelId: "channel-permissions",
+      chatId: "chat-permissions",
+      platform: "discord",
+    });
+    expect(askResult).toContain("set to ask");
+    expect(config.get<string>("tool_approval_mode")).toBe("ask");
+
+    const allowResult = await handleChannelManagementCommand("/permissions allow", {
+      channelId: "channel-permissions",
+      chatId: "chat-permissions",
+      platform: "discord",
+    });
+    expect(allowResult).toContain("set to allow");
+    expect(config.get<string>("tool_approval_mode")).toBe("always_allow");
   });
 });

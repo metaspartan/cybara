@@ -28,6 +28,8 @@ import {
   Check,
   RotateCcw,
   FileText,
+  ArrowLeft,
+  ArrowDown,
 } from "lucide-react";
 import { Highlight, themes } from "prism-react-renderer";
 import ReactMarkdown from "react-markdown";
@@ -40,6 +42,7 @@ import {
   useKillSubagent,
   type Subagent,
 } from "@/hooks/useApi";
+import { chatApi } from "@/lib/api";
 import { PageLayout } from "@/components/layout";
 import { GlassCard, GlassButton, Input, Badge, Modal } from "@/components/ui";
 import { formatRelativeTime } from "@/lib/utils";
@@ -66,6 +69,7 @@ interface ArtifactSummaryView {
   name: string;
   fileName: string;
   title: string;
+  path?: string;
 }
 
 interface ChatMessage {
@@ -74,6 +78,9 @@ interface ChatMessage {
   timestamp?: string;
   tool_calls?: ToolCall[];
   thinking?: string;
+  _truncated?: string;
+  _tool_calls_hidden_count?: number;
+  _tool_calls_total_count?: number;
   subagent_calls?: {
     id: string;
     task: string;
@@ -323,19 +330,39 @@ function normalizeArtifactFileName(raw: string): string {
   return `${trimmed.replace(/\.md\.resolved$/i, "")}.md.resolved`;
 }
 
+function tryParseJsonRecord(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) {
+    return value;
+  }
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
 function parseArtifactSummary(value: unknown): ArtifactSummaryView | null {
-  if (!isRecord(value)) return null;
-  const sessionId = typeof value.sessionId === "string" ? value.sessionId.trim() : "";
-  const name = typeof value.name === "string" ? value.name.trim() : "";
-  const fileNameRaw = typeof value.fileName === "string" ? value.fileName.trim() : "";
+  const parsedValue = tryParseJsonRecord(value);
+  if (!isRecord(parsedValue)) return null;
+  const sessionId = typeof parsedValue.sessionId === "string" ? parsedValue.sessionId.trim() : "";
+  const name = typeof parsedValue.name === "string" ? parsedValue.name.trim() : "";
+  const fileNameRaw =
+    typeof parsedValue.fileName === "string" ? parsedValue.fileName.trim() : "";
   const fileName = normalizeArtifactFileName(fileNameRaw || name);
-  const title = typeof value.title === "string" ? value.title.trim() : "";
+  const title = typeof parsedValue.title === "string" ? parsedValue.title.trim() : "";
+  const path =
+    typeof parsedValue.path === "string" && parsedValue.path.trim()
+      ? parsedValue.path.trim()
+      : undefined;
   if (!sessionId || !name || !fileName) return null;
   return {
     sessionId,
     name,
     fileName,
     title: title || fileName,
+    path,
   };
 }
 
@@ -359,7 +386,8 @@ function dedupeArtifactSummaries(summaries: ArtifactSummaryView[]): ArtifactSumm
 }
 
 function inferArtifactSummaries(tool: ToolCall, sessionId?: string | null): ArtifactSummaryView[] {
-  const result = isRecord(tool.result) ? tool.result : null;
+  const parsedResult = tryParseJsonRecord(tool.result);
+  const result = isRecord(parsedResult) ? parsedResult : null;
   const summaries: ArtifactSummaryView[] = [];
   const fromResult = parseArtifactSummary(result?.artifact);
   if (fromResult) {
@@ -386,6 +414,7 @@ function inferArtifactSummaries(tool: ToolCall, sessionId?: string | null): Arti
         name,
         fileName,
         title: fileName,
+        path: `~/.cybara/artifacts/${sessionCandidate}/${fileName}`,
       });
     }
   }
@@ -703,64 +732,22 @@ function normalizeToolStatus(status: ToolCall["status"]): "pending" | "success" 
   return "success";
 }
 
-function ToolCallItem({ tool, sessionId }: { tool: ToolCall; sessionId?: string | null }) {
+function ToolCallItem({
+  tool,
+  sessionId,
+  onOpenArtifact,
+}: {
+  tool: ToolCall;
+  sessionId?: string | null;
+  onOpenArtifact?: (artifact: ArtifactSummaryView) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
-  const [artifactPreviewOpen, setArtifactPreviewOpen] = useState(false);
-  const [artifactPreviewLoading, setArtifactPreviewLoading] = useState(false);
-  const [artifactPreviewError, setArtifactPreviewError] = useState<string | null>(null);
-  const [artifactPreviewContent, setArtifactPreviewContent] = useState<string>("");
-  const [artifactPreviewTarget, setArtifactPreviewTarget] = useState<ArtifactSummaryView | null>(null);
   const normalizedStatus = normalizeToolStatus(tool.status);
   const toolArgs = tool.arguments || tool.args || {};
   const artifactSummaries = inferArtifactSummaries(tool, sessionId);
   const phase: "start" | "result" | "error" =
     normalizedStatus === "pending" ? "start" : normalizedStatus === "success" ? "result" : "error";
   const summary = formatToolIntent(tool.name, toolArgs, phase);
-
-  const openArtifactPreview = useCallback(
-    async (artifact: ArtifactSummaryView) => {
-      if (artifactPreviewLoading) return;
-
-      setArtifactPreviewTarget(artifact);
-      setArtifactPreviewOpen(true);
-      setArtifactPreviewLoading(true);
-      setArtifactPreviewError(null);
-      setArtifactPreviewContent("");
-
-      try {
-        const url = appendApiTokenParam(
-          `/api/sessions/${encodeURIComponent(artifact.sessionId)}/artifacts/${encodeURIComponent(artifact.fileName)}`
-        );
-        const response = await fetch(url);
-        const payload = (await response.json()) as {
-          content?: string;
-          error?: string;
-          code?: string;
-        };
-
-        if (!response.ok) {
-          const errorMessage =
-            typeof payload?.error === "string"
-              ? payload.error
-              : `Failed to load artifact (${response.status})`;
-          throw new Error(errorMessage);
-        }
-
-        if (typeof payload.content !== "string") {
-          throw new Error("Artifact response did not include content");
-        }
-
-        setArtifactPreviewContent(payload.content);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to load artifact";
-        setArtifactPreviewError(message);
-        setArtifactPreviewContent("");
-      } finally {
-        setArtifactPreviewLoading(false);
-      }
-    },
-    [artifactPreviewLoading]
-  );
 
   const statusIcons = {
     pending: (
@@ -806,7 +793,7 @@ function ToolCallItem({ tool, sessionId }: { tool: ToolCall; sessionId?: string 
           <div className="px-3 pb-2">
             <button
               type="button"
-              onClick={() => void openArtifactPreview(artifactSummaries[0])}
+              onClick={() => onOpenArtifact?.(artifactSummaries[0])}
               className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
             >
               <FileText className="w-3 h-3" />
@@ -837,7 +824,7 @@ function ToolCallItem({ tool, sessionId }: { tool: ToolCall; sessionId?: string 
                       </div>
                       <button
                         type="button"
-                        onClick={() => void openArtifactPreview(artifact)}
+                        onClick={() => onOpenArtifact?.(artifact)}
                         className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
                       >
                         Preview
@@ -860,33 +847,6 @@ function ToolCallItem({ tool, sessionId }: { tool: ToolCall; sessionId?: string 
           </div>
         )}
       </div>
-
-      <Modal
-        isOpen={artifactPreviewOpen}
-        onClose={() => {
-          setArtifactPreviewOpen(false);
-          setArtifactPreviewTarget(null);
-        }}
-        title={artifactPreviewTarget?.title || artifactPreviewTarget?.fileName || "Artifact Preview"}
-        size="lg"
-      >
-        <div className="space-y-3">
-          {artifactPreviewLoading ? (
-            <div className="flex items-center gap-2 text-sm text-gray-400">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Loading artifact...
-            </div>
-          ) : artifactPreviewError ? (
-            <div className="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
-              {artifactPreviewError}
-            </div>
-          ) : (
-            <pre className="max-h-[60vh] overflow-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs text-gray-200 whitespace-pre-wrap">
-              {artifactPreviewContent}
-            </pre>
-          )}
-        </div>
-      </Modal>
     </>
   );
 }
@@ -1050,14 +1010,43 @@ function FileChangesCard({ summary }: { summary: FileChangeSummary }) {
   );
 }
 
+function getHiddenToolCallsCount(message: ChatMessage): number {
+  if (
+    typeof message._tool_calls_hidden_count === "number" &&
+    Number.isFinite(message._tool_calls_hidden_count) &&
+    message._tool_calls_hidden_count > 0
+  ) {
+    return Math.floor(message._tool_calls_hidden_count);
+  }
+
+  if (typeof message._truncated === "string") {
+    const match = message._truncated.match(/Showing\s+(\d+)\s+of\s+(\d+)/i);
+    if (match) {
+      const shown = Number(match[1]);
+      const total = Number(match[2]);
+      if (Number.isFinite(shown) && Number.isFinite(total) && total > shown) {
+        return total - shown;
+      }
+    }
+  }
+
+  return 0;
+}
+
 function AssistantMetaInline({
   message,
   processActivities,
   sessionId,
+  onOpenArtifact,
+  onViewMoreToolCalls,
+  loadingMoreToolCalls,
 }: {
   message: ChatMessage;
   processActivities?: LiveActivityItem[];
   sessionId?: string | null;
+  onOpenArtifact?: (artifact: ArtifactSummaryView) => void;
+  onViewMoreToolCalls?: () => void;
+  loadingMoreToolCalls?: boolean;
 }) {
   const hasThinking = !!message.thinking;
   const hasSubagentCalls = !!message.subagent_calls && message.subagent_calls.length > 0;
@@ -1065,6 +1054,8 @@ function AssistantMetaInline({
   const hasProcessActivities = !!processActivities && processActivities.length > 0;
   const fileChangeSummary = summarizeMessageFileChanges(message.tool_calls);
   const hasFileChangeSummary = !!fileChangeSummary;
+  const hiddenToolCallsCount = getHiddenToolCallsCount(message);
+  const hasTruncatedToolCalls = hiddenToolCallsCount > 0;
 
   if (!hasThinking && !hasSubagentCalls && !hasToolCalls && !hasProcessActivities && !hasFileChangeSummary) {
     return null;
@@ -1105,8 +1096,36 @@ function AssistantMetaInline({
       {hasToolCalls && (
         <div className="space-y-1.5">
           {message.tool_calls?.map((tool) => (
-            <ToolCallItem key={tool.id} tool={tool} sessionId={sessionId} />
+            <ToolCallItem
+              key={tool.id}
+              tool={tool}
+              sessionId={sessionId}
+              onOpenArtifact={onOpenArtifact}
+            />
           ))}
+          {hasTruncatedToolCalls && (
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-[11px] text-gray-400">
+              <span>
+                ...and {hiddenToolCallsCount} more tool call
+                {hiddenToolCallsCount === 1 ? "" : "s"} hidden
+              </span>
+              <button
+                type="button"
+                onClick={onViewMoreToolCalls}
+                disabled={!onViewMoreToolCalls || loadingMoreToolCalls}
+                className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {loadingMoreToolCalls ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  "View more"
+                )}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1400,6 +1419,105 @@ function MessageContent({ content }: { content: string }) {
       >
         {content}
       </ReactMarkdown>
+    </div>
+  );
+}
+
+function ArtifactViewerPanel({
+  artifact,
+  loading,
+  error,
+  content,
+  rawView,
+  onBack,
+  onToggleView,
+}: {
+  artifact: ArtifactSummaryView | null;
+  loading: boolean;
+  error: string | null;
+  content: string;
+  rawView: boolean;
+  onBack: () => void;
+  onToggleView: (raw: boolean) => void;
+}) {
+  const resolvedPath =
+    artifact?.path || (artifact ? `~/.cybara/artifacts/${artifact.sessionId}/${artifact.fileName}` : "");
+  const locationLabel = artifact
+    ? `/api/sessions/${encodeURIComponent(artifact.sessionId)}/artifacts/${encodeURIComponent(artifact.fileName)}`
+    : "";
+
+  return (
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="px-3 sm:px-4 py-2 border-b border-white/10 bg-[#0a0a0f]/90 backdrop-blur-xl">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-xs text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Back to chat
+          </button>
+          <div className="flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[11px] text-gray-300">
+            <FileText className="w-3.5 h-3.5 text-indigo-300" />
+            <span className="truncate max-w-[280px] sm:max-w-[520px]">
+              {artifact?.title || artifact?.fileName || "Artifact"}
+            </span>
+          </div>
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => onToggleView(false)}
+              className={cn(
+                "rounded-md border px-2 py-1 text-[11px] transition-colors cursor-pointer",
+                !rawView
+                  ? "border-indigo-400/40 bg-indigo-500/20 text-indigo-200"
+                  : "border-white/15 bg-white/[0.03] text-gray-300 hover:text-white hover:bg-white/[0.08]"
+              )}
+            >
+              Markdown
+            </button>
+            <button
+              type="button"
+              onClick={() => onToggleView(true)}
+              className={cn(
+                "rounded-md border px-2 py-1 text-[11px] transition-colors cursor-pointer",
+                rawView
+                  ? "border-indigo-400/40 bg-indigo-500/20 text-indigo-200"
+                  : "border-white/15 bg-white/[0.03] text-gray-300 hover:text-white hover:bg-white/[0.08]"
+              )}
+            >
+              Raw
+            </button>
+          </div>
+        </div>
+        {artifact && (
+          <div className="mt-2 space-y-1 text-[11px] text-gray-500">
+            <p className="truncate">Path: {resolvedPath}</p>
+            <p className="truncate">Endpoint: {locationLabel}</p>
+          </div>
+        )}
+      </div>
+      <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-4">
+        {loading ? (
+          <div className="flex items-center gap-2 text-sm text-gray-400">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Loading artifact...
+          </div>
+        ) : error ? (
+          <div className="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+            {error}
+          </div>
+        ) : rawView ? (
+          <pre className="max-h-full overflow-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs text-gray-200 whitespace-pre-wrap">
+            {content}
+          </pre>
+        ) : (
+          <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4">
+            <MessageContent content={content} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1866,12 +1984,20 @@ export function Chat() {
   const [reverting, setReverting] = useState(false);
   const [showSubagentPanel, setShowSubagentPanel] = useState(false);
   const [showSessionsPanel, setShowSessionsPanel] = useState(false);
+  const [artifactViewerTarget, setArtifactViewerTarget] = useState<ArtifactSummaryView | null>(null);
+  const [artifactViewerLoading, setArtifactViewerLoading] = useState(false);
+  const [artifactViewerError, setArtifactViewerError] = useState<string | null>(null);
+  const [artifactViewerContent, setArtifactViewerContent] = useState("");
+  const [artifactViewerRawView, setArtifactViewerRawView] = useState(false);
+  const [loadingMoreToolCallsKey, setLoadingMoreToolCallsKey] = useState<string | null>(null);
+  const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
   const [liveStatus, setLiveStatus] = useState<"thinking" | "generating" | "idle">("idle");
   const [liveActivities, setLiveActivities] = useState<LiveActivityItem[]>([]);
   const [messageProcessMap, setMessageProcessMap] = useState<Record<string, LiveActivityItem[]>>(
     {}
   );
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeSessionRef = useRef<string | null>(null);
   const activeAgentRef = useRef<string | undefined>(undefined);
@@ -1884,9 +2010,28 @@ export function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  const refreshScrollToBottomVisibility = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container || artifactViewerTarget) {
+      setShowScrollToBottomButton(false);
+      return;
+    }
+    const scrolledUp =
+      container.scrollTop + container.clientHeight < container.scrollHeight - 1;
+    setShowScrollToBottomButton(scrolledUp);
+  }, [artifactViewerTarget]);
+
   useEffect(() => {
     scrollToBottom();
+    setShowScrollToBottomButton(false);
   }, [messages]);
+
+  useEffect(() => {
+    const rafId = window.requestAnimationFrame(() => {
+      refreshScrollToBottomVisibility();
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [refreshScrollToBottomVisibility, typedMessages.length, isLoading, artifactViewerTarget]);
 
   useEffect(() => {
     activeSessionRef.current = sessionId;
@@ -2060,6 +2205,89 @@ export function Chat() {
     await sendMessage(message);
   };
 
+  const openArtifactViewer = useCallback(async (artifact: ArtifactSummaryView) => {
+    setArtifactViewerTarget(artifact);
+    setArtifactViewerLoading(true);
+    setArtifactViewerError(null);
+    setArtifactViewerContent("");
+    setArtifactViewerRawView(false);
+
+    try {
+      const url = appendApiTokenParam(
+        `/api/sessions/${encodeURIComponent(artifact.sessionId)}/artifacts/${encodeURIComponent(artifact.fileName)}`
+      );
+      const response = await fetch(url);
+      const payload = (await response.json()) as {
+        content?: string;
+        artifact?: { path?: string };
+        error?: string;
+      };
+
+      if (!response.ok) {
+        const errorMessage =
+          typeof payload?.error === "string"
+            ? payload.error
+            : `Failed to load artifact (${response.status})`;
+        throw new Error(errorMessage);
+      }
+      if (typeof payload.content !== "string") {
+        throw new Error("Artifact response did not include content");
+      }
+
+      setArtifactViewerTarget((previous) => {
+        if (!previous) return artifact;
+        const nextPath =
+          payload?.artifact && typeof payload.artifact.path === "string"
+            ? payload.artifact.path
+            : previous.path;
+        return {
+          ...previous,
+          path: nextPath,
+        };
+      });
+      setArtifactViewerContent(payload.content);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load artifact";
+      setArtifactViewerError(message);
+      setArtifactViewerContent("");
+    } finally {
+      setArtifactViewerLoading(false);
+    }
+  }, []);
+
+  const closeArtifactViewer = useCallback(() => {
+    setArtifactViewerTarget(null);
+    setArtifactViewerLoading(false);
+    setArtifactViewerError(null);
+    setArtifactViewerContent("");
+    setArtifactViewerRawView(false);
+  }, []);
+
+  const loadFullToolCallsForMessage = useCallback(
+    async (index: number, message: ChatMessage) => {
+      if (!sessionId) return;
+      if (getHiddenToolCallsCount(message) <= 0) return;
+
+      const messageKey = getMessageProcessKey(sessionId, message, index);
+      setLoadingMoreToolCallsKey(messageKey);
+      try {
+        const response = await chatApi.getSession(sessionId, { includeFullToolCalls: true });
+        if (response.success && response.data?.messagesList) {
+          loadSession(sessionId, response.data.messagesList as ChatMessage[]);
+        }
+      } catch (error) {
+        console.error("Failed to load full tool call history:", error);
+      } finally {
+        setLoadingMoreToolCallsKey((previous) => (previous === messageKey ? null : previous));
+      }
+    },
+    [loadSession, sessionId]
+  );
+
+  useEffect(() => {
+    setLoadingMoreToolCallsKey(null);
+  }, [sessionId]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -2170,135 +2398,173 @@ export function Chat() {
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 flex flex-col min-w-0">
-          <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 space-y-4">
-            {typedMessages.length === 0 ? (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center text-gray-500">
-                  <Sparkles className="w-8 h-8 mx-auto mb-3 opacity-30" />
-                  <p className="text-sm font-medium">Start a conversation</p>
-                  <p className="text-xs mt-1 text-gray-600">
-                    Ask questions, get help with code, or chat with your agents
-                  </p>
-                </div>
-              </div>
-            ) : (
-              typedMessages.map((message, index) => {
-                const processKey = getMessageProcessKey(sessionId, message, index);
-                const toolActivities = buildActivitiesFromToolCalls(
-                  message.tool_calls,
-                  formatToolIntent
-                );
-                const mergedActivities = mergeActivityLists(
-                  messageProcessMap[processKey] || [],
-                  toolActivities
-                );
-                const processActivities =
-                  mergedActivities.length > 0
-                    ? finalizeCompletedActivities(mergedActivities)
-                    : undefined;
-                return (
-                  <div
-                    key={index}
-                    className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}
-                  >
-                    <div
-                      className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        message.role === "user"
-                          ? "bg-[rgba(var(--accent-primary),0.2)]"
-                          : "bg-emerald-500/20"
-                      }`}
-                    >
-                      {message.role === "user" ? (
-                        <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 accent-text" />
-                      ) : (
-                        <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
-                      )}
-                    </div>
-                    <div
-                      className={`max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] ${message.role === "user" ? "text-right" : ""}`}
-                    >
-                      <div
-                        className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${
-                          message.role === "user"
-                            ? "bg-[rgba(var(--accent-primary),0.15)] border border-[rgba(var(--accent-primary),0.2)]"
-                            : "bg-white/[0.03] border border-white/5"
-                        }`}
-                      >
-                        <MessageContent content={message.content} />
-                        {message.role === "user" && sessionId && (
-                          <div className="mt-2 flex justify-end">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setRevertTarget({
-                                  index,
-                                  content: message.content,
-                                  timestamp: message.timestamp,
-                                })
-                              }
-                              className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[10px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
-                              title="Revert session to this message"
-                            >
-                              <RotateCcw className="w-3 h-3" />
-                              Revert to here
-                            </button>
-                          </div>
-                        )}
-                        {message.role !== "user" && (
-                          <AssistantMetaInline
-                            message={message}
-                            processActivities={processActivities}
-                            sessionId={sessionId}
-                          />
-                        )}
-                      </div>
-
-                      {message.timestamp && (
-                        <p className="text-[10px] text-gray-600 mt-1.5">
-                          {formatRelativeTime(message.timestamp)}
-                        </p>
-                      )}
+        <div className="relative flex-1 flex flex-col min-w-0">
+          {artifactViewerTarget ? (
+            <ArtifactViewerPanel
+              artifact={artifactViewerTarget}
+              loading={artifactViewerLoading}
+              error={artifactViewerError}
+              content={artifactViewerContent}
+              rawView={artifactViewerRawView}
+              onBack={closeArtifactViewer}
+              onToggleView={setArtifactViewerRawView}
+            />
+          ) : (
+            <>
+              <div
+                ref={messagesContainerRef}
+                onScroll={refreshScrollToBottomVisibility}
+                className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 space-y-4"
+              >
+                {typedMessages.length === 0 ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center text-gray-500">
+                      <Sparkles className="w-8 h-8 mx-auto mb-3 opacity-30" />
+                      <p className="text-sm font-medium">Start a conversation</p>
+                      <p className="text-xs mt-1 text-gray-600">
+                        Ask questions, get help with code, or chat with your agents
+                      </p>
                     </div>
                   </div>
-                );
-              })
-            )}
-            {isLoading && (
-              <div className="flex gap-3">
-                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                  <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
-                </div>
-                <div className="max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] bg-white/[0.03] border border-white/5 rounded-xl px-4 py-3">
-                  <LiveActivityTimeline status={liveStatus} activities={liveActivities} />
+                ) : (
+                  typedMessages.map((message, index) => {
+                    const processKey = getMessageProcessKey(sessionId, message, index);
+                    const toolActivities = buildActivitiesFromToolCalls(
+                      message.tool_calls,
+                      formatToolIntent
+                    );
+                    const mergedActivities = mergeActivityLists(
+                      messageProcessMap[processKey] || [],
+                      toolActivities
+                    );
+                    const processActivities =
+                      mergedActivities.length > 0
+                        ? finalizeCompletedActivities(mergedActivities)
+                        : undefined;
+                    return (
+                      <div
+                        key={index}
+                        className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}
+                      >
+                        <div
+                          className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                            message.role === "user"
+                              ? "bg-[rgba(var(--accent-primary),0.2)]"
+                              : "bg-emerald-500/20"
+                          }`}
+                        >
+                          {message.role === "user" ? (
+                            <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 accent-text" />
+                          ) : (
+                            <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
+                          )}
+                        </div>
+                        <div
+                          className={`max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] ${message.role === "user" ? "text-right" : ""}`}
+                        >
+                          <div
+                            className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${
+                              message.role === "user"
+                                ? "bg-[rgba(var(--accent-primary),0.15)] border border-[rgba(var(--accent-primary),0.2)]"
+                                : "bg-white/[0.03] border border-white/5"
+                            }`}
+                          >
+                            <MessageContent content={message.content} />
+                            {message.role === "user" && sessionId && (
+                              <div className="mt-2 flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setRevertTarget({
+                                      index,
+                                      content: message.content,
+                                      timestamp: message.timestamp,
+                                    })
+                                  }
+                                  className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[10px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+                                  title="Revert session to this message"
+                                >
+                                  <RotateCcw className="w-3 h-3" />
+                                  Revert to here
+                                </button>
+                              </div>
+                            )}
+                            {message.role !== "user" && (
+                              <AssistantMetaInline
+                                message={message}
+                                processActivities={processActivities}
+                                sessionId={sessionId}
+                                onOpenArtifact={openArtifactViewer}
+                                onViewMoreToolCalls={() =>
+                                  void loadFullToolCallsForMessage(index, message)
+                                }
+                                loadingMoreToolCalls={loadingMoreToolCallsKey === processKey}
+                              />
+                            )}
+                          </div>
+
+                          {message.timestamp && (
+                            <p className="text-[10px] text-gray-600 mt-1.5">
+                              {formatRelativeTime(message.timestamp)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                {isLoading && (
+                  <div className="flex gap-3">
+                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                      <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
+                    </div>
+                    <div className="max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] bg-white/[0.03] border border-white/5 rounded-xl px-4 py-3">
+                      <LiveActivityTimeline status={liveStatus} activities={liveActivities} />
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {showScrollToBottomButton && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    scrollToBottom();
+                    setShowScrollToBottomButton(false);
+                  }}
+                  className="absolute left-1/2 bottom-[82px] sm:bottom-[88px] z-20 -translate-x-1/2 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-[#11131c]/95 text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)] backdrop-blur-md transition-colors hover:bg-[#1a1e2b] cursor-pointer"
+                  title="Scroll to latest"
+                  aria-label="Scroll to latest message"
+                >
+                  <ArrowDown className="h-5 w-5" />
+                </button>
+              )}
+
+              <div className="flex-shrink-0 px-3 sm:px-4 py-3 border-t border-white/5 bg-[#0a0a0f]/80 backdrop-blur-xl">
+                <div className="flex gap-2 sm:gap-3">
+                  <input
+                    ref={inputRef}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Type a message..."
+                    className="flex-1 px-3 sm:px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-sm text-white placeholder-gray-500 !outline-none focus:border-white/20 transition-colors"
+                  />
+                  <button
+                    onClick={handleSend}
+                    disabled={!input.trim() || isLoading}
+                    className="px-3 sm:px-4 py-2.5 rounded-xl accent-button disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          <div className="flex-shrink-0 px-3 sm:px-4 py-3 border-t border-white/5 bg-[#0a0a0f]/80 backdrop-blur-xl">
-            <div className="flex gap-2 sm:gap-3">
-              <input
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Type a message..."
-                className="flex-1 px-3 sm:px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-sm text-white placeholder-gray-500 !outline-none focus:border-white/20 transition-colors"
-              />
-              <button
-                onClick={handleSend}
-                disabled={!input.trim() || isLoading}
-                className="px-3 sm:px-4 py-2.5 rounded-xl accent-button disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
+            </>
+          )}
         </div>
 
-        {showSessionsPanel && (
+        {!artifactViewerTarget && showSessionsPanel && (
           <SessionsPanel
             isOpen={showSessionsPanel}
             onClose={() => setShowSessionsPanel(false)}
@@ -2314,7 +2580,7 @@ export function Chat() {
           />
         )}
 
-        {showSubagentPanel && (
+        {!artifactViewerTarget && showSubagentPanel && (
           <SubagentPanel
             isOpen={showSubagentPanel}
             onClose={() => setShowSubagentPanel(false)}

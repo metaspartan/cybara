@@ -157,6 +157,34 @@ function upsertRawConfig(key: string, value: string): void {
   }
 }
 
+function insertRawSession(
+  sessionId: string,
+  agentId: string,
+  messages: Array<{ role: string; content: string; metadata?: string | Record<string, unknown> }>
+): void {
+  const dbPath = join(testHome, ".cybara", "data", "platform.db");
+  const db = new Database(dbPath);
+  try {
+    db.query(
+      "INSERT OR REPLACE INTO chat_sessions (id, agent_id, messages, created_at, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+    ).run(sessionId, agentId, "[]");
+
+    for (const message of messages) {
+      const metadata =
+        typeof message.metadata === "string"
+          ? message.metadata
+          : message.metadata
+            ? JSON.stringify(message.metadata)
+            : null;
+      db.query(
+        "INSERT INTO session_messages (id, session_id, agent_id, role, content, metadata) VALUES (?, ?, ?, ?, ?, ?)"
+      ).run(crypto.randomUUID(), sessionId, agentId, message.role, message.content, metadata);
+    }
+  } finally {
+    db.close();
+  }
+}
+
 function getRawProviderRecord(id: string): {
   id: string;
   provider: string;
@@ -1051,6 +1079,35 @@ describe("Tools API", () => {
     });
     expect(resetPolicy.status).toBe(200);
   });
+
+  test("POST /api/tools/execute requires approval for dangerous tools when tool approval mode is ask", async () => {
+    const setAskMode = await api("PUT", "/api/config", {
+      tool_approval_mode: "ask",
+    });
+    expect(setAskMode.status).toBe(200);
+
+    const blocked = await api("POST", "/api/tools/execute", {
+      name: "exec",
+      args: { command: "echo approval-required" },
+      context: { agentId: "dangerous-approval-test" },
+    });
+    expect(blocked.status).toBe(400);
+    expect(blocked.data.code).toBe("VALIDATION_ERROR");
+    expect(String(blocked.data.error || "")).toContain("requires approval");
+
+    const allowedWithOverride = await api("POST", "/api/tools/execute", {
+      name: "exec",
+      args: { command: "echo approval-override" },
+      context: { agentId: "dangerous-approval-test", allowDangerousTools: true },
+    });
+    expect(allowedWithOverride.status).toBe(200);
+    expect(String(allowedWithOverride.data.output || "")).toContain("approval-override");
+
+    const resetMode = await api("PUT", "/api/config", {
+      tool_approval_mode: "always_allow",
+    });
+    expect(resetMode.status).toBe(200);
+  });
 });
 
 describe("LSP API", () => {
@@ -1131,6 +1188,85 @@ describe("Session API", () => {
     const { status, data } = await api("GET", "/api/sessions");
     expect(status).toBe(200);
     expect(Array.isArray(data)).toBe(true);
+  });
+
+  test("GET /api/sessions/:sessionId keeps artifact tool calls visible even when tool list is truncated", async () => {
+    const sessionId = `session-artifact-trunc-${Date.now()}`;
+    const agentId = `agent-artifact-trunc-${Date.now()}`;
+    const toolCalls = Array.from({ length: 25 }, (_, index) => ({
+      id: `call-${index}`,
+      name: "exec",
+      args: { command: `echo ${index}` },
+      status: "completed",
+      result: { output: `exec-${index}` },
+    }));
+    toolCalls[24] = {
+      id: "call-artifact",
+      name: "artifacts",
+      args: { action: "create", name: "task" },
+      status: "completed",
+      result: {
+        action: "create",
+        sessionId,
+        artifact: {
+          sessionId,
+          name: "task",
+          fileName: "task.md.resolved",
+          path: `/Users/test/.cybara/artifacts/${sessionId}/task.md.resolved`,
+          kind: "task",
+          title: "Task",
+          size: 42,
+          createdAt: "2026-02-21T00:00:00.000Z",
+          updatedAt: "2026-02-21T00:00:00.000Z",
+        },
+      },
+    };
+
+    insertRawSession(sessionId, agentId, [
+      {
+        role: "user",
+        content: "Create an artifact",
+        metadata: { source: "chat_api" },
+      },
+      {
+        role: "assistant",
+        content: "Done. Artifact created.",
+        metadata: {
+          source: "chat_api",
+          tool_calls: toolCalls,
+        },
+      },
+    ]);
+
+    const loaded = await api("GET", `/api/sessions/${sessionId}`);
+    expect(loaded.status).toBe(200);
+    expect(Array.isArray(loaded.data.messagesList)).toBe(true);
+
+    const assistant = (loaded.data.messagesList as Array<Record<string, unknown>>).find(
+      (entry) => entry.role === "assistant"
+    ) as { tool_calls?: Array<Record<string, unknown>>; _truncated?: string } | undefined;
+    expect(assistant).toBeDefined();
+    expect(Array.isArray(assistant?.tool_calls)).toBe(true);
+    expect(assistant?.tool_calls?.length).toBeLessThanOrEqual(20);
+    expect(typeof assistant?._truncated).toBe("string");
+
+    const artifactCall = assistant?.tool_calls?.find((toolCall) => toolCall.name === "artifacts");
+    expect(artifactCall).toBeDefined();
+    expect((artifactCall?.result as Record<string, unknown>)?.artifact).toBeDefined();
+    expect(
+      ((artifactCall?.result as Record<string, unknown>)?.artifact as Record<string, unknown>)
+        ?.fileName
+    ).toBe("task.md.resolved");
+
+    const loadedFull = await api("GET", `/api/sessions/${sessionId}?includeFullToolCalls=1`);
+    expect(loadedFull.status).toBe(200);
+    const assistantFull = (loadedFull.data.messagesList as Array<Record<string, unknown>>).find(
+      (entry) => entry.role === "assistant"
+    ) as { tool_calls?: Array<Record<string, unknown>>; _truncated?: string } | undefined;
+    expect(assistantFull).toBeDefined();
+    expect(assistantFull?._truncated).toBeUndefined();
+    expect(Array.isArray(assistantFull?.tool_calls)).toBe(true);
+    expect(assistantFull?.tool_calls?.length).toBe(25);
   });
 
   test("POST /api/sessions/:sessionId/revert truncates later conversation history", async () => {
@@ -1606,6 +1742,7 @@ describe("Config API", () => {
     expect(typeof data.dangerous_tool_policy).toBe("object");
     expect(typeof data.dangerous_tool_policy.enabled).toBe("boolean");
     expect(["audit", "block"]).toContain(data.dangerous_tool_policy.mode);
+    expect(["always_allow", "ask"]).toContain(data.tool_approval_mode);
   });
 
   test("GET /api/config tolerates malformed stored JSON values", async () => {
@@ -1649,6 +1786,28 @@ describe("Config API", () => {
       dangerous_tool_policy: { enabled: false, mode: "audit" },
     });
     expect(resetRes.status).toBe(200);
+  });
+
+  test("PUT /api/config normalizes tool approval mode payloads", async () => {
+    const putAsk = await api("PUT", "/api/config", {
+      tool_approval_mode: "ask",
+    });
+    expect(putAsk.status).toBe(200);
+    expect(putAsk.data.success).toBe(true);
+
+    const getAsk = await api("GET", "/api/config");
+    expect(getAsk.status).toBe(200);
+    expect(getAsk.data.tool_approval_mode).toBe("ask");
+
+    const putInvalid = await api("PUT", "/api/config", {
+      tool_approval_mode: "not-a-mode",
+    });
+    expect(putInvalid.status).toBe(200);
+    expect(putInvalid.data.success).toBe(true);
+
+    const getInvalid = await api("GET", "/api/config");
+    expect(getInvalid.status).toBe(200);
+    expect(getInvalid.data.tool_approval_mode).toBe("always_allow");
   });
 
   test("PUT /api/config normalizes web tool url policy payloads", async () => {

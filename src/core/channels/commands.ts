@@ -162,6 +162,7 @@ function formatCommandHelp(): string {
     "/help - Show this help",
     "/status - Show agent/provider/channel status",
     "/new - Start a fresh conversation session",
+    "/permissions [ask|allow] - Show or set dangerous tool approval mode",
     "/agents - List agents",
     "/agent [id|name|number] - Show or set default agent",
     "/providers - List providers",
@@ -252,12 +253,18 @@ function getStatusSummary(): string {
   const runningAgents = agents.filter((agent) => agent.status === "running").length;
   const enabledChannels = channels.filter((channel) => !!channel.enabled).length;
   const defaultAgent = getDefaultAgent(agents);
+  const toolApprovalMode = config.getToolApprovalMode();
+  const toolApprovalSummary =
+    toolApprovalMode === "ask"
+      ? "Tool approvals: ask before dangerous tools"
+      : "Tool approvals: always allow";
 
   return [
     "Status:",
     `Agents: ${agents.length} total, ${runningAgents} running`,
     `Providers: ${providers.length} configured`,
     `Channels: ${enabledChannels} enabled`,
+    toolApprovalSummary,
     defaultAgent
       ? `Default agent: ${defaultAgent.name} (${defaultAgent.model || "default model"})`
       : "Default agent: none",
@@ -301,6 +308,44 @@ export async function handleChannelManagementCommand(
 
   if (command === "status") {
     return getStatusSummary();
+  }
+
+  if (command === "permissions" || command === "approval" || command === "approvals") {
+    const currentMode = config.getToolApprovalMode();
+    if (
+      !joinedArgs ||
+      joinedArgs.toLowerCase() === "show" ||
+      joinedArgs.toLowerCase() === "status"
+    ) {
+      return [
+        "Tool permission mode:",
+        currentMode === "ask"
+          ? "ask (dangerous tools require explicit approval)"
+          : "allow (dangerous tools run normally)",
+        "Use /permissions ask or /permissions allow.",
+      ].join("\n");
+    }
+
+    const normalized = joinedArgs.toLowerCase().replace(/[\s-]+/g, "_");
+    const nextMode =
+      normalized === "ask" || normalized === "prompt" || normalized === "confirm"
+        ? "ask"
+        : normalized === "allow" ||
+            normalized === "always" ||
+            normalized === "always_allow" ||
+            normalized === "auto" ||
+            normalized === "on"
+          ? "always_allow"
+          : undefined;
+
+    if (!nextMode) {
+      return "Unknown permissions mode. Use /permissions ask or /permissions allow.";
+    }
+
+    config.setToolApprovalMode(nextMode);
+    return nextMode === "ask"
+      ? "Tool permission mode set to ask. Dangerous tools now require explicit approval."
+      : "Tool permission mode set to allow. Dangerous tools can run normally.";
   }
 
   if (command === "agents") {

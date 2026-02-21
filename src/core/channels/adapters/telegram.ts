@@ -116,6 +116,7 @@ const TELEGRAM_COMMANDS: TelegramBotCommand[] = [
   { command: "provider", description: "Show or switch provider - /provider <id|name|number>" },
   { command: "models", description: "List models for the current provider" },
   { command: "model", description: "Show or switch model - /model <id|number>" },
+  { command: "permissions", description: "Show or set tool approvals - /permissions <ask|allow>" },
   { command: "switch", description: "Switch to a previous session - /switch <number>" },
   { command: "sessions", description: "List and manage chat sessions" },
   { command: "memory", description: "Show recent memories/context" },

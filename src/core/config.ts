@@ -6,11 +6,13 @@ interface PlatformConfig {
   port: number;
   session_secret?: string;
   dangerous_tool_policy?: DangerousToolPolicyConfig;
+  tool_approval_mode?: ToolApprovalMode;
   web_tool_url_policy?: WebToolUrlPolicyConfig;
   [key: string]: unknown;
 }
 
 export type DangerousToolPolicyMode = "audit" | "block";
+export type ToolApprovalMode = "always_allow" | "ask";
 
 export interface DangerousToolPolicyConfig {
   enabled: boolean;
@@ -27,6 +29,8 @@ export const DEFAULT_DANGEROUS_TOOL_POLICY: DangerousToolPolicyConfig = {
   enabled: false,
   mode: "audit",
 };
+
+export const DEFAULT_TOOL_APPROVAL_MODE: ToolApprovalMode = "always_allow";
 
 export const DEFAULT_WEB_TOOL_URL_POLICY: WebToolUrlPolicyConfig = {
   enabled: false,
@@ -66,6 +70,26 @@ function normalizeDangerousToolPolicy(value: unknown): DangerousToolPolicyConfig
   };
 }
 
+function normalizeToolApprovalMode(value: unknown): ToolApprovalMode {
+  if (typeof value !== "string") return DEFAULT_TOOL_APPROVAL_MODE;
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  if (normalized === "ask" || normalized === "prompt" || normalized === "confirm") {
+    return "ask";
+  }
+  if (
+    normalized === "always_allow" ||
+    normalized === "always" ||
+    normalized === "allow" ||
+    normalized === "auto"
+  ) {
+    return "always_allow";
+  }
+  return DEFAULT_TOOL_APPROVAL_MODE;
+}
+
 function normalizeWebToolUrlPolicy(value: unknown): WebToolUrlPolicyConfig {
   const parsed = asObject(value);
   return {
@@ -94,6 +118,7 @@ class ConfigManager {
       host: "0.0.0.0",
       port: 4269,
       dangerous_tool_policy: { ...DEFAULT_DANGEROUS_TOOL_POLICY },
+      tool_approval_mode: DEFAULT_TOOL_APPROVAL_MODE,
       web_tool_url_policy: { ...DEFAULT_WEB_TOOL_URL_POLICY },
     };
 
@@ -114,6 +139,17 @@ class ConfigManager {
   setDangerousToolPolicy(policy: unknown): DangerousToolPolicyConfig {
     const normalized = normalizeDangerousToolPolicy(policy);
     this.set("dangerous_tool_policy", normalized);
+    return normalized;
+  }
+
+  getToolApprovalMode(): ToolApprovalMode {
+    const stored = this.get<unknown>("tool_approval_mode");
+    return normalizeToolApprovalMode(stored);
+  }
+
+  setToolApprovalMode(mode: unknown): ToolApprovalMode {
+    const normalized = normalizeToolApprovalMode(mode);
+    this.set("tool_approval_mode", normalized);
     return normalized;
   }
 

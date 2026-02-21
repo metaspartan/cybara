@@ -766,14 +766,18 @@ export const chatApi = {
         last_message?: { role: string; content: string };
       }[]
     >("/sessions"),
-  getSession: (id: string) =>
+  getSession: (id: string, options?: { includeFullToolCalls?: boolean }) =>
     fetchApi<{
       id: string;
       agent_id: string;
       created_at: string;
       updated_at: string;
       messagesList: ChatMessage[];
-    }>("/sessions/" + id),
+    }>(
+      "/sessions/" +
+        id +
+        (options?.includeFullToolCalls ? "?includeFullToolCalls=1" : "")
+    ),
   revertSession: (
     id: string,
     payload: {
@@ -852,7 +856,7 @@ export const sessionsApi = {
         last_message?: { role: string; content: string };
       }[]
     >("/sessions"),
-  get: (id: string) =>
+  get: (id: string, options?: { includeFullToolCalls?: boolean }) =>
     fetchApi<{
       id: string;
       agent_id: string;
@@ -860,7 +864,11 @@ export const sessionsApi = {
       created_at: string;
       updated_at: string;
       messagesList: ChatMessage[];
-    }>("/sessions/" + id),
+    }>(
+      "/sessions/" +
+        id +
+        (options?.includeFullToolCalls ? "?includeFullToolCalls=1" : "")
+    ),
   delete: (id: string) => fetchApi<void>("/sessions/" + id, { method: "DELETE" }),
 };
 

@@ -3,6 +3,9 @@ import {
   GatewayIntentBits,
   Events,
   Partials,
+  SlashCommandBuilder,
+  type ChatInputCommandInteraction,
+  type Interaction,
   type Message,
   type MessageReaction,
   type PartialMessageReaction,
@@ -27,6 +30,80 @@ export const DISCORD_REQUIRED_INTENTS = [
   GatewayIntentBits.GuildMessageReactions,
   GatewayIntentBits.DirectMessageReactions,
 ] as const;
+
+export function buildDiscordSlashCommands(): ReturnType<SlashCommandBuilder["toJSON"]>[] {
+  return [
+    new SlashCommandBuilder()
+      .setName("help")
+      .setDescription("Show available management commands")
+      .toJSON(),
+    new SlashCommandBuilder()
+      .setName("status")
+      .setDescription("Show agent and channel status")
+      .toJSON(),
+    new SlashCommandBuilder()
+      .setName("new")
+      .setDescription("Start a fresh conversation session")
+      .toJSON(),
+    new SlashCommandBuilder().setName("agents").setDescription("List available agents").toJSON(),
+    new SlashCommandBuilder()
+      .setName("agent")
+      .setDescription("Show or set default agent")
+      .addStringOption((option) =>
+        option.setName("target").setDescription("Agent id, name, or list index").setRequired(false)
+      )
+      .toJSON(),
+    new SlashCommandBuilder()
+      .setName("providers")
+      .setDescription("List configured providers")
+      .toJSON(),
+    new SlashCommandBuilder()
+      .setName("provider")
+      .setDescription("Show or set the default provider")
+      .addStringOption((option) =>
+        option
+          .setName("target")
+          .setDescription("Provider id, name, or list index")
+          .setRequired(false)
+      )
+      .toJSON(),
+    new SlashCommandBuilder()
+      .setName("models")
+      .setDescription("List models for current provider")
+      .toJSON(),
+    new SlashCommandBuilder()
+      .setName("model")
+      .setDescription("Show or set the default model")
+      .addStringOption((option) =>
+        option
+          .setName("target")
+          .setDescription("Model id or provider model list index")
+          .setRequired(false)
+      )
+      .toJSON(),
+    new SlashCommandBuilder()
+      .setName("permissions")
+      .setDescription("Show or set dangerous tool approvals")
+      .addStringOption((option) =>
+        option
+          .setName("mode")
+          .setDescription("Approval mode")
+          .addChoices(
+            { name: "Always Allow", value: "allow" },
+            { name: "Ask Me First", value: "ask" }
+          )
+          .setRequired(false)
+      )
+      .toJSON(),
+    new SlashCommandBuilder()
+      .setName("subagents")
+      .setDescription("Spawn a one-off deterministic subagent run")
+      .addStringOption((option) =>
+        option.setName("task").setDescription("Task for the subagent").setRequired(true)
+      )
+      .toJSON(),
+  ];
+}
 
 type DiscordReactionNotificationScope = "off" | "all" | "dm" | "guild";
 
@@ -92,10 +169,14 @@ export class DiscordAdapter implements ChannelAdapter {
     client.once(Events.ClientReady, (readyClient) => {
       console.log(`[Discord] Bot logged in as ${readyClient.user.tag}`);
       console.log(`[Discord] Serving ${readyClient.guilds.cache.size} guilds`);
+      void this.syncSlashCommands(channelId, readyClient, config);
     });
 
     client.on(Events.MessageCreate, async (message: Message) => {
       await this.handleMessage(channelId, message);
+    });
+    client.on(Events.InteractionCreate, async (interaction) => {
+      await this.handleInteraction(channelId, interaction);
     });
     client.on(Events.MessageReactionAdd, async (reaction, user) => {
       await this.handleReactionEvent(channelId, reaction, user, "added");
@@ -247,6 +328,213 @@ export class DiscordAdapter implements ChannelAdapter {
     }
   }
 
+  private parseSlashGuildIds(config: Record<string, unknown>): string[] {
+    const values: string[] = [];
+    const pushCandidate = (candidate: unknown) => {
+      if (typeof candidate !== "string") return;
+      const trimmed = candidate.trim();
+      if (!trimmed) return;
+      for (const part of trimmed.split(/[,\s]+/)) {
+        const token = part.trim();
+        if (token) values.push(token);
+      }
+    };
+
+    pushCandidate(config.guild_id);
+    pushCandidate(config.guild_ids);
+
+    const unique = [...new Set(values)];
+    return unique.filter((entry) => /^\d{6,}$/.test(entry));
+  }
+
+  private async syncSlashCommands(
+    channelId: string,
+    client: Client,
+    config: Record<string, unknown>
+  ): Promise<void> {
+    const nativeCommandsEnabled =
+      config.slash_commands !== false && config.native_commands !== false;
+    if (!nativeCommandsEnabled) {
+      console.log(`[Discord] Native slash commands disabled for channel ${channelId}`);
+      return;
+    }
+
+    if (!client.application) {
+      console.warn(`[Discord] Cannot sync slash commands for ${channelId}: app not ready`);
+      return;
+    }
+
+    const slashCommands = buildDiscordSlashCommands();
+    const configuredGuildIds = this.parseSlashGuildIds(config);
+    const guildIds =
+      configuredGuildIds.length > 0
+        ? configuredGuildIds
+        : Array.from(client.guilds.cache.keys()).filter((id) => /^\d{6,}$/.test(id));
+
+    if (guildIds.length > 0) {
+      for (const guildId of guildIds) {
+        await client.application.commands.set(slashCommands, guildId);
+      }
+      console.log(
+        `[Discord] Synced ${slashCommands.length} slash commands for ${guildIds.length} guild(s)`
+      );
+      return;
+    }
+
+    await client.application.commands.set(slashCommands);
+    console.log(`[Discord] Synced ${slashCommands.length} global slash commands`);
+  }
+
+  private buildSlashCommandInput(interaction: ChatInputCommandInteraction): string {
+    const command = interaction.commandName.toLowerCase();
+
+    if (command === "subagents") {
+      const task = interaction.options.getString("task", false)?.trim();
+      return task ? `/subagents spawn ${task}` : "/subagents";
+    }
+
+    if (command === "permissions") {
+      const mode = interaction.options.getString("mode", false)?.trim();
+      return mode ? `/permissions ${mode}` : "/permissions";
+    }
+
+    const target = interaction.options.getString("target", false)?.trim();
+    return target ? `/${command} ${target}` : `/${command}`;
+  }
+
+  private splitLongResponse(response: string): string[] {
+    const maxLength = 2000;
+    if (!response) return [""];
+    if (response.length <= maxLength) return [response];
+
+    const chunks: string[] = [];
+    let remaining = response;
+
+    while (remaining.length > 0) {
+      if (remaining.length <= maxLength) {
+        chunks.push(remaining);
+        break;
+      }
+
+      let splitIndex = remaining.lastIndexOf("\n", maxLength);
+      if (splitIndex < maxLength / 2) {
+        splitIndex = remaining.lastIndexOf(" ", maxLength);
+      }
+      if (splitIndex < maxLength / 2) {
+        splitIndex = maxLength;
+      }
+
+      chunks.push(remaining.slice(0, splitIndex));
+      remaining = remaining.slice(splitIndex).trim();
+    }
+
+    return chunks;
+  }
+
+  private async replyToInteraction(
+    interaction: ChatInputCommandInteraction,
+    response: string,
+    ephemeral = false
+  ): Promise<void> {
+    const chunks = this.splitLongResponse(response);
+    const firstChunk = chunks[0] || "Done.";
+
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({ content: firstChunk, ephemeral });
+    } else {
+      await interaction.reply({ content: firstChunk, ephemeral });
+    }
+
+    for (let i = 1; i < chunks.length; i += 1) {
+      await interaction.followUp({ content: chunks[i] });
+    }
+  }
+
+  private async handleInteraction(channelId: string, interaction: Interaction): Promise<void> {
+    if (!interaction.isChatInputCommand()) return;
+
+    const userId = interaction.user.id;
+    const chatId = interaction.channelId;
+    if (!chatId) {
+      await interaction.reply({
+        content: "Channel is not available for this command.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const accessCheck = securityManager.checkAccess(
+      channelId,
+      userId,
+      "discord",
+      interaction.user.username
+    );
+    if (!accessCheck.permitted) {
+      if (accessCheck.reason === "new_pairing" || accessCheck.reason === "blocked") {
+        await this.replyToInteraction(
+          interaction,
+          accessCheck.message || `🔐 Pairing code: ${accessCheck.code}`,
+          true
+        );
+      }
+      return;
+    }
+
+    const commandInput = this.buildSlashCommandInput(interaction);
+    const sessionKey = `${channelId}:${chatId}`;
+    let sessionId = discordSessions.get(sessionKey);
+    if (!sessionId) {
+      sessionId = crypto.randomUUID();
+      discordSessions.set(sessionKey, sessionId);
+    }
+
+    await logChannelMessage("discord", "incoming", commandInput, {
+      channelId: chatId,
+      senderId: userId,
+      metadata: {
+        interactionId: interaction.id,
+        commandName: interaction.commandName,
+        username: interaction.user.username,
+      },
+    });
+
+    let response = "Command was not recognized.";
+    try {
+      const commandResponse = await handleChannelManagementCommand(commandInput, {
+        channelId,
+        chatId,
+        platform: "discord",
+        sessionId,
+        createSessionId: () => crypto.randomUUID(),
+        setSessionId: (nextSessionId: string) => {
+          sessionId = nextSessionId;
+          discordSessions.set(sessionKey, nextSessionId);
+        },
+      });
+
+      if (commandResponse !== null) {
+        response = commandResponse;
+      } else {
+        response = await this.messageHandler(commandInput, chatId, sessionId, {
+          hasFile: false,
+          filePath: "",
+          fileType: "",
+          placeholder: "",
+        });
+      }
+    } catch (error) {
+      console.error("[Discord] Error handling slash command:", error);
+      response = "❌ Sorry, I encountered an error processing your command.";
+    }
+
+    await logChannelMessage("discord", "outgoing", response, {
+      channelId: chatId,
+      metadata: { interactionId: interaction.id, commandName: interaction.commandName },
+    });
+
+    await this.replyToInteraction(interaction, response);
+  }
+
   private startTypingKeepAlive(channel: Message["channel"]): () => void {
     let stopped = false;
     const sendTyping = async () => {
@@ -365,32 +653,14 @@ export class DiscordAdapter implements ChannelAdapter {
   }
 
   private async sendLongMessage(message: Message, response: string): Promise<void> {
-    const MAX_LENGTH = 2000; // Discord's message limit
-
-    if (response.length <= MAX_LENGTH) {
-      await message.reply(response);
+    const chunks = this.splitLongResponse(response);
+    if (chunks.length === 0) {
+      await message.reply("Done.");
       return;
     }
-
-    const chunks: string[] = [];
-    let remaining = response;
-
-    while (remaining.length > 0) {
-      if (remaining.length <= MAX_LENGTH) {
-        chunks.push(remaining);
-        break;
-      }
-
-      let splitIndex = remaining.lastIndexOf("\n", MAX_LENGTH);
-      if (splitIndex < MAX_LENGTH / 2) {
-        splitIndex = remaining.lastIndexOf(" ", MAX_LENGTH);
-      }
-      if (splitIndex < MAX_LENGTH / 2) {
-        splitIndex = MAX_LENGTH;
-      }
-
-      chunks.push(remaining.slice(0, splitIndex));
-      remaining = remaining.slice(splitIndex).trim();
+    if (chunks.length === 1) {
+      await message.reply(response);
+      return;
     }
 
     await message.reply(chunks[0]);

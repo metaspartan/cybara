@@ -130,6 +130,8 @@ type SessionMessageView = ChatMessage & {
     error?: string;
   }>;
   _truncated?: string;
+  _tool_calls_total_count?: number;
+  _tool_calls_hidden_count?: number;
 };
 
 interface MetricTopKey {
@@ -788,16 +790,71 @@ function sanitizeArtifactToolResult(result: unknown): Record<string, unknown> | 
   return Object.keys(payload).length > 0 ? payload : undefined;
 }
 
-function sanitizeSessionMessages(messages: SessionMessageView[]): SessionMessageView[] {
+function isArtifactToolCall(toolCall: unknown): boolean {
+  if (!isObjectRecord(toolCall)) return false;
+  const name = typeof toolCall.name === "string" ? toolCall.name.toLowerCase() : "";
+  if (name === "artifacts" || name === "artifact") return true;
+  return !!sanitizeArtifactToolResult(toolCall.result);
+}
+
+function sanitizeSessionMessages(
+  messages: SessionMessageView[],
+  options?: { maxToolCalls?: number }
+): SessionMessageView[] {
   const MAX_RESULT_SIZE = 500;
-  const MAX_TOOL_CALLS = 20;
+  const maxToolCallsRaw = options?.maxToolCalls;
+  const MAX_TOOL_CALLS =
+    typeof maxToolCallsRaw === "number" && Number.isFinite(maxToolCallsRaw)
+      ? Math.max(0, Math.floor(maxToolCallsRaw))
+      : 20;
 
   return messages.map((msg) => {
     if (!msg || !msg.tool_calls || !Array.isArray(msg.tool_calls) || msg.tool_calls.length === 0) {
       return msg;
     }
 
-    const sanitizedToolCalls = msg.tool_calls.slice(0, MAX_TOOL_CALLS).map((tc) => {
+    const indexedToolCalls = msg.tool_calls.map((toolCall, index) => ({
+      toolCall,
+      index,
+      isArtifact: isArtifactToolCall(toolCall),
+    }));
+    const selectedIndexes = new Set<number>();
+    for (const entry of indexedToolCalls.slice(0, MAX_TOOL_CALLS || indexedToolCalls.length)) {
+      selectedIndexes.add(entry.index);
+    }
+
+    if (MAX_TOOL_CALLS > 0 && msg.tool_calls.length > MAX_TOOL_CALLS) {
+      for (const entry of indexedToolCalls) {
+        if (entry.index < MAX_TOOL_CALLS || !entry.isArtifact || selectedIndexes.has(entry.index)) {
+          continue;
+        }
+        if (selectedIndexes.size < MAX_TOOL_CALLS) {
+          selectedIndexes.add(entry.index);
+          continue;
+        }
+
+        const removableIndex = [...selectedIndexes]
+          .sort((a, b) => b - a)
+          .find((index) => !indexedToolCalls[index]?.isArtifact);
+
+        if (removableIndex === undefined) {
+          continue;
+        }
+
+        selectedIndexes.delete(removableIndex);
+        selectedIndexes.add(entry.index);
+      }
+    }
+
+    const selectedToolCalls =
+      MAX_TOOL_CALLS <= 0
+        ? indexedToolCalls.map((entry) => entry.toolCall)
+        : [...selectedIndexes]
+            .sort((a, b) => a - b)
+            .map((index) => indexedToolCalls[index]?.toolCall)
+            .filter((toolCall): toolCall is NonNullable<typeof toolCall> => !!toolCall);
+
+    const sanitizedToolCalls = selectedToolCalls.map((tc) => {
       const sanitized = { ...tc };
 
       if (tc.result !== undefined) {
@@ -830,8 +887,13 @@ function sanitizeSessionMessages(messages: SessionMessageView[]): SessionMessage
     return {
       ...msg,
       tool_calls: sanitizedToolCalls,
+      _tool_calls_total_count: msg.tool_calls.length,
+      _tool_calls_hidden_count:
+        MAX_TOOL_CALLS > 0 && msg.tool_calls.length > sanitizedToolCalls.length
+          ? msg.tool_calls.length - sanitizedToolCalls.length
+          : 0,
       _truncated:
-        msg.tool_calls.length > MAX_TOOL_CALLS
+        MAX_TOOL_CALLS > 0 && msg.tool_calls.length > MAX_TOOL_CALLS
           ? `Showing ${MAX_TOOL_CALLS} of ${msg.tool_calls.length} tool calls`
           : undefined,
     };
@@ -1326,6 +1388,7 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/config": () => ({
     ...config.getAll(),
     dangerous_tool_policy: config.getDangerousToolPolicy(),
+    tool_approval_mode: config.getToolApprovalMode(),
     web_tool_url_policy: config.getWebToolUrlPolicy(),
   }),
   "PUT /api/config": (body) => {
@@ -1333,6 +1396,10 @@ const routes: Record<string, RouteHandler> = {
     for (const [key, value] of Object.entries(data)) {
       if (key === "dangerous_tool_policy") {
         config.setDangerousToolPolicy(value);
+        continue;
+      }
+      if (key === "tool_approval_mode") {
+        config.setToolApprovalMode(value);
         continue;
       }
       if (key === "web_tool_url_policy") {
@@ -2970,9 +3037,15 @@ const routes: Record<string, RouteHandler> = {
     const session = await getSession(params!.sessionId);
     if (!session) return { error: "Session not found" };
     const messages = await getSessionMessages(params!.sessionId);
+    const includeFullToolCalls =
+      params?.includeFullToolCalls === "1" ||
+      params?.includeFullToolCalls === "true" ||
+      params?.includeFullToolCalls === "yes";
 
     const MAX_CONTENT_SIZE = 10000; // 10KB per message max
-    const sanitizedMessages = sanitizeSessionMessages(messages).map((m) => {
+    const sanitizedMessages = sanitizeSessionMessages(messages, {
+      maxToolCalls: includeFullToolCalls ? 0 : 20,
+    }).map((m) => {
       const truncatedContent =
         typeof m.content === "string" && m.content.length > MAX_CONTENT_SIZE
           ? m.content.slice(0, MAX_CONTENT_SIZE) +
