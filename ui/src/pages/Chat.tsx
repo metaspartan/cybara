@@ -1017,7 +1017,7 @@ function LiveActivityTimeline({
         <span>{statusLabel}</span>
       </div>
       {recentActivities.length > 0 ? (
-        <div className="space-y-1 max-h-56 overflow-y-auto pr-1">
+        <div className="space-y-1">
           {recentActivities.map((activity) => (
             <div
               key={activity.id}
@@ -1065,7 +1065,7 @@ function ProcessActivityList({ activities }: { activities: LiveActivityItem[] })
   const recentActivities = activities.slice(-20);
 
   return (
-    <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+    <div className="space-y-1">
       {recentActivities.map((activity) => (
         <div
           key={activity.id}
@@ -3465,7 +3465,7 @@ export function Chat() {
                     <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
                       <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
                     </div>
-                    <div className="max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] bg-white/[0.03] border border-white/5 rounded-xl px-4 py-3">
+                    <div className="max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] px-0.5 py-0.5">
                       <LiveActivityTimeline status={timelineStatus} activities={liveActivities} />
                     </div>
                   </div>
