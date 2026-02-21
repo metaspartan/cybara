@@ -51,7 +51,7 @@ describe("database JSON serialization", () => {
       status: (stored.status as "running" | "stopped" | "error") || "stopped",
       memory_enabled: stored.memory_enabled === true || stored.memory_enabled === 1,
       fallback_provider_id: stored.fallback_provider_id as string | undefined,
-    } as any);
+    } as Parameters<typeof tables.agents.update>[1]);
 
     const after = db.query("SELECT tools, config FROM agents WHERE id = ?").get(id) as
       | { tools: string; config: string }

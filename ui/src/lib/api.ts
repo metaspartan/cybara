@@ -774,6 +774,27 @@ export const chatApi = {
       updated_at: string;
       messagesList: ChatMessage[];
     }>("/sessions/" + id),
+  revertSession: (
+    id: string,
+    payload: {
+      messageIndex?: number;
+      messageRole?: ChatMessage["role"];
+      messageContent?: string;
+      messageTimestamp?: string;
+    }
+  ) =>
+    fetchApi<{
+      success: boolean;
+      sessionId: string;
+      keptCount: number;
+      removedCount: number;
+      removedFromIndex: number;
+      messagesList: ChatMessage[];
+      error?: string;
+    }>("/sessions/" + id + "/revert", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   deleteSession: (id: string) => fetchApi<void>("/sessions/" + id, { method: "DELETE" }),
 };
 

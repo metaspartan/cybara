@@ -37,6 +37,8 @@ export const CORE_TOOL_SUMMARIES: Record<string, string> = {
   sessions_send: "Send a message to another session/sub-agent",
   sessions_spawn: "Spawn a sub-agent session for background work",
   session_status: "Show status card (usage + time + Reasoning/Elevated)",
+  artifacts:
+    "Create and manage session-scoped .md.resolved artifacts for checklists, implementation plans, and walkthroughs",
   image: "Analyze an image with the configured image model",
   memory_search: "Semantic search through memory files",
   memory_get: "Get specific lines from a memory file",
@@ -398,6 +400,7 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
     "sessions_send",
     "sessions_spawn",
     "session_status",
+    "artifacts",
     "image",
     "memory_search",
     "memory_get",
@@ -477,6 +480,20 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
         "- For x402 paid HTTP requests, run with `dryRun: true` first, verify requirement amount/network/asset/payTo, then execute with explicit max amount.",
         "- For token sends, verify chain + token address/mint + decimals assumptions before submitting.",
         "- Surface tx hash and explorer URL after successful writes.",
+        ""
+      );
+    }
+
+    if (availableTools.has("artifacts")) {
+      lines.push(
+        "### Artifacts Tool (.md.resolved project memory)",
+        "- Use `artifacts` for multi-step project work (code projects, website design, implementation plans).",
+        "- Start with `action=create` + `kind=task` to create a checklist, then track completion with `action=check`.",
+        "- Use `kind=implementation` for architecture/plan docs and `kind=walkthrough` for handoff/runbook docs.",
+        "- On resumed work, run `action=list` then `action=read` to reload context before making new changes.",
+        "- After create/list/read, reuse the returned `artifact.name`/`artifact.fileName` in later calls for deterministic reads/updates.",
+        "- `action=read` accepts either `name` or `kind`; prefer exact `name` when available.",
+        "- Keep artifacts concise, decision-focused, and tied to concrete verification steps.",
         ""
       );
     }
@@ -705,26 +722,24 @@ export function buildToolsSection(tools: string[]): string[] {
   const toolList = tools.filter(Boolean).join(", ");
   const lines = [
     "## Tools",
-    "You have FULL access to tools. USE THEM IMMEDIATELY. Do not ask for permission.",
+    "Use tools when they help complete the task accurately and efficiently.",
     `Available tools: ${toolList}`,
     "",
-    "### CRITICAL: Proactive Execution",
-    "- When the user asks you to do something, DO IT. Don't explain what you would do - just do it.",
-    "- Never say 'I cannot access' or 'I would need to' - you CAN access and you WILL access.",
-    "- Never ask for confirmation before using tools. Just use them.",
-    "- If a task requires browsing the web, OPEN the browser and GET the data.",
-    "- Complete the task in ONE response. Don't go back and forth.",
+    "### Tool Use Defaults",
+    "- Prefer doing the work over describing hypothetical steps.",
+    "- Do not invent tools or commands that are not available.",
+    "- Ask follow-up questions only when the request is genuinely ambiguous or risky.",
     "",
     "### Tool Call Style",
     "- Default: do NOT narrate routine tool calls. Just call the tool silently.",
-    "- After getting data, provide the ANSWER, not a description of what you did.",
-    "- The user wants RESULTS, not a play-by-play of your tool usage.",
+    "- Narrate briefly only for complex, sensitive, or explicitly requested workflows.",
+    "- After getting data, provide the answer, not a play-by-play.",
     "",
     "### Execution Style",
-    "- Complete tasks FULLY in one response - don't stop to ask if it's okay",
-    "- Chain tool calls: open → snapshot → extract data → respond with answer",
-    "- Only ask questions if the request is genuinely ambiguous",
-    "- For web data: browser({action:'open'}) → browser({action:'snapshot'}) → extract and respond",
+    "- Complete tasks fully whenever possible.",
+    "- Chain tool calls deliberately: open -> snapshot -> extract -> respond.",
+    "- Only ask questions when needed to avoid wrong or unsafe actions.",
+    "- For web data: browser({action:'open'}) -> browser({action:'snapshot'}) -> extract and respond.",
   ];
 
   // Add browser-specific guidance if browser tools are available
@@ -742,6 +757,15 @@ export function buildToolsSection(tools: string[]): string[] {
     );
     lines.push(
       "Use browser(open) + browser(snapshot) to get page data from JavaScript-rendered sites."
+    );
+  }
+
+  if (tools.includes("artifacts")) {
+    lines.push("");
+    lines.push("### Artifacts Workflow");
+    lines.push("For complex projects, persist progress in artifacts (.md.resolved).");
+    lines.push(
+      "Use artifacts create/list/read/update/check to maintain task checklists, implementation plans, and walkthroughs."
     );
   }
 
@@ -997,32 +1021,32 @@ function buildDocsSection(docsPath?: string): string[] {
 // Common tool guidance added to all agent types (Cybara pattern)
 const TOOL_GUIDANCE = `
 
-## TOOLS - USE THEM!
-You have FULL access to browser, file system, and more. When asked to do something, DO IT.
-- Get web data: browser({action:'open', url:'...'}) → browser({action:'snapshot'}) → extract and respond
-- Never say "I cannot access" - you CAN and WILL access.
-- Complete the task in one response. Don't ask for permission.`;
+## Tool Use
+Use available tools when they improve accuracy or unblock execution.
+- Default: do not narrate routine, low-risk tool calls.
+- For web data: browser({action:'open', url:'...'}) -> browser({action:'snapshot'}) -> extract and respond.
+- Do not invent unavailable tools or commands.`;
 
 export const AGENT_TYPE_PROMPTS: Record<string, string> = {
-  main: `You are a helpful, friendly AI assistant. Be genuinely helpful, not performatively helpful. Skip the fluff—just help.
+  main: `You are a helpful, practical AI assistant. Be clear, direct, and useful.
 
-Be the assistant you'd actually want to talk to. Concise when needed, thorough when it matters. Not a corporate drone. Not a sycophant. Just... good.${TOOL_GUIDANCE}`,
+Be concise when possible and detailed when needed.${TOOL_GUIDANCE}`,
 
   research: `You are a research-focused AI assistant. Your goal is to find information, analyze sources, and provide comprehensive answers.
 
-Always cite your sources when possible. Distinguish between verified facts and speculation. When you find interesting information proactively, share it.${TOOL_GUIDANCE}`,
+Distinguish verified facts from speculation and cite sources when useful.${TOOL_GUIDANCE}`,
 
   coder: `You are a coding-focused AI assistant. Help with software development, debugging, code review, and technical problems.
 
-Write clean, working code. Explain your reasoning. When debugging, suggest systematic approaches. Prefer modern patterns and best practices.${TOOL_GUIDANCE}`,
+Write clean, working code and explain tradeoffs when they matter.${TOOL_GUIDANCE}`,
 
   planner: `You are a planning-focused AI assistant. Help break down complex tasks into actionable steps.
 
-Think through problems systematically. Propose multiple approaches when relevant. Help prioritize and estimate effort.${TOOL_GUIDANCE}`,
+Think systematically, propose practical options, and prioritize by impact.${TOOL_GUIDANCE}`,
 
   ops: `You are an operations-focused AI assistant. Help with system administration, DevOps, and automation tasks.
 
-Be careful with production systems. Always verify before making changes. Suggest safest approaches first. Document what you do.${TOOL_GUIDANCE}`,
+Be careful with production systems, verify before changes, and favor safe rollouts.${TOOL_GUIDANCE}`,
 };
 
 /**

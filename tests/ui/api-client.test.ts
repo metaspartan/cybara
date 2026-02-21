@@ -184,9 +184,15 @@ describe("UI API client wiring", () => {
     await chatApi.send("hi", "agent-1", "session-1");
     await chatApi.getSessions();
     await chatApi.getSession("session-1");
+    await chatApi.revertSession("session-1", {
+      messageIndex: 2,
+      messageRole: "user",
+      messageContent: "hi",
+      messageTimestamp: "2026-02-21T00:00:00.000Z",
+    });
     await chatApi.deleteSession("session-1");
 
-    expect(calls).toHaveLength(4);
+    expect(calls).toHaveLength(5);
     expect(calls[0].url).toBe("/api/chat");
     expect(calls[0].init?.method).toBe("POST");
     expect(JSON.parse(String(calls[0].init?.body))).toEqual({
@@ -201,8 +207,17 @@ describe("UI API client wiring", () => {
     expect(calls[2].url).toBe("/api/sessions/session-1");
     expect(calls[2].init?.method).toBeUndefined();
 
-    expect(calls[3].url).toBe("/api/sessions/session-1");
-    expect(calls[3].init?.method).toBe("DELETE");
+    expect(calls[3].url).toBe("/api/sessions/session-1/revert");
+    expect(calls[3].init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[3].init?.body))).toEqual({
+      messageIndex: 2,
+      messageRole: "user",
+      messageContent: "hi",
+      messageTimestamp: "2026-02-21T00:00:00.000Z",
+    });
+
+    expect(calls[4].url).toBe("/api/sessions/session-1");
+    expect(calls[4].init?.method).toBe("DELETE");
   });
 
   test("logsApi activity/stats attach query params", async () => {

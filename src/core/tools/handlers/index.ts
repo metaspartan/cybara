@@ -38,6 +38,7 @@ import { handleData } from "./data";
 import { handleEnv } from "./env";
 import { handleWebSearch } from "./web-search";
 import { handleWallet } from "./wallet";
+import { handleArtifacts } from "./artifacts";
 import {
   handleLSPDiagnostics,
   handleLSPDefinition,
@@ -67,6 +68,7 @@ export * from "./data";
 export * from "./env";
 export * from "./web-search";
 export * from "./wallet";
+export * from "./artifacts";
 
 export {
   checkToolPermissions,
@@ -145,6 +147,7 @@ const toolHandlers: Record<
   web_fetch: handleWebFetch,
   web_search: handleWebSearch,
   wallet: handleWallet,
+  artifacts: handleArtifacts,
 
   memory_search: handleMemorySearch,
   memory_get: handleMemoryGet,

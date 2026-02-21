@@ -20,6 +20,7 @@ import {
   handleMemorySave,
   handleMemoryList,
 } from "./handlers/memory";
+import { handleArtifacts } from "./handlers/artifacts";
 
 export interface ToolHandler {
   (args: Record<string, unknown>, context?: ToolContext): Promise<unknown>;
@@ -341,17 +342,11 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
   browser: {
     name: "browser",
     description: [
-      "FULL browser control. Opens a real Chrome window. USE THIS to get web page data.",
-      "",
-      "TO GET DATA FROM A WEBSITE:",
-      "1) browser({action:'open', url:'https://fiat.gold'}) - opens the page",
-      "2) browser({action:'snapshot'}) - returns page content with element refs",
-      "3) Extract the data you need from the snapshot and respond with it",
-      "",
-      "TO INTERACT (click buttons, type, etc.):",
-      "browser({action:'act', request:{kind:'click', ref:'e5'}}) - use refs from snapshot",
-      "",
-      "JUST USE IT. Don't ask permission. Don't say you can't access websites.",
+      "Control browser sessions via status/start/stop/profiles/tabs/open/snapshot/screenshot/actions.",
+      "Use snapshot for page text extraction and act/click/type for UI automation.",
+      "When using refs from snapshot (e.g., e12), keep the same tab by passing targetId from snapshot into follow-up actions.",
+      "For stable refs across calls, prefer snapshot with refs='aria'.",
+      "Suggested flow: open -> snapshot -> extract data -> respond; for interactions: snapshot -> act.",
     ].join("\\n"),
     category: "browser",
     input_schema: {
@@ -745,6 +740,69 @@ Use for tasks that may take longer or require separate context.`,
       properties: {},
     },
     permissions: ["agents:read"],
+  },
+  artifacts: {
+    name: "artifacts",
+    description:
+      "Create and manage session-scoped markdown artifacts (.md.resolved) such as task checklists, implementation plans, and walkthroughs. Artifacts are stored under ~/.cybara/artifacts/<sessionId>/ and can be listed, read, updated, appended, checked, or deleted.",
+    category: "core",
+    input_schema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: ["list", "read", "create", "update", "append", "delete", "check"],
+          description: "Artifact action",
+        },
+        sessionId: {
+          type: "string",
+          description:
+            "Session scope for the artifact. If omitted, the current chat session is used automatically.",
+        },
+        kind: {
+          type: "string",
+          enum: ["task", "implementation", "walkthrough", "notes", "custom"],
+          description: "Artifact kind for create action",
+        },
+        name: {
+          type: "string",
+          description:
+            "Artifact name or file stem (for example: task, implementation, walkthrough, release-plan)",
+        },
+        title: {
+          type: "string",
+          description: "Optional markdown heading title for create action",
+        },
+        content: {
+          type: "string",
+          description: "Artifact content for create/update/append actions",
+        },
+        items: {
+          type: "array",
+          items: { type: "string" },
+          description: "Checklist items for create action when kind is task",
+        },
+        overwrite: {
+          type: "boolean",
+          description:
+            "When true, create action overwrites an existing artifact with the same name",
+        },
+        maxChars: {
+          type: "number",
+          description: "Maximum characters to return for read action",
+        },
+        item: {
+          type: "number",
+          description: "Checklist item number (1-based) for check action",
+        },
+        checked: {
+          type: "boolean",
+          description: "Checklist state for check action (default true)",
+        },
+      },
+      required: ["action"],
+    },
+    permissions: ["fs:read", "fs:write"],
   },
   wallet: {
     name: "wallet",
@@ -1738,6 +1796,7 @@ _toolHandlers.set("memory_search", handleMemorySearch);
 _toolHandlers.set("memory_get", handleMemoryGet);
 _toolHandlers.set("memory_save", handleMemorySave);
 _toolHandlers.set("memory_list", handleMemoryList);
+_toolHandlers.set("artifacts", handleArtifacts);
 
 _toolHandlers.set("clipboard", handleClipboard);
 _toolHandlers.set("http", handleHttp);

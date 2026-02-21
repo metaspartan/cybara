@@ -9,6 +9,12 @@ interface ChatState {
   isLoading: boolean;
 }
 
+interface RevertMessageInput {
+  index?: number;
+  content?: string;
+  timestamp?: string;
+}
+
 export function useChat(agentId?: string) {
   const [state, setState] = useState<ChatState>({
     messages: [],
@@ -60,6 +66,41 @@ export function useChat(agentId?: string) {
     });
   }, []);
 
+  const revertToMessage = async (target: RevertMessageInput) => {
+    const activeSessionId = state.sessionId;
+    if (!activeSessionId) {
+      throw new Error("No active session to revert");
+    }
+
+    setState((prev) => ({ ...prev, isLoading: true }));
+    try {
+      const response = await chatApi.revertSession(activeSessionId, {
+        messageIndex: target.index,
+        messageRole: "user",
+        messageContent: target.content,
+        messageTimestamp: target.timestamp,
+      });
+      if (!response.success || !response.data || response.data.success === false) {
+        const message =
+          (response.data && "error" in response.data ? response.data.error : null) ||
+          response.error ||
+          "Failed to revert session";
+        throw new Error(message || "Failed to revert session");
+      }
+
+      setState((prev) => ({
+        ...prev,
+        messages: response.data?.messagesList || [],
+        isLoading: false,
+      }));
+
+      return response.data;
+    } catch (error) {
+      setState((prev) => ({ ...prev, isLoading: false }));
+      throw error;
+    }
+  };
+
   return {
     messages: state.messages,
     sessionId: state.sessionId,
@@ -67,6 +108,7 @@ export function useChat(agentId?: string) {
     sendMessage,
     clearChat,
     loadSession,
+    revertToMessage,
   };
 }
 

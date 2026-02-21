@@ -6,11 +6,89 @@ import { trackMetric } from "../../metrics";
 
 const workspace = homeDir;
 
+type FileChangeType = "created" | "updated" | "deleted";
+
+interface FileChangeMeta {
+  path: string;
+  type: FileChangeType;
+  addedLines: number;
+  removedLines: number;
+  diff: string;
+}
+
 function expandTilde(path: string): string {
   if (path.startsWith("~")) {
     return path.replace(/^~/, homeDir);
   }
   return path;
+}
+
+function splitLines(content: string): string[] {
+  if (!content) return [];
+  return content.split(/\r?\n/);
+}
+
+function computeLineDelta(
+  before: string,
+  after: string
+): { addedLines: number; removedLines: number } {
+  const beforeLines = splitLines(before);
+  const afterLines = splitLines(after);
+
+  if (beforeLines.length === 0) {
+    return { addedLines: afterLines.length, removedLines: 0 };
+  }
+  if (afterLines.length === 0) {
+    return { addedLines: 0, removedLines: beforeLines.length };
+  }
+
+  const matrixBudget = beforeLines.length * afterLines.length;
+  if (matrixBudget > 160_000) {
+    const delta = afterLines.length - beforeLines.length;
+    return {
+      addedLines: Math.max(0, delta),
+      removedLines: Math.max(0, -delta),
+    };
+  }
+
+  let prev = new Array<number>(afterLines.length + 1).fill(0);
+  for (let i = 1; i <= beforeLines.length; i += 1) {
+    const next = new Array<number>(afterLines.length + 1).fill(0);
+    for (let j = 1; j <= afterLines.length; j += 1) {
+      if (beforeLines[i - 1] === afterLines[j - 1]) {
+        next[j] = prev[j - 1] + 1;
+      } else {
+        next[j] = Math.max(prev[j], next[j - 1]);
+      }
+    }
+    prev = next;
+  }
+
+  const lcs = prev[afterLines.length] || 0;
+  return {
+    addedLines: Math.max(0, afterLines.length - lcs),
+    removedLines: Math.max(0, beforeLines.length - lcs),
+  };
+}
+
+function truncateDiff(diff: string, maxLines = 220): string {
+  const lines = diff.split(/\r?\n/);
+  if (lines.length <= maxLines) return diff;
+  const omitted = lines.length - maxLines;
+  return [...lines.slice(0, maxLines), `... [diff truncated, ${omitted} lines omitted]`].join("\n");
+}
+
+function buildUnifiedDiff(path: string, before: string, after: string): string {
+  const beforeLines = splitLines(before);
+  const afterLines = splitLines(after);
+  const header = [
+    `--- a/${path}`,
+    `+++ b/${path}`,
+    `@@ -1,${beforeLines.length} +1,${afterLines.length} @@`,
+  ];
+  const removed = beforeLines.map((line) => `-${line}`);
+  const added = afterLines.map((line) => `+${line}`);
+  return truncateDiff([...header, ...removed, ...added].join("\n"));
 }
 
 export async function handleRead(
@@ -45,9 +123,11 @@ export async function handleRead(
 
 export async function handleWrite(
   args: Record<string, unknown>
-): Promise<{ success: boolean; path: string }> {
+): Promise<{ success: boolean; path: string; change: FileChangeMeta }> {
   const path = expandTilde(args.path as string);
   const content = args.content as string;
+  const existed = existsSync(path);
+  const before = existed ? readFileSync(path, "utf-8") : "";
 
   const dir = dirname(path);
   if (!existsSync(dir)) {
@@ -55,16 +135,27 @@ export async function handleWrite(
   }
 
   writeFileSync(path, content, "utf-8");
+  const { addedLines, removedLines } = computeLineDelta(before, content);
 
   trackMetric("file_operation", "write", 1, { path, bytes: content.length });
   trackMetric("file_write", path, 1);
 
-  return { success: true, path };
+  return {
+    success: true,
+    path,
+    change: {
+      path,
+      type: existed ? "updated" : "created",
+      addedLines,
+      removedLines,
+      diff: buildUnifiedDiff(path, before, content),
+    },
+  };
 }
 
 export async function handleEdit(
   args: Record<string, unknown>
-): Promise<{ success: boolean; path: string }> {
+): Promise<{ success: boolean; path: string; change: FileChangeMeta }> {
   const path = expandTilde(args.path as string);
   const oldText = args.oldText as string;
   const newText = args.newText as string;
@@ -80,11 +171,22 @@ export async function handleEdit(
 
   const newContent = content.replace(oldText, newText);
   writeFileSync(path, newContent, "utf-8");
+  const { addedLines, removedLines } = computeLineDelta(content, newContent);
 
   trackMetric("file_operation", "edit", 1, { path });
   trackMetric("file_edit", path, 1);
 
-  return { success: true, path };
+  return {
+    success: true,
+    path,
+    change: {
+      path,
+      type: "updated",
+      addedLines,
+      removedLines,
+      diff: buildUnifiedDiff(path, content, newContent),
+    },
+  };
 }
 
 export async function handleFileSearch(
@@ -348,6 +450,12 @@ export async function handleApplyPatch(args: Record<string, unknown>): Promise<{
   success: boolean;
   applied: Array<{ path: string; hunks: number }>;
   failed: Array<{ path: string; error: string }>;
+  changes: FileChangeMeta[];
+  summary: {
+    filesChanged: number;
+    addedLines: number;
+    removedLines: number;
+  };
 }> {
   const patch = args.patch as string;
   const dryRun = (args.dryRun as boolean) || false;
@@ -358,6 +466,7 @@ export async function handleApplyPatch(args: Record<string, unknown>): Promise<{
 
   const applied: Array<{ path: string; hunks: number }> = [];
   const failed: Array<{ path: string; error: string }> = [];
+  const changes: FileChangeMeta[] = [];
 
   const filePatches = parsePatch(patch);
 
@@ -366,6 +475,7 @@ export async function handleApplyPatch(args: Record<string, unknown>): Promise<{
       const result = await applyFilePatch(filePatch, dryRun);
       if (result.success) {
         applied.push({ path: filePatch.path, hunks: filePatch.hunks.length });
+        changes.push(buildPatchChangeMeta(filePatch));
       } else {
         failed.push({ path: filePatch.path, error: result.error || "Unknown error" });
       }
@@ -380,7 +490,13 @@ export async function handleApplyPatch(args: Record<string, unknown>): Promise<{
     dryRun,
   });
 
-  return { success: failed.length === 0, applied, failed };
+  const summary = {
+    filesChanged: changes.length,
+    addedLines: changes.reduce((sum, change) => sum + change.addedLines, 0),
+    removedLines: changes.reduce((sum, change) => sum + change.removedLines, 0),
+  };
+
+  return { success: failed.length === 0, applied, failed, changes, summary };
 }
 
 interface PatchHunk {
@@ -397,6 +513,38 @@ interface FilePatch {
   isNew: boolean;
   isDelete: boolean;
   hunks: PatchHunk[];
+}
+
+function buildPatchChangeMeta(filePatch: FilePatch): FileChangeMeta {
+  let addedLines = 0;
+  let removedLines = 0;
+  const diffLines: string[] = [];
+  const oldPath = filePatch.oldPath || filePatch.path;
+  const newPath = filePatch.isDelete ? "/dev/null" : filePatch.path;
+  const oldPathForDiff = filePatch.isNew ? "/dev/null" : oldPath;
+
+  diffLines.push(`--- a/${oldPathForDiff}`);
+  diffLines.push(`+++ b/${newPath}`);
+
+  for (const hunk of filePatch.hunks) {
+    diffLines.push(`@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`);
+    for (const line of hunk.lines) {
+      if (line.startsWith("+")) {
+        addedLines += 1;
+      } else if (line.startsWith("-")) {
+        removedLines += 1;
+      }
+      diffLines.push(line);
+    }
+  }
+
+  return {
+    path: filePatch.path,
+    type: filePatch.isNew ? "created" : filePatch.isDelete ? "deleted" : "updated",
+    addedLines,
+    removedLines,
+    diff: truncateDiff(diffLines.join("\n")),
+  };
 }
 
 function parsePatch(patch: string): FilePatch[] {

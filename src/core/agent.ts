@@ -165,7 +165,6 @@ const OPENAI_CODEX_JWT_CLAIM_PATH = "https://api.openai.com/auth";
 const OPENAI_CODEX_OAUTH_MODEL_PREFIXES = ["gpt-5.3-codex", "gpt-5.2-codex"] as const;
 const DEFAULT_MODEL_MAX_OUTPUT_TOKENS = 8192;
 const MAX_AGENTIC_CONFIGURED_ITERATIONS = 10000;
-const DEFAULT_AGENTIC_MAX_RUNTIME_MS = 10 * 60 * 1000;
 const MAX_AGENTIC_MAX_RUNTIME_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_TOOL_LOOP_WARNING_THRESHOLD = 10;
 const DEFAULT_TOOL_LOOP_CRITICAL_THRESHOLD = 20;
@@ -174,7 +173,7 @@ const LOOP_WARNING_BUCKET_SIZE = 10;
 
 type AgenticLoopPolicy = {
   maxIterations?: number;
-  maxRuntimeMs: number;
+  maxRuntimeMs?: number;
   loopDetectionEnabled: boolean;
   warningThreshold: number;
   criticalThreshold: number;
@@ -760,6 +759,53 @@ function formatToolActivityDetail(
       : phase === "result"
         ? "Browser action complete"
         : "Browser action failed";
+  }
+
+  if (key === "artifacts" || key === "artifact") {
+    const action = (readStringArg(args, ["action"]) || "list").toLowerCase();
+    const artifactNameRaw =
+      readStringArg(args, ["name", "artifact", "artifactName", "fileName"]) ||
+      readStringArg(args, ["kind", "type"]) ||
+      "artifact";
+    const artifactName = artifactNameRaw.endsWith(".md.resolved")
+      ? artifactNameRaw
+      : `${artifactNameRaw}.md.resolved`;
+
+    if (action === "list") {
+      return phase === "start"
+        ? "Listing session artifacts..."
+        : phase === "result"
+          ? "Listed session artifacts"
+          : "Artifact listing failed";
+    }
+    if (action === "create") {
+      return phase === "start"
+        ? `Creating ${artifactName}`
+        : phase === "result"
+          ? `Created ${artifactName}`
+          : `Artifact create failed for ${artifactName}`;
+    }
+    if (action === "read") {
+      return phase === "start"
+        ? `Reading ${artifactName}`
+        : phase === "result"
+          ? `Read ${artifactName}`
+          : `Artifact read failed for ${artifactName}`;
+    }
+    if (action === "update" || action === "append" || action === "check") {
+      return phase === "start"
+        ? `Updating ${artifactName}`
+        : phase === "result"
+          ? `Updated ${artifactName}`
+          : `Artifact update failed for ${artifactName}`;
+    }
+    if (action === "delete") {
+      return phase === "start"
+        ? `Deleting ${artifactName}`
+        : phase === "result"
+          ? `Deleted ${artifactName}`
+          : `Artifact delete failed for ${artifactName}`;
+    }
   }
 
   if (phase === "start") return `${toolName} running...`;
@@ -1483,8 +1529,6 @@ class AgentManager {
     const modelParamIterations = this.parsePositiveInt(
       modelParams.max_tool_iterations ??
         modelParams.maxToolIterations ??
-        modelParams.max_tool_calls ??
-        modelParams.maxToolCalls ??
         modelParams.tool_loop_iterations ??
         modelParams.toolLoopIterations ??
         modelParams.max_iterations ??
@@ -1493,8 +1537,6 @@ class AgentManager {
     const configIterations = this.parsePositiveInt(
       parsedConfig.max_tool_iterations ??
         parsedConfig.maxToolIterations ??
-        parsedConfig.max_tool_calls ??
-        parsedConfig.maxToolCalls ??
         parsedConfig.tool_loop_iterations ??
         parsedConfig.toolLoopIterations ??
         parsedConfig.max_agentic_iterations ??
@@ -1605,15 +1647,15 @@ class AgentManager {
     const maxIterationsRaw = modelParamIterations ?? configIterations ?? envIterations;
     const maxIterations = maxIterationsRaw ? clampIterations(maxIterationsRaw) : undefined;
 
-    const maxRuntimeMs = clampRuntimeMs(
+    const maxRuntimeMsRaw =
       modelRuntimeMs ??
-        (modelRuntimeSeconds ? modelRuntimeSeconds * 1000 : undefined) ??
-        configRuntimeMs ??
-        (configRuntimeSeconds ? configRuntimeSeconds * 1000 : undefined) ??
-        envRuntimeMs ??
-        (envRuntimeSeconds ? envRuntimeSeconds * 1000 : undefined) ??
-        DEFAULT_AGENTIC_MAX_RUNTIME_MS
-    );
+      (modelRuntimeSeconds ? modelRuntimeSeconds * 1000 : undefined) ??
+      configRuntimeMs ??
+      (configRuntimeSeconds ? configRuntimeSeconds * 1000 : undefined) ??
+      envRuntimeMs ??
+      (envRuntimeSeconds ? envRuntimeSeconds * 1000 : undefined);
+    const maxRuntimeMs =
+      typeof maxRuntimeMsRaw === "number" ? clampRuntimeMs(maxRuntimeMsRaw) : undefined;
 
     return {
       maxIterations,
@@ -1710,7 +1752,10 @@ class AgentManager {
     if (typeof loopPolicy.maxIterations === "number" && iterations >= loopPolicy.maxIterations) {
       return "maxIterations";
     }
-    if (Date.now() - loopStartedAt >= loopPolicy.maxRuntimeMs) {
+    if (
+      typeof loopPolicy.maxRuntimeMs === "number" &&
+      Date.now() - loopStartedAt >= loopPolicy.maxRuntimeMs
+    ) {
       return "runtime";
     }
     return undefined;
@@ -1744,11 +1789,13 @@ class AgentManager {
 
     console.log(
       `[Agent] ${providerLabel} agentic loop reached runtime limit (${this.formatRuntimeLimitLabel(
-        loopPolicy.maxRuntimeMs
+        loopPolicy.maxRuntimeMs ?? 0
       )})`
     );
     if (!finalContent.trim()) {
-      return `I reached the tool-loop runtime limit (${this.formatRuntimeLimitLabel(loopPolicy.maxRuntimeMs)}) for this turn. Ask me to continue and I'll resume from here.`;
+      return `I reached the tool-loop runtime limit (${this.formatRuntimeLimitLabel(
+        loopPolicy.maxRuntimeMs ?? 0
+      )}) for this turn. Ask me to continue and I'll resume from here.`;
     }
     return finalContent;
   }

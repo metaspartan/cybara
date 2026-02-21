@@ -26,6 +26,8 @@ import {
   AlertTriangle,
   Copy,
   Check,
+  RotateCcw,
+  FileText,
 } from "lucide-react";
 import { Highlight, themes } from "prism-react-renderer";
 import ReactMarkdown from "react-markdown";
@@ -59,6 +61,13 @@ interface ToolCall {
   status: "pending" | "executing" | "completed" | "failed" | "success" | "error";
 }
 
+interface ArtifactSummaryView {
+  sessionId: string;
+  name: string;
+  fileName: string;
+  title: string;
+}
+
 interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
@@ -70,6 +79,26 @@ interface ChatMessage {
     task: string;
     status: string;
   }[];
+}
+
+interface FileChangeItem {
+  path: string;
+  type: "created" | "updated" | "deleted";
+  added: number;
+  removed: number;
+  diff?: string;
+}
+
+interface FileChangeSummary {
+  files: FileChangeItem[];
+  totalAdded: number;
+  totalRemoved: number;
+}
+
+interface RevertTarget {
+  index: number;
+  content: string;
+  timestamp?: string;
 }
 
 interface StatusStreamEvent {
@@ -243,9 +272,360 @@ function formatToolIntent(
     return "Browser action failed";
   }
 
+  if (key === "artifacts" || key === "artifact") {
+    const action = (readStringArg(args, ["action"]) || "list").toLowerCase();
+    const artifactNameRaw =
+      readStringArg(args, ["name", "artifact", "artifactName", "fileName"]) ||
+      readStringArg(args, ["kind", "type"]) ||
+      "artifact";
+    const artifactName = artifactNameRaw.endsWith(".md.resolved")
+      ? artifactNameRaw
+      : `${artifactNameRaw}.md.resolved`;
+
+    if (action === "list") {
+      if (phase === "start") return "Listing session artifacts...";
+      if (phase === "result") return "Listed session artifacts";
+      return "Artifact listing failed";
+    }
+    if (action === "create") {
+      if (phase === "start") return `Creating ${artifactName}`;
+      if (phase === "result") return `Created ${artifactName}`;
+      return `Artifact create failed for ${artifactName}`;
+    }
+    if (action === "read") {
+      if (phase === "start") return `Reading ${artifactName}`;
+      if (phase === "result") return `Read ${artifactName}`;
+      return `Artifact read failed for ${artifactName}`;
+    }
+    if (action === "delete") {
+      if (phase === "start") return `Deleting ${artifactName}`;
+      if (phase === "result") return `Deleted ${artifactName}`;
+      return `Artifact delete failed for ${artifactName}`;
+    }
+    if (phase === "start") return `Updating ${artifactName}`;
+    if (phase === "result") return `Updated ${artifactName}`;
+    return `Artifact update failed for ${artifactName}`;
+  }
+
   if (phase === "start") return `${toolName} running...`;
   if (phase === "result") return `${toolName} complete`;
   return `${toolName} failed`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeArtifactFileName(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  if (trimmed.endsWith(".md.resolved")) return trimmed;
+  return `${trimmed.replace(/\.md\.resolved$/i, "")}.md.resolved`;
+}
+
+function parseArtifactSummary(value: unknown): ArtifactSummaryView | null {
+  if (!isRecord(value)) return null;
+  const sessionId = typeof value.sessionId === "string" ? value.sessionId.trim() : "";
+  const name = typeof value.name === "string" ? value.name.trim() : "";
+  const fileNameRaw = typeof value.fileName === "string" ? value.fileName.trim() : "";
+  const fileName = normalizeArtifactFileName(fileNameRaw || name);
+  const title = typeof value.title === "string" ? value.title.trim() : "";
+  if (!sessionId || !name || !fileName) return null;
+  return {
+    sessionId,
+    name,
+    fileName,
+    title: title || fileName,
+  };
+}
+
+function parseArtifactSummaries(value: unknown): ArtifactSummaryView[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => parseArtifactSummary(entry))
+    .filter((entry): entry is ArtifactSummaryView => entry !== null);
+}
+
+function dedupeArtifactSummaries(summaries: ArtifactSummaryView[]): ArtifactSummaryView[] {
+  const seen = new Set<string>();
+  const deduped: ArtifactSummaryView[] = [];
+  for (const summary of summaries) {
+    const key = `${summary.sessionId}:${summary.fileName}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(summary);
+  }
+  return deduped;
+}
+
+function inferArtifactSummaries(tool: ToolCall, sessionId?: string | null): ArtifactSummaryView[] {
+  const result = isRecord(tool.result) ? tool.result : null;
+  const summaries: ArtifactSummaryView[] = [];
+  const fromResult = parseArtifactSummary(result?.artifact);
+  if (fromResult) {
+    summaries.push(fromResult);
+  }
+  summaries.push(...parseArtifactSummaries(result?.artifacts));
+  summaries.push(...parseArtifactSummaries(result?.availableArtifacts));
+
+  if (summaries.length === 0 && (tool.name === "artifacts" || tool.name === "artifact")) {
+    const args = tool.arguments || tool.args || {};
+    const nameCandidate =
+      readStringArg(args, ["name", "artifact", "artifactName", "fileName"]) ||
+      readStringArg(args, ["kind", "type"]);
+    const sessionCandidate =
+      (result && typeof result.sessionId === "string" ? result.sessionId : undefined) ||
+      readStringArg(args, ["sessionId"]) ||
+      (typeof sessionId === "string" ? sessionId : undefined);
+
+    if (nameCandidate && sessionCandidate) {
+      const fileName = normalizeArtifactFileName(nameCandidate);
+      const name = fileName.replace(/\.md\.resolved$/i, "");
+      summaries.push({
+        sessionId: sessionCandidate,
+        name,
+        fileName,
+        title: fileName,
+      });
+    }
+  }
+
+  return dedupeArtifactSummaries(summaries);
+}
+
+function countLines(content: string): number {
+  if (!content) return 0;
+  return content.split(/\r?\n/).length;
+}
+
+function truncateDiff(diff: string, maxLines = 220): string {
+  const lines = diff.split(/\r?\n/);
+  if (lines.length <= maxLines) return diff;
+  const omitted = lines.length - maxLines;
+  return [...lines.slice(0, maxLines), `... [diff truncated, ${omitted} lines omitted]`].join("\n");
+}
+
+function normalizeChangeType(raw: unknown): FileChangeItem["type"] {
+  const type = typeof raw === "string" ? raw.toLowerCase() : "";
+  if (type === "created" || type === "create" || type === "new") return "created";
+  if (type === "deleted" || type === "delete" || type === "remove") return "deleted";
+  return "updated";
+}
+
+function toFiniteNumber(raw: unknown): number {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string" && raw.trim()) {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+}
+
+function buildSimpleDiff(path: string, before: string, after: string): string {
+  const beforeLines = before ? before.split(/\r?\n/) : [];
+  const afterLines = after ? after.split(/\r?\n/) : [];
+  const header = [
+    `--- a/${path}`,
+    `+++ b/${path}`,
+    `@@ -1,${beforeLines.length} +1,${afterLines.length} @@`,
+  ];
+  const removed = beforeLines.map((line) => `-${line}`);
+  const added = afterLines.map((line) => `+${line}`);
+  return truncateDiff([...header, ...removed, ...added].join("\n"));
+}
+
+function parsePatchFileChanges(patch: string): FileChangeItem[] {
+  const changes: FileChangeItem[] = [];
+  const lines = patch.split(/\r?\n/);
+  let current: FileChangeItem | null = null;
+  let diffLines: string[] = [];
+
+  const pushCurrent = () => {
+    if (!current) return;
+    current.diff = truncateDiff(diffLines.join("\n"));
+    changes.push(current);
+    current = null;
+    diffLines = [];
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.startsWith("--- ")) {
+      pushCurrent();
+
+      const oldPathRaw = line.slice(4).trim();
+      const next = lines[index + 1] || "";
+      const newPathRaw = next.startsWith("+++ ") ? next.slice(4).trim() : oldPathRaw;
+      const oldPath = oldPathRaw.replace(/^[ab]\//, "");
+      const newPath = newPathRaw.replace(/^[ab]\//, "");
+      const type: FileChangeItem["type"] =
+        oldPathRaw === "/dev/null"
+          ? "created"
+          : newPathRaw === "/dev/null"
+            ? "deleted"
+            : "updated";
+      const path = type === "deleted" ? oldPath : newPath;
+      current = {
+        path,
+        type,
+        added: 0,
+        removed: 0,
+      };
+      diffLines.push(line);
+      if (next.startsWith("+++ ")) {
+        diffLines.push(next);
+        index += 1;
+      }
+      continue;
+    }
+
+    if (!current) continue;
+
+    if (line.startsWith("+") && !line.startsWith("+++")) {
+      current.added += 1;
+      diffLines.push(line);
+      continue;
+    }
+    if (line.startsWith("-") && !line.startsWith("---")) {
+      current.removed += 1;
+      diffLines.push(line);
+      continue;
+    }
+    if (line.startsWith("@@") || line.startsWith("diff --git ") || line.startsWith(" ")) {
+      diffLines.push(line);
+    }
+  }
+
+  pushCurrent();
+  return changes.filter((change) => !!change.path);
+}
+
+function parseChangeRecord(value: unknown): FileChangeItem | null {
+  if (!isRecord(value)) return null;
+  const path = typeof value.path === "string" ? value.path.trim() : "";
+  if (!path) return null;
+  const added =
+    toFiniteNumber(value.added) ||
+    toFiniteNumber(value.addedLines) ||
+    toFiniteNumber(value.plus) ||
+    0;
+  const removed =
+    toFiniteNumber(value.removed) ||
+    toFiniteNumber(value.removedLines) ||
+    toFiniteNumber(value.minus) ||
+    0;
+  const diff = typeof value.diff === "string" && value.diff.trim() ? truncateDiff(value.diff) : undefined;
+  return {
+    path,
+    type: normalizeChangeType(value.type || value.kind),
+    added: Math.max(0, Math.floor(added)),
+    removed: Math.max(0, Math.floor(removed)),
+    diff,
+  };
+}
+
+function extractToolFileChanges(tool: ToolCall): FileChangeItem[] {
+  const args = tool.arguments || tool.args || {};
+  const result = isRecord(tool.result) ? tool.result : null;
+  const toolName = tool.name.toLowerCase();
+  const parsedFromResult: FileChangeItem[] = [];
+
+  if (result && Array.isArray(result.changes)) {
+    for (const change of result.changes) {
+      const parsed = parseChangeRecord(change);
+      if (parsed) parsedFromResult.push(parsed);
+    }
+  }
+
+  if (result && isRecord(result.change)) {
+    const parsed = parseChangeRecord({
+      path:
+        (typeof result.path === "string" && result.path) ||
+        (typeof args.path === "string" && args.path) ||
+        "",
+      ...(result.change as Record<string, unknown>),
+    });
+    if (parsed) parsedFromResult.push(parsed);
+  }
+
+  if (parsedFromResult.length > 0) {
+    return parsedFromResult;
+  }
+
+  if (toolName === "apply_patch") {
+    const patch = typeof args.patch === "string" ? args.patch : "";
+    if (patch.trim()) {
+      return parsePatchFileChanges(patch);
+    }
+    return [];
+  }
+
+  if (toolName === "write") {
+    const path =
+      (typeof args.path === "string" && args.path) ||
+      (result && typeof result.path === "string" ? result.path : "");
+    const content = typeof args.content === "string" ? args.content : "";
+    if (!path || !content) return [];
+    return [
+      {
+        path,
+        type: "created",
+        added: countLines(content),
+        removed: 0,
+        diff: buildSimpleDiff(path, "", content),
+      },
+    ];
+  }
+
+  if (toolName === "edit") {
+    const path =
+      (typeof args.path === "string" && args.path) ||
+      (result && typeof result.path === "string" ? result.path : "");
+    const before = typeof args.oldText === "string" ? args.oldText : "";
+    const after = typeof args.newText === "string" ? args.newText : "";
+    if (!path || (!before && !after)) return [];
+    return [
+      {
+        path,
+        type: "updated",
+        added: countLines(after),
+        removed: countLines(before),
+        diff: buildSimpleDiff(path, before, after),
+      },
+    ];
+  }
+
+  return [];
+}
+
+function summarizeMessageFileChanges(toolCalls?: ToolCall[]): FileChangeSummary | null {
+  if (!Array.isArray(toolCalls) || toolCalls.length === 0) return null;
+
+  const byPath = new Map<string, FileChangeItem>();
+  for (const tool of toolCalls) {
+    const changes = extractToolFileChanges(tool);
+    for (const change of changes) {
+      if (!change.path) continue;
+      const existing = byPath.get(change.path);
+      if (!existing) {
+        byPath.set(change.path, { ...change });
+        continue;
+      }
+
+      existing.added += change.added;
+      existing.removed += change.removed;
+      if (change.diff) existing.diff = change.diff;
+      if (change.type === "deleted") existing.type = "deleted";
+      if (existing.type !== "deleted" && change.type === "updated") existing.type = "updated";
+    }
+  }
+
+  const files = Array.from(byPath.values()).sort((a, b) => a.path.localeCompare(b.path));
+  if (files.length === 0) return null;
+
+  const totalAdded = files.reduce((sum, file) => sum + file.added, 0);
+  const totalRemoved = files.reduce((sum, file) => sum + file.removed, 0);
+  return { files, totalAdded, totalRemoved };
 }
 
 function SubagentCallItem({
@@ -323,13 +703,64 @@ function normalizeToolStatus(status: ToolCall["status"]): "pending" | "success" 
   return "success";
 }
 
-function ToolCallItem({ tool }: { tool: ToolCall }) {
+function ToolCallItem({ tool, sessionId }: { tool: ToolCall; sessionId?: string | null }) {
   const [expanded, setExpanded] = useState(false);
+  const [artifactPreviewOpen, setArtifactPreviewOpen] = useState(false);
+  const [artifactPreviewLoading, setArtifactPreviewLoading] = useState(false);
+  const [artifactPreviewError, setArtifactPreviewError] = useState<string | null>(null);
+  const [artifactPreviewContent, setArtifactPreviewContent] = useState<string>("");
+  const [artifactPreviewTarget, setArtifactPreviewTarget] = useState<ArtifactSummaryView | null>(null);
   const normalizedStatus = normalizeToolStatus(tool.status);
   const toolArgs = tool.arguments || tool.args || {};
+  const artifactSummaries = inferArtifactSummaries(tool, sessionId);
   const phase: "start" | "result" | "error" =
     normalizedStatus === "pending" ? "start" : normalizedStatus === "success" ? "result" : "error";
   const summary = formatToolIntent(tool.name, toolArgs, phase);
+
+  const openArtifactPreview = useCallback(
+    async (artifact: ArtifactSummaryView) => {
+      if (artifactPreviewLoading) return;
+
+      setArtifactPreviewTarget(artifact);
+      setArtifactPreviewOpen(true);
+      setArtifactPreviewLoading(true);
+      setArtifactPreviewError(null);
+      setArtifactPreviewContent("");
+
+      try {
+        const url = appendApiTokenParam(
+          `/api/sessions/${encodeURIComponent(artifact.sessionId)}/artifacts/${encodeURIComponent(artifact.fileName)}`
+        );
+        const response = await fetch(url);
+        const payload = (await response.json()) as {
+          content?: string;
+          error?: string;
+          code?: string;
+        };
+
+        if (!response.ok) {
+          const errorMessage =
+            typeof payload?.error === "string"
+              ? payload.error
+              : `Failed to load artifact (${response.status})`;
+          throw new Error(errorMessage);
+        }
+
+        if (typeof payload.content !== "string") {
+          throw new Error("Artifact response did not include content");
+        }
+
+        setArtifactPreviewContent(payload.content);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to load artifact";
+        setArtifactPreviewError(message);
+        setArtifactPreviewContent("");
+      } finally {
+        setArtifactPreviewLoading(false);
+      }
+    },
+    [artifactPreviewLoading]
+  );
 
   const statusIcons = {
     pending: (
@@ -354,43 +785,109 @@ function ToolCallItem({ tool }: { tool: ToolCall }) {
   };
 
   return (
-    <div
-      className={`rounded-lg backdrop-blur-sm overflow-hidden ${statusStyles[normalizedStatus]}`}
-    >
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full px-3 py-2 flex items-center gap-2 text-xs cursor-pointer hover:bg-white/5 transition-colors"
+    <>
+      <div
+        className={`rounded-lg backdrop-blur-sm overflow-hidden ${statusStyles[normalizedStatus]}`}
       >
-        {statusIcons[normalizedStatus]}
-        <Wrench className="w-3 h-3 opacity-60" />
-        <span className="font-medium truncate flex-1 text-left">{summary}</span>
-        {expanded ? (
-          <ChevronUp className="w-3.5 h-3.5 opacity-50" />
-        ) : (
-          <ChevronDown className="w-3.5 h-3.5 opacity-50" />
-        )}
-      </button>
-      {expanded && (
-        <div className="px-3 pb-3 border-t border-white/5">
-          <div className="mt-2">
-            <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wider">Arguments</p>
-            <pre className="text-[11px] text-gray-400 bg-black/40 rounded-md p-2 overflow-x-auto">
-              {JSON.stringify(toolArgs, null, 2)}
-            </pre>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="w-full px-3 py-2 flex items-center gap-2 text-xs cursor-pointer hover:bg-white/5 transition-colors"
+        >
+          {statusIcons[normalizedStatus]}
+          <Wrench className="w-3 h-3 opacity-60" />
+          <span className="font-medium truncate flex-1 text-left">{summary}</span>
+          {expanded ? (
+            <ChevronUp className="w-3.5 h-3.5 opacity-50" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 opacity-50" />
+          )}
+        </button>
+        {!expanded && artifactSummaries.length > 0 && (
+          <div className="px-3 pb-2">
+            <button
+              type="button"
+              onClick={() => void openArtifactPreview(artifactSummaries[0])}
+              className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+            >
+              <FileText className="w-3 h-3" />
+              View {artifactSummaries[0].fileName}
+            </button>
           </div>
-          {tool.result !== undefined && (
+        )}
+        {expanded && (
+          <div className="px-3 pb-3 border-t border-white/5">
             <div className="mt-2">
-              <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wider">Result</p>
-              <pre className="text-[11px] text-gray-400 bg-black/40 rounded-md p-2 overflow-x-auto max-h-40">
-                {typeof tool.result === "string"
-                  ? tool.result
-                  : JSON.stringify(tool.result, null, 2)}
+              <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wider">Arguments</p>
+              <pre className="text-[11px] text-gray-400 bg-black/40 rounded-md p-2 overflow-x-auto">
+                {JSON.stringify(toolArgs, null, 2)}
               </pre>
             </div>
+            {artifactSummaries.length > 0 && (
+              <div className="mt-2">
+                <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wider">Artifact</p>
+                <div className="space-y-1.5">
+                  {artifactSummaries.map((artifact) => (
+                    <div
+                      key={`${artifact.sessionId}:${artifact.fileName}`}
+                      className="flex items-center justify-between gap-2 rounded-md border border-white/10 bg-black/30 px-2 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-[11px] text-gray-300 truncate">{artifact.fileName}</p>
+                        <p className="text-[10px] text-gray-500 truncate">{artifact.sessionId}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void openArtifactPreview(artifact)}
+                        className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+                      >
+                        Preview
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {tool.result !== undefined && (
+              <div className="mt-2">
+                <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wider">Result</p>
+                <pre className="text-[11px] text-gray-400 bg-black/40 rounded-md p-2 overflow-x-auto max-h-40">
+                  {typeof tool.result === "string"
+                    ? tool.result
+                    : JSON.stringify(tool.result, null, 2)}
+                </pre>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <Modal
+        isOpen={artifactPreviewOpen}
+        onClose={() => {
+          setArtifactPreviewOpen(false);
+          setArtifactPreviewTarget(null);
+        }}
+        title={artifactPreviewTarget?.title || artifactPreviewTarget?.fileName || "Artifact Preview"}
+        size="lg"
+      >
+        <div className="space-y-3">
+          {artifactPreviewLoading ? (
+            <div className="flex items-center gap-2 text-sm text-gray-400">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading artifact...
+            </div>
+          ) : artifactPreviewError ? (
+            <div className="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+              {artifactPreviewError}
+            </div>
+          ) : (
+            <pre className="max-h-[60vh] overflow-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs text-gray-200 whitespace-pre-wrap">
+              {artifactPreviewContent}
+            </pre>
           )}
         </div>
-      )}
-    </div>
+      </Modal>
+    </>
   );
 }
 
@@ -508,19 +1005,68 @@ function ActivityStepCard({ activity, isLast }: { activity: LiveActivityItem; is
   );
 }
 
+function FileChangesCard({ summary }: { summary: FileChangeSummary }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.02] overflow-hidden">
+      <button
+        onClick={() => setExpanded((value) => !value)}
+        className="w-full px-3 py-2 flex items-center gap-2 text-xs cursor-pointer hover:bg-white/5 transition-colors"
+      >
+        <Wrench className="w-3 h-3 text-indigo-300" />
+        <span className="text-gray-200 font-medium">
+          {summary.files.length} files changed
+          <span className="ml-2 text-emerald-300">+{summary.totalAdded}</span>
+          <span className="ml-1 text-rose-300">-{summary.totalRemoved}</span>
+        </span>
+        <span className="flex-1" />
+        {expanded ? (
+          <ChevronUp className="w-3.5 h-3.5 text-gray-500" />
+        ) : (
+          <ChevronDown className="w-3.5 h-3.5 text-gray-500" />
+        )}
+      </button>
+      {expanded && (
+        <div className="border-t border-white/5 px-3 py-2 space-y-3">
+          {summary.files.map((file) => (
+            <div key={`${file.path}-${file.type}`} className="rounded-md border border-white/10 bg-black/25">
+              <div className="flex items-center justify-between gap-3 px-2.5 py-2 text-[11px]">
+                <div className="min-w-0">
+                  <p className="truncate text-gray-200">{file.path}</p>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-[0.08em]">{file.type}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-emerald-300">+{file.added}</span>
+                  <span className="text-rose-300">-{file.removed}</span>
+                </div>
+              </div>
+              {file.diff && <DiffCodeBlock code={file.diff} />}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AssistantMetaInline({
   message,
   processActivities,
+  sessionId,
 }: {
   message: ChatMessage;
   processActivities?: LiveActivityItem[];
+  sessionId?: string | null;
 }) {
   const hasThinking = !!message.thinking;
   const hasSubagentCalls = !!message.subagent_calls && message.subagent_calls.length > 0;
   const hasToolCalls = !!message.tool_calls && message.tool_calls.length > 0;
   const hasProcessActivities = !!processActivities && processActivities.length > 0;
+  const fileChangeSummary = summarizeMessageFileChanges(message.tool_calls);
+  const hasFileChangeSummary = !!fileChangeSummary;
 
-  if (!hasThinking && !hasSubagentCalls && !hasToolCalls && !hasProcessActivities) {
+  if (!hasThinking && !hasSubagentCalls && !hasToolCalls && !hasProcessActivities && !hasFileChangeSummary) {
     return null;
   }
 
@@ -546,6 +1092,8 @@ function AssistantMetaInline({
         </div>
       )}
 
+      {hasFileChangeSummary && fileChangeSummary && <FileChangesCard summary={fileChangeSummary} />}
+
       {hasSubagentCalls && (
         <div className="space-y-1.5">
           {message.subagent_calls?.map((subagent) => (
@@ -557,7 +1105,7 @@ function AssistantMetaInline({
       {hasToolCalls && (
         <div className="space-y-1.5">
           {message.tool_calls?.map((tool) => (
-            <ToolCallItem key={tool.id} tool={tool} />
+            <ToolCallItem key={tool.id} tool={tool} sessionId={sessionId} />
           ))}
         </div>
       )}
@@ -1309,11 +1857,13 @@ function SessionsPanel({
 export function Chat() {
   const { data: agents = [] } = useAgents();
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
-  const { messages, isLoading, sendMessage, clearChat, loadSession, sessionId } =
+  const { messages, isLoading, sendMessage, clearChat, loadSession, sessionId, revertToMessage } =
     useChat(selectedAgentId);
   const typedMessages = messages as ChatMessage[];
   const loadSessionMutation = useLoadSession();
   const [input, setInput] = useState("");
+  const [revertTarget, setRevertTarget] = useState<RevertTarget | null>(null);
+  const [reverting, setReverting] = useState(false);
   const [showSubagentPanel, setShowSubagentPanel] = useState(false);
   const [showSessionsPanel, setShowSessionsPanel] = useState(false);
   const [liveStatus, setLiveStatus] = useState<"thinking" | "generating" | "idle">("idle");
@@ -1321,6 +1871,7 @@ export function Chat() {
   const [messageProcessMap, setMessageProcessMap] = useState<Record<string, LiveActivityItem[]>>(
     {}
   );
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeSessionRef = useRef<string | null>(null);
   const activeAgentRef = useRef<string | undefined>(undefined);
@@ -1516,6 +2067,29 @@ export function Chat() {
     }
   };
 
+  const handleConfirmRevert = useCallback(async () => {
+    if (!revertTarget) return;
+    try {
+      setReverting(true);
+      await revertToMessage({
+        index: revertTarget.index,
+        content: revertTarget.content,
+        timestamp: revertTarget.timestamp,
+      });
+      setInput(revertTarget.content);
+      setLiveActivities([]);
+      setMessageProcessMap({});
+      pendingProcessCaptureRef.current = null;
+      setLiveStatus("idle");
+      setRevertTarget(null);
+      inputRef.current?.focus();
+    } catch (error) {
+      console.error("Failed to revert session:", error);
+    } finally {
+      setReverting(false);
+    }
+  }, [revertTarget, revertToMessage]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const sessionParam = params.get("session");
@@ -1531,9 +2105,12 @@ export function Chat() {
         })
         .catch((error) => {
           console.error("Failed to load session from URL:", error);
-        });
+      });
     }
   }, []); // Only run on mount
+
+  const revertRemovedCount = revertTarget ? Math.max(0, typedMessages.length - revertTarget.index) : 0;
+  const revertFollowingCount = Math.max(0, revertRemovedCount - 1);
 
   return (
     <div className="h-screen flex flex-col bg-[#050508]">
@@ -1649,10 +2226,30 @@ export function Chat() {
                         }`}
                       >
                         <MessageContent content={message.content} />
+                        {message.role === "user" && sessionId && (
+                          <div className="mt-2 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setRevertTarget({
+                                  index,
+                                  content: message.content,
+                                  timestamp: message.timestamp,
+                                })
+                              }
+                              className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[10px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+                              title="Revert session to this message"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              Revert to here
+                            </button>
+                          </div>
+                        )}
                         {message.role !== "user" && (
                           <AssistantMetaInline
                             message={message}
                             processActivities={processActivities}
+                            sessionId={sessionId}
                           />
                         )}
                       </div>
@@ -1683,6 +2280,7 @@ export function Chat() {
           <div className="flex-shrink-0 px-3 sm:px-4 py-3 border-t border-white/5 bg-[#0a0a0f]/80 backdrop-blur-xl">
             <div className="flex gap-2 sm:gap-3">
               <input
+                ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -1733,6 +2331,57 @@ export function Chat() {
             }}
           />
         )}
+
+        <Modal
+          isOpen={!!revertTarget}
+          onClose={() => {
+            if (!reverting) setRevertTarget(null);
+          }}
+          title="Revert Session To This Message"
+          size="md"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-gray-300">
+              This will remove this message and {revertFollowingCount} following message
+              {revertFollowingCount === 1 ? "" : "s"} from this session, then place this text back
+              in the input box for resend.
+            </p>
+            {revertTarget && (
+              <div className="rounded-lg border border-white/10 bg-black/30 p-3">
+                <p className="text-[10px] uppercase tracking-[0.08em] text-gray-500 mb-1">
+                  Revert Point
+                </p>
+                <p className="text-sm text-gray-200 whitespace-pre-wrap">
+                  {revertTarget.content.length > 220
+                    ? `${revertTarget.content.slice(0, 220)}...`
+                    : revertTarget.content}
+                </p>
+              </div>
+            )}
+            <div className="flex justify-end gap-3">
+              <GlassButton
+                variant="ghost"
+                onClick={() => setRevertTarget(null)}
+                disabled={reverting}
+              >
+                Cancel
+              </GlassButton>
+              <GlassButton
+                variant="primary"
+                className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/30"
+                onClick={() => void handleConfirmRevert()}
+                disabled={reverting}
+              >
+                {reverting ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                ) : (
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                )}
+                Revert Here
+              </GlassButton>
+            </div>
+          </div>
+        </Modal>
       </div>
     </div>
   );

@@ -733,6 +733,153 @@ export async function deleteSession(sessionId: string): Promise<boolean> {
   return memoryDeleted || persistedDeleted;
 }
 
+function extractPersistedMessageMetadata(
+  message: ChatMessage
+): Record<string, unknown> | undefined {
+  const metadata: Record<string, unknown> = {};
+  if (typeof message.thinking === "string" && message.thinking.trim()) {
+    metadata.thinking = message.thinking;
+  }
+  if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+    metadata.tool_calls = message.tool_calls;
+  }
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+interface RevertSessionTarget {
+  messageIndex?: number;
+  messageRole?: ChatMessage["role"];
+  messageContent?: string;
+  messageTimestamp?: string;
+}
+
+function resolveRevertMessageIndex(messages: ChatMessage[], target: RevertSessionTarget): number {
+  const desiredRole: ChatMessage["role"] = target.messageRole === "user" ? "user" : "user";
+  const candidateIndex = Number.isInteger(target.messageIndex) ? Number(target.messageIndex) : -1;
+  const content = typeof target.messageContent === "string" ? target.messageContent.trim() : "";
+  const timestamp =
+    typeof target.messageTimestamp === "string" ? target.messageTimestamp.trim() : "";
+
+  const isDesiredRole = (index: number): boolean =>
+    index >= 0 && index < messages.length && messages[index]?.role === desiredRole;
+
+  if (timestamp && content) {
+    for (let index = 0; index < messages.length; index += 1) {
+      const message = messages[index];
+      if (!message || message.role !== desiredRole) continue;
+      if ((message.timestamp || "") === timestamp && message.content === target.messageContent) {
+        return index;
+      }
+    }
+  }
+
+  if (timestamp) {
+    for (let index = 0; index < messages.length; index += 1) {
+      const message = messages[index];
+      if (!message || message.role !== desiredRole) continue;
+      if ((message.timestamp || "") === timestamp) {
+        return index;
+      }
+    }
+  }
+
+  if (isDesiredRole(candidateIndex)) {
+    return candidateIndex;
+  }
+
+  if (candidateIndex >= 0 && candidateIndex < messages.length) {
+    for (let index = candidateIndex; index >= 0; index -= 1) {
+      if (isDesiredRole(index)) return index;
+    }
+    for (let index = candidateIndex + 1; index < messages.length; index += 1) {
+      if (isDesiredRole(index)) return index;
+    }
+  }
+
+  if (content) {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (!message || message.role !== desiredRole) continue;
+      if (message.content === target.messageContent) {
+        return index;
+      }
+    }
+  }
+
+  return -1;
+}
+
+export async function revertSessionToMessage(
+  sessionId: string,
+  target: number | RevertSessionTarget
+): Promise<{
+  sessionId: string;
+  messages: ChatMessage[];
+  keptCount: number;
+  removedCount: number;
+  removedFromIndex: number;
+}> {
+  const session = await getSession(sessionId);
+  if (!session) {
+    throw new Error("Session not found");
+  }
+
+  if ((session as { isSubagent?: boolean }).isSubagent) {
+    throw new Error("Cannot revert subagent sessions");
+  }
+
+  const resolvedTarget: RevertSessionTarget =
+    typeof target === "number" ? { messageIndex: target } : target;
+  const targetIndex = resolveRevertMessageIndex(session.messages, resolvedTarget);
+  if (targetIndex < 0 || targetIndex >= session.messages.length) {
+    throw new Error("Unable to resolve target user message for revert");
+  }
+
+  const targetMessage = session.messages[targetIndex];
+  if (!targetMessage || targetMessage.role !== "user") {
+    throw new Error("Can only revert to a user message");
+  }
+
+  const keptMessages = session.messages.slice(0, targetIndex);
+  const removedCount = session.messages.length - keptMessages.length;
+
+  const inMemorySession = chatSessions.get(sessionId);
+  const agentId = inMemorySession?.agentId || session.agentId || "default";
+  const createdAt = inMemorySession?.createdAt || session.createdAt || new Date().toISOString();
+
+  if (inMemorySession) {
+    inMemorySession.messages = keptMessages;
+    inMemorySession.persisted = true;
+  } else {
+    chatSessions.set(sessionId, {
+      id: sessionId,
+      agentId,
+      messages: keptMessages,
+      createdAt,
+      persisted: true,
+    });
+  }
+
+  if (removedCount > 0) {
+    await deletePersistedSession(sessionId);
+    await persistSession(sessionId, agentId, keptMessages);
+    for (const message of keptMessages) {
+      await logSessionMessage(sessionId, message.role, message.content, {
+        agentId,
+        metadata: extractPersistedMessageMetadata(message),
+      });
+    }
+  }
+
+  return {
+    sessionId,
+    messages: keptMessages,
+    keptCount: keptMessages.length,
+    removedCount,
+    removedFromIndex: targetIndex,
+  };
+}
+
 export function getChatRateLimitStatus() {
   return getRateLimitStatus("chat");
 }

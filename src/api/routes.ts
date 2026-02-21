@@ -37,6 +37,7 @@ import {
   getSessionMessages,
   listSessions,
   deleteSession,
+  revertSessionToMessage,
   getChatRateLimitStatus,
   type ChatMessage,
 } from "../api/chat";
@@ -78,6 +79,7 @@ import {
   getAgentLoopRun,
   cancelAgentLoopRun,
 } from "../core/agent-loop";
+import { listArtifacts, readArtifact, deleteArtifact } from "../core/artifacts";
 import {
   walletManager,
   type WalletChain,
@@ -720,6 +722,72 @@ function normalizeIdentityConfig(value: unknown): Record<string, unknown> {
   return parsed ? { ...defaults, ...parsed } : defaults;
 }
 
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function sanitizeArtifactSummary(value: unknown): Record<string, unknown> | undefined {
+  if (!isObjectRecord(value)) return undefined;
+  const sessionId = typeof value.sessionId === "string" ? value.sessionId : undefined;
+  const name = typeof value.name === "string" ? value.name : undefined;
+  const fileName = typeof value.fileName === "string" ? value.fileName : undefined;
+  if (!sessionId || !name || !fileName) return undefined;
+  return {
+    sessionId,
+    name,
+    fileName,
+    title: typeof value.title === "string" ? value.title : fileName,
+  };
+}
+
+function sanitizeArtifactToolResult(result: unknown): Record<string, unknown> | undefined {
+  if (!isObjectRecord(result)) return undefined;
+  const payload: Record<string, unknown> = {};
+
+  if (typeof result.action === "string") {
+    payload.action = result.action;
+  }
+  if (typeof result.sessionId === "string") {
+    payload.sessionId = result.sessionId;
+  }
+  if (typeof result.fallback === "boolean") {
+    payload.fallback = result.fallback;
+  }
+  if (typeof result.missing === "boolean") {
+    payload.missing = result.missing;
+  }
+  if (typeof result.error === "string") {
+    payload.error = result.error.length > 200 ? result.error.slice(0, 200) + "..." : result.error;
+  }
+
+  const artifact = sanitizeArtifactSummary(result.artifact);
+  if (artifact) {
+    payload.artifact = artifact;
+  }
+
+  if (Array.isArray(result.artifacts)) {
+    const artifacts = result.artifacts
+      .map((entry) => sanitizeArtifactSummary(entry))
+      .filter((entry): entry is Record<string, unknown> => !!entry)
+      .slice(0, 20);
+    if (artifacts.length > 0) {
+      payload.artifacts = artifacts;
+    }
+  }
+
+  if (Array.isArray(result.availableArtifacts)) {
+    const availableArtifacts = result.availableArtifacts
+      .map((entry) => sanitizeArtifactSummary(entry))
+      .filter((entry): entry is Record<string, unknown> => !!entry)
+      .slice(0, 20);
+    if (availableArtifacts.length > 0) {
+      payload.availableArtifacts = availableArtifacts;
+    }
+  }
+
+  return Object.keys(payload).length > 0 ? payload : undefined;
+}
+
 function sanitizeSessionMessages(messages: SessionMessageView[]): SessionMessageView[] {
   const MAX_RESULT_SIZE = 500;
   const MAX_TOOL_CALLS = 20;
@@ -734,11 +802,19 @@ function sanitizeSessionMessages(messages: SessionMessageView[]): SessionMessage
 
       if (tc.result !== undefined) {
         try {
-          const resultStr = typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result);
-          sanitized.result =
-            resultStr.length > MAX_RESULT_SIZE
-              ? resultStr.slice(0, MAX_RESULT_SIZE) + "... [truncated]"
-              : tc.result;
+          const artifactResult =
+            tc.name === "artifacts" || tc.name === "artifact"
+              ? sanitizeArtifactToolResult(tc.result)
+              : undefined;
+          if (artifactResult) {
+            sanitized.result = artifactResult;
+          } else {
+            const resultStr = typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result);
+            sanitized.result =
+              resultStr.length > MAX_RESULT_SIZE
+                ? resultStr.slice(0, MAX_RESULT_SIZE) + "... [truncated]"
+                : tc.result;
+          }
         } catch {
           sanitized.result = "[Result too large to display]";
         }
@@ -2917,6 +2993,95 @@ const routes: Record<string, RouteHandler> = {
       messagesList: sanitizedMessages,
     };
   },
+  "GET /api/sessions/:sessionId/artifacts": (_body, params) => {
+    const sessionId = params!.sessionId;
+    return {
+      sessionId,
+      artifacts: listArtifacts(sessionId),
+    };
+  },
+  "GET /api/sessions/:sessionId/artifacts/:artifactName": (_body, params) => {
+    const sessionId = params!.sessionId;
+    const artifactName = params!.artifactName;
+    const result = readArtifact({ sessionId, name: artifactName });
+    return {
+      sessionId,
+      artifact: result.artifact,
+      content: result.content,
+      truncated: result.truncated,
+      totalChars: result.totalChars,
+    };
+  },
+  "DELETE /api/sessions/:sessionId/artifacts/:artifactName": (_body, params) => {
+    const sessionId = params!.sessionId;
+    const artifactName = params!.artifactName;
+    const result = deleteArtifact({ sessionId, name: artifactName });
+    return {
+      success: true,
+      ...result,
+    };
+  },
+  "POST /api/sessions/:sessionId/revert": async (body, params) => {
+    const data = (body || {}) as {
+      messageIndex?: number | string;
+      messageRole?: string;
+      messageContent?: string;
+      messageTimestamp?: string;
+    };
+    const messageIndexRaw =
+      typeof data.messageIndex === "number" ? data.messageIndex : Number(data.messageIndex);
+    const messageIndex =
+      Number.isInteger(messageIndexRaw) && messageIndexRaw >= 0 ? messageIndexRaw : undefined;
+    const messageRole = typeof data.messageRole === "string" ? data.messageRole : undefined;
+    const messageContent =
+      typeof data.messageContent === "string" ? data.messageContent : undefined;
+    const messageTimestamp =
+      typeof data.messageTimestamp === "string" ? data.messageTimestamp : undefined;
+
+    if (messageIndex === undefined && !messageContent?.trim() && !messageTimestamp?.trim()) {
+      return {
+        success: false,
+        error:
+          "Provide messageIndex or messageContent/messageTimestamp so the target message can be resolved",
+      };
+    }
+
+    try {
+      const reverted = await revertSessionToMessage(params!.sessionId, {
+        messageIndex,
+        messageRole: messageRole as ChatMessage["role"] | undefined,
+        messageContent,
+        messageTimestamp,
+      });
+      const MAX_CONTENT_SIZE = 10000;
+      const sanitizedMessages = sanitizeSessionMessages(reverted.messages).map((m) => {
+        const truncatedContent =
+          typeof m.content === "string" && m.content.length > MAX_CONTENT_SIZE
+            ? m.content.slice(0, MAX_CONTENT_SIZE) +
+              `\n\n... [content truncated, ${m.content.length - MAX_CONTENT_SIZE} chars omitted]`
+            : m.content;
+        return {
+          ...m,
+          content: truncatedContent,
+          timestamp: normalizeTimestamp(m.timestamp),
+        };
+      });
+
+      return {
+        success: true,
+        sessionId: reverted.sessionId,
+        keptCount: reverted.keptCount,
+        removedCount: reverted.removedCount,
+        removedFromIndex: reverted.removedFromIndex,
+        messagesList: sanitizedMessages,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to revert session",
+      };
+    }
+  },
   "DELETE /api/sessions/:sessionId": async (_body, params) => {
     await deleteSession(params!.sessionId);
     return { success: true, message: "Session deleted" };
@@ -3029,6 +3194,7 @@ const routes: Record<string, RouteHandler> = {
       tools: [
         "read",
         "write",
+        "artifacts",
         "exec",
         "browser",
         "wallet",

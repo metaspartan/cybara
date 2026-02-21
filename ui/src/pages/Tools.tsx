@@ -151,7 +151,9 @@ export function Tools() {
                       <Shield className="w-3 h-3 text-amber-400" />
                     )}
                   </div>
-                  <p className="text-sm text-gray-400 mt-0.5 line-clamp-1">{tool.description}</p>
+                  <p className="text-sm text-gray-400 mt-0.5 line-clamp-1">
+                    {tool.description.replace(/\s+/g, ' ').trim()}
+                  </p>
                 </div>
 
                 <ChevronRight className={cn(
@@ -162,6 +164,14 @@ export function Tools() {
 
               {expandedTool === tool.name && (
                 <div className="px-4 pb-4 border-t border-white/10 pt-4">
+                  <div className="mb-4">
+                    <h4 className="text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+                      <FileText className="w-4 h-4" />
+                      Description
+                    </h4>
+                    <p className="text-sm text-gray-400 whitespace-pre-line">{tool.description}</p>
+                  </div>
+
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {tool.input_schema && Object.keys(tool.input_schema.properties || {}).length > 0 && (
                       <div>

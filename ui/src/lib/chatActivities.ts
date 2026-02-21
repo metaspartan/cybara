@@ -46,6 +46,10 @@ function activityDedupKey(activity: LiveActivityItem): string {
   return `${activity.phase}:${normalizeText(activity.text).toLowerCase()}`;
 }
 
+function canonicalActivityKey(activity: LiveActivityItem): string {
+  return normalizeText(toCanonicalVerb(activity.text, "result")).toLowerCase();
+}
+
 function normalizeToolPhase(status: ToolCallLike["status"]): ActivityPhase {
   if (status === "pending" || status === "executing") return "start";
   if (status === "failed" || status === "error") return "error";
@@ -95,10 +99,25 @@ export function mergeActivityLists(
   primary: LiveActivityItem[],
   secondary: LiveActivityItem[]
 ): LiveActivityItem[] {
+  const allActivities = [...primary, ...secondary];
+  const hasCompletionForStart = (activity: LiveActivityItem): boolean => {
+    if (activity.phase !== "start") return false;
+    const key = canonicalActivityKey(activity);
+    return allActivities.some(
+      (candidate) =>
+        candidate.phase !== "start" &&
+        candidate.timestamp >= activity.timestamp &&
+        canonicalActivityKey(candidate) === key
+    );
+  };
+
   const seen = new Set<string>();
   const merged: LiveActivityItem[] = [];
 
   const pushUnique = (activity: LiveActivityItem) => {
+    if (hasCompletionForStart(activity)) {
+      return;
+    }
     const key = activityDedupKey(activity);
     if (seen.has(key)) return;
     seen.add(key);

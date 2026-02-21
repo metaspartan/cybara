@@ -294,11 +294,29 @@ describe("Agent provider API-family routing", () => {
     expect(result.content).toContain("tool-iteration limit (3)");
   });
 
-  test("anthropic loop accepts max_tool_calls alias for iteration cap", async () => {
+  test("anthropic loop ignores max_tool_calls alias for iteration cap", async () => {
     let requestCount = 0;
 
     globalThis.fetch = (async () => {
       requestCount += 1;
+      if (requestCount >= 3) {
+        return new Response(
+          JSON.stringify({
+            id: `msg-max-calls-${requestCount}`,
+            type: "message",
+            role: "assistant",
+            model: "claude-sonnet-4-20250514",
+            content: [
+              {
+                type: "text",
+                text: "final answer",
+              },
+            ],
+            usage: { input_tokens: 12, output_tokens: 6 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
       return new Response(
         JSON.stringify({
           id: `msg-max-calls-${requestCount}`,
@@ -360,7 +378,8 @@ describe("Agent provider API-family routing", () => {
 
     expect(requestCount).toBe(3);
     expect(result.tool_calls?.length).toBe(2);
-    expect(result.content).toContain("tool-iteration limit (2)");
+    expect(result.content).toContain("final answer");
+    expect(result.content).not.toContain("tool-iteration limit");
   });
 
   test("anthropic loop stops repeated no-progress cycles early", async () => {

@@ -1132,6 +1132,231 @@ describe("Session API", () => {
     expect(status).toBe(200);
     expect(Array.isArray(data)).toBe(true);
   });
+
+  test("POST /api/sessions/:sessionId/revert truncates later conversation history", async () => {
+    const first = await api("POST", "/api/chat", {
+      message: `revert-first-${Date.now()}`,
+    });
+    expect(first.status).toBe(200);
+    const sessionId = first.data.sessionId as string;
+    expect(typeof sessionId).toBe("string");
+
+    const second = await api("POST", "/api/chat", {
+      sessionId,
+      message: `revert-second-${Date.now()}`,
+    });
+    expect(second.status).toBe(200);
+
+    const third = await api("POST", "/api/chat", {
+      sessionId,
+      message: `revert-third-${Date.now()}`,
+    });
+    expect(third.status).toBe(200);
+
+    const before = await api("GET", `/api/sessions/${sessionId}`);
+    expect(before.status).toBe(200);
+    expect(before.data.messagesList.length).toBeGreaterThanOrEqual(4);
+    const userIndexes = (before.data.messagesList as Array<{ role?: string }>).reduce<number[]>(
+      (indexes, message, index) => {
+        if (message.role === "user") indexes.push(index);
+        return indexes;
+      },
+      []
+    );
+    expect(userIndexes.length).toBeGreaterThanOrEqual(2);
+    const revertIndex = userIndexes[1] ?? userIndexes[0] ?? 0;
+    const expectedKeptCount = revertIndex;
+    const expectedRemovedCount = before.data.messagesList.length - expectedKeptCount;
+    const revertMessage = before.data.messagesList[revertIndex];
+    const shiftedIndex =
+      revertIndex + 1 < before.data.messagesList.length ? revertIndex + 1 : revertIndex;
+
+    const reverted = await api("POST", `/api/sessions/${sessionId}/revert`, {
+      messageIndex: shiftedIndex,
+      messageRole: "user",
+      messageContent: revertMessage.content,
+      messageTimestamp: revertMessage.timestamp,
+    });
+    expect(reverted.status).toBe(200);
+    expect(reverted.data.success).toBe(true);
+    expect(reverted.data.sessionId).toBe(sessionId);
+    expect(reverted.data.keptCount).toBe(expectedKeptCount);
+    expect(reverted.data.removedCount).toBe(expectedRemovedCount);
+    expect(reverted.data.removedFromIndex).toBe(revertIndex);
+    expect(reverted.data.messagesList).toHaveLength(expectedKeptCount);
+    if (expectedKeptCount > 0) {
+      expect(reverted.data.messagesList[expectedKeptCount - 1].role).not.toBeUndefined();
+    }
+
+    const after = await api("GET", `/api/sessions/${sessionId}`);
+    expect(after.status).toBe(200);
+    expect(after.data.messagesList).toHaveLength(expectedKeptCount);
+    if (expectedKeptCount > 0) {
+      expect(after.data.messagesList[expectedKeptCount - 1].role).not.toBeUndefined();
+    }
+  });
+
+  test("session artifact routes and artifacts tool manage session-scoped .md.resolved files", async () => {
+    const sessionId = `artifact-session-${Date.now()}`;
+
+    const create = await api("POST", "/api/tools/execute", {
+      name: "artifacts",
+      args: {
+        action: "create",
+        kind: "task",
+        name: "task",
+        title: "Task Checklist",
+        items: ["Design API", "Implement backend", "Wire UI preview"],
+      },
+      context: {
+        sessionId,
+      },
+    });
+    expect(create.status).toBe(200);
+    expect(create.data.action).toBe("create");
+    expect(create.data.artifact.fileName).toBe("task.md.resolved");
+
+    const readViaKind = await api("POST", "/api/tools/execute", {
+      name: "artifacts",
+      args: {
+        action: "read",
+        kind: "task",
+      },
+      context: {
+        sessionId,
+      },
+    });
+    expect(readViaKind.status).toBe(200);
+    expect(readViaKind.data.action).toBe("read");
+    expect(readViaKind.data.artifact.fileName).toBe("task.md.resolved");
+    expect(typeof readViaKind.data.content).toBe("string");
+
+    const readWithFallback = await api("POST", "/api/tools/execute", {
+      name: "artifacts",
+      args: {
+        action: "read",
+        name: "does-not-exist",
+        kind: "task",
+      },
+      context: {
+        sessionId,
+      },
+    });
+    expect(readWithFallback.status).toBe(200);
+    expect(readWithFallback.data.action).toBe("read");
+    expect(readWithFallback.data.fallback).toBe(true);
+    expect(readWithFallback.data.resolvedFrom).toBe("does-not-exist");
+    expect(readWithFallback.data.artifact.fileName).toBe("task.md.resolved");
+    expect(typeof readWithFallback.data.content).toBe("string");
+
+    const list = await api("GET", `/api/sessions/${sessionId}/artifacts`);
+    expect(list.status).toBe(200);
+    expect(Array.isArray(list.data.artifacts)).toBe(true);
+    expect(list.data.artifacts.length).toBeGreaterThan(0);
+    expect(list.data.artifacts[0].fileName).toBe("task.md.resolved");
+
+    const readBeforeCheck = await api(
+      "GET",
+      `/api/sessions/${sessionId}/artifacts/${encodeURIComponent("task.md.resolved")}`
+    );
+    expect(readBeforeCheck.status).toBe(200);
+    expect(typeof readBeforeCheck.data.content).toBe("string");
+    expect(readBeforeCheck.data.content).toContain("- [ ] Design API");
+
+    const check = await api("POST", "/api/tools/execute", {
+      name: "artifacts",
+      args: {
+        action: "check",
+        name: "task",
+        item: 1,
+        checked: true,
+      },
+      context: {
+        sessionId,
+      },
+    });
+    expect(check.status).toBe(200);
+    expect(check.data.action).toBe("check");
+    expect(check.data.checked).toBe(true);
+
+    const readAfterCheck = await api(
+      "GET",
+      `/api/sessions/${sessionId}/artifacts/${encodeURIComponent("task.md.resolved")}`
+    );
+    expect(readAfterCheck.status).toBe(200);
+    expect(readAfterCheck.data.content).toContain("- [x] Design API");
+
+    const deleted = await api(
+      "DELETE",
+      `/api/sessions/${sessionId}/artifacts/${encodeURIComponent("task.md.resolved")}`
+    );
+    expect(deleted.status).toBe(200);
+    expect(deleted.data.success).toBe(true);
+
+    const listAfterDelete = await api("GET", `/api/sessions/${sessionId}/artifacts`);
+    expect(listAfterDelete.status).toBe(200);
+    expect(Array.isArray(listAfterDelete.data.artifacts)).toBe(true);
+    expect(listAfterDelete.data.artifacts).toHaveLength(0);
+  });
+
+  test("artifacts are isolated per session id", async () => {
+    const sessionA = `artifact-session-a-${Date.now()}`;
+    const sessionB = `artifact-session-b-${Date.now()}`;
+
+    const createA = await api("POST", "/api/tools/execute", {
+      name: "artifacts",
+      args: { action: "create", kind: "notes", name: "notes", content: "# A\n" },
+      context: { sessionId: sessionA },
+    });
+    expect(createA.status).toBe(200);
+
+    const createB = await api("POST", "/api/tools/execute", {
+      name: "artifacts",
+      args: { action: "create", kind: "notes", name: "notes", content: "# B\n" },
+      context: { sessionId: sessionB },
+    });
+    expect(createB.status).toBe(200);
+
+    const listA = await api("GET", `/api/sessions/${sessionA}/artifacts`);
+    const listB = await api("GET", `/api/sessions/${sessionB}/artifacts`);
+    expect(listA.status).toBe(200);
+    expect(listB.status).toBe(200);
+    expect(listA.data.artifacts).toHaveLength(1);
+    expect(listB.data.artifacts).toHaveLength(1);
+
+    const readA = await api(
+      "GET",
+      `/api/sessions/${sessionA}/artifacts/${encodeURIComponent("notes.md.resolved")}`
+    );
+    const readB = await api(
+      "GET",
+      `/api/sessions/${sessionB}/artifacts/${encodeURIComponent("notes.md.resolved")}`
+    );
+    expect(readA.status).toBe(200);
+    expect(readB.status).toBe(200);
+    expect(readA.data.content).toContain("# A");
+    expect(readB.data.content).toContain("# B");
+  });
+
+  test("artifacts read returns missing payload instead of throwing when no artifact exists", async () => {
+    const sessionId = `artifact-missing-${Date.now()}`;
+    const readMissing = await api("POST", "/api/tools/execute", {
+      name: "artifacts",
+      args: {
+        action: "read",
+        name: "task",
+      },
+      context: {
+        sessionId,
+      },
+    });
+
+    expect(readMissing.status).toBe(200);
+    expect(readMissing.data.action).toBe("read");
+    expect(readMissing.data.missing).toBe(true);
+    expect(readMissing.data.count).toBe(0);
+    expect(Array.isArray(readMissing.data.artifacts)).toBe(true);
+  });
 });
 
 describe("Tasks API", () => {
