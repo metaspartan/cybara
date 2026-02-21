@@ -627,10 +627,33 @@ function summarizeCommand(command: string): string {
   return compact;
 }
 
+function toDisplayPath(path: string): string {
+  const normalized = path.replace(/\\/g, "/").trim();
+  if (!normalized) return "file";
+  const segments = normalized.split("/").filter(Boolean);
+  return segments[segments.length - 1] || normalized;
+}
+
+function toFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
 function formatToolActivityDetail(
   toolName: string,
   args: Record<string, unknown>,
-  phase: "start" | "result" | "error"
+  phase: "start" | "result" | "error",
+  result?: unknown
 ): string {
   const key = toolName.toLowerCase();
   const path = readStringArg(args, ["path", "file_path", "filePath"]);
@@ -663,17 +686,49 @@ function formatToolActivityDetail(
   }
 
   if (key === "write" || key === "edit") {
+    let resultChange: Record<string, unknown> | undefined;
+    if (isObjectRecord(result) && isObjectRecord(result.change)) {
+      resultChange = result.change;
+    }
+    const resultPath =
+      readStringArg(resultChange || {}, ["path"]) ||
+      (isObjectRecord(result) ? readStringArg(result, ["path"]) : undefined) ||
+      path;
+    const displayPath = resultPath ? toDisplayPath(resultPath) : undefined;
+    const addedLines = toFiniteNumber(resultChange?.addedLines);
+    const removedLines = toFiniteNumber(resultChange?.removedLines);
+
     if (path) {
-      if (phase === "start") return key === "edit" ? `Editing ${path}` : `Writing ${path}`;
-      if (phase === "result") return `Edited ${path}`;
-      return `Edit failed for ${path}`;
+      const startPath = displayPath || toDisplayPath(path);
+      if (phase === "start") return key === "edit" ? `Editing ${startPath}` : `Writing ${startPath}`;
+      if (phase === "result") {
+        if (addedLines !== undefined && removedLines !== undefined && displayPath) {
+          return `Edited ${displayPath} +${addedLines} -${removedLines}`;
+        }
+        return `Edited ${displayPath || startPath}`;
+      }
+      return `Edit failed for ${displayPath || startPath}`;
     }
     if (phase === "start") return key === "edit" ? "Editing file..." : "Writing file...";
-    if (phase === "result") return "Edit complete";
+    if (phase === "result") {
+      if (addedLines !== undefined && removedLines !== undefined) {
+        return `Edited file +${addedLines} -${removedLines}`;
+      }
+      return "Edit complete";
+    }
     return "Edit failed";
   }
 
   if (key === "file_search" || key === "grep") {
+    if (phase === "result" && isObjectRecord(result)) {
+      const files = Array.isArray(result.files) ? result.files : undefined;
+      const count =
+        toFiniteNumber(result.count) || (files ? files.length : undefined);
+      if (count !== undefined) {
+        const safeCount = Math.max(0, Math.floor(count));
+        return `Explored ${safeCount} file${safeCount === 1 ? "" : "s"}, 1 search`;
+      }
+    }
     const pattern = readStringArg(args, ["pattern", "query"]);
     const basePath = readStringArg(args, ["path"]);
     if (pattern && basePath) {
@@ -1960,7 +2015,7 @@ class AgentManager {
       this.broadcastAgentStatus(
         "tool_completed",
         toolContext,
-        formatToolActivityDetail(toolName, args, "result"),
+        formatToolActivityDetail(toolName, args, "result", result),
         {
           toolName,
           toolPhase: "result",

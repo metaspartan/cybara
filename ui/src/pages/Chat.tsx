@@ -49,7 +49,7 @@ import {
 } from "@/hooks/useApi";
 import { chatApi } from "@/lib/api";
 import { PageLayout } from "@/components/layout";
-import { GlassCard, GlassButton, Input, Badge, Modal } from "@/components/ui";
+import { GlassCard, GlassButton, Input, Badge, Modal, Button } from "@/components/ui";
 import { formatRelativeTime } from "@/lib/utils";
 import { appendApiTokenParam } from "@/lib/auth";
 import {
@@ -253,6 +253,30 @@ function formatWorkspaceLabel(path: string, maxLength = 44): string {
   return `${normalized.slice(0, prefixLength)}.../${tail}`;
 }
 
+function toActivityPath(path: string): string {
+  const normalized = path.replace(/\\/g, "/").trim();
+  if (!normalized) return "file";
+  const segments = normalized.split("/").filter(Boolean);
+  return segments[segments.length - 1] || normalized;
+}
+
+function isMeaningfulThoughtDetail(detail: string): boolean {
+  const normalized = detail.trim().toLowerCase();
+  if (!normalized) return false;
+  if (
+    normalized === "thinking..." ||
+    normalized === "thinking" ||
+    normalized === "generating response..." ||
+    normalized === "generating response" ||
+    normalized === "idle" ||
+    normalized === "working..." ||
+    normalized === "working"
+  ) {
+    return false;
+  }
+  return true;
+}
+
 function summarizeCommand(command: string): string {
   const compact = command
     .split(/\r?\n/)
@@ -276,6 +300,7 @@ function formatToolIntent(
 
   const key = toolName.toLowerCase();
   const path = readStringArg(args, ["path", "file_path", "filePath"]);
+  const displayPath = path ? toActivityPath(path) : undefined;
 
   if (key === "read") {
     if (path) {
@@ -284,13 +309,13 @@ function formatToolIntent(
       if (offset !== undefined && limit !== undefined && limit > 0) {
         const startLine = Math.max(1, Math.floor(offset));
         const endLine = startLine + Math.max(1, Math.floor(limit)) - 1;
-        if (phase === "start") return `Exploring ${path} (lines ${startLine}-${endLine})`;
-        if (phase === "result") return `Explored ${path} (lines ${startLine}-${endLine})`;
-        return `Read failed for ${path}`;
+        if (phase === "start") return `Exploring ${displayPath} (lines ${startLine}-${endLine})`;
+        if (phase === "result") return `Explored ${displayPath} (lines ${startLine}-${endLine})`;
+        return `Read failed for ${displayPath}`;
       }
-      if (phase === "start") return `Exploring ${path}`;
-      if (phase === "result") return `Explored ${path}`;
-      return `Read failed for ${path}`;
+      if (phase === "start") return `Exploring ${displayPath}`;
+      if (phase === "result") return `Explored ${displayPath}`;
+      return `Read failed for ${displayPath}`;
     }
     if (phase === "start") return "Exploring files...";
     if (phase === "result") return "Exploration complete";
@@ -299,9 +324,9 @@ function formatToolIntent(
 
   if (key === "write" || key === "edit") {
     if (path) {
-      if (phase === "start") return key === "edit" ? `Editing ${path}` : `Writing ${path}`;
-      if (phase === "result") return `Edited ${path}`;
-      return `Edit failed for ${path}`;
+      if (phase === "start") return key === "edit" ? `Editing ${displayPath}` : `Writing ${displayPath}`;
+      if (phase === "result") return `Edited ${displayPath}`;
+      return `Edit failed for ${displayPath}`;
     }
     if (phase === "start") return key === "edit" ? "Editing file..." : "Writing file...";
     if (phase === "result") return "Edit complete";
@@ -839,11 +864,11 @@ function SubagentCallItem({
       {expanded && (
         <div className="px-3 pb-3 border-t border-white/10">
           <div className="mt-2">
-            <p className="text-xs text-gray-500 mb-1">Task:</p>
+            <p className="text-[12px] text-gray-500 mb-1">Task:</p>
             <p className="text-sm text-gray-300">{subagent.task}</p>
           </div>
           <div className="mt-2 flex items-center gap-2">
-            <p className="text-xs text-gray-500">
+            <p className="text-[12px] text-gray-500">
               ID: <code className="text-gray-400">{subagent.id}</code>
             </p>
             <Badge
@@ -912,7 +937,7 @@ function ToolCallItem({
       >
         <button
           onClick={() => setExpanded(!expanded)}
-          className="w-full px-3 py-2 flex items-center gap-2 text-[11px] cursor-pointer hover:bg-white/5 transition-colors"
+          className="w-full px-3 py-2 flex items-center gap-2 text-[12px] cursor-pointer hover:bg-white/5 transition-colors"
         >
           {statusIcons[normalizedStatus]}
           <Wrench className="w-3 h-3 opacity-60" />
@@ -927,14 +952,14 @@ function ToolCallItem({
           <div className="px-3 pb-3 border-t border-white/5">
             <div className="mt-2">
               <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wider">Arguments</p>
-              <pre className="text-[11px] text-gray-400 bg-black/40 rounded-md p-2 overflow-x-auto">
+              <pre className="text-[12px] text-gray-400 bg-black/40 rounded-md p-2 overflow-x-auto">
                 {JSON.stringify(toolArgs, null, 2)}
               </pre>
             </div>
             {tool.result !== undefined && (
               <div className="mt-2">
                 <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wider">Result</p>
-                <pre className="text-[11px] text-gray-400 bg-black/40 rounded-md p-2 overflow-x-auto max-h-40">
+                <pre className="text-[12px] text-gray-400 bg-black/40 rounded-md p-2 overflow-x-auto max-h-40">
                   {typeof tool.result === "string"
                     ? tool.result
                     : JSON.stringify(tool.result, null, 2)}
@@ -955,7 +980,7 @@ function ThinkingBlock({ thinking }: { thinking: string }) {
     <div>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-400 transition-colors"
+        className="flex items-center gap-2 text-[12px] text-gray-500 hover:text-gray-400 transition-colors"
       >
         <Sparkles className="w-3 h-3" />
         <span>Thinking</span>
@@ -987,27 +1012,30 @@ function LiveActivityTimeline({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2 text-xs text-gray-400">
+      <div className="flex items-center gap-2 text-[12px] text-gray-400">
         <Loader2 className="w-3.5 h-3.5 animate-spin" />
         <span>{statusLabel}</span>
       </div>
       {recentActivities.length > 0 ? (
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           {recentActivities.map((activity) => (
             <div
               key={activity.id}
-              className="flex items-center gap-2 text-[11px] text-gray-400 rounded-md bg-white/5 border border-white/10 px-2 py-1.5"
+              className={cn(
+                "flex items-start gap-2 text-[12px] px-0.5",
+                activity.toolName === "__thought" ? "text-gray-200" : "text-gray-400"
+              )}
             >
-              {activity.phase === "start" && (
-                <Loader2 className="w-3 h-3 animate-spin text-amber-400 flex-shrink-0" />
+              {activity.toolName === "__thought" ? (
+                <Sparkles className="w-3 h-3 text-indigo-300 mt-0.5 flex-shrink-0" />
+              ) : activity.phase === "start" ? (
+                <Loader2 className="w-3 h-3 animate-spin text-amber-400 mt-0.5 flex-shrink-0" />
+              ) : activity.phase === "result" ? (
+                <CheckCircle2 className="w-3 h-3 text-emerald-400 mt-0.5 flex-shrink-0" />
+              ) : (
+                <AlertTriangle className="w-3 h-3 text-red-400 mt-0.5 flex-shrink-0" />
               )}
-              {activity.phase === "result" && (
-                <CheckCircle2 className="w-3 h-3 text-emerald-400 flex-shrink-0" />
-              )}
-              {activity.phase === "error" && (
-                <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
-              )}
-              <span className="truncate">{activity.text}</span>
+              <span className="whitespace-pre-wrap break-words">{activity.text}</span>
             </div>
           ))}
         </div>
@@ -1037,17 +1065,27 @@ function ProcessActivityList({ activities }: { activities: LiveActivityItem[] })
   const recentActivities = activities.slice(-8);
 
   return (
-    <div className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-2">
-      <div className="space-y-1">
-        {recentActivities.map((activity) => (
-          <div key={activity.id} className="flex items-center gap-1.5 text-[11px] text-gray-400">
-            {activity.phase === "start" && <Loader2 className="h-3 w-3 animate-spin text-amber-400" />}
-            {activity.phase === "result" && <CheckCircle2 className="h-3 w-3 text-emerald-400" />}
-            {activity.phase === "error" && <AlertTriangle className="h-3 w-3 text-rose-400" />}
-            <span className="truncate">{activity.text}</span>
-          </div>
-        ))}
-      </div>
+    <div className="space-y-1">
+      {recentActivities.map((activity) => (
+        <div
+          key={activity.id}
+          className={cn(
+            "flex items-start gap-1.5 text-[12px] px-0.5",
+            activity.toolName === "__thought" ? "text-gray-200" : "text-gray-400"
+          )}
+        >
+          {activity.toolName === "__thought" ? (
+            <Sparkles className="h-3 w-3 text-indigo-300 mt-0.5 flex-shrink-0" />
+          ) : activity.phase === "start" ? (
+            <Loader2 className="h-3 w-3 animate-spin text-amber-400 mt-0.5 flex-shrink-0" />
+          ) : activity.phase === "result" ? (
+            <CheckCircle2 className="h-3 w-3 text-emerald-400 mt-0.5 flex-shrink-0" />
+          ) : (
+            <AlertTriangle className="h-3 w-3 text-rose-400 mt-0.5 flex-shrink-0" />
+          )}
+          <span className="whitespace-pre-wrap break-words">{activity.text}</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1078,7 +1116,7 @@ function ActivityStepCard({ activity, isLast }: { activity: LiveActivityItem; is
       </div>
       <div
         className={cn(
-          "rounded-lg border px-3 py-2 text-xs leading-5 backdrop-blur-sm",
+          "rounded-lg border px-3 py-2 text-[12px] leading-5 backdrop-blur-sm",
           phaseStyles[activity.phase]
         )}
       >
@@ -1095,7 +1133,7 @@ function FileChangesCard({ summary }: { summary: FileChangeSummary }) {
     <div className="rounded-lg border border-white/10 bg-white/[0.02] overflow-hidden">
       <button
         onClick={() => setExpanded((value) => !value)}
-        className="w-full px-3 py-2 flex items-center gap-2 text-xs cursor-pointer hover:bg-white/5 transition-colors"
+        className="w-full px-3 py-2 flex items-center gap-2 text-[12px] cursor-pointer hover:bg-white/5 transition-colors"
       >
         <Wrench className="w-3 h-3 text-indigo-300" />
         <span className="text-gray-200 font-medium">
@@ -1114,7 +1152,7 @@ function FileChangesCard({ summary }: { summary: FileChangeSummary }) {
         <div className="border-t border-white/5 px-3 py-2 space-y-3">
           {summary.files.map((file) => (
             <div key={`${file.path}-${file.type}`} className="rounded-md border border-white/10 bg-black/25">
-              <div className="flex items-center justify-between gap-3 px-2.5 py-2 text-[11px]">
+              <div className="flex items-center justify-between gap-3 px-2.5 py-2 text-[12px]">
                 <div className="min-w-0">
                   <p className="truncate text-gray-200">{file.path}</p>
                   <p className="text-[10px] text-gray-500 uppercase tracking-[0.08em]">{file.type}</p>
@@ -1380,7 +1418,7 @@ function ArtifactSummaryCard({
     <div className="rounded-lg border border-white/10 bg-white/[0.02] overflow-hidden">
       <button
         onClick={() => setExpanded((value) => !value)}
-        className="w-full px-3 py-2 flex items-center gap-2 text-xs cursor-pointer hover:bg-white/5 transition-colors"
+        className="w-full px-3 py-2 flex items-center gap-2 text-[12px] cursor-pointer hover:bg-white/5 transition-colors"
       >
         <FileText className="w-3 h-3 text-indigo-300" />
         <span className="text-gray-200 font-medium">
@@ -1401,13 +1439,13 @@ function ArtifactSummaryCard({
               className="flex items-center justify-between gap-2 rounded-md border border-white/10 bg-black/25 px-2.5 py-2"
             >
               <div className="min-w-0">
-                <p className="truncate text-[11px] text-gray-200">{artifact.fileName}</p>
+                <p className="truncate text-[12px] text-gray-200">{artifact.fileName}</p>
                 <p className="text-[10px] text-gray-500 truncate">{artifact.sessionId}</p>
               </div>
               <button
                 type="button"
                 onClick={() => onOpenArtifact?.(artifact)}
-                className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[12px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
               >
                 View
               </button>
@@ -1467,7 +1505,7 @@ function AssistantMetaInline({
   return (
     <div className={cn("space-y-2", isWorkSection ? "mb-3" : "mt-3")}>
       {isWorkSection && (
-        <div className="text-[11px] text-gray-500 px-0.5">
+        <div className="text-[12px] text-gray-500 px-0.5">
           <span>
             Worked for{" "}
             {workedDurationMs ? formatWorkedDuration(workedDurationMs) : "0h 00m 00s"}
@@ -1492,7 +1530,7 @@ function AssistantMetaInline({
             <ToolCallItem key={tool.id} tool={tool} />
           ))}
           {hasTruncatedToolCalls && (
-            <div className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-[11px] text-gray-400">
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-[12px] text-gray-400">
               <span>
                 ...and {hiddenToolCallsCount} more tool call
                 {hiddenToolCallsCount === 1 ? "" : "s"} hidden (showing first{" "}
@@ -1502,7 +1540,7 @@ function AssistantMetaInline({
                 type="button"
                 onClick={onViewMoreToolCalls}
                 disabled={!onViewMoreToolCalls || loadingMoreToolCalls}
-                className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[12px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
               >
                 {loadingMoreToolCalls ? (
                   <>
@@ -1597,7 +1635,7 @@ function CopyCodeButton({ code }: { code: string }) {
     <button
       type="button"
       onClick={() => void handleCopy()}
-      className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+      className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[12px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
       title={copied ? "Copied" : "Copy code"}
       aria-label={copied ? "Copied code block" : "Copy code block"}
     >
@@ -1675,11 +1713,11 @@ function DiffCodeBlock({ code }: { code: string }) {
 
   return (
     <div className="my-3 overflow-hidden rounded-xl border border-white/10 bg-slate-950/70">
-      <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] uppercase tracking-[0.08em] text-gray-400">
+      <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-white/[0.04] px-3 py-1.5 text-[12px] uppercase tracking-[0.08em] text-gray-400">
         <span>diff</span>
         <CopyCodeButton code={code} />
       </div>
-      <pre className="m-0 overflow-x-auto font-mono text-xs leading-6">
+      <pre className="m-0 overflow-x-auto font-mono text-[12px] leading-6">
         {lines.map((line, index) => (
           <div
             key={`diff-${index}`}
@@ -1688,7 +1726,7 @@ function DiffCodeBlock({ code }: { code: string }) {
               lineMeta[index]?.className
             )}
           >
-            <span className="select-none pr-2 text-right text-[11px] text-gray-500">
+            <span className="select-none pr-2 text-right text-[12px] text-gray-500">
               {index + 1}
             </span>
             <span className="select-none text-center text-[12px] text-gray-400">
@@ -1707,7 +1745,7 @@ function SyntaxCodeBlock({ code, language }: { code: string; language: string })
   const lineCount = code ? code.split(/\r?\n/).length : 0;
   return (
     <div className="my-3 overflow-hidden rounded-xl border border-white/10 bg-black/55 shadow-[0_8px_24px_rgba(0,0,0,0.22)]">
-      <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] uppercase tracking-[0.08em] text-gray-400">
+      <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-white/[0.04] px-3 py-1.5 text-[12px] uppercase tracking-[0.08em] text-gray-400">
         <span className="inline-flex items-center gap-2">
           <span>{displayLanguage}</span>
           <span className="text-[10px] normal-case tracking-normal text-gray-500">
@@ -1719,7 +1757,7 @@ function SyntaxCodeBlock({ code, language }: { code: string; language: string })
       <Highlight theme={themes.nightOwl} code={code || " "} language={language}>
         {({ className, style, tokens, getLineProps, getTokenProps }) => (
           <pre
-            className={cn(className, "m-0 overflow-x-auto p-3 text-xs leading-6")}
+            className={cn(className, "m-0 overflow-x-auto p-3 text-[12px] leading-6")}
             style={{ ...style, background: "transparent" }}
           >
             {tokens.map((line, lineIndex) => (
@@ -1743,7 +1781,7 @@ function MessageContent({ content }: { content: string }) {
   type MarkdownCodeProps = ComponentPropsWithoutRef<"code"> & { inline?: boolean };
 
   return (
-    <div className="max-w-none text-[11px] text-gray-200 leading-[1.45rem]">
+    <div className="max-w-none text-[12px] text-gray-200 leading-[1.45rem]">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -1769,7 +1807,7 @@ function MessageContent({ content }: { content: string }) {
           li: ({ children }) => <li className="mb-1">{children}</li>,
           table: ({ children }) => (
             <div className="my-3 overflow-x-auto rounded-xl border border-white/10 bg-white/[0.03]">
-              <table className="w-full text-xs border-collapse">{children}</table>
+              <table className="w-full text-[12px] border-collapse">{children}</table>
             </div>
           ),
           thead: ({ children }) => <thead className="bg-white/5">{children}</thead>,
@@ -1842,12 +1880,12 @@ function ArtifactViewerPanel({
           <button
             type="button"
             onClick={onBack}
-            className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-xs text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[12px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             Back to chat
           </button>
-          <div className="flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[11px] text-gray-300">
+          <div className="flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[12px] text-gray-300">
             <FileText className="w-3.5 h-3.5 text-indigo-300" />
             <span className="truncate max-w-[280px] sm:max-w-[520px]">
               {artifact?.title || artifact?.fileName || "Artifact"}
@@ -1858,7 +1896,7 @@ function ArtifactViewerPanel({
               type="button"
               onClick={() => onToggleView(false)}
               className={cn(
-                "rounded-md border px-2 py-1 text-[11px] transition-colors cursor-pointer",
+                "rounded-md border px-2 py-1 text-[12px] transition-colors cursor-pointer",
                 !rawView
                   ? "border-indigo-400/40 bg-indigo-500/20 text-indigo-200"
                   : "border-white/15 bg-white/[0.03] text-gray-300 hover:text-white hover:bg-white/[0.08]"
@@ -1870,7 +1908,7 @@ function ArtifactViewerPanel({
               type="button"
               onClick={() => onToggleView(true)}
               className={cn(
-                "rounded-md border px-2 py-1 text-[11px] transition-colors cursor-pointer",
+                "rounded-md border px-2 py-1 text-[12px] transition-colors cursor-pointer",
                 rawView
                   ? "border-indigo-400/40 bg-indigo-500/20 text-indigo-200"
                   : "border-white/15 bg-white/[0.03] text-gray-300 hover:text-white hover:bg-white/[0.08]"
@@ -1881,7 +1919,7 @@ function ArtifactViewerPanel({
           </div>
         </div>
         {artifact && (
-          <div className="mt-2 space-y-1 text-[11px] text-gray-500">
+          <div className="mt-2 space-y-1 text-[12px] text-gray-500">
             <p className="truncate">Path: {resolvedPath}</p>
             <p className="truncate">Endpoint: {locationLabel}</p>
           </div>
@@ -1898,7 +1936,7 @@ function ArtifactViewerPanel({
             {error}
           </div>
         ) : rawView ? (
-          <pre className="max-h-full overflow-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs text-gray-200 whitespace-pre-wrap">
+          <pre className="max-h-full overflow-auto rounded-lg border border-white/10 bg-black/40 p-3 text-[12px] text-gray-200 whitespace-pre-wrap">
             {content}
           </pre>
         ) : (
@@ -1961,7 +1999,7 @@ function SessionDiffPanel({
         </div>
       ) : (
         <>
-          <div className="px-3 py-2 text-[11px] text-gray-400 border-b border-white/5 bg-black/10">
+          <div className="px-3 py-2 text-[12px] text-gray-400 border-b border-white/5 bg-black/10">
             <span className="text-emerald-300">+{summary.totalAdded}</span>
             <span className="mx-1 text-gray-500">/</span>
             <span className="text-rose-300">-{summary.totalRemoved}</span>
@@ -1983,7 +2021,7 @@ function SessionDiffPanel({
                       : "bg-white/[0.02] border-white/10 hover:bg-white/[0.06]"
                   )}
                 >
-                  <p className="text-[11px] text-gray-100 truncate">{file.path}</p>
+                  <p className="text-[12px] text-gray-100 truncate">{file.path}</p>
                   <p className="mt-1 text-[10px] text-gray-500 uppercase tracking-[0.08em]">
                     {file.type}
                   </p>
@@ -2000,18 +2038,18 @@ function SessionDiffPanel({
             {selectedFile ? (
               <div className="rounded-lg border border-white/10 bg-black/20 overflow-hidden">
                 <div className="px-2.5 py-2 border-b border-white/10">
-                  <p className="text-[11px] text-gray-200 truncate">{selectedFile.path}</p>
+                  <p className="text-[12px] text-gray-200 truncate">{selectedFile.path}</p>
                 </div>
                 {selectedFile.diff ? (
                   <DiffCodeBlock code={selectedFile.diff} />
                 ) : (
-                  <div className="p-3 text-[11px] text-gray-500">
+                  <div className="p-3 text-[12px] text-gray-500">
                     No line-by-line diff captured for this file change.
                   </div>
                 )}
               </div>
             ) : (
-              <div className="text-[11px] text-gray-500">Select a file to view its diff.</div>
+              <div className="text-[12px] text-gray-500">Select a file to view its diff.</div>
             )}
           </div>
         </>
@@ -2093,7 +2131,7 @@ function SubagentPanel({
               <p className="text-xs">No active subagents</p>
               <button
                 onClick={() => setShowSpawnModal(true)}
-                className="mt-3 text-xs px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                className="mt-3 text-[12px] px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-pointer"
               >
                 <Plus className="w-3 h-3 inline mr-1" />
                 Spawn New
@@ -2108,7 +2146,7 @@ function SubagentPanel({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs text-white truncate font-medium">{subagent.label}</p>
+                    <p className="text-[12px] text-white truncate font-medium">{subagent.label}</p>
                     <p className="text-[10px] text-gray-500 mt-0.5">
                       {new Date(subagent.createdAt).toLocaleTimeString()}
                     </p>
@@ -2193,7 +2231,7 @@ function SubagentPanel({
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-xs text-gray-500 mb-1">Status</p>
+                <p className="text-[12px] text-gray-500 mb-1">Status</p>
                 <Badge
                   variant={
                     selectedSubagent.status === "completed"
@@ -2209,7 +2247,7 @@ function SubagentPanel({
                 </Badge>
               </div>
               <div>
-                <p className="text-xs text-gray-500 mb-1">Created</p>
+                <p className="text-[12px] text-gray-500 mb-1">Created</p>
                 <p className="text-sm text-white">
                   {new Date(selectedSubagent.createdAt).toLocaleString()}
                 </p>
@@ -2217,7 +2255,7 @@ function SubagentPanel({
             </div>
 
             <div>
-              <p className="text-xs text-gray-500 mb-1">Task</p>
+              <p className="text-[12px] text-gray-500 mb-1">Task</p>
               <div className="p-3 rounded-lg bg-white/5 border border-white/10">
                 <p className="text-sm text-gray-300 whitespace-pre-wrap">{selectedSubagent.task}</p>
               </div>
@@ -2225,7 +2263,7 @@ function SubagentPanel({
 
             {selectedSubagent.result && (
               <div>
-                <p className="text-xs text-gray-500 mb-1">Result</p>
+                <p className="text-[12px] text-gray-500 mb-1">Result</p>
                 <div
                   className={`p-3 rounded-lg border ${selectedSubagent.status === "completed"
                     ? "bg-emerald-500/10 border-emerald-500/30"
@@ -2242,15 +2280,15 @@ function SubagentPanel({
             )}
 
             <div>
-              <p className="text-xs text-gray-500 mb-1">Session Key</p>
-              <code className="text-xs text-amber-400 bg-black/30 px-2 py-1 rounded">
+              <p className="text-[12px] text-gray-500 mb-1">Session Key</p>
+              <code className="text-[12px] text-amber-400 bg-black/30 px-2 py-1 rounded">
                 {selectedSubagent.sessionKey}
               </code>
             </div>
 
             <div>
-              <p className="text-xs text-gray-500 mb-1">ID</p>
-              <code className="text-xs text-gray-400 bg-black/30 px-2 py-1 rounded">
+              <p className="text-[12px] text-gray-500 mb-1">ID</p>
+              <code className="text-[12px] text-gray-400 bg-black/30 px-2 py-1 rounded">
                 {selectedSubagent.id}
               </code>
             </div>
@@ -2377,7 +2415,7 @@ function SessionsPanel({
         <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
           <button
             onClick={onNewSession}
-            className="w-full p-2.5 rounded-lg bg-[rgba(var(--accent-primary),0.1)] border border-[rgba(var(--accent-primary),0.2)] hover:bg-[rgba(var(--accent-primary),0.15)] text-white text-xs font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer"
+            className="w-full p-2.5 rounded-lg bg-[rgba(var(--accent-primary),0.1)] border border-[rgba(var(--accent-primary),0.2)] hover:bg-[rgba(var(--accent-primary),0.15)] text-white text-[12px] font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             New Session
@@ -2410,7 +2448,7 @@ function SessionsPanel({
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs text-white font-medium flex items-center gap-1.5">
+                      <p className="text-[12px] text-white font-medium flex items-center gap-1.5">
                         {isSessionActive ? (
                           <Loader2 className="w-3 h-3 animate-spin text-amber-400 flex-shrink-0" />
                         ) : (
@@ -2866,10 +2904,22 @@ export function Chat() {
       if (activeAgent && payload.agentId && payload.agentId !== activeAgent) return;
 
       if (status === "thinking") {
+        if (!payload.toolName) {
+          const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
+          if (isMeaningfulThoughtDetail(detail)) {
+            appendLiveActivity("result", detail, "__thought");
+          }
+        }
         setLiveStatus("thinking");
         return;
       }
       if (status === "generating") {
+        if (!payload.toolName) {
+          const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
+          if (isMeaningfulThoughtDetail(detail)) {
+            appendLiveActivity("result", detail, "__thought");
+          }
+        }
         setLiveStatus("generating");
         return;
       }
@@ -3172,7 +3222,7 @@ export function Chat() {
           <select
             value={selectedAgentId || ""}
             onChange={(e) => setSelectedAgentId(e.target.value || undefined)}
-            className="text-xs bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white !outline-none focus:border-white/20 cursor-pointer"
+            className="text-[12px] bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white !outline-none focus:border-white/20 cursor-pointer"
           >
             <option value="">Default</option>
             {agents.map((agent) => (
@@ -3184,7 +3234,7 @@ export function Chat() {
           <button
             onClick={() => void handleSelectWorkspace()}
             disabled={workspaceSaving}
-            className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-[11px] text-gray-300 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-[12px] text-gray-300 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             title="Select workspace folder for this session"
           >
             {workspaceSaving ? (
@@ -3278,13 +3328,13 @@ export function Chat() {
                     <div className="text-center text-gray-500">
                       <Sparkles className="w-8 h-8 mx-auto mb-3 opacity-30" />
                       <p className="text-sm font-medium">Start a conversation</p>
-                      <p className="text-xs mt-1 text-gray-600">
+                      <p className="text-[12px] mt-1 text-gray-600">
                         Ask questions, get help with code, or chat with your agents
                       </p>
                       {effectiveWorkspaceDir && (
                         <div className="mt-3 inline-flex items-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-2.5 py-1.5">
                           <Folder className="h-3.5 w-3.5 text-blue-300" />
-                          <span className="text-[11px] text-blue-200 font-mono">
+                          <span className="text-[12px] text-blue-200 font-mono">
                             Workspace: {effectiveWorkspaceDir}
                           </span>
                         </div>
@@ -3446,7 +3496,7 @@ export function Chat() {
                     onKeyDown={handleKeyDown}
                     placeholder="Type a message..."
                     disabled={showWorkingTimeline}
-                    className="flex-1 px-3 sm:px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-xs text-white placeholder-gray-500 !outline-none focus:border-white/20 transition-colors"
+                    className="flex-1 px-3 sm:px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-[12px] text-white placeholder-gray-500 !outline-none focus:border-white/20 transition-colors"
                   />
                   <button
                     onClick={handleSend}
@@ -3538,16 +3588,15 @@ export function Chat() {
               </div>
             )}
             <div className="flex justify-end gap-3">
-              <GlassButton
+              <Button
                 variant="ghost"
                 onClick={() => setRevertTarget(null)}
                 disabled={reverting}
               >
                 Cancel
-              </GlassButton>
-              <GlassButton
-                variant="primary"
-                className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/30"
+              </Button>
+              <Button
+                variant="secondary"
                 onClick={() => void handleConfirmRevert()}
                 disabled={reverting}
               >
@@ -3557,7 +3606,7 @@ export function Chat() {
                   <RotateCcw className="w-4 h-4 mr-2" />
                 )}
                 Revert Here
-              </GlassButton>
+              </Button>
             </div>
           </div>
         </Modal>

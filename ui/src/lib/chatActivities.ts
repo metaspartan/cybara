@@ -13,11 +13,71 @@ export interface ToolCallLike {
   name: string;
   arguments?: Record<string, unknown>;
   args?: Record<string, unknown>;
+  result?: unknown;
   status?: "pending" | "executing" | "completed" | "failed" | "success" | "error";
 }
 
 function normalizeText(value: string): string {
   return value.trim().replace(/\s+/g, " ");
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function toDisplayPath(path: string): string {
+  const normalized = path.replace(/\\/g, "/").trim();
+  if (!normalized) return "file";
+  const segments = normalized.split("/").filter(Boolean);
+  return segments[segments.length - 1] || normalized;
+}
+
+function toFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function summarizeToolResult(call: ToolCallLike, phase: ActivityPhase): string | undefined {
+  if (phase !== "result") return undefined;
+  if (!isObjectRecord(call.result)) return undefined;
+
+  const key = call.name.toLowerCase();
+  if (key === "write" || key === "edit") {
+    const change = isObjectRecord(call.result.change) ? call.result.change : undefined;
+    const path =
+      (typeof change?.path === "string" && change.path.trim()) ||
+      (typeof call.result.path === "string" && call.result.path.trim()) ||
+      "";
+    const added = toFiniteNumber(change?.addedLines);
+    const removed = toFiniteNumber(change?.removedLines);
+
+    if (path && added !== undefined && removed !== undefined) {
+      return `Edited ${toDisplayPath(path)} +${added} -${removed}`;
+    }
+    if (path) {
+      return `Edited ${toDisplayPath(path)}`;
+    }
+    if (added !== undefined && removed !== undefined) {
+      return `Edited file +${added} -${removed}`;
+    }
+  }
+
+  if (key === "file_search" || key === "grep") {
+    const files = Array.isArray(call.result.files) ? call.result.files : undefined;
+    const count = toFiniteNumber(call.result.count) || (files ? files.length : undefined);
+    if (count !== undefined) {
+      const safeCount = Math.max(0, Math.floor(count));
+      return `Explored ${safeCount} file${safeCount === 1 ? "" : "s"}, 1 search`;
+    }
+  }
+
+  return undefined;
 }
 
 function toCanonicalVerb(text: string, phase: ActivityPhase): string {
@@ -83,7 +143,7 @@ export function buildActivitiesFromToolCalls(
     const call = toolCalls[index];
     const phase = normalizeToolPhase(call.status);
     const args = (call.arguments || call.args || {}) as Record<string, unknown>;
-    const text = formatToolIntent(call.name, args, phase);
+    const text = summarizeToolResult(call, phase) || formatToolIntent(call.name, args, phase);
     const trimmedText = text.trim();
     if (!trimmedText) continue;
 
