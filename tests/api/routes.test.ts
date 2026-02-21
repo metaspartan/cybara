@@ -1735,6 +1735,8 @@ describe("Metrics API", () => {
     expect(storage.status).toBe(200);
     expect(typeof storage.data.totalBytes).toBe("number");
     expect(storage.data.totalBytes).toBeGreaterThanOrEqual(0);
+    expect(typeof storage.data.accountedBytes).toBe("number");
+    expect(typeof storage.data.uncategorizedBytes).toBe("number");
     expect(typeof storage.data.directories).toBe("object");
     expect(typeof storage.data.components).toBe("object");
     expect(typeof storage.data.components.database.bytes).toBe("number");
@@ -1742,6 +1744,15 @@ describe("Metrics API", () => {
     expect(typeof storage.data.components.artifacts.bytes).toBe("number");
     expect(typeof storage.data.components.logs.bytes).toBe("number");
     expect(typeof storage.data.components.memory.bytes).toBe("number");
+    expect(typeof storage.data.components.data.bytes).toBe("number");
+    expect(typeof storage.data.components.sessions.bytes).toBe("number");
+    expect(typeof storage.data.components.media.bytes).toBe("number");
+    expect(typeof storage.data.components.channels.bytes).toBe("number");
+    expect(typeof storage.data.components.other.bytes).toBe("number");
+    expect(Array.isArray(storage.data.topLevel)).toBe(true);
+    const accountedPlusOther =
+      Number(storage.data.accountedBytes || 0) + Number(storage.data.uncategorizedBytes || 0);
+    expect(accountedPlusOther).toBeLessThanOrEqual(storage.data.totalBytes + 1);
   });
 
   test("metrics detail endpoints tolerate malformed metadata rows", async () => {

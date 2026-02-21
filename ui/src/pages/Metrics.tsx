@@ -123,6 +123,29 @@ export function Metrics() {
     };
   }, [overview, tools, insightsData, tokenAnalysisData]);
 
+  const storageCategoryEntries = useMemo(() => {
+    if (!storageData) return [];
+    return [
+      { label: 'Data', bytes: storageData.components.data.bytes, path: storageData.components.data.path },
+      { label: 'Sessions', bytes: storageData.components.sessions?.bytes || 0, path: storageData.components.sessions?.path || '' },
+      { label: 'Media', bytes: storageData.components.media?.bytes || 0, path: storageData.components.media?.path || '' },
+      { label: 'Channels', bytes: storageData.components.channels?.bytes || 0, path: storageData.components.channels?.path || '' },
+      { label: 'Artifacts', bytes: storageData.components.artifacts.bytes, path: storageData.components.artifacts.path },
+      { label: 'Logs', bytes: storageData.components.logs.bytes, path: storageData.components.logs.path },
+      { label: 'Memory', bytes: storageData.components.memory.bytes, path: storageData.components.memory.path },
+      { label: 'Skills', bytes: storageData.components.skills.bytes, path: storageData.components.skills.path },
+      { label: 'Secure', bytes: storageData.components.secure.bytes, path: storageData.components.secure.path },
+      { label: 'Other', bytes: storageData.components.other?.bytes || storageData.uncategorizedBytes || 0, path: storageData.components.other?.path || storageData.directories.cybaraDir },
+    ]
+      .filter((entry) => entry.bytes > 0)
+      .sort((a, b) => b.bytes - a.bytes);
+  }, [storageData]);
+
+  const storageTopLevelEntries = useMemo(() => {
+    if (!storageData?.topLevel || storageData.topLevel.length === 0) return [];
+    return [...storageData.topLevel].sort((a, b) => b.bytes - a.bytes);
+  }, [storageData]);
+
   if (isLoading) {
     return (
       <PageLayout title="Metrics" subtitle="Loading metrics...">
@@ -791,20 +814,82 @@ export function Metrics() {
         </CardHeader>
         <CardContent>
           {storageData ? (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div className="rounded-lg bg-white/5 p-3">
                 <p className="text-xs text-gray-500 mb-1">Total Local Storage</p>
                 <p className="text-xl font-semibold text-white">{formatBytes(storageData.totalBytes)}</p>
                 <p className="text-[11px] text-gray-500 mt-1">{storageData.directories.cybaraDir}</p>
+                <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+                  <div className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1.5">
+                    <p className="text-gray-500">Accounted</p>
+                    <p className="text-gray-200">{formatBytes(storageData.accountedBytes ?? storageData.totalBytes)}</p>
+                  </div>
+                  <div className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1.5">
+                    <p className="text-gray-500">Uncategorized</p>
+                    <p className="text-gray-200">{formatBytes(storageData.uncategorizedBytes ?? 0)}</p>
+                  </div>
+                  <div className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1.5">
+                    <p className="text-gray-500">Database (in Data)</p>
+                    <p className="text-gray-200">{formatBytes(storageData.components.database.bytes)}</p>
+                  </div>
+                </div>
               </div>
-              {[
-                { label: 'Database (main + WAL + SHM)', bytes: storageData.components.database.bytes, path: storageData.components.database.path },
-                { label: 'Artifacts', bytes: storageData.components.artifacts.bytes, path: storageData.components.artifacts.path },
-                { label: 'Logs', bytes: storageData.components.logs.bytes, path: storageData.components.logs.path },
-                { label: 'Memory', bytes: storageData.components.memory.bytes, path: storageData.components.memory.path },
-                { label: 'Skills', bytes: storageData.components.skills.bytes, path: storageData.components.skills.path },
-                { label: 'Secure', bytes: storageData.components.secure.bytes, path: storageData.components.secure.path },
-              ].map((entry) => {
+
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  {storageCategoryEntries.map((entry) => {
+                    const sharePct = storageData.totalBytes > 0 ? (entry.bytes / storageData.totalBytes) * 100 : 0;
+                    return (
+                      <div key={entry.label} className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+                        <div className="flex items-center justify-between text-sm mb-1.5">
+                          <span className="text-gray-200">{entry.label}</span>
+                          <span className="text-cyan-300">{formatBytes(entry.bytes)}</span>
+                        </div>
+                        <div className="h-1.5 bg-white/10 rounded-full overflow-hidden mb-1.5">
+                          <div className="h-full bg-cyan-500 rounded-full" style={{ width: `${Math.min(100, sharePct)}%` }} />
+                        </div>
+                        <p className="text-[11px] text-gray-500 truncate">{entry.path}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+                  <p className="text-sm text-gray-200 mb-2">Top Local Paths</p>
+                  <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                    {storageTopLevelEntries.length > 0 ? (
+                      storageTopLevelEntries.map((entry) => {
+                        const sharePct = storageData.totalBytes > 0 ? (entry.bytes / storageData.totalBytes) * 100 : 0;
+                        return (
+                          <div key={entry.path} className="rounded-md border border-white/10 bg-black/20 p-2.5">
+                            <div className="flex items-center justify-between gap-3 text-[12px]">
+                              <span className="text-gray-200 truncate">{entry.name}</span>
+                              <span className="text-cyan-300 shrink-0">{formatBytes(entry.bytes)}</span>
+                            </div>
+                            <p className="text-[11px] text-gray-500 truncate mt-1">{entry.path}</p>
+                            <p className="text-[10px] text-gray-500 mt-1">{sharePct.toFixed(2)}% of total</p>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="text-[12px] text-gray-500">No top-level path data available.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {storageCategoryEntries.length === 0 && (
+                <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-sm text-gray-500">
+                  Storage categories are empty.
+                </div>
+              )}
+
+              {(() => {
+                const entry = {
+                  label: 'Database files',
+                  bytes: storageData.components.database.bytes,
+                  path: storageData.components.database.path,
+                };
                 const sharePct = storageData.totalBytes > 0 ? (entry.bytes / storageData.totalBytes) * 100 : 0;
                 return (
                   <div key={entry.label} className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
@@ -818,7 +903,7 @@ export function Metrics() {
                     <p className="text-[11px] text-gray-500 truncate">{entry.path}</p>
                   </div>
                 );
-              })}
+              })()}
             </div>
           ) : (
             <p className="text-sm text-gray-500">No storage data available.</p>

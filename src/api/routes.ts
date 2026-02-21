@@ -314,26 +314,87 @@ function safeDirSizeBytes(path: string): number {
   }
 }
 
+type StorageTopLevelEntry = {
+  name: string;
+  path: string;
+  bytes: number;
+  type: "directory" | "file";
+};
+
+function collectTopLevelStorageEntries(rootDir: string): StorageTopLevelEntry[] {
+  try {
+    if (!existsSync(rootDir)) return [];
+    const entries = readdirSync(rootDir, { withFileTypes: true });
+    const topLevelEntries: StorageTopLevelEntry[] = [];
+    for (const entry of entries) {
+      const fullPath = join(rootDir, entry.name);
+      if (entry.isDirectory()) {
+        topLevelEntries.push({
+          name: entry.name,
+          path: fullPath,
+          bytes: safeDirSizeBytes(fullPath),
+          type: "directory",
+        });
+        continue;
+      }
+      if (entry.isFile()) {
+        topLevelEntries.push({
+          name: entry.name,
+          path: fullPath,
+          bytes: safeFileSizeBytes(fullPath),
+          type: "file",
+        });
+      }
+    }
+    return topLevelEntries.sort((a, b) => b.bytes - a.bytes);
+  } catch {
+    return [];
+  }
+}
+
 function buildStorageMetrics() {
   const dbMainPath = join(dataDir, "platform.db");
   const dbWalPath = join(dataDir, "platform.db-wal");
   const dbShmPath = join(dataDir, "platform.db-shm");
   const artifactsDir = getArtifactsRootDir();
+  const sessionsDir = join(cybaraDir, "sessions");
+  const mediaDir = join(cybaraDir, "media");
+  const channelsDir = join(cybaraDir, "channels");
+  const topLevelEntries = collectTopLevelStorageEntries(cybaraDir);
+  const topLevelBytesByName = new Map(topLevelEntries.map((entry) => [entry.name, entry.bytes]));
+  const topLevelTotalBytes = topLevelEntries.reduce((sum, entry) => sum + entry.bytes, 0);
 
   const databaseMainBytes = safeFileSizeBytes(dbMainPath);
   const databaseWalBytes = safeFileSizeBytes(dbWalPath);
   const databaseShmBytes = safeFileSizeBytes(dbShmPath);
   const databaseBytes = databaseMainBytes + databaseWalBytes + databaseShmBytes;
-  const artifactsBytes = safeDirSizeBytes(artifactsDir);
-  const logsBytes = safeDirSizeBytes(logsDir);
-  const memoryBytes = safeDirSizeBytes(memoryDir);
-  const secureBytes = safeDirSizeBytes(secureDir);
-  const skillsBytes = safeDirSizeBytes(userSkillsDir);
-  const dataBytes = safeDirSizeBytes(dataDir);
-  const cybaraHomeBytes = safeDirSizeBytes(cybaraDir);
+  const dataBytes = topLevelBytesByName.get("data") ?? safeDirSizeBytes(dataDir);
+  const artifactsBytes = topLevelBytesByName.get("artifacts") ?? safeDirSizeBytes(artifactsDir);
+  const logsBytes = topLevelBytesByName.get("logs") ?? safeDirSizeBytes(logsDir);
+  const memoryBytes = topLevelBytesByName.get("memory") ?? safeDirSizeBytes(memoryDir);
+  const secureBytes = topLevelBytesByName.get("secure") ?? safeDirSizeBytes(secureDir);
+  const skillsBytes = topLevelBytesByName.get("skills") ?? safeDirSizeBytes(userSkillsDir);
+  const sessionsBytes = topLevelBytesByName.get("sessions") ?? safeDirSizeBytes(sessionsDir);
+  const mediaBytes = topLevelBytesByName.get("media") ?? safeDirSizeBytes(mediaDir);
+  const channelsBytes = topLevelBytesByName.get("channels") ?? safeDirSizeBytes(channelsDir);
+
+  const categorizedBytes =
+    dataBytes +
+    artifactsBytes +
+    logsBytes +
+    memoryBytes +
+    secureBytes +
+    skillsBytes +
+    sessionsBytes +
+    mediaBytes +
+    channelsBytes;
+  const uncategorizedBytes = Math.max(0, topLevelTotalBytes - categorizedBytes);
+  const accountedBytes = topLevelTotalBytes - uncategorizedBytes;
 
   return {
-    totalBytes: cybaraHomeBytes,
+    totalBytes: topLevelTotalBytes,
+    accountedBytes,
+    uncategorizedBytes,
     directories: {
       cybaraDir,
       dataDir,
@@ -342,6 +403,9 @@ function buildStorageMetrics() {
       secureDir,
       artifactsDir,
       userSkillsDir,
+      sessionsDir,
+      mediaDir,
+      channelsDir,
     },
     components: {
       database: {
@@ -358,8 +422,13 @@ function buildStorageMetrics() {
       memory: { path: memoryDir, bytes: memoryBytes },
       secure: { path: secureDir, bytes: secureBytes },
       skills: { path: userSkillsDir, bytes: skillsBytes },
+      sessions: { path: sessionsDir, bytes: sessionsBytes },
+      media: { path: mediaDir, bytes: mediaBytes },
+      channels: { path: channelsDir, bytes: channelsBytes },
+      other: { path: cybaraDir, bytes: uncategorizedBytes },
       data: { path: dataDir, bytes: dataBytes },
     },
+    topLevel: topLevelEntries,
   };
 }
 

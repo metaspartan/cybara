@@ -1009,6 +1009,8 @@ export interface TimeSeriesData {
 
 export interface MetricsStorage {
   totalBytes: number;
+  accountedBytes?: number;
+  uncategorizedBytes?: number;
   directories: {
     cybaraDir: string;
     dataDir: string;
@@ -1017,6 +1019,9 @@ export interface MetricsStorage {
     secureDir: string;
     artifactsDir: string;
     userSkillsDir: string;
+    sessionsDir?: string;
+    mediaDir?: string;
+    channelsDir?: string;
   };
   components: {
     database: {
@@ -1033,8 +1038,18 @@ export interface MetricsStorage {
     memory: { path: string; bytes: number };
     secure: { path: string; bytes: number };
     skills: { path: string; bytes: number };
+    sessions?: { path: string; bytes: number };
+    media?: { path: string; bytes: number };
+    channels?: { path: string; bytes: number };
+    other?: { path: string; bytes: number };
     data: { path: string; bytes: number };
   };
+  topLevel?: Array<{
+    name: string;
+    path: string;
+    bytes: number;
+    type: "directory" | "file";
+  }>;
 }
 
 export function useMetricsOverview() {
