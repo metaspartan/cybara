@@ -163,9 +163,9 @@ export function Artifacts() {
       subtitle="Browse all session artifacts and inspect their content"
       noPadding
     >
-      <div className="flex-1 min-h-0 px-4 sm:px-6 py-4 sm:py-6">
+      <div className="flex-1 min-h-0 px-4 sm:px-6 py-4 sm:py-6 h-[calc(100vh-theme(spacing.16))]">
         <div className="grid h-full min-h-0 grid-cols-1 gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
-          <Card className="flex min-h-[340px] flex-col overflow-hidden lg:h-full lg:min-h-0">
+          <Card className="flex min-h-[400px] flex-col overflow-hidden lg:h-full lg:min-h-0">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <FileText className="w-5 h-5 text-indigo-300" />
@@ -222,11 +222,10 @@ export function Artifacts() {
                           setSelected(artifact);
                           setRawView(false);
                         }}
-                        className={`w-full text-left rounded-lg border px-3 py-2.5 transition-colors cursor-pointer ${
-                          isSelected
-                            ? "border-indigo-500/40 bg-indigo-500/15"
-                            : "border-white/10 bg-white/[0.02] hover:bg-white/[0.06]"
-                        }`}
+                        className={`w-full text-left rounded-lg border px-3 py-2.5 transition-colors cursor-pointer ${isSelected
+                          ? "border-indigo-500/40 bg-indigo-500/15"
+                          : "border-white/10 bg-white/[0.02] hover:bg-white/[0.06]"
+                          }`}
                       >
                         <p className="text-sm text-white truncate">
                           {artifact.title || artifact.fileName}
@@ -261,22 +260,20 @@ export function Artifacts() {
                   <button
                     type="button"
                     onClick={() => setRawView(false)}
-                    className={`rounded-md border px-2 py-1 text-xs transition-colors cursor-pointer ${
-                      !rawView
-                        ? "border-cyan-500/40 bg-cyan-500/20 text-cyan-200"
-                        : "border-white/15 bg-white/[0.03] text-gray-300 hover:text-white hover:bg-white/[0.08]"
-                    }`}
+                    className={`rounded-md border px-2 py-1 text-xs transition-colors cursor-pointer ${!rawView
+                      ? "border-cyan-500/40 bg-cyan-500/20 text-cyan-200"
+                      : "border-white/15 bg-white/[0.03] text-gray-300 hover:text-white hover:bg-white/[0.08]"
+                      }`}
                   >
                     Markdown
                   </button>
                   <button
                     type="button"
                     onClick={() => setRawView(true)}
-                    className={`rounded-md border px-2 py-1 text-xs transition-colors cursor-pointer ${
-                      rawView
-                        ? "border-cyan-500/40 bg-cyan-500/20 text-cyan-200"
-                        : "border-white/15 bg-white/[0.03] text-gray-300 hover:text-white hover:bg-white/[0.08]"
-                    }`}
+                    className={`rounded-md border px-2 py-1 text-xs transition-colors cursor-pointer ${rawView
+                      ? "border-cyan-500/40 bg-cyan-500/20 text-cyan-200"
+                      : "border-white/15 bg-white/[0.03] text-gray-300 hover:text-white hover:bg-white/[0.08]"
+                      }`}
                   >
                     Raw
                   </button>
