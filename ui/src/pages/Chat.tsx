@@ -61,6 +61,7 @@ interface ToolCall {
   arguments?: Record<string, unknown>;
   args?: Record<string, unknown>;
   result?: unknown;
+  duration?: number;
   status: "pending" | "executing" | "completed" | "failed" | "success" | "error";
 }
 
@@ -1033,6 +1034,155 @@ function getHiddenToolCallsCount(message: ChatMessage): number {
   return 0;
 }
 
+function formatWorkedDuration(durationMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${hours}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
+}
+
+function resolveWorkedDurationMs(
+  processActivities?: LiveActivityItem[],
+  toolCalls?: ToolCall[]
+): number | undefined {
+  const activityTimestamps = (processActivities || [])
+    .map((activity) => activity.timestamp)
+    .filter((timestamp): timestamp is number => Number.isFinite(timestamp));
+  if (activityTimestamps.length >= 2) {
+    const minTimestamp = Math.min(...activityTimestamps);
+    const maxTimestamp = Math.max(...activityTimestamps);
+    const duration = maxTimestamp - minTimestamp;
+    if (duration > 0) return duration;
+  }
+
+  const toolDurationTotal = (toolCalls || []).reduce((sum, toolCall) => {
+    const duration = typeof toolCall.duration === "number" ? toolCall.duration : 0;
+    return duration > 0 ? sum + duration : sum;
+  }, 0);
+  if (toolDurationTotal > 0) return toolDurationTotal;
+
+  return undefined;
+}
+
+function resolveArtifactAction(toolCall: ToolCall): string | undefined {
+  const args = toolCall.arguments || toolCall.args || {};
+  const actionFromArgs =
+    (typeof args.action === "string" ? args.action : "") ||
+    (typeof args.mode === "string" ? args.mode : "");
+  if (actionFromArgs) return actionFromArgs.toLowerCase();
+
+  const parsedResult = tryParseJsonRecord(toolCall.result);
+  if (isRecord(parsedResult) && typeof parsedResult.action === "string") {
+    return parsedResult.action.toLowerCase();
+  }
+
+  return undefined;
+}
+
+const ARTIFACT_MUTATION_ACTIONS = new Set(["create", "update", "append", "check"]);
+
+function isArtifactMutationAction(action: string): boolean {
+  return ARTIFACT_MUTATION_ACTIONS.has(action);
+}
+
+function hasArtifactMutationResult(toolCall: ToolCall): boolean {
+  const parsedResult = tryParseJsonRecord(toolCall.result);
+  if (!isRecord(parsedResult)) return false;
+
+  if (
+    parsedResult.created === true ||
+    parsedResult.updated === true ||
+    parsedResult.appended === true ||
+    parsedResult.checked === true
+  ) {
+    return true;
+  }
+
+  const actionFromResult =
+    typeof parsedResult.action === "string" ? parsedResult.action.toLowerCase() : "";
+  if (actionFromResult && isArtifactMutationAction(actionFromResult)) {
+    return true;
+  }
+
+  return false;
+}
+
+function collectMessageArtifacts(
+  message: ChatMessage,
+  sessionId?: string | null
+): ArtifactSummaryView[] {
+  const artifacts: ArtifactSummaryView[] = [];
+  for (const toolCall of message.tool_calls || []) {
+    const isArtifactTool = toolCall.name === "artifacts" || toolCall.name === "artifact";
+    if (!isArtifactTool) continue;
+
+    const action = resolveArtifactAction(toolCall);
+    if (action) {
+      if (!isArtifactMutationAction(action)) {
+        continue;
+      }
+    } else if (!hasArtifactMutationResult(toolCall)) {
+      continue;
+    }
+
+    artifacts.push(...inferArtifactSummaries(toolCall, sessionId));
+  }
+  return dedupeArtifactSummaries(artifacts);
+}
+
+function ArtifactSummaryCard({
+  artifacts,
+  onOpenArtifact,
+}: {
+  artifacts: ArtifactSummaryView[];
+  onOpenArtifact?: (artifact: ArtifactSummaryView) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.02] overflow-hidden">
+      <button
+        onClick={() => setExpanded((value) => !value)}
+        className="w-full px-3 py-2 flex items-center gap-2 text-xs cursor-pointer hover:bg-white/5 transition-colors"
+      >
+        <FileText className="w-3 h-3 text-indigo-300" />
+        <span className="text-gray-200 font-medium">
+          {artifacts.length} artifact{artifacts.length === 1 ? "" : "s"} created/updated
+        </span>
+        <span className="flex-1" />
+        {expanded ? (
+          <ChevronUp className="w-3.5 h-3.5 text-gray-500" />
+        ) : (
+          <ChevronDown className="w-3.5 h-3.5 text-gray-500" />
+        )}
+      </button>
+      {expanded && (
+        <div className="border-t border-white/5 px-3 py-2 space-y-2">
+          {artifacts.map((artifact) => (
+            <div
+              key={`${artifact.sessionId}:${artifact.fileName}`}
+              className="flex items-center justify-between gap-2 rounded-md border border-white/10 bg-black/25 px-2.5 py-2"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-[11px] text-gray-200">{artifact.fileName}</p>
+                <p className="text-[10px] text-gray-500 truncate">{artifact.sessionId}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onOpenArtifact?.(artifact)}
+                className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+              >
+                View
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AssistantMetaInline({
   message,
   processActivities,
@@ -1040,6 +1190,7 @@ function AssistantMetaInline({
   onOpenArtifact,
   onViewMoreToolCalls,
   loadingMoreToolCalls,
+  section = "work",
 }: {
   message: ChatMessage;
   processActivities?: LiveActivityItem[];
@@ -1047,53 +1198,43 @@ function AssistantMetaInline({
   onOpenArtifact?: (artifact: ArtifactSummaryView) => void;
   onViewMoreToolCalls?: () => void;
   loadingMoreToolCalls?: boolean;
+  section?: "work" | "summary";
 }) {
-  const hasThinking = !!message.thinking;
-  const hasSubagentCalls = !!message.subagent_calls && message.subagent_calls.length > 0;
+  const isWorkSection = section === "work";
   const hasToolCalls = !!message.tool_calls && message.tool_calls.length > 0;
-  const hasProcessActivities = !!processActivities && processActivities.length > 0;
   const fileChangeSummary = summarizeMessageFileChanges(message.tool_calls);
   const hasFileChangeSummary = !!fileChangeSummary;
+  const artifactSummary = collectMessageArtifacts(message, sessionId);
+  const hasArtifacts = artifactSummary.length > 0;
   const hiddenToolCallsCount = getHiddenToolCallsCount(message);
   const hasTruncatedToolCalls = hiddenToolCallsCount > 0;
+  const workedDurationMs = resolveWorkedDurationMs(processActivities, message.tool_calls);
+  const hasWorkSectionContent = hasToolCalls;
+  const hasSummarySectionContent = hasFileChangeSummary || hasArtifacts;
 
-  if (!hasThinking && !hasSubagentCalls && !hasToolCalls && !hasProcessActivities && !hasFileChangeSummary) {
+  if ((isWorkSection && !hasWorkSectionContent) || (!isWorkSection && !hasSummarySectionContent)) {
     return null;
   }
 
   return (
-    <div className="space-y-2 mt-3">
-      {hasThinking && <ThinkingBlock thinking={message.thinking as string} />}
-
-      {hasProcessActivities && (
-        <div className="rounded-lg border border-white/10 bg-white/[0.02] px-2.5 py-2.5">
-          <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-[0.08em] text-gray-500">
-            <Sparkles className="w-3 h-3" />
-            <span>Process</span>
-          </div>
-          <div className="space-y-1.5">
-            {processActivities?.map((activity, index) => (
-              <ActivityStepCard
-                key={activity.id}
-                activity={activity}
-                isLast={index === processActivities.length - 1}
-              />
-            ))}
-          </div>
+    <div className={cn("space-y-2", isWorkSection ? "mb-3" : "mt-3")}>
+      {isWorkSection && (
+        <div className="text-[11px] text-gray-500 px-0.5">
+          <span>
+            Worked for{" "}
+            {workedDurationMs ? formatWorkedDuration(workedDurationMs) : "0h 00m 00s"}
+          </span>
         </div>
       )}
 
-      {hasFileChangeSummary && fileChangeSummary && <FileChangesCard summary={fileChangeSummary} />}
-
-      {hasSubagentCalls && (
-        <div className="space-y-1.5">
-          {message.subagent_calls?.map((subagent) => (
-            <SubagentCallItem key={subagent.id} subagent={subagent} />
-          ))}
-        </div>
+      {!isWorkSection && hasFileChangeSummary && fileChangeSummary && (
+        <FileChangesCard summary={fileChangeSummary} />
+      )}
+      {!isWorkSection && hasArtifacts && (
+        <ArtifactSummaryCard artifacts={artifactSummary} onOpenArtifact={onOpenArtifact} />
       )}
 
-      {hasToolCalls && (
+      {isWorkSection && hasToolCalls && (
         <div className="space-y-1.5">
           {message.tool_calls?.map((tool) => (
             <ToolCallItem
@@ -1354,7 +1495,7 @@ function MessageContent({ content }: { content: string }) {
   type MarkdownCodeProps = ComponentPropsWithoutRef<"code"> & { inline?: boolean };
 
   return (
-    <div className="max-w-none text-sm text-gray-200 leading-6">
+    <div className="max-w-none text-[13px] text-gray-200 leading-5">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -1380,7 +1521,7 @@ function MessageContent({ content }: { content: string }) {
           li: ({ children }) => <li className="mb-1">{children}</li>,
           table: ({ children }) => (
             <div className="my-3 overflow-x-auto rounded-xl border border-white/10 bg-white/[0.03]">
-              <table className="w-full text-sm border-collapse">{children}</table>
+              <table className="w-full text-[13px] border-collapse">{children}</table>
             </div>
           ),
           thead: ({ children }) => <thead className="bg-white/5">{children}</thead>,
@@ -2469,6 +2610,19 @@ export function Chat() {
                                 : "bg-white/[0.03] border border-white/5"
                             }`}
                           >
+                            {message.role !== "user" && (
+                              <AssistantMetaInline
+                                message={message}
+                                processActivities={processActivities}
+                                sessionId={sessionId}
+                                onOpenArtifact={openArtifactViewer}
+                                onViewMoreToolCalls={() =>
+                                  void loadFullToolCallsForMessage(index, message)
+                                }
+                                loadingMoreToolCalls={loadingMoreToolCallsKey === processKey}
+                                section="work"
+                              />
+                            )}
                             <MessageContent content={message.content} />
                             {message.role === "user" && sessionId && (
                               <div className="mt-2 flex justify-end">
@@ -2499,6 +2653,7 @@ export function Chat() {
                                   void loadFullToolCallsForMessage(index, message)
                                 }
                                 loadingMoreToolCalls={loadingMoreToolCallsKey === processKey}
+                                section="summary"
                               />
                             )}
                           </div>
@@ -2549,7 +2704,7 @@ export function Chat() {
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Type a message..."
-                    className="flex-1 px-3 sm:px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-sm text-white placeholder-gray-500 !outline-none focus:border-white/20 transition-colors"
+                    className="flex-1 px-3 sm:px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-[13px] text-white placeholder-gray-500 !outline-none focus:border-white/20 transition-colors"
                   />
                   <button
                     onClick={handleSend}

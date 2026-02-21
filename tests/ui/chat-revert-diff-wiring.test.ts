@@ -22,6 +22,9 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain("summarizeMessageFileChanges");
     expect(source).toContain("files changed");
     expect(source).toContain("<DiffCodeBlock code={file.diff} />");
+    expect(source).toContain("Worked for");
+    expect(source).toContain("section=\"work\"");
+    expect(source).toContain("section=\"summary\"");
   });
 
   test("shows hidden tool-call summary with view-more loading full history on demand", () => {
