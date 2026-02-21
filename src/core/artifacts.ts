@@ -35,6 +35,38 @@ const ARTIFACTS_ROOT = join(cybaraDir, "artifacts");
 const SESSION_ID_REGEX = /^[A-Za-z0-9._:-]{1,128}$/;
 const MAX_CONTENT_CHARS = 1_000_000;
 
+function resolveArtifactTimezone(timeZone?: string): string {
+  const fallback = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  if (!timeZone) return fallback;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date());
+    return timeZone;
+  } catch {
+    return fallback;
+  }
+}
+
+function formatArtifactLocalDateTime(now: Date, timeZone: string): string {
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    weekday: "long",
+  }).format(now);
+  const date = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+  const time = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(now);
+  return `${weekday}, ${date} ${time}`;
+}
+
 function ensureDir(path: string): void {
   if (!existsSync(path)) {
     mkdirSync(path, { recursive: true });
@@ -197,9 +229,13 @@ export function buildArtifactTemplate(input: {
   title?: string;
   items?: string[];
   now?: Date;
+  timeZone?: string;
 }): string {
   const now = input.now || new Date();
+  const timeZone = resolveArtifactTimezone(input.timeZone);
+  const localDateTime = formatArtifactLocalDateTime(now, timeZone);
   const iso = now.toISOString();
+  const updatedLines = `Updated: ${localDateTime} (${timeZone})\nUpdated (UTC): ${iso}`;
   const title = input.title?.trim() || humanizeName(chooseBaseName(input.kind));
 
   if (input.kind === "task") {
@@ -213,18 +249,18 @@ export function buildArtifactTemplate(input: {
             "- [ ] Run checks and tests",
             "- [ ] Summarize outcome",
           ].join("\n");
-    return `# ${title}\n\n${checklistItems}\n\n---\nSession: ${input.sessionId}\nUpdated: ${iso}\n`;
+    return `# ${title}\n\n${checklistItems}\n\n---\nSession: ${input.sessionId}\n${updatedLines}\n`;
   }
 
   if (input.kind === "implementation") {
-    return `# ${title}\n\n## Goal\n\n## Constraints\n\n## Plan\n\n## Changes\n\n## Verification\n\n---\nSession: ${input.sessionId}\nUpdated: ${iso}\n`;
+    return `# ${title}\n\n## Goal\n\n## Constraints\n\n## Plan\n\n## Changes\n\n## Verification\n\n---\nSession: ${input.sessionId}\n${updatedLines}\n`;
   }
 
   if (input.kind === "walkthrough") {
-    return `# ${title}\n\n## Context\n\n## Steps\n\n1. \n2. \n3. \n\n## Notes\n\n## Follow-up\n\n---\nSession: ${input.sessionId}\nUpdated: ${iso}\n`;
+    return `# ${title}\n\n## Context\n\n## Steps\n\n1. \n2. \n3. \n\n## Notes\n\n## Follow-up\n\n---\nSession: ${input.sessionId}\n${updatedLines}\n`;
   }
 
-  return `# ${title}\n\n---\nSession: ${input.sessionId}\nUpdated: ${iso}\n`;
+  return `# ${title}\n\n---\nSession: ${input.sessionId}\n${updatedLines}\n`;
 }
 
 export function listArtifacts(sessionId: string): ArtifactSummary[] {

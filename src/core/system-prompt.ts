@@ -228,7 +228,7 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
   }
 
   // Time section
-  lines.push(...buildTimeSection(params.userTimezone));
+  lines.push(...buildTimeSection(params.userTimezone, params.tools.includes("session_status")));
 
   // Reply tags section
   if (features?.replyTagsEnabled !== false && !isMinimal) {
@@ -493,6 +493,7 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
         "- On resumed work, run `action=list` then `action=read` to reload context before making new changes.",
         "- After create/list/read, reuse the returned `artifact.name`/`artifact.fileName` in later calls for deterministic reads/updates.",
         "- `action=read` accepts either `name` or `kind`; prefer exact `name` when available.",
+        "- Keep any human-written dates in artifacts aligned with the Current Date & Time section (local timezone), and include UTC only when needed for precision.",
         "- Keep artifacts concise, decision-focused, and tied to concrete verification steps.",
         ""
       );
@@ -645,10 +646,53 @@ function buildContextFilesSection(
   return lines;
 }
 
-function buildTimeSection(userTimezone?: string): string[] {
+function resolvePromptTimezone(userTimezone?: string): string {
+  const fallback = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  if (!userTimezone) return fallback;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: userTimezone }).format(new Date());
+    return userTimezone;
+  } catch {
+    return fallback;
+  }
+}
+
+function formatPromptLocalDateTime(now: Date, timeZone: string): string {
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    weekday: "long",
+  }).format(now);
+  const date = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+  const time = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(now);
+  return `${weekday}, ${date} ${time}`;
+}
+
+function buildTimeSection(userTimezone?: string, includeSessionStatusHint?: boolean): string[] {
   const now = new Date();
-  const timezone = userTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
-  return ["## Current Date & Time", `Time zone: ${timezone}`, now.toISOString(), ""];
+  const timezone = resolvePromptTimezone(userTimezone);
+  const localDateTime = formatPromptLocalDateTime(now, timezone);
+  const lines = [
+    "## Current Date & Time",
+    `Time zone: ${timezone}`,
+    `Local (${timezone}): ${localDateTime}`,
+    `UTC: ${now.toISOString()}`,
+  ];
+  if (includeSessionStatusHint) {
+    lines.push("For long-running tasks, run `session_status` to refresh the current timestamp.");
+  }
+  lines.push("");
+  return lines;
 }
 
 function buildUserIdentitySection(ownerNumbers: string[]): string[] {
