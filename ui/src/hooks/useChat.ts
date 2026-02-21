@@ -178,7 +178,7 @@ export function useDeleteSession() {
 export function useLoadSession() {
   return useMutation({
     mutationFn: async (sessionId: string) => {
-      const response = await chatApi.getSession(sessionId);
+      const response = await chatApi.getSession(sessionId, { includeFullToolCalls: true });
       if (response.success && response.data) {
         return response.data;
       }

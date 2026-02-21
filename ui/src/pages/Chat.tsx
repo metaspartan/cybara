@@ -163,6 +163,8 @@ interface PendingProcessCapture {
 
 const LAST_WORKSPACE_STORAGE_KEY = "cybara:lastWorkspaceDir";
 const LAST_SESSION_STORAGE_KEY = "cybara:lastSessionId";
+const MESSAGE_PROCESS_MAP_STORAGE_KEY = "cybara:messageProcessMap";
+const MAX_PERSISTED_ACTIVITY_ITEMS_PER_MESSAGE = 2000;
 
 function getMessageProcessKey(
   sessionKey: string | null,
@@ -226,6 +228,65 @@ function persistSessionId(sessionId: string | null): void {
       return;
     }
     window.localStorage.setItem(LAST_SESSION_STORAGE_KEY, trimmed);
+  } catch {
+    // Ignore local storage errors
+  }
+}
+
+function normalizePersistedLiveActivityItem(value: unknown): LiveActivityItem | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Record<string, unknown>;
+  const id = typeof candidate.id === "string" ? candidate.id.trim() : "";
+  const text = typeof candidate.text === "string" ? candidate.text.trim() : "";
+  const timestamp =
+    typeof candidate.timestamp === "number" && Number.isFinite(candidate.timestamp)
+      ? candidate.timestamp
+      : Date.now();
+  const phase =
+    candidate.phase === "start" || candidate.phase === "result" || candidate.phase === "error"
+      ? candidate.phase
+      : "result";
+  if (!id || !text) return null;
+  return {
+    id,
+    text,
+    timestamp,
+    phase,
+    toolName: typeof candidate.toolName === "string" ? candidate.toolName : undefined,
+  };
+}
+
+function readPersistedMessageProcessMap(): Record<string, LiveActivityItem[]> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(MESSAGE_PROCESS_MAP_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const next: Record<string, LiveActivityItem[]> = {};
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof key !== "string" || !Array.isArray(value)) continue;
+      const normalized = value
+        .map((entry) => normalizePersistedLiveActivityItem(entry))
+        .filter((entry): entry is LiveActivityItem => !!entry);
+      if (normalized.length === 0) continue;
+      next[key] = normalized.slice(0, MAX_PERSISTED_ACTIVITY_ITEMS_PER_MESSAGE);
+    }
+    return next;
+  } catch {
+    return {};
+  }
+}
+
+function persistMessageProcessMap(map: Record<string, LiveActivityItem[]>): void {
+  if (typeof window === "undefined") return;
+  try {
+    const serializable: Record<string, LiveActivityItem[]> = {};
+    for (const [key, value] of Object.entries(map)) {
+      if (!Array.isArray(value) || value.length === 0) continue;
+      serializable[key] = value.slice(0, MAX_PERSISTED_ACTIVITY_ITEMS_PER_MESSAGE);
+    }
+    window.localStorage.setItem(MESSAGE_PROCESS_MAP_STORAGE_KEY, JSON.stringify(serializable));
   } catch {
     // Ignore local storage errors
   }
@@ -1022,7 +1083,7 @@ function LiveActivityTimeline({
             <div
               key={activity.id}
               className={cn(
-                "flex items-start gap-2 text-[11px] px-0.5",
+                "flex items-start gap-2 text-[12px] px-0.5",
                 activity.toolName === "__thought" ? "text-gray-200" : "text-gray-400"
               )}
             >
@@ -1070,7 +1131,7 @@ function ProcessActivityList({ activities }: { activities: LiveActivityItem[] })
         <div
           key={activity.id}
           className={cn(
-            "flex items-start gap-1.5 text-[11px] px-0.5",
+            "flex items-start gap-1.5 text-[12px] px-0.5",
             activity.toolName === "__thought" ? "text-gray-200" : "text-gray-400"
           )}
         >
@@ -1522,6 +1583,7 @@ function AssistantMetaInline({
     processActivities && processActivities.length > 0
       ? finalizeCompletedActivities(processActivities)
       : [];
+  const showToolCards = hasToolCalls && normalizedProcessActivities.length === 0;
   const hasWorkSectionContent = hasToolCalls || normalizedProcessActivities.length > 0;
   const hasSummarySectionContent = hasFileChangeSummary || hasArtifacts;
 
@@ -1551,7 +1613,7 @@ function AssistantMetaInline({
         <ArtifactSummaryCard artifacts={artifactSummary} onOpenArtifact={onOpenArtifact} />
       )}
 
-      {isWorkSection && hasToolCalls && (
+      {isWorkSection && showToolCards && (
         <div className="space-y-1.5">
           {orderedToolCalls.map((tool) => (
             <ToolCallItem key={tool.id} tool={tool} />
@@ -2592,8 +2654,8 @@ export function Chat() {
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
   const [liveStatus, setLiveStatus] = useState<"thinking" | "generating" | "idle">("idle");
   const [liveActivities, setLiveActivities] = useState<LiveActivityItem[]>([]);
-  const [messageProcessMap, setMessageProcessMap] = useState<Record<string, LiveActivityItem[]>>(
-    {}
+  const [messageProcessMap, setMessageProcessMap] = useState<Record<string, LiveActivityItem[]>>(() =>
+    readPersistedMessageProcessMap()
   );
   const inputRef = useRef<HTMLInputElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -2628,6 +2690,10 @@ export function Chat() {
   useEffect(() => {
     persistSessionId(sessionId);
   }, [sessionId]);
+
+  useEffect(() => {
+    persistMessageProcessMap(messageProcessMap);
+  }, [messageProcessMap]);
 
   useEffect(() => {
     if (!sessionFileChanges || sessionFileChanges.files.length === 0) {
@@ -2746,7 +2812,7 @@ export function Chat() {
 
     if (finalizedActivities.length > 0) {
       setMessageProcessMap((previous) => ({
-        ...Object.fromEntries(Object.entries(previous).slice(-199)),
+        ...previous,
         [processKey]: finalizedActivities,
       }));
     }
@@ -3230,9 +3296,8 @@ export function Chat() {
   const revertRemovedCount = revertTarget ? Math.max(0, typedMessages.length - revertTarget.index) : 0;
   const revertFollowingCount = Math.max(0, revertRemovedCount - 1);
   const currentSessionIsActive = !!sessionId && activeSessionIds.includes(sessionId);
-  const showWorkingTimeline = isLoading || currentSessionIsActive;
-  const timelineStatus =
-    showWorkingTimeline && liveStatus === "idle" ? "thinking" : liveStatus;
+  const showWorkingTimeline = isLoading || (currentSessionIsActive && liveStatus !== "idle");
+  const timelineStatus = liveStatus;
 
   return (
     <div className="h-screen flex flex-col bg-[#050508]">

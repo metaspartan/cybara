@@ -25,4 +25,29 @@ describe("Chat live activity persistence", () => {
       '{workedDurationMs !== undefined ? formatWorkedDuration(workedDurationMs) : "0h 00m 00s"}'
     );
   });
+
+  test("does not truncate activity timeline display lists", () => {
+    const source = readFileSync(chatSourcePath, "utf8");
+    expect(source).not.toContain("activities.slice(-20)");
+    expect(source).not.toContain("finalizeCompletedActivities(processActivities).slice(-8)");
+  });
+
+  test("hides stale working timeline when session status is active but live status is idle", () => {
+    const source = readFileSync(chatSourcePath, "utf8");
+    expect(source).toContain(
+      "const showWorkingTimeline = isLoading || (currentSessionIsActive && liveStatus !== \"idle\");"
+    );
+  });
+
+  test("persists message process map across reloads", () => {
+    const source = readFileSync(chatSourcePath, "utf8");
+    expect(source).toContain('const MESSAGE_PROCESS_MAP_STORAGE_KEY = "cybara:messageProcessMap"');
+    expect(source).toContain("readPersistedMessageProcessMap()");
+    expect(source).toContain("persistMessageProcessMap(messageProcessMap)");
+  });
+
+  test("does not trim message process map history to last 199 entries", () => {
+    const source = readFileSync(chatSourcePath, "utf8");
+    expect(source).not.toContain("Object.entries(previous).slice(-199)");
+  });
 });

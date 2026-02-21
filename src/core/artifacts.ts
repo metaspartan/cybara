@@ -34,6 +34,12 @@ interface ResolvedArtifactPath {
 const ARTIFACTS_ROOT = join(cybaraDir, "artifacts");
 const SESSION_ID_REGEX = /^[A-Za-z0-9._:-]{1,128}$/;
 const MAX_CONTENT_CHARS = 1_000_000;
+const MANAGED_ARTIFACT_FOOTER_PATTERN =
+  /\n*---\nSession:\s[^\n]*\nUpdated:\s[^\n]*\nUpdated \(UTC\):\s[^\n]*\n*$/m;
+const LEGACY_ARTIFACT_FOOTER_PATTERN =
+  /\n*---\n(?:Session:\s[^\n]*\n)?(?:Updated:\s[^\n]*\n)?(?:Updated \(UTC\):\s[^\n]*\n)?\s*$/m;
+const TRAILING_ARTIFACT_METADATA_PATTERN =
+  /\n*(?:Session:\s[^\n]*\n|Updated:\s[^\n]*\n|Updated \(UTC\):\s[^\n]*\n)+\s*$/m;
 
 function resolveArtifactTimezone(timeZone?: string): string {
   const fallback = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -65,6 +71,35 @@ function formatArtifactLocalDateTime(now: Date, timeZone: string): string {
     hour12: false,
   }).format(now);
   return `${weekday}, ${date} ${time}`;
+}
+
+function buildArtifactFooter(input: {
+  sessionId: string;
+  now?: Date;
+  timeZone?: string;
+}): string {
+  const now = input.now || new Date();
+  const timeZone = resolveArtifactTimezone(input.timeZone);
+  const localDateTime = formatArtifactLocalDateTime(now, timeZone);
+  const iso = now.toISOString();
+  return `---\nSession: ${input.sessionId}\nUpdated: ${localDateTime} (${timeZone})\nUpdated (UTC): ${iso}\n`;
+}
+
+function withManagedArtifactFooter(
+  content: string,
+  input: {
+    sessionId: string;
+    now?: Date;
+    timeZone?: string;
+  }
+): string {
+  const base = content
+    .replace(MANAGED_ARTIFACT_FOOTER_PATTERN, "")
+    .replace(LEGACY_ARTIFACT_FOOTER_PATTERN, "")
+    .replace(TRAILING_ARTIFACT_METADATA_PATTERN, "")
+    .trimEnd();
+  const separator = base.length > 0 ? "\n\n" : "";
+  return `${base}${separator}${buildArtifactFooter(input)}`;
 }
 
 function ensureDir(path: string): void {
@@ -231,11 +266,11 @@ export function buildArtifactTemplate(input: {
   now?: Date;
   timeZone?: string;
 }): string {
-  const now = input.now || new Date();
-  const timeZone = resolveArtifactTimezone(input.timeZone);
-  const localDateTime = formatArtifactLocalDateTime(now, timeZone);
-  const iso = now.toISOString();
-  const updatedLines = `Updated: ${localDateTime} (${timeZone})\nUpdated (UTC): ${iso}`;
+  const footer = buildArtifactFooter({
+    sessionId: input.sessionId,
+    now: input.now,
+    timeZone: input.timeZone,
+  });
   const title = input.title?.trim() || humanizeName(chooseBaseName(input.kind));
 
   if (input.kind === "task") {
@@ -249,18 +284,18 @@ export function buildArtifactTemplate(input: {
             "- [ ] Run checks and tests",
             "- [ ] Summarize outcome",
           ].join("\n");
-    return `# ${title}\n\n${checklistItems}\n\n---\nSession: ${input.sessionId}\n${updatedLines}\n`;
+    return `# ${title}\n\n${checklistItems}\n\n${footer}`;
   }
 
   if (input.kind === "implementation") {
-    return `# ${title}\n\n## Goal\n\n## Constraints\n\n## Plan\n\n## Changes\n\n## Verification\n\n---\nSession: ${input.sessionId}\n${updatedLines}\n`;
+    return `# ${title}\n\n## Goal\n\n## Constraints\n\n## Plan\n\n## Changes\n\n## Verification\n\n${footer}`;
   }
 
   if (input.kind === "walkthrough") {
-    return `# ${title}\n\n## Context\n\n## Steps\n\n1. \n2. \n3. \n\n## Notes\n\n## Follow-up\n\n---\nSession: ${input.sessionId}\n${updatedLines}\n`;
+    return `# ${title}\n\n## Context\n\n## Steps\n\n1. \n2. \n3. \n\n## Notes\n\n## Follow-up\n\n${footer}`;
   }
 
-  return `# ${title}\n\n---\nSession: ${input.sessionId}\n${updatedLines}\n`;
+  return `# ${title}\n\n${footer}`;
 }
 
 export function listArtifacts(sessionId: string): ArtifactSummary[] {
@@ -366,7 +401,11 @@ export function createArtifact(input: {
           items: input.items,
         });
 
-  writeFileSync(resolved.path, content, "utf8");
+  writeFileSync(
+    resolved.path,
+    withManagedArtifactFooter(content, { sessionId: normalizedSessionId }),
+    "utf8"
+  );
   const summary = summarizeArtifact(normalizedSessionId, resolved.fileName);
   if (!summary) {
     throw new Error("Failed to create artifact");
@@ -388,7 +427,11 @@ export function updateArtifact(input: { sessionId: string; name: string; content
   if (!existsSync(resolved.path)) {
     throw new Error(`Artifact not found: ${resolved.fileName}`);
   }
-  writeFileSync(resolved.path, input.content, "utf8");
+  writeFileSync(
+    resolved.path,
+    withManagedArtifactFooter(input.content, { sessionId: resolved.sessionId }),
+    "utf8"
+  );
   const summary = summarizeArtifact(resolved.sessionId, resolved.fileName);
   if (!summary) {
     throw new Error("Failed to update artifact");
@@ -413,7 +456,11 @@ export function appendArtifact(input: { sessionId: string; name: string; content
   const existing = readFileSync(resolved.path, "utf8");
   const separator = existing.length === 0 || existing.endsWith("\n") ? "" : "\n";
   const next = `${existing}${separator}${input.content}`;
-  writeFileSync(resolved.path, next, "utf8");
+  writeFileSync(
+    resolved.path,
+    withManagedArtifactFooter(next, { sessionId: resolved.sessionId }),
+    "utf8"
+  );
   const summary = summarizeArtifact(resolved.sessionId, resolved.fileName);
   if (!summary) {
     throw new Error("Failed to append artifact");
@@ -472,7 +519,11 @@ export function checkArtifactItem(input: {
 
   const markChecked = input.checked !== false;
   lines[lineIndex] = `${match[1]}${markChecked ? "x" : " "}${match[3]}`;
-  writeFileSync(resolved.path, lines.join("\n"), "utf8");
+  writeFileSync(
+    resolved.path,
+    withManagedArtifactFooter(lines.join("\n"), { sessionId: resolved.sessionId }),
+    "utf8"
+  );
 
   const summary = summarizeArtifact(resolved.sessionId, resolved.fileName);
   if (!summary) {
