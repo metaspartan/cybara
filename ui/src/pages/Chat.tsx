@@ -951,89 +951,6 @@ function SubagentCallItem({
   );
 }
 
-function normalizeToolStatus(status: ToolCall["status"]): "pending" | "success" | "error" {
-  if (status === "executing" || status === "pending") return "pending";
-  if (status === "failed" || status === "error") return "error";
-  return "success";
-}
-
-function ToolCallItem({
-  tool,
-}: {
-  tool: ToolCall;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const normalizedStatus = normalizeToolStatus(tool.status);
-  const toolArgs = tool.arguments || tool.args || {};
-  const phase: "start" | "result" | "error" =
-    normalizedStatus === "pending" ? "start" : normalizedStatus === "success" ? "result" : "error";
-  const summary = formatToolIntent(tool.name, toolArgs, phase);
-
-  const statusIcons = {
-    pending: (
-      <div className="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-    ),
-    success: (
-      <div className="w-3.5 h-3.5 rounded-full bg-emerald-500/30 flex items-center justify-center">
-        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-      </div>
-    ),
-    error: (
-      <div className="w-3.5 h-3.5 rounded-full bg-red-500/30 flex items-center justify-center">
-        <div className="w-1.5 h-1.5 rounded-full bg-red-400" />
-      </div>
-    ),
-  };
-
-  const statusStyles = {
-    pending: "bg-white/[0.02] border border-white/[0.08] text-gray-200",
-    success: "bg-white/[0.02] border border-white/[0.08] text-gray-200",
-    error: "bg-rose-500/10 border border-rose-500/30 text-rose-200",
-  };
-
-  return (
-    <>
-      <div
-        className={`rounded-lg backdrop-blur-sm overflow-hidden ${statusStyles[normalizedStatus]}`}
-      >
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="w-full px-3 py-2 flex items-center gap-2 text-[12px] cursor-pointer hover:bg-white/5 transition-colors"
-        >
-          {statusIcons[normalizedStatus]}
-          <Wrench className="w-3 h-3 opacity-60" />
-          <span className="font-medium truncate flex-1 text-left">{summary}</span>
-          {expanded ? (
-            <ChevronUp className="w-3.5 h-3.5 opacity-50" />
-          ) : (
-            <ChevronDown className="w-3.5 h-3.5 opacity-50" />
-          )}
-        </button>
-        {expanded && (
-          <div className="px-3 pb-3 border-t border-white/5">
-            <div className="mt-2">
-              <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wider">Arguments</p>
-              <pre className="text-[12px] text-gray-400 bg-black/40 rounded-md p-2 overflow-x-auto">
-                {JSON.stringify(toolArgs, null, 2)}
-              </pre>
-            </div>
-            {tool.result !== undefined && (
-              <div className="mt-2">
-                <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wider">Result</p>
-                <pre className="text-[12px] text-gray-400 bg-black/40 rounded-md p-2 overflow-x-auto max-h-40">
-                  {typeof tool.result === "string"
-                    ? tool.result
-                    : JSON.stringify(tool.result, null, 2)}
-                </pre>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
 function ThinkingBlock({ thinking }: { thinking: string }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -1232,42 +1149,6 @@ function FileChangesCard({ summary }: { summary: FileChangeSummary }) {
   );
 }
 
-function getHiddenToolCallsCount(message: ChatMessage): number {
-  if (
-    typeof message._tool_calls_hidden_count === "number" &&
-    Number.isFinite(message._tool_calls_hidden_count) &&
-    message._tool_calls_hidden_count > 0
-  ) {
-    return Math.floor(message._tool_calls_hidden_count);
-  }
-
-  if (typeof message._truncated === "string") {
-    const match = message._truncated.match(/Showing\s+(\d+)\s+of\s+(\d+)/i);
-    if (match) {
-      const shown = Number(match[1]);
-      const total = Number(match[2]);
-      if (Number.isFinite(shown) && Number.isFinite(total) && total > shown) {
-        return total - shown;
-      }
-    }
-  }
-
-  return 0;
-}
-
-const TOOL_CALL_PREVIEW_LIMIT = 50;
-
-function getTotalToolCallsCount(message: ChatMessage): number {
-  if (
-    typeof message._tool_calls_total_count === "number" &&
-    Number.isFinite(message._tool_calls_total_count) &&
-    message._tool_calls_total_count > 0
-  ) {
-    return Math.floor(message._tool_calls_total_count);
-  }
-  return Array.isArray(message.tool_calls) ? message.tool_calls.length : 0;
-}
-
 function getToolCallsInTimelineOrder(toolCalls?: ToolCall[]): ToolCall[] {
   if (!Array.isArray(toolCalls) || toolCalls.length <= 1) {
     return toolCalls ? [...toolCalls] : [];
@@ -1346,6 +1227,43 @@ function parseDurationMs(value: unknown): number {
     }
   }
   return 0;
+}
+
+function inferThoughtActivitiesFromContent(
+  content: string,
+  baseTimestampMs?: number
+): LiveActivityItem[] {
+  const lines = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return [];
+
+  const toolishLine = /^(Ran|Explored|Edited|Created|Deleted|Read|Wrote|Updated|Fetched|Searching)\b/i;
+  const thoughtishLine =
+    /^(I'll|I will|Let me|Now let me|Now|Next|First|Then|To start|I’m|I'm)\b/i;
+
+  const fallbackBase =
+    typeof baseTimestampMs === "number" && Number.isFinite(baseTimestampMs)
+      ? baseTimestampMs
+      : Date.now();
+
+  const thoughts: LiveActivityItem[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!line || line.length > 320) continue;
+    if (toolishLine.test(line)) continue;
+    if (!thoughtishLine.test(line)) continue;
+    thoughts.push({
+      id: `inferred-thought-${index}-${line.slice(0, 12)}`,
+      phase: "result",
+      text: line,
+      timestamp: fallbackBase + index,
+      toolName: "__thought",
+    });
+  }
+
+  return thoughts;
 }
 
 function resolveWorkedDurationMs(
@@ -1551,8 +1469,6 @@ function AssistantMetaInline({
   sessionId,
   turnStartedAtMs,
   onOpenArtifact,
-  onViewMoreToolCalls,
-  loadingMoreToolCalls,
   section = "work",
 }: {
   message: ChatMessage;
@@ -1560,21 +1476,14 @@ function AssistantMetaInline({
   sessionId?: string | null;
   turnStartedAtMs?: number;
   onOpenArtifact?: (artifact: ArtifactSummaryView) => void;
-  onViewMoreToolCalls?: () => void;
-  loadingMoreToolCalls?: boolean;
   section?: "work" | "summary";
 }) {
   const isWorkSection = section === "work";
   const orderedToolCalls = getToolCallsInTimelineOrder(message.tool_calls);
-  const hasToolCalls = orderedToolCalls.length > 0;
   const fileChangeSummary = summarizeMessageFileChanges(orderedToolCalls);
   const hasFileChangeSummary = !!fileChangeSummary;
   const artifactSummary = collectMessageArtifacts(orderedToolCalls, sessionId);
   const hasArtifacts = artifactSummary.length > 0;
-  const hiddenToolCallsCount = getHiddenToolCallsCount(message);
-  const totalToolCallsCount = getTotalToolCallsCount(message);
-  const hasTruncatedToolCalls =
-    hiddenToolCallsCount > 0 && totalToolCallsCount > TOOL_CALL_PREVIEW_LIMIT;
   const workedDurationMs = resolveWorkedDurationMs(processActivities, message.tool_calls, {
     assistantTimestamp: message.timestamp,
     turnStartedAtMs,
@@ -1583,8 +1492,18 @@ function AssistantMetaInline({
     processActivities && processActivities.length > 0
       ? finalizeCompletedActivities(processActivities)
       : [];
-  const showToolCards = hasToolCalls && normalizedProcessActivities.length === 0;
-  const hasWorkSectionContent = hasToolCalls || normalizedProcessActivities.length > 0;
+  const hasPersistedThoughtActivities = normalizedProcessActivities.some(
+    (activity) => activity.toolName === "__thought"
+  );
+  const inferredThoughtActivities =
+    !hasPersistedThoughtActivities
+      ? inferThoughtActivitiesFromContent(
+          message.content,
+          parseTimestampMs(message.timestamp) ?? turnStartedAtMs
+        )
+      : [];
+  const workActivities = mergeActivityLists(normalizedProcessActivities, inferredThoughtActivities);
+  const hasWorkSectionContent = workActivities.length > 0;
   const hasSummarySectionContent = hasFileChangeSummary || hasArtifacts;
 
   if ((isWorkSection && !hasWorkSectionContent) || (!isWorkSection && !hasSummarySectionContent)) {
@@ -1602,8 +1521,8 @@ function AssistantMetaInline({
         </div>
       )}
 
-      {isWorkSection && normalizedProcessActivities.length > 0 && (
-        <ProcessActivityList activities={normalizedProcessActivities} />
+      {isWorkSection && workActivities.length > 0 && (
+        <ProcessActivityList activities={workActivities} />
       )}
 
       {!isWorkSection && hasFileChangeSummary && fileChangeSummary && (
@@ -1611,38 +1530,6 @@ function AssistantMetaInline({
       )}
       {!isWorkSection && hasArtifacts && (
         <ArtifactSummaryCard artifacts={artifactSummary} onOpenArtifact={onOpenArtifact} />
-      )}
-
-      {isWorkSection && showToolCards && (
-        <div className="space-y-1.5">
-          {orderedToolCalls.map((tool) => (
-            <ToolCallItem key={tool.id} tool={tool} />
-          ))}
-          {hasTruncatedToolCalls && (
-            <div className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-[12px] text-gray-400">
-              <span>
-                ...and {hiddenToolCallsCount} more tool call
-                {hiddenToolCallsCount === 1 ? "" : "s"} hidden (showing first{" "}
-                {TOOL_CALL_PREVIEW_LIMIT})
-              </span>
-              <button
-                type="button"
-                onClick={onViewMoreToolCalls}
-                disabled={!onViewMoreToolCalls || loadingMoreToolCalls}
-                className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[12px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
-              >
-                {loadingMoreToolCalls ? (
-                  <>
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                    Loading...
-                  </>
-                ) : (
-                  "View more"
-                )}
-              </button>
-            </div>
-          )}
-        </div>
       )}
     </div>
   );
@@ -2650,7 +2537,6 @@ export function Chat() {
   const [artifactViewerError, setArtifactViewerError] = useState<string | null>(null);
   const [artifactViewerContent, setArtifactViewerContent] = useState("");
   const [artifactViewerRawView, setArtifactViewerRawView] = useState(false);
-  const [loadingMoreToolCallsKey, setLoadingMoreToolCallsKey] = useState<string | null>(null);
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
   const [liveStatus, setLiveStatus] = useState<"thinking" | "generating" | "idle">("idle");
   const [liveActivities, setLiveActivities] = useState<LiveActivityItem[]>([]);
@@ -2803,9 +2689,14 @@ export function Chat() {
 
     const target = assistantEntries[pending.assistantCountBefore];
     const processKey = getMessageProcessKey(sessionId, target.message, target.index);
+    const targetTurnStartedAtMs = findPriorUserTimestampMs(typedMessages, target.index);
     const toolActivities = buildActivitiesFromToolCalls(
       target.message.tool_calls,
-      formatToolIntent
+      formatToolIntent,
+      {
+        baseTimestampMs:
+          parseTimestampMs(target.message.timestamp) ?? targetTurnStartedAtMs ?? 0,
+      }
     );
     const mergedActivities = mergeActivityLists(pending.activities, toolActivities);
     const finalizedActivities = finalizeCompletedActivities(mergedActivities);
@@ -3199,36 +3090,6 @@ export function Chat() {
     setArtifactViewerRawView(false);
   }, []);
 
-  const loadFullToolCallsForMessage = useCallback(
-    async (index: number, message: ChatMessage) => {
-      if (!sessionId) return;
-      if (getHiddenToolCallsCount(message) <= 0) return;
-      if (getTotalToolCallsCount(message) <= TOOL_CALL_PREVIEW_LIMIT) return;
-
-      const messageKey = getMessageProcessKey(sessionId, message, index);
-      setLoadingMoreToolCallsKey(messageKey);
-      try {
-        const response = await chatApi.getSession(sessionId, { includeFullToolCalls: true });
-        if (response.success && response.data?.messagesList) {
-          loadSession(
-            sessionId,
-            response.data.messagesList as ChatMessage[],
-            (response.data as { workspace_dir?: string | null }).workspace_dir || effectiveWorkspaceDir
-          );
-        }
-      } catch (error) {
-        console.error("Failed to load full tool call history:", error);
-      } finally {
-        setLoadingMoreToolCallsKey((previous) => (previous === messageKey ? null : previous));
-      }
-    },
-    [effectiveWorkspaceDir, loadSession, sessionId]
-  );
-
-  useEffect(() => {
-    setLoadingMoreToolCallsKey(null);
-  }, [sessionId]);
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -3445,12 +3306,19 @@ export function Chat() {
                     </div>
                   </div>
                 ) : (
-                  typedMessages.map((message, index) => {
-                    const processKey = getMessageProcessKey(sessionId, message, index);
-                    const turnStartedAtMs = findPriorUserTimestampMs(typedMessages, index);
+                  typedMessages
+                    .map((message, index) => ({ message, originalIndex: index }))
+                    .filter((entry) => entry.message.role !== "system")
+                    .map(({ message, originalIndex }) => {
+                    const processKey = getMessageProcessKey(sessionId, message, originalIndex);
+                    const turnStartedAtMs = findPriorUserTimestampMs(typedMessages, originalIndex);
                     const toolActivities = buildActivitiesFromToolCalls(
                       message.tool_calls,
-                      formatToolIntent
+                      formatToolIntent,
+                      {
+                        baseTimestampMs:
+                          parseTimestampMs(message.timestamp) ?? turnStartedAtMs ?? 0,
+                      }
                     );
                     const mergedActivities = mergeActivityLists(
                       messageProcessMap[processKey] || [],
@@ -3470,7 +3338,7 @@ export function Chat() {
                       message.thinking.trim().length > 0;
                     return (
                       <div
-                        key={index}
+                        key={`${message.timestamp || "msg"}-${originalIndex}`}
                         className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}
                       >
                         <div
@@ -3501,10 +3369,6 @@ export function Chat() {
                                 sessionId={sessionId}
                                 turnStartedAtMs={turnStartedAtMs}
                                 onOpenArtifact={openArtifactViewer}
-                                onViewMoreToolCalls={() =>
-                                  void loadFullToolCallsForMessage(index, message)
-                                }
-                                loadingMoreToolCalls={loadingMoreToolCallsKey === processKey}
                                 section="work"
                               />
                             )}
@@ -3523,7 +3387,7 @@ export function Chat() {
                                   type="button"
                                   onClick={() =>
                                     setRevertTarget({
-                                      index,
+                                      index: originalIndex,
                                       content: message.content,
                                       timestamp: message.timestamp,
                                     })
@@ -3543,10 +3407,6 @@ export function Chat() {
                                 sessionId={sessionId}
                                 turnStartedAtMs={turnStartedAtMs}
                                 onOpenArtifact={openArtifactViewer}
-                                onViewMoreToolCalls={() =>
-                                  void loadFullToolCallsForMessage(index, message)
-                                }
-                                loadingMoreToolCalls={loadingMoreToolCallsKey === processKey}
                                 section="summary"
                               />
                             )}

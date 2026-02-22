@@ -50,4 +50,17 @@ describe("Chat live activity persistence", () => {
     const source = readFileSync(chatSourcePath, "utf8");
     expect(source).not.toContain("Object.entries(previous).slice(-199)");
   });
+
+  test("infers thought timeline lines from assistant content as a fallback", () => {
+    const source = readFileSync(chatSourcePath, "utf8");
+    expect(source).toContain("function inferThoughtActivitiesFromContent(");
+    expect(source).toContain("!hasPersistedThoughtActivities");
+    expect(source).toContain("inferThoughtActivitiesFromContent(");
+  });
+
+  test("renders compact work timeline entries instead of large tool cards", () => {
+    const source = readFileSync(chatSourcePath, "utf8");
+    expect(source).toContain("<ProcessActivityList activities={workActivities} />");
+    expect(source).not.toContain("function ToolCallItem(");
+  });
 });

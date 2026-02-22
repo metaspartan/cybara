@@ -15,6 +15,9 @@ export interface ToolCallLike {
   args?: Record<string, unknown>;
   result?: unknown;
   status?: "pending" | "executing" | "completed" | "failed" | "success" | "error";
+  started_at?: number | string;
+  timeline_index?: number;
+  duration?: number | string;
 }
 
 function normalizeText(value: string): string {
@@ -119,6 +122,17 @@ function normalizeToolPhase(status: ToolCallLike["status"]): ActivityPhase {
   return "result";
 }
 
+function toTimestampMs(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim().length > 0) {
+    const asNumber = Number(value);
+    if (Number.isFinite(asNumber)) return asNumber;
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
 export function normalizeActivityTextForPhase(text: string, phase: ActivityPhase): string {
   return toCanonicalVerb(text, phase);
 }
@@ -130,13 +144,18 @@ export function buildActivitiesFromToolCalls(
     args: Record<string, unknown>,
     phase: ActivityPhase,
     fallbackDetail?: string
-  ) => string
+  ) => string,
+  options?: {
+    baseTimestampMs?: number;
+  }
 ): LiveActivityItem[] {
   if (!toolCalls || toolCalls.length === 0) {
     return [];
   }
 
-  const startedAt = Date.now();
+  const fallbackBase = Number.isFinite(options?.baseTimestampMs as number)
+    ? (options?.baseTimestampMs as number)
+    : 0;
   const activities: LiveActivityItem[] = [];
 
   for (let index = 0; index < toolCalls.length; index += 1) {
@@ -147,11 +166,17 @@ export function buildActivitiesFromToolCalls(
     const trimmedText = text.trim();
     if (!trimmedText) continue;
 
+    const startedAt =
+      toTimestampMs(call.started_at) ??
+      (typeof call.timeline_index === "number" && Number.isFinite(call.timeline_index)
+        ? fallbackBase + call.timeline_index
+        : fallbackBase + index);
+
     activities.push({
       id: call.id ? `tool-${call.id}` : `tool-${index}-${call.name}`,
       phase,
       text: trimmedText,
-      timestamp: startedAt + index,
+      timestamp: startedAt,
       toolName: call.name,
     });
   }
