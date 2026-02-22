@@ -63,4 +63,18 @@ describe("Chat live activity persistence", () => {
     expect(source).toContain("<ProcessActivityList activities={workActivities} />");
     expect(source).not.toContain("function ToolCallItem(");
   });
+
+  test("uses stable message process keys and supports legacy timestamp-key migration", () => {
+    const source = readFileSync(chatSourcePath, "utf8");
+    expect(source).toContain("function getLegacyMessageProcessKey(");
+    expect(source).toContain("function getMessageProcessActivities(");
+    expect(source).toContain("const canonicalKey = getMessageProcessKey(sessionId, message, index);");
+    expect(source).toContain("const legacyKey = getLegacyMessageProcessKey(sessionId, message, index);");
+  });
+
+  test("prefers the best worked duration candidate instead of tiny synthetic tool ranges", () => {
+    const source = readFileSync(chatSourcePath, "utf8");
+    expect(source).toContain("const durationCandidates: number[] = [];");
+    expect(source).toContain("return Math.max(...durationCandidates);");
+  });
 });

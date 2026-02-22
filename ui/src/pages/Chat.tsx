@@ -171,7 +171,41 @@ function getMessageProcessKey(
   message: ChatMessage,
   fallbackIndex: number
 ): string {
+  const hashSource = `${message.role}:${message.content || ""}`.slice(0, 1200);
+  let hash = 2166136261;
+  for (let index = 0; index < hashSource.length; index += 1) {
+    hash ^= hashSource.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  const fingerprint = (hash >>> 0).toString(36);
+  return `${sessionKey || "default"}:${fallbackIndex}:${fingerprint}`;
+}
+
+function getLegacyMessageProcessKey(
+  sessionKey: string | null,
+  message: ChatMessage,
+  fallbackIndex: number
+): string {
   return `${sessionKey || "default"}:${message.timestamp || fallbackIndex}`;
+}
+
+function getMessageProcessActivities(
+  map: Record<string, LiveActivityItem[]>,
+  sessionKey: string | null,
+  message: ChatMessage,
+  fallbackIndex: number
+): LiveActivityItem[] {
+  const canonicalKey = getMessageProcessKey(sessionKey, message, fallbackIndex);
+  const canonical = map[canonicalKey];
+  if (Array.isArray(canonical) && canonical.length > 0) {
+    return canonical;
+  }
+  const legacyKey = getLegacyMessageProcessKey(sessionKey, message, fallbackIndex);
+  const legacy = map[legacyKey];
+  if (Array.isArray(legacy) && legacy.length > 0) {
+    return legacy;
+  }
+  return [];
 }
 
 function readStringArg(args: Record<string, unknown>, keys: string[]): string | undefined {
@@ -1279,12 +1313,17 @@ function resolveWorkedDurationMs(
     .filter((timestamp): timestamp is number => Number.isFinite(timestamp));
   const assistantTimestampMs = parseTimestampMs(options?.assistantTimestamp);
   const turnStartedAtMs = options?.turnStartedAtMs;
+  const durationCandidates: number[] = [];
+
+  const addDurationCandidate = (value: number | undefined) => {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return;
+    durationCandidates.push(value);
+  };
 
   if (activityTimestamps.length >= 2) {
     const minTimestamp = Math.min(...activityTimestamps);
     const maxTimestamp = Math.max(...activityTimestamps);
-    const duration = maxTimestamp - minTimestamp;
-    if (duration > 0) return duration;
+    addDurationCandidate(maxTimestamp - minTimestamp);
   }
 
   if (activityTimestamps.length > 0) {
@@ -1296,8 +1335,7 @@ function resolveWorkedDurationMs(
         : minTimestamp;
     const inferredEnd =
       typeof assistantTimestampMs === "number" ? Math.max(assistantTimestampMs, maxTimestamp) : maxTimestamp;
-    const duration = inferredEnd - inferredStart;
-    if (duration > 0) return duration;
+    addDurationCandidate(inferredEnd - inferredStart);
   }
 
   const toolStartTimestamps = (toolCalls || [])
@@ -1312,28 +1350,25 @@ function resolveWorkedDurationMs(
       const end = duration > 0 ? startedAt + duration : startedAt;
       return Math.max(currentMax, end);
     }, minStart);
-    const rangedDuration = maxEnd - minStart;
-    if (rangedDuration > 0) return rangedDuration;
+    addDurationCandidate(maxEnd - minStart);
   }
 
   const toolDurationTotal = (toolCalls || []).reduce((sum, toolCall) => {
     const duration = parseDurationMs(toolCall.duration);
     return duration > 0 ? sum + duration : sum;
   }, 0);
-  if (toolDurationTotal > 0) return toolDurationTotal;
+  addDurationCandidate(toolDurationTotal);
 
   if (
     typeof assistantTimestampMs === "number" &&
     typeof turnStartedAtMs === "number" &&
     Number.isFinite(turnStartedAtMs)
   ) {
-    const fallbackDuration = assistantTimestampMs - turnStartedAtMs;
-    if (fallbackDuration > 0) {
-      return fallbackDuration;
-    }
+    addDurationCandidate(assistantTimestampMs - turnStartedAtMs);
   }
 
-  return undefined;
+  if (durationCandidates.length === 0) return undefined;
+  return Math.max(...durationCandidates);
 }
 
 function resolveArtifactAction(toolCall: ToolCall): string | undefined {
@@ -2582,6 +2617,28 @@ export function Chat() {
   }, [messageProcessMap]);
 
   useEffect(() => {
+    if (!sessionId || typedMessages.length === 0) return;
+    setMessageProcessMap((previous) => {
+      let changed = false;
+      const next: Record<string, LiveActivityItem[]> = { ...previous };
+      for (let index = 0; index < typedMessages.length; index += 1) {
+        const message = typedMessages[index];
+        if (!message || message.role !== "assistant") continue;
+        const canonicalKey = getMessageProcessKey(sessionId, message, index);
+        if (Array.isArray(next[canonicalKey]) && next[canonicalKey].length > 0) {
+          continue;
+        }
+        const legacyKey = getLegacyMessageProcessKey(sessionId, message, index);
+        const legacy = next[legacyKey];
+        if (!Array.isArray(legacy) || legacy.length === 0) continue;
+        next[canonicalKey] = legacy.map((activity) => ({ ...activity }));
+        changed = true;
+      }
+      return changed ? next : previous;
+    });
+  }, [sessionId, typedMessages]);
+
+  useEffect(() => {
     if (!sessionFileChanges || sessionFileChanges.files.length === 0) {
       if (selectedDiffPath !== null) {
         setSelectedDiffPath(null);
@@ -2689,6 +2746,7 @@ export function Chat() {
 
     const target = assistantEntries[pending.assistantCountBefore];
     const processKey = getMessageProcessKey(sessionId, target.message, target.index);
+    const legacyProcessKey = getLegacyMessageProcessKey(sessionId, target.message, target.index);
     const targetTurnStartedAtMs = findPriorUserTimestampMs(typedMessages, target.index);
     const toolActivities = buildActivitiesFromToolCalls(
       target.message.tool_calls,
@@ -2702,10 +2760,16 @@ export function Chat() {
     const finalizedActivities = finalizeCompletedActivities(mergedActivities);
 
     if (finalizedActivities.length > 0) {
-      setMessageProcessMap((previous) => ({
-        ...previous,
-        [processKey]: finalizedActivities,
-      }));
+      setMessageProcessMap((previous) => {
+        const next: Record<string, LiveActivityItem[]> = {
+          ...previous,
+          [processKey]: finalizedActivities,
+        };
+        if (legacyProcessKey in next && legacyProcessKey !== processKey) {
+          delete next[legacyProcessKey];
+        }
+        return next;
+      });
     }
 
     pendingProcessCaptureRef.current = null;
@@ -3328,7 +3392,6 @@ export function Chat() {
                     .map((message, index) => ({ message, originalIndex: index }))
                     .filter((entry) => entry.message.role !== "system")
                     .map(({ message, originalIndex }) => {
-                    const processKey = getMessageProcessKey(sessionId, message, originalIndex);
                     const turnStartedAtMs = findPriorUserTimestampMs(typedMessages, originalIndex);
                     const toolActivities = buildActivitiesFromToolCalls(
                       message.tool_calls,
@@ -3338,8 +3401,14 @@ export function Chat() {
                           parseTimestampMs(message.timestamp) ?? turnStartedAtMs ?? 0,
                       }
                     );
+                    const persistedProcessActivities = getMessageProcessActivities(
+                      messageProcessMap,
+                      sessionId,
+                      message,
+                      originalIndex
+                    );
                     const mergedActivities = mergeActivityLists(
-                      messageProcessMap[processKey] || [],
+                      persistedProcessActivities,
                       toolActivities
                     );
                     const processActivities =
