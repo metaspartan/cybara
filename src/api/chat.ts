@@ -29,12 +29,19 @@ import {
   trackMemoryFlush,
 } from "../core/metrics";
 import { shouldRunMemoryFlush, resolveMemoryFlushSettings } from "../core/memory/flush";
-import { broadcastStatus } from "../core/status";
+import { broadcastStatus, getSessionStatusSnapshot } from "../core/status";
 import { emitAgentHook } from "../core/agent-hooks";
 import {
   buildToolExecutionFallbackMessage,
   shouldEnforceToolUseForMessage,
 } from "./chat-tool-summary";
+export interface ProcessActivityInfo {
+  id: string;
+  phase: "start" | "result" | "error";
+  text: string;
+  timestamp: number;
+  toolName?: string;
+}
 
 export interface ToolCallInfo {
   id: string;
@@ -53,6 +60,7 @@ export interface ChatMessage {
   timestamp?: string;
   thinking?: string;
   tool_calls?: ToolCallInfo[];
+  process_activities?: ProcessActivityInfo[];
 }
 
 export interface ChatRequest {
@@ -623,6 +631,19 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     timestamp: new Date().toISOString(),
     thinking: finalThinking || undefined,
     tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
+    process_activities: (() => {
+      const snapshot = getSessionStatusSnapshot(session.id);
+      if (!snapshot || !Array.isArray(snapshot.activities) || snapshot.activities.length === 0) {
+        return undefined;
+      }
+      return snapshot.activities.slice(-200).map((activity) => ({
+        id: activity.id,
+        phase: activity.phase,
+        text: activity.text,
+        timestamp: activity.timestamp,
+        toolName: activity.toolName,
+      }));
+    })(),
   };
   session.messages.push(assistantMessage);
 
@@ -632,6 +653,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
       source: "chat_api",
       thinking: finalThinking,
       tool_calls: allToolCalls,
+      process_activities: assistantMessage.process_activities,
     },
   });
 
@@ -783,6 +805,9 @@ function extractPersistedMessageMetadata(
   }
   if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
     metadata.tool_calls = message.tool_calls;
+  }
+  if (Array.isArray(message.process_activities) && message.process_activities.length > 0) {
+    metadata.process_activities = message.process_activities;
   }
   return Object.keys(metadata).length > 0 ? metadata : undefined;
 }

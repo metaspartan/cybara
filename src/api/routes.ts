@@ -980,6 +980,46 @@ function isArtifactToolCall(toolCall: unknown): boolean {
   return !!sanitizeArtifactToolResult(toolCall.result);
 }
 
+const MAX_PROCESS_ACTIVITY_ITEMS = 240;
+const MAX_PROCESS_ACTIVITY_TEXT = 500;
+
+function sanitizeProcessActivities(
+  activities: unknown
+): SessionMessageView["process_activities"] | undefined {
+  if (!Array.isArray(activities)) return undefined;
+
+  const sanitized: NonNullable<SessionMessageView["process_activities"]> = [];
+  for (const entry of activities.slice(-MAX_PROCESS_ACTIVITY_ITEMS)) {
+    if (!isObjectRecord(entry)) continue;
+    const phase =
+      entry.phase === "start" || entry.phase === "result" || entry.phase === "error"
+        ? entry.phase
+        : "result";
+    const text = typeof entry.text === "string" ? entry.text.trim() : "";
+    if (!text) continue;
+    const timestamp =
+      typeof entry.timestamp === "number" && Number.isFinite(entry.timestamp)
+        ? entry.timestamp
+        : Date.now();
+    const id =
+      typeof entry.id === "string" && entry.id.trim()
+        ? entry.id
+        : `${timestamp}-${Math.random().toString(36).slice(2, 8)}`;
+    const toolName =
+      typeof entry.toolName === "string" && entry.toolName.trim() ? entry.toolName : undefined;
+
+    sanitized.push({
+      id,
+      phase,
+      text: text.length > MAX_PROCESS_ACTIVITY_TEXT ? `${text.slice(0, MAX_PROCESS_ACTIVITY_TEXT)}...` : text,
+      timestamp,
+      toolName,
+    });
+  }
+
+  return sanitized.length > 0 ? sanitized : undefined;
+}
+
 function sanitizeSessionMessages(
   messages: SessionMessageView[],
   options?: { maxToolCalls?: number }
@@ -993,8 +1033,16 @@ function sanitizeSessionMessages(
       : DEFAULT_MAX_TOOL_CALLS;
 
   return messages.map((msg) => {
+    const sanitizedProcessActivities = sanitizeProcessActivities(msg.process_activities);
+
     if (!msg || !msg.tool_calls || !Array.isArray(msg.tool_calls) || msg.tool_calls.length === 0) {
-      return msg;
+      if (!sanitizedProcessActivities) {
+        return msg;
+      }
+      return {
+        ...msg,
+        process_activities: sanitizedProcessActivities,
+      };
     }
 
     const indexedToolCalls = msg.tool_calls.map((toolCall, index) => ({
@@ -1094,6 +1142,7 @@ function sanitizeSessionMessages(
     return {
       ...msg,
       tool_calls: sanitizedToolCalls,
+      process_activities: sanitizedProcessActivities,
       _tool_calls_total_count: msg.tool_calls.length,
       _tool_calls_hidden_count:
         MAX_TOOL_CALLS > 0 && msg.tool_calls.length > sanitizedToolCalls.length

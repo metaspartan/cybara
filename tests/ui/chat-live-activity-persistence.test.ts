@@ -77,4 +77,12 @@ describe("Chat live activity persistence", () => {
     expect(source).toContain("const durationCandidates: number[] = [];");
     expect(source).toContain("return Math.max(...durationCandidates);");
   });
+
+  test("restores process thoughts from persisted message metadata", () => {
+    const source = readFileSync(chatSourcePath, "utf8");
+    expect(source).toContain("function normalizeMessageProcessActivities(");
+    expect(source).toContain("message.process_activities");
+    expect(source).toContain("const embeddedProcessActivities = normalizeMessageProcessActivities(");
+    expect(source).toContain("function inferThoughtActivitiesFromThinking(");
+  });
 });

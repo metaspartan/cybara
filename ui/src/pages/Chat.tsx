@@ -85,6 +85,13 @@ interface ChatMessage {
   content: string;
   timestamp?: string;
   tool_calls?: ToolCall[];
+  process_activities?: Array<{
+    id?: string;
+    phase?: "start" | "result" | "error";
+    text?: string;
+    timestamp?: number | string;
+    toolName?: string;
+  }>;
   thinking?: string;
   _truncated?: string;
   _tool_calls_hidden_count?: number;
@@ -288,6 +295,27 @@ function normalizePersistedLiveActivityItem(value: unknown): LiveActivityItem | 
     phase,
     toolName: typeof candidate.toolName === "string" ? candidate.toolName : undefined,
   };
+}
+
+function normalizeMessageProcessActivities(
+  value: unknown,
+  fallbackBaseTimestamp?: number
+): LiveActivityItem[] {
+  if (!Array.isArray(value) || value.length === 0) return [];
+  const fallbackTimestamp =
+    typeof fallbackBaseTimestamp === "number" && Number.isFinite(fallbackBaseTimestamp)
+      ? fallbackBaseTimestamp
+      : Date.now();
+  const normalized: LiveActivityItem[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const candidate = normalizePersistedLiveActivityItem(value[index]);
+    if (!candidate) continue;
+    if (!Number.isFinite(candidate.timestamp)) {
+      candidate.timestamp = fallbackTimestamp + index;
+    }
+    normalized.push(candidate);
+  }
+  return normalized;
 }
 
 function readPersistedMessageProcessMap(): Record<string, LiveActivityItem[]> {
@@ -1300,6 +1328,32 @@ function inferThoughtActivitiesFromContent(
   return thoughts;
 }
 
+function inferThoughtActivitiesFromThinking(
+  thinking: string | undefined,
+  baseTimestampMs?: number
+): LiveActivityItem[] {
+  if (typeof thinking !== "string" || thinking.trim().length === 0) return [];
+  const lines = thinking
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 24);
+  if (lines.length === 0) return [];
+
+  const fallbackBase =
+    typeof baseTimestampMs === "number" && Number.isFinite(baseTimestampMs)
+      ? baseTimestampMs
+      : Date.now();
+
+  return lines.map((line, index) => ({
+    id: `inferred-thinking-${index}-${line.slice(0, 12)}`,
+    phase: "result",
+    text: line,
+    timestamp: fallbackBase + index,
+    toolName: "__thought",
+  }));
+}
+
 function resolveWorkedDurationMs(
   processActivities?: LiveActivityItem[],
   toolCalls?: ToolCall[],
@@ -1533,11 +1587,25 @@ function AssistantMetaInline({
   const inferredThoughtActivities =
     !hasPersistedThoughtActivities
       ? inferThoughtActivitiesFromContent(
-          message.content,
-          parseTimestampMs(message.timestamp) ?? turnStartedAtMs
-        )
+        message.content,
+        parseTimestampMs(message.timestamp) ?? turnStartedAtMs
+      )
       : [];
-  const workActivities = mergeActivityLists(normalizedProcessActivities, inferredThoughtActivities);
+  const inferredThinkingActivities =
+    !hasPersistedThoughtActivities && inferredThoughtActivities.length === 0
+      ? inferThoughtActivitiesFromThinking(
+        message.thinking,
+        parseTimestampMs(message.timestamp) ?? turnStartedAtMs
+      )
+      : [];
+  const contentAndThinkingActivities = mergeActivityLists(
+    inferredThoughtActivities,
+    inferredThinkingActivities
+  );
+  const workActivities = mergeActivityLists(
+    normalizedProcessActivities,
+    contentAndThinkingActivities
+  );
   const hasWorkSectionContent = workActivities.length > 0;
   const hasSummarySectionContent = hasFileChangeSummary || hasArtifacts;
 
@@ -2408,12 +2476,12 @@ function SessionsPanel({
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
-            <button
+            {/* <button
               onClick={() => refetch()}
               className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" />
-            </button>
+            </button> */}
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
@@ -2632,6 +2700,25 @@ export function Chat() {
         const legacy = next[legacyKey];
         if (!Array.isArray(legacy) || legacy.length === 0) continue;
         next[canonicalKey] = legacy.map((activity) => ({ ...activity }));
+        changed = true;
+        continue;
+      }
+
+      for (let index = 0; index < typedMessages.length; index += 1) {
+        const message = typedMessages[index];
+        if (!message || message.role !== "assistant") continue;
+        const canonicalKey = getMessageProcessKey(sessionId, message, index);
+        if (Array.isArray(next[canonicalKey]) && next[canonicalKey].length > 0) {
+          continue;
+        }
+        const messageTimestampMs = parseTimestampMs(message.timestamp);
+        const turnStartedAtMs = findPriorUserTimestampMs(typedMessages, index);
+        const embedded = normalizeMessageProcessActivities(
+          message.process_activities,
+          messageTimestampMs ?? turnStartedAtMs
+        );
+        if (embedded.length === 0) continue;
+        next[canonicalKey] = embedded;
         changed = true;
       }
       return changed ? next : previous;
@@ -3228,6 +3315,16 @@ export function Chat() {
     <div className="h-screen flex flex-col bg-[#050508]">
       <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-white/5 bg-[#0a0a0f]/90 backdrop-blur-xl flex-shrink-0">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <button
+            onClick={() => setShowSessionsPanel(!showSessionsPanel)}
+            className={cn(
+              "p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
+              showSessionsPanel ? "accent-text" : "text-gray-500"
+            )}
+            title="Sessions"
+          >
+            <MessageSquare className="w-4 h-4" />
+          </button>
           <h1 className="text-sm sm:text-base font-semibold text-white">Chat</h1>
           {sessionId && (
             <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30">
@@ -3303,16 +3400,6 @@ export function Chat() {
             )}
           </button>
           <button
-            onClick={() => setShowSessionsPanel(!showSessionsPanel)}
-            className={cn(
-              "p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
-              showSessionsPanel ? "accent-text" : "text-gray-500"
-            )}
-            title="Sessions"
-          >
-            <MessageSquare className="w-4 h-4" />
-          </button>
-          <button
             onClick={() => setShowSubagentPanel(!showSubagentPanel)}
             className={cn(
               "p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
@@ -3370,7 +3457,7 @@ export function Chat() {
                 className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 space-y-4"
               >
                 {typedMessages.length === 0 ? (
-                  <div className="flex items-center justify-center h-full">
+                  <div className="flex items-center justify-center h-[calc(100%-1rem)]">
                     <div className="text-center text-gray-500">
                       <Sparkles className="w-8 h-8 mx-auto mb-3 opacity-30" />
                       <p className="text-sm font-medium">Start a conversation</p>
@@ -3392,122 +3479,130 @@ export function Chat() {
                     .map((message, index) => ({ message, originalIndex: index }))
                     .filter((entry) => entry.message.role !== "system")
                     .map(({ message, originalIndex }) => {
-                    const turnStartedAtMs = findPriorUserTimestampMs(typedMessages, originalIndex);
-                    const toolActivities = buildActivitiesFromToolCalls(
-                      message.tool_calls,
-                      formatToolIntent,
-                      {
-                        baseTimestampMs:
-                          parseTimestampMs(message.timestamp) ?? turnStartedAtMs ?? 0,
-                      }
-                    );
-                    const persistedProcessActivities = getMessageProcessActivities(
-                      messageProcessMap,
-                      sessionId,
-                      message,
-                      originalIndex
-                    );
-                    const mergedActivities = mergeActivityLists(
-                      persistedProcessActivities,
-                      toolActivities
-                    );
-                    const processActivities =
-                      mergedActivities.length > 0
-                        ? finalizeCompletedActivities(mergedActivities)
-                        : undefined;
-                    const hasAssistantToolCalls =
-                      message.role !== "user" &&
-                      Array.isArray(message.tool_calls) &&
-                      message.tool_calls.length > 0;
-                    const hasAssistantThinking =
-                      message.role !== "user" &&
-                      typeof message.thinking === "string" &&
-                      message.thinking.trim().length > 0;
-                    return (
-                      <div
-                        key={`${message.timestamp || "msg"}-${originalIndex}`}
-                        className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}
-                      >
+                      const turnStartedAtMs = findPriorUserTimestampMs(typedMessages, originalIndex);
+                      const toolActivities = buildActivitiesFromToolCalls(
+                        message.tool_calls,
+                        formatToolIntent,
+                        {
+                          baseTimestampMs:
+                            parseTimestampMs(message.timestamp) ?? turnStartedAtMs ?? 0,
+                        }
+                      );
+                      const persistedProcessActivities = getMessageProcessActivities(
+                        messageProcessMap,
+                        sessionId,
+                        message,
+                        originalIndex
+                      );
+                      const embeddedProcessActivities = normalizeMessageProcessActivities(
+                        message.process_activities,
+                        parseTimestampMs(message.timestamp) ?? turnStartedAtMs
+                      );
+                      const restoredProcessActivities = mergeActivityLists(
+                        persistedProcessActivities,
+                        embeddedProcessActivities
+                      );
+                      const mergedActivities = mergeActivityLists(
+                        restoredProcessActivities,
+                        toolActivities
+                      );
+                      const processActivities =
+                        mergedActivities.length > 0
+                          ? finalizeCompletedActivities(mergedActivities)
+                          : undefined;
+                      const hasAssistantToolCalls =
+                        message.role !== "user" &&
+                        Array.isArray(message.tool_calls) &&
+                        message.tool_calls.length > 0;
+                      const hasAssistantThinking =
+                        message.role !== "user" &&
+                        typeof message.thinking === "string" &&
+                        message.thinking.trim().length > 0;
+                      return (
                         <div
-                          className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${message.role === "user"
-                            ? "bg-[rgba(var(--accent-primary),0.2)]"
-                            : "bg-emerald-500/20"
-                            }`}
-                        >
-                          {message.role === "user" ? (
-                            <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 accent-text" />
-                          ) : (
-                            <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
-                          )}
-                        </div>
-                        <div
-                          className={`max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] ${message.role === "user" ? "text-right" : ""}`}
+                          key={`${message.timestamp || "msg"}-${originalIndex}`}
+                          className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}
                         >
                           <div
-                            className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${message.role === "user"
-                              ? "border border-[rgba(var(--accent-primary),0.2)]"
-                              : "border border-white/5"
+                            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${message.role === "user"
+                              ? "bg-[rgba(var(--accent-primary),0.2)]"
+                              : "bg-emerald-500/20"
                               }`}
                           >
-                            {message.role !== "user" && (
-                              <AssistantMetaInline
-                                message={message}
-                                processActivities={processActivities}
-                                sessionId={sessionId}
-                                turnStartedAtMs={turnStartedAtMs}
-                                onOpenArtifact={openArtifactViewer}
-                                section="work"
-                              />
-                            )}
-                            {hasAssistantToolCalls && (
-                              <div className="my-2 border-t border-white/12" />
-                            )}
-                            {hasAssistantThinking && (
-                              <div className="mb-2">
-                                <ThinkingBlock thinking={message.thinking || ""} />
-                              </div>
-                            )}
-                            <MessageContent content={message.content} />
-                            {message.role === "user" && sessionId && (
-                              <div className="mt-2 flex justify-end">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setRevertTarget({
-                                      index: originalIndex,
-                                      content: message.content,
-                                      timestamp: message.timestamp,
-                                    })
-                                  }
-                                  className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[10px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
-                                  title="Revert session to this message"
-                                >
-                                  <RotateCcw className="w-3 h-3" />
-                                  Revert to here
-                                </button>
-                              </div>
-                            )}
-                            {message.role !== "user" && (
-                              <AssistantMetaInline
-                                message={message}
-                                processActivities={processActivities}
-                                sessionId={sessionId}
-                                turnStartedAtMs={turnStartedAtMs}
-                                onOpenArtifact={openArtifactViewer}
-                                section="summary"
-                              />
+                            {message.role === "user" ? (
+                              <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 accent-text" />
+                            ) : (
+                              <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
                             )}
                           </div>
+                          <div
+                            className={`max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] ${message.role === "user" ? "text-right" : ""}`}
+                          >
+                            <div
+                              className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${message.role === "user"
+                                ? "border border-[rgba(var(--accent-primary),0.2)]"
+                                : "border border-white/5"
+                                }`}
+                            >
+                              {message.role !== "user" && (
+                                <AssistantMetaInline
+                                  message={message}
+                                  processActivities={processActivities}
+                                  sessionId={sessionId}
+                                  turnStartedAtMs={turnStartedAtMs}
+                                  onOpenArtifact={openArtifactViewer}
+                                  section="work"
+                                />
+                              )}
+                              {hasAssistantToolCalls && (
+                                <div className="my-2 border-t border-white/12" />
+                              )}
+                              {hasAssistantThinking && (
+                                <div className="mb-2">
+                                  <ThinkingBlock thinking={message.thinking || ""} />
+                                </div>
+                              )}
+                              <MessageContent content={message.content} />
+                              {message.role === "user" && sessionId && (
+                                <div className="mt-2 flex justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setRevertTarget({
+                                        index: originalIndex,
+                                        content: message.content,
+                                        timestamp: message.timestamp,
+                                      })
+                                    }
+                                    className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[10px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+                                    title="Revert session to this message"
+                                  >
+                                    <RotateCcw className="w-3 h-3" />
+                                    Revert to here
+                                  </button>
+                                </div>
+                              )}
+                              {message.role !== "user" && (
+                                <AssistantMetaInline
+                                  message={message}
+                                  processActivities={processActivities}
+                                  sessionId={sessionId}
+                                  turnStartedAtMs={turnStartedAtMs}
+                                  onOpenArtifact={openArtifactViewer}
+                                  section="summary"
+                                />
+                              )}
+                            </div>
 
-                          {message.timestamp && (
-                            <p className="text-[10px] text-gray-600 mt-1.5">
-                              {formatRelativeTime(message.timestamp)}
-                            </p>
-                          )}
+                            {message.timestamp && (
+                              <p className="text-[10px] text-gray-600 mt-1.5">
+                                {formatRelativeTime(message.timestamp)}
+                              </p>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })
+                      );
+                    })
                 )}
                 {showWorkingTimeline && (
                   <div className="flex gap-3">

@@ -14,7 +14,9 @@ interface PersistedSessionMessage {
   agent_id?: string;
 }
 
-type SessionMessageMetadata = Partial<Pick<ChatMessage, "thinking" | "tool_calls">>;
+type SessionMessageMetadata = Partial<
+  Pick<ChatMessage, "thinking" | "tool_calls" | "process_activities">
+>;
 
 function parseSessionMessageMetadata(metadata?: string): SessionMessageMetadata {
   if (!metadata) return {};
@@ -67,7 +69,10 @@ export function estimateMessageTokens(message: ChatMessage): number {
   const toolTokens = message.tool_calls
     ? message.tool_calls.reduce((sum, tc) => sum + estimateTokens(JSON.stringify(tc)), 0)
     : 0;
-  return contentTokens + thinkingTokens + toolTokens + 50; // +50 for message overhead
+  const processActivityTokens = message.process_activities
+    ? message.process_activities.reduce((sum, activity) => sum + estimateTokens(JSON.stringify(activity)), 0)
+    : 0;
+  return contentTokens + thinkingTokens + toolTokens + processActivityTokens + 50; // +50 for message overhead
 }
 
 export function estimateMessagesTokens(messages: ChatMessage[]): number {
