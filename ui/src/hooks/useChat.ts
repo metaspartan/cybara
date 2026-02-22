@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { chatApi, agentsApi } from '@/lib/api';
 import type { ChatMessage } from '@/types';
@@ -17,6 +17,7 @@ interface RevertMessageInput {
 }
 
 export function useChat(agentId?: string) {
+  const activeRequestAbortRef = useRef<AbortController | null>(null);
   const [state, setState] = useState<ChatState>({
     messages: [],
     sessionId: null,
@@ -25,6 +26,9 @@ export function useChat(agentId?: string) {
   });
 
   const sendMessage = async (content: string, options?: { workspaceDir?: string | null }) => {
+    activeRequestAbortRef.current?.abort();
+    const controller = new AbortController();
+    activeRequestAbortRef.current = controller;
     const userMessage: ChatMessage = { role: 'user', content, timestamp: new Date().toISOString() };
     const requestedWorkspaceDir =
       options?.workspaceDir !== undefined ? options.workspaceDir : state.workspaceDir;
@@ -40,13 +44,15 @@ export function useChat(agentId?: string) {
             agentId,
             content,
             state.sessionId || undefined,
-            requestedWorkspaceDir || undefined
+            requestedWorkspaceDir || undefined,
+            controller.signal
           )
         : await chatApi.send(
             content,
             undefined,
             state.sessionId || undefined,
-            requestedWorkspaceDir || undefined
+            requestedWorkspaceDir || undefined,
+            controller.signal
           );
         
       if (response.success && response.data) {
@@ -65,11 +71,27 @@ export function useChat(agentId?: string) {
       throw new Error(response.error || 'Failed to send message');
     } catch (error) {
       setState((prev) => ({ ...prev, isLoading: false }));
+      const isAbortError =
+        error instanceof DOMException
+          ? error.name === "AbortError"
+          : !!error &&
+            typeof error === "object" &&
+            "name" in error &&
+            (error as { name?: string }).name === "AbortError";
+      if (isAbortError) {
+        return null;
+      }
       throw error;
+    } finally {
+      if (activeRequestAbortRef.current === controller) {
+        activeRequestAbortRef.current = null;
+      }
     }
   };
 
   const clearChat = () => {
+    activeRequestAbortRef.current?.abort();
+    activeRequestAbortRef.current = null;
     setState({
       messages: [],
       sessionId: null,
@@ -77,6 +99,12 @@ export function useChat(agentId?: string) {
       isLoading: false,
     });
   };
+
+  const stopGenerating = useCallback(() => {
+    activeRequestAbortRef.current?.abort();
+    activeRequestAbortRef.current = null;
+    setState((prev) => ({ ...prev, isLoading: false }));
+  }, []);
 
   const loadSession = useCallback(
     (sessionId: string, messages: ChatMessage[], workspaceDir?: string | null) => {
@@ -142,6 +170,7 @@ export function useChat(agentId?: string) {
     loadSession,
     setWorkspaceDir,
     revertToMessage,
+    stopGenerating,
   };
 }
 
@@ -155,6 +184,8 @@ export function useSessions() {
       }
       throw new Error(response.error || 'Failed to fetch sessions');
     },
+    refetchInterval: 3000,
+    refetchOnWindowFocus: true,
   });
 }
 

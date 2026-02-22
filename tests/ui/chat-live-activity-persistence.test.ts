@@ -85,4 +85,20 @@ describe("Chat live activity persistence", () => {
     expect(source).toContain("const embeddedProcessActivities = normalizeMessageProcessActivities(");
     expect(source).toContain("function inferThoughtActivitiesFromThinking(");
   });
+
+  test("supports multiline compose and dictation controls", () => {
+    const source = readFileSync(chatSourcePath, "utf8");
+    expect(source).toContain("<textarea");
+    expect(source).toContain("Enter to send • Shift+Enter for newline");
+    expect(source).toContain("handleToggleDictation");
+  });
+
+  test("keeps sessions panel open on session switch/new session callbacks", () => {
+    const source = readFileSync(chatSourcePath, "utf8");
+    expect(source).toContain("setShowSessionsPanel(true);");
+    expect(source).toContain("onLoadSession={(id, msgs, loadedWorkspaceDir, loadedAgentId) => {");
+    expect(source).toContain("setSessionAgentId(loadedAgentId || null);");
+    expect(source).toContain("onNewSession={() => {");
+    expect(source).toContain("setSessionAgentId(null);");
+  });
 });

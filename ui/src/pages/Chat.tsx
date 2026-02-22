@@ -33,6 +33,8 @@ import {
   FolderOpen,
   ArrowLeft,
   ArrowDown,
+  Mic,
+  MicOff,
 } from "lucide-react";
 import { open as tauriOpenDialog } from "@tauri-apps/plugin-dialog";
 import { Highlight, themes } from "prism-react-renderer";
@@ -45,6 +47,7 @@ import {
   useSubagents,
   useSpawnSubagent,
   useKillSubagent,
+  useStopAgent,
   type Subagent,
 } from "@/hooks/useApi";
 import { chatApi } from "@/lib/api";
@@ -159,6 +162,42 @@ interface SessionStatusResponse {
   session?: SessionStatusSnapshot | null;
   active?: boolean;
   sessionId?: string;
+}
+
+interface SpeechRecognitionResultLike {
+  transcript?: string;
+}
+
+interface SpeechRecognitionAlternativeLike {
+  0?: SpeechRecognitionResultLike;
+  isFinal?: boolean;
+}
+
+interface SpeechRecognitionEventLike {
+  resultIndex?: number;
+  results?: ArrayLike<SpeechRecognitionAlternativeLike>;
+}
+
+interface SpeechRecognitionErrorLike {
+  error?: string;
+}
+
+interface SpeechRecognitionLike {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorLike) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
+
+interface SpeechRecognitionWindow extends Window {
+  SpeechRecognition?: SpeechRecognitionCtor;
+  webkitSpeechRecognition?: SpeechRecognitionCtor;
 }
 
 interface PendingProcessCapture {
@@ -2431,10 +2470,15 @@ function SessionsPanel({
   currentSessionId: string | null;
   activeSessionIds: string[];
   currentSessionLoading: boolean;
-  onLoadSession: (sessionId: string, messages: ChatMessage[], workspaceDir?: string | null) => void;
+  onLoadSession: (
+    sessionId: string,
+    messages: ChatMessage[],
+    workspaceDir?: string | null,
+    agentId?: string | null
+  ) => void;
   onNewSession: () => void;
 }) {
-  const { data: sessions, isLoading, refetch } = useSessions();
+  const { data: sessions, isLoading } = useSessions();
   const deleteSession = useDeleteSession();
   const loadSession = useLoadSession();
   const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
@@ -2446,7 +2490,8 @@ function SessionsPanel({
         onLoadSession(
           sessionId,
           result.messagesList as ChatMessage[],
-          (result as { workspace_dir?: string | null }).workspace_dir || null
+          (result as { workspace_dir?: string | null }).workspace_dir || null,
+          (result as { agent_id?: string | null }).agent_id || null
         );
       }
     } catch (error) {
@@ -2476,12 +2521,6 @@ function SessionsPanel({
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
-            {/* <button
-              onClick={() => refetch()}
-              className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-            </button> */}
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
@@ -2610,13 +2649,16 @@ function SessionsPanel({
 
 export function Chat() {
   const { data: agents = [] } = useAgents();
+  const stopAgent = useStopAgent();
   const { data: info } = useInfo();
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
+  const [sessionAgentId, setSessionAgentId] = useState<string | null>(null);
   const [lastWorkspaceDir, setLastWorkspaceDir] = useState<string | null>(null);
   const {
     messages,
     isLoading,
     sendMessage,
+    stopGenerating,
     clearChat,
     loadSession,
     sessionId,
@@ -2643,10 +2685,13 @@ export function Chat() {
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
   const [liveStatus, setLiveStatus] = useState<"thinking" | "generating" | "idle">("idle");
   const [liveActivities, setLiveActivities] = useState<LiveActivityItem[]>([]);
+  const [dictationSupported, setDictationSupported] = useState(false);
+  const [dictating, setDictating] = useState(false);
   const [messageProcessMap, setMessageProcessMap] = useState<Record<string, LiveActivityItem[]>>(() =>
     readPersistedMessageProcessMap()
   );
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeSessionRef = useRef<string | null>(null);
@@ -2679,6 +2724,28 @@ export function Chat() {
   useEffect(() => {
     persistSessionId(sessionId);
   }, [sessionId]);
+
+  useEffect(() => {
+    setShowSessionsPanel(true);
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      setDictationSupported(false);
+      return;
+    }
+    const speechWindow = window as SpeechRecognitionWindow;
+    const SpeechCtor = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+    setDictationSupported(!!SpeechCtor);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (speechRecognitionRef.current) {
+        speechRecognitionRef.current.stop();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     persistMessageProcessMap(messageProcessMap);
@@ -3088,13 +3155,114 @@ export function Chat() {
     };
   }, [appendLiveActivity]);
 
+  useEffect(() => {
+    const inputEl = inputRef.current;
+    if (!inputEl) return;
+    inputEl.style.height = "0px";
+    inputEl.style.height = `${Math.min(inputEl.scrollHeight, 220)}px`;
+  }, [input]);
+
   const handleSend = async () => {
     const sessionCurrentlyActive = !!sessionId && activeSessionIds.includes(sessionId);
     if (!input.trim() || isLoading || sessionCurrentlyActive) return;
     const message = input;
     setInput("");
-    await sendMessage(message, { workspaceDir: effectiveWorkspaceDir || undefined });
+    const response = await sendMessage(message, { workspaceDir: effectiveWorkspaceDir || undefined });
+    if (response && typeof response === "object" && "agent" in response) {
+      const responseRecord = response as Record<string, unknown>;
+      const responseAgent =
+        responseRecord.agent && typeof responseRecord.agent === "object"
+          ? (responseRecord.agent as Record<string, unknown>)
+          : null;
+      const resolvedAgentId = responseAgent && typeof responseAgent.id === "string"
+        ? responseAgent.id
+        : null;
+      setSessionAgentId(resolvedAgentId);
+    }
   };
+
+  const handleStopActive = useCallback(async () => {
+    const activeAgentId = selectedAgentId || sessionAgentId;
+    stopGenerating();
+    if (activeAgentId) {
+      try {
+        await stopAgent.mutateAsync(activeAgentId);
+      } catch (error) {
+        console.error("Failed to stop active agent:", error);
+      }
+    }
+    if (sessionId) {
+      setActiveSessionIds((previous) => previous.filter((id) => id !== sessionId));
+    }
+    setLiveStatus("idle");
+    setLiveActivities([]);
+    runActivityBufferRef.current = [];
+    pendingProcessCaptureRef.current = null;
+  }, [selectedAgentId, sessionAgentId, stopGenerating, stopAgent, sessionId]);
+
+  const handleToggleDictation = useCallback(() => {
+    if (!dictationSupported || typeof window === "undefined") return;
+    const speechWindow = window as SpeechRecognitionWindow;
+    const SpeechCtor = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+    if (!SpeechCtor) return;
+
+    if (!speechRecognitionRef.current) {
+      const recognition = new SpeechCtor();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+      recognition.onresult = (event) => {
+        const results = event.results;
+        if (!results || typeof results.length !== "number" || results.length === 0) return;
+        const startIndex =
+          typeof event.resultIndex === "number" && Number.isFinite(event.resultIndex)
+            ? event.resultIndex
+            : 0;
+        const finalChunks: string[] = [];
+
+        for (let index = startIndex; index < results.length; index += 1) {
+          const result = results[index];
+          const alt = result?.[0];
+          const transcript = typeof alt?.transcript === "string" ? alt.transcript.trim() : "";
+          if (!transcript) continue;
+          if (result?.isFinal) {
+            finalChunks.push(transcript);
+          }
+        }
+
+        if (finalChunks.length === 0) return;
+        const text = finalChunks.join(" ").trim();
+        if (!text) return;
+        setInput((previous) => {
+          const trimmed = previous.trimEnd();
+          return trimmed.length > 0 ? `${trimmed} ${text}` : text;
+        });
+      };
+      recognition.onerror = (event) => {
+        console.error("Dictation error:", event?.error || "unknown");
+        setDictating(false);
+      };
+      recognition.onend = () => {
+        setDictating(false);
+      };
+      speechRecognitionRef.current = recognition;
+    }
+
+    const recognition = speechRecognitionRef.current;
+    if (!recognition) return;
+    if (dictating) {
+      recognition.stop();
+      setDictating(false);
+      return;
+    }
+    try {
+      recognition.start();
+      setDictating(true);
+    } catch (error) {
+      console.error("Failed to start dictation:", error);
+      setDictating(false);
+    }
+  }, [dictating, dictationSupported]);
 
   const applySessionWorkspace = useCallback(
     async (nextWorkspaceDir: string | null) => {
@@ -3241,7 +3409,8 @@ export function Chat() {
     setArtifactViewerRawView(false);
   }, []);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.nativeEvent.isComposing) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -3291,6 +3460,7 @@ export function Chat() {
               result.messagesList as ChatMessage[],
               (result as { workspace_dir?: string | null }).workspace_dir || null
             );
+            setSessionAgentId((result as { agent_id?: string | null }).agent_id || null);
             if (sessionParam) {
               window.history.replaceState({}, "", "/chat");
             }
@@ -3409,6 +3579,20 @@ export function Chat() {
           >
             <Zap className="w-4 h-4" />
           </button>
+          {showWorkingTimeline && (
+            <button
+              onClick={() => void handleStopActive()}
+              disabled={stopAgent.isPending}
+              className="p-1.5 sm:p-2 rounded-lg hover:bg-red-500/10 text-red-400 hover:text-red-300 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              title="Stop active run"
+            >
+              {stopAgent.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Square className="w-4 h-4" />
+              )}
+            </button>
+          )}
           <button
             onClick={clearChat}
             className="p-1.5 sm:p-2 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
@@ -3427,13 +3611,13 @@ export function Chat() {
             currentSessionId={sessionId}
             activeSessionIds={activeSessionIds}
             currentSessionLoading={isLoading}
-            onLoadSession={(id, msgs, loadedWorkspaceDir) => {
+            onLoadSession={(id, msgs, loadedWorkspaceDir, loadedAgentId) => {
               loadSession(id, msgs, loadedWorkspaceDir);
-              setShowSessionsPanel(false);
+              setSessionAgentId(loadedAgentId || null);
             }}
             onNewSession={() => {
               clearChat();
-              setShowSessionsPanel(false);
+              setSessionAgentId(null);
             }}
           />
         )}
@@ -3634,22 +3818,62 @@ export function Chat() {
 
               <div className="flex-shrink-0 px-3 sm:px-4 py-3 border-t border-white/5 bg-[#0a0a0f]/80 backdrop-blur-xl">
                 <div className="flex gap-2 sm:gap-3">
-                  <input
+                  <textarea
                     ref={inputRef}
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Type a message..."
-                    disabled={showWorkingTimeline}
-                    className="flex-1 px-3 sm:px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-[12px] text-white placeholder-gray-500 !outline-none focus:border-white/20 transition-colors"
+                    rows={1}
+                    className="flex-1 min-h-[42px] max-h-[220px] overflow-y-auto resize-none px-3 sm:px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-[12px] text-white placeholder-gray-500 !outline-none focus:border-white/20 transition-colors"
                   />
                   <button
+                    type="button"
+                    onClick={() => handleToggleDictation()}
+                    disabled={!dictationSupported || showWorkingTimeline}
+                    className={cn(
+                      "px-3 sm:px-4 py-2.5 rounded-xl border transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
+                      dictating
+                        ? "border-red-500/40 bg-red-500/20 text-red-300"
+                        : "border-white/10 bg-white/[0.03] text-gray-300 hover:text-white hover:bg-white/[0.08]"
+                    )}
+                    title={
+                      dictationSupported
+                        ? dictating
+                          ? "Stop dictation"
+                          : "Start dictation"
+                        : "Dictation not supported in this browser/runtime"
+                    }
+                    aria-label={dictating ? "Stop dictation" : "Start dictation"}
+                  >
+                    {dictating ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                  </button>
+                  {showWorkingTimeline ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleStopActive()}
+                      className="px-3 sm:px-4 py-2.5 rounded-xl border border-red-500/40 bg-red-500/20 text-red-300 hover:bg-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                      disabled={stopAgent.isPending}
+                      title="Stop active run"
+                    >
+                      {stopAgent.isPending ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Square className="w-4 h-4" />
+                      )}
+                    </button>
+                  ) : (
+                  <button
                     onClick={handleSend}
-                    disabled={!input.trim() || showWorkingTimeline}
+                    disabled={!input.trim()}
                     className="px-3 sm:px-4 py-2.5 rounded-xl accent-button disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                   >
                     <Send className="w-4 h-4" />
                   </button>
+                  )}
+                </div>
+                <div className="mt-1 px-1 text-[10px] text-gray-500">
+                  Enter to send • Shift+Enter for newline
                 </div>
               </div>
             </>
@@ -3679,6 +3903,7 @@ export function Chat() {
                     result.messagesList as ChatMessage[],
                     (result as { workspace_dir?: string | null }).workspace_dir || null
                   );
+                  setSessionAgentId((result as { agent_id?: string | null }).agent_id || null);
                   setShowSubagentPanel(false);
                 }
               } catch (error) {

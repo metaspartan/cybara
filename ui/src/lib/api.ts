@@ -40,12 +40,19 @@ export const agentsApi = {
   update: (id: string, agent: Partial<Agent>) =>
     fetchApi<Agent>(`/agents/${id}`, { method: "PUT", body: JSON.stringify(agent) }),
   delete: (id: string) => fetchApi<void>(`/agents/${id}`, { method: "DELETE" }),
-  chat: (id: string, message: string, sessionId?: string, workspaceDir?: string | null) =>
+  chat: (
+    id: string,
+    message: string,
+    sessionId?: string,
+    workspaceDir?: string | null,
+    signal?: AbortSignal
+  ) =>
     fetchApi<{ message: ChatMessage; sessionId: string; workspaceDir?: string | null }>(
       `/agents/${id}/chat`,
       {
-      method: "POST",
-      body: JSON.stringify({ message, sessionId, workspaceDir }),
+        method: "POST",
+        body: JSON.stringify({ message, sessionId, workspaceDir }),
+        signal,
       }
     ),
 };
@@ -753,10 +760,17 @@ export const skillsApi = {
 };
 
 export const chatApi = {
-  send: (message: string, agentId?: string, sessionId?: string, workspaceDir?: string | null) =>
+  send: (
+    message: string,
+    agentId?: string,
+    sessionId?: string,
+    workspaceDir?: string | null,
+    signal?: AbortSignal
+  ) =>
     fetchApi<{ message: ChatMessage; sessionId: string; workspaceDir?: string | null }>("/chat", {
       method: "POST",
       body: JSON.stringify({ message, agentId, sessionId, workspaceDir }),
+      signal,
     }),
   getSessions: () =>
     fetchApi<
