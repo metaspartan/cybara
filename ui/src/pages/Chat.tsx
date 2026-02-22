@@ -2355,7 +2355,7 @@ function SessionsPanel({
 
   return (
     <>
-      <div className="w-72 glass-strong border-l border-white/5 flex flex-col">
+      <div className="w-72 glass-strong border-r border-white/5 flex flex-col">
         <div className="px-3 py-2.5 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
           <div className="flex items-center gap-2">
             <MessageSquare className="w-3.5 h-3.5 accent-text" />
@@ -2528,7 +2528,7 @@ export function Chat() {
   const [revertTarget, setRevertTarget] = useState<RevertTarget | null>(null);
   const [reverting, setReverting] = useState(false);
   const [showSubagentPanel, setShowSubagentPanel] = useState(false);
-  const [showSessionsPanel, setShowSessionsPanel] = useState(false);
+  const [showSessionsPanel, setShowSessionsPanel] = useState(true);
   const [showDiffPanel, setShowDiffPanel] = useState(false);
   const [selectedDiffPath, setSelectedDiffPath] = useState<string | null>(null);
   const [activeSessionIds, setActiveSessionIds] = useState<string[]>([]);
@@ -3269,6 +3269,24 @@ export function Chat() {
       </div>
 
       <div className="flex-1 flex overflow-hidden">
+        {!artifactViewerTarget && showSessionsPanel && (
+          <SessionsPanel
+            isOpen={showSessionsPanel}
+            onClose={() => setShowSessionsPanel(false)}
+            currentSessionId={sessionId}
+            activeSessionIds={activeSessionIds}
+            currentSessionLoading={isLoading}
+            onLoadSession={(id, msgs, loadedWorkspaceDir) => {
+              loadSession(id, msgs, loadedWorkspaceDir);
+              setShowSessionsPanel(false);
+            }}
+            onNewSession={() => {
+              clearChat();
+              setShowSessionsPanel(false);
+            }}
+          />
+        )}
+
         <div className="relative flex-1 flex flex-col min-w-0">
           {artifactViewerTarget ? (
             <ArtifactViewerPanel
@@ -3473,24 +3491,6 @@ export function Chat() {
             </>
           )}
         </div>
-
-        {!artifactViewerTarget && showSessionsPanel && (
-          <SessionsPanel
-            isOpen={showSessionsPanel}
-            onClose={() => setShowSessionsPanel(false)}
-            currentSessionId={sessionId}
-            activeSessionIds={activeSessionIds}
-            currentSessionLoading={isLoading}
-            onLoadSession={(id, msgs, loadedWorkspaceDir) => {
-              loadSession(id, msgs, loadedWorkspaceDir);
-              setShowSessionsPanel(false);
-            }}
-            onNewSession={() => {
-              clearChat();
-              setShowSessionsPanel(false);
-            }}
-          />
-        )}
 
         {!artifactViewerTarget && showDiffPanel && (
           <SessionDiffPanel
