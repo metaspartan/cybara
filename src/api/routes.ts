@@ -39,6 +39,7 @@ import {
   deleteSession,
   revertSessionToMessage,
   updateSessionWorkspace,
+  updateSessionTitle,
   getChatRateLimitStatus,
   type ChatMessage,
 } from "../api/chat";
@@ -90,7 +91,8 @@ import {
 } from "../core/artifacts";
 import { getSessionStatusSnapshot, listSessionStatusSnapshots } from "../core/status";
 import { cybaraDir, dataDir, logsDir, memoryDir, secureDir, userSkillsDir } from "../core/paths";
-import type {
+import {
+  walletManager,
   WalletChain,
   WalletAgentPolicy,
   WalletPriceQuoteInput,
@@ -184,31 +186,10 @@ interface TokenCloudEntry {
 const WALLET_CHAIN_SET = new Set<WalletChain>(["eth", "btc", "sol"]);
 const WALLET_TOKEN_CHAIN_SET = new Set<WalletTokenChain>(["eth", "sol"]);
 
-type WalletModule = typeof import("../core/wallet");
-type WalletManager = WalletModule["walletManager"];
-
-let walletModulePromise: Promise<WalletModule> | null = null;
-
-async function loadWalletModule(): Promise<WalletModule> {
-  if (!walletModulePromise) {
-    walletModulePromise = import("../core/wallet");
-  }
-  try {
-    return await walletModulePromise;
-  } catch (error) {
-    walletModulePromise = null;
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `Wallet subsystem unavailable: ${reason}. Reinstall dependencies or disable wallet features.`
-    );
-  }
-}
-
 async function withWalletManager<T>(
-  callback: (manager: WalletManager) => Promise<T> | T
+  callback: (manager: typeof walletManager) => Promise<T> | T
 ): Promise<T> {
-  const module = await loadWalletModule();
-  return await callback(module.walletManager);
+  return await callback(walletManager);
 }
 
 function parseJsonObject(value: unknown): Record<string, unknown> | null {
@@ -3579,10 +3560,12 @@ const routes: Record<string, RouteHandler> = {
       sessions.map(async (session) => {
         const messages = await getSessionMessages(session.id);
         const lastMessage = messages[messages.length - 1];
-        const updatedAt = lastMessage?.timestamp ? lastMessage.timestamp : session.createdAt;
+        const updatedAt =
+          session.updatedAt || (lastMessage?.timestamp ? lastMessage.timestamp : session.createdAt);
         return {
           id: session.id,
           agent_id: session.agentId,
+          title: typeof session.title === "string" && session.title.trim() ? session.title : null,
           created_at: normalizeTimestamp(session.createdAt),
           updated_at: normalizeTimestamp(updatedAt),
           workspace_dir:
@@ -3633,14 +3616,40 @@ const routes: Record<string, RouteHandler> = {
     return {
       id: session.id,
       agent_id: session.agentId,
+      title:
+        "title" in session && typeof session.title === "string" && session.title.trim()
+          ? session.title
+          : null,
       created_at: normalizeTimestamp(session.createdAt),
-      updated_at: normalizeTimestamp(session.createdAt),
+      updated_at: normalizeTimestamp(
+        "updatedAt" in session && typeof session.updatedAt === "string" && session.updatedAt.trim()
+          ? session.updatedAt
+          : messages[messages.length - 1]?.timestamp || session.createdAt
+      ),
       workspace_dir:
         "workspaceDir" in session && typeof session.workspaceDir === "string"
           ? session.workspaceDir
           : null,
       messagesList: sanitizedMessages,
     };
+  },
+  "PUT /api/sessions/:sessionId/title": async (body, params) => {
+    const data = (body || {}) as { title?: string };
+    try {
+      const updated = await updateSessionTitle(
+        params!.sessionId,
+        typeof data.title === "string" ? data.title : ""
+      );
+      return {
+        success: true,
+        ...updated,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to update session title",
+      };
+    }
   },
   "PUT /api/sessions/:sessionId/workspace": async (body, params) => {
     const data = (body || {}) as { workspaceDir?: string | null };

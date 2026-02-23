@@ -22,6 +22,7 @@ import {
   Loader2,
   MessageSquare,
   RefreshCw,
+  Pencil,
   X,
   CheckCircle2,
   AlertTriangle,
@@ -40,7 +41,13 @@ import { open as tauriOpenDialog } from "@tauri-apps/plugin-dialog";
 import { Highlight, themes } from "prism-react-renderer";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useChat, useSessions, useDeleteSession, useLoadSession } from "@/hooks/useChat";
+import {
+  useChat,
+  useSessions,
+  useDeleteSession,
+  useLoadSession,
+  useRenameSession,
+} from "@/hooks/useChat";
 import {
   useAgents,
   useInfo,
@@ -2478,10 +2485,13 @@ function SessionsPanel({
   ) => void;
   onNewSession: () => void;
 }) {
-  const { data: sessions, isLoading } = useSessions();
+  const { data: sessions, isLoading, refetch } = useSessions();
   const deleteSession = useDeleteSession();
   const loadSession = useLoadSession();
+  const renameSession = useRenameSession();
   const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
 
   const handleLoadSession = async (sessionId: string) => {
     try {
@@ -2496,6 +2506,37 @@ function SessionsPanel({
       }
     } catch (error) {
       console.error("Failed to load session:", error);
+    }
+  };
+
+  const beginRenameSession = (
+    event: React.MouseEvent,
+    session: { id: string; title?: string | null }
+  ) => {
+    event.stopPropagation();
+    setEditingSessionId(session.id);
+    setEditingTitle(
+      typeof session.title === "string" && session.title.trim()
+        ? session.title.trim()
+        : `Session ${session.id.slice(0, 8)}`
+    );
+  };
+
+  const cancelRenameSession = () => {
+    setEditingSessionId(null);
+    setEditingTitle("");
+  };
+
+  const submitRenameSession = async (sessionId: string) => {
+    const nextTitle = editingTitle.trim();
+    if (!nextTitle) return;
+    try {
+      await renameSession.mutateAsync({ sessionId, title: nextTitle });
+      setEditingSessionId(null);
+      setEditingTitle("");
+      await refetch();
+    } catch (error) {
+      console.error("Failed to rename session:", error);
     }
   };
 
@@ -2552,6 +2593,10 @@ function SessionsPanel({
             </div>
           ) : (
             sessions?.map((session) => {
+              const displayTitle =
+                typeof session.title === "string" && session.title.trim()
+                  ? session.title.trim()
+                  : `Session ${session.id.slice(0, 8)}...`;
               const isSessionActive =
                 activeSessionIds.includes(session.id) ||
                 (currentSessionLoading && currentSessionId === session.id);
@@ -2566,16 +2611,66 @@ function SessionsPanel({
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                      <p className="text-[12px] text-white font-medium flex items-center gap-1.5">
-                        {isSessionActive ? (
-                          <Loader2 className="w-3 h-3 animate-spin text-amber-400 flex-shrink-0" />
-                        ) : (
-                          currentSessionId === session.id && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                          )
-                        )}
-                        Session {session.id.slice(0, 8)}...
-                      </p>
+                      {editingSessionId === session.id ? (
+                        <div
+                          className="flex items-center gap-1.5"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <input
+                            value={editingTitle}
+                            autoFocus
+                            onChange={(event) => setEditingTitle(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                void submitRenameSession(session.id);
+                              } else if (event.key === "Escape") {
+                                event.preventDefault();
+                                cancelRenameSession();
+                              }
+                            }}
+                            className="min-w-0 flex-1 rounded-md border border-white/20 bg-black/40 px-2 py-1 text-[12px] text-white !outline-none focus:border-indigo-400/50"
+                          />
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void submitRenameSession(session.id);
+                            }}
+                            disabled={renameSession.isPending}
+                            className="p-1 rounded hover:bg-emerald-500/20 text-emerald-300 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Save title"
+                          >
+                            {renameSession.isPending ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Check className="w-3 h-3" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              cancelRenameSession();
+                            }}
+                            className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                            title="Cancel rename"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-[12px] text-white font-medium flex items-center gap-1.5">
+                          {isSessionActive ? (
+                            <Loader2 className="w-3 h-3 animate-spin text-amber-400 flex-shrink-0" />
+                          ) : (
+                            currentSessionId === session.id && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
+                            )
+                          )}
+                          <span className="truncate">{displayTitle}</span>
+                        </p>
+                      )}
                       <p className="text-[10px] text-gray-500 mt-0.5">
                         {session.message_count || 0} messages
                       </p>
@@ -2591,15 +2686,26 @@ function SessionsPanel({
                         </p>
                       )}
                     </div>
-                    <button
-                      className="p-1 rounded hover:bg-red-500/20 text-red-400 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowDeleteModal(session.id);
-                      }}
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
+                    {editingSessionId !== session.id && (
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          className="p-1 rounded hover:bg-indigo-500/20 text-indigo-300 cursor-pointer"
+                          onClick={(event) => beginRenameSession(event, session)}
+                          title="Rename session"
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                        <button
+                          className="p-1 rounded hover:bg-red-500/20 text-red-400 cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowDeleteModal(session.id);
+                          }}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -2716,6 +2822,23 @@ export function Chat() {
     () => summarizeSessionFileChanges(typedMessages),
     [typedMessages]
   );
+  const resolveSelectableSessionAgentId = useCallback(
+    (agentId?: string | null): string | undefined => {
+      if (typeof agentId !== "string") return undefined;
+      const trimmed = agentId.trim();
+      if (!trimmed || trimmed === "default") return undefined;
+      return agents.some((agent) => agent.id === trimmed) ? trimmed : undefined;
+    },
+    [agents]
+  );
+  const syncSessionAgentSelection = useCallback(
+    (agentId?: string | null) => {
+      const normalized = typeof agentId === "string" && agentId.trim() ? agentId.trim() : null;
+      setSessionAgentId(normalized);
+      setSelectedAgentId(resolveSelectableSessionAgentId(normalized));
+    },
+    [resolveSelectableSessionAgentId]
+  );
 
   useEffect(() => {
     setLastWorkspaceDir(readPersistedWorkspaceDir());
@@ -2734,6 +2857,14 @@ export function Chat() {
   useEffect(() => {
     setShowSessionsPanel(true);
   }, [sessionId]);
+
+  useEffect(() => {
+    if (!sessionAgentId) return;
+    const nextSelected = resolveSelectableSessionAgentId(sessionAgentId);
+    if (!nextSelected) return;
+    if (selectedAgentId === nextSelected) return;
+    setSelectedAgentId(nextSelected);
+  }, [resolveSelectableSessionAgentId, selectedAgentId, sessionAgentId]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -3216,7 +3347,7 @@ export function Chat() {
       const resolvedAgentId = responseAgent && typeof responseAgent.id === "string"
         ? responseAgent.id
         : null;
-      setSessionAgentId(resolvedAgentId);
+      syncSessionAgentSelection(resolvedAgentId);
     }
   };
 
@@ -3603,7 +3734,7 @@ export function Chat() {
               result.messagesList as ChatMessage[],
               (result as { workspace_dir?: string | null }).workspace_dir || null
             );
-            setSessionAgentId((result as { agent_id?: string | null }).agent_id || null);
+            syncSessionAgentSelection((result as { agent_id?: string | null }).agent_id || null);
             if (sessionParam) {
               window.history.replaceState({}, "", "/chat");
             }
@@ -3756,11 +3887,12 @@ export function Chat() {
             currentSessionLoading={isLoading}
             onLoadSession={(id, msgs, loadedWorkspaceDir, loadedAgentId) => {
               loadSession(id, msgs, loadedWorkspaceDir);
-              setSessionAgentId(loadedAgentId || null);
+              syncSessionAgentSelection(loadedAgentId);
             }}
             onNewSession={() => {
               clearChat();
               setSessionAgentId(null);
+              setSelectedAgentId(undefined);
             }}
           />
         )}
@@ -4024,18 +4156,18 @@ export function Chat() {
                       )}
                     </button>
                   ) : (
-                  <button
-                    onClick={handleSend}
-                    disabled={!input.trim()}
-                    className="h-[42px] w-[42px] shrink-0 self-end inline-flex items-center justify-center rounded-xl accent-button disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
+                    <button
+                      onClick={handleSend}
+                      disabled={!input.trim()}
+                      className="h-[42px] w-[42px] shrink-0 self-end inline-flex items-center justify-center rounded-xl accent-button disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      <Send className="w-4 h-4" />
+                    </button>
                   )}
                 </div>
-                <div className="mt-1 px-1 text-[10px] text-gray-500">
+                {/* <div className="mt-1 px-1 text-[10px] text-gray-500">
                   Enter to send • Shift+Enter for newline
-                </div>
+                </div> */}
               </div>
             </>
           )}
@@ -4064,7 +4196,7 @@ export function Chat() {
                     result.messagesList as ChatMessage[],
                     (result as { workspace_dir?: string | null }).workspace_dir || null
                   );
-                  setSessionAgentId((result as { agent_id?: string | null }).agent_id || null);
+                  syncSessionAgentSelection((result as { agent_id?: string | null }).agent_id || null);
                   setShowSubagentPanel(false);
                 }
               } catch (error) {

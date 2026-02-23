@@ -3723,7 +3723,7 @@ interface ProviderOption {
   requiresApiKey: boolean;
 }
 
-const PROVIDER_OPTIONS: ProviderOption[] = [
+const FALLBACK_PROVIDER_OPTIONS: ProviderOption[] = [
   {
     id: "anthropic",
     name: "Anthropic",
@@ -3759,16 +3759,53 @@ const PROVIDER_OPTIONS: ProviderOption[] = [
 
 const SetupWizard = () => {
   const { exit } = useApp();
-  const [step, setStep] = React.useState<"welcome" | "provider" | "apikey" | "agent" | "complete">(
-    "welcome"
+  const [step, setStep] = React.useState<
+    "welcome" | "provider" | "apikey" | "permissions" | "agent" | "complete"
+  >("welcome");
+  const [providerOptions, setProviderOptions] = React.useState<ProviderOption[]>(
+    FALLBACK_PROVIDER_OPTIONS
   );
   const [selectedProvider, setSelectedProvider] = React.useState(0);
   const [apiKey, setApiKey] = React.useState("");
+  const [toolApprovalMode, setToolApprovalMode] = React.useState<"always_allow" | "ask">(
+    "always_allow"
+  );
   const [status, setStatus] = React.useState<{
     message: string;
     type: "info" | "success" | "error" | "loading";
   } | null>(null);
-  const [providerCreated, setProviderCreated] = React.useState(false);
+
+  React.useEffect(() => {
+    fetchAPI<AvailableProviderInfo[]>("/api/providers/available")
+      .then((data) => {
+        if (!Array.isArray(data) || data.length === 0) return;
+        const mapped = data.map((provider) => {
+          const authType = typeof provider.authType === "string" ? provider.authType : "api_key";
+          return {
+            id: provider.id,
+            name: provider.name,
+            description: provider.description || `Use ${provider.name} models`,
+            requiresApiKey: authType !== "none" && authType !== "oauth" && authType !== "aws-sdk",
+          } satisfies ProviderOption;
+        });
+        if (mapped.length > 0) {
+          setProviderOptions(mapped);
+        }
+      })
+      .catch(() => {
+        void 0;
+      });
+  }, []);
+
+  React.useEffect(() => {
+    if (providerOptions.length === 0) {
+      setSelectedProvider(0);
+      return;
+    }
+    if (selectedProvider >= providerOptions.length) {
+      setSelectedProvider(providerOptions.length - 1);
+    }
+  }, [providerOptions, selectedProvider]);
 
   useInput((input, key) => {
     if (step === "welcome") {
@@ -3779,11 +3816,12 @@ const SetupWizard = () => {
       }
     } else if (step === "provider") {
       if (key.upArrow) {
-        setSelectedProvider((s) => (s > 0 ? s - 1 : PROVIDER_OPTIONS.length - 1));
+        setSelectedProvider((s) => (s > 0 ? s - 1 : Math.max(0, providerOptions.length - 1)));
       } else if (key.downArrow) {
-        setSelectedProvider((s) => (s < PROVIDER_OPTIONS.length - 1 ? s + 1 : 0));
+        setSelectedProvider((s) => (s < providerOptions.length - 1 ? s + 1 : 0));
       } else if (key.return) {
-        const provider = PROVIDER_OPTIONS[selectedProvider];
+        const provider = providerOptions[selectedProvider];
+        if (!provider) return;
         if (provider.requiresApiKey) {
           setStep("apikey");
         } else {
@@ -3795,7 +3833,10 @@ const SetupWizard = () => {
     } else if (step === "apikey") {
       if (key.return) {
         if (apiKey.length > 0) {
-          createProvider(PROVIDER_OPTIONS[selectedProvider].id, apiKey);
+          const provider = providerOptions[selectedProvider];
+          if (provider) {
+            createProvider(provider.id, apiKey);
+          }
         }
       } else if (key.backspace || key.delete) {
         setApiKey((k) => k.slice(0, -1));
@@ -3803,6 +3844,16 @@ const SetupWizard = () => {
         setApiKey((k) => k + input);
       } else if (input === "") {
         exit();
+      }
+    } else if (step === "permissions") {
+      if (key.leftArrow || input === "1" || input.toLowerCase() === "a") {
+        setToolApprovalMode("always_allow");
+      } else if (key.rightArrow || input === "2" || input.toLowerCase() === "s") {
+        setToolApprovalMode("ask");
+      } else if (key.return) {
+        saveToolApprovalMode();
+      } else if (input === "b" || input === "B") {
+        setStep("provider");
       }
     } else if (step === "agent") {
       if (key.return || input === "y" || input === "Y") {
@@ -3824,22 +3875,40 @@ const SetupWizard = () => {
       method: "POST",
       body: JSON.stringify({
         provider: providerId,
-        name: PROVIDER_OPTIONS.find((p) => p.id === providerId)?.name || providerId,
+        name: providerOptions.find((p) => p.id === providerId)?.name || providerId,
         api_key: key || undefined,
         is_default: true,
       }),
     });
 
     if (result?.id) {
-      setProviderCreated(true);
       setStatus({ message: "Provider created!", type: "success" });
       setTimeout(() => {
         setStatus(null);
-        setStep("agent");
+        setStep("permissions");
       }, 1000);
     } else {
       setStatus({ message: result?.error || "Failed to create provider", type: "error" });
     }
+  };
+
+  const saveToolApprovalMode = async () => {
+    setStatus({ message: "Saving tool approval mode...", type: "loading" });
+    const result = await fetchAPI<{ success?: boolean; error?: string }>("/api/config", {
+      method: "PUT",
+      body: JSON.stringify({ tool_approval_mode: toolApprovalMode }),
+    });
+
+    if (result && result.success !== false) {
+      setStatus({ message: "Permissions saved!", type: "success" });
+      setTimeout(() => {
+        setStatus(null);
+        setStep("agent");
+      }, 800);
+      return;
+    }
+
+    setStatus({ message: result?.error || "Failed to save permissions", type: "error" });
   };
 
   const createDefaultAgent = async () => {
@@ -3878,6 +3947,7 @@ const SetupWizard = () => {
             </Box>
             <Box marginLeft={2} flexDirection="column">
               <Text color="gray">• An AI provider (OpenAI, Anthropic, etc.)</Text>
+              <Text color="gray">• Tool permission mode (Always Allow or Ask)</Text>
               <Text color="gray">• A default agent to chat with</Text>
             </Box>
             <Box marginTop={2}>
@@ -3892,7 +3962,7 @@ const SetupWizard = () => {
           <>
             <Text bold>Select AI Provider</Text>
             <Box marginTop={1} flexDirection="column">
-              {PROVIDER_OPTIONS.map((p, i) => (
+              {providerOptions.map((p, i) => (
                 <Box key={p.id}>
                   <Text color={i === selectedProvider ? "cyan" : "white"}>
                     {i === selectedProvider ? "❯ " : "  "}
@@ -3901,6 +3971,7 @@ const SetupWizard = () => {
                   <Text color="gray"> - {p.description}</Text>
                 </Box>
               ))}
+              {providerOptions.length === 0 && <Text color="gray">No providers available</Text>}
             </Box>
             <Box marginTop={1}>
               <Text color="gray">↑↓ to select, ENTER to confirm</Text>
@@ -3910,13 +3981,37 @@ const SetupWizard = () => {
 
         {step === "apikey" && (
           <>
-            <Text bold>Enter API Key for {PROVIDER_OPTIONS[selectedProvider].name}</Text>
+            <Text bold>Enter API Key for {providerOptions[selectedProvider]?.name || "Provider"}</Text>
             <Box marginTop={1}>
               <Text color="gray">API Key: </Text>
               <Text>{apiKey.length > 0 ? "•".repeat(apiKey.length) : "(type your key)"}</Text>
             </Box>
             <Box marginTop={1}>
               <Text color="gray">Press ENTER when done</Text>
+            </Box>
+          </>
+        )}
+
+        {step === "permissions" && (
+          <>
+            <Text bold>Tool Approval Mode</Text>
+            <Box marginTop={1}>
+              <Text color="gray">Choose how dangerous tools should be handled.</Text>
+            </Box>
+            <Box marginTop={1} flexDirection="column">
+              <Text color={toolApprovalMode === "always_allow" ? "cyan" : "white"}>
+                {toolApprovalMode === "always_allow" ? "❯ " : "  "}
+                1) Always Allow
+              </Text>
+              <Text color="gray">   Run tools immediately in chat and channels.</Text>
+              <Text color={toolApprovalMode === "ask" ? "cyan" : "white"}>
+                {toolApprovalMode === "ask" ? "❯ " : "  "}
+                2) Ask Me First
+              </Text>
+              <Text color="gray">   Require approval before dangerous tool calls.</Text>
+            </Box>
+            <Box marginTop={1}>
+              <Text color="gray">1/A or 2/S to choose, ENTER to continue</Text>
             </Box>
           </>
         )}

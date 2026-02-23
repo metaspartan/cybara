@@ -164,6 +164,14 @@ const ANTHROPIC_CONTEXT_1M_BETA = "context-1m-2025-08-07";
 const OPENAI_CODEX_JWT_CLAIM_PATH = "https://api.openai.com/auth";
 const OPENAI_CODEX_OAUTH_MODEL_PREFIXES = ["gpt-5.3-codex", "gpt-5.2-codex"] as const;
 const DEFAULT_MODEL_MAX_OUTPUT_TOKENS = 8192;
+const DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS = 65536;
+const CONTEXT_CHARS_PER_TOKEN_ESTIMATE = 4;
+const CONTEXT_INPUT_HEADROOM_RATIO = 0.75;
+const MAX_TOOL_RESULT_CONTEXT_SHARE = 0.3;
+const HARD_MAX_TOOL_RESULT_CHARS = 400_000;
+const MIN_TOOL_RESULT_CHARS = 2_000;
+const CONTEXT_LIMIT_TRUNCATION_NOTICE = "[truncated: output exceeded context limit]";
+const CONTEXT_LIMIT_COMPACTION_NOTICE = "[compacted: tool output removed to free context]";
 const MAX_AGENTIC_CONFIGURED_ITERATIONS = 10000;
 const MAX_AGENTIC_MAX_RUNTIME_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_TOOL_LOOP_WARNING_THRESHOLD = 10;
@@ -2168,7 +2176,8 @@ class AgentManager {
         providerConfig,
         modelMaxOutputTokens,
         toolContext,
-        modelParams
+        modelParams,
+        providerInfo.id
       );
     }
 
@@ -2300,6 +2309,196 @@ class AgentManager {
     }
 
     return DEFAULT_MODEL_MAX_OUTPUT_TOKENS;
+  }
+
+  private resolveModelContextWindowTokens(
+    providerConfig: string,
+    providerId: string | undefined,
+    modelId: string
+  ): number {
+    const normalizePositiveInt = (value: unknown): number | undefined => {
+      if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return undefined;
+      return Math.max(1, Math.floor(value));
+    };
+
+    const normalizedModelId = modelId.trim().toLowerCase();
+    if (providerId) {
+      const providerModels = providerManager.getModels(providerId) as Array<{
+        model_id?: string | null;
+        model_name?: string | null;
+        context_window?: number | null;
+      }>;
+      const providerMatch = providerModels.find((entry) => {
+        const candidateIds = [entry.model_id, entry.model_name].filter(
+          (value): value is string => typeof value === "string" && value.trim().length > 0
+        );
+        return candidateIds.some((value) => value.trim().toLowerCase() === normalizedModelId);
+      });
+      const contextLimit = normalizePositiveInt(providerMatch?.context_window);
+      if (contextLimit) return contextLimit;
+    }
+
+    const staticProvider = providerCatalog[providerConfig as ProviderType];
+    const staticModel = staticProvider?.models?.find(
+      (entry: { id?: string }) =>
+        typeof entry.id === "string" && entry.id.trim().toLowerCase() === normalizedModelId
+    ) as { context?: number } | undefined;
+    const staticContextLimit = normalizePositiveInt(staticModel?.context);
+    if (staticContextLimit) {
+      return staticContextLimit;
+    }
+
+    return DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS;
+  }
+
+  private resolveContextGuardBudgets(contextWindowTokens: number): {
+    contextBudgetChars: number;
+    maxSingleToolResultChars: number;
+  } {
+    const safeContextTokens = Math.max(1024, Math.floor(contextWindowTokens));
+    const contextBudgetChars = Math.max(
+      4096,
+      Math.floor(
+        safeContextTokens * CONTEXT_CHARS_PER_TOKEN_ESTIMATE * CONTEXT_INPUT_HEADROOM_RATIO
+      )
+    );
+    const maxSingleToolResultChars = Math.max(
+      MIN_TOOL_RESULT_CHARS,
+      Math.min(
+        HARD_MAX_TOOL_RESULT_CHARS,
+        Math.floor(
+          safeContextTokens * CONTEXT_CHARS_PER_TOKEN_ESTIMATE * MAX_TOOL_RESULT_CONTEXT_SHARE
+        )
+      )
+    );
+    return {
+      contextBudgetChars,
+      maxSingleToolResultChars,
+    };
+  }
+
+  private estimateAnthropicMessageChars(message: Record<string, unknown>): number {
+    const content = message.content;
+    if (typeof content === "string") {
+      return content.length;
+    }
+    if (!Array.isArray(content)) {
+      return 0;
+    }
+
+    let total = 0;
+    for (const block of content) {
+      if (!block || typeof block !== "object") continue;
+      const typed = block as Record<string, unknown>;
+      if (typeof typed.text === "string") {
+        total += typed.text.length;
+        continue;
+      }
+      if (typeof typed.content === "string") {
+        total += typed.content.length;
+        continue;
+      }
+      try {
+        const serialized = JSON.stringify(block);
+        total += typeof serialized === "string" ? serialized.length : 0;
+      } catch {
+        total += 128;
+      }
+    }
+    return total;
+  }
+
+  private estimateAnthropicContextChars(messages: Record<string, unknown>[]): number {
+    return messages.reduce(
+      (sum, message) => sum + this.estimateAnthropicMessageChars(message) + 64,
+      0
+    );
+  }
+
+  private truncateTextToContextBudget(text: string, maxChars: number): string {
+    if (text.length <= maxChars) return text;
+
+    const suffix = `\n${CONTEXT_LIMIT_TRUNCATION_NOTICE}`;
+    if (maxChars <= suffix.length) {
+      return CONTEXT_LIMIT_TRUNCATION_NOTICE;
+    }
+    const budget = Math.max(0, maxChars - suffix.length);
+    let cutPoint = budget;
+    const nearestNewline = text.lastIndexOf("\n", budget);
+    if (nearestNewline > budget * 0.7) {
+      cutPoint = nearestNewline;
+    }
+    return text.slice(0, cutPoint) + suffix;
+  }
+
+  private truncateToolResultContentForContext(resultPayload: unknown, maxChars: number): string {
+    let serialized = "";
+    try {
+      serialized = JSON.stringify(resultPayload);
+    } catch {
+      serialized = String(resultPayload);
+    }
+    return this.truncateTextToContextBudget(serialized, maxChars);
+  }
+
+  private compactAnthropicLoopMessagesForContext(
+    messages: Record<string, unknown>[],
+    contextBudgetChars: number,
+    aggressive = false
+  ): boolean {
+    let totalChars = this.estimateAnthropicContextChars(messages);
+    if (totalChars <= contextBudgetChars && !aggressive) return false;
+
+    const minRecentMessagesToKeep = aggressive ? 0 : 6;
+    let compacted = false;
+    let forceCompaction = aggressive;
+
+    for (let index = 0; index < messages.length; index += 1) {
+      if (!forceCompaction && totalChars <= contextBudgetChars) break;
+      const remaining = messages.length - index;
+      if (remaining <= minRecentMessagesToKeep) break;
+
+      const message = messages[index];
+      if (!message || message.role !== "user" || !Array.isArray(message.content)) {
+        continue;
+      }
+
+      let changed = false;
+      const nextContent = message.content.map((block) => {
+        if (!block || typeof block !== "object") return block;
+        const typed = block as Record<string, unknown>;
+        if (typed.type !== "tool_result" || typeof typed.content !== "string") {
+          return block;
+        }
+        if (typed.content.includes(CONTEXT_LIMIT_COMPACTION_NOTICE)) {
+          return block;
+        }
+        changed = true;
+        return {
+          ...typed,
+          content: CONTEXT_LIMIT_COMPACTION_NOTICE,
+        };
+      });
+
+      if (!changed) continue;
+      message.content = nextContent;
+      compacted = true;
+      forceCompaction = false;
+      totalChars = this.estimateAnthropicContextChars(messages);
+    }
+
+    return compacted;
+  }
+
+  private isContextWindowExceededError(errorText: string): boolean {
+    const lower = errorText.toLowerCase();
+    return (
+      lower.includes("context window") ||
+      lower.includes("context length") ||
+      lower.includes("request_too_large") ||
+      lower.includes("prompt is too long") ||
+      lower.includes("maximum context length")
+    );
   }
 
   private shouldRetryWithMaxCompletionTokens(status: number, errorText: string): boolean {
@@ -3617,7 +3816,8 @@ class AgentManager {
     providerConfig: string,
     maxOutputTokens: number,
     toolContext?: ToolContext,
-    modelParams?: Record<string, unknown>
+    modelParams?: Record<string, unknown>,
+    providerId?: string
   ): Promise<{
     content: string;
     thinking?: string;
@@ -3689,6 +3889,12 @@ class AgentManager {
     }
 
     const loopPolicy = this.resolveAgenticLoopPolicy(toolContext);
+    const contextWindowTokens = this.resolveModelContextWindowTokens(
+      providerConfig,
+      providerId,
+      modelId
+    );
+    const contextGuard = this.resolveContextGuardBudgets(contextWindowTokens);
     const loopStartedAt = Date.now();
     let iterations = 0;
     let currentData = data;
@@ -3767,7 +3973,10 @@ class AgentManager {
           toolResults.push({
             type: "tool_result",
             tool_use_id: toolUseId,
-            content: JSON.stringify(missingNamePayload),
+            content: this.truncateToolResultContentForContext(
+              missingNamePayload,
+              contextGuard.maxSingleToolResultChars
+            ),
           });
           continue;
         }
@@ -3790,7 +3999,10 @@ class AgentManager {
         toolResults.push({
           type: "tool_result",
           tool_use_id: toolUseId,
-          content: JSON.stringify(resultPayload),
+          content: this.truncateToolResultContentForContext(
+            resultPayload,
+            contextGuard.maxSingleToolResultChars
+          ),
         });
       }
 
@@ -3800,7 +4012,10 @@ class AgentManager {
         toolResults.push({
           type: "tool_result",
           tool_use_id: expectedId,
-          content: JSON.stringify({ error: "Missing tool result synthesized by Cybara" }),
+          content: this.truncateToolResultContentForContext(
+            { error: "Missing tool result synthesized by Cybara" },
+            contextGuard.maxSingleToolResultChars
+          ),
         });
       }
 
@@ -3840,6 +4055,8 @@ class AgentManager {
         content: toolResults,
       });
 
+      this.compactAnthropicLoopMessagesForContext(currentMessages, contextGuard.contextBudgetChars);
+
       const loopRequestBody: Record<string, unknown> = {
         model: modelId,
         messages: currentMessages,
@@ -3866,6 +4083,32 @@ class AgentManager {
 
       if (!loopResponse.ok) {
         const loopError = await loopResponse.text();
+        if (loopResponse.status === 400 && this.isContextWindowExceededError(loopError)) {
+          this.compactAnthropicLoopMessagesForContext(
+            currentMessages,
+            Math.max(4096, Math.floor(contextGuard.contextBudgetChars * 0.65)),
+            true
+          );
+          const retryBody: Record<string, unknown> = {
+            ...loopRequestBody,
+            messages: currentMessages,
+          };
+          const retryResponse = await fetch(`${baseUrl}/messages`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(retryBody),
+          });
+          if (!retryResponse.ok) {
+            const retryError = await retryResponse.text();
+            throw new Error(`API error in agentic loop: ${retryResponse.status} - ${retryError}`);
+          }
+          currentData = (await retryResponse.json()) as AnthropicResponse;
+          const latestRetryText = currentData.content?.find((c) => c.type === "text")?.text;
+          if (latestRetryText) {
+            finalContent = latestRetryText;
+          }
+          continue;
+        }
         throw new Error(`API error in agentic loop: ${loopResponse.status} - ${loopError}`);
       }
 

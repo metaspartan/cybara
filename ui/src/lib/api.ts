@@ -794,6 +794,7 @@ export const chatApi = {
       {
         id: string;
         agent_id: string;
+        title?: string | null;
         created_at: string;
         updated_at: string;
         workspace_dir?: string | null;
@@ -805,6 +806,7 @@ export const chatApi = {
     fetchApi<{
       id: string;
       agent_id: string;
+      title?: string | null;
       created_at: string;
       updated_at: string;
       workspace_dir?: string | null;
@@ -835,6 +837,14 @@ export const chatApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  updateSessionTitle: (id: string, title: string) =>
+    fetchApi<{ success: boolean; sessionId: string; title: string; error?: string }>(
+      "/sessions/" + id + "/title",
+      {
+        method: "PUT",
+        body: JSON.stringify({ title }),
+      }
+    ),
   updateSessionWorkspace: (id: string, workspaceDir: string | null) =>
     fetchApi<{ success: boolean; sessionId: string; workspaceDir: string | null; error?: string }>(
       "/sessions/" + id + "/workspace",

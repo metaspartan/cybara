@@ -97,7 +97,7 @@ describe("Chat live activity persistence", () => {
     const source = readFileSync(chatSourcePath, "utf8");
     expect(source).toContain("setShowSessionsPanel(true);");
     expect(source).toContain("onLoadSession={(id, msgs, loadedWorkspaceDir, loadedAgentId) => {");
-    expect(source).toContain("setSessionAgentId(loadedAgentId || null);");
+    expect(source).toContain("syncSessionAgentSelection(loadedAgentId);");
     expect(source).toContain("onNewSession={() => {");
     expect(source).toContain("setSessionAgentId(null);");
   });

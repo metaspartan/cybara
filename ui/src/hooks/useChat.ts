@@ -206,6 +206,27 @@ export function useDeleteSession() {
   });
 }
 
+export function useRenameSession() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ sessionId, title }: { sessionId: string; title: string }) => {
+      const response = await chatApi.updateSessionTitle(sessionId, title);
+      if (response.success && response.data?.success) {
+        return response.data;
+      }
+      const message =
+        (response.data && "error" in response.data ? response.data.error : null) ||
+        response.error ||
+        "Failed to rename session";
+      throw new Error(message || "Failed to rename session");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sessions"] });
+    },
+  });
+}
+
 export function useLoadSession() {
   return useMutation({
     mutationFn: async (sessionId: string) => {

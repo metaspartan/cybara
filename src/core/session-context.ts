@@ -50,6 +50,67 @@ export function normalizeSessionWorkspaceDir(workspaceDir?: string | null): stri
   return absolute;
 }
 
+const MAX_SESSION_TITLE_LENGTH = 140;
+
+function normalizeSessionTitle(value?: string | null): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[\r\n\t]+/g, " ");
+  if (!normalized) return null;
+  if (normalized.length <= MAX_SESSION_TITLE_LENGTH) return normalized;
+  return `${normalized.slice(0, MAX_SESSION_TITLE_LENGTH - 1).trimEnd()}…`;
+}
+
+function summarizeSessionUserPrompt(messages: ChatMessage[]): string | null {
+  const firstUserMessage = messages.find(
+    (message) =>
+      message.role === "user" && typeof message.content === "string" && message.content.trim()
+  );
+  if (!firstUserMessage) return null;
+  const normalized = firstUserMessage.content
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[\r\n\t]+/g, " ");
+  return normalizeSessionTitle(normalized);
+}
+
+function resolveSessionAgentName(agentId: string): string | null {
+  const inMemoryAgentName = agentManager.get(agentId)?.name;
+  if (typeof inMemoryAgentName === "string" && inMemoryAgentName.trim().length > 0) {
+    return inMemoryAgentName.trim();
+  }
+
+  try {
+    const row = db.prepare("SELECT name FROM agents WHERE id = ?").get(agentId) as {
+      name?: string | null;
+    } | null;
+    if (typeof row?.name === "string" && row.name.trim().length > 0) {
+      return row.name.trim();
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function deriveSessionTitle(messages: ChatMessage[], agentId: string): string {
+  const promptSummary = summarizeSessionUserPrompt(messages);
+  const agentName = resolveSessionAgentName(agentId);
+  if (promptSummary && agentName) {
+    return normalizeSessionTitle(`${agentName}: ${promptSummary}`) || `${agentName} session`;
+  }
+  if (promptSummary) {
+    return promptSummary;
+  }
+  if (agentName) {
+    return normalizeSessionTitle(`${agentName} session`) || "Session";
+  }
+  return "Session";
+}
+
 const DEFAULT_CONTEXT_TOKENS = 200_000;
 const CONTEXT_SAFETY_MARGIN = 1.2; // 20% buffer for token estimation
 const MAX_HISTORY_SHARE = 0.5; // Max 50% of context for history
@@ -336,29 +397,56 @@ export async function persistSession(
   sessionId: string,
   agentId: string,
   messages: ChatMessage[],
-  workspaceDir?: string | null
+  workspaceDir?: string | null,
+  sessionTitle?: string | null
 ): Promise<void> {
   try {
     const hasWorkspaceUpdate = workspaceDir !== undefined;
+    const hasTitleUpdate = sessionTitle !== undefined;
     const normalizedWorkspaceDir = hasWorkspaceUpdate
       ? normalizeSessionWorkspaceDir(workspaceDir)
       : null;
-    const existing = db.prepare("SELECT id FROM chat_sessions WHERE id = ?").get(sessionId);
+    const normalizedTitle = hasTitleUpdate ? normalizeSessionTitle(sessionTitle) : null;
+    const existing = db
+      .prepare("SELECT id, title FROM chat_sessions WHERE id = ?")
+      .get(sessionId) as { id: string; title?: string | null } | null;
+    const existingTitle = normalizeSessionTitle(existing?.title);
+    const derivedTitle = normalizedTitle || deriveSessionTitle(messages, agentId);
 
     if (existing) {
-      if (hasWorkspaceUpdate) {
+      if (hasWorkspaceUpdate && hasTitleUpdate) {
+        db.prepare(
+          "UPDATE chat_sessions SET workspace_dir = ?, title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        ).run(normalizedWorkspaceDir, normalizedTitle, sessionId);
+      } else if (hasWorkspaceUpdate) {
         db.prepare(
           "UPDATE chat_sessions SET workspace_dir = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
         ).run(normalizedWorkspaceDir, sessionId);
+      } else if (hasTitleUpdate) {
+        db.prepare(
+          "UPDATE chat_sessions SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        ).run(normalizedTitle, sessionId);
       } else {
         db.prepare("UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(
           sessionId
         );
       }
+
+      if (!hasTitleUpdate && !existingTitle && derivedTitle) {
+        db.prepare(
+          "UPDATE chat_sessions SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        ).run(derivedTitle, sessionId);
+      }
     } else {
       db.prepare(
-        "INSERT INTO chat_sessions (id, agent_id, messages, workspace_dir, created_at, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
-      ).run(sessionId, agentId, JSON.stringify(messages.slice(0, 2)), normalizedWorkspaceDir); // Store preview
+        "INSERT INTO chat_sessions (id, agent_id, title, messages, workspace_dir, created_at, updated_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+      ).run(
+        sessionId,
+        agentId,
+        derivedTitle,
+        JSON.stringify(messages.slice(0, 2)),
+        normalizedWorkspaceDir
+      );
     }
 
     console.log(
@@ -369,9 +457,12 @@ export async function persistSession(
   }
 }
 
-export async function loadPersistedSession(
-  sessionId: string
-): Promise<{ agentId: string; messages: ChatMessage[]; workspaceDir: string | null } | null> {
+export async function loadPersistedSession(sessionId: string): Promise<{
+  agentId: string;
+  messages: ChatMessage[];
+  workspaceDir: string | null;
+  title: string | null;
+} | null> {
   try {
     const sessionMessages =
       (tables.sessionMessages?.getBySession(sessionId) as PersistedSessionMessage[]) || [];
@@ -389,23 +480,30 @@ export async function loadPersistedSession(
 
     let agentId = (sessionMessages[0] as { agent_id?: string })?.agent_id;
     let workspaceDir: string | null = null;
+    let title: string | null = null;
     if (!agentId) {
       const session = db
-        .prepare("SELECT agent_id, workspace_dir FROM chat_sessions WHERE id = ?")
-        .get(sessionId) as { agent_id?: string; workspace_dir?: string | null } | null;
+        .prepare("SELECT agent_id, workspace_dir, title FROM chat_sessions WHERE id = ?")
+        .get(sessionId) as {
+        agent_id?: string;
+        workspace_dir?: string | null;
+        title?: string | null;
+      } | null;
       agentId = session?.agent_id;
       workspaceDir =
         typeof session?.workspace_dir === "string" && session.workspace_dir.trim().length > 0
           ? session.workspace_dir
           : null;
+      title = normalizeSessionTitle(session?.title);
     } else {
       const session = db
-        .prepare("SELECT workspace_dir FROM chat_sessions WHERE id = ?")
-        .get(sessionId) as { workspace_dir?: string | null } | null;
+        .prepare("SELECT workspace_dir, title FROM chat_sessions WHERE id = ?")
+        .get(sessionId) as { workspace_dir?: string | null; title?: string | null } | null;
       workspaceDir =
         typeof session?.workspace_dir === "string" && session.workspace_dir.trim().length > 0
           ? session.workspace_dir
           : null;
+      title = normalizeSessionTitle(session?.title);
     }
 
     console.log(
@@ -416,6 +514,7 @@ export async function loadPersistedSession(
       agentId: agentId || "default",
       messages,
       workspaceDir,
+      title: title || deriveSessionTitle(messages, agentId || "default"),
     };
   } catch (error) {
     console.error("[Session] Failed to load persisted session:", error);
@@ -427,6 +526,7 @@ export async function listPersistedSessions(): Promise<
   Array<{
     id: string;
     agentId: string;
+    title: string | null;
     createdAt: string;
     updatedAt: string;
     messageCount: number;
@@ -440,6 +540,7 @@ export async function listPersistedSessions(): Promise<
       SELECT 
         cs.id,
         cs.agent_id as agentId,
+        cs.title as title,
         cs.created_at as createdAt,
         cs.updated_at as updatedAt,
         cs.workspace_dir as workspaceDir,
@@ -453,6 +554,7 @@ export async function listPersistedSessions(): Promise<
       .all() as Array<{
       id: string;
       agentId: string;
+      title: string | null;
       createdAt: string;
       updatedAt: string;
       messageCount: number;
@@ -477,6 +579,15 @@ export async function setPersistedSessionWorkspace(
   const normalizedWorkspaceDir = normalizeSessionWorkspaceDir(workspaceDir);
   tables.chatSessions.updateWorkspace(sessionId, normalizedWorkspaceDir);
   return normalizedWorkspaceDir;
+}
+
+export async function setPersistedSessionTitle(
+  sessionId: string,
+  title: string | null
+): Promise<string | null> {
+  const normalizedTitle = normalizeSessionTitle(title);
+  tables.chatSessions.updateTitle(sessionId, normalizedTitle);
+  return normalizedTitle;
 }
 
 export async function deletePersistedSession(sessionId: string): Promise<boolean> {

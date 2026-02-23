@@ -38,6 +38,7 @@ import { handleData } from "./data";
 import { handleEnv } from "./env";
 import { handleWebSearch } from "./web-search";
 import { handleArtifacts } from "./artifacts";
+import { handleWallet } from "./wallet";
 import {
   handleLSPDiagnostics,
   handleLSPDefinition,
@@ -146,15 +147,7 @@ const toolHandlers: Record<
   browser: handleBrowser,
   web_fetch: handleWebFetch,
   web_search: handleWebSearch,
-  wallet: async (args: Record<string, unknown>) => {
-    try {
-      const walletTool = await import("./wallet");
-      return await walletTool.handleWallet(args);
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      throw new Error(`Wallet tool unavailable: ${reason}`);
-    }
-  },
+  wallet: handleWallet,
   artifacts: handleArtifacts,
 
   memory_search: handleMemorySearch,

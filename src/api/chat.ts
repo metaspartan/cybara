@@ -87,13 +87,46 @@ export interface ChatResponse {
   tool_calls?: ToolCallInfo[];
 }
 
+const MAX_SESSION_TITLE_LENGTH = 140;
+
+function normalizeSessionTitle(value?: string | null): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value
+    .trim()
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\s+/g, " ");
+  if (!normalized) return null;
+  if (normalized.length <= MAX_SESSION_TITLE_LENGTH) return normalized;
+  return `${normalized.slice(0, MAX_SESSION_TITLE_LENGTH - 1).trimEnd()}…`;
+}
+
+function summarizeTitleFromMessage(message: string): string | null {
+  return normalizeSessionTitle(message);
+}
+
+function deriveSessionTitle(agentName: string | undefined, message: string): string {
+  const summary = summarizeTitleFromMessage(message);
+  const normalizedAgentName = normalizeSessionTitle(agentName);
+  if (summary && normalizedAgentName) {
+    return (
+      normalizeSessionTitle(`${normalizedAgentName}: ${summary}`) ||
+      `${normalizedAgentName} session`
+    );
+  }
+  if (summary) return summary;
+  if (normalizedAgentName) return `${normalizedAgentName} session`;
+  return "Session";
+}
+
 const chatSessions = new Map<
   string,
   {
     id: string;
     agentId: string;
+    title: string | null;
     messages: ChatMessage[];
     createdAt: string;
+    updatedAt: string;
     workspaceDir?: string | null;
     persisted: boolean;
     compactionCount?: number; // Track compaction cycles for memory flush
@@ -111,8 +144,10 @@ async function loadPersistedSessions() {
         chatSessions.set(sessionInfo.id, {
           id: sessionInfo.id,
           agentId: session.agentId,
+          title: session.title || sessionInfo.title || null,
           messages: session.messages,
           createdAt: sessionInfo.createdAt,
+          updatedAt: sessionInfo.updatedAt || sessionInfo.createdAt,
           workspaceDir: session.workspaceDir,
           persisted: true,
         });
@@ -240,19 +275,22 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     }
 
     const newSessionId = sessionId || crypto.randomUUID();
+    const nowIso = new Date().toISOString();
     session = {
       id: newSessionId,
       agentId: agent.id,
+      title: null,
       messages: [
         {
           role: "system",
           content:
             agent.system_prompt ||
             "You are a helpful AI assistant with access to tools. Use tools when needed to help the user.",
-          timestamp: new Date().toISOString(),
+          timestamp: nowIso,
         },
       ],
-      createdAt: new Date().toISOString(),
+      createdAt: nowIso,
+      updatedAt: nowIso,
       workspaceDir: requestedWorkspaceDir ?? null,
       persisted: false,
     };
@@ -266,6 +304,9 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   }
 
   const agent = agentManager.get(session.agentId);
+  if (!session.title) {
+    session.title = deriveSessionTitle(agent?.name, message);
+  }
   const hookContext = {
     agentId: agent?.id,
     sessionId: session.id,
@@ -279,6 +320,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     timestamp: new Date().toISOString(),
   };
   session.messages.push(userMessage);
+  session.updatedAt = userMessage.timestamp || new Date().toISOString();
 
   broadcastStatus({
     status: "thinking",
@@ -646,6 +688,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     })(),
   };
   session.messages.push(assistantMessage);
+  session.updatedAt = assistantMessage.timestamp || new Date().toISOString();
 
   await logSessionMessage(session.id, "assistant", cleanContent, {
     agentId: agent?.id,
@@ -657,7 +700,13 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     },
   });
 
-  await persistSession(session.id, session.agentId, session.messages, session.workspaceDir);
+  await persistSession(
+    session.id,
+    session.agentId,
+    session.messages,
+    session.workspaceDir,
+    session.title
+  );
   session.persisted = true;
 
   await emitAgentHook({
@@ -730,11 +779,14 @@ export async function getSession(sessionId: string) {
 
   const persisted = await loadPersistedSession(sessionId);
   if (persisted) {
+    const nowIso = new Date().toISOString();
     const restoredSession = {
       id: sessionId,
       agentId: persisted.agentId,
+      title: persisted.title,
       messages: persisted.messages,
-      createdAt: new Date().toISOString(),
+      createdAt: nowIso,
+      updatedAt: nowIso,
       workspaceDir: persisted.workspaceDir,
       persisted: true,
     };
@@ -754,16 +806,20 @@ export async function listSessions(): Promise<
   Array<{
     id: string;
     agentId: string;
+    title: string | null;
     messageCount: number;
     createdAt: string;
+    updatedAt: string;
     workspaceDir: string | null;
   }>
 > {
   const memorySessions = Array.from(chatSessions.values()).map((s) => ({
     id: s.id,
     agentId: s.agentId,
+    title: s.title || null,
     messageCount: s.messages.length,
     createdAt: s.createdAt,
+    updatedAt: s.updatedAt || s.createdAt,
     workspaceDir: s.workspaceDir ?? null,
   }));
 
@@ -776,15 +832,17 @@ export async function listSessions(): Promise<
       memorySessions.push({
         id: ps.id,
         agentId: ps.agentId,
+        title: ps.title || null,
         messageCount: ps.messageCount,
         createdAt: ps.createdAt,
+        updatedAt: ps.updatedAt,
         workspaceDir: ps.workspaceDir ?? null,
       });
     }
   }
 
   return memorySessions.sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   );
 }
 
@@ -911,6 +969,12 @@ export async function revertSessionToMessage(
 
   const inMemorySession = chatSessions.get(sessionId);
   const agentId = inMemorySession?.agentId || session.agentId || "default";
+  const sessionTitle =
+    inMemorySession?.title !== undefined
+      ? inMemorySession.title
+      : "title" in session
+        ? normalizeSessionTitle(session.title as string | null | undefined)
+        : null;
   const createdAt = inMemorySession?.createdAt || session.createdAt || new Date().toISOString();
   const workspaceDir =
     inMemorySession?.workspaceDir !== undefined
@@ -922,12 +986,15 @@ export async function revertSessionToMessage(
   if (inMemorySession) {
     inMemorySession.messages = keptMessages;
     inMemorySession.persisted = true;
+    inMemorySession.updatedAt = new Date().toISOString();
   } else {
     chatSessions.set(sessionId, {
       id: sessionId,
       agentId,
+      title: sessionTitle,
       messages: keptMessages,
       createdAt,
+      updatedAt: new Date().toISOString(),
       workspaceDir,
       persisted: true,
     });
@@ -935,7 +1002,7 @@ export async function revertSessionToMessage(
 
   if (removedCount > 0) {
     await deletePersistedSession(sessionId);
-    await persistSession(sessionId, agentId, keptMessages, workspaceDir);
+    await persistSession(sessionId, agentId, keptMessages, workspaceDir, sessionTitle);
     for (const message of keptMessages) {
       await logSessionMessage(sessionId, message.role, message.content, {
         agentId,
@@ -973,34 +1040,98 @@ export async function updateSessionWorkspace(
 
   const inMemorySession = chatSessions.get(sessionId);
   const agentId = inMemorySession?.agentId || session.agentId || "default";
+  const sessionTitle =
+    inMemorySession?.title !== undefined
+      ? inMemorySession.title
+      : "title" in session
+        ? normalizeSessionTitle(session.title as string | null | undefined)
+        : null;
   const createdAt = inMemorySession?.createdAt || session.createdAt || new Date().toISOString();
   const messages = session.messages || [];
+  const updatedAt = new Date().toISOString();
 
   if (inMemorySession) {
     inMemorySession.workspaceDir = normalizedWorkspaceDir;
     inMemorySession.persisted = true;
+    inMemorySession.updatedAt = updatedAt;
   } else {
     chatSessions.set(sessionId, {
       id: sessionId,
       agentId,
+      title: sessionTitle,
       messages,
       createdAt,
+      updatedAt,
       workspaceDir: normalizedWorkspaceDir,
       persisted: true,
     });
   }
 
-  await persistSession(sessionId, agentId, messages, normalizedWorkspaceDir);
+  await persistSession(sessionId, agentId, messages, normalizedWorkspaceDir, sessionTitle);
   return {
     sessionId,
     workspaceDir: normalizedWorkspaceDir,
   };
 }
 
+export async function updateSessionTitle(
+  sessionId: string,
+  title: string
+): Promise<{ sessionId: string; title: string }> {
+  const normalizedTitle = normalizeSessionTitle(title);
+  if (!normalizedTitle) {
+    throw new Error("Session title is required");
+  }
+
+  const session = await getSession(sessionId);
+  if (!session) {
+    throw new Error("Session not found");
+  }
+  if ((session as { isSubagent?: boolean }).isSubagent) {
+    throw new Error("Cannot update title for subagent sessions");
+  }
+
+  const inMemorySession = chatSessions.get(sessionId);
+  const agentId = inMemorySession?.agentId || session.agentId || "default";
+  const createdAt = inMemorySession?.createdAt || session.createdAt || new Date().toISOString();
+  const workspaceDir =
+    inMemorySession?.workspaceDir !== undefined
+      ? (inMemorySession.workspaceDir ?? null)
+      : "workspaceDir" in session && typeof session.workspaceDir === "string"
+        ? session.workspaceDir
+        : null;
+  const messages = session.messages || [];
+  const updatedAt = new Date().toISOString();
+
+  if (inMemorySession) {
+    inMemorySession.title = normalizedTitle;
+    inMemorySession.updatedAt = updatedAt;
+    inMemorySession.persisted = true;
+  } else {
+    chatSessions.set(sessionId, {
+      id: sessionId,
+      agentId,
+      title: normalizedTitle,
+      messages,
+      createdAt,
+      updatedAt,
+      workspaceDir,
+      persisted: true,
+    });
+  }
+
+  await persistSession(sessionId, agentId, messages, workspaceDir, normalizedTitle);
+  return { sessionId, title: normalizedTitle };
+}
+
 export function sendToSession(sessionKey: string, message: ChatMessage): boolean {
   const session = chatSessions.get(sessionKey);
   if (session) {
+    if (!session.title && message.role === "user") {
+      session.title = deriveSessionTitle(agentManager.get(session.agentId)?.name, message.content);
+    }
     session.messages.push(message);
+    session.updatedAt = message.timestamp || new Date().toISOString();
     console.log(`[Chat] Injected message into session ${sessionKey.slice(0, 20)}...`);
     return true;
   }

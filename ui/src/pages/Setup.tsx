@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Cloud, Bot, CheckCircle, ChevronRight, Key, Loader2, AlertCircle } from 'lucide-react';
+import { Cloud, Bot, CheckCircle, ChevronRight, Key, Loader2, AlertCircle, Shield } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useProviders, useAgents, useAvailableProviders, useCreateProvider, useCreateDefaultAgent } from '@/hooks/useApi';
-import { setupApi } from '@/lib/api';
+import { setupApi, settingsApi } from '@/lib/api';
 import type { AvailableProvider } from '@/types';
 
-type WizardStep = 'welcome' | 'provider' | 'apikey' | 'oauth' | 'agent' | 'complete';
+type WizardStep = 'welcome' | 'provider' | 'apikey' | 'oauth' | 'permissions' | 'agent' | 'complete';
 
 function getAuthFlow(provider: AvailableProvider): 'api_key' | 'oauth' | 'none' {
     if (!provider.authType || provider.authType === 'none') return 'none';
@@ -17,18 +17,29 @@ function getAuthFlow(provider: AvailableProvider): 'api_key' | 'oauth' | 'none' 
 }
 
 export function Setup() {
-    const navigate = useNavigate();
-    const [step, setStep] = useState<WizardStep>('welcome');
-    const [selectedProvider, setSelectedProvider] = useState<AvailableProvider | null>(null);
-    const [apiKey, setApiKey] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const [step, setStep] = useState<WizardStep>('welcome');
+  const [selectedProvider, setSelectedProvider] = useState<AvailableProvider | null>(null);
+  const [providerSearch, setProviderSearch] = useState('');
+  const [toolApprovalMode, setToolApprovalMode] = useState<'always_allow' | 'ask'>('always_allow');
+  const [apiKey, setApiKey] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
     const { data: providers, isLoading: providersLoading } = useProviders();
     const { data: agents, isLoading: agentsLoading } = useAgents();
     const { data: availableProviders, isLoading: availableLoading } = useAvailableProviders();
     const createProvider = useCreateProvider();
     const createDefaultAgent = useCreateDefaultAgent();
+    const progressSteps: WizardStep[] = ['welcome', 'provider', 'apikey', 'permissions', 'agent', 'complete'];
+    const filteredProviders = (availableProviders || []).filter((provider) => {
+        const search = providerSearch.trim().toLowerCase();
+        if (!search) return true;
+        return (
+            provider.name.toLowerCase().includes(search) ||
+            provider.id.toLowerCase().includes(search)
+        );
+    });
 
     useEffect(() => {
         if (!providersLoading && !agentsLoading) {
@@ -63,7 +74,7 @@ export function Setup() {
                 api_key: key || undefined,
                 is_default: true,
             });
-            setStep('agent');
+            setStep('permissions');
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to create provider');
         } finally {
@@ -74,6 +85,22 @@ export function Setup() {
     const handleSkipOAuth = () => {
         if (selectedProvider) {
             handleCreateProvider(selectedProvider.id, '');
+        }
+    };
+
+    const handleConfigurePermissions = async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+            const result = await settingsApi.updateConfig({ tool_approval_mode: toolApprovalMode });
+            if (!result.success || !result.data?.success) {
+                throw new Error(result.error || 'Failed to save permissions');
+            }
+            setStep('agent');
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to save permissions');
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -122,14 +149,14 @@ export function Setup() {
         <div className="min-h-screen w-full bg-[#0a0a0f] flex items-center justify-center">
             <div className="w-full max-w-xl mx-auto px-4">
                 <div className="flex items-center justify-center gap-2 mb-8">
-                    {['welcome', 'provider', 'apikey', 'agent', 'complete'].map((s, i) => (
+                    {progressSteps.map((s, i) => (
                         <div key={s} className="flex items-center">
                             <div className={`w-3 h-3 rounded-full transition-colors ${step === s || (step === 'oauth' && s === 'apikey') ? 'bg-indigo-500' :
-                                    ['welcome', 'provider', 'apikey', 'agent', 'complete'].indexOf(step) > i ||
+                                    progressSteps.indexOf(step) > i ||
                                         (step === 'oauth' && i < 2) ? 'bg-emerald-500' :
                                         'bg-white/20'
                                 }`} />
-                            {i < 4 && <div className={`w-8 h-0.5 ${['welcome', 'provider', 'apikey', 'agent', 'complete'].indexOf(step) > i ||
+                            {i < progressSteps.length - 1 && <div className={`w-8 h-0.5 ${progressSteps.indexOf(step) > i ||
                                     (step === 'oauth' && i < 2) ? 'bg-emerald-500' : 'bg-white/20'
                                 }`} />}
                         </div>
@@ -161,6 +188,10 @@ export function Setup() {
                                         <span>Create your first AI agent</span>
                                     </div>
                                     <div className="flex items-center gap-3 text-gray-300">
+                                        <Shield className="w-5 h-5 text-indigo-400 shrink-0" />
+                                        <span>Choose tool permission mode</span>
+                                    </div>
+                                    <div className="flex items-center gap-3 text-gray-300">
                                         <CheckCircle className="w-5 h-5 text-indigo-400 shrink-0" />
                                         <span>Start chatting and building</span>
                                     </div>
@@ -177,13 +208,19 @@ export function Setup() {
                                     <h2 className="text-2xl font-bold text-white mb-2">Choose AI Provider</h2>
                                     <p className="text-gray-400">Select which AI service to connect</p>
                                 </div>
+                                <Input
+                                    type="text"
+                                    placeholder="Search providers..."
+                                    value={providerSearch}
+                                    onChange={(e) => setProviderSearch(e.target.value)}
+                                />
                                 {availableLoading ? (
                                     <div className="flex justify-center py-8">
                                         <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
                                     </div>
                                 ) : (
                                     <div className="grid grid-cols-2 gap-2 max-h-80 overflow-y-auto pr-1">
-                                        {availableProviders?.map((provider) => {
+                                        {filteredProviders.map((provider) => {
                                             const authFlow = getAuthFlow(provider);
                                             return (
                                                 <button
@@ -207,6 +244,11 @@ export function Setup() {
                                                 </button>
                                             );
                                         })}
+                                        {filteredProviders.length === 0 && (
+                                            <div className="col-span-2 text-center py-8 text-sm text-gray-500">
+                                                No providers match your search.
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -282,6 +324,64 @@ export function Setup() {
                                         className="flex-1"
                                     >
                                         Continue Anyway
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+
+                        {step === 'permissions' && (
+                            <div className="space-y-6">
+                                <div className="text-center">
+                                    <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center">
+                                        <Shield className="w-8 h-8 text-white" />
+                                    </div>
+                                    <h2 className="text-2xl font-bold text-white mb-2">Tool Permissions</h2>
+                                    <p className="text-gray-400">Choose how dangerous tools should be handled</p>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setToolApprovalMode('always_allow')}
+                                        className={`w-full text-left p-4 rounded-xl border transition-colors cursor-pointer ${toolApprovalMode === 'always_allow'
+                                            ? 'border-indigo-500/60 bg-indigo-500/10'
+                                            : 'border-white/10 bg-white/5 hover:border-white/20'
+                                            }`}
+                                    >
+                                        <p className="text-white font-medium text-sm">Always Allow</p>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            Run tools immediately in chat and channels.
+                                        </p>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setToolApprovalMode('ask')}
+                                        className={`w-full text-left p-4 rounded-xl border transition-colors cursor-pointer ${toolApprovalMode === 'ask'
+                                            ? 'border-indigo-500/60 bg-indigo-500/10'
+                                            : 'border-white/10 bg-white/5 hover:border-white/20'
+                                            }`}
+                                    >
+                                        <p className="text-white font-medium text-sm">Ask Me First</p>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            Require confirmation before dangerous tool calls.
+                                        </p>
+                                    </button>
+                                </div>
+
+                                {error && (
+                                    <p className="text-red-400 text-sm text-center">{error}</p>
+                                )}
+
+                                <div className="flex gap-3">
+                                    <Button variant="ghost" onClick={() => setStep('provider')} className="flex-1">
+                                        Back
+                                    </Button>
+                                    <Button
+                                        onClick={handleConfigurePermissions}
+                                        isLoading={isLoading}
+                                        className="flex-1"
+                                    >
+                                        Continue
                                     </Button>
                                 </div>
                             </div>

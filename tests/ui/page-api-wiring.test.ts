@@ -40,8 +40,9 @@ describe("UI page API wiring", () => {
   test("Setup page completes onboarding through setupApi helper", () => {
     const source = readPage("Setup.tsx");
 
-    expect(source).toContain("import { setupApi } from '@/lib/api';");
+    expect(source).toContain("import { setupApi, settingsApi } from '@/lib/api';");
     expect(source).toContain("setupApi.complete()");
+    expect(source).toContain("settingsApi.updateConfig({ tool_approval_mode: toolApprovalMode })");
     expect(source).not.toContain("apiFetch('/api/setup/complete'");
   });
 

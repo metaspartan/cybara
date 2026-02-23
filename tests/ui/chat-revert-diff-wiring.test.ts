@@ -35,12 +35,12 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain("assistantTimestamp: message.timestamp");
   });
 
-  test("shows hidden tool-call summary with view-more loading full history on demand", () => {
+  test("renders full tool-call timeline inline without truncation controls", () => {
     const source = readChatSource();
-    expect(source).toContain("const TOOL_CALL_PREVIEW_LIMIT = 50");
-    expect(source).toContain("...and {hiddenToolCallsCount} more tool call");
-    expect(source).toContain("View more");
-    expect(source).toContain("chatApi.getSession(sessionId, { includeFullToolCalls: true })");
+    expect(source).not.toContain("const TOOL_CALL_PREVIEW_LIMIT = 50");
+    expect(source).not.toContain("hiddenToolCallsCount");
+    expect(source).not.toContain("View more");
+    expect(source).not.toContain("includeFullToolCalls");
     expect(source).toContain("getToolCallsInTimelineOrder");
     expect(source).toContain("border-t border-white/12");
     expect(source).toContain("<ThinkingBlock thinking={message.thinking || \"\"} />");

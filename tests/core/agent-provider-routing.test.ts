@@ -127,7 +127,9 @@ describe("Agent provider API-family routing", () => {
 
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       requestCount += 1;
-      const requestBody = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      const requestBody = init?.body
+        ? (JSON.parse(String(init.body)) as Record<string, unknown>)
+        : {};
       requestBodies.push(requestBody);
 
       if (requestCount === 1) {
@@ -223,6 +225,129 @@ describe("Agent provider API-family routing", () => {
     expect(toolResult?.tool_use_id).toBe("toolu_calc_1");
     expect(typeof toolResult?.content).toBe("string");
     expect(String(toolResult?.content)).toContain("Tool not found: calculate");
+  });
+
+  test("anthropic loop truncates oversized tool results and retries with compaction on context overflow", async () => {
+    const requestBodies: Array<Record<string, unknown>> = [];
+    let requestCount = 0;
+    let sawTruncatedMarker = false;
+    let sawCompactedMarker = false;
+
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestCount += 1;
+      const requestBody = init?.body
+        ? (JSON.parse(String(init.body)) as Record<string, unknown>)
+        : {};
+      requestBodies.push(requestBody);
+
+      if (requestCount === 1) {
+        return new Response(
+          JSON.stringify({
+            id: "msg-tool-truncate-1",
+            type: "message",
+            role: "assistant",
+            model: "claude-sonnet-4-20250514",
+            content: [
+              { type: "text", text: "Running a big command." },
+              {
+                type: "tool_use",
+                id: "toolu_exec_big_1",
+                name: "exec",
+                input: { command: "printf '%*s' 500000 '' | tr ' ' A" },
+              },
+            ],
+            usage: { input_tokens: 64, output_tokens: 24 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      if (requestCount === 2) {
+        const loopMessages = (requestBody.messages as Array<Record<string, unknown>>) || [];
+        const lastMessage = loopMessages[loopMessages.length - 1] || {};
+        const toolResults = (lastMessage.content as Array<Record<string, unknown>>) || [];
+        const toolResult = toolResults.find((entry) => entry.type === "tool_result");
+        const serializedToolResult = String(toolResult?.content || "");
+        sawTruncatedMarker =
+          serializedToolResult.includes("[truncated: output exceeded context limit]") ||
+          serializedToolResult.includes("Content truncated");
+
+        return new Response(
+          JSON.stringify({
+            type: "error",
+            error: {
+              type: "invalid_request_error",
+              message: "request_too_large: Request size exceeds model context window",
+            },
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      if (requestCount === 3) {
+        const serializedMessages = JSON.stringify(requestBody.messages || []);
+        sawCompactedMarker = serializedMessages.includes(
+          "[compacted: tool output removed to free context]"
+        );
+
+        return new Response(
+          JSON.stringify({
+            id: "msg-tool-truncate-2",
+            type: "message",
+            role: "assistant",
+            model: "claude-sonnet-4-20250514",
+            content: [{ type: "text", text: "Recovered after compaction." }],
+            usage: { input_tokens: 40, output_tokens: 18 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(JSON.stringify({ error: "unexpected extra request" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "anthropic",
+      name: "Anthropic Overflow Guard Provider",
+      api_key: "anthropic-overflow-guard-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Anthropic Overflow Guard Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "claude-sonnet-4-20250514",
+      tools: [
+        {
+          name: "exec",
+          description: "Run shell commands",
+          input_schema: {
+            type: "object",
+            properties: {
+              command: { type: "string" },
+            },
+            required: ["command"],
+          },
+        },
+      ],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Run a big command and continue" }],
+      { useTools: true, sessionId: "anthropic-overflow-guard-session" }
+    );
+
+    expect(result.content).toContain("Recovered after compaction");
+    expect(requestCount).toBe(3);
+    expect(sawTruncatedMarker).toBe(true);
+    expect(sawCompactedMarker).toBe(true);
+    expect(requestBodies.length).toBe(3);
   });
 
   test("anthropic loop respects model_params max_tool_iterations override", async () => {
@@ -674,11 +799,10 @@ describe("Agent provider API-family routing", () => {
     });
     createdAgentIds.push(agent.id);
 
-    const result = await agentManager.execute(
-      agent.id,
-      [{ role: "user", content: "hello kimi" }],
-      { useTools: false, sessionId: "kimi-header-session" }
-    );
+    const result = await agentManager.execute(agent.id, [{ role: "user", content: "hello kimi" }], {
+      useTools: false,
+      sessionId: "kimi-header-session",
+    });
 
     expect(result.content).toBe("kimi-ok");
     expect(requestHeaders.get("Authorization")).toBe("Bearer kimi-test-key");

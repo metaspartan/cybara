@@ -147,6 +147,7 @@ try {
   CREATE TABLE IF NOT EXISTS chat_sessions (
     id TEXT PRIMARY KEY,
     agent_id TEXT NOT NULL,
+    title TEXT,
     messages TEXT NOT NULL,
     workspace_dir TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -269,6 +270,13 @@ try {
   } catch {
     // Column already exists, ignore
   }
+
+  try {
+    db.exec("ALTER TABLE chat_sessions ADD COLUMN title TEXT");
+    console.log("[Database] Migration: Added title column to chat_sessions");
+  } catch {
+    // Column already exists, ignore
+  }
 } catch (error) {
   console.error("[Database] Schema creation error:", error);
 }
@@ -388,6 +396,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS chat_sessions (
     id TEXT PRIMARY KEY,
     agent_id TEXT NOT NULL,
+    title TEXT,
     messages TEXT NOT NULL,
     workspace_dir TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -522,12 +531,16 @@ const stmts = {
   chatSessions: {
     get: prepare("SELECT * FROM chat_sessions WHERE id = ?"),
     upsert: prepare(
-      "INSERT OR REPLACE INTO chat_sessions (id, agent_id, messages, workspace_dir, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+      "INSERT OR REPLACE INTO chat_sessions (id, agent_id, title, messages, workspace_dir, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
     ),
     updateWorkspace: prepare(
       "UPDATE chat_sessions SET workspace_dir = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
     ),
+    updateTitle: prepare(
+      "UPDATE chat_sessions SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+    ),
     getWorkspace: prepare("SELECT workspace_dir FROM chat_sessions WHERE id = ?"),
+    getTitle: prepare("SELECT title FROM chat_sessions WHERE id = ?"),
     delete: prepare("DELETE FROM chat_sessions WHERE id = ?"),
     list: prepare("SELECT * FROM chat_sessions ORDER BY updated_at DESC"),
   },
@@ -803,6 +816,7 @@ export const tables = {
       stmts.chatSessions?.upsert.run(
         session.id,
         session.agent_id,
+        session.title || null,
         session.messages,
         session.workspace_dir || null,
         session.created_at,
@@ -810,6 +824,8 @@ export const tables = {
       ),
     updateWorkspace: (id: string, workspaceDir: string | null) =>
       stmts.chatSessions?.updateWorkspace.run(workspaceDir, id),
+    updateTitle: (id: string, title: string | null) =>
+      stmts.chatSessions?.updateTitle.run(title, id),
     getWorkspace: (id: string): string | null => {
       const row = stmts.chatSessions?.getWorkspace.get(id) as {
         workspace_dir?: string | null;
@@ -818,6 +834,11 @@ export const tables = {
       return typeof row.workspace_dir === "string" && row.workspace_dir.trim().length > 0
         ? row.workspace_dir
         : null;
+    },
+    getTitle: (id: string): string | null => {
+      const row = stmts.chatSessions?.getTitle.get(id) as { title?: string | null } | null;
+      if (!row) return null;
+      return typeof row.title === "string" && row.title.trim().length > 0 ? row.title : null;
     },
     delete: (id: string) => stmts.chatSessions?.delete.run(id),
     all: () => stmts.chatSessions?.list.all() || [],
@@ -1026,6 +1047,7 @@ export interface TaskRun {
 export interface ChatSessionDB {
   id: string;
   agent_id: string;
+  title?: string | null;
   messages: string;
   workspace_dir?: string | null;
   created_at: string;

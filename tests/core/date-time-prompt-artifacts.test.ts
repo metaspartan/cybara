@@ -46,10 +46,12 @@ describe("Date and time formatting", () => {
     expect(template).toContain("2026-02-20");
   });
 
-  test("artifact create normalizes stale footer timestamps to current date", () => {
+  test("artifact create normalizes stale artifact date fields to current year", () => {
     const sessionId = `artifact-date-${Date.now()}`;
     const staleContent = [
       "# Notes",
+      "",
+      "**Date:** February 22, 2025",
       "",
       "Body",
       "",
@@ -72,12 +74,18 @@ describe("Date and time formatting", () => {
     const updatedUtcLine = read.content
       .split("\n")
       .find((line) => line.startsWith("Updated (UTC):"));
+    const updatedBodyDateLine = read.content
+      .split("\n")
+      .find((line) => line.toLowerCase().includes("date:"));
 
     expect(read.content).toContain(`Session: ${sessionId}`);
     expect(updatedUtcLine).toBeDefined();
+    expect(updatedBodyDateLine).toBeDefined();
     const currentYear = String(new Date().getUTCFullYear());
     expect(updatedUtcLine).toContain(`${currentYear}-`);
+    expect(updatedBodyDateLine).toContain(currentYear);
     expect(read.content).not.toContain("Updated (UTC): 2025-02-21T00:00:00.000Z");
+    expect(read.content).not.toContain("**Date:** February 22, 2025");
 
     deleteArtifact({ sessionId, name: "notes" });
   });

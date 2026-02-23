@@ -40,6 +40,9 @@ const LEGACY_ARTIFACT_FOOTER_PATTERN =
   /\n*---\n(?:Session:\s[^\n]*\n)?(?:Updated:\s[^\n]*\n)?(?:Updated \(UTC\):\s[^\n]*\n)?\s*$/m;
 const TRAILING_ARTIFACT_METADATA_PATTERN =
   /\n*(?:Session:\s[^\n]*\n|Updated:\s[^\n]*\n|Updated \(UTC\):\s[^\n]*\n)+\s*$/m;
+const BODY_DATE_LABEL_PATTERN =
+  /^(\s*(?:[-*]\s*)?(?:\*\*)?(?:date|report date|generated|generated on|created|audit date)(?:\*\*)?\s*:\s*)(.+)$/i;
+const BODY_DATE_MAX_NON_EMPTY_LINES = 40;
 
 function resolveArtifactTimezone(timeZone?: string): string {
   const fallback = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -73,6 +76,43 @@ function formatArtifactLocalDateTime(now: Date, timeZone: string): string {
   return `${weekday}, ${date} ${time}`;
 }
 
+function formatArtifactLongDate(now: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).format(now);
+}
+
+function normalizeArtifactBodyDates(content: string, now: Date, timeZone: string): string {
+  if (!content) return content;
+  const currentYear = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric" }).format(now);
+  const replacementDate = formatArtifactLongDate(now, timeZone);
+  const lines = content.split(/\r?\n/);
+  let nonEmptyLinesSeen = 0;
+  let changed = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] || "";
+    if (line.trim().length === 0) continue;
+    nonEmptyLinesSeen += 1;
+    if (nonEmptyLinesSeen > BODY_DATE_MAX_NON_EMPTY_LINES) break;
+
+    const match = line.match(BODY_DATE_LABEL_PATTERN);
+    if (!match) continue;
+    const value = match[2]?.trim() || "";
+    const yearMatch = value.match(/\b(?:19|20)\d{2}\b/);
+    if (!yearMatch) continue;
+    if (yearMatch[0] === currentYear) continue;
+
+    lines[index] = `${match[1]}${replacementDate}`;
+    changed = true;
+  }
+
+  return changed ? lines.join("\n") : content;
+}
+
 function buildArtifactFooter(input: { sessionId: string; now?: Date; timeZone?: string }): string {
   const now = input.now || new Date();
   const timeZone = resolveArtifactTimezone(input.timeZone);
@@ -89,13 +129,16 @@ function withManagedArtifactFooter(
     timeZone?: string;
   }
 ): string {
-  const base = content
+  const now = input.now || new Date();
+  const timeZone = resolveArtifactTimezone(input.timeZone);
+  const baseWithoutFooter = content
     .replace(MANAGED_ARTIFACT_FOOTER_PATTERN, "")
     .replace(LEGACY_ARTIFACT_FOOTER_PATTERN, "")
     .replace(TRAILING_ARTIFACT_METADATA_PATTERN, "")
     .trimEnd();
+  const base = normalizeArtifactBodyDates(baseWithoutFooter, now, timeZone);
   const separator = base.length > 0 ? "\n\n" : "";
-  return `${base}${separator}${buildArtifactFooter(input)}`;
+  return `${base}${separator}${buildArtifactFooter({ ...input, now, timeZone })}`;
 }
 
 function ensureDir(path: string): void {
