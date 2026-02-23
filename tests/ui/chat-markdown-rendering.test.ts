@@ -21,8 +21,18 @@ describe("Chat markdown rendering behavior", () => {
     const source = readChatSource();
 
     expect(source).toContain("function looksLikeDiffCode");
-    expect(source).toContain("trimmed.startsWith(\"diff --git\")");
+    expect(source).toContain('trimmed.startsWith("diff --git")');
     expect(source).toContain("if (looksLikeDiffCode(rawCode, language))");
     expect(source).toContain("return <DiffCodeBlock code={rawCode} />;");
+  });
+
+  test("runs OpenClaw-style markdown preprocessing before render", () => {
+    const source = readChatSource();
+
+    expect(source).toContain("preprocessChatMarkdown");
+    expect(source).toContain(
+      "const cleanedContent = useMemo(() => preprocessChatMarkdown(content), [content]);"
+    );
+    expect(source).toContain("{cleanedContent}");
   });
 });

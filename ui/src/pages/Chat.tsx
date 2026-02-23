@@ -69,6 +69,7 @@ import {
   normalizeActivityTextForPhase,
   type LiveActivityItem,
 } from "@/lib/chatActivities";
+import { preprocessChatMarkdown } from "@/lib/chatMarkdownPreprocessor";
 
 interface ToolCall {
   id: string;
@@ -493,7 +494,8 @@ function formatToolIntent(
 
   if (key === "write" || key === "edit") {
     if (path) {
-      if (phase === "start") return key === "edit" ? `Editing ${displayPath}` : `Writing ${displayPath}`;
+      if (phase === "start")
+        return key === "edit" ? `Editing ${displayPath}` : `Writing ${displayPath}`;
       if (phase === "result") return `Edited ${displayPath}`;
       return `Edit failed for ${displayPath}`;
     }
@@ -672,8 +674,7 @@ function parseArtifactSummary(value: unknown): ArtifactSummaryView | null {
   if (!isRecord(parsedValue)) return null;
   const sessionId = typeof parsedValue.sessionId === "string" ? parsedValue.sessionId.trim() : "";
   const name = typeof parsedValue.name === "string" ? parsedValue.name.trim() : "";
-  const fileNameRaw =
-    typeof parsedValue.fileName === "string" ? parsedValue.fileName.trim() : "";
+  const fileNameRaw = typeof parsedValue.fileName === "string" ? parsedValue.fileName.trim() : "";
   const fileName = normalizeArtifactFileName(fileNameRaw || name);
   const title = typeof parsedValue.title === "string" ? parsedValue.title.trim() : "";
   const path =
@@ -812,11 +813,7 @@ function parsePatchFileChanges(patch: string): FileChangeItem[] {
       const oldPath = oldPathRaw.replace(/^[ab]\//, "");
       const newPath = newPathRaw.replace(/^[ab]\//, "");
       const type: FileChangeItem["type"] =
-        oldPathRaw === "/dev/null"
-          ? "created"
-          : newPathRaw === "/dev/null"
-            ? "deleted"
-            : "updated";
+        oldPathRaw === "/dev/null" ? "created" : newPathRaw === "/dev/null" ? "deleted" : "updated";
       const path = type === "deleted" ? oldPath : newPath;
       current = {
         path,
@@ -867,7 +864,8 @@ function parseChangeRecord(value: unknown): FileChangeItem | null {
     toFiniteNumber(value.removedLines) ||
     toFiniteNumber(value.minus) ||
     0;
-  const diff = typeof value.diff === "string" && value.diff.trim() ? truncateDiff(value.diff) : undefined;
+  const diff =
+    typeof value.diff === "string" && value.diff.trim() ? truncateDiff(value.diff) : undefined;
   return {
     path,
     type: normalizeChangeType(value.type || value.kind),
@@ -1237,11 +1235,16 @@ function FileChangesCard({ summary }: { summary: FileChangeSummary }) {
       {expanded && (
         <div className="border-t border-white/5 px-3 py-2 space-y-3">
           {summary.files.map((file) => (
-            <div key={`${file.path}-${file.type}`} className="rounded-md border border-white/10 bg-black/25">
+            <div
+              key={`${file.path}-${file.type}`}
+              className="rounded-md border border-white/10 bg-black/25"
+            >
               <div className="flex items-center justify-between gap-3 px-2.5 py-2 text-[12px]">
                 <div className="min-w-0">
                   <p className="truncate text-gray-200">{file.path}</p>
-                  <p className="text-[10px] text-gray-500 uppercase tracking-[0.08em]">{file.type}</p>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-[0.08em]">
+                    {file.type}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="text-emerald-300">+{file.added}</span>
@@ -1263,7 +1266,8 @@ function getToolCallsInTimelineOrder(toolCalls?: ToolCall[]): ToolCall[] {
   }
 
   const hasTimelineIndexes = toolCalls.some(
-    (toolCall) => typeof toolCall.timeline_index === "number" && Number.isFinite(toolCall.timeline_index)
+    (toolCall) =>
+      typeof toolCall.timeline_index === "number" && Number.isFinite(toolCall.timeline_index)
   );
   if (hasTimelineIndexes) {
     return [...toolCalls].sort((a, b) => {
@@ -1347,9 +1351,9 @@ function inferThoughtActivitiesFromContent(
     .filter(Boolean);
   if (lines.length === 0) return [];
 
-  const toolishLine = /^(Ran|Explored|Edited|Created|Deleted|Read|Wrote|Updated|Fetched|Searching)\b/i;
-  const thoughtishLine =
-    /^(I'll|I will|Let me|Now let me|Now|Next|First|Then|To start|I’m|I'm)\b/i;
+  const toolishLine =
+    /^(Ran|Explored|Edited|Created|Deleted|Read|Wrote|Updated|Fetched|Searching)\b/i;
+  const thoughtishLine = /^(I'll|I will|Let me|Now let me|Now|Next|First|Then|To start|I’m|I'm)\b/i;
 
   const fallbackBase =
     typeof baseTimestampMs === "number" && Number.isFinite(baseTimestampMs)
@@ -1434,7 +1438,9 @@ function resolveWorkedDurationMs(
         ? Math.min(turnStartedAtMs, minTimestamp)
         : minTimestamp;
     const inferredEnd =
-      typeof assistantTimestampMs === "number" ? Math.max(assistantTimestampMs, maxTimestamp) : maxTimestamp;
+      typeof assistantTimestampMs === "number"
+        ? Math.max(assistantTimestampMs, maxTimestamp)
+        : maxTimestamp;
     addDurationCandidate(inferredEnd - inferredStart);
   }
 
@@ -1486,7 +1492,10 @@ function resolveArtifactAction(toolCall: ToolCall): string | undefined {
   return undefined;
 }
 
-function findPriorUserTimestampMs(messages: ChatMessage[], currentIndex: number): number | undefined {
+function findPriorUserTimestampMs(
+  messages: ChatMessage[],
+  currentIndex: number
+): number | undefined {
   for (let index = currentIndex - 1; index >= 0; index -= 1) {
     const candidate = messages[index];
     if (!candidate || candidate.role !== "user") continue;
@@ -1526,7 +1535,10 @@ function hasArtifactMutationResult(toolCall: ToolCall): boolean {
   return false;
 }
 
-function collectMessageArtifacts(toolCalls: ToolCall[] | undefined, sessionId?: string | null): ArtifactSummaryView[] {
+function collectMessageArtifacts(
+  toolCalls: ToolCall[] | undefined,
+  sessionId?: string | null
+): ArtifactSummaryView[] {
   const artifacts: ArtifactSummaryView[] = [];
   for (const toolCall of toolCalls || []) {
     const isArtifactTool = toolCall.name === "artifacts" || toolCall.name === "artifact";
@@ -1630,19 +1642,18 @@ function AssistantMetaInline({
   const hasPersistedThoughtActivities = normalizedProcessActivities.some(
     (activity) => activity.toolName === "__thought"
   );
-  const inferredThoughtActivities =
-    !hasPersistedThoughtActivities
-      ? inferThoughtActivitiesFromContent(
+  const inferredThoughtActivities = !hasPersistedThoughtActivities
+    ? inferThoughtActivitiesFromContent(
         message.content,
         parseTimestampMs(message.timestamp) ?? turnStartedAtMs
       )
-      : [];
+    : [];
   const inferredThinkingActivities =
     !hasPersistedThoughtActivities && inferredThoughtActivities.length === 0
       ? inferThoughtActivitiesFromThinking(
-        message.thinking,
-        parseTimestampMs(message.timestamp) ?? turnStartedAtMs
-      )
+          message.thinking,
+          parseTimestampMs(message.timestamp) ?? turnStartedAtMs
+        )
       : [];
   const contentAndThinkingActivities = mergeActivityLists(
     inferredThoughtActivities,
@@ -1889,8 +1900,8 @@ function SyntaxCodeBlock({ code, language }: { code: string; language: string })
               <div key={`line-${lineIndex}`} {...getLineProps({ line })}>
                 {line.length > 0
                   ? line.map((token, tokenIndex) => (
-                    <span key={`${lineIndex}-${tokenIndex}`} {...getTokenProps({ token })} />
-                  ))
+                      <span key={`${lineIndex}-${tokenIndex}`} {...getTokenProps({ token })} />
+                    ))
                   : "\u00A0"}
               </div>
             ))}
@@ -1904,6 +1915,7 @@ function SyntaxCodeBlock({ code, language }: { code: string; language: string })
 function MessageContent({ content }: { content: string }) {
   type MarkdownPreProps = ComponentPropsWithoutRef<"pre">;
   type MarkdownCodeProps = ComponentPropsWithoutRef<"code"> & { inline?: boolean };
+  const cleanedContent = useMemo(() => preprocessChatMarkdown(content), [content]);
 
   return (
     <div className="max-w-none text-[12px] text-gray-200 leading-[1.45rem]">
@@ -1969,7 +1981,7 @@ function MessageContent({ content }: { content: string }) {
           ),
         }}
       >
-        {content}
+        {cleanedContent}
       </ReactMarkdown>
     </div>
   );
@@ -1993,7 +2005,8 @@ function ArtifactViewerPanel({
   onToggleView: (raw: boolean) => void;
 }) {
   const resolvedPath =
-    artifact?.path || (artifact ? `~/.cybara/artifacts/${artifact.sessionId}/${artifact.fileName}` : "");
+    artifact?.path ||
+    (artifact ? `~/.cybara/artifacts/${artifact.sessionId}/${artifact.fileName}` : "");
   const locationLabel = artifact
     ? `/api/sessions/${encodeURIComponent(artifact.sessionId)}/artifacts/${encodeURIComponent(artifact.fileName)}`
     : "";
@@ -2090,9 +2103,7 @@ function SessionDiffPanel({
   if (!isOpen) return null;
 
   const selectedFile =
-    summary?.files.find((file) => file.path === selectedPath) ||
-    summary?.files[0] ||
-    null;
+    summary?.files.find((file) => file.path === selectedPath) || summary?.files[0] || null;
 
   return (
     <div className="w-80 glass-strong border-l border-white/5 flex flex-col">
@@ -2390,10 +2401,11 @@ function SubagentPanel({
               <div>
                 <p className="text-[12px] text-gray-500 mb-1">Result</p>
                 <div
-                  className={`p-3 rounded-lg border ${selectedSubagent.status === "completed"
-                    ? "bg-emerald-500/10 border-emerald-500/30"
-                    : "bg-red-500/10 border-red-500/30"
-                    }`}
+                  className={`p-3 rounded-lg border ${
+                    selectedSubagent.status === "completed"
+                      ? "bg-emerald-500/10 border-emerald-500/30"
+                      : "bg-red-500/10 border-red-500/30"
+                  }`}
                 >
                   <pre className="text-sm text-gray-300 whitespace-pre-wrap overflow-x-auto max-h-48 overflow-y-auto">
                     {typeof selectedSubagent.result === "string"
@@ -2603,10 +2615,11 @@ function SessionsPanel({
               return (
                 <div
                   key={session.id}
-                  className={`p-2.5 rounded-lg transition-all cursor-pointer group ${currentSessionId === session.id
-                    ? "bg-[rgba(var(--accent-primary),0.12)] border border-[rgba(var(--accent-primary),0.3)]"
-                    : "bg-white/[0.03] border border-white/5 hover:border-white/15"
-                    }`}
+                  className={`p-2.5 rounded-lg transition-all cursor-pointer group ${
+                    currentSessionId === session.id
+                      ? "bg-[rgba(var(--accent-primary),0.12)] border border-[rgba(var(--accent-primary),0.3)]"
+                      : "bg-white/[0.03] border border-white/5 hover:border-white/15"
+                  }`}
                   onClick={() => handleLoadSession(session.id)}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -2676,10 +2689,10 @@ function SessionsPanel({
                       </p>
                       {typeof (session as { workspace_dir?: string | null }).workspace_dir ===
                         "string" && (
-                          <p className="text-[10px] text-blue-300/90 mt-0.5 truncate">
-                            {(session as { workspace_dir?: string }).workspace_dir}
-                          </p>
-                        )}
+                        <p className="text-[10px] text-blue-300/90 mt-0.5 truncate">
+                          {(session as { workspace_dir?: string }).workspace_dir}
+                        </p>
+                      )}
                       {session.last_message && (
                         <p className="text-[10px] text-gray-500 mt-0.5 truncate">
                           {session.last_message.content.slice(0, 40)}...
@@ -2783,7 +2796,9 @@ export function Chat() {
   const [showDiffPanel, setShowDiffPanel] = useState(false);
   const [selectedDiffPath, setSelectedDiffPath] = useState<string | null>(null);
   const [activeSessionIds, setActiveSessionIds] = useState<string[]>([]);
-  const [artifactViewerTarget, setArtifactViewerTarget] = useState<ArtifactSummaryView | null>(null);
+  const [artifactViewerTarget, setArtifactViewerTarget] = useState<ArtifactSummaryView | null>(
+    null
+  );
   const [artifactViewerLoading, setArtifactViewerLoading] = useState(false);
   const [artifactViewerError, setArtifactViewerError] = useState<string | null>(null);
   const [artifactViewerContent, setArtifactViewerContent] = useState("");
@@ -2795,8 +2810,8 @@ export function Chat() {
   const [dictating, setDictating] = useState(false);
   const [dictationTranscribing, setDictationTranscribing] = useState(false);
   const [composerHeight, setComposerHeight] = useState(88);
-  const [messageProcessMap, setMessageProcessMap] = useState<Record<string, LiveActivityItem[]>>(() =>
-    readPersistedMessageProcessMap()
+  const [messageProcessMap, setMessageProcessMap] = useState<Record<string, LiveActivityItem[]>>(
+    () => readPersistedMessageProcessMap()
   );
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const composerRef = useRef<HTMLDivElement | null>(null);
@@ -2814,9 +2829,13 @@ export function Chat() {
   const pendingProcessCaptureRef = useRef<PendingProcessCapture | null>(null);
   const runActivityBufferRef = useRef<LiveActivityItem[]>([]);
   const homeWorkspaceDir =
-    typeof info?.homeDir === "string" && info.homeDir.trim().length > 0 ? info.homeDir.trim() : null;
+    typeof info?.homeDir === "string" && info.homeDir.trim().length > 0
+      ? info.homeDir.trim()
+      : null;
   const fallbackWorkspaceDir =
-    !sessionId && (lastWorkspaceDir || homeWorkspaceDir) ? (lastWorkspaceDir || homeWorkspaceDir) : null;
+    !sessionId && (lastWorkspaceDir || homeWorkspaceDir)
+      ? lastWorkspaceDir || homeWorkspaceDir
+      : null;
   const effectiveWorkspaceDir = workspaceDir || fallbackWorkspaceDir || null;
   const sessionFileChanges = useMemo(
     () => summarizeSessionFileChanges(typedMessages),
@@ -2968,8 +2987,7 @@ export function Chat() {
       setShowScrollToBottomButton(false);
       return;
     }
-    const scrolledUp =
-      container.scrollTop + container.clientHeight < container.scrollHeight - 1;
+    const scrolledUp = container.scrollTop + container.clientHeight < container.scrollHeight - 1;
     setShowScrollToBottomButton(scrolledUp);
   }, [artifactViewerTarget]);
 
@@ -3054,8 +3072,7 @@ export function Chat() {
       target.message.tool_calls,
       formatToolIntent,
       {
-        baseTimestampMs:
-          parseTimestampMs(target.message.timestamp) ?? targetTurnStartedAtMs ?? 0,
+        baseTimestampMs: parseTimestampMs(target.message.timestamp) ?? targetTurnStartedAtMs ?? 0,
       }
     );
     const mergedActivities = mergeActivityLists(pending.activities, toolActivities);
@@ -3125,7 +3142,9 @@ export function Chat() {
           previousLast &&
           previousLast.phase === phase &&
           normalizeActivityTextForPhase(previousLast.text, phase) === normalizedText &&
-          (normalizedToolName ? (previousLast.toolName || "").trim().toLowerCase() === normalizedToolName : true)
+          (normalizedToolName
+            ? (previousLast.toolName || "").trim().toLowerCase() === normalizedToolName
+            : true)
         ) {
           return previous;
         }
@@ -3146,52 +3165,49 @@ export function Chat() {
     []
   );
 
-  const hydrateSessionStatus = useCallback(
-    async (targetSessionId?: string | null) => {
-      const resolvedSessionId =
-        typeof targetSessionId === "string" && targetSessionId.trim().length > 0
-          ? targetSessionId.trim()
-          : null;
+  const hydrateSessionStatus = useCallback(async (targetSessionId?: string | null) => {
+    const resolvedSessionId =
+      typeof targetSessionId === "string" && targetSessionId.trim().length > 0
+        ? targetSessionId.trim()
+        : null;
 
-      try {
-        const response = await chatApi.getSessionStatus(resolvedSessionId || undefined);
-        if (!response.success || !response.data) return;
-        const payload = response.data as SessionStatusResponse;
-        const nextActiveIds = Array.isArray(payload.activeSessionIds) ? payload.activeSessionIds : [];
-        setActiveSessionIds(nextActiveIds);
+    try {
+      const response = await chatApi.getSessionStatus(resolvedSessionId || undefined);
+      if (!response.success || !response.data) return;
+      const payload = response.data as SessionStatusResponse;
+      const nextActiveIds = Array.isArray(payload.activeSessionIds) ? payload.activeSessionIds : [];
+      setActiveSessionIds(nextActiveIds);
 
-        if (!resolvedSessionId) return;
-        const snapshot = payload.session;
-        const isActive =
-          !!snapshot &&
-          (payload.active === true ||
-            snapshot.status === "thinking" ||
-            snapshot.status === "generating" ||
-            snapshot.status === "tool_executing" ||
-            snapshot.status === "tool_completed");
+      if (!resolvedSessionId) return;
+      const snapshot = payload.session;
+      const isActive =
+        !!snapshot &&
+        (payload.active === true ||
+          snapshot.status === "thinking" ||
+          snapshot.status === "generating" ||
+          snapshot.status === "tool_executing" ||
+          snapshot.status === "tool_completed");
 
-        if (!isActive || !snapshot) {
-          if (!loadingRef.current && activeSessionRef.current === resolvedSessionId) {
-            setLiveStatus("idle");
-            setLiveActivities([]);
-          }
-          return;
-        }
-
-        if (activeSessionRef.current !== resolvedSessionId) return;
-        setLiveStatus(normalizeSessionStatus(snapshot.status));
-        const snapshotActivities = toLiveActivityItems(snapshot.activities);
-        if (snapshotActivities.length > 0) {
-          setLiveActivities(snapshotActivities);
-        } else if (!loadingRef.current) {
+      if (!isActive || !snapshot) {
+        if (!loadingRef.current && activeSessionRef.current === resolvedSessionId) {
+          setLiveStatus("idle");
           setLiveActivities([]);
         }
-      } catch (error) {
-        console.error("Failed to hydrate session status:", error);
+        return;
       }
-    },
-    []
-  );
+
+      if (activeSessionRef.current !== resolvedSessionId) return;
+      setLiveStatus(normalizeSessionStatus(snapshot.status));
+      const snapshotActivities = toLiveActivityItems(snapshot.activities);
+      if (snapshotActivities.length > 0) {
+        setLiveActivities(snapshotActivities);
+      } else if (!loadingRef.current) {
+        setLiveActivities([]);
+      }
+    } catch (error) {
+      console.error("Failed to hydrate session status:", error);
+    }
+  }, []);
 
   useEffect(() => {
     if (!sessionId) {
@@ -3226,7 +3242,9 @@ export function Chat() {
       const status = typeof payload.status === "string" ? payload.status : "";
       if (!status) return;
       const payloadSessionId =
-        typeof payload.sessionId === "string" && payload.sessionId.trim() ? payload.sessionId : null;
+        typeof payload.sessionId === "string" && payload.sessionId.trim()
+          ? payload.sessionId
+          : null;
 
       if (payloadSessionId) {
         if (
@@ -3337,16 +3355,17 @@ export function Chat() {
     if (!input.trim() || isLoading || sessionCurrentlyActive) return;
     const message = input;
     setInput("");
-    const response = await sendMessage(message, { workspaceDir: effectiveWorkspaceDir || undefined });
+    const response = await sendMessage(message, {
+      workspaceDir: effectiveWorkspaceDir || undefined,
+    });
     if (response && typeof response === "object" && "agent" in response) {
       const responseRecord = response as Record<string, unknown>;
       const responseAgent =
         responseRecord.agent && typeof responseRecord.agent === "object"
           ? (responseRecord.agent as Record<string, unknown>)
           : null;
-      const resolvedAgentId = responseAgent && typeof responseAgent.id === "string"
-        ? responseAgent.id
-        : null;
+      const resolvedAgentId =
+        responseAgent && typeof responseAgent.id === "string" ? responseAgent.id : null;
       syncSessionAgentSelection(resolvedAgentId);
     }
   };
@@ -3580,8 +3599,7 @@ export function Chat() {
   const handleSelectWorkspace = useCallback(async () => {
     try {
       const isTauriRuntime =
-        typeof window !== "undefined" &&
-        ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
+        typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
       let selectedPath: string | null = null;
 
       if (isTauriRuntime) {
@@ -3749,7 +3767,9 @@ export function Chat() {
     }
   }, []); // Only run on mount
 
-  const revertRemovedCount = revertTarget ? Math.max(0, typedMessages.length - revertTarget.index) : 0;
+  const revertRemovedCount = revertTarget
+    ? Math.max(0, typedMessages.length - revertTarget.index)
+    : 0;
   const revertFollowingCount = Math.max(0, revertRemovedCount - 1);
   const currentSessionIsActive = !!sessionId && activeSessionIds.includes(sessionId);
   const showWorkingTimeline = isLoading || (currentSessionIsActive && liveStatus !== "idle");
@@ -3938,7 +3958,10 @@ export function Chat() {
                     .map((message, index) => ({ message, originalIndex: index }))
                     .filter((entry) => entry.message.role !== "system")
                     .map(({ message, originalIndex }) => {
-                      const turnStartedAtMs = findPriorUserTimestampMs(typedMessages, originalIndex);
+                      const turnStartedAtMs = findPriorUserTimestampMs(
+                        typedMessages,
+                        originalIndex
+                      );
                       const toolActivities = buildActivitiesFromToolCalls(
                         message.tool_calls,
                         formatToolIntent,
@@ -3983,10 +4006,11 @@ export function Chat() {
                           className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}
                         >
                           <div
-                            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${message.role === "user"
-                              ? "bg-[rgba(var(--accent-primary),0.2)]"
-                              : "bg-emerald-500/20"
-                              }`}
+                            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                              message.role === "user"
+                                ? "bg-[rgba(var(--accent-primary),0.2)]"
+                                : "bg-emerald-500/20"
+                            }`}
                           >
                             {message.role === "user" ? (
                               <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 accent-text" />
@@ -3998,10 +4022,11 @@ export function Chat() {
                             className={`max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] ${message.role === "user" ? "text-right" : ""}`}
                           >
                             <div
-                              className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${message.role === "user"
-                                ? "border border-[rgba(var(--accent-primary),0.2)]"
-                                : "border border-white/5"
-                                }`}
+                              className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${
+                                message.role === "user"
+                                  ? "border border-[rgba(var(--accent-primary),0.2)]"
+                                  : "border border-white/5"
+                              }`}
                             >
                               {message.role !== "user" && (
                                 <AssistantMetaInline
@@ -4196,7 +4221,9 @@ export function Chat() {
                     result.messagesList as ChatMessage[],
                     (result as { workspace_dir?: string | null }).workspace_dir || null
                   );
-                  syncSessionAgentSelection((result as { agent_id?: string | null }).agent_id || null);
+                  syncSessionAgentSelection(
+                    (result as { agent_id?: string | null }).agent_id || null
+                  );
                   setShowSubagentPanel(false);
                 }
               } catch (error) {
@@ -4233,11 +4260,7 @@ export function Chat() {
               </div>
             )}
             <div className="flex justify-end gap-3">
-              <Button
-                variant="ghost"
-                onClick={() => setRevertTarget(null)}
-                disabled={reverting}
-              >
+              <Button variant="ghost" onClick={() => setRevertTarget(null)} disabled={reverting}>
                 Cancel
               </Button>
               <Button
