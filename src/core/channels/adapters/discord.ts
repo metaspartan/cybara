@@ -372,17 +372,46 @@ export class DiscordAdapter implements ChannelAdapter {
         : Array.from(client.guilds.cache.keys()).filter((id) => /^\d{6,}$/.test(id));
 
     if (guildIds.length > 0) {
+      let successCount = 0;
       for (const guildId of guildIds) {
-        await client.application.commands.set(slashCommands, guildId);
+        try {
+          await client.application.commands.set(slashCommands, guildId);
+          successCount += 1;
+        } catch (error) {
+          const errorCode =
+            error && typeof error === "object" && "code" in error
+              ? String((error as { code?: string | number }).code)
+              : "";
+          if (errorCode === "50001") {
+            console.warn(
+              `[Discord] Skipped slash command sync for guild ${guildId}: Missing Access (50001). Check bot invite permissions and guild-level app authorization.`
+            );
+            continue;
+          }
+          console.warn(
+            `[Discord] Failed slash command sync for guild ${guildId}:`,
+            error instanceof Error ? error.message : error
+          );
+        }
       }
-      console.log(
-        `[Discord] Synced ${slashCommands.length} slash commands for ${guildIds.length} guild(s)`
-      );
-      return;
+      if (successCount > 0) {
+        console.log(
+          `[Discord] Synced ${slashCommands.length} slash commands for ${successCount} guild(s)`
+        );
+        return;
+      }
+      console.warn("[Discord] Guild slash command sync failed for all guilds; trying global sync");
     }
 
-    await client.application.commands.set(slashCommands);
-    console.log(`[Discord] Synced ${slashCommands.length} global slash commands`);
+    try {
+      await client.application.commands.set(slashCommands);
+      console.log(`[Discord] Synced ${slashCommands.length} global slash commands`);
+    } catch (error) {
+      console.warn(
+        "[Discord] Failed to sync global slash commands:",
+        error instanceof Error ? error.message : error
+      );
+    }
   }
 
   private buildSlashCommandInput(interaction: ChatInputCommandInteraction): string {

@@ -1371,7 +1371,7 @@ class AgentManager {
 
   hasDefaultAgent(): boolean {
     const all = this.list();
-    return all.some((a) => a.type === "main");
+    return all.some((a) => a.type !== "subagent" && a.type !== "worker");
   }
 
   async execute(

@@ -291,6 +291,10 @@ describe("Setup & Info API", () => {
     expect(beforeStatus.status).toBe(200);
     expect(typeof beforeStatus.data.complete).toBe("boolean");
 
+    const beforeAgents = await api("GET", "/api/agents");
+    expect(beforeAgents.status).toBe(200);
+    const beforeCount = Array.isArray(beforeAgents.data) ? beforeAgents.data.length : 0;
+
     const completeRes = await api("POST", "/api/setup/complete");
     expect(completeRes.status).toBe(200);
     expect(completeRes.data.success).toBe(true);
@@ -298,6 +302,25 @@ describe("Setup & Info API", () => {
     const afterStatus = await api("GET", "/api/setup/status");
     expect(afterStatus.status).toBe(200);
     expect(afterStatus.data.complete).toBe(true);
+
+    const afterFirstCompleteAgents = await api("GET", "/api/agents");
+    expect(afterFirstCompleteAgents.status).toBe(200);
+    const afterFirstCount = Array.isArray(afterFirstCompleteAgents.data)
+      ? afterFirstCompleteAgents.data.length
+      : 0;
+    expect(afterFirstCount).toBeGreaterThanOrEqual(beforeCount);
+    expect(afterFirstCount - beforeCount).toBeLessThanOrEqual(1);
+
+    const secondCompleteRes = await api("POST", "/api/setup/complete");
+    expect(secondCompleteRes.status).toBe(200);
+    expect(secondCompleteRes.data.success).toBe(true);
+
+    const afterSecondCompleteAgents = await api("GET", "/api/agents");
+    expect(afterSecondCompleteAgents.status).toBe(200);
+    const afterSecondCount = Array.isArray(afterSecondCompleteAgents.data)
+      ? afterSecondCompleteAgents.data.length
+      : 0;
+    expect(afterSecondCount).toBe(afterFirstCount);
   });
 });
 

@@ -73,11 +73,7 @@ function formatArtifactLocalDateTime(now: Date, timeZone: string): string {
   return `${weekday}, ${date} ${time}`;
 }
 
-function buildArtifactFooter(input: {
-  sessionId: string;
-  now?: Date;
-  timeZone?: string;
-}): string {
+function buildArtifactFooter(input: { sessionId: string; now?: Date; timeZone?: string }): string {
   const now = input.now || new Date();
   const timeZone = resolveArtifactTimezone(input.timeZone);
   const localDateTime = formatArtifactLocalDateTime(now, timeZone);

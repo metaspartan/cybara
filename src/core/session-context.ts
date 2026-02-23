@@ -70,7 +70,10 @@ export function estimateMessageTokens(message: ChatMessage): number {
     ? message.tool_calls.reduce((sum, tc) => sum + estimateTokens(JSON.stringify(tc)), 0)
     : 0;
   const processActivityTokens = message.process_activities
-    ? message.process_activities.reduce((sum, activity) => sum + estimateTokens(JSON.stringify(activity)), 0)
+    ? message.process_activities.reduce(
+        (sum, activity) => sum + estimateTokens(JSON.stringify(activity)),
+        0
+      )
     : 0;
   return contentTokens + thinkingTokens + toolTokens + processActivityTokens + 50; // +50 for message overhead
 }
