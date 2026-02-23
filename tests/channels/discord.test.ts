@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync, rmSync } from "fs";
+import path from "path";
 import { GatewayIntentBits } from "discord.js";
 import {
   DiscordAdapter,
@@ -14,6 +16,7 @@ import { configureChannelChatRuntime, resetChannelChatRuntime } from "../../src/
 import { securityManager } from "../../src/core/channels/security";
 import { config } from "../../src/core/config";
 import { tables } from "../../src/core/database";
+import { cybaraDir } from "../../src/core/paths";
 
 const createdAgents: string[] = [];
 const createdProviders: string[] = [];
@@ -126,7 +129,7 @@ interface FakeDiscordMessage {
   };
   guild: { id: string } | null;
   mentions: { has: (user: { id: string }) => boolean };
-  client: { user: { id: string } };
+  client: { user: { id: string }; token?: string };
   id: string;
   reply: (message: string) => Promise<void>;
 }
@@ -302,6 +305,80 @@ describe("Discord adapter mocked message flows", () => {
     expect(handlerInputs[0].sessionId).toBe(handlerInputs[1].sessionId);
     expect(replies).toContain("echo:hello one");
     expect(replies).toContain("echo:hello two");
+  });
+
+  test("caches inbound attachments and forwards local file metadata", async () => {
+    const adapter = new DiscordAdapter();
+    const channelId = makeChannelId("discord-attachment");
+    const replies: string[] = [];
+    const followUps: string[] = [];
+    let captured:
+      | {
+          content: string;
+          hasFile: boolean;
+          filePath: string;
+          fileType: string;
+          placeholder: string;
+        }
+      | undefined;
+    const originalFetch = globalThis.fetch;
+
+    try {
+      globalThis.fetch = (async () => {
+        return new Response(new Uint8Array([1, 2, 3]), {
+          status: 200,
+          headers: { "content-type": "image/png" },
+        });
+      }) as typeof fetch;
+
+      securityManager.setConfig(channelId, { dm_policy: "open" });
+      adapter.setMessageHandler(async (content, _chatId, _sessionId, fileInfo) => {
+        captured = {
+          content,
+          hasFile: fileInfo.hasFile,
+          filePath: fileInfo.filePath,
+          fileType: fileInfo.fileType,
+          placeholder: fileInfo.placeholder,
+        };
+        return "attachment-ok";
+      });
+
+      const message = createFakeDiscordMessage(
+        {
+          guild: null,
+          content: "",
+          attachments: {
+            size: 1,
+            first: () => ({
+              url: "https://cdn.example.com/image.png",
+              contentType: "image/png",
+              name: "image.png",
+            }),
+          },
+          client: { user: { id: "bot-1" }, token: "discord-test-token" },
+        },
+        replies,
+        followUps
+      );
+
+      await handleDiscordMessage(adapter, channelId, message);
+
+      expect(captured).toBeDefined();
+      expect(captured?.hasFile).toBe(true);
+      expect(captured?.fileType).toBe("image/png");
+      expect(captured?.placeholder).toBe("<attachment:image.png>");
+      expect(captured?.content).toContain("<attachment:image.png>");
+      expect(captured?.filePath.startsWith(path.join(cybaraDir, "media", "inbound", "discord"))).toBe(
+        true
+      );
+      expect(existsSync(captured?.filePath || "")).toBe(true);
+      expect(replies).toContain("attachment-ok");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (captured?.filePath && existsSync(captured.filePath)) {
+        rmSync(captured.filePath, { force: true });
+      }
+    }
   });
 
   test("keeps typing indicator alive while long handler work is running", async () => {

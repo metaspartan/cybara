@@ -1,5 +1,5 @@
-import { existsSync } from "fs";
-import { join, dirname } from "path";
+import { existsSync, readdirSync, statSync } from "fs";
+import { join, dirname, basename, isAbsolute, resolve } from "path";
 import { homedir } from "os";
 import { fileURLToPath } from "url";
 import type { CronJobCreate, CronJobPatch } from "../../cron/types";
@@ -16,6 +16,7 @@ import {
 import type { Channel } from "../../database";
 import * as subagentRegistry from "../../subagent-registry";
 import type { SubagentRunRecord } from "../../subagent-registry";
+import { getInboundMediaRootDir, saveInboundMediaFromUrl } from "../../channels/media";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -770,6 +771,106 @@ export async function handleNodes(
   }
 }
 
+function normalizeImageInput(value: string): string {
+  const trimmed = value.trim().replace(/^['"`]|['"`]$/g, "");
+  const attachmentMatch = trimmed.match(/^<attachment:(.+)>$/i);
+  if (attachmentMatch?.[1]) {
+    return attachmentMatch[1].trim();
+  }
+  return trimmed;
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function buildImagePathCandidates(rawInput: string): string[] {
+  const expandedHome = rawInput.startsWith("~") ? join(homedir(), rawInput.slice(1)) : rawInput;
+  const candidates = [expandedHome];
+
+  if (!isAbsolute(expandedHome)) {
+    candidates.push(resolve(process.cwd(), expandedHome));
+  }
+
+  const fileName = basename(expandedHome);
+  if (fileName) {
+    const inboundRoot = getInboundMediaRootDir();
+    candidates.push(join(inboundRoot, fileName));
+    for (const source of [
+      "discord",
+      "telegram",
+      "slack",
+      "signal",
+      "whatsapp",
+      "imessage",
+      "image-tool",
+    ]) {
+      candidates.push(join(inboundRoot, source, fileName));
+    }
+  }
+
+  return [...new Set(candidates.map((entry) => entry.trim()).filter(Boolean))];
+}
+
+function resolveExistingImagePath(rawInput: string): string | undefined {
+  for (const candidate of buildImagePathCandidates(rawInput)) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  const targetFileName = basename(rawInput).toLowerCase();
+  if (!targetFileName) {
+    return undefined;
+  }
+
+  const inboundRoot = getInboundMediaRootDir();
+  const candidateDirs = [
+    inboundRoot,
+    ...["discord", "telegram", "slack", "signal", "whatsapp", "imessage", "image-tool"].map(
+      (source) => join(inboundRoot, source)
+    ),
+  ];
+
+  let newestMatch: { path: string; modifiedAt: number } | undefined;
+  for (const dirPath of candidateDirs) {
+    if (!existsSync(dirPath)) {
+      continue;
+    }
+    for (const entry of readdirSync(dirPath)) {
+      const normalizedEntry = entry.toLowerCase();
+      if (normalizedEntry !== targetFileName && !normalizedEntry.endsWith(`-${targetFileName}`)) {
+        continue;
+      }
+      const resolvedPath = join(dirPath, entry);
+      try {
+        const stats = statSync(resolvedPath);
+        if (!stats.isFile()) {
+          continue;
+        }
+        if (!newestMatch || stats.mtimeMs > newestMatch.modifiedAt) {
+          newestMatch = {
+            path: resolvedPath,
+            modifiedAt: stats.mtimeMs,
+          };
+        }
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  if (newestMatch) {
+    return newestMatch.path;
+  }
+  return undefined;
+}
+
 export async function handleImage(
   args: Record<string, unknown>
 ): Promise<{ description: string; image: string; text?: string }> {
@@ -781,8 +882,23 @@ export async function handleImage(
     throw new Error("image path is required");
   }
 
-  if (!existsSync(image)) {
-    throw new Error(`Image file not found: ${image}`);
+  const normalizedInput = normalizeImageInput(image);
+  let resolvedImagePath = resolveExistingImagePath(normalizedInput);
+  if (!resolvedImagePath && isHttpUrl(normalizedInput)) {
+    const url = new URL(normalizedInput);
+    const fallbackName = basename(url.pathname) || "remote-image";
+    const saved = await saveInboundMediaFromUrl({
+      channel: "image-tool",
+      url: normalizedInput,
+      fileName: fallbackName,
+    });
+    resolvedImagePath = saved.path;
+  }
+
+  if (!resolvedImagePath) {
+    throw new Error(
+      `Image file not found: ${normalizedInput}. Provide an absolute path, a saved inbound media filename, or a direct URL.`
+    );
   }
 
   let extractedText = "";
@@ -794,7 +910,7 @@ export async function handleImage(
     const ocrScriptPath = join(projectRoot, "scripts", "ocr.swift");
     if (existsSync(ocrScriptPath)) {
       try {
-        const result = Bun.spawnSync(["swift", ocrScriptPath, image], {
+        const result = Bun.spawnSync(["swift", ocrScriptPath, resolvedImagePath], {
           stdout: "pipe",
           stderr: "pipe",
           timeout: 30000,
@@ -815,7 +931,7 @@ Add-Type -AssemblyName System.Runtime.WindowsRuntime
 $null = [Windows.Media.Ocr.OcrEngine,Windows.Media.Ocr,ContentType=WindowsRuntime]
 $null = [Windows.Graphics.Imaging.BitmapDecoder,Windows.Graphics.Imaging,ContentType=WindowsRuntime]
 
-$path = '${image.replace(/'/g, "''")}'
+$path = '${resolvedImagePath.replace(/'/g, "''")}'
 $stream = [System.IO.File]::OpenRead($path)
 $decoder = [Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync([System.IO.WindowsRuntimeStreamExtensions]::AsRandomAccessStream($stream)).GetAwaiter().GetResult()
 $bitmap = $decoder.GetSoftwareBitmapAsync().GetAwaiter().GetResult()
@@ -841,7 +957,7 @@ $stream.Dispose()
 
   if (!extractedText) {
     try {
-      const result = Bun.spawnSync(["tesseract", image, "stdout"], {
+      const result = Bun.spawnSync(["tesseract", resolvedImagePath, "stdout"], {
         stdout: "pipe",
         stderr: "pipe",
       });
@@ -857,7 +973,7 @@ $stream.Dispose()
 
   return {
     description: prompt,
-    image,
+    image: resolvedImagePath,
     text:
       extractedText ||
       "No text could be extracted. Try using browser({action:'snapshot'}) to read page text directly.",

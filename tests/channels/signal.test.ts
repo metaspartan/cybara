@@ -190,6 +190,59 @@ describe("Signal adapter mocked flows", () => {
     expect(sent).toEqual(["echo:first", "echo:second"]);
   });
 
+  test("forwards attachment-only messages with placeholder file metadata", async () => {
+    const adapter = new SignalAdapter();
+    const channelId = makeChannelId("signal-attachment");
+    const sent: string[] = [];
+    let captured:
+      | {
+          message: string;
+          sender: string;
+          sessionId: string;
+          hasFile: boolean;
+          fileType: string;
+          placeholder: string;
+        }
+      | undefined;
+
+    signalSessions.clear();
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async (message, sender, sessionId, fileInfo) => {
+      captured = {
+        message,
+        sender,
+        sessionId,
+        hasFile: fileInfo.hasFile,
+        fileType: fileInfo.fileType,
+        placeholder: fileInfo.placeholder,
+      };
+      return "attachment-handled";
+    });
+    (
+      adapter as unknown as {
+        sendSignalMessage: (_id: string, _recipient: string, message: string) => Promise<boolean>;
+      }
+    ).sendSignalMessage = async (_id, _recipient, message) => {
+      sent.push(message);
+      return true;
+    };
+
+    await invokeSignalEnvelope(adapter, channelId, {
+      sourceNumber: "+15550005550",
+      dataMessage: {
+        attachments: [{ contentType: "image/png", filename: "signal-image.png" }],
+      },
+    });
+
+    expect(captured).toBeDefined();
+    expect(captured?.message).toBe("<attachment:signal-image.png>");
+    expect(captured?.sender).toBe("+15550005550");
+    expect(captured?.hasFile).toBe(true);
+    expect(captured?.fileType).toBe("image/png");
+    expect(captured?.placeholder).toBe("<attachment:signal-image.png>");
+    expect(sent).toEqual(["attachment-handled"]);
+  });
+
   test("sends fallback error message when handler throws", async () => {
     const adapter = new SignalAdapter();
     const channelId = makeChannelId("signal-error");

@@ -19,6 +19,7 @@ import { tables } from "../../database";
 import { buildChannelSecurityConfig, securityManager } from "../security";
 import { handleChannelManagementCommand } from "../commands";
 import { sendChannelRuntimeMessage } from "../chat-runtime";
+import { saveInboundMediaFromUrl } from "../media";
 
 export const discordSessions = new Map<string, string>();
 
@@ -259,11 +260,39 @@ export class DiscordAdapter implements ChannelAdapter {
 
     if (message.attachments.size > 0) {
       const attachment = message.attachments.first()!;
-      content += `\n\n[Attachment: ${attachment.url}]`;
       hasFile = true;
-      filePath = attachment.url;
       fileType = attachment.contentType || "application/octet-stream";
-      placeholder = `<attachment:${attachment.name}>`;
+      const attachmentName = attachment.name || "attachment";
+      placeholder = `<attachment:${attachmentName}>`;
+      const token = (message.client as { token?: string }).token;
+      const authHeader =
+        typeof token === "string" && token.trim()
+          ? token.startsWith("Bot ")
+            ? token
+            : `Bot ${token}`
+          : undefined;
+
+      try {
+        const saved = await saveInboundMediaFromUrl({
+          channel: "discord",
+          url: attachment.url,
+          fileName: attachmentName,
+          contentType: attachment.contentType || undefined,
+          headers: authHeader ? { Authorization: authHeader } : undefined,
+        });
+        filePath = saved.path;
+      } catch (error) {
+        console.warn(
+          "[Discord] Failed to cache attachment locally; falling back to remote URL:",
+          error
+        );
+        filePath = attachment.url || "";
+      }
+
+      const fileDescriptor = filePath || attachment.url || attachmentName;
+      const attachmentSection = [`${placeholder}`, `[Attachment: ${fileDescriptor}]`].join("\n");
+      content = content ? `${content}\n\n${attachmentSection}` : attachmentSection;
+      fileType = attachment.contentType || "application/octet-stream";
     }
 
     await logChannelMessage("discord", "incoming", content, {

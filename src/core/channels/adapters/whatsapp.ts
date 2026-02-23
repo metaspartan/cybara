@@ -7,6 +7,7 @@ import { logChannelMessage } from "../../logging";
 import { buildChannelSecurityConfig, securityManager } from "../security";
 import { getDefaultWhatsAppAuthPath } from "../paths";
 import { handleChannelManagementCommand } from "../commands";
+import { saveInboundMediaFromBase64 } from "../media";
 
 export const whatsappSessions = new Map<string, string>();
 
@@ -138,7 +139,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
     }
 
     let hasFile = false;
-    const filePath = "";
+    let filePath = "";
     let fileType = "";
     let placeholder = "";
     let content = text;
@@ -150,6 +151,27 @@ export class WhatsAppAdapter implements ChannelAdapter {
           hasFile = true;
           fileType = media.mimetype;
           placeholder = `<media:${media.mimetype.split("/")[0]}>`;
+          const base64Data =
+            typeof (media as { data?: unknown }).data === "string"
+              ? (media as { data: string }).data
+              : "";
+          if (base64Data) {
+            const fileName =
+              typeof (media as { filename?: unknown }).filename === "string"
+                ? (media as { filename: string }).filename
+                : `${msg.id._serialized}`;
+            try {
+              const saved = saveInboundMediaFromBase64({
+                channel: "whatsapp",
+                base64Data,
+                fileName,
+                contentType: media.mimetype,
+              });
+              filePath = saved.path;
+            } catch (persistError) {
+              console.warn("[WhatsApp] Failed to persist inbound media locally:", persistError);
+            }
+          }
           content = text || placeholder;
         }
       } catch (error) {

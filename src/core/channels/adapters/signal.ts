@@ -197,9 +197,10 @@ export class SignalAdapter implements ChannelAdapter {
   }
 
   private async handleEnvelope(channelId: string, envelope: SignalEnvelope): Promise<void> {
-    if (!envelope.dataMessage?.message) return;
+    const text = envelope.dataMessage?.message?.trim() || "";
+    const attachments = envelope.dataMessage?.attachments || [];
+    if (!text && attachments.length === 0) return;
 
-    const text = envelope.dataMessage.message;
     const sender = envelope.sourceNumber || envelope.sourceUuid || "unknown";
 
     const accessCheck = securityManager.checkAccess(
@@ -220,13 +221,30 @@ export class SignalAdapter implements ChannelAdapter {
       return;
     }
 
-    await logChannelMessage("signal", "incoming", text, {
+    let content = text;
+    let hasFile = false;
+    let fileType = "";
+    let placeholder = "";
+
+    if (attachments.length > 0) {
+      const firstAttachment = attachments[0];
+      hasFile = true;
+      fileType = firstAttachment?.contentType || "application/octet-stream";
+      const fileName = firstAttachment?.filename || "signal-file";
+      placeholder = `<attachment:${fileName}>`;
+      if (!content) {
+        content = placeholder;
+      }
+    }
+
+    await logChannelMessage("signal", "incoming", content, {
       channelId: sender,
       senderId: sender,
       metadata: {
         timestamp: envelope.timestamp,
         sourceName: envelope.sourceName,
-        hasAttachments: (envelope.dataMessage.attachments?.length || 0) > 0,
+        hasAttachments: hasFile,
+        fileType,
       },
     });
 
@@ -238,7 +256,7 @@ export class SignalAdapter implements ChannelAdapter {
 
     let response: string;
     try {
-      const commandResponse = await handleChannelManagementCommand(text, {
+      const commandResponse = await handleChannelManagementCommand(content, {
         channelId,
         chatId: sender,
         platform: "signal",
@@ -253,11 +271,11 @@ export class SignalAdapter implements ChannelAdapter {
       if (commandResponse !== null) {
         response = commandResponse;
       } else {
-        response = await this.messageHandler(text, sender, sessionId, {
-          hasFile: false,
+        response = await this.messageHandler(content, sender, sessionId, {
+          hasFile,
           filePath: "",
-          fileType: "",
-          placeholder: "",
+          fileType,
+          placeholder,
         });
       }
     } catch (error) {

@@ -25,6 +25,7 @@ import {
   signalAdapter,
   whatsappAdapter,
   imessageAdapter,
+  type MessageHandlerFileInfo,
 } from "./core/channels";
 import { handleSessionsSpawn } from "./core/tools/handlers/channel";
 import {
@@ -447,12 +448,10 @@ telegramBot.setMessageHandler(async (message, chatId, userId, channelId, fileInf
       `[Telegram] Message from chatId=${chatId}, storedSessionId=${storedSessionId}, using sessionId=${sessionId}`
     );
 
-    const fullMessage = fileInfo?.hasFile
-      ? `${message}\n\n[File attached: ${fileInfo.filePath}]`
-      : message;
+    const fullMessage = buildMessageWithFileContext(message, fileInfo);
 
     const response = await handleChat({
-      message: fullMessage,
+      message: fullMessage || message,
       sessionId,
       channel: "telegram",
       userId: String(userId),
@@ -465,19 +464,45 @@ telegramBot.setMessageHandler(async (message, chatId, userId, channelId, fileInf
   }
 });
 
+function buildMessageWithFileContext(
+  message: string,
+  fileInfo?: Partial<MessageHandlerFileInfo>
+): string {
+  const parts: string[] = [];
+  const normalizedMessage = message.trim();
+  if (normalizedMessage) {
+    parts.push(normalizedMessage);
+  }
+
+  if (fileInfo?.hasFile) {
+    const placeholder = fileInfo.placeholder?.trim() || "";
+    if (placeholder && !normalizedMessage.includes(placeholder)) {
+      parts.push(placeholder);
+    }
+
+    if (fileInfo.fileType?.trim()) {
+      parts.push(`[File type: ${fileInfo.fileType.trim()}]`);
+    }
+
+    if (fileInfo.filePath?.trim()) {
+      parts.push(`[File attached: ${fileInfo.filePath.trim()}]`);
+    }
+  }
+
+  return parts.join("\n\n");
+}
+
 const createChannelChatHandler =
   (channelName: string) =>
   async (
     message: string,
     chatId: string | number,
     sessionId: string,
-    fileInfo: { hasFile: boolean; filePath: string }
+    fileInfo: MessageHandlerFileInfo
   ): Promise<string> => {
-    const fullMessage = fileInfo.hasFile
-      ? `${message}\n\n[File attached: ${fileInfo.filePath}]`
-      : message;
+    const fullMessage = buildMessageWithFileContext(message, fileInfo);
     const response = await handleChat({
-      message: fullMessage,
+      message: fullMessage || message,
       sessionId,
       channel: channelName,
       userId: String(chatId),

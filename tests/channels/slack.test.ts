@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync, rmSync } from "fs";
+import path from "path";
 import { SlackAdapter, slackSessions } from "../../src/core/channels/adapters/slack";
 import {
   clearChannelSubagentSpawnHandler,
@@ -11,6 +13,7 @@ import {
 import { securityManager } from "../../src/core/channels/security";
 import { config } from "../../src/core/config";
 import { tables } from "../../src/core/database";
+import { cybaraDir } from "../../src/core/paths";
 
 type SlackEvent = {
   type: string;
@@ -21,6 +24,12 @@ type SlackEvent = {
   ts: string;
   thread_ts?: string;
   bot_id?: string;
+  files?: Array<{
+    name?: string;
+    mimetype?: string;
+    url_private?: string;
+    url_private_download?: string;
+  }>;
 };
 
 function makeChannelId(prefix: string): string {
@@ -256,6 +265,81 @@ describe("Slack adapter mocked flows", () => {
     expect(handlerInputs[0].sessionId).toBe(handlerInputs[1].sessionId);
     expect(sayMessages).toContain("echo:first");
     expect(sayMessages).toContain("echo:second");
+  });
+
+  test("caches inbound files and forwards file metadata to handler", async () => {
+    const adapter = new SlackAdapter();
+    const channelId = makeChannelId("slack-file");
+    const sayMessages: string[] = [];
+    let captured:
+      | {
+          message: string;
+          hasFile: boolean;
+          filePath: string;
+          fileType: string;
+          placeholder: string;
+        }
+      | undefined;
+    const originalFetch = globalThis.fetch;
+
+    try {
+      globalThis.fetch = (async () => {
+        return new Response(new Uint8Array([0xde, 0xad, 0xbe, 0xef]), {
+          status: 200,
+          headers: { "content-type": "image/png" },
+        });
+      }) as typeof fetch;
+
+      securityManager.setConfig(channelId, { dm_policy: "open" });
+      adapter.setMessageHandler(async (message, _chatId, _sessionId, fileInfo) => {
+        captured = {
+          message,
+          hasFile: fileInfo.hasFile,
+          filePath: fileInfo.filePath,
+          fileType: fileInfo.fileType,
+          placeholder: fileInfo.placeholder,
+        };
+        return "file-ok";
+      });
+
+      await invokeSlackMessage(
+        adapter,
+        channelId,
+        {
+          type: "message",
+          text: "",
+          user: "U-ALLOWED",
+          channel: "C-FILE",
+          ts: "9.001",
+          files: [
+            {
+              name: "diagram.png",
+              mimetype: "image/png",
+              url_private_download: "https://slack-files.example.com/diagram.png",
+            },
+          ],
+        },
+        async (text: string) => {
+          sayMessages.push(text);
+        }
+      );
+
+      expect(captured).toBeDefined();
+      expect(captured?.hasFile).toBe(true);
+      expect(captured?.fileType).toBe("image/png");
+      expect(captured?.placeholder).toBe("<attachment:diagram.png>");
+      expect(captured?.message).toContain("<attachment:diagram.png>");
+      expect(captured?.filePath.startsWith(path.join(cybaraDir, "media", "inbound", "slack"))).toBe(
+        true
+      );
+      expect(existsSync(captured?.filePath || "")).toBe(true);
+      expect(sayMessages).toEqual(["file-ok"]);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (captured?.filePath && existsSync(captured.filePath)) {
+        rmSync(captured.filePath, { force: true });
+      }
+    }
   });
 
   test("mention with empty text returns greeting", async () => {

@@ -6,6 +6,7 @@ import { tables } from "../../database";
 import { buildChannelSecurityConfig, securityManager } from "../security";
 import { handleChannelManagementCommand } from "../commands";
 import { sendChannelRuntimeMessage } from "../chat-runtime";
+import { saveInboundMediaFromUrl } from "../media";
 
 interface SlackMessageEvent {
   type: string;
@@ -16,6 +17,13 @@ interface SlackMessageEvent {
   ts: string;
   thread_ts?: string;
   bot_id?: string;
+  files?: Array<{
+    id?: string;
+    name?: string;
+    mimetype?: string;
+    url_private?: string;
+    url_private_download?: string;
+  }>;
 }
 
 export const slackSessions = new Map<string, string>();
@@ -55,6 +63,7 @@ export class SlackAdapter implements ChannelAdapter {
 
   private apps = new Map<string, App>();
   private reactionScopes = new Map<string, SlackReactionNotificationScope>();
+  private botTokens = new Map<string, string>();
   private messageHandler: MessageHandler = async () => "No handler configured";
 
   setMessageHandler(handler: MessageHandler) {
@@ -121,6 +130,7 @@ export class SlackAdapter implements ChannelAdapter {
       await app.start();
       this.apps.set(channelId, app);
       this.reactionScopes.set(channelId, reactionScope);
+      this.botTokens.set(channelId, botToken);
       console.log(`[Slack] Successfully started for channel ${channelId}`);
     } catch (error) {
       console.error(`[Slack] Failed to start:`, error);
@@ -141,7 +151,11 @@ export class SlackAdapter implements ChannelAdapter {
     if (message.subtype === "message_changed") return;
 
     const text = message.text || "";
-    if (!text.trim()) return;
+    const trimmedText = text.trim();
+    const inboundFile = await this.resolveInboundFile(channelId, message.files);
+    if (!trimmedText && !inboundFile.hasFile) return;
+
+    const content = this.composeContentWithFileContext(trimmedText, inboundFile);
 
     const userId = message.user;
     const chatId = message.channel;
@@ -159,12 +173,14 @@ export class SlackAdapter implements ChannelAdapter {
       return;
     }
 
-    await logChannelMessage("slack", "incoming", text, {
+    await logChannelMessage("slack", "incoming", content, {
       channelId: chatId,
       senderId: userId,
       metadata: {
         messageTs: message.ts,
         threadTs: message.thread_ts,
+        hasFile: inboundFile.hasFile,
+        fileType: inboundFile.fileType,
       },
     });
 
@@ -177,7 +193,7 @@ export class SlackAdapter implements ChannelAdapter {
 
     let response: string;
     try {
-      const commandResponse = await handleChannelManagementCommand(text, {
+      const commandResponse = await handleChannelManagementCommand(content, {
         channelId,
         chatId,
         platform: "slack",
@@ -192,11 +208,11 @@ export class SlackAdapter implements ChannelAdapter {
       if (commandResponse !== null) {
         response = commandResponse;
       } else {
-        response = await this.messageHandler(text, chatId, sessionId, {
-          hasFile: false,
-          filePath: "",
-          fileType: "",
-          placeholder: "",
+        response = await this.messageHandler(content, chatId, sessionId, {
+          hasFile: inboundFile.hasFile,
+          filePath: inboundFile.filePath,
+          fileType: inboundFile.fileType,
+          placeholder: inboundFile.placeholder,
         });
       }
     } catch (error) {
@@ -218,7 +234,14 @@ export class SlackAdapter implements ChannelAdapter {
 
   private async handleMention(
     channelId: string,
-    event: { user: string; channel: string; text?: string; ts: string; thread_ts?: string },
+    event: {
+      user: string;
+      channel: string;
+      text?: string;
+      ts: string;
+      thread_ts?: string;
+      files?: SlackMessageEvent["files"];
+    },
     say: (text: string) => Promise<unknown>,
     _client: unknown
   ): Promise<void> {
@@ -239,19 +262,23 @@ export class SlackAdapter implements ChannelAdapter {
     }
 
     const cleanText = text.replace(/<@[A-Z0-9]+>/g, "").trim();
+    const inboundFile = await this.resolveInboundFile(channelId, event.files);
+    const content = this.composeContentWithFileContext(cleanText, inboundFile);
 
-    if (!cleanText) {
+    if (!cleanText && !inboundFile.hasFile) {
       await say("👋 Hi! How can I help you today?");
       return;
     }
 
-    await logChannelMessage("slack", "incoming", cleanText, {
+    await logChannelMessage("slack", "incoming", content, {
       channelId: chatId,
       senderId: userId,
       metadata: {
         messageTs: event.ts,
         threadTs: event.thread_ts,
         isMention: true,
+        hasFile: inboundFile.hasFile,
+        fileType: inboundFile.fileType,
       },
     });
 
@@ -264,7 +291,7 @@ export class SlackAdapter implements ChannelAdapter {
 
     let response: string;
     try {
-      const commandResponse = await handleChannelManagementCommand(cleanText, {
+      const commandResponse = await handleChannelManagementCommand(content, {
         channelId,
         chatId,
         platform: "slack",
@@ -279,11 +306,11 @@ export class SlackAdapter implements ChannelAdapter {
       if (commandResponse !== null) {
         response = commandResponse;
       } else {
-        response = await this.messageHandler(cleanText, chatId, sessionId, {
-          hasFile: false,
-          filePath: "",
-          fileType: "",
-          placeholder: "",
+        response = await this.messageHandler(content, chatId, sessionId, {
+          hasFile: inboundFile.hasFile,
+          filePath: inboundFile.filePath,
+          fileType: inboundFile.fileType,
+          placeholder: inboundFile.placeholder,
         });
       }
     } catch (error) {
@@ -300,6 +327,84 @@ export class SlackAdapter implements ChannelAdapter {
       await say(response);
     } catch (error) {
       console.error("[Slack] Failed to send message:", error);
+    }
+  }
+
+  private composeContentWithFileContext(
+    text: string,
+    file: { hasFile: boolean; filePath: string; fileType: string; placeholder: string }
+  ): string {
+    if (!file.hasFile) {
+      return text;
+    }
+
+    const descriptor = file.filePath || file.placeholder || "attachment";
+    const attachmentLines = [
+      file.placeholder || "<attachment:file>",
+      `[Attachment: ${descriptor}]`,
+    ];
+    return text ? `${text}\n\n${attachmentLines.join("\n")}` : attachmentLines.join("\n");
+  }
+
+  private async resolveInboundFile(
+    channelId: string,
+    files: SlackMessageEvent["files"]
+  ): Promise<{ hasFile: boolean; filePath: string; fileType: string; placeholder: string }> {
+    if (!Array.isArray(files) || files.length === 0) {
+      return {
+        hasFile: false,
+        filePath: "",
+        fileType: "",
+        placeholder: "",
+      };
+    }
+
+    const file = files.find((entry) => entry && (entry.url_private_download || entry.url_private));
+    if (!file) {
+      return {
+        hasFile: false,
+        filePath: "",
+        fileType: "",
+        placeholder: "",
+      };
+    }
+
+    const fileName = file.name || "slack-file";
+    const fileType = file.mimetype || "application/octet-stream";
+    const placeholder = `<attachment:${fileName}>`;
+    const downloadUrl = file.url_private_download || file.url_private;
+    if (!downloadUrl) {
+      return {
+        hasFile: true,
+        filePath: "",
+        fileType,
+        placeholder,
+      };
+    }
+
+    const botToken = this.botTokens.get(channelId);
+    try {
+      const saved = await saveInboundMediaFromUrl({
+        channel: "slack",
+        url: downloadUrl,
+        fileName,
+        contentType: fileType,
+        headers: botToken ? { Authorization: `Bearer ${botToken}` } : undefined,
+      });
+      return {
+        hasFile: true,
+        filePath: saved.path,
+        fileType,
+        placeholder,
+      };
+    } catch (error) {
+      console.warn("[Slack] Failed to cache file locally; using URL reference:", error);
+      return {
+        hasFile: true,
+        filePath: downloadUrl,
+        fileType,
+        placeholder,
+      };
     }
   }
 
@@ -389,6 +494,7 @@ export class SlackAdapter implements ChannelAdapter {
     await app.stop();
     this.apps.delete(channelId);
     this.reactionScopes.delete(channelId);
+    this.botTokens.delete(channelId);
     console.log(`[Slack] Stopped for channel ${channelId}`);
   }
 
