@@ -107,8 +107,13 @@ function toCanonicalVerb(text: string, phase: ActivityPhase): string {
 }
 
 function activityDedupKey(activity: LiveActivityItem): string {
+  const normalizedId = activity.id.trim();
+  if (normalizedId) {
+    return `id:${normalizedId}`;
+  }
   const toolPrefix = activity.toolName ? `${activity.toolName.toLowerCase()}:` : "";
-  return `${activity.phase}:${toolPrefix}${normalizeText(activity.text).toLowerCase()}`;
+  const timestamp = Number.isFinite(activity.timestamp) ? Math.floor(activity.timestamp) : 0;
+  return `${activity.phase}:${toolPrefix}${normalizeText(activity.text).toLowerCase()}:${timestamp}`;
 }
 
 function canonicalActivityKey(activity: LiveActivityItem): string {

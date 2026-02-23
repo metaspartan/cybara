@@ -48,7 +48,7 @@ describe("chat activity lifecycle helpers", () => {
     expect(activities[1]?.text).toContain("exec");
   });
 
-  test("merges and deduplicates repeated activity items", () => {
+  test("merges and preserves repeated activity items from distinct ids", () => {
     const merged = mergeActivityLists(
       [{ id: "a", phase: "result", text: "Search complete", timestamp: 1 }],
       [
@@ -57,9 +57,20 @@ describe("chat activity lifecycle helpers", () => {
       ]
     );
 
-    expect(merged).toHaveLength(2);
+    expect(merged).toHaveLength(3);
     expect(merged[0]?.text).toBe("Search complete");
-    expect(merged[1]?.text).toBe("Search failed");
+    expect(merged[1]?.text).toBe("Search complete");
+    expect(merged[2]?.text).toBe("Search failed");
+  });
+
+  test("deduplicates identical activity ids from merged sources", () => {
+    const merged = mergeActivityLists(
+      [{ id: "same", phase: "result", text: "Search complete", timestamp: 1 }],
+      [{ id: "same", phase: "result", text: "Search complete", timestamp: 1 }]
+    );
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.id).toBe("same");
   });
 
   test("finalizes lingering start items after an assistant response is complete", () => {

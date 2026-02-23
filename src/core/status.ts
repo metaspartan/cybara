@@ -62,7 +62,6 @@ const ACTIVE_STATUSES = new Set<AgentStatus>([
   "tool_completed",
 ]);
 const STATUS_STALE_MS = 15 * 60 * 1000;
-const MAX_SESSION_ACTIVITY_ITEMS = 80;
 
 function isActiveStatus(status: AgentStatus): boolean {
   return ACTIVE_STATUSES.has(status);
@@ -71,9 +70,7 @@ function isActiveStatus(status: AgentStatus): boolean {
 function sanitizeActivityText(detail?: string): string {
   if (!detail || typeof detail !== "string") return "";
   const trimmed = detail.trim();
-  if (!trimmed) return "";
-  if (trimmed.length <= 240) return trimmed;
-  return `${trimmed.slice(0, 237)}...`;
+  return trimmed;
 }
 
 function isMeaningfulThoughtDetail(detail: string): boolean {
@@ -118,9 +115,6 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
       timestamp: payload.timestamp,
       toolName: payload.toolName,
     });
-    if (nextActivities.length > MAX_SESSION_ACTIVITY_ITEMS) {
-      nextActivities.splice(0, nextActivities.length - MAX_SESSION_ACTIVITY_ITEMS);
-    }
   } else if (isThoughtStatus && activityText && isMeaningfulThoughtDetail(activityText)) {
     const lastActivity = nextActivities[nextActivities.length - 1];
     const duplicateThought =
@@ -135,9 +129,6 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
         timestamp: payload.timestamp,
         toolName: "__thought",
       });
-      if (nextActivities.length > MAX_SESSION_ACTIVITY_ITEMS) {
-        nextActivities.splice(0, nextActivities.length - MAX_SESSION_ACTIVITY_ITEMS);
-      }
     }
   }
 

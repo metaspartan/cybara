@@ -678,7 +678,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
       if (!snapshot || !Array.isArray(snapshot.activities) || snapshot.activities.length === 0) {
         return undefined;
       }
-      return snapshot.activities.slice(-200).map((activity) => ({
+      return snapshot.activities.map((activity) => ({
         id: activity.id,
         phase: activity.phase,
         text: activity.text,

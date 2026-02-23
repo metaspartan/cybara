@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { handleFileSearch } from "../../src/core/tools/handlers/file";
+import { handleFileSearch, handleRead } from "../../src/core/tools/handlers/file";
 import { handleExec } from "../../src/core/tools/handlers/process";
 
 describe("Tool input validation", () => {
@@ -15,5 +15,9 @@ describe("Tool input validation", () => {
 
     expect(result.files).toHaveLength(0);
     expect(result.error).toContain("pattern is required");
+  });
+
+  test("read returns explicit validation error when path is missing", async () => {
+    await expect(handleRead({})).rejects.toThrow("Validation error: path is required");
   });
 });

@@ -1145,16 +1145,24 @@ function isArtifactToolCall(toolCall: unknown): boolean {
   return !!sanitizeArtifactToolResult(toolCall.result);
 }
 
-const MAX_PROCESS_ACTIVITY_ITEMS = 240;
-const MAX_PROCESS_ACTIVITY_TEXT = 500;
-
 function sanitizeProcessActivities(
-  activities: unknown
+  activities: unknown,
+  options?: { maxItems?: number; maxTextLength?: number }
 ): SessionMessageView["process_activities"] | undefined {
   if (!Array.isArray(activities)) return undefined;
+  const maxItems =
+    typeof options?.maxItems === "number" && Number.isFinite(options.maxItems)
+      ? Math.max(0, Math.floor(options.maxItems))
+      : undefined;
+  const maxTextLength =
+    typeof options?.maxTextLength === "number" && Number.isFinite(options.maxTextLength)
+      ? Math.max(0, Math.floor(options.maxTextLength))
+      : undefined;
+  const entries =
+    typeof maxItems === "number" && maxItems > 0 ? activities.slice(-maxItems) : activities;
 
   const sanitized: NonNullable<SessionMessageView["process_activities"]> = [];
-  for (const entry of activities.slice(-MAX_PROCESS_ACTIVITY_ITEMS)) {
+  for (const entry of entries) {
     if (!isObjectRecord(entry)) continue;
     const phase =
       entry.phase === "start" || entry.phase === "result" || entry.phase === "error"
@@ -1177,8 +1185,8 @@ function sanitizeProcessActivities(
       id,
       phase,
       text:
-        text.length > MAX_PROCESS_ACTIVITY_TEXT
-          ? `${text.slice(0, MAX_PROCESS_ACTIVITY_TEXT)}...`
+        typeof maxTextLength === "number" && maxTextLength > 0 && text.length > maxTextLength
+          ? `${text.slice(0, maxTextLength)}...`
           : text,
       timestamp,
       toolName,
@@ -1190,9 +1198,12 @@ function sanitizeProcessActivities(
 
 function sanitizeSessionMessages(
   messages: SessionMessageView[],
-  options?: { maxToolCalls?: number }
+  options?: { maxToolCalls?: number; includeFullToolCalls?: boolean }
 ): SessionMessageView[] {
-  const MAX_RESULT_SIZE = 500;
+  const truncateLargeFields = options?.includeFullToolCalls !== true;
+  const MAX_RESULT_SIZE = truncateLargeFields ? 500 : 0;
+  const MAX_ERROR_SIZE = truncateLargeFields ? 200 : 0;
+  const PROCESS_OPTIONS = truncateLargeFields ? { maxItems: 240, maxTextLength: 500 } : undefined;
   const DEFAULT_MAX_TOOL_CALLS = 50;
   const maxToolCallsRaw = options?.maxToolCalls;
   const MAX_TOOL_CALLS =
@@ -1201,7 +1212,10 @@ function sanitizeSessionMessages(
       : DEFAULT_MAX_TOOL_CALLS;
 
   return messages.map((msg) => {
-    const sanitizedProcessActivities = sanitizeProcessActivities(msg.process_activities);
+    const sanitizedProcessActivities = sanitizeProcessActivities(
+      msg.process_activities,
+      PROCESS_OPTIONS
+    );
 
     if (!msg || !msg.tool_calls || !Array.isArray(msg.tool_calls) || msg.tool_calls.length === 0) {
       if (!sanitizedProcessActivities) {
@@ -1291,7 +1305,7 @@ function sanitizeSessionMessages(
           } else {
             const resultStr = typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result);
             sanitized.result =
-              resultStr.length > MAX_RESULT_SIZE
+              MAX_RESULT_SIZE > 0 && resultStr.length > MAX_RESULT_SIZE
                 ? resultStr.slice(0, MAX_RESULT_SIZE) + "... [truncated]"
                 : tc.result;
           }
@@ -1300,8 +1314,13 @@ function sanitizeSessionMessages(
         }
       }
 
-      if (tc.error && typeof tc.error === "string" && tc.error.length > 200) {
-        sanitized.error = tc.error.slice(0, 200) + "...";
+      if (
+        MAX_ERROR_SIZE > 0 &&
+        tc.error &&
+        typeof tc.error === "string" &&
+        tc.error.length > MAX_ERROR_SIZE
+      ) {
+        sanitized.error = tc.error.slice(0, MAX_ERROR_SIZE) + "...";
       }
 
       return sanitized;
@@ -3597,12 +3616,13 @@ const routes: Record<string, RouteHandler> = {
       params?.includeFullToolCalls === "true" ||
       params?.includeFullToolCalls === "yes";
 
-    const MAX_CONTENT_SIZE = 10000; // 10KB per message max
+    const MAX_CONTENT_SIZE = includeFullToolCalls ? 0 : 10000;
     const sanitizedMessages = sanitizeSessionMessages(messages, {
       maxToolCalls: includeFullToolCalls ? 0 : 50,
+      includeFullToolCalls,
     }).map((m) => {
       const truncatedContent =
-        typeof m.content === "string" && m.content.length > MAX_CONTENT_SIZE
+        MAX_CONTENT_SIZE > 0 && typeof m.content === "string" && m.content.length > MAX_CONTENT_SIZE
           ? m.content.slice(0, MAX_CONTENT_SIZE) +
             `\n\n... [content truncated, ${m.content.length - MAX_CONTENT_SIZE} chars omitted]`
           : m.content;

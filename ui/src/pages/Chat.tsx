@@ -218,7 +218,6 @@ interface PendingProcessCapture {
 const LAST_WORKSPACE_STORAGE_KEY = "cybara:lastWorkspaceDir";
 const LAST_SESSION_STORAGE_KEY = "cybara:lastSessionId";
 const MESSAGE_PROCESS_MAP_STORAGE_KEY = "cybara:messageProcessMap";
-const MAX_PERSISTED_ACTIVITY_ITEMS_PER_MESSAGE = 2000;
 
 function getMessageProcessKey(
   sessionKey: string | null,
@@ -379,7 +378,7 @@ function readPersistedMessageProcessMap(): Record<string, LiveActivityItem[]> {
         .map((entry) => normalizePersistedLiveActivityItem(entry))
         .filter((entry): entry is LiveActivityItem => !!entry);
       if (normalized.length === 0) continue;
-      next[key] = normalized.slice(0, MAX_PERSISTED_ACTIVITY_ITEMS_PER_MESSAGE);
+      next[key] = normalized;
     }
     return next;
   } catch {
@@ -393,7 +392,7 @@ function persistMessageProcessMap(map: Record<string, LiveActivityItem[]>): void
     const serializable: Record<string, LiveActivityItem[]> = {};
     for (const [key, value] of Object.entries(map)) {
       if (!Array.isArray(value) || value.length === 0) continue;
-      serializable[key] = value.slice(0, MAX_PERSISTED_ACTIVITY_ITEMS_PER_MESSAGE);
+      serializable[key] = value;
     }
     window.localStorage.setItem(MESSAGE_PROCESS_MAP_STORAGE_KEY, JSON.stringify(serializable));
   } catch {
@@ -641,8 +640,7 @@ function toLiveActivityItems(activities: SessionStatusActivity[] | undefined): L
       text: activity.text,
       timestamp: activity.timestamp,
       toolName: activity.toolName,
-    }))
-    .slice(-50);
+    }));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1363,7 +1361,7 @@ function inferThoughtActivitiesFromContent(
   const thoughts: LiveActivityItem[] = [];
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    if (!line || line.length > 320) continue;
+    if (!line) continue;
     if (toolishLine.test(line)) continue;
     if (!thoughtishLine.test(line)) continue;
     thoughts.push({
@@ -1386,8 +1384,7 @@ function inferThoughtActivitiesFromThinking(
   const lines = thinking
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(0, 24);
+    .filter(Boolean);
   if (lines.length === 0) return [];
 
   const fallbackBase =
@@ -1644,16 +1641,16 @@ function AssistantMetaInline({
   );
   const inferredThoughtActivities = !hasPersistedThoughtActivities
     ? inferThoughtActivitiesFromContent(
-        message.content,
-        parseTimestampMs(message.timestamp) ?? turnStartedAtMs
-      )
+      message.content,
+      parseTimestampMs(message.timestamp) ?? turnStartedAtMs
+    )
     : [];
   const inferredThinkingActivities =
     !hasPersistedThoughtActivities && inferredThoughtActivities.length === 0
       ? inferThoughtActivitiesFromThinking(
-          message.thinking,
-          parseTimestampMs(message.timestamp) ?? turnStartedAtMs
-        )
+        message.thinking,
+        parseTimestampMs(message.timestamp) ?? turnStartedAtMs
+      )
       : [];
   const contentAndThinkingActivities = mergeActivityLists(
     inferredThoughtActivities,
@@ -1900,8 +1897,8 @@ function SyntaxCodeBlock({ code, language }: { code: string; language: string })
               <div key={`line-${lineIndex}`} {...getLineProps({ line })}>
                 {line.length > 0
                   ? line.map((token, tokenIndex) => (
-                      <span key={`${lineIndex}-${tokenIndex}`} {...getTokenProps({ token })} />
-                    ))
+                    <span key={`${lineIndex}-${tokenIndex}`} {...getTokenProps({ token })} />
+                  ))
                   : "\u00A0"}
               </div>
             ))}
@@ -2401,11 +2398,10 @@ function SubagentPanel({
               <div>
                 <p className="text-[12px] text-gray-500 mb-1">Result</p>
                 <div
-                  className={`p-3 rounded-lg border ${
-                    selectedSubagent.status === "completed"
-                      ? "bg-emerald-500/10 border-emerald-500/30"
-                      : "bg-red-500/10 border-red-500/30"
-                  }`}
+                  className={`p-3 rounded-lg border ${selectedSubagent.status === "completed"
+                    ? "bg-emerald-500/10 border-emerald-500/30"
+                    : "bg-red-500/10 border-red-500/30"
+                    }`}
                 >
                   <pre className="text-sm text-gray-300 whitespace-pre-wrap overflow-x-auto max-h-48 overflow-y-auto">
                     {typeof selectedSubagent.result === "string"
@@ -2615,11 +2611,10 @@ function SessionsPanel({
               return (
                 <div
                   key={session.id}
-                  className={`p-2.5 rounded-lg transition-all cursor-pointer group ${
-                    currentSessionId === session.id
-                      ? "bg-[rgba(var(--accent-primary),0.12)] border border-[rgba(var(--accent-primary),0.3)]"
-                      : "bg-white/[0.03] border border-white/5 hover:border-white/15"
-                  }`}
+                  className={`p-2.5 rounded-lg transition-all cursor-pointer group ${currentSessionId === session.id
+                    ? "bg-[rgba(var(--accent-primary),0.12)] border border-[rgba(var(--accent-primary),0.3)]"
+                    : "bg-white/[0.03] border border-white/5 hover:border-white/15"
+                    }`}
                   onClick={() => handleLoadSession(session.id)}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -2689,10 +2684,10 @@ function SessionsPanel({
                       </p>
                       {typeof (session as { workspace_dir?: string | null }).workspace_dir ===
                         "string" && (
-                        <p className="text-[10px] text-blue-300/90 mt-0.5 truncate">
-                          {(session as { workspace_dir?: string }).workspace_dir}
-                        </p>
-                      )}
+                          <p className="text-[10px] text-blue-300/90 mt-0.5 truncate">
+                            {(session as { workspace_dir?: string }).workspace_dir}
+                          </p>
+                        )}
                       {session.last_message && (
                         <p className="text-[10px] text-gray-500 mt-0.5 truncate">
                           {session.last_message.content.slice(0, 40)}...
@@ -3189,7 +3184,11 @@ export function Chat() {
           snapshot.status === "tool_completed");
 
       if (!isActive || !snapshot) {
-        if (!loadingRef.current && activeSessionRef.current === resolvedSessionId) {
+        if (
+          !loadingRef.current &&
+          activeSessionRef.current === resolvedSessionId &&
+          !nextActiveIds.includes(resolvedSessionId)
+        ) {
           setLiveStatus("idle");
           setLiveActivities([]);
         }
@@ -3201,8 +3200,6 @@ export function Chat() {
       const snapshotActivities = toLiveActivityItems(snapshot.activities);
       if (snapshotActivities.length > 0) {
         setLiveActivities(snapshotActivities);
-      } else if (!loadingRef.current) {
-        setLiveActivities([]);
       }
     } catch (error) {
       console.error("Failed to hydrate session status:", error);
@@ -4006,11 +4003,10 @@ export function Chat() {
                           className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}
                         >
                           <div
-                            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                              message.role === "user"
-                                ? "bg-[rgba(var(--accent-primary),0.2)]"
-                                : "bg-emerald-500/20"
-                            }`}
+                            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${message.role === "user"
+                              ? "bg-[rgba(var(--accent-primary),0.2)]"
+                              : "bg-emerald-500/20"
+                              }`}
                           >
                             {message.role === "user" ? (
                               <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 accent-text" />
@@ -4022,11 +4018,10 @@ export function Chat() {
                             className={`max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] ${message.role === "user" ? "text-right" : ""}`}
                           >
                             <div
-                              className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${
-                                message.role === "user"
-                                  ? "border border-[rgba(var(--accent-primary),0.2)]"
-                                  : "border border-white/5"
-                              }`}
+                              className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${message.role === "user"
+                                ? "border border-[rgba(var(--accent-primary),0.2)]"
+                                : "border border-white/5"
+                                }`}
                             >
                               {message.role !== "user" && (
                                 <AssistantMetaInline
@@ -4108,12 +4103,12 @@ export function Chat() {
                     scrollToBottom();
                     setShowScrollToBottomButton(false);
                   }}
-                  className="absolute left-1/2 z-20 -translate-x-1/2 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-[#11131c]/95 text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)] backdrop-blur-md transition-colors hover:bg-[#1a1e2b] cursor-pointer"
+                  className="absolute left-1/2 z-20 -translate-x-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-[#11131c]/95 text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)] backdrop-blur-md transition-colors hover:bg-[#1a1e2b] cursor-pointer"
                   style={{ bottom: `${Math.max(70, composerHeight + 10)}px` }}
                   title="Scroll to latest"
                   aria-label="Scroll to latest message"
                 >
-                  <ArrowDown className="h-5 w-5" />
+                  <ArrowDown className="h-4 w-4" />
                 </button>
               )}
 

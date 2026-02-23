@@ -16,7 +16,8 @@ interface FileChangeMeta {
   diff: string;
 }
 
-function expandTilde(path: string): string {
+function expandTilde(path: string | undefined): string | undefined {
+  if (!path) return path;
   if (path.startsWith("~")) {
     return path.replace(/^~/, homeDir);
   }
@@ -94,7 +95,18 @@ function buildUnifiedDiff(path: string, before: string, after: string): string {
 export async function handleRead(
   args: Record<string, unknown>
 ): Promise<{ content: string; path: string }> {
-  const path = expandTilde(args.path as string);
+  const rawPath =
+    typeof args.path === "string"
+      ? args.path
+      : typeof args.file === "string"
+        ? args.file
+        : undefined;
+  const path = expandTilde(rawPath);
+  if (!path) {
+    throw new Error(
+      'Validation error: path is required. Provide a file path (for example: {"path":"src/index.ts"}).'
+    );
+  }
   if (!existsSync(path)) {
     throw new Error(`File not found: ${path}`);
   }
@@ -124,7 +136,13 @@ export async function handleRead(
 export async function handleWrite(
   args: Record<string, unknown>
 ): Promise<{ success: boolean; path: string; change: FileChangeMeta }> {
-  const path = expandTilde(args.path as string);
+  const rawPath = typeof args.path === "string" ? args.path : undefined;
+  const path = expandTilde(rawPath);
+  if (!path) {
+    throw new Error(
+      'Validation error: path is required. Provide a file path (for example: {"path":"src/index.ts"}).'
+    );
+  }
   const content = args.content as string;
   const existed = existsSync(path);
   const before = existed ? readFileSync(path, "utf-8") : "";
@@ -156,7 +174,13 @@ export async function handleWrite(
 export async function handleEdit(
   args: Record<string, unknown>
 ): Promise<{ success: boolean; path: string; change: FileChangeMeta }> {
-  const path = expandTilde(args.path as string);
+  const rawPath = typeof args.path === "string" ? args.path : undefined;
+  const path = expandTilde(rawPath);
+  if (!path) {
+    throw new Error(
+      'Validation error: path is required. Provide a file path (for example: {"path":"src/index.ts"}).'
+    );
+  }
   const oldText = args.oldText as string;
   const newText = args.newText as string;
 

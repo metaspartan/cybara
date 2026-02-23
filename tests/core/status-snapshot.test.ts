@@ -73,4 +73,28 @@ describe("session status snapshots", () => {
       detail: "idle",
     });
   });
+
+  test("preserves long thought detail text without truncation", () => {
+    const sessionId = `status-long-thought-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const longThought = `Investigating context behavior: ${"x".repeat(600)}`;
+
+    broadcastStatus({
+      status: "thinking",
+      timestamp: Date.now(),
+      sessionId,
+      detail: longThought,
+    });
+
+    const snapshot = getSessionStatusSnapshot(sessionId);
+    expect(snapshot).not.toBeNull();
+    const thought = snapshot?.activities.find((activity) => activity.toolName === "__thought");
+    expect(thought?.text).toBe(longThought);
+
+    broadcastStatus({
+      status: "idle",
+      timestamp: Date.now() + 1,
+      sessionId,
+      detail: "idle",
+    });
+  });
 });

@@ -42,8 +42,7 @@ async function waitForServerReady(baseUrl: string, timeoutMs = 30000): Promise<v
     try {
       const res = await fetch(`${baseUrl}/api/health`);
       if (res.ok) return;
-    } catch {
-    }
+    } catch {}
     await sleep(250);
   }
   throw new Error(`Timed out waiting for API server at ${baseUrl}`);
@@ -237,8 +236,7 @@ afterAll(async () => {
   if (serverProc) {
     try {
       serverProc.kill("SIGTERM");
-    } catch {
-    }
+    } catch {}
     await Promise.race([serverProc.exited, sleep(5000)]);
   }
 
@@ -1357,12 +1355,90 @@ describe("Session API", () => {
     expect(Array.isArray(assistantFull?.tool_calls)).toBe(true);
     expect(assistantFull?.tool_calls?.length).toBe(55);
     const fullToolCalls = assistantFull?.tool_calls || [];
-    const fullFirstTimelineIndex = (fullToolCalls[0] as { timeline_index?: unknown })?.timeline_index;
+    const fullFirstTimelineIndex = (fullToolCalls[0] as { timeline_index?: unknown })
+      ?.timeline_index;
     const fullLastTimelineIndex = (
       fullToolCalls[fullToolCalls.length - 1] as { timeline_index?: unknown }
     )?.timeline_index;
     expect(fullFirstTimelineIndex).toBe(0);
     expect(fullLastTimelineIndex).toBe(54);
+  });
+
+  test("GET /api/sessions/:sessionId includeFullToolCalls preserves full content, process activities, and tool payloads", async () => {
+    const sessionId = `session-full-history-${Date.now()}`;
+    const agentId = `agent-full-history-${Date.now()}`;
+    const longAssistantContent = `Audit output\n${"A".repeat(12050)}`;
+    const longToolResult = `tool-result-${"R".repeat(1400)}`;
+    const longToolError = `tool-error-${"E".repeat(420)}`;
+    const processActivities = Array.from({ length: 320 }, (_, index) => ({
+      id: `activity-${index}`,
+      phase: index % 7 === 0 ? "start" : "result",
+      text: `activity-${index}-${"x".repeat(620)}`,
+      timestamp: 1_770_000_000_000 + index,
+      toolName: index % 11 === 0 ? "__thought" : "read",
+    }));
+
+    insertRawSession(sessionId, agentId, [
+      {
+        role: "user",
+        content: "Run full audit",
+        metadata: { source: "chat_api" },
+      },
+      {
+        role: "assistant",
+        content: longAssistantContent,
+        metadata: {
+          source: "chat_api",
+          tool_calls: [
+            {
+              id: "call-full-0",
+              name: "read",
+              args: { path: "src/index.ts" },
+              status: "failed",
+              result: longToolResult,
+              error: longToolError,
+            },
+          ],
+          process_activities: processActivities,
+        },
+      },
+    ]);
+
+    const compact = await api("GET", `/api/sessions/${sessionId}`);
+    expect(compact.status).toBe(200);
+    const compactAssistant = (compact.data.messagesList as Array<Record<string, unknown>>).find(
+      (entry) => entry.role === "assistant"
+    ) as Record<string, unknown> | undefined;
+    expect(compactAssistant).toBeDefined();
+    expect(String(compactAssistant?.content || "")).toContain("[content truncated");
+    expect(
+      ((compactAssistant?.process_activities as Array<Record<string, unknown>> | undefined) || [])
+        .length
+    ).toBeLessThanOrEqual(240);
+    const compactTool = (
+      compactAssistant?.tool_calls as Array<Record<string, unknown>> | undefined
+    )?.[0];
+    expect(typeof compactTool?.result).toBe("string");
+    expect(String(compactTool?.result || "")).toContain("[truncated]");
+    expect(String(compactTool?.error || "")).toContain("...");
+
+    const full = await api("GET", `/api/sessions/${sessionId}?includeFullToolCalls=1`);
+    expect(full.status).toBe(200);
+    const fullAssistant = (full.data.messagesList as Array<Record<string, unknown>>).find(
+      (entry) => entry.role === "assistant"
+    ) as Record<string, unknown> | undefined;
+    expect(fullAssistant).toBeDefined();
+    expect(String(fullAssistant?.content || "")).toBe(longAssistantContent);
+    expect(String(fullAssistant?.content || "")).not.toContain("[content truncated");
+    expect(
+      ((fullAssistant?.process_activities as Array<Record<string, unknown>> | undefined) || [])
+        .length
+    ).toBe(processActivities.length);
+
+    const fullTool = (fullAssistant?.tool_calls as Array<Record<string, unknown>> | undefined)?.[0];
+    expect(fullTool?.result).toBe(longToolResult);
+    expect(fullTool?.error).toBe(longToolError);
+    expect((fullAssistant as { _truncated?: string })._truncated).toBeUndefined();
   });
 
   test("POST /api/sessions/:sessionId/revert truncates later conversation history", async () => {
@@ -1755,9 +1831,9 @@ describe("Subagents API", () => {
     expect(spawnRes.data.status).toBe("accepted");
     expect(typeof spawnRes.data.subagentId).toBe("string");
     expect(typeof spawnRes.data.sessionKey).toBe("string");
-    expect((spawnRes.data.sessionKey as string).startsWith(`agent:${requestedAgentId}:subagent:`)).toBe(
-      true
-    );
+    expect(
+      (spawnRes.data.sessionKey as string).startsWith(`agent:${requestedAgentId}:subagent:`)
+    ).toBe(true);
 
     const getRes = await api("GET", `/api/subagents/${spawnRes.data.subagentId}`);
     expect(getRes.status).toBe(200);
@@ -1885,7 +1961,12 @@ describe("Metrics API", () => {
       tokenTotal,
       JSON.stringify({ url: `https://${provider}.example/v1` })
     );
-    insertRawMetric("api_call", provider, 3, JSON.stringify({ url: `https://${provider}.example/v1` }));
+    insertRawMetric(
+      "api_call",
+      provider,
+      3,
+      JSON.stringify({ url: `https://${provider}.example/v1` })
+    );
     insertRawMetric("tool_call", tool, 5);
     insertRawMetric("tool_error", tool, 1);
 
@@ -1910,9 +1991,9 @@ describe("Metrics API", () => {
     expect(toolRow?.calls).toBeGreaterThanOrEqual(5);
 
     expect(typeof insightsRes.data.toolReliability.successRatePct).toBe("number");
-    expect(insightsRes.data.modelInsights.some((entry: { model: string }) => entry.model === model)).toBe(
-      true
-    );
+    expect(
+      insightsRes.data.modelInsights.some((entry: { model: string }) => entry.model === model)
+    ).toBe(true);
   });
 });
 
