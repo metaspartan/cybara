@@ -2,6 +2,7 @@ import db, { tables } from "./database";
 import { agentManager } from "./agent";
 import { providerManager, providers } from "./providers";
 import type { ChatMessage } from "../api/chat";
+import { deriveSessionTitleFromMessages, normalizeSessionTitle } from "./session-title";
 import { existsSync, statSync } from "fs";
 import { homedir } from "os";
 import { isAbsolute, resolve } from "path";
@@ -50,32 +51,6 @@ export function normalizeSessionWorkspaceDir(workspaceDir?: string | null): stri
   return absolute;
 }
 
-const MAX_SESSION_TITLE_LENGTH = 140;
-
-function normalizeSessionTitle(value?: string | null): string | null {
-  if (typeof value !== "string") return null;
-  const normalized = value
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/[\r\n\t]+/g, " ");
-  if (!normalized) return null;
-  if (normalized.length <= MAX_SESSION_TITLE_LENGTH) return normalized;
-  return `${normalized.slice(0, MAX_SESSION_TITLE_LENGTH - 1).trimEnd()}…`;
-}
-
-function summarizeSessionUserPrompt(messages: ChatMessage[]): string | null {
-  const firstUserMessage = messages.find(
-    (message) =>
-      message.role === "user" && typeof message.content === "string" && message.content.trim()
-  );
-  if (!firstUserMessage) return null;
-  const normalized = firstUserMessage.content
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/[\r\n\t]+/g, " ");
-  return normalizeSessionTitle(normalized);
-}
-
 function resolveSessionAgentName(agentId: string): string | null {
   const inMemoryAgentName = agentManager.get(agentId)?.name;
   if (typeof inMemoryAgentName === "string" && inMemoryAgentName.trim().length > 0) {
@@ -97,18 +72,8 @@ function resolveSessionAgentName(agentId: string): string | null {
 }
 
 function deriveSessionTitle(messages: ChatMessage[], agentId: string): string {
-  const promptSummary = summarizeSessionUserPrompt(messages);
   const agentName = resolveSessionAgentName(agentId);
-  if (promptSummary && agentName) {
-    return normalizeSessionTitle(`${agentName}: ${promptSummary}`) || `${agentName} session`;
-  }
-  if (promptSummary) {
-    return promptSummary;
-  }
-  if (agentName) {
-    return normalizeSessionTitle(`${agentName} session`) || "Session";
-  }
-  return "Session";
+  return deriveSessionTitleFromMessages(messages, agentName);
 }
 
 const DEFAULT_CONTEXT_TOKENS = 200_000;

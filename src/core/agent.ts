@@ -395,6 +395,7 @@ interface AgentExecutionOptions {
   userId?: string;
   modelOverride?: string;
   requireToolUse?: boolean;
+  requiredToolName?: string;
 }
 
 interface RunningAgentState {
@@ -1536,6 +1537,10 @@ class AgentManager {
       permissions: permissions.permissions,
       enforcePermissions: permissions.enforcePermissions,
       requireToolUse: options?.requireToolUse === true,
+      requiredToolName:
+        typeof options?.requiredToolName === "string" && options.requiredToolName.trim().length > 0
+          ? options.requiredToolName.trim()
+          : undefined,
     };
   }
 
@@ -2165,6 +2170,11 @@ class AgentManager {
       providerInfo.id,
       modelId
     );
+    const modelContextWindowTokens = this.resolveModelContextWindowTokens(
+      providerConfig,
+      providerInfo.id,
+      modelId
+    );
 
     if (apiFamily === "anthropic-messages") {
       return this.callAnthropicAPI(
@@ -2214,6 +2224,7 @@ class AgentManager {
         {
           preferMaxCompletionTokens,
           maxOutputTokens: modelMaxOutputTokens,
+          contextWindowTokens: modelContextWindowTokens,
         }
       );
     }
@@ -2253,7 +2264,10 @@ class AgentManager {
       mergedHeaders,
       providerConfig,
       toolContext,
-      { maxOutputTokens: modelMaxOutputTokens }
+      {
+        maxOutputTokens: modelMaxOutputTokens,
+        contextWindowTokens: modelContextWindowTokens,
+      }
     );
   }
 
@@ -2497,7 +2511,9 @@ class AgentManager {
       lower.includes("context length") ||
       lower.includes("request_too_large") ||
       lower.includes("prompt is too long") ||
-      lower.includes("maximum context length")
+      lower.includes("maximum context length") ||
+      lower.includes("token limit") ||
+      lower.includes("exceeded model token limit")
     );
   }
 
@@ -2509,6 +2525,43 @@ class AgentManager {
       normalized.includes("max_completion_tokens") &&
       (normalized.includes("unsupported parameter") || normalized.includes("not supported"))
     );
+  }
+
+  private shouldRetryWithAutoToolChoice(
+    status: number,
+    errorText: string,
+    requestBody: Record<string, unknown>
+  ): boolean {
+    if (status !== 400) return false;
+
+    const toolChoice = requestBody.tool_choice;
+    if (toolChoice === undefined) return false;
+
+    const normalized = errorText.toLowerCase();
+    const mentionsToolChoice = normalized.includes("tool_choice");
+    const mentionsThinkingIncompatibility =
+      normalized.includes("thinking enabled") ||
+      normalized.includes("thinking is enabled") ||
+      normalized.includes("reasoning enabled") ||
+      (normalized.includes("incompatible") && normalized.includes("thinking"));
+    const alreadyAuto =
+      toolChoice === "auto" ||
+      (typeof toolChoice === "object" &&
+        toolChoice !== null &&
+        "type" in toolChoice &&
+        (toolChoice as { type?: unknown }).type === "auto");
+
+    return mentionsToolChoice && mentionsThinkingIncompatibility && !alreadyAuto;
+  }
+
+  private toAutoToolChoiceRequestBody(requestBody: Record<string, unknown>): Record<string, unknown> {
+    const nextBody: Record<string, unknown> = { ...requestBody };
+    if (nextBody.tools !== undefined) {
+      nextBody.tool_choice = "auto";
+    } else {
+      delete nextBody.tool_choice;
+    }
+    return nextBody;
   }
 
   private toMaxCompletionTokensRequestBody(
@@ -2543,6 +2596,121 @@ class AgentManager {
     requestBody.max_tokens = tokenLimit;
   }
 
+  private getOpenAITokenLimitFromRequestBody(
+    requestBody: Record<string, unknown>
+  ): number | undefined {
+    const completionLimit = requestBody.max_completion_tokens;
+    if (
+      typeof completionLimit === "number" &&
+      Number.isFinite(completionLimit) &&
+      completionLimit > 0
+    ) {
+      return Math.max(1, Math.floor(completionLimit));
+    }
+    const maxTokensLimit = requestBody.max_tokens;
+    if (
+      typeof maxTokensLimit === "number" &&
+      Number.isFinite(maxTokensLimit) &&
+      maxTokensLimit > 0
+    ) {
+      return Math.max(1, Math.floor(maxTokensLimit));
+    }
+    return undefined;
+  }
+
+  private setOpenAITokenLimitOnRequestBody(
+    requestBody: Record<string, unknown>,
+    tokenLimit: number
+  ): void {
+    const normalizedLimit =
+      Number.isFinite(tokenLimit) && tokenLimit > 0 ? Math.max(1, Math.floor(tokenLimit)) : 1;
+    if (typeof requestBody.max_completion_tokens === "number") {
+      delete requestBody.max_tokens;
+      requestBody.max_completion_tokens = normalizedLimit;
+      return;
+    }
+    if (typeof requestBody.max_tokens === "number") {
+      delete requestBody.max_completion_tokens;
+      requestBody.max_tokens = normalizedLimit;
+      return;
+    }
+    requestBody.max_tokens = normalizedLimit;
+  }
+
+  private estimateOpenAIRequestInputTokens(requestBody: Record<string, unknown>): number {
+    const payload: Record<string, unknown> = {};
+    if (requestBody.model !== undefined) payload.model = requestBody.model;
+    if (requestBody.messages !== undefined) payload.messages = requestBody.messages;
+    if (requestBody.tools !== undefined) payload.tools = requestBody.tools;
+    if (requestBody.tool_choice !== undefined) payload.tool_choice = requestBody.tool_choice;
+
+    try {
+      const serialized = JSON.stringify(payload);
+      if (!serialized) return 0;
+      return Math.max(1, Math.ceil(serialized.length / CONTEXT_CHARS_PER_TOKEN_ESTIMATE));
+    } catch {
+      return DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS;
+    }
+  }
+
+  private resolveOpenAIRequestTokenLimit(
+    requestBody: Record<string, unknown>,
+    maxOutputTokens: number,
+    contextWindowTokens?: number
+  ): number {
+    const requestedOutputTokens =
+      Number.isFinite(maxOutputTokens) && maxOutputTokens > 0
+        ? Math.max(1, Math.floor(maxOutputTokens))
+        : DEFAULT_MODEL_MAX_OUTPUT_TOKENS;
+    const normalizedContextWindow =
+      typeof contextWindowTokens === "number" &&
+      Number.isFinite(contextWindowTokens) &&
+      contextWindowTokens > 0
+        ? Math.max(1, Math.floor(contextWindowTokens))
+        : Math.max(requestedOutputTokens, DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS);
+
+    const estimatedInputTokens = this.estimateOpenAIRequestInputTokens(requestBody);
+    const reserveTokens = Math.max(128, Math.floor(normalizedContextWindow * 0.01));
+    const availableOutputTokens = Math.max(
+      1,
+      normalizedContextWindow - estimatedInputTokens - reserveTokens
+    );
+    return Math.max(1, Math.min(requestedOutputTokens, availableOutputTokens));
+  }
+
+  private reduceOpenAITokenLimitForContextRetry(
+    requestBody: Record<string, unknown>,
+    errorText: string
+  ): Record<string, unknown> | undefined {
+    const currentLimit = this.getOpenAITokenLimitFromRequestBody(requestBody);
+    if (!currentLimit) return undefined;
+
+    const normalizedError = errorText.toLowerCase();
+    let nextLimit = Math.max(1, Math.floor(currentLimit * 0.8));
+
+    const explicitLimitMatch = normalizedError.match(/limit:\s*(\d+)\s*\(requested:\s*(\d+)\)/i);
+    if (explicitLimitMatch) {
+      const limitValue = Number.parseInt(explicitLimitMatch[1] || "", 10);
+      const requestedValue = Number.parseInt(explicitLimitMatch[2] || "", 10);
+      if (
+        Number.isFinite(limitValue) &&
+        Number.isFinite(requestedValue) &&
+        requestedValue > limitValue
+      ) {
+        const overflow = requestedValue - limitValue;
+        nextLimit = Math.max(1, currentLimit - overflow - 64);
+      }
+    }
+
+    if (nextLimit >= currentLimit) {
+      return undefined;
+    }
+
+    const retryBody: Record<string, unknown> = { ...requestBody };
+    this.setOpenAITokenLimitOnRequestBody(retryBody, nextLimit);
+    return retryBody;
+  }
+
   private async postOpenAIChatCompletions(
     baseUrl: string,
     headers: Record<string, string>,
@@ -2556,24 +2724,62 @@ class AgentManager {
         body: JSON.stringify(body),
       });
 
-    const response = await post(requestBody);
-    if (response.ok) {
-      return (await response.json()) as OpenAIResponse;
-    }
+    let currentBody: Record<string, unknown> = { ...requestBody };
+    let attemptedMaxCompletionRetry = false;
+    let attemptedToolChoiceCompatibilityRetry = false;
+    let contextRetryCount = 0;
 
-    const errorText = await response.text();
-    if (this.shouldRetryWithMaxCompletionTokens(response.status, errorText)) {
-      console.log("[Agent] Retrying OpenAI request with max_completion_tokens");
-      const retryBody = this.toMaxCompletionTokensRequestBody(requestBody);
-      const retryResponse = await post(retryBody);
-      if (retryResponse.ok) {
-        return (await retryResponse.json()) as OpenAIResponse;
+    while (true) {
+      const response = await post(currentBody);
+      if (response.ok) {
+        return (await response.json()) as OpenAIResponse;
       }
-      const retryErrorText = await retryResponse.text();
-      throw new Error(`${errorPrefix}: ${retryResponse.status} - ${retryErrorText}`);
-    }
 
-    throw new Error(`${errorPrefix}: ${response.status} - ${errorText}`);
+      const errorText = await response.text();
+      if (
+        !attemptedMaxCompletionRetry &&
+        this.shouldRetryWithMaxCompletionTokens(response.status, errorText)
+      ) {
+        attemptedMaxCompletionRetry = true;
+        console.log("[Agent] Retrying OpenAI request with max_completion_tokens");
+        currentBody = this.toMaxCompletionTokensRequestBody(currentBody);
+        continue;
+      }
+
+      if (
+        !attemptedToolChoiceCompatibilityRetry &&
+        this.shouldRetryWithAutoToolChoice(response.status, errorText, currentBody)
+      ) {
+        attemptedToolChoiceCompatibilityRetry = true;
+        console.log(
+          "[Agent] Retrying OpenAI request with tool_choice=auto due to thinking/tool_choice incompatibility"
+        );
+        currentBody = this.toAutoToolChoiceRequestBody(currentBody);
+        continue;
+      }
+
+      if (
+        contextRetryCount < 2 &&
+        response.status === 400 &&
+        this.isContextWindowExceededError(errorText)
+      ) {
+        const retryBody = this.reduceOpenAITokenLimitForContextRetry(currentBody, errorText);
+        if (retryBody) {
+          contextRetryCount += 1;
+          const previousLimit = this.getOpenAITokenLimitFromRequestBody(currentBody);
+          const nextLimit = this.getOpenAITokenLimitFromRequestBody(retryBody);
+          if (previousLimit && nextLimit) {
+            console.log(
+              `[Agent] Retrying OpenAI request with reduced token limit (${previousLimit} -> ${nextLimit})`
+            );
+          }
+          currentBody = retryBody;
+          continue;
+        }
+      }
+
+      throw new Error(`${errorPrefix}: ${response.status} - ${errorText}`);
+    }
   }
 
   private async callOpenAICompatAPI(
@@ -2585,7 +2791,11 @@ class AgentManager {
     customHeaders?: Record<string, string>,
     providerConfig?: string,
     toolContext?: ToolContext,
-    options?: { preferMaxCompletionTokens?: boolean; maxOutputTokens?: number }
+    options?: {
+      preferMaxCompletionTokens?: boolean;
+      maxOutputTokens?: number;
+      contextWindowTokens?: number;
+    }
   ): Promise<{
     content: string;
     thinking?: string;
@@ -2596,6 +2806,12 @@ class AgentManager {
       typeof options?.maxOutputTokens === "number" && Number.isFinite(options.maxOutputTokens)
         ? options.maxOutputTokens
         : DEFAULT_MODEL_MAX_OUTPUT_TOKENS;
+    const contextWindowTokens =
+      typeof options?.contextWindowTokens === "number" &&
+      Number.isFinite(options.contextWindowTokens) &&
+      options.contextWindowTokens > 0
+        ? Math.max(1, Math.floor(options.contextWindowTokens))
+        : undefined;
     const requestBody: Record<string, unknown> = {
       model: modelId,
       messages: messages.map((m) => ({
@@ -2603,7 +2819,12 @@ class AgentManager {
         content: m.content,
       })),
     };
-    this.applyOpenAITokenLimit(requestBody, preferMaxCompletionTokens, maxOutputTokens);
+    const initialTokenLimit = this.resolveOpenAIRequestTokenLimit(
+      requestBody,
+      maxOutputTokens,
+      contextWindowTokens
+    );
+    this.applyOpenAITokenLimit(requestBody, preferMaxCompletionTokens, initialTokenLimit);
 
     if (tools && Array.isArray(tools) && tools.length > 0) {
       requestBody.tools = tools.map((t) => ({
@@ -2615,7 +2836,17 @@ class AgentManager {
         },
       }));
       if (toolContext?.requireToolUse === true) {
-        requestBody.tool_choice = "required";
+        const requiredToolName = toolContext.requiredToolName?.trim();
+        const hasRequiredTool =
+          typeof requiredToolName === "string" &&
+          requiredToolName.length > 0 &&
+          tools.some((tool) => tool.name === requiredToolName);
+        requestBody.tool_choice = hasRequiredTool
+          ? {
+              type: "function",
+              function: { name: requiredToolName },
+            }
+          : "required";
       }
     }
 
@@ -2757,7 +2988,12 @@ class AgentManager {
         model: modelId,
         messages: currentMessages,
       };
-      this.applyOpenAITokenLimit(loopRequestBody, preferMaxCompletionTokens, maxOutputTokens);
+      const loopTokenLimit = this.resolveOpenAIRequestTokenLimit(
+        loopRequestBody,
+        maxOutputTokens,
+        contextWindowTokens
+      );
+      this.applyOpenAITokenLimit(loopRequestBody, preferMaxCompletionTokens, loopTokenLimit);
 
       if (tools && Array.isArray(tools) && tools.length > 0) {
         loopRequestBody.tools = tools.map((t) => ({

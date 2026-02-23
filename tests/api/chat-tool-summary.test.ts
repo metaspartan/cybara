@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildToolExecutionFallbackMessage,
   shouldEnforceToolUseForMessage,
+  shouldPreferArtifactsForMessage,
 } from "../../src/api/chat-tool-summary";
 
 describe("chat tool summary utilities", () => {
@@ -29,5 +30,15 @@ describe("chat tool summary utilities", () => {
   test("does not force tools for greetings or capability questions", () => {
     expect(shouldEnforceToolUseForMessage("hello what can you do")).toBe(false);
     expect(shouldEnforceToolUseForMessage("thanks")).toBe(false);
+  });
+
+  test("detects artifact-focused prompts for artifact-preferred tool execution", () => {
+    expect(
+      shouldPreferArtifactsForMessage("audit this codebase and create an artifact report when done")
+    ).toBe(true);
+    expect(
+      shouldPreferArtifactsForMessage("make an implementation.md.resolved and walkthrough.md.resolved")
+    ).toBe(true);
+    expect(shouldPreferArtifactsForMessage("hello what can you do")).toBe(false);
   });
 });

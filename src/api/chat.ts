@@ -21,6 +21,12 @@ import {
   getContextWindow,
   normalizeSessionWorkspaceDir,
 } from "../core/session-context";
+import {
+  deriveSessionTitleFromMessages,
+  deriveSessionTitleFromTurn,
+  normalizeSessionTitle,
+  shouldRegenerateSessionTitle,
+} from "../core/session-title";
 import { handleMemorySave } from "../core/tools/handlers/memory";
 import {
   trackSessionTokens,
@@ -34,6 +40,7 @@ import { emitAgentHook } from "../core/agent-hooks";
 import {
   buildToolExecutionFallbackMessage,
   shouldEnforceToolUseForMessage,
+  shouldPreferArtifactsForMessage,
 } from "./chat-tool-summary";
 export interface ProcessActivityInfo {
   id: string;
@@ -87,37 +94,6 @@ export interface ChatResponse {
   tool_calls?: ToolCallInfo[];
 }
 
-const MAX_SESSION_TITLE_LENGTH = 140;
-
-function normalizeSessionTitle(value?: string | null): string | null {
-  if (typeof value !== "string") return null;
-  const normalized = value
-    .trim()
-    .replace(/[\r\n\t]+/g, " ")
-    .replace(/\s+/g, " ");
-  if (!normalized) return null;
-  if (normalized.length <= MAX_SESSION_TITLE_LENGTH) return normalized;
-  return `${normalized.slice(0, MAX_SESSION_TITLE_LENGTH - 1).trimEnd()}…`;
-}
-
-function summarizeTitleFromMessage(message: string): string | null {
-  return normalizeSessionTitle(message);
-}
-
-function deriveSessionTitle(agentName: string | undefined, message: string): string {
-  const summary = summarizeTitleFromMessage(message);
-  const normalizedAgentName = normalizeSessionTitle(agentName);
-  if (summary && normalizedAgentName) {
-    return (
-      normalizeSessionTitle(`${normalizedAgentName}: ${summary}`) ||
-      `${normalizedAgentName} session`
-    );
-  }
-  if (summary) return summary;
-  if (normalizedAgentName) return `${normalizedAgentName} session`;
-  return "Session";
-}
-
 const chatSessions = new Map<
   string,
   {
@@ -141,10 +117,13 @@ async function loadPersistedSessions() {
     for (const sessionInfo of sessions) {
       const session = await loadPersistedSession(sessionInfo.id);
       if (session) {
+        const resolvedTitle = shouldRegenerateSessionTitle(session.title || sessionInfo.title)
+          ? deriveSessionTitleFromMessages(session.messages)
+          : normalizeSessionTitle(session.title || sessionInfo.title);
         chatSessions.set(sessionInfo.id, {
           id: sessionInfo.id,
           agentId: session.agentId,
-          title: session.title || sessionInfo.title || null,
+          title: resolvedTitle,
           messages: session.messages,
           createdAt: sessionInfo.createdAt,
           updatedAt: sessionInfo.updatedAt || sessionInfo.createdAt,
@@ -304,9 +283,6 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   }
 
   const agent = agentManager.get(session.agentId);
-  if (!session.title) {
-    session.title = deriveSessionTitle(agent?.name, message);
-  }
   const hookContext = {
     agentId: agent?.id,
     sessionId: session.id,
@@ -455,35 +431,50 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
         role: sessionMessage.role,
         content: sessionMessage.content,
       }));
+      const shouldPreferArtifacts = tools && shouldPreferArtifactsForMessage(message);
       let result = await agentManager.execute(agent.id, executionMessages, {
         useTools: tools,
         sessionId: session.id,
+        requireToolUse: shouldPreferArtifacts,
+        requiredToolName: shouldPreferArtifacts ? "artifacts" : undefined,
         workspaceDir: session.workspaceDir || undefined,
       });
       responseContent = result.content;
 
       let toolResults = result.tool_calls || [];
-      const shouldForceToolExecution = tools && shouldEnforceToolUseForMessage(message);
-      if (shouldForceToolExecution && toolResults.length === 0) {
+      const shouldForceToolExecution =
+        tools && (shouldEnforceToolUseForMessage(message) || shouldPreferArtifacts);
+      const hasArtifactsToolCall = toolResults.some((toolCall) => toolCall.name === "artifacts");
+      if (
+        shouldForceToolExecution &&
+        (toolResults.length === 0 || (shouldPreferArtifacts && !hasArtifactsToolCall))
+      ) {
         try {
+          const forcedInstruction = shouldPreferArtifacts
+            ? "Use the `artifacts` tool now to create or update the relevant .md.resolved artifact(s) for this request before responding. Perform concrete tool calls first, then summarize outcomes."
+            : "Execute the request now using available tools. Do not provide only a plan or intent. Perform concrete tool calls and then summarize the results.";
           const forcedMessages: AgentMessage[] = [
             ...executionMessages,
             {
               role: "user",
-              content:
-                "Execute the request now using available tools. Do not provide only a plan or intent. Perform concrete tool calls and then summarize the results.",
+              content: forcedInstruction,
             },
           ];
           const forcedResult = await agentManager.execute(agent.id, forcedMessages, {
             useTools: true,
             sessionId: session.id,
             requireToolUse: true,
+            requiredToolName: shouldPreferArtifacts ? "artifacts" : undefined,
             workspaceDir: session.workspaceDir || undefined,
           });
-          if ((forcedResult.tool_calls || []).length > 0) {
+          const forcedToolCalls = forcedResult.tool_calls || [];
+          const forcedHasArtifacts = forcedToolCalls.some(
+            (toolCall) => toolCall.name === "artifacts"
+          );
+          if (forcedToolCalls.length > 0 && (!shouldPreferArtifacts || forcedHasArtifacts)) {
             result = forcedResult;
             responseContent = forcedResult.content;
-            toolResults = forcedResult.tool_calls || [];
+            toolResults = forcedToolCalls;
           }
         } catch (toolRetryError) {
           console.warn(
@@ -689,6 +680,9 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   };
   session.messages.push(assistantMessage);
   session.updatedAt = assistantMessage.timestamp || new Date().toISOString();
+  if (!session.title) {
+    session.title = deriveSessionTitleFromTurn(message, cleanContent, agent?.name);
+  }
 
   await logSessionMessage(session.id, "assistant", cleanContent, {
     agentId: agent?.id,
@@ -758,7 +752,12 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
 
 export async function getSession(sessionId: string) {
   const session = chatSessions.get(sessionId);
-  if (session) return session;
+  if (session) {
+    if (shouldRegenerateSessionTitle(session.title)) {
+      session.title = deriveSessionTitleFromMessages(session.messages);
+    }
+    return session;
+  }
 
   const subagentSession = getSubagentSession(sessionId);
   if (subagentSession) {
@@ -780,10 +779,13 @@ export async function getSession(sessionId: string) {
   const persisted = await loadPersistedSession(sessionId);
   if (persisted) {
     const nowIso = new Date().toISOString();
+    const resolvedTitle = shouldRegenerateSessionTitle(persisted.title)
+      ? deriveSessionTitleFromMessages(persisted.messages)
+      : normalizeSessionTitle(persisted.title);
     const restoredSession = {
       id: sessionId,
       agentId: persisted.agentId,
-      title: persisted.title,
+      title: resolvedTitle,
       messages: persisted.messages,
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -816,7 +818,9 @@ export async function listSessions(): Promise<
   const memorySessions = Array.from(chatSessions.values()).map((s) => ({
     id: s.id,
     agentId: s.agentId,
-    title: s.title || null,
+    title: shouldRegenerateSessionTitle(s.title)
+      ? deriveSessionTitleFromMessages(s.messages)
+      : normalizeSessionTitle(s.title),
     messageCount: s.messages.length,
     createdAt: s.createdAt,
     updatedAt: s.updatedAt || s.createdAt,
@@ -1127,11 +1131,14 @@ export async function updateSessionTitle(
 export function sendToSession(sessionKey: string, message: ChatMessage): boolean {
   const session = chatSessions.get(sessionKey);
   if (session) {
-    if (!session.title && message.role === "user") {
-      session.title = deriveSessionTitle(agentManager.get(session.agentId)?.name, message.content);
-    }
     session.messages.push(message);
     session.updatedAt = message.timestamp || new Date().toISOString();
+    if (!session.title && session.messages.some((entry) => entry.role === "assistant")) {
+      session.title = deriveSessionTitleFromMessages(
+        session.messages,
+        agentManager.get(session.agentId)?.name
+      );
+    }
     console.log(`[Chat] Injected message into session ${sessionKey.slice(0, 20)}...`);
     return true;
   }

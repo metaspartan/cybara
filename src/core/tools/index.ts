@@ -36,6 +36,7 @@ export interface ToolContext {
   enforcePermissions?: boolean;
   allowDangerousTools?: boolean;
   requireToolUse?: boolean;
+  requiredToolName?: string;
 }
 
 export interface Tool {

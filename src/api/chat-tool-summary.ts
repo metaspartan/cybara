@@ -142,3 +142,18 @@ export function shouldEnforceToolUseForMessage(message: string): boolean {
 
   return hasActionVerb && hasWorkContext;
 }
+
+const ARTIFACT_INTENT_PATTERNS = [
+  /\bartifact(?:s)?\b/i,
+  /\.md\.resolved\b/i,
+  /\bimplementation\.md\b/i,
+  /\bwalkthrough\.md\b/i,
+  /\btask\s+checklist\b/i,
+  /\bartifact\s+report\b/i,
+];
+
+export function shouldPreferArtifactsForMessage(message: string): boolean {
+  const trimmed = message.trim();
+  if (trimmed.length < 6) return false;
+  return ARTIFACT_INTENT_PATTERNS.some((pattern) => pattern.test(trimmed));
+}

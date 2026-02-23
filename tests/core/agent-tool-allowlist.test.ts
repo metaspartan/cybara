@@ -355,6 +355,289 @@ describe("Agent tool allowlist guardrails", () => {
     expect(requestBodies[0].max_completion_tokens).toBe(expectedTokenLimit);
   });
 
+  test("targets artifacts tool when requireToolUse is enabled with requiredToolName", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "OpenAI Required Tool Provider",
+      api_key: "sk-test-required-tool",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "OpenAI Required Tool Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-5.2",
+      tools: [
+        {
+          name: "artifacts",
+          description: "Manage session artifacts",
+          input_schema: {
+            type: "object",
+            properties: { action: { type: "string" } },
+            required: ["action"],
+          },
+        },
+      ],
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    const requestBodies: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      requestBodies.push(body as Record<string, unknown>);
+
+      return new Response(
+        JSON.stringify({
+          id: "resp-required-tool",
+          object: "chat.completion",
+          model: "gpt-5.2",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "ok",
+              },
+            },
+          ],
+          usage: { prompt_tokens: 7, completion_tokens: 1, total_tokens: 8 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "create an artifact report" }],
+      {
+        useTools: true,
+        sessionId: "required-tool-session",
+        requireToolUse: true,
+        requiredToolName: "artifacts",
+      }
+    );
+
+    expect(result.content).toBe("ok");
+    expect(requestBodies.length).toBe(1);
+    expect(requestBodies[0].tool_choice).toEqual({
+      type: "function",
+      function: { name: "artifacts" },
+    });
+  });
+
+  test("retries with tool_choice auto when required tool choice is incompatible with thinking", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "OpenAI Tool Choice Compatibility Provider",
+      api_key: "sk-test-tool-choice-compat",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "OpenAI Tool Choice Compatibility Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-5.2",
+      tools: [
+        {
+          name: "artifacts",
+          description: "Manage session artifacts",
+          input_schema: {
+            type: "object",
+            properties: { action: { type: "string" } },
+            required: ["action"],
+          },
+        },
+      ],
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    let requestCount = 0;
+    const requestBodies: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestCount += 1;
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      requestBodies.push(body as Record<string, unknown>);
+
+      if (requestCount === 1) {
+        return new Response(
+          JSON.stringify({
+            error: {
+              message: "tool_choice 'required' is incompatible with thinking enabled",
+              type: "invalid_request_error",
+            },
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          id: "resp-tool-choice-compat",
+          object: "chat.completion",
+          model: "gpt-5.2",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "ok-after-tool-choice-retry",
+              },
+            },
+          ],
+          usage: { prompt_tokens: 9, completion_tokens: 2, total_tokens: 11 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "create an artifact report" }],
+      {
+        useTools: true,
+        sessionId: "tool-choice-compat-session",
+        requireToolUse: true,
+        requiredToolName: "artifacts",
+      }
+    );
+
+    expect(result.content).toBe("ok-after-tool-choice-retry");
+    expect(requestBodies.length).toBe(2);
+    expect(requestBodies[0].tool_choice).toEqual({
+      type: "function",
+      function: { name: "artifacts" },
+    });
+    expect(requestBodies[1].tool_choice).toBe("auto");
+  });
+
+  test("retries openai-compatible loop calls with a reduced token cap on context overflow", async () => {
+    const provider = providerManager.create({
+      provider: "kimi-code",
+      name: "Kimi Context Retry Provider",
+      api_key: "kimi-test-key",
+      base_url: "https://api.kimi.com/coding/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const calcTool: ToolDefinition = {
+      name: "calc",
+      description: "Evaluate math expressions",
+      input_schema: {
+        type: "object",
+        properties: { expression: { type: "string" } },
+        required: ["expression"],
+      },
+    };
+
+    const agent = agentManager.create({
+      name: "Kimi Context Retry Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "kimi-for-coding",
+      tools: [calcTool],
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    let completionCalls = 0;
+    let failedLoopBody: Record<string, unknown> | undefined;
+    let retriedLoopBody: Record<string, unknown> | undefined;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      completionCalls += 1;
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+
+      if (completionCalls === 1) {
+        return new Response(
+          JSON.stringify({
+            id: "resp-kimi-context-1",
+            object: "chat.completion",
+            model: "kimi-for-coding",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "tool_calls",
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: "call-kimi-context-1",
+                      type: "function",
+                      function: {
+                        name: "calc",
+                        arguments: JSON.stringify({ expression: "2+2" }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+            usage: { prompt_tokens: 8, completion_tokens: 3, total_tokens: 11 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      if (completionCalls === 2) {
+        failedLoopBody = body;
+        return new Response(
+          JSON.stringify({
+            error: {
+              message:
+                "Invalid request: Your request exceeded model token limit: 262144 (requested: 266235)",
+              type: "invalid_request_error",
+            },
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      retriedLoopBody = body;
+      return new Response(
+        JSON.stringify({
+          id: "resp-kimi-context-2",
+          object: "chat.completion",
+          model: "kimi-for-coding",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "context-retry-ok",
+              },
+            },
+          ],
+          usage: { prompt_tokens: 8, completion_tokens: 1, total_tokens: 9 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "calculate 2+2" }],
+      { useTools: true, sessionId: "kimi-context-retry-session" }
+    );
+
+    expect(result.content).toBe("context-retry-ok");
+    expect(completionCalls).toBe(3);
+    expect(failedLoopBody).toBeDefined();
+    expect(retriedLoopBody).toBeDefined();
+
+    const failedLimit = Number(failedLoopBody?.max_tokens || 0);
+    const retriedLimit = Number(retriedLoopBody?.max_tokens || 0);
+    expect(failedLimit).toBeGreaterThan(0);
+    expect(retriedLimit).toBeGreaterThan(0);
+    expect(retriedLimit).toBeLessThan(failedLimit);
+  });
+
   test("preserves assistant reasoning_content in openai-compatible tool loops", async () => {
     const provider = providerManager.create({
       provider: "kimi-code",
