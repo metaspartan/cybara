@@ -813,6 +813,162 @@ function validateProviderCredentialShape(
   }
 }
 
+interface DictationAudioPayload {
+  bytes: Uint8Array;
+  mimeType: string;
+}
+
+function decodeDictationAudioBase64(
+  rawBase64: string,
+  fallbackMimeType: string
+): DictationAudioPayload {
+  const trimmed = rawBase64.trim();
+  if (!trimmed) {
+    throw new Error("Validation error: Audio payload is empty");
+  }
+
+  let mimeType = fallbackMimeType || "audio/webm";
+  let base64 = trimmed;
+  const dataUrlMatch = /^data:([^;,]+);base64,(.+)$/i.exec(trimmed);
+  if (dataUrlMatch) {
+    mimeType = dataUrlMatch[1] || mimeType;
+    base64 = dataUrlMatch[2] || "";
+  }
+
+  const normalized = base64.replace(/\s+/g, "");
+  if (!normalized) {
+    throw new Error("Validation error: Audio payload is empty");
+  }
+
+  let bytes: Uint8Array;
+  try {
+    bytes = new Uint8Array(Buffer.from(normalized, "base64"));
+  } catch {
+    throw new Error("Validation error: Audio payload is not valid base64");
+  }
+
+  if (bytes.length === 0) {
+    throw new Error("Validation error: Audio payload decoded to zero bytes");
+  }
+
+  const maxBytes = 25 * 1024 * 1024;
+  if (bytes.length > maxBytes) {
+    throw new Error("Validation error: Audio payload exceeds 25MB limit");
+  }
+
+  return { bytes, mimeType };
+}
+
+function pickDictationProvider(preferredProviderId?: string) {
+  if (preferredProviderId) {
+    const provider = providerManager.getWithCredentials(preferredProviderId);
+    if (!provider) {
+      throw new Error("Validation error: Requested dictation provider ID is invalid");
+    }
+    const resolved = resolveProviderType(provider.provider);
+    if (resolved !== "openai" && resolved !== "openai-codex") {
+      throw new Error(
+        "Validation error: Requested dictation provider must be OpenAI or OpenAI Codex"
+      );
+    }
+    return provider;
+  }
+
+  const providersWithCredentials = providerManager
+    .list()
+    .map((p) => providerManager.getWithCredentials(p.id))
+    .filter(
+      (provider): provider is NonNullable<typeof provider> =>
+        !!provider &&
+        !!(provider.api_key || provider.access_token) &&
+        (() => {
+          const resolved = resolveProviderType(provider.provider);
+          return resolved === "openai" || resolved === "openai-codex";
+        })()
+    );
+
+  if (providersWithCredentials.length === 0) {
+    throw new Error(
+      "No dictation provider configured. Add an OpenAI or OpenAI Codex provider with valid credentials."
+    );
+  }
+
+  const defaultProvider = providersWithCredentials.find((provider) => !!provider.is_default);
+  return defaultProvider || providersWithCredentials[0];
+}
+
+async function transcribeWithOpenAICompatibleProvider(input: {
+  provider: ReturnType<typeof providerManager.getWithCredentials>;
+  bytes: Uint8Array;
+  mimeType: string;
+  fileName: string;
+  model?: string;
+}): Promise<{ text: string; model: string }> {
+  const provider = input.provider;
+  if (!provider) {
+    throw new Error("No dictation provider available");
+  }
+
+  const authToken = provider.api_key || provider.access_token;
+  if (!authToken) {
+    throw new Error("No API credentials available for dictation provider");
+  }
+
+  const providerInfo = providers[(resolveProviderType(provider.provider) || provider.provider) as ProviderType];
+  const baseUrl = (provider.base_url || providerInfo?.baseUrl || "https://api.openai.com/v1").replace(
+    /\/+$/,
+    ""
+  );
+  const candidateModels = [input.model?.trim(), "gpt-4o-mini-transcribe", "whisper-1"].filter(
+    (value): value is string => !!value
+  );
+  const uniqueModels = [...new Set(candidateModels)];
+
+  const extension = input.fileName.includes(".")
+    ? input.fileName.split(".").pop() || "webm"
+    : input.mimeType.includes("ogg")
+      ? "ogg"
+      : input.mimeType.includes("wav")
+        ? "wav"
+        : "webm";
+
+  let lastErrorText = "";
+  for (const model of uniqueModels) {
+    const formData = new FormData();
+    const file = new File([input.bytes], `${input.fileName.replace(/\.[^.]+$/, "")}.${extension}`, {
+      type: input.mimeType || "audio/webm",
+    });
+    formData.append("file", file);
+    formData.append("model", model);
+
+    const response = await fetch(`${baseUrl}/audio/transcriptions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: formData,
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      lastErrorText = errorText;
+      continue;
+    }
+
+    const payload = (await response.json()) as { text?: string };
+    const text = (payload.text || "").trim();
+    if (!text) {
+      throw new Error("Dictation transcription succeeded but returned empty text");
+    }
+    return { text, model };
+  }
+
+  throw new Error(
+    `Dictation transcription failed: ${lastErrorText || "Provider returned an unsupported response"}`
+  );
+}
+
 function resolveWorkspacePath(filePath?: string): string {
   if (!filePath || typeof filePath !== "string") {
     return process.cwd();
@@ -3057,6 +3213,46 @@ const routes: Record<string, RouteHandler> = {
       tools?: boolean;
     };
     return await handleChat(data);
+  },
+  "POST /api/speech/dictate": async (body) => {
+    const data = body as {
+      audioBase64?: string;
+      mimeType?: string;
+      fileName?: string;
+      model?: string;
+      providerId?: string;
+    };
+
+    if (!data.audioBase64 || typeof data.audioBase64 !== "string") {
+      throw new Error("Validation error: audioBase64 is required");
+    }
+
+    const fallbackMimeType =
+      typeof data.mimeType === "string" && data.mimeType.trim()
+        ? data.mimeType.trim()
+        : "audio/webm";
+    const decoded = decodeDictationAudioBase64(data.audioBase64, fallbackMimeType);
+    const provider = pickDictationProvider(
+      typeof data.providerId === "string" && data.providerId.trim() ? data.providerId.trim() : undefined
+    );
+    const result = await transcribeWithOpenAICompatibleProvider({
+      provider,
+      bytes: decoded.bytes,
+      mimeType: decoded.mimeType,
+      fileName:
+        typeof data.fileName === "string" && data.fileName.trim()
+          ? data.fileName.trim()
+          : "dictation.webm",
+      model: typeof data.model === "string" ? data.model.trim() : undefined,
+    });
+
+    return {
+      success: true,
+      text: result.text,
+      providerId: provider.id,
+      providerType: provider.provider,
+      model: result.model,
+    };
   },
   "GET /api/chat/sessions": () => listSessions(),
   "GET /api/chat/sessions/:id": async (_body, params) => {

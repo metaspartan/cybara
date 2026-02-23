@@ -732,6 +732,27 @@ describe("Providers OAuth API", () => {
   });
 });
 
+describe("Speech API", () => {
+  test("POST /api/speech/dictate should reject missing audio payload", async () => {
+    const { status, data } = await api("POST", "/api/speech/dictate", {});
+    expect(status).toBe(400);
+    expect(data.code).toBe("VALIDATION_ERROR");
+    expect(String(data.error)).toContain("audioBase64 is required");
+  });
+
+  test("POST /api/speech/dictate should reject unknown requested provider", async () => {
+    const { status, data } = await api("POST", "/api/speech/dictate", {
+      providerId: `missing-provider-${Date.now()}`,
+      audioBase64: "Zm9v",
+      mimeType: "audio/webm",
+      fileName: "dictation.webm",
+    });
+    expect(status).toBe(400);
+    expect(data.code).toBe("VALIDATION_ERROR");
+    expect(String(data.error)).toContain("Requested dictation provider ID is invalid");
+  });
+});
+
 describe("Channels API", () => {
   test("GET /api/channels should return array", async () => {
     const { status, data } = await api("GET", "/api/channels");

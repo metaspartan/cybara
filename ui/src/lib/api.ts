@@ -772,6 +772,23 @@ export const chatApi = {
       body: JSON.stringify({ message, agentId, sessionId, workspaceDir }),
       signal,
     }),
+  dictate: (payload: {
+    audioBase64: string;
+    mimeType?: string;
+    fileName?: string;
+    model?: string;
+    providerId?: string;
+  }) =>
+    fetchApi<{
+      success: boolean;
+      text: string;
+      providerId: string;
+      providerType: string;
+      model: string;
+    }>("/speech/dictate", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   getSessions: () =>
     fetchApi<
       {

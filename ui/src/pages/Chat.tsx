@@ -2687,11 +2687,17 @@ export function Chat() {
   const [liveActivities, setLiveActivities] = useState<LiveActivityItem[]>([]);
   const [dictationSupported, setDictationSupported] = useState(false);
   const [dictating, setDictating] = useState(false);
+  const [dictationTranscribing, setDictationTranscribing] = useState(false);
+  const [composerHeight, setComposerHeight] = useState(88);
   const [messageProcessMap, setMessageProcessMap] = useState<Record<string, LiveActivityItem[]>>(() =>
     readPersistedMessageProcessMap()
   );
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const composerRef = useRef<HTMLDivElement | null>(null);
   const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const dictationStreamRef = useRef<MediaStream | null>(null);
+  const dictationChunksRef = useRef<Blob[]>([]);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeSessionRef = useRef<string | null>(null);
@@ -2736,13 +2742,24 @@ export function Chat() {
     }
     const speechWindow = window as SpeechRecognitionWindow;
     const SpeechCtor = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
-    setDictationSupported(!!SpeechCtor);
+    const canRecordAudio =
+      !!window.navigator?.mediaDevices?.getUserMedia && typeof window.MediaRecorder !== "undefined";
+    setDictationSupported(!!SpeechCtor || canRecordAudio);
   }, []);
 
   useEffect(() => {
     return () => {
       if (speechRecognitionRef.current) {
         speechRecognitionRef.current.stop();
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
+      if (dictationStreamRef.current) {
+        for (const track of dictationStreamRef.current.getTracks()) {
+          track.stop();
+        }
+        dictationStreamRef.current = null;
       }
     };
   }, []);
@@ -3162,6 +3179,28 @@ export function Chat() {
     inputEl.style.height = `${Math.min(inputEl.scrollHeight, 220)}px`;
   }, [input]);
 
+  useEffect(() => {
+    const composerEl = composerRef.current;
+    if (!composerEl) return;
+
+    const updateComposerHeight = () => {
+      const nextHeight = composerEl.offsetHeight;
+      setComposerHeight((previous) => (previous === nextHeight ? previous : nextHeight));
+    };
+
+    updateComposerHeight();
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(() => {
+        updateComposerHeight();
+      });
+      observer.observe(composerEl);
+      return () => observer.disconnect();
+    }
+
+    window.addEventListener("resize", updateComposerHeight);
+    return () => window.removeEventListener("resize", updateComposerHeight);
+  }, []);
+
   const handleSend = async () => {
     const sessionCurrentlyActive = !!sessionId && activeSessionIds.includes(sessionId);
     if (!input.trim() || isLoading || sessionCurrentlyActive) return;
@@ -3200,69 +3239,173 @@ export function Chat() {
     pendingProcessCaptureRef.current = null;
   }, [selectedAgentId, sessionAgentId, stopGenerating, stopAgent, sessionId]);
 
-  const handleToggleDictation = useCallback(() => {
+  const handleToggleDictation = useCallback(async () => {
     if (!dictationSupported || typeof window === "undefined") return;
+    const appendDictationText = (text: string) => {
+      const normalized = text.trim();
+      if (!normalized) return;
+      setInput((previous) => {
+        const trimmed = previous.trimEnd();
+        return trimmed.length > 0 ? `${trimmed} ${normalized}` : normalized;
+      });
+    };
+
     const speechWindow = window as SpeechRecognitionWindow;
     const SpeechCtor = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
-    if (!SpeechCtor) return;
+    if (SpeechCtor) {
+      if (!speechRecognitionRef.current) {
+        const recognition = new SpeechCtor();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = "en-US";
+        recognition.onresult = (event) => {
+          const results = event.results;
+          if (!results || typeof results.length !== "number" || results.length === 0) return;
+          const startIndex =
+            typeof event.resultIndex === "number" && Number.isFinite(event.resultIndex)
+              ? event.resultIndex
+              : 0;
+          const finalChunks: string[] = [];
 
-    if (!speechRecognitionRef.current) {
-      const recognition = new SpeechCtor();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = "en-US";
-      recognition.onresult = (event) => {
-        const results = event.results;
-        if (!results || typeof results.length !== "number" || results.length === 0) return;
-        const startIndex =
-          typeof event.resultIndex === "number" && Number.isFinite(event.resultIndex)
-            ? event.resultIndex
-            : 0;
-        const finalChunks: string[] = [];
-
-        for (let index = startIndex; index < results.length; index += 1) {
-          const result = results[index];
-          const alt = result?.[0];
-          const transcript = typeof alt?.transcript === "string" ? alt.transcript.trim() : "";
-          if (!transcript) continue;
-          if (result?.isFinal) {
-            finalChunks.push(transcript);
+          for (let index = startIndex; index < results.length; index += 1) {
+            const result = results[index];
+            const alt = result?.[0];
+            const transcript = typeof alt?.transcript === "string" ? alt.transcript.trim() : "";
+            if (!transcript) continue;
+            if (result?.isFinal) {
+              finalChunks.push(transcript);
+            }
           }
-        }
 
-        if (finalChunks.length === 0) return;
-        const text = finalChunks.join(" ").trim();
-        if (!text) return;
-        setInput((previous) => {
-          const trimmed = previous.trimEnd();
-          return trimmed.length > 0 ? `${trimmed} ${text}` : text;
-        });
-      };
-      recognition.onerror = (event) => {
-        console.error("Dictation error:", event?.error || "unknown");
-        setDictating(false);
-      };
-      recognition.onend = () => {
-        setDictating(false);
-      };
-      speechRecognitionRef.current = recognition;
-    }
+          if (finalChunks.length === 0) return;
+          appendDictationText(finalChunks.join(" "));
+        };
+        recognition.onerror = (event) => {
+          console.error("Dictation error:", event?.error || "unknown");
+          setDictating(false);
+        };
+        recognition.onend = () => {
+          setDictating(false);
+        };
+        speechRecognitionRef.current = recognition;
+      }
 
-    const recognition = speechRecognitionRef.current;
-    if (!recognition) return;
-    if (dictating) {
-      recognition.stop();
-      setDictating(false);
+      const recognition = speechRecognitionRef.current;
+      if (!recognition) return;
+      if (dictating) {
+        recognition.stop();
+        setDictating(false);
+        return;
+      }
+      try {
+        recognition.start();
+        setDictating(true);
+      } catch (error) {
+        console.error("Failed to start dictation:", error);
+        setDictating(false);
+      }
       return;
     }
+
+    const canRecordAudio =
+      !!window.navigator?.mediaDevices?.getUserMedia && typeof window.MediaRecorder !== "undefined";
+    if (!canRecordAudio) return;
+
+    if (dictationTranscribing) return;
+
+    if (dictating) {
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state !== "inactive") {
+        recorder.stop();
+      }
+      return;
+    }
+
     try {
-      recognition.start();
+      const stream = await window.navigator.mediaDevices.getUserMedia({ audio: true });
+      dictationStreamRef.current = stream;
+      dictationChunksRef.current = [];
+
+      const mimeCandidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+      const selectedMimeType = mimeCandidates.find((candidate) =>
+        window.MediaRecorder.isTypeSupported(candidate)
+      );
+      const recorder = selectedMimeType
+        ? new window.MediaRecorder(stream, { mimeType: selectedMimeType })
+        : new window.MediaRecorder(stream);
+      const recorderMimeType = recorder.mimeType || selectedMimeType || "audio/webm";
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          dictationChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onerror = (event) => {
+        console.error("Dictation recorder error:", event);
+        setDictating(false);
+        setDictationTranscribing(false);
+      };
+
+      recorder.onstop = async () => {
+        setDictating(false);
+        const chunks = [...dictationChunksRef.current];
+        dictationChunksRef.current = [];
+        mediaRecorderRef.current = null;
+        if (dictationStreamRef.current) {
+          for (const track of dictationStreamRef.current.getTracks()) {
+            track.stop();
+          }
+          dictationStreamRef.current = null;
+        }
+
+        if (chunks.length === 0) return;
+
+        try {
+          setDictationTranscribing(true);
+          const blob = new Blob(chunks, { type: recorderMimeType });
+          const bytes = new Uint8Array(await blob.arrayBuffer());
+          let binary = "";
+          const chunkSize = 0x8000;
+          for (let index = 0; index < bytes.length; index += chunkSize) {
+            binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+          }
+          const audioBase64 = btoa(binary);
+          const response = await chatApi.dictate({
+            audioBase64,
+            mimeType: recorderMimeType,
+            fileName: "dictation.webm",
+          });
+          if (response.success && response.data?.text) {
+            appendDictationText(response.data.text);
+          } else {
+            console.error(
+              "Dictation transcription failed:",
+              response.error || "No transcript was returned"
+            );
+          }
+        } catch (error) {
+          console.error("Dictation transcription error:", error);
+        } finally {
+          setDictationTranscribing(false);
+        }
+      };
+
+      recorder.start(250);
       setDictating(true);
     } catch (error) {
-      console.error("Failed to start dictation:", error);
+      console.error("Failed to start dictation recording:", error);
       setDictating(false);
+      setDictationTranscribing(false);
+      if (dictationStreamRef.current) {
+        for (const track of dictationStreamRef.current.getTracks()) {
+          track.stop();
+        }
+        dictationStreamRef.current = null;
+      }
     }
-  }, [dictating, dictationSupported]);
+  }, [dictating, dictationSupported, dictationTranscribing]);
 
   const applySessionWorkspace = useCallback(
     async (nextWorkspaceDir: string | null) => {
@@ -3808,7 +3951,8 @@ export function Chat() {
                     scrollToBottom();
                     setShowScrollToBottomButton(false);
                   }}
-                  className="absolute left-1/2 bottom-[82px] sm:bottom-[88px] z-20 -translate-x-1/2 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-[#11131c]/95 text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)] backdrop-blur-md transition-colors hover:bg-[#1a1e2b] cursor-pointer"
+                  className="absolute left-1/2 z-20 -translate-x-1/2 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-[#11131c]/95 text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)] backdrop-blur-md transition-colors hover:bg-[#1a1e2b] cursor-pointer"
+                  style={{ bottom: `${Math.max(70, composerHeight + 10)}px` }}
                   title="Scroll to latest"
                   aria-label="Scroll to latest message"
                 >
@@ -3816,8 +3960,11 @@ export function Chat() {
                 </button>
               )}
 
-              <div className="flex-shrink-0 px-3 sm:px-4 py-3 border-t border-white/5 bg-[#0a0a0f]/80 backdrop-blur-xl">
-                <div className="flex gap-2 sm:gap-3">
+              <div
+                ref={composerRef}
+                className="flex-shrink-0 px-3 sm:px-4 py-3 border-t border-white/5 bg-[#0a0a0f]/80 backdrop-blur-xl"
+              >
+                <div className="flex items-end gap-2 sm:gap-3">
                   <textarea
                     ref={inputRef}
                     value={input}
@@ -3829,30 +3976,44 @@ export function Chat() {
                   />
                   <button
                     type="button"
-                    onClick={() => handleToggleDictation()}
-                    disabled={!dictationSupported || showWorkingTimeline}
+                    onClick={() => void handleToggleDictation()}
+                    disabled={!dictationSupported || showWorkingTimeline || dictationTranscribing}
                     className={cn(
-                      "px-3 sm:px-4 py-2.5 rounded-xl border transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
+                      "h-[42px] w-[42px] shrink-0 self-end inline-flex items-center justify-center rounded-xl border transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
                       dictating
                         ? "border-red-500/40 bg-red-500/20 text-red-300"
                         : "border-white/10 bg-white/[0.03] text-gray-300 hover:text-white hover:bg-white/[0.08]"
                     )}
                     title={
                       dictationSupported
-                        ? dictating
-                          ? "Stop dictation"
-                          : "Start dictation"
+                        ? dictationTranscribing
+                          ? "Transcribing..."
+                          : dictating
+                            ? "Stop dictation"
+                            : "Start dictation"
                         : "Dictation not supported in this browser/runtime"
                     }
-                    aria-label={dictating ? "Stop dictation" : "Start dictation"}
+                    aria-label={
+                      dictationTranscribing
+                        ? "Transcribing dictation"
+                        : dictating
+                          ? "Stop dictation"
+                          : "Start dictation"
+                    }
                   >
-                    {dictating ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                    {dictationTranscribing ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : dictating ? (
+                      <MicOff className="w-4 h-4" />
+                    ) : (
+                      <Mic className="w-4 h-4" />
+                    )}
                   </button>
                   {showWorkingTimeline ? (
                     <button
                       type="button"
                       onClick={() => void handleStopActive()}
-                      className="px-3 sm:px-4 py-2.5 rounded-xl border border-red-500/40 bg-red-500/20 text-red-300 hover:bg-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                      className="h-[42px] w-[42px] shrink-0 self-end inline-flex items-center justify-center rounded-xl border border-red-500/40 bg-red-500/20 text-red-300 hover:bg-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                       disabled={stopAgent.isPending}
                       title="Stop active run"
                     >
@@ -3866,7 +4027,7 @@ export function Chat() {
                   <button
                     onClick={handleSend}
                     disabled={!input.trim()}
-                    className="px-3 sm:px-4 py-2.5 rounded-xl accent-button disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    className="h-[42px] w-[42px] shrink-0 self-end inline-flex items-center justify-center rounded-xl accent-button disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                   >
                     <Send className="w-4 h-4" />
                   </button>
