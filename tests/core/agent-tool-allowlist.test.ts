@@ -638,6 +638,215 @@ describe("Agent tool allowlist guardrails", () => {
     expect(retriedLimit).toBeLessThan(failedLimit);
   });
 
+  test("synthesizes stable tool_call_id values when OpenAI-compatible responses omit them", async () => {
+    const provider = providerManager.create({
+      provider: "kimi-code",
+      name: "OpenAI Compat Missing Tool Call Id Provider",
+      api_key: "kimi-test-key",
+      base_url: "https://api.kimi.com/coding/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const calcTool: ToolDefinition = {
+      name: "calc",
+      description: "Evaluate math expressions",
+      input_schema: {
+        type: "object",
+        properties: { expression: { type: "string" } },
+        required: ["expression"],
+      },
+    };
+
+    const agent = agentManager.create({
+      name: "OpenAI Compat Missing Tool Call Id Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "kimi-for-coding",
+      tools: [calcTool],
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    let completionCalls = 0;
+    let loopRequestBody: Record<string, unknown> | undefined;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      completionCalls += 1;
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      if (completionCalls === 1) {
+        return new Response(
+          JSON.stringify({
+            id: "resp-missing-id-1",
+            object: "chat.completion",
+            model: "kimi-for-coding",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "tool_calls",
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      type: "function",
+                      function: {
+                        name: "calc",
+                        arguments: JSON.stringify({ expression: "1+1" }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+            usage: { prompt_tokens: 8, completion_tokens: 2, total_tokens: 10 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      loopRequestBody = body;
+      return new Response(
+        JSON.stringify({
+          id: "resp-missing-id-2",
+          object: "chat.completion",
+          model: "kimi-for-coding",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "done",
+              },
+            },
+          ],
+          usage: { prompt_tokens: 4, completion_tokens: 1, total_tokens: 5 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "calculate 1+1" }],
+      { useTools: true, sessionId: "missing-tool-call-id-session" }
+    );
+
+    expect(result.content).toBe("done");
+    expect(completionCalls).toBe(2);
+    const loopMessages = Array.isArray(loopRequestBody?.messages)
+      ? (loopRequestBody.messages as Array<Record<string, unknown>>)
+      : [];
+    const toolMessage = loopMessages.find((entry) => entry.role === "tool");
+    expect(toolMessage).toBeDefined();
+    expect(typeof toolMessage?.tool_call_id).toBe("string");
+    expect(String(toolMessage?.tool_call_id)).toContain("cybara-tool-1-1");
+  });
+
+  test("returns explicit tool_result payloads for missing tool names in OpenAI-compatible loops", async () => {
+    const provider = providerManager.create({
+      provider: "kimi-code",
+      name: "OpenAI Compat Missing Tool Name Provider",
+      api_key: "kimi-test-key",
+      base_url: "https://api.kimi.com/coding/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const calcTool: ToolDefinition = {
+      name: "calc",
+      description: "Evaluate math expressions",
+      input_schema: {
+        type: "object",
+        properties: { expression: { type: "string" } },
+        required: ["expression"],
+      },
+    };
+
+    const agent = agentManager.create({
+      name: "OpenAI Compat Missing Tool Name Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "kimi-for-coding",
+      tools: [calcTool],
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    let completionCalls = 0;
+    let loopRequestBody: Record<string, unknown> | undefined;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      completionCalls += 1;
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      if (completionCalls === 1) {
+        return new Response(
+          JSON.stringify({
+            id: "resp-missing-name-1",
+            object: "chat.completion",
+            model: "kimi-for-coding",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "tool_calls",
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: "call-missing-name-1",
+                      type: "function",
+                      function: {
+                        name: "",
+                        arguments: JSON.stringify({ expression: "1+1" }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+            usage: { prompt_tokens: 8, completion_tokens: 2, total_tokens: 10 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      loopRequestBody = body;
+      return new Response(
+        JSON.stringify({
+          id: "resp-missing-name-2",
+          object: "chat.completion",
+          model: "kimi-for-coding",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "done",
+              },
+            },
+          ],
+          usage: { prompt_tokens: 4, completion_tokens: 1, total_tokens: 5 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "calculate 1+1" }],
+      { useTools: true, sessionId: "missing-tool-name-session" }
+    );
+
+    expect(result.content).toBe("done");
+    expect(completionCalls).toBe(2);
+    const loopMessages = Array.isArray(loopRequestBody?.messages)
+      ? (loopRequestBody.messages as Array<Record<string, unknown>>)
+      : [];
+    const toolMessage = loopMessages.find((entry) => entry.role === "tool");
+    expect(toolMessage).toBeDefined();
+    expect(typeof toolMessage?.content).toBe("string");
+    expect(String(toolMessage?.content).toLowerCase()).toContain("missing tool name");
+  });
+
   test("preserves assistant reasoning_content in openai-compatible tool loops", async () => {
     const provider = providerManager.create({
       provider: "kimi-code",

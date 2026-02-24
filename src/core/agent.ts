@@ -2429,6 +2429,41 @@ class AgentManager {
     );
   }
 
+  private estimateOpenAIMessageChars(message: Record<string, unknown>): number {
+    let total = 0;
+
+    const content = message.content;
+    if (typeof content === "string") {
+      total += content.length;
+    } else if (Array.isArray(content)) {
+      try {
+        const serialized = JSON.stringify(content);
+        total += typeof serialized === "string" ? serialized.length : 0;
+      } catch {
+        total += 256;
+      }
+    }
+
+    if (Array.isArray(message.tool_calls)) {
+      try {
+        const serialized = JSON.stringify(message.tool_calls);
+        total += typeof serialized === "string" ? serialized.length : 0;
+      } catch {
+        total += 256;
+      }
+    }
+
+    if (typeof message.tool_call_id === "string") {
+      total += message.tool_call_id.length;
+    }
+
+    return total;
+  }
+
+  private estimateOpenAIContextChars(messages: Record<string, unknown>[]): number {
+    return messages.reduce((sum, message) => sum + this.estimateOpenAIMessageChars(message) + 64, 0);
+  }
+
   private truncateTextToContextBudget(text: string, maxChars: number): string {
     if (text.length <= maxChars) return text;
 
@@ -2499,6 +2534,38 @@ class AgentManager {
       compacted = true;
       forceCompaction = false;
       totalChars = this.estimateAnthropicContextChars(messages);
+    }
+
+    return compacted;
+  }
+
+  private compactOpenAILoopMessagesForContext(
+    messages: Record<string, unknown>[],
+    contextBudgetChars: number,
+    aggressive = false
+  ): boolean {
+    let totalChars = this.estimateOpenAIContextChars(messages);
+    if (totalChars <= contextBudgetChars && !aggressive) return false;
+
+    const minRecentMessagesToKeep = aggressive ? 0 : 8;
+    let compacted = false;
+    let forceCompaction = aggressive;
+
+    for (let index = 0; index < messages.length; index += 1) {
+      if (!forceCompaction && totalChars <= contextBudgetChars) break;
+      const remaining = messages.length - index;
+      if (remaining <= minRecentMessagesToKeep) break;
+
+      const message = messages[index];
+      if (!message || message.role !== "tool" || typeof message.content !== "string") {
+        continue;
+      }
+      if (message.content.includes(CONTEXT_LIMIT_COMPACTION_NOTICE)) continue;
+
+      message.content = CONTEXT_LIMIT_COMPACTION_NOTICE;
+      compacted = true;
+      forceCompaction = false;
+      totalChars = this.estimateOpenAIContextChars(messages);
     }
 
     return compacted;
@@ -2812,6 +2879,9 @@ class AgentManager {
       options.contextWindowTokens > 0
         ? Math.max(1, Math.floor(options.contextWindowTokens))
         : undefined;
+    const contextGuard = this.resolveContextGuardBudgets(
+      contextWindowTokens ?? DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS
+    );
     const requestBody: Record<string, unknown> = {
       model: modelId,
       messages: messages.map((m) => ({
@@ -2933,12 +3003,32 @@ class AgentManager {
       const toolResults: Array<{ tool_call_id: string; role: "tool"; content: string }> = [];
       const iterationToolCalls: AgentToolCallResult[] = [];
 
-      for (const toolCall of message.tool_calls) {
-        const toolName = toolCall.function?.name;
-        const toolCallId = toolCall.id;
+      for (let toolIndex = 0; toolIndex < message.tool_calls.length; toolIndex += 1) {
+        const toolCall = message.tool_calls[toolIndex];
+        const toolName = typeof toolCall.function?.name === "string" ? toolCall.function.name : "";
+        const toolCallId =
+          typeof toolCall.id === "string" && toolCall.id.trim().length > 0
+            ? toolCall.id
+            : `cybara-tool-${iterations}-${toolIndex + 1}`;
         const args = parseToolArguments(toolCall.function?.arguments);
 
-        if (!toolName) continue;
+        if (!toolName) {
+          const missingNamePayload = { error: "Tool call missing tool name" };
+          iterationToolCalls.push({
+            name: "__missing_tool_name__",
+            args,
+            result: missingNamePayload,
+          });
+          toolResults.push({
+            tool_call_id: toolCallId,
+            role: "tool",
+            content: this.truncateToolResultContentForContext(
+              missingNamePayload,
+              contextGuard.maxSingleToolResultChars
+            ),
+          });
+          continue;
+        }
         const executed = await this.executeToolWithHooks(
           toolName,
           args,
@@ -2946,21 +3036,25 @@ class AgentManager {
           toolContext,
           hookContext
         );
-        if (executed.skipped || executed.result === undefined) {
-          continue;
+        const resultPayload =
+          executed.skipped || executed.result === undefined
+            ? { error: `Tool execution skipped for ${toolName}` }
+            : executed.result;
+        iterationToolCalls.push({ name: toolName, args, result: resultPayload });
+        if (!executed.skipped && executed.result !== undefined) {
+          allToolCalls.push({ name: toolName, args, result: executed.result });
         }
-
-        const toolCallRecord = { name: toolName, args, result: executed.result };
-        allToolCalls.push(toolCallRecord);
-        iterationToolCalls.push(toolCallRecord);
         toolResults.push({
           tool_call_id: toolCallId,
           role: "tool",
-          content: JSON.stringify(executed.result),
+          content: this.truncateToolResultContentForContext(
+            resultPayload,
+            contextGuard.maxSingleToolResultChars
+          ),
         });
       }
 
-      if (iterationToolCalls.length === 0) {
+      if (toolResults.length === 0) {
         console.warn("[Agent] Tool loop produced no tool results; stopping loop early");
         break;
       }
@@ -2983,6 +3077,7 @@ class AgentManager {
       for (const toolResult of toolResults) {
         currentMessages.push(toolResult);
       }
+      this.compactOpenAILoopMessagesForContext(currentMessages, contextGuard.contextBudgetChars);
 
       const loopRequestBody: Record<string, unknown> = {
         model: modelId,
@@ -3006,12 +3101,37 @@ class AgentManager {
         }));
       }
 
-      const loopData = await this.postOpenAIChatCompletions(
-        baseUrl,
-        headers,
-        loopRequestBody,
-        "API error in agentic loop"
-      );
+      let loopData: OpenAIResponse;
+      try {
+        loopData = await this.postOpenAIChatCompletions(
+          baseUrl,
+          headers,
+          loopRequestBody,
+          "API error in agentic loop"
+        );
+      } catch (error) {
+        const errorMessage = this.normalizeErrorMessage(error);
+        if (!this.isContextWindowExceededError(errorMessage)) {
+          throw error;
+        }
+        const compacted = this.compactOpenAILoopMessagesForContext(
+          currentMessages,
+          Math.max(4096, Math.floor(contextGuard.contextBudgetChars * 0.65)),
+          true
+        );
+        if (!compacted) {
+          throw error;
+        }
+        loopData = await this.postOpenAIChatCompletions(
+          baseUrl,
+          headers,
+          {
+            ...loopRequestBody,
+            messages: currentMessages,
+          },
+          "API error in agentic loop"
+        );
+      }
       const loopChoice = loopData.choices?.[0];
       message = loopChoice?.message as OpenAIMessage;
 
@@ -4381,6 +4501,8 @@ class AgentManager {
     toolContext?: ToolContext
   ): Promise<{ content: string; tool_calls?: AgentToolCallResult[] }> {
     const maxOutputTokens = this.resolveModelMaxOutputTokens("openai", undefined, modelId);
+    const contextWindowTokens = this.resolveModelContextWindowTokens("openai", undefined, modelId);
+    const contextGuard = this.resolveContextGuardBudgets(contextWindowTokens);
     const systemMessage = messages.find((m) => m.role === "system");
     const chatMessages = messages
       .filter((m) => m.role !== "system")
@@ -4480,12 +4602,32 @@ class AgentManager {
       const toolResults: Array<{ tool_call_id: string; role: "tool"; content: string }> = [];
       const iterationToolCalls: AgentToolCallResult[] = [];
 
-      for (const toolCall of message.tool_calls) {
-        const toolName = toolCall.function?.name;
-        const toolCallId = toolCall.id;
+      for (let toolIndex = 0; toolIndex < message.tool_calls.length; toolIndex += 1) {
+        const toolCall = message.tool_calls[toolIndex];
+        const toolName = typeof toolCall.function?.name === "string" ? toolCall.function.name : "";
+        const toolCallId =
+          typeof toolCall.id === "string" && toolCall.id.trim().length > 0
+            ? toolCall.id
+            : `cybara-tool-${iterations}-${toolIndex + 1}`;
         const args = parseToolArguments(toolCall.function?.arguments);
 
-        if (!toolName) continue;
+        if (!toolName) {
+          const missingNamePayload = { error: "Tool call missing tool name" };
+          iterationToolCalls.push({
+            name: "__missing_tool_name__",
+            args,
+            result: missingNamePayload,
+          });
+          toolResults.push({
+            tool_call_id: toolCallId,
+            role: "tool",
+            content: this.truncateToolResultContentForContext(
+              missingNamePayload,
+              contextGuard.maxSingleToolResultChars
+            ),
+          });
+          continue;
+        }
         const executed = await this.executeToolWithHooks(
           toolName,
           args,
@@ -4493,21 +4635,25 @@ class AgentManager {
           toolContext,
           hookContext
         );
-        if (executed.skipped || executed.result === undefined) {
-          continue;
+        const resultPayload =
+          executed.skipped || executed.result === undefined
+            ? { error: `Tool execution skipped for ${toolName}` }
+            : executed.result;
+        iterationToolCalls.push({ name: toolName, args, result: resultPayload });
+        if (!executed.skipped && executed.result !== undefined) {
+          allToolCalls.push({ name: toolName, args, result: executed.result });
         }
-
-        const toolCallRecord = { name: toolName, args, result: executed.result };
-        allToolCalls.push(toolCallRecord);
-        iterationToolCalls.push(toolCallRecord);
         toolResults.push({
           tool_call_id: toolCallId,
           role: "tool",
-          content: JSON.stringify(executed.result),
+          content: this.truncateToolResultContentForContext(
+            resultPayload,
+            contextGuard.maxSingleToolResultChars
+          ),
         });
       }
 
-      if (iterationToolCalls.length === 0) {
+      if (toolResults.length === 0) {
         console.warn("[Agent] OpenAI tool loop produced no tool results; stopping loop early");
         break;
       }
@@ -4530,6 +4676,7 @@ class AgentManager {
       for (const toolResult of toolResults) {
         currentMessages.push(toolResult);
       }
+      this.compactOpenAILoopMessagesForContext(currentMessages, contextGuard.contextBudgetChars);
 
       const loopRequestBody: Record<string, unknown> = {
         model: modelId,
@@ -4548,12 +4695,37 @@ class AgentManager {
         }));
       }
 
-      const loopData = await this.postOpenAIChatCompletions(
-        baseUrl,
-        headers,
-        loopRequestBody,
-        "API error in agentic loop"
-      );
+      let loopData: OpenAIResponse;
+      try {
+        loopData = await this.postOpenAIChatCompletions(
+          baseUrl,
+          headers,
+          loopRequestBody,
+          "API error in agentic loop"
+        );
+      } catch (error) {
+        const errorMessage = this.normalizeErrorMessage(error);
+        if (!this.isContextWindowExceededError(errorMessage)) {
+          throw error;
+        }
+        const compacted = this.compactOpenAILoopMessagesForContext(
+          currentMessages,
+          Math.max(4096, Math.floor(contextGuard.contextBudgetChars * 0.65)),
+          true
+        );
+        if (!compacted) {
+          throw error;
+        }
+        loopData = await this.postOpenAIChatCompletions(
+          baseUrl,
+          headers,
+          {
+            ...loopRequestBody,
+            messages: currentMessages,
+          },
+          "API error in agentic loop"
+        );
+      }
       const loopChoice = loopData.choices?.[0];
       message = loopChoice?.message as OpenAIMessage;
 

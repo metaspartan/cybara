@@ -48,12 +48,12 @@ describe("chat activity lifecycle helpers", () => {
     expect(activities[1]?.text).toContain("exec");
   });
 
-  test("merges and preserves repeated activity items from distinct ids", () => {
+  test("merges and preserves repeated activity items from distinct ids when timestamps differ", () => {
     const merged = mergeActivityLists(
       [{ id: "a", phase: "result", text: "Search complete", timestamp: 1 }],
       [
-        { id: "b", phase: "result", text: "Search complete", timestamp: 2 },
-        { id: "c", phase: "error", text: "Search failed", timestamp: 3 },
+        { id: "b", phase: "result", text: "Search complete", timestamp: 2002 },
+        { id: "c", phase: "error", text: "Search failed", timestamp: 3003 },
       ]
     );
 

@@ -1055,28 +1055,6 @@ function SubagentCallItem({
   );
 }
 
-function ThinkingBlock({ thinking }: { thinking: string }) {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <div>
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-2 text-[12px] text-gray-500 hover:text-gray-400 transition-colors"
-      >
-        <Sparkles className="w-3 h-3" />
-        <span>Thinking</span>
-        {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-      </button>
-      {expanded && (
-        <div className="mt-2 p-3 rounded-lg bg-white/5 border border-white/10">
-          <p className="text-sm text-gray-400 whitespace-pre-wrap">{thinking}</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function LiveActivityTimeline({
   status,
   activities,
@@ -3063,14 +3041,20 @@ export function Chat() {
     const processKey = getMessageProcessKey(sessionId, target.message, target.index);
     const legacyProcessKey = getLegacyMessageProcessKey(sessionId, target.message, target.index);
     const targetTurnStartedAtMs = findPriorUserTimestampMs(typedMessages, target.index);
-    const toolActivities = buildActivitiesFromToolCalls(
-      target.message.tool_calls,
-      formatToolIntent,
-      {
-        baseTimestampMs: parseTimestampMs(target.message.timestamp) ?? targetTurnStartedAtMs ?? 0,
-      }
+    const embeddedActivities = normalizeMessageProcessActivities(
+      target.message.process_activities,
+      parseTimestampMs(target.message.timestamp) ?? targetTurnStartedAtMs
     );
-    const mergedActivities = mergeActivityLists(pending.activities, toolActivities);
+    const fallbackToolActivities =
+      embeddedActivities.length === 0
+        ? buildActivitiesFromToolCalls(target.message.tool_calls, formatToolIntent, {
+            baseTimestampMs: parseTimestampMs(target.message.timestamp) ?? targetTurnStartedAtMs ?? 0,
+          })
+        : [];
+    const mergedActivities =
+      embeddedActivities.length > 0
+        ? mergeActivityLists(pending.activities, embeddedActivities)
+        : mergeActivityLists(pending.activities, fallbackToolActivities);
     const finalizedActivities = finalizeCompletedActivities(mergedActivities);
 
     if (finalizedActivities.length > 0) {
@@ -3959,14 +3943,6 @@ export function Chat() {
                         typedMessages,
                         originalIndex
                       );
-                      const toolActivities = buildActivitiesFromToolCalls(
-                        message.tool_calls,
-                        formatToolIntent,
-                        {
-                          baseTimestampMs:
-                            parseTimestampMs(message.timestamp) ?? turnStartedAtMs ?? 0,
-                        }
-                      );
                       const persistedProcessActivities = getMessageProcessActivities(
                         messageProcessMap,
                         sessionId,
@@ -3981,9 +3957,16 @@ export function Chat() {
                         persistedProcessActivities,
                         embeddedProcessActivities
                       );
+                      const fallbackToolActivities =
+                        restoredProcessActivities.length === 0
+                          ? buildActivitiesFromToolCalls(message.tool_calls, formatToolIntent, {
+                              baseTimestampMs:
+                                parseTimestampMs(message.timestamp) ?? turnStartedAtMs ?? 0,
+                            })
+                          : [];
                       const mergedActivities = mergeActivityLists(
                         restoredProcessActivities,
-                        toolActivities
+                        fallbackToolActivities
                       );
                       const processActivities =
                         mergedActivities.length > 0
@@ -3993,10 +3976,6 @@ export function Chat() {
                         message.role !== "user" &&
                         Array.isArray(message.tool_calls) &&
                         message.tool_calls.length > 0;
-                      const hasAssistantThinking =
-                        message.role !== "user" &&
-                        typeof message.thinking === "string" &&
-                        message.thinking.trim().length > 0;
                       return (
                         <div
                           key={`${message.timestamp || "msg"}-${originalIndex}`}
@@ -4035,11 +4014,6 @@ export function Chat() {
                               )}
                               {hasAssistantToolCalls && (
                                 <div className="my-2 border-t border-white/12" />
-                              )}
-                              {hasAssistantThinking && (
-                                <div className="mb-2">
-                                  <ThinkingBlock thinking={message.thinking || ""} />
-                                </div>
                               )}
                               <MessageContent content={message.content} />
                               {message.role === "user" && sessionId && (

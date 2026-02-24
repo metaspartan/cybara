@@ -116,6 +116,15 @@ function activityDedupKey(activity: LiveActivityItem): string {
   return `${activity.phase}:${toolPrefix}${normalizeText(activity.text).toLowerCase()}:${timestamp}`;
 }
 
+function semanticActivityDedupKey(activity: LiveActivityItem): string {
+  const toolPrefix = activity.toolName ? `${activity.toolName.toLowerCase()}:` : "";
+  const normalizedText = normalizeText(toCanonicalVerb(activity.text, activity.phase)).toLowerCase();
+  const timestampBucket = Number.isFinite(activity.timestamp)
+    ? Math.floor(activity.timestamp / 1000)
+    : 0;
+  return `${activity.phase}:${toolPrefix}${normalizedText}:${timestampBucket}`;
+}
+
 function canonicalActivityKey(activity: LiveActivityItem): string {
   const toolPrefix = activity.toolName ? `${activity.toolName.toLowerCase()}:` : "";
   return `${toolPrefix}${normalizeText(toCanonicalVerb(activity.text, "result")).toLowerCase()}`;
@@ -209,15 +218,19 @@ export function mergeActivityLists(
   };
 
   const seen = new Set<string>();
+  const seenSemantic = new Set<string>();
   const merged: LiveActivityItem[] = [];
 
   const pushUnique = (activity: LiveActivityItem) => {
     if (hasCompletionForStart(activity)) {
       return;
     }
-    const key = activityDedupKey(activity);
-    if (seen.has(key)) return;
-    seen.add(key);
+    const exactKey = activityDedupKey(activity);
+    if (seen.has(exactKey)) return;
+    const semanticKey = semanticActivityDedupKey(activity);
+    if (seenSemantic.has(semanticKey)) return;
+    seen.add(exactKey);
+    seenSemantic.add(semanticKey);
     merged.push(activity);
   };
 
