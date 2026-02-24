@@ -3,6 +3,7 @@ import {
   deriveSessionTitleFromMessages,
   deriveSessionTitleFromTurn,
   normalizeSessionTitle,
+  parseModelGeneratedSessionTitle,
   shouldRegenerateSessionTitle,
 } from "../../src/core/session-title";
 
@@ -70,5 +71,16 @@ describe("session title derivation", () => {
     expect(shouldRegenerateSessionTitle("Summary")).toBe(true);
     expect(shouldRegenerateSessionTitle("Session")).toBe(true);
     expect(shouldRegenerateSessionTitle("Discord media handling fixes")).toBe(false);
+  });
+
+  test("parses model-generated title output with label prefixes", () => {
+    const parsed = parseModelGeneratedSessionTitle(
+      "Title: Discord Media + Reaction Handling Improvements"
+    );
+    expect(parsed).toBe("Discord Media + Reaction Handling Improvements");
+  });
+
+  test("rejects generic model-generated title output", () => {
+    expect(parseModelGeneratedSessionTitle("Summary")).toBeNull();
   });
 });

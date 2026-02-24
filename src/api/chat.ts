@@ -25,6 +25,7 @@ import {
   deriveSessionTitleFromMessages,
   deriveSessionTitleFromTurn,
   normalizeSessionTitle,
+  parseModelGeneratedSessionTitle,
   shouldRegenerateSessionTitle,
 } from "../core/session-title";
 import { handleMemorySave } from "../core/tools/handlers/memory";
@@ -205,6 +206,71 @@ export function stripThinkingTags(content: string): { content: string; thinking:
 
 const chatRateLimitConfig = { windowMs: 60000, maxRequests: 60 }; // 60 requests per minute
 
+const SESSION_TITLE_MODEL_SYSTEM_PROMPT =
+  "You generate concise chat session titles from a single user request. Return only the title text with no markdown, no quotes, and no preface. Use 3-10 words, concrete and specific. Avoid generic titles like Summary, Report, Session, Chat, or Response.";
+
+function truncateForTitlePrompt(value: string, maxChars: number): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (compact.length <= maxChars) return compact;
+  return `${compact.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
+}
+
+async function generateSessionTitleViaModel(params: {
+  provider: ReturnType<typeof providerManager.getWithCredentials>;
+  agent: NonNullable<ReturnType<typeof agentManager.get>> | undefined;
+  sessionId: string;
+  userMessage: string;
+  channel?: string;
+  userId?: string;
+  workspaceDir?: string | null;
+}): Promise<string | null> {
+  const { provider, agent } = params;
+  if (!provider || !agent) return null;
+
+  try {
+    const titleMessages: AgentMessage[] = [
+      {
+        role: "system",
+        content: SESSION_TITLE_MODEL_SYSTEM_PROMPT,
+      },
+      {
+        role: "user",
+        content: [
+          `Model: ${agent.model || "unknown"}`,
+          `Agent: ${agent.name || "agent"}`,
+          `User request: ${truncateForTitlePrompt(params.userMessage, 900)}`,
+          "Generate the best session title now.",
+        ].join("\n"),
+      },
+    ];
+
+    const result = await agentManager.callLLM(provider, agent.model, titleMessages, [], {
+      agentId: agent.id,
+      sessionId: params.sessionId,
+      channel: params.channel,
+      userId: params.userId,
+      workspaceDir: params.workspaceDir || undefined,
+    });
+    return parseModelGeneratedSessionTitle(result.content);
+  } catch (error) {
+    console.warn(
+      `[Chat] Session title model generation failed: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return null;
+  }
+}
+
+function withAgentTitlePrefix(agentName: string | undefined, title: string | null): string | null {
+  const normalizedTitle = normalizeSessionTitle(title);
+  if (!normalizedTitle) return null;
+  const normalizedAgent = normalizeSessionTitle(agentName);
+  if (!normalizedAgent) return normalizedTitle;
+  if (normalizedTitle.toLowerCase().startsWith(`${normalizedAgent.toLowerCase()}:`)) {
+    return normalizedTitle;
+  }
+  return normalizeSessionTitle(`${normalizedAgent}: ${normalizedTitle}`);
+}
+
 export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   const {
     message,
@@ -236,6 +302,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   }
 
   let session = sessionId ? chatSessions.get(sessionId) : undefined;
+  const isNewSession = !session;
 
   if (!session) {
     const agent = agentId
@@ -321,6 +388,22 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   });
 
   const provider = agent ? agentManager.resolveProvider(agent.id) : undefined;
+
+  if (isNewSession && (!session.title || shouldRegenerateSessionTitle(session.title))) {
+    const generatedTitle = await generateSessionTitleViaModel({
+      provider,
+      agent,
+      sessionId: session.id,
+      userMessage: message,
+      channel,
+      userId,
+      workspaceDir: session.workspaceDir,
+    });
+    session.title = withAgentTitlePrefix(agent?.name, generatedTitle);
+    if (!session.title) {
+      session.title = withAgentTitlePrefix(agent?.name, deriveSessionTitleFromTurn(message));
+    }
+  }
 
   if (provider && agent) {
     const contextWindow = getContextWindow(agent.model);
@@ -680,8 +763,8 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   };
   session.messages.push(assistantMessage);
   session.updatedAt = assistantMessage.timestamp || new Date().toISOString();
-  if (!session.title) {
-    session.title = deriveSessionTitleFromTurn(message, cleanContent, agent?.name);
+  if (!session.title || shouldRegenerateSessionTitle(session.title)) {
+    session.title = withAgentTitlePrefix(agent?.name, deriveSessionTitleFromTurn(message));
   }
 
   await logSessionMessage(session.id, "assistant", cleanContent, {

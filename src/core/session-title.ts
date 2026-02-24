@@ -158,6 +158,39 @@ function summarizeAssistantMessageForTitle(assistantMessage?: string): string | 
   return normalizeSessionTitle(toSentenceLead(cleaned));
 }
 
+export function parseModelGeneratedSessionTitle(modelOutput?: string | null): string | null {
+  if (typeof modelOutput !== "string" || !modelOutput.trim()) return null;
+
+  const raw = cleanTitleText(modelOutput);
+  const lines = modelOutput
+    .split(/\r?\n/)
+    .map((line) => stripListPrefix(line))
+    .map((line) => cleanTitleText(line))
+    .filter(Boolean);
+
+  const candidates = [raw, ...lines]
+    .map((line) =>
+      line
+        .replace(/^['"`]+|['"`]+$/g, "")
+        .replace(/^(?:title|session title|chat title|suggested title)\s*:\s*/i, "")
+        .replace(
+          /^(?:the\s+)?(?:best\s+)?(?:session|chat)?\s*title\s*(?:is|would be)\s*/i,
+          ""
+        )
+        .trim()
+    )
+    .filter(Boolean);
+
+  for (const candidate of candidates) {
+    const normalized = normalizeSessionTitle(candidate);
+    if (!normalized) continue;
+    if (shouldRegenerateSessionTitle(normalized)) continue;
+    return normalized;
+  }
+
+  return null;
+}
+
 export function deriveSessionTitleFromMessages(
   messages: SessionTitleMessage[],
   agentName?: string | null
