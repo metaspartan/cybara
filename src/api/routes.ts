@@ -91,8 +91,7 @@ import {
 } from "../core/artifacts";
 import { getSessionStatusSnapshot, listSessionStatusSnapshots } from "../core/status";
 import { cybaraDir, dataDir, logsDir, memoryDir, secureDir, userSkillsDir } from "../core/paths";
-import {
-  walletManager,
+import type {
   WalletChain,
   WalletAgentPolicy,
   WalletPriceQuoteInput,
@@ -185,10 +184,29 @@ interface TokenCloudEntry {
 
 const WALLET_CHAIN_SET = new Set<WalletChain>(["eth", "btc", "sol"]);
 const WALLET_TOKEN_CHAIN_SET = new Set<WalletTokenChain>(["eth", "sol"]);
+type WalletModule = typeof import("../core/wallet");
+type WalletManagerInstance = WalletModule["walletManager"];
+let walletModulePromise: Promise<WalletModule> | null = null;
+
+async function getWalletManager(): Promise<WalletManagerInstance> {
+  if (!walletModulePromise) {
+    walletModulePromise = import("../core/wallet");
+  }
+
+  try {
+    const walletModule = await walletModulePromise;
+    return walletModule.walletManager;
+  } catch (error) {
+    walletModulePromise = null;
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Wallet module unavailable: ${reason}`);
+  }
+}
 
 async function withWalletManager<T>(
-  callback: (manager: typeof walletManager) => Promise<T> | T
+  callback: (manager: WalletManagerInstance) => Promise<T> | T
 ): Promise<T> {
+  const walletManager = await getWalletManager();
   return await callback(walletManager);
 }
 

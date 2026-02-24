@@ -1,9 +1,23 @@
-import {
-  walletManager,
-  type WalletChain,
-  type WalletTokenChain,
-  type SolInstructionAccountMeta,
-} from "../../wallet";
+import type { WalletChain, WalletTokenChain, SolInstructionAccountMeta } from "../../wallet";
+
+type WalletModule = typeof import("../../wallet");
+type WalletManagerInstance = WalletModule["walletManager"];
+let walletModulePromise: Promise<WalletModule> | null = null;
+
+async function getWalletManager(): Promise<WalletManagerInstance> {
+  if (!walletModulePromise) {
+    walletModulePromise = import("../../wallet");
+  }
+
+  try {
+    const walletModule = await walletModulePromise;
+    return walletModule.walletManager;
+  } catch (error) {
+    walletModulePromise = null;
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Wallet module unavailable: ${reason}`);
+  }
+}
 
 function parseWalletChain(value: unknown, fallback: WalletChain = "eth"): WalletChain {
   if (typeof value !== "string" || !value.trim()) {
@@ -146,6 +160,7 @@ function parseOptionalNumber(value: unknown): number | undefined {
 
 export async function handleWallet(args: Record<string, unknown>): Promise<unknown> {
   const action = String(args.action || "status");
+  const walletManager = await getWalletManager();
 
   switch (action) {
     case "status":

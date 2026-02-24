@@ -430,10 +430,10 @@ function toActivityPath(path: string): string {
   return segments[segments.length - 1] || normalized;
 }
 
-function isMeaningfulThoughtDetail(detail: string): boolean {
+function isGenericStatusLabel(detail: string): boolean {
   const normalized = detail.trim().toLowerCase();
   if (!normalized) return false;
-  if (
+  return (
     normalized === "thinking..." ||
     normalized === "thinking" ||
     normalized === "generating response..." ||
@@ -441,10 +441,13 @@ function isMeaningfulThoughtDetail(detail: string): boolean {
     normalized === "idle" ||
     normalized === "working..." ||
     normalized === "working"
-  ) {
-    return false;
-  }
-  return true;
+  );
+}
+
+function isMeaningfulThoughtDetail(detail: string): boolean {
+  const normalized = detail.trim().toLowerCase();
+  if (!normalized) return false;
+  return !isGenericStatusLabel(normalized);
 }
 
 function summarizeCommand(command: string): string {
@@ -465,7 +468,10 @@ function formatToolIntent(
   fallbackDetail?: string
 ): string {
   if (fallbackDetail && fallbackDetail.trim()) {
-    return normalizeActivityTextForPhase(fallbackDetail.trim(), phase);
+    const normalizedFallback = fallbackDetail.trim();
+    if (!isGenericStatusLabel(normalizedFallback)) {
+      return normalizeActivityTextForPhase(normalizedFallback, phase);
+    }
   }
 
   const key = toolName.toLowerCase();
@@ -1059,25 +1065,30 @@ function SubagentCallItem({
 function LiveActivityTimeline({
   status,
   activities,
+  currentStep,
 }: {
   status: "thinking" | "generating" | "idle";
   activities: LiveActivityItem[];
+  currentStep?: string | null;
 }) {
-  const statusLabel =
-    activities.length > 0
-      ? "Working..."
+  const visibleActivities = activities.filter((activity) => !isGenericStatusLabel(activity.text));
+  const normalizedCurrentStep =
+    typeof currentStep === "string" && currentStep.trim().length > 0
+      ? currentStep.trim()
       : status === "generating"
         ? "Generating response..."
-        : "Thinking...";
-  const visibleActivities = activities;
+        : status === "thinking"
+          ? "Thinking..."
+          : null;
+  const activeStartStep =
+    [...visibleActivities].reverse().find((activity) => activity.phase === "start")?.text?.trim() ||
+    null;
+  const displayCurrentStep =
+    normalizedCurrentStep && normalizedCurrentStep !== activeStartStep ? normalizedCurrentStep : null;
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2 text-[12px] text-gray-400">
-        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-        <span>{statusLabel}</span>
-      </div>
-      {visibleActivities.length > 0 ? (
+    <div className="space-y-1">
+      {visibleActivities.length > 0 && (
         <div className="space-y-1">
           {visibleActivities.map((activity) => (
             <div
@@ -1100,7 +1111,13 @@ function LiveActivityTimeline({
             </div>
           ))}
         </div>
-      ) : (
+      )}
+      {displayCurrentStep ? (
+        <div className="flex items-start gap-2 text-[12px] px-0.5 text-gray-300">
+          <Loader2 className="w-3 h-3 animate-spin text-amber-400 mt-0.5 flex-shrink-0" />
+          <span className="whitespace-pre-wrap break-words">{displayCurrentStep}</span>
+        </div>
+      ) : visibleActivities.length === 0 ? (
         <div className="flex gap-1 px-1">
           <span
             className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce"
@@ -1123,7 +1140,8 @@ function LiveActivityTimeline({
 function ProcessActivityList({ activities }: { activities: LiveActivityItem[] }) {
   if (activities.length === 0) return null;
 
-  const visibleActivities = activities;
+  const visibleActivities = activities.filter((activity) => !isGenericStatusLabel(activity.text));
+  if (visibleActivities.length === 0) return null;
 
   return (
     <div className="space-y-1">
@@ -2780,6 +2798,7 @@ export function Chat() {
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
   const [liveStatus, setLiveStatus] = useState<"thinking" | "generating" | "idle">("idle");
   const [liveActivities, setLiveActivities] = useState<LiveActivityItem[]>([]);
+  const [liveCurrentStep, setLiveCurrentStep] = useState<string | null>(null);
   const [dictationSupported, setDictationSupported] = useState(false);
   const [dictating, setDictating] = useState(false);
   const [dictationTranscribing, setDictationTranscribing] = useState(false);
@@ -2796,7 +2815,6 @@ export function Chat() {
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeSessionRef = useRef<string | null>(null);
-  const activeAgentRef = useRef<string | undefined>(undefined);
   const loadingRef = useRef(false);
   const wasLoadingRef = useRef(false);
   const acceptEventsUntilRef = useRef(0);
@@ -2979,9 +2997,8 @@ export function Chat() {
 
   useEffect(() => {
     activeSessionRef.current = sessionId;
-    activeAgentRef.current = selectedAgentId;
     loadingRef.current = isLoading;
-  }, [sessionId, selectedAgentId, isLoading]);
+  }, [sessionId, isLoading]);
 
   useEffect(() => {
     const assistantCount = typedMessages.reduce(
@@ -2993,6 +3010,7 @@ export function Chat() {
       runActivityBufferRef.current = [];
       setLiveActivities([]);
       setLiveStatus("thinking");
+      setLiveCurrentStep("Thinking...");
       acceptEventsUntilRef.current = 0;
       pendingProcessCaptureRef.current = {
         assistantCountBefore: assistantCount,
@@ -3079,6 +3097,7 @@ export function Chat() {
       if (!trimmed) return;
 
       const normalizedText = normalizeActivityTextForPhase(trimmed, phase);
+      if (isGenericStatusLabel(normalizedText)) return;
       const nextTimestamp = Date.now();
       const normalizedToolName = typeof toolName === "string" ? toolName.trim().toLowerCase() : "";
       const nextId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -3099,7 +3118,7 @@ export function Chat() {
                 timestamp: nextTimestamp,
                 toolName: normalizedToolName,
               };
-              return updated;
+              return mergeActivityLists([], updated);
             }
           }
 
@@ -3116,7 +3135,7 @@ export function Chat() {
               timestamp: nextTimestamp,
               toolName: normalizedToolName || candidate.toolName,
             };
-            return updated;
+            return mergeActivityLists([], updated);
           }
         }
 
@@ -3140,7 +3159,7 @@ export function Chat() {
           timestamp: nextTimestamp,
           toolName: normalizedToolName || undefined,
         };
-        return [...previous, next];
+        return mergeActivityLists([], [...previous, next]);
       };
 
       runActivityBufferRef.current = applyActivityEvent(runActivityBufferRef.current);
@@ -3188,15 +3207,33 @@ export function Chat() {
         ) {
           setLiveStatus("idle");
           setLiveActivities([]);
+          setLiveCurrentStep(null);
+          runActivityBufferRef.current = [];
         }
         return;
       }
 
       if (activeSessionRef.current !== resolvedSessionId) return;
-      setLiveStatus(normalizeSessionStatus(snapshot.status));
-      const snapshotActivities = toLiveActivityItems(snapshot.activities);
-      if (snapshotActivities.length > 0) {
-        setLiveActivities(snapshotActivities);
+      const normalizedSnapshotStatus = normalizeSessionStatus(snapshot.status);
+      setLiveStatus(normalizedSnapshotStatus);
+      const snapshotActivities = mergeActivityLists([], toLiveActivityItems(snapshot.activities));
+      setLiveActivities(snapshotActivities);
+      runActivityBufferRef.current = snapshotActivities.map((activity) => ({ ...activity }));
+      const activeStep =
+        [...snapshotActivities].reverse().find((activity) => activity.phase === "start")?.text || null;
+      if (activeStep && !isGenericStatusLabel(activeStep)) {
+        setLiveCurrentStep(activeStep);
+      } else {
+        const detail = typeof snapshot.detail === "string" ? snapshot.detail.trim() : "";
+        if (isMeaningfulThoughtDetail(detail)) {
+          setLiveCurrentStep(detail);
+        } else if (normalizedSnapshotStatus === "generating") {
+          setLiveCurrentStep("Generating response...");
+        } else if (normalizedSnapshotStatus === "thinking") {
+          setLiveCurrentStep("Thinking...");
+        } else {
+          setLiveCurrentStep(null);
+        }
       }
     } catch (error) {
       console.error("Failed to hydrate session status:", error);
@@ -3206,6 +3243,7 @@ export function Chat() {
   useEffect(() => {
     setLiveStatus("idle");
     setLiveActivities([]);
+    setLiveCurrentStep(null);
     runActivityBufferRef.current = [];
     acceptEventsUntilRef.current = 0;
     if (!sessionId) {
@@ -3269,17 +3307,17 @@ export function Chat() {
         return;
       }
 
-      const activeAgent = activeAgentRef.current;
-
       if (activeSession && payload.sessionId && payload.sessionId !== activeSession) return;
       if (activeSession && !payload.sessionId) return;
-      if (activeAgent && payload.agentId && payload.agentId !== activeAgent) return;
 
       if (status === "thinking") {
         if (!payload.toolName) {
           const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
           if (isMeaningfulThoughtDetail(detail)) {
             appendLiveActivity("result", detail, "__thought");
+            setLiveCurrentStep(detail);
+          } else {
+            setLiveCurrentStep("Thinking...");
           }
         }
         setLiveStatus("thinking");
@@ -3290,6 +3328,9 @@ export function Chat() {
           const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
           if (isMeaningfulThoughtDetail(detail)) {
             appendLiveActivity("result", detail, "__thought");
+            setLiveCurrentStep(detail);
+          } else {
+            setLiveCurrentStep("Generating response...");
           }
         }
         setLiveStatus("generating");
@@ -3297,6 +3338,7 @@ export function Chat() {
       }
       if (status === "idle") {
         setLiveStatus("idle");
+        setLiveCurrentStep(null);
         if (!loadingRef.current) {
           setLiveActivities([]);
           runActivityBufferRef.current = [];
@@ -3309,6 +3351,19 @@ export function Chat() {
         const toolName = payload.toolName || "tool";
         const text = formatToolIntent(toolName, {}, phase, payload.detail);
         appendLiveActivity(phase, text, payload.toolName);
+        if (phase === "start") {
+          setLiveStatus("thinking");
+          setLiveCurrentStep(isGenericStatusLabel(text) ? "Thinking..." : text);
+        } else {
+          const nextActiveStep =
+            [...runActivityBufferRef.current].reverse().find((activity) => activity.phase === "start")
+              ?.text || null;
+          if (nextActiveStep) {
+            setLiveCurrentStep(nextActiveStep);
+          } else if (!loadingRef.current) {
+            setLiveCurrentStep(null);
+          }
+        }
       }
     };
 
@@ -3380,6 +3435,7 @@ export function Chat() {
       setActiveSessionIds((previous) => previous.filter((id) => id !== sessionId));
     }
     setLiveStatus("idle");
+    setLiveCurrentStep(null);
     setLiveActivities([]);
     runActivityBufferRef.current = [];
     pendingProcessCaptureRef.current = null;
@@ -3719,6 +3775,7 @@ export function Chat() {
       setMessageProcessMap({});
       pendingProcessCaptureRef.current = null;
       setLiveStatus("idle");
+      setLiveCurrentStep(null);
       setRevertTarget(null);
       inputRef.current?.focus();
     } catch (error) {
@@ -4079,7 +4136,11 @@ export function Chat() {
                       <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
                     </div>
                     <div className="max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] px-0.5 py-0.5">
-                      <LiveActivityTimeline status={timelineStatus} activities={liveActivities} />
+                      <LiveActivityTimeline
+                        status={timelineStatus}
+                        activities={liveActivities}
+                        currentStep={liveCurrentStep}
+                      />
                     </div>
                   </div>
                 )}
