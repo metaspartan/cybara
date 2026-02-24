@@ -28,6 +28,7 @@ export function useChat(agentId?: string) {
   const sendMessage = async (content: string, options?: { workspaceDir?: string | null }) => {
     activeRequestAbortRef.current?.abort();
     const controller = new AbortController();
+    const requestSessionId = state.sessionId;
     activeRequestAbortRef.current = controller;
     const userMessage: ChatMessage = { role: 'user', content, timestamp: new Date().toISOString() };
     const requestedWorkspaceDir =
@@ -56,21 +57,33 @@ export function useChat(agentId?: string) {
           );
         
       if (response.success && response.data) {
+        if (activeRequestAbortRef.current !== controller) {
+          return null;
+        }
         const resolvedWorkspaceDir =
           response.data.workspaceDir !== undefined
             ? response.data.workspaceDir
             : requestedWorkspaceDir;
         setState((prev) => ({
-          messages: [...prev.messages, response.data!.message],
-          sessionId: response.data!.sessionId,
-          workspaceDir: resolvedWorkspaceDir ?? null,
-          isLoading: false,
+          // Ignore stale responses if the user switched sessions while the request was in-flight.
+          ...(prev.sessionId !== requestSessionId
+            ? prev
+            : {
+                messages: [...prev.messages, response.data!.message],
+                sessionId: response.data!.sessionId,
+                workspaceDir: resolvedWorkspaceDir ?? null,
+                isLoading: false,
+              }),
         }));
         return response.data;
       }
       throw new Error(response.error || 'Failed to send message');
     } catch (error) {
-      setState((prev) => ({ ...prev, isLoading: false }));
+      if (activeRequestAbortRef.current === controller) {
+        setState((prev) =>
+          prev.sessionId === requestSessionId ? { ...prev, isLoading: false } : prev
+        );
+      }
       const isAbortError =
         error instanceof DOMException
           ? error.name === "AbortError"
@@ -108,6 +121,8 @@ export function useChat(agentId?: string) {
 
   const loadSession = useCallback(
     (sessionId: string, messages: ChatMessage[], workspaceDir?: string | null) => {
+      activeRequestAbortRef.current?.abort();
+      activeRequestAbortRef.current = null;
       setState({
         messages,
         sessionId,

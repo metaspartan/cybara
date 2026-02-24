@@ -17,7 +17,7 @@ describe("Sidebar status indicator behavior", () => {
     expect(source).toContain("'generating'");
     expect(source).toContain("'tool_executing'");
     expect(source).toContain("'tool_completed'");
-    expect(source).toContain("setStatus('active')");
+    expect(source).toContain("setStatus(globalActive || hasActiveSessions ? 'active' : 'idle')");
   });
 
   test("renders active ring state from unified active status", () => {

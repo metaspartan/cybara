@@ -97,4 +97,71 @@ describe("session status snapshots", () => {
       detail: "idle",
     });
   });
+
+  test("updates in-flight tool activities to completed instead of leaving stale start entries", () => {
+    const sessionId = `status-tool-merge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const baseTimestamp = Date.now();
+
+    broadcastStatus({
+      status: "tool_executing",
+      timestamp: baseTimestamp,
+      sessionId,
+      toolName: "exec",
+      detail: "Running bun test",
+    });
+
+    broadcastStatus({
+      status: "tool_completed",
+      timestamp: baseTimestamp + 10,
+      sessionId,
+      toolName: "exec",
+      detail: "Ran bun test",
+    });
+
+    const snapshot = getSessionStatusSnapshot(sessionId);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.activities).toHaveLength(1);
+    expect(snapshot?.activities[0]?.phase).toBe("result");
+    expect(snapshot?.activities[0]?.text).toBe("Ran bun test");
+
+    broadcastStatus({
+      status: "idle",
+      timestamp: baseTimestamp + 20,
+      sessionId,
+      detail: "idle",
+    });
+  });
+
+  test("falls back to canonical completion text when tool completion detail is missing", () => {
+    const sessionId = `status-tool-fallback-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const baseTimestamp = Date.now();
+
+    broadcastStatus({
+      status: "tool_executing",
+      timestamp: baseTimestamp,
+      sessionId,
+      toolName: "read",
+      detail: "Exploring src/core/agent.ts",
+    });
+
+    broadcastStatus({
+      status: "tool_completed",
+      timestamp: baseTimestamp + 10,
+      sessionId,
+      toolName: "read",
+    });
+
+    const snapshot = getSessionStatusSnapshot(sessionId);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.activities).toHaveLength(1);
+    expect(snapshot?.activities[0]?.phase).toBe("result");
+    expect(snapshot?.activities[0]?.text).toBe("Explored src/core/agent.ts");
+
+    broadcastStatus({
+      status: "idle",
+      timestamp: baseTimestamp + 20,
+      sessionId,
+      detail: "idle",
+    });
+  });
 });

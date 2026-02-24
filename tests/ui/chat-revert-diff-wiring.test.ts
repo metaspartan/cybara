@@ -40,10 +40,10 @@ describe("Chat revert and diff wiring", () => {
     expect(source).not.toContain("const TOOL_CALL_PREVIEW_LIMIT = 50");
     expect(source).not.toContain("hiddenToolCallsCount");
     expect(source).not.toContain("View more");
-    expect(source).not.toContain("includeFullToolCalls");
     expect(source).toContain("getToolCallsInTimelineOrder");
     expect(source).toContain("border-t border-white/12");
-    expect(source).toContain("<ThinkingBlock thinking={message.thinking || \"\"} />");
+    expect(source).toContain("function ProcessActivityList");
+    expect(source).toContain("<ProcessActivityList activities={workActivities} />");
   });
 
   test("shows effective workspace in empty state and uses robust tauri runtime detection", () => {

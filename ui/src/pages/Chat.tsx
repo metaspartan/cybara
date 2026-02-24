@@ -450,6 +450,51 @@ function isMeaningfulThoughtDetail(detail: string): boolean {
   return !isGenericStatusLabel(normalized);
 }
 
+function getLatestInFlightStep(activities: LiveActivityItem[]): string | null {
+  for (let index = activities.length - 1; index >= 0; index -= 1) {
+    const activity = activities[index];
+    if (!activity || activity.phase !== "start") continue;
+    const step = activity.text?.trim() || "";
+    if (!step || isGenericStatusLabel(step)) continue;
+    return step;
+  }
+  return null;
+}
+
+function normalizeSnapshotActivities(
+  activities: LiveActivityItem[],
+  status: string
+): LiveActivityItem[] {
+  if (activities.length === 0) return [];
+
+  const sorted = [...activities].sort((a, b) => a.timestamp - b.timestamp);
+  const keepLatestStartInFlight = status === "tool_executing";
+  let latestStartIndex = -1;
+
+  if (keepLatestStartInFlight) {
+    for (let index = sorted.length - 1; index >= 0; index -= 1) {
+      if (sorted[index]?.phase === "start") {
+        latestStartIndex = index;
+        break;
+      }
+    }
+  }
+
+  const normalized = sorted.map((activity, index) => {
+    if (activity.phase !== "start") return activity;
+    if (keepLatestStartInFlight && index === latestStartIndex) {
+      return activity;
+    }
+    return {
+      ...activity,
+      phase: "result" as const,
+      text: normalizeActivityTextForPhase(activity.text, "result"),
+    };
+  });
+
+  return mergeActivityLists([], normalized);
+}
+
 function summarizeCommand(command: string): string {
   const compact = command
     .split(/\r?\n/)
@@ -1072,19 +1117,21 @@ function LiveActivityTimeline({
   currentStep?: string | null;
 }) {
   const visibleActivities = activities.filter((activity) => !isGenericStatusLabel(activity.text));
-  const normalizedCurrentStep =
+  const activeStartStep = getLatestInFlightStep(visibleActivities);
+  const explicitCurrentStep =
     typeof currentStep === "string" && currentStep.trim().length > 0
       ? currentStep.trim()
-      : status === "generating"
+      : null;
+  const normalizedCurrentStep =
+    explicitCurrentStep && !isGenericStatusLabel(explicitCurrentStep) ? explicitCurrentStep : null;
+  const displayCurrentStep = activeStartStep
+    ? null
+    : normalizedCurrentStep ||
+      (status === "generating"
         ? "Generating response..."
         : status === "thinking"
           ? "Thinking..."
-          : null;
-  const activeStartStep =
-    [...visibleActivities].reverse().find((activity) => activity.phase === "start")?.text?.trim() ||
-    null;
-  const displayCurrentStep =
-    normalizedCurrentStep && normalizedCurrentStep !== activeStartStep ? normalizedCurrentStep : null;
+          : null);
 
   return (
     <div className="space-y-1">
@@ -1132,7 +1179,7 @@ function LiveActivityTimeline({
             style={{ animationDelay: "300ms" }}
           />
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -2799,6 +2846,7 @@ export function Chat() {
   const [liveStatus, setLiveStatus] = useState<"thinking" | "generating" | "idle">("idle");
   const [liveActivities, setLiveActivities] = useState<LiveActivityItem[]>([]);
   const [liveCurrentStep, setLiveCurrentStep] = useState<string | null>(null);
+  const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
   const [dictationSupported, setDictationSupported] = useState(false);
   const [dictating, setDictating] = useState(false);
   const [dictationTranscribing, setDictationTranscribing] = useState(false);
@@ -3007,6 +3055,7 @@ export function Chat() {
     );
 
     if (isLoading && !wasLoadingRef.current) {
+      setLoadingSessionId(sessionId ?? null);
       runActivityBufferRef.current = [];
       setLiveActivities([]);
       setLiveStatus("thinking");
@@ -3021,6 +3070,7 @@ export function Chat() {
     }
 
     if (!isLoading && wasLoadingRef.current) {
+      setLoadingSessionId(null);
       acceptEventsUntilRef.current = Date.now() + 1500;
       const runActivities =
         runActivityBufferRef.current.length > 0 ? runActivityBufferRef.current : liveActivities;
@@ -3216,11 +3266,13 @@ export function Chat() {
       if (activeSessionRef.current !== resolvedSessionId) return;
       const normalizedSnapshotStatus = normalizeSessionStatus(snapshot.status);
       setLiveStatus(normalizedSnapshotStatus);
-      const snapshotActivities = mergeActivityLists([], toLiveActivityItems(snapshot.activities));
+      const snapshotActivities = normalizeSnapshotActivities(
+        mergeActivityLists([], toLiveActivityItems(snapshot.activities)),
+        snapshot.status
+      );
       setLiveActivities(snapshotActivities);
       runActivityBufferRef.current = snapshotActivities.map((activity) => ({ ...activity }));
-      const activeStep =
-        [...snapshotActivities].reverse().find((activity) => activity.phase === "start")?.text || null;
+      const activeStep = getLatestInFlightStep(snapshotActivities);
       if (activeStep && !isGenericStatusLabel(activeStep)) {
         setLiveCurrentStep(activeStep);
       } else {
@@ -3312,12 +3364,13 @@ export function Chat() {
 
       if (status === "thinking") {
         if (!payload.toolName) {
+          const activeToolStep = getLatestInFlightStep(runActivityBufferRef.current);
           const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
           if (isMeaningfulThoughtDetail(detail)) {
             appendLiveActivity("result", detail, "__thought");
-            setLiveCurrentStep(detail);
+            setLiveCurrentStep(activeToolStep || detail);
           } else {
-            setLiveCurrentStep("Thinking...");
+            setLiveCurrentStep(activeToolStep || "Thinking...");
           }
         }
         setLiveStatus("thinking");
@@ -3325,12 +3378,13 @@ export function Chat() {
       }
       if (status === "generating") {
         if (!payload.toolName) {
+          const activeToolStep = getLatestInFlightStep(runActivityBufferRef.current);
           const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
           if (isMeaningfulThoughtDetail(detail)) {
             appendLiveActivity("result", detail, "__thought");
-            setLiveCurrentStep(detail);
+            setLiveCurrentStep(activeToolStep || detail);
           } else {
-            setLiveCurrentStep("Generating response...");
+            setLiveCurrentStep(activeToolStep || "Generating response...");
           }
         }
         setLiveStatus("generating");
@@ -3355,9 +3409,7 @@ export function Chat() {
           setLiveStatus("thinking");
           setLiveCurrentStep(isGenericStatusLabel(text) ? "Thinking..." : text);
         } else {
-          const nextActiveStep =
-            [...runActivityBufferRef.current].reverse().find((activity) => activity.phase === "start")
-              ?.text || null;
+          const nextActiveStep = getLatestInFlightStep(runActivityBufferRef.current);
           if (nextActiveStep) {
             setLiveCurrentStep(nextActiveStep);
           } else if (!loadingRef.current) {
@@ -3437,6 +3489,7 @@ export function Chat() {
     setLiveStatus("idle");
     setLiveCurrentStep(null);
     setLiveActivities([]);
+    setLoadingSessionId(null);
     runActivityBufferRef.current = [];
     pendingProcessCaptureRef.current = null;
   }, [selectedAgentId, sessionAgentId, stopGenerating, stopAgent, sessionId]);
@@ -3776,6 +3829,7 @@ export function Chat() {
       pendingProcessCaptureRef.current = null;
       setLiveStatus("idle");
       setLiveCurrentStep(null);
+      setLoadingSessionId(null);
       setRevertTarget(null);
       inputRef.current?.focus();
     } catch (error) {
@@ -3825,7 +3879,8 @@ export function Chat() {
     : 0;
   const revertFollowingCount = Math.max(0, revertRemovedCount - 1);
   const currentSessionIsActive = !!sessionId && activeSessionIds.includes(sessionId);
-  const showWorkingTimeline = isLoading || currentSessionIsActive;
+  const currentSessionIsLoading = isLoading && loadingSessionId === sessionId;
+  const showWorkingTimeline = currentSessionIsLoading || currentSessionIsActive;
   const timelineStatus =
     currentSessionIsActive && liveStatus === "idle" ? ("thinking" as const) : liveStatus;
 

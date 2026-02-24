@@ -97,6 +97,61 @@ function statusToPhase(status: AgentStatus): ToolStatusPhase | null {
   return null;
 }
 
+function normalizeToolName(value?: string): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
+function normalizeActivityTextForPhase(text: string, phase: ToolStatusPhase): string {
+  const trimmed = text.trim();
+  if (!trimmed || phase === "start") return trimmed;
+
+  if (phase === "result") {
+    return trimmed
+      .replace(/^Exploring\b/i, "Explored")
+      .replace(/^Searching\b/i, "Searched")
+      .replace(/^Fetching\b/i, "Fetched")
+      .replace(/^Running\b/i, "Ran")
+      .replace(/^Writing\b/i, "Edited")
+      .replace(/^Editing\b/i, "Edited");
+  }
+
+  return trimmed
+    .replace(/^Exploring\b/i, "Read failed")
+    .replace(/^Searching\b/i, "Search failed")
+    .replace(/^Fetching\b/i, "Fetch failed")
+    .replace(/^Running\b/i, "Command failed")
+    .replace(/^Writing\b/i, "Edit failed")
+    .replace(/^Editing\b/i, "Edit failed");
+}
+
+function defaultToolActivityText(toolName: string | undefined, phase: ToolStatusPhase): string {
+  const label = toolName || "Tool";
+  if (phase === "start") return `${label} running...`;
+  if (phase === "result") return `${label} complete`;
+  return `${label} failed`;
+}
+
+function findMatchingStartActivityIndex(
+  activities: SessionActivitySnapshot[],
+  timestamp: number,
+  toolName?: string
+): number {
+  const normalizedToolName = toolName?.toLowerCase();
+  for (let index = activities.length - 1; index >= 0; index -= 1) {
+    const candidate = activities[index];
+    if (!candidate || candidate.phase !== "start") continue;
+    if (candidate.timestamp > timestamp) continue;
+    if (normalizedToolName) {
+      const candidateToolName = candidate.toolName?.toLowerCase();
+      if (candidateToolName !== normalizedToolName) continue;
+    }
+    return index;
+  }
+  return -1;
+}
+
 function upsertSessionStatusSnapshot(payload: StatusPayload): void {
   const sessionId = typeof payload.sessionId === "string" ? payload.sessionId.trim() : "";
   if (!sessionId) return;
@@ -104,17 +159,49 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
   const previous = sessionStatusSnapshots.get(sessionId);
   const nextActivities = previous?.activities ? [...previous.activities] : [];
   const phase = statusToPhase(payload.status);
-  const activityText = sanitizeActivityText(payload.detail);
+  const rawActivityText = sanitizeActivityText(payload.detail);
+  const activityText =
+    phase && rawActivityText ? normalizeActivityTextForPhase(rawActivityText, phase) : rawActivityText;
+  const toolName = normalizeToolName(payload.toolName);
   const isThoughtStatus = payload.status === "thinking" || payload.status === "generating";
 
-  if (phase && activityText) {
-    nextActivities.push({
-      id: `${payload.timestamp}-${Math.random().toString(36).slice(2, 8)}`,
-      phase,
-      text: activityText,
-      timestamp: payload.timestamp,
-      toolName: payload.toolName,
-    });
+  if (phase) {
+    if (phase === "start") {
+      const startText = activityText || defaultToolActivityText(toolName, "start");
+      nextActivities.push({
+        id: `${payload.timestamp}-${Math.random().toString(36).slice(2, 8)}`,
+        phase: "start",
+        text: startText,
+        timestamp: payload.timestamp,
+        toolName,
+      });
+    } else {
+      const matchIndex = findMatchingStartActivityIndex(nextActivities, payload.timestamp, toolName);
+      if (matchIndex >= 0) {
+        const matched = nextActivities[matchIndex];
+        const matchedText = typeof matched?.text === "string" ? matched.text : "";
+        const resolvedText =
+          activityText ||
+          normalizeActivityTextForPhase(matchedText, phase) ||
+          defaultToolActivityText(toolName || matched?.toolName, phase);
+        nextActivities[matchIndex] = {
+          id: matched.id,
+          phase,
+          text: resolvedText,
+          timestamp: payload.timestamp,
+          toolName: toolName || matched.toolName,
+        };
+      } else {
+        const fallbackText = activityText || defaultToolActivityText(toolName, phase);
+        nextActivities.push({
+          id: `${payload.timestamp}-${Math.random().toString(36).slice(2, 8)}`,
+          phase,
+          text: fallbackText,
+          timestamp: payload.timestamp,
+          toolName,
+        });
+      }
+    }
   } else if (isThoughtStatus && activityText && isMeaningfulThoughtDetail(activityText)) {
     const lastActivity = nextActivities[nextActivities.length - 1];
     const duplicateThought =

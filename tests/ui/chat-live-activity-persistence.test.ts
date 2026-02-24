@@ -35,7 +35,12 @@ describe("Chat live activity persistence", () => {
 
   test("keeps the working timeline visible while the session remains active", () => {
     const source = readFileSync(chatSourcePath, "utf8");
-    expect(source).toContain('const showWorkingTimeline = isLoading || currentSessionIsActive;');
+    expect(source).toContain(
+      "const currentSessionIsLoading = isLoading && loadingSessionId === sessionId;"
+    );
+    expect(source).toContain(
+      "const showWorkingTimeline = currentSessionIsLoading || currentSessionIsActive;"
+    );
     expect(source).toContain(
       'const timelineStatus =\n    currentSessionIsActive && liveStatus === "idle" ? ("thinking" as const) : liveStatus;'
     );
