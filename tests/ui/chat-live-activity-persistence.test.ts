@@ -33,10 +33,11 @@ describe("Chat live activity persistence", () => {
     expect(source).not.toContain("finalizeCompletedActivities(processActivities).slice(-8)");
   });
 
-  test("hides stale working timeline when session status is active but live status is idle", () => {
+  test("keeps the working timeline visible while the session remains active", () => {
     const source = readFileSync(chatSourcePath, "utf8");
+    expect(source).toContain('const showWorkingTimeline = isLoading || currentSessionIsActive;');
     expect(source).toContain(
-      'const showWorkingTimeline = isLoading || (currentSessionIsActive && liveStatus !== "idle");'
+      'const timelineStatus =\n    currentSessionIsActive && liveStatus === "idle" ? ("thinking" as const) : liveStatus;'
     );
   });
 

@@ -68,22 +68,36 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 function useAgentStatus() {
   const [status, setStatus] = useState<'idle' | 'active'>('idle');
   const eventSourceRef = useRef<EventSource | null>(null);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeSessionLastSeenRef = useRef<Map<string, number>>(new Map());
+  const globalLastSeenRef = useRef<number>(0);
 
   useEffect(() => {
-    const clearIdleFallback = () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
+    const ACTIVE_WINDOW_MS = 45_000;
+    const ACTIVE_STATUSES = new Set([
+      'thinking',
+      'generating',
+      'tool_executing',
+      'tool_completed',
+      'error',
+    ]);
+
+    const refreshDerivedStatus = () => {
+      const now = Date.now();
+      for (const [sessionId, lastSeen] of activeSessionLastSeenRef.current.entries()) {
+        if (now - lastSeen > ACTIVE_WINDOW_MS) {
+          activeSessionLastSeenRef.current.delete(sessionId);
+        }
       }
+      const globalActive =
+        globalLastSeenRef.current > 0 && now - globalLastSeenRef.current <= ACTIVE_WINDOW_MS;
+      const hasActiveSessions = activeSessionLastSeenRef.current.size > 0;
+      setStatus(globalActive || hasActiveSessions ? 'active' : 'idle');
     };
 
-    const scheduleIdleFallback = () => {
-      clearIdleFallback();
-      timeoutRef.current = setTimeout(() => {
-        setStatus('idle');
-      }, 45000);
-    };
+    const sweepInterval = setInterval(() => {
+      refreshDerivedStatus();
+    }, 5000);
 
     const connectSSE = () => {
       const eventSource = new EventSource(appendApiTokenParam('/api/sse/status'));
@@ -93,27 +107,26 @@ function useAgentStatus() {
         try {
           const data = JSON.parse(event.data);
           const statusValue = typeof data?.status === 'string' ? data.status : typeof data === 'string' ? data : '';
+          const sessionId = typeof data?.sessionId === 'string' ? data.sessionId.trim() : '';
 
           if (!statusValue) return;
+          const now = Date.now();
+          const isActiveStatus = ACTIVE_STATUSES.has(statusValue);
 
-          if (statusValue === 'idle') {
-            clearIdleFallback();
-            setStatus('idle');
-            return;
+          if (sessionId) {
+            if (isActiveStatus) {
+              activeSessionLastSeenRef.current.set(sessionId, now);
+            } else if (statusValue === 'idle' || statusValue === 'error') {
+              activeSessionLastSeenRef.current.delete(sessionId);
+            }
+          } else {
+            if (isActiveStatus) {
+              globalLastSeenRef.current = now;
+            } else if (statusValue === 'idle' || statusValue === 'error') {
+              globalLastSeenRef.current = 0;
+            }
           }
-
-          const activeStatuses = new Set([
-            'thinking',
-            'generating',
-            'tool_executing',
-            'tool_completed',
-            'error',
-          ]);
-
-          if (activeStatuses.has(statusValue)) {
-            setStatus('active');
-            scheduleIdleFallback();
-          }
+          refreshDerivedStatus();
         } catch {
           // Ignore parse errors
         }
@@ -121,7 +134,10 @@ function useAgentStatus() {
 
       eventSource.onerror = () => {
         eventSource.close();
-        setTimeout(connectSSE, 5000);
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+        }
+        reconnectTimeoutRef.current = setTimeout(connectSSE, 5000);
       };
     };
 
@@ -131,7 +147,10 @@ function useAgentStatus() {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
       }
-      clearIdleFallback();
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      clearInterval(sweepInterval);
     };
   }, []);
 

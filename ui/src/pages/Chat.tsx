@@ -218,6 +218,7 @@ interface PendingProcessCapture {
 const LAST_WORKSPACE_STORAGE_KEY = "cybara:lastWorkspaceDir";
 const LAST_SESSION_STORAGE_KEY = "cybara:lastSessionId";
 const MESSAGE_PROCESS_MAP_STORAGE_KEY = "cybara:messageProcessMap";
+const SESSION_ACTIVITY_STALE_MS = 30_000;
 
 function getMessageProcessKey(
   sessionKey: string | null,
@@ -3011,7 +3012,6 @@ export function Chat() {
           activities: runActivities.map((activity) => ({ ...activity })),
         };
       }
-      setLiveStatus("idle");
     }
 
     wasLoadingRef.current = isLoading;
@@ -3090,12 +3090,14 @@ export function Chat() {
               const candidate = previous[index];
               if (candidate.phase !== "start") continue;
               if ((candidate.toolName || "").trim().toLowerCase() !== normalizedToolName) continue;
+              if (nextTimestamp - candidate.timestamp > 60_000) continue;
               const updated = [...previous];
               updated[index] = {
                 ...candidate,
                 phase,
                 text: normalizedText,
                 timestamp: nextTimestamp,
+                toolName: normalizedToolName,
               };
               return updated;
             }
@@ -3104,6 +3106,7 @@ export function Chat() {
           for (let index = previous.length - 1; index >= 0; index -= 1) {
             const candidate = previous[index];
             if (candidate.phase !== "start") continue;
+            if (nextTimestamp - candidate.timestamp > 60_000) continue;
             if (normalizeActivityTextForPhase(candidate.text, phase) !== normalizedText) continue;
             const updated = [...previous];
             updated[index] = {
@@ -3111,6 +3114,7 @@ export function Chat() {
               phase,
               text: normalizedText,
               timestamp: nextTimestamp,
+              toolName: normalizedToolName || candidate.toolName,
             };
             return updated;
           }
@@ -3123,7 +3127,8 @@ export function Chat() {
           normalizeActivityTextForPhase(previousLast.text, phase) === normalizedText &&
           (normalizedToolName
             ? (previousLast.toolName || "").trim().toLowerCase() === normalizedToolName
-            : true)
+            : true) &&
+          nextTimestamp - previousLast.timestamp < 750
         ) {
           return previous;
         }
@@ -3154,13 +3159,21 @@ export function Chat() {
       const response = await chatApi.getSessionStatus(resolvedSessionId || undefined);
       if (!response.success || !response.data) return;
       const payload = response.data as SessionStatusResponse;
-      const nextActiveIds = Array.isArray(payload.activeSessionIds) ? payload.activeSessionIds : [];
-      setActiveSessionIds(nextActiveIds);
+      const rawActiveIds = Array.isArray(payload.activeSessionIds) ? payload.activeSessionIds : [];
 
       if (!resolvedSessionId) return;
       const snapshot = payload.session;
+      const snapshotAgeMs =
+        snapshot && typeof snapshot.timestamp === "number" ? Date.now() - snapshot.timestamp : Infinity;
+      const snapshotFresh = snapshotAgeMs <= SESSION_ACTIVITY_STALE_MS;
+      const nextActiveIds =
+        snapshot && !snapshotFresh
+          ? rawActiveIds.filter((candidateId) => candidateId !== resolvedSessionId)
+          : rawActiveIds;
+      setActiveSessionIds(nextActiveIds);
       const isActive =
         !!snapshot &&
+        snapshotFresh &&
         (payload.active === true ||
           snapshot.status === "thinking" ||
           snapshot.status === "generating" ||
@@ -3191,9 +3204,11 @@ export function Chat() {
   }, []);
 
   useEffect(() => {
+    setLiveStatus("idle");
+    setLiveActivities([]);
+    runActivityBufferRef.current = [];
+    acceptEventsUntilRef.current = 0;
     if (!sessionId) {
-      setLiveStatus("idle");
-      setLiveActivities([]);
       return;
     }
 
@@ -3753,8 +3768,9 @@ export function Chat() {
     : 0;
   const revertFollowingCount = Math.max(0, revertRemovedCount - 1);
   const currentSessionIsActive = !!sessionId && activeSessionIds.includes(sessionId);
-  const showWorkingTimeline = isLoading || (currentSessionIsActive && liveStatus !== "idle");
-  const timelineStatus = liveStatus;
+  const showWorkingTimeline = isLoading || currentSessionIsActive;
+  const timelineStatus =
+    currentSessionIsActive && liveStatus === "idle" ? ("thinking" as const) : liveStatus;
 
   return (
     <div className="h-screen flex flex-col bg-[#050508]">
