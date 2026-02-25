@@ -225,7 +225,7 @@ describe("WhatsApp adapter mocked flows", () => {
             author: undefined,
             downloadMedia: async () => null,
             getChat: async () => ({
-              sendMessage: async () => {},
+              sendMessage: async () => { },
             }),
           } as Message;
         },
@@ -331,7 +331,7 @@ describe("WhatsApp adapter mocked flows", () => {
             author: undefined,
             downloadMedia: async () => null,
             getChat: async () => ({
-              sendMessage: async () => {},
+              sendMessage: async () => { },
             }),
           } as Message;
         },
@@ -398,7 +398,7 @@ describe("WhatsApp adapter mocked flows", () => {
             author: undefined,
             downloadMedia: async () => null,
             getChat: async () => ({
-              sendMessage: async () => {},
+              sendMessage: async () => { },
             }),
           } as Message;
         },
@@ -849,7 +849,7 @@ describe("WhatsApp adapter mocked flows", () => {
 
     expect(handlerCalls).toBe(0);
     expect(replies).toHaveLength(1);
-    expect(replies[0]).toContain("Available management commands");
+    expect(replies[0]).toContain("Cybara Commands");
     expect(chatSends).toHaveLength(0);
   });
 

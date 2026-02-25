@@ -356,47 +356,44 @@ async function handleTelegramCommand(
     case "start":
       return `👋 *Welcome to Cybara!*
 
-I'm your AI assistant. I can help you with various tasks including:
-• Writing and editing code
-• Answering questions
-• Running commands
-• And much more!
+I'm your AI assistant powered by the Cybara Agent Platform.
 
-Use /help to see available commands.
-Use /agents to see available AI agents.
+• 💬 Chat naturally — just send me a message
+• 🤖 Switch agents and models on the fly
+• 📂 Set a workspace for file-aware conversations
+• 🔧 Run tools, spawn subagents, and more
 
-Just send me a message to start chatting!`;
+Type /help to see all commands.`;
 
     case "help":
-      return `📖 *Available Commands*
+      return `⚡ *Cybara Commands*
 
-*Core:*
-/start - Start interacting with the bot
-/help - Show this help message
-/new - Start a fresh conversation (new session)
+📋 *Sessions:*
+/new — Start a fresh conversation
+/workspace [path] — Set session workspace (~/path supported)
+/workspace clear — Reset workspace to default
+/sessions — List your recent sessions
+/switch <number> — Switch to a previous session
+/permissions [ask|allow] — Tool approval mode
 
-*Agents & Sessions:*
-/agents - List available agents
-/agent <id|name|number> - Switch default agent
-/providers - List providers
-/provider <id|name|number> - Switch provider
-/models - List provider models
-/model <id|number> - Switch model
-/status - Check bot and agent status
-/sessions - List your recent sessions
-/switch <number> - Switch to a previous session
+🤖 *Agents & Models:*
+/status — Agent, provider, and channel status
+/agents — List all agents
+/agent [id|name|#] — Show or switch default agent
+/providers — List all providers
+/provider [id|name|#] — Show or switch provider
+/models — List models for current provider
+/model [id|#] — Show or switch model
 
-*Information:*
-/metrics - Show token usage and statistics
-/memory - Show recent memories/context
-/tools - List available tools
+📊 *Info & Tools:*
+/metrics — Token usage and statistics
+/memory [query] — Search or view recent context
+/tools — List available tools
 
-*Utilities:*
-/cancel - Cancel current operation
-
-*Usage:*
-Simply send a message to chat with the default agent.
-Use /new anytime to start a fresh conversation.`;
+🔧 *Advanced:*
+/subagents spawn <task> — Run a one-off subagent
+/cancel — Cancel current operation
+/help — Show this help`;
 
     case "agents": {
       const agents = tables.agents.all() as Array<{ name: string; type: string; status: string }>;
