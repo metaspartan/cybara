@@ -102,6 +102,7 @@ interface ChatMessage {
     text?: string;
     timestamp?: number | string;
     toolName?: string;
+    toolCallId?: string;
   }>;
   thinking?: string;
   _truncated?: string;
@@ -141,6 +142,7 @@ interface StatusStreamEvent {
   sessionId?: string;
   agentId?: string;
   toolName?: string;
+  toolCallId?: string;
   toolPhase?: "start" | "result" | "error";
   durationMs?: number;
   type?: string;
@@ -152,6 +154,7 @@ interface SessionStatusActivity {
   text: string;
   timestamp: number;
   toolName?: string;
+  toolCallId?: string;
 }
 
 interface SessionStatusSnapshot {
@@ -342,6 +345,7 @@ function normalizePersistedLiveActivityItem(value: unknown): LiveActivityItem | 
     timestamp,
     phase,
     toolName: typeof candidate.toolName === "string" ? candidate.toolName : undefined,
+    toolCallId: typeof candidate.toolCallId === "string" ? candidate.toolCallId : undefined,
   };
 }
 
@@ -693,6 +697,7 @@ function toLiveActivityItems(activities: SessionStatusActivity[] | undefined): L
       text: activity.text,
       timestamp: activity.timestamp,
       toolName: activity.toolName,
+      toolCallId: activity.toolCallId,
     }));
 }
 
@@ -2869,6 +2874,7 @@ export function Chat() {
   const acceptEventsUntilRef = useRef(0);
   const pendingProcessCaptureRef = useRef<PendingProcessCapture | null>(null);
   const runActivityBufferRef = useRef<LiveActivityItem[]>([]);
+  const latestStatusTimestampBySessionRef = useRef<Record<string, number>>({});
   const homeWorkspaceDir =
     typeof info?.homeDir === "string" && info.homeDir.trim().length > 0
       ? info.homeDir.trim()
@@ -3149,18 +3155,61 @@ export function Chat() {
   }, [isLoading, sessionId, selectedAgentId, typedMessages]);
 
   const appendLiveActivity = useCallback(
-    (phase: "start" | "result" | "error", text: string, toolName?: string) => {
+    (
+      phase: "start" | "result" | "error",
+      text: string,
+      toolName?: string,
+      eventTimestamp?: number,
+      toolCallId?: string
+    ) => {
       const trimmed = text.trim();
       if (!trimmed) return;
 
       const normalizedText = normalizeActivityTextForPhase(trimmed, phase);
       if (isGenericStatusLabel(normalizedText)) return;
-      const nextTimestamp = Date.now();
+      const nextTimestamp =
+        typeof eventTimestamp === "number" && Number.isFinite(eventTimestamp)
+          ? eventTimestamp
+          : Date.now();
       const normalizedToolName = typeof toolName === "string" ? toolName.trim().toLowerCase() : "";
+      const normalizedToolCallId =
+        typeof toolCallId === "string" && toolCallId.trim()
+          ? toolCallId.trim().toLowerCase()
+          : "";
       const nextId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const sortAndMergeActivities = (items: LiveActivityItem[]): LiveActivityItem[] =>
+        mergeActivityLists(
+          [],
+          [...items].sort((left, right) =>
+            left.timestamp === right.timestamp
+              ? left.id.localeCompare(right.id)
+              : left.timestamp - right.timestamp
+          )
+        );
 
       const applyActivityEvent = (previous: LiveActivityItem[]): LiveActivityItem[] => {
         if (phase !== "start") {
+          if (normalizedToolCallId) {
+            for (let index = previous.length - 1; index >= 0; index -= 1) {
+              const candidate = previous[index];
+              if (candidate.phase !== "start") continue;
+              if ((candidate.toolCallId || "").trim().toLowerCase() !== normalizedToolCallId) {
+                continue;
+              }
+              if (nextTimestamp - candidate.timestamp > 60_000) continue;
+              const updated = [...previous];
+              updated[index] = {
+                ...candidate,
+                phase,
+                text: normalizedText,
+                timestamp: nextTimestamp,
+                toolName: normalizedToolName || candidate.toolName,
+                toolCallId: normalizedToolCallId,
+              };
+              return sortAndMergeActivities(updated);
+            }
+          }
+
           if (normalizedToolName) {
             for (let index = previous.length - 1; index >= 0; index -= 1) {
               const candidate = previous[index];
@@ -3174,8 +3223,9 @@ export function Chat() {
                 text: normalizedText,
                 timestamp: nextTimestamp,
                 toolName: normalizedToolName,
+                toolCallId: normalizedToolCallId || candidate.toolCallId,
               };
-              return mergeActivityLists([], updated);
+              return sortAndMergeActivities(updated);
             }
           }
 
@@ -3191,8 +3241,9 @@ export function Chat() {
               text: normalizedText,
               timestamp: nextTimestamp,
               toolName: normalizedToolName || candidate.toolName,
+              toolCallId: normalizedToolCallId || candidate.toolCallId,
             };
-            return mergeActivityLists([], updated);
+            return sortAndMergeActivities(updated);
           }
         }
 
@@ -3201,6 +3252,9 @@ export function Chat() {
           previousLast &&
           previousLast.phase === phase &&
           normalizeActivityTextForPhase(previousLast.text, phase) === normalizedText &&
+          (normalizedToolCallId
+            ? (previousLast.toolCallId || "").trim().toLowerCase() === normalizedToolCallId
+            : true) &&
           (normalizedToolName
             ? (previousLast.toolName || "").trim().toLowerCase() === normalizedToolName
             : true) &&
@@ -3215,8 +3269,9 @@ export function Chat() {
           text: normalizedText,
           timestamp: nextTimestamp,
           toolName: normalizedToolName || undefined,
+          toolCallId: normalizedToolCallId || undefined,
         };
-        return mergeActivityLists([], [...previous, next]);
+        return sortAndMergeActivities([...previous, next]);
       };
 
       runActivityBufferRef.current = applyActivityEvent(runActivityBufferRef.current);
@@ -3271,6 +3326,37 @@ export function Chat() {
       }
 
       if (activeSessionRef.current !== resolvedSessionId) return;
+      const snapshotLatestTimestamp = (() => {
+        let latest =
+          typeof snapshot.timestamp === "number" && Number.isFinite(snapshot.timestamp)
+            ? snapshot.timestamp
+            : 0;
+        if (Array.isArray(snapshot.activities)) {
+          for (const activity of snapshot.activities) {
+            if (
+              activity &&
+              typeof activity.timestamp === "number" &&
+              Number.isFinite(activity.timestamp) &&
+              activity.timestamp > latest
+            ) {
+              latest = activity.timestamp;
+            }
+          }
+        }
+        return latest;
+      })();
+      const latestKnownTimestamp =
+        latestStatusTimestampBySessionRef.current[resolvedSessionId] || 0;
+      if (
+        snapshotLatestTimestamp > 0 &&
+        latestKnownTimestamp > 0 &&
+        snapshotLatestTimestamp + 25 < latestKnownTimestamp
+      ) {
+        return;
+      }
+      if (snapshotLatestTimestamp > latestKnownTimestamp) {
+        latestStatusTimestampBySessionRef.current[resolvedSessionId] = snapshotLatestTimestamp;
+      }
       const normalizedSnapshotStatus = normalizeSessionStatus(snapshot.status);
       setLiveStatus(normalizedSnapshotStatus);
       const snapshotActivities = normalizeSnapshotActivities(
@@ -3338,6 +3424,17 @@ export function Chat() {
         typeof payload.sessionId === "string" && payload.sessionId.trim()
           ? payload.sessionId
           : null;
+      const payloadTimestamp =
+        typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
+          ? payload.timestamp
+          : 0;
+      if (payloadSessionId && payloadTimestamp > 0) {
+        const previousTimestamp =
+          latestStatusTimestampBySessionRef.current[payloadSessionId] || 0;
+        if (payloadTimestamp > previousTimestamp) {
+          latestStatusTimestampBySessionRef.current[payloadSessionId] = payloadTimestamp;
+        }
+      }
 
       if (payloadSessionId) {
         if (
@@ -3373,8 +3470,12 @@ export function Chat() {
         if (!payload.toolName) {
           const activeToolStep = getLatestInFlightStep(runActivityBufferRef.current);
           const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
+          const eventTimestamp =
+            typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
+              ? payload.timestamp
+              : undefined;
           if (isMeaningfulThoughtDetail(detail)) {
-            appendLiveActivity("result", detail, "__thought");
+            appendLiveActivity("result", detail, "__thought", eventTimestamp);
             setLiveCurrentStep(activeToolStep || detail);
           } else {
             setLiveCurrentStep(activeToolStep || "Thinking...");
@@ -3387,8 +3488,12 @@ export function Chat() {
         if (!payload.toolName) {
           const activeToolStep = getLatestInFlightStep(runActivityBufferRef.current);
           const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
+          const eventTimestamp =
+            typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
+              ? payload.timestamp
+              : undefined;
           if (isMeaningfulThoughtDetail(detail)) {
-            appendLiveActivity("result", detail, "__thought");
+            appendLiveActivity("result", detail, "__thought", eventTimestamp);
             setLiveCurrentStep(activeToolStep || detail);
           } else {
             setLiveCurrentStep(activeToolStep || "Generating response...");
@@ -3415,7 +3520,11 @@ export function Chat() {
           status === "tool_executing" ? "start" : status === "tool_completed" ? "result" : "error";
         const toolName = payload.toolName || "tool";
         const text = formatToolIntent(toolName, {}, phase, payload.detail);
-        appendLiveActivity(phase, text, payload.toolName);
+        const eventTimestamp =
+          typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
+            ? payload.timestamp
+            : undefined;
+        appendLiveActivity(phase, text, payload.toolName, eventTimestamp, payload.toolCallId);
         if (phase === "start") {
           setLiveStatus("thinking");
           setLiveCurrentStep(isGenericStatusLabel(text) ? "Thinking..." : text);
@@ -3423,7 +3532,7 @@ export function Chat() {
           const nextActiveStep = getLatestInFlightStep(runActivityBufferRef.current);
           if (nextActiveStep) {
             setLiveCurrentStep(nextActiveStep);
-          } else if (!loadingRef.current) {
+          } else {
             setLiveCurrentStep(null);
           }
         }

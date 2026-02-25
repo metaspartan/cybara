@@ -6,6 +6,7 @@ export interface LiveActivityItem {
   text: string;
   timestamp: number;
   toolName?: string;
+  toolCallId?: string;
 }
 
 export interface ToolCallLike {
@@ -107,6 +108,9 @@ function toCanonicalVerb(text: string, phase: ActivityPhase): string {
 }
 
 function activityDedupKey(activity: LiveActivityItem): string {
+  if (activity.toolCallId) {
+    return `toolCall:${activity.toolCallId}:${activity.phase}`;
+  }
   const normalizedId = activity.id.trim();
   if (normalizedId) {
     return `id:${normalizedId}`;
@@ -117,6 +121,9 @@ function activityDedupKey(activity: LiveActivityItem): string {
 }
 
 function semanticActivityDedupKey(activity: LiveActivityItem): string {
+  if (activity.toolCallId) {
+    return `toolCall:${activity.toolCallId}:${activity.phase}`;
+  }
   const toolPrefix = activity.toolName ? `${activity.toolName.toLowerCase()}:` : "";
   const normalizedText = normalizeText(toCanonicalVerb(activity.text, activity.phase)).toLowerCase();
   const timestampBucket = Number.isFinite(activity.timestamp)
@@ -205,6 +212,14 @@ export function mergeActivityLists(
   const allActivities = [...primary, ...secondary];
   const hasCompletionForStart = (activity: LiveActivityItem): boolean => {
     if (activity.phase !== "start") return false;
+    if (activity.toolCallId) {
+      return allActivities.some(
+        (candidate) =>
+          candidate.phase !== "start" &&
+          candidate.toolCallId === activity.toolCallId &&
+          candidate.timestamp >= activity.timestamp
+      );
+    }
     const key = canonicalActivityKey(activity);
     const normalizedToolName = activity.toolName?.toLowerCase();
     return allActivities.some(

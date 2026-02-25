@@ -1976,6 +1976,13 @@ class AgentManager {
     return String(error || "Unknown error");
   }
 
+  private createToolCallStatusId(toolName: string): string {
+    const normalizedToolName = toolName.trim().toLowerCase() || "tool";
+    return `${normalizedToolName}-${Date.now().toString(36)}-${Math.random()
+      .toString(36)
+      .slice(2, 10)}`;
+  }
+
   private async executeToolWithHooks(
     toolName: string,
     args: Record<string, unknown>,
@@ -2025,6 +2032,7 @@ class AgentManager {
       return { skipped: false, result: { error: reason } };
     }
 
+    const toolCallId = this.createToolCallStatusId(toolName);
     try {
       const startedAt = Date.now();
       this.broadcastAgentStatus(
@@ -2033,6 +2041,7 @@ class AgentManager {
         formatToolActivityDetail(toolName, args, "start"),
         {
           toolName,
+          toolCallId,
           toolPhase: "start",
         }
       );
@@ -2043,6 +2052,7 @@ class AgentManager {
         formatToolActivityDetail(toolName, args, "result", result),
         {
           toolName,
+          toolCallId,
           toolPhase: "result",
           durationMs: Date.now() - startedAt,
         }
@@ -2063,6 +2073,7 @@ class AgentManager {
         formatToolActivityDetail(toolName, args, "error"),
         {
           toolName,
+          toolCallId,
           toolPhase: "error",
         }
       );

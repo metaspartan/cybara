@@ -1198,6 +1198,10 @@ function sanitizeProcessActivities(
         : `${timestamp}-${Math.random().toString(36).slice(2, 8)}`;
     const toolName =
       typeof entry.toolName === "string" && entry.toolName.trim() ? entry.toolName : undefined;
+    const toolCallId =
+      typeof entry.toolCallId === "string" && entry.toolCallId.trim()
+        ? entry.toolCallId
+        : undefined;
 
     sanitized.push({
       id,
@@ -1208,6 +1212,7 @@ function sanitizeProcessActivities(
           : text,
       timestamp,
       toolName,
+      toolCallId,
     });
   }
 

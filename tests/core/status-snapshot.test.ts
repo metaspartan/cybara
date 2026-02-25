@@ -164,4 +164,56 @@ describe("session status snapshots", () => {
       detail: "idle",
     });
   });
+
+  test("matches repeated tool events by toolCallId to avoid stale in-flight ordering", () => {
+    const sessionId = `status-tool-call-id-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const baseTimestamp = Date.now();
+
+    broadcastStatus({
+      status: "tool_executing",
+      timestamp: baseTimestamp,
+      sessionId,
+      toolName: "read",
+      toolCallId: "read-1",
+      detail: "Exploring package.json",
+    });
+
+    broadcastStatus({
+      status: "tool_executing",
+      timestamp: baseTimestamp + 1,
+      sessionId,
+      toolName: "read",
+      toolCallId: "read-2",
+      detail: "Exploring package.json",
+    });
+
+    broadcastStatus({
+      status: "tool_completed",
+      timestamp: baseTimestamp + 2,
+      sessionId,
+      toolName: "read",
+      toolCallId: "read-1",
+      detail: "Explored package.json",
+    });
+
+    const snapshot = getSessionStatusSnapshot(sessionId);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.activities).toHaveLength(2);
+
+    const first = snapshot?.activities[0];
+    const second = snapshot?.activities[1];
+    expect(first?.toolCallId).toBe("read-1");
+    expect(first?.phase).toBe("result");
+    expect(first?.text).toBe("Explored package.json");
+    expect(second?.toolCallId).toBe("read-2");
+    expect(second?.phase).toBe("start");
+    expect(second?.text).toBe("Exploring package.json");
+
+    broadcastStatus({
+      status: "idle",
+      timestamp: baseTimestamp + 3,
+      sessionId,
+      detail: "idle",
+    });
+  });
 });

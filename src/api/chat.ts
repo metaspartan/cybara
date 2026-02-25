@@ -49,6 +49,7 @@ export interface ProcessActivityInfo {
   text: string;
   timestamp: number;
   toolName?: string;
+  toolCallId?: string;
 }
 
 export interface ToolCallInfo {
@@ -348,7 +349,11 @@ function dedupeProcessActivities(activities: ProcessActivityInfo[]): ProcessActi
   for (const activity of activities.sort((a, b) => a.timestamp - b.timestamp)) {
     const normalizedText = normalizeProcessActivityTextForPhase(activity.text.trim(), activity.phase);
     if (!normalizedText) continue;
-    const key = `${activity.phase}:${(activity.toolName || "").toLowerCase()}:${normalizedText.toLowerCase()}:${Math.floor(activity.timestamp / 1000)}`;
+    const toolCallIdKey =
+      typeof activity.toolCallId === "string" && activity.toolCallId.trim()
+        ? activity.toolCallId.trim().toLowerCase()
+        : "";
+    const key = `${activity.phase}:${toolCallIdKey}:${(activity.toolName || "").toLowerCase()}:${normalizedText.toLowerCase()}:${Math.floor(activity.timestamp / 1000)}`;
     if (seen.has(key)) continue;
     seen.add(key);
     deduped.push({
@@ -381,6 +386,7 @@ function buildFallbackProcessActivities(
       text: formatProcessActivityFromToolCall(toolCall),
       timestamp: fallbackStart + timelineOffset,
       toolName: toolCall.name,
+      toolCallId: typeof toolCall.id === "string" && toolCall.id.trim() ? toolCall.id : undefined,
     });
   }
 
@@ -943,6 +949,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
       text: activity.text,
       timestamp: activity.timestamp,
       toolName: activity.toolName,
+      toolCallId: activity.toolCallId,
     }));
   })();
   const fallbackProcessActivities =

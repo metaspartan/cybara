@@ -15,6 +15,7 @@ export interface StatusPayload {
   sessionId?: string;
   agentId?: string;
   toolName?: string;
+  toolCallId?: string;
   toolPhase?: ToolStatusPhase;
   durationMs?: number;
 }
@@ -36,6 +37,7 @@ export interface SessionActivitySnapshot {
   text: string;
   timestamp: number;
   toolName?: string;
+  toolCallId?: string;
 }
 
 export interface SessionStatusSnapshot {
@@ -103,6 +105,12 @@ function normalizeToolName(value?: string): string | undefined {
   return trimmed || undefined;
 }
 
+function normalizeToolCallId(value?: string): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
 function normalizeActivityTextForPhase(text: string, phase: ToolStatusPhase): string {
   const trimmed = text.trim();
   if (!trimmed || phase === "start") return trimmed;
@@ -136,8 +144,21 @@ function defaultToolActivityText(toolName: string | undefined, phase: ToolStatus
 function findMatchingStartActivityIndex(
   activities: SessionActivitySnapshot[],
   timestamp: number,
-  toolName?: string
+  toolName?: string,
+  toolCallId?: string
 ): number {
+  const normalizedToolCallId = normalizeToolCallId(toolCallId);
+  if (normalizedToolCallId) {
+    for (let index = activities.length - 1; index >= 0; index -= 1) {
+      const candidate = activities[index];
+      if (!candidate || candidate.phase !== "start") continue;
+      if (candidate.timestamp > timestamp) continue;
+      if (candidate.toolCallId === normalizedToolCallId) {
+        return index;
+      }
+    }
+  }
+
   const normalizedToolName = toolName?.toLowerCase();
   for (let index = activities.length - 1; index >= 0; index -= 1) {
     const candidate = activities[index];
@@ -163,6 +184,7 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
   const activityText =
     phase && rawActivityText ? normalizeActivityTextForPhase(rawActivityText, phase) : rawActivityText;
   const toolName = normalizeToolName(payload.toolName);
+  const toolCallId = normalizeToolCallId(payload.toolCallId);
   const isThoughtStatus = payload.status === "thinking" || payload.status === "generating";
 
   if (phase) {
@@ -174,9 +196,15 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
         text: startText,
         timestamp: payload.timestamp,
         toolName,
+        toolCallId,
       });
     } else {
-      const matchIndex = findMatchingStartActivityIndex(nextActivities, payload.timestamp, toolName);
+      const matchIndex = findMatchingStartActivityIndex(
+        nextActivities,
+        payload.timestamp,
+        toolName,
+        toolCallId
+      );
       if (matchIndex >= 0) {
         const matched = nextActivities[matchIndex];
         const matchedText = typeof matched?.text === "string" ? matched.text : "";
@@ -190,6 +218,7 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
           text: resolvedText,
           timestamp: payload.timestamp,
           toolName: toolName || matched.toolName,
+          toolCallId: toolCallId || matched.toolCallId,
         };
       } else {
         const fallbackText = activityText || defaultToolActivityText(toolName, phase);
@@ -199,6 +228,7 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
           text: fallbackText,
           timestamp: payload.timestamp,
           toolName,
+          toolCallId,
         });
       }
     }
