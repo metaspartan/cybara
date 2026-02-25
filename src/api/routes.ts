@@ -196,6 +196,16 @@ async function getWalletManager(): Promise<WalletManagerInstance> {
 
   try {
     const walletModule = await walletModulePromise;
+    if (!walletModule.walletManager) {
+      // Module imported but walletManager is undefined — module evaluation
+      // likely failed partway through (e.g. WASM crash). Clear cache and retry.
+      walletModulePromise = null;
+      throw new Error(
+        "Wallet module loaded but walletManager is undefined. " +
+        "This usually means a native dependency (tiny-secp256k1 WASM) " +
+        "failed during module initialization. Check server logs for details."
+      );
+    }
     return walletModule.walletManager;
   } catch (error) {
     walletModulePromise = null;
@@ -1287,27 +1297,27 @@ function sanitizeSessionMessages(
     const selectedToolCalls =
       MAX_TOOL_CALLS <= 0
         ? indexedToolCalls.map((entry) => ({
-            toolCall: entry.toolCall,
-            sourceIndex: entry.index,
-          }))
+          toolCall: entry.toolCall,
+          sourceIndex: entry.index,
+        }))
         : [...selectedIndexes]
-            .sort((a, b) => a - b)
-            .map((index) => {
-              const entry = indexedToolCalls[index];
-              if (!entry) return null;
-              return {
-                toolCall: entry.toolCall,
-                sourceIndex: entry.index,
-              };
-            })
-            .filter(
-              (
-                entry
-              ): entry is {
-                toolCall: NonNullable<SessionMessageView["tool_calls"]>[number];
-                sourceIndex: number;
-              } => !!entry
-            );
+          .sort((a, b) => a - b)
+          .map((index) => {
+            const entry = indexedToolCalls[index];
+            if (!entry) return null;
+            return {
+              toolCall: entry.toolCall,
+              sourceIndex: entry.index,
+            };
+          })
+          .filter(
+            (
+              entry
+            ): entry is {
+              toolCall: NonNullable<SessionMessageView["tool_calls"]>[number];
+              sourceIndex: number;
+            } => !!entry
+          );
 
     const sanitizedToolCalls = selectedToolCalls.map(({ toolCall: tc, sourceIndex }) => {
       const sanitized = { ...tc };
@@ -1783,9 +1793,9 @@ const routes: Record<string, RouteHandler> = {
         await walletManager.getPriceQuote({
           source:
             data.source === "auto" ||
-            data.source === "chainlink" ||
-            data.source === "pyth" ||
-            data.source === "jupiter"
+              data.source === "chainlink" ||
+              data.source === "pyth" ||
+              data.source === "jupiter"
               ? data.source
               : undefined,
           symbol: typeof data.symbol === "string" ? data.symbol : undefined,
@@ -2071,8 +2081,8 @@ const routes: Record<string, RouteHandler> = {
 
     const contextPermissions = Array.isArray(data.context?.permissions)
       ? data.context.permissions.filter(
-          (entry): entry is string => typeof entry === "string" && entry.trim().length > 0
-        )
+        (entry): entry is string => typeof entry === "string" && entry.trim().length > 0
+      )
       : undefined;
     const context: ToolContext = {
       agentId:
@@ -2524,15 +2534,15 @@ const routes: Record<string, RouteHandler> = {
 
     const oauthConfigRaw = providerConfig.oauthConfig as
       | {
-          authorizeUrl?: string;
-          tokenUrl?: string;
-          clientId?: string;
-          clientSecret?: string;
-          scope?: string;
-          callbackPort?: number;
-          callbackPath?: string;
-          authorizeParams?: Record<string, string>;
-        }
+        authorizeUrl?: string;
+        tokenUrl?: string;
+        clientId?: string;
+        clientSecret?: string;
+        scope?: string;
+        callbackPort?: number;
+        callbackPath?: string;
+        authorizeParams?: Record<string, string>;
+      }
       | undefined;
 
     const oauthConfig = {
@@ -3274,9 +3284,9 @@ const routes: Record<string, RouteHandler> = {
       enabled: channel.enabled,
       ...(channel.type === "discord" && running
         ? {
-            message:
-              "Discord connection looks good. Invite the bot to your server before expecting messages in guild channels.",
-          }
+          message:
+            "Discord connection looks good. Invite the bot to your server before expecting messages in guild channels.",
+        }
         : {}),
     };
   },
@@ -3672,11 +3682,11 @@ const routes: Record<string, RouteHandler> = {
           message_count: session.messageCount,
           last_message: lastMessage
             ? {
-                role: lastMessage.role,
-                content:
-                  lastMessage.content.slice(0, 100) +
-                  (lastMessage.content.length > 100 ? "..." : ""),
-              }
+              role: lastMessage.role,
+              content:
+                lastMessage.content.slice(0, 100) +
+                (lastMessage.content.length > 100 ? "..." : ""),
+            }
             : null,
         };
       })
@@ -3702,7 +3712,7 @@ const routes: Record<string, RouteHandler> = {
       const truncatedContent =
         MAX_CONTENT_SIZE > 0 && typeof m.content === "string" && m.content.length > MAX_CONTENT_SIZE
           ? m.content.slice(0, MAX_CONTENT_SIZE) +
-            `\n\n... [content truncated, ${m.content.length - MAX_CONTENT_SIZE} chars omitted]`
+          `\n\n... [content truncated, ${m.content.length - MAX_CONTENT_SIZE} chars omitted]`
           : m.content;
       return {
         ...m,
@@ -3847,7 +3857,7 @@ const routes: Record<string, RouteHandler> = {
         const truncatedContent =
           typeof m.content === "string" && m.content.length > MAX_CONTENT_SIZE
             ? m.content.slice(0, MAX_CONTENT_SIZE) +
-              `\n\n... [content truncated, ${m.content.length - MAX_CONTENT_SIZE} chars omitted]`
+            `\n\n... [content truncated, ${m.content.length - MAX_CONTENT_SIZE} chars omitted]`
             : m.content;
         return {
           ...m,
@@ -4554,10 +4564,10 @@ const routes: Record<string, RouteHandler> = {
       topModel:
         topModel && topModel.key
           ? {
-              model: topModel.key,
-              tokens: topModel.total,
-              sharePct: topModelSharePct,
-            }
+            model: topModel.key,
+            tokens: topModel.total,
+            sharePct: topModelSharePct,
+          }
           : null,
       providerEfficiency,
       modelInsights,
@@ -4599,12 +4609,12 @@ const routes: Record<string, RouteHandler> = {
         : sortedCallTotals.length % 2 === 1
           ? sortedCallTotals[(sortedCallTotals.length - 1) / 2]!
           : Number(
-              (
-                (sortedCallTotals[sortedCallTotals.length / 2 - 1]! +
-                  sortedCallTotals[sortedCallTotals.length / 2]!) /
-                2
-              ).toFixed(2)
-            );
+            (
+              (sortedCallTotals[sortedCallTotals.length / 2 - 1]! +
+                sortedCallTotals[sortedCallTotals.length / 2]!) /
+              2
+            ).toFixed(2)
+          );
 
     const ratioBands = [
       { band: "very_input_heavy", min: 4, max: Number.POSITIVE_INFINITY, calls: 0 },

@@ -58,9 +58,91 @@ export async function buildSidecar(): Promise<void> {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   }
 
-  await $`bun build src/index.ts --compile --target=${target.bunTarget} --outfile ${releasePath} --external electron`;
+  // tiny-secp256k1 loads secp256k1.wasm at runtime via readFileSync + import.meta.url.
+  // bun build --compile doesn't embed .wasm files into the virtual FS, so we:
+  // 1. Patch wasm_loader.js to fall back to the executable's directory
+  // 2. Copy secp256k1.wasm alongside the compiled binary
+  const wasmLoaderPath = join(
+    import.meta.dirname,
+    "..",
+    "node_modules",
+    "tiny-secp256k1",
+    "lib",
+    "wasm_loader.js"
+  );
+  const wasmSource = join(
+    import.meta.dirname,
+    "..",
+    "node_modules",
+    "tiny-secp256k1",
+    "lib",
+    "secp256k1.wasm"
+  );
+  let originalWasmLoader = "";
+  const patchedWasmLoader = `
+import { readFileSync, existsSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
+import * as rand from "./rand.js";
+import * as validate_error from "./validate_error.js";
+
+function loadWasmBinary() {
+  // Try import.meta.url first (works in dev/unbundled mode)
+  try {
+    const metaPath = fileURLToPath(new URL("secp256k1.wasm", import.meta.url));
+    if (existsSync(metaPath)) return readFileSync(metaPath);
+  } catch {}
+
+  // Fallback: look next to the executable (bun --compile sidecar)
+  const exeDir = dirname(process.execPath);
+  const exePath = join(exeDir, "secp256k1.wasm");
+  if (existsSync(exePath)) return readFileSync(exePath);
+
+  // Fallback: look in cwd
+  const cwdPath = join(process.cwd(), "secp256k1.wasm");
+  if (existsSync(cwdPath)) return readFileSync(cwdPath);
+
+  throw new Error("secp256k1.wasm not found in any search path");
+}
+
+const binary = loadWasmBinary();
+const imports = {
+  "./rand.js": rand,
+  "./validate_error.js": validate_error,
+};
+const mod = new WebAssembly.Module(binary);
+const instance = new WebAssembly.Instance(mod, imports);
+export default instance.exports;
+`.trim();
+
+  if (existsSync(wasmLoaderPath)) {
+    originalWasmLoader = await Bun.file(wasmLoaderPath).text();
+    await Bun.write(wasmLoaderPath, patchedWasmLoader);
+    console.log(`  🔧 Patched tiny-secp256k1 wasm_loader.js for sidecar build`);
+  }
+
+  try {
+    await $`bun build src/index.ts --compile --target=${target.bunTarget} --outfile ${releasePath} --external electron`;
+  } finally {
+    // Restore original wasm_loader.js
+    if (originalWasmLoader) {
+      await Bun.write(wasmLoaderPath, originalWasmLoader);
+      console.log(`  🔧 Restored original wasm_loader.js`);
+    }
+  }
+
   await copyFilePortable(releasePath, sidecarPath);
   await copyFilePortable(releasePath, tauriDebugSidecarPath);
+
+  // Copy secp256k1.wasm alongside the binary
+  if (existsSync(wasmSource)) {
+    for (const dir of [RELEASE_DIR, TAURI_BIN_DIR, tauriDebugDir]) {
+      await copyFilePortable(wasmSource, join(dir, "secp256k1.wasm"));
+    }
+    console.log(`  📦 Copied secp256k1.wasm to sidecar directories`);
+  } else {
+    console.warn(`  ⚠️ secp256k1.wasm not found — BTC wallet operations may be unavailable`);
+  }
 
   // Ensure the sidecar can serve the packaged UI in tauri:dev.
   if (existsSync(uiDistPath)) {

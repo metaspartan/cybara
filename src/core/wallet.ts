@@ -45,16 +45,30 @@ import {
 import { ExactSvmScheme, toClientSvmSigner } from "@x402/svm";
 import { ExactSvmSchemeV1, NETWORKS as X402SvmV1Networks } from "@x402/svm/v1";
 import { derivePath as deriveEd25519Path } from "ed25519-hd-key";
-import * as bitcoin from "bitcoinjs-lib";
+import * as bitcoinImport from "bitcoinjs-lib";
 import BIP32Factory from "bip32";
 import ECPairFactory from "ecpair";
 import * as ecc from "tiny-secp256k1";
 import { config } from "./config";
 import { secureDir } from "./paths";
 
-bitcoin.initEccLib(ecc);
-const bip32 = BIP32Factory(ecc);
-const ECPair = ECPairFactory(ecc);
+// tiny-secp256k1 loads WASM at import time. The sidecar build patches the
+// loader to resolve secp256k1.wasm from the executable's directory. Wrap
+// initialization in try-catch so ETH/SOL still work if WASM fails.
+let bitcoin: typeof bitcoinImport | null = null;
+let bip32: ReturnType<typeof BIP32Factory> | null = null;
+let ECPair: ReturnType<typeof ECPairFactory> | null = null;
+try {
+  bitcoinImport.initEccLib(ecc);
+  bitcoin = bitcoinImport;
+  bip32 = BIP32Factory(ecc);
+  ECPair = ECPairFactory(ecc);
+} catch (eccError) {
+  console.warn(
+    "[Wallet] tiny-secp256k1 WASM init failed — BTC operations will be unavailable:",
+    eccError instanceof Error ? eccError.message : eccError
+  );
+}
 
 const WALLET_FILE = join(secureDir, "wallet.v1.json");
 const WALLET_VERSION = 1 as const;
@@ -1052,10 +1066,10 @@ class WalletManager {
       wordCount: vault?.wordCount,
       kdf: vault
         ? {
-            name: vault.kdf.name,
-            hash: vault.kdf.hash,
-            iterations: vault.kdf.iterations,
-          }
+          name: vault.kdf.name,
+          hash: vault.kdf.hash,
+          iterations: vault.kdf.iterations,
+        }
         : undefined,
       agentAccessEnabled: this.isAgentAccessEnabled(),
       chains: SUPPORTED_CHAINS,
@@ -1121,7 +1135,7 @@ class WalletManager {
     if (
       !vault.primaryAddresses ||
       vault.primaryAddresses.eth !== primaryAddresses.eth ||
-      vault.primaryAddresses.btc !== primaryAddresses.btc ||
+      (primaryAddresses.btc && vault.primaryAddresses.btc !== primaryAddresses.btc) ||
       vault.primaryAddresses.sol !== primaryAddresses.sol
     ) {
       this.writeVault({
@@ -1562,9 +1576,9 @@ class WalletManager {
         return await this.getPriceQuote({
           source:
             payload.source === "auto" ||
-            payload.source === "chainlink" ||
-            payload.source === "pyth" ||
-            payload.source === "jupiter"
+              payload.source === "chainlink" ||
+              payload.source === "pyth" ||
+              payload.source === "jupiter"
               ? payload.source
               : undefined,
           symbol: typeof payload.symbol === "string" ? payload.symbol : undefined,
@@ -1709,7 +1723,12 @@ class WalletManager {
     for (const chain of chains) {
       for (let offset = 0; offset < count; offset++) {
         const index = startIndex + offset;
-        accounts.push(this.deriveAccount(chain, index, unlocked.mnemonic));
+        try {
+          accounts.push(this.deriveAccount(chain, index, unlocked.mnemonic));
+        } catch {
+          // Chain derivation unavailable (e.g. BTC WASM missing); skip
+          break;
+        }
       }
     }
 
@@ -2399,9 +2418,9 @@ class WalletManager {
       .toLowerCase() as WalletPriceSource;
     const source: WalletPriceSource =
       requestedSource === "chainlink" ||
-      requestedSource === "pyth" ||
-      requestedSource === "jupiter" ||
-      requestedSource === "auto"
+        requestedSource === "pyth" ||
+        requestedSource === "jupiter" ||
+        requestedSource === "auto"
         ? requestedSource
         : "auto";
 
@@ -2898,11 +2917,11 @@ class WalletManager {
         dynamicComputeUnitLimit: true,
         prioritizationFeeLamports:
           typeof input.computeUnitPriceMicroLamports === "number" &&
-          Number.isFinite(input.computeUnitPriceMicroLamports) &&
-          input.computeUnitPriceMicroLamports > 0
+            Number.isFinite(input.computeUnitPriceMicroLamports) &&
+            input.computeUnitPriceMicroLamports > 0
             ? {
-                priorityLevelWithMaxLamports: { priorityLevel: "veryHigh", maxLamports: 2_000_000 },
-              }
+              priorityLevelWithMaxLamports: { priorityLevel: "veryHigh", maxLamports: 2_000_000 },
+            }
             : undefined,
       }),
       signal: AbortSignal.timeout(20_000),
@@ -3347,9 +3366,9 @@ class WalletManager {
         return await this.getPriceQuote({
           source:
             payload.source === "auto" ||
-            payload.source === "chainlink" ||
-            payload.source === "pyth" ||
-            payload.source === "jupiter"
+              payload.source === "chainlink" ||
+              payload.source === "pyth" ||
+              payload.source === "jupiter"
               ? payload.source
               : undefined,
           symbol: typeof payload.symbol === "string" ? payload.symbol : undefined,
@@ -3619,6 +3638,9 @@ class WalletManager {
     index: number;
     feeRate?: number;
   }): Promise<WalletSendResult> {
+    if (!bitcoin) {
+      throw new Error("BTC operations are unavailable");
+    }
     const network = bitcoin.networks.bitcoin;
     try {
       bitcoin.address.toOutputScript(input.to, network);
@@ -3770,9 +3792,15 @@ class WalletManager {
   }
 
   private getPrimaryAddresses(mnemonic: string): Record<WalletChain, string> {
+    let btcAddress = "";
+    try {
+      btcAddress = this.deriveAccount("btc", 0, mnemonic).address;
+    } catch {
+      // BTC derivation requires WASM; gracefully degrade
+    }
     return {
       eth: this.deriveAccount("eth", 0, mnemonic).address,
-      btc: this.deriveAccount("btc", 0, mnemonic).address,
+      btc: btcAddress,
       sol: this.deriveAccount("sol", 0, mnemonic).address,
     };
   }
@@ -3803,9 +3831,14 @@ class WalletManager {
   ): {
     path: string;
     address: string;
-    keyPair: ReturnType<typeof ECPair.fromPrivateKey>;
+    keyPair: ReturnType<NonNullable<typeof ECPair>["fromPrivateKey"]>;
     outputScript: Uint8Array;
   } {
+    if (!bip32 || !ECPair || !bitcoin) {
+      throw new Error(
+        "BTC operations are unavailable: tiny-secp256k1 WASM failed to initialize on this platform"
+      );
+    }
     const path = this.getBtcPath(index);
     const seed = mnemonicToSeedSync(mnemonic);
     const root = bip32.fromSeed(seed, bitcoin.networks.bitcoin);
@@ -3880,8 +3913,8 @@ class WalletManager {
         quoteMethod && typeof quoteMethod.staticCall === "function"
           ? await quoteMethod.staticCall(params)
           : await (
-              quoterV2 as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>
-            ).quoteExactInputSingle(params);
+            quoterV2 as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>
+          ).quoteExactInputSingle(params);
 
       const amountOut = parseBigIntOrZero(
         Array.isArray(quoteValue)
@@ -3911,15 +3944,15 @@ class WalletManager {
     const legacyValue =
       legacyMethod && typeof legacyMethod.staticCall === "function"
         ? await legacyMethod.staticCall(
-            input.tokenIn,
-            input.tokenOut,
-            input.feeTier,
-            input.amountIn,
-            0
-          )
+          input.tokenIn,
+          input.tokenOut,
+          input.feeTier,
+          input.amountIn,
+          0
+        )
         : await (
-            legacyQuoter as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>
-          ).quoteExactInputSingle(input.tokenIn, input.tokenOut, input.feeTier, input.amountIn, 0);
+          legacyQuoter as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>
+        ).quoteExactInputSingle(input.tokenIn, input.tokenOut, input.feeTier, input.amountIn, 0);
     return parseBigIntOrZero(legacyValue);
   }
 
@@ -4657,45 +4690,45 @@ class WalletManager {
     const paymentRequiredPayload =
       input.required.x402Version === 2
         ? {
-            x402Version: 2 as const,
-            error: input.required.error,
-            resource: input.required.resource || {
-              url: input.requestUrl,
-              description: "x402 protected resource",
-              mimeType: "application/json",
-            },
-            accepts: (input.required.accepts || []).map((entry) => ({
-              scheme: String(entry.scheme || ""),
-              network: String(entry.network || ""),
-              amount: String(entry.amount || ""),
-              asset: String(entry.asset || ""),
-              payTo: String(entry.payTo || ""),
-              maxTimeoutSeconds: Number.isFinite(Number(entry.maxTimeoutSeconds))
-                ? Math.max(30, Number(entry.maxTimeoutSeconds))
-                : 60,
-              extra: (entry.extra || {}) as Record<string, unknown>,
-            })),
-            extensions: input.required.extensions || {},
-          }
+          x402Version: 2 as const,
+          error: input.required.error,
+          resource: input.required.resource || {
+            url: input.requestUrl,
+            description: "x402 protected resource",
+            mimeType: "application/json",
+          },
+          accepts: (input.required.accepts || []).map((entry) => ({
+            scheme: String(entry.scheme || ""),
+            network: String(entry.network || ""),
+            amount: String(entry.amount || ""),
+            asset: String(entry.asset || ""),
+            payTo: String(entry.payTo || ""),
+            maxTimeoutSeconds: Number.isFinite(Number(entry.maxTimeoutSeconds))
+              ? Math.max(30, Number(entry.maxTimeoutSeconds))
+              : 60,
+            extra: (entry.extra || {}) as Record<string, unknown>,
+          })),
+          extensions: input.required.extensions || {},
+        }
         : {
-            x402Version: 1 as const,
-            error: input.required.error,
-            accepts: (input.required.accepts || []).map((entry) => ({
-              scheme: String(entry.scheme || ""),
-              network: String(entry.network || ""),
-              maxAmountRequired: String(entry.maxAmountRequired || ""),
-              resource: input.requestUrl,
-              description: "x402 protected resource",
-              mimeType: "application/json",
-              outputSchema: {},
-              payTo: String(entry.payTo || ""),
-              maxTimeoutSeconds: Number.isFinite(Number(entry.maxTimeoutSeconds))
-                ? Math.max(30, Number(entry.maxTimeoutSeconds))
-                : 60,
-              asset: String(entry.asset || ""),
-              extra: (entry.extra || {}) as Record<string, unknown>,
-            })),
-          };
+          x402Version: 1 as const,
+          error: input.required.error,
+          accepts: (input.required.accepts || []).map((entry) => ({
+            scheme: String(entry.scheme || ""),
+            network: String(entry.network || ""),
+            maxAmountRequired: String(entry.maxAmountRequired || ""),
+            resource: input.requestUrl,
+            description: "x402 protected resource",
+            mimeType: "application/json",
+            outputSchema: {},
+            payTo: String(entry.payTo || ""),
+            maxTimeoutSeconds: Number.isFinite(Number(entry.maxTimeoutSeconds))
+              ? Math.max(30, Number(entry.maxTimeoutSeconds))
+              : 60,
+            asset: String(entry.asset || ""),
+            extra: (entry.extra || {}) as Record<string, unknown>,
+          })),
+        };
 
     const paymentPayload = await paymentClient.createPaymentPayload(
       paymentRequiredPayload as never
@@ -4762,15 +4795,15 @@ class WalletManager {
       paymentHeaderUsed: input.paymentHeaderUsed,
       paymentRequirement: input.paymentRequirement
         ? {
-            x402Version: input.paymentRequirement.x402Version,
-            scheme: input.paymentRequirement.scheme,
-            network: input.paymentRequirement.network,
-            amount: input.paymentRequirement.amount,
-            asset: input.paymentRequirement.asset,
-            payTo: input.paymentRequirement.payTo,
-            maxTimeoutSeconds: input.paymentRequirement.maxTimeoutSeconds,
-            extra: input.paymentRequirement.extra,
-          }
+          x402Version: input.paymentRequirement.x402Version,
+          scheme: input.paymentRequirement.scheme,
+          network: input.paymentRequirement.network,
+          amount: input.paymentRequirement.amount,
+          asset: input.paymentRequirement.asset,
+          payTo: input.paymentRequirement.payTo,
+          maxTimeoutSeconds: input.paymentRequirement.maxTimeoutSeconds,
+          extra: input.paymentRequirement.extra,
+        }
         : undefined,
       settlement: input.settlement,
       responseHeaders: this.serializeResponseHeaders(input.response.headers),
