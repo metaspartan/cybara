@@ -11,6 +11,7 @@ import { tables } from "../../src/core/database";
 type FakeWhatsAppMessage = {
   fromMe: boolean;
   from: string;
+  to: string;
   author?: string;
   body: string;
   hasMedia: boolean;
@@ -74,6 +75,7 @@ function createFakeWhatsAppMessage(
   return {
     fromMe: false,
     from: "15550001111@c.us",
+    to: "15550001111@c.us",
     author: undefined,
     body: "hello",
     hasMedia: false,
@@ -132,6 +134,7 @@ describe("WhatsApp adapter mocked flows", () => {
     const message = createFakeWhatsAppMessage(
       {
         fromMe: true,
+        to: "15550001111@c.us",
       },
       replies,
       chatSends
@@ -142,6 +145,152 @@ describe("WhatsApp adapter mocked flows", () => {
     expect(handlerCalls).toBe(0);
     expect(replies).toHaveLength(0);
     expect(chatSends).toHaveLength(0);
+  });
+
+  test("allows self messages when allow_self_messages is enabled", async () => {
+    const adapter = new WhatsAppAdapter();
+    const channelId = makeChannelId("wa-self");
+    const replies: string[] = [];
+    const chatSends: string[] = [];
+    let handlerCalls = 0;
+
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "self ok";
+    });
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    (adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }).channelConfigs.set(
+      channelId,
+      { allow_self_messages: true }
+    );
+
+    const message = createFakeWhatsAppMessage(
+      {
+        fromMe: true,
+        from: "15550001111@c.us",
+        to: "15550001111@c.us",
+        id: { _serialized: "wamid-self-1" },
+      },
+      replies,
+      chatSends
+    );
+
+    await invokeWhatsAppMessage(adapter, channelId, message);
+
+    expect(handlerCalls).toBe(1);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toBe("self ok");
+    expect(chatSends).toHaveLength(0);
+  });
+
+  test("allows self messages when account JID domains differ", async () => {
+    const adapter = new WhatsAppAdapter();
+    const channelId = makeChannelId("wa-self-domain");
+    const replies: string[] = [];
+    const chatSends: string[] = [];
+    let handlerCalls = 0;
+
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "domain ok";
+    });
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    (adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }).channelConfigs.set(
+      channelId,
+      { allow_self_messages: true }
+    );
+    (adapter as unknown as { accountIds: Map<string, string> }).accountIds.set(
+      channelId,
+      "15550001111@s.whatsapp.net"
+    );
+
+    const message = createFakeWhatsAppMessage(
+      {
+        fromMe: true,
+        from: "15550001111@c.us",
+        to: "15550001111@c.us",
+        id: { _serialized: "wamid-domain-1" },
+      },
+      replies,
+      chatSends
+    );
+
+    await invokeWhatsAppMessage(adapter, channelId, message);
+
+    expect(handlerCalls).toBe(1);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toBe("domain ok");
+    expect(chatSends).toHaveLength(0);
+  });
+
+  test("ignores non-self outgoing messages even when self messages enabled", async () => {
+    const adapter = new WhatsAppAdapter();
+    const channelId = makeChannelId("wa-self-outbound");
+    const replies: string[] = [];
+    const chatSends: string[] = [];
+    let handlerCalls = 0;
+
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    (adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }).channelConfigs.set(
+      channelId,
+      { allow_self_messages: true }
+    );
+
+    const message = createFakeWhatsAppMessage(
+      {
+        fromMe: true,
+        from: "15550001111@c.us",
+        to: "19990002222@c.us",
+        id: { _serialized: "wamid-self-2" },
+      },
+      replies,
+      chatSends
+    );
+
+    await invokeWhatsAppMessage(adapter, channelId, message);
+
+    expect(handlerCalls).toBe(0);
+    expect(replies).toHaveLength(0);
+    expect(chatSends).toHaveLength(0);
+  });
+
+  test("skips duplicate message events using same message id", async () => {
+    const adapter = new WhatsAppAdapter();
+    const channelId = makeChannelId("wa-duplicate");
+    const replies: string[] = [];
+    const chatSends: string[] = [];
+    let handlerCalls = 0;
+
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "once";
+    });
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    (adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }).channelConfigs.set(
+      channelId,
+      { allow_self_messages: true }
+    );
+
+    const message = createFakeWhatsAppMessage(
+      {
+        id: { _serialized: "wamid-duplicate-1" },
+        fromMe: true,
+        from: "19990002222@c.us",
+        to: "19990002222@c.us",
+      },
+      replies,
+      chatSends
+    );
+
+    await invokeWhatsAppMessage(adapter, channelId, message);
+    await invokeWhatsAppMessage(adapter, channelId, message);
+
+    expect(handlerCalls).toBe(1);
+    expect(replies).toHaveLength(1);
   });
 
   test("creates pairing for new sender and replies with security message", async () => {

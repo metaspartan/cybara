@@ -31,7 +31,7 @@ interface WhatsAppRuntimeState {
 }
 
 interface WhatsAppAdapterConfig {
-  allow_self_messages?: boolean;
+  allow_self_messages?: boolean | string | number;
 }
 
 interface WhatsAppConnectionState extends WhatsAppRuntimeState {
@@ -47,7 +47,9 @@ export class WhatsAppAdapter implements ChannelAdapter {
   private readyStates = new Map<string, boolean>();
   private runtimeStates = new Map<string, WhatsAppRuntimeState>();
   private channelConfigs = new Map<string, WhatsAppAdapterConfig>();
+  private accountIds = new Map<string, string>();
   private outboundMessageIds = new Map<string, Set<string>>();
+  private processedMessageIds = new Map<string, Set<string>>();
 
   private getOrCreateRuntimeState(channelId: string): WhatsAppRuntimeState {
     const existing = this.runtimeStates.get(channelId);
@@ -112,6 +114,87 @@ export class WhatsAppAdapter implements ChannelAdapter {
     return new Promise((resolve) => {
       setTimeout(resolve, ms);
     });
+  }
+
+  private normalizeJid(value: string | undefined | null): string {
+    if (!value) return "";
+    return value
+      .split(":")[0]
+      .toLowerCase()
+      .split("@", 1)[0];
+  }
+
+  private shouldSkipMessage(channelId: string, messageId: string | undefined): boolean {
+    if (!messageId) return false;
+
+    let ids = this.processedMessageIds.get(channelId);
+    if (!ids) {
+      ids = new Set<string>();
+      this.processedMessageIds.set(channelId, ids);
+    }
+
+    if (ids.has(messageId)) {
+      return true;
+    }
+
+    ids.add(messageId);
+    if (ids.size > 400) {
+      const iterator = ids.values();
+      const oldest = iterator.next().value;
+      if (oldest) {
+        ids.delete(oldest);
+      }
+    }
+    return false;
+  }
+
+  private isSelfMessageEnabled(channelConfig: WhatsAppAdapterConfig | undefined): boolean {
+    if (!channelConfig) {
+      return false;
+    }
+
+    const value = channelConfig.allow_self_messages;
+    if (typeof value === "boolean") {
+      return value;
+    }
+
+    if (typeof value === "string") {
+      return value.toLowerCase() === "true";
+    }
+
+    if (typeof value === "number") {
+      return value === 1;
+    }
+
+    return false;
+  }
+
+  private isSelfChatMessage(channelId: string, msg: Message): boolean {
+    const accountId = this.normalizeJid(this.accountIds.get(channelId));
+    const from = this.normalizeJid(msg.from);
+    if (!from || !accountId) {
+      if (!from || !msg.fromMe) {
+        return false;
+      }
+
+      const to = this.normalizeJid(msg.to);
+      return to ? from === to : true;
+    }
+
+    if (from === accountId && !msg.to) {
+      return true;
+    }
+
+    const to = this.normalizeJid(msg.to);
+    if (!to) {
+      return false;
+    }
+
+    if (from === to) {
+      return true;
+    }
+
+    return msg.fromMe && accountId === from;
   }
 
   private shellQuote(input: string): string {
@@ -266,6 +349,10 @@ export class WhatsAppAdapter implements ChannelAdapter {
     client.on("ready", () => {
       console.log(`[WhatsApp] Client ready for channel ${channelId}`);
       this.readyStates.set(channelId, true);
+      const accountId = client.info?.wid?._serialized;
+      if (accountId) {
+        this.accountIds.set(channelId, accountId);
+      }
       this.updateRuntimeState(channelId, {
         ready: true,
         authenticated: true,
@@ -280,6 +367,10 @@ export class WhatsAppAdapter implements ChannelAdapter {
       const state = this.getOrCreateRuntimeState(channelId);
       if (!state.authenticated) {
         console.log(`[WhatsApp] Client authenticated for channel ${channelId}`);
+      }
+      const accountId = client.info?.wid?._serialized;
+      if (accountId) {
+        this.accountIds.set(channelId, accountId);
       }
       this.updateRuntimeState(channelId, {
         authenticated: true,
@@ -310,6 +401,13 @@ export class WhatsAppAdapter implements ChannelAdapter {
     });
 
     client.on("message", async (msg: Message) => {
+      await this.handleMessage(channelId, msg);
+    });
+
+    client.on("message_create", async (msg: Message) => {
+      if (!msg.fromMe) {
+        return;
+      }
       await this.handleMessage(channelId, msg);
     });
 
@@ -351,12 +449,16 @@ export class WhatsAppAdapter implements ChannelAdapter {
 
   private async handleMessage(channelId: string, msg: Message): Promise<void> {
     const channelConfig = this.channelConfigs.get(channelId);
-    const allowSelfMessages = channelConfig?.allow_self_messages === true;
+    const allowSelfMessages = this.isSelfMessageEnabled(channelConfig);
     const messageId = msg.id?._serialized || "";
+
+    if (messageId && this.shouldSkipMessage(channelId, messageId)) {
+      return;
+    }
 
     // Outbound messages from the bot should never be reprocessed.
     if (msg.fromMe) {
-      const isSelfChat = msg.from === msg.to;
+      const isSelfChat = this.isSelfChatMessage(channelId, msg);
       if (!allowSelfMessages || !isSelfChat) {
         return;
       }
@@ -513,7 +615,9 @@ export class WhatsAppAdapter implements ChannelAdapter {
     this.readyStates.delete(channelId);
     this.runtimeStates.delete(channelId);
     this.channelConfigs.delete(channelId);
+    this.accountIds.delete(channelId);
     this.outboundMessageIds.delete(channelId);
+    this.processedMessageIds.delete(channelId);
     console.log(`[WhatsApp] Stopped for channel ${channelId}`);
   }
 
