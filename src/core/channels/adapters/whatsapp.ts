@@ -49,7 +49,28 @@ export class WhatsAppAdapter implements ChannelAdapter {
   private channelConfigs = new Map<string, WhatsAppAdapterConfig>();
   private accountIds = new Map<string, string>();
   private outboundMessageIds = new Map<string, Set<string>>();
+  private outboundMessageSignatures = new Map<string, Map<string, number[]>>();
   private processedMessageIds = new Map<string, Set<string>>();
+
+  private isDebugEnabled(): boolean {
+    return process.env.CYBARA_WHATSAPP_DEBUG === "1";
+  }
+
+  private debugEvent(
+    channelId: string,
+    eventType: "message" | "message_create",
+    msg: Message,
+    note?: string
+  ): void {
+    if (!this.isDebugEnabled()) {
+      return;
+    }
+    const messageId = msg.id?._serialized || "";
+    const bodyLength = typeof msg.body === "string" ? msg.body.length : 0;
+    console.log(
+      `[WhatsApp][Debug] channel=${channelId} event=${eventType} fromMe=${String(msg.fromMe)} id.fromMe=${String(Boolean(msg.id?.fromMe))} from=${this.normalizeJid(msg.from)} to=${this.normalizeJid(msg.to)} bodyLength=${bodyLength}${note ? ` note=${note}` : ""} id=${messageId || "<none>"}`
+    );
+  }
 
   private getOrCreateRuntimeState(channelId: string): WhatsAppRuntimeState {
     const existing = this.runtimeStates.get(channelId);
@@ -82,23 +103,206 @@ export class WhatsAppAdapter implements ChannelAdapter {
     return nextState;
   }
 
-  private rememberOutboundMessage(channelId: string, message: Message | null | undefined): void {
+  private normalizeSignatureText(text: string | null | undefined): string {
+    if (!text) return "";
+    return text
+      .replace(/\s+/g, " ")
+      .replace(/\u200d/g, "")
+      .trim()
+      .toLowerCase()
+      .slice(0, 240);
+  }
+
+  private normalizeSignatureFingerprint(text: string | null | undefined): string {
+    if (!text) return "";
+    return this.normalizeSignatureText(text)
+      .replace(/[^\p{L}\p{N}\s]+/gu, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 240);
+  }
+
+  private buildOutboundSignature(chatId: string | null | undefined, text: string): string {
+    return `${this.normalizeJid(chatId)}:${this.normalizeSignatureText(text)}`;
+  }
+
+  private getOutboundSignatureVariants(chatId: string | null | undefined): string[] {
+    const normalized = this.normalizeJid(chatId);
+    if (!normalized) {
+      return [];
+    }
+
+    const base = this.normalizeJidForCompare(chatId);
+    const variants = new Set<string>([normalized]);
+    if (base && base !== normalized) {
+      variants.add(base);
+      variants.add(`${base}@c.us`);
+      variants.add(`${base}@s.whatsapp.net`);
+      variants.add(`${base}@g.us`);
+    }
+
+    return [...variants];
+  }
+
+  private rememberOutboundMessage(
+    channelId: string,
+    chatId: string | null | undefined,
+    text: string | null | undefined,
+    message: Message | null | undefined
+  ): void {
     const messageId = message?.id?._serialized;
-    if (!messageId) {
-      return;
-    }
-    let ids = this.outboundMessageIds.get(channelId);
-    if (!ids) {
-      ids = new Set<string>();
-      this.outboundMessageIds.set(channelId, ids);
-    }
-    ids.add(messageId);
-    if (ids.size > 200) {
-      const [oldest] = ids;
-      if (oldest) {
-        ids.delete(oldest);
+    if (messageId) {
+      let ids = this.outboundMessageIds.get(channelId);
+      if (!ids) {
+        ids = new Set<string>();
+        this.outboundMessageIds.set(channelId, ids);
+      }
+      ids.add(messageId);
+      if (ids.size > 200) {
+        const [oldest] = ids;
+        if (oldest) {
+          ids.delete(oldest);
+        }
       }
     }
+
+    const normalizedText = this.normalizeSignatureText(text);
+    if (!normalizedText) {
+      return;
+    }
+    const fingerprintText = this.normalizeSignatureFingerprint(text);
+    const now = Date.now();
+    const variants = this.getOutboundSignatureVariants(chatId);
+    const normalizedChatIds = variants.length > 0 ? variants : [this.normalizeJid(chatId)];
+    for (const chatIdVariant of normalizedChatIds) {
+      if (!chatIdVariant) continue;
+      const signature = `${chatIdVariant}:${normalizedText}`;
+      let signatures = this.outboundMessageSignatures.get(channelId);
+      if (!signatures) {
+        signatures = new Map<string, number[]>();
+        this.outboundMessageSignatures.set(channelId, signatures);
+      }
+      const timestamps = signatures.get(signature) || [];
+      timestamps.push(now);
+      signatures.set(signature, timestamps);
+      if (timestamps.length > 4) {
+        timestamps.shift();
+      }
+      if (fingerprintText) {
+        const fingerprintSignature = `${chatIdVariant}:fp:${fingerprintText}`;
+        const fingerprintTimestamps = signatures.get(fingerprintSignature) || [];
+        fingerprintTimestamps.push(now);
+        signatures.set(fingerprintSignature, fingerprintTimestamps);
+        if (fingerprintTimestamps.length > 4) {
+          fingerprintTimestamps.shift();
+        }
+      }
+      if (signatures.size > 600) {
+        const oldest = signatures.keys().next().value;
+        if (oldest) {
+          signatures.delete(oldest);
+        }
+      }
+    }
+  }
+
+  private consumeOutboundSignature(channelId: string, chatId: string, text: string): boolean {
+    const signatures = this.outboundMessageSignatures.get(channelId);
+    if (!signatures) {
+      return false;
+    }
+
+    const now = Date.now();
+    const validWindow = 5 * 60 * 1000;
+    const normalizedText = this.normalizeSignatureText(text);
+    if (!normalizedText) {
+      return false;
+    }
+    const fingerprintText = this.normalizeSignatureFingerprint(text);
+
+    const variants = this.getOutboundSignatureVariants(chatId);
+
+    const consumeBySignature = (signature: string): boolean => {
+      const matches = signatures.get(signature);
+      if (!matches || matches.length === 0) {
+        return false;
+      }
+
+      while (matches.length > 0 && now - matches[0] > validWindow) {
+        matches.shift();
+      }
+      if (matches.length === 0) {
+        signatures.delete(signature);
+        return false;
+      }
+
+      matches.shift();
+      if (matches.length === 0) {
+        signatures.delete(signature);
+      }
+      if (signatures.size === 0) {
+        this.outboundMessageSignatures.delete(channelId);
+      }
+      return true;
+    };
+
+    for (const variant of variants) {
+      const signature = `${variant}:${normalizedText}`;
+      if (consumeBySignature(signature)) {
+        return true;
+      }
+
+      if (fingerprintText) {
+        const fingerprintSignature = `${variant}:fp:${fingerprintText}`;
+        if (consumeBySignature(fingerprintSignature)) {
+          return true;
+        }
+      }
+    }
+
+    if (!fingerprintText) {
+      return false;
+    }
+
+    // Fallback for event payload mismatches where exact normalized text changed.
+    for (const variant of variants) {
+      if (!variant) continue;
+      const fingerprintPrefix = `${variant}:fp:`;
+      const hasValidMatch = (signature: string, matches: number[]): boolean => {
+        while (matches.length > 0 && now - matches[0] > validWindow) {
+          matches.shift();
+        }
+        if (matches.length === 0) {
+          signatures.delete(signature);
+          return false;
+        }
+
+        matches.shift();
+        if (matches.length === 0) {
+          signatures.delete(signature);
+        }
+        if (signatures.size === 0) {
+          this.outboundMessageSignatures.delete(channelId);
+        }
+        return true;
+      };
+
+      for (const [signature, matches] of signatures.entries()) {
+        if (!signature.startsWith(fingerprintPrefix)) continue;
+
+        const storedFingerprint = signature.slice(fingerprintPrefix.length);
+        if (!storedFingerprint) continue;
+        if (!storedFingerprint.includes(fingerprintText) && !fingerprintText.includes(storedFingerprint)) {
+          continue;
+        }
+
+        if (hasValidMatch(signature, matches)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   private consumeOutboundMessage(channelId: string, messageId: string): boolean {
@@ -108,6 +312,37 @@ export class WhatsAppAdapter implements ChannelAdapter {
     }
     ids.delete(messageId);
     return true;
+  }
+
+  private clearOutboundSignature(channelId: string, chatId: string, text: string): void {
+    const signatures = this.outboundMessageSignatures.get(channelId);
+    if (!signatures) return;
+
+    const normalizedText = this.normalizeSignatureText(text);
+    if (!normalizedText) return;
+    const fingerprintText = this.normalizeSignatureFingerprint(text);
+    const variants = this.getOutboundSignatureVariants(chatId);
+
+    if (variants.length === 0) {
+      const signature = this.buildOutboundSignature(chatId, text);
+      if (signature) {
+        signatures.delete(signature);
+        if (fingerprintText) {
+          signatures.delete(`${this.normalizeJid(chatId)}:fp:${fingerprintText}`);
+        }
+      }
+    } else {
+      for (const variant of variants) {
+        signatures.delete(`${variant}:${normalizedText}`);
+        if (fingerprintText) {
+          signatures.delete(`${variant}:fp:${fingerprintText}`);
+        }
+      }
+    }
+
+    if (signatures.size === 0) {
+      this.outboundMessageSignatures.delete(channelId);
+    }
   }
 
   private sleep(ms: number): Promise<void> {
@@ -120,8 +355,12 @@ export class WhatsAppAdapter implements ChannelAdapter {
     if (!value) return "";
     return value
       .split(":")[0]
-      .toLowerCase()
-      .split("@", 1)[0];
+      .toLowerCase();
+  }
+
+  private normalizeJidForCompare(value: string | undefined | null): string {
+    if (!value) return "";
+    return this.normalizeJid(value).split("@", 1)[0];
   }
 
   private shouldSkipMessage(channelId: string, messageId: string | undefined): boolean {
@@ -159,7 +398,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
     }
 
     if (typeof value === "string") {
-      return value.toLowerCase() === "true";
+      return ["true", "1", "on", "yes", "y"].includes(value.toLowerCase());
     }
 
     if (typeof value === "number") {
@@ -170,23 +409,9 @@ export class WhatsAppAdapter implements ChannelAdapter {
   }
 
   private isSelfChatMessage(channelId: string, msg: Message): boolean {
-    const accountId = this.normalizeJid(this.accountIds.get(channelId));
-    const from = this.normalizeJid(msg.from);
-    if (!from || !accountId) {
-      if (!from || !msg.fromMe) {
-        return false;
-      }
-
-      const to = this.normalizeJid(msg.to);
-      return to ? from === to : true;
-    }
-
-    if (from === accountId && !msg.to) {
-      return true;
-    }
-
-    const to = this.normalizeJid(msg.to);
-    if (!to) {
+    const from = this.normalizeJidForCompare(msg.from);
+    const to = this.normalizeJidForCompare(msg.to);
+    if (!from) {
       return false;
     }
 
@@ -194,7 +419,62 @@ export class WhatsAppAdapter implements ChannelAdapter {
       return true;
     }
 
-    return msg.fromMe && accountId === from;
+    // WhatsApp may use LID (Linked Identity) format for msg.to in self-messages
+    // (e.g. "222771514765317@lid" instead of "12086303682@c.us"), so from !== to
+    // even though they refer to the same user. Skip the rejection when to is a LID
+    // and fall through to the account ID check below.
+    const toLid = msg.to && typeof msg.to === "string" && msg.to.endsWith("@lid");
+    if (msg.fromMe && to && to !== from && !toLid) {
+      return false;
+    }
+
+    const accountId = this.normalizeJidForCompare(this.accountIds.get(channelId));
+    if (!accountId) {
+      return false;
+    }
+
+    if (!to || toLid) {
+      return msg.fromMe && from === accountId;
+    }
+
+    return from === accountId;
+  }
+
+  private resolveOutboundChatId(channelId: string, msg: Message): string {
+    return (
+      this.normalizeJid(msg.to) ||
+      this.normalizeJid(msg.from) ||
+      this.normalizeJid(this.accountIds.get(channelId))
+    );
+  }
+
+  private isSelfEcho(
+    channelId: string,
+    msg: Message,
+    chatId: string,
+    _isMessageCreateEvent: boolean
+  ): boolean {
+    const messageId = msg.id?._serialized;
+    if (messageId && this.consumeOutboundMessage(channelId, messageId)) {
+      return true;
+    }
+    // Some echo payloads arrive with id.fromMe=true even though msg.fromMe=false.
+    // Only suppress if they match an outbound signature; otherwise allow processing.
+    if (!msg.fromMe && msg.id?.fromMe) {
+      if (!msg.body) {
+        return false;
+      }
+      return this.consumeOutboundSignature(channelId, chatId, msg.body);
+    }
+
+    // For fromMe messages (including self-chat echoes arriving via either
+    // "message" or "message_create"), always check the text signature to
+    // prevent infinite reply loops.
+    if (!msg.body) {
+      return false;
+    }
+
+    return this.consumeOutboundSignature(channelId, chatId, msg.body);
   }
 
   private shellQuote(input: string): string {
@@ -361,6 +641,11 @@ export class WhatsAppAdapter implements ChannelAdapter {
         qrDataUrl: null,
         lastError: null,
       });
+
+      // Log registered event listeners so we know events are wired up
+      const eventNames = (client as unknown as { _events?: Record<string, unknown> })._events;
+      console.log(`[WhatsApp] Event listeners registered for channel ${channelId}:`, eventNames ? Object.keys(eventNames).join(", ") : "NONE");
+      console.log(`[WhatsApp] Account ID: ${accountId || "unknown"} | allow_self_messages: ${JSON.stringify(this.channelConfigs.get(channelId)?.allow_self_messages ?? "<not set>")}`);
     });
 
     client.on("authenticated", () => {
@@ -401,14 +686,19 @@ export class WhatsAppAdapter implements ChannelAdapter {
     });
 
     client.on("message", async (msg: Message) => {
-      await this.handleMessage(channelId, msg);
+      console.log(`[WhatsApp] >>> message event fired for channel ${channelId} | from=${msg.from} | fromMe=${msg.fromMe} | body="${(msg.body || "").slice(0, 50)}"`);
+      this.debugEvent(channelId, "message", msg, "listener");
+      await this.handleMessage(channelId, msg, "message");
     });
 
     client.on("message_create", async (msg: Message) => {
-      if (!msg.fromMe) {
-        return;
-      }
-      await this.handleMessage(channelId, msg);
+      console.log(`[WhatsApp] >>> message_create event fired for channel ${channelId} | from=${msg.from} | to=${msg.to} | fromMe=${msg.fromMe} | body="${(msg.body || "").slice(0, 50)}"`);
+      this.debugEvent(channelId, "message_create", msg, "listener");
+      // Pass all messages through to handleMessage — it already has
+      // proper filtering (fromMe, allowSelfMessages, isSelfEcho, security).
+      // shouldSkipMessage deduplication prevents double-processing when
+      // both "message" and "message_create" fire for the same message.
+      await this.handleMessage(channelId, msg, "message_create");
     });
 
     this.clients.set(channelId, client);
@@ -447,36 +737,66 @@ export class WhatsAppAdapter implements ChannelAdapter {
     }
   }
 
-  private async handleMessage(channelId: string, msg: Message): Promise<void> {
+  private async handleMessage(
+    channelId: string,
+    msg: Message,
+    eventType: "message" | "message_create" = "message"
+  ): Promise<void> {
     const channelConfig = this.channelConfigs.get(channelId);
     const allowSelfMessages = this.isSelfMessageEnabled(channelConfig);
     const messageId = msg.id?._serialized || "";
+    const from = this.normalizeJid(msg.from);
+    const rawFrom = msg.from;
+    const outboundChatId = this.resolveOutboundChatId(channelId, msg);
 
     if (messageId && this.shouldSkipMessage(channelId, messageId)) {
+      this.debugEvent(channelId, eventType, msg, "skip_duplicate");
       return;
     }
 
-    // Outbound messages from the bot should never be reprocessed.
+    // Self-chat loops should never be reprocessed.
+    const isSelfChat = this.isSelfChatMessage(channelId, msg);
+    const isSelfEcho = this.isSelfEcho(channelId, msg, outboundChatId, eventType === "message_create");
     if (msg.fromMe) {
-      const isSelfChat = this.isSelfChatMessage(channelId, msg);
       if (!allowSelfMessages || !isSelfChat) {
+        if (!allowSelfMessages && isSelfChat) {
+          console.log(
+            `[WhatsApp] Ignoring self-chat message for channel ${channelId} — enable "Allow Self Messages" in channel config to process messages sent to your own number.`
+          );
+        }
+        this.debugEvent(channelId, eventType, msg, "skip_outbound_not_allowed_or_not_self_chat");
         return;
       }
-      if (messageId && this.consumeOutboundMessage(channelId, messageId)) {
+
+      if (isSelfEcho) {
+        this.debugEvent(channelId, eventType, msg, "skip_self_echo");
         return;
       }
+    } else if (isSelfChat && isSelfEcho) {
+      this.debugEvent(channelId, eventType, msg, "skip_inbound_self_echo");
+      return;
     }
 
     // Ignore status broadcasts
-    if (msg.from === "status@broadcast") return;
+    if (rawFrom === "status@broadcast") {
+      this.debugEvent(channelId, eventType, msg, "skip_status_broadcast");
+      return;
+    }
 
     const text = msg.body;
-    if (!text && !msg.hasMedia) return;
+    if (!text && !msg.hasMedia) {
+      this.debugEvent(channelId, eventType, msg, "skip_empty_message");
+      return;
+    }
 
-    const chatId = msg.from;
+    const chatId = from || this.normalizeJid(msg.to) || this.normalizeJid(this.accountIds.get(channelId));
+    if (!chatId) {
+      this.debugEvent(channelId, eventType, msg, "skip_missing_chat_id");
+      return;
+    }
     const userId = msg.author || msg.from; // author is set in groups
 
-    const accessCheck = msg.fromMe && allowSelfMessages
+    const accessCheck = isSelfChat && allowSelfMessages
       ? ({ permitted: true } as const)
       : securityManager.checkAccess(channelId, userId, "whatsapp");
 
@@ -490,6 +810,8 @@ export class WhatsAppAdapter implements ChannelAdapter {
       }
       return;
     }
+
+    this.debugEvent(channelId, eventType, msg, "processing");
 
     let hasFile = false;
     let filePath = "";
@@ -537,7 +859,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
       senderId: userId,
       metadata: {
         messageId: msg.id._serialized,
-        isGroup: msg.from.includes("@g.us"),
+        isGroup: rawFrom.includes("@g.us"),
         hasMedia: msg.hasMedia,
         type: msg.type,
       },
@@ -583,17 +905,26 @@ export class WhatsAppAdapter implements ChannelAdapter {
       metadata: { replyToId: msg.id._serialized },
     });
 
+    let sent = false;
+    this.rememberOutboundMessage(channelId, outboundChatId, response, null);
+
     try {
       const sentMessage = await msg.reply(response);
-      this.rememberOutboundMessage(channelId, sentMessage);
+      this.rememberOutboundMessage(channelId, outboundChatId, response, sentMessage);
+      sent = true;
     } catch (error) {
       console.error("[WhatsApp] Failed to send reply:", error);
       try {
         const chat = await msg.getChat();
         const sentMessage = await chat.sendMessage(response);
-        this.rememberOutboundMessage(channelId, sentMessage as Message);
+        this.rememberOutboundMessage(channelId, outboundChatId, response, sentMessage as Message);
+        sent = true;
       } catch (err) {
         console.error("[WhatsApp] Failed to send message:", err);
+      }
+    } finally {
+      if (!sent) {
+        this.clearOutboundSignature(channelId, outboundChatId, response);
       }
     }
   }
@@ -617,6 +948,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
     this.channelConfigs.delete(channelId);
     this.accountIds.delete(channelId);
     this.outboundMessageIds.delete(channelId);
+    this.outboundMessageSignatures.delete(channelId);
     this.processedMessageIds.delete(channelId);
     console.log(`[WhatsApp] Stopped for channel ${channelId}`);
   }
@@ -637,8 +969,10 @@ export class WhatsAppAdapter implements ChannelAdapter {
       return false;
     }
 
+    const normalizedChatId = String(chatId);
     try {
-      await client.sendMessage(String(chatId), text);
+      const sentMessage = await client.sendMessage(normalizedChatId, text);
+      this.rememberOutboundMessage(channelId, normalizedChatId, text, sentMessage as Message);
       return true;
     } catch (error) {
       console.error("[WhatsApp] Failed to send message:", error);
