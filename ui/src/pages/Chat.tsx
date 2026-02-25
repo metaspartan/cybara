@@ -213,6 +213,7 @@ interface PendingProcessCapture {
   activities: LiveActivityItem[];
   sessionId: string | null;
   agentId?: string;
+  createdAt: number;
 }
 
 const LAST_WORKSPACE_STORAGE_KEY = "cybara:lastWorkspaceDir";
@@ -3066,6 +3067,7 @@ export function Chat() {
         activities: [],
         sessionId,
         agentId: selectedAgentId,
+        createdAt: Date.now(),
       };
     }
 
@@ -3088,6 +3090,11 @@ export function Chat() {
   useEffect(() => {
     const pending = pendingProcessCaptureRef.current;
     if (!pending) return;
+
+    if (!isLoading && Date.now() - pending.createdAt > 20_000) {
+      pendingProcessCaptureRef.current = null;
+      return;
+    }
 
     const sessionMismatch = !!pending.sessionId && !!sessionId && pending.sessionId !== sessionId;
     const agentMismatch =
@@ -3139,7 +3146,7 @@ export function Chat() {
     }
 
     pendingProcessCaptureRef.current = null;
-  }, [sessionId, selectedAgentId, typedMessages]);
+  }, [isLoading, sessionId, selectedAgentId, typedMessages]);
 
   const appendLiveActivity = useCallback(
     (phase: "start" | "result" | "error", text: string, toolName?: string) => {
@@ -3393,7 +3400,11 @@ export function Chat() {
       if (status === "idle") {
         setLiveStatus("idle");
         setLiveCurrentStep(null);
-        if (!loadingRef.current) {
+        const pendingCapture = pendingProcessCaptureRef.current;
+        const hasPendingCaptureForVisibleSession =
+          !!pendingCapture &&
+          (!payloadSessionId || !pendingCapture.sessionId || pendingCapture.sessionId === payloadSessionId);
+        if (!loadingRef.current && !hasPendingCaptureForVisibleSession) {
           setLiveActivities([]);
           runActivityBufferRef.current = [];
         }
@@ -3880,7 +3891,20 @@ export function Chat() {
   const revertFollowingCount = Math.max(0, revertRemovedCount - 1);
   const currentSessionIsActive = !!sessionId && activeSessionIds.includes(sessionId);
   const currentSessionIsLoading = isLoading && loadingSessionId === sessionId;
-  const showWorkingTimeline = currentSessionIsLoading || currentSessionIsActive;
+  const pendingCapture = pendingProcessCaptureRef.current;
+  const pendingCaptureForCurrentSession =
+    !!pendingCapture &&
+    (!!sessionId
+      ? !pendingCapture.sessionId || pendingCapture.sessionId === sessionId
+      : !pendingCapture.sessionId);
+  const showWorkingTimeline =
+    currentSessionIsLoading || currentSessionIsActive || pendingCaptureForCurrentSession;
+  const timelineActivities =
+    liveActivities.length > 0
+      ? liveActivities
+      : pendingCaptureForCurrentSession
+        ? pendingCapture?.activities || []
+        : [];
   const timelineStatus =
     currentSessionIsActive && liveStatus === "idle" ? ("thinking" as const) : liveStatus;
 
@@ -4193,7 +4217,7 @@ export function Chat() {
                     <div className="max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] px-0.5 py-0.5">
                       <LiveActivityTimeline
                         status={timelineStatus}
-                        activities={liveActivities}
+                        activities={timelineActivities}
                         currentStep={liveCurrentStep}
                       />
                     </div>

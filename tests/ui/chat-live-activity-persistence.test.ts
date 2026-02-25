@@ -39,7 +39,7 @@ describe("Chat live activity persistence", () => {
       "const currentSessionIsLoading = isLoading && loadingSessionId === sessionId;"
     );
     expect(source).toContain(
-      "const showWorkingTimeline = currentSessionIsLoading || currentSessionIsActive;"
+      "const showWorkingTimeline =\n    currentSessionIsLoading || currentSessionIsActive || pendingCaptureForCurrentSession;"
     );
     expect(source).toContain(
       'const timelineStatus =\n    currentSessionIsActive && liveStatus === "idle" ? ("thinking" as const) : liveStatus;'

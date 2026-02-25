@@ -193,7 +193,7 @@ describe("UI page API wiring", () => {
     expect(source).toContain('status === "tool_completed"');
     expect(source).toContain("<LiveActivityTimeline");
     expect(source).toContain("status={timelineStatus}");
-    expect(source).toContain("activities={liveActivities}");
+    expect(source).toContain("activities={timelineActivities}");
     expect(source).toContain("currentStep={liveCurrentStep}");
     expect(source).toContain("formatToolIntent(");
     expect(source).toContain("Highlight, themes");

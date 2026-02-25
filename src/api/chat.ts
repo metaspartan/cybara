@@ -215,6 +215,195 @@ function truncateForTitlePrompt(value: string, maxChars: number): string {
   return `${compact.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
 }
 
+function parseIsoTimestampMs(value?: string): number | undefined {
+  if (typeof value !== "string") return undefined;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return undefined;
+  return parsed;
+}
+
+function readToolArgString(
+  args: Record<string, unknown> | undefined,
+  key: string
+): string | undefined {
+  if (!args) return undefined;
+  const value = args[key];
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function toActivityDisplayPath(path: string): string {
+  const normalized = path.replace(/\\/g, "/").trim();
+  if (!normalized) return "file";
+  const segments = normalized.split("/").filter(Boolean);
+  return segments[segments.length - 1] || normalized;
+}
+
+function isGenericProcessLabel(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized === "thinking..." ||
+    normalized === "thinking" ||
+    normalized === "generating response..." ||
+    normalized === "generating response" ||
+    normalized === "working..." ||
+    normalized === "working" ||
+    normalized === "idle"
+  );
+}
+
+function isMeaningfulProcessThought(value?: string): boolean {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  return !isGenericProcessLabel(trimmed);
+}
+
+function normalizeProcessActivityTextForPhase(
+  value: string,
+  phase: "start" | "result" | "error"
+): string {
+  if (phase === "start") return value;
+  if (phase === "result") {
+    return value
+      .replace(/^Exploring\b/i, "Explored")
+      .replace(/^Searching\b/i, "Searched")
+      .replace(/^Fetching\b/i, "Fetched")
+      .replace(/^Running\b/i, "Ran")
+      .replace(/^Writing\b/i, "Edited")
+      .replace(/^Editing\b/i, "Edited");
+  }
+  return value
+    .replace(/^Exploring\b/i, "Read failed")
+    .replace(/^Searching\b/i, "Search failed")
+    .replace(/^Fetching\b/i, "Fetch failed")
+    .replace(/^Running\b/i, "Command failed")
+    .replace(/^Writing\b/i, "Edit failed")
+    .replace(/^Editing\b/i, "Edit failed");
+}
+
+function formatProcessActivityFromToolCall(toolCall: ToolCallInfo): string {
+  const key = toolCall.name.toLowerCase();
+  const args = toolCall.args || {};
+  const path = readToolArgString(args, "path");
+  const displayPath = path ? toActivityDisplayPath(path) : undefined;
+
+  if (key === "read") {
+    return displayPath ? `Explored ${displayPath}` : "Exploration complete";
+  }
+  if (key === "write" || key === "edit") {
+    return displayPath ? `Edited ${displayPath}` : "Edit complete";
+  }
+  if (key === "file_search" || key === "grep") {
+    const pattern = readToolArgString(args, "pattern");
+    return pattern ? `Search complete for "${pattern}"` : "Search complete";
+  }
+  if (key === "web_search") {
+    const query = readToolArgString(args, "query");
+    return query ? `Web search complete for "${query}"` : "Web search complete";
+  }
+  if (key === "web_fetch") {
+    const url = readToolArgString(args, "url");
+    return url ? `Fetched ${url}` : "Fetch complete";
+  }
+  if (key === "exec" || key === "process" || key === "git") {
+    const command = readToolArgString(args, "command") || readToolArgString(args, "cmd");
+    if (command) {
+      const compact = command.split(/\r?\n/).map((line) => line.trim()).join(" ").trim();
+      if (compact.length > 0) {
+        return `Ran ${compact.length > 80 ? `${compact.slice(0, 77)}...` : compact}`;
+      }
+    }
+    return "Command complete";
+  }
+  if (key === "browser") {
+    const action = readToolArgString(args, "action");
+    return action ? `Browser ${action} complete` : "Browser action complete";
+  }
+  if (key === "artifacts" || key === "artifact") {
+    const action = (readToolArgString(args, "action") || "list").toLowerCase();
+    const name =
+      readToolArgString(args, "name") ||
+      readToolArgString(args, "artifact") ||
+      readToolArgString(args, "artifactName") ||
+      readToolArgString(args, "fileName");
+    if (action === "list") return "Listed session artifacts";
+    if (action === "create")
+      return name ? `Created ${name.endsWith(".md.resolved") ? name : `${name}.md.resolved`}` : "Created artifact";
+    if (action === "update" || action === "append")
+      return name ? `Updated ${name.endsWith(".md.resolved") ? name : `${name}.md.resolved`}` : "Updated artifact";
+    if (action === "read")
+      return name ? `Read ${name.endsWith(".md.resolved") ? name : `${name}.md.resolved`}` : "Read artifact";
+    return name ? `Artifact ${action} complete for ${name}` : `Artifact ${action} complete`;
+  }
+
+  return `${toolCall.name} complete`;
+}
+
+function dedupeProcessActivities(activities: ProcessActivityInfo[]): ProcessActivityInfo[] {
+  const seen = new Set<string>();
+  const deduped: ProcessActivityInfo[] = [];
+  for (const activity of activities.sort((a, b) => a.timestamp - b.timestamp)) {
+    const normalizedText = normalizeProcessActivityTextForPhase(activity.text.trim(), activity.phase);
+    if (!normalizedText) continue;
+    const key = `${activity.phase}:${(activity.toolName || "").toLowerCase()}:${normalizedText.toLowerCase()}:${Math.floor(activity.timestamp / 1000)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push({
+      ...activity,
+      text: normalizedText,
+    });
+  }
+  return deduped;
+}
+
+function buildFallbackProcessActivities(
+  toolCalls: ToolCallInfo[],
+  thinking: string | undefined,
+  baseTimestampMs: number
+): ProcessActivityInfo[] | undefined {
+  const activities: ProcessActivityInfo[] = [];
+  const fallbackStart = Number.isFinite(baseTimestampMs) ? baseTimestampMs : Date.now();
+
+  for (let index = 0; index < toolCalls.length; index += 1) {
+    const toolCall = toolCalls[index];
+    const phase: "start" | "result" | "error" =
+      toolCall.status === "failed" ? "error" : toolCall.status === "executing" ? "start" : "result";
+    const timelineOffset =
+      typeof toolCall.timeline_index === "number" && Number.isFinite(toolCall.timeline_index)
+        ? toolCall.timeline_index
+        : index;
+    activities.push({
+      id: `fallback-${toolCall.id || index}`,
+      phase,
+      text: formatProcessActivityFromToolCall(toolCall),
+      timestamp: fallbackStart + timelineOffset,
+      toolName: toolCall.name,
+    });
+  }
+
+  if (isMeaningfulProcessThought(thinking)) {
+    const thoughtLines = (thinking || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && !isGenericProcessLabel(line));
+    for (let index = 0; index < thoughtLines.length; index += 1) {
+      activities.push({
+        id: `fallback-thought-${index}`,
+        phase: "result",
+        text: thoughtLines[index],
+        timestamp: fallbackStart + toolCalls.length + index + 1,
+        toolName: "__thought",
+      });
+    }
+  }
+
+  const deduped = dedupeProcessActivities(activities);
+  return deduped.length > 0 ? deduped : undefined;
+}
+
 async function generateSessionTitleViaModel(params: {
   provider: ReturnType<typeof providerManager.getWithCredentials>;
   agent: NonNullable<ReturnType<typeof agentManager.get>> | undefined;
@@ -741,25 +930,51 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     }
   }
 
+  const assistantTimestamp = new Date().toISOString();
+  const assistantTimestampMs = parseIsoTimestampMs(assistantTimestamp) || Date.now();
+  const statusSnapshotActivities = (() => {
+    const snapshot = getSessionStatusSnapshot(session.id);
+    if (!snapshot || !Array.isArray(snapshot.activities) || snapshot.activities.length === 0) {
+      return undefined;
+    }
+    return snapshot.activities.map((activity) => ({
+      id: activity.id,
+      phase: activity.phase,
+      text: activity.text,
+      timestamp: activity.timestamp,
+      toolName: activity.toolName,
+    }));
+  })();
+  const fallbackProcessActivities =
+    !statusSnapshotActivities || statusSnapshotActivities.length === 0
+      ? buildFallbackProcessActivities(
+          allToolCalls,
+          finalThinking || undefined,
+          parseIsoTimestampMs(userMessage.timestamp) || assistantTimestampMs
+        )
+      : undefined;
+  const assistantContent =
+    cleanContent.trim().length > 0
+      ? cleanContent
+      : allToolCalls.length > 0
+        ? buildToolExecutionFallbackMessage(
+            allToolCalls.map((toolCall) => ({
+              name: toolCall.name,
+              result: toolCall.result ?? null,
+            }))
+          )
+        : "Completed.";
+
   const assistantMessage: ChatMessage = {
     role: "assistant",
-    content: cleanContent,
-    timestamp: new Date().toISOString(),
+    content: assistantContent,
+    timestamp: assistantTimestamp,
     thinking: finalThinking || undefined,
     tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
-    process_activities: (() => {
-      const snapshot = getSessionStatusSnapshot(session.id);
-      if (!snapshot || !Array.isArray(snapshot.activities) || snapshot.activities.length === 0) {
-        return undefined;
-      }
-      return snapshot.activities.map((activity) => ({
-        id: activity.id,
-        phase: activity.phase,
-        text: activity.text,
-        timestamp: activity.timestamp,
-        toolName: activity.toolName,
-      }));
-    })(),
+    process_activities:
+      statusSnapshotActivities && statusSnapshotActivities.length > 0
+        ? statusSnapshotActivities
+        : fallbackProcessActivities,
   };
   session.messages.push(assistantMessage);
   session.updatedAt = assistantMessage.timestamp || new Date().toISOString();
@@ -767,7 +982,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     session.title = withAgentTitlePrefix(agent?.name, deriveSessionTitleFromTurn(message));
   }
 
-  await logSessionMessage(session.id, "assistant", cleanContent, {
+  await logSessionMessage(session.id, "assistant", assistantMessage.content, {
     agentId: agent?.id,
     metadata: {
       source: "chat_api",
@@ -789,7 +1004,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   await emitAgentHook({
     type: "message:sent",
     context: hookContext,
-    message: cleanContent,
+    message: assistantMessage.content,
     metadata: {
       source: source || "chat_api",
       toolCalls: allToolCalls.length,
@@ -803,7 +1018,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
       `Responded to session ${session.id.slice(0, 8)}...`,
       {
         sessionId: session.id,
-        messageLength: cleanContent.length,
+        messageLength: assistantMessage.content.length,
         toolsUsed: allToolCalls.length,
       }
     );
