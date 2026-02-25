@@ -46,6 +46,20 @@ export function buildDiscordSlashCommands(): ReturnType<SlashCommandBuilder["toJ
       .setName("new")
       .setDescription("Start a fresh conversation session")
       .toJSON(),
+    new SlashCommandBuilder()
+      .setName("sessions")
+      .setDescription("List recent conversation sessions")
+      .toJSON(),
+    new SlashCommandBuilder()
+      .setName("switch")
+      .setDescription("Switch to a previous session")
+      .addStringOption((option) =>
+        option
+          .setName("target")
+          .setDescription("Session number from /sessions or session id/prefix")
+          .setRequired(true)
+      )
+      .toJSON(),
     new SlashCommandBuilder().setName("agents").setDescription("List available agents").toJSON(),
     new SlashCommandBuilder()
       .setName("agent")

@@ -94,11 +94,13 @@ describe("Discord adapter intent configuration", () => {
     expect(DISCORD_REQUIRED_INTENTS).not.toContain(GatewayIntentBits.GuildMembers);
   });
 
-  test("defines native slash commands including /new and /permissions", () => {
+  test("defines native slash commands including session management", () => {
     const commands = buildDiscordSlashCommands();
     const names = commands.map((command) => command.name);
 
     expect(names).toContain("new");
+    expect(names).toContain("sessions");
+    expect(names).toContain("switch");
     expect(names).toContain("permissions");
     expect(names).toContain("subagents");
 

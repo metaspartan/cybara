@@ -5,6 +5,7 @@ import {
   handleChannelManagementCommand,
   setChannelSubagentSpawnHandler,
 } from "../../src/core/channels/commands";
+import { configureChannelChatRuntime, resetChannelChatRuntime } from "../../src/core/channels/chat-runtime";
 import { tables } from "../../src/core/database";
 import {
   handleSessionsSpawn,
@@ -63,6 +64,7 @@ afterEach(() => {
   clearChannelSubagentSpawnHandler();
   resetSubagentSessionsForTests();
   resetSubagentRegistryForTests();
+  resetChannelChatRuntime();
   for (const agentId of createdAgents.splice(0)) {
     tables.agents.delete(agentId);
   }
@@ -248,5 +250,115 @@ describe("channel management commands", () => {
     });
     expect(allowResult).toContain("set to allow");
     expect(config.get<string>("tool_approval_mode")).toBe("always_allow");
+  });
+
+  test("lists and switches sessions via shared commands", async () => {
+    configureChannelChatRuntime({
+      listSessions: async () => [
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          agentId: "agent-a",
+          title: "Session A",
+          messageCount: 6,
+          createdAt: "2026-02-24T00:00:00.000Z",
+          updatedAt: "2026-02-24T00:10:00.000Z",
+          workspaceDir: null,
+        },
+        {
+          id: "22222222-2222-4222-8222-222222222222",
+          agentId: "agent-b",
+          title: "Session B",
+          messageCount: 3,
+          createdAt: "2026-02-25T00:00:00.000Z",
+          updatedAt: "2026-02-25T00:05:00.000Z",
+          workspaceDir: null,
+        },
+      ],
+    });
+
+    let currentSession = "11111111-1111-4111-8111-111111111111";
+
+    const listResponse = await handleChannelManagementCommand("/sessions", {
+      channelId: "channel-sessions",
+      chatId: "chat-sessions",
+      platform: "discord",
+      sessionId: currentSession,
+      setSessionId: (nextSessionId: string) => {
+        currentSession = nextSessionId;
+      },
+    });
+
+    expect(listResponse).toContain("Sessions (most recent first):");
+    expect(listResponse).toContain("11111111-1111-4111-8111-111111111111");
+    expect(listResponse).toContain("22222222-2222-4222-8222-222222222222");
+    expect(listResponse).toContain("Use /switch <number|session_id_prefix>");
+
+    const switchResponse = await handleChannelManagementCommand("/switch 2", {
+      channelId: "channel-sessions",
+      chatId: "chat-sessions",
+      platform: "discord",
+      sessionId: currentSession,
+      setSessionId: (nextSessionId: string) => {
+        currentSession = nextSessionId;
+      },
+    });
+
+    expect(switchResponse).toContain("Switched to session:");
+    expect(switchResponse).toContain("22222222-2222-4222-8222-222222222222");
+    expect(currentSession).toBe("22222222-2222-4222-8222-222222222222");
+  });
+
+  test("shows current session via /session and switches by id prefix", async () => {
+    configureChannelChatRuntime({
+      listSessions: async () => [
+        {
+          id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          agentId: "agent-a",
+          title: "Session A",
+          messageCount: 4,
+          createdAt: "2026-02-25T01:00:00.000Z",
+          updatedAt: "2026-02-25T01:05:00.000Z",
+          workspaceDir: null,
+        },
+        {
+          id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          agentId: "agent-b",
+          title: "Session B",
+          messageCount: 8,
+          createdAt: "2026-02-25T02:00:00.000Z",
+          updatedAt: "2026-02-25T02:05:00.000Z",
+          workspaceDir: null,
+        },
+      ],
+    });
+
+    let currentSession = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+    const showResponse = await handleChannelManagementCommand("/session", {
+      channelId: "channel-session-show",
+      chatId: "chat-session-show",
+      platform: "slack",
+      sessionId: currentSession,
+      setSessionId: (nextSessionId: string) => {
+        currentSession = nextSessionId;
+      },
+    });
+
+    expect(showResponse).toContain("Current session:");
+    expect(showResponse).toContain("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+
+    const switchResponse = await handleChannelManagementCommand("/session bbbbbbbb", {
+      channelId: "channel-session-show",
+      chatId: "chat-session-show",
+      platform: "slack",
+      sessionId: currentSession,
+      setSessionId: (nextSessionId: string) => {
+        currentSession = nextSessionId;
+      },
+    });
+
+    expect(switchResponse).toContain("Switched to session:");
+    expect(switchResponse).toContain("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+    expect(currentSession).toBe("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
   });
 });

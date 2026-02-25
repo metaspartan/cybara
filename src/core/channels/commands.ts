@@ -4,6 +4,7 @@ import { getDefaultModel } from "../providers";
 import { homedir } from "os";
 import { resolve } from "path";
 import { existsSync, statSync } from "fs";
+import { listChannelRuntimeSessions } from "./chat-runtime";
 
 type AgentRow = {
   id: string;
@@ -159,12 +160,87 @@ function rotateSession(context: ChannelCommandContext): string | undefined {
   return nextSessionId;
 }
 
+type SessionSelectionResult = {
+  sessionId?: string;
+  messageCount?: number;
+  error?: string;
+};
+
+function parseSessionToken(token: string): string {
+  return token.trim().replace(/\.{3}$/, "");
+}
+
+function resolveSessionSelection(
+  token: string,
+  sessions: Array<{ id: string; messageCount: number }>
+): SessionSelectionResult {
+  const normalized = parseSessionToken(token);
+  if (!normalized) {
+    return { error: "Session target is required. Use /switch <number|session_id_prefix>." };
+  }
+
+  if (/^\d+$/.test(normalized)) {
+    const sessionNumber = Number.parseInt(normalized, 10);
+    if (!Number.isFinite(sessionNumber) || sessionNumber < 1) {
+      return { error: "Session number must be 1 or greater." };
+    }
+    const byIndex = sessions[sessionNumber - 1];
+    if (!byIndex) {
+      return {
+        error: `Session #${sessionNumber} not found. Use /sessions to list available sessions.`,
+      };
+    }
+    return { sessionId: byIndex.id, messageCount: byIndex.messageCount };
+  }
+
+  const needle = normalized.toLowerCase();
+  const exact = sessions.find((session) => session.id.toLowerCase() === needle);
+  if (exact) {
+    return { sessionId: exact.id, messageCount: exact.messageCount };
+  }
+
+  const prefixMatches = sessions.filter((session) => session.id.toLowerCase().startsWith(needle));
+  if (prefixMatches.length === 1) {
+    const match = prefixMatches[0];
+    return { sessionId: match.id, messageCount: match.messageCount };
+  }
+  if (prefixMatches.length > 1) {
+    return {
+      error: `Multiple sessions match "${normalized}". Use a longer prefix or a session number.`,
+    };
+  }
+
+  const containsMatches = sessions.filter((session) => session.id.toLowerCase().includes(needle));
+  if (containsMatches.length === 1) {
+    const match = containsMatches[0];
+    return { sessionId: match.id, messageCount: match.messageCount };
+  }
+  if (containsMatches.length > 1) {
+    return {
+      error: `Multiple sessions match "${normalized}". Use a longer prefix or a session number.`,
+    };
+  }
+
+  const persisted = tables.chatSessions.get(normalized) as { id?: string } | undefined;
+  if (persisted && typeof persisted.id === "string" && persisted.id.trim().length > 0) {
+    return { sessionId: persisted.id };
+  }
+
+  return {
+    error: `Session "${normalized}" not found. Use /sessions to list available sessions.`,
+  };
+}
+
 function formatCommandHelp(): string {
   return [
     "⚡ *Cybara Commands*",
+    "Available management commands:",
     "",
     "📋 *Sessions:*",
     "/new — Start a fresh conversation",
+    "/sessions — List recent sessions",
+    "/switch <number|session_id_prefix> — Switch to an existing session",
+    "/session [target] — Show current session or switch to target",
     "/workspace [path] — Show or set session workspace (~/path supported)",
     "/workspace clear — Reset workspace to default",
     "/permissions [ask|allow] — Dangerous tool approval mode",
@@ -315,6 +391,92 @@ export async function handleChannelManagementCommand(
       return "Starting a fresh session is not supported in this channel context.";
     }
     return `Started a new session: ${newSessionId.slice(0, 8)}...`;
+  }
+
+  if (command === "sessions") {
+    const allSessions = await listChannelRuntimeSessions();
+    if (allSessions.length === 0) {
+      return "No sessions found yet. Use /new to start a fresh session.";
+    }
+
+    const sessions = allSessions.slice(0, 20);
+    const lines = sessions.map((session, index) => {
+      const marker = context.sessionId === session.id ? "⭐" : "•";
+      const createdAt = Number.isFinite(Date.parse(session.createdAt))
+        ? new Date(session.createdAt).toLocaleString()
+        : "unknown";
+      return `${marker} ${index + 1}. ${session.id} (${session.messageCount} msgs, created ${createdAt})`;
+    });
+
+    return [
+      "Sessions (most recent first):",
+      ...lines,
+      "",
+      "Use /switch <number|session_id_prefix> to change sessions.",
+      "Use /new to start a fresh session.",
+    ].join("\n");
+  }
+
+  if (command === "switch" || command === "session") {
+    if (command === "session" && (!joinedArgs || joinedArgs.toLowerCase() === "show")) {
+      return context.sessionId
+        ? `Current session: ${context.sessionId}`
+        : "No active session in this channel context.";
+    }
+
+    const lowerArgs = joinedArgs.toLowerCase();
+    if (command === "session" && (lowerArgs === "list" || lowerArgs === "ls")) {
+      const allSessions = await listChannelRuntimeSessions();
+      if (allSessions.length === 0) {
+        return "No sessions found yet. Use /new to start a fresh session.";
+      }
+      const sessions = allSessions.slice(0, 20);
+      const lines = sessions.map((session, index) => {
+        const marker = context.sessionId === session.id ? "⭐" : "•";
+        const createdAt = Number.isFinite(Date.parse(session.createdAt))
+          ? new Date(session.createdAt).toLocaleString()
+          : "unknown";
+        return `${marker} ${index + 1}. ${session.id} (${session.messageCount} msgs, created ${createdAt})`;
+      });
+      return [
+        "Sessions (most recent first):",
+        ...lines,
+        "",
+        "Use /switch <number|session_id_prefix> to change sessions.",
+        "Use /new to start a fresh session.",
+      ].join("\n");
+    }
+
+    if (!joinedArgs) {
+      return "Provide a session target. Use /switch <number|session_id_prefix>.";
+    }
+
+    if (!context.setSessionId) {
+      return "Switching sessions is not supported in this channel context.";
+    }
+
+    if (lowerArgs === "new") {
+      const rotated = rotateSession(context);
+      if (!rotated) {
+        return "Starting a fresh session is not supported in this channel context.";
+      }
+      return `Started a new session: ${rotated.slice(0, 8)}...`;
+    }
+
+    const sessions = await listChannelRuntimeSessions();
+    const selected = resolveSessionSelection(joinedArgs, sessions);
+    if (!selected.sessionId) {
+      return selected.error || "Session not found.";
+    }
+
+    if (context.sessionId && context.sessionId === selected.sessionId) {
+      return `Already using session: ${selected.sessionId}`;
+    }
+
+    context.setSessionId(selected.sessionId);
+    const countSuffix =
+      typeof selected.messageCount === "number" ? ` (${selected.messageCount} msgs)` : "";
+    return `Switched to session: ${selected.sessionId}${countSuffix}`;
   }
 
   if (command === "status") {
