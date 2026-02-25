@@ -2,7 +2,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::net::TcpStream;
+use std::time::{Duration, Instant};
 use tauri::Manager;
+use tauri::RunEvent;
 use tauri_plugin_shell::ShellExt;
 
 fn is_server_running_at(addr: &str) -> bool {
@@ -13,16 +15,39 @@ fn is_server_running() -> bool {
     is_server_running_at("127.0.0.1:4269")
 }
 
+fn wait_for_server_ready(timeout: Duration) -> bool {
+    let started = Instant::now();
+    while started.elapsed() < timeout {
+        if is_server_running() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(150));
+    }
+    false
+}
+
+fn stop_sidecar(app: &tauri::AppHandle) {
+    if let Some(state) = app.try_state::<SidecarState>() {
+        if let Ok(mut guard) = state.0.lock() {
+            if let Some(child) = guard.take() {
+                let _ = child.kill();
+                println!("[Cybara] Sidecar stopped");
+            }
+        }
+    }
+}
+
 fn main() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            app.manage(SidecarState(std::sync::Mutex::new(None)));
+
             // Check if server is already running (e.g., started by beforeDevCommand)
             if is_server_running() {
                 println!("[Cybara] Server already running on port 4269");
-                app.manage(SidecarState(std::sync::Mutex::new(None)));
 
                 // Navigate to the backend URL so relative /api/ paths work
                 if let Some(window) = app.get_webview_window("main") {
@@ -63,32 +88,39 @@ fn main() {
             });
 
             // Store the child process so we can kill it on exit
-            app.manage(SidecarState(std::sync::Mutex::new(Some(child))));
-
-            // Wait for the server to start, then navigate to it
-            std::thread::sleep(std::time::Duration::from_millis(2000));
-
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.navigate("http://localhost:4269".parse().unwrap());
+            if let Some(state) = app.try_state::<SidecarState>() {
+                if let Ok(mut guard) = state.0.lock() {
+                    *guard = Some(child);
+                }
             }
+
+            // Wait for server readiness before navigating.
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if wait_for_server_ready(Duration::from_secs(25)) {
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.navigate("http://localhost:4269".parse().unwrap());
+                    }
+                } else {
+                    eprintln!("[Cybara] Sidecar did not become ready within timeout");
+                }
+            });
 
             Ok(())
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
-                // Kill the sidecar when window closes (only if we spawned it)
-                if let Some(state) = window.try_state::<SidecarState>() {
-                    if let Ok(mut guard) = state.0.lock() {
-                        if let Some(child) = guard.take() {
-                            let _ = child.kill();
-                            println!("[Cybara] Sidecar stopped");
-                        }
-                    }
-                }
+                stop_sidecar(&window.app_handle());
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Cybara");
+        .build(tauri::generate_context!())
+        .expect("error while building Cybara");
+
+    app.run(|app_handle, event| {
+        if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
+            stop_sidecar(app_handle);
+        }
+    });
 }
 
 // State to hold the sidecar child process (None if server was already running)

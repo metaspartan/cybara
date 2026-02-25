@@ -45,20 +45,49 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const isCompiledBinary = !process.execPath.endsWith("bun") && !process.execPath.includes("/bun");
 
-const uiPath = resolveUiPath({
-  isCompiledBinary,
-  execPath: process.execPath,
-  moduleDir: __dirname,
-  appName: "cybara",
-  existsSyncFn: existsSync,
-});
+function discoverUiPath(): string {
+  const firstCandidate = resolveUiPath({
+    isCompiledBinary,
+    execPath: process.execPath,
+    moduleDir: __dirname,
+    appName: "cybara",
+    existsSyncFn: existsSync,
+  });
+
+  const candidates = new Set<string>([firstCandidate]);
+  const bases = [dirname(process.execPath), process.cwd(), __dirname];
+
+  for (const base of bases) {
+    let current = base;
+    for (let i = 0; i < 7; i++) {
+      candidates.add(join(current, "ui", "dist"));
+      candidates.add(join(current, "dist", "ui", "dist"));
+      candidates.add(join(current, "src-tauri", "bin", "ui", "dist"));
+      current = join(current, "..");
+    }
+  }
+
+  for (const candidate of candidates) {
+    if (existsSync(join(candidate, "index.html"))) {
+      return candidate;
+    }
+  }
+
+  return firstCandidate;
+}
+
+const uiPath = discoverUiPath();
 let uiContent: string;
 let uiExists = false;
 
 try {
   uiContent = readFileSync(join(uiPath, "index.html"), "utf-8");
   uiExists = true;
+  console.log(`[UI] Serving UI from: ${uiPath}`);
 } catch {
+  console.error(
+    `[UI] Failed to load UI index at ${join(uiPath, "index.html")} (execPath=${process.execPath}, cwd=${process.cwd()})`
+  );
   uiContent = `<!DOCTYPE html><html><head><title>Cybara</title></head><body style="font-family: system-ui; background: #0a0a0f; color: #f0f0f5; padding: 40px;"><h1>Cybara</h1><p>UI not built. Run <code>cd ui && bun run build</code> to build the React app.</p></body></html>`;
 }
 

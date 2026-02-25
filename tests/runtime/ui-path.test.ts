@@ -90,6 +90,21 @@ describe("resolveUiPath", () => {
     expect(result).toBe(repoUi);
   });
 
+  test("uses tauri dev sidecar repo path when sidecar is in src-tauri/bin", () => {
+    const execPath = "/workspace/src-tauri/bin/cybara-aarch64-apple-darwin";
+    const execDir = dirname(execPath);
+    const tauriDevRepoUi = join(execDir, "..", "..", "ui", "dist");
+
+    const result = resolveUiPath({
+      isCompiledBinary: true,
+      execPath,
+      moduleDir: "/virtual/bundle",
+      existsSyncFn: existsFrom([tauriDevRepoUi]),
+    });
+
+    expect(result).toBe(tauriDevRepoUi);
+  });
+
   test("falls back to development path when no compiled path exists", () => {
     const moduleDir = "/workspace/dist";
 

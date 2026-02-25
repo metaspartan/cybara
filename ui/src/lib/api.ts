@@ -81,9 +81,23 @@ export const channelsApi = {
     fetchApi<{ success: boolean; running?: boolean; error?: string; message?: string }>(
       `/channels/${id}/test`,
       {
-      method: "POST",
+        method: "POST",
       }
     ),
+  getWhatsAppState: (id: string) =>
+    fetchApi<{
+      success: boolean;
+      channelId: string;
+      enabled: boolean;
+      running: boolean;
+      ready: boolean;
+      authenticated: boolean;
+      awaitingQr: boolean;
+      qr: string | null;
+      qrDataUrl: string | null;
+      lastEventAt: string;
+      lastError: string | null;
+    }>(`/channels/${id}/whatsapp/state`),
   getPairings: (id: string) =>
     fetchApi<{
       pairings: Array<{

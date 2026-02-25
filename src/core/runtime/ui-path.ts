@@ -6,6 +6,7 @@ export interface ResolveUiPathOptions {
   moduleDir: string;
   appName?: string;
   existsSyncFn?: (path: string) => boolean;
+  cwd?: string;
 }
 
 export function resolveUiPath(options: ResolveUiPathOptions): string {
@@ -15,6 +16,7 @@ export function resolveUiPath(options: ResolveUiPathOptions): string {
     moduleDir,
     appName = "cybara",
     existsSyncFn = () => false,
+    cwd = process.cwd(),
   } = options;
 
   if (isCompiledBinary) {
@@ -34,6 +36,15 @@ export function resolveUiPath(options: ResolveUiPathOptions): string {
 
     const repoUi = join(execDir, "..", "ui", "dist");
     if (existsSyncFn(repoUi)) return repoUi;
+
+    const tauriDevRepoUi = join(execDir, "..", "..", "ui", "dist");
+    if (existsSyncFn(tauriDevRepoUi)) return tauriDevRepoUi;
+
+    const cwdUi = join(cwd, "ui", "dist");
+    if (existsSyncFn(cwdUi)) return cwdUi;
+
+    const cwdDistUi = join(cwd, "dist", "ui", "dist");
+    if (existsSyncFn(cwdDistUi)) return cwdDistUi;
   }
 
   return join(moduleDir, "..", "ui", "dist");

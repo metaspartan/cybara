@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { $ } from "bun";
-import { mkdirSync, existsSync } from "fs";
+import { mkdirSync, existsSync, cpSync, rmSync } from "fs";
 import { join } from "path";
 import { platform, arch } from "os";
 
@@ -46,15 +46,40 @@ export async function buildSidecar(): Promise<void> {
   const sidecarName = `cybara-${target.tauriSuffix}${ext}`;
   const releasePath = join(RELEASE_DIR, `cybara${ext}`);
   const sidecarPath = join(TAURI_BIN_DIR, sidecarName);
+  const tauriDebugDir = join(import.meta.dirname, "..", "src-tauri", "target", "debug");
+  const tauriDebugSidecarPath = join(tauriDebugDir, `cybara${ext}`);
+  const uiDistPath = join(import.meta.dirname, "..", "ui", "dist");
+  const sidecarUiDistPath = join(TAURI_BIN_DIR, "ui", "dist");
+  const tauriDebugUiDistPath = join(tauriDebugDir, "ui", "dist");
 
   console.log(`\n⚡ Building Cybara sidecar for ${target.tauriSuffix}\n`);
 
-  for (const dir of [RELEASE_DIR, TAURI_BIN_DIR]) {
+  for (const dir of [RELEASE_DIR, TAURI_BIN_DIR, tauriDebugDir]) {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   }
 
   await $`bun build src/index.ts --compile --target=${target.bunTarget} --outfile ${releasePath} --external electron`;
   await copyFilePortable(releasePath, sidecarPath);
+  await copyFilePortable(releasePath, tauriDebugSidecarPath);
+
+  // Ensure the sidecar can serve the packaged UI in tauri:dev.
+  if (existsSync(uiDistPath)) {
+    if (existsSync(sidecarUiDistPath)) {
+      rmSync(sidecarUiDistPath, { recursive: true });
+    }
+    mkdirSync(join(TAURI_BIN_DIR, "ui"), { recursive: true });
+    cpSync(uiDistPath, sidecarUiDistPath, { recursive: true });
+
+    if (existsSync(tauriDebugUiDistPath)) {
+      rmSync(tauriDebugUiDistPath, { recursive: true });
+    }
+    mkdirSync(join(tauriDebugDir, "ui"), { recursive: true });
+    cpSync(uiDistPath, tauriDebugUiDistPath, { recursive: true });
+  } else {
+    console.warn(
+      `[build-sidecar] UI dist not found at ${uiDistPath}. Run "cd ui && bun run build" first.`
+    );
+  }
 
   console.log(`\n✅ Sidecar built: ${sidecarPath}\n`);
 }

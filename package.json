@@ -29,7 +29,7 @@
     "sexy": "bun run typecheck && bun run lint && bun run format:check",
     "sexy:write": "bun run typecheck && bun run lint && bun run format",
     "tauri": "tauri",
-    "tauri:dev": "bun run tauri:dev:prep && bun run tauri:sidecar && bun run --watch src/index.ts -- --enable-terminal & bunx tauri dev",
+    "tauri:dev": "bun run tauri:dev:prep && bun run tauri:sidecar && bunx tauri dev",
     "tauri:dev:prep": "bun run scripts/prepare-tauri-dev.ts && bun run package",
     "tauri:build": "bun run tauri:sidecar && bunx tauri build",
     "tauri:sidecar": "bun run scripts/build-sidecar.ts"
@@ -56,6 +56,7 @@
     "ink-spinner": "^5.0.0",
     "playwright": "^1.58.0",
     "puppeteer-core": "^24.36.1",
+    "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0",
     "react": "^19.1.0",
     "react-devtools-core": "^7.0.1",

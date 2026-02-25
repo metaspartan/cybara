@@ -14,6 +14,8 @@ import {
   UserX,
   Clock,
   Key,
+  QrCode,
+  RefreshCw,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -46,6 +48,19 @@ interface PairingInfo {
   expiresAt: string;
 }
 
+interface WhatsAppChannelState {
+  channelId: string;
+  enabled: boolean;
+  running: boolean;
+  ready: boolean;
+  authenticated: boolean;
+  awaitingQr: boolean;
+  qr: string | null;
+  qrDataUrl: string | null;
+  lastEventAt: string;
+  lastError: string | null;
+}
+
 export function Channels() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -53,6 +68,9 @@ export function Channels() {
   const [deletingChannel, setDeletingChannel] = useState<Channel | null>(null);
   const [testingChannel, setTestingChannel] = useState<Channel | null>(null);
   const [securityChannel, setSecurityChannel] = useState<Channel | null>(null);
+  const [whatsAppChannel, setWhatsAppChannel] = useState<Channel | null>(null);
+  const [whatsAppState, setWhatsAppState] = useState<WhatsAppChannelState | null>(null);
+  const [isLoadingWhatsAppState, setIsLoadingWhatsAppState] = useState(false);
   const [pairings, setPairings] = useState<PairingInfo[]>([]);
   const [pairingCode, setPairingCode] = useState("");
   const [isApproving, setIsApproving] = useState(false);
@@ -71,6 +89,39 @@ export function Channels() {
       fetchPairings(securityChannel.id);
     }
   }, [securityChannel]);
+
+  useEffect(() => {
+    if (!whatsAppChannel) return;
+
+    let cancelled = false;
+    const loadState = async () => {
+      setIsLoadingWhatsAppState(true);
+      try {
+        const res = await channelsApi.getWhatsAppState(whatsAppChannel.id);
+        if (!cancelled && res.success && res.data) {
+          setWhatsAppState(res.data);
+        }
+      } catch {
+        if (!cancelled) {
+          setWhatsAppState(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingWhatsAppState(false);
+        }
+      }
+    };
+
+    void loadState();
+    const interval = window.setInterval(() => {
+      void loadState();
+    }, 2000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [whatsAppChannel]);
 
   const fetchPairings = async (channelId: string) => {
     try {
@@ -129,9 +180,14 @@ export function Channels() {
       const config: Record<string, unknown> = {};
       const channelType = availableChannels?.find((c) => c.id === type);
       channelType?.fields.forEach((field) => {
-        const value = formData.get(`config_${field.name}`);
-        if (value) {
-          config[field.name] = field.type === "boolean" ? value === "on" : value;
+        const key = `config_${field.name}`;
+        if (field.type === "boolean") {
+          config[field.name] = formData.get(key) === "on";
+          return;
+        }
+        const value = formData.get(key);
+        if (value !== null && value !== "") {
+          config[field.name] = value;
         }
       });
 
@@ -151,12 +207,17 @@ export function Channels() {
       const config: Record<string, unknown> = {};
       const channelType = availableChannels?.find((c) => c.id === editingChannel.type);
       channelType?.fields.forEach((field) => {
-        const value = formData.get(`config_${field.name}`) as string;
-        if (value) {
+        const key = `config_${field.name}`;
+        if (field.type === "boolean") {
+          config[field.name] = formData.get(key) === "on";
+          return;
+        }
+        const value = formData.get(key) as string | null;
+        if (value !== null && value !== "") {
           if (field.type === "password" && value === "••••••••") {
             return;
           }
-          config[field.name] = field.type === "boolean" ? value === "on" : value;
+          config[field.name] = value;
         }
       });
 
@@ -336,6 +397,20 @@ export function Channels() {
                       >
                         <span className="hidden sm:inline">Test</span>
                       </Button>
+                      {channel.type === "whatsapp" ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          leftIcon={<QrCode className="w-4 h-4" />}
+                          onClick={() => {
+                            setWhatsAppChannel(channel);
+                            setWhatsAppState(null);
+                          }}
+                          className="text-xs sm:text-sm"
+                        >
+                          <span className="hidden sm:inline">QR</span>
+                        </Button>
+                      ) : null}
                       <Button
                         variant="ghost"
                         size="sm"
@@ -529,6 +604,104 @@ export function Channels() {
             </div>
           </div>
         </Modal>
+
+        <Modal
+          isOpen={!!whatsAppChannel}
+          onClose={() => {
+            setWhatsAppChannel(null);
+            setWhatsAppState(null);
+          }}
+          title={`WhatsApp Status - ${whatsAppChannel?.name || ""}`}
+          size="md"
+        >
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={whatsAppState?.ready ? "success" : "default"} size="sm">
+                  {whatsAppState?.ready ? "Ready" : "Not Ready"}
+                </Badge>
+                <Badge variant={whatsAppState?.authenticated ? "success" : "default"} size="sm">
+                  {whatsAppState?.authenticated ? "Authenticated" : "Not Authenticated"}
+                </Badge>
+                <Badge variant={whatsAppState?.awaitingQr ? "warning" : "default"} size="sm">
+                  {whatsAppState?.awaitingQr ? "Awaiting QR" : "No QR Needed"}
+                </Badge>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                leftIcon={
+                  <RefreshCw className={`w-4 h-4 ${isLoadingWhatsAppState ? "animate-spin" : ""}`} />
+                }
+                onClick={async () => {
+                  if (!whatsAppChannel) return;
+                  setIsLoadingWhatsAppState(true);
+                  try {
+                    const res = await channelsApi.getWhatsAppState(whatsAppChannel.id);
+                    if (res.success && res.data) {
+                      setWhatsAppState(res.data);
+                    }
+                  } finally {
+                    setIsLoadingWhatsAppState(false);
+                  }
+                }}
+              >
+                Refresh
+              </Button>
+            </div>
+
+            {whatsAppState?.lastError ? (
+              <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+                {whatsAppState.lastError}
+              </div>
+            ) : null}
+
+            {whatsAppState?.awaitingQr ? (
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                <p className="text-sm text-gray-300 mb-3">
+                  Scan this QR code with WhatsApp on your phone:
+                </p>
+                {whatsAppState.qrDataUrl ? (
+                  <div className="mx-auto w-fit rounded-lg bg-white p-3">
+                    <img
+                      src={whatsAppState.qrDataUrl}
+                      alt="WhatsApp QR code"
+                      className="h-64 w-64"
+                    />
+                  </div>
+                ) : (
+                  <div className="rounded bg-black/50 p-3 text-xs text-gray-400 break-all">
+                    {whatsAppState.qr || "Waiting for QR payload..."}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+                {whatsAppState?.ready
+                  ? "Connected. The bot can receive and reply to WhatsApp messages."
+                  : "Not waiting on QR right now. Click Test if connection is idle."}
+              </div>
+            )}
+
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-gray-400">
+              If testing from the same WhatsApp account, enable{" "}
+              <span className="font-medium text-gray-300">Allow Self Messages</span> in channel
+              config. Otherwise, send from another contact.
+            </div>
+
+            <div className="flex justify-end">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setWhatsAppChannel(null);
+                  setWhatsAppState(null);
+                }}
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </Modal>
       </div>
     </PageLayout>
   );
@@ -621,12 +794,13 @@ function ChannelModal({
 
 function ConfigField({ field, value }: { field: ChannelField; value?: unknown }) {
   if (field.type === "boolean") {
+    const checked = value === true || value === "true" || value === 1 || value === "1";
     return (
       <label className="flex items-center gap-3 p-3 rounded-xl bg-white/5 cursor-pointer">
         <input
           type="checkbox"
           name={`config_${field.name}`}
-          defaultChecked={value as boolean}
+          defaultChecked={checked}
           className="w-4 h-4 rounded border-white/20 bg-white/5 text-indigo-500 focus:ring-indigo-500"
         />
         <div>

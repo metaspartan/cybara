@@ -42,6 +42,15 @@ export const channels = {
         options: ["pairing", "allowlist", "open", "disabled"],
         default: "pairing",
       },
+      {
+        name: "allow_self_messages",
+        label: "Allow Self Messages",
+        type: "boolean",
+        required: false,
+        description:
+          "Optional. Process messages sent from this same WhatsApp account (self-chat testing).",
+        default: false,
+      },
     ],
   },
   discord: {

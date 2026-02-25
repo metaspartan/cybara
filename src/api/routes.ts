@@ -13,6 +13,7 @@ import {
   channels,
   processTelegramWebhook,
   securityManager,
+  whatsappAdapter,
 } from "../core/channels";
 import { taskScheduler } from "../core/scheduler";
 import { mcpManager } from "../core/mcp";
@@ -3228,6 +3229,44 @@ const routes: Record<string, RouteHandler> = {
       };
     }
 
+    if (channel.type === "whatsapp") {
+      const whatsappState = whatsappAdapter.getState(channel.id);
+      if (whatsappState.ready) {
+        return {
+          success: true,
+          running: true,
+          type: channel.type,
+          enabled: channel.enabled,
+          whatsapp: whatsappState,
+          message:
+            "WhatsApp client is connected and ready. Send from another contact, or enable 'Allow Self Messages' in channel config for self-chat testing.",
+        };
+      }
+
+      if (whatsappState.awaitingQr) {
+        return {
+          success: false,
+          running: whatsappState.running,
+          type: channel.type,
+          enabled: channel.enabled,
+          whatsapp: whatsappState,
+          message:
+            "WhatsApp is waiting for QR scan. Open the channel QR view in UI and scan with your phone.",
+        };
+      }
+
+      return {
+        success: false,
+        running: whatsappState.running,
+        type: channel.type,
+        enabled: channel.enabled,
+        whatsapp: whatsappState,
+        message:
+          whatsappState.lastError ||
+          "WhatsApp client is starting. If this persists, click Test again or restart the channel.",
+      };
+    }
+
     return {
       success: running,
       running,
@@ -3239,6 +3278,22 @@ const routes: Record<string, RouteHandler> = {
               "Discord connection looks good. Invite the bot to your server before expecting messages in guild channels.",
           }
         : {}),
+    };
+  },
+  "GET /api/channels/:id/whatsapp/state": (_body, params) => {
+    const channel = channelManager.get(params!.id);
+    if (!channel) {
+      throw new Error("Channel not found");
+    }
+    if (channel.type !== "whatsapp") {
+      throw new Error("Channel is not a WhatsApp channel");
+    }
+    const state = whatsappAdapter.getState(channel.id);
+    return {
+      success: true,
+      channelId: channel.id,
+      enabled: !!channel.enabled,
+      ...state,
     };
   },
   "DELETE /api/channels/:id": (_body, params) => ({ success: channelManager.delete(params!.id) }),

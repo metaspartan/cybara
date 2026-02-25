@@ -1,6 +1,8 @@
 import { Client, LocalAuth, type Message } from "whatsapp-web.js";
 import qrcode from "qrcode-terminal";
+import QRCode from "qrcode";
 import { existsSync, mkdirSync } from "fs";
+import { join } from "path";
 import type { ChannelAdapter, ToolCallInfo, MessageHandler } from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
@@ -18,6 +20,24 @@ export function setQRCallback(callback: QRCallback): void {
   qrCallback = callback;
 }
 
+interface WhatsAppRuntimeState {
+  ready: boolean;
+  authenticated: boolean;
+  awaitingQr: boolean;
+  qr: string | null;
+  qrDataUrl: string | null;
+  lastEventAt: string;
+  lastError: string | null;
+}
+
+interface WhatsAppAdapterConfig {
+  allow_self_messages?: boolean;
+}
+
+interface WhatsAppConnectionState extends WhatsAppRuntimeState {
+  running: boolean;
+}
+
 export class WhatsAppAdapter implements ChannelAdapter {
   type = "whatsapp" as const;
   name = "WhatsApp";
@@ -25,6 +45,147 @@ export class WhatsAppAdapter implements ChannelAdapter {
   private clients = new Map<string, Client>();
   private messageHandler: MessageHandler = async () => "No handler configured";
   private readyStates = new Map<string, boolean>();
+  private runtimeStates = new Map<string, WhatsAppRuntimeState>();
+  private channelConfigs = new Map<string, WhatsAppAdapterConfig>();
+  private outboundMessageIds = new Map<string, Set<string>>();
+
+  private getOrCreateRuntimeState(channelId: string): WhatsAppRuntimeState {
+    const existing = this.runtimeStates.get(channelId);
+    if (existing) {
+      return existing;
+    }
+    const initialState: WhatsAppRuntimeState = {
+      ready: false,
+      authenticated: false,
+      awaitingQr: false,
+      qr: null,
+      qrDataUrl: null,
+      lastEventAt: new Date().toISOString(),
+      lastError: null,
+    };
+    this.runtimeStates.set(channelId, initialState);
+    return initialState;
+  }
+
+  private updateRuntimeState(
+    channelId: string,
+    updates: Partial<WhatsAppRuntimeState>
+  ): WhatsAppRuntimeState {
+    const nextState: WhatsAppRuntimeState = {
+      ...this.getOrCreateRuntimeState(channelId),
+      ...updates,
+      lastEventAt: new Date().toISOString(),
+    };
+    this.runtimeStates.set(channelId, nextState);
+    return nextState;
+  }
+
+  private rememberOutboundMessage(channelId: string, message: Message | null | undefined): void {
+    const messageId = message?.id?._serialized;
+    if (!messageId) {
+      return;
+    }
+    let ids = this.outboundMessageIds.get(channelId);
+    if (!ids) {
+      ids = new Set<string>();
+      this.outboundMessageIds.set(channelId, ids);
+    }
+    ids.add(messageId);
+    if (ids.size > 200) {
+      const [oldest] = ids;
+      if (oldest) {
+        ids.delete(oldest);
+      }
+    }
+  }
+
+  private consumeOutboundMessage(channelId: string, messageId: string): boolean {
+    const ids = this.outboundMessageIds.get(channelId);
+    if (!ids?.has(messageId)) {
+      return false;
+    }
+    ids.delete(messageId);
+    return true;
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      setTimeout(resolve, ms);
+    });
+  }
+
+  private shellQuote(input: string): string {
+    return `'${input.replace(/'/g, `'\\''`)}'`;
+  }
+
+  private getErrorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    return String(error || "Unknown error");
+  }
+
+  private isProfileLockError(error: unknown): boolean {
+    const message = this.getErrorMessage(error).toLowerCase();
+    return message.includes("already running for") || message.includes("usedatadir");
+  }
+
+  private isProcessAlive(pid: number): boolean {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async killProcessesUsingPath(path: string): Promise<number> {
+    const quotedPath = this.shellQuote(path);
+    const pidQuery = `(lsof -t +D ${quotedPath} 2>/dev/null; pgrep -f ${quotedPath} 2>/dev/null) | sort -u`;
+    const output = Bun.spawnSync(["sh", "-lc", pidQuery], { stdout: "pipe", stderr: "pipe" });
+    const pidText = new TextDecoder().decode(output.stdout).trim();
+    if (!pidText) {
+      return 0;
+    }
+
+    const pids = pidText
+      .split(/\s+/)
+      .map((value) => Number.parseInt(value, 10))
+      .filter((pid) => Number.isFinite(pid) && pid > 0 && pid !== process.pid);
+    if (pids.length === 0) {
+      return 0;
+    }
+
+    let killed = 0;
+    for (const pid of pids) {
+      try {
+        process.kill(pid, "SIGTERM");
+        killed += 1;
+      } catch {
+        // Ignore; process may already be gone.
+      }
+    }
+
+    await this.sleep(500);
+
+    for (const pid of pids) {
+      if (!this.isProcessAlive(pid)) continue;
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // Ignore; process may have exited between checks.
+      }
+    }
+
+    return killed;
+  }
+
+  private async recoverProfileLock(channelId: string, authPath: string): Promise<number> {
+    const sessionPath = join(authPath, `session-${channelId}`);
+    let killed = await this.killProcessesUsingPath(sessionPath);
+    if (killed === 0) {
+      killed = await this.killProcessesUsingPath(authPath);
+    }
+    return killed;
+  }
 
   setMessageHandler(handler: MessageHandler) {
     this.messageHandler = handler;
@@ -43,6 +204,15 @@ export class WhatsAppAdapter implements ChannelAdapter {
     console.log(`[WhatsApp] Starting client for channel ${channelId}...`);
 
     securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
+    this.channelConfigs.set(channelId, config as WhatsAppAdapterConfig);
+    this.updateRuntimeState(channelId, {
+      ready: false,
+      authenticated: false,
+      awaitingQr: false,
+      qr: null,
+      qrDataUrl: null,
+      lastError: null,
+    });
 
     const authPath = (config.auth_path as string) || getDefaultWhatsAppAuthPath(channelId);
     if (!existsSync(authPath)) {
@@ -71,6 +241,22 @@ export class WhatsAppAdapter implements ChannelAdapter {
     client.on("qr", (qr) => {
       console.log(`[WhatsApp] Scan QR code to link device for channel ${channelId}:`);
       qrcode.generate(qr, { small: true });
+      this.updateRuntimeState(channelId, {
+        awaitingQr: true,
+        ready: false,
+        authenticated: false,
+        qr,
+        qrDataUrl: null,
+        lastError: null,
+      });
+
+      void QRCode.toDataURL(qr, { margin: 1, width: 320 })
+        .then((qrDataUrl: string) => {
+          this.updateRuntimeState(channelId, { qrDataUrl });
+        })
+        .catch((error: unknown) => {
+          console.warn("[WhatsApp] Failed to generate QR image:", error);
+        });
 
       if (qrCallback) {
         qrCallback(qr, channelId);
@@ -80,20 +266,47 @@ export class WhatsAppAdapter implements ChannelAdapter {
     client.on("ready", () => {
       console.log(`[WhatsApp] Client ready for channel ${channelId}`);
       this.readyStates.set(channelId, true);
+      this.updateRuntimeState(channelId, {
+        ready: true,
+        authenticated: true,
+        awaitingQr: false,
+        qr: null,
+        qrDataUrl: null,
+        lastError: null,
+      });
     });
 
     client.on("authenticated", () => {
-      console.log(`[WhatsApp] Client authenticated for channel ${channelId}`);
+      const state = this.getOrCreateRuntimeState(channelId);
+      if (!state.authenticated) {
+        console.log(`[WhatsApp] Client authenticated for channel ${channelId}`);
+      }
+      this.updateRuntimeState(channelId, {
+        authenticated: true,
+        awaitingQr: false,
+        lastError: null,
+      });
     });
 
     client.on("auth_failure", (msg) => {
       console.error(`[WhatsApp] Authentication failed for channel ${channelId}:`, msg);
       this.readyStates.set(channelId, false);
+      this.updateRuntimeState(channelId, {
+        ready: false,
+        authenticated: false,
+        awaitingQr: false,
+        lastError: String(msg || "Authentication failed"),
+      });
     });
 
     client.on("disconnected", (reason) => {
       console.log(`[WhatsApp] Client disconnected for channel ${channelId}:`, reason);
       this.readyStates.set(channelId, false);
+      this.updateRuntimeState(channelId, {
+        ready: false,
+        awaitingQr: false,
+        lastError: reason ? String(reason) : null,
+      });
     });
 
     client.on("message", async (msg: Message) => {
@@ -106,15 +319,51 @@ export class WhatsAppAdapter implements ChannelAdapter {
     try {
       await client.initialize();
     } catch (error) {
-      console.error(`[WhatsApp] Failed to initialize:`, error);
+      let initError: unknown = error;
+
+      if (this.isProfileLockError(error)) {
+        const killedCount = await this.recoverProfileLock(channelId, authPath);
+        if (killedCount > 0) {
+          console.warn(
+            `[WhatsApp] Recovered profile lock for ${channelId} by terminating ${killedCount} process(es). Retrying initialization...`
+          );
+          try {
+            await client.initialize();
+            return;
+          } catch (retryError) {
+            initError = retryError;
+          }
+        }
+      }
+
+      console.error(`[WhatsApp] Failed to initialize:`, initError);
+      this.updateRuntimeState(channelId, {
+        ready: false,
+        authenticated: false,
+        awaitingQr: false,
+        lastError: this.getErrorMessage(initError),
+      });
       this.clients.delete(channelId);
-      throw error;
+      this.readyStates.delete(channelId);
+      throw initError;
     }
   }
 
   private async handleMessage(channelId: string, msg: Message): Promise<void> {
-    // Ignore own messages
-    if (msg.fromMe) return;
+    const channelConfig = this.channelConfigs.get(channelId);
+    const allowSelfMessages = channelConfig?.allow_self_messages === true;
+    const messageId = msg.id?._serialized || "";
+
+    // Outbound messages from the bot should never be reprocessed.
+    if (msg.fromMe) {
+      const isSelfChat = msg.from === msg.to;
+      if (!allowSelfMessages || !isSelfChat) {
+        return;
+      }
+      if (messageId && this.consumeOutboundMessage(channelId, messageId)) {
+        return;
+      }
+    }
 
     // Ignore status broadcasts
     if (msg.from === "status@broadcast") return;
@@ -125,7 +374,9 @@ export class WhatsAppAdapter implements ChannelAdapter {
     const chatId = msg.from;
     const userId = msg.author || msg.from; // author is set in groups
 
-    const accessCheck = securityManager.checkAccess(channelId, userId, "whatsapp");
+    const accessCheck = msg.fromMe && allowSelfMessages
+      ? ({ permitted: true } as const)
+      : securityManager.checkAccess(channelId, userId, "whatsapp");
 
     if (!accessCheck.permitted) {
       if (accessCheck.reason === "new_pairing" || accessCheck.reason === "blocked") {
@@ -231,12 +482,14 @@ export class WhatsAppAdapter implements ChannelAdapter {
     });
 
     try {
-      await msg.reply(response);
+      const sentMessage = await msg.reply(response);
+      this.rememberOutboundMessage(channelId, sentMessage);
     } catch (error) {
       console.error("[WhatsApp] Failed to send reply:", error);
       try {
         const chat = await msg.getChat();
-        await chat.sendMessage(response);
+        const sentMessage = await chat.sendMessage(response);
+        this.rememberOutboundMessage(channelId, sentMessage as Message);
       } catch (err) {
         console.error("[WhatsApp] Failed to send message:", err);
       }
@@ -258,11 +511,14 @@ export class WhatsAppAdapter implements ChannelAdapter {
     }
     this.clients.delete(channelId);
     this.readyStates.delete(channelId);
+    this.runtimeStates.delete(channelId);
+    this.channelConfigs.delete(channelId);
+    this.outboundMessageIds.delete(channelId);
     console.log(`[WhatsApp] Stopped for channel ${channelId}`);
   }
 
   isRunning(channelId: string): boolean {
-    return this.readyStates.get(channelId) ?? false;
+    return this.clients.has(channelId);
   }
 
   async sendMessage(
@@ -301,10 +557,23 @@ export class WhatsAppAdapter implements ChannelAdapter {
   }
 
   async getQRCode(channelId: string): Promise<string | null> {
-    const client = this.clients.get(channelId);
-    if (!client) return null;
+    return this.runtimeStates.get(channelId)?.qr ?? null;
+  }
 
-    return null;
+  getState(channelId: string): WhatsAppConnectionState {
+    const state = this.runtimeStates.get(channelId) || {
+      ready: false,
+      authenticated: false,
+      awaitingQr: false,
+      qr: null,
+      qrDataUrl: null,
+      lastEventAt: new Date().toISOString(),
+      lastError: null,
+    };
+    return {
+      running: this.clients.has(channelId),
+      ...state,
+    };
   }
 }
 
