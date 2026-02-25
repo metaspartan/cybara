@@ -103,6 +103,13 @@ export function buildDiscordSlashCommands(): ReturnType<SlashCommandBuilder["toJ
         option.setName("task").setDescription("Task for the subagent").setRequired(true)
       )
       .toJSON(),
+    new SlashCommandBuilder()
+      .setName("workspace")
+      .setDescription("Show or set the session workspace directory")
+      .addStringOption((option) =>
+        option.setName("path").setDescription("Directory path (supports ~/)").setRequired(false)
+      )
+      .toJSON(),
   ];
 }
 
@@ -454,6 +461,11 @@ export class DiscordAdapter implements ChannelAdapter {
     if (command === "permissions") {
       const mode = interaction.options.getString("mode", false)?.trim();
       return mode ? `/permissions ${mode}` : "/permissions";
+    }
+
+    if (command === "workspace") {
+      const path = interaction.options.getString("path", false)?.trim();
+      return path ? `/workspace ${path}` : "/workspace";
     }
 
     const target = interaction.options.getString("target", false)?.trim();

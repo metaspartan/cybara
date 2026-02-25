@@ -1,6 +1,9 @@
 import db, { tables } from "../database";
 import { config } from "../config";
 import { getDefaultModel } from "../providers";
+import { homedir } from "os";
+import { resolve } from "path";
+import { existsSync, statSync } from "fs";
 
 type AgentRow = {
   id: string;
@@ -162,6 +165,7 @@ function formatCommandHelp(): string {
     "/help - Show this help",
     "/status - Show agent/provider/channel status",
     "/new - Start a fresh conversation session",
+    "/workspace [path] - Show or set session workspace directory",
     "/permissions [ask|allow] - Show or set dangerous tool approval mode",
     "/agents - List agents",
     "/agent [id|name|number] - Show or set default agent",
@@ -331,10 +335,10 @@ export async function handleChannelManagementCommand(
       normalized === "ask" || normalized === "prompt" || normalized === "confirm"
         ? "ask"
         : normalized === "allow" ||
-            normalized === "always" ||
-            normalized === "always_allow" ||
-            normalized === "auto" ||
-            normalized === "on"
+          normalized === "always" ||
+          normalized === "always_allow" ||
+          normalized === "auto" ||
+          normalized === "on"
           ? "always_allow"
           : undefined;
 
@@ -513,6 +517,48 @@ export async function handleChannelManagementCommand(
       lines.push(`Started a new session (${rotated.slice(0, 8)}...) so changes apply immediately.`);
     }
     return lines.join("\n");
+  }
+
+  if (command === "workspace" || command === "cwd" || command === "dir") {
+    if (!context.sessionId) {
+      return "Workspace cannot be set: no active session in this context.";
+    }
+
+    if (!joinedArgs || joinedArgs.toLowerCase() === "show") {
+      const current = tables.chatSessions.getWorkspace(context.sessionId);
+      return current
+        ? `Current workspace: ${current}`
+        : "No workspace set for this session. Use /workspace <path> to set one.";
+    }
+
+    if (joinedArgs.toLowerCase() === "clear" || joinedArgs.toLowerCase() === "reset") {
+      tables.chatSessions.updateWorkspace(context.sessionId, null);
+      return "Workspace cleared for this session.";
+    }
+
+    // Expand ~ and ~/ to the user's home directory (cross-platform)
+    let targetPath = joinedArgs;
+    if (targetPath === "~") {
+      targetPath = homedir();
+    } else if (targetPath.startsWith("~/") || targetPath.startsWith("~\\")) {
+      targetPath = resolve(homedir(), targetPath.slice(2));
+    }
+    targetPath = resolve(targetPath);
+
+    // Validate the directory exists
+    if (!existsSync(targetPath)) {
+      return `Directory not found: ${targetPath}\nMake sure the path exists and try again.`;
+    }
+    try {
+      if (!statSync(targetPath).isDirectory()) {
+        return `Not a directory: ${targetPath}\nPlease provide a directory path, not a file.`;
+      }
+    } catch {
+      return `Cannot access: ${targetPath}`;
+    }
+
+    tables.chatSessions.updateWorkspace(context.sessionId, targetPath);
+    return `Workspace set to: ${targetPath}`;
   }
 
   if (command === "subagents" || command === "subagent") {

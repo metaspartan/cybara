@@ -108,6 +108,7 @@ const TELEGRAM_COMMANDS: TelegramBotCommand[] = [
   { command: "start", description: "Start interacting with the bot" },
   { command: "help", description: "Show available commands and usage" },
   { command: "new", description: "Start a new conversation session" },
+  { command: "workspace", description: "Show or set workspace - /workspace <path>" },
   { command: "agents", description: "List available agents" },
   { command: "agent", description: "Show or switch default agent - /agent <id|name|number>" },
   { command: "status", description: "Check bot and agent status" },
@@ -863,7 +864,7 @@ export class TelegramBotManager implements ChannelAdapter {
       clearTimeout(bot.pollingTimer);
     }
     if (bot.mode === "webhook") {
-      await deleteTelegramWebhook(bot.token).catch(() => {});
+      await deleteTelegramWebhook(bot.token).catch(() => { });
     }
 
     this.bots.delete(channelId);
