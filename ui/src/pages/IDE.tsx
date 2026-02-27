@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Highlight, themes } from "prism-react-renderer";
@@ -336,10 +337,12 @@ function FileTree({
 function CodeViewer({
   path,
   autoRefresh,
+  jumpToLineRequest,
   onSaveSuccess,
 }: {
   path: string | null;
   autoRefresh: boolean;
+  jumpToLineRequest?: number | null;
   onSaveSuccess?: () => void;
 }) {
   const [content, setContent] = useState<string | null>(null);
@@ -359,6 +362,7 @@ function CodeViewer({
   const viewContainerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
   const lineJumpInputRef = useRef<HTMLInputElement | null>(null);
+  const appliedJumpRequestRef = useRef<string>("");
 
   const fetchContent = useCallback(async () => {
     if (!path) return;
@@ -400,6 +404,7 @@ function CodeViewer({
     setDiagnostics([]);
     setLineJumpInput("");
     setActiveLine(null);
+    appliedJumpRequestRef.current = "";
     fetchContent();
   }, [fetchContent]);
 
@@ -480,6 +485,18 @@ function CodeViewer({
     },
     [content, editContent, isEditing]
   );
+
+  useEffect(() => {
+    if (!path || !jumpToLineRequest || jumpToLineRequest <= 0) return;
+    if (content === null || isLoading) return;
+    const requestKey = `${path}:${jumpToLineRequest}:${isEditing ? "edit" : "view"}`;
+    if (appliedJumpRequestRef.current === requestKey) return;
+    appliedJumpRequestRef.current = requestKey;
+    setLineJumpInput(String(jumpToLineRequest));
+    window.requestAnimationFrame(() => {
+      jumpToLine(jumpToLineRequest);
+    });
+  }, [content, isEditing, isLoading, jumpToLine, jumpToLineRequest, path]);
 
   const handleLineJumpSubmit = useCallback(
     (event: React.FormEvent<HTMLFormElement>) => {
@@ -989,6 +1006,7 @@ function GitStatus({ path }: { path: string }) {
 }
 
 export function IDE() {
+  const location = useLocation();
   const [currentPath, setCurrentPath] = useState<string>("~");
   const [selectedFile, setSelectedFile] = useState<FileEntry | null>(null);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
@@ -997,6 +1015,7 @@ export function IDE() {
   const [rootInfo, setRootInfo] = useState<BrowseResult | null>(null);
   const [createType, setCreateType] = useState<"file" | "directory" | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [requestedJumpLine, setRequestedJumpLine] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchRoot = async () => {
@@ -1008,6 +1027,42 @@ export function IDE() {
     };
     fetchRoot();
   }, [currentPath, refreshKey]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const rawPath = params.get("path");
+    if (!rawPath) return;
+    const targetPath = rawPath.trim();
+    if (!targetPath) return;
+
+    const lineRaw = params.get("line");
+    const parsedLine = lineRaw ? Number.parseInt(lineRaw, 10) : Number.NaN;
+    const targetLine = Number.isFinite(parsedLine) && parsedLine > 0 ? parsedLine : null;
+    setRequestedJumpLine(targetLine);
+
+    const separatorIndex = Math.max(targetPath.lastIndexOf("/"), targetPath.lastIndexOf("\\"));
+    const fileName = separatorIndex >= 0 ? targetPath.slice(separatorIndex + 1) : targetPath;
+    const directoryPath = separatorIndex >= 0 ? targetPath.slice(0, separatorIndex) : "";
+    const extensionMatch = fileName.match(/(\.[^.\\/]+)$/);
+    const extension = extensionMatch?.[1];
+
+    setSelectedFile({
+      name: fileName,
+      path: targetPath,
+      type: "file",
+      extension,
+    });
+    setTreeFilter("");
+
+    if (directoryPath) {
+      setCurrentPath((previous) => (previous === directoryPath ? previous : directoryPath));
+      setExpandedDirs((previous) => {
+        const next = new Set(previous);
+        next.add(directoryPath);
+        return next;
+      });
+    }
+  }, [location.search]);
 
   const handleToggleDir = (path: string) => {
     setExpandedDirs((prev) => {
@@ -1023,6 +1078,7 @@ export function IDE() {
 
   const handleSelectFile = (entry: FileEntry) => {
     if (entry.type === "file") {
+      setRequestedJumpLine(null);
       setSelectedFile(entry);
     }
   };
@@ -1030,6 +1086,7 @@ export function IDE() {
   const handleGoHome = () => {
     setCurrentPath("~");
     setSelectedFile(null);
+    setRequestedJumpLine(null);
     setExpandedDirs(new Set());
   };
 
@@ -1037,6 +1094,7 @@ export function IDE() {
     if (rootInfo?.parent) {
       setCurrentPath(rootInfo.parent);
       setSelectedFile(null);
+      setRequestedJumpLine(null);
       setExpandedDirs(new Set());
     }
   };
@@ -1180,6 +1238,7 @@ export function IDE() {
           <CodeViewer
             path={selectedFile?.path || null}
             autoRefresh={autoRefresh}
+            jumpToLineRequest={requestedJumpLine}
             onSaveSuccess={handleRefresh}
           />
         </div>

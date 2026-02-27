@@ -7,6 +7,7 @@ import {
   isValidElement,
   type ComponentPropsWithoutRef,
 } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Send,
   Bot,
@@ -222,8 +223,12 @@ interface PendingProcessCapture {
 const LAST_WORKSPACE_STORAGE_KEY = "cybara:lastWorkspaceDir";
 const LAST_SESSION_STORAGE_KEY = "cybara:lastSessionId";
 const MESSAGE_PROCESS_MAP_STORAGE_KEY = "cybara:messageProcessMap";
+const DIFF_PANEL_WIDTH_STORAGE_KEY = "cybara:chatDiffPanelWidth";
 const SESSION_ACTIVITY_STALE_MS = 30_000;
 const PENDING_CAPTURE_TIMEOUT_MS = 90_000;
+const DIFF_PANEL_DEFAULT_WIDTH = 560;
+const DIFF_PANEL_MIN_WIDTH = 380;
+const DIFF_PANEL_MAX_WIDTH = 1120;
 
 function getMessageProcessKey(
   sessionKey: string | null,
@@ -309,6 +314,32 @@ function readPersistedSessionId(): string | null {
     return trimmed || null;
   } catch {
     return null;
+  }
+}
+
+function clampDiffPanelWidth(value: number): number {
+  return Math.max(DIFF_PANEL_MIN_WIDTH, Math.min(DIFF_PANEL_MAX_WIDTH, value));
+}
+
+function readPersistedDiffPanelWidth(): number {
+  if (typeof window === "undefined") return DIFF_PANEL_DEFAULT_WIDTH;
+  try {
+    const raw = window.localStorage.getItem(DIFF_PANEL_WIDTH_STORAGE_KEY);
+    if (!raw) return DIFF_PANEL_DEFAULT_WIDTH;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return DIFF_PANEL_DEFAULT_WIDTH;
+    return clampDiffPanelWidth(Math.floor(parsed));
+  } catch {
+    return DIFF_PANEL_DEFAULT_WIDTH;
+  }
+}
+
+function persistDiffPanelWidth(width: number): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(DIFF_PANEL_WIDTH_STORAGE_KEY, String(clampDiffPanelWidth(width)));
+  } catch {
+    // Ignore local storage errors
   }
 }
 
@@ -843,6 +874,37 @@ function buildSimpleDiff(path: string, before: string, after: string): string {
   const removed = beforeLines.map((line) => `-${line}`);
   const added = afterLines.map((line) => `+${line}`);
   return truncateDiff([...header, ...removed, ...added].join("\n"));
+}
+
+function extractFirstTargetLine(diff?: string): number | undefined {
+  if (!diff) return undefined;
+  const lines = diff.split(/\r?\n/);
+  for (const line of lines) {
+    const match = line.match(/^@@\s-\d+(?:,\d+)?\s\+(\d+)(?:,\d+)?\s@@/);
+    if (!match?.[1]) continue;
+    const parsed = Number.parseInt(match[1], 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+function resolvePathForIde(path: string, workspaceDir: string | null): string {
+  const trimmed = path.trim();
+  if (!trimmed) return trimmed;
+
+  const isAbsoluteUnix = trimmed.startsWith("/");
+  const isAbsoluteHome = trimmed.startsWith("~");
+  const isAbsoluteWindows = /^[A-Za-z]:[\\/]/.test(trimmed);
+  if (isAbsoluteUnix || isAbsoluteHome || isAbsoluteWindows) {
+    return trimmed;
+  }
+
+  if (!workspaceDir) return trimmed;
+  const base = workspaceDir.replace(/[\\/]+$/, "");
+  const relative = trimmed.replace(/^[./\\]+/, "");
+  return `${base}/${relative}`;
 }
 
 function parsePatchFileChanges(patch: string): FileChangeItem[] {
@@ -2190,12 +2252,18 @@ function SessionDiffPanel({
   selectedPath,
   onSelectPath,
   onClose,
+  width,
+  onResizeStart,
+  onOpenInIDE,
 }: {
   isOpen: boolean;
   summary: FileChangeSummary | null;
   selectedPath: string | null;
   onSelectPath: (path: string) => void;
   onClose: () => void;
+  width: number;
+  onResizeStart: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onOpenInIDE: (file: FileChangeItem) => void;
 }) {
   if (!isOpen) return null;
 
@@ -2203,7 +2271,19 @@ function SessionDiffPanel({
     summary?.files.find((file) => file.path === selectedPath) || summary?.files[0] || null;
 
   return (
-    <div className="w-80 glass-strong border-l border-white/5 flex flex-col">
+    <div
+      className="relative glass-strong border-l border-white/5 flex flex-col"
+      style={{ width: `${width}px`, minWidth: `${DIFF_PANEL_MIN_WIDTH}px` }}
+    >
+      <button
+        type="button"
+        onMouseDown={onResizeStart}
+        className="absolute left-0 top-0 h-full w-2 -translate-x-1/2 cursor-col-resize z-20 group"
+        title="Resize file diff panel"
+        aria-label="Resize file diff panel"
+      >
+        <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/10 transition-colors group-hover:bg-indigo-400/70" />
+      </button>
       <div className="px-3 py-2.5 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
         <div className="flex items-center gap-2">
           <FileText className="w-3.5 h-3.5 text-indigo-300" />
@@ -2214,13 +2294,25 @@ function SessionDiffPanel({
             </span>
           )}
         </div>
-        <button
-          onClick={onClose}
-          className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
-          title="Close file diff panel"
-        >
-          <X className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center gap-1">
+          {selectedFile && (
+            <button
+              type="button"
+              onClick={() => onOpenInIDE(selectedFile)}
+              className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-indigo-300 transition-colors cursor-pointer"
+              title="Open selected file in IDE"
+            >
+              <FolderOpen className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
+            title="Close file diff panel"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       {!summary || summary.files.length === 0 ? (
@@ -2243,26 +2335,41 @@ function SessionDiffPanel({
             {summary.files.map((file) => {
               const isSelected = selectedFile?.path === file.path;
               return (
-                <button
-                  key={`${file.path}-${file.type}`}
-                  type="button"
-                  onClick={() => onSelectPath(file.path)}
-                  className={cn(
-                    "w-full text-left rounded-lg border px-2.5 py-2 transition-colors cursor-pointer",
-                    isSelected
-                      ? "bg-indigo-500/15 border-indigo-500/30"
-                      : "bg-white/[0.02] border-white/10 hover:bg-white/[0.06]"
-                  )}
-                >
-                  <p className="text-[12px] text-gray-100 truncate">{file.path}</p>
-                  <p className="mt-1 text-[10px] text-gray-500 uppercase tracking-[0.08em]">
-                    {file.type}
-                  </p>
-                  <div className="mt-1 text-[10px]">
-                    <span className="text-green-300">+{file.added}</span>
-                    <span className="ml-2 text-red-300">-{file.removed}</span>
-                  </div>
-                </button>
+                <div key={`${file.path}-${file.type}`} className="flex items-stretch gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onSelectPath(file.path)}
+                    className={cn(
+                      "flex-1 text-left rounded-lg border px-2.5 py-2 transition-colors cursor-pointer",
+                      isSelected
+                        ? "bg-indigo-500/15 border-indigo-500/30"
+                        : "bg-white/[0.02] border-white/10 hover:bg-white/[0.06]"
+                    )}
+                  >
+                    <p className="text-[12px] text-gray-100 truncate">{file.path}</p>
+                    <p className="mt-1 text-[10px] text-gray-500 uppercase tracking-[0.08em]">
+                      {file.type}
+                    </p>
+                    <div className="mt-1 text-[10px]">
+                      <span className="text-green-300">+{file.added}</span>
+                      <span className="ml-2 text-red-300">-{file.removed}</span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onOpenInIDE(file)}
+                    className={cn(
+                      "px-2 rounded-lg border transition-colors cursor-pointer",
+                      isSelected
+                        ? "border-indigo-500/30 text-indigo-300 bg-indigo-500/10"
+                        : "border-white/10 text-gray-500 bg-white/[0.02] hover:text-indigo-300 hover:bg-white/[0.06]"
+                    )}
+                    title="Open in IDE"
+                    aria-label={`Open ${file.path} in IDE`}
+                  >
+                    <FolderOpen className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -2270,8 +2377,17 @@ function SessionDiffPanel({
           <div className="flex-1 min-h-0 overflow-y-auto p-2.5">
             {selectedFile ? (
               <div className="rounded-lg border border-white/10 bg-black/20 overflow-hidden">
-                <div className="px-2.5 py-2 border-b border-white/10">
-                  <p className="text-[12px] text-gray-200 truncate">{selectedFile.path}</p>
+                <div className="px-2.5 py-2 border-b border-white/10 flex items-center gap-2">
+                  <p className="text-[12px] text-gray-200 truncate flex-1">{selectedFile.path}</p>
+                  <button
+                    type="button"
+                    onClick={() => onOpenInIDE(selectedFile)}
+                    className="p-1 rounded-md text-gray-500 hover:text-indigo-300 hover:bg-white/5 transition-colors cursor-pointer"
+                    title="Open selected file in IDE"
+                    aria-label={`Open ${selectedFile.path} in IDE`}
+                  >
+                    <FolderOpen className="w-3.5 h-3.5" />
+                  </button>
                 </div>
                 {selectedFile.diff ? (
                   <DiffCodeBlock code={selectedFile.diff} />
@@ -2862,6 +2978,7 @@ function SessionsPanel({
 }
 
 export function Chat() {
+  const navigate = useNavigate();
   const { data: agents = [] } = useAgents();
   const stopAgent = useStopAgent();
   const { data: info } = useInfo();
@@ -2889,6 +3006,7 @@ export function Chat() {
   const [showSubagentPanel, setShowSubagentPanel] = useState(false);
   const [showSessionsPanel, setShowSessionsPanel] = useState(true);
   const [showDiffPanel, setShowDiffPanel] = useState(false);
+  const [diffPanelWidth, setDiffPanelWidth] = useState<number>(() => readPersistedDiffPanelWidth());
   const [selectedDiffPath, setSelectedDiffPath] = useState<string | null>(null);
   const [activeSessionIds, setActiveSessionIds] = useState<string[]>([]);
   const [artifactViewerTarget, setArtifactViewerTarget] = useState<ArtifactSummaryView | null>(
@@ -2918,6 +3036,8 @@ export function Chat() {
   const dictationChunksRef = useRef<Blob[]>([]);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const diffPanelResizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const diffPanelResizeCleanupRef = useRef<(() => void) | null>(null);
   const activeSessionRef = useRef<string | null>(null);
   const loadingRef = useRef(false);
   const wasLoadingRef = useRef(false);
@@ -2996,6 +3116,8 @@ export function Chat() {
 
   useEffect(() => {
     return () => {
+      diffPanelResizeCleanupRef.current?.();
+      diffPanelResizeCleanupRef.current = null;
       if (speechRecognitionRef.current) {
         speechRecognitionRef.current.stop();
       }
@@ -3014,6 +3136,10 @@ export function Chat() {
   useEffect(() => {
     persistMessageProcessMap(messageProcessMap);
   }, [messageProcessMap]);
+
+  useEffect(() => {
+    persistDiffPanelWidth(diffPanelWidth);
+  }, [diffPanelWidth]);
 
   useEffect(() => {
     if (!sessionId || typedMessages.length === 0) return;
@@ -3136,6 +3262,8 @@ export function Chat() {
         pendingProcessCaptureRef.current = {
           ...pendingProcessCaptureRef.current,
           activities: runActivities.map((activity) => ({ ...activity })),
+          // Reset timeout window at completion so long runs don't expire before attach.
+          createdAt: Date.now(),
         };
       } else if (runActivities.length > 0) {
         // Keep the working timeline visible until the next assistant message is attached.
@@ -3162,9 +3290,7 @@ export function Chat() {
     }
 
     const sessionMismatch = !!pending.sessionId && !!sessionId && pending.sessionId !== sessionId;
-    const agentMismatch =
-      !!pending.agentId && !!selectedAgentId && pending.agentId !== selectedAgentId;
-    if (sessionMismatch || agentMismatch) {
+    if (sessionMismatch) {
       pendingProcessCaptureRef.current = null;
       return;
     }
@@ -3173,11 +3299,23 @@ export function Chat() {
       .map((message, index) => ({ message, index }))
       .filter((entry) => entry.message.role === "assistant");
 
-    if (assistantEntries.length <= pending.assistantCountBefore) {
+    let target =
+      assistantEntries.length > pending.assistantCountBefore
+        ? assistantEntries[pending.assistantCountBefore]
+        : undefined;
+    if (!target && !isLoading && assistantEntries.length > 0) {
+      // Fallback: attach to the newest assistant message produced around this capture window.
+      const cutoffTimestamp = pending.createdAt - 5000;
+      target =
+        assistantEntries.find((entry) => {
+          const messageTimestamp = parseTimestampMs(entry.message.timestamp);
+          return typeof messageTimestamp === "number" && messageTimestamp >= cutoffTimestamp;
+        }) || assistantEntries[assistantEntries.length - 1];
+    }
+    if (!target) {
       return;
     }
 
-    const target = assistantEntries[pending.assistantCountBefore];
     const processKey = getMessageProcessKey(sessionId, target.message, target.index);
     const legacyProcessKey = getLegacyMessageProcessKey(sessionId, target.message, target.index);
     const targetTurnStartedAtMs = findPriorUserTimestampMs(typedMessages, target.index);
@@ -3211,7 +3349,7 @@ export function Chat() {
     }
 
     pendingProcessCaptureRef.current = null;
-  }, [isLoading, sessionId, selectedAgentId, typedMessages]);
+  }, [isLoading, sessionId, typedMessages]);
 
   const appendLiveActivity = useCallback(
     (
@@ -3927,6 +4065,64 @@ export function Chat() {
     }
   }, [applySessionWorkspace, effectiveWorkspaceDir]);
 
+  const handleOpenDiffFileInIde = useCallback(
+    (file: FileChangeItem) => {
+      const resolvedPath = resolvePathForIde(file.path, effectiveWorkspaceDir);
+      if (!resolvedPath) return;
+      const params = new URLSearchParams();
+      params.set("path", resolvedPath);
+      const line = extractFirstTargetLine(file.diff);
+      if (line) {
+        params.set("line", String(line));
+      }
+      params.set("from", "chat-diff");
+      navigate(`/ide?${params.toString()}`);
+    },
+    [effectiveWorkspaceDir, navigate]
+  );
+
+  const handleDiffPanelResizeStart = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    diffPanelResizeCleanupRef.current?.();
+    diffPanelResizeCleanupRef.current = null;
+    diffPanelResizeStateRef.current = {
+      startX: event.clientX,
+      startWidth: diffPanelWidth,
+    };
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const state = diffPanelResizeStateRef.current;
+      if (!state) return;
+      const delta = state.startX - moveEvent.clientX;
+      setDiffPanelWidth(clampDiffPanelWidth(state.startWidth + delta));
+    };
+
+    const handleMouseUp = () => {
+      diffPanelResizeStateRef.current = null;
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+      diffPanelResizeCleanupRef.current = null;
+    };
+
+    diffPanelResizeCleanupRef.current = () => {
+      diffPanelResizeStateRef.current = null;
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  }, [diffPanelWidth]);
+
   const openArtifactViewer = useCallback(async (artifact: ArtifactSummaryView) => {
     setArtifactViewerTarget(artifact);
     setArtifactViewerLoading(true);
@@ -4498,6 +4694,9 @@ export function Chat() {
             selectedPath={selectedDiffPath}
             onSelectPath={setSelectedDiffPath}
             onClose={() => setShowDiffPanel(false)}
+            width={diffPanelWidth}
+            onResizeStart={handleDiffPanelResizeStart}
+            onOpenInIDE={handleOpenDiffFileInIde}
           />
         )}
 
