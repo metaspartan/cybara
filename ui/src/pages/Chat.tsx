@@ -223,6 +223,7 @@ const LAST_WORKSPACE_STORAGE_KEY = "cybara:lastWorkspaceDir";
 const LAST_SESSION_STORAGE_KEY = "cybara:lastSessionId";
 const MESSAGE_PROCESS_MAP_STORAGE_KEY = "cybara:messageProcessMap";
 const SESSION_ACTIVITY_STALE_MS = 30_000;
+const PENDING_CAPTURE_TIMEOUT_MS = 90_000;
 
 function getMessageProcessKey(
   sessionKey: string | null,
@@ -1160,7 +1161,7 @@ function LiveActivityTimeline({
               ) : (
                 <AlertTriangle className="w-3 h-3 text-red-400 mt-0.5 flex-shrink-0" />
               )}
-              <span className="whitespace-pre-wrap break-words">{activity.text}</span>
+              <ActivityText text={activity.text} />
             </div>
           ))}
         </div>
@@ -1215,7 +1216,7 @@ function ProcessActivityList({ activities }: { activities: LiveActivityItem[] })
           ) : (
             <AlertTriangle className="h-3 w-3 text-rose-400 mt-0.5 flex-shrink-0" />
           )}
-          <span className="whitespace-pre-wrap break-words">{activity.text}</span>
+          <ActivityText text={activity.text} />
         </div>
       ))}
     </div>
@@ -1252,9 +1253,39 @@ function ActivityStepCard({ activity, isLast }: { activity: LiveActivityItem; is
           phaseStyles[activity.phase]
         )}
       >
-        {activity.text}
+        <ActivityText text={activity.text} />
       </div>
     </div>
+  );
+}
+
+function ActivityText({ text }: { text: string }) {
+  const shouldHighlightCounters = /^(Edited|Created|Updated|Deleted)\b/i.test(text);
+  if (!shouldHighlightCounters) {
+    return <span className="whitespace-pre-wrap break-words">{text}</span>;
+  }
+
+  const parts = text.split(/(\s\+\d+\b|\s-\d+\b)/g);
+  return (
+    <span className="whitespace-pre-wrap break-words">
+      {parts.map((part, index) => {
+        if (/^\s\+\d+$/.test(part)) {
+          return (
+            <span key={`activity-text-${index}`} className="text-green-300">
+              {part}
+            </span>
+          );
+        }
+        if (/^\s-\d+$/.test(part)) {
+          return (
+            <span key={`activity-text-${index}`} className="text-red-300">
+              {part}
+            </span>
+          );
+        }
+        return <span key={`activity-text-${index}`}>{part}</span>;
+      })}
+    </span>
   );
 }
 
@@ -1270,8 +1301,8 @@ function FileChangesCard({ summary }: { summary: FileChangeSummary }) {
         <Wrench className="w-3 h-3 text-indigo-300" />
         <span className="text-gray-200 font-medium">
           {summary.files.length} files changed
-          <span className="ml-2 text-emerald-300">+{summary.totalAdded}</span>
-          <span className="ml-1 text-rose-300">-{summary.totalRemoved}</span>
+          <span className="ml-2 text-green-300">+{summary.totalAdded}</span>
+          <span className="ml-1 text-red-300">-{summary.totalRemoved}</span>
         </span>
         <span className="flex-1" />
         {expanded ? (
@@ -1295,8 +1326,8 @@ function FileChangesCard({ summary }: { summary: FileChangeSummary }) {
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-emerald-300">+{file.added}</span>
-                  <span className="text-rose-300">-{file.removed}</span>
+                  <span className="text-green-300">+{file.added}</span>
+                  <span className="text-red-300">-{file.removed}</span>
                 </div>
               </div>
               {file.diff && <DiffCodeBlock code={file.diff} />}
@@ -1867,30 +1898,45 @@ function DiffCodeBlock({ code }: { code: string }) {
     if (trimmed.startsWith("diff --git") || trimmed.startsWith("index ")) {
       return {
         prefix: "·",
-        className: "bg-white/[0.02] text-gray-300",
+        rowClass: "bg-white/[0.02]",
+        numberClass: "text-gray-500",
+        markerClass: "text-gray-400",
+        textClass: "text-gray-300",
       };
     }
     if (trimmed.startsWith("@@") || trimmed.startsWith("+++ ") || trimmed.startsWith("--- ")) {
       return {
         prefix: "↕",
-        className: "bg-blue-500/10 text-blue-200",
+        rowClass: "bg-blue-500/10",
+        numberClass: "text-blue-300/80",
+        markerClass: "text-blue-300",
+        textClass: "text-blue-200",
       };
     }
     if (line.startsWith("+")) {
       return {
         prefix: "+",
-        className: "bg-emerald-500/10 text-emerald-200",
+        rowClass: "bg-green-500/12",
+        numberClass: "text-green-300/80",
+        markerClass: "text-green-300",
+        textClass: "text-green-200",
       };
     }
     if (line.startsWith("-")) {
       return {
         prefix: "−",
-        className: "bg-rose-500/10 text-rose-200",
+        rowClass: "bg-red-500/12",
+        numberClass: "text-red-300/80",
+        markerClass: "text-red-300",
+        textClass: "text-red-200",
       };
     }
     return {
       prefix: " ",
-      className: "text-gray-300",
+      rowClass: "",
+      numberClass: "text-gray-500",
+      markerClass: "text-gray-400",
+      textClass: "text-gray-300",
     };
   });
 
@@ -1906,16 +1952,20 @@ function DiffCodeBlock({ code }: { code: string }) {
             key={`diff-${index}`}
             className={cn(
               "grid grid-cols-[48px_20px_minmax(0,1fr)] items-start px-2",
-              lineMeta[index]?.className
+              lineMeta[index]?.rowClass
             )}
           >
-            <span className="select-none pr-2 text-right text-[12px] text-gray-500">
+            <span
+              className={cn("select-none pr-2 text-right text-[12px]", lineMeta[index]?.numberClass)}
+            >
               {index + 1}
             </span>
-            <span className="select-none text-center text-[12px] text-gray-400">
+            <span className={cn("select-none text-center text-[12px]", lineMeta[index]?.markerClass)}>
               {lineMeta[index]?.prefix}
             </span>
-            <span className="whitespace-pre">{line || "\u00A0"}</span>
+            <span className={cn("whitespace-pre", lineMeta[index]?.textClass)}>
+              {line || "\u00A0"}
+            </span>
           </div>
         ))}
       </pre>
@@ -2183,9 +2233,9 @@ function SessionDiffPanel({
       ) : (
         <>
           <div className="px-3 py-2 text-[12px] text-gray-400 border-b border-white/5 bg-black/10">
-            <span className="text-emerald-300">+{summary.totalAdded}</span>
+            <span className="text-green-300">+{summary.totalAdded}</span>
             <span className="mx-1 text-gray-500">/</span>
-            <span className="text-rose-300">-{summary.totalRemoved}</span>
+            <span className="text-red-300">-{summary.totalRemoved}</span>
             <span className="ml-2">across {summary.files.length} files</span>
           </div>
 
@@ -2209,8 +2259,8 @@ function SessionDiffPanel({
                     {file.type}
                   </p>
                   <div className="mt-1 text-[10px]">
-                    <span className="text-emerald-300">+{file.added}</span>
-                    <span className="ml-2 text-rose-300">-{file.removed}</span>
+                    <span className="text-green-300">+{file.added}</span>
+                    <span className="ml-2 text-red-300">-{file.removed}</span>
                   </div>
                 </button>
               );
@@ -3087,6 +3137,15 @@ export function Chat() {
           ...pendingProcessCaptureRef.current,
           activities: runActivities.map((activity) => ({ ...activity })),
         };
+      } else if (runActivities.length > 0) {
+        // Keep the working timeline visible until the next assistant message is attached.
+        pendingProcessCaptureRef.current = {
+          assistantCountBefore: assistantCount,
+          activities: runActivities.map((activity) => ({ ...activity })),
+          sessionId,
+          agentId: selectedAgentId,
+          createdAt: Date.now(),
+        };
       }
     }
 
@@ -3097,7 +3156,7 @@ export function Chat() {
     const pending = pendingProcessCaptureRef.current;
     if (!pending) return;
 
-    if (!isLoading && Date.now() - pending.createdAt > 20_000) {
+    if (!isLoading && Date.now() - pending.createdAt > PENDING_CAPTURE_TIMEOUT_MS) {
       pendingProcessCaptureRef.current = null;
       return;
     }

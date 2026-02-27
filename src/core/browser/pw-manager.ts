@@ -547,9 +547,27 @@ export async function evaluate<T = unknown>(pageId: string, script: string): Pro
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
 
-  return await page.evaluate((code) => {
-    return eval(code);
-  }, script);
+  // Security: Validate script doesn't contain dangerous patterns before execution
+  // This prevents obvious injection attempts from being passed to browser context
+  const dangerousPatterns = [
+    /eval\s*\(/i,
+    /Function\s*\(/i,
+    /setTimeout\s*\(\s*['"`]/i,
+    /setInterval\s*\(\s*['"`]/i,
+    /\.\s*constructor\s*\.\s*constructor/i,
+    /__proto__/i,
+    /prototype\s*=/i,
+  ];
+
+  for (const pattern of dangerousPatterns) {
+    if (pattern.test(script)) {
+      throw new Error("Security: Script contains potentially dangerous patterns");
+    }
+  }
+
+  // Execute directly in browser context - Playwright's evaluate already runs this in browser
+  // No need for additional eval/Function wrapper
+  return await page.evaluate(script);
 }
 
 export async function wait(pageId: string, timeMs: number): Promise<void> {
