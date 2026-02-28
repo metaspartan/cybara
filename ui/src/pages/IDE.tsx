@@ -1122,7 +1122,7 @@ function CodeViewer({
           <>
             <div
               ref={gutterRef}
-              className="w-16 shrink-0 overflow-hidden border-r border-white/10 bg-black/30 py-4 px-2 text-right select-none"
+              className="w-16 shrink-0 overflow-hidden border-r border-white/10 bg-black/30 py-4 px-2 text-right select-none font-mono text-[13px] leading-[20px]"
             >
               {sourceLines.map((_, i) => {
                 const lineNum = i;
@@ -1135,7 +1135,7 @@ function CodeViewer({
                     type="button"
                     onClick={() => jumpToLine(i + 1)}
                     className={cn(
-                      "h-[20px] w-full inline-flex items-center justify-end px-1 font-mono text-[13px] leading-[20px] transition-colors",
+                      "h-[20px] w-full flex items-center justify-end px-1 m-0 py-0 border-0 rounded-none appearance-none bg-transparent leading-none transition-colors",
                       activeLine === i + 1 && "bg-indigo-500/20 text-indigo-200",
                       hasError && "text-red-400",
                       hasWarning && !hasError && "text-yellow-400",
@@ -1165,7 +1165,7 @@ function CodeViewer({
                   <Highlight theme={themes.nightOwl} code={sourceText} language={language}>
                     {({ className, style, tokens, getLineProps, getTokenProps }) => (
                       <pre
-                        className={cn(className, "p-4 font-mono text-[13px] min-w-full leading-[20px]")}
+                        className={cn(className, "m-0 p-4 font-mono text-[13px] min-w-full leading-[20px]")}
                         style={{
                           ...style,
                           background: "transparent",
@@ -1188,10 +1188,10 @@ function CodeViewer({
                             style={{ ...(lineProps.style || {}), height: "20px", lineHeight: "20px" }}
                             className={cn(
                               lineProps.className,
-                              "h-[20px]",
-                                hasError && "bg-red-500/10",
-                                hasWarning && !hasError && "bg-yellow-500/10",
-                                activeLine === i + 1 && "bg-indigo-500/20"
+                              "block h-[20px]",
+                              hasError && "bg-red-500/10",
+                              hasWarning && !hasError && "bg-yellow-500/10",
+                              activeLine === i + 1 && "bg-indigo-500/20"
                               )}
                             >
                               {line.length > 0 ? (
@@ -1226,6 +1226,7 @@ function CodeViewer({
                   lineHeight: "20px",
                   fontSize: "13px",
                   fontFamily: "var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                  margin: 0,
                 }}
               />
               </div>
