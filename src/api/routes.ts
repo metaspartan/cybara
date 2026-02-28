@@ -72,7 +72,16 @@ import { dirname, isAbsolute, resolve, join } from "path";
 import { createHash, randomBytes } from "crypto";
 import { existsSync, readdirSync, statSync } from "fs";
 import { securityCheck, validateUrl } from "./security";
-import { browseDirectory, readFileContent, writeFileContent, createItem } from "./ide-api";
+import {
+  browseDirectory,
+  readFileContent,
+  writeFileContent,
+  createItem,
+  searchWorkspace,
+  replaceInWorkspace,
+  previewReplaceInWorkspace,
+  listWorkspaceFiles,
+} from "./ide-api";
 import { getGitStatus, getGitBranch, getGitDiff } from "./git-api";
 import { createLogger } from "../core/logger";
 import { openUrlInBrowser } from "../core/runtime/open-url";
@@ -1037,7 +1046,15 @@ function trackLspOperation(operation: string, metadata?: Record<string, unknown>
 }
 
 function trackIdeOperation(
-  operation: "browse" | "read" | "write" | "create",
+  operation:
+    | "browse"
+    | "read"
+    | "write"
+    | "create"
+    | "search"
+    | "replace"
+    | "replace_preview"
+    | "list_files",
   path: string | undefined,
   success: boolean,
   metadata?: Record<string, unknown>
@@ -3103,6 +3120,137 @@ const routes: Record<string, RouteHandler> = {
       !!result && typeof result === "object" && (result as { success?: boolean }).success !== false;
     trackIdeOperation("create", createdPath, success, { type });
     trackFileOperation("write", createdPath, { success, type, parentPath });
+    return result;
+  },
+
+  "GET /api/ide/search": async (_body, params) => {
+    const path = (params?.path as string | undefined) || "~";
+    const query = (params?.query as string | undefined) || "";
+    const caseSensitive = params?.caseSensitive === "true";
+    const wholeWord = params?.wholeWord === "true";
+    const result = await searchWorkspace(path, query, { caseSensitive, wholeWord });
+    const success = result.success !== false;
+    trackIdeOperation("search", path, success, {
+      queryLength: query.length,
+      totalMatches: result.totalMatches,
+    });
+    trackFileOperation("search", path || process.cwd(), {
+      success,
+      queryLength: query.length,
+      totalMatches: result.totalMatches,
+    });
+    return result;
+  },
+
+  "GET /api/ide/files": async (_body, params) => {
+    const path = (params?.path as string | undefined) || "~";
+    const query = (params?.query as string | undefined) || "";
+    const parsedLimit = Number.parseInt((params?.limit as string | undefined) || "", 10);
+    const limit = Number.isFinite(parsedLimit) ? parsedLimit : undefined;
+    const result = await listWorkspaceFiles(path, { query, limit });
+    const success = result.success !== false;
+    trackIdeOperation("list_files", path, success, {
+      queryLength: query.length,
+      totalFiles: result.totalFiles,
+      truncated: result.truncated,
+    });
+    trackFileOperation("search", path || process.cwd(), {
+      success,
+      queryLength: query.length,
+      totalFiles: result.totalFiles,
+      truncated: result.truncated,
+    });
+    return result;
+  },
+
+  "POST /api/ide/replace": async (body) => {
+    const {
+      path,
+      query,
+      replacement,
+      caseSensitive,
+      wholeWord,
+      files,
+    } = body as {
+      path?: string;
+      query?: string;
+      replacement?: string;
+      caseSensitive?: boolean;
+      wholeWord?: boolean;
+      files?: string[];
+    };
+    if (!query || typeof query !== "string") {
+      return { success: false, error: "Missing 'query' parameter" };
+    }
+    if (typeof replacement !== "string") {
+      return { success: false, error: "Missing 'replacement' parameter" };
+    }
+
+    const targetPath = path || "~";
+    const result = await replaceInWorkspace(targetPath, query, replacement, {
+      caseSensitive: caseSensitive === true,
+      wholeWord: wholeWord === true,
+      files: Array.isArray(files) ? files : undefined,
+    });
+
+    const success = result.success !== false;
+    trackIdeOperation("replace", targetPath, success, {
+      queryLength: query.length,
+      replacementLength: replacement.length,
+      changedFiles: result.changedFiles.length,
+      totalReplacements: result.totalReplacements,
+    });
+    trackFileOperation("write", targetPath || process.cwd(), {
+      success,
+      queryLength: query.length,
+      totalReplacements: result.totalReplacements,
+      changedFiles: result.changedFiles.length,
+    });
+
+    return result;
+  },
+
+  "POST /api/ide/replace/preview": async (body) => {
+    const { path, query, replacement, caseSensitive, wholeWord, files, maxFiles } = body as {
+      path?: string;
+      query?: string;
+      replacement?: string;
+      caseSensitive?: boolean;
+      wholeWord?: boolean;
+      files?: string[];
+      maxFiles?: number;
+    };
+    if (!query || typeof query !== "string") {
+      return { success: false, error: "Missing 'query' parameter" };
+    }
+    if (typeof replacement !== "string") {
+      return { success: false, error: "Missing 'replacement' parameter" };
+    }
+
+    const targetPath = path || "~";
+    const result = await previewReplaceInWorkspace(targetPath, query, replacement, {
+      caseSensitive: caseSensitive === true,
+      wholeWord: wholeWord === true,
+      files: Array.isArray(files) ? files : undefined,
+      maxFiles: Number.isFinite(maxFiles) ? maxFiles : undefined,
+    });
+
+    const success = result.success !== false;
+    trackIdeOperation("replace_preview", targetPath, success, {
+      queryLength: query.length,
+      replacementLength: replacement.length,
+      files: result.files.length,
+      totalReplacements: result.totalReplacements,
+      truncated: result.truncated,
+    });
+    trackFileOperation("search", targetPath || process.cwd(), {
+      success,
+      queryLength: query.length,
+      totalReplacements: result.totalReplacements,
+      files: result.files.length,
+      truncated: result.truncated,
+    });
+
     return result;
   },
 

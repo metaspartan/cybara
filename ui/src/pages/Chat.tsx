@@ -22,7 +22,6 @@ import {
   Square,
   Loader2,
   MessageSquare,
-  RefreshCw,
   Pencil,
   X,
   CheckCircle2,
@@ -2416,7 +2415,7 @@ function SubagentPanel({
   onClose: () => void;
   onViewSession?: (sessionKey: string) => void;
 }) {
-  const { data: subagents, isLoading, refetch } = useSubagents();
+  const { data: subagents, isLoading } = useSubagents();
   const spawnSubagent = useSpawnSubagent();
   const killSubagent = useKillSubagent();
   const [newTask, setNewTask] = useState("");
@@ -2428,7 +2427,6 @@ function SubagentPanel({
     await spawnSubagent.mutateAsync({ task: newTask, label: `Task: ${newTask.slice(0, 30)}...` });
     setNewTask("");
     setShowSpawnModal(false);
-    refetch();
   };
 
   if (!isOpen) return null;
@@ -2447,12 +2445,6 @@ function SubagentPanel({
             )}
           </div>
           <div className="flex items-center">
-            <button
-              onClick={() => refetch()}
-              className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-            </button>
             <button
               onClick={() => setShowSpawnModal(true)}
               className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
@@ -2520,7 +2512,7 @@ function SubagentPanel({
                         className="p-1 rounded hover:bg-red-500/20 text-red-400 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                         onClick={(e) => {
                           e.stopPropagation();
-                          killSubagent.mutateAsync(subagent.id).then(() => refetch());
+                          void killSubagent.mutateAsync(subagent.id);
                         }}
                       >
                         <Square className="w-3 h-3" />
@@ -2661,7 +2653,6 @@ function SubagentPanel({
                   onClick={async () => {
                     await killSubagent.mutateAsync(selectedSubagent.id);
                     setSelectedSubagent(null);
-                    refetch();
                   }}
                   disabled={killSubagent.isPending}
                 >

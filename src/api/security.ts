@@ -43,7 +43,7 @@ function getOrCreateApiKey(): string | null {
 ║  Your API key has been saved to: ~/.cybara/api_key               ║
 ║                                                                  ║
 ║  To authenticate API requests, use:                              ║
-║    curl -H "Authorization: Bearer ${newKey.slice(0, 20)}..."    ║
+║    curl -H "Authorization: Bearer ${newKey.slice(0, 20)}..."     ║
 ║                                                                  ║
 ║  Localhost connections are allowed without auth in dev mode.     ║
 ║  Set CYBARA_API_KEY env var to override.                         ║

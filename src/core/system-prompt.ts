@@ -406,6 +406,11 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
     "memory_get",
     "memory_save",
     "tts",
+    "lsp_diagnostics",
+    "lsp_definition",
+    "lsp_references",
+    "lsp_hover",
+    "lsp_languages",
   ];
 
   const availableTools = new Set(tools.map((t) => t.toLowerCase()));

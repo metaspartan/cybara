@@ -3,12 +3,14 @@ import { dirname } from "path";
 
 export interface GitStatus {
   isRepo: boolean;
+  root?: string;
   branch?: string;
   ahead?: number;
   behind?: number;
   staged: string[];
   modified: string[];
   untracked: string[];
+  ignored: string[];
   error?: string;
 }
 
@@ -64,6 +66,7 @@ export async function getGitStatus(path: string): Promise<GitStatus> {
       staged: [],
       modified: [],
       untracked: [],
+      ignored: [],
     };
   }
 
@@ -84,18 +87,39 @@ export async function getGitStatus(path: string): Promise<GitStatus> {
     ahead = a || 0;
   }
 
-  const statusResult = await runGit(gitRoot, ["status", "--porcelain"]);
+  const statusResult = await runGit(gitRoot, [
+    "status",
+    "--porcelain",
+    "--ignored",
+    "--untracked-files=all",
+  ]);
 
   const staged: string[] = [];
   const modified: string[] = [];
   const untracked: string[] = [];
+  const ignored: string[] = [];
+
+  const normalizeStatusPath = (rawPath: string): string => {
+    const withoutRename =
+      rawPath.includes(" -> ") ? rawPath.slice(rawPath.lastIndexOf(" -> ") + 4) : rawPath;
+    const unquoted =
+      withoutRename.startsWith('"') && withoutRename.endsWith('"')
+        ? withoutRename.slice(1, -1)
+        : withoutRename;
+    return unquoted.replaceAll("\\", "/");
+  };
 
   if (statusResult.success && statusResult.stdout) {
     for (const line of statusResult.stdout.split("\n")) {
       if (!line) continue;
       const indexStatus = line[0];
       const workTreeStatus = line[1];
-      const filePath = line.slice(3);
+      const filePath = normalizeStatusPath(line.slice(3));
+
+      if (indexStatus === "!" && workTreeStatus === "!") {
+        ignored.push(filePath);
+        continue;
+      }
 
       if (indexStatus !== " " && indexStatus !== "?") {
         staged.push(filePath);
@@ -113,12 +137,14 @@ export async function getGitStatus(path: string): Promise<GitStatus> {
 
   return {
     isRepo: true,
+    root: gitRoot,
     branch,
     ahead,
     behind,
     staged,
     modified,
     untracked,
+    ignored,
   };
 }
 

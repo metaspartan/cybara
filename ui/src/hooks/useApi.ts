@@ -704,11 +704,28 @@ export function useSubagents() {
     queryFn: async () => {
       const response = await subagentApi.list();
       if (response.success && response.data) {
-        return response.data as Subagent[];
+        const dedupedById = new Map<string, Subagent>();
+        for (const subagent of response.data as Subagent[]) {
+          if (!subagent?.id) continue;
+          dedupedById.set(subagent.id, subagent);
+        }
+        const sorted = [...dedupedById.values()].sort((a, b) => {
+          const runningDelta =
+            Number(b.status === 'running') - Number(a.status === 'running');
+          if (runningDelta !== 0) return runningDelta;
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+        return sorted;
       }
       throw new Error(response.error || 'Failed to fetch subagents');
     },
-    refetchInterval: 5000, // Poll every 5 seconds
+    refetchInterval: (query) => {
+      const data = query.state.data as Subagent[] | undefined;
+      const hasRunning = Array.isArray(data) && data.some((subagent) => subagent.status === 'running');
+      return hasRunning ? 1000 : 4000;
+    },
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: true,
   });
 }
 
