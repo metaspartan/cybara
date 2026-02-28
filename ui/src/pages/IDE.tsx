@@ -510,7 +510,8 @@ function CodeViewer({
       const res = await apiFetch(`/api/ide/read?path=${encodeURIComponent(path)}`);
       const data: ReadResult = await res.json();
       if (data.success) {
-        const nextContent = data.content || "";
+        // Normalize line endings for stable cursor/line mapping in the editor UI.
+        const nextContent = (data.content || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
         setContent(nextContent);
         setEditContent((previous) => {
           if (options?.resetEditor || !hasUnsavedChangesRef.current) {
@@ -1217,11 +1218,16 @@ function CodeViewer({
                   onKeyUp={(e) => updateCursorFromSelection(e.currentTarget)}
                   onSelect={(e) => updateCursorFromSelection(e.currentTarget)}
                   onScroll={(e) => syncEditorScroll(e.currentTarget)}
-                  className="absolute inset-0 p-4 font-mono text-[13px] leading-[20px] bg-transparent text-transparent caret-indigo-200 resize-none !outline-none focus:!outline-none selection:bg-indigo-500/30"
-                  spellCheck={false}
-                  wrap="off"
-                  style={{ tabSize: 2 }}
-                />
+                className="absolute inset-0 p-4 font-mono text-[13px] leading-[20px] bg-transparent text-transparent caret-indigo-200 resize-none !outline-none focus:!outline-none selection:bg-indigo-500/30"
+                spellCheck={false}
+                wrap="off"
+                style={{
+                  tabSize: 2,
+                  lineHeight: "20px",
+                  fontSize: "13px",
+                  fontFamily: "var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                }}
+              />
               </div>
 
               <div className="w-24 shrink-0 border-l border-white/10 bg-[#080810] hidden xl:flex flex-col">
