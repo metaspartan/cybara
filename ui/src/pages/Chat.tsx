@@ -3247,8 +3247,11 @@ export function Chat() {
     if (!isLoading && wasLoadingRef.current) {
       setLoadingSessionId(null);
       acceptEventsUntilRef.current = Date.now() + 1500;
-      const runActivities =
-        runActivityBufferRef.current.length > 0 ? runActivityBufferRef.current : liveActivities;
+      const pendingActivities = pendingProcessCaptureRef.current?.activities || [];
+      const runActivities = mergeActivityLists(
+        mergeActivityLists(pendingActivities, runActivityBufferRef.current),
+        liveActivities
+      );
       if (pendingProcessCaptureRef.current) {
         pendingProcessCaptureRef.current = {
           ...pendingProcessCaptureRef.current,
@@ -3314,6 +3317,10 @@ export function Chat() {
       target.message.process_activities,
       parseTimestampMs(target.message.timestamp) ?? targetTurnStartedAtMs
     );
+    const captureActivities = mergeActivityLists(
+      mergeActivityLists(pending.activities, runActivityBufferRef.current),
+      liveActivities
+    );
     const fallbackToolActivities =
       embeddedActivities.length === 0
         ? buildActivitiesFromToolCalls(target.message.tool_calls, formatToolIntent, {
@@ -3322,8 +3329,8 @@ export function Chat() {
         : [];
     const mergedActivities =
       embeddedActivities.length > 0
-        ? mergeActivityLists(pending.activities, embeddedActivities)
-        : mergeActivityLists(pending.activities, fallbackToolActivities);
+        ? mergeActivityLists(captureActivities, embeddedActivities)
+        : mergeActivityLists(captureActivities, fallbackToolActivities);
     const finalizedActivities = finalizeCompletedActivities(mergedActivities);
 
     if (finalizedActivities.length > 0) {
@@ -3340,7 +3347,7 @@ export function Chat() {
     }
 
     pendingProcessCaptureRef.current = null;
-  }, [isLoading, sessionId, typedMessages]);
+  }, [isLoading, liveActivities, sessionId, typedMessages]);
 
   const appendLiveActivity = useCallback(
     (
@@ -3551,8 +3558,14 @@ export function Chat() {
         mergeActivityLists([], toLiveActivityItems(snapshot.activities)),
         snapshot.status
       );
-      setLiveActivities(snapshotActivities);
-      runActivityBufferRef.current = snapshotActivities.map((activity) => ({ ...activity }));
+      const shouldPreserveLocalActivities =
+        snapshotActivities.length === 0 &&
+        runActivityBufferRef.current.length > 0 &&
+        normalizedSnapshotStatus !== "idle";
+      if (!shouldPreserveLocalActivities) {
+        setLiveActivities(snapshotActivities);
+        runActivityBufferRef.current = snapshotActivities.map((activity) => ({ ...activity }));
+      }
       const activeStep = getLatestInFlightStep(snapshotActivities);
       if (activeStep && !isGenericStatusLabel(activeStep)) {
         setLiveCurrentStep(activeStep);
@@ -4253,7 +4266,10 @@ export function Chat() {
       ? !pendingCapture.sessionId || pendingCapture.sessionId === sessionId
       : !pendingCapture.sessionId);
   const showWorkingTimeline =
-    currentSessionIsLoading || currentSessionIsActive || pendingCaptureForCurrentSession;
+    currentSessionIsLoading ||
+    currentSessionIsActive ||
+    pendingCaptureForCurrentSession ||
+    liveActivities.length > 0;
   const timelineActivities =
     liveActivities.length > 0
       ? liveActivities
