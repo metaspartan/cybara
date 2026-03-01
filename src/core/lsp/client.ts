@@ -153,6 +153,18 @@ export class LSPClient extends EventEmitter {
     return this.request("textDocument/definition", params);
   }
 
+  async declaration(params: TextDocumentPositionParams): Promise<DefinitionResult> {
+    return this.request("textDocument/declaration", params);
+  }
+
+  async typeDefinition(params: TextDocumentPositionParams): Promise<DefinitionResult> {
+    return this.request("textDocument/typeDefinition", params);
+  }
+
+  async implementation(params: TextDocumentPositionParams): Promise<DefinitionResult> {
+    return this.request("textDocument/implementation", params);
+  }
+
   async references(params: ReferenceParams): Promise<Location[] | null> {
     return this.request("textDocument/references", params);
   }

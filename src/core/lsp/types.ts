@@ -104,6 +104,9 @@ export interface ClientCapabilities {
     hover?: { dynamicRegistration?: boolean; contentFormat?: string[] };
     signatureHelp?: { dynamicRegistration?: boolean };
     definition?: { dynamicRegistration?: boolean };
+    declaration?: { dynamicRegistration?: boolean };
+    typeDefinition?: { dynamicRegistration?: boolean };
+    implementation?: { dynamicRegistration?: boolean };
     references?: { dynamicRegistration?: boolean };
     documentHighlight?: { dynamicRegistration?: boolean };
     documentSymbol?: { dynamicRegistration?: boolean };
@@ -124,6 +127,9 @@ export interface ServerCapabilities {
   };
   hoverProvider?: boolean;
   definitionProvider?: boolean;
+  declarationProvider?: boolean;
+  typeDefinitionProvider?: boolean;
+  implementationProvider?: boolean;
   referencesProvider?: boolean;
   documentSymbolProvider?: boolean;
   diagnosticProvider?: {

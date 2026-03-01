@@ -84,6 +84,9 @@ import {
   listWorkspaceFiles,
   getFileBlame,
   revealInSystemExplorer,
+  openInSystemTerminal,
+  getFilePermalink,
+  getFileHistoryUrl,
 } from "./ide-api";
 import { getGitStatus, getGitBranch, getGitDiff } from "./git-api";
 import { createLogger } from "../core/logger";
@@ -1073,6 +1076,9 @@ function trackIdeOperation(
     | "search"
     | "blame"
     | "reveal"
+    | "open_terminal"
+    | "permalink"
+    | "history_url"
     | "replace"
     | "replace_preview"
     | "list_files",
@@ -3109,6 +3115,208 @@ const routes: Record<string, RouteHandler> = {
       return { success: false, error: String(errorValue) };
     }
   },
+  "GET /api/lsp/declaration": async (_body, params) => {
+    const filePath = params?.path as string | undefined;
+    const rawLine = params?.line as string | undefined;
+    const rawCharacter = params?.character as string | undefined;
+    if (!filePath) {
+      trackLspOperation("declaration", { success: false, reason: "missing_path" });
+      return { success: false, error: "Missing 'path' parameter" };
+    }
+
+    const normalizedPath = isAbsolute(filePath) ? filePath : resolve(process.cwd(), filePath);
+    const workspacePath = resolveWorkspacePath(normalizedPath);
+    const parsedLine = Number.parseInt(rawLine || "", 10);
+    const parsedCharacter = Number.parseInt(rawCharacter || "", 10);
+    const line = Number.isFinite(parsedLine) ? Math.max(parsedLine, 0) : 0;
+    const character = Number.isFinite(parsedCharacter) ? Math.max(parsedCharacter, 0) : 0;
+
+    try {
+      const manager = getOrInitLspManager(workspacePath);
+      const declarations = await manager.getDeclaration(normalizedPath, line, character);
+      const normalizedLocations = (Array.isArray(declarations) ? declarations : declarations ? [declarations] : [])
+        .map((location) => normalizeDefinitionLocation(location))
+        .filter((location): location is { uri: string; path: string; line: number; character: number } => !!location);
+      const location = normalizedLocations[0] || null;
+      trackLspOperation("declaration", {
+        workspace: manager.getWorkspacePath(),
+        filePath: normalizedPath,
+        line,
+        character,
+        resultCount: normalizedLocations.length,
+        success: true,
+      });
+      return {
+        success: true,
+        path: normalizedPath,
+        line,
+        character,
+        location,
+        locations: normalizedLocations,
+      };
+    } catch (errorValue) {
+      trackLspOperation("declaration", {
+        workspace: workspacePath,
+        filePath: normalizedPath,
+        line,
+        character,
+        success: false,
+        error: String(errorValue),
+      });
+      return { success: false, error: String(errorValue) };
+    }
+  },
+  "GET /api/lsp/type-definition": async (_body, params) => {
+    const filePath = params?.path as string | undefined;
+    const rawLine = params?.line as string | undefined;
+    const rawCharacter = params?.character as string | undefined;
+    if (!filePath) {
+      trackLspOperation("type_definition", { success: false, reason: "missing_path" });
+      return { success: false, error: "Missing 'path' parameter" };
+    }
+
+    const normalizedPath = isAbsolute(filePath) ? filePath : resolve(process.cwd(), filePath);
+    const workspacePath = resolveWorkspacePath(normalizedPath);
+    const parsedLine = Number.parseInt(rawLine || "", 10);
+    const parsedCharacter = Number.parseInt(rawCharacter || "", 10);
+    const line = Number.isFinite(parsedLine) ? Math.max(parsedLine, 0) : 0;
+    const character = Number.isFinite(parsedCharacter) ? Math.max(parsedCharacter, 0) : 0;
+
+    try {
+      const manager = getOrInitLspManager(workspacePath);
+      const definitions = await manager.getTypeDefinition(normalizedPath, line, character);
+      const normalizedLocations = (Array.isArray(definitions) ? definitions : definitions ? [definitions] : [])
+        .map((location) => normalizeDefinitionLocation(location))
+        .filter((location): location is { uri: string; path: string; line: number; character: number } => !!location);
+      const location = normalizedLocations[0] || null;
+      trackLspOperation("type_definition", {
+        workspace: manager.getWorkspacePath(),
+        filePath: normalizedPath,
+        line,
+        character,
+        resultCount: normalizedLocations.length,
+        success: true,
+      });
+      return {
+        success: true,
+        path: normalizedPath,
+        line,
+        character,
+        location,
+        locations: normalizedLocations,
+      };
+    } catch (errorValue) {
+      trackLspOperation("type_definition", {
+        workspace: workspacePath,
+        filePath: normalizedPath,
+        line,
+        character,
+        success: false,
+        error: String(errorValue),
+      });
+      return { success: false, error: String(errorValue) };
+    }
+  },
+  "GET /api/lsp/implementation": async (_body, params) => {
+    const filePath = params?.path as string | undefined;
+    const rawLine = params?.line as string | undefined;
+    const rawCharacter = params?.character as string | undefined;
+    if (!filePath) {
+      trackLspOperation("implementation", { success: false, reason: "missing_path" });
+      return { success: false, error: "Missing 'path' parameter" };
+    }
+
+    const normalizedPath = isAbsolute(filePath) ? filePath : resolve(process.cwd(), filePath);
+    const workspacePath = resolveWorkspacePath(normalizedPath);
+    const parsedLine = Number.parseInt(rawLine || "", 10);
+    const parsedCharacter = Number.parseInt(rawCharacter || "", 10);
+    const line = Number.isFinite(parsedLine) ? Math.max(parsedLine, 0) : 0;
+    const character = Number.isFinite(parsedCharacter) ? Math.max(parsedCharacter, 0) : 0;
+
+    try {
+      const manager = getOrInitLspManager(workspacePath);
+      const implementations = await manager.getImplementation(normalizedPath, line, character);
+      const normalizedLocations = (Array.isArray(implementations) ? implementations : implementations ? [implementations] : [])
+        .map((location) => normalizeDefinitionLocation(location))
+        .filter((location): location is { uri: string; path: string; line: number; character: number } => !!location);
+      const location = normalizedLocations[0] || null;
+      trackLspOperation("implementation", {
+        workspace: manager.getWorkspacePath(),
+        filePath: normalizedPath,
+        line,
+        character,
+        resultCount: normalizedLocations.length,
+        success: true,
+      });
+      return {
+        success: true,
+        path: normalizedPath,
+        line,
+        character,
+        location,
+        locations: normalizedLocations,
+      };
+    } catch (errorValue) {
+      trackLspOperation("implementation", {
+        workspace: workspacePath,
+        filePath: normalizedPath,
+        line,
+        character,
+        success: false,
+        error: String(errorValue),
+      });
+      return { success: false, error: String(errorValue) };
+    }
+  },
+  "GET /api/lsp/references": async (_body, params) => {
+    const filePath = params?.path as string | undefined;
+    const rawLine = params?.line as string | undefined;
+    const rawCharacter = params?.character as string | undefined;
+    if (!filePath) {
+      trackLspOperation("references", { success: false, reason: "missing_path" });
+      return { success: false, error: "Missing 'path' parameter" };
+    }
+
+    const normalizedPath = isAbsolute(filePath) ? filePath : resolve(process.cwd(), filePath);
+    const workspacePath = resolveWorkspacePath(normalizedPath);
+    const parsedLine = Number.parseInt(rawLine || "", 10);
+    const parsedCharacter = Number.parseInt(rawCharacter || "", 10);
+    const line = Number.isFinite(parsedLine) ? Math.max(parsedLine, 0) : 0;
+    const character = Number.isFinite(parsedCharacter) ? Math.max(parsedCharacter, 0) : 0;
+
+    try {
+      const manager = getOrInitLspManager(workspacePath);
+      const references = await manager.getReferences(normalizedPath, line, character);
+      const normalizedLocations = (references || [])
+        .map((location) => normalizeDefinitionLocation(location))
+        .filter((location): location is { uri: string; path: string; line: number; character: number } => !!location);
+      trackLspOperation("references", {
+        workspace: manager.getWorkspacePath(),
+        filePath: normalizedPath,
+        line,
+        character,
+        resultCount: normalizedLocations.length,
+        success: true,
+      });
+      return {
+        success: true,
+        path: normalizedPath,
+        line,
+        character,
+        locations: normalizedLocations,
+      };
+    } catch (errorValue) {
+      trackLspOperation("references", {
+        workspace: workspacePath,
+        filePath: normalizedPath,
+        line,
+        character,
+        success: false,
+        error: String(errorValue),
+      });
+      return { success: false, error: String(errorValue) };
+    }
+  },
   "GET /api/lsp/install-status": async () => {
     try {
       const manager = getOrInitLspManager(process.cwd());
@@ -3234,6 +3442,45 @@ const routes: Record<string, RouteHandler> = {
     const success =
       !!result && typeof result === "object" && (result as { success?: boolean }).success !== false;
     trackIdeOperation("reveal", path, success);
+    return result;
+  },
+  "POST /api/ide/open-terminal": async (body) => {
+    const { path } = body as { path?: string };
+    if (!path || typeof path !== "string") {
+      trackIdeOperation("open_terminal", path, false, { reason: "missing_path" });
+      return { success: false, error: "Missing 'path' parameter" };
+    }
+    const result = await openInSystemTerminal(path);
+    const success =
+      !!result && typeof result === "object" && (result as { success?: boolean }).success !== false;
+    trackIdeOperation("open_terminal", path, success);
+    return result;
+  },
+  "GET /api/ide/permalink": async (_body, params) => {
+    const path = params?.path as string | undefined;
+    const rawLine = params?.line as string | undefined;
+    if (!path) {
+      trackIdeOperation("permalink", path, false, { reason: "missing_path" });
+      return { success: false, error: "Missing 'path' parameter" };
+    }
+    const parsedLine = Number.parseInt(rawLine || "", 10);
+    const line = Number.isFinite(parsedLine) ? Math.max(parsedLine, 1) : 1;
+    const result = await getFilePermalink(path, line);
+    const success =
+      !!result && typeof result === "object" && (result as { success?: boolean }).success !== false;
+    trackIdeOperation("permalink", path, success, { line });
+    return result;
+  },
+  "GET /api/ide/history-url": async (_body, params) => {
+    const path = params?.path as string | undefined;
+    if (!path) {
+      trackIdeOperation("history_url", path, false, { reason: "missing_path" });
+      return { success: false, error: "Missing 'path' parameter" };
+    }
+    const result = await getFileHistoryUrl(path);
+    const success =
+      !!result && typeof result === "object" && (result as { success?: boolean }).success !== false;
+    trackIdeOperation("history_url", path, success);
     return result;
   },
 

@@ -267,6 +267,54 @@ export class LSPManager {
     });
   }
 
+  async getDeclaration(
+    filePath: string,
+    line: number,
+    character: number
+  ): Promise<DefinitionResult> {
+    const client = await this.getClientForFile(filePath);
+    if (!client) return null;
+
+    await this.openDocument(filePath);
+
+    return client.declaration({
+      textDocument: { uri: `file://${filePath}` },
+      position: { line, character },
+    });
+  }
+
+  async getTypeDefinition(
+    filePath: string,
+    line: number,
+    character: number
+  ): Promise<DefinitionResult> {
+    const client = await this.getClientForFile(filePath);
+    if (!client) return null;
+
+    await this.openDocument(filePath);
+
+    return client.typeDefinition({
+      textDocument: { uri: `file://${filePath}` },
+      position: { line, character },
+    });
+  }
+
+  async getImplementation(
+    filePath: string,
+    line: number,
+    character: number
+  ): Promise<DefinitionResult> {
+    const client = await this.getClientForFile(filePath);
+    if (!client) return null;
+
+    await this.openDocument(filePath);
+
+    return client.implementation({
+      textDocument: { uri: `file://${filePath}` },
+      position: { line, character },
+    });
+  }
+
   async getReferences(
     filePath: string,
     line: number,

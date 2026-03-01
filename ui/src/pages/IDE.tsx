@@ -151,6 +151,7 @@ interface IdeBlameLine {
   author: string;
   authorDate?: string;
   summary?: string;
+  commitDescription?: string;
   commitUrl?: string;
   isUncommitted: boolean;
 }
@@ -1241,32 +1242,49 @@ function CodeViewer({
     setEditorContextMenu(null);
   }, []);
 
-  const handleGoToDefinition = useCallback(async () => {
+  const resolveLspLocations = useCallback(async (
+    endpoint: "definition" | "declaration" | "type-definition" | "implementation" | "references"
+  ): Promise<Array<{ path: string; line: number; character: number }>> => {
+    if (!path || !editorContextMenu) return;
+    const params = new URLSearchParams({
+      path,
+      line: String(Math.max(editorContextMenu.line - 1, 0)),
+      character: String(Math.max(editorContextMenu.column - 1, 0)),
+    });
+    const response = await apiFetch(`/api/lsp/${endpoint}?${params.toString()}`);
+    const data = (await response.json()) as {
+      success?: boolean;
+      error?: string;
+      location?: { path?: string; line?: number; character?: number } | null;
+      locations?: Array<{ path?: string; line?: number; character?: number }> | null;
+    };
+    if (!data.success) {
+      throw new Error(data.error || `Failed to resolve ${endpoint}`);
+    }
+    const normalized = (
+      data.location ? [data.location] : []
+    ).concat(Array.isArray(data.locations) ? data.locations : []);
+    return normalized
+      .filter((location): location is { path: string; line: number; character: number } => !!location?.path)
+      .map((location) => ({
+        path: location.path,
+        line: Number.isFinite(location.line) ? location.line : 0,
+        character: Number.isFinite(location.character) ? location.character : 0,
+      }));
+  }, [editorContextMenu, path]);
+
+  const openFirstLspLocation = useCallback(async (
+    endpoint: "definition" | "declaration" | "type-definition" | "implementation",
+    notFoundMessage: string
+  ) => {
     if (!path || !editorContextMenu) return;
     setDefinitionLoading(true);
     setSaveError(null);
     try {
-      const params = new URLSearchParams({
-        path,
-        line: String(Math.max(editorContextMenu.line - 1, 0)),
-        character: String(Math.max(editorContextMenu.column - 1, 0)),
-      });
-      const response = await apiFetch(`/api/lsp/definition?${params.toString()}`);
-      const data = (await response.json()) as {
-        success?: boolean;
-        error?: string;
-        location?: { path?: string; line?: number; character?: number } | null;
-        locations?: Array<{ path?: string; line?: number; character?: number }> | null;
-      };
-      if (!data.success) {
-        setSaveError(data.error || "Failed to resolve definition");
-        return;
-      }
-      const primaryLocation =
-        data.location ||
-        (Array.isArray(data.locations) && data.locations.length > 0 ? data.locations[0] : null);
+      const locations = await resolveLspLocations(endpoint);
+      const primaryLocation = locations[0] || null;
       if (!primaryLocation?.path) {
-        setSaveError("No definition found at the current cursor.");
+        setSaveError(notFoundMessage);
         return;
       }
       if (onOpenLocation) {
@@ -1283,7 +1301,239 @@ function CodeViewer({
       setDefinitionLoading(false);
       closeEditorContextMenu();
     }
-  }, [closeEditorContextMenu, editorContextMenu, onOpenLocation, path]);
+  }, [closeEditorContextMenu, editorContextMenu, onOpenLocation, path, resolveLspLocations]);
+
+  const handleGoToDefinition = useCallback(async () => {
+    await openFirstLspLocation("definition", "No definition found at the current cursor.");
+  }, [openFirstLspLocation]);
+
+  const handleGoToDeclaration = useCallback(async () => {
+    await openFirstLspLocation("declaration", "No declaration found at the current cursor.");
+  }, [openFirstLspLocation]);
+
+  const handleGoToTypeDefinition = useCallback(async () => {
+    await openFirstLspLocation("type-definition", "No type definition found at the current cursor.");
+  }, [openFirstLspLocation]);
+
+  const handleGoToImplementation = useCallback(async () => {
+    await openFirstLspLocation("implementation", "No implementation found at the current cursor.");
+  }, [openFirstLspLocation]);
+
+  const handleFindAllReferences = useCallback(async () => {
+    if (!path || !editorContextMenu) return;
+    setDefinitionLoading(true);
+    setSaveError(null);
+    try {
+      const locations = await resolveLspLocations("references");
+      if (locations.length === 0) {
+        setSaveError("No references found at the current cursor.");
+        return;
+      }
+      if (onOpenLocation) {
+        const first = locations[0];
+        onOpenLocation(first.path, first.line + 1);
+      }
+    } catch (errorValue) {
+      setSaveError(String(errorValue));
+    } finally {
+      setDefinitionLoading(false);
+      closeEditorContextMenu();
+    }
+  }, [closeEditorContextMenu, editorContextMenu, onOpenLocation, path, resolveLspLocations]);
+
+  const handleRenameSymbol = useCallback(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const start = editor.selectionStart ?? 0;
+    const end = editor.selectionEnd ?? start;
+    let symbol = editContent.slice(start, end).trim();
+    let symbolStart = start;
+    let symbolEnd = end;
+
+    if (!symbol) {
+      const before = editContent.slice(0, start);
+      const after = editContent.slice(start);
+      const leftMatch = before.match(/[A-Za-z_$][A-Za-z0-9_$]*$/);
+      const rightMatch = after.match(/^[A-Za-z0-9_$]*/);
+      const leftPart = leftMatch?.[0] || "";
+      const rightPart = rightMatch?.[0] || "";
+      symbol = `${leftPart}${rightPart}`.trim();
+      symbolStart = start - leftPart.length;
+      symbolEnd = start + rightPart.length;
+    }
+
+    if (!symbol || !/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(symbol)) {
+      setSaveError("Place cursor on an identifier or select a symbol first.");
+      closeEditorContextMenu();
+      return;
+    }
+
+    const replacement = window.prompt(`Rename symbol "${symbol}" to:`, symbol);
+    if (!replacement) {
+      closeEditorContextMenu();
+      return;
+    }
+    const nextName = replacement.trim();
+    if (!nextName || nextName === symbol) {
+      closeEditorContextMenu();
+      return;
+    }
+
+    const escaped = symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`\\b${escaped}\\b`, "g");
+    const nextContent = editContent.replace(regex, nextName);
+    setEditContent(nextContent);
+    window.requestAnimationFrame(() => {
+      if (!editorRef.current) return;
+      editorRef.current.focus();
+      const nextCursor = symbolStart + nextName.length;
+      editorRef.current.setSelectionRange(nextCursor, nextCursor);
+      updateCursorFromSelection(editorRef.current);
+    });
+    closeEditorContextMenu();
+  }, [closeEditorContextMenu, editContent, updateCursorFromSelection]);
+
+  const handleFormatBuffer = useCallback(() => {
+    const normalized = editContent
+      .split("\n")
+      .map((line) => line.replace(/[ \t]+$/g, ""))
+      .join("\n")
+      .replace(/\s*$/, "\n");
+    setEditContent(normalized);
+    closeEditorContextMenu();
+  }, [closeEditorContextMenu, editContent]);
+
+  const handleShowCodeActions = useCallback(() => {
+    setSaveError("Code actions are not available for this selection yet.");
+    closeEditorContextMenu();
+  }, [closeEditorContextMenu]);
+
+  const handleCutSelection = useCallback(async () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const start = editor.selectionStart ?? 0;
+    const end = editor.selectionEnd ?? start;
+    if (end <= start) {
+      closeEditorContextMenu();
+      return;
+    }
+    const selected = editContent.slice(start, end);
+    try {
+      await navigator.clipboard.writeText(selected);
+    } catch {
+      setSaveError("Clipboard write failed.");
+    }
+    const next = `${editContent.slice(0, start)}${editContent.slice(end)}`;
+    setEditContent(next);
+    window.requestAnimationFrame(() => {
+      if (!editorRef.current) return;
+      editorRef.current.focus();
+      editorRef.current.setSelectionRange(start, start);
+      updateCursorFromSelection(editorRef.current);
+    });
+    closeEditorContextMenu();
+  }, [closeEditorContextMenu, editContent, updateCursorFromSelection]);
+
+  const handleCopySelection = useCallback(async (trim = false) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const start = editor.selectionStart ?? 0;
+    const end = editor.selectionEnd ?? start;
+    const selected = editContent.slice(start, end);
+    if (!selected) {
+      closeEditorContextMenu();
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(trim ? selected.trim() : selected);
+    } catch {
+      setSaveError("Clipboard write failed.");
+    }
+    closeEditorContextMenu();
+  }, [closeEditorContextMenu, editContent]);
+
+  const handlePasteSelection = useCallback(async () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    let clipboardText = "";
+    try {
+      clipboardText = await navigator.clipboard.readText();
+    } catch {
+      setSaveError("Clipboard read failed.");
+      closeEditorContextMenu();
+      return;
+    }
+    const start = editor.selectionStart ?? 0;
+    const end = editor.selectionEnd ?? start;
+    const next = `${editContent.slice(0, start)}${clipboardText}${editContent.slice(end)}`;
+    setEditContent(next);
+    window.requestAnimationFrame(() => {
+      if (!editorRef.current) return;
+      const cursor = start + clipboardText.length;
+      editorRef.current.focus();
+      editorRef.current.setSelectionRange(cursor, cursor);
+      updateCursorFromSelection(editorRef.current);
+    });
+    closeEditorContextMenu();
+  }, [closeEditorContextMenu, editContent, updateCursorFromSelection]);
+
+  const handleRevealInFinder = useCallback(async () => {
+    if (!path) return;
+    await apiFetch("/api/ide/reveal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+    closeEditorContextMenu();
+  }, [closeEditorContextMenu, path]);
+
+  const handleOpenInTerminal = useCallback(async () => {
+    if (!path) return;
+    const response = await apiFetch("/api/ide/open-terminal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+    const data = await response.json();
+    if (!data?.success) {
+      setSaveError(data?.error || "Failed to open terminal.");
+    }
+    closeEditorContextMenu();
+  }, [closeEditorContextMenu, path]);
+
+  const handleCopyPermalink = useCallback(async () => {
+    if (!path || !editorContextMenu) return;
+    const params = new URLSearchParams({
+      path,
+      line: String(editorContextMenu.line),
+    });
+    const response = await apiFetch(`/api/ide/permalink?${params.toString()}`);
+    const data = (await response.json()) as { success?: boolean; url?: string; error?: string };
+    if (!data?.success || !data.url) {
+      setSaveError(data?.error || "Failed to generate permalink.");
+      closeEditorContextMenu();
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(data.url);
+    } catch {
+      setSaveError("Clipboard write failed.");
+    }
+    closeEditorContextMenu();
+  }, [closeEditorContextMenu, editorContextMenu, path]);
+
+  const handleViewFileHistory = useCallback(async () => {
+    if (!path) return;
+    const response = await apiFetch(`/api/ide/history-url?path=${encodeURIComponent(path)}`);
+    const data = (await response.json()) as { success?: boolean; url?: string; error?: string };
+    if (!data?.success || !data.url) {
+      setSaveError(data?.error || "Failed to resolve file history URL.");
+      closeEditorContextMenu();
+      return;
+    }
+    window.open(data.url, "_blank", "noopener,noreferrer");
+    closeEditorContextMenu();
+  }, [closeEditorContextMenu, path]);
 
   useEffect(() => {
     if (!editorContextMenu) return;
@@ -1707,9 +1957,9 @@ function CodeViewer({
                                           ? "Uncommitted local changes"
                                           : `${popoverBlameDetails.shortCommit} · ${popoverBlameDetails.commit}`}
                                       </div>
-                                      {popoverBlameDetails.summary && (
-                                        <div className="mt-1 text-[11px] text-gray-300 break-words">
-                                          {popoverBlameDetails.summary}
+                                      {(popoverBlameDetails.commitDescription || popoverBlameDetails.summary) && (
+                                        <div className="mt-1 whitespace-pre-wrap text-[11px] text-gray-300 break-words">
+                                          {popoverBlameDetails.commitDescription || popoverBlameDetails.summary}
                                         </div>
                                       )}
                                     </div>
@@ -1833,7 +2083,7 @@ function CodeViewer({
       )}
       {editorContextMenu && editorContextMenuPosition && (
         <div
-          className="fixed z-[85] min-w-[210px] rounded-md border border-white/15 bg-[#0a0a10] p-1 shadow-2xl"
+          className="fixed z-[85] min-w-[260px] rounded-md border border-white/15 bg-[#0a0a10] p-1 shadow-2xl"
           style={{ left: `${editorContextMenuPosition.left}px`, top: `${editorContextMenuPosition.top}px` }}
           onMouseDown={(event) => event.stopPropagation()}
         >
@@ -1844,25 +2094,156 @@ function CodeViewer({
               void handleGoToDefinition();
             }}
             className={cn(
-              "w-full rounded px-2 py-1.5 text-left text-xs text-indigo-200 hover:bg-white/10 flex items-center gap-2",
+              "w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10 flex items-center justify-between",
               definitionLoading && "opacity-60 cursor-not-allowed"
             )}
           >
-            {definitionLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ExternalLink className="w-3 h-3" />}
-            <span>{definitionLoading ? "Resolving definition..." : "Go to Definition"}</span>
+            <span>{definitionLoading ? "Resolving..." : "Go to Definition"}</span>
+            <span className="text-[10px] text-gray-500">F12</span>
+          </button>
+          <button
+            type="button"
+            disabled={definitionLoading}
+            onClick={() => {
+              void handleGoToDeclaration();
+            }}
+            className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10 flex items-center justify-between"
+          >
+            <span>Go to Declaration</span>
+            <span className="text-[10px] text-gray-500">Ctrl/Cmd+F12</span>
+          </button>
+          <button
+            type="button"
+            disabled={definitionLoading}
+            onClick={() => {
+              void handleGoToTypeDefinition();
+            }}
+            className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10 flex items-center justify-between"
+          >
+            <span>Go to Type Definition</span>
+            <span className="text-[10px] text-gray-500">Cmd+F12</span>
+          </button>
+          <button
+            type="button"
+            disabled={definitionLoading}
+            onClick={() => {
+              void handleGoToImplementation();
+            }}
+            className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10 flex items-center justify-between"
+          >
+            <span>Go to Implementation</span>
+            <span className="text-[10px] text-gray-500">Shift+F12</span>
+          </button>
+          <button
+            type="button"
+            disabled={definitionLoading}
+            onClick={() => {
+              void handleFindAllReferences();
+            }}
+            className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10 flex items-center justify-between"
+          >
+            <span>Find All References</span>
+            <span className="text-[10px] text-gray-500">Alt+Shift+F12</span>
+          </button>
+          <div className="my-1 h-px bg-white/10" />
+          <button
+            type="button"
+            onClick={handleRenameSymbol}
+            className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10 flex items-center justify-between"
+          >
+            <span>Rename Symbol</span>
+            <span className="text-[10px] text-gray-500">F2</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleFormatBuffer}
+            className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10"
+          >
+            Format Buffer
+          </button>
+          <button
+            type="button"
+            onClick={handleShowCodeActions}
+            className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10"
+          >
+            Show Code Actions
+          </button>
+          <div className="my-1 h-px bg-white/10" />
+          <button
+            type="button"
+            onClick={() => {
+              void handleCutSelection();
+            }}
+            className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10 flex items-center justify-between"
+          >
+            <span>Cut</span>
+            <span className="text-[10px] text-gray-500">Ctrl/Cmd+X</span>
           </button>
           <button
             type="button"
             onClick={() => {
-              if (navigator.clipboard?.writeText && path) {
-                void navigator.clipboard.writeText(path);
-              }
-              closeEditorContextMenu();
+              void handleCopySelection(false);
             }}
-            className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10 flex items-center gap-2"
+            className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10 flex items-center justify-between"
           >
-            <Copy className="w-3 h-3" />
-            <span>Copy File Path</span>
+            <span>Copy</span>
+            <span className="text-[10px] text-gray-500">Ctrl/Cmd+C</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void handleCopySelection(true);
+            }}
+            className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10"
+          >
+            Copy and Trim
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void handlePasteSelection();
+            }}
+            className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10 flex items-center justify-between"
+          >
+            <span>Paste</span>
+            <span className="text-[10px] text-gray-500">Ctrl/Cmd+V</span>
+          </button>
+          <div className="my-1 h-px bg-white/10" />
+          <button
+            type="button"
+            onClick={() => {
+              void handleRevealInFinder();
+            }}
+            className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10"
+          >
+            Reveal in Finder
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void handleOpenInTerminal();
+            }}
+            className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10"
+          >
+            Open in Terminal
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void handleCopyPermalink();
+            }}
+            className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10"
+          >
+            Copy Permalink
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void handleViewFileHistory();
+            }}
+            className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10"
+          >
+            View File History
           </button>
           <div className="my-1 h-px bg-white/10" />
           <div className="px-2 py-1 text-[10px] text-gray-500">

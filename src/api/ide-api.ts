@@ -134,6 +134,7 @@ export interface IdeBlameLine {
   author: string;
   authorDate?: string;
   summary?: string;
+  commitDescription?: string;
   commitUrl?: string;
   isUncommitted: boolean;
 }
@@ -150,6 +151,13 @@ export interface IdeBlameResult {
 export interface RevealResult {
   success: boolean;
   path: string;
+  error?: string;
+}
+
+export interface IdeUrlResult {
+  success: boolean;
+  path: string;
+  url?: string;
   error?: string;
 }
 
@@ -1197,6 +1205,102 @@ function getRepositoryCommitBaseUrl(repoRoot: string): string | null {
   return normalizeGitRemoteToHttpBase(remoteUrl);
 }
 
+function commandAvailable(command: string): boolean {
+  const checker = process.platform === "win32" ? "where" : "which";
+  const result = Bun.spawnSync([checker, command], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  return (result.exitCode ?? 1) === 0;
+}
+
+function encodeRepoPath(pathValue: string): string {
+  return pathValue
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}
+
+function buildPermalinkUrl(
+  remoteBaseUrl: string,
+  commit: string,
+  repoRelativePath: string,
+  line: number
+): string {
+  const encodedPath = encodeRepoPath(repoRelativePath);
+  if (/bitbucket\.org/i.test(remoteBaseUrl)) {
+    return `${remoteBaseUrl}/src/${commit}/${encodedPath}#lines-${line}`;
+  }
+  if (/gitlab\.com/i.test(remoteBaseUrl)) {
+    return `${remoteBaseUrl}/-/blob/${commit}/${encodedPath}#L${line}`;
+  }
+  return `${remoteBaseUrl}/blob/${commit}/${encodedPath}#L${line}`;
+}
+
+function buildHistoryUrl(remoteBaseUrl: string, branch: string, repoRelativePath: string): string {
+  const encodedPath = encodeRepoPath(repoRelativePath);
+  const encodedBranch = encodeURIComponent(branch);
+  if (/bitbucket\.org/i.test(remoteBaseUrl)) {
+    return `${remoteBaseUrl}/history-node/${encodedBranch}/${encodedPath}`;
+  }
+  if (/gitlab\.com/i.test(remoteBaseUrl)) {
+    return `${remoteBaseUrl}/-/commits/${encodedBranch}/${encodedPath}`;
+  }
+  return `${remoteBaseUrl}/commits/${encodedBranch}/${encodedPath}`;
+}
+
+function getLineCommitHash(repoRoot: string, repoRelativePath: string, line: number): string | null {
+  const safeLine = Math.max(1, Math.floor(line));
+  const proc = Bun.spawnSync(
+    ["git", "blame", "--line-porcelain", "-L", `${safeLine},${safeLine}`, "--", repoRelativePath],
+    {
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    }
+  );
+  if ((proc.exitCode ?? 1) !== 0) return null;
+  const firstLine = proc.stdout.toString().split("\n")[0] || "";
+  const commit = firstLine.split(" ")[0] || "";
+  const normalized = commit.replace(/^\^/, "");
+  if (!normalized || /^0+$/.test(normalized)) return null;
+  return normalized;
+}
+
+function getCommitDescriptions(repoRoot: string, commits: string[]): Map<string, string> {
+  const uniqueCommits = Array.from(new Set(commits.filter(Boolean)));
+  const descriptions = new Map<string, string>();
+  const batchSize = 64;
+
+  for (let i = 0; i < uniqueCommits.length; i += batchSize) {
+    const batch = uniqueCommits.slice(i, i + batchSize);
+    if (batch.length === 0) continue;
+    const proc = Bun.spawnSync(
+      ["git", "show", "--no-patch", "--format=%H%x1f%B%x1e", ...batch],
+      {
+        cwd: repoRoot,
+        stdout: "pipe",
+        stderr: "pipe",
+      }
+    );
+    if ((proc.exitCode ?? 1) !== 0) continue;
+    const payload = proc.stdout.toString();
+    for (const row of payload.split("\x1e")) {
+      const trimmed = row.trim();
+      if (!trimmed) continue;
+      const delimiterIndex = trimmed.indexOf("\x1f");
+      if (delimiterIndex <= 0) continue;
+      const hash = trimmed.slice(0, delimiterIndex).trim();
+      const description = trimmed.slice(delimiterIndex + 1).trim();
+      if (hash) {
+        descriptions.set(hash, description);
+      }
+    }
+  }
+
+  return descriptions;
+}
+
 export async function getFileBlame(
   inputPath: string,
   options?: { maxLines?: number }
@@ -1290,8 +1394,15 @@ export async function getFileBlame(
     }
 
     const commitBaseUrl = getRepositoryCommitBaseUrl(gitStatus.root);
-    const parsedLines = parseBlamePorcelain(stdout).map((line) => ({
+    const blameLines = parseBlamePorcelain(stdout);
+    const commitDescriptions = getCommitDescriptions(
+      gitStatus.root,
+      blameLines.filter((line) => !line.isUncommitted && line.commit).map((line) => line.commit)
+    );
+    const parsedLines = blameLines.map((line) => ({
       ...line,
+      commitDescription:
+        !line.isUncommitted && line.commit ? commitDescriptions.get(line.commit) || line.summary : line.summary,
       commitUrl:
         commitBaseUrl && !line.isUncommitted && line.commit
           ? buildCommitUrl(commitBaseUrl, line.commit)
@@ -1382,6 +1493,262 @@ export async function revealInSystemExplorer(inputPath: string): Promise<RevealR
       };
     }
     return { success: true, path: targetPath };
+  } catch (error) {
+    return {
+      success: false,
+      path: targetPath,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export async function openInSystemTerminal(inputPath: string): Promise<RevealResult> {
+  const targetPath = normalizePath(inputPath);
+  if (!isPathAllowed(targetPath)) {
+    return {
+      success: false,
+      path: targetPath,
+      error: "Access denied: Path outside home directory",
+    };
+  }
+  if (!existsSync(targetPath)) {
+    return {
+      success: false,
+      path: targetPath,
+      error: "Path does not exist",
+    };
+  }
+
+  const canonicalTargetPath = resolveCanonicalPath(targetPath);
+  if (!isWithinHome(canonicalTargetPath)) {
+    return {
+      success: false,
+      path: targetPath,
+      error: "Access denied: Path outside home directory",
+    };
+  }
+
+  try {
+    const stats = await stat(targetPath);
+    const workingDir = stats.isDirectory() ? targetPath : dirname(targetPath);
+
+    if (process.platform === "darwin") {
+      const result = Bun.spawnSync(["open", "-a", "Terminal", workingDir], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      if ((result.exitCode ?? 1) !== 0) {
+        return {
+          success: false,
+          path: targetPath,
+          error: result.stderr.toString().trim() || "Failed to open Terminal",
+        };
+      }
+      return { success: true, path: targetPath };
+    }
+
+    if (process.platform === "win32") {
+      const command = `cd /d "${workingDir}"`;
+      const result = Bun.spawnSync(["cmd", "/c", "start", "cmd", "/k", command], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      if ((result.exitCode ?? 1) !== 0) {
+        return {
+          success: false,
+          path: targetPath,
+          error: result.stderr.toString().trim() || "Failed to open terminal",
+        };
+      }
+      return { success: true, path: targetPath };
+    }
+
+    const linuxLaunchers: Array<{ cmd: string; args: string[] }> = [
+      { cmd: "gnome-terminal", args: ["--working-directory", workingDir] },
+      { cmd: "konsole", args: ["--workdir", workingDir] },
+      { cmd: "xfce4-terminal", args: ["--working-directory", workingDir] },
+      { cmd: "x-terminal-emulator", args: ["--working-directory", workingDir] },
+    ];
+    for (const launcher of linuxLaunchers) {
+      if (!commandAvailable(launcher.cmd)) continue;
+      const result = Bun.spawnSync([launcher.cmd, ...launcher.args], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      if ((result.exitCode ?? 1) === 0) {
+        return { success: true, path: targetPath };
+      }
+    }
+
+    return {
+      success: false,
+      path: targetPath,
+      error: "No supported terminal launcher found on this system",
+    };
+  } catch (error) {
+    return {
+      success: false,
+      path: targetPath,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export async function getFilePermalink(inputPath: string, line: number): Promise<IdeUrlResult> {
+  const targetPath = normalizePath(inputPath);
+  if (!isPathAllowed(targetPath)) {
+    return {
+      success: false,
+      path: targetPath,
+      error: "Access denied: Path outside home directory",
+    };
+  }
+  if (!existsSync(targetPath)) {
+    return {
+      success: false,
+      path: targetPath,
+      error: "Path does not exist",
+    };
+  }
+
+  const canonicalTargetPath = resolveCanonicalPath(targetPath);
+  if (!isWithinHome(canonicalTargetPath)) {
+    return {
+      success: false,
+      path: targetPath,
+      error: "Access denied: Path outside home directory",
+    };
+  }
+
+  try {
+    const targetStats = await stat(targetPath);
+    if (!targetStats.isFile()) {
+      return {
+        success: false,
+        path: targetPath,
+        error: "Path is not a file",
+      };
+    }
+
+    const gitStatus = await getGitStatus(dirname(targetPath));
+    if (!gitStatus.isRepo || !gitStatus.root) {
+      return {
+        success: false,
+        path: targetPath,
+        error: "File is not inside a git repository",
+      };
+    }
+
+    const remoteBaseUrl = getRepositoryCommitBaseUrl(gitStatus.root);
+    if (!remoteBaseUrl) {
+      return {
+        success: false,
+        path: targetPath,
+        error: "Remote origin URL is not configured",
+      };
+    }
+
+    const repoRelativePath = relative(gitStatus.root, targetPath).replaceAll("\\", "/");
+    const commit =
+      getLineCommitHash(gitStatus.root, repoRelativePath, line) ||
+      Bun.spawnSync(["git", "rev-parse", "HEAD"], {
+        cwd: gitStatus.root,
+        stdout: "pipe",
+        stderr: "pipe",
+      }).stdout
+        .toString()
+        .trim();
+
+    if (!commit) {
+      return {
+        success: false,
+        path: targetPath,
+        error: "Unable to resolve commit hash",
+      };
+    }
+
+    return {
+      success: true,
+      path: targetPath,
+      url: buildPermalinkUrl(remoteBaseUrl, commit, repoRelativePath, Math.max(1, Math.floor(line))),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      path: targetPath,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export async function getFileHistoryUrl(inputPath: string): Promise<IdeUrlResult> {
+  const targetPath = normalizePath(inputPath);
+  if (!isPathAllowed(targetPath)) {
+    return {
+      success: false,
+      path: targetPath,
+      error: "Access denied: Path outside home directory",
+    };
+  }
+  if (!existsSync(targetPath)) {
+    return {
+      success: false,
+      path: targetPath,
+      error: "Path does not exist",
+    };
+  }
+
+  const canonicalTargetPath = resolveCanonicalPath(targetPath);
+  if (!isWithinHome(canonicalTargetPath)) {
+    return {
+      success: false,
+      path: targetPath,
+      error: "Access denied: Path outside home directory",
+    };
+  }
+
+  try {
+    const targetStats = await stat(targetPath);
+    if (!targetStats.isFile()) {
+      return {
+        success: false,
+        path: targetPath,
+        error: "Path is not a file",
+      };
+    }
+
+    const gitStatus = await getGitStatus(dirname(targetPath));
+    if (!gitStatus.isRepo || !gitStatus.root) {
+      return {
+        success: false,
+        path: targetPath,
+        error: "File is not inside a git repository",
+      };
+    }
+
+    const remoteBaseUrl = getRepositoryCommitBaseUrl(gitStatus.root);
+    if (!remoteBaseUrl) {
+      return {
+        success: false,
+        path: targetPath,
+        error: "Remote origin URL is not configured",
+      };
+    }
+
+    const branchProc = Bun.spawnSync(["git", "rev-parse", "--abbrev-ref", "HEAD"], {
+      cwd: gitStatus.root,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const branch =
+      (branchProc.exitCode ?? 1) === 0 ? branchProc.stdout.toString().trim() || "HEAD" : "HEAD";
+    const repoRelativePath = relative(gitStatus.root, targetPath).replaceAll("\\", "/");
+
+    return {
+      success: true,
+      path: targetPath,
+      url: buildHistoryUrl(remoteBaseUrl, branch, repoRelativePath),
+    };
   } catch (error) {
     return {
       success: false,
