@@ -256,8 +256,19 @@ export class LSPManager {
     line: number,
     character: number
   ): Promise<DefinitionResult> {
-    const client = await this.getClientForFile(filePath);
-    if (!client) return null;
+    const languageId = getLanguageId(filePath);
+    const client = await this.getClient(languageId);
+    if (!client) {
+      if (BUNDLED_LANGUAGES.has(languageId)) {
+        try {
+          const fallback = bundledTS.getDefinitionForFile(filePath, line, character);
+          return fallback.length > 0 ? fallback : null;
+        } catch (err) {
+          console.warn("[LSP Manager] Bundled TS definition lookup failed:", err);
+        }
+      }
+      return null;
+    }
 
     await this.openDocument(filePath);
 
@@ -272,8 +283,19 @@ export class LSPManager {
     line: number,
     character: number
   ): Promise<DefinitionResult> {
-    const client = await this.getClientForFile(filePath);
-    if (!client) return null;
+    const languageId = getLanguageId(filePath);
+    const client = await this.getClient(languageId);
+    if (!client) {
+      if (BUNDLED_LANGUAGES.has(languageId)) {
+        try {
+          const fallback = bundledTS.getDeclarationForFile(filePath, line, character);
+          return fallback.length > 0 ? fallback : null;
+        } catch (err) {
+          console.warn("[LSP Manager] Bundled TS declaration lookup failed:", err);
+        }
+      }
+      return null;
+    }
 
     await this.openDocument(filePath);
 
@@ -288,8 +310,19 @@ export class LSPManager {
     line: number,
     character: number
   ): Promise<DefinitionResult> {
-    const client = await this.getClientForFile(filePath);
-    if (!client) return null;
+    const languageId = getLanguageId(filePath);
+    const client = await this.getClient(languageId);
+    if (!client) {
+      if (BUNDLED_LANGUAGES.has(languageId)) {
+        try {
+          const fallback = bundledTS.getTypeDefinitionForFile(filePath, line, character);
+          return fallback.length > 0 ? fallback : null;
+        } catch (err) {
+          console.warn("[LSP Manager] Bundled TS type definition lookup failed:", err);
+        }
+      }
+      return null;
+    }
 
     await this.openDocument(filePath);
 
@@ -304,8 +337,19 @@ export class LSPManager {
     line: number,
     character: number
   ): Promise<DefinitionResult> {
-    const client = await this.getClientForFile(filePath);
-    if (!client) return null;
+    const languageId = getLanguageId(filePath);
+    const client = await this.getClient(languageId);
+    if (!client) {
+      if (BUNDLED_LANGUAGES.has(languageId)) {
+        try {
+          const fallback = bundledTS.getImplementationForFile(filePath, line, character);
+          return fallback.length > 0 ? fallback : null;
+        } catch (err) {
+          console.warn("[LSP Manager] Bundled TS implementation lookup failed:", err);
+        }
+      }
+      return null;
+    }
 
     await this.openDocument(filePath);
 
@@ -320,8 +364,19 @@ export class LSPManager {
     line: number,
     character: number
   ): Promise<Location[] | null> {
-    const client = await this.getClientForFile(filePath);
-    if (!client) return null;
+    const languageId = getLanguageId(filePath);
+    const client = await this.getClient(languageId);
+    if (!client) {
+      if (BUNDLED_LANGUAGES.has(languageId)) {
+        try {
+          const fallback = bundledTS.getReferencesForFile(filePath, line, character);
+          return fallback.length > 0 ? (fallback as unknown as Location[]) : null;
+        } catch (err) {
+          console.warn("[LSP Manager] Bundled TS reference lookup failed:", err);
+        }
+      }
+      return null;
+    }
 
     await this.openDocument(filePath);
 

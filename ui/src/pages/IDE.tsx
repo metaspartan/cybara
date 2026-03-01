@@ -1281,8 +1281,12 @@ function CodeViewer({
     setDefinitionLoading(true);
     setSaveError(null);
     try {
-      const locations = await resolveLspLocations(endpoint);
-      const primaryLocation = locations[0] || null;
+      const primaryLocations = await resolveLspLocations(endpoint);
+      const fallbackLocations =
+        endpoint !== "definition" && primaryLocations.length === 0
+          ? await resolveLspLocations("definition")
+          : [];
+      const primaryLocation = (primaryLocations[0] || fallbackLocations[0]) || null;
       if (!primaryLocation?.path) {
         setSaveError(notFoundMessage);
         return;
