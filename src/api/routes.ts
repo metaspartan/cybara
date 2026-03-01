@@ -161,6 +161,38 @@ interface LspLocationLike {
   };
 }
 
+interface LspSymbolLike {
+  name?: string;
+  kind?: number;
+  detail?: string;
+  range?: {
+    start?: { line?: number; character?: number };
+    end?: { line?: number; character?: number };
+  };
+  selectionRange?: {
+    start?: { line?: number; character?: number };
+    end?: { line?: number; character?: number };
+  };
+  location?: {
+    range?: {
+      start?: { line?: number; character?: number };
+      end?: { line?: number; character?: number };
+    };
+  };
+  children?: LspSymbolLike[];
+}
+
+interface NormalizedLspSymbol {
+  name: string;
+  kind: number;
+  detail?: string;
+  line: number;
+  character: number;
+  endLine: number;
+  endCharacter: number;
+  children?: NormalizedLspSymbol[];
+}
+
 type SessionMessageView = ChatMessage & {
   tool_calls?: Array<{
     id?: string;
@@ -1135,6 +1167,51 @@ function normalizeDefinitionLocation(raw: unknown):
     path: normalizeFileUriToPath(uri),
     line,
     character,
+  };
+}
+
+function normalizeSymbolRange(raw: unknown):
+  | {
+      line: number;
+      character: number;
+      endLine: number;
+      endCharacter: number;
+    }
+  | null {
+  if (!raw || typeof raw !== "object") return null;
+  const range = raw as {
+    start?: { line?: number; character?: number };
+    end?: { line?: number; character?: number };
+  };
+  const line = typeof range.start?.line === "number" ? range.start.line : 0;
+  const character = typeof range.start?.character === "number" ? range.start.character : 0;
+  const endLine = typeof range.end?.line === "number" ? range.end.line : line;
+  const endCharacter = typeof range.end?.character === "number" ? range.end.character : character;
+  return { line, character, endLine, endCharacter };
+}
+
+function normalizeLspSymbol(raw: unknown): NormalizedLspSymbol | null {
+  if (!raw || typeof raw !== "object") return null;
+  const symbol = raw as LspSymbolLike;
+  const range =
+    normalizeSymbolRange(symbol.range) ||
+    normalizeSymbolRange(symbol.selectionRange) ||
+    normalizeSymbolRange(symbol.location?.range);
+  if (!range) return null;
+
+  const children = (Array.isArray(symbol.children) ? symbol.children : [])
+    .map((child) => normalizeLspSymbol(child))
+    .filter((child): child is NormalizedLspSymbol => !!child);
+
+  return {
+    name: typeof symbol.name === "string" && symbol.name.trim() ? symbol.name : "(symbol)",
+    kind: typeof symbol.kind === "number" && Number.isFinite(symbol.kind) ? symbol.kind : 13,
+    detail: typeof symbol.detail === "string" && symbol.detail.trim() ? symbol.detail : undefined,
+    line: range.line + 1,
+    character: range.character + 1,
+    endLine: range.endLine + 1,
+    endCharacter: range.endCharacter + 1,
+    children: children.length > 0 ? children : undefined,
   };
 }
 
@@ -3315,6 +3392,45 @@ const routes: Record<string, RouteHandler> = {
         error: String(errorValue),
       });
       return { success: false, error: String(errorValue) };
+    }
+  },
+  "GET /api/lsp/symbols": async (_body, params) => {
+    const filePath = params?.path as string | undefined;
+    if (!filePath) {
+      trackLspOperation("symbols", { success: false, reason: "missing_path" });
+      return { success: false, error: "Missing 'path' parameter", symbols: [] };
+    }
+
+    const normalizedPath = isAbsolute(filePath) ? filePath : resolve(process.cwd(), filePath);
+    const workspacePath = resolveWorkspacePath(normalizedPath);
+
+    try {
+      const manager = getOrInitLspManager(workspacePath);
+      const symbols = await manager.getDocumentSymbols(normalizedPath);
+      const normalizedSymbols = (Array.isArray(symbols) ? symbols : [])
+        .map((symbol) => normalizeLspSymbol(symbol))
+        .filter((symbol): symbol is NormalizedLspSymbol => !!symbol);
+
+      trackLspOperation("symbols", {
+        workspace: manager.getWorkspacePath(),
+        filePath: normalizedPath,
+        symbolCount: normalizedSymbols.length,
+        success: true,
+      });
+
+      return {
+        success: true,
+        path: normalizedPath,
+        symbols: normalizedSymbols,
+      };
+    } catch (errorValue) {
+      trackLspOperation("symbols", {
+        workspace: workspacePath,
+        filePath: normalizedPath,
+        success: false,
+        error: String(errorValue),
+      });
+      return { success: false, error: String(errorValue), symbols: [] };
     }
   },
   "GET /api/lsp/install-status": async () => {

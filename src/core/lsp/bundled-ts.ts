@@ -2,6 +2,7 @@ import * as ts from "typescript";
 import { dirname, resolve } from "path";
 import { existsSync } from "fs";
 import { pathToFileURL } from "url";
+import type { DocumentSymbol, Range } from "./types";
 
 export interface BundledDiagnostic {
   file: string;
@@ -295,6 +296,96 @@ function dedupeLocations(locations: BundledLocation[]): BundledLocation[] {
   });
 }
 
+function textSpanToRange(sourceFile: ts.SourceFile, span: ts.TextSpan): Range {
+  const start = ts.getLineAndCharacterOfPosition(sourceFile, span.start);
+  const end = ts.getLineAndCharacterOfPosition(sourceFile, span.start + span.length);
+  return {
+    start: { line: start.line, character: start.character },
+    end: { line: end.line, character: end.character },
+  };
+}
+
+function textSpansToRange(sourceFile: ts.SourceFile, spans: ts.TextSpan[]): Range | null {
+  if (!Array.isArray(spans) || spans.length === 0) return null;
+  let start = spans[0].start;
+  let end = spans[0].start + spans[0].length;
+  for (let i = 1; i < spans.length; i += 1) {
+    const span = spans[i];
+    start = Math.min(start, span.start);
+    end = Math.max(end, span.start + span.length);
+  }
+  return textSpanToRange(sourceFile, { start, length: Math.max(0, end - start) });
+}
+
+function tsKindToLspSymbolKind(kind: string): number {
+  switch (kind) {
+    case "module":
+    case "external module name":
+      return 2; // Module
+    case "class":
+      return 5; // Class
+    case "method":
+    case "memberFunction":
+      return 6; // Method
+    case "property":
+    case "memberVariable":
+    case "getter":
+    case "setter":
+      return 7; // Property
+    case "constructor":
+      return 9; // Constructor
+    case "enum":
+      return 10; // Enum
+    case "interface":
+      return 11; // Interface
+    case "function":
+      return 12; // Function
+    case "const":
+      return 14; // Constant
+    case "type":
+    case "typeParameter":
+    case "alias":
+      return 26; // TypeParameter
+    case "enum member":
+      return 22; // EnumMember
+    case "var":
+    case "let":
+    case "parameter":
+    case "local var":
+      return 13; // Variable
+    default:
+      return 13; // Variable fallback
+  }
+}
+
+function navigationTreeToDocumentSymbol(
+  sourceFile: ts.SourceFile,
+  node: ts.NavigationTree
+): DocumentSymbol | null {
+  const range = textSpansToRange(sourceFile, node.spans || []);
+  if (!range) return null;
+
+  const selectionRange = node.nameSpan ? textSpanToRange(sourceFile, node.nameSpan) : range;
+  const children = (node.childItems || [])
+    .map((child) => navigationTreeToDocumentSymbol(sourceFile, child))
+    .filter((child): child is DocumentSymbol => child !== null);
+
+  const detail = node.kindModifiers
+    ?.split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0 && value !== "none")
+    .join(" ");
+
+  return {
+    name: node.text || "(anonymous)",
+    detail: detail || undefined,
+    kind: tsKindToLspSymbolKind(node.kind),
+    range,
+    selectionRange,
+    children: children.length > 0 ? children : undefined,
+  };
+}
+
 export function getDefinitionForFile(
   filePath: string,
   line: number,
@@ -391,6 +482,26 @@ export function getReferencesForFile(
       .map((entry) => toBundledLocation(service, entry.fileName, entry.textSpan))
       .filter((entry): entry is BundledLocation => entry !== null);
     return dedupeLocations(locations);
+  } finally {
+    service.dispose();
+  }
+}
+
+export function getDocumentSymbolsForFile(filePath: string): DocumentSymbol[] {
+  const context = createLanguageServiceForFile(filePath);
+  if (!context) return [];
+
+  const { service, targetPath } = context;
+  try {
+    const navigationTree = service.getNavigationTree(targetPath);
+    const program = service.getProgram();
+    const sourceFile =
+      program?.getSourceFile(targetPath) || program?.getSourceFile(resolve(targetPath));
+    if (!sourceFile) return [];
+
+    return (navigationTree.childItems || [])
+      .map((item) => navigationTreeToDocumentSymbol(sourceFile, item))
+      .filter((symbol): symbol is DocumentSymbol => symbol !== null);
   } finally {
     service.dispose();
   }

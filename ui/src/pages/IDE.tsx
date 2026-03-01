@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, useDeferredValue, memo } from "react";
 import { useLocation } from "react-router-dom";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -32,6 +32,7 @@ import {
   ExternalLink,
   Copy,
   RotateCcw,
+  ListTree,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/auth";
@@ -190,6 +191,43 @@ interface TreeContextMenuState {
   entry: FileEntry;
 }
 
+interface IdeCommandItem {
+  id: string;
+  label: string;
+  detail?: string;
+  shortcut?: string;
+  run: () => void;
+}
+
+interface IdeOutlineSymbol {
+  name: string;
+  kind: number;
+  detail?: string;
+  line: number;
+  character: number;
+  endLine: number;
+  endCharacter: number;
+  children?: IdeOutlineSymbol[];
+}
+
+interface IdeOutlineResponse {
+  success: boolean;
+  path: string;
+  symbols: IdeOutlineSymbol[];
+  error?: string;
+}
+
+interface FlattenedOutlineSymbol extends IdeOutlineSymbol {
+  depth: number;
+  key: string;
+}
+
+interface IdeBreadcrumb {
+  label: string;
+  path: string;
+  isFile: boolean;
+}
+
 const IDE_SIDEBAR_WIDTH_STORAGE_KEY = "cybara.ide.sidebar.width";
 const IDE_SIDEBAR_DEFAULT_WIDTH = 280;
 const IDE_SIDEBAR_MIN_WIDTH = 220;
@@ -199,6 +237,9 @@ const IDE_CHAT_OPEN_STORAGE_KEY = "cybara.ide.chat.open";
 const IDE_CHAT_DEFAULT_WIDTH = 420;
 const IDE_CHAT_MIN_WIDTH = 320;
 const IDE_CHAT_MAX_WIDTH = 720;
+const EXPLORER_VIRTUALIZATION_MIN_ENTRIES = 400;
+const EXPLORER_VIRTUALIZATION_ROW_HEIGHT = 30;
+const EXPLORER_VIRTUALIZATION_OVERSCAN = 12;
 
 function clampSidebarWidth(width: number): number {
   if (!Number.isFinite(width)) return IDE_SIDEBAR_DEFAULT_WIDTH;
@@ -332,6 +373,53 @@ function getPrismLanguage(ext?: string): string {
   return map[ext?.toLowerCase() || ""] || "plaintext";
 }
 
+function splitPathForBreadcrumbs(pathValue: string): string[] {
+  const normalized = pathValue.replace(/\\/g, "/");
+  return normalized.split("/").filter((segment) => segment.length > 0);
+}
+
+function flattenOutlineSymbols(
+  symbols: IdeOutlineSymbol[],
+  depth = 0,
+  prefix = "root"
+): FlattenedOutlineSymbol[] {
+  const rows: FlattenedOutlineSymbol[] = [];
+  symbols.forEach((symbol, index) => {
+    const key = `${prefix}:${index}:${symbol.name}:${symbol.line}:${symbol.character}`;
+    rows.push({
+      ...symbol,
+      depth,
+      key,
+    });
+    if (Array.isArray(symbol.children) && symbol.children.length > 0) {
+      rows.push(...flattenOutlineSymbols(symbol.children, depth + 1, key));
+    }
+  });
+  return rows;
+}
+
+function getSymbolKindLabel(kind: number): string {
+  const labels: Record<number, string> = {
+    1: "File",
+    2: "Module",
+    3: "Namespace",
+    4: "Package",
+    5: "Class",
+    6: "Method",
+    7: "Property",
+    8: "Field",
+    9: "Ctor",
+    10: "Enum",
+    11: "Interface",
+    12: "Function",
+    13: "Variable",
+    14: "Const",
+    22: "Enum Member",
+    26: "Type",
+  };
+  return labels[kind] || `Kind ${kind}`;
+}
+
 function fileEntryFromPath(filePath: string): FileEntry {
   const separatorIndex = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
   const fileName = separatorIndex >= 0 ? filePath.slice(separatorIndex + 1) : filePath;
@@ -444,7 +532,7 @@ function getSeverityIcon(severity: "error" | "warning" | "info") {
   }
 }
 
-function FileTreeItem({
+const FileTreeItem = memo(function FileTreeItem({
   entry,
   level = 0,
   isExpanded,
@@ -535,18 +623,11 @@ function FileTreeItem({
       )}
     </div>
   );
-}
+});
 
-function FileTree({
-  path,
-  level = 0,
-  selectedPath,
-  onSelectFile,
-  onContextMenu,
-  expandedDirs,
-  onToggleDir,
-  filterQuery,
-}: {
+const treeBrowseCache = new Map<string, FileEntry[]>();
+
+interface FileTreeProps {
   path: string;
   level?: number;
   selectedPath: string | null;
@@ -555,36 +636,109 @@ function FileTree({
   expandedDirs: Set<string>;
   onToggleDir: (path: string) => void;
   filterQuery: string;
-}) {
+  refreshToken: number;
+  rootScrollTop?: number;
+  rootViewportHeight?: number;
+}
+
+const FileTree = memo(function FileTree({
+  path,
+  level = 0,
+  selectedPath,
+  onSelectFile,
+  onContextMenu,
+  expandedDirs,
+  onToggleDir,
+  filterQuery,
+  refreshToken,
+  rootScrollTop = 0,
+  rootViewportHeight = 0,
+}: FileTreeProps) {
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let isCancelled = false;
     const fetchEntries = async () => {
+      const cacheKey = `${refreshToken}:${path}`;
+      const cachedEntries = treeBrowseCache.get(cacheKey);
+      if (cachedEntries) {
+        setEntries(cachedEntries);
+        setError(null);
+        setIsLoading(false);
+        return;
+      }
       setIsLoading(true);
       setError(null);
       try {
         const res = await apiFetch(`/api/ide/browse?path=${encodeURIComponent(path)}`);
         const data: BrowseResult = await res.json();
+        if (isCancelled) return;
         if (data.success) {
-          setEntries(data.entries);
+          const nextEntries = Array.isArray(data.entries) ? data.entries : [];
+          treeBrowseCache.set(cacheKey, nextEntries);
+          setEntries(nextEntries);
         } else {
           setError(data.error || "Failed to load");
         }
       } catch (e) {
+        if (isCancelled) return;
         setError(String(e));
       }
+      if (isCancelled) return;
       setIsLoading(false);
     };
     fetchEntries();
-  }, [path]);
+    return () => {
+      isCancelled = true;
+    };
+  }, [path, refreshToken]);
 
   const normalizedFilter = filterQuery.trim().toLowerCase();
   const filteredEntries = useMemo(() => {
     if (!normalizedFilter) return entries;
     return entries.filter((entry) => entry.name.toLowerCase().includes(normalizedFilter));
   }, [entries, normalizedFilter]);
+  const hasExpandedDirectoriesAtLevel = useMemo(
+    () =>
+      filteredEntries.some((entry) => entry.type === "directory" && expandedDirs.has(entry.path)),
+    [expandedDirs, filteredEntries]
+  );
+  const enableVirtualizedRows =
+    level === 0 &&
+    !normalizedFilter &&
+    !hasExpandedDirectoriesAtLevel &&
+    filteredEntries.length >= EXPLORER_VIRTUALIZATION_MIN_ENTRIES &&
+    rootViewportHeight > 0;
+  const virtualWindow = useMemo(() => {
+    if (!enableVirtualizedRows) {
+      return {
+        startIndex: 0,
+        endIndex: filteredEntries.length,
+        topSpacerHeight: 0,
+        bottomSpacerHeight: 0,
+      };
+    }
+    const rowHeight = EXPLORER_VIRTUALIZATION_ROW_HEIGHT;
+    const visibleStart = Math.max(
+      0,
+      Math.floor(rootScrollTop / rowHeight) - EXPLORER_VIRTUALIZATION_OVERSCAN
+    );
+    const visibleEnd = Math.min(
+      filteredEntries.length,
+      Math.ceil((rootScrollTop + rootViewportHeight) / rowHeight) + EXPLORER_VIRTUALIZATION_OVERSCAN
+    );
+    return {
+      startIndex: visibleStart,
+      endIndex: visibleEnd,
+      topSpacerHeight: visibleStart * rowHeight,
+      bottomSpacerHeight: Math.max(0, (filteredEntries.length - visibleEnd) * rowHeight),
+    };
+  }, [enableVirtualizedRows, filteredEntries.length, rootScrollTop, rootViewportHeight]);
+  const entriesToRender = enableVirtualizedRows
+    ? filteredEntries.slice(virtualWindow.startIndex, virtualWindow.endIndex)
+    : filteredEntries;
 
   if (isLoading && level === 0) {
     return (
@@ -615,7 +769,10 @@ function FileTree({
 
   return (
     <div>
-      {filteredEntries.map((entry) => {
+      {enableVirtualizedRows && virtualWindow.topSpacerHeight > 0 && (
+        <div style={{ height: `${virtualWindow.topSpacerHeight}px` }} aria-hidden />
+      )}
+      {entriesToRender.map((entry) => {
         const isDir = entry.type === "directory";
         const isExpanded = expandedDirs.has(entry.path);
 
@@ -640,14 +797,20 @@ function FileTree({
                 expandedDirs={expandedDirs}
                 onToggleDir={onToggleDir}
                 filterQuery={filterQuery}
+                refreshToken={refreshToken}
+                rootScrollTop={rootScrollTop}
+                rootViewportHeight={rootViewportHeight}
               />
             )}
           </div>
         );
       })}
+      {enableVirtualizedRows && virtualWindow.bottomSpacerHeight > 0 && (
+        <div style={{ height: `${virtualWindow.bottomSpacerHeight}px` }} aria-hidden />
+      )}
     </div>
   );
-}
+});
 
 function CodeViewer({
   path,
@@ -716,6 +879,15 @@ function CodeViewer({
   const appliedJumpRequestRef = useRef<string>("");
   const hasUnsavedChangesRef = useRef(false);
   const blameHideTimeoutRef = useRef<number | null>(null);
+  const scrollMetricsFrameRef = useRef<number | null>(null);
+  const pendingScrollMetricsRef = useRef<{
+    top: number;
+    left: number;
+    height: number;
+    width: number;
+    scrollHeight: number;
+    scrollWidth: number;
+  } | null>(null);
 
   const hasUnsavedChanges = editContent !== (content || "");
 
@@ -862,14 +1034,45 @@ function CodeViewer({
 
   const updateScrollMetrics = useCallback((textarea: HTMLTextAreaElement | null) => {
     if (!textarea) return;
-    setScrollMetrics({
+    pendingScrollMetricsRef.current = {
       top: textarea.scrollTop,
       left: textarea.scrollLeft,
       height: textarea.clientHeight || 1,
       width: textarea.clientWidth || 1,
       scrollHeight: textarea.scrollHeight || 1,
       scrollWidth: textarea.scrollWidth || 1,
+    };
+
+    if (scrollMetricsFrameRef.current !== null) return;
+    scrollMetricsFrameRef.current = window.requestAnimationFrame(() => {
+      scrollMetricsFrameRef.current = null;
+      const nextMetrics = pendingScrollMetricsRef.current;
+      pendingScrollMetricsRef.current = null;
+      if (!nextMetrics) return;
+      setScrollMetrics((previous) => {
+        if (
+          previous.top === nextMetrics.top &&
+          previous.left === nextMetrics.left &&
+          previous.height === nextMetrics.height &&
+          previous.width === nextMetrics.width &&
+          previous.scrollHeight === nextMetrics.scrollHeight &&
+          previous.scrollWidth === nextMetrics.scrollWidth
+        ) {
+          return previous;
+        }
+        return nextMetrics;
+      });
     });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (scrollMetricsFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollMetricsFrameRef.current);
+        scrollMetricsFrameRef.current = null;
+      }
+      pendingScrollMetricsRef.current = null;
+    };
   }, []);
 
   const syncEditorScroll = useCallback((textarea: HTMLTextAreaElement | null) => {
@@ -1860,6 +2063,11 @@ function CodeViewer({
                         style={{
                           ...style,
                           background: "transparent",
+                          width: "max-content",
+                          minWidth: "100%",
+                          whiteSpace: "pre",
+                          overflowWrap: "normal",
+                          wordBreak: "normal",
                           lineHeight: "20px",
                           fontSize: "13px",
                           fontFamily: "var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
@@ -1995,6 +2203,9 @@ function CodeViewer({
                   tabSize: 2,
                   lineHeight: "20px",
                   fontSize: "13px",
+                  whiteSpace: "pre",
+                  overflowWrap: "normal",
+                  wordBreak: "normal",
                   fontFamily: "var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
                   margin: 0,
                 }}
@@ -2748,6 +2959,7 @@ export function IDE() {
   const [activeTabPath, setActiveTabPath] = useState<string | null>(null);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [treeFilter, setTreeFilter] = useState("");
+  const deferredTreeFilter = useDeferredValue(treeFilter);
   const [rootInfo, setRootInfo] = useState<BrowseResult | null>(null);
   const [createType, setCreateType] = useState<"file" | "directory" | null>(null);
   const [createParentPath, setCreateParentPath] = useState<string | null>(null);
@@ -2756,7 +2968,7 @@ export function IDE() {
   const [requestedJumpLine, setRequestedJumpLine] = useState<number | null>(null);
   const [cursorPosition, setCursorPosition] = useState<{ line: number; column: number } | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => readPersistedSidebarWidth());
-  const [sidebarMode, setSidebarMode] = useState<"explorer" | "search">("explorer");
+  const [sidebarMode, setSidebarMode] = useState<"explorer" | "search" | "outline">("explorer");
   const [openMenu, setOpenMenu] = useState<"file" | null>(null);
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
   const [globalSearchReplace, setGlobalSearchReplace] = useState("");
@@ -2774,6 +2986,15 @@ export function IDE() {
   const [quickOpenLoading, setQuickOpenLoading] = useState(false);
   const [quickOpenError, setQuickOpenError] = useState<string | null>(null);
   const [quickOpenSelectedIndex, setQuickOpenSelectedIndex] = useState(0);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [commandQuery, setCommandQuery] = useState("");
+  const [commandSelectedIndex, setCommandSelectedIndex] = useState(0);
+  const [outlineSymbols, setOutlineSymbols] = useState<IdeOutlineSymbol[]>([]);
+  const [outlineLoading, setOutlineLoading] = useState(false);
+  const [outlineError, setOutlineError] = useState<string | null>(null);
+  const [outlineFilter, setOutlineFilter] = useState("");
+  const [explorerScrollTop, setExplorerScrollTop] = useState(0);
+  const [explorerViewportHeight, setExplorerViewportHeight] = useState(0);
   const [treeContextMenu, setTreeContextMenu] = useState<TreeContextMenuState | null>(null);
   const [isIdeChatOpen, setIsIdeChatOpen] = useState<boolean>(() => readPersistedChatOpen());
   const [chatPanelWidth, setChatPanelWidth] = useState<number>(() => readPersistedChatWidth());
@@ -2782,8 +3003,11 @@ export function IDE() {
   const chatResizeCleanupRef = useRef<(() => void) | null>(null);
   const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
   const treeFilterInputRef = useRef<HTMLInputElement | null>(null);
+  const outlineInputRef = useRef<HTMLInputElement | null>(null);
   const quickOpenInputRef = useRef<HTMLInputElement | null>(null);
+  const commandInputRef = useRef<HTMLInputElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const explorerScrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const fetchRoot = async () => {
@@ -2796,7 +3020,60 @@ export function IDE() {
     fetchRoot();
   }, [currentPath, refreshKey]);
 
-  const handleToggleDir = (path: string) => {
+  useEffect(() => {
+    const updateViewport = () => {
+      const container = explorerScrollRef.current;
+      if (!container) return;
+      setExplorerViewportHeight(container.clientHeight);
+      setExplorerScrollTop(container.scrollTop);
+    };
+
+    updateViewport();
+    window.addEventListener("resize", updateViewport);
+    return () => window.removeEventListener("resize", updateViewport);
+  }, []);
+
+  useEffect(() => {
+    const selectedPath = selectedFile?.path;
+    if (!selectedPath || selectedFile?.type !== "file") {
+      setOutlineSymbols([]);
+      setOutlineError(null);
+      setOutlineLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const fetchOutline = async () => {
+      setOutlineLoading(true);
+      setOutlineError(null);
+      try {
+        const response = await apiFetch(`/api/lsp/symbols?path=${encodeURIComponent(selectedPath)}`);
+        const data: IdeOutlineResponse = await response.json();
+        if (cancelled) return;
+        if (data.success) {
+          setOutlineSymbols(Array.isArray(data.symbols) ? data.symbols : []);
+        } else {
+          setOutlineSymbols([]);
+          setOutlineError(data.error || "Failed to load symbols");
+        }
+      } catch (errorValue) {
+        if (cancelled) return;
+        setOutlineSymbols([]);
+        setOutlineError(String(errorValue));
+      } finally {
+        if (!cancelled) {
+          setOutlineLoading(false);
+        }
+      }
+    };
+
+    void fetchOutline();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey, selectedFile?.path, selectedFile?.type]);
+
+  const handleToggleDir = useCallback((path: string) => {
     setExpandedDirs((prev) => {
       const next = new Set(prev);
       if (next.has(path)) {
@@ -2806,7 +3083,7 @@ export function IDE() {
       }
       return next;
     });
-  };
+  }, []);
 
   const openFileInEditor = useCallback(
     (entry: FileEntry, line?: number | null, options?: { previewMode?: boolean }) => {
@@ -2859,6 +3136,25 @@ export function IDE() {
     [activeTabPath]
   );
 
+  const handleCycleTabs = useCallback(
+    (direction: 1 | -1) => {
+      if (openTabs.length === 0) return;
+      const activePath = activeTabPath || selectedFile?.path || openTabs[0]?.path || null;
+      const currentIndex = activePath
+        ? openTabs.findIndex((tab) => tab.path === activePath)
+        : 0;
+      const normalizedIndex = currentIndex >= 0 ? currentIndex : 0;
+      const nextIndex =
+        (normalizedIndex + direction + openTabs.length) % Math.max(openTabs.length, 1);
+      const nextTab = openTabs[nextIndex];
+      if (!nextTab) return;
+      setSelectedFile(fileEntryFromPath(nextTab.path));
+      setActiveTabPath(nextTab.path);
+      setRequestedJumpLine(null);
+    },
+    [activeTabPath, openTabs, selectedFile?.path]
+  );
+
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const rawPath = params.get("path");
@@ -2885,9 +3181,9 @@ export function IDE() {
     }
   }, [location.search, openFileInEditor]);
 
-  const handleSelectFile = (entry: FileEntry) => {
+  const handleSelectFile = useCallback((entry: FileEntry) => {
     openFileInEditor(entry, null, { previewMode: false });
-  };
+  }, [openFileInEditor]);
 
   const handleTreeContextMenu = useCallback(
     (entry: FileEntry, event: React.MouseEvent<HTMLDivElement>) => {
@@ -2915,6 +3211,7 @@ export function IDE() {
     setRequestedJumpLine(null);
     setExpandedDirs(new Set());
     setTreeFilter("");
+    treeBrowseCache.clear();
     setRefreshKey((previous) => previous + 1);
   }, []);
 
@@ -2974,29 +3271,32 @@ export function IDE() {
     setRefreshKey((previous) => previous + 1);
   }, []);
 
-  const handleGoHome = () => {
+  const handleGoHome = useCallback(() => {
     setCurrentPath("~");
     setSelectedFile(null);
     setActiveTabPath(null);
     setRequestedJumpLine(null);
     setExpandedDirs(new Set());
-  };
+    treeBrowseCache.clear();
+  }, []);
 
-  const handleGoUp = () => {
+  const handleGoUp = useCallback(() => {
     if (rootInfo?.parent) {
       setCurrentPath(rootInfo.parent);
       setSelectedFile(null);
       setActiveTabPath(null);
       setRequestedJumpLine(null);
       setExpandedDirs(new Set());
+      treeBrowseCache.clear();
     }
-  };
+  }, [rootInfo?.parent]);
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
+    treeBrowseCache.clear();
     setRefreshKey((k) => k + 1);
-  };
+  }, []);
 
-  const handleExpandTopLevel = () => {
+  const handleExpandTopLevel = useCallback(() => {
     if (!rootInfo) return;
     setExpandedDirs((prev) => {
       const next = new Set(prev);
@@ -3005,11 +3305,11 @@ export function IDE() {
       }
       return next;
     });
-  };
+  }, [rootInfo]);
 
-  const handleCollapseAll = () => {
+  const handleCollapseAll = useCallback(() => {
     setExpandedDirs(new Set());
-  };
+  }, []);
 
   const workspaceSearchPath = rootInfo?.path || currentPath;
   const parseQuickOpenQuery = useCallback((value: string): { query: string; line: number | null } => {
@@ -3038,6 +3338,19 @@ export function IDE() {
       });
     }
   }, [openFileInEditor]);
+
+  const handleNavigateToBreadcrumb = useCallback((crumb: IdeBreadcrumb) => {
+    if (crumb.isFile) {
+      openFileAtPath(crumb.path, null, false);
+      return;
+    }
+    setCurrentPath(crumb.path);
+    setExpandedDirs((previous) => {
+      const next = new Set(previous);
+      next.add(crumb.path);
+      return next;
+    });
+  }, [openFileAtPath]);
 
   const runGlobalSearch = useCallback(async () => {
     const query = globalSearchQuery.trim();
@@ -3147,6 +3460,20 @@ export function IDE() {
     setShowQuickOpen(false);
   }, []);
 
+  const openCommandPalette = useCallback(() => {
+    setShowCommandPalette(true);
+    setCommandQuery("");
+    setCommandSelectedIndex(0);
+    window.requestAnimationFrame(() => {
+      commandInputRef.current?.focus();
+      commandInputRef.current?.select();
+    });
+  }, []);
+
+  const closeCommandPalette = useCallback(() => {
+    setShowCommandPalette(false);
+  }, []);
+
   const handleQuickOpenConfirm = useCallback(
     (index?: number) => {
       if (quickOpenResults.length === 0) return;
@@ -3161,6 +3488,150 @@ export function IDE() {
       closeQuickOpenPalette();
     },
     [closeQuickOpenPalette, openFileAtPath, parseQuickOpenQuery, quickOpenQuery, quickOpenResults, quickOpenSelectedIndex]
+  );
+
+  const commandItems = useMemo<IdeCommandItem[]>(
+    () => [
+      {
+        id: "save",
+        label: "Save Active File",
+        shortcut: "Ctrl/Cmd+S",
+        run: () => setSaveRequestToken((previous) => previous + 1),
+      },
+      {
+        id: "quick-open",
+        label: "Quick Open",
+        shortcut: "Ctrl/Cmd+P",
+        run: () => openQuickOpenPalette(),
+      },
+      {
+        id: "new-file",
+        label: "New File",
+        shortcut: "Ctrl/Cmd+N",
+        run: () => {
+          setCreateParentPath(rootInfo?.path || currentPath);
+          setCreateType("file");
+        },
+      },
+      {
+        id: "new-folder",
+        label: "New Folder",
+        shortcut: "Ctrl/Cmd+Shift+N",
+        run: () => {
+          setCreateParentPath(rootInfo?.path || currentPath);
+          setCreateType("directory");
+        },
+      },
+      {
+        id: "show-search",
+        label: "Show Global Search",
+        shortcut: "Ctrl/Cmd+Shift+F",
+        run: () => {
+          setSidebarMode("search");
+          window.requestAnimationFrame(() => {
+            globalSearchInputRef.current?.focus();
+            globalSearchInputRef.current?.select();
+          });
+        },
+      },
+      {
+        id: "show-explorer",
+        label: "Show Explorer",
+        shortcut: "Ctrl/Cmd+Shift+E",
+        run: () => setSidebarMode("explorer"),
+      },
+      {
+        id: "show-outline",
+        label: "Show Outline",
+        shortcut: "Ctrl/Cmd+Shift+O",
+        run: () => {
+          setSidebarMode("outline");
+          window.requestAnimationFrame(() => {
+            outlineInputRef.current?.focus();
+            outlineInputRef.current?.select();
+          });
+        },
+      },
+      {
+        id: "toggle-chat",
+        label: isIdeChatOpen ? "Hide IDE Chat" : "Show IDE Chat",
+        shortcut: "Ctrl/Cmd+\\",
+        run: () => setIsIdeChatOpen((previous) => !previous),
+      },
+      {
+        id: "refresh-workspace",
+        label: "Refresh Workspace",
+        run: () => handleRefresh(),
+      },
+      {
+        id: "expand-folders",
+        label: "Expand Top-Level Folders",
+        run: () => handleExpandTopLevel(),
+      },
+      {
+        id: "collapse-folders",
+        label: "Collapse All Folders",
+        run: () => handleCollapseAll(),
+      },
+      {
+        id: "go-home",
+        label: "Go Home Workspace",
+        run: () => handleGoHome(),
+      },
+      {
+        id: "cycle-tab-next",
+        label: "Next Tab",
+        shortcut: "Ctrl/Cmd+Tab",
+        run: () => handleCycleTabs(1),
+      },
+      {
+        id: "cycle-tab-prev",
+        label: "Previous Tab",
+        shortcut: "Ctrl/Cmd+Shift+Tab",
+        run: () => handleCycleTabs(-1),
+      },
+    ],
+    [
+      currentPath,
+      handleCollapseAll,
+      handleCycleTabs,
+      handleExpandTopLevel,
+      handleGoHome,
+      handleRefresh,
+      isIdeChatOpen,
+      openQuickOpenPalette,
+      rootInfo?.path,
+    ]
+  );
+
+  const filteredCommandItems = useMemo(() => {
+    const normalizedQuery = commandQuery.trim().toLowerCase();
+    if (!normalizedQuery) return commandItems;
+    return commandItems.filter((item) => {
+      const haystack = `${item.label} ${item.detail || ""} ${item.shortcut || ""}`.toLowerCase();
+      return haystack.includes(normalizedQuery);
+    });
+  }, [commandItems, commandQuery]);
+
+  useEffect(() => {
+    setCommandSelectedIndex((previous) =>
+      filteredCommandItems.length ? Math.min(previous, filteredCommandItems.length - 1) : 0
+    );
+  }, [filteredCommandItems]);
+
+  const handleCommandConfirm = useCallback(
+    (index?: number) => {
+      if (filteredCommandItems.length === 0) return;
+      const safeIndex =
+        typeof index === "number"
+          ? Math.min(Math.max(index, 0), filteredCommandItems.length - 1)
+          : Math.min(Math.max(commandSelectedIndex, 0), filteredCommandItems.length - 1);
+      const selected = filteredCommandItems[safeIndex];
+      if (!selected) return;
+      selected.run();
+      closeCommandPalette();
+    },
+    [closeCommandPalette, commandSelectedIndex, filteredCommandItems]
   );
 
   const handleGlobalPreviewReplace = useCallback(async () => {
@@ -3274,6 +3745,42 @@ export function IDE() {
 
   useEffect(() => {
     const handleGlobalSearchShortcut = (event: KeyboardEvent) => {
+      if (showCommandPalette) {
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          setCommandSelectedIndex((previous) =>
+            filteredCommandItems.length
+              ? Math.min(previous + 1, filteredCommandItems.length - 1)
+              : 0
+          );
+          return;
+        }
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          setCommandSelectedIndex((previous) =>
+            filteredCommandItems.length ? Math.max(previous - 1, 0) : 0
+          );
+          return;
+        }
+        if (event.key === "Enter") {
+          event.preventDefault();
+          handleCommandConfirm();
+          return;
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          closeCommandPalette();
+          return;
+        }
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "p") {
+        event.preventDefault();
+        openCommandPalette();
+        return;
+      }
+
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "f") {
         event.preventDefault();
         openGlobalSearchPanel();
@@ -3286,9 +3793,29 @@ export function IDE() {
         return;
       }
 
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "o") {
+        event.preventDefault();
+        setSidebarMode("outline");
+        window.requestAnimationFrame(() => {
+          outlineInputRef.current?.focus();
+          outlineInputRef.current?.select();
+        });
+        return;
+      }
+
       if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === "p") {
         event.preventDefault();
         openQuickOpenPalette();
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key === "Tab") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          handleCycleTabs(-1);
+        } else {
+          handleCycleTabs(1);
+        }
         return;
       }
 
@@ -3324,7 +3851,7 @@ export function IDE() {
         return;
       }
 
-      if (event.key === "Escape" && sidebarMode === "search") {
+      if (event.key === "Escape" && (sidebarMode === "search" || sidebarMode === "outline")) {
         event.preventDefault();
         setSidebarMode("explorer");
       }
@@ -3333,13 +3860,19 @@ export function IDE() {
     window.addEventListener("keydown", handleGlobalSearchShortcut);
     return () => window.removeEventListener("keydown", handleGlobalSearchShortcut);
   }, [
+    closeCommandPalette,
     closeQuickOpenPalette,
     currentPath,
+    filteredCommandItems.length,
+    handleCommandConfirm,
+    handleCycleTabs,
     openMenu,
+    openCommandPalette,
     openGlobalSearchPanel,
     openQuickOpenPalette,
     rootInfo?.path,
     sidebarMode,
+    showCommandPalette,
     showQuickOpen,
   ]);
 
@@ -3439,6 +3972,65 @@ export function IDE() {
   }, [treeContextMenu]);
 
   const activeTab = openTabs.find((tab) => tab.path === (activeTabPath || selectedFile?.path || ""));
+  const workspaceRootPath = rootInfo?.path || currentPath;
+  const breadcrumbs = useMemo<IdeBreadcrumb[]>(() => {
+    if (!selectedFile?.path) return [];
+    const filePath = selectedFile.path.replace(/\\/g, "/");
+    const rootPath = (workspaceRootPath || "").replace(/\\/g, "/");
+
+    if (rootPath && rootPath !== "~" && filePath.startsWith(rootPath)) {
+      const relativePath = filePath.slice(rootPath.length).replace(/^\/+/, "");
+      const segments = splitPathForBreadcrumbs(relativePath);
+      const crumbs: IdeBreadcrumb[] = [
+        {
+          label: rootPath.split("/").filter(Boolean).pop() || rootPath,
+          path: workspaceRootPath,
+          isFile: false,
+        },
+      ];
+      let cursorPath = rootPath;
+      segments.forEach((segment, index) => {
+        cursorPath = `${cursorPath}/${segment}`;
+        crumbs.push({
+          label: segment,
+          path: cursorPath,
+          isFile: index === segments.length - 1,
+        });
+      });
+      return crumbs;
+    }
+
+    const segments = splitPathForBreadcrumbs(filePath);
+    return segments.map((segment, index) => {
+      const path = filePath
+        .split("/")
+        .slice(0, index + 1)
+        .join("/");
+      return {
+        label: segment,
+        path,
+        isFile: index === segments.length - 1,
+      };
+    });
+  }, [selectedFile?.path, workspaceRootPath]);
+  const flattenedOutlineRows = useMemo(
+    () => flattenOutlineSymbols(outlineSymbols),
+    [outlineSymbols]
+  );
+  const filteredOutlineRows = useMemo(() => {
+    const query = outlineFilter.trim().toLowerCase();
+    if (!query) return flattenedOutlineRows;
+    return flattenedOutlineRows.filter((row) => {
+      const haystack = `${row.name} ${row.detail || ""}`.toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [flattenedOutlineRows, outlineFilter]);
+  const statusLanguage = selectedFile?.extension
+    ? getPrismLanguage(selectedFile.extension)
+    : null;
+  const statusEncoding = selectedFile ? "UTF-8" : null;
+  const statusEol = selectedFile ? "LF" : null;
+  const statusIndent = selectedFile ? "Spaces: 2" : null;
   const contextMenuPosition = treeContextMenu
     ? {
         left:
@@ -3532,6 +4124,21 @@ export function IDE() {
               <button
                 type="button"
                 onClick={() => {
+                  setSidebarMode("outline");
+                  setOpenMenu(null);
+                  window.requestAnimationFrame(() => {
+                    outlineInputRef.current?.focus();
+                    outlineInputRef.current?.select();
+                  });
+                }}
+                className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm flex items-center justify-between"
+              >
+                <span>Show Outline</span>
+                <span className="text-xs text-gray-500">Ctrl/Cmd+Shift+O</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
                   setIsIdeChatOpen((previous) => !previous);
                   setOpenMenu(null);
                 }}
@@ -3550,6 +4157,17 @@ export function IDE() {
                 Refresh Workspace
               </button>
               <div className="h-px bg-white/10" />
+              <button
+                type="button"
+                onClick={() => {
+                  openCommandPalette();
+                  setOpenMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm flex items-center justify-between"
+              >
+                <span>Command Palette</span>
+                <span className="text-xs text-gray-500">Ctrl/Cmd+Shift+P</span>
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -3603,7 +4221,7 @@ export function IDE() {
           style={{ width: `${sidebarWidth}px` }}
         >
           <div className="px-3 py-2 border-b border-white/10 bg-white/5 text-xs uppercase tracking-wide text-gray-500">
-            {sidebarMode === "search" ? "Search" : "Explorer"}
+            {sidebarMode === "search" ? "Search" : sidebarMode === "outline" ? "Outline" : "Explorer"}
           </div>
 
           {sidebarMode === "explorer" ? (
@@ -3691,7 +4309,16 @@ export function IDE() {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto py-2" key={refreshKey}>
+              <div
+                ref={explorerScrollRef}
+                className="flex-1 overflow-y-auto py-2"
+                key={refreshKey}
+                onScroll={(event) => {
+                  const element = event.currentTarget;
+                  setExplorerScrollTop(element.scrollTop);
+                  setExplorerViewportHeight(element.clientHeight);
+                }}
+              >
                 <FileTree
                   path={rootInfo?.path || currentPath}
                   selectedPath={selectedFile?.path || null}
@@ -3699,10 +4326,76 @@ export function IDE() {
                   onContextMenu={handleTreeContextMenu}
                   expandedDirs={expandedDirs}
                   onToggleDir={handleToggleDir}
-                  filterQuery={treeFilter}
+                  filterQuery={deferredTreeFilter}
+                  refreshToken={refreshKey}
+                  rootScrollTop={explorerScrollTop}
+                  rootViewportHeight={explorerViewportHeight}
                 />
               </div>
             </>
+          ) : sidebarMode === "outline" ? (
+            <div className="flex-1 flex flex-col overflow-hidden bg-[#0a0a10]">
+              <div className="p-3 border-b border-white/10 space-y-2">
+                <input
+                  ref={outlineInputRef}
+                  type="text"
+                  value={outlineFilter}
+                  onChange={(event) => setOutlineFilter(event.target.value)}
+                  placeholder="Filter symbols"
+                  className="w-full px-2.5 py-1.5 rounded border border-white/10 bg-black/40 text-sm text-gray-200 !outline-none focus:border-indigo-500/40"
+                />
+                <div className="text-[11px] text-gray-500 flex items-center justify-between">
+                  <span className="inline-flex items-center gap-1">
+                    <ListTree className="w-3 h-3" />
+                    {selectedFile?.name || "No file selected"}
+                  </span>
+                  <span>{flattenedOutlineRows.length} symbols</span>
+                </div>
+              </div>
+
+              {outlineError && (
+                <div className="px-3 py-2 border-b border-red-500/20 bg-red-500/10 text-xs text-red-300">
+                  {outlineError}
+                </div>
+              )}
+
+              <div className="flex-1 overflow-y-auto py-2">
+                {outlineLoading ? (
+                  <div className="text-center py-6 text-gray-500">
+                    <Loader2 className="w-4 h-4 animate-spin mx-auto mb-2" />
+                    Loading outline...
+                  </div>
+                ) : !selectedFile ? (
+                  <div className="px-3 py-6 text-sm text-gray-500">Open a file to view symbols.</div>
+                ) : filteredOutlineRows.length > 0 ? (
+                  filteredOutlineRows.map((symbol) => (
+                    <button
+                      key={symbol.key}
+                      type="button"
+                      onClick={() => openFileAtPath(selectedFile.path, symbol.line)}
+                      className="w-full text-left px-2 py-1.5 hover:bg-white/5 transition-colors"
+                      style={{ paddingLeft: `${symbol.depth * 14 + 8}px` }}
+                      title={`Line ${symbol.line}${symbol.detail ? ` · ${symbol.detail}` : ""}`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded border border-white/10 text-gray-500">
+                          {getSymbolKindLabel(symbol.kind)}
+                        </span>
+                        <span className="text-xs text-gray-200 truncate">{symbol.name}</span>
+                      </div>
+                      <div className="text-[10px] text-gray-500 truncate">
+                        Ln {symbol.line}
+                        {symbol.detail ? ` · ${symbol.detail}` : ""}
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-3 py-6 text-sm text-gray-500">
+                    {outlineFilter.trim() ? "No matching symbols." : "No symbols found for this file."}
+                  </div>
+                )}
+              </div>
+            </div>
           ) : (
             <div className="flex-1 flex flex-col overflow-hidden bg-[#0a0a10]">
               <div className="p-3 border-b border-white/10 space-y-2">
@@ -3957,6 +4650,31 @@ export function IDE() {
               )}
             </div>
 
+            <div className="h-8 border-b border-white/10 bg-black/25 px-2 flex items-center gap-1 overflow-x-auto">
+              {breadcrumbs.length > 0 ? (
+                breadcrumbs.map((crumb, index) => (
+                  <div key={`crumb:${crumb.path}`} className="flex items-center gap-1 min-w-0">
+                    {index > 0 && <ChevronRight className="w-3 h-3 text-gray-600 flex-shrink-0" />}
+                    <button
+                      type="button"
+                      onClick={() => handleNavigateToBreadcrumb(crumb)}
+                      className={cn(
+                        "px-1.5 py-0.5 rounded text-xs truncate",
+                        crumb.isFile
+                          ? "text-indigo-200 bg-indigo-500/15"
+                          : "text-gray-400 hover:text-gray-200 hover:bg-white/5"
+                      )}
+                      title={crumb.path}
+                    >
+                      {crumb.label}
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <span className="text-xs text-gray-600 px-1">No file selected</span>
+              )}
+            </div>
+
             <CodeViewer
               path={selectedFile?.path || null}
               previewMode={activeTab?.previewMode === true}
@@ -3996,9 +4714,108 @@ export function IDE() {
         </div>
       </div>
 
+      {showCommandPalette && (
+        <div
+          className="absolute inset-0 z-50 bg-black/40 flex items-start justify-center pt-16"
+          onMouseDown={closeCommandPalette}
+        >
+          <div
+            className="w-[640px] max-w-[92vw] rounded-xl border border-white/15 bg-[#0b0b12] shadow-2xl overflow-hidden"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
+              <Zap className="w-4 h-4 text-indigo-300" />
+              <input
+                ref={commandInputRef}
+                type="text"
+                value={commandQuery}
+                onChange={(event) => {
+                  setCommandQuery(event.target.value);
+                  setCommandSelectedIndex(0);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setCommandSelectedIndex((previous) =>
+                      filteredCommandItems.length
+                        ? Math.min(previous + 1, filteredCommandItems.length - 1)
+                        : 0
+                    );
+                    return;
+                  }
+                  if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setCommandSelectedIndex((previous) =>
+                      filteredCommandItems.length ? Math.max(previous - 1, 0) : 0
+                    );
+                    return;
+                  }
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    handleCommandConfirm();
+                    return;
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    closeCommandPalette();
+                  }
+                }}
+                placeholder="Command Palette (Ctrl/Cmd+Shift+P)"
+                className="flex-1 bg-transparent text-sm text-gray-100 placeholder-gray-500 !outline-none"
+              />
+              <button
+                type="button"
+                onClick={closeCommandPalette}
+                className="p-1 rounded text-gray-500 hover:text-white hover:bg-white/5"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="max-h-[55vh] overflow-y-auto divide-y divide-white/5">
+              {filteredCommandItems.length > 0 ? (
+                filteredCommandItems.map((command, index) => (
+                  <button
+                    key={`command:${command.id}`}
+                    type="button"
+                    onClick={() => handleCommandConfirm(index)}
+                    className={cn(
+                      "w-full text-left px-3 py-2 transition-colors",
+                      index === commandSelectedIndex
+                        ? "bg-indigo-500/20 text-indigo-200"
+                        : "hover:bg-white/5 text-gray-300"
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm truncate">{command.label}</span>
+                      {command.shortcut && (
+                        <span className="text-[11px] text-gray-500">{command.shortcut}</span>
+                      )}
+                    </div>
+                    {command.detail && (
+                      <div className="text-[11px] text-gray-500 truncate">{command.detail}</div>
+                    )}
+                  </button>
+                ))
+              ) : (
+                <div className="px-3 py-6 text-center text-gray-500 text-sm">
+                  No matching commands
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showQuickOpen && (
-        <div className="absolute inset-0 z-50 bg-black/40 flex items-start justify-center pt-16">
-          <div className="w-[680px] max-w-[92vw] rounded-xl border border-white/15 bg-[#0b0b12] shadow-2xl overflow-hidden">
+        <div
+          className="absolute inset-0 z-50 bg-black/40 flex items-start justify-center pt-16"
+          onMouseDown={closeQuickOpenPalette}
+        >
+          <div
+            className="w-[680px] max-w-[92vw] rounded-xl border border-white/15 bg-[#0b0b12] shadow-2xl overflow-hidden"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
             <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
               <Search className="w-4 h-4 text-indigo-300" />
               <input
@@ -4217,8 +5034,16 @@ export function IDE() {
           <span className="text-gray-500 tabular-nums">
             {selectedFile ? `Ln ${cursorPosition?.line || 1}, Col ${cursorPosition?.column || 1}` : "Ln -, Col -"}
           </span>
+          <span className="text-gray-600">{statusEncoding || "-"}</span>
+          <span className="text-gray-600">{statusEol || "-"}</span>
+          <span className="text-gray-600">{statusIndent || "-"}</span>
+          <span className="text-gray-500">{statusLanguage || "-"}</span>
           <span className="text-gray-600">
-            {sidebarMode === "search" ? "Global Search" : "Editor"}
+            {sidebarMode === "search"
+              ? "Global Search"
+              : sidebarMode === "outline"
+                ? "Outline"
+                : "Editor"}
           </span>
           <LSPStatus compact activeExtension={selectedFile?.extension || null} />
         </div>

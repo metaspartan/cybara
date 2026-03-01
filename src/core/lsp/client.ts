@@ -10,6 +10,7 @@ import type {
   ReferenceParams,
   PublishDiagnosticsParams,
   DefinitionResult,
+  DocumentSymbolResult,
   Location,
   Hover,
 } from "./types";
@@ -171,6 +172,10 @@ export class LSPClient extends EventEmitter {
 
   async hover(params: TextDocumentPositionParams): Promise<Hover | null> {
     return this.request("textDocument/hover", params);
+  }
+
+  async documentSymbols(params: { textDocument: { uri: string } }): Promise<DocumentSymbolResult> {
+    return this.request("textDocument/documentSymbol", params);
   }
 
   get isInitialized(): boolean {

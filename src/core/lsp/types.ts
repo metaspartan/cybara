@@ -21,6 +21,27 @@ export interface LocationLink {
 }
 
 export type DefinitionResult = Location | Location[] | LocationLink[] | null;
+export type DocumentSymbolResult = DocumentSymbol[] | SymbolInformation[] | null;
+
+export interface SymbolInformation {
+  name: string;
+  kind: number;
+  tags?: number[];
+  deprecated?: boolean;
+  location: Location;
+  containerName?: string;
+}
+
+export interface DocumentSymbol {
+  name: string;
+  detail?: string;
+  kind: number;
+  tags?: number[];
+  deprecated?: boolean;
+  range: Range;
+  selectionRange: Range;
+  children?: DocumentSymbol[];
+}
 
 export interface TextDocumentIdentifier {
   uri: string;

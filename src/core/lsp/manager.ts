@@ -1,5 +1,12 @@
 import { LSPClient } from "./client";
-import { getLanguageId, type DefinitionResult, type Diagnostic, type Location, type Hover } from "./types";
+import {
+  getLanguageId,
+  type DefinitionResult,
+  type Diagnostic,
+  type Location,
+  type Hover,
+  type DocumentSymbolResult,
+} from "./types";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { cybaraDir } from "../paths";
@@ -396,6 +403,27 @@ export class LSPManager {
     return client.hover({
       textDocument: { uri: `file://${filePath}` },
       position: { line, character },
+    });
+  }
+
+  async getDocumentSymbols(filePath: string): Promise<DocumentSymbolResult> {
+    const languageId = getLanguageId(filePath);
+    const client = await this.getClient(languageId);
+    if (!client) {
+      if (BUNDLED_LANGUAGES.has(languageId)) {
+        try {
+          const fallback = bundledTS.getDocumentSymbolsForFile(filePath);
+          return fallback.length > 0 ? (fallback as unknown as DocumentSymbolResult) : [];
+        } catch (err) {
+          console.warn("[LSP Manager] Bundled TS symbol lookup failed:", err);
+        }
+      }
+      return [];
+    }
+
+    await this.openDocument(filePath);
+    return client.documentSymbols({
+      textDocument: { uri: `file://${filePath}` },
     });
   }
 
