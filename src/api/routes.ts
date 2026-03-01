@@ -77,10 +77,13 @@ import {
   readFileContent,
   writeFileContent,
   createItem,
+  renameItem,
   searchWorkspace,
   replaceInWorkspace,
   previewReplaceInWorkspace,
   listWorkspaceFiles,
+  getFileBlame,
+  revealInSystemExplorer,
 } from "./ide-api";
 import { getGitStatus, getGitBranch, getGitDiff } from "./git-api";
 import { createLogger } from "../core/logger";
@@ -138,6 +141,20 @@ interface LspDiagnosticLike {
   range?: {
     start?: { line?: number; character?: number };
     end?: { line?: number; character?: number };
+  };
+}
+
+interface LspLocationLike {
+  uri?: string;
+  targetUri?: string;
+  range?: {
+    start?: { line?: number; character?: number };
+  };
+  targetSelectionRange?: {
+    start?: { line?: number; character?: number };
+  };
+  targetRange?: {
+    start?: { line?: number; character?: number };
   };
 }
 
@@ -1052,7 +1069,10 @@ function trackIdeOperation(
     | "read"
     | "write"
     | "create"
+    | "rename"
     | "search"
+    | "blame"
+    | "reveal"
     | "replace"
     | "replace_preview"
     | "list_files",
@@ -1061,6 +1081,55 @@ function trackIdeOperation(
   metadata?: Record<string, unknown>
 ): void {
   trackMetric("ide_operation", operation, 1, { path, success, ...metadata });
+}
+
+function normalizeFileUriToPath(uri: string): string {
+  if (!uri) return "";
+
+  try {
+    const url = new URL(uri);
+    if (url.protocol === "file:") {
+      let pathname = decodeURIComponent(url.pathname);
+      if (process.platform === "win32" && pathname.startsWith("/")) {
+        pathname = pathname.slice(1);
+      }
+      return pathname;
+    }
+  } catch {
+    // Not a valid URL; fall back to prefix stripping.
+  }
+
+  if (uri.startsWith("file://")) {
+    return decodeURIComponent(uri.slice("file://".length));
+  }
+  return uri;
+}
+
+function normalizeDefinitionLocation(raw: unknown):
+  | { uri: string; path: string; line: number; character: number }
+  | null {
+  if (!raw || typeof raw !== "object") return null;
+  const location = raw as LspLocationLike;
+
+  const uri =
+    typeof location.uri === "string"
+      ? location.uri
+      : typeof location.targetUri === "string"
+        ? location.targetUri
+        : "";
+  if (!uri) return null;
+
+  const start =
+    location.range?.start || location.targetSelectionRange?.start || location.targetRange?.start;
+  const line = typeof start?.line === "number" ? start.line : 0;
+  const character = typeof start?.character === "number" ? start.character : 0;
+
+  return {
+    uri,
+    path: normalizeFileUriToPath(uri),
+    line,
+    character,
+  };
 }
 
 function getDefaultSystemPromptConfig(): Record<string, unknown> {
@@ -2989,6 +3058,57 @@ const routes: Record<string, RouteHandler> = {
       return { success: false, error: String(e), diagnostics: [] };
     }
   },
+  "GET /api/lsp/definition": async (_body, params) => {
+    const filePath = params?.path as string | undefined;
+    const rawLine = params?.line as string | undefined;
+    const rawCharacter = params?.character as string | undefined;
+    if (!filePath) {
+      trackLspOperation("definition", { success: false, reason: "missing_path" });
+      return { success: false, error: "Missing 'path' parameter" };
+    }
+
+    const normalizedPath = isAbsolute(filePath) ? filePath : resolve(process.cwd(), filePath);
+    const workspacePath = resolveWorkspacePath(normalizedPath);
+    const parsedLine = Number.parseInt(rawLine || "", 10);
+    const parsedCharacter = Number.parseInt(rawCharacter || "", 10);
+    const line = Number.isFinite(parsedLine) ? Math.max(parsedLine, 0) : 0;
+    const character = Number.isFinite(parsedCharacter) ? Math.max(parsedCharacter, 0) : 0;
+
+    try {
+      const manager = getOrInitLspManager(workspacePath);
+      const definitions = await manager.getDefinition(normalizedPath, line, character);
+      const normalizedLocations = (Array.isArray(definitions) ? definitions : definitions ? [definitions] : [])
+        .map((location) => normalizeDefinitionLocation(location))
+        .filter((location): location is { uri: string; path: string; line: number; character: number } => !!location);
+      const location = normalizedLocations[0] || null;
+      trackLspOperation("definition", {
+        workspace: manager.getWorkspacePath(),
+        filePath: normalizedPath,
+        line,
+        character,
+        resultCount: normalizedLocations.length,
+        success: true,
+      });
+      return {
+        success: true,
+        path: normalizedPath,
+        line,
+        character,
+        location,
+        locations: normalizedLocations,
+      };
+    } catch (errorValue) {
+      trackLspOperation("definition", {
+        workspace: workspacePath,
+        filePath: normalizedPath,
+        line,
+        character,
+        success: false,
+        error: String(errorValue),
+      });
+      return { success: false, error: String(errorValue) };
+    }
+  },
   "GET /api/lsp/install-status": async () => {
     try {
       const manager = getOrInitLspManager(process.cwd());
@@ -3083,6 +3203,40 @@ const routes: Record<string, RouteHandler> = {
     return result;
   },
 
+  "GET /api/ide/blame": async (_body, params) => {
+    const path = params?.path as string | undefined;
+    if (!path) {
+      trackIdeOperation("blame", path, false, { reason: "missing_path" });
+      return { success: false, error: "Missing 'path' parameter" };
+    }
+    const parsedMaxLines = Number.parseInt((params?.maxLines as string | undefined) || "", 10);
+    const maxLines = Number.isFinite(parsedMaxLines) ? parsedMaxLines : undefined;
+    const result = await getFileBlame(path, { maxLines });
+    const success =
+      !!result && typeof result === "object" && (result as { success?: boolean }).success !== false;
+    trackIdeOperation("blame", path, success, {
+      lines: Array.isArray((result as { lines?: unknown }).lines)
+        ? ((result as { lines: unknown[] }).lines || []).length
+        : 0,
+      truncated: (result as { truncated?: boolean }).truncated === true,
+    });
+    trackFileOperation("search", path, { success, operation: "blame" });
+    return result;
+  },
+
+  "POST /api/ide/reveal": async (body) => {
+    const { path } = body as { path?: string };
+    if (!path || typeof path !== "string") {
+      trackIdeOperation("reveal", path, false, { reason: "missing_path" });
+      return { success: false, error: "Missing 'path' parameter" };
+    }
+    const result = await revealInSystemExplorer(path);
+    const success =
+      !!result && typeof result === "object" && (result as { success?: boolean }).success !== false;
+    trackIdeOperation("reveal", path, success);
+    return result;
+  },
+
   "POST /api/ide/write": async (body) => {
     const { path, content } = body as { path?: string; content?: string };
     if (!path) {
@@ -3128,6 +3282,27 @@ const routes: Record<string, RouteHandler> = {
       !!result && typeof result === "object" && (result as { success?: boolean }).success !== false;
     trackIdeOperation("create", createdPath, success, { type });
     trackFileOperation("write", createdPath, { success, type, parentPath });
+    return result;
+  },
+
+  "POST /api/ide/rename": async (body) => {
+    const { path, newName } = body as {
+      path?: string;
+      newName?: string;
+    };
+    if (!path) {
+      trackIdeOperation("rename", path, false, { reason: "missing_path" });
+      return { success: false, error: "Missing 'path' parameter" };
+    }
+    if (!newName || typeof newName !== "string") {
+      trackIdeOperation("rename", path, false, { reason: "missing_new_name" });
+      return { success: false, error: "Missing 'newName' parameter" };
+    }
+    const result = await renameItem(path, newName);
+    const success =
+      !!result && typeof result === "object" && (result as { success?: boolean }).success !== false;
+    trackIdeOperation("rename", path, success, { newName });
+    trackFileOperation("write", path, { success, operation: "rename", newName });
     return result;
   },
 

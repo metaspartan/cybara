@@ -4,7 +4,12 @@
   /* Tailwind v4 base spacing unit */
   --spacing: 0.25rem;
 
-  font-family: 'Outfit', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-ui: 'Outfit', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-zed-ui: 'Zed Sans', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Zed Mono', 'JetBrains Mono', 'SF Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  --font-zed-mono: 'Zed Mono', 'JetBrains Mono', 'SF Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+
+  font-family: var(--font-ui);
   line-height: 1.5;
   font-weight: 400;
 

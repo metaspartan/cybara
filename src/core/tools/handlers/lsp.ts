@@ -2,6 +2,42 @@ import { getLSPManager, initLSPManager } from "../../lsp";
 import { resolve, dirname } from "path";
 import { existsSync } from "fs";
 
+function definitionLocationToResult(
+  location: unknown
+): { file: string; line: number; column: number; endLine: number; endColumn: number } | null {
+  if (!location || typeof location !== "object") return null;
+  const raw = location as {
+    uri?: string;
+    range?: {
+      start?: { line?: number; character?: number };
+      end?: { line?: number; character?: number };
+    };
+    targetUri?: string;
+    targetSelectionRange?: {
+      start?: { line?: number; character?: number };
+      end?: { line?: number; character?: number };
+    };
+    targetRange?: {
+      start?: { line?: number; character?: number };
+      end?: { line?: number; character?: number };
+    };
+  };
+
+  const uri = typeof raw.uri === "string" ? raw.uri : typeof raw.targetUri === "string" ? raw.targetUri : "";
+  if (!uri) return null;
+
+  const effectiveRange = raw.range || raw.targetSelectionRange || raw.targetRange;
+  if (!effectiveRange?.start || !effectiveRange?.end) return null;
+
+  return {
+    file: uri.replace("file://", ""),
+    line: (effectiveRange.start.line ?? 0) + 1,
+    column: (effectiveRange.start.character ?? 0) + 1,
+    endLine: (effectiveRange.end.line ?? 0) + 1,
+    endColumn: (effectiveRange.end.character ?? 0) + 1,
+  };
+}
+
 function severityToString(severity?: number): string {
   switch (severity) {
     case 1:
@@ -146,15 +182,16 @@ export async function handleLSPDefinition(args: Record<string, unknown>): Promis
     return { locations: [], found: false };
   }
 
-  const locations = Array.isArray(result) ? result : [result];
+  const locations = (Array.isArray(result) ? result : [result])
+    .map((location) => definitionLocationToResult(location))
+    .filter(
+      (
+        location
+      ): location is { file: string; line: number; column: number; endLine: number; endColumn: number } =>
+        !!location
+    );
   return {
-    locations: locations.map((loc) => ({
-      file: loc.uri.replace("file://", ""),
-      line: loc.range.start.line + 1,
-      column: loc.range.start.character + 1,
-      endLine: loc.range.end.line + 1,
-      endColumn: loc.range.end.character + 1,
-    })),
+    locations,
     found: locations.length > 0,
   };
 }

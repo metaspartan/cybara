@@ -13,6 +13,15 @@ export interface Location {
   range: Range;
 }
 
+export interface LocationLink {
+  targetUri: string;
+  targetRange: Range;
+  targetSelectionRange: Range;
+  originSelectionRange?: Range;
+}
+
+export type DefinitionResult = Location | Location[] | LocationLink[] | null;
+
 export interface TextDocumentIdentifier {
   uri: string;
 }
@@ -207,12 +216,15 @@ export const LANGUAGE_IDS: Record<string, string> = {
   ".bash": "shellscript",
   ".zsh": "shellscript",
   ".json": "json",
+  ".jsonc": "json",
   ".yaml": "yaml",
   ".yml": "yaml",
   ".md": "markdown",
   ".html": "html",
+  ".htm": "html",
   ".css": "css",
   ".scss": "scss",
+  ".less": "scss",
   ".sql": "sql",
 };
 

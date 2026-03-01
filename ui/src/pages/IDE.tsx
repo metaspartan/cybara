@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useLocation } from "react-router-dom";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/Button";
 import { Highlight, themes } from "prism-react-renderer";
 import {
@@ -26,9 +28,14 @@ import {
   Zap,
   GitBranch,
   Search,
+  MessageSquare,
+  ExternalLink,
+  Copy,
+  RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/auth";
+import { chatApi, agentsApi } from "@/lib/api";
 
 interface FileEntry {
   name: string;
@@ -137,10 +144,60 @@ interface IdeListFilesResult {
   error?: string;
 }
 
+interface IdeBlameLine {
+  line: number;
+  commit: string;
+  shortCommit: string;
+  author: string;
+  authorDate?: string;
+  summary?: string;
+  commitUrl?: string;
+  isUncommitted: boolean;
+}
+
+interface IdeBlameResult {
+  success: boolean;
+  path: string;
+  isRepo: boolean;
+  truncated: boolean;
+  lines: IdeBlameLine[];
+  error?: string;
+}
+
+interface IdeTab {
+  path: string;
+  name: string;
+  extension?: string;
+  previewMode?: boolean;
+}
+
+interface IdeChatMessage {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+}
+
+interface IdeChatAgentOption {
+  id: string;
+  name: string;
+  status?: string;
+}
+
+interface TreeContextMenuState {
+  x: number;
+  y: number;
+  entry: FileEntry;
+}
+
 const IDE_SIDEBAR_WIDTH_STORAGE_KEY = "cybara.ide.sidebar.width";
 const IDE_SIDEBAR_DEFAULT_WIDTH = 280;
 const IDE_SIDEBAR_MIN_WIDTH = 220;
 const IDE_SIDEBAR_MAX_WIDTH = 520;
+const IDE_CHAT_WIDTH_STORAGE_KEY = "cybara.ide.chat.width";
+const IDE_CHAT_OPEN_STORAGE_KEY = "cybara.ide.chat.open";
+const IDE_CHAT_DEFAULT_WIDTH = 420;
+const IDE_CHAT_MIN_WIDTH = 320;
+const IDE_CHAT_MAX_WIDTH = 720;
 
 function clampSidebarWidth(width: number): number {
   if (!Number.isFinite(width)) return IDE_SIDEBAR_DEFAULT_WIDTH;
@@ -158,6 +215,34 @@ function readPersistedSidebarWidth(): number {
 function persistSidebarWidth(width: number): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(IDE_SIDEBAR_WIDTH_STORAGE_KEY, String(clampSidebarWidth(width)));
+}
+
+function clampChatWidth(width: number): number {
+  if (!Number.isFinite(width)) return IDE_CHAT_DEFAULT_WIDTH;
+  return Math.min(IDE_CHAT_MAX_WIDTH, Math.max(IDE_CHAT_MIN_WIDTH, Math.round(width)));
+}
+
+function readPersistedChatWidth(): number {
+  if (typeof window === "undefined") return IDE_CHAT_DEFAULT_WIDTH;
+  const raw = window.localStorage.getItem(IDE_CHAT_WIDTH_STORAGE_KEY);
+  if (!raw) return IDE_CHAT_DEFAULT_WIDTH;
+  const parsed = Number.parseInt(raw, 10);
+  return clampChatWidth(parsed);
+}
+
+function persistChatWidth(width: number): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(IDE_CHAT_WIDTH_STORAGE_KEY, String(clampChatWidth(width)));
+}
+
+function readPersistedChatOpen(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(IDE_CHAT_OPEN_STORAGE_KEY) === "1";
+}
+
+function persistChatOpen(isOpen: boolean): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(IDE_CHAT_OPEN_STORAGE_KEY, isOpen ? "1" : "0");
 }
 
 function getFileIcon(entry: FileEntry) {
@@ -246,6 +331,107 @@ function getPrismLanguage(ext?: string): string {
   return map[ext?.toLowerCase() || ""] || "plaintext";
 }
 
+function fileEntryFromPath(filePath: string): FileEntry {
+  const separatorIndex = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
+  const fileName = separatorIndex >= 0 ? filePath.slice(separatorIndex + 1) : filePath;
+  const extensionMatch = fileName.match(/(\.[^.\\/]+)$/);
+  return {
+    name: fileName,
+    path: filePath,
+    type: "file",
+    extension: extensionMatch?.[1],
+  };
+}
+
+function isMarkdownExtension(extension?: string): boolean {
+  const ext = (extension || "").toLowerCase();
+  return ext === ".md" || ext === ".markdown";
+}
+
+const ideMarkdownComponents: Components = {
+  h1: ({ children }) => <h1 className="mb-3 text-2xl font-semibold tracking-tight text-white">{children}</h1>,
+  h2: ({ children }) => <h2 className="mb-2.5 mt-5 text-xl font-semibold tracking-tight text-white">{children}</h2>,
+  h3: ({ children }) => <h3 className="mb-2 mt-4 text-lg font-semibold text-gray-100">{children}</h3>,
+  p: ({ children }) => <p className="mb-3 leading-7 text-gray-200 last:mb-0">{children}</p>,
+  ul: ({ children }) => <ul className="mb-3 list-disc pl-5 text-gray-200">{children}</ul>,
+  ol: ({ children }) => <ol className="mb-3 list-decimal pl-5 text-gray-200">{children}</ol>,
+  li: ({ children }) => <li className="mb-1">{children}</li>,
+  blockquote: ({ children }) => (
+    <blockquote className="my-4 border-l-2 border-indigo-400/50 pl-3 text-gray-300">{children}</blockquote>
+  ),
+  table: ({ children }) => (
+    <div className="my-4 overflow-x-auto rounded-xl border border-white/10 bg-black/20">
+      <table className="w-full border-collapse text-[12px]">{children}</table>
+    </div>
+  ),
+  thead: ({ children }) => <thead className="bg-white/[0.04]">{children}</thead>,
+  tr: ({ children }) => <tr className="border-b border-white/10 last:border-b-0">{children}</tr>,
+  th: ({ children }) => <th className="px-3 py-2 text-left font-semibold text-gray-100">{children}</th>,
+  td: ({ children }) => <td className="px-3 py-2 align-top text-gray-300">{children}</td>,
+  code: ({ className, children }) => {
+    const raw = String(children ?? "");
+    const isInline = !className && !raw.includes("\n");
+    if (isInline) {
+      return <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[12px] text-indigo-100">{children}</code>;
+    }
+    return <code className="font-mono text-[12px] text-gray-100">{children}</code>;
+  },
+  pre: ({ children }) => (
+    <pre className="my-4 overflow-x-auto rounded-xl border border-white/10 bg-black/45 p-3 text-[12px] leading-6 text-gray-100">
+      {children}
+    </pre>
+  ),
+  a: ({ href, children }) => (
+    <a
+      href={href}
+      className="text-indigo-300 underline decoration-indigo-400/50 underline-offset-2 hover:text-indigo-200"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      {children}
+    </a>
+  ),
+};
+
+function formatBlameStamp(value?: string): string {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatBlameDateTime(value?: string): string {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function scoreQuickOpenResult(relativePath: string, query: string): number {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return 0;
+  const normalizedPath = relativePath.toLowerCase();
+  const fileName = normalizedPath.split("/").pop() || normalizedPath;
+
+  if (fileName === normalizedQuery) return 0;
+  if (fileName.startsWith(normalizedQuery)) return 1;
+  const fileNameIndex = fileName.indexOf(normalizedQuery);
+  if (fileNameIndex >= 0) return 2 + fileNameIndex / 1000;
+  if (normalizedPath.includes(`/${normalizedQuery}`)) return 3;
+  const pathIndex = normalizedPath.indexOf(normalizedQuery);
+  if (pathIndex >= 0) return 4 + pathIndex / 10000;
+  return 10;
+}
+
 function getSeverityIcon(severity: "error" | "warning" | "info") {
   switch (severity) {
     case "error":
@@ -263,6 +449,7 @@ function FileTreeItem({
   isExpanded,
   onToggle,
   onSelect,
+  onContextMenu,
   isSelected,
 }: {
   entry: FileEntry;
@@ -270,6 +457,7 @@ function FileTreeItem({
   isExpanded?: boolean;
   onToggle?: () => void;
   onSelect: (entry: FileEntry) => void;
+  onContextMenu?: (entry: FileEntry, event: React.MouseEvent<HTMLDivElement>) => void;
   isSelected: boolean;
 }) {
   const isDir = entry.type === "directory";
@@ -280,7 +468,7 @@ function FileTreeItem({
   return (
     <div
       className={cn(
-        "flex items-center gap-2 px-2 py-1.5 cursor-pointer rounded-md transition-colors text-sm",
+        "flex items-center gap-2 px-2 py-1.5 cursor-pointer rounded-md transition-colors text-sm select-none",
         "!outline-none focus:!outline-none",
         isSelected
           ? "bg-indigo-500/20 text-indigo-300"
@@ -297,6 +485,16 @@ function FileTreeItem({
         } else {
           onSelect(entry);
         }
+      }}
+      onMouseDown={(event) => {
+        if (event.button === 2) {
+          event.preventDefault();
+        }
+      }}
+      onContextMenu={(event) => {
+        if (!onContextMenu) return;
+        event.preventDefault();
+        onContextMenu(entry, event);
       }}
     >
       {isDir ? (
@@ -343,6 +541,7 @@ function FileTree({
   level = 0,
   selectedPath,
   onSelectFile,
+  onContextMenu,
   expandedDirs,
   onToggleDir,
   filterQuery,
@@ -351,6 +550,7 @@ function FileTree({
   level?: number;
   selectedPath: string | null;
   onSelectFile: (entry: FileEntry) => void;
+  onContextMenu?: (entry: FileEntry, event: React.MouseEvent<HTMLDivElement>) => void;
   expandedDirs: Set<string>;
   onToggleDir: (path: string) => void;
   filterQuery: string;
@@ -426,6 +626,7 @@ function FileTree({
               isExpanded={isExpanded}
               onToggle={() => onToggleDir(entry.path)}
               onSelect={onSelectFile}
+              onContextMenu={onContextMenu}
               isSelected={selectedPath === entry.path}
             />
             {isDir && isExpanded && (
@@ -434,6 +635,7 @@ function FileTree({
                 level={level + 1}
                 selectedPath={selectedPath}
                 onSelectFile={onSelectFile}
+                onContextMenu={onContextMenu}
                 expandedDirs={expandedDirs}
                 onToggleDir={onToggleDir}
                 filterQuery={filterQuery}
@@ -448,20 +650,24 @@ function FileTree({
 
 function CodeViewer({
   path,
+  previewMode = false,
   autoRefresh,
   jumpToLineRequest,
   externalRefreshKey,
   saveRequestToken,
   onSaveSuccess,
   onCursorChange,
+  onOpenLocation,
 }: {
   path: string | null;
+  previewMode?: boolean;
   autoRefresh: boolean;
   jumpToLineRequest?: number | null;
   externalRefreshKey?: number;
   saveRequestToken?: number;
   onSaveSuccess?: () => void;
   onCursorChange?: (position: { line: number; column: number } | null) => void;
+  onOpenLocation?: (filePath: string, line: number) => void;
 }) {
   const [content, setContent] = useState<string | null>(null);
   const [editContent, setEditContent] = useState<string>("");
@@ -472,7 +678,11 @@ function CodeViewer({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isBinary, setIsBinary] = useState(false);
   const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
+  const [blameLines, setBlameLines] = useState<Map<number, IdeBlameLine>>(new Map());
+  const [blameLoading, setBlameLoading] = useState(false);
   const [activeLine, setActiveLine] = useState(1);
+  const [blamePopoverLine, setBlamePopoverLine] = useState<number | null>(null);
+  const [copiedCommit, setCopiedCommit] = useState<string | null>(null);
   const [cursorLine, setCursorLine] = useState(1);
   const [cursorColumn, setCursorColumn] = useState(1);
   const [findQuery, setFindQuery] = useState("");
@@ -483,10 +693,20 @@ function CodeViewer({
   const [showFindReplace, setShowFindReplace] = useState(false);
   const [scrollMetrics, setScrollMetrics] = useState({
     top: 0,
+    left: 0,
     height: 1,
+    width: 1,
     scrollHeight: 1,
+    scrollWidth: 1,
   });
   const [findReplaceValue, setFindReplaceValue] = useState("");
+  const [editorContextMenu, setEditorContextMenu] = useState<{
+    x: number;
+    y: number;
+    line: number;
+    column: number;
+  } | null>(null);
+  const [definitionLoading, setDefinitionLoading] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
   const highlightScrollRef = useRef<HTMLDivElement | null>(null);
   const gutterRef = useRef<HTMLDivElement | null>(null);
@@ -494,6 +714,7 @@ function CodeViewer({
   const replaceInputRef = useRef<HTMLInputElement | null>(null);
   const appliedJumpRequestRef = useRef<string>("");
   const hasUnsavedChangesRef = useRef(false);
+  const blameHideTimeoutRef = useRef<number | null>(null);
 
   const hasUnsavedChanges = editContent !== (content || "");
 
@@ -542,8 +763,42 @@ function CodeViewer({
     } catch {}
   }, [path]);
 
+  const fetchBlame = useCallback(async () => {
+    if (!path || isBinary) {
+      setBlameLines(new Map());
+      setBlameLoading(false);
+      return;
+    }
+
+    const contentLineCount = Math.max(1, (content || "").split("\n").length);
+    const maxBlameLines = Math.max(3000, Math.min(contentLineCount + 64, 50000));
+
+    setBlameLoading(true);
+    try {
+      const res = await apiFetch(
+        `/api/ide/blame?path=${encodeURIComponent(path)}&maxLines=${encodeURIComponent(String(maxBlameLines))}`
+      );
+      const data: IdeBlameResult = await res.json();
+      if (data.success && data.isRepo && Array.isArray(data.lines)) {
+        const nextMap = new Map<number, IdeBlameLine>();
+        for (const line of data.lines) {
+          nextMap.set(line.line, line);
+        }
+        setBlameLines(nextMap);
+      } else {
+        setBlameLines(new Map());
+      }
+    } catch {
+      setBlameLines(new Map());
+    } finally {
+      setBlameLoading(false);
+    }
+  }, [content, isBinary, path]);
+
   useEffect(() => {
     setDiagnostics([]);
+    setBlameLines(new Map());
+    setBlameLoading(false);
     setShowFindBar(false);
     setFindQuery("");
     setFindReplaceValue("");
@@ -551,9 +806,17 @@ function CodeViewer({
     setFindMatches([]);
     setActiveFindMatchIndex(0);
     setActiveLine(1);
+    if (blameHideTimeoutRef.current !== null) {
+      window.clearTimeout(blameHideTimeoutRef.current);
+      blameHideTimeoutRef.current = null;
+    }
+    setBlamePopoverLine(null);
+    setCopiedCommit(null);
     setCursorLine(1);
     setCursorColumn(1);
-    setScrollMetrics({ top: 0, height: 1, scrollHeight: 1 });
+    setScrollMetrics({ top: 0, left: 0, height: 1, width: 1, scrollHeight: 1, scrollWidth: 1 });
+    setEditorContextMenu(null);
+    setDefinitionLoading(false);
     onCursorChange?.(path ? { line: 1, column: 1 } : null);
     appliedJumpRequestRef.current = "";
     void fetchContent({ resetEditor: true });
@@ -562,8 +825,9 @@ function CodeViewer({
   useEffect(() => {
     if (content !== null && path) {
       fetchDiagnostics();
+      fetchBlame();
     }
-  }, [content, path, fetchDiagnostics]);
+  }, [content, path, fetchBlame, fetchDiagnostics]);
 
   useEffect(() => {
     if (!autoRefresh || !path) return;
@@ -578,19 +842,32 @@ function CodeViewer({
   }, [autoRefresh, path, fetchContent, fetchDiagnostics]);
 
   useEffect(() => {
+    return () => {
+      if (blameHideTimeoutRef.current !== null) {
+        window.clearTimeout(blameHideTimeoutRef.current);
+        blameHideTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!path) return;
     if (!externalRefreshKey || externalRefreshKey <= 0) return;
     if (hasUnsavedChangesRef.current) return;
     void fetchContent();
     void fetchDiagnostics();
-  }, [externalRefreshKey, fetchContent, fetchDiagnostics, path]);
+    void fetchBlame();
+  }, [externalRefreshKey, fetchBlame, fetchContent, fetchDiagnostics, path]);
 
   const updateScrollMetrics = useCallback((textarea: HTMLTextAreaElement | null) => {
     if (!textarea) return;
     setScrollMetrics({
       top: textarea.scrollTop,
+      left: textarea.scrollLeft,
       height: textarea.clientHeight || 1,
+      width: textarea.clientWidth || 1,
       scrollHeight: textarea.scrollHeight || 1,
+      scrollWidth: textarea.scrollWidth || 1,
     });
   }, []);
 
@@ -832,6 +1109,7 @@ function CodeViewer({
         onSaveSuccess?.();
         setTimeout(() => {
           void fetchDiagnostics();
+          void fetchBlame();
         }, 500);
       } else {
         setSaveError(data.error || "Failed to save");
@@ -840,7 +1118,7 @@ function CodeViewer({
       setSaveError(String(e));
     }
     setIsSaving(false);
-  }, [path, editContent, onSaveSuccess, fetchDiagnostics]);
+  }, [path, editContent, onSaveSuccess, fetchBlame, fetchDiagnostics]);
 
   useEffect(() => {
     if (!path || !saveRequestToken || saveRequestToken <= 0) return;
@@ -888,6 +1166,13 @@ function CodeViewer({
   }, [focusReplaceInput, handleSave, isBinary, isSaving, path, promptJumpToLine, showFindBar, toggleFindBar]);
 
   const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "F12") {
+      e.preventDefault();
+      e.stopPropagation();
+      void handleGoToDefinition();
+      return;
+    }
+
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
       e.preventDefault();
       e.stopPropagation();
@@ -930,6 +1215,99 @@ function CodeViewer({
       });
     }
   };
+
+  const handleEditorContextMenu = useCallback(
+    (event: React.MouseEvent<HTMLTextAreaElement>) => {
+      event.preventDefault();
+      const target = event.currentTarget;
+      target.focus();
+      const position = target.selectionStart ?? 0;
+      const cursor = getLineAndColumn(target.value, position);
+      setCursorLine(cursor.line);
+      setCursorColumn(cursor.column);
+      setActiveLine(cursor.line);
+      onCursorChange?.(cursor);
+      setEditorContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        line: cursor.line,
+        column: cursor.column,
+      });
+    },
+    [onCursorChange]
+  );
+
+  const closeEditorContextMenu = useCallback(() => {
+    setEditorContextMenu(null);
+  }, []);
+
+  const handleGoToDefinition = useCallback(async () => {
+    if (!path || !editorContextMenu) return;
+    setDefinitionLoading(true);
+    setSaveError(null);
+    try {
+      const params = new URLSearchParams({
+        path,
+        line: String(Math.max(editorContextMenu.line - 1, 0)),
+        character: String(Math.max(editorContextMenu.column - 1, 0)),
+      });
+      const response = await apiFetch(`/api/lsp/definition?${params.toString()}`);
+      const data = (await response.json()) as {
+        success?: boolean;
+        error?: string;
+        location?: { path?: string; line?: number; character?: number } | null;
+        locations?: Array<{ path?: string; line?: number; character?: number }> | null;
+      };
+      if (!data.success) {
+        setSaveError(data.error || "Failed to resolve definition");
+        return;
+      }
+      const primaryLocation =
+        data.location ||
+        (Array.isArray(data.locations) && data.locations.length > 0 ? data.locations[0] : null);
+      if (!primaryLocation?.path) {
+        setSaveError("No definition found at the current cursor.");
+        return;
+      }
+      if (onOpenLocation) {
+        onOpenLocation(
+          primaryLocation.path,
+          Number.isFinite(primaryLocation.line) ? (primaryLocation.line as number) + 1 : 1
+        );
+      } else {
+        setSaveError("Go to Definition is unavailable in this view.");
+      }
+    } catch (errorValue) {
+      setSaveError(String(errorValue));
+    } finally {
+      setDefinitionLoading(false);
+      closeEditorContextMenu();
+    }
+  }, [closeEditorContextMenu, editorContextMenu, onOpenLocation, path]);
+
+  useEffect(() => {
+    if (!editorContextMenu) return;
+
+    const handleClickAway = () => {
+      setEditorContextMenu(null);
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setEditorContextMenu(null);
+      }
+    };
+
+    window.addEventListener("mousedown", handleClickAway);
+    window.addEventListener("scroll", handleClickAway, true);
+    window.addEventListener("resize", handleClickAway);
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("mousedown", handleClickAway);
+      window.removeEventListener("scroll", handleClickAway, true);
+      window.removeEventListener("resize", handleClickAway);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [editorContextMenu]);
 
   useEffect(() => {
     if (!path || isBinary || !editorRef.current) return;
@@ -996,6 +1374,57 @@ function CodeViewer({
     lineDiagnostics.set(d.line, existing);
   });
 
+  const showInlineBlame = blameLoading || blameLines.size > 0;
+  const popoverBlameDetails = blamePopoverLine ? blameLines.get(blamePopoverLine) || null : null;
+  const popoverBlameTimestamp = formatBlameDateTime(popoverBlameDetails?.authorDate);
+  const isMarkdownPreview =
+    !isBinary &&
+    previewMode &&
+    (extension.toLowerCase() === ".md" || extension.toLowerCase() === ".markdown");
+  const editorContextMenuPosition = editorContextMenu
+    ? {
+        left:
+          typeof window !== "undefined"
+            ? Math.min(editorContextMenu.x, Math.max(window.innerWidth - 240, 8))
+            : editorContextMenu.x,
+        top:
+          typeof window !== "undefined"
+            ? Math.min(editorContextMenu.y, Math.max(window.innerHeight - 210, 8))
+            : editorContextMenu.y,
+      }
+    : null;
+
+  const handleCopyCommit = async (commit: string) => {
+    if (!commit) return;
+    try {
+      await navigator.clipboard.writeText(commit);
+      setCopiedCommit(commit);
+      window.setTimeout(() => setCopiedCommit(null), 1400);
+    } catch {
+      // Clipboard API can fail in locked-down contexts.
+    }
+  };
+
+  const clearBlameHideTimer = () => {
+    if (blameHideTimeoutRef.current !== null) {
+      window.clearTimeout(blameHideTimeoutRef.current);
+      blameHideTimeoutRef.current = null;
+    }
+  };
+
+  const showBlamePopover = (line: number) => {
+    clearBlameHideTimer();
+    setBlamePopoverLine(line);
+  };
+
+  const scheduleHideBlamePopover = () => {
+    clearBlameHideTimer();
+    blameHideTimeoutRef.current = window.setTimeout(() => {
+      setBlamePopoverLine(null);
+      blameHideTimeoutRef.current = null;
+    }, 130);
+  };
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {saveError && (
@@ -1004,7 +1433,7 @@ function CodeViewer({
         </div>
       )}
 
-      {!isBinary && showFindBar && (
+      {!isBinary && !isMarkdownPreview && showFindBar && (
         <div className="px-4 py-2 border-b border-white/10 bg-black/25 flex items-center gap-2">
           <Search className="w-3.5 h-3.5 text-gray-500" />
           <input
@@ -1077,7 +1506,7 @@ function CodeViewer({
         </div>
       )}
 
-      {!isBinary && showFindBar && showFindReplace && (
+      {!isBinary && !isMarkdownPreview && showFindBar && showFindReplace && (
         <div className="px-4 py-2 border-b border-white/10 bg-black/20 flex items-center gap-2">
           <input
             ref={replaceInputRef}
@@ -1117,6 +1546,14 @@ function CodeViewer({
               <File className="w-10 h-10 mx-auto mb-3 opacity-40" />
               <p>Binary file preview is read-only.</p>
             </div>
+          </div>
+        ) : isMarkdownPreview ? (
+          <div className="flex-1 min-w-0 overflow-auto px-8 py-6">
+            <article className="mx-auto w-full max-w-4xl">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={ideMarkdownComponents}>
+                {editContent}
+              </ReactMarkdown>
+            </article>
           </div>
         ) : (
           <>
@@ -1179,6 +1616,17 @@ function CodeViewer({
                           const lineDiags = lineDiagnostics.get(lineNum) || [];
                           const hasError = lineDiags.some((d) => d.severity === "error");
                           const hasWarning = lineDiags.some((d) => d.severity === "warning");
+                          const isActiveLine = activeLine === i + 1;
+                          const blameLine = blameLines.get(i + 1) || null;
+                          const blameDate = formatBlameStamp(blameLine?.authorDate);
+                          const blameSummary =
+                            blameLine?.summary || (blameLine?.isUncommitted ? "Uncommitted" : "");
+                          const blameText = blameLine
+                            ? `${blameLine.author} · ${blameLine.shortCommit}${blameDate ? ` · ${blameDate}` : ""}${blameSummary ? ` · ${blameSummary}` : ""}`
+                            : blameLoading
+                              ? "Loading history..."
+                              : "No history";
+                          const shouldShowLineBlame = isActiveLine && showInlineBlame;
                           const lineProps = getLineProps({ line });
                           return (
                           <div
@@ -1188,18 +1636,85 @@ function CodeViewer({
                             style={{ ...(lineProps.style || {}), height: "20px", lineHeight: "20px" }}
                             className={cn(
                               lineProps.className,
-                              "block h-[20px]",
+                              "h-[20px] w-max min-w-full flex items-center",
                               hasError && "bg-red-500/10",
                               hasWarning && !hasError && "bg-yellow-500/10",
-                              activeLine === i + 1 && "bg-indigo-500/20"
+                              isActiveLine && "bg-indigo-500/20"
                               )}
                             >
-                              {line.length > 0 ? (
-                                line.map((token, key) => (
-                                  <span key={key} {...getTokenProps({ token })} />
-                                ))
-                              ) : (
-                                <span>&nbsp;</span>
+                              <span className="flex-shrink-0">
+                                {line.length > 0 ? (
+                                  line.map((token, key) => (
+                                    <span key={key} {...getTokenProps({ token })} />
+                                  ))
+                                ) : (
+                                  <span>&nbsp;</span>
+                                )}
+                              </span>
+                              {shouldShowLineBlame && (
+                                <span className="relative ml-5 inline-flex max-w-[54vw] flex-shrink-0 items-center">
+                                  <button
+                                    type="button"
+                                    onMouseEnter={() => showBlamePopover(i + 1)}
+                                    onMouseLeave={scheduleHideBlamePopover}
+                                    disabled={!blameLine}
+                                    className={cn(
+                                      "max-w-full truncate border-0 bg-transparent p-0 text-left font-mono text-[13px] leading-[20px]",
+                                      blameLine ? "pointer-events-auto text-gray-500 hover:text-gray-300" : "text-gray-700 cursor-default"
+                                    )}
+                                    title={blameText}
+                                  >
+                                    {blameText}
+                                  </button>
+                                  {popoverBlameDetails && blamePopoverLine === i + 1 && (
+                                    <div
+                                      className="pointer-events-auto absolute left-0 top-[18px] z-30 mt-1 rounded-md border border-white/15 bg-black/80 px-2.5 py-2 text-[11px] text-gray-300 shadow-lg backdrop-blur min-w-[280px]"
+                                      onMouseEnter={clearBlameHideTimer}
+                                      onMouseLeave={scheduleHideBlamePopover}
+                                    >
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="font-medium text-emerald-200">Line {blamePopoverLine}</span>
+                                        <div className="flex items-center gap-1">
+                                          {!popoverBlameDetails.isUncommitted && (
+                                            <button
+                                              type="button"
+                                              onClick={() => void handleCopyCommit(popoverBlameDetails.commit)}
+                                              className="p-1 rounded border border-white/15 text-gray-300 hover:text-white hover:bg-white/10"
+                                              title={copiedCommit === popoverBlameDetails.commit ? "Copied" : "Copy commit hash"}
+                                            >
+                                              <Copy className="w-3 h-3" />
+                                            </button>
+                                          )}
+                                          {popoverBlameDetails.commitUrl && (
+                                            <a
+                                              href={popoverBlameDetails.commitUrl}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="p-1 rounded border border-white/15 text-indigo-300 hover:text-indigo-200 hover:bg-white/10"
+                                              title="Open commit details"
+                                            >
+                                              <ExternalLink className="w-3 h-3" />
+                                            </a>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div className="mt-1 text-[10px] text-gray-400">
+                                        {popoverBlameDetails.author}
+                                        {popoverBlameTimestamp ? ` · ${popoverBlameTimestamp}` : ""}
+                                      </div>
+                                      <div className="mt-1 text-[10px] text-gray-500 break-all">
+                                        {popoverBlameDetails.isUncommitted
+                                          ? "Uncommitted local changes"
+                                          : `${popoverBlameDetails.shortCommit} · ${popoverBlameDetails.commit}`}
+                                      </div>
+                                      {popoverBlameDetails.summary && (
+                                        <div className="mt-1 text-[11px] text-gray-300 break-words">
+                                          {popoverBlameDetails.summary}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </span>
                               )}
                             </div>
                           );
@@ -1209,14 +1724,15 @@ function CodeViewer({
                   </Highlight>
                 </div>
 
-                <textarea
-                  ref={editorRef}
-                  value={editContent}
+              <textarea
+                ref={editorRef}
+                value={editContent}
                   onChange={(e) => setEditContent(e.target.value)}
                   onKeyDown={handleEditorKeyDown}
                   onClick={(e) => updateCursorFromSelection(e.currentTarget)}
                   onKeyUp={(e) => updateCursorFromSelection(e.currentTarget)}
                   onSelect={(e) => updateCursorFromSelection(e.currentTarget)}
+                  onContextMenu={handleEditorContextMenu}
                   onScroll={(e) => syncEditorScroll(e.currentTarget)}
                 className="absolute inset-0 p-4 font-mono text-[13px] leading-[20px] bg-transparent text-transparent caret-indigo-200 resize-none !outline-none focus:!outline-none selection:bg-indigo-500/30"
                 spellCheck={false}
@@ -1229,6 +1745,14 @@ function CodeViewer({
                   margin: 0,
                 }}
               />
+              {blameLoading && (
+                <div className="absolute left-6 top-2 z-20 px-1 py-0.5 text-[12px] leading-[20px] text-gray-600">
+                  <div className="flex items-center gap-1.5">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span>Loading git history...</span>
+                  </div>
+                </div>
+              )}
               </div>
 
               <div className="w-24 shrink-0 border-l border-white/10 bg-[#080810] hidden xl:flex flex-col">
@@ -1304,6 +1828,45 @@ function CodeViewer({
                 </div>
               </button>
             ))}
+          </div>
+        </div>
+      )}
+      {editorContextMenu && editorContextMenuPosition && (
+        <div
+          className="fixed z-[85] min-w-[210px] rounded-md border border-white/15 bg-[#0a0a10] p-1 shadow-2xl"
+          style={{ left: `${editorContextMenuPosition.left}px`, top: `${editorContextMenuPosition.top}px` }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            disabled={definitionLoading}
+            onClick={() => {
+              void handleGoToDefinition();
+            }}
+            className={cn(
+              "w-full rounded px-2 py-1.5 text-left text-xs text-indigo-200 hover:bg-white/10 flex items-center gap-2",
+              definitionLoading && "opacity-60 cursor-not-allowed"
+            )}
+          >
+            {definitionLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ExternalLink className="w-3 h-3" />}
+            <span>{definitionLoading ? "Resolving definition..." : "Go to Definition"}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (navigator.clipboard?.writeText && path) {
+                void navigator.clipboard.writeText(path);
+              }
+              closeEditorContextMenu();
+            }}
+            className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10 flex items-center gap-2"
+          >
+            <Copy className="w-3 h-3" />
+            <span>Copy File Path</span>
+          </button>
+          <div className="my-1 h-px bg-white/10" />
+          <div className="px-2 py-1 text-[10px] text-gray-500">
+            Line {editorContextMenu.line}, Col {editorContextMenu.column}
           </div>
         </div>
       )}
@@ -1397,6 +1960,12 @@ function getActiveLanguageFromExtension(extension?: string | null): string | nul
     ".tsx": "typescript",
     ".js": "javascript",
     ".jsx": "javascript",
+    ".html": "html",
+    ".htm": "html",
+    ".css": "css",
+    ".scss": "css",
+    ".json": "json",
+    ".jsonc": "json",
     ".go": "go",
     ".rs": "rust",
     ".py": "python",
@@ -1492,14 +2061,311 @@ function GitStatus({ path, compact = false }: { path: string; compact?: boolean 
   );
 }
 
+function IDEChatPanel({
+  workspaceDir,
+  contextPath,
+  onClose,
+}: {
+  workspaceDir: string;
+  contextPath: string | null;
+  onClose: () => void;
+}) {
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<IdeChatMessage[]>([]);
+  const [agents, setAgents] = useState<IdeChatAgentOption[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState<string>("");
+  const [input, setInput] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [isReverting, setIsReverting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    list.scrollTop = list.scrollHeight;
+  }, [messages, isSending]);
+
+  useEffect(() => {
+    let isCancelled = false;
+    const loadAgents = async () => {
+      try {
+        const response = await agentsApi.list();
+        if (!response.success || !response.data || isCancelled) return;
+        const options = (response.data || [])
+          .map((agent) => ({
+            id: typeof agent.id === "string" ? agent.id : "",
+            name: typeof agent.name === "string" ? agent.name : "Agent",
+            status: typeof agent.status === "string" ? agent.status : undefined,
+          }))
+          .filter((agent) => agent.id);
+        setAgents(options);
+        if (!selectedAgentId && options.length === 1) {
+          setSelectedAgentId(options[0]?.id || "");
+        }
+      } catch {
+        // Keep chat usable with default agent fallback.
+      }
+    };
+    void loadAgents();
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedAgentId]);
+
+  const mapApiMessageToIde = useCallback((value: unknown): IdeChatMessage | null => {
+    if (!value || typeof value !== "object") return null;
+    const item = value as Record<string, unknown>;
+    const role = item.role === "assistant" || item.role === "user" ? item.role : null;
+    const content = typeof item.content === "string" ? item.content : "";
+    const timestamp =
+      typeof item.timestamp === "string" && item.timestamp
+        ? item.timestamp
+        : new Date().toISOString();
+    if (!role || !content.trim()) return null;
+    return { role, content, timestamp };
+  }, []);
+
+  const handleSend = useCallback(async () => {
+    const trimmed = input.trim();
+    if (!trimmed || isSending || isReverting) return;
+
+    const userMessage: IdeChatMessage = {
+      role: "user",
+      content: trimmed,
+      timestamp: new Date().toISOString(),
+    };
+    setMessages((previous) => [...previous, userMessage]);
+    setInput("");
+    setIsSending(true);
+    setError(null);
+
+    const contextualPrompt = contextPath
+      ? `${trimmed}\n\nCurrent IDE file context: ${contextPath}`
+      : trimmed;
+
+    try {
+      const response = await chatApi.send(
+        contextualPrompt,
+        selectedAgentId || undefined,
+        sessionId || undefined,
+        workspaceDir || null
+      );
+      if (!response.success || !response.data) {
+        setError(response.error || "Failed to send message");
+        return;
+      }
+      setSessionId(response.data.sessionId || sessionId);
+      const assistantContent = response.data.message?.content || "(No assistant response)";
+      const assistantMessage: IdeChatMessage = {
+        role: "assistant",
+        content: assistantContent,
+        timestamp: new Date().toISOString(),
+      };
+      setMessages((previous) => [...previous, assistantMessage]);
+    } catch (sendError) {
+      setError(String(sendError));
+    } finally {
+      setIsSending(false);
+    }
+  }, [contextPath, input, isReverting, isSending, selectedAgentId, sessionId, workspaceDir]);
+
+  const handleNewChat = useCallback(() => {
+    setSessionId(null);
+    setMessages([]);
+    setError(null);
+  }, []);
+
+  const handleRevertToHere = useCallback(
+    async (messageIndex: number) => {
+      if (!sessionId || isSending || isReverting) return;
+      const target = messages[messageIndex];
+      if (!target || target.role !== "user") return;
+      const confirmed = window.confirm(
+        "Revert this IDE chat session to this message? Later messages will be removed."
+      );
+      if (!confirmed) return;
+      setIsReverting(true);
+      setError(null);
+      try {
+        const response = await chatApi.revertSession(sessionId, {
+          messageIndex,
+          messageRole: target.role,
+          messageContent: target.content,
+          messageTimestamp: target.timestamp,
+        });
+        if (!response.success || !response.data) {
+          setError(response.error || "Failed to revert session");
+          return;
+        }
+        const revertedMessages = Array.isArray(response.data.messagesList)
+          ? response.data.messagesList
+              .map((message) => mapApiMessageToIde(message))
+              .filter((message): message is IdeChatMessage => !!message)
+          : [];
+        if (revertedMessages.length > 0) {
+          setMessages(revertedMessages);
+        } else {
+          setMessages(messages.slice(0, messageIndex + 1));
+        }
+        setInput(target.content);
+      } catch (revertError) {
+        setError(String(revertError));
+      } finally {
+        setIsReverting(false);
+      }
+    },
+    [isReverting, isSending, mapApiMessageToIde, messages, sessionId]
+  );
+
+  return (
+    <div className="h-full flex flex-col bg-[#0a0a12]">
+      <div className="h-9 px-3 border-b border-white/10 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-xs text-gray-400">
+          <MessageSquare className="w-3.5 h-3.5 text-indigo-300" />
+          <span>IDE Chat</span>
+          {sessionId && <span className="text-[10px] text-gray-600">{sessionId.slice(0, 8)}</span>}
+        </div>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleNewChat}
+            className="h-7 px-2 text-[11px]"
+            title="Start new IDE chat session"
+          >
+            New
+          </Button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded text-gray-500 hover:text-gray-300 hover:bg-white/5"
+            title="Close IDE chat"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {contextPath && (
+        <div className="px-3 py-2 border-b border-white/10 text-[11px] text-gray-500 truncate" title={contextPath}>
+          Context: {contextPath}
+        </div>
+      )}
+
+      <div ref={listRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+        {messages.length === 0 ? (
+          <div className="text-xs text-gray-500">
+            Ask about the current workspace or file. This panel shares session context while open.
+          </div>
+        ) : (
+          messages.map((message, index) => (
+            <div
+              key={`${message.role}:${message.timestamp}:${index}`}
+              className={cn(
+                "rounded-md px-2.5 py-2 text-xs whitespace-pre-wrap break-words border",
+                message.role === "user"
+                  ? "border-indigo-500/30 bg-indigo-500/10 text-indigo-100"
+                  : "border-white/10 bg-black/30 text-gray-200"
+              )}
+            >
+              <div className="mb-1 flex items-center justify-between gap-2 text-[10px] text-gray-500">
+                <span>{message.role === "user" ? "You" : "Assistant"}</span>
+                <div className="flex items-center gap-2">
+                  <span>{new Date(message.timestamp).toLocaleTimeString()}</span>
+                  {message.role === "user" && sessionId && (
+                    <button
+                      type="button"
+                      disabled={isReverting || isSending}
+                      onClick={() => void handleRevertToHere(index)}
+                      className="inline-flex items-center rounded border border-amber-500/30 bg-amber-500/10 p-1 text-amber-200 hover:bg-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Revert this IDE chat session to this message"
+                      aria-label="Revert to here"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              {message.content}
+            </div>
+          ))
+        )}
+        {isSending && (
+          <div className="text-xs text-gray-500 flex items-center gap-2">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            Thinking...
+          </div>
+        )}
+        {isReverting && (
+          <div className="text-xs text-gray-500 flex items-center gap-2">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            Reverting session...
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <div className="px-3 py-2 border-t border-red-500/20 bg-red-500/10 text-[11px] text-red-300">
+          {error}
+        </div>
+      )}
+
+      <div className="p-3 border-t border-white/10 space-y-2">
+        <textarea
+          value={input}
+          onChange={(event) => setInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              void handleSend();
+            }
+          }}
+          placeholder="Message IDE chat (Shift+Enter for newline)"
+          className="w-full min-h-[82px] max-h-56 px-2 py-1.5 rounded border border-white/10 bg-black/40 text-xs text-gray-200 !outline-none focus:border-indigo-500/40 resize-y"
+        />
+        <div className="flex items-center gap-2">
+          <select
+            value={selectedAgentId}
+            onChange={(event) => setSelectedAgentId(event.target.value)}
+            className="flex-1 min-w-0 px-2 py-1 rounded border border-white/10 bg-black/40 text-[11px] text-gray-200 !outline-none focus:border-indigo-500/40"
+            title="Agent for IDE chat"
+          >
+            <option value="">Default Agent</option>
+            {agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.name}
+                {agent.status ? ` (${agent.status})` : ""}
+              </option>
+            ))}
+          </select>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={isSending || isReverting || !input.trim()}
+            onClick={() => void handleSend()}
+            className="h-7 px-2.5"
+          >
+            {isSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MessageSquare className="w-3.5 h-3.5" />}
+            <span className="ml-1 text-xs">Send</span>
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function IDE() {
   const location = useLocation();
   const [currentPath, setCurrentPath] = useState<string>("~");
   const [selectedFile, setSelectedFile] = useState<FileEntry | null>(null);
+  const [openTabs, setOpenTabs] = useState<IdeTab[]>([]);
+  const [activeTabPath, setActiveTabPath] = useState<string | null>(null);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [treeFilter, setTreeFilter] = useState("");
   const [rootInfo, setRootInfo] = useState<BrowseResult | null>(null);
   const [createType, setCreateType] = useState<"file" | "directory" | null>(null);
+  const [createParentPath, setCreateParentPath] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [saveRequestToken, setSaveRequestToken] = useState(0);
   const [requestedJumpLine, setRequestedJumpLine] = useState<number | null>(null);
@@ -1523,8 +2389,12 @@ export function IDE() {
   const [quickOpenLoading, setQuickOpenLoading] = useState(false);
   const [quickOpenError, setQuickOpenError] = useState<string | null>(null);
   const [quickOpenSelectedIndex, setQuickOpenSelectedIndex] = useState(0);
+  const [treeContextMenu, setTreeContextMenu] = useState<TreeContextMenuState | null>(null);
+  const [isIdeChatOpen, setIsIdeChatOpen] = useState<boolean>(() => readPersistedChatOpen());
+  const [chatPanelWidth, setChatPanelWidth] = useState<number>(() => readPersistedChatWidth());
   const workspacePaneRef = useRef<HTMLDivElement | null>(null);
   const sidebarResizeCleanupRef = useRef<(() => void) | null>(null);
+  const chatResizeCleanupRef = useRef<(() => void) | null>(null);
   const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
   const treeFilterInputRef = useRef<HTMLInputElement | null>(null);
   const quickOpenInputRef = useRef<HTMLInputElement | null>(null);
@@ -1541,42 +2411,6 @@ export function IDE() {
     fetchRoot();
   }, [currentPath, refreshKey]);
 
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const rawPath = params.get("path");
-    if (!rawPath) return;
-    const targetPath = rawPath.trim();
-    if (!targetPath) return;
-
-    const lineRaw = params.get("line");
-    const parsedLine = lineRaw ? Number.parseInt(lineRaw, 10) : Number.NaN;
-    const targetLine = Number.isFinite(parsedLine) && parsedLine > 0 ? parsedLine : null;
-    setRequestedJumpLine(targetLine);
-
-    const separatorIndex = Math.max(targetPath.lastIndexOf("/"), targetPath.lastIndexOf("\\"));
-    const fileName = separatorIndex >= 0 ? targetPath.slice(separatorIndex + 1) : targetPath;
-    const directoryPath = separatorIndex >= 0 ? targetPath.slice(0, separatorIndex) : "";
-    const extensionMatch = fileName.match(/(\.[^.\\/]+)$/);
-    const extension = extensionMatch?.[1];
-
-    setSelectedFile({
-      name: fileName,
-      path: targetPath,
-      type: "file",
-      extension,
-    });
-    setTreeFilter("");
-
-    if (directoryPath) {
-      setCurrentPath((previous) => (previous === directoryPath ? previous : directoryPath));
-      setExpandedDirs((previous) => {
-        const next = new Set(previous);
-        next.add(directoryPath);
-        return next;
-      });
-    }
-  }, [location.search]);
-
   const handleToggleDir = (path: string) => {
     setExpandedDirs((prev) => {
       const next = new Set(prev);
@@ -1589,16 +2423,176 @@ export function IDE() {
     });
   };
 
-  const handleSelectFile = (entry: FileEntry) => {
-    if (entry.type === "file") {
-      setRequestedJumpLine(null);
+  const openFileInEditor = useCallback(
+    (entry: FileEntry, line?: number | null, options?: { previewMode?: boolean }) => {
+      if (entry.type !== "file") return;
+      const resolvedLine =
+        typeof line === "number" && Number.isFinite(line) && line > 0 ? Math.floor(line) : null;
+      const previewMode = options?.previewMode === true;
+      setRequestedJumpLine(resolvedLine);
       setSelectedFile(entry);
+      setActiveTabPath(entry.path);
+      setOpenTabs((previous) => {
+        const exists = previous.some((tab) => tab.path === entry.path);
+        const nextTab: IdeTab = {
+          path: entry.path,
+          name: entry.name,
+          extension: entry.extension,
+          previewMode,
+        };
+        if (exists) {
+          return previous.map((tab) => (tab.path === entry.path ? nextTab : tab));
+        }
+        return [...previous, nextTab];
+      });
+    },
+    []
+  );
+
+  const handleCloseTab = useCallback(
+    (targetPath: string) => {
+      setOpenTabs((previous) => {
+        const closingIndex = previous.findIndex((tab) => tab.path === targetPath);
+        if (closingIndex === -1) return previous;
+        const nextTabs = previous.filter((tab) => tab.path !== targetPath);
+        if (activeTabPath === targetPath) {
+          const fallback = nextTabs[Math.min(closingIndex, nextTabs.length - 1)];
+          if (fallback) {
+            const fallbackEntry = fileEntryFromPath(fallback.path);
+            setSelectedFile(fallbackEntry);
+            setActiveTabPath(fallback.path);
+            setRequestedJumpLine(null);
+          } else {
+            setSelectedFile(null);
+            setActiveTabPath(null);
+            setRequestedJumpLine(null);
+          }
+        }
+        return nextTabs;
+      });
+    },
+    [activeTabPath]
+  );
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const rawPath = params.get("path");
+    if (!rawPath) return;
+    const targetPath = rawPath.trim();
+    if (!targetPath) return;
+
+    const lineRaw = params.get("line");
+    const parsedLine = lineRaw ? Number.parseInt(lineRaw, 10) : Number.NaN;
+    const targetLine = Number.isFinite(parsedLine) && parsedLine > 0 ? parsedLine : null;
+    const targetEntry = fileEntryFromPath(targetPath);
+    const separatorIndex = Math.max(targetPath.lastIndexOf("/"), targetPath.lastIndexOf("\\"));
+    const directoryPath = separatorIndex >= 0 ? targetPath.slice(0, separatorIndex) : "";
+    openFileInEditor(targetEntry, targetLine);
+    setTreeFilter("");
+
+    if (directoryPath) {
+      setCurrentPath((previous) => (previous === directoryPath ? previous : directoryPath));
+      setExpandedDirs((previous) => {
+        const next = new Set(previous);
+        next.add(directoryPath);
+        return next;
+      });
     }
+  }, [location.search, openFileInEditor]);
+
+  const handleSelectFile = (entry: FileEntry) => {
+    openFileInEditor(entry, null, { previewMode: false });
   };
+
+  const handleTreeContextMenu = useCallback(
+    (entry: FileEntry, event: React.MouseEvent<HTMLDivElement>) => {
+      setTreeContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        entry,
+      });
+    },
+    []
+  );
+
+  const handleRevealInExplorer = useCallback(async (pathValue: string) => {
+    await apiFetch("/api/ide/reveal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: pathValue }),
+    });
+  }, []);
+
+  const handleSetWorkspacePath = useCallback((nextPath: string) => {
+    setCurrentPath(nextPath);
+    setSelectedFile(null);
+    setActiveTabPath(null);
+    setRequestedJumpLine(null);
+    setExpandedDirs(new Set());
+    setTreeFilter("");
+    setRefreshKey((previous) => previous + 1);
+  }, []);
+
+  const handleRenameEntry = useCallback(async (entry: FileEntry) => {
+    const proposed = window.prompt("Rename item", entry.name);
+    if (proposed === null) return;
+    const nextName = proposed.trim();
+    if (!nextName || nextName === entry.name) return;
+
+    const response = await apiFetch("/api/ide/rename", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: entry.path, newName: nextName }),
+    });
+    const data = await response.json();
+    if (!data?.success || typeof data.path !== "string") {
+      window.alert(data?.error || "Failed to rename item");
+      return;
+    }
+
+    const oldPath = entry.path;
+    const newPath = data.path as string;
+    const mapPath = (value: string): string => {
+      if (value === oldPath) return newPath;
+      const slashPrefix = `${oldPath}/`;
+      if (value.startsWith(slashPrefix)) {
+        return `${newPath}${value.slice(oldPath.length)}`;
+      }
+      const backslashPrefix = `${oldPath}\\`;
+      if (value.startsWith(backslashPrefix)) {
+        return `${newPath}${value.slice(oldPath.length)}`;
+      }
+      return value;
+    };
+
+    setOpenTabs((previous) =>
+      previous.map((tab) => {
+        const mapped = mapPath(tab.path);
+        if (mapped === tab.path) return tab;
+        const mappedEntry = fileEntryFromPath(mapped);
+        return {
+          ...tab,
+          path: mapped,
+          name: mappedEntry.name,
+          extension: mappedEntry.extension,
+        };
+      })
+    );
+    setSelectedFile((previous) => {
+      if (!previous) return previous;
+      const mapped = mapPath(previous.path);
+      if (mapped === previous.path) return previous;
+      return fileEntryFromPath(mapped);
+    });
+    setActiveTabPath((previous) => (previous ? mapPath(previous) : previous));
+    setTreeContextMenu(null);
+    setRefreshKey((previous) => previous + 1);
+  }, []);
 
   const handleGoHome = () => {
     setCurrentPath("~");
     setSelectedFile(null);
+    setActiveTabPath(null);
     setRequestedJumpLine(null);
     setExpandedDirs(new Set());
   };
@@ -1607,6 +2601,7 @@ export function IDE() {
     if (rootInfo?.parent) {
       setCurrentPath(rootInfo.parent);
       setSelectedFile(null);
+      setActiveTabPath(null);
       setRequestedJumpLine(null);
       setExpandedDirs(new Set());
     }
@@ -1644,22 +2639,10 @@ export function IDE() {
     return { query, line };
   }, []);
 
-  const openFileAtPath = useCallback((filePath: string, line?: number | null) => {
+  const openFileAtPath = useCallback((filePath: string, line?: number | null, previewMode?: boolean) => {
     const separatorIndex = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
-    const fileName = separatorIndex >= 0 ? filePath.slice(separatorIndex + 1) : filePath;
     const directoryPath = separatorIndex >= 0 ? filePath.slice(0, separatorIndex) : "";
-    const extensionMatch = fileName.match(/(\.[^.\\/]+)$/);
-    const extension = extensionMatch?.[1];
-    const resolvedLine =
-      typeof line === "number" && Number.isFinite(line) && line > 0 ? Math.floor(line) : null;
-
-    setRequestedJumpLine(resolvedLine);
-    setSelectedFile({
-      name: fileName,
-      path: filePath,
-      type: "file",
-      extension,
-    });
+    openFileInEditor(fileEntryFromPath(filePath), line, { previewMode: previewMode === true });
 
     if (directoryPath) {
       setCurrentPath((previous) => (previous === directoryPath ? previous : directoryPath));
@@ -1669,7 +2652,7 @@ export function IDE() {
         return next;
       });
     }
-  }, []);
+  }, [openFileInEditor]);
 
   const runGlobalSearch = useCallback(async () => {
     const query = globalSearchQuery.trim();
@@ -1729,10 +2712,19 @@ export function IDE() {
         const response = await apiFetch(`/api/ide/files?${params.toString()}`);
         const data: IdeListFilesResult = await response.json();
         if (data.success) {
-          setQuickOpenResults(data.files || []);
+          const rankedFiles = [...(data.files || [])].sort((left, right) => {
+            const leftScore = scoreQuickOpenResult(left.relativePath, query);
+            const rightScore = scoreQuickOpenResult(right.relativePath, query);
+            if (leftScore !== rightScore) return leftScore - rightScore;
+            if (left.relativePath.length !== right.relativePath.length) {
+              return left.relativePath.length - right.relativePath.length;
+            }
+            return left.relativePath.localeCompare(right.relativePath);
+          });
+          setQuickOpenResults(rankedFiles);
           setQuickOpenSelectedIndex((previous) => {
-            if (!data.files || data.files.length === 0) return 0;
-            return Math.min(previous, data.files.length - 1);
+            if (rankedFiles.length === 0) return 0;
+            return Math.min(previous, rankedFiles.length - 1);
           });
         } else {
           setQuickOpenResults([]);
@@ -1917,12 +2909,20 @@ export function IDE() {
 
       if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === "n") {
         event.preventDefault();
+        setCreateParentPath(rootInfo?.path || currentPath);
         setCreateType("file");
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key === "\\") {
+        event.preventDefault();
+        setIsIdeChatOpen((previous) => !previous);
         return;
       }
 
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "n") {
         event.preventDefault();
+        setCreateParentPath(rootInfo?.path || currentPath);
         setCreateType("directory");
         return;
       }
@@ -1949,9 +2949,11 @@ export function IDE() {
     return () => window.removeEventListener("keydown", handleGlobalSearchShortcut);
   }, [
     closeQuickOpenPalette,
+    currentPath,
     openMenu,
     openGlobalSearchPanel,
     openQuickOpenPalette,
+    rootInfo?.path,
     sidebarMode,
     showQuickOpen,
   ]);
@@ -1985,11 +2987,41 @@ export function IDE() {
     []
   );
 
+  const handleChatResizeStart = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const container = workspacePaneRef.current;
+    if (!container) return;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const bounds = container.getBoundingClientRect();
+      const nextWidth = clampChatWidth(bounds.right - moveEvent.clientX);
+      setChatPanelWidth(nextWidth);
+      persistChatWidth(nextWidth);
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.body.style.userSelect = "";
+      chatResizeCleanupRef.current = null;
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    document.body.style.userSelect = "none";
+    chatResizeCleanupRef.current = onMouseUp;
+  }, []);
+
   useEffect(() => {
     return () => {
       sidebarResizeCleanupRef.current?.();
+      chatResizeCleanupRef.current?.();
     };
   }, []);
+
+  useEffect(() => {
+    persistChatOpen(isIdeChatOpen);
+  }, [isIdeChatOpen]);
 
   useEffect(() => {
     if (!openMenu) return;
@@ -2002,6 +3034,38 @@ export function IDE() {
     window.addEventListener("mousedown", handleClickAway);
     return () => window.removeEventListener("mousedown", handleClickAway);
   }, [openMenu]);
+
+  useEffect(() => {
+    if (!treeContextMenu) return;
+    const handleClickAway = () => setTreeContextMenu(null);
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setTreeContextMenu(null);
+      }
+    };
+    window.addEventListener("mousedown", handleClickAway);
+    window.addEventListener("scroll", handleClickAway, true);
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("mousedown", handleClickAway);
+      window.removeEventListener("scroll", handleClickAway, true);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [treeContextMenu]);
+
+  const activeTab = openTabs.find((tab) => tab.path === (activeTabPath || selectedFile?.path || ""));
+  const contextMenuPosition = treeContextMenu
+    ? {
+        left:
+          typeof window !== "undefined"
+            ? Math.min(treeContextMenu.x, Math.max(window.innerWidth - 260, 8))
+            : treeContextMenu.x,
+        top:
+          typeof window !== "undefined"
+            ? Math.min(treeContextMenu.y, Math.max(window.innerHeight - 320, 8))
+            : treeContextMenu.y,
+      }
+    : null;
 
   return (
     <div className="h-screen flex flex-col bg-[#050508]">
@@ -2037,6 +3101,7 @@ export function IDE() {
               <button
                 type="button"
                 onClick={() => {
+                  setCreateParentPath(rootInfo?.path || currentPath);
                   setCreateType("file");
                   setOpenMenu(null);
                 }}
@@ -2048,6 +3113,7 @@ export function IDE() {
               <button
                 type="button"
                 onClick={() => {
+                  setCreateParentPath(rootInfo?.path || currentPath);
                   setCreateType("directory");
                   setOpenMenu(null);
                 }}
@@ -2077,6 +3143,16 @@ export function IDE() {
               >
                 <span>Show Search</span>
                 <span className="text-xs text-gray-500">Ctrl/Cmd+Shift+F</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsIdeChatOpen((previous) => !previous);
+                  setOpenMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm"
+              >
+                {isIdeChatOpen ? "Hide IDE Chat" : "Show IDE Chat"}
               </button>
               <button
                 type="button"
@@ -2113,10 +3189,26 @@ export function IDE() {
             </div>
           )}
         </div>
-        <div className="text-gray-500 truncate max-w-[60vw]" title={rootInfo?.path || currentPath}>
-          {(rootInfo?.path || currentPath)
-            .replace(/^\/Users\/[^/]+/, "~")
-            .replace(/^C:\\Users\\[^\\]+/, "~")}
+        <div className="flex items-center gap-2 min-w-0 max-w-[70vw]">
+          <div className="text-gray-500 truncate" title={rootInfo?.path || currentPath}>
+            {(rootInfo?.path || currentPath)
+              .replace(/^\/Users\/[^/]+/, "~")
+              .replace(/^C:\\Users\\[^\\]+/, "~")}
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsIdeChatOpen((previous) => !previous)}
+            className={cn(
+              "px-2 py-1 rounded text-xs border transition-colors flex items-center gap-1",
+              isIdeChatOpen
+                ? "border-indigo-500/40 bg-indigo-500/20 text-indigo-200"
+                : "border-white/10 text-gray-400 hover:text-gray-200 hover:bg-white/5"
+            )}
+            title={isIdeChatOpen ? "Hide IDE chat panel" : "Show IDE chat panel"}
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            Chat
+          </button>
         </div>
       </div>
 
@@ -2149,7 +3241,10 @@ export function IDE() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setCreateType("file")}
+                    onClick={() => {
+                      setCreateParentPath(rootInfo?.path || currentPath);
+                      setCreateType("file");
+                    }}
                     className="p-1"
                     title="New File"
                   >
@@ -2158,7 +3253,10 @@ export function IDE() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setCreateType("directory")}
+                    onClick={() => {
+                      setCreateParentPath(rootInfo?.path || currentPath);
+                      setCreateType("directory");
+                    }}
                     className="p-1"
                     title="New Folder"
                   >
@@ -2213,6 +3311,7 @@ export function IDE() {
                   path={rootInfo?.path || currentPath}
                   selectedPath={selectedFile?.path || null}
                   onSelectFile={handleSelectFile}
+                  onContextMenu={handleTreeContextMenu}
                   expandedDirs={expandedDirs}
                   onToggleDir={handleToggleDir}
                   filterQuery={treeFilter}
@@ -2423,16 +3522,92 @@ export function IDE() {
           />
         </div>
 
-        <div className="flex-1 flex flex-col overflow-hidden bg-[#0d0d12]">
-          <CodeViewer
-            path={selectedFile?.path || null}
-            autoRefresh={true}
-            jumpToLineRequest={requestedJumpLine}
-            externalRefreshKey={refreshKey}
-            saveRequestToken={saveRequestToken}
-            onSaveSuccess={handleRefresh}
-            onCursorChange={setCursorPosition}
-          />
+        <div className="flex-1 flex overflow-hidden bg-[#0d0d12]">
+          <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+            <div
+              className="h-9 border-b border-white/10 bg-black/20 flex items-center overflow-x-auto"
+              style={{ fontFamily: "var(--font-zed-ui), var(--font-ui), Inter, system-ui, sans-serif" }}
+            >
+              {openTabs.length > 0 ? (
+                openTabs.map((tab) => {
+                  const isActive = (activeTabPath || selectedFile?.path) === tab.path;
+                  return (
+                    <div
+                      key={`tab:${tab.path}`}
+                      className={cn(
+                        "h-full min-w-[160px] max-w-[320px] px-3 border-r border-white/10 flex items-center gap-2 text-xs",
+                        isActive
+                          ? "bg-indigo-500/20 text-indigo-200"
+                          : "bg-transparent text-gray-400 hover:text-gray-200 hover:bg-white/5"
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedFile(fileEntryFromPath(tab.path));
+                          setActiveTabPath(tab.path);
+                          setRequestedJumpLine(null);
+                        }}
+                        className="flex-1 min-w-0 truncate text-left"
+                        title={tab.path}
+                      >
+                        {tab.previewMode && (
+                          <Eye className="w-3 h-3 text-indigo-300/80 flex-shrink-0" />
+                        )}
+                        {tab.name}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleCloseTab(tab.path)}
+                        className="p-0.5 rounded text-gray-500 hover:text-gray-300 hover:bg-white/10"
+                        title="Close tab"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="px-3 text-xs text-gray-600">No open files</div>
+              )}
+            </div>
+
+            <CodeViewer
+              path={selectedFile?.path || null}
+              previewMode={activeTab?.previewMode === true}
+              autoRefresh={true}
+              jumpToLineRequest={requestedJumpLine}
+              externalRefreshKey={refreshKey}
+              saveRequestToken={saveRequestToken}
+              onSaveSuccess={handleRefresh}
+              onCursorChange={setCursorPosition}
+              onOpenLocation={(filePath, line) => {
+                openFileAtPath(filePath, line, false);
+              }}
+            />
+          </div>
+
+          {isIdeChatOpen && (
+            <>
+              <div
+                role="separator"
+                aria-label="Resize IDE chat panel"
+                aria-orientation="vertical"
+                onMouseDown={handleChatResizeStart}
+                className="w-1.5 cursor-col-resize bg-transparent hover:bg-indigo-500/40 transition-colors"
+              />
+              <div
+                className="border-l border-white/10 bg-[#0b0b12] h-full"
+                style={{ width: `${chatPanelWidth}px` }}
+              >
+                <IDEChatPanel
+                  workspaceDir={rootInfo?.path || currentPath}
+                  contextPath={selectedFile?.path || null}
+                  onClose={() => setIsIdeChatOpen(false)}
+                />
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -2523,6 +3698,131 @@ export function IDE() {
         </div>
       )}
 
+      {treeContextMenu &&
+        contextMenuPosition &&
+        (() => {
+          const entry = treeContextMenu.entry;
+          const separatorIndex = Math.max(entry.path.lastIndexOf("/"), entry.path.lastIndexOf("\\"));
+          const parentPath =
+            entry.type === "directory"
+              ? entry.path
+              : separatorIndex >= 0
+                ? entry.path.slice(0, separatorIndex)
+                : rootInfo?.path || currentPath;
+          return (
+            <div
+              className="fixed z-[80] min-w-[220px] rounded-md border border-white/15 bg-[#0a0a10] p-1 shadow-2xl"
+              style={{ left: `${contextMenuPosition.left}px`, top: `${contextMenuPosition.top}px` }}
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  if (entry.type === "file") {
+                    openFileInEditor(entry, null, { previewMode: false });
+                  } else {
+                    handleToggleDir(entry.path);
+                  }
+                  setTreeContextMenu(null);
+                }}
+                className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10"
+              >
+                {entry.type === "file" ? "Open" : expandedDirs.has(entry.path) ? "Collapse" : "Expand"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void handleRenameEntry(entry);
+                }}
+                className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10"
+              >
+                Rename
+              </button>
+              {entry.type === "file" && isMarkdownExtension(entry.extension) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    openFileInEditor(entry, null, { previewMode: true });
+                    setTreeContextMenu(null);
+                  }}
+                  className="w-full rounded px-2 py-1.5 text-left text-xs text-indigo-200 hover:bg-white/10"
+                >
+                  Open Preview
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  void handleRevealInExplorer(entry.path);
+                  setTreeContextMenu(null);
+                }}
+                className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10 flex items-center gap-1.5"
+              >
+                <ExternalLink className="w-3 h-3" />
+                <span>View in Explorer</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.clipboard?.writeText) {
+                    void navigator.clipboard.writeText(entry.path);
+                  }
+                  setTreeContextMenu(null);
+                }}
+                className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10 flex items-center gap-1.5"
+              >
+                <Copy className="w-3 h-3" />
+                <span>Copy Path</span>
+              </button>
+              {entry.type === "directory" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleSetWorkspacePath(entry.path);
+                    setTreeContextMenu(null);
+                  }}
+                  className="w-full rounded px-2 py-1.5 text-left text-xs text-emerald-200 hover:bg-white/10"
+                >
+                  Set Folder as Workspace
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  handleRefresh();
+                  setTreeContextMenu(null);
+                }}
+                className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10"
+              >
+                Refresh Explorer
+              </button>
+              <div className="my-1 h-px bg-white/10" />
+              <button
+                type="button"
+                onClick={() => {
+                  setCreateParentPath(parentPath);
+                  setCreateType("file");
+                  setTreeContextMenu(null);
+                }}
+                className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10"
+              >
+                New File Here
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCreateParentPath(parentPath);
+                  setCreateType("directory");
+                  setTreeContextMenu(null);
+                }}
+                className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10"
+              >
+                New Folder Here
+              </button>
+            </div>
+          );
+        })()}
+
       <div className="h-8 border-t border-white/10 bg-black/30 px-3 flex items-center justify-between text-xs">
         <div className="flex items-center gap-3">
           <span className="text-gray-600">Ready</span>
@@ -2542,8 +3842,11 @@ export function IDE() {
       <CreateDialog
         isOpen={createType !== null}
         type={createType || "file"}
-        parentPath={rootInfo?.path || currentPath}
-        onClose={() => setCreateType(null)}
+        parentPath={createParentPath || rootInfo?.path || currentPath}
+        onClose={() => {
+          setCreateType(null);
+          setCreateParentPath(null);
+        }}
         onSuccess={handleRefresh}
       />
     </div>

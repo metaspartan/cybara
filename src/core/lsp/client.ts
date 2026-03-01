@@ -9,6 +9,7 @@ import type {
   TextDocumentPositionParams,
   ReferenceParams,
   PublishDiagnosticsParams,
+  DefinitionResult,
   Location,
   Hover,
 } from "./types";
@@ -148,7 +149,7 @@ export class LSPClient extends EventEmitter {
     this.notify("textDocument/didClose", params);
   }
 
-  async definition(params: TextDocumentPositionParams): Promise<Location | Location[] | null> {
+  async definition(params: TextDocumentPositionParams): Promise<DefinitionResult> {
     return this.request("textDocument/definition", params);
   }
 

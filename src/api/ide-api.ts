@@ -1,4 +1,4 @@
-import { readdir, readFile, stat, writeFile, mkdir } from "fs/promises";
+import { readdir, readFile, stat, writeFile, mkdir, rename } from "fs/promises";
 import { join, basename, extname, dirname, resolve, relative, isAbsolute } from "path";
 import { homedir } from "os";
 import { existsSync, realpathSync } from "fs";
@@ -124,6 +124,32 @@ export interface IdeListFilesResult {
   totalFiles: number;
   truncated: boolean;
   files: Array<{ path: string; relativePath: string }>;
+  error?: string;
+}
+
+export interface IdeBlameLine {
+  line: number;
+  commit: string;
+  shortCommit: string;
+  author: string;
+  authorDate?: string;
+  summary?: string;
+  commitUrl?: string;
+  isUncommitted: boolean;
+}
+
+export interface IdeBlameResult {
+  success: boolean;
+  path: string;
+  isRepo: boolean;
+  truncated: boolean;
+  lines: IdeBlameLine[];
+  error?: string;
+}
+
+export interface RevealResult {
+  success: boolean;
+  path: string;
   error?: string;
 }
 
@@ -391,6 +417,13 @@ export interface CreateResult {
   error?: string;
 }
 
+export interface RenameResult {
+  success: boolean;
+  path: string;
+  oldPath: string;
+  error?: string;
+}
+
 export async function writeFileContent(inputPath: string, content: string): Promise<WriteResult> {
   const targetPath = normalizePath(inputPath);
 
@@ -519,6 +552,105 @@ export async function createItem(
       path: targetPath,
       type,
       error: `Failed to create ${type}: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+}
+
+export async function renameItem(inputPath: string, newName: string): Promise<RenameResult> {
+  const targetPath = normalizePath(inputPath);
+  const nextName = newName.trim();
+
+  if (!nextName) {
+    return {
+      success: false,
+      oldPath: targetPath,
+      path: targetPath,
+      error: "Name cannot be empty",
+    };
+  }
+
+  if (nextName.includes("/") || nextName.includes("\\") || nextName.includes("..")) {
+    return {
+      success: false,
+      oldPath: targetPath,
+      path: targetPath,
+      error: "Invalid name: cannot contain path separators",
+    };
+  }
+
+  if (!isPathAllowed(targetPath)) {
+    return {
+      success: false,
+      oldPath: targetPath,
+      path: targetPath,
+      error: "Access denied: Path outside home directory",
+    };
+  }
+
+  if (!existsSync(targetPath)) {
+    return {
+      success: false,
+      oldPath: targetPath,
+      path: targetPath,
+      error: "Path does not exist",
+    };
+  }
+
+  const parentPath = dirname(targetPath);
+  const nextPath = join(parentPath, nextName);
+  if (!isPathAllowed(nextPath)) {
+    return {
+      success: false,
+      oldPath: targetPath,
+      path: nextPath,
+      error: "Access denied: Path outside home directory",
+    };
+  }
+
+  if (existsSync(nextPath)) {
+    return {
+      success: false,
+      oldPath: targetPath,
+      path: nextPath,
+      error: "A file or directory with that name already exists",
+    };
+  }
+
+  const canonicalParentDir = resolveCanonicalPath(parentPath);
+  if (!isWithinHome(canonicalParentDir)) {
+    return {
+      success: false,
+      oldPath: targetPath,
+      path: nextPath,
+      error: "Access denied: Path outside home directory",
+    };
+  }
+
+  if (existsSync(targetPath)) {
+    const canonicalTargetPath = resolveCanonicalPath(targetPath);
+    if (!isWithinHome(canonicalTargetPath)) {
+      return {
+        success: false,
+        oldPath: targetPath,
+        path: nextPath,
+        error: "Access denied: Path outside home directory",
+      };
+    }
+  }
+
+  try {
+    await rename(targetPath, nextPath);
+    return {
+      success: true,
+      oldPath: targetPath,
+      path: nextPath,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      oldPath: targetPath,
+      path: nextPath,
+      error: error instanceof Error ? error.message : String(error),
     };
   }
 }
@@ -956,4 +1088,305 @@ export async function listWorkspaceFiles(
     truncated,
     files,
   };
+}
+
+function parseBlamePorcelain(output: string): IdeBlameLine[] {
+  const rows = output.split("\n");
+  const lines: IdeBlameLine[] = [];
+  let index = 0;
+
+  while (index < rows.length) {
+    const header = rows[index] || "";
+    const headerMatch = header.match(/^([0-9a-f]{40}|\^[0-9a-f]{40})\s+\d+\s+(\d+)\s+\d+$/i);
+    if (!headerMatch) {
+      index += 1;
+      continue;
+    }
+
+    const rawCommit = (headerMatch[1] || "").replace(/^\^/, "");
+    const lineNumber = Number.parseInt(headerMatch[2] || "", 10);
+    let author = "";
+    let authorTime = "";
+    let summary = "";
+    index += 1;
+
+    while (index < rows.length) {
+      const row = rows[index] || "";
+      if (row.startsWith("\t")) {
+        index += 1;
+        break;
+      }
+
+      if (row.startsWith("author ")) {
+        author = row.slice(7).trim();
+      } else if (row.startsWith("author-time ")) {
+        authorTime = row.slice(12).trim();
+      } else if (row.startsWith("summary ")) {
+        summary = row.slice(8).trim();
+      }
+      index += 1;
+    }
+
+    if (!Number.isFinite(lineNumber) || lineNumber <= 0) continue;
+    const parsedTime = Number.parseInt(authorTime, 10);
+    const isUncommitted = /^0+$/.test(rawCommit);
+    lines.push({
+      line: lineNumber,
+      commit: rawCommit,
+      shortCommit: isUncommitted ? "working" : rawCommit.slice(0, 8),
+      author: author || "Unknown",
+      authorDate: Number.isFinite(parsedTime) ? new Date(parsedTime * 1000).toISOString() : undefined,
+      summary: summary || undefined,
+      isUncommitted,
+    });
+  }
+
+  return lines.sort((a, b) => a.line - b.line);
+}
+
+function normalizeGitRemoteToHttpBase(remoteUrl: string): string | null {
+  const trimmed = remoteUrl.trim().replace(/\/+$/, "");
+  if (!trimmed) return null;
+
+  const normalizePath = (value: string): string => value.replace(/\.git$/i, "").replace(/\/+$/, "");
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const parsed = new URL(trimmed);
+      parsed.pathname = normalizePath(parsed.pathname);
+      parsed.search = "";
+      parsed.hash = "";
+      return parsed.toString().replace(/\/+$/, "");
+    } catch {
+      return null;
+    }
+  }
+
+  const sshLike = trimmed.match(/^git@([^:]+):(.+)$/i);
+  if (sshLike) {
+    const host = sshLike[1] || "";
+    const repoPath = normalizePath(sshLike[2] || "");
+    return host && repoPath ? `https://${host}/${repoPath}` : null;
+  }
+
+  const sshUrl = trimmed.match(/^ssh:\/\/(?:.+@)?([^/]+)\/(.+)$/i);
+  if (sshUrl) {
+    const host = sshUrl[1] || "";
+    const repoPath = normalizePath(sshUrl[2] || "");
+    return host && repoPath ? `https://${host}/${repoPath}` : null;
+  }
+
+  return null;
+}
+
+function buildCommitUrl(remoteBaseUrl: string, commit: string): string {
+  if (/bitbucket\.org/i.test(remoteBaseUrl)) {
+    return `${remoteBaseUrl}/commits/${commit}`;
+  }
+  return `${remoteBaseUrl}/commit/${commit}`;
+}
+
+function getRepositoryCommitBaseUrl(repoRoot: string): string | null {
+  const proc = Bun.spawnSync(["git", "config", "--get", "remote.origin.url"], {
+    cwd: repoRoot,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if ((proc.exitCode ?? 1) !== 0) return null;
+  const remoteUrl = proc.stdout.toString().trim();
+  return normalizeGitRemoteToHttpBase(remoteUrl);
+}
+
+export async function getFileBlame(
+  inputPath: string,
+  options?: { maxLines?: number }
+): Promise<IdeBlameResult> {
+  const targetPath = normalizePath(inputPath);
+
+  if (!isPathAllowed(targetPath)) {
+    return {
+      success: false,
+      path: targetPath,
+      isRepo: false,
+      truncated: false,
+      lines: [],
+      error: "Access denied: Path outside home directory",
+    };
+  }
+
+  if (!existsSync(targetPath)) {
+    return {
+      success: false,
+      path: targetPath,
+      isRepo: false,
+      truncated: false,
+      lines: [],
+      error: "File does not exist",
+    };
+  }
+
+  const canonicalTargetPath = resolveCanonicalPath(targetPath);
+  if (!isWithinHome(canonicalTargetPath)) {
+    return {
+      success: false,
+      path: targetPath,
+      isRepo: false,
+      truncated: false,
+      lines: [],
+      error: "Access denied: Path outside home directory",
+    };
+  }
+
+  try {
+    const targetStats = await stat(targetPath);
+    if (!targetStats.isFile()) {
+      return {
+        success: false,
+        path: targetPath,
+        isRepo: false,
+        truncated: false,
+        lines: [],
+        error: "Path is not a file",
+      };
+    }
+
+    const gitStatus = await getGitStatus(dirname(targetPath));
+    if (!gitStatus.isRepo || !gitStatus.root) {
+      return {
+        success: true,
+        path: targetPath,
+        isRepo: false,
+        truncated: false,
+        lines: [],
+      };
+    }
+
+    const maxLines = Math.max(1, Math.min(options?.maxLines || 10000, 50000));
+    const content = await readFile(targetPath, "utf-8");
+    const totalLines = Math.max(1, content.split("\n").length);
+    const lineLimit = Math.min(totalLines, maxLines);
+    const truncated = totalLines > lineLimit;
+    const relativePath = relative(gitStatus.root, targetPath).replaceAll("\\", "/");
+
+    const proc = Bun.spawn(["git", "blame", "--line-porcelain", "-L", `1,${lineLimit}`, "--", relativePath], {
+      cwd: gitStatus.root,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    if (exitCode !== 0) {
+      return {
+        success: false,
+        path: targetPath,
+        isRepo: true,
+        truncated,
+        lines: [],
+        error: stderr.trim() || "Failed to run git blame",
+      };
+    }
+
+    const commitBaseUrl = getRepositoryCommitBaseUrl(gitStatus.root);
+    const parsedLines = parseBlamePorcelain(stdout).map((line) => ({
+      ...line,
+      commitUrl:
+        commitBaseUrl && !line.isUncommitted && line.commit
+          ? buildCommitUrl(commitBaseUrl, line.commit)
+          : undefined,
+    }));
+
+    return {
+      success: true,
+      path: targetPath,
+      isRepo: true,
+      truncated,
+      lines: parsedLines,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      path: targetPath,
+      isRepo: false,
+      truncated: false,
+      lines: [],
+      error: `Failed to read blame: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+export async function revealInSystemExplorer(inputPath: string): Promise<RevealResult> {
+  const targetPath = normalizePath(inputPath);
+  if (!isPathAllowed(targetPath)) {
+    return {
+      success: false,
+      path: targetPath,
+      error: "Access denied: Path outside home directory",
+    };
+  }
+
+  if (!existsSync(targetPath)) {
+    return {
+      success: false,
+      path: targetPath,
+      error: "Path does not exist",
+    };
+  }
+
+  const canonicalTargetPath = resolveCanonicalPath(targetPath);
+  if (!isWithinHome(canonicalTargetPath)) {
+    return {
+      success: false,
+      path: targetPath,
+      error: "Access denied: Path outside home directory",
+    };
+  }
+
+  try {
+    const targetStats = await stat(targetPath);
+    if (process.platform === "darwin") {
+      const args = targetStats.isDirectory() ? [targetPath] : ["-R", targetPath];
+      const result = Bun.spawnSync(["open", ...args], { stdout: "pipe", stderr: "pipe" });
+      if ((result.exitCode ?? 1) !== 0) {
+        return {
+          success: false,
+          path: targetPath,
+          error: result.stderr.toString().trim() || "Failed to open Finder",
+        };
+      }
+      return { success: true, path: targetPath };
+    }
+
+    if (process.platform === "win32") {
+      const args = targetStats.isDirectory() ? [targetPath] : [`/select,${targetPath}`];
+      const result = Bun.spawnSync(["explorer", ...args], { stdout: "pipe", stderr: "pipe" });
+      if ((result.exitCode ?? 1) !== 0) {
+        return {
+          success: false,
+          path: targetPath,
+          error: result.stderr.toString().trim() || "Failed to open Explorer",
+        };
+      }
+      return { success: true, path: targetPath };
+    }
+
+    const fallbackTarget = targetStats.isDirectory() ? targetPath : dirname(targetPath);
+    const result = Bun.spawnSync(["xdg-open", fallbackTarget], { stdout: "pipe", stderr: "pipe" });
+    if ((result.exitCode ?? 1) !== 0) {
+      return {
+        success: false,
+        path: targetPath,
+        error: result.stderr.toString().trim() || "Failed to open file manager",
+      };
+    }
+    return { success: true, path: targetPath };
+  } catch (error) {
+    return {
+      success: false,
+      path: targetPath,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }

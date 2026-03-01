@@ -1,5 +1,5 @@
 import { LSPClient } from "./client";
-import { getLanguageId, type Diagnostic, type Location, type Hover } from "./types";
+import { getLanguageId, type DefinitionResult, type Diagnostic, type Location, type Hover } from "./types";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { cybaraDir } from "../paths";
@@ -16,6 +16,7 @@ const BUNDLED_LANGUAGES = new Set([
 export interface LSPServerConfig {
   command: string;
   args?: string[];
+  fallbackCommands?: string[];
   disabled?: boolean;
 }
 
@@ -26,11 +27,35 @@ export interface LSPConfig {
 const DEFAULT_LSP_CONFIG: LSPConfig = {
   lsp: {
     typescript: {
-      command: "typescript-language-server",
+      command: "vtsls",
       args: ["--stdio"],
+      fallbackCommands: ["typescript-language-server"],
     },
     javascript: {
-      command: "typescript-language-server",
+      command: "vtsls",
+      args: ["--stdio"],
+      fallbackCommands: ["typescript-language-server"],
+    },
+    html: {
+      command: "tailwindcss-language-server",
+      args: ["--stdio"],
+      fallbackCommands: ["vscode-html-language-server"],
+    },
+    css: {
+      command: "tailwindcss-language-server",
+      args: ["--stdio"],
+      fallbackCommands: ["vscode-css-language-server"],
+    },
+    json: {
+      command: "vscode-json-language-server",
+      args: ["--stdio"],
+    },
+    tailwindcss: {
+      command: "tailwindcss-language-server",
+      args: ["--stdio"],
+    },
+    eslint: {
+      command: "vscode-eslint-language-server",
       args: ["--stdio"],
     },
     python: {
@@ -50,6 +75,11 @@ const LANGUAGE_TO_CONFIG: Record<string, string> = {
   typescriptreact: "typescript",
   javascript: "javascript",
   javascriptreact: "javascript",
+  html: "html",
+  css: "css",
+  scss: "css",
+  json: "json",
+  tailwindcss: "tailwindcss",
   python: "python",
   go: "go",
   rust: "rust",
@@ -75,7 +105,21 @@ export class LSPManager {
     if (existsSync(configPath)) {
       try {
         const content = readFileSync(configPath, "utf-8");
-        return JSON.parse(content) as LSPConfig;
+        const parsed = JSON.parse(content) as LSPConfig;
+        const merged: LSPConfig = {
+          lsp: { ...DEFAULT_LSP_CONFIG.lsp, ...(parsed?.lsp || {}) },
+        };
+        let changed = false;
+        for (const [language, defaultConfig] of Object.entries(DEFAULT_LSP_CONFIG.lsp)) {
+          if (!parsed?.lsp || !parsed.lsp[language]) {
+            changed = true;
+            merged.lsp[language] = { ...defaultConfig };
+          }
+        }
+        if (changed) {
+          writeFileSync(configPath, JSON.stringify(merged, null, 2));
+        }
+        return merged;
       } catch (err) {
         console.warn("[LSP Manager] Failed to load config, using defaults:", err);
       }
@@ -110,28 +154,32 @@ export class LSPManager {
       }
     }
 
-    try {
-      console.log(`[LSP Manager] Starting ${configKey} language server...`);
-      const client = new LSPClient(
-        serverConfig.command,
-        serverConfig.args || [],
-        this.workspaceUri
-      );
+    const commands = [serverConfig.command, ...(serverConfig.fallbackCommands || [])].filter(
+      (value, index, self) => !!value && self.indexOf(value) === index
+    );
 
-      await client.start();
-      await client.initialize();
+    let lastError: unknown = null;
+    for (const command of commands) {
+      try {
+        console.log(`[LSP Manager] Starting ${configKey} language server (${command})...`);
+        const client = new LSPClient(command, serverConfig.args || [], this.workspaceUri);
 
-      client.on("diagnostics", (params) => {
-        this.diagnosticsCache.set(params.uri, params.diagnostics);
-      });
+        await client.start();
+        await client.initialize();
 
-      this.clients.set(configKey, client);
-      console.log(`[LSP Manager] ${configKey} server ready`);
-      return client;
-    } catch (err) {
-      console.error(`[LSP Manager] Failed to start ${configKey} server:`, err);
-      return null;
+        client.on("diagnostics", (params) => {
+          this.diagnosticsCache.set(params.uri, params.diagnostics);
+        });
+
+        this.clients.set(configKey, client);
+        console.log(`[LSP Manager] ${configKey} server ready (${command})`);
+        return client;
+      } catch (err) {
+        lastError = err;
+      }
     }
+    console.error(`[LSP Manager] Failed to start ${configKey} server:`, lastError);
+    return null;
   }
 
   async getClientForFile(filePath: string): Promise<LSPClient | null> {
@@ -207,7 +255,7 @@ export class LSPManager {
     filePath: string,
     line: number,
     character: number
-  ): Promise<Location | Location[] | null> {
+  ): Promise<DefinitionResult> {
     const client = await this.getClientForFile(filePath);
     if (!client) return null;
 
@@ -270,11 +318,15 @@ export class LSPManager {
 
     try {
       const checkCmd = process.platform === "win32" ? "where" : "which";
-      const result = Bun.spawnSync([checkCmd, config.command], {
-        stdout: "ignore",
-        stderr: "ignore",
-      });
-      return (result.exitCode ?? 1) === 0;
+      const commands = [config.command, ...(config.fallbackCommands || [])].filter(Boolean);
+      for (const command of commands) {
+        const result = Bun.spawnSync([checkCmd, command], {
+          stdout: "ignore",
+          stderr: "ignore",
+        });
+        if ((result.exitCode ?? 1) === 0) return true;
+      }
+      return false;
     } catch {
       return false;
     }

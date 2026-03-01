@@ -37,6 +37,7 @@ export interface LSPInfo {
   description: string;
   type: "binary" | "pip" | "go" | "gem" | "bun" | "bundled";
   binaryName: string;
+  installPackage?: string;
   downloadUrls?: Record<string, string>;
   installCommand?: string;
   requiresRuntime?: string;
@@ -59,6 +60,72 @@ export const LSP_REGISTRY: Record<string, LSPInfo> = {
     type: "bundled",
     binaryName: "",
     fileExtensions: [".js", ".jsx", ".mjs", ".cjs"],
+  },
+  vtsls: {
+    name: "vtsls",
+    displayName: "VTSLS",
+    description: "vtsls - Faster TypeScript/JavaScript language server",
+    type: "bun",
+    binaryName: "vtsls",
+    installPackage: "@vtsls/language-server",
+    installCommand: "bun install -g @vtsls/language-server",
+    requiresRuntime: "bun",
+    fileExtensions: [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"],
+  },
+  tailwindcss: {
+    name: "tailwindcss",
+    displayName: "Tailwind CSS",
+    description: "tailwindcss-language-server - IntelliSense for Tailwind CSS",
+    type: "bun",
+    binaryName: "tailwindcss-language-server",
+    installPackage: "@tailwindcss/language-server",
+    installCommand: "bun install -g @tailwindcss/language-server",
+    requiresRuntime: "bun",
+    fileExtensions: [".html", ".css", ".scss", ".ts", ".tsx", ".js", ".jsx"],
+  },
+  eslint: {
+    name: "eslint",
+    displayName: "ESLint",
+    description: "vscode-eslint-language-server - ESLint language server",
+    type: "bun",
+    binaryName: "vscode-eslint-language-server",
+    installPackage: "vscode-langservers-extracted",
+    installCommand: "bun install -g vscode-langservers-extracted",
+    requiresRuntime: "bun",
+    fileExtensions: [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"],
+  },
+  html: {
+    name: "html",
+    displayName: "HTML",
+    description: "vscode-html-language-server - HTML language support",
+    type: "bun",
+    binaryName: "vscode-html-language-server",
+    installPackage: "vscode-langservers-extracted",
+    installCommand: "bun install -g vscode-langservers-extracted",
+    requiresRuntime: "bun",
+    fileExtensions: [".html", ".htm"],
+  },
+  css: {
+    name: "css",
+    displayName: "CSS",
+    description: "vscode-css-language-server - CSS and SCSS language support",
+    type: "bun",
+    binaryName: "vscode-css-language-server",
+    installPackage: "vscode-langservers-extracted",
+    installCommand: "bun install -g vscode-langservers-extracted",
+    requiresRuntime: "bun",
+    fileExtensions: [".css", ".scss", ".less"],
+  },
+  json: {
+    name: "json",
+    displayName: "JSON",
+    description: "vscode-json-language-server - JSON language support",
+    type: "bun",
+    binaryName: "vscode-json-language-server",
+    installPackage: "vscode-langservers-extracted",
+    installCommand: "bun install -g vscode-langservers-extracted",
+    requiresRuntime: "bun",
+    fileExtensions: [".json", ".jsonc"],
   },
   rust: {
     name: "rust",
@@ -532,7 +599,8 @@ async function installBun(info: LSPInfo, lspDir: string): Promise<InstallResult>
 
   console.log(`[LSP Installer] Installing ${info.displayName} via bun...`);
 
-  const result = Bun.spawnSync(["bun", "install", "-g", info.binaryName], {
+  const packageName = info.installPackage || info.binaryName;
+  const result = Bun.spawnSync(["bun", "install", "-g", packageName], {
     timeout: 120000,
   });
 
