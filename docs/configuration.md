@@ -47,7 +47,7 @@ Casual but professional. Use "we" language.
 
 ## Database (SQLite)
 
-Location: `~/.cybara/cybara.db`
+Location: `~/.cybara/data/platform.db`
 
 ### Tables
 
@@ -71,30 +71,19 @@ curl -X POST http://localhost:4269/api/providers \
   -d '{"type": "openai", "apiKey": "sk-..."}'
 ```
 
-### Supported Providers (20)
+### Supported Providers (33)
 
-| Provider | Config Key |
-|----------|------------|
-| OpenAI | `OPENAI_API_KEY` |
-| Anthropic | `ANTHROPIC_API_KEY` |
-| Google | `GOOGLE_API_KEY` |
-| Antigravity | OAuth (no key needed) |
-| xAI | `XAI_API_KEY` |
-| MiniMax | `MINIMAX_API_KEY` |
-| Moonshot | `MOONSHOT_API_KEY` |
-| Kimi Code | `KIMI_API_KEY` |
-| Qwen Portal | OAuth (no key needed) |
-| Venice AI | `VENICE_API_KEY` |
-| Groq | `GROQ_API_KEY` |
-| OpenRouter | `OPENROUTER_API_KEY` |
-| Ollama | `OLLAMA_HOST` |
-| AWS Bedrock | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` |
-| GitHub Copilot | `GITHUB_TOKEN` |
-| Synthetic | `SYNTHETIC_API_KEY` |
-| OpenCode Zen | `OPENCODE_ZEN_API_KEY` |
-| Chutes | `CHUTES_API_KEY` |
-| Xiaomi | `XIAOMI_API_KEY` |
-| Qianfan | `QIANFAN_API_KEY` |
+See `/docs/providers.md` for the complete up-to-date provider matrix.
+
+Quick discovery commands:
+
+```bash
+# UI/API provider catalog
+curl -s http://localhost:4269/api/providers/available | jq 'length'
+
+# CLI model discovery for a configured provider
+cybara provider models <provider-id>
+```
 
 ## Browser Profiles
 
@@ -163,11 +152,11 @@ cybara mcp add memory '{"command": "bunx", "args": ["@modelcontextprotocol/serve
 
 ## Logging
 
-Logs stored in `~/.cybara/logs/`
+Runtime logs are emitted to stdout/stderr. Daemon mode also writes `~/.cybara/cybara.log`.
 
 ```bash
-# View logs
-tail -f ~/.cybara/logs/cybara.log
+# Daemon logs (when started with -d)
+tail -f ~/.cybara/cybara.log
 
 # Set log level
 LOG_LEVEL=debug cybara start
@@ -180,6 +169,6 @@ LOG_LEVEL=debug cybara start
 rm -rf ~/.cybara
 
 # Clear only sessions
-rm ~/.cybara/cybara.db-shm ~/.cybara/cybara.db-wal
-sqlite3 ~/.cybara/cybara.db "DELETE FROM sessions; DELETE FROM messages;"
+rm ~/.cybara/data/platform.db-shm ~/.cybara/data/platform.db-wal
+sqlite3 ~/.cybara/data/platform.db "DELETE FROM sessions; DELETE FROM messages;"
 ```

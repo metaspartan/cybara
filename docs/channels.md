@@ -9,7 +9,7 @@ Connect agents to multiple messaging platforms.
 | Telegram | ✅ | Full bot, reactions, inline buttons, polls |
 | Discord | ✅ | Bot integration, reactions |
 | Slack | ✅ | Workspace integration |
-| WhatsApp | ✅ | Meta Business API |
+| WhatsApp | ✅ | `whatsapp-web.js` multi-device, QR auth, self-message mode |
 | Signal | ✅ | via signal-cli |
 | iMessage | ✅ | via BlueBubbles |
 | Web | ✅ | Built-in chat UI |
@@ -72,16 +72,19 @@ cybara channel add slack
 
 ### WhatsApp
 
-Requires Meta Business API access:
+Uses `whatsapp-web.js` (WhatsApp Web multi-device session), not Meta Business API.
 
-1. Set up Meta Business account
-2. Create WhatsApp Business app
-3. Get phone number ID and access token
+1. Add/enable WhatsApp channel in Cybara
+2. Open Channels UI and scan the QR code shown for the channel
+3. Wait for `Authenticated` + `Ready` state
 4. Configure:
 
 ```bash
 cybara channel add whatsapp
 ```
+
+Optional config:
+- `allow_self_messages: true` to allow replying when you message from the same linked account.
 
 ### Signal
 
@@ -167,17 +170,18 @@ Cybara supports management commands directly from messaging channels:
 - `/help` - Show command help
 - `/status` - Show system status
 - `/new` - Start a fresh session
+- `/sessions` - List recent sessions
+- `/switch <number|session_id_prefix>` - Switch session
+- `/session [target]` - Show current session or switch to target
+- `/workspace [path|clear]` - Show or set session workspace
+- `/permissions [ask|allow]` - Dangerous tool approval mode
 - `/agents` - List agents
 - `/agent <id|name|number>` - Set default agent
 - `/providers` - List providers
 - `/provider <id|name|number>` - Set provider for default agent
 - `/models` - List models for the default agent's provider
 - `/model <id|number>` - Set model for the default agent
-
-Telegram also supports session navigation:
-
-- `/sessions` - List recent sessions
-- `/switch <number>` - Switch to a recent session
+- `/subagents spawn <task>` - Run a one-off subagent task
 
 ## Multi-Channel Routing
 

@@ -2,172 +2,171 @@
 
 ## Overview
 
-Cybara is a Bun/TypeScript AI agent platform with a modular architecture, Tauri desktop client, and React web UI.
+Cybara is a Bun + TypeScript agent platform with:
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Web UI (React 19)                        │
-│   Dashboard · Chat · IDE · Terminal · Skills · Memory ...    │
-└─────────────────────────────┬───────────────────────────────┘
-                              │ REST API + WebSocket + SSE
-┌─────────────────────────────▼───────────────────────────────┐
-│                       API Layer (Bun)                        │
-│  /api/chat  /api/agents  /api/skills  /api/terminal  ...    │
-└─────────────────────────────┬───────────────────────────────┘
-                              │
-┌─────────────────────────────▼───────────────────────────────┐
-│                        Agent Core                            │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
-│  │   Session   │  │   Context   │  │   System    │          │
-│  │  Manager    │  │  Compactor  │  │   Prompt    │          │
-│  └─────────────┘  └─────────────┘  └─────────────┘          │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
-│  │  Scheduler  │  │  Subagent   │  │   Memory    │          │
-│  │  (Cron)     │  │  Registry   │  │  (Vector)   │          │
-│  └─────────────┘  └─────────────┘  └─────────────┘          │
-└─────────────────────────────┬───────────────────────────────┘
-                              │
-       ┌──────────────────────┼──────────────────────┐
-       │                      │                      │
-┌──────▼──────┐  ┌────────────▼────────────┐  ┌─────▼─────┐
-│   Channels  │  │        Providers        │  │   Tools   │
-│ TG/Discord  │  │ 20 providers + OAuth    │  │  47 ops   │
-│ Slack/etc.  │  │ + MCP servers           │  │  + MCP    │
-└─────────────┘  └─────────────────────────┘  └───────────┘
+- React web UI (`ui/`)
+- Tauri desktop shell (`src-tauri/`)
+- Bun sidecar/server (`src/`)
+
+Current platform shape in this repo:
+
+- 33 provider integrations (`src/core/providers.ts`)
+- 49 tool schemas (`src/core/tools/index.ts`)
+- 7 channel adapters (`src/core/channels/adapters/`)
+- 17 tool handler modules (`src/core/tools/handlers/`)
+
+## Runtime Topology
+
+```text
+React UI / Tauri Desktop / External Channels
+                  |
+                  v
+            Bun HTTP Server
+      (REST + status SSE + terminal WS)
+                  |
+                  v
+              Agent Core
+      (session + prompt + tool loop)
+                  |
+      +-----------+------------+
+      |           |            |
+      v           v            v
+    Tools      Providers     Channels
 ```
 
-## Core Components
+Transport model:
 
-### Entry Points
+- REST for primary app APIs (`/api/*`)
+- SSE for status events (`/api/sse/status`)
+- WebSocket for terminal streaming (`/api/terminal/ws`)
 
-- **`src/main.ts`** — Binary entry point, routes to CLI or server via command allowlist
-- **`src/index.ts`** — HTTP server, WebSocket handler, SSE events, static file serving
-- **`src/cli.tsx`** — Interactive TUI using React/Ink (chat, wizard, menus, raw commands)
+## Entry Points
 
-### Agent (`src/core/agent.ts`)
-Manages AI agent lifecycle, message processing, and tool execution loop. Handles streaming responses, tool call parsing, and multi-turn conversations.
-
-### Session Context (`src/core/session-context.ts`)
-Adaptive context window management with 3-tier token estimation:
-1. Fast estimate for quick decisions
-2. Tiktoken for accurate counts
-3. Model-specific adjustments
-
-### System Prompt (`src/core/system-prompt.ts`)
-Cybara-compatible prompt builder with sections:
-- Identity, Tooling, Skills, Memory
-- Workspace, Messaging, Reactions
-- Sandbox, Documentation, Runtime
-
-### Subagent Registry (`src/core/subagent-registry.ts`)
-Tracks spawned background agents with:
-- Disk persistence (`~/.cybara/subagent-registry.json`)
-- Lifecycle events (start, end, error, archive)
-- Announce flow for completion notifications
-- Automatic cleanup via sweeper
-
-### Scheduler (`src/core/scheduler.ts`)
-Cron-based task scheduling with:
-- Persistent cron job store (`src/core/cron/`)
-- Run history tracking
-- Agent-linked execution
-
-### Browser Manager (`src/core/browser/pw-manager.ts`)
-Playwright-based browser automation:
-- Profile isolation with persistent user data dirs
-- Element reference system (`[ref=eN]`) for AI interaction
-- Visual mode for debugging
-- PDF export and screenshot capture
-
-### Memory System (`src/core/memory/`)
-- Vector store with SQLite-backed embeddings
-- BM25 hybrid search (keyword + semantic)
-- Durable MEMORY.md for persistent facts
-- Daily log files for session context
-
-### MCP Integration (`src/core/mcp.ts`)
-Model Context Protocol client:
-- Stdio and HTTP/SSE transports
-- Dynamic tool registration
-- Multi-server concurrent connections
-- Server registry (`src/core/mcp-registry.ts`)
+- `src/main.ts`
+  - Binary entry and CLI/server router.
+  - Handles daemon lifecycle (`cybara.pid`, optional `cybara.log`).
+- `src/index.ts`
+  - Starts Bun server.
+  - Wires REST route handling, status SSE endpoint, terminal WebSocket upgrades, static UI serving.
+- `src/cli.tsx`
+  - Interactive terminal UI/commands.
 
 ## API Layer
 
-### `src/api/routes.ts`
-Main REST API handler with endpoints for agents, providers, skills, browser, channels, memory, cron, MCP, LSP, metrics, config, and OAuth.
+- `src/api/routes.ts`
+  - Main REST route multiplexer for providers, agents, sessions, channels, IDE, skills, memory, cron, MCP, metrics, config, OAuth, and diagnostics.
+- `src/api/chat.ts`
+  - Chat/session orchestration.
+  - Returns JSON chat responses with optional `thinking`, `tool_calls`, and `process_activities`.
+  - Persists sessions/messages and session titles.
+- `src/api/terminal.ts`
+  - PTY-backed terminal control endpoints.
+- `src/api/ide-api.ts`
+  - IDE file and code-intelligence operations.
+- `src/api/security.ts`
+  - API key auth, security headers, rate limiting, SSRF controls.
 
-### `src/api/chat.ts`
-Chat API with SSE streaming, tool execution loop, and session management.
+## Agent Core
 
-### `src/api/terminal.ts`
-Web terminal backend using Python's PTY module via `Bun.spawn`. Creates real pseudo-terminals with character echo, prompt display, colors, line editing, and resize support.
+- `src/core/agent.ts`
+  - Provider invocation orchestration.
+  - Tool execution loop with hooks/status updates.
+  - Tool-call normalization across Anthropic-style and OpenAI-compatible flows.
+- `src/core/system-prompt.ts`
+  - Constructs system prompt sections from runtime context (workspace, tools, permissions, channel state, etc.).
+- `src/core/session-context.ts`
+  - Session persistence, context compaction, token budgeting.
+- `src/core/session-title.ts`
+  - Model-assisted session title derivation/normalization.
+- `src/core/status.ts`
+  - Live status fanout (thinking/generating/tool states) to SSE clients.
 
-### `src/api/security.ts`
-API key authentication, rate limiting, SSRF protection, and security headers.
+## Tools
 
-### `src/api/ide-api.ts`
-IDE code intelligence API for file operations, Git status, and LSP integration.
+Defined in `src/core/tools/index.ts`, executed via handlers in `src/core/tools/handlers/`.
 
-## Data Flow
+Major families:
 
-```
-User Message → Channel/UI → Session → Agent → Provider → Response
-                               │
-                               ├── Tools (if invoked)
-                               │       │
-                               │       └── Browser/Exec/File/Memory/etc.
-                               │
-                               └── Subagent (if spawned)
-                                       │
-                                       └── Independent session → Report back
-```
+- File/process/runtime: `read`, `write`, `edit`, `grep`, `apply_patch`, `exec`, `process`, `env`
+- Web/browser: `browser`, `web_fetch`, `web_search`, `http`
+- Memory/artifacts: `memory_*`, `artifacts`
+- Session/agent orchestration: `sessions_*`, `session_status`, `agents_list`
+- Channel/media: `message`, `telegram_media`, `image`, `tts`, `video_frames`
+- Dev/analysis: `git`, `lsp_*`, `pdf`, `ocr`, `data`, `calc`, `convert`
 
-## Database
+## Providers
 
-SQLite via `better-sqlite3`:
-- `agents` — Agent configurations
-- `sessions` — Conversation sessions
-- `messages` — Message history
-- `providers` — AI provider configs (encrypted API keys)
-- `skills` — Installed skills
-- `config` — Key-value settings
-- `cron_jobs` — Scheduled tasks
-- `cron_runs` — Task execution history
+Provider registry lives in `src/core/providers.ts`.
 
-## File Layout
+Supported auth patterns:
 
-```
+- API key providers
+- OAuth providers (redirect/device code depending on provider)
+- Local/self-hosted endpoints (for example Ollama)
+
+Canonical discovery:
+
+- API: `GET /api/providers/available`
+- CLI: `cybara provider models <provider-id>`
+
+## Channels
+
+Channel adapters are in `src/core/channels/adapters/`:
+
+- telegram
+- discord
+- slack
+- signal
+- whatsapp
+- imessage
+- web
+
+Common command handling and session controls are implemented in `src/core/channels/commands.ts`.
+
+## Data & Persistence
+
+- Root data dir: `~/.cybara`
+- Primary SQLite DB: `~/.cybara/data/platform.db`
+- Related SQLite files: `platform.db-wal`, `platform.db-shm`
+- Other runtime dirs: `~/.cybara/logs`, `~/.cybara/memory`, `~/.cybara/secure`
+
+Core DB tables include:
+
+- `agents`
+- `sessions`
+- `messages`
+- `providers`
+- `skills`
+- `config`
+- `cron_jobs`
+- `cron_runs`
+
+## High-Level File Layout
+
+```text
 src/
-├── main.ts                # Binary entry point (CLI/server router)
-├── index.ts               # HTTP server + WebSocket + SSE
-├── cli.tsx                # Interactive TUI (React/Ink)
-├── api/
-│   ├── routes.ts          # REST API route handlers
-│   ├── chat.ts            # Chat API + streaming
-│   ├── terminal.ts        # Web terminal (Python PTY bridge)
-│   ├── ide-api.ts         # IDE code intelligence
-│   ├── git-api.ts         # Git operations
-│   ├── security.ts        # Auth + rate limiting + SSRF
-│   └── queries.ts         # DB query helpers
-└── core/
-    ├── agent.ts           # Agent management + tool loop
-    ├── channels/          # 7 channel adapters
-    ├── database.ts        # SQLite layer
-    ├── providers.ts       # 20 AI provider definitions
-    ├── system-prompt.ts   # Prompt builder
-    ├── session-context.ts # Context management
-    ├── subagent-registry.ts # Subagent tracking
-    ├── scheduler.ts       # Task scheduler
-    ├── cron/              # Cron store + execution
-    ├── browser/           # Playwright automation
-    ├── lsp/               # Language server client
-    ├── memory/            # Vector store + search
-    ├── skills/            # Skill system
-    ├── tools/             # 47 tools + 14 handler modules
-    ├── mcp.ts             # MCP client
-    ├── mcp-registry.ts    # MCP server registry
-    ├── metrics.ts         # Token tracking
-    ├── logger.ts          # Structured logging
-    └── config.ts          # Configuration
+  main.ts                 # binary entry + daemon lifecycle
+  index.ts                # Bun server (REST/SSE/WS/static)
+  cli.tsx                 # CLI/TUI entry
+  api/
+    routes.ts             # API route handlers
+    chat.ts               # chat/session orchestration
+    terminal.ts           # PTY backend API
+    ide-api.ts            # IDE API
+    git-api.ts            # Git API
+    security.ts           # auth/security
+  core/
+    agent.ts              # agentic execution loop
+    providers.ts          # provider registry (33)
+    tools/
+      index.ts            # tool schemas (49)
+      handlers/           # handler implementations (17)
+    channels/             # adapters + command parsing
+    database.ts           # SQLite layer
+    session-context.ts    # session persistence/compaction
+    session-title.ts      # model-assisted title generation
+    system-prompt.ts      # prompt assembly
+    memory/               # memory store and helpers
+    scheduler.ts          # cron/task scheduling
+    status.ts             # live status broadcast
 ```

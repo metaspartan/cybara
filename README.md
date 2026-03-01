@@ -18,8 +18,8 @@
   <img src="https://img.shields.io/badge/runtime-Bun-f9f1e1?logo=bun" alt="Bun" />
   <img src="https://img.shields.io/badge/language-TypeScript-blue?logo=typescript" alt="TypeScript" />
   <img src="https://img.shields.io/badge/ui-React_19-61dafb?logo=react" alt="React" />
-  <img src="https://img.shields.io/badge/tools-48-green" alt="48 Tools" />
-  <img src="https://img.shields.io/badge/providers-26-purple" alt="26 Providers" />
+  <img src="https://img.shields.io/badge/tools-49-green" alt="49 Tools" />
+  <img src="https://img.shields.io/badge/providers-33-purple" alt="33 Providers" />
   <img src="https://img.shields.io/badge/channels-7-orange" alt="7 Channels" />
   <img src="https://img.shields.io/badge/desktop-Tauri-orange?logo=tauri" alt="Tauri Desktop" />
 </p>
@@ -42,11 +42,11 @@ If you need an agent platform that can plan, execute, verify, and report with st
 
 ## Capability Snapshot
 
-- 48 built-in tools (`src/core/tools/index.ts`)
-- 26 built-in provider integrations (`src/core/providers.ts`)
+- 49 built-in tools (`src/core/tools/index.ts`)
+- 33 built-in provider integrations (`src/core/providers.ts`)
 - 7 channel adapters (`src/core/channels/adapters`)
-- 19 production UI pages (`ui/src/pages/*.tsx`)
-- 44 automated Bun test files (`tests/**/*.test.ts`)
+- 20 production UI pages (`ui/src/pages/*.tsx`)
+- 75 automated Bun test files (`tests/**/*.test.ts`)
 - Tauri desktop app + Bun server/CLI runtime
 
 ---
@@ -83,7 +83,7 @@ Then open:
 - Session-aware execution with persistence and recovery
 - Agent tool allowlist and permission enforcement support
 
-### Tooling Layer (48 Tools)
+### Tooling Layer (49 Tools)
 
 Tool categories currently shipped:
 
@@ -91,7 +91,7 @@ Tool categories currently shipped:
 - `process` (3): exec/process/git
 - `browser` (4): browser/web_fetch/web_search/canvas
 - `memory` (5): search/get/save/context/durable save
-- `core` (14): sessions/agents/http/env/data/wallet/etc.
+- `core` (15): sessions/agents/artifacts/http/env/data/wallet/etc.
 - `lsp` (5): diagnostics/definition/references/hover/languages
 - `media` (2): image/tts
 - `skill` (7): calc/convert/pdf/ocr/summarization/video_frames/weather
@@ -134,12 +134,12 @@ DM policy modes:
 
 ### UI + Desktop
 
-- Web UI with 19 pages for agents, channels, providers, tools, wallet, logs, metrics, tasks, sessions, IDE, terminal, and setup
+- Web UI with 20 pages for agents, channels, providers, tools, wallet, logs, metrics, tasks, sessions, IDE, terminal, setup, and artifacts
 - Tauri desktop app with sidecar server wiring
 
-### Provider Layer (26 Built-In Integrations)
+### Provider Layer (33 Built-In Integrations)
 
-Includes OpenAI, Anthropic, Google AI, Antigravity, MiniMax, Moonshot, Kimi Code, Qwen Portal, Synthetic, Venice, Xiaomi, Ollama, GitHub Copilot, AWS Bedrock, Groq, OpenRouter, OpenCode Zen, Z.AI variants, OpenAI Codex, Chutes, Vercel AI Gateway, Google Gemini CLI, Copilot Proxy, xAI, and Baidu Qianfan.
+Includes OpenAI, Anthropic, Google AI, Antigravity, MiniMax (API + OAuth portal), Moonshot, Kimi Code, Qwen Portal, Together, Hugging Face, Synthetic, Venice, Xiaomi, Ollama, vLLM, LiteLLM, Cloudflare AI Gateway, GitHub Copilot, AWS Bedrock, Groq, OpenRouter, OpenCode Zen, Z.AI variants, OpenAI Codex, Chutes, Vercel AI Gateway, Google Gemini CLI, Copilot Proxy, xAI, Baidu Qianfan, and NVIDIA.
 
 See provider details: [docs/providers.md](docs/providers.md)
 

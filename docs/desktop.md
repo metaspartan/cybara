@@ -115,15 +115,16 @@ cd src-tauri && cargo clean
 The desktop client uses the same configuration as the CLI/web:
 
 - **Config file**: `~/.cybara/config.json`
-- **Database**: `~/.cybara/cybara.db`
-- **Logs**: `~/.cybara/cybara.log`
+- **Database**: `~/.cybara/data/platform.db` (plus `-wal` / `-shm`)
+- **Runtime logs directory**: `~/.cybara/logs/`
+- **Daemon log file**: `~/.cybara/cybara.log` (when running via `cybara start -d`)
 
 ## Troubleshooting
 
 ### App won't start
 
 1. Ensure Cybara backend is running: `cybara status`
-2. Check logs: `cat ~/.cybara/cybara.log`
+2. Check daemon logs (if daemon mode): `cat ~/.cybara/cybara.log`
 3. Try starting backend manually: `cybara start`
 
 ### Icon not showing

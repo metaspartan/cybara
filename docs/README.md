@@ -75,10 +75,10 @@ See [Desktop Guide](./desktop.md) for platform-specific build info.
 |-------|-------------|
 | [Architecture](./architecture.md) | Platform design and data flow |
 | [CLI Reference](./cli.md) | Command-line interface |
-| [Tools Reference](./tools.md) | 48 available tools |
+| [Tools Reference](./tools.md) | 49 available tools |
 | [Skills Guide](./skills.md) | Creating and managing skills |
 | [Channels](./channels.md) | Multi-platform messaging |
-| [Providers](./providers.md) | 26 AI provider configurations |
+| [Providers](./providers.md) | 33 AI provider configurations |
 | [Configuration](./configuration.md) | Settings and environment |
 | [API Reference](./api.md) | REST API endpoints |
 | [Desktop](./desktop.md) | Tauri desktop client |
@@ -104,7 +104,7 @@ Conversation contexts with message history, token tracking, and adaptive context
 Modular capabilities loaded from SKILL.md files with eligibility gating (OS, env, binaries).
 
 ### Tools
-48 functions the agent can invoke: file I/O, browser, exec, web search, memory, data processing, LSP, scheduling, and more.
+49 functions the agent can invoke: file I/O, browser, exec, web search, memory, artifacts (.md.resolved), data processing, LSP, scheduling, and more.
 
 ### Channels
 Communication interfaces: Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Web.
@@ -113,7 +113,7 @@ Communication interfaces: Telegram, Discord, Slack, WhatsApp, Signal, iMessage, 
 Vector store with hybrid BM25 search, durable MEMORY.md, and daily logs.
 
 ### Providers
-26 AI providers: OpenAI, Anthropic, Google, Antigravity (OAuth), xAI, MiniMax, Moonshot, Kimi Code, Qwen (OAuth), Venice, Groq, OpenRouter, Ollama, Bedrock, GitHub Copilot, Synthetic, OpenCode Zen, Chutes, Xiaomi, Qianfan, and additional gateway/proxy integrations.
+33 AI providers: OpenAI, Anthropic, Google, Antigravity (OAuth), xAI, MiniMax, Moonshot, Kimi Code, Qwen (OAuth), Together, Hugging Face, Venice, Groq, OpenRouter, Ollama, vLLM, LiteLLM, Bedrock, GitHub Copilot, Synthetic, OpenCode Zen, Chutes, Xiaomi, Qianfan, NVIDIA, and additional gateway/proxy integrations.
 
 ### Security
 API key authentication, rate limiting, SSRF protection, path sandboxing. See [Security](./security.md).

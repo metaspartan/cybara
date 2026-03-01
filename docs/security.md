@@ -106,5 +106,5 @@ When enabled:
 |------|---------|-------------|
 | `~/.cybara/api_key` | API key | `600` (owner only) |
 | `~/.cybara/config.json` | Configuration | `644` |
-| `~/.cybara/cybara.db` | Database | `644` |
-| `~/.cybara/cybara.log` | Logs | `644` |
+| `~/.cybara/data/platform.db` | Database | `644` |
+| `~/.cybara/cybara.log` | Daemon log (optional) | `644` |

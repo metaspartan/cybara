@@ -1,6 +1,6 @@
 # Cybara Tools Reference
 
-Agents have access to 48 tools for file, process, browser, memory, data, and messaging operations.
+Agents have access to 49 tools for file, process, browser, memory, artifacts, data, wallet, and messaging operations.
 
 ## Permission Context
 
@@ -200,6 +200,33 @@ List available agent IDs.
 ```json
 {"name": "agents_list", "args": {}}
 ```
+
+### artifacts
+Create and manage session-scoped `.md.resolved` artifacts.
+```json
+{"name": "artifacts", "args": {"action": "list"}}
+{"name": "artifacts", "args": {"action": "create", "kind": "task", "title": "Release Checklist"}}
+{"name": "artifacts", "args": {"action": "append", "name": "implementation", "content": "Step 3 complete"}}
+```
+Actions: `list`, `read`, `create`, `update`, `append`, `delete`, `check`  
+Kinds: `task`, `implementation`, `walkthrough`, `notes`, `custom`
+
+## Wallet
+
+### wallet
+Use the encrypted local wallet for ETH/BTC/SOL operations.
+```json
+{"name": "wallet", "args": {"action": "status"}}
+{"name": "wallet", "args": {"action": "balances", "chains": ["eth", "btc", "sol"]}}
+{"name": "wallet", "args": {"action": "send", "chain": "eth", "to": "0x...", "amount": "0.01"}}
+{"name": "wallet", "args": {"action": "swap", "venue": "uniswap_v3", "tokenOut": "LINK", "amountEth": "0.2"}}
+```
+Common actions:
+- `status`, `accounts`, `balances`, `transactions`, `receive`
+- `send`, `send_token`, `sign_message`
+- `eth_contract_call`, `sol_program_instruction`, `rpc_call`
+- `price`/`price_quote`, `swap`/`swap_quote`/`swap_execute`
+- `x402_request`, `dapp`/`dapp_call`, `endpoints`, `dapp_capabilities`
 
 ## Messaging
 

@@ -15,7 +15,7 @@ Localhost connections skip auth in development mode.
 
 ## Chat
 
-### Send Message (SSE Streaming)
+### Send Message
 ```http
 POST /api/chat
 Content-Type: application/json
@@ -26,16 +26,44 @@ Content-Type: application/json
   "agentId": "optional-agent-id"
 }
 ```
-Returns a Server-Sent Events stream with assistant response, tool calls, and status updates.
+Returns JSON:
+```json
+{
+  "sessionId": "uuid",
+  "workspaceDir": "/path/or/null",
+  "message": {
+    "role": "assistant",
+    "content": "...",
+    "timestamp": "ISO-8601",
+    "thinking": "...",
+    "tool_calls": [],
+    "process_activities": []
+  },
+  "agent": {
+    "id": "agent-id",
+    "name": "Agent Name"
+  }
+}
+```
 
 ### List Sessions
 ```http
 GET /api/chat/sessions
 ```
 
+Primary session list endpoint used by the current UI is:
+```http
+GET /api/sessions
+```
+
 ### Get Session Messages
 ```http
 GET /api/chat/sessions/:id/messages
+```
+
+Primary session detail endpoint used by the current UI is:
+```http
+GET /api/sessions/:sessionId
 ```
 
 ### Delete Session
@@ -151,7 +179,7 @@ GET /api/providers
 ```http
 GET /api/providers/available
 ```
-Returns all 20 supported provider types with their configuration requirements.
+Returns all supported provider types (currently 33 in this codebase) with configuration requirements.
 
 ### Provider Health
 ```http
@@ -776,12 +804,12 @@ GET /api/metrics/sessions
 
 ### Get Config
 ```http
-GET /api/config/:key
+GET /api/config
 ```
 
 ### Set Config
 ```http
-POST /api/config
+PUT /api/config
 Content-Type: application/json
 
 {"key": "value", ...}
@@ -797,10 +825,12 @@ GET /api/health
 Returns:
 ```json
 {
-  "status": "ok",
+  "status": "healthy",
   "uptime": 3600,
   "version": "1.0.0",
-  "database": "connected"
+  "checks": {
+    "database": true
+  }
 }
 ```
 
@@ -811,7 +841,7 @@ GET /api/info
 
 ### SSE Event Stream
 ```http
-GET /api/status/sse
+GET /api/sse/status
 ```
 Server-Sent Events stream for real-time status updates (agent state changes, task completions, etc.).
 
