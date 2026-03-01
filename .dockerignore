@@ -1,0 +1,12 @@
+.git
+.github
+.research
+node_modules
+ui/node_modules
+dist
+release
+src-tauri/target
+src-tauri/bin
+artifacts
+media
+*.log

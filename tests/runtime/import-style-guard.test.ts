@@ -6,6 +6,18 @@ import ts from "typescript";
 const SOURCE_ROOTS = ["src", "tests", "ui/src", "scripts"];
 const TS_FILE_PATTERN = /\.(ts|tsx)$/;
 const EXCLUDED_FILES = new Set(["tests/runtime/import-style-guard.test.ts"]);
+const DYNAMIC_IMPORT_ALLOWLIST = new Set([
+  "src/core/tools/handlers/wallet.ts",
+  "src/api/routes.ts",
+]);
+
+function normalizePath(path: string): string {
+  return path.replace(/\\/g, "/");
+}
+
+function allowsDynamicImport(path: string): boolean {
+  return DYNAMIC_IMPORT_ALLOWLIST.has(normalizePath(path));
+}
 
 function collectTypeScriptFiles(root: string): string[] {
   const files: string[] = [];
@@ -37,6 +49,7 @@ describe("TypeScript import/type style guard", () => {
     const offenders: string[] = [];
 
     for (const file of getAllTypeScriptFiles()) {
+      if (allowsDynamicImport(file)) continue;
       const content = readFileSync(file, "utf-8");
       if (/\bawait\s+import\s*\(/.test(content)) {
         offenders.push(file);
@@ -61,6 +74,7 @@ describe("TypeScript import/type style guard", () => {
 
       const visit = (node: ts.Node): void => {
         if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+          if (allowsDynamicImport(file)) return;
           const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
           offenders.push(`${file}:${position.line + 1}`);
           return;

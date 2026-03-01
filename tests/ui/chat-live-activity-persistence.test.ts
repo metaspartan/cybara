@@ -28,7 +28,7 @@ describe("Chat live activity persistence", () => {
       "typeof eventTimestamp === \"number\" && Number.isFinite(eventTimestamp)"
     );
     expect(source).toContain(
-      "appendLiveActivity(phase, text, payload.toolName, eventTimestamp, payload.toolCallId);"
+      "appendLiveActivity(\n          phase,\n          text,\n          payload.toolName,\n          eventTimestamp,\n          payload.toolCallId,\n          payload.sandboxProvider\n        );"
     );
   });
 
@@ -66,9 +66,10 @@ describe("Chat live activity persistence", () => {
     expect(source).toContain(
       "const currentSessionIsLoading = isLoading && loadingSessionId === sessionId;"
     );
-    expect(source).toContain(
-      "const showWorkingTimeline =\n    currentSessionIsLoading || currentSessionIsActive || pendingCaptureForCurrentSession;"
-    );
+    expect(source).toContain("const showWorkingTimeline =");
+    expect(source).toContain("currentSessionIsLoading ||");
+    expect(source).toContain("currentSessionIsActive ||");
+    expect(source).toContain("pendingCaptureForCurrentSession ||");
     expect(source).toContain(
       'const timelineStatus =\n    currentSessionIsActive && liveStatus === "idle" ? ("thinking" as const) : liveStatus;'
     );
@@ -102,7 +103,7 @@ describe("Chat live activity persistence", () => {
 
   test("renders compact work timeline entries instead of large tool cards", () => {
     const source = readFileSync(chatSourcePath, "utf8");
-    expect(source).toContain("<ProcessActivityList activities={workActivities} />");
+    expect(source).toContain("<ProcessActivityList activities={workActivitiesWithSandbox} />");
     expect(source).not.toContain("function ToolCallItem(");
   });
 

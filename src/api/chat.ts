@@ -38,11 +38,14 @@ import {
 import { shouldRunMemoryFlush, resolveMemoryFlushSettings } from "../core/memory/flush";
 import { broadcastStatus, getSessionStatusSnapshot } from "../core/status";
 import { emitAgentHook } from "../core/agent-hooks";
+import { createLogger } from "../core/logger";
 import {
   buildToolExecutionFallbackMessage,
   shouldEnforceToolUseForMessage,
   shouldPreferArtifactsForMessage,
 } from "./chat-tool-summary";
+const log = createLogger("Chat");
+
 export interface ProcessActivityInfo {
   id: string;
   phase: "start" | "result" | "error";
@@ -50,6 +53,7 @@ export interface ProcessActivityInfo {
   timestamp: number;
   toolName?: string;
   toolCallId?: string;
+  sandboxProvider?: string;
 }
 
 export interface ToolCallInfo {
@@ -96,51 +100,100 @@ export interface ChatResponse {
   tool_calls?: ToolCallInfo[];
 }
 
-const chatSessions = new Map<
-  string,
-  {
-    id: string;
-    agentId: string;
-    title: string | null;
-    messages: ChatMessage[];
-    createdAt: string;
-    updatedAt: string;
-    workspaceDir?: string | null;
-    persisted: boolean;
-    compactionCount?: number; // Track compaction cycles for memory flush
-    lastFlushCompactionCount?: number; // Last compaction cycle we flushed
+interface InMemoryChatSession {
+  id: string;
+  agentId: string;
+  title: string | null;
+  messages: ChatMessage[];
+  createdAt: string;
+  updatedAt: string;
+  workspaceDir?: string | null;
+  persisted: boolean;
+  compactionCount?: number; // Track compaction cycles for memory flush
+  lastFlushCompactionCount?: number; // Last compaction cycle we flushed
+}
+
+interface SessionLastMessagePreview {
+  role: ChatMessage["role"];
+  content: string;
+}
+
+interface PersistedSessionIndexEntry {
+  id: string;
+  agentId: string;
+  title: string | null;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+  workspaceDir: string | null;
+  lastMessage: SessionLastMessagePreview | null;
+}
+
+const chatSessions = new Map<string, InMemoryChatSession>();
+const persistedSessionIndex = new Map<string, PersistedSessionIndexEntry>();
+
+function buildLastMessagePreview(message?: ChatMessage): SessionLastMessagePreview | null {
+  if (!message) return null;
+  return {
+    role: message.role,
+    content: message.content,
+  };
+}
+
+function normalizePersistedIndexEntry(
+  entry: Omit<PersistedSessionIndexEntry, "title" | "lastMessage"> & {
+    title?: string | null;
+    lastMessage?: SessionLastMessagePreview | null;
   }
->();
+): PersistedSessionIndexEntry {
+  return {
+    ...entry,
+    title: normalizeSessionTitle(entry.title),
+    lastMessage: entry.lastMessage
+      ? {
+          role: entry.lastMessage.role,
+          content: entry.lastMessage.content,
+        }
+      : null,
+  };
+}
+
+function upsertPersistedSessionIndex(entry: PersistedSessionIndexEntry): void {
+  persistedSessionIndex.set(entry.id, normalizePersistedIndexEntry(entry));
+}
+
+function removePersistedSessionIndex(sessionId: string): void {
+  persistedSessionIndex.delete(sessionId);
+}
 
 async function loadPersistedSessions() {
   try {
     const sessions = await listPersistedSessions();
 
     for (const sessionInfo of sessions) {
-      const session = await loadPersistedSession(sessionInfo.id);
-      if (session) {
-        const resolvedTitle = shouldRegenerateSessionTitle(session.title || sessionInfo.title)
-          ? deriveSessionTitleFromMessages(session.messages)
-          : normalizeSessionTitle(session.title || sessionInfo.title);
-        chatSessions.set(sessionInfo.id, {
-          id: sessionInfo.id,
-          agentId: session.agentId,
-          title: resolvedTitle,
-          messages: session.messages,
-          createdAt: sessionInfo.createdAt,
-          updatedAt: sessionInfo.updatedAt || sessionInfo.createdAt,
-          workspaceDir: session.workspaceDir,
-          persisted: true,
-        });
-        console.log(`[Chat] Loaded persisted session ${sessionInfo.id.slice(0, 8)}...`);
-      }
+      upsertPersistedSessionIndex({
+        id: sessionInfo.id,
+        agentId: sessionInfo.agentId,
+        title: sessionInfo.title,
+        messageCount: sessionInfo.messageCount,
+        createdAt: sessionInfo.createdAt,
+        updatedAt: sessionInfo.updatedAt || sessionInfo.createdAt,
+        workspaceDir: sessionInfo.workspaceDir ?? null,
+        lastMessage:
+          sessionInfo.lastMessageRole && sessionInfo.lastMessageContent
+            ? {
+                role: sessionInfo.lastMessageRole as ChatMessage["role"],
+                content: sessionInfo.lastMessageContent,
+              }
+            : null,
+      });
     }
 
     if (sessions.length > 0) {
-      console.log(`[Chat] Restored ${sessions.length} persisted sessions`);
+      log.info("Restored persisted session index", { count: sessions.length });
     }
   } catch (error) {
-    console.error("[Chat] Failed to load persisted sessions:", error);
+    log.exception("Failed to load persisted sessions", error);
   }
 }
 
@@ -343,6 +396,27 @@ function formatProcessActivityFromToolCall(toolCall: ToolCallInfo): string {
   return `${toolCall.name} complete`;
 }
 
+function extractSandboxProviderFromToolCall(toolCall: ToolCallInfo): string | undefined {
+  const normalized = (value: unknown): string | undefined => {
+    if (typeof value !== "string") return undefined;
+    const trimmed = value.trim().toLowerCase();
+    if (
+      trimmed === "apple_sandbox" ||
+      trimmed === "podman" ||
+      trimmed === "docker" ||
+      trimmed === "host"
+    ) {
+      return trimmed;
+    }
+    return undefined;
+  };
+
+  const result = toolCall.result;
+  if (!result || typeof result !== "object" || Array.isArray(result)) return undefined;
+  const typed = result as Record<string, unknown>;
+  return normalized(typed.sandboxProvider ?? typed.sandbox_provider);
+}
+
 function dedupeProcessActivities(activities: ProcessActivityInfo[]): ProcessActivityInfo[] {
   const seen = new Set<string>();
   const deduped: ProcessActivityInfo[] = [];
@@ -387,6 +461,7 @@ function buildFallbackProcessActivities(
       timestamp: fallbackStart + timelineOffset,
       toolName: toolCall.name,
       toolCallId: typeof toolCall.id === "string" && toolCall.id.trim() ? toolCall.id : undefined,
+      sandboxProvider: extractSandboxProviderFromToolCall(toolCall),
     });
   }
 
@@ -448,9 +523,9 @@ async function generateSessionTitleViaModel(params: {
     });
     return parseModelGeneratedSessionTitle(result.content);
   } catch (error) {
-    console.warn(
-      `[Chat] Session title model generation failed: ${error instanceof Error ? error.message : String(error)}`
-    );
+    log.warn("Session title model generation failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return null;
   }
 }
@@ -619,9 +694,11 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
         currentCompactionCount: session.compactionCount || 0,
       })
     ) {
-      console.log(
-        `[Chat] Running pre-compaction memory flush (${currentTokens}/${contextWindow} tokens)`
-      );
+      log.info("Running pre-compaction memory flush", {
+        sessionId: session.id,
+        currentTokens,
+        contextWindow,
+      });
       const flushStartTime = Date.now();
 
       try {
@@ -653,9 +730,12 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
         });
         trackSessionEvent(session.id, "memory_flushed", { model: agent.model });
 
-        console.log(`[Chat] Memory flush completed: ${flushResult.content.substring(0, 100)}...`);
+        log.info("Memory flush completed", {
+          sessionId: session.id,
+          preview: flushResult.content.substring(0, 100),
+        });
       } catch (flushError) {
-        console.error(`[Chat] Memory flush failed:`, flushError);
+        log.exception("Memory flush failed", flushError, { sessionId: session.id });
         trackMemoryFlush(session.id, false, {
           tokensBeforeFlush: currentTokens,
           compactionCount: session.compactionCount || 0,
@@ -666,9 +746,11 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     const contextCheck = shouldCompactContext(session.messages, agent.model, message);
 
     if (contextCheck.needed) {
-      console.log(
-        `[Chat] Context compaction needed: ${contextCheck.currentTokens}/${contextCheck.maxTokens} tokens`
-      );
+      log.info("Context compaction needed", {
+        sessionId: session.id,
+        currentTokens: contextCheck.currentTokens,
+        maxTokens: contextCheck.maxTokens,
+      });
       const compactionStart = Date.now();
       const messagesBefore = session.messages.length;
       const tokensBefore = estimateMessagesTokens(session.messages);
@@ -689,7 +771,10 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
         });
         trackSessionEvent(session.id, "compacted", { model: agent.model });
 
-        console.log(`[Chat] Context compacted. Summary: ${compaction.summary?.slice(0, 100)}...`);
+        log.info("Context compacted", {
+          sessionId: session.id,
+          summaryPreview: compaction.summary?.slice(0, 100),
+        });
       }
     }
   }
@@ -755,9 +840,10 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
             toolResults = forcedToolCalls;
           }
         } catch (toolRetryError) {
-          console.warn(
-            `[Chat] Forced tool-execution retry failed: ${(toolRetryError as Error).message}`
-          );
+          log.warn("Forced tool-execution retry failed", {
+            sessionId: session.id,
+            error: (toolRetryError as Error).message,
+          });
         }
       }
 
@@ -891,16 +977,24 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
             }
           }
         } catch {
-          console.log("[Chat] Could not generate summary, returning concise tool digest");
+          log.warn("Could not generate summary, returning concise tool digest", {
+            sessionId: session.id,
+          });
           responseContent = buildToolExecutionFallbackMessage(toolResults);
         }
       }
 
       recordCircuitSuccess(`llm:${provider.id}`);
-      console.log(`[Chat] LLM response: ${responseContent.substring(0, 100)}...`);
+      log.info("LLM response received", {
+        sessionId: session.id,
+        preview: responseContent.substring(0, 100),
+      });
     } catch (error) {
       recordCircuitFailure(`llm:${provider.id}`);
-      console.error("[Chat] LLM API error:", (error as Error).message);
+      log.error("LLM API error", {
+        sessionId: session.id,
+        error: (error as Error).message,
+      });
       responseContent = `I encountered an error calling the LLM API: ${(error as Error).message}. Please check your provider configuration.`;
     }
   } else {
@@ -927,7 +1021,10 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
             type: "context",
             tags: ["auto-saved"],
           });
-          console.log(`[Chat] Auto-saved memory: "${match[1].substring(0, 50)}..."`);
+          log.info("Auto-saved memory", {
+            sessionId: session.id,
+            preview: match[1].substring(0, 50),
+          });
         } catch {
           // Ignore memory save errors
         }
@@ -950,6 +1047,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
       timestamp: activity.timestamp,
       toolName: activity.toolName,
       toolCallId: activity.toolCallId,
+      sandboxProvider: activity.sandboxProvider,
     }));
   })();
   const fallbackProcessActivities =
@@ -1007,6 +1105,16 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     session.title
   );
   session.persisted = true;
+  upsertPersistedSessionIndex({
+    id: session.id,
+    agentId: session.agentId,
+    title: session.title,
+    messageCount: session.messages.length,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    workspaceDir: session.workspaceDir ?? null,
+    lastMessage: buildLastMessagePreview(assistantMessage),
+  });
 
   await emitAgentHook({
     type: "message:sent",
@@ -1031,7 +1139,10 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     );
   }
 
-  console.log("[Chat] Broadcasting idle status");
+  log.debug("Broadcasting idle status", {
+    sessionId: session.id,
+    agentId: agent?.id,
+  });
   broadcastStatus({
     status: "idle",
     timestamp: Date.now(),
@@ -1081,24 +1192,41 @@ export async function getSession(sessionId: string) {
     };
   }
 
+  const indexed = persistedSessionIndex.get(sessionId);
   const persisted = await loadPersistedSession(sessionId);
   if (persisted) {
-    const nowIso = new Date().toISOString();
     const resolvedTitle = shouldRegenerateSessionTitle(persisted.title)
       ? deriveSessionTitleFromMessages(persisted.messages)
       : normalizeSessionTitle(persisted.title);
+    const createdAt = indexed?.createdAt || new Date().toISOString();
+    const updatedAt = indexed?.updatedAt || createdAt;
+    const workspaceDir = persisted.workspaceDir ?? indexed?.workspaceDir ?? null;
     const restoredSession = {
       id: sessionId,
       agentId: persisted.agentId,
       title: resolvedTitle,
       messages: persisted.messages,
-      createdAt: nowIso,
-      updatedAt: nowIso,
-      workspaceDir: persisted.workspaceDir,
+      createdAt,
+      updatedAt,
+      workspaceDir,
       persisted: true,
     };
     chatSessions.set(sessionId, restoredSession);
+    upsertPersistedSessionIndex({
+      id: sessionId,
+      agentId: persisted.agentId,
+      title: resolvedTitle,
+      messageCount: persisted.messages.length,
+      createdAt,
+      updatedAt,
+      workspaceDir,
+      lastMessage: buildLastMessagePreview(persisted.messages[persisted.messages.length - 1]),
+    });
     return restoredSession;
+  }
+
+  if (indexed) {
+    removePersistedSessionIndex(sessionId);
   }
 
   return undefined;
@@ -1109,7 +1237,10 @@ export async function getSessionMessages(sessionId: string): Promise<ChatMessage
   return session?.messages || [];
 }
 
-export async function listSessions(): Promise<
+export async function listSessions(options?: {
+  limit?: number;
+  offset?: number;
+}): Promise<
   Array<{
     id: string;
     agentId: string;
@@ -1118,6 +1249,7 @@ export async function listSessions(): Promise<
     createdAt: string;
     updatedAt: string;
     workspaceDir: string | null;
+    lastMessage: SessionLastMessagePreview | null;
   }>
 > {
   const memorySessions = Array.from(chatSessions.values()).map((s) => ({
@@ -1130,35 +1262,75 @@ export async function listSessions(): Promise<
     createdAt: s.createdAt,
     updatedAt: s.updatedAt || s.createdAt,
     workspaceDir: s.workspaceDir ?? null,
+    lastMessage: buildLastMessagePreview(s.messages[s.messages.length - 1]),
   }));
 
   const persistedSessions = await listPersistedSessions();
-
-  const persistedMap = new Map(memorySessions.map((s) => [s.id, s]));
-
-  for (const ps of persistedSessions) {
-    if (!persistedMap.has(ps.id)) {
-      memorySessions.push({
-        id: ps.id,
-        agentId: ps.agentId,
-        title: ps.title || null,
-        messageCount: ps.messageCount,
-        createdAt: ps.createdAt,
-        updatedAt: ps.updatedAt,
-        workspaceDir: ps.workspaceDir ?? null,
-      });
+  const persistedIds = new Set<string>();
+  for (const persisted of persistedSessions) {
+    persistedIds.add(persisted.id);
+    upsertPersistedSessionIndex({
+      id: persisted.id,
+      agentId: persisted.agentId,
+      title: persisted.title,
+      messageCount: persisted.messageCount,
+      createdAt: persisted.createdAt,
+      updatedAt: persisted.updatedAt,
+      workspaceDir: persisted.workspaceDir ?? null,
+      lastMessage:
+        persisted.lastMessageRole && persisted.lastMessageContent
+          ? {
+              role: persisted.lastMessageRole as ChatMessage["role"],
+              content: persisted.lastMessageContent,
+            }
+          : null,
+    });
+  }
+  for (const existingId of persistedSessionIndex.keys()) {
+    if (!persistedIds.has(existingId)) {
+      removePersistedSessionIndex(existingId);
     }
   }
 
-  return memorySessions.sort(
+  const memoryMap = new Map(memorySessions.map((session) => [session.id, session]));
+  for (const persisted of persistedSessionIndex.values()) {
+    if (memoryMap.has(persisted.id)) continue;
+    memorySessions.push({
+      id: persisted.id,
+      agentId: persisted.agentId,
+      title: persisted.title,
+      messageCount: persisted.messageCount,
+      createdAt: persisted.createdAt,
+      updatedAt: persisted.updatedAt,
+      workspaceDir: persisted.workspaceDir,
+      lastMessage: persisted.lastMessage,
+    });
+  }
+
+  const sortedSessions = memorySessions.sort(
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   );
+  const limit =
+    typeof options?.limit === "number" && Number.isFinite(options.limit)
+      ? Math.max(1, Math.floor(options.limit))
+      : undefined;
+  const offset =
+    typeof options?.offset === "number" && Number.isFinite(options.offset)
+      ? Math.max(0, Math.floor(options.offset))
+      : 0;
+  if (!limit) {
+    return sortedSessions.slice(offset);
+  }
+  return sortedSessions.slice(offset, offset + limit);
 }
 
 export async function deleteSession(sessionId: string): Promise<boolean> {
   const memoryDeleted = chatSessions.delete(sessionId);
 
   const persistedDeleted = await deletePersistedSession(sessionId);
+  if (memoryDeleted || persistedDeleted) {
+    removePersistedSessionIndex(sessionId);
+  }
 
   return memoryDeleted || persistedDeleted;
 }
@@ -1318,6 +1490,16 @@ export async function revertSessionToMessage(
         metadata: extractPersistedMessageMetadata(message),
       });
     }
+    upsertPersistedSessionIndex({
+      id: sessionId,
+      agentId,
+      title: sessionTitle,
+      messageCount: keptMessages.length,
+      createdAt,
+      updatedAt: new Date().toISOString(),
+      workspaceDir,
+      lastMessage: buildLastMessagePreview(keptMessages[keptMessages.length - 1]),
+    });
   }
 
   return {
@@ -1377,6 +1559,16 @@ export async function updateSessionWorkspace(
   }
 
   await persistSession(sessionId, agentId, messages, normalizedWorkspaceDir, sessionTitle);
+  upsertPersistedSessionIndex({
+    id: sessionId,
+    agentId,
+    title: sessionTitle,
+    messageCount: messages.length,
+    createdAt,
+    updatedAt,
+    workspaceDir: normalizedWorkspaceDir,
+    lastMessage: buildLastMessagePreview(messages[messages.length - 1]),
+  });
   return {
     sessionId,
     workspaceDir: normalizedWorkspaceDir,
@@ -1430,6 +1622,16 @@ export async function updateSessionTitle(
   }
 
   await persistSession(sessionId, agentId, messages, workspaceDir, normalizedTitle);
+  upsertPersistedSessionIndex({
+    id: sessionId,
+    agentId,
+    title: normalizedTitle,
+    messageCount: messages.length,
+    createdAt,
+    updatedAt,
+    workspaceDir,
+    lastMessage: buildLastMessagePreview(messages[messages.length - 1]),
+  });
   return { sessionId, title: normalizedTitle };
 }
 
@@ -1444,9 +1646,21 @@ export function sendToSession(sessionKey: string, message: ChatMessage): boolean
         agentManager.get(session.agentId)?.name
       );
     }
-    console.log(`[Chat] Injected message into session ${sessionKey.slice(0, 20)}...`);
+    if (session.persisted) {
+      upsertPersistedSessionIndex({
+        id: session.id,
+        agentId: session.agentId,
+        title: session.title,
+        messageCount: session.messages.length,
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+        workspaceDir: session.workspaceDir ?? null,
+        lastMessage: buildLastMessagePreview(message),
+      });
+    }
+    log.debug("Injected message into session", { sessionId: sessionKey });
     return true;
   }
-  console.log(`[Chat] Session ${sessionKey.slice(0, 20)}... not in memory, skipping announcement`);
+  log.debug("Session not in memory, skipping announcement", { sessionId: sessionKey });
   return false;
 }

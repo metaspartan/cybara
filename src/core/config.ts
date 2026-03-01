@@ -13,6 +13,8 @@ interface PlatformConfig {
 
 export type DangerousToolPolicyMode = "audit" | "block";
 export type ToolApprovalMode = "always_allow" | "ask";
+export type SandboxProvider = "auto" | "apple_sandbox" | "podman" | "docker";
+export type SandboxNetworkMode = "allow" | "deny";
 
 export interface DangerousToolPolicyConfig {
   enabled: boolean;
@@ -23,6 +25,12 @@ export interface WebToolUrlPolicyConfig {
   enabled: boolean;
   fetch_allowlist: string[];
   search_result_allowlist: string[];
+}
+
+export interface SandboxRuntimeConfig {
+  enabled: boolean;
+  provider: SandboxProvider;
+  network: SandboxNetworkMode;
 }
 
 export const DEFAULT_DANGEROUS_TOOL_POLICY: DangerousToolPolicyConfig = {
@@ -36,6 +44,12 @@ export const DEFAULT_WEB_TOOL_URL_POLICY: WebToolUrlPolicyConfig = {
   enabled: false,
   fetch_allowlist: [],
   search_result_allowlist: [],
+};
+
+export const DEFAULT_SANDBOX_RUNTIME: SandboxRuntimeConfig = {
+  enabled: false,
+  provider: "auto",
+  network: "deny",
 };
 
 function parseJsonValue(raw: string): unknown {
@@ -99,6 +113,30 @@ function normalizeWebToolUrlPolicy(value: unknown): WebToolUrlPolicyConfig {
   };
 }
 
+function normalizeSandboxProvider(value: unknown): SandboxProvider {
+  if (typeof value !== "string") return "auto";
+  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (normalized === "apple_sandbox" || normalized === "apple") return "apple_sandbox";
+  if (normalized === "podman") return "podman";
+  if (normalized === "docker") return "docker";
+  return "auto";
+}
+
+function normalizeSandboxNetwork(value: unknown): SandboxNetworkMode {
+  if (typeof value !== "string") return "deny";
+  const normalized = value.trim().toLowerCase();
+  return normalized === "allow" ? "allow" : "deny";
+}
+
+function normalizeSandboxRuntime(value: unknown): SandboxRuntimeConfig {
+  const parsed = asObject(value);
+  return {
+    enabled: parsed?.enabled === true,
+    provider: normalizeSandboxProvider(parsed?.provider),
+    network: normalizeSandboxNetwork(parsed?.network),
+  };
+}
+
 class ConfigManager {
   get<T>(key: string): T | undefined {
     const stored = tables.config.get(key);
@@ -120,6 +158,7 @@ class ConfigManager {
       dangerous_tool_policy: { ...DEFAULT_DANGEROUS_TOOL_POLICY },
       tool_approval_mode: DEFAULT_TOOL_APPROVAL_MODE,
       web_tool_url_policy: { ...DEFAULT_WEB_TOOL_URL_POLICY },
+      sandbox_runtime: { ...DEFAULT_SANDBOX_RUNTIME },
     };
 
     const all = tables.config.all();
@@ -161,6 +200,17 @@ class ConfigManager {
   setWebToolUrlPolicy(policy: unknown): WebToolUrlPolicyConfig {
     const normalized = normalizeWebToolUrlPolicy(policy);
     this.set("web_tool_url_policy", normalized);
+    return normalized;
+  }
+
+  getSandboxRuntime(): SandboxRuntimeConfig {
+    const stored = this.get<unknown>("sandbox_runtime");
+    return normalizeSandboxRuntime(stored);
+  }
+
+  setSandboxRuntime(runtime: unknown): SandboxRuntimeConfig {
+    const normalized = normalizeSandboxRuntime(runtime);
+    this.set("sandbox_runtime", normalized);
     return normalized;
   }
 

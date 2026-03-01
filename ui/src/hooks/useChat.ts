@@ -18,6 +18,7 @@ interface RevertMessageInput {
 
 export function useChat(agentId?: string) {
   const activeRequestAbortRef = useRef<AbortController | null>(null);
+  const queryClient = useQueryClient();
   const [state, setState] = useState<ChatState>({
     messages: [],
     sessionId: null,
@@ -75,6 +76,7 @@ export function useChat(agentId?: string) {
                 isLoading: false,
               }),
         }));
+        void queryClient.invalidateQueries({ queryKey: ['sessions'] });
         return response.data;
       }
       throw new Error(response.error || 'Failed to send message');
@@ -167,6 +169,7 @@ export function useChat(agentId?: string) {
         messages: response.data?.messagesList || [],
         isLoading: false,
       }));
+      void queryClient.invalidateQueries({ queryKey: ['sessions'] });
 
       return response.data;
     } catch (error) {
@@ -199,8 +202,8 @@ export function useSessions() {
       }
       throw new Error(response.error || 'Failed to fetch sessions');
     },
-    refetchInterval: 3000,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
+    staleTime: 30_000,
   });
 }
 

@@ -17,6 +17,13 @@ interface LogEntry {
   context?: Record<string, unknown>;
 }
 
+export interface StructuredLogRecord extends LogEntry {
+  unixMs: number;
+}
+
+type LogSink = (record: StructuredLogRecord) => void;
+type OTelBridge = (record: StructuredLogRecord) => void;
+
 const LOG_LEVELS: Record<LogLevel, number> = {
   debug: 0,
   info: 1,
@@ -26,6 +33,10 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 
 const MIN_LOG_LEVEL: LogLevel = (process.env.LOG_LEVEL as LogLevel) || "info";
 const MIN_LEVEL_PRIORITY = LOG_LEVELS[MIN_LOG_LEVEL] ?? 1;
+const LOG_FORMAT = (process.env.LOG_FORMAT || "pretty").toLowerCase();
+
+let customSink: LogSink | null = null;
+let otelBridge: OTelBridge | null = null;
 
 const COLORS = {
   reset: "\x1b[0m",
@@ -76,15 +87,30 @@ function log(
 ): void {
   if (LOG_LEVELS[level] < MIN_LEVEL_PRIORITY) return;
 
-  const entry: LogEntry = {
-    timestamp: new Date().toISOString(),
+  const now = Date.now();
+  const entry: StructuredLogRecord = {
+    timestamp: new Date(now).toISOString(),
+    unixMs: now,
     level,
     module,
     message,
     context,
   };
 
-  const formattedLine = formatLogEntry(entry);
+  try {
+    otelBridge?.(entry);
+  } catch {
+    // Never break primary logging path on OTEL bridge errors.
+  }
+
+  try {
+    customSink?.(entry);
+  } catch {
+    // Never break primary logging path on custom sink errors.
+  }
+
+  const formattedLine =
+    LOG_FORMAT === "json" ? JSON.stringify(entry) : formatLogEntry(entry);
 
   if (level === "error") {
     console.error(formattedLine);
@@ -93,6 +119,14 @@ function log(
   } else {
     console.log(formattedLine);
   }
+}
+
+export function setLogSink(sink: LogSink | null): void {
+  customSink = sink;
+}
+
+export function setOtelBridge(bridge: OTelBridge | null): void {
+  otelBridge = bridge;
 }
 
 export function createLogger(module: string) {

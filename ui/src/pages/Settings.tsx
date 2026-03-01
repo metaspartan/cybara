@@ -99,8 +99,12 @@ function FeatureSettings() {
   const [dangerousToolPolicyEnabled, setDangerousToolPolicyEnabled] = useState(false);
   const [dangerousToolPolicyMode, setDangerousToolPolicyMode] = useState<'audit' | 'block'>('audit');
   const [toolApprovalMode, setToolApprovalMode] = useState<'always_allow' | 'ask'>('always_allow');
+  const [sandboxEnabled, setSandboxEnabled] = useState(false);
+  const [sandboxProvider, setSandboxProvider] = useState<'auto' | 'apple_sandbox' | 'podman' | 'docker'>('auto');
+  const [sandboxNetwork, setSandboxNetwork] = useState<'allow' | 'deny'>('deny');
   const [savingToolApprovalMode, setSavingToolApprovalMode] = useState(false);
   const [savingDangerousPolicy, setSavingDangerousPolicy] = useState(false);
+  const [savingSandboxRuntime, setSavingSandboxRuntime] = useState(false);
   const [loading, setLoading] = useState(true);
   const { addToast } = useUIStore();
 
@@ -113,9 +117,21 @@ function FeatureSettings() {
           | { enabled?: boolean; mode?: string }
           | undefined;
         const modeRaw = typeof data?.tool_approval_mode === 'string' ? data.tool_approval_mode : '';
+        const sandboxRaw = data?.sandbox_runtime as
+          | { enabled?: boolean; provider?: string; network?: string }
+          | undefined;
         setDangerousToolPolicyEnabled(policy?.enabled === true);
         setDangerousToolPolicyMode(policy?.mode === 'block' ? 'block' : 'audit');
         setToolApprovalMode(modeRaw === 'ask' ? 'ask' : 'always_allow');
+        setSandboxEnabled(sandboxRaw?.enabled === true);
+        setSandboxProvider(
+          sandboxRaw?.provider === 'apple_sandbox' ||
+            sandboxRaw?.provider === 'podman' ||
+            sandboxRaw?.provider === 'docker'
+            ? sandboxRaw.provider
+            : 'auto'
+        );
+        setSandboxNetwork(sandboxRaw?.network === 'allow' ? 'allow' : 'deny');
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -182,6 +198,37 @@ function FeatureSettings() {
       addToast('error', 'Failed to update tool approval mode');
     } finally {
       setSavingToolApprovalMode(false);
+    }
+  };
+
+  const updateSandboxRuntime = async (next: {
+    enabled: boolean;
+    provider: 'auto' | 'apple_sandbox' | 'podman' | 'docker';
+    network: 'allow' | 'deny';
+  }) => {
+    const previous = {
+      enabled: sandboxEnabled,
+      provider: sandboxProvider,
+      network: sandboxNetwork,
+    };
+
+    setSandboxEnabled(next.enabled);
+    setSandboxProvider(next.provider);
+    setSandboxNetwork(next.network);
+    setSavingSandboxRuntime(true);
+    try {
+      const result = await settingsApi.updateConfig({ sandbox_runtime: next });
+      if (!result.success || !result.data?.success) {
+        throw new Error(result.error || 'Config update failed');
+      }
+      addToast('success', next.enabled ? 'Sandbox runtime enabled' : 'Sandbox runtime disabled');
+    } catch {
+      setSandboxEnabled(previous.enabled);
+      setSandboxProvider(previous.provider);
+      setSandboxNetwork(previous.network);
+      addToast('error', 'Failed to update sandbox runtime');
+    } finally {
+      setSavingSandboxRuntime(false);
     }
   };
 
@@ -288,6 +335,84 @@ function FeatureSettings() {
             Channel shortcut: <code className="text-indigo-400">/permissions ask</code> or{' '}
             <code className="text-indigo-400">/permissions allow</code>
           </p>
+        </div>
+
+        <div className="py-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-white font-medium">Command Sandbox</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Isolate `exec` and `git` tools with host/container sandboxing.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={sandboxEnabled}
+              disabled={loading || savingSandboxRuntime}
+              onClick={() =>
+                updateSandboxRuntime({
+                  enabled: !sandboxEnabled,
+                  provider: sandboxProvider,
+                  network: sandboxNetwork,
+                })
+              }
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                sandboxEnabled ? 'bg-emerald-500' : 'bg-white/10'
+              } ${(loading || savingSandboxRuntime) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  sandboxEnabled ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+          {sandboxEnabled && (
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 max-w-xl">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Provider</label>
+                <Select
+                  value={sandboxProvider}
+                  onChange={(value) =>
+                    updateSandboxRuntime({
+                      enabled: true,
+                      provider:
+                        value === 'apple_sandbox' || value === 'podman' || value === 'docker'
+                          ? value
+                          : 'auto',
+                      network: sandboxNetwork,
+                    })
+                  }
+                  options={[
+                    { value: 'auto', label: 'Auto Detect' },
+                    { value: 'apple_sandbox', label: 'Apple Sandbox' },
+                    { value: 'podman', label: 'Podman' },
+                    { value: 'docker', label: 'Docker' },
+                  ]}
+                  disabled={savingSandboxRuntime}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Network</label>
+                <Select
+                  value={sandboxNetwork}
+                  onChange={(value) =>
+                    updateSandboxRuntime({
+                      enabled: true,
+                      provider: sandboxProvider,
+                      network: value === 'allow' ? 'allow' : 'deny',
+                    })
+                  }
+                  options={[
+                    { value: 'deny', label: 'Deny Network' },
+                    { value: 'allow', label: 'Allow Network' },
+                  ]}
+                  disabled={savingSandboxRuntime}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

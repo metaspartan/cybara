@@ -62,6 +62,7 @@ import { PageLayout } from "@/components/layout";
 import { GlassCard, GlassButton, Input, Badge, Modal, Button } from "@/components/ui";
 import { formatRelativeTime } from "@/lib/utils";
 import { appendApiTokenParam } from "@/lib/auth";
+import { connectStatusStream } from "@/lib/status-stream";
 import {
   buildActivitiesFromToolCalls,
   finalizeCompletedActivities,
@@ -143,6 +144,7 @@ interface StatusStreamEvent {
   agentId?: string;
   toolName?: string;
   toolCallId?: string;
+  sandboxProvider?: string;
   toolPhase?: "start" | "result" | "error";
   durationMs?: number;
   type?: string;
@@ -155,6 +157,7 @@ interface SessionStatusActivity {
   timestamp: number;
   toolName?: string;
   toolCallId?: string;
+  sandboxProvider?: string;
 }
 
 interface SessionStatusSnapshot {
@@ -377,6 +380,7 @@ function normalizePersistedLiveActivityItem(value: unknown): LiveActivityItem | 
     phase,
     toolName: typeof candidate.toolName === "string" ? candidate.toolName : undefined,
     toolCallId: typeof candidate.toolCallId === "string" ? candidate.toolCallId : undefined,
+    sandboxProvider: normalizeSandboxProviderValue(candidate.sandboxProvider),
   };
 }
 
@@ -729,6 +733,7 @@ function toLiveActivityItems(activities: SessionStatusActivity[] | undefined): L
       timestamp: activity.timestamp,
       toolName: activity.toolName,
       toolCallId: activity.toolCallId,
+      sandboxProvider: normalizeSandboxProviderValue(activity.sandboxProvider),
     }));
 }
 
@@ -754,6 +759,36 @@ function tryParseJsonRecord(value: unknown): unknown {
   } catch {
     return value;
   }
+}
+
+function normalizeSandboxProviderValue(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (
+    normalized === "apple_sandbox" ||
+    normalized === "podman" ||
+    normalized === "docker" ||
+    normalized === "host"
+  ) {
+    return normalized;
+  }
+  return undefined;
+}
+
+function formatSandboxProviderLabel(provider: string): string {
+  if (provider === "apple_sandbox") return "Apple Sandbox";
+  if (provider === "podman") return "Podman";
+  if (provider === "docker") return "Docker";
+  if (provider === "host") return "Host";
+  return provider;
+}
+
+function resolveToolCallSandboxProvider(toolCall: ToolCall): string | undefined {
+  const parsedResult = tryParseJsonRecord(toolCall.result);
+  if (!isRecord(parsedResult)) return undefined;
+  return normalizeSandboxProviderValue(
+    parsedResult.sandboxProvider ?? parsedResult.sandbox_provider
+  );
 }
 
 function parseArtifactSummary(value: unknown): ArtifactSummaryView | null {
@@ -1222,7 +1257,14 @@ function LiveActivityTimeline({
               ) : (
                 <AlertTriangle className="w-3 h-3 text-red-400 mt-0.5 flex-shrink-0" />
               )}
-              <ActivityText text={activity.text} />
+              <div className="min-w-0 flex-1 flex items-center gap-2">
+                <ActivityText text={activity.text} />
+                {activity.toolName !== "__thought" && activity.sandboxProvider && (
+                  <span className="inline-flex items-center rounded border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 text-[10px] leading-none text-sky-200">
+                    {formatSandboxProviderLabel(activity.sandboxProvider)}
+                  </span>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -1277,7 +1319,14 @@ function ProcessActivityList({ activities }: { activities: LiveActivityItem[] })
           ) : (
             <AlertTriangle className="h-3 w-3 text-rose-400 mt-0.5 flex-shrink-0" />
           )}
-          <ActivityText text={activity.text} />
+          <div className="min-w-0 flex-1 flex items-center gap-2">
+            <ActivityText text={activity.text} />
+            {activity.toolName !== "__thought" && activity.sandboxProvider && (
+              <span className="inline-flex items-center rounded border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 text-[10px] leading-none text-sky-200">
+                {formatSandboxProviderLabel(activity.sandboxProvider)}
+              </span>
+            )}
+          </div>
         </div>
       ))}
     </div>
@@ -1314,7 +1363,14 @@ function ActivityStepCard({ activity, isLast }: { activity: LiveActivityItem; is
           phaseStyles[activity.phase]
         )}
       >
-        <ActivityText text={activity.text} />
+        <div className="min-w-0 flex items-center gap-2">
+          <ActivityText text={activity.text} />
+          {activity.toolName !== "__thought" && activity.sandboxProvider && (
+            <span className="inline-flex items-center rounded border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 text-[10px] leading-none text-sky-200">
+              {formatSandboxProviderLabel(activity.sandboxProvider)}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1802,6 +1858,26 @@ function AssistantMetaInline({
     normalizedProcessActivities,
     contentAndThinkingActivities
   );
+  const sandboxProviderByToolCallId = new Map<string, string>();
+  for (const toolCall of orderedToolCalls) {
+    const toolCallId = typeof toolCall.id === "string" ? toolCall.id.trim().toLowerCase() : "";
+    if (!toolCallId) continue;
+    const sandboxProvider = resolveToolCallSandboxProvider(toolCall);
+    if (!sandboxProvider) continue;
+    sandboxProviderByToolCallId.set(toolCallId, sandboxProvider);
+  }
+  const workActivitiesWithSandbox = workActivities.map((activity) => {
+    if (activity.sandboxProvider) return activity;
+    const toolCallId =
+      typeof activity.toolCallId === "string" ? activity.toolCallId.trim().toLowerCase() : "";
+    if (!toolCallId) return activity;
+    const sandboxProvider = sandboxProviderByToolCallId.get(toolCallId);
+    if (!sandboxProvider) return activity;
+    return {
+      ...activity,
+      sandboxProvider,
+    };
+  });
   const hasWorkSectionContent = workActivities.length > 0;
   const hasSummarySectionContent = hasFileChangeSummary || hasArtifacts;
 
@@ -1820,8 +1896,8 @@ function AssistantMetaInline({
         </div>
       )}
 
-      {isWorkSection && workActivities.length > 0 && (
-        <ProcessActivityList activities={workActivities} />
+      {isWorkSection && workActivitiesWithSandbox.length > 0 && (
+        <ProcessActivityList activities={workActivitiesWithSandbox} />
       )}
 
       {!isWorkSection && hasFileChangeSummary && fileChangeSummary && (
@@ -2415,12 +2491,36 @@ function SubagentPanel({
   onClose: () => void;
   onViewSession?: (sessionKey: string) => void;
 }) {
-  const { data: subagents, isLoading } = useSubagents();
+  const { data: subagents, isLoading, refetch } = useSubagents();
   const spawnSubagent = useSpawnSubagent();
   const killSubagent = useKillSubagent();
   const [newTask, setNewTask] = useState("");
   const [showSpawnModal, setShowSpawnModal] = useState(false);
   const [selectedSubagent, setSelectedSubagent] = useState<Subagent | null>(null);
+  const subagentRefreshTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const disconnect = connectStatusStream({
+      onEvent: (event) => {
+        if (!event || typeof event !== "object") return;
+        if (event.type !== "status" && event.type !== "task_completed") return;
+        if (subagentRefreshTimerRef.current !== null) {
+          window.clearTimeout(subagentRefreshTimerRef.current);
+        }
+        subagentRefreshTimerRef.current = window.setTimeout(() => {
+          void refetch();
+          subagentRefreshTimerRef.current = null;
+        }, 800);
+      },
+    });
+    return () => {
+      disconnect();
+      if (subagentRefreshTimerRef.current !== null) {
+        window.clearTimeout(subagentRefreshTimerRef.current);
+        subagentRefreshTimerRef.current = null;
+      }
+    };
+  }, [refetch]);
 
   const handleSpawn = async () => {
     if (!newTask.trim()) return;
@@ -2707,6 +2807,37 @@ function SessionsPanel({
   const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
+  const sessionsRefreshTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const disconnect = connectStatusStream({
+      onEvent: (event) => {
+        if (!event || typeof event !== "object") return;
+        if (
+          event.type !== "status" &&
+          event.type !== "snapshot" &&
+          event.type !== "task_completed"
+        ) {
+          return;
+        }
+        if (sessionsRefreshTimerRef.current !== null) {
+          window.clearTimeout(sessionsRefreshTimerRef.current);
+        }
+        sessionsRefreshTimerRef.current = window.setTimeout(() => {
+          void refetch();
+          sessionsRefreshTimerRef.current = null;
+        }, 600);
+      },
+    });
+
+    return () => {
+      disconnect();
+      if (sessionsRefreshTimerRef.current !== null) {
+        window.clearTimeout(sessionsRefreshTimerRef.current);
+        sessionsRefreshTimerRef.current = null;
+      }
+    };
+  }, [refetch]);
 
   const handleLoadSession = async (sessionId: string) => {
     try {
@@ -3355,7 +3486,8 @@ export function Chat() {
       text: string,
       toolName?: string,
       eventTimestamp?: number,
-      toolCallId?: string
+      toolCallId?: string,
+      sandboxProvider?: string
     ) => {
       const trimmed = text.trim();
       if (!trimmed) return;
@@ -3371,6 +3503,7 @@ export function Chat() {
         typeof toolCallId === "string" && toolCallId.trim()
           ? toolCallId.trim().toLowerCase()
           : "";
+      const normalizedSandboxProvider = normalizeSandboxProviderValue(sandboxProvider);
       const nextId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const sortAndMergeActivities = (items: LiveActivityItem[]): LiveActivityItem[] =>
         mergeActivityLists(
@@ -3400,6 +3533,7 @@ export function Chat() {
                 timestamp: nextTimestamp,
                 toolName: normalizedToolName || candidate.toolName,
                 toolCallId: normalizedToolCallId,
+                sandboxProvider: normalizedSandboxProvider || candidate.sandboxProvider,
               };
               return sortAndMergeActivities(updated);
             }
@@ -3419,6 +3553,7 @@ export function Chat() {
                 timestamp: nextTimestamp,
                 toolName: normalizedToolName,
                 toolCallId: normalizedToolCallId || candidate.toolCallId,
+                sandboxProvider: normalizedSandboxProvider || candidate.sandboxProvider,
               };
               return sortAndMergeActivities(updated);
             }
@@ -3437,6 +3572,7 @@ export function Chat() {
               timestamp: nextTimestamp,
               toolName: normalizedToolName || candidate.toolName,
               toolCallId: normalizedToolCallId || candidate.toolCallId,
+              sandboxProvider: normalizedSandboxProvider || candidate.sandboxProvider,
             };
             return sortAndMergeActivities(updated);
           }
@@ -3465,6 +3601,7 @@ export function Chat() {
           timestamp: nextTimestamp,
           toolName: normalizedToolName || undefined,
           toolCallId: normalizedToolCallId || undefined,
+          sandboxProvider: normalizedSandboxProvider,
         };
         return sortAndMergeActivities([...previous, next]);
       };
@@ -3597,28 +3734,27 @@ export function Chat() {
     }
 
     void hydrateSessionStatus(sessionId);
-    const intervalId = window.setInterval(() => {
-      void hydrateSessionStatus(sessionId);
-    }, 4000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
+    return;
   }, [hydrateSessionStatus, sessionId]);
 
   useEffect(() => {
-    const eventSource = new EventSource(appendApiTokenParam("/api/sse/status"));
-
-    eventSource.onmessage = (event) => {
-      let payload: StatusStreamEvent;
-      try {
-        payload = JSON.parse(event.data) as StatusStreamEvent;
-      } catch {
+    const disconnect = connectStatusStream({
+      onEvent: (payload) => {
+      if (!payload || typeof payload !== "object") return;
+      if (payload.type === "snapshot") {
+        const snapshotIds = Array.isArray(payload.activeSessionIds)
+          ? payload.activeSessionIds.filter(
+              (candidate): candidate is string => typeof candidate === "string" && candidate.trim().length > 0
+            )
+          : [];
+        setActiveSessionIds(snapshotIds);
+        const activeSession = activeSessionRef.current;
+        if (activeSession) {
+          void hydrateSessionStatus(activeSession);
+        }
         return;
       }
-
-      if (!payload || typeof payload !== "object") return;
-      if (payload.type && payload.type !== "status") return;
+      if (payload.type !== "status") return;
       const status = typeof payload.status === "string" ? payload.status : "";
       if (!status) return;
       const payloadSessionId =
@@ -3725,7 +3861,14 @@ export function Chat() {
           typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
             ? payload.timestamp
             : undefined;
-        appendLiveActivity(phase, text, payload.toolName, eventTimestamp, payload.toolCallId);
+        appendLiveActivity(
+          phase,
+          text,
+          payload.toolName,
+          eventTimestamp,
+          payload.toolCallId,
+          payload.sandboxProvider
+        );
         if (phase === "start") {
           setLiveStatus("thinking");
           setLiveCurrentStep(isGenericStatusLabel(text) ? "Thinking..." : text);
@@ -3738,12 +3881,13 @@ export function Chat() {
           }
         }
       }
-    };
+      },
+    });
 
     return () => {
-      eventSource.close();
+      disconnect();
     };
-  }, [appendLiveActivity]);
+  }, [appendLiveActivity, hydrateSessionStatus]);
 
   useEffect(() => {
     const inputEl = inputRef.current;

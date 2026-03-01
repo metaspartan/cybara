@@ -323,7 +323,10 @@ function route(method: string, url: URL, body: string): Response {
     });
   }
 
-  if (method === "GET" && pathname === "/api/chat/sessions") {
+  if (
+    method === "GET" &&
+    (pathname === "/api/chat/sessions" || pathname === "/api/sessions")
+  ) {
     return json([
       {
         id: "session-1",

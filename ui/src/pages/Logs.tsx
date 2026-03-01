@@ -25,6 +25,7 @@ import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { PageLayout } from '@/components/layout';
 import { logsApi } from '@/lib/api';
+import { connectStatusStream } from '@/lib/status-stream';
 
 interface LogEntry {
   id: string;
@@ -98,9 +99,12 @@ export function Logs() {
   const [filterSource, setFilterSource] = useState<string | null>(null);
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
+  const refreshTimerRef = useRef<number | null>(null);
 
-  const fetchLogs = async () => {
-    setIsLoading(true);
+  const fetchLogs = async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setIsLoading(true);
+    }
     try {
       const [logsResponse, statsResponse] = await Promise.all([
         logsApi.getSystem(),
@@ -116,19 +120,45 @@ export function Logs() {
     } catch (error) {
       console.error('Failed to fetch logs:', error);
     } finally {
-      setIsLoading(false);
+      if (!options?.silent) {
+        setIsLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    fetchLogs();
-    const interval = setInterval(fetchLogs, 30000); // Refresh every 30s
-    return () => clearInterval(interval);
+    void fetchLogs();
+    const disconnect = connectStatusStream({
+      onEvent: (event) => {
+        if (!event || typeof event !== "object") return;
+        if (
+          event.type !== "status" &&
+          event.type !== "snapshot" &&
+          event.type !== "task_completed"
+        ) {
+          return;
+        }
+        if (refreshTimerRef.current !== null) {
+          window.clearTimeout(refreshTimerRef.current);
+        }
+        refreshTimerRef.current = window.setTimeout(() => {
+          void fetchLogs({ silent: true });
+          refreshTimerRef.current = null;
+        }, 800);
+      },
+    });
+    return () => {
+      disconnect();
+      if (refreshTimerRef.current !== null) {
+        window.clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+    };
   }, []);
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
-      fetchLogs();
+      void fetchLogs();
       return;
     }
 
@@ -206,7 +236,12 @@ export function Logs() {
       subtitle="View and search system logs"
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={fetchLogs} leftIcon={<RefreshCw className="w-4 h-4" />}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void fetchLogs()}
+            leftIcon={<RefreshCw className="w-4 h-4" />}
+          >
             Refresh
           </Button>
           <Button variant="secondary" size="sm" onClick={exportLogs} leftIcon={<Download className="w-4 h-4" />}>

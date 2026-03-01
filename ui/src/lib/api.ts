@@ -803,8 +803,16 @@ export const chatApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  getSessions: () =>
-    fetchApi<
+  getSessions: (params?: { limit?: number; offset?: number }) => {
+    const query = new URLSearchParams();
+    if (typeof params?.limit === "number" && Number.isFinite(params.limit)) {
+      query.set("limit", String(Math.max(1, Math.floor(params.limit))));
+    }
+    if (typeof params?.offset === "number" && Number.isFinite(params.offset)) {
+      query.set("offset", String(Math.max(0, Math.floor(params.offset))));
+    }
+    const suffix = query.toString();
+    return fetchApi<
       {
         id: string;
         agent_id: string;
@@ -815,7 +823,8 @@ export const chatApi = {
         message_count?: number;
         last_message?: { role: string; content: string };
       }[]
-    >("/sessions"),
+    >("/sessions" + (suffix ? `?${suffix}` : ""));
+  },
   getSession: (id: string, options?: { includeFullToolCalls?: boolean }) =>
     fetchApi<{
       id: string;
@@ -983,8 +992,16 @@ export const logsApi = {
 };
 
 export const sessionsApi = {
-  list: () =>
-    fetchApi<
+  list: (params?: { limit?: number; offset?: number }) => {
+    const query = new URLSearchParams();
+    if (typeof params?.limit === "number" && Number.isFinite(params.limit)) {
+      query.set("limit", String(Math.max(1, Math.floor(params.limit))));
+    }
+    if (typeof params?.offset === "number" && Number.isFinite(params.offset)) {
+      query.set("offset", String(Math.max(0, Math.floor(params.offset))));
+    }
+    const suffix = query.toString();
+    return fetchApi<
       {
         id: string;
         agent_id: string;
@@ -994,7 +1011,8 @@ export const sessionsApi = {
         message_count?: number;
         last_message?: { role: string; content: string };
       }[]
-    >("/sessions"),
+    >("/sessions" + (suffix ? `?${suffix}` : ""));
+  },
   get: (id: string, options?: { includeFullToolCalls?: boolean }) =>
     fetchApi<{
       id: string;

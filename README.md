@@ -46,7 +46,7 @@ If you need an agent platform that can plan, execute, verify, and report with st
 - 33 built-in provider integrations (`src/core/providers.ts`)
 - 7 channel adapters (`src/core/channels/adapters`)
 - 20 production UI pages (`ui/src/pages/*.tsx`)
-- 75 automated Bun test files (`tests/**/*.test.ts`)
+- 78 automated Bun test files (`tests/**/*.test.ts`)
 - Tauri desktop app + Bun server/CLI runtime
 
 ---
@@ -74,6 +74,22 @@ Then open:
 
 ---
 
+## Docker
+
+Build and run a production container:
+
+```bash
+docker build -t cybara:latest .
+docker run --rm -p 4269:4269 \
+  -e CYBARA_API_KEY=cybara_dev_key \
+  -v ~/.cybara:/root/.cybara \
+  cybara:latest
+```
+
+Then open `http://localhost:4269`.
+
+---
+
 ## Core Features
 
 ### Multi-Agent Runtime
@@ -98,6 +114,16 @@ Tool categories currently shipped:
 - `channel` (2): message/telegram_media
 
 See full reference: [docs/tools.md](docs/tools.md)
+
+### Execution Sandboxing
+
+- Configurable command sandbox for `exec`/`git` tool calls
+- Auto provider selection:
+  - Apple Silicon: `sandbox-exec`
+  - Linux: `podman`
+  - Cross-platform container fallback: `docker`
+- Configurable network mode (`allow` or `deny`) for sandboxed execution
+- Managed via Settings UI (`Command Sandbox`) or config key `sandbox_runtime`
 
 ### Encrypted Wallet + Crypto Automation
 
@@ -157,6 +183,8 @@ bun run start:prod   # Build all then run
 bun test             # Full test suite
 bun run test:smoke   # Runtime + API + E2E smoke
 bun run check        # Typecheck + lint + format check
+bun run check:loc    # Enforce max TS/TSX file size
+bun run check:ci     # CI gate (typecheck + lint + loc + smoke + deadcode report)
 
 bun run tauri:dev    # Desktop dev mode
 bun run tauri:build  # Desktop production build
@@ -171,11 +199,13 @@ Cybara exposes a broad REST API and streaming interfaces.
 
 Common surfaces:
 
-- Chat & sessions: `/api/chat`, `/api/chat/sessions`, `/api/sessions`
+- Chat & sessions: `/api/chat`, `/api/sessions` (legacy `/api/chat/sessions` remains supported)
 - Agents/providers/channels/tasks/skills/memory
 - Wallet and dapp routes under `/api/wallet/*`
 - Browser + terminal automation endpoints
-- SSE status stream: `/api/sse/status`
+- Status streams:
+  - SSE: `/api/sse/status`
+  - WebSocket: `/api/ws/status`
 
 Full reference: [docs/api.md](docs/api.md)
 
@@ -186,6 +216,7 @@ Full reference: [docs/api.md](docs/api.md)
 ```bash
 cybara chat
 cybara status
+cybara doctor
 cybara provider available
 cybara channels
 cybara wallet status

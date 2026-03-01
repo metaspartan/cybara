@@ -11,6 +11,7 @@
 | `CYBARA_API` | `http://localhost:4269` | API endpoint for CLI |
 | `BRAVE_API_KEY` | - | Web search (optional, falls back to DuckDuckGo) |
 | `LOG_LEVEL` | info | Logging verbosity |
+| `LOG_FORMAT` | pretty | Log output format (`pretty` or `json`) |
 
 ## Workspace Files
 
@@ -58,6 +59,15 @@ Location: `~/.cybara/data/platform.db`
 - `skills` - Installed skills
 - `config` - Key-value settings
 - `cron_jobs` - Scheduled tasks
+
+## Runtime Config Keys
+
+Key-value settings are stored in the `config` table and exposed via `GET/PUT /api/config`.
+
+- `tool_approval_mode`: `always_allow` or `ask`
+- `dangerous_tool_policy`: `{ enabled: boolean, mode: "audit" | "block" }`
+- `web_tool_url_policy`: `{ enabled: boolean, fetch_allowlist: string[], search_result_allowlist: string[] }`
+- `sandbox_runtime`: `{ enabled: boolean, provider: "auto" | "apple_sandbox" | "podman" | "docker", network: "allow" | "deny" }`
 
 ## Provider Configuration
 

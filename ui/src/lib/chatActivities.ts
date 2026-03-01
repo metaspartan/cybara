@@ -7,6 +7,7 @@ export interface LiveActivityItem {
   timestamp: number;
   toolName?: string;
   toolCallId?: string;
+  sandboxProvider?: string;
 }
 
 export interface ToolCallLike {
@@ -45,6 +46,25 @@ function toFiniteNumber(value: unknown): number | undefined {
     if (Number.isFinite(parsed)) return parsed;
   }
   return undefined;
+}
+
+function normalizeSandboxProvider(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (
+    normalized === "apple_sandbox" ||
+    normalized === "podman" ||
+    normalized === "docker" ||
+    normalized === "host"
+  ) {
+    return normalized;
+  }
+  return undefined;
+}
+
+function resolveToolCallSandboxProvider(call: ToolCallLike): string | undefined {
+  if (!isObjectRecord(call.result)) return undefined;
+  return normalizeSandboxProvider(call.result.sandboxProvider ?? call.result.sandbox_provider);
 }
 
 function summarizeToolResult(call: ToolCallLike, phase: ActivityPhase): string | undefined {
@@ -199,6 +219,8 @@ export function buildActivitiesFromToolCalls(
       text: trimmedText,
       timestamp: startedAt,
       toolName: call.name,
+      toolCallId: call.id,
+      sandboxProvider: resolveToolCallSandboxProvider(call),
     });
   }
 

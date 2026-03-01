@@ -6,6 +6,9 @@ import { deriveSessionTitleFromMessages, normalizeSessionTitle } from "./session
 import { existsSync, statSync } from "fs";
 import { homedir } from "os";
 import { isAbsolute, resolve } from "path";
+import { createLogger } from "./logger";
+
+const log = createLogger("Session");
 
 interface PersistedSessionMessage {
   role: string;
@@ -277,9 +280,10 @@ export async function compactContext(
     return { messages, wasCompacted: false };
   }
 
-  console.log(
-    `[Context] Compacting ${olderMessages.length} messages (${olderTokens} tokens) into summary`
-  );
+  log.info("Compacting context messages", {
+    olderMessageCount: olderMessages.length,
+    olderTokens,
+  });
 
   let summary: string;
   try {
@@ -289,7 +293,7 @@ export async function compactContext(
       summary = createFallbackSummary(olderMessages);
     }
   } catch (error) {
-    console.error("[Context] Summary generation failed, using fallback:", error);
+    log.exception("Summary generation failed, using fallback", error);
     summary = createFallbackSummary(olderMessages);
   }
 
@@ -301,9 +305,10 @@ export async function compactContext(
 
   const compactedMessages = [...systemMessages, summaryMessage, ...recentMessages];
 
-  console.log(
-    `[Context] Compacted from ${messages.length} messages to ${compactedMessages.length} messages`
-  );
+  log.info("Context compaction complete", {
+    messagesBefore: messages.length,
+    messagesAfter: compactedMessages.length,
+  });
 
   return {
     messages: compactedMessages,
@@ -414,11 +419,9 @@ export async function persistSession(
       );
     }
 
-    console.log(
-      `[Session] Persisted session ${sessionId.slice(0, 8)}... with ${messages.length} messages`
-    );
+    log.info("Persisted session", { sessionId, messageCount: messages.length });
   } catch (error) {
-    console.error("[Session] Failed to persist session:", error);
+    log.exception("Failed to persist session", error, { sessionId });
   }
 }
 
@@ -471,9 +474,7 @@ export async function loadPersistedSession(sessionId: string): Promise<{
       title = normalizeSessionTitle(session?.title);
     }
 
-    console.log(
-      `[Session] Loaded persisted session ${sessionId.slice(0, 8)}... with ${messages.length} messages`
-    );
+    log.debug("Loaded persisted session", { sessionId, messageCount: messages.length });
 
     return {
       agentId: agentId || "default",
@@ -482,7 +483,7 @@ export async function loadPersistedSession(sessionId: string): Promise<{
       title: title || deriveSessionTitle(messages, agentId || "default"),
     };
   } catch (error) {
-    console.error("[Session] Failed to load persisted session:", error);
+    log.exception("Failed to load persisted session", error, { sessionId });
     return null;
   }
 }
@@ -496,6 +497,8 @@ export async function listPersistedSessions(): Promise<
     updatedAt: string;
     messageCount: number;
     workspaceDir: string | null;
+    lastMessageRole: string | null;
+    lastMessageContent: string | null;
   }>
 > {
   try {
@@ -509,7 +512,24 @@ export async function listPersistedSessions(): Promise<
         cs.created_at as createdAt,
         cs.updated_at as updatedAt,
         cs.workspace_dir as workspaceDir,
-        COUNT(sm.id) as messageCount
+        CASE
+          WHEN COUNT(sm.id) > 0 THEN COUNT(sm.id)
+          ELSE COALESCE(json_array_length(cs.messages), 0)
+        END as messageCount,
+        COALESCE((
+          SELECT lm.role
+          FROM session_messages lm
+          WHERE lm.session_id = cs.id
+          ORDER BY lm.created_at DESC, lm.id DESC
+          LIMIT 1
+        ), json_extract(cs.messages, '$[#-1].role')) as lastMessageRole,
+        COALESCE((
+          SELECT lm.content
+          FROM session_messages lm
+          WHERE lm.session_id = cs.id
+          ORDER BY lm.created_at DESC, lm.id DESC
+          LIMIT 1
+        ), json_extract(cs.messages, '$[#-1].content')) as lastMessageContent
       FROM chat_sessions cs
       LEFT JOIN session_messages sm ON cs.id = sm.session_id
       GROUP BY cs.id
@@ -524,11 +544,13 @@ export async function listPersistedSessions(): Promise<
       updatedAt: string;
       messageCount: number;
       workspaceDir: string | null;
+      lastMessageRole: string | null;
+      lastMessageContent: string | null;
     }>;
 
     return sessions;
   } catch (error) {
-    console.error("[Session] Failed to list persisted sessions:", error);
+    log.exception("Failed to list persisted sessions", error);
     return [];
   }
 }
@@ -561,10 +583,10 @@ export async function deletePersistedSession(sessionId: string): Promise<boolean
 
     db.prepare("DELETE FROM chat_sessions WHERE id = ?").run(sessionId);
 
-    console.log(`[Session] Deleted persisted session ${sessionId.slice(0, 8)}...`);
+    log.info("Deleted persisted session", { sessionId });
     return true;
   } catch (error) {
-    console.error("[Session] Failed to delete persisted session:", error);
+    log.exception("Failed to delete persisted session", error, { sessionId });
     return false;
   }
 }
@@ -609,7 +631,7 @@ export async function getSessionStats(sessionId: string): Promise<{
       lastMessageAt: typedStats.lastMessageAt,
     };
   } catch (error) {
-    console.error("[Session] Failed to get session stats:", error);
+    log.exception("Failed to get session stats", error, { sessionId });
     return null;
   }
 }

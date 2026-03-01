@@ -22,6 +22,7 @@ const command = args[0]?.toLowerCase();
 const CLI_COMMANDS = [
   "status",
   "metrics",
+  "doctor",
   "agents",
   "tasks",
   "skills",
@@ -171,6 +172,7 @@ Usage:
   cybara stop               Stop the background server
   cybara status             Show platform status
   cybara metrics            Show token usage and metrics
+  cybara doctor             Run environment diagnostics
   cybara agents             List all agents
   cybara chat               Interactive TUI chat
   cybara config             Show / get / set config

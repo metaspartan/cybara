@@ -14,6 +14,7 @@ import {
   resolveModelAlias,
   getDefaultSystemPrompt,
 } from "./system-prompt";
+import { getSandboxPromptInfo } from "./sandbox";
 import { broadcastStatus, type AgentStatus, type StatusPayload } from "./status";
 import { homedir } from "os";
 import { loadAllSkills, createEligibilityContext, filterEligibleSkills } from "./skills";
@@ -670,6 +671,25 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+function normalizeSandboxProvider(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (
+    normalized === "apple_sandbox" ||
+    normalized === "podman" ||
+    normalized === "docker" ||
+    normalized === "host"
+  ) {
+    return normalized;
+  }
+  return undefined;
+}
+
+function extractSandboxProviderFromToolResult(result: unknown): string | undefined {
+  if (!isObjectRecord(result)) return undefined;
+  return normalizeSandboxProvider(result.sandboxProvider ?? result.sandbox_provider);
+}
+
 function formatToolActivityDetail(
   toolName: string,
   args: Record<string, unknown>,
@@ -1142,6 +1162,7 @@ class AgentManager {
       modelDisplay: definition.model || typeConfig?.defaultModel || "MiniMax-M2.5",
       tools: (definition.tools ?? getBuiltinTools()).map((t) => t.name),
       skills: eligibleSkills,
+      sandboxInfo: getSandboxPromptInfo(homeDir),
     });
 
     return this.create({
@@ -1214,6 +1235,7 @@ class AgentManager {
       modelDisplay: agent.model || "MiniMax-M2.5",
       tools: this.getAgentTools(agent).map((t) => t.name),
       skills: eligibleSkills,
+      sandboxInfo: getSandboxPromptInfo(homeDir),
     });
 
     const runningState: RunningAgentState = {
@@ -2055,6 +2077,7 @@ class AgentManager {
           toolCallId,
           toolPhase: "result",
           durationMs: Date.now() - startedAt,
+          sandboxProvider: extractSandboxProviderFromToolResult(result),
         }
       );
       await emitAgentHook({

@@ -47,8 +47,8 @@ describe("UI hooks API wiring", () => {
     expect(source).toContain("fetchApi<{ results: Array<{ file: string; entry: MemoryEntry }> }>(`/memory/search?query=${encodeURIComponent(query)}`)");
     expect(source).toContain("fetchApi<void>(`/memory/${file}`");
 
-    expect(source).toContain("fetchApi<Session[]>('/chat/sessions')");
-    expect(source).toContain("fetchApi<void>(`/chat/sessions/${id}`, { method: 'DELETE' })");
+    expect(source).toContain("fetchApi<Session[]>('/sessions')");
+    expect(source).toContain("fetchApi<void>(`/sessions/${id}`, { method: 'DELETE' })");
   });
 
   test("system prompt, LSP, and metrics hooks keep expected route contracts", () => {

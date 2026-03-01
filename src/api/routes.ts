@@ -1961,6 +1961,7 @@ const routes: Record<string, RouteHandler> = {
     dangerous_tool_policy: config.getDangerousToolPolicy(),
     tool_approval_mode: config.getToolApprovalMode(),
     web_tool_url_policy: config.getWebToolUrlPolicy(),
+    sandbox_runtime: config.getSandboxRuntime(),
   }),
   "PUT /api/config": (body) => {
     const data = body as Record<string, unknown>;
@@ -1975,6 +1976,10 @@ const routes: Record<string, RouteHandler> = {
       }
       if (key === "web_tool_url_policy") {
         config.setWebToolUrlPolicy(value);
+        continue;
+      }
+      if (key === "sandbox_runtime") {
+        config.setSandboxRuntime(value);
         continue;
       }
       config.set(key, value);
@@ -3808,40 +3813,43 @@ const routes: Record<string, RouteHandler> = {
     return getLogStats(hours);
   },
 
-  "GET /api/sessions": async () => {
-    const sessions = await listSessions();
+  "GET /api/sessions": async (_body, params) => {
+    const parseQueryNumber = (raw: string | undefined): number | undefined => {
+      if (typeof raw !== "string" || raw.trim().length === 0) return undefined;
+      const parsed = Number.parseInt(raw, 10);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    };
+    const limit = parseQueryNumber(params?.limit);
+    const offset = parseQueryNumber(params?.offset);
+    const sessions = await listSessions({
+      limit: typeof limit === "number" ? Math.min(500, Math.max(1, limit)) : undefined,
+      offset: typeof offset === "number" ? Math.max(0, offset) : undefined,
+    });
 
-    const sessionsWithCounts = await Promise.all(
-      sessions.map(async (session) => {
-        const messages = await getSessionMessages(session.id);
-        const lastMessage = messages[messages.length - 1];
-        const updatedAt =
-          session.updatedAt || (lastMessage?.timestamp ? lastMessage.timestamp : session.createdAt);
-        return {
-          id: session.id,
-          agent_id: session.agentId,
-          title: typeof session.title === "string" && session.title.trim() ? session.title : null,
-          created_at: normalizeTimestamp(session.createdAt),
-          updated_at: normalizeTimestamp(updatedAt),
-          workspace_dir:
-            "workspaceDir" in session && typeof session.workspaceDir === "string"
-              ? session.workspaceDir
-              : null,
-          message_count: session.messageCount,
-          last_message: lastMessage
-            ? {
+    return sessions.map((session) => {
+      const updatedAt = session.updatedAt || session.createdAt;
+      const lastMessage = session.lastMessage;
+      return {
+        id: session.id,
+        agent_id: session.agentId,
+        title: typeof session.title === "string" && session.title.trim() ? session.title : null,
+        created_at: normalizeTimestamp(session.createdAt),
+        updated_at: normalizeTimestamp(updatedAt),
+        workspace_dir:
+          "workspaceDir" in session && typeof session.workspaceDir === "string"
+            ? session.workspaceDir
+            : null,
+        message_count: session.messageCount,
+        last_message: lastMessage
+          ? {
               role: lastMessage.role,
               content:
                 lastMessage.content.slice(0, 100) +
                 (lastMessage.content.length > 100 ? "..." : ""),
             }
-            : null,
-        };
-      })
-    );
-    return sessionsWithCounts.sort(
-      (a, b) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime()
-    );
+          : null,
+      };
+    });
   },
   "GET /api/sessions/:sessionId": async (_body, params) => {
     const session = await getSession(params!.sessionId);

@@ -32,6 +32,7 @@ cybara tui                # Main menu (interactive TUI)
 
 ```bash
 cybara status             # Show status and health
+cybara doctor             # Run API + stream + sandbox diagnostics
 cybara metrics            # Show token usage and metrics
 cybara logs [count]       # Show recent logs (default: 20)
 ```

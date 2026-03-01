@@ -567,14 +567,14 @@ export function useUpdateMemory() {
 export function useSessions() {
   return useQuery({
     queryKey: ['sessions'],
-    queryFn: () => fetchApi<Session[]>('/chat/sessions'),
+    queryFn: () => fetchApi<Session[]>('/sessions'),
   });
 }
 
 export function useDeleteSession() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => fetchApi<void>(`/chat/sessions/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => fetchApi<void>(`/sessions/${id}`, { method: 'DELETE' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
   });
 }
@@ -719,13 +719,8 @@ export function useSubagents() {
       }
       throw new Error(response.error || 'Failed to fetch subagents');
     },
-    refetchInterval: (query) => {
-      const data = query.state.data as Subagent[] | undefined;
-      const hasRunning = Array.isArray(data) && data.some((subagent) => subagent.status === 'running');
-      return hasRunning ? 1000 : 4000;
-    },
-    refetchIntervalInBackground: true,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
+    staleTime: 10_000,
   });
 }
 

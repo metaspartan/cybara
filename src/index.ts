@@ -36,7 +36,13 @@ import {
 import { toolSchemas } from "./core/tools/index";
 import { providerManager } from "./core/providers";
 import { taskScheduler } from "./core/scheduler";
-import { onStatus, addSSEClient, removeSSEClient } from "./core/status";
+import {
+  onStatus,
+  addSSEClient,
+  removeSSEClient,
+  onStatusStream,
+  createStatusSnapshotEvent,
+} from "./core/status";
 import { onSubagentLifecycle } from "./core/subagent-registry";
 import { resolveUiPath } from "./core/runtime/ui-path";
 import { securityCheck } from "./api/security";
@@ -133,7 +139,6 @@ onStatus((status) => {
 });
 
 function createStatusStream(): ReadableStream<Uint8Array> {
-  let unsubscribe: (() => void) | null = null;
   let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
   let heartbeatInterval: NodeJS.Timeout | null = null;
   const encoder = new TextEncoder();
@@ -156,15 +161,6 @@ function createStatusStream(): ReadableStream<Uint8Array> {
         }
       }, 30000);
 
-      unsubscribe = onStatus((status) => {
-        try {
-          const msg = `data: ${JSON.stringify(status)}\n\n`;
-          controller.enqueue(encoder.encode(msg));
-        } catch {
-          cleanup();
-        }
-      });
-
       function cleanup() {
         if (heartbeatInterval) {
           clearInterval(heartbeatInterval);
@@ -172,10 +168,6 @@ function createStatusStream(): ReadableStream<Uint8Array> {
         }
         if (controllerRef) {
           removeSSEClient(controllerRef);
-        }
-        if (unsubscribe) {
-          unsubscribe();
-          unsubscribe = null;
         }
       }
     },
@@ -186,17 +178,20 @@ function createStatusStream(): ReadableStream<Uint8Array> {
       if (controllerRef) {
         removeSSEClient(controllerRef);
       }
-      if (unsubscribe) {
-        unsubscribe();
-      }
       console.log(`[SSE] Client disconnected`);
     },
   });
 }
 
-interface WsData {
-  sessionId: string;
-}
+type WsData =
+  | {
+      kind: "terminal";
+      sessionId: string;
+    }
+  | {
+      kind: "status";
+      unsubscribe?: () => void;
+    };
 
 function getClientIp(headers: Record<string, string>, directIp?: string): string {
   if (directIp) return directIp;
@@ -257,7 +252,7 @@ Bun.serve<WsData>({
 
       if (pathname === "/api/terminal/ws") {
         const sessionId = url.searchParams.get("session") || crypto.randomUUID();
-        const success = server.upgrade(req, { data: { sessionId } });
+        const success = server.upgrade(req, { data: { kind: "terminal", sessionId } });
         if (success) return undefined;
         return new Response("WebSocket upgrade failed", { status: 400 });
       }
@@ -270,6 +265,24 @@ Bun.serve<WsData>({
           },
         });
       }
+    }
+
+    if (pathname === "/api/ws/status") {
+      const statusHeaders = withOptionalQueryToken(requestHeaders, url);
+      const security = securityCheck(req.method, pathname, statusHeaders, clientIp);
+      if (!security.passed) {
+        return new Response(JSON.stringify({ error: security.error }), {
+          status: security.statusCode || 403,
+          headers: {
+            "Content-Type": "application/json",
+            ...security.headers,
+          },
+        });
+      }
+
+      const success = server.upgrade(req, { data: { kind: "status" } });
+      if (success) return undefined;
+      return new Response("WebSocket upgrade failed", { status: 400 });
     }
 
     if (pathname === "/api/sse/status") {
@@ -364,14 +377,37 @@ Bun.serve<WsData>({
   },
   websocket: {
     open(ws) {
-      const { sessionId } = ws.data as { sessionId: string };
+      const data = ws.data as WsData;
+      if (data.kind === "status") {
+        try {
+          ws.send(JSON.stringify(createStatusSnapshotEvent()));
+          const unsubscribe = onStatusStream((event) => {
+            try {
+              ws.send(JSON.stringify(event));
+            } catch {
+              // Connection will be cleaned up in close handler
+            }
+          });
+          data.unsubscribe = unsubscribe;
+        } catch (error) {
+          console.debug("[Status WS] Failed to initialize websocket:", error);
+          try {
+            ws.close();
+          } catch {
+            // ignore
+          }
+        }
+        return;
+      }
+
+      const { sessionId } = data;
       const session = getTerminalSession(sessionId) || createTerminalSession(sessionId);
 
       startOutputReader(
         session,
-        (data: string) => {
+        (output: string) => {
           try {
-            ws.send(data);
+            ws.send(output);
           } catch (error) {
             console.debug("[Terminal] Failed to send websocket data:", error);
           }
@@ -387,17 +423,33 @@ Bun.serve<WsData>({
       );
     },
     message(ws, message) {
-      const { sessionId } = ws.data as { sessionId: string };
-      const session = getTerminalSession(sessionId);
+      const data = ws.data as WsData;
+      if (data.kind === "status") {
+        const text = typeof message === "string" ? message : Buffer.from(message).toString();
+        if (text === "ping") {
+          try {
+            ws.send("pong");
+          } catch {
+            // ignore
+          }
+        }
+        return;
+      }
+
+      const session = getTerminalSession(data.sessionId);
       if (session) {
         session.lastActivity = Date.now();
-        const data = typeof message === "string" ? message : Buffer.from(message).toString();
-        writeToTerminal(session, data);
+        const input = typeof message === "string" ? message : Buffer.from(message).toString();
+        writeToTerminal(session, input);
       }
     },
     close(ws) {
-      const { sessionId } = ws.data as { sessionId: string };
-      destroyTerminalSession(sessionId);
+      const data = ws.data as WsData;
+      if (data.kind === "status") {
+        data.unsubscribe?.();
+        return;
+      }
+      destroyTerminalSession(data.sessionId);
     },
   },
 });
@@ -410,6 +462,7 @@ console.log(`
 ║   Dashboard:  http://localhost:${PORT}                        ║
 ║   API:        http://localhost:${PORT}/api                    ║
 ║   SSE:        http://localhost:${PORT}/api/sse/status         ║
+║   WS:         ws://localhost:${PORT}/api/ws/status            ║
 ║                                                               ║
 ╚═══════════════════════════════════════════════════════════════╝
 `);

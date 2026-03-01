@@ -1,3 +1,5 @@
+import { createLogger } from "./logger";
+
 export type AgentStatus =
   | "idle"
   | "thinking"
@@ -16,6 +18,7 @@ export interface StatusPayload {
   agentId?: string;
   toolName?: string;
   toolCallId?: string;
+  sandboxProvider?: string;
   toolPhase?: ToolStatusPhase;
   durationMs?: number;
 }
@@ -31,6 +34,19 @@ export interface TaskEventPayload {
   timestamp?: number;
 }
 
+export interface StatusSnapshotEventPayload {
+  type: "snapshot";
+  timestamp: number;
+  activeSessions: SessionStatusSnapshot[];
+  activeSessionIds: string[];
+  count: number;
+}
+
+export type StatusStreamEvent =
+  | ({ type: "status" } & StatusPayload)
+  | TaskEventPayload
+  | StatusSnapshotEventPayload;
+
 export interface SessionActivitySnapshot {
   id: string;
   phase: ToolStatusPhase;
@@ -38,6 +54,7 @@ export interface SessionActivitySnapshot {
   timestamp: number;
   toolName?: string;
   toolCallId?: string;
+  sandboxProvider?: string;
 }
 
 export interface SessionStatusSnapshot {
@@ -50,8 +67,11 @@ export interface SessionStatusSnapshot {
 }
 
 type StatusCallback = (data: StatusPayload) => void;
+type StatusStreamCallback = (event: StatusStreamEvent) => void;
 
 const statusCallbacks = new Set<StatusCallback>();
+const statusStreamCallbacks = new Set<StatusStreamCallback>();
+const log = createLogger("Status");
 
 const sseClients = new Set<ReadableStreamDefaultController<Uint8Array>>();
 
@@ -197,6 +217,7 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
         timestamp: payload.timestamp,
         toolName,
         toolCallId,
+        sandboxProvider: payload.sandboxProvider,
       });
     } else {
       const matchIndex = findMatchingStartActivityIndex(
@@ -219,6 +240,7 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
           timestamp: payload.timestamp,
           toolName: toolName || matched.toolName,
           toolCallId: toolCallId || matched.toolCallId,
+          sandboxProvider: payload.sandboxProvider || matched.sandboxProvider,
         };
       } else {
         const fallbackText = activityText || defaultToolActivityText(toolName, phase);
@@ -229,6 +251,7 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
           timestamp: payload.timestamp,
           toolName,
           toolCallId,
+          sandboxProvider: payload.sandboxProvider,
         });
       }
     }
@@ -297,18 +320,55 @@ export function getSessionStatusSnapshot(sessionId: string): SessionStatusSnapsh
 
 export function addSSEClient(controller: ReadableStreamDefaultController<Uint8Array>): void {
   sseClients.add(controller);
-  console.log(`[Status] SSE client added (${sseClients.size} total)`);
+  log.info("SSE client added", { clients: sseClients.size });
 }
 
 export function removeSSEClient(controller: ReadableStreamDefaultController<Uint8Array>): void {
   sseClients.delete(controller);
-  console.log(`[Status] SSE client removed (${sseClients.size} remaining)`);
+  log.info("SSE client removed", { clients: sseClients.size });
 }
 
 export function onStatus(callback: StatusCallback): () => void {
   statusCallbacks.add(callback);
   return () => {
     statusCallbacks.delete(callback);
+  };
+}
+
+export function onStatusStream(callback: StatusStreamCallback): () => void {
+  statusStreamCallbacks.add(callback);
+  return () => {
+    statusStreamCallbacks.delete(callback);
+  };
+}
+
+function emitStatusStreamEvent(event: StatusStreamEvent): void {
+  for (const callback of statusStreamCallbacks) {
+    try {
+      callback(event);
+    } catch {
+      // Ignore callback errors
+    }
+  }
+
+  const message = encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
+  for (const client of sseClients) {
+    try {
+      client.enqueue(message);
+    } catch {
+      sseClients.delete(client);
+    }
+  }
+}
+
+export function createStatusSnapshotEvent(): StatusSnapshotEventPayload {
+  const activeSessions = listSessionStatusSnapshots();
+  return {
+    type: "snapshot",
+    timestamp: Date.now(),
+    activeSessions,
+    activeSessionIds: activeSessions.map((entry) => entry.sessionId),
+    count: activeSessions.length,
   };
 }
 
@@ -323,33 +383,24 @@ export function broadcastStatus(status: StatusPayload): void {
     }
   }
 
-  const message = encoder.encode(`data: ${JSON.stringify(status)}\n\n`);
-  for (const client of sseClients) {
-    try {
-      client.enqueue(message);
-    } catch {
-      sseClients.delete(client);
-    }
-  }
+  emitStatusStreamEvent({ ...status, type: "status" });
 
-  console.log(
-    `[Status] Broadcast: ${status.status} (${statusCallbacks.size} callbacks, ${sseClients.size} SSE clients)`
-  );
+  log.debug("Broadcast status", {
+    status: status.status,
+    callbacks: statusCallbacks.size,
+    streamCallbacks: statusStreamCallbacks.size,
+    sseClients: sseClients.size,
+  });
 }
 
 export function broadcastTaskEvent(event: TaskEventPayload): void {
   const payload = { ...event, timestamp: Date.now() };
-  const message = encoder.encode(`data: ${JSON.stringify(payload)}\n\n`);
+  emitStatusStreamEvent(payload);
 
-  for (const client of sseClients) {
-    try {
-      client.enqueue(message);
-    } catch {
-      sseClients.delete(client);
-    }
-  }
-
-  console.log(
-    `[Status] Task event: ${event.taskName} ${event.status} (${sseClients.size} SSE clients)`
-  );
+  log.debug("Broadcast task event", {
+    taskName: event.taskName,
+    taskStatus: event.status,
+    streamCallbacks: statusStreamCallbacks.size,
+    sseClients: sseClients.size,
+  });
 }

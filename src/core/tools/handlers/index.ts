@@ -51,12 +51,16 @@ import { logToolExecution } from "../../logging";
 import { config } from "../../config";
 import { homedir } from "os";
 import { isAbsolute, resolve } from "path";
+import { createHash } from "crypto";
 import {
   checkToolPermissions,
   getToolRequiredPermissions,
   isDangerousTool,
   type ToolContext,
 } from "../index";
+import { createLogger } from "../../logger";
+
+const log = createLogger("Tools");
 
 export * from "./file";
 export * from "./process";
@@ -222,6 +226,57 @@ function resolveWorkspacePath(path: string, workspaceDir: string): string {
   return isAbsolute(trimmed) ? resolve(trimmed) : resolve(workspaceDir, trimmed);
 }
 
+const SENSITIVE_KEY_PATTERN =
+  /(api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password|passwd|authorization|cookie|private[_-]?key|mnemonic)/i;
+
+function redactStringValue(input: string): string {
+  let output = input;
+  output = output.replace(/(Bearer\s+)[A-Za-z0-9._-]+/gi, "$1[REDACTED]");
+  output = output.replace(
+    /((?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password|passwd)\s*[:=]\s*)([^\s,;]+)/gi,
+    "$1[REDACTED]"
+  );
+  if (output.length > 240) {
+    const hash = createHash("sha256").update(output).digest("hex").slice(0, 12);
+    return `${output.slice(0, 220)}...[truncated sha256:${hash}]`;
+  }
+  return output;
+}
+
+function sanitizeArgs(value: unknown, depth = 0): unknown {
+  if (depth > 4) return "[MaxDepth]";
+  if (value == null) return value;
+  if (typeof value === "string") return redactStringValue(value);
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (Array.isArray(value)) {
+    return value.slice(0, 50).map((item) => sanitizeArgs(item, depth + 1));
+  }
+  if (typeof value === "object") {
+    const output: Record<string, unknown> = {};
+    for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+      if (SENSITIVE_KEY_PATTERN.test(key)) {
+        output[key] = "[REDACTED]";
+      } else {
+        output[key] = sanitizeArgs(raw, depth + 1);
+      }
+    }
+    return output;
+  }
+  return String(value);
+}
+
+function createArgsPreview(args: Record<string, unknown>): string {
+  const sanitized = sanitizeArgs(args);
+  const serialized = JSON.stringify(sanitized);
+  if (serialized.length <= 2000) return serialized;
+  const hash = createHash("sha256").update(serialized).digest("hex").slice(0, 12);
+  return `${serialized.slice(0, 1800)}...[truncated sha256:${hash}]`;
+}
+
+export function createToolArgsPreviewForLog(args: Record<string, unknown>): string {
+  return createArgsPreview(args);
+}
+
 function hasNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
@@ -345,13 +400,23 @@ export async function executeTool(
 
   const resolvedArgs = applyWorkspaceDefaults(name, args, context);
   const startTime = Date.now();
-  const argsPreview = JSON.stringify(resolvedArgs).slice(0, 200);
+  const argsPreview = createArgsPreview(resolvedArgs);
 
   try {
-    console.log(`[Tool] Executing ${name} with args:`, argsPreview);
+    log.info("Executing tool", {
+      name,
+      argsPreview,
+      sessionId: context?.sessionId,
+      agentId: context?.agentId,
+    });
     const result = await handler(resolvedArgs, context);
     const duration = Date.now() - startTime;
-    console.log(`[Tool] ${name} completed successfully in ${duration}ms`);
+    log.info("Tool completed", {
+      name,
+      durationMs: duration,
+      sessionId: context?.sessionId,
+      agentId: context?.agentId,
+    });
 
     await trackToolCall(name, duration, true);
 
@@ -364,7 +429,12 @@ export async function executeTool(
     return result;
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error(`[Tool] ${name} error:`, error);
+    log.exception("Tool execution failed", error, {
+      name,
+      durationMs: duration,
+      sessionId: context?.sessionId,
+      agentId: context?.agentId,
+    });
 
     await trackToolCall(name, duration, false);
 

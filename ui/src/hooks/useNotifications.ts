@@ -4,7 +4,7 @@ import {
     requestPermission as tauriRequestPermission,
     sendNotification as tauriSendNotification,
 } from '@tauri-apps/plugin-notification';
-import { appendApiTokenParam } from '@/lib/auth';
+import { connectStatusStream } from '@/lib/status-stream';
 
 interface TaskEvent {
     type: 'task_completed';
@@ -98,42 +98,29 @@ export function useTaskNotifications() {
     const [connected, setConnected] = useState(false);
 
     useEffect(() => {
-        const eventSource = new EventSource(appendApiTokenParam('/api/sse/status'));
+        const disconnect = connectStatusStream({
+            onOpen: () => setConnected(true),
+            onClose: () => setConnected(false),
+            onEvent: (data) => {
+                if (!data || data.type !== 'task_completed') return;
+                const taskEvent = data as TaskEvent;
 
-        eventSource.onopen = () => {
-            setConnected(true);
-        };
-
-        eventSource.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data) as TaskEvent | { status: string };
-
-                if ('type' in data && data.type === 'task_completed') {
-                    const taskEvent = data as TaskEvent;
-
-                    if (taskEvent.status === 'completed') {
-                        showNotification(`Task Completed: ${taskEvent.taskName}`, {
-                            body: taskEvent.resultPreview?.slice(0, 100) || 'Task finished successfully',
-                            tag: `task-${taskEvent.taskId}`,
-                        });
-                    } else {
-                        showNotification(`Task Failed: ${taskEvent.taskName}`, {
-                            body: taskEvent.error?.slice(0, 100) || 'Task execution failed',
-                            tag: `task-${taskEvent.taskId}`,
-                        });
-                    }
+                if (taskEvent.status === 'completed') {
+                    showNotification(`Task Completed: ${taskEvent.taskName}`, {
+                        body: taskEvent.resultPreview?.slice(0, 100) || 'Task finished successfully',
+                        tag: `task-${taskEvent.taskId}`,
+                    });
+                } else {
+                    showNotification(`Task Failed: ${taskEvent.taskName}`, {
+                        body: taskEvent.error?.slice(0, 100) || 'Task execution failed',
+                        tag: `task-${taskEvent.taskId}`,
+                    });
                 }
-            } catch (e) {
-                // Ignore parse errors
-            }
-        };
-
-        eventSource.onerror = () => {
-            setConnected(false);
-        };
+            },
+        });
 
         return () => {
-            eventSource.close();
+            disconnect();
         };
     }, [showNotification]);
 

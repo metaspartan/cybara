@@ -13,6 +13,9 @@ import {
   formatToolCallsPlain,
   escapeMarkdown,
 } from "./formatting";
+import { createLogger } from "../logger";
+
+const log = createLogger("ChannelManager");
 
 export {
   telegramSessions,
@@ -32,9 +35,7 @@ function parseChannelConfig(config: unknown, channelId?: string): Record<string,
       }
       return {};
     } catch {
-      console.warn(
-        `[ChannelManager] Invalid channel config JSON${channelId ? ` for ${channelId}` : ""}; using empty config`
-      );
+      log.warn("Invalid channel config JSON; using empty config", { channelId });
       return {};
     }
   }
@@ -61,7 +62,7 @@ export class ChannelManager {
 
   registerAdapter(type: ChannelType, adapter: ChannelAdapter) {
     this.adapters.set(type, adapter);
-    console.log(`[ChannelManager] Registered adapter: ${type}`);
+    log.info("Registered adapter", { type });
   }
 
   getAdapter(type: ChannelType): ChannelAdapter | undefined {
@@ -146,10 +147,10 @@ export class ChannelManager {
       const adapter = this.adapters.get(type);
       if (adapter) {
         await adapter.start(channelId, config);
-        console.log(`[ChannelManager] Started ${type} adapter for channel ${channelId}`);
+        log.info("Started adapter", { type, channelId });
       }
     } catch (error) {
-      console.error(`[ChannelManager] Failed to start ${type} adapter:`, error);
+      log.exception("Failed to start adapter", error, { type, channelId });
     }
   }
 
@@ -158,10 +159,10 @@ export class ChannelManager {
       const adapter = this.adapters.get(type);
       if (adapter?.isRunning(channelId)) {
         await adapter.stop(channelId);
-        console.log(`[ChannelManager] Stopped ${type} adapter for channel ${channelId}`);
+        log.info("Stopped adapter", { type, channelId });
       }
     } catch (error) {
-      console.error(`[ChannelManager] Failed to stop ${type} adapter:`, error);
+      log.exception("Failed to stop adapter", error, { type, channelId });
     }
   }
 
@@ -177,7 +178,7 @@ export class ChannelManager {
   async setupTelegram(botToken: string, baseUrl: string): Promise<Channel | null> {
     const existing = (tables.channels.all() as Channel[]).find((c) => c.type === "telegram");
     if (existing) {
-      console.log("[ChannelManager] Telegram channel already exists, updating config");
+      log.info("Telegram channel already exists, updating config", { channelId: existing.id });
       const config = {
         bot_token: botToken,
         webhook_url: `${baseUrl}/api/webhooks/telegram/${existing.id}`,
@@ -187,7 +188,7 @@ export class ChannelManager {
       if (!telegramBot.isRunning(existing.id)) {
         await this.startAdapter(existing.id, "telegram", config);
       } else {
-        console.log("[ChannelManager] Telegram bot already running, skipping restart");
+        log.debug("Telegram bot already running, skipping restart", { channelId: existing.id });
       }
       return { ...existing, config };
     }
@@ -199,7 +200,7 @@ export class ChannelManager {
     tables.channels.create({ id, type: "telegram", name: "Telegram Bot", config, enabled: true });
     await this.startAdapter(id, "telegram", config);
 
-    console.log(`[ChannelManager] Created Telegram channel: ${id}`);
+    log.info("Created Telegram channel", { channelId: id });
     return { id, type: "telegram", name: "Telegram Bot", config, enabled: true };
   }
 

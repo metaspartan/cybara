@@ -48,25 +48,60 @@ Returns JSON:
 
 ### List Sessions
 ```http
-GET /api/chat/sessions
+GET /api/sessions
 ```
 
-Primary session list endpoint used by the current UI is:
+Query params:
+
+- `limit` (optional, integer): max sessions to return. Server caps at `500`.
+- `offset` (optional, integer): pagination offset.
+
+Example:
 ```http
-GET /api/sessions
+GET /api/sessions?limit=50&offset=0
+```
+
+Returns an array of session summaries:
+
+```json
+[
+  {
+    "id": "session-id",
+    "agent_id": "agent-id",
+    "title": "Mini: Cybara codebase audit report",
+    "created_at": "2026-02-28T05:31:22.102Z",
+    "updated_at": "2026-02-28T05:36:03.884Z",
+    "workspace_dir": "/Users/carsen/clawd/claw-agent-platform",
+    "message_count": 12,
+    "last_message": {
+      "role": "assistant",
+      "content": "I audited the codebase and found..."
+    }
+  }
+]
+```
+
+Legacy alias (still supported):
+```http
+GET /api/chat/sessions
 ```
 
 ### Get Session Messages
 ```http
-GET /api/chat/sessions/:id/messages
-```
-
-Primary session detail endpoint used by the current UI is:
-```http
 GET /api/sessions/:sessionId
 ```
 
+Legacy message-only alias:
+```http
+GET /api/chat/sessions/:id/messages
+```
+
 ### Delete Session
+```http
+DELETE /api/sessions/:sessionId
+```
+
+Legacy alias:
 ```http
 DELETE /api/chat/sessions/:id
 ```
@@ -844,6 +879,12 @@ GET /api/info
 GET /api/sse/status
 ```
 Server-Sent Events stream for real-time status updates (agent state changes, task completions, etc.).
+
+### WebSocket Event Stream
+```http
+GET /api/ws/status
+```
+WebSocket status stream with snapshot bootstrap and realtime events (`status`, `task_completed`, `snapshot`).
 
 ### Open URL
 ```http

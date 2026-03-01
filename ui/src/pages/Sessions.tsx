@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   MessageSquare,
   Search,
@@ -25,6 +25,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { PageLayout } from '@/components/layout';
 import { sessionsApi } from '@/lib/api';
+import { connectStatusStream } from '@/lib/status-stream';
 import type { ChatMessage, ToolCallInfo } from '@/types';
 
 interface Session {
@@ -52,20 +53,32 @@ const roleIcons: Record<string, React.ReactNode> = {
 };
 
 export function Sessions() {
+  const PAGE_SIZE = 50;
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSession, setSelectedSession] = useState<SessionWithMessages | null>(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<Session | null>(null);
+  const sessionsRef = useRef<Session[]>([]);
+  const refreshTimerRef = useRef<number | null>(null);
 
-  const fetchSessions = async () => {
+  const fetchSessions = async (limitOverride?: number) => {
     setIsLoading(true);
     try {
-      const response = await sessionsApi.list();
+      const targetLimit =
+        typeof limitOverride === "number" && Number.isFinite(limitOverride)
+          ? Math.max(PAGE_SIZE, Math.floor(limitOverride))
+          : Math.max(PAGE_SIZE, sessionsRef.current.length || PAGE_SIZE);
+      const response = await sessionsApi.list({ limit: targetLimit, offset: 0 });
       if (response.success) {
-        setSessions(response.data || []);
+        const data = response.data || [];
+        sessionsRef.current = data;
+        setSessions(data);
+        setHasMore(data.length >= targetLimit);
       }
     } catch (error) {
       console.error('Failed to fetch sessions:', error);
@@ -74,10 +87,59 @@ export function Sessions() {
     }
   };
 
+  const fetchMoreSessions = async () => {
+    if (isLoadingMore || !hasMore) return;
+    setIsLoadingMore(true);
+    try {
+      const response = await sessionsApi.list({
+        limit: PAGE_SIZE,
+        offset: sessionsRef.current.length,
+      });
+      if (response.success) {
+        const nextChunk = response.data || [];
+        const merged = [...sessionsRef.current, ...nextChunk].filter(
+          (session, index, all) => all.findIndex((candidate) => candidate.id === session.id) === index
+        );
+        sessionsRef.current = merged;
+        setSessions(merged);
+        setHasMore(nextChunk.length >= PAGE_SIZE);
+      }
+    } catch (error) {
+      console.error('Failed to load more sessions:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
   useEffect(() => {
-    fetchSessions();
-    const interval = setInterval(fetchSessions, 30000);
-    return () => clearInterval(interval);
+    void fetchSessions(PAGE_SIZE);
+    const disconnect = connectStatusStream({
+      onEvent: (event) => {
+        if (!event || typeof event !== "object") return;
+        if (
+          event.type !== "status" &&
+          event.type !== "snapshot" &&
+          event.type !== "task_completed"
+        ) {
+          return;
+        }
+        if (refreshTimerRef.current !== null) {
+          window.clearTimeout(refreshTimerRef.current);
+        }
+        refreshTimerRef.current = window.setTimeout(() => {
+          const limit = Math.max(PAGE_SIZE, sessionsRef.current.length || PAGE_SIZE);
+          void fetchSessions(limit);
+          refreshTimerRef.current = null;
+        }, 600);
+      },
+    });
+    return () => {
+      disconnect();
+      if (refreshTimerRef.current !== null) {
+        window.clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+    };
   }, []);
 
   const handleViewSession = async (session: Session) => {
@@ -97,7 +159,9 @@ export function Sessions() {
 
     try {
       await sessionsApi.delete(sessionToDelete.id);
-      setSessions(sessions.filter(s => s.id !== sessionToDelete.id));
+      const nextSessions = sessions.filter(s => s.id !== sessionToDelete.id);
+      sessionsRef.current = nextSessions;
+      setSessions(nextSessions);
       setIsDeleteModalOpen(false);
       setSessionToDelete(null);
     } catch (error) {
@@ -115,7 +179,12 @@ export function Sessions() {
       title="Sessions"
       subtitle="View and manage chat sessions"
       actions={
-        <Button variant="ghost" size="sm" onClick={fetchSessions} leftIcon={<RefreshCw className="w-4 h-4" />}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => void fetchSessions()}
+          leftIcon={<RefreshCw className="w-4 h-4" />}
+        >
           Refresh
         </Button>
       }
@@ -206,6 +275,21 @@ export function Sessions() {
                 </CardContent>
               </Card>
             ))}
+            {hasMore && (
+              <div className="flex justify-center pt-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    void fetchMoreSessions();
+                  }}
+                  disabled={isLoadingMore}
+                  leftIcon={isLoadingMore ? <RefreshCw className="w-4 h-4 animate-spin" /> : undefined}
+                >
+                  {isLoadingMore ? "Loading..." : "Load more"}
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>

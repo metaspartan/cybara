@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, createContext, useContext } from 'react';
-import { appendApiTokenParam } from '@/lib/auth';
+import { connectStatusStream } from '@/lib/status-stream';
 
 interface SidebarContextType {
   collapsed: boolean;
@@ -67,8 +67,6 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 
 function useAgentStatus() {
   const [status, setStatus] = useState<'idle' | 'active'>('idle');
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeSessionLastSeenRef = useRef<Map<string, number>>(new Map());
   const globalLastSeenRef = useRef<number>(0);
 
@@ -99,57 +97,55 @@ function useAgentStatus() {
       refreshDerivedStatus();
     }, 5000);
 
-    const connectSSE = () => {
-      const eventSource = new EventSource(appendApiTokenParam('/api/sse/status'));
-      eventSourceRef.current = eventSource;
+    const disconnect = connectStatusStream({
+      onEvent: (data) => {
+        if (!data || typeof data !== 'object' || typeof data.type !== 'string') return;
+        const now = Date.now();
 
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          const statusValue = typeof data?.status === 'string' ? data.status : typeof data === 'string' ? data : '';
-          const sessionId = typeof data?.sessionId === 'string' ? data.sessionId.trim() : '';
-
-          if (!statusValue) return;
-          const now = Date.now();
-          const isActiveStatus = ACTIVE_STATUSES.has(statusValue);
-
-          if (sessionId) {
-            if (isActiveStatus) {
-              activeSessionLastSeenRef.current.set(sessionId, now);
-            } else if (statusValue === 'idle' || statusValue === 'error') {
-              activeSessionLastSeenRef.current.delete(sessionId);
-            }
-          } else {
-            if (isActiveStatus) {
-              globalLastSeenRef.current = now;
-            } else if (statusValue === 'idle' || statusValue === 'error') {
-              globalLastSeenRef.current = 0;
-            }
+        if (data.type === 'snapshot') {
+          activeSessionLastSeenRef.current.clear();
+          for (const snapshot of Array.isArray(data.activeSessions) ? data.activeSessions : []) {
+            const sessionId =
+              typeof snapshot?.sessionId === 'string' ? snapshot.sessionId.trim() : '';
+            const snapshotStatus =
+              typeof snapshot?.status === 'string' ? snapshot.status : '';
+            if (!sessionId || !ACTIVE_STATUSES.has(snapshotStatus)) continue;
+            const lastSeen =
+              typeof snapshot.timestamp === 'number' && Number.isFinite(snapshot.timestamp)
+                ? snapshot.timestamp
+                : now;
+            activeSessionLastSeenRef.current.set(sessionId, lastSeen);
           }
           refreshDerivedStatus();
-        } catch {
-          // Ignore parse errors
+          return;
         }
-      };
 
-      eventSource.onerror = () => {
-        eventSource.close();
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current);
+        if (data.type !== 'status') return;
+
+        const statusValue = typeof data.status === 'string' ? data.status : '';
+        const sessionId = typeof data.sessionId === 'string' ? data.sessionId.trim() : '';
+        if (!statusValue) return;
+        const isActiveStatus = ACTIVE_STATUSES.has(statusValue);
+
+        if (sessionId) {
+          if (isActiveStatus) {
+            activeSessionLastSeenRef.current.set(sessionId, now);
+          } else if (statusValue === 'idle' || statusValue === 'error') {
+            activeSessionLastSeenRef.current.delete(sessionId);
+          }
+        } else {
+          if (isActiveStatus) {
+            globalLastSeenRef.current = now;
+          } else if (statusValue === 'idle' || statusValue === 'error') {
+            globalLastSeenRef.current = 0;
+          }
         }
-        reconnectTimeoutRef.current = setTimeout(connectSSE, 5000);
-      };
-    };
-
-    connectSSE();
+        refreshDerivedStatus();
+      },
+    });
 
     return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
+      disconnect();
       clearInterval(sweepInterval);
     };
   }, []);
