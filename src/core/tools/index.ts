@@ -6,6 +6,7 @@ import { handleClipboard } from "./handlers/clipboard";
 import { handleData } from "./handlers/data";
 import { handleEnv } from "./handlers/env";
 import { handleRead, handleWrite, handleEdit, handleFileSearch, handleGrep } from "./handlers/file";
+import { handleWorkspaceIndexSearch } from "./handlers/workspace-index";
 import { handleHttp } from "./handlers/http";
 import {
   handleLSPDiagnostics,
@@ -279,6 +280,25 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
         recursive: { type: "boolean", description: "Search recursively (default: true)" },
       },
       required: ["pattern"],
+    },
+    permissions: ["fs:read"],
+  },
+  workspace_index_search: {
+    name: "workspace_index_search",
+    description:
+      "Search files in the active workspace using the workspace index when available, with filesystem fallback when needed. Best for quick file discovery by name/path.",
+    category: "file",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Path or filename query" },
+        path: {
+          type: "string",
+          description: "Workspace path to search (defaults to current workspace)",
+        },
+        limit: { type: "number", description: "Max results to return (default 250, max 5000)" },
+      },
+      required: ["query"],
     },
     permissions: ["fs:read"],
   },
@@ -1793,6 +1813,7 @@ _toolHandlers.set("write", handleWrite);
 _toolHandlers.set("edit", handleEdit);
 _toolHandlers.set("file_search", handleFileSearch);
 _toolHandlers.set("grep", handleGrep);
+_toolHandlers.set("workspace_index_search", handleWorkspaceIndexSearch);
 
 _toolHandlers.set("memory_search", handleMemorySearch);
 _toolHandlers.set("memory_get", handleMemoryGet);

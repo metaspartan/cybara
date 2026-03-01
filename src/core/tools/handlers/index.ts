@@ -39,6 +39,7 @@ import { handleEnv } from "./env";
 import { handleWebSearch } from "./web-search";
 import { handleArtifacts } from "./artifacts";
 import { handleWallet } from "./wallet";
+import { handleWorkspaceIndexSearch } from "./workspace-index";
 import {
   handleLSPDiagnostics,
   handleLSPDefinition,
@@ -74,6 +75,7 @@ export * from "./data";
 export * from "./env";
 export * from "./web-search";
 export * from "./artifacts";
+export * from "./workspace-index";
 
 export {
   checkToolPermissions,
@@ -91,6 +93,7 @@ const toolHandlers: Record<
   edit: handleEdit,
   file_search: handleFileSearch,
   grep: handleGrep,
+  workspace_index_search: handleWorkspaceIndexSearch,
   apply_patch: handleApplyPatch,
 
   exec: handleExec,
@@ -317,6 +320,10 @@ function applyWorkspaceDefaults(
   }
 
   if (toolName === "grep" && !hasNonEmptyString(args.path)) {
+    setArg("path", normalizedWorkspaceDir);
+  }
+
+  if (toolName === "workspace_index_search" && !hasNonEmptyString(args.path)) {
     setArg("path", normalizedWorkspaceDir);
   }
 

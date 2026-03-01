@@ -192,6 +192,13 @@ export interface DidCloseTextDocumentParams {
   textDocument: TextDocumentIdentifier;
 }
 
+export interface CompletionList {
+  isIncomplete?: boolean;
+  items: CompletionItem[];
+}
+
+export type CompletionResult = CompletionItem[] | CompletionList | null;
+
 export interface CompletionItem {
   label: string;
   kind?: number;

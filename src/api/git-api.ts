@@ -20,6 +20,17 @@ export interface GitDiff {
   error?: string;
 }
 
+interface GitStatusOptions {
+  lightweight?: boolean;
+}
+
+const GIT_ROOT_CACHE_TTL_MS = 5000;
+const GIT_STATUS_CACHE_TTL_MS = 2000;
+
+const gitRootCache = new Map<string, { value: string | null; expiresAt: number }>();
+const gitStatusCache = new Map<string, { value: GitStatus; expiresAt: number }>();
+const gitStatusInFlight = new Map<string, Promise<GitStatus>>();
+
 async function runGit(
   cwd: string,
   args: string[]
@@ -53,11 +64,19 @@ async function runGit(
 }
 
 async function findGitRoot(path: string): Promise<string | null> {
+  const cached = gitRootCache.get(path);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
   const result = await runGit(path, ["rev-parse", "--show-toplevel"]);
-  return result.success ? result.stdout : null;
+  const value = result.success ? result.stdout : null;
+  gitRootCache.set(path, { value, expiresAt: Date.now() + GIT_ROOT_CACHE_TTL_MS });
+  return value;
 }
 
-export async function getGitStatus(path: string): Promise<GitStatus> {
+export async function getGitStatus(path: string, options?: GitStatusOptions): Promise<GitStatus> {
+  const lightweight = options?.lightweight === true;
   const gitRoot = await findGitRoot(path);
 
   if (!gitRoot) {
@@ -70,82 +89,110 @@ export async function getGitStatus(path: string): Promise<GitStatus> {
     };
   }
 
-  const branchResult = await runGit(gitRoot, ["branch", "--show-current"]);
-  const branch = branchResult.success ? branchResult.stdout : undefined;
-
-  let ahead = 0;
-  let behind = 0;
-  const trackingResult = await runGit(gitRoot, [
-    "rev-list",
-    "--left-right",
-    "--count",
-    "@{u}...HEAD",
-  ]);
-  if (trackingResult.success) {
-    const [b, a] = trackingResult.stdout.split("\t").map(Number);
-    behind = b || 0;
-    ahead = a || 0;
+  const cacheKey = `${gitRoot}:${lightweight ? "light" : "full"}`;
+  const cachedStatus = gitStatusCache.get(cacheKey);
+  if (cachedStatus && cachedStatus.expiresAt > Date.now()) {
+    return cachedStatus.value;
+  }
+  const inFlight = gitStatusInFlight.get(cacheKey);
+  if (inFlight) {
+    return inFlight;
   }
 
-  const statusResult = await runGit(gitRoot, [
-    "status",
-    "--porcelain",
-    "--ignored",
-    "--untracked-files=all",
-  ]);
+  const task = (async (): Promise<GitStatus> => {
+    let branch: string | undefined;
+    let ahead = 0;
+    let behind = 0;
 
-  const staged: string[] = [];
-  const modified: string[] = [];
-  const untracked: string[] = [];
-  const ignored: string[] = [];
+    if (!lightweight) {
+      const branchResult = await runGit(gitRoot, ["branch", "--show-current"]);
+      branch = branchResult.success ? branchResult.stdout : undefined;
 
-  const normalizeStatusPath = (rawPath: string): string => {
-    const withoutRename =
-      rawPath.includes(" -> ") ? rawPath.slice(rawPath.lastIndexOf(" -> ") + 4) : rawPath;
-    const unquoted =
-      withoutRename.startsWith('"') && withoutRename.endsWith('"')
-        ? withoutRename.slice(1, -1)
-        : withoutRename;
-    return unquoted.replaceAll("\\", "/");
-  };
-
-  if (statusResult.success && statusResult.stdout) {
-    for (const line of statusResult.stdout.split("\n")) {
-      if (!line) continue;
-      const indexStatus = line[0];
-      const workTreeStatus = line[1];
-      const filePath = normalizeStatusPath(line.slice(3));
-
-      if (indexStatus === "!" && workTreeStatus === "!") {
-        ignored.push(filePath);
-        continue;
-      }
-
-      if (indexStatus !== " " && indexStatus !== "?") {
-        staged.push(filePath);
-      }
-
-      if (workTreeStatus === "M" || workTreeStatus === "D") {
-        modified.push(filePath);
-      }
-
-      if (indexStatus === "?" && workTreeStatus === "?") {
-        untracked.push(filePath);
+      const trackingResult = await runGit(gitRoot, [
+        "rev-list",
+        "--left-right",
+        "--count",
+        "@{u}...HEAD",
+      ]);
+      if (trackingResult.success) {
+        const [b, a] = trackingResult.stdout.split("\t").map(Number);
+        behind = b || 0;
+        ahead = a || 0;
       }
     }
-  }
 
-  return {
-    isRepo: true,
-    root: gitRoot,
-    branch,
-    ahead,
-    behind,
-    staged,
-    modified,
-    untracked,
-    ignored,
-  };
+    const statusResult = await runGit(gitRoot, [
+      "status",
+      "--porcelain",
+      "--ignored",
+      "--untracked-files=all",
+    ]);
+
+    const staged: string[] = [];
+    const modified: string[] = [];
+    const untracked: string[] = [];
+    const ignored: string[] = [];
+
+    const normalizeStatusPath = (rawPath: string): string => {
+      const withoutRename =
+        rawPath.includes(" -> ") ? rawPath.slice(rawPath.lastIndexOf(" -> ") + 4) : rawPath;
+      const unquoted =
+        withoutRename.startsWith('"') && withoutRename.endsWith('"')
+          ? withoutRename.slice(1, -1)
+          : withoutRename;
+      return unquoted.replaceAll("\\", "/");
+    };
+
+    if (statusResult.success && statusResult.stdout) {
+      for (const line of statusResult.stdout.split("\n")) {
+        if (!line) continue;
+        const indexStatus = line[0];
+        const workTreeStatus = line[1];
+        const filePath = normalizeStatusPath(line.slice(3));
+
+        if (indexStatus === "!" && workTreeStatus === "!") {
+          ignored.push(filePath);
+          continue;
+        }
+
+        if (indexStatus !== " " && indexStatus !== "?") {
+          staged.push(filePath);
+        }
+
+        if (workTreeStatus === "M" || workTreeStatus === "D") {
+          modified.push(filePath);
+        }
+
+        if (indexStatus === "?" && workTreeStatus === "?") {
+          untracked.push(filePath);
+        }
+      }
+    }
+
+    const result: GitStatus = {
+      isRepo: true,
+      root: gitRoot,
+      branch,
+      ahead,
+      behind,
+      staged,
+      modified,
+      untracked,
+      ignored,
+    };
+    gitStatusCache.set(cacheKey, {
+      value: result,
+      expiresAt: Date.now() + GIT_STATUS_CACHE_TTL_MS,
+    });
+    return result;
+  })();
+
+  gitStatusInFlight.set(cacheKey, task);
+  try {
+    return await task;
+  } finally {
+    gitStatusInFlight.delete(cacheKey);
+  }
 }
 
 export async function getGitDiff(filePath: string, staged: boolean = false): Promise<GitDiff> {

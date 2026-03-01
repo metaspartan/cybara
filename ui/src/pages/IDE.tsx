@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, useDeferredValue, memo } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/Button";
@@ -145,6 +145,44 @@ interface IdeListFilesResult {
   error?: string;
 }
 
+interface WorkspaceIndexerSettings {
+  enabled: boolean;
+  autoReindexOnWorkspaceSet: boolean;
+  includeHidden: boolean;
+  maxFileSizeBytes: number;
+  maxFiles: number;
+  ignoreDirs: string[];
+  includeExtensions: string[];
+}
+
+interface WorkspaceIndexerStatusResponse {
+  success: boolean;
+  state: "idle" | "indexing" | "ready" | "stopped" | "error";
+  isIndexing: boolean;
+  workspacePath: string | null;
+  indexedWorkspacePath: string | null;
+  filesIndexed: number;
+  filesScanned: number;
+  directoriesScanned: number;
+  skippedFiles: number;
+  progress: number;
+  startedAt: string | null;
+  finishedAt: string | null;
+  durationMs: number | null;
+  lastIndexedAt: string | null;
+  error: string | null;
+  settings: WorkspaceIndexerSettings;
+  message?: string;
+}
+
+interface WorkspaceIndexerSearchResult extends IdeListFilesResult {
+  source?: "index" | "filesystem";
+  indexed?: boolean;
+  indexState?: "idle" | "indexing" | "ready" | "stopped" | "error";
+  indexError?: string;
+  workspacePath?: string;
+}
+
 interface IdeBlameLine {
   line: number;
   commit: string;
@@ -217,6 +255,20 @@ interface IdeOutlineResponse {
   error?: string;
 }
 
+interface IdeCompletionItem {
+  label: string;
+  detail?: string;
+  kind?: number;
+  insertText?: string;
+  sortText?: string;
+}
+
+interface IdeCompletionResponse {
+  success: boolean;
+  items: IdeCompletionItem[];
+  error?: string;
+}
+
 interface FlattenedOutlineSymbol extends IdeOutlineSymbol {
   depth: number;
   key: string;
@@ -237,9 +289,27 @@ const IDE_CHAT_OPEN_STORAGE_KEY = "cybara.ide.chat.open";
 const IDE_CHAT_DEFAULT_WIDTH = 420;
 const IDE_CHAT_MIN_WIDTH = 320;
 const IDE_CHAT_MAX_WIDTH = 720;
+const IDE_WORKSPACE_PATH_STORAGE_KEY = "cybara.ide.workspace.path";
+const IDE_CHAT_AGENT_STORAGE_KEY = "cybara.ide.chat.agent";
 const EXPLORER_VIRTUALIZATION_MIN_ENTRIES = 400;
 const EXPLORER_VIRTUALIZATION_ROW_HEIGHT = 30;
 const EXPLORER_VIRTUALIZATION_OVERSCAN = 12;
+const EDITOR_LARGE_FILE_CHAR_THRESHOLD = 400_000;
+const EDITOR_LARGE_FILE_LINE_THRESHOLD = 8_000;
+const COMPLETION_LOCAL_SCAN_BEFORE = 24_000;
+const COMPLETION_LOCAL_SCAN_AFTER = 8_000;
+const COMPLETION_CACHE_TTL_MS = 20_000;
+const COMPLETION_CACHE_MAX_ENTRIES = 180;
+const EDITOR_TYPING_BURST_MS = 160;
+const DEFAULT_INDEXER_SETTINGS_DRAFT: WorkspaceIndexerSettings = {
+  enabled: true,
+  autoReindexOnWorkspaceSet: true,
+  includeHidden: false,
+  maxFileSizeBytes: 1024 * 1024,
+  maxFiles: 25000,
+  ignoreDirs: [".git", "node_modules", "dist", "build"],
+  includeExtensions: [],
+};
 
 function clampSidebarWidth(width: number): number {
   if (!Number.isFinite(width)) return IDE_SIDEBAR_DEFAULT_WIDTH;
@@ -287,6 +357,36 @@ function persistChatOpen(isOpen: boolean): void {
   window.localStorage.setItem(IDE_CHAT_OPEN_STORAGE_KEY, isOpen ? "1" : "0");
 }
 
+function readPersistedWorkspacePath(): string {
+  if (typeof window === "undefined") return "~";
+  const raw = window.localStorage.getItem(IDE_WORKSPACE_PATH_STORAGE_KEY);
+  if (!raw || !raw.trim()) return "~";
+  return raw.trim();
+}
+
+function persistWorkspacePath(pathValue: string): void {
+  if (typeof window === "undefined") return;
+  const normalized = pathValue.trim();
+  if (!normalized) return;
+  window.localStorage.setItem(IDE_WORKSPACE_PATH_STORAGE_KEY, normalized);
+}
+
+function readPersistedIdeChatAgentId(): string {
+  if (typeof window === "undefined") return "";
+  const raw = window.localStorage.getItem(IDE_CHAT_AGENT_STORAGE_KEY);
+  return raw && raw.trim() ? raw.trim() : "";
+}
+
+function persistIdeChatAgentId(agentId: string): void {
+  if (typeof window === "undefined") return;
+  const normalized = agentId.trim();
+  if (!normalized) {
+    window.localStorage.removeItem(IDE_CHAT_AGENT_STORAGE_KEY);
+    return;
+  }
+  window.localStorage.setItem(IDE_CHAT_AGENT_STORAGE_KEY, normalized);
+}
+
 function getFileIcon(entry: FileEntry) {
   if (entry.type === "directory") return null;
 
@@ -327,11 +427,25 @@ function formatSize(bytes?: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatDurationMs(durationMs?: number | null): string {
+  if (!Number.isFinite(durationMs || 0) || !durationMs || durationMs <= 0) return "0s";
+  const seconds = Math.floor(durationMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (minutes <= 0) return `${Math.max(1, remainingSeconds)}s`;
+  return `${minutes}m ${remainingSeconds}s`;
+}
+
 function getLineAndColumn(content: string, index: number): { line: number; column: number } {
   const safeIndex = Math.max(0, Math.min(index, content.length));
-  const before = content.slice(0, safeIndex);
-  const line = before.split("\n").length;
-  const lineStart = before.lastIndexOf("\n") + 1;
+  let line = 1;
+  let lineStart = 0;
+  for (let i = 0; i < safeIndex; i += 1) {
+    if (content.charCodeAt(i) === 10) {
+      line += 1;
+      lineStart = i + 1;
+    }
+  }
   return {
     line,
     column: safeIndex - lineStart + 1,
@@ -871,6 +985,13 @@ function CodeViewer({
     column: number;
   } | null>(null);
   const [definitionLoading, setDefinitionLoading] = useState(false);
+  const [completionItems, setCompletionItems] = useState<IdeCompletionItem[]>([]);
+  const [completionIndex, setCompletionIndex] = useState(0);
+  const [completionVisible, setCompletionVisible] = useState(false);
+  const [completionReplaceStart, setCompletionReplaceStart] = useState(0);
+  const [completionPrefix, setCompletionPrefix] = useState("");
+  const [completionOrigin, setCompletionOrigin] = useState<{ line: number; column: number } | null>(null);
+  const [isTypingBurst, setIsTypingBurst] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
   const highlightScrollRef = useRef<HTMLDivElement | null>(null);
   const gutterRef = useRef<HTMLDivElement | null>(null);
@@ -888,21 +1009,72 @@ function CodeViewer({
     scrollHeight: number;
     scrollWidth: number;
   } | null>(null);
+  const completionRequestSeqRef = useRef(0);
+  const completionDebounceRef = useRef<number | null>(null);
+  const completionAbortRef = useRef<AbortController | null>(null);
+  const completionCacheRef = useRef<Map<string, { ts: number; items: IdeCompletionItem[] }>>(new Map());
+  const fileReadRequestSeqRef = useRef(0);
+  const fileReadAbortRef = useRef<AbortController | null>(null);
+  const blameRequestSeqRef = useRef(0);
+  const blameAbortRef = useRef<AbortController | null>(null);
+  const typingBurstTimeoutRef = useRef<number | null>(null);
+  const pendingCursorNotifyRef = useRef<{ line: number; column: number } | null>(null);
+  const cursorNotifyFrameRef = useRef<number | null>(null);
+  const pendingCursorSelectionRef = useRef<HTMLTextAreaElement | null>(null);
+  const cursorSelectionFrameRef = useRef<number | null>(null);
 
   const hasUnsavedChanges = editContent !== (content || "");
+  const isLargeFileMode = useMemo(() => {
+    const text = editContent || content || "";
+    if (text.length >= EDITOR_LARGE_FILE_CHAR_THRESHOLD) return true;
+    let lineCount = 1;
+    for (let i = 0; i < text.length; i += 1) {
+      if (text.charCodeAt(i) === 10) {
+        lineCount += 1;
+        if (lineCount >= EDITOR_LARGE_FILE_LINE_THRESHOLD) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }, [content, editContent]);
 
   useEffect(() => {
     hasUnsavedChangesRef.current = hasUnsavedChanges;
   }, [hasUnsavedChanges]);
 
+  const emitCursorChange = useCallback(
+    (position: { line: number; column: number } | null) => {
+      if (!onCursorChange) return;
+      pendingCursorNotifyRef.current = position;
+      if (cursorNotifyFrameRef.current !== null) return;
+      cursorNotifyFrameRef.current = window.requestAnimationFrame(() => {
+        cursorNotifyFrameRef.current = null;
+        onCursorChange(pendingCursorNotifyRef.current);
+      });
+    },
+    [onCursorChange]
+  );
+
   const fetchContent = useCallback(async (options?: { resetEditor?: boolean }) => {
     if (!path) return;
+
+    const requestId = fileReadRequestSeqRef.current + 1;
+    fileReadRequestSeqRef.current = requestId;
+    if (fileReadAbortRef.current) {
+      fileReadAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    fileReadAbortRef.current = controller;
 
     setIsLoading(true);
     setError(null);
     try {
-      const res = await apiFetch(`/api/ide/read?path=${encodeURIComponent(path)}`);
+      const res = await apiFetch(`/api/ide/read?path=${encodeURIComponent(path)}`, {
+        signal: controller.signal,
+      });
       const data: ReadResult = await res.json();
+      if (fileReadRequestSeqRef.current !== requestId) return;
       if (data.success) {
         // Normalize line endings for stable cursor/line mapping in the editor UI.
         const nextContent = (data.content || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -919,13 +1091,24 @@ function CodeViewer({
         setError(data.error || "Failed to load file");
       }
     } catch (e) {
-      setError(String(e));
+      if ((e as Error)?.name !== "AbortError") {
+        setError(String(e));
+      }
+    } finally {
+      if (fileReadAbortRef.current === controller) {
+        fileReadAbortRef.current = null;
+      }
+      if (fileReadRequestSeqRef.current === requestId) {
+        setIsLoading(false);
+      }
     }
-    setIsLoading(false);
   }, [path]);
 
   const fetchDiagnostics = useCallback(async () => {
-    if (!path) return;
+    if (!path || isLargeFileMode) {
+      setDiagnostics([]);
+      return;
+    }
 
     try {
       const res = await apiFetch(`/api/lsp/diagnostics/file?path=${encodeURIComponent(path)}`);
@@ -934,14 +1117,26 @@ function CodeViewer({
         setDiagnostics(data.diagnostics);
       }
     } catch {}
-  }, [path]);
+  }, [isLargeFileMode, path]);
 
   const fetchBlame = useCallback(async () => {
-    if (!path || isBinary) {
+    if (!path || isBinary || isLargeFileMode) {
+      if (blameAbortRef.current) {
+        blameAbortRef.current.abort();
+        blameAbortRef.current = null;
+      }
       setBlameLines(new Map());
       setBlameLoading(false);
       return;
     }
+
+    const requestId = blameRequestSeqRef.current + 1;
+    blameRequestSeqRef.current = requestId;
+    if (blameAbortRef.current) {
+      blameAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    blameAbortRef.current = controller;
 
     const contentLineCount = Math.max(1, (content || "").split("\n").length);
     const maxBlameLines = Math.max(3000, Math.min(contentLineCount + 64, 50000));
@@ -949,9 +1144,11 @@ function CodeViewer({
     setBlameLoading(true);
     try {
       const res = await apiFetch(
-        `/api/ide/blame?path=${encodeURIComponent(path)}&maxLines=${encodeURIComponent(String(maxBlameLines))}`
+        `/api/ide/blame?path=${encodeURIComponent(path)}&maxLines=${encodeURIComponent(String(maxBlameLines))}`,
+        { signal: controller.signal }
       );
       const data: IdeBlameResult = await res.json();
+      if (blameRequestSeqRef.current !== requestId) return;
       if (data.success && data.isRepo && Array.isArray(data.lines)) {
         const nextMap = new Map<number, IdeBlameLine>();
         for (const line of data.lines) {
@@ -961,14 +1158,33 @@ function CodeViewer({
       } else {
         setBlameLines(new Map());
       }
-    } catch {
-      setBlameLines(new Map());
+    } catch (errorValue) {
+      if ((errorValue as Error)?.name !== "AbortError") {
+        setBlameLines(new Map());
+      }
     } finally {
-      setBlameLoading(false);
+      if (blameAbortRef.current === controller) {
+        blameAbortRef.current = null;
+      }
+      if (blameRequestSeqRef.current === requestId) {
+        setBlameLoading(false);
+      }
     }
-  }, [content, isBinary, path]);
+  }, [content, isBinary, isLargeFileMode, path]);
 
   useEffect(() => {
+    if (fileReadAbortRef.current) {
+      fileReadAbortRef.current.abort();
+      fileReadAbortRef.current = null;
+    }
+    if (blameAbortRef.current) {
+      blameAbortRef.current.abort();
+      blameAbortRef.current = null;
+    }
+    setContent(null);
+    setEditContent("");
+    setExtension("");
+    setIsBinary(false);
     setDiagnostics([]);
     setBlameLines(new Map());
     setBlameLoading(false);
@@ -990,10 +1206,25 @@ function CodeViewer({
     setScrollMetrics({ top: 0, left: 0, height: 1, width: 1, scrollHeight: 1, scrollWidth: 1 });
     setEditorContextMenu(null);
     setDefinitionLoading(false);
-    onCursorChange?.(path ? { line: 1, column: 1 } : null);
+    setCompletionItems([]);
+    setCompletionIndex(0);
+    setCompletionVisible(false);
+    setCompletionReplaceStart(0);
+    setCompletionPrefix("");
+    setCompletionOrigin(null);
+    setIsTypingBurst(false);
+    if (typingBurstTimeoutRef.current !== null) {
+      window.clearTimeout(typingBurstTimeoutRef.current);
+      typingBurstTimeoutRef.current = null;
+    }
+    if (completionAbortRef.current) {
+      completionAbortRef.current.abort();
+      completionAbortRef.current = null;
+    }
+    emitCursorChange(path ? { line: 1, column: 1 } : null);
     appliedJumpRequestRef.current = "";
     void fetchContent({ resetEditor: true });
-  }, [fetchContent, onCursorChange, path]);
+  }, [emitCursorChange, fetchContent, path]);
 
   useEffect(() => {
     if (content !== null && path) {
@@ -1019,6 +1250,36 @@ function CodeViewer({
       if (blameHideTimeoutRef.current !== null) {
         window.clearTimeout(blameHideTimeoutRef.current);
         blameHideTimeoutRef.current = null;
+      }
+      if (completionDebounceRef.current !== null) {
+        window.clearTimeout(completionDebounceRef.current);
+        completionDebounceRef.current = null;
+      }
+      if (completionAbortRef.current) {
+        completionAbortRef.current.abort();
+        completionAbortRef.current = null;
+      }
+      if (fileReadAbortRef.current) {
+        fileReadAbortRef.current.abort();
+        fileReadAbortRef.current = null;
+      }
+      if (blameAbortRef.current) {
+        blameAbortRef.current.abort();
+        blameAbortRef.current = null;
+      }
+      if (cursorNotifyFrameRef.current !== null) {
+        window.cancelAnimationFrame(cursorNotifyFrameRef.current);
+        cursorNotifyFrameRef.current = null;
+      }
+      pendingCursorNotifyRef.current = null;
+      if (cursorSelectionFrameRef.current !== null) {
+        window.cancelAnimationFrame(cursorSelectionFrameRef.current);
+        cursorSelectionFrameRef.current = null;
+      }
+      pendingCursorSelectionRef.current = null;
+      if (typingBurstTimeoutRef.current !== null) {
+        window.clearTimeout(typingBurstTimeoutRef.current);
+        typingBurstTimeoutRef.current = null;
       }
     };
   }, []);
@@ -1090,16 +1351,438 @@ function CodeViewer({
   const updateCursorFromSelection = useCallback((textarea: HTMLTextAreaElement | null) => {
     if (!textarea) return;
     const value = textarea.value;
-    const selectionStart = textarea.selectionStart ?? 0;
-    const before = value.slice(0, selectionStart);
-    const line = before.split("\n").length;
-    const lastBreak = before.lastIndexOf("\n");
+    const selectionStart = Math.max(0, textarea.selectionStart ?? 0);
+    let line = 1;
+    for (let i = 0; i < selectionStart; i += 1) {
+      if (value.charCodeAt(i) === 10) line += 1;
+    }
+    const lastBreak = value.lastIndexOf("\n", selectionStart - 1);
     const column = selectionStart - lastBreak;
-    setCursorLine(line);
-    setCursorColumn(column);
-    setActiveLine(line);
-    onCursorChange?.({ line, column });
-  }, [onCursorChange]);
+    setCursorLine((previous) => (previous === line ? previous : line));
+    setCursorColumn((previous) => (previous === column ? previous : column));
+    setActiveLine((previous) => (previous === line ? previous : line));
+    emitCursorChange({ line, column });
+  }, [emitCursorChange]);
+
+  const scheduleCursorUpdate = useCallback((textarea: HTMLTextAreaElement | null) => {
+    if (!textarea) return;
+    pendingCursorSelectionRef.current = textarea;
+    if (cursorSelectionFrameRef.current !== null) return;
+    cursorSelectionFrameRef.current = window.requestAnimationFrame(() => {
+      cursorSelectionFrameRef.current = null;
+      updateCursorFromSelection(pendingCursorSelectionRef.current);
+      pendingCursorSelectionRef.current = null;
+    });
+  }, [updateCursorFromSelection]);
+
+  const markTypingBurst = useCallback(() => {
+    setIsTypingBurst(true);
+    if (typingBurstTimeoutRef.current !== null) {
+      window.clearTimeout(typingBurstTimeoutRef.current);
+    }
+    typingBurstTimeoutRef.current = window.setTimeout(() => {
+      typingBurstTimeoutRef.current = null;
+      setIsTypingBurst(false);
+    }, EDITOR_TYPING_BURST_MS);
+  }, []);
+
+  const clearCompletions = useCallback(() => {
+    setCompletionItems([]);
+    setCompletionIndex(0);
+    setCompletionVisible(false);
+    setCompletionPrefix("");
+    setCompletionOrigin(null);
+  }, []);
+
+  const scoreCompletionItem = useCallback((item: IdeCompletionItem, normalizedPrefix: string): number => {
+    const label = item.label || "";
+    const insert = item.insertText || label;
+    const labelLower = label.toLowerCase();
+    const insertLower = insert.toLowerCase();
+    let score = 10;
+
+    if (normalizedPrefix.length > 0) {
+      if (labelLower === normalizedPrefix || insertLower === normalizedPrefix) {
+        score = 0;
+      } else if (labelLower.startsWith(normalizedPrefix) || insertLower.startsWith(normalizedPrefix)) {
+        score = 1 + Math.min(label.length, insert.length) / 100;
+      } else {
+        const inLabel = labelLower.indexOf(normalizedPrefix);
+        const inInsert = insertLower.indexOf(normalizedPrefix);
+        if (inLabel >= 0 || inInsert >= 0) {
+          const offset = Math.min(inLabel >= 0 ? inLabel : 99, inInsert >= 0 ? inInsert : 99);
+          score = 3 + offset / 10 + Math.min(label.length, insert.length) / 100;
+        }
+      }
+    }
+
+    if (item.detail === "Local") score -= 0.15;
+    if (item.detail === "Snippet") score += 0.6;
+    return score;
+  }, []);
+
+  const getCompletionContext = useCallback((text: string, cursorOffset: number) => {
+    const safeCursor = Math.max(0, Math.min(cursorOffset, text.length));
+    const before = text.slice(0, safeCursor);
+    const after = text.slice(safeCursor);
+    const identifierMatch = before.match(/[A-Za-z_$][A-Za-z0-9_$]*$/);
+    const prefix = identifierMatch?.[0] || "";
+    const replaceStart = safeCursor - prefix.length;
+    const previousChar = before[before.length - 1] || "";
+    const memberAccessTrigger = previousChar === ".";
+    const trigger = memberAccessTrigger || prefix.length >= 1;
+    const cursor = getLineAndColumn(text, safeCursor);
+    return {
+      trigger,
+      prefix,
+      replaceStart,
+      line: cursor.line,
+      column: cursor.column,
+      aroundCursorAfter: after,
+      memberAccessTrigger,
+    };
+  }, []);
+
+  const buildLocalCompletions = useCallback(
+    (
+      context: {
+        prefix: string;
+        replaceStart: number;
+        memberAccessTrigger: boolean;
+      },
+      cursorOffset: number
+    ): IdeCompletionItem[] => {
+      const lowerPrefix = context.prefix.toLowerCase();
+      const localSet = new Map<string, IdeCompletionItem>();
+      const scanBefore = isLargeFileMode
+        ? Math.min(COMPLETION_LOCAL_SCAN_BEFORE, 7_000)
+        : Math.min(COMPLETION_LOCAL_SCAN_BEFORE, 16_000);
+      const scanAfter = isLargeFileMode
+        ? Math.min(COMPLETION_LOCAL_SCAN_AFTER, 2_500)
+        : Math.min(COMPLETION_LOCAL_SCAN_AFTER, 5_500);
+      const boundedStart = Math.max(0, cursorOffset - scanBefore);
+      const boundedEnd = Math.min(editContent.length, cursorOffset + scanAfter);
+      const nearbyText = editContent.slice(boundedStart, boundedEnd);
+      const wordRegex = /\b[A-Za-z_$][A-Za-z0-9_$]{1,}\b/g;
+      for (const match of nearbyText.matchAll(wordRegex)) {
+        const candidate = match[0];
+        if (!candidate || candidate.length < 2) continue;
+        if (lowerPrefix && !candidate.toLowerCase().startsWith(lowerPrefix)) continue;
+        if (!context.memberAccessTrigger && candidate === context.prefix) continue;
+        if (!localSet.has(candidate)) {
+          localSet.set(candidate, {
+            label: candidate,
+            insertText: candidate,
+            detail: "Local",
+            sortText: `z-${candidate}`,
+          });
+        }
+        if (localSet.size >= 120) break;
+      }
+
+      const normalizedExt = extension.toLowerCase();
+      const isTsLike = [".ts", ".tsx", ".js", ".jsx"].includes(normalizedExt);
+      if (isTsLike && !context.memberAccessTrigger) {
+        const snippets: IdeCompletionItem[] = [
+          { label: "const", insertText: "const ", detail: "Keyword" },
+          { label: "let", insertText: "let ", detail: "Keyword" },
+          { label: "function", insertText: "function ", detail: "Keyword" },
+          { label: "if", insertText: "if () {\n  \n}", detail: "Snippet" },
+          { label: "for", insertText: "for (let i = 0; i < ; i++) {\n  \n}", detail: "Snippet" },
+          { label: "import", insertText: "import ", detail: "Keyword" },
+          { label: "return", insertText: "return ", detail: "Keyword" },
+          { label: "await", insertText: "await ", detail: "Keyword" },
+        ];
+        for (const snippet of snippets) {
+          if (
+            lowerPrefix &&
+            !snippet.label.toLowerCase().startsWith(lowerPrefix) &&
+            !snippet.insertText?.toLowerCase().startsWith(lowerPrefix)
+          ) {
+            continue;
+          }
+          if (!localSet.has(snippet.label)) {
+            localSet.set(snippet.label, snippet);
+          }
+        }
+      }
+
+      return [...localSet.values()].slice(0, 80);
+    },
+    [editContent, extension, isLargeFileMode]
+  );
+
+  const requestCompletions = useCallback(async (options?: { force?: boolean }) => {
+    if (!path || !editorRef.current || isBinary || showFindBar) {
+      clearCompletions();
+      return;
+    }
+    const force = options?.force === true;
+
+    const editor = editorRef.current;
+    const selectionStart = editor.selectionStart ?? 0;
+    const selectionEnd = editor.selectionEnd ?? selectionStart;
+    if (selectionStart !== selectionEnd) {
+      clearCompletions();
+      return;
+    }
+
+    const context = getCompletionContext(editContent, selectionStart);
+    if (!context.trigger) {
+      clearCompletions();
+      return;
+    }
+    if (!force && !context.memberAccessTrigger && context.prefix.length < 2) {
+      clearCompletions();
+      return;
+    }
+
+    const localItems = buildLocalCompletions(context, selectionStart);
+    const requestId = completionRequestSeqRef.current + 1;
+    completionRequestSeqRef.current = requestId;
+
+    let mergedItems = [...localItems];
+    const normalizedPrefix = context.prefix.toLowerCase();
+    const cacheKey = `${path}::${context.memberAccessTrigger ? "member" : "word"}::${normalizedPrefix}::${context.line}`;
+    const shouldRequestLsp = force || context.memberAccessTrigger || context.prefix.length >= 3;
+    if (shouldRequestLsp) {
+      const cached = completionCacheRef.current.get(cacheKey);
+      const now = Date.now();
+      if (cached && now - cached.ts <= COMPLETION_CACHE_TTL_MS) {
+        const known = new Set(mergedItems.map((item) => `${item.label}:${item.insertText || ""}`));
+        for (const item of cached.items) {
+          const key = `${item.label}:${item.insertText || ""}`;
+          if (known.has(key)) continue;
+          known.add(key);
+          mergedItems.push(item);
+          if (mergedItems.length >= 120) break;
+        }
+      } else {
+        if (completionAbortRef.current) {
+          completionAbortRef.current.abort();
+        }
+        const controller = new AbortController();
+        completionAbortRef.current = controller;
+        try {
+          const params = new URLSearchParams({
+            path,
+            line: String(Math.max(context.line - 1, 0)),
+            character: String(Math.max(context.column - 1, 0)),
+            prefix: context.prefix,
+            limit: "120",
+          });
+          const response = await apiFetch(`/api/lsp/completion?${params.toString()}`, {
+            signal: controller.signal,
+          });
+          const data: IdeCompletionResponse = await response.json();
+          if (completionRequestSeqRef.current !== requestId) return;
+          if (data.success && Array.isArray(data.items)) {
+            const known = new Set(mergedItems.map((item) => `${item.label}:${item.insertText || ""}`));
+            const lspItems: IdeCompletionItem[] = [];
+            for (const item of data.items) {
+              const key = `${item.label}:${item.insertText || ""}`;
+              if (known.has(key)) continue;
+              known.add(key);
+              mergedItems.push(item);
+              lspItems.push(item);
+              if (mergedItems.length >= 120) break;
+            }
+            completionCacheRef.current.set(cacheKey, { ts: now, items: lspItems });
+            if (completionCacheRef.current.size > COMPLETION_CACHE_MAX_ENTRIES) {
+              const oldest = completionCacheRef.current.keys().next().value;
+              if (typeof oldest === "string") {
+                completionCacheRef.current.delete(oldest);
+              }
+            }
+          }
+          if (completionAbortRef.current === controller) {
+            completionAbortRef.current = null;
+          }
+        } catch (errorValue) {
+          if ((errorValue as Error)?.name === "AbortError") {
+            return;
+          }
+          // Keep local completions if LSP completion fails.
+          if (completionAbortRef.current === controller) {
+            completionAbortRef.current = null;
+          }
+        }
+      }
+    }
+
+    if (completionRequestSeqRef.current !== requestId) return;
+
+    if (mergedItems.length === 0) {
+      clearCompletions();
+      return;
+    }
+
+    mergedItems = mergedItems
+      .sort((left, right) => {
+        const delta = scoreCompletionItem(left, normalizedPrefix) - scoreCompletionItem(right, normalizedPrefix);
+        if (delta !== 0) return delta;
+        const leftSort = left.sortText || left.label;
+        const rightSort = right.sortText || right.label;
+        if (leftSort !== rightSort) return leftSort.localeCompare(rightSort);
+        return left.label.localeCompare(right.label);
+      })
+      .slice(0, 80);
+
+    setCompletionItems(mergedItems);
+    setCompletionIndex(0);
+    setCompletionVisible(true);
+    setCompletionReplaceStart(context.replaceStart);
+    setCompletionPrefix(context.prefix);
+    setCompletionOrigin({ line: context.line, column: context.column });
+  }, [
+    buildLocalCompletions,
+    clearCompletions,
+    editContent,
+    getCompletionContext,
+    isBinary,
+    path,
+    scoreCompletionItem,
+    showFindBar,
+  ]);
+
+  const applyCompletion = useCallback(
+    (targetIndex?: number): boolean => {
+      if (!editorRef.current || completionItems.length === 0) return false;
+      const editor = editorRef.current;
+      const index =
+        typeof targetIndex === "number"
+          ? Math.max(0, Math.min(targetIndex, completionItems.length - 1))
+          : Math.max(0, Math.min(completionIndex, completionItems.length - 1));
+      const item = completionItems[index];
+      if (!item) return false;
+
+      const cursor = editor.selectionStart ?? 0;
+      if (cursor < completionReplaceStart) return false;
+      const rawInsert = item.insertText || item.label;
+      const insertText = rawInsert
+        .replace(/\$\{\d+:([^}]+)\}/g, "$1")
+        .replace(/\$\d+/g, "");
+      const nextContent =
+        editContent.slice(0, completionReplaceStart) + insertText + editContent.slice(cursor);
+
+      setEditContent(nextContent);
+      setCompletionVisible(false);
+      setCompletionItems([]);
+      const nextCursor = completionReplaceStart + insertText.length;
+      window.requestAnimationFrame(() => {
+        if (!editorRef.current) return;
+        editorRef.current.focus();
+        editorRef.current.setSelectionRange(nextCursor, nextCursor);
+        updateCursorFromSelection(editorRef.current);
+        syncEditorScroll(editorRef.current);
+      });
+      return true;
+    },
+    [completionIndex, completionItems, completionReplaceStart, editContent, syncEditorScroll, updateCursorFromSelection]
+  );
+
+  const tryInlineTabCompletion = useCallback((): boolean => {
+    const editor = editorRef.current;
+    if (!editor || isBinary || showFindBar) return false;
+
+    const selectionStart = editor.selectionStart ?? 0;
+    const selectionEnd = editor.selectionEnd ?? selectionStart;
+    if (selectionStart !== selectionEnd) return false;
+
+    const context = getCompletionContext(editContent, selectionStart);
+    if (!context.trigger) return false;
+    if (!context.memberAccessTrigger && context.prefix.length < 2) return false;
+
+    const normalizedPrefix = context.prefix.toLowerCase();
+    const candidates = buildLocalCompletions(context, selectionStart)
+      .filter((item) => {
+        const insert = (item.insertText || item.label || "").toLowerCase();
+        if (!insert) return false;
+        if (normalizedPrefix && insert === normalizedPrefix) return false;
+        return context.memberAccessTrigger || insert.startsWith(normalizedPrefix);
+      })
+      .sort((left, right) => {
+        const delta = scoreCompletionItem(left, normalizedPrefix) - scoreCompletionItem(right, normalizedPrefix);
+        if (delta !== 0) return delta;
+        return (left.label || "").localeCompare(right.label || "");
+      });
+
+    const best = candidates[0];
+    if (!best) return false;
+
+    const rawInsert = best.insertText || best.label;
+    const insertText = rawInsert
+      .replace(/\$\{\d+:([^}]+)\}/g, "$1")
+      .replace(/\$\d+/g, "");
+    if (!insertText) return false;
+
+    const nextContent =
+      editContent.slice(0, context.replaceStart) + insertText + editContent.slice(selectionStart);
+    setEditContent(nextContent);
+    setCompletionVisible(false);
+    setCompletionItems([]);
+    markTypingBurst();
+
+    const nextCursor = context.replaceStart + insertText.length;
+    window.requestAnimationFrame(() => {
+      if (!editorRef.current) return;
+      editorRef.current.focus();
+      editorRef.current.setSelectionRange(nextCursor, nextCursor);
+      updateCursorFromSelection(editorRef.current);
+      syncEditorScroll(editorRef.current);
+    });
+    return true;
+  }, [
+    buildLocalCompletions,
+    editContent,
+    getCompletionContext,
+    isBinary,
+    markTypingBurst,
+    scoreCompletionItem,
+    showFindBar,
+    syncEditorScroll,
+    updateCursorFromSelection,
+  ]);
+
+  useEffect(() => {
+    const isMarkdownPreview =
+      previewMode &&
+      (extension.toLowerCase() === ".md" || extension.toLowerCase() === ".markdown");
+    if (!path || isBinary || isMarkdownPreview || showFindBar) {
+      clearCompletions();
+      return;
+    }
+
+    if (completionDebounceRef.current !== null) {
+      window.clearTimeout(completionDebounceRef.current);
+    }
+    completionDebounceRef.current = window.setTimeout(
+      () => {
+        void requestCompletions();
+      },
+      isLargeFileMode ? 260 : isTypingBurst ? 180 : 110
+    );
+
+    return () => {
+      if (completionDebounceRef.current !== null) {
+        window.clearTimeout(completionDebounceRef.current);
+        completionDebounceRef.current = null;
+      }
+    };
+  }, [
+    clearCompletions,
+    editContent,
+    extension,
+    isBinary,
+    isTypingBurst,
+    isLargeFileMode,
+    path,
+    previewMode,
+    requestCompletions,
+    showFindBar,
+    cursorLine,
+    cursorColumn,
+  ]);
 
   const computeFindMatches = useCallback(
     (query: string): Array<{ start: number; end: number }> => {
@@ -1370,6 +2053,43 @@ function CodeViewer({
   }, [focusReplaceInput, handleSave, isBinary, isSaving, path, promptJumpToLine, showFindBar, toggleFindBar]);
 
   const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (completionVisible && completionItems.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        e.stopPropagation();
+        setCompletionIndex((previous) =>
+          Math.min(previous + 1, Math.max(completionItems.length - 1, 0))
+        );
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        e.stopPropagation();
+        setCompletionIndex((previous) => Math.max(previous - 1, 0));
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        clearCompletions();
+        return;
+      }
+      if (e.key === "Tab" && !e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (applyCompletion()) {
+          return;
+        }
+      }
+    }
+
+    if ((e.metaKey || e.ctrlKey) && e.key === " ") {
+      e.preventDefault();
+      e.stopPropagation();
+      void requestCompletions({ force: true });
+      return;
+    }
+
     if (e.key === "F12") {
       e.preventDefault();
       e.stopPropagation();
@@ -1406,12 +2126,19 @@ function CodeViewer({
     }
 
     if (e.key === "Tab") {
+      if (tryInlineTabCompletion()) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       e.preventDefault();
       const target = e.currentTarget;
       const start = target.selectionStart;
       const end = target.selectionEnd;
       const nextContent = `${editContent.slice(0, start)}  ${editContent.slice(end)}`;
       setEditContent(nextContent);
+      markTypingBurst();
+      setCompletionVisible(false);
       requestAnimationFrame(() => {
         target.selectionStart = start + 2;
         target.selectionEnd = start + 2;
@@ -1772,10 +2499,21 @@ function CodeViewer({
       syncEditorScroll(editorRef.current);
       updateCursorFromSelection(editorRef.current);
     });
-  }, [path, isBinary, editContent, syncEditorScroll, updateCursorFromSelection]);
+  }, [path, isBinary, syncEditorScroll, updateCursorFromSelection]);
 
-  const sourceText = editContent;
-  const sourceLines = sourceText.split("\n");
+  const sourceText = useDeferredValue(editContent);
+  const sourceLines = useMemo(() => sourceText.split("\n"), [sourceText]);
+  const lineHeightPx = 20;
+  const gutterStartLine = Math.max(0, Math.floor(scrollMetrics.top / lineHeightPx) - 80);
+  const gutterVisibleCount = Math.max(Math.ceil(scrollMetrics.height / lineHeightPx) + 160, 220);
+  const gutterEndLine = Math.min(sourceLines.length, gutterStartLine + gutterVisibleCount);
+  const visibleLineIndices = useMemo(() => {
+    const indices: number[] = [];
+    for (let line = gutterStartLine; line < gutterEndLine; line += 1) {
+      indices.push(line);
+    }
+    return indices;
+  }, [gutterEndLine, gutterStartLine]);
   const minimapRows = useMemo(() => {
     const maxRows = 1200;
     const step = Math.max(1, Math.ceil(sourceLines.length / maxRows));
@@ -1831,13 +2569,26 @@ function CodeViewer({
     lineDiagnostics.set(d.line, existing);
   });
 
-  const showInlineBlame = blameLoading || blameLines.size > 0;
+  const showInlineBlame = !isLargeFileMode && !isTypingBurst && (blameLoading || blameLines.size > 0);
   const popoverBlameDetails = blamePopoverLine ? blameLines.get(blamePopoverLine) || null : null;
   const popoverBlameTimestamp = formatBlameDateTime(popoverBlameDetails?.authorDate);
   const isMarkdownPreview =
     !isBinary &&
     previewMode &&
     (extension.toLowerCase() === ".md" || extension.toLowerCase() === ".markdown");
+  const showCompletionPanel = completionVisible && completionItems.length > 0 && !!completionOrigin;
+  const completionPanelPosition = completionOrigin
+    ? {
+        left: Math.max(
+          8,
+          16 + (completionOrigin.column - 1) * 7.4 - scrollMetrics.left
+        ),
+        top: Math.max(
+          8,
+          16 + (completionOrigin.line - 1) * 20 - scrollMetrics.top + 20
+        ),
+      }
+    : null;
   const editorContextMenuPosition = editorContextMenu
     ? {
         left:
@@ -1887,6 +2638,11 @@ function CodeViewer({
       {saveError && (
         <div className="px-4 py-2 bg-red-500/10 border-b border-red-500/30 text-red-400 text-sm">
           {saveError}
+        </div>
+      )}
+      {isLargeFileMode && !isBinary && (
+        <div className="px-4 py-1.5 bg-amber-500/10 border-b border-amber-500/30 text-amber-200 text-xs">
+          Large file mode enabled: syntax highlighting and blame are reduced for responsiveness.
         </div>
       )}
 
@@ -2018,37 +2774,47 @@ function CodeViewer({
               ref={gutterRef}
               className="w-16 shrink-0 overflow-hidden border-r border-white/10 bg-black/30 py-4 px-2 text-right select-none font-mono text-[13px] leading-[20px]"
             >
-              {sourceLines.map((_, i) => {
-                const lineNum = i;
-                const lineDiags = lineDiagnostics.get(lineNum) || [];
-                const hasError = lineDiags.some((d) => d.severity === "error");
-                const hasWarning = lineDiags.some((d) => d.severity === "warning");
-                return (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => jumpToLine(i + 1)}
-                    className={cn(
-                      "h-[20px] w-full flex items-center justify-end px-1 m-0 py-0 border-0 rounded-none appearance-none bg-transparent leading-none transition-colors",
-                      activeLine === i + 1 && "bg-indigo-500/20 text-indigo-200",
-                      hasError && "text-red-400",
-                      hasWarning && !hasError && "text-yellow-400",
-                      !hasError && !hasWarning && activeLine !== i + 1 && "text-gray-600 hover:text-gray-400"
-                    )}
-                    title={lineDiags.map((d) => d.message).join("\n") || `Line ${i + 1}`}
-                  >
-                    {lineDiags.length > 0 ? (
-                      hasError ? (
-                        <AlertCircle className="w-3 h-3" />
-                      ) : (
-                        <AlertTriangle className="w-3 h-3" />
-                      )
-                    ) : (
-                      i + 1
-                    )}
-                  </button>
-                );
-              })}
+              <div className="relative" style={{ height: `${sourceLines.length * lineHeightPx}px` }}>
+                <div
+                  className="absolute left-0 right-0"
+                  style={{ transform: `translateY(${gutterStartLine * lineHeightPx}px)` }}
+                >
+                  {visibleLineIndices.map((i) => {
+                    const lineNum = i;
+                    const lineDiags = lineDiagnostics.get(lineNum) || [];
+                    const hasError = lineDiags.some((d) => d.severity === "error");
+                    const hasWarning = lineDiags.some((d) => d.severity === "warning");
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => jumpToLine(i + 1)}
+                        className={cn(
+                          "h-[20px] w-full flex items-center justify-end px-1 m-0 py-0 border-0 rounded-none appearance-none bg-transparent leading-none transition-colors",
+                          activeLine === i + 1 && "bg-indigo-500/20 text-indigo-200",
+                          hasError && "text-red-400",
+                          hasWarning && !hasError && "text-yellow-400",
+                          !hasError &&
+                            !hasWarning &&
+                            activeLine !== i + 1 &&
+                            "text-gray-600 hover:text-gray-400"
+                        )}
+                        title={lineDiags.map((d) => d.message).join("\n") || `Line ${i + 1}`}
+                      >
+                        {lineDiags.length > 0 ? (
+                          hasError ? (
+                            <AlertCircle className="w-3 h-3" />
+                          ) : (
+                            <AlertTriangle className="w-3 h-3" />
+                          )
+                        ) : (
+                          i + 1
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
             <div className="flex-1 min-w-0 flex">
               <div className="relative flex-1 min-w-0">
@@ -2056,146 +2822,180 @@ function CodeViewer({
                   ref={highlightScrollRef}
                   className="absolute inset-0 overflow-auto pointer-events-none z-20"
                 >
-                  <Highlight theme={themes.nightOwl} code={sourceText} language={language}>
-                    {({ className, style, tokens, getLineProps, getTokenProps }) => (
-                      <pre
-                        className={cn(className, "m-0 p-4 font-mono text-[13px] min-w-full leading-[20px]")}
-                        style={{
-                          ...style,
-                          background: "transparent",
-                          width: "max-content",
-                          minWidth: "100%",
-                          whiteSpace: "pre",
-                          overflowWrap: "normal",
-                          wordBreak: "normal",
-                          lineHeight: "20px",
-                          fontSize: "13px",
-                          fontFamily: "var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                        }}
-                      >
-                        {tokens.map((line, i) => {
-                          const lineNum = i;
-                          const lineDiags = lineDiagnostics.get(lineNum) || [];
-                          const hasError = lineDiags.some((d) => d.severity === "error");
-                          const hasWarning = lineDiags.some((d) => d.severity === "warning");
-                          const isActiveLine = activeLine === i + 1;
-                          const blameLine = blameLines.get(i + 1) || null;
-                          const blameDate = formatBlameStamp(blameLine?.authorDate);
-                          const blameSummary =
-                            blameLine?.summary || (blameLine?.isUncommitted ? "Uncommitted" : "");
-                          const blameText = blameLine
-                            ? `${blameLine.author} · ${blameLine.shortCommit}${blameDate ? ` · ${blameDate}` : ""}${blameSummary ? ` · ${blameSummary}` : ""}`
-                            : blameLoading
-                              ? "Loading history..."
-                              : "No history";
-                          const shouldShowLineBlame = isActiveLine && showInlineBlame;
-                          const lineProps = getLineProps({ line });
-                          return (
-                          <div
-                            key={i}
-                            data-line-number={i + 1}
-                            {...lineProps}
-                            style={{ ...(lineProps.style || {}), height: "20px", lineHeight: "20px" }}
-                            className={cn(
-                              lineProps.className,
-                              "h-[20px] w-max min-w-full flex items-center",
-                              hasError && "bg-red-500/10",
-                              hasWarning && !hasError && "bg-yellow-500/10",
-                              isActiveLine && "bg-indigo-500/20"
-                              )}
-                            >
-                              <span className="flex-shrink-0">
-                                {line.length > 0 ? (
-                                  line.map((token, key) => (
-                                    <span key={key} {...getTokenProps({ token })} />
-                                  ))
-                                ) : (
-                                  <span>&nbsp;</span>
+                  {isLargeFileMode || isTypingBurst ? (
+                    <pre
+                      className="m-0 p-4 font-mono text-[13px] min-w-full leading-[20px] text-gray-200"
+                      style={{
+                        background: "transparent",
+                        width: "max-content",
+                        minWidth: "100%",
+                        whiteSpace: "pre",
+                        overflowWrap: "normal",
+                        wordBreak: "normal",
+                        lineHeight: "20px",
+                        fontSize: "13px",
+                        fontFamily:
+                          "var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                      }}
+                    >
+                      {sourceText}
+                    </pre>
+                  ) : (
+                    <Highlight theme={themes.nightOwl} code={sourceText} language={language}>
+                      {({ className, style, tokens, getLineProps, getTokenProps }) => (
+                        <pre
+                          className={cn(className, "m-0 p-4 font-mono text-[13px] min-w-full leading-[20px]")}
+                          style={{
+                            ...style,
+                            background: "transparent",
+                            width: "max-content",
+                            minWidth: "100%",
+                            whiteSpace: "pre",
+                            overflowWrap: "normal",
+                            wordBreak: "normal",
+                            lineHeight: "20px",
+                            fontSize: "13px",
+                            fontFamily:
+                              "var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                          }}
+                        >
+                          {tokens.map((line, i) => {
+                            const lineNum = i;
+                            const lineDiags = lineDiagnostics.get(lineNum) || [];
+                            const hasError = lineDiags.some((d) => d.severity === "error");
+                            const hasWarning = lineDiags.some((d) => d.severity === "warning");
+                            const isActiveLine = activeLine === i + 1;
+                            const blameLine = blameLines.get(i + 1) || null;
+                            const blameDate = formatBlameStamp(blameLine?.authorDate);
+                            const blameSummary =
+                              blameLine?.summary || (blameLine?.isUncommitted ? "Uncommitted" : "");
+                            const blameText = blameLine
+                              ? `${blameLine.author} · ${blameLine.shortCommit}${blameDate ? ` · ${blameDate}` : ""}${blameSummary ? ` · ${blameSummary}` : ""}`
+                              : blameLoading
+                                ? "Loading history..."
+                                : "No history";
+                            const shouldShowLineBlame = isActiveLine && showInlineBlame;
+                            const lineProps = getLineProps({ line });
+                            return (
+                              <div
+                                key={i}
+                                data-line-number={i + 1}
+                                {...lineProps}
+                                style={{ ...(lineProps.style || {}), height: "20px", lineHeight: "20px" }}
+                                className={cn(
+                                  lineProps.className,
+                                  "h-[20px] w-max min-w-full flex items-center",
+                                  hasError && "bg-red-500/10",
+                                  hasWarning && !hasError && "bg-yellow-500/10",
+                                  isActiveLine && "bg-indigo-500/20"
                                 )}
-                              </span>
-                              {shouldShowLineBlame && (
-                                <span className="relative ml-5 inline-flex max-w-[54vw] flex-shrink-0 items-center">
-                                  <button
-                                    type="button"
-                                    onMouseEnter={() => showBlamePopover(i + 1)}
-                                    onMouseLeave={scheduleHideBlamePopover}
-                                    disabled={!blameLine}
-                                    className={cn(
-                                      "max-w-full truncate border-0 bg-transparent p-0 text-left font-mono text-[13px] leading-[20px]",
-                                      blameLine ? "pointer-events-auto text-gray-500 hover:text-gray-300" : "text-gray-700 cursor-default"
-                                    )}
-                                    title={blameText}
-                                  >
-                                    {blameText}
-                                  </button>
-                                  {popoverBlameDetails && blamePopoverLine === i + 1 && (
-                                    <div
-                                      className="pointer-events-auto absolute left-0 top-[18px] z-30 mt-1 rounded-md border border-white/15 bg-black/80 px-2.5 py-2 text-[11px] text-gray-300 shadow-lg backdrop-blur min-w-[280px]"
-                                      onMouseEnter={clearBlameHideTimer}
-                                      onMouseLeave={scheduleHideBlamePopover}
-                                    >
-                                      <div className="flex items-center justify-between gap-2">
-                                        <span className="font-medium text-emerald-200">Line {blamePopoverLine}</span>
-                                        <div className="flex items-center gap-1">
-                                          {!popoverBlameDetails.isUncommitted && (
-                                            <button
-                                              type="button"
-                                              onClick={() => void handleCopyCommit(popoverBlameDetails.commit)}
-                                              className="p-1 rounded border border-white/15 text-gray-300 hover:text-white hover:bg-white/10"
-                                              title={copiedCommit === popoverBlameDetails.commit ? "Copied" : "Copy commit hash"}
-                                            >
-                                              <Copy className="w-3 h-3" />
-                                            </button>
-                                          )}
-                                          {popoverBlameDetails.commitUrl && (
-                                            <a
-                                              href={popoverBlameDetails.commitUrl}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              className="p-1 rounded border border-white/15 text-indigo-300 hover:text-indigo-200 hover:bg-white/10"
-                                              title="Open commit details"
-                                            >
-                                              <ExternalLink className="w-3 h-3" />
-                                            </a>
-                                          )}
-                                        </div>
-                                      </div>
-                                      <div className="mt-1 text-[10px] text-gray-400">
-                                        {popoverBlameDetails.author}
-                                        {popoverBlameTimestamp ? ` · ${popoverBlameTimestamp}` : ""}
-                                      </div>
-                                      <div className="mt-1 text-[10px] text-gray-500 break-all">
-                                        {popoverBlameDetails.isUncommitted
-                                          ? "Uncommitted local changes"
-                                          : `${popoverBlameDetails.shortCommit} · ${popoverBlameDetails.commit}`}
-                                      </div>
-                                      {(popoverBlameDetails.commitDescription || popoverBlameDetails.summary) && (
-                                        <div className="mt-1 whitespace-pre-wrap text-[11px] text-gray-300 break-words">
-                                          {popoverBlameDetails.commitDescription || popoverBlameDetails.summary}
-                                        </div>
-                                      )}
-                                    </div>
+                              >
+                                <span className="flex-shrink-0">
+                                  {line.length > 0 ? (
+                                    line.map((token, key) => (
+                                      <span key={key} {...getTokenProps({ token })} />
+                                    ))
+                                  ) : (
+                                    <span>&nbsp;</span>
                                   )}
                                 </span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </pre>
-                    )}
-                  </Highlight>
+                                {shouldShowLineBlame && (
+                                  <span className="relative ml-5 inline-flex max-w-[54vw] flex-shrink-0 items-center">
+                                    <button
+                                      type="button"
+                                      onMouseEnter={() => showBlamePopover(i + 1)}
+                                      onMouseLeave={scheduleHideBlamePopover}
+                                      disabled={!blameLine}
+                                      className={cn(
+                                        "max-w-full truncate border-0 bg-transparent p-0 text-left font-mono text-[13px] leading-[20px]",
+                                        blameLine
+                                          ? "pointer-events-auto text-gray-500 hover:text-gray-300"
+                                          : "text-gray-700 cursor-default"
+                                      )}
+                                      title={blameText}
+                                    >
+                                      {blameText}
+                                    </button>
+                                    {popoverBlameDetails && blamePopoverLine === i + 1 && (
+                                      <div
+                                        className="pointer-events-auto absolute left-0 top-[18px] z-30 mt-1 rounded-md border border-white/15 bg-black/80 px-2.5 py-2 text-[11px] text-gray-300 shadow-lg backdrop-blur min-w-[280px]"
+                                        onMouseEnter={clearBlameHideTimer}
+                                        onMouseLeave={scheduleHideBlamePopover}
+                                      >
+                                        <div className="flex items-center justify-between gap-2">
+                                          <span className="font-medium text-emerald-200">Line {blamePopoverLine}</span>
+                                          <div className="flex items-center gap-1">
+                                            {!popoverBlameDetails.isUncommitted && (
+                                              <button
+                                                type="button"
+                                                onClick={() => void handleCopyCommit(popoverBlameDetails.commit)}
+                                                className="p-1 rounded border border-white/15 text-gray-300 hover:text-white hover:bg-white/10"
+                                                title={copiedCommit === popoverBlameDetails.commit ? "Copied" : "Copy commit hash"}
+                                              >
+                                                <Copy className="w-3 h-3" />
+                                              </button>
+                                            )}
+                                            {popoverBlameDetails.commitUrl && (
+                                              <a
+                                                href={popoverBlameDetails.commitUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="p-1 rounded border border-white/15 text-indigo-300 hover:text-indigo-200 hover:bg-white/10"
+                                                title="Open commit details"
+                                              >
+                                                <ExternalLink className="w-3 h-3" />
+                                              </a>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <div className="mt-1 text-[10px] text-gray-400">
+                                          {popoverBlameDetails.author}
+                                          {popoverBlameTimestamp ? ` · ${popoverBlameTimestamp}` : ""}
+                                        </div>
+                                        <div className="mt-1 text-[10px] text-gray-500 break-all">
+                                          {popoverBlameDetails.isUncommitted
+                                            ? "Uncommitted local changes"
+                                            : `${popoverBlameDetails.shortCommit} · ${popoverBlameDetails.commit}`}
+                                        </div>
+                                        {(popoverBlameDetails.commitDescription || popoverBlameDetails.summary) && (
+                                          <div className="mt-1 whitespace-pre-wrap text-[11px] text-gray-300 break-words">
+                                            {popoverBlameDetails.commitDescription || popoverBlameDetails.summary}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </pre>
+                      )}
+                    </Highlight>
+                  )}
                 </div>
 
               <textarea
                 ref={editorRef}
                 value={editContent}
-                  onChange={(e) => setEditContent(e.target.value)}
-                  onKeyDown={handleEditorKeyDown}
-                  onClick={(e) => updateCursorFromSelection(e.currentTarget)}
-                  onKeyUp={(e) => updateCursorFromSelection(e.currentTarget)}
-                  onSelect={(e) => updateCursorFromSelection(e.currentTarget)}
-                  onContextMenu={handleEditorContextMenu}
-                  onScroll={(e) => syncEditorScroll(e.currentTarget)}
+                onChange={(e) => {
+                  setEditContent(e.target.value);
+                  markTypingBurst();
+                }}
+                onKeyDown={handleEditorKeyDown}
+                onSelect={(e) => scheduleCursorUpdate(e.currentTarget)}
+                onBlur={() => {
+                  if (typingBurstTimeoutRef.current !== null) {
+                    window.clearTimeout(typingBurstTimeoutRef.current);
+                    typingBurstTimeoutRef.current = null;
+                  }
+                  setIsTypingBurst(false);
+                  window.setTimeout(() => {
+                    setCompletionVisible(false);
+                  }, 80);
+                }}
+                onContextMenu={handleEditorContextMenu}
+                onScroll={(e) => syncEditorScroll(e.currentTarget)}
                 className="absolute inset-0 z-10 p-4 font-mono text-[13px] leading-[20px] bg-transparent text-transparent caret-indigo-200 resize-none !outline-none focus:!outline-none selection:bg-indigo-500/30"
                 spellCheck={false}
                 wrap="off"
@@ -2210,6 +3010,45 @@ function CodeViewer({
                   margin: 0,
                 }}
               />
+              {showCompletionPanel && completionPanelPosition && (
+                <div
+                  className="absolute z-30 w-[340px] max-w-[80%] max-h-64 overflow-y-auto rounded-md border border-white/15 bg-[#0a0a10]/95 shadow-xl backdrop-blur"
+                  style={{
+                    left: `${Math.min(completionPanelPosition.left, 560)}px`,
+                    top: `${completionPanelPosition.top}px`,
+                  }}
+                >
+                  <div className="px-2 py-1.5 border-b border-white/10 text-[10px] text-gray-500 flex items-center justify-between">
+                    <span>
+                      Completions {completionPrefix ? `for "${completionPrefix}"` : ""}
+                    </span>
+                    <span>Tab to accept</span>
+                  </div>
+                  <div className="divide-y divide-white/5">
+                    {completionItems.slice(0, 12).map((item, index) => (
+                      <button
+                        key={`${item.label}:${item.insertText || ""}:${index}`}
+                        type="button"
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          void applyCompletion(index);
+                        }}
+                        className={cn(
+                          "w-full text-left px-2 py-1.5 hover:bg-white/10",
+                          index === completionIndex && "bg-indigo-500/20"
+                        )}
+                      >
+                        <div className="text-xs text-gray-100 truncate">{item.label}</div>
+                        {(item.detail || item.kind) && (
+                          <div className="text-[10px] text-gray-500 truncate">
+                            {item.detail || `Kind ${item.kind}`}
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {blameLoading && (
                 <div className="absolute left-6 top-2 z-20 px-1 py-0.5 text-[12px] leading-[20px] text-gray-600">
                   <div className="flex items-center gap-1.5">
@@ -2661,15 +3500,18 @@ function IDEChatPanel({
   workspaceDir,
   contextPath,
   onClose,
+  selectedAgentId,
+  onSelectedAgentIdChange,
 }: {
   workspaceDir: string;
   contextPath: string | null;
   onClose: () => void;
+  selectedAgentId: string;
+  onSelectedAgentIdChange: (agentId: string) => void;
 }) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<IdeChatMessage[]>([]);
   const [agents, setAgents] = useState<IdeChatAgentOption[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isReverting, setIsReverting] = useState(false);
@@ -2697,7 +3539,7 @@ function IDEChatPanel({
           .filter((agent) => agent.id);
         setAgents(options);
         if (!selectedAgentId && options.length === 1) {
-          setSelectedAgentId(options[0]?.id || "");
+          onSelectedAgentIdChange(options[0]?.id || "");
         }
       } catch {
         // Keep chat usable with default agent fallback.
@@ -2707,7 +3549,13 @@ function IDEChatPanel({
     return () => {
       isCancelled = true;
     };
-  }, [selectedAgentId]);
+  }, [onSelectedAgentIdChange, selectedAgentId]);
+
+  useEffect(() => {
+    if (!selectedAgentId) return;
+    if (agents.some((agent) => agent.id === selectedAgentId)) return;
+    onSelectedAgentIdChange("");
+  }, [agents, onSelectedAgentIdChange, selectedAgentId]);
 
   const mapApiMessageToIde = useCallback((value: unknown): IdeChatMessage | null => {
     if (!value || typeof value !== "object") return null;
@@ -2923,7 +3771,7 @@ function IDEChatPanel({
         <div className="flex items-center gap-2">
           <select
             value={selectedAgentId}
-            onChange={(event) => setSelectedAgentId(event.target.value)}
+            onChange={(event) => onSelectedAgentIdChange(event.target.value)}
             className="flex-1 min-w-0 px-2 py-1 rounded border border-white/10 bg-black/40 text-[11px] text-gray-200 !outline-none focus:border-indigo-500/40"
             title="Agent for IDE chat"
           >
@@ -2951,9 +3799,112 @@ function IDEChatPanel({
   );
 }
 
+function IDEWelcomeScreen({
+  workspacePath,
+  onNewFile,
+  onOpenWorkspace,
+  onOpenCommandPalette,
+  onOpenSettings,
+  onOpenAiSettings,
+  onOpenIndexerSettings,
+}: {
+  workspacePath: string;
+  onNewFile: () => void;
+  onOpenWorkspace: () => void;
+  onOpenCommandPalette: () => void;
+  onOpenSettings: () => void;
+  onOpenAiSettings: () => void;
+  onOpenIndexerSettings: () => void;
+}) {
+  const normalizedWorkspace = workspacePath
+    .replace(/^\/Users\/[^/]+/, "~")
+    .replace(/^C:\\Users\\[^\\]+/, "~");
+
+  return (
+    <div className="flex-1 min-h-0 overflow-auto bg-[#070811]">
+      <div className="mx-auto flex w-full max-w-3xl flex-col px-8 py-14">
+        <div className="mb-9">
+          <h1 className="text-2xl font-semibold tracking-tight text-gray-100">Welcome to Cybara IDE</h1>
+          <p className="mt-1 text-sm text-gray-500">Current workspace: {normalizedWorkspace}</p>
+        </div>
+
+        <div className="mb-8">
+          <div className="mb-3 text-[11px] uppercase tracking-[0.12em] text-gray-600">Get Started</div>
+          <div className="divide-y divide-white/10 rounded-lg border border-white/10 bg-black/20">
+            <button
+              type="button"
+              onClick={onNewFile}
+              className="flex w-full items-center justify-between px-4 py-3 text-left text-sm text-gray-200 hover:bg-white/5"
+            >
+              <span className="flex items-center gap-2">
+                <FilePlus className="h-4 w-4 text-indigo-300" />
+                New File
+              </span>
+              <span className="text-xs text-gray-500">Ctrl/Cmd+N</span>
+            </button>
+            <button
+              type="button"
+              onClick={onOpenWorkspace}
+              className="flex w-full items-center justify-between px-4 py-3 text-left text-sm text-gray-200 hover:bg-white/5"
+            >
+              <span className="flex items-center gap-2">
+                <FolderOpen className="h-4 w-4 text-amber-300" />
+                Open Workspace
+              </span>
+              <span className="text-xs text-gray-500">Folder Path</span>
+            </button>
+            <button
+              type="button"
+              onClick={onOpenCommandPalette}
+              className="flex w-full items-center justify-between px-4 py-3 text-left text-sm text-gray-200 hover:bg-white/5"
+            >
+              <span className="flex items-center gap-2">
+                <ListTree className="h-4 w-4 text-indigo-300" />
+                Open Command Palette
+              </span>
+              <span className="text-xs text-gray-500">Ctrl/Cmd+Shift+P</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="mb-8">
+          <div className="mb-3 text-[11px] uppercase tracking-[0.12em] text-gray-600">Configure</div>
+          <div className="divide-y divide-white/10 rounded-lg border border-white/10 bg-black/20">
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="flex w-full items-center justify-between px-4 py-3 text-left text-sm text-gray-200 hover:bg-white/5"
+            >
+              <span>Open Settings</span>
+              <span className="text-xs text-gray-500">/settings</span>
+            </button>
+            <button
+              type="button"
+              onClick={onOpenAiSettings}
+              className="flex w-full items-center justify-between px-4 py-3 text-left text-sm text-gray-200 hover:bg-white/5"
+            >
+              <span>Open AI Provider Settings</span>
+              <span className="text-xs text-gray-500">/providers</span>
+            </button>
+            <button
+              type="button"
+              onClick={onOpenIndexerSettings}
+              className="flex w-full items-center justify-between px-4 py-3 text-left text-sm text-gray-300 hover:bg-white/5"
+            >
+              <span>Open Indexer Settings</span>
+              <span className="text-xs text-gray-500">Workspace Indexer</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function IDE() {
+  const navigate = useNavigate();
   const location = useLocation();
-  const [currentPath, setCurrentPath] = useState<string>("~");
+  const [currentPath, setCurrentPath] = useState<string>(() => readPersistedWorkspacePath());
   const [selectedFile, setSelectedFile] = useState<FileEntry | null>(null);
   const [openTabs, setOpenTabs] = useState<IdeTab[]>([]);
   const [activeTabPath, setActiveTabPath] = useState<string | null>(null);
@@ -2996,6 +3947,16 @@ export function IDE() {
   const [explorerScrollTop, setExplorerScrollTop] = useState(0);
   const [explorerViewportHeight, setExplorerViewportHeight] = useState(0);
   const [treeContextMenu, setTreeContextMenu] = useState<TreeContextMenuState | null>(null);
+  const [ideChatSelectedAgentId, setIdeChatSelectedAgentId] = useState<string>(() =>
+    readPersistedIdeChatAgentId()
+  );
+  const [showIndexerSettings, setShowIndexerSettings] = useState(false);
+  const [indexStatus, setIndexStatus] = useState<WorkspaceIndexerStatusResponse | null>(null);
+  const [indexSettingsDraft, setIndexSettingsDraft] = useState<WorkspaceIndexerSettings | null>(null);
+  const [indexSettingsDirty, setIndexSettingsDirty] = useState(false);
+  const [indexStatusLoading, setIndexStatusLoading] = useState(false);
+  const [indexActionLoading, setIndexActionLoading] = useState(false);
+  const [indexSettingsError, setIndexSettingsError] = useState<string | null>(null);
   const [isIdeChatOpen, setIsIdeChatOpen] = useState<boolean>(() => readPersistedChatOpen());
   const [chatPanelWidth, setChatPanelWidth] = useState<number>(() => readPersistedChatWidth());
   const workspacePaneRef = useRef<HTMLDivElement | null>(null);
@@ -3008,6 +3969,155 @@ export function IDE() {
   const commandInputRef = useRef<HTMLInputElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const explorerScrollRef = useRef<HTMLDivElement | null>(null);
+  const lastIndexedWorkspaceAssignmentRef = useRef<string | null>(null);
+  const pendingCursorPositionRef = useRef<{ line: number; column: number } | null>(null);
+  const cursorPublishTimeoutRef = useRef<number | null>(null);
+  const effectiveWorkspacePath = rootInfo?.path || currentPath;
+
+  const handleCursorPositionChange = useCallback((position: { line: number; column: number } | null) => {
+    pendingCursorPositionRef.current = position;
+    if (cursorPublishTimeoutRef.current !== null) return;
+    cursorPublishTimeoutRef.current = window.setTimeout(() => {
+      cursorPublishTimeoutRef.current = null;
+      const next = pendingCursorPositionRef.current;
+      pendingCursorPositionRef.current = null;
+      setCursorPosition((previous) => {
+        if (!previous && !next) return previous;
+        if (!previous || !next) return next;
+        if (previous.line === next.line && previous.column === next.column) return previous;
+        return next;
+      });
+    }, 75);
+  }, []);
+
+  const fetchIndexStatus = useCallback(
+    async (workspacePath?: string, options?: { silent?: boolean }) => {
+      const targetPath = workspacePath || effectiveWorkspacePath;
+      const silent = options?.silent === true;
+      if (!silent) {
+        setIndexStatusLoading(true);
+      }
+      try {
+        const params = new URLSearchParams();
+        if (targetPath) params.set("workspacePath", targetPath);
+        const query = params.toString();
+        const response = await apiFetch(
+          `/api/ide/index/status${query ? `?${query}` : ""}`
+        );
+        const data: WorkspaceIndexerStatusResponse = await response.json();
+        if (data.success) {
+          setIndexStatus(data);
+          if (!indexSettingsDirty) {
+            setIndexSettingsDraft(data.settings);
+          }
+          if (!silent) {
+            setIndexSettingsError(null);
+          }
+        } else {
+          if (!silent) {
+            setIndexSettingsError(data.error || "Failed to load indexer status");
+          }
+        }
+      } catch (error) {
+        if (!silent && (error as Error)?.name !== "AbortError") {
+          setIndexSettingsError(String(error));
+        }
+      } finally {
+        if (!silent) {
+          setIndexStatusLoading(false);
+        }
+      }
+    },
+    [effectiveWorkspacePath, indexSettingsDirty]
+  );
+
+  const assignWorkspaceToIndexer = useCallback(async (workspacePath: string) => {
+    try {
+      const response = await apiFetch("/api/ide/index/workspace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspacePath }),
+      });
+      const data: WorkspaceIndexerStatusResponse = await response.json();
+      if (data.success) {
+        setIndexStatus(data);
+        if (!indexSettingsDirty) {
+          setIndexSettingsDraft(data.settings);
+        }
+      } else {
+        setIndexSettingsError(data.error || "Failed to start workspace indexing");
+      }
+    } catch (error) {
+      setIndexSettingsError(String(error));
+    }
+  }, [indexSettingsDirty]);
+
+  const saveIndexSettings = useCallback(async () => {
+    if (!indexSettingsDraft) return;
+    setIndexActionLoading(true);
+    setIndexSettingsError(null);
+    try {
+      const response = await apiFetch("/api/ide/index/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(indexSettingsDraft),
+      });
+      const data: WorkspaceIndexerStatusResponse = await response.json();
+      if (data.success) {
+        setIndexStatus(data);
+        setIndexSettingsDraft(data.settings);
+        setIndexSettingsDirty(false);
+      } else {
+        setIndexSettingsError(data.error || "Failed to save indexer settings");
+      }
+    } catch (error) {
+      setIndexSettingsError(String(error));
+    } finally {
+      setIndexActionLoading(false);
+    }
+  }, [indexSettingsDraft]);
+
+  const runWorkspaceReindex = useCallback(async () => {
+    setIndexActionLoading(true);
+    setIndexSettingsError(null);
+    try {
+      const response = await apiFetch("/api/ide/index/reindex", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspacePath: effectiveWorkspacePath }),
+      });
+      const data: WorkspaceIndexerStatusResponse = await response.json();
+      if (data.success) {
+        setIndexStatus(data);
+      } else {
+        setIndexSettingsError(data.error || "Failed to reindex workspace");
+      }
+    } catch (error) {
+      setIndexSettingsError(String(error));
+    } finally {
+      setIndexActionLoading(false);
+    }
+  }, [effectiveWorkspacePath]);
+
+  const stopWorkspaceIndexing = useCallback(async () => {
+    setIndexActionLoading(true);
+    setIndexSettingsError(null);
+    try {
+      const response = await apiFetch("/api/ide/index/stop", {
+        method: "POST",
+      });
+      const data: WorkspaceIndexerStatusResponse = await response.json();
+      if (data.success) {
+        setIndexStatus(data);
+      } else {
+        setIndexSettingsError(data.error || "Failed to stop workspace indexer");
+      }
+    } catch (error) {
+      setIndexSettingsError(String(error));
+    } finally {
+      setIndexActionLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const fetchRoot = async () => {
@@ -3015,10 +4125,40 @@ export function IDE() {
       const data: BrowseResult = await res.json();
       if (data.success) {
         setRootInfo(data);
+        return;
+      }
+      setRootInfo(null);
+      if (currentPath !== "~") {
+        setCurrentPath("~");
       }
     };
     fetchRoot();
   }, [currentPath, refreshKey]);
+
+  useEffect(() => {
+    if (!effectiveWorkspacePath) return;
+    if (lastIndexedWorkspaceAssignmentRef.current === effectiveWorkspacePath) return;
+    lastIndexedWorkspaceAssignmentRef.current = effectiveWorkspacePath;
+    setIndexSettingsError(null);
+    void assignWorkspaceToIndexer(effectiveWorkspacePath);
+  }, [assignWorkspaceToIndexer, effectiveWorkspacePath]);
+
+  useEffect(() => {
+    void fetchIndexStatus(currentPath);
+  }, [currentPath, fetchIndexStatus]);
+
+  useEffect(() => {
+    if (!showIndexerSettings && !indexStatus?.isIndexing) return;
+    const interval = window.setInterval(() => {
+      void fetchIndexStatus(effectiveWorkspacePath, { silent: true });
+    }, 1200);
+    return () => window.clearInterval(interval);
+  }, [effectiveWorkspacePath, fetchIndexStatus, indexStatus?.isIndexing, showIndexerSettings]);
+
+  useEffect(() => {
+    if (!showIndexerSettings) return;
+    void fetchIndexStatus(effectiveWorkspacePath);
+  }, [effectiveWorkspacePath, fetchIndexStatus, showIndexerSettings]);
 
   useEffect(() => {
     const updateViewport = () => {
@@ -3031,6 +4171,16 @@ export function IDE() {
     updateViewport();
     window.addEventListener("resize", updateViewport);
     return () => window.removeEventListener("resize", updateViewport);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (cursorPublishTimeoutRef.current !== null) {
+        window.clearTimeout(cursorPublishTimeoutRef.current);
+        cursorPublishTimeoutRef.current = null;
+      }
+      pendingCursorPositionRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
@@ -3213,7 +4363,32 @@ export function IDE() {
     setTreeFilter("");
     treeBrowseCache.clear();
     setRefreshKey((previous) => previous + 1);
+    setIndexSettingsError(null);
   }, []);
+
+  const handlePromptOpenWorkspace = useCallback(async () => {
+    const suggested = rootInfo?.path || currentPath || "~";
+    const rawPath = window.prompt("Enter workspace folder path", suggested);
+    if (rawPath === null) return;
+    const targetPath = rawPath.trim();
+    if (!targetPath) return;
+
+    try {
+      const response = await apiFetch(`/api/ide/browse?path=${encodeURIComponent(targetPath)}`);
+      const data: BrowseResult = await response.json();
+      if (!data.success) {
+        window.alert(data.error || "Unable to open workspace path");
+        return;
+      }
+      if (!data.path) {
+        window.alert("Workspace path is invalid");
+        return;
+      }
+      handleSetWorkspacePath(data.path);
+    } catch (error) {
+      window.alert(String(error));
+    }
+  }, [currentPath, handleSetWorkspacePath, rootInfo?.path]);
 
   const handleRenameEntry = useCallback(async (entry: FileEntry) => {
     const proposed = window.prompt("Rename item", entry.name);
@@ -3407,8 +4582,8 @@ export function IDE() {
           query,
           limit: "250",
         });
-        const response = await apiFetch(`/api/ide/files?${params.toString()}`);
-        const data: IdeListFilesResult = await response.json();
+        const response = await apiFetch(`/api/ide/index/search?${params.toString()}`);
+        const data: WorkspaceIndexerSearchResult = await response.json();
         if (data.success) {
           const rankedFiles = [...(data.files || [])].sort((left, right) => {
             const leftScore = scoreQuickOpenResult(left.relativePath, query);
@@ -3424,6 +4599,9 @@ export function IDE() {
             if (rankedFiles.length === 0) return 0;
             return Math.min(previous, rankedFiles.length - 1);
           });
+          if (data.source === "filesystem" && data.indexError) {
+            setQuickOpenError(`Indexer unavailable (${data.indexError}). Showing filesystem search.`);
+          }
         } else {
           setQuickOpenResults([]);
           setQuickOpenError(data.error || "Quick open failed");
@@ -3523,6 +4701,14 @@ export function IDE() {
         },
       },
       {
+        id: "open-workspace",
+        label: "Open Workspace Folder",
+        shortcut: "Ctrl/Cmd+O",
+        run: () => {
+          void handlePromptOpenWorkspace();
+        },
+      },
+      {
         id: "show-search",
         label: "Show Global Search",
         shortcut: "Ctrl/Cmd+Shift+F",
@@ -3564,6 +4750,16 @@ export function IDE() {
         run: () => handleRefresh(),
       },
       {
+        id: "workspace-indexer",
+        label: "Indexer Settings",
+        run: () => {
+          setShowIndexerSettings(true);
+          setIndexSettingsError(null);
+          setIndexSettingsDirty(false);
+          void fetchIndexStatus(workspaceSearchPath);
+        },
+      },
+      {
         id: "expand-folders",
         label: "Expand Top-Level Folders",
         run: () => handleExpandTopLevel(),
@@ -3598,9 +4794,12 @@ export function IDE() {
       handleExpandTopLevel,
       handleGoHome,
       handleRefresh,
+      handlePromptOpenWorkspace,
+      fetchIndexStatus,
       isIdeChatOpen,
       openQuickOpenPalette,
       rootInfo?.path,
+      workspaceSearchPath,
     ]
   );
 
@@ -3809,6 +5008,12 @@ export function IDE() {
         return;
       }
 
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === "o") {
+        event.preventDefault();
+        void handlePromptOpenWorkspace();
+        return;
+      }
+
       if ((event.metaKey || event.ctrlKey) && event.key === "Tab") {
         event.preventDefault();
         if (event.shiftKey) {
@@ -3869,6 +5074,7 @@ export function IDE() {
     openMenu,
     openCommandPalette,
     openGlobalSearchPanel,
+    handlePromptOpenWorkspace,
     openQuickOpenPalette,
     rootInfo?.path,
     sidebarMode,
@@ -3940,6 +5146,14 @@ export function IDE() {
   useEffect(() => {
     persistChatOpen(isIdeChatOpen);
   }, [isIdeChatOpen]);
+
+  useEffect(() => {
+    persistWorkspacePath(currentPath);
+  }, [currentPath]);
+
+  useEffect(() => {
+    persistIdeChatAgentId(ideChatSelectedAgentId);
+  }, [ideChatSelectedAgentId]);
 
   useEffect(() => {
     if (!openMenu) return;
@@ -4043,6 +5257,26 @@ export function IDE() {
             : treeContextMenu.y,
       }
     : null;
+  const indexStatusLabel = useMemo(() => {
+    if (!indexStatus) return null;
+    if (indexStatus.isIndexing) {
+      return `Indexing ${indexStatus.filesIndexed.toLocaleString()} files`;
+    }
+    if (indexStatus.state === "ready") {
+      return `Indexed ${indexStatus.filesIndexed.toLocaleString()} files`;
+    }
+    if (indexStatus.state === "error") {
+      return "Index error";
+    }
+    if (!indexStatus.settings.enabled) {
+      return "Index disabled";
+    }
+    if (indexStatus.state === "stopped") {
+      return "Index stopped";
+    }
+    return "Index idle";
+  }, [indexStatus]);
+  const activeIndexSettings = indexSettingsDraft || indexStatus?.settings || DEFAULT_INDEXER_SETTINGS_DRAFT;
 
   return (
     <div className="h-screen flex flex-col bg-[#050508]">
@@ -4097,6 +5331,16 @@ export function IDE() {
                 className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm"
               >
                 New Folder
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenMenu(null);
+                  void handlePromptOpenWorkspace();
+                }}
+                className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm"
+              >
+                Open Workspace Folder
               </button>
               <div className="h-px bg-white/10" />
               <button
@@ -4155,6 +5399,19 @@ export function IDE() {
                 className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm"
               >
                 Refresh Workspace
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowIndexerSettings(true);
+                  setIndexSettingsError(null);
+                  setIndexSettingsDirty(false);
+                  void fetchIndexStatus(effectiveWorkspacePath);
+                  setOpenMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm"
+              >
+                Indexer Settings
               </button>
               <div className="h-px bg-white/10" />
               <button
@@ -4646,7 +5903,10 @@ export function IDE() {
                   );
                 })
               ) : (
-                <div className="px-3 text-xs text-gray-600">No open files</div>
+                <div className="h-full min-w-[160px] max-w-[320px] px-3 border-r border-white/10 flex items-center gap-2 text-xs bg-indigo-500/20 text-indigo-200">
+                  <Code className="w-3.5 h-3.5" />
+                  <span>Welcome</span>
+                </div>
               )}
             </div>
 
@@ -4675,19 +5935,41 @@ export function IDE() {
               )}
             </div>
 
-            <CodeViewer
-              path={selectedFile?.path || null}
-              previewMode={activeTab?.previewMode === true}
-              autoRefresh={true}
-              jumpToLineRequest={requestedJumpLine}
-              externalRefreshKey={refreshKey}
-              saveRequestToken={saveRequestToken}
-              onSaveSuccess={handleRefresh}
-              onCursorChange={setCursorPosition}
-              onOpenLocation={(filePath, line) => {
-                openFileAtPath(filePath, line, false);
-              }}
-            />
+            {selectedFile?.path ? (
+              <CodeViewer
+                path={selectedFile.path}
+                previewMode={activeTab?.previewMode === true}
+                autoRefresh={true}
+                jumpToLineRequest={requestedJumpLine}
+                externalRefreshKey={refreshKey}
+                saveRequestToken={saveRequestToken}
+                onSaveSuccess={handleRefresh}
+                onCursorChange={handleCursorPositionChange}
+                onOpenLocation={(filePath, line) => {
+                  openFileAtPath(filePath, line, false);
+                }}
+              />
+            ) : (
+              <IDEWelcomeScreen
+                workspacePath={effectiveWorkspacePath}
+                onNewFile={() => {
+                  setCreateParentPath(rootInfo?.path || currentPath);
+                  setCreateType("file");
+                }}
+                onOpenWorkspace={() => {
+                  void handlePromptOpenWorkspace();
+                }}
+                onOpenCommandPalette={openCommandPalette}
+                onOpenSettings={() => navigate("/settings")}
+                onOpenAiSettings={() => navigate("/providers")}
+                onOpenIndexerSettings={() => {
+                  setShowIndexerSettings(true);
+                  setIndexSettingsError(null);
+                  setIndexSettingsDirty(false);
+                  void fetchIndexStatus(effectiveWorkspacePath);
+                }}
+              />
+            )}
           </div>
 
           {isIdeChatOpen && (
@@ -4707,6 +5989,8 @@ export function IDE() {
                   workspaceDir={rootInfo?.path || currentPath}
                   contextPath={selectedFile?.path || null}
                   onClose={() => setIsIdeChatOpen(false)}
+                  selectedAgentId={ideChatSelectedAgentId}
+                  onSelectedAgentIdChange={setIdeChatSelectedAgentId}
                 />
               </div>
             </>
@@ -4900,6 +6184,274 @@ export function IDE() {
         </div>
       )}
 
+      {showIndexerSettings && (
+        <div
+          className="absolute inset-0 z-50 bg-black/45 flex items-start justify-center pt-14"
+          onMouseDown={() => setShowIndexerSettings(false)}
+        >
+          <div
+            className="w-[760px] max-w-[94vw] rounded-xl border border-white/15 bg-[#0b0b12] shadow-2xl overflow-hidden"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+              <div>
+                <div className="text-sm font-semibold text-gray-100">Workspace Indexer</div>
+                <div className="text-xs text-gray-500">
+                  Auto-index workspace files for faster quick-open and IDE navigation.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowIndexerSettings(false)}
+                className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-white/5"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
+              <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <div className="text-gray-500">Workspace</div>
+                    <div className="text-gray-200 truncate" title={effectiveWorkspacePath}>
+                      {effectiveWorkspacePath}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">State</div>
+                    <div
+                      className={cn(
+                        "font-medium",
+                        indexStatus?.state === "error"
+                          ? "text-red-300"
+                          : indexStatus?.isIndexing
+                            ? "text-indigo-300"
+                            : indexStatus?.state === "ready"
+                              ? "text-emerald-300"
+                              : "text-gray-300"
+                      )}
+                    >
+                      {indexStatus?.state || "idle"}
+                      {indexStatus?.isIndexing && " (running)"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">Indexed Files</div>
+                    <div className="text-gray-200 tabular-nums">
+                      {indexStatus?.filesIndexed?.toLocaleString() || "0"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">Last Duration</div>
+                    <div className="text-gray-200 tabular-nums">
+                      {formatDurationMs(indexStatus?.durationMs)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">Progress</div>
+                    <div className="text-gray-200 tabular-nums">
+                      {typeof indexStatus?.progress === "number" ? `${indexStatus.progress}%` : "0%"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">Last Indexed</div>
+                    <div className="text-gray-200">
+                      {indexStatus?.lastIndexedAt
+                        ? new Date(indexStatus.lastIndexedAt).toLocaleString()
+                        : "Never"}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3 h-1.5 w-full rounded bg-white/10 overflow-hidden">
+                  <div
+                    className={cn(
+                      "h-full transition-all",
+                      indexStatus?.state === "error" ? "bg-red-500/80" : "bg-indigo-500/80"
+                    )}
+                    style={{ width: `${Math.max(0, Math.min(indexStatus?.progress || 0, 100))}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 space-y-3">
+                <label className="flex items-center gap-2 text-xs text-gray-200">
+                  <input
+                    type="checkbox"
+                    checked={activeIndexSettings.enabled}
+                    onChange={(event) => {
+                      setIndexSettingsDraft({
+                        ...activeIndexSettings,
+                        enabled: event.target.checked,
+                      });
+                      setIndexSettingsDirty(true);
+                    }}
+                    className="rounded border-white/20 bg-black/40"
+                  />
+                  Enable workspace indexer
+                </label>
+                <label className="flex items-center gap-2 text-xs text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={activeIndexSettings.autoReindexOnWorkspaceSet}
+                    onChange={(event) => {
+                      setIndexSettingsDraft({
+                        ...activeIndexSettings,
+                        autoReindexOnWorkspaceSet: event.target.checked,
+                      });
+                      setIndexSettingsDirty(true);
+                    }}
+                    className="rounded border-white/20 bg-black/40"
+                  />
+                  Auto-reindex when workspace is set
+                </label>
+                <label className="flex items-center gap-2 text-xs text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={activeIndexSettings.includeHidden}
+                    onChange={(event) => {
+                      setIndexSettingsDraft({
+                        ...activeIndexSettings,
+                        includeHidden: event.target.checked,
+                      });
+                      setIndexSettingsDirty(true);
+                    }}
+                    className="rounded border-white/20 bg-black/40"
+                  />
+                  Include hidden files/folders
+                </label>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="text-xs text-gray-400 space-y-1">
+                    <span>Max files</span>
+                    <input
+                      type="number"
+                      min={100}
+                      max={1000000}
+                      value={activeIndexSettings.maxFiles}
+                      onChange={(event) => {
+                        const parsed = Number.parseInt(event.target.value || "", 10);
+                        setIndexSettingsDraft({
+                          ...activeIndexSettings,
+                          maxFiles: Number.isFinite(parsed) ? Math.max(100, parsed) : 100,
+                        });
+                        setIndexSettingsDirty(true);
+                      }}
+                      className="w-full rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
+                    />
+                  </label>
+                  <label className="text-xs text-gray-400 space-y-1">
+                    <span>Max file size (MB)</span>
+                    <input
+                      type="number"
+                      min={0.1}
+                      max={100}
+                      step={0.1}
+                      value={(activeIndexSettings.maxFileSizeBytes / (1024 * 1024)).toFixed(1)}
+                      onChange={(event) => {
+                        const parsed = Number.parseFloat(event.target.value || "");
+                        const nextMb = Number.isFinite(parsed) ? Math.max(0.1, parsed) : 0.1;
+                        setIndexSettingsDraft({
+                          ...activeIndexSettings,
+                          maxFileSizeBytes: Math.round(nextMb * 1024 * 1024),
+                        });
+                        setIndexSettingsDirty(true);
+                      }}
+                      className="w-full rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
+                    />
+                  </label>
+                </div>
+
+                <label className="block text-xs text-gray-400 space-y-1">
+                  <span>Ignored directories (comma separated)</span>
+                  <input
+                    type="text"
+                    value={activeIndexSettings.ignoreDirs.join(", ")}
+                    onChange={(event) => {
+                      const values = event.target.value
+                        .split(",")
+                        .map((item) => item.trim())
+                        .filter(Boolean)
+                        .map((item) => item.toLowerCase());
+                      setIndexSettingsDraft({
+                        ...activeIndexSettings,
+                        ignoreDirs: values,
+                      });
+                      setIndexSettingsDirty(true);
+                    }}
+                    className="w-full rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
+                    placeholder=".git, node_modules, dist"
+                  />
+                </label>
+
+                <label className="block text-xs text-gray-400 space-y-1">
+                  <span>Include extensions (optional, comma separated)</span>
+                  <input
+                    type="text"
+                    value={activeIndexSettings.includeExtensions.join(", ")}
+                    onChange={(event) => {
+                      const values = event.target.value
+                        .split(",")
+                        .map((item) => item.trim().toLowerCase())
+                        .filter(Boolean)
+                        .map((item) => (item.startsWith(".") ? item : `.${item}`));
+                      setIndexSettingsDraft({
+                        ...activeIndexSettings,
+                        includeExtensions: values,
+                      });
+                      setIndexSettingsDirty(true);
+                    }}
+                    className="w-full rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
+                    placeholder=".ts, .tsx, .js"
+                  />
+                </label>
+              </div>
+
+              {indexSettingsError && (
+                <div className="rounded border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                  {indexSettingsError}
+                </div>
+              )}
+            </div>
+
+            <div className="px-4 py-3 border-t border-white/10 flex items-center justify-between gap-2">
+              <div className="text-[11px] text-gray-500">
+                {indexStatusLoading ? "Refreshing status..." : "Status updates while indexing."}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void runWorkspaceReindex()}
+                  disabled={indexActionLoading || indexStatus?.isIndexing}
+                  className="h-7 px-2 text-xs"
+                >
+                  Reindex Now
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void stopWorkspaceIndexing()}
+                  disabled={indexActionLoading || !indexStatus?.isIndexing}
+                  className="h-7 px-2 text-xs"
+                >
+                  Stop
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void saveIndexSettings()}
+                  disabled={indexActionLoading || !indexSettingsDirty}
+                  className="h-7 px-2 text-xs"
+                >
+                  Save Settings
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {treeContextMenu &&
         contextMenuPosition &&
         (() => {
@@ -5045,6 +6597,28 @@ export function IDE() {
                 ? "Outline"
                 : "Editor"}
           </span>
+          {indexStatusLabel && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowIndexerSettings(true);
+                setIndexSettingsError(null);
+                setIndexSettingsDirty(false);
+                void fetchIndexStatus(effectiveWorkspacePath);
+              }}
+              className={cn(
+                "text-xs transition-colors",
+                indexStatus?.state === "error"
+                  ? "text-red-300 hover:text-red-200"
+                  : indexStatus?.isIndexing
+                    ? "text-indigo-300 hover:text-indigo-200"
+                    : "text-gray-500 hover:text-gray-300"
+              )}
+              title="Open indexer settings"
+            >
+              {indexStatusLabel}
+            </button>
+          )}
           <LSPStatus compact activeExtension={selectedFile?.extension || null} />
         </div>
       </div>

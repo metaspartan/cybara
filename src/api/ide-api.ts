@@ -248,7 +248,7 @@ export async function browseDirectory(inputPath?: string): Promise<BrowseResult>
 
     const items = await readdir(targetPath, { withFileTypes: true });
     const entries: FileEntry[] = [];
-    const gitStatus = await getGitStatus(targetPath);
+    const gitStatus = await getGitStatus(targetPath, { lightweight: true });
     const gitRoot = gitStatus.isRepo && gitStatus.root ? gitStatus.root : null;
     const gitModifiedSet = new Set(gitStatus.modified.map((item) => item.replaceAll("\\", "/")));
     const gitStagedSet = new Set(gitStatus.staged.map((item) => item.replaceAll("\\", "/")));
@@ -273,35 +273,25 @@ export async function browseDirectory(inputPath?: string): Promise<BrowseResult>
       // Skip hidden files and common ignored directories
       if (item.name.startsWith(".") && item.name !== ".cybara") continue;
       if (item.name === "node_modules" || item.name === "__pycache__") continue;
+      if (item.isSymbolicLink()) continue;
 
       const itemPath = join(targetPath, item.name);
-      const canonicalItemPath = resolveCanonicalPath(itemPath);
-      if (!isWithinHome(canonicalItemPath)) continue;
-
-      try {
-        const itemStats = await stat(itemPath);
-        const isDirectory = item.isDirectory();
-        const repoRelativePath =
-          gitRoot !== null ? relative(gitRoot, itemPath).replaceAll("\\", "/") : null;
-        entries.push({
-          name: item.name,
-          path: itemPath,
-          type: isDirectory ? "directory" : "file",
-          size: item.isFile() ? itemStats.size : undefined,
-          extension: item.isFile() ? extname(item.name) : undefined,
-          modifiedAt: itemStats.mtime.toISOString(),
-          gitModified:
-            !!repoRelativePath && pathHasStatus(gitModifiedSet, repoRelativePath, isDirectory),
-          gitStaged:
-            !!repoRelativePath && pathHasStatus(gitStagedSet, repoRelativePath, isDirectory),
-          gitUntracked:
-            !!repoRelativePath && pathHasStatus(gitUntrackedSet, repoRelativePath, isDirectory),
-          gitIgnored:
-            !!repoRelativePath && pathHasStatus(gitIgnoredSet, repoRelativePath, isDirectory),
-        });
-      } catch {
-        void 0;
-      }
+      const isDirectory = item.isDirectory();
+      const repoRelativePath =
+        gitRoot !== null ? relative(gitRoot, itemPath).replaceAll("\\", "/") : null;
+      entries.push({
+        name: item.name,
+        path: itemPath,
+        type: isDirectory ? "directory" : "file",
+        extension: item.isFile() ? extname(item.name) : undefined,
+        gitModified:
+          !!repoRelativePath && pathHasStatus(gitModifiedSet, repoRelativePath, isDirectory),
+        gitStaged:
+          !!repoRelativePath && pathHasStatus(gitStagedSet, repoRelativePath, isDirectory),
+        gitUntracked:
+          !!repoRelativePath && pathHasStatus(gitUntrackedSet, repoRelativePath, isDirectory),
+        gitIgnored: !!repoRelativePath && pathHasStatus(gitIgnoredSet, repoRelativePath, isDirectory),
+      });
     }
 
     entries.sort((a, b) => {

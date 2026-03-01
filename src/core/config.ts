@@ -33,6 +33,16 @@ export interface SandboxRuntimeConfig {
   network: SandboxNetworkMode;
 }
 
+export interface WorkspaceIndexerSettings {
+  enabled: boolean;
+  autoReindexOnWorkspaceSet: boolean;
+  includeHidden: boolean;
+  maxFileSizeBytes: number;
+  maxFiles: number;
+  ignoreDirs: string[];
+  includeExtensions: string[];
+}
+
 export const DEFAULT_DANGEROUS_TOOL_POLICY: DangerousToolPolicyConfig = {
   enabled: false,
   mode: "audit",
@@ -50,6 +60,29 @@ export const DEFAULT_SANDBOX_RUNTIME: SandboxRuntimeConfig = {
   enabled: false,
   provider: "auto",
   network: "deny",
+};
+
+export const DEFAULT_WORKSPACE_INDEXER_SETTINGS: WorkspaceIndexerSettings = {
+  enabled: true,
+  autoReindexOnWorkspaceSet: true,
+  includeHidden: false,
+  maxFileSizeBytes: 1024 * 1024,
+  maxFiles: 25000,
+  ignoreDirs: [
+    ".git",
+    "node_modules",
+    "dist",
+    "build",
+    "target",
+    ".next",
+    ".turbo",
+    ".idea",
+    ".vscode",
+    "__pycache__",
+    ".venv",
+    "venv",
+  ],
+  includeExtensions: [],
 };
 
 function parseJsonValue(raw: string): unknown {
@@ -137,6 +170,62 @@ function normalizeSandboxRuntime(value: unknown): SandboxRuntimeConfig {
   };
 }
 
+function normalizePositiveInteger(value: unknown, fallback: number, minimum = 1, maximum = 1_000_000): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim().length > 0
+        ? Number(value)
+        : Number.NaN;
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(maximum, Math.max(minimum, Math.floor(parsed)));
+}
+
+function normalizeExtensions(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const normalized = value
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean)
+    .map((entry) => (entry.startsWith(".") ? entry : `.${entry}`));
+  return [...new Set(normalized)];
+}
+
+function normalizeWorkspaceIndexerSettings(value: unknown): WorkspaceIndexerSettings {
+  const parsed = asObject(value);
+  return {
+    enabled:
+      typeof parsed?.enabled === "boolean"
+        ? parsed.enabled
+        : DEFAULT_WORKSPACE_INDEXER_SETTINGS.enabled,
+    autoReindexOnWorkspaceSet:
+      typeof parsed?.autoReindexOnWorkspaceSet === "boolean"
+        ? parsed.autoReindexOnWorkspaceSet
+        : DEFAULT_WORKSPACE_INDEXER_SETTINGS.autoReindexOnWorkspaceSet,
+    includeHidden:
+      typeof parsed?.includeHidden === "boolean"
+        ? parsed.includeHidden
+        : DEFAULT_WORKSPACE_INDEXER_SETTINGS.includeHidden,
+    maxFileSizeBytes: normalizePositiveInteger(
+      parsed?.maxFileSizeBytes,
+      DEFAULT_WORKSPACE_INDEXER_SETTINGS.maxFileSizeBytes,
+      8 * 1024,
+      100 * 1024 * 1024
+    ),
+    maxFiles: normalizePositiveInteger(
+      parsed?.maxFiles,
+      DEFAULT_WORKSPACE_INDEXER_SETTINGS.maxFiles,
+      100,
+      1_000_000
+    ),
+    ignoreDirs:
+      normalizeStringList(parsed?.ignoreDirs).length > 0
+        ? normalizeStringList(parsed?.ignoreDirs)
+        : [...DEFAULT_WORKSPACE_INDEXER_SETTINGS.ignoreDirs],
+    includeExtensions: normalizeExtensions(parsed?.includeExtensions),
+  };
+}
+
 class ConfigManager {
   get<T>(key: string): T | undefined {
     const stored = tables.config.get(key);
@@ -159,6 +248,7 @@ class ConfigManager {
       tool_approval_mode: DEFAULT_TOOL_APPROVAL_MODE,
       web_tool_url_policy: { ...DEFAULT_WEB_TOOL_URL_POLICY },
       sandbox_runtime: { ...DEFAULT_SANDBOX_RUNTIME },
+      workspace_indexer: { ...DEFAULT_WORKSPACE_INDEXER_SETTINGS },
     };
 
     const all = tables.config.all();
@@ -211,6 +301,17 @@ class ConfigManager {
   setSandboxRuntime(runtime: unknown): SandboxRuntimeConfig {
     const normalized = normalizeSandboxRuntime(runtime);
     this.set("sandbox_runtime", normalized);
+    return normalized;
+  }
+
+  getWorkspaceIndexerSettings(): WorkspaceIndexerSettings {
+    const stored = this.get<unknown>("workspace_indexer");
+    return normalizeWorkspaceIndexerSettings(stored);
+  }
+
+  setWorkspaceIndexerSettings(settings: unknown): WorkspaceIndexerSettings {
+    const normalized = normalizeWorkspaceIndexerSettings(settings);
+    this.set("workspace_indexer", normalized);
     return normalized;
   }
 

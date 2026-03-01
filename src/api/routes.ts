@@ -107,6 +107,7 @@ import {
 } from "../core/artifacts";
 import { getSessionStatusSnapshot, listSessionStatusSnapshots } from "../core/status";
 import { getSandboxRuntimeStatus, logSandboxRuntimeStatus } from "../core/sandbox";
+import { workspaceIndexer } from "../core/workspace-indexer";
 import { cybaraDir, dataDir, logsDir, memoryDir, secureDir, userSkillsDir } from "../core/paths";
 import type {
   WalletChain,
@@ -1113,7 +1114,13 @@ function trackIdeOperation(
     | "history_url"
     | "replace"
     | "replace_preview"
-    | "list_files",
+    | "list_files"
+    | "index_status"
+    | "index_workspace"
+    | "index_reindex"
+    | "index_stop"
+    | "index_search"
+    | "index_settings",
   path: string | undefined,
   success: boolean,
   metadata?: Record<string, unknown>
@@ -2115,6 +2122,7 @@ const routes: Record<string, RouteHandler> = {
     tool_approval_mode: config.getToolApprovalMode(),
     web_tool_url_policy: config.getWebToolUrlPolicy(),
     sandbox_runtime: config.getSandboxRuntime(),
+    workspace_indexer: config.getWorkspaceIndexerSettings(),
   }),
   "GET /api/sandbox/status": () => getSandboxRuntimeStatus(),
   "PUT /api/config": (body) => {
@@ -2135,6 +2143,10 @@ const routes: Record<string, RouteHandler> = {
       if (key === "sandbox_runtime") {
         config.setSandboxRuntime(value);
         logSandboxRuntimeStatus("config_update");
+        continue;
+      }
+      if (key === "workspace_indexer") {
+        workspaceIndexer.updateSettings(value);
         continue;
       }
       config.set(key, value);
@@ -3394,6 +3406,74 @@ const routes: Record<string, RouteHandler> = {
       return { success: false, error: String(errorValue) };
     }
   },
+  "GET /api/lsp/completion": async (_body, params) => {
+    const filePath = params?.path as string | undefined;
+    const rawLine = params?.line as string | undefined;
+    const rawCharacter = params?.character as string | undefined;
+    const prefix = typeof params?.prefix === "string" ? params.prefix : "";
+    const rawLimit = params?.limit as string | undefined;
+
+    if (!filePath) {
+      trackLspOperation("completion", { success: false, reason: "missing_path" });
+      return { success: false, error: "Missing 'path' parameter", items: [] };
+    }
+
+    const normalizedPath = isAbsolute(filePath) ? filePath : resolve(process.cwd(), filePath);
+    const workspacePath = resolveWorkspacePath(normalizedPath);
+    const parsedLine = Number.parseInt(rawLine || "", 10);
+    const parsedCharacter = Number.parseInt(rawCharacter || "", 10);
+    const line = Number.isFinite(parsedLine) ? Math.max(parsedLine, 0) : 0;
+    const character = Number.isFinite(parsedCharacter) ? Math.max(parsedCharacter, 0) : 0;
+    const parsedLimit = Number.parseInt(rawLimit || "", 10);
+    const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 200) : 80;
+    const normalizedPrefix = prefix.trim().toLowerCase();
+
+    try {
+      const manager = getOrInitLspManager(workspacePath);
+      const completions = await manager.getCompletions(normalizedPath, line, character);
+      const filtered = completions
+        .filter((item) =>
+          normalizedPrefix
+            ? item.label.toLowerCase().startsWith(normalizedPrefix) ||
+              (item.filterText || "").toLowerCase().startsWith(normalizedPrefix)
+            : true
+        )
+        .slice(0, limit)
+        .map((item) => ({
+          label: item.label,
+          detail: item.detail,
+          kind: item.kind,
+          insertText: item.insertText || item.label,
+          sortText: item.sortText,
+        }));
+
+      trackLspOperation("completion", {
+        workspace: manager.getWorkspacePath(),
+        filePath: normalizedPath,
+        line,
+        character,
+        count: filtered.length,
+        success: true,
+      });
+      return {
+        success: true,
+        path: normalizedPath,
+        line,
+        character,
+        items: filtered,
+      };
+    } catch (errorValue) {
+      trackLspOperation("completion", {
+        workspace: workspacePath,
+        filePath: normalizedPath,
+        line,
+        character,
+        success: false,
+        error: String(errorValue),
+      });
+      return { success: false, error: String(errorValue), items: [] };
+    }
+  },
   "GET /api/lsp/symbols": async (_body, params) => {
     const filePath = params?.path as string | undefined;
     if (!filePath) {
@@ -3501,6 +3581,133 @@ const routes: Record<string, RouteHandler> = {
       });
       return { success: false, error: String(e) };
     }
+  },
+
+  "GET /api/ide/index/status": (_body, params) => {
+    const workspacePathRaw = params?.workspacePath as string | undefined;
+    const workspacePath =
+      typeof workspacePathRaw === "string" && workspacePathRaw.trim()
+        ? workspacePathRaw.trim()
+        : undefined;
+    const status = workspaceIndexer.getStatus();
+    trackIdeOperation("index_status", workspacePath, true, {
+      state: status.state,
+      indexedWorkspacePath: status.indexedWorkspacePath,
+      filesIndexed: status.filesIndexed,
+      filesScanned: status.filesScanned,
+      directoriesScanned: status.directoriesScanned,
+      skippedFiles: status.skippedFiles,
+      isIndexing: status.isIndexing,
+    });
+    return { success: true, ...status };
+  },
+
+  "POST /api/ide/index/workspace": async (body) => {
+    const data = body as { workspacePath?: string };
+    if (!data?.workspacePath || typeof data.workspacePath !== "string") {
+      trackIdeOperation("index_workspace", undefined, false, { reason: "missing_workspace_path" });
+      return { success: false, error: "Missing 'workspacePath' parameter" };
+    }
+    try {
+      const status = await workspaceIndexer.setWorkspace(data.workspacePath);
+      trackIdeOperation("index_workspace", data.workspacePath, true, {
+        state: status.state,
+        filesIndexed: status.filesIndexed,
+      });
+      return { success: true, ...status };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      trackIdeOperation("index_workspace", data.workspacePath, false, { error: message });
+      return { success: false, error: message };
+    }
+  },
+
+  "POST /api/ide/index/reindex": async (body) => {
+    const data = body as { workspacePath?: string };
+    try {
+      const status = await workspaceIndexer.reindex(
+        typeof data?.workspacePath === "string" && data.workspacePath.trim()
+          ? data.workspacePath
+          : undefined
+      );
+      trackIdeOperation("index_reindex", data?.workspacePath, true, {
+        state: status.state,
+        filesIndexed: status.filesIndexed,
+      });
+      return { success: true, ...status };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      trackIdeOperation("index_reindex", data?.workspacePath, false, { error: message });
+      return { success: false, error: message };
+    }
+  },
+
+  "POST /api/ide/index/stop": () => {
+    const status = workspaceIndexer.stop();
+    trackIdeOperation("index_stop", status.workspacePath || undefined, true, { state: status.state });
+    return { success: true, ...status };
+  },
+
+  "PUT /api/ide/index/settings": (body) => {
+    try {
+      const settings = workspaceIndexer.updateSettings(body);
+      const status = workspaceIndexer.getStatus();
+      trackIdeOperation("index_settings", status.workspacePath || undefined, true, {
+        enabled: settings.enabled,
+        autoReindexOnWorkspaceSet: settings.autoReindexOnWorkspaceSet,
+        includeHidden: settings.includeHidden,
+        maxFiles: settings.maxFiles,
+        maxFileSizeBytes: settings.maxFileSizeBytes,
+      });
+      return { success: true, ...status };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      trackIdeOperation("index_settings", undefined, false, { error: message });
+      return { success: false, error: message };
+    }
+  },
+
+  "GET /api/ide/index/search": async (_body, params) => {
+    const path =
+      typeof (params?.path as string | undefined) === "string"
+        ? ((params?.path as string | undefined) || "~")
+        : "~";
+    const query = (params?.query as string | undefined) || "";
+    const parsedLimit = Number.parseInt((params?.limit as string | undefined) || "", 10);
+    const limit = Number.isFinite(parsedLimit) ? parsedLimit : undefined;
+    const indexedResult = workspaceIndexer.search(query, {
+      workspacePath: path,
+      limit,
+    });
+
+    if (indexedResult.success) {
+      trackIdeOperation("index_search", path, true, {
+        source: "index",
+        queryLength: query.length,
+        totalFiles: indexedResult.totalFiles,
+        truncated: indexedResult.truncated,
+      });
+      return indexedResult;
+    }
+
+    const fallback = await listWorkspaceFiles(path, { query, limit });
+    const success = fallback.success !== false;
+    trackIdeOperation("index_search", path, success, {
+      source: "filesystem",
+      queryLength: query.length,
+      totalFiles: fallback.totalFiles,
+      truncated: fallback.truncated,
+      indexError: indexedResult.error,
+      indexState: indexedResult.indexState,
+    });
+    return {
+      ...fallback,
+      source: "filesystem",
+      indexed: false,
+      indexState: indexedResult.indexState,
+      indexError: indexedResult.error,
+      workspacePath: path,
+    };
   },
 
   "GET /api/ide/browse": async (_body, params) => {

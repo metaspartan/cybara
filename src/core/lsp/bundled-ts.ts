@@ -506,3 +506,68 @@ export function getDocumentSymbolsForFile(filePath: string): DocumentSymbol[] {
     service.dispose();
   }
 }
+
+function tsCompletionKindToLspKind(kind: string): number | undefined {
+  switch (kind) {
+    case ts.ScriptElementKind.classElement:
+      return 7;
+    case ts.ScriptElementKind.memberFunctionElement:
+      return 2;
+    case ts.ScriptElementKind.functionElement:
+      return 3;
+    case ts.ScriptElementKind.constElement:
+      return 21;
+    case ts.ScriptElementKind.letElement:
+    case ts.ScriptElementKind.variableElement:
+      return 6;
+    case ts.ScriptElementKind.interfaceElement:
+      return 8;
+    case ts.ScriptElementKind.enumElement:
+      return 13;
+    case ts.ScriptElementKind.moduleElement:
+      return 9;
+    case ts.ScriptElementKind.keyword:
+      return 14;
+    case ts.ScriptElementKind.string:
+      return 15;
+    default:
+      return undefined;
+  }
+}
+
+export function getCompletionsForFile(
+  filePath: string,
+  line: number,
+  character: number
+): Array<{
+  label: string;
+  kind?: number;
+  detail?: string;
+  sortText?: string;
+  insertText?: string;
+}> {
+  const context = createLanguageServiceForFile(filePath);
+  if (!context) return [];
+
+  const { service, targetPath } = context;
+  try {
+    const position = getPositionAtLineCharacter(service, targetPath, line, character);
+    if (position === null) return [];
+
+    const completions =
+      service.getCompletionsAtPosition(targetPath, position, {
+        includeCompletionsForModuleExports: true,
+        includeCompletionsWithInsertText: true,
+      })?.entries || [];
+
+    return completions.slice(0, 200).map((entry) => ({
+      label: entry.name,
+      kind: tsCompletionKindToLspKind(entry.kind),
+      detail: entry.kindModifiers || undefined,
+      sortText: entry.sortText,
+      insertText: entry.insertText || undefined,
+    }));
+  } finally {
+    service.dispose();
+  }
+}

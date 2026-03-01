@@ -6,6 +6,7 @@ import {
   type Location,
   type Hover,
   type DocumentSymbolResult,
+  type CompletionItem,
 } from "./types";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
@@ -98,7 +99,7 @@ export class LSPManager {
   private workspacePath: string;
   private workspaceUri: string;
   private diagnosticsCache = new Map<string, Diagnostic[]>();
-  private openDocuments = new Map<string, { version: number; text: string }>();
+  private openDocuments = new Map<string, { version: number; text: string; syncedAt: number }>();
 
   constructor(workspacePath: string) {
     this.workspacePath = workspacePath;
@@ -200,12 +201,20 @@ export class LSPManager {
 
     const uri = `file://${filePath}`;
     const languageId = getLanguageId(filePath);
-    const text = content || (existsSync(filePath) ? readFileSync(filePath, "utf-8") : "");
-
     const doc = this.openDocuments.get(uri);
+    const now = Date.now();
+    if (doc && content === undefined && now - doc.syncedAt < 1000) {
+      return;
+    }
+
+    const text = content ?? (existsSync(filePath) ? readFileSync(filePath, "utf-8") : "");
+    if (doc && doc.text === text) {
+      this.openDocuments.set(uri, { ...doc, syncedAt: now });
+      return;
+    }
     const version = doc ? doc.version + 1 : 1;
 
-    this.openDocuments.set(uri, { version, text });
+    this.openDocuments.set(uri, { version, text, syncedAt: now });
 
     if (!doc) {
       client.didOpen({
@@ -223,7 +232,7 @@ export class LSPManager {
       });
     }
 
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 80));
   }
 
   async getDiagnostics(filePath: string): Promise<Diagnostic[]> {
@@ -403,6 +412,45 @@ export class LSPManager {
     return client.hover({
       textDocument: { uri: `file://${filePath}` },
       position: { line, character },
+    });
+  }
+
+  async getCompletions(
+    filePath: string,
+    line: number,
+    character: number
+  ): Promise<CompletionItem[]> {
+    const languageId = getLanguageId(filePath);
+    const client = await this.getClient(languageId);
+    if (!client) {
+      if (BUNDLED_LANGUAGES.has(languageId)) {
+        try {
+          return bundledTS.getCompletionsForFile(filePath, line, character) as unknown as CompletionItem[];
+        } catch (err) {
+          console.warn("[LSP Manager] Bundled TS completion lookup failed:", err);
+        }
+      }
+      return [];
+    }
+
+    await this.openDocument(filePath);
+    const completion = await client.completion({
+      textDocument: { uri: `file://${filePath}` },
+      position: { line, character },
+    });
+
+    const items = Array.isArray(completion)
+      ? completion
+      : completion && Array.isArray(completion.items)
+        ? completion.items
+        : [];
+
+    const seen = new Set<string>();
+    return items.filter((item) => {
+      const key = `${item.label}:${item.insertText || ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
     });
   }
 
