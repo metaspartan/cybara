@@ -193,6 +193,32 @@ export const mcpApi = {
 
 export const settingsApi = {
   getConfig: () => fetchApi<Record<string, unknown>>("/config"),
+  getSandboxStatus: () =>
+    fetchApi<{
+      enabled: boolean;
+      configuredProvider: "auto" | "apple_sandbox" | "podman" | "docker";
+      network: "allow" | "deny";
+      resolvedProvider: "apple_sandbox" | "podman" | "docker" | null;
+      available: boolean;
+      reason?: string;
+      providers: Array<{
+        provider: "apple_sandbox" | "podman" | "docker";
+        supported: boolean;
+        installed: boolean;
+        available: boolean;
+        reason?: string;
+      }>;
+      checkedAt: string;
+      lastEvent: {
+        phase: "prepared" | "disabled" | "error";
+        provider: "apple_sandbox" | "podman" | "docker" | "host" | null;
+        commandPreview?: string;
+        cwd?: string;
+        network?: "allow" | "deny";
+        reason?: string;
+        timestamp: string;
+      } | null;
+    }>("/sandbox/status"),
   updateConfig: (data: Record<string, unknown>) =>
     fetchApi<{ success: boolean }>("/config", {
       method: "PUT",

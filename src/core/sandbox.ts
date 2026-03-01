@@ -1,9 +1,15 @@
 import { homedir } from "os";
 import { isAbsolute, resolve } from "path";
-import { config, type SandboxProvider, type SandboxRuntimeConfig } from "./config";
+import {
+  config,
+  type SandboxNetworkMode,
+  type SandboxProvider,
+  type SandboxRuntimeConfig,
+} from "./config";
 import { createLogger } from "./logger";
 
 const log = createLogger("Sandbox");
+let lastSandboxEvent: SandboxLastEvent | null = null;
 
 export type ResolvedSandboxProvider = "apple_sandbox" | "podman" | "docker";
 
@@ -12,6 +18,36 @@ export interface SandboxProviderResolution {
   provider: ResolvedSandboxProvider | null;
   reason?: string;
   runtime: SandboxRuntimeConfig;
+}
+
+export interface SandboxProviderStatus {
+  provider: ResolvedSandboxProvider;
+  supported: boolean;
+  installed: boolean;
+  available: boolean;
+  reason?: string;
+}
+
+export interface SandboxLastEvent {
+  phase: "prepared" | "disabled" | "error";
+  provider: ResolvedSandboxProvider | "host" | null;
+  commandPreview?: string;
+  cwd?: string;
+  network?: SandboxNetworkMode;
+  reason?: string;
+  timestamp: string;
+}
+
+export interface SandboxRuntimeStatus {
+  enabled: boolean;
+  configuredProvider: SandboxProvider;
+  network: SandboxNetworkMode;
+  resolvedProvider: ResolvedSandboxProvider | null;
+  available: boolean;
+  reason?: string;
+  providers: SandboxProviderStatus[];
+  checkedAt: string;
+  lastEvent: SandboxLastEvent | null;
 }
 
 export interface SandboxedShellPlan {
@@ -32,6 +68,65 @@ function commandExists(command: string): boolean {
   } catch {
     return false;
   }
+}
+
+function summarizeCommand(command: string): string {
+  const compact = command
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(" ");
+  if (!compact) return "";
+  if (compact.length > 180) return `${compact.slice(0, 177)}...`;
+  return compact;
+}
+
+function setLastSandboxEvent(event: Omit<SandboxLastEvent, "timestamp">): void {
+  lastSandboxEvent = {
+    ...event,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+function evaluateProviderStatus(provider: ResolvedSandboxProvider): SandboxProviderStatus {
+  if (provider === "apple_sandbox") {
+    const supported = process.platform === "darwin" && process.arch === "arm64";
+    const installed = commandExists("sandbox-exec");
+    const available = supported && installed;
+    return {
+      provider,
+      supported,
+      installed,
+      available,
+      reason: !supported
+        ? "Only supported on macOS Apple Silicon"
+        : !installed
+          ? "sandbox-exec is not available"
+          : undefined,
+    };
+  }
+
+  if (provider === "podman") {
+    const supported = process.platform === "linux";
+    const installed = commandExists("podman");
+    const available = supported && installed;
+    return {
+      provider,
+      supported,
+      installed,
+      available,
+      reason: !supported ? "Only supported on Linux" : !installed ? "podman is not installed" : undefined,
+    };
+  }
+
+  const installed = commandExists("docker");
+  return {
+    provider,
+    supported: true,
+    installed,
+    available: installed,
+    reason: installed ? undefined : "docker is not installed",
+  };
 }
 
 function resolveProviderFromRuntime(runtime: SandboxRuntimeConfig): SandboxProviderResolution {
@@ -195,6 +290,56 @@ export function resolveSandboxRuntime(): SandboxProviderResolution {
   return resolveProviderFromRuntime(runtime);
 }
 
+export function getSandboxRuntimeStatus(): SandboxRuntimeStatus {
+  const resolution = resolveSandboxRuntime();
+  const providers: SandboxProviderStatus[] = [
+    evaluateProviderStatus("apple_sandbox"),
+    evaluateProviderStatus("podman"),
+    evaluateProviderStatus("docker"),
+  ];
+  return {
+    enabled: resolution.enabled,
+    configuredProvider: resolution.runtime.provider,
+    network: resolution.runtime.network,
+    resolvedProvider: resolution.provider,
+    available: !resolution.enabled || !!resolution.provider,
+    reason: resolution.reason,
+    providers,
+    checkedAt: new Date().toISOString(),
+    lastEvent: lastSandboxEvent,
+  };
+}
+
+export function logSandboxRuntimeStatus(context: string): SandboxRuntimeStatus {
+  const status = getSandboxRuntimeStatus();
+  if (!status.enabled) {
+    log.info("Sandbox runtime disabled", {
+      context,
+      configuredProvider: status.configuredProvider,
+      network: status.network,
+    });
+    return status;
+  }
+
+  if (!status.resolvedProvider) {
+    log.warn("Sandbox runtime unavailable", {
+      context,
+      configuredProvider: status.configuredProvider,
+      network: status.network,
+      reason: status.reason,
+    });
+    return status;
+  }
+
+  log.info("Sandbox runtime ready", {
+    context,
+    configuredProvider: status.configuredProvider,
+    resolvedProvider: status.resolvedProvider,
+    network: status.network,
+  });
+  return status;
+}
+
 export function buildSandboxedShellPlan(params: {
   command: string;
   workdir?: string;
@@ -206,6 +351,14 @@ export function buildSandboxedShellPlan(params: {
 
   if (!resolution.enabled) {
     log.debug("Sandbox disabled; using host shell", { reason: "sandbox disabled", cwd: workdir });
+    setLastSandboxEvent({
+      phase: "disabled",
+      provider: "host",
+      commandPreview: summarizeCommand(params.command),
+      cwd: workdir,
+      reason: "sandbox disabled",
+      network: resolution.runtime.network,
+    });
     return {
       command: ["sh", "-c", params.command],
       cwd: workdir,
@@ -222,6 +375,14 @@ export function buildSandboxedShellPlan(params: {
       configuredProvider: resolution.runtime.provider,
       network: resolution.runtime.network,
     });
+    setLastSandboxEvent({
+      phase: "error",
+      provider: null,
+      commandPreview: summarizeCommand(params.command),
+      cwd: workdir,
+      reason: resolution.reason || "missing runtime provider",
+      network: resolution.runtime.network,
+    });
     throw new Error(
       `Sandbox mode is enabled but unavailable: ${resolution.reason || "missing runtime provider"}`
     );
@@ -231,6 +392,13 @@ export function buildSandboxedShellPlan(params: {
     const policy = buildAppleSandboxPolicy(workdir, resolution.runtime.network);
     log.info("Prepared sandbox command", {
       provider: "apple_sandbox",
+      cwd: workdir,
+      network: resolution.runtime.network,
+    });
+    setLastSandboxEvent({
+      phase: "prepared",
+      provider: "apple_sandbox",
+      commandPreview: summarizeCommand(params.command),
       cwd: workdir,
       network: resolution.runtime.network,
     });
@@ -255,6 +423,13 @@ export function buildSandboxedShellPlan(params: {
       cwd: workdir,
       network: resolution.runtime.network,
     });
+    setLastSandboxEvent({
+      phase: "prepared",
+      provider: "docker",
+      commandPreview: summarizeCommand(params.command),
+      cwd: workdir,
+      network: resolution.runtime.network,
+    });
     return {
       command: dockerCommand,
       cwd: workdir,
@@ -266,6 +441,13 @@ export function buildSandboxedShellPlan(params: {
 
   log.info("Prepared sandbox command", {
     provider: "podman",
+    cwd: workdir,
+    network: resolution.runtime.network,
+  });
+  setLastSandboxEvent({
+    phase: "prepared",
+    provider: "podman",
+    commandPreview: summarizeCommand(params.command),
     cwd: workdir,
     network: resolution.runtime.network,
   });

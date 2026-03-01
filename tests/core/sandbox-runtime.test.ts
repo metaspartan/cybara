@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { config } from "../../src/core/config";
-import { buildSandboxedShellPlan, resolveSandboxRuntime } from "../../src/core/sandbox";
+import {
+  buildSandboxedShellPlan,
+  getSandboxRuntimeStatus,
+  resolveSandboxRuntime,
+} from "../../src/core/sandbox";
 
 describe("sandbox runtime planning", () => {
   test("returns direct shell plan when sandbox is disabled", () => {
@@ -71,6 +75,28 @@ describe("sandbox runtime planning", () => {
       expect(plan.enabled).toBe(true);
       expect(plan.provider).toBe("docker");
       expect(plan.command[0]).toBe("docker");
+    } finally {
+      config.setSandboxRuntime(previous);
+    }
+  });
+
+  test("reports provider diagnostics and resolution details", () => {
+    const previous = config.getSandboxRuntime();
+    try {
+      config.setSandboxRuntime({
+        enabled: true,
+        provider: "docker",
+        network: "deny",
+      });
+      const status = getSandboxRuntimeStatus();
+      expect(status.enabled).toBe(true);
+      expect(status.configuredProvider).toBe("docker");
+      expect(Array.isArray(status.providers)).toBe(true);
+      expect(status.providers.length).toBeGreaterThan(0);
+      expect(status.providers.some((entry) => entry.provider === "docker")).toBe(true);
+      if (!status.resolvedProvider) {
+        expect(typeof status.reason).toBe("string");
+      }
     } finally {
       config.setSandboxRuntime(previous);
     }

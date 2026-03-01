@@ -43,6 +43,7 @@ import {
   onStatusStream,
   createStatusSnapshotEvent,
 } from "./core/status";
+import { logSandboxRuntimeStatus } from "./core/sandbox";
 import { onSubagentLifecycle } from "./core/subagent-registry";
 import { resolveUiPath } from "./core/runtime/ui-path";
 import { securityCheck } from "./api/security";
@@ -133,6 +134,8 @@ const TERMINAL_CLI_FLAG = process.argv.includes("--enable-terminal");
 function isTerminalEnabled(): boolean {
   return TERMINAL_CLI_FLAG || config.get<boolean>("terminal_enabled") === true;
 }
+
+logSandboxRuntimeStatus("server_start");
 
 onStatus((status) => {
   console.log(`[Status] Event: ${status.status} at ${new Date(status.timestamp).toISOString()}`);

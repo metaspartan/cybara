@@ -61,7 +61,8 @@ fn main() {
             println!("[Cybara] Starting sidecar...");
             let sidecar = app.shell().sidecar("cybara").unwrap();
             let (mut rx, child) = sidecar
-                .args(["start"])
+                // Enable terminal APIs for desktop-sidecar runs without passing flags to cargo.
+                .args(["start", "--enable-terminal"])
                 .spawn()
                 .expect("Failed to spawn Cybara sidecar");
 

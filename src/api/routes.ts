@@ -100,6 +100,7 @@ import {
   getArtifactsRootDir,
 } from "../core/artifacts";
 import { getSessionStatusSnapshot, listSessionStatusSnapshots } from "../core/status";
+import { getSandboxRuntimeStatus, logSandboxRuntimeStatus } from "../core/sandbox";
 import { cybaraDir, dataDir, logsDir, memoryDir, secureDir, userSkillsDir } from "../core/paths";
 import type {
   WalletChain,
@@ -1963,6 +1964,7 @@ const routes: Record<string, RouteHandler> = {
     web_tool_url_policy: config.getWebToolUrlPolicy(),
     sandbox_runtime: config.getSandboxRuntime(),
   }),
+  "GET /api/sandbox/status": () => getSandboxRuntimeStatus(),
   "PUT /api/config": (body) => {
     const data = body as Record<string, unknown>;
     for (const [key, value] of Object.entries(data)) {
@@ -1980,6 +1982,7 @@ const routes: Record<string, RouteHandler> = {
       }
       if (key === "sandbox_runtime") {
         config.setSandboxRuntime(value);
+        logSandboxRuntimeStatus("config_update");
         continue;
       }
       config.set(key, value);

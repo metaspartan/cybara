@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { useUIStore, themeAccents, type ThemeAccent } from '@/stores/uiStore';
 import {
   Activity,
+  AlertTriangle,
   Server,
   Database,
   Clock,
@@ -21,8 +22,10 @@ import {
   Sparkles,
   Eye,
   Palette,
+  RefreshCw,
+  Shield,
 } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 
 function getCheckStatus(value: unknown): { status: 'healthy' | 'warning' | 'error'; details?: string } {
   if (typeof value === 'string') {
@@ -94,24 +97,94 @@ function ThemeSettings() {
   );
 }
 
+type SandboxProviderOption = 'auto' | 'apple_sandbox' | 'podman' | 'docker';
+
+interface SandboxStatusView {
+  enabled: boolean;
+  configuredProvider: SandboxProviderOption;
+  network: 'allow' | 'deny';
+  resolvedProvider: 'apple_sandbox' | 'podman' | 'docker' | null;
+  available: boolean;
+  reason?: string;
+  providers: Array<{
+    provider: 'apple_sandbox' | 'podman' | 'docker';
+    supported: boolean;
+    installed: boolean;
+    available: boolean;
+    reason?: string;
+  }>;
+  checkedAt: string;
+  lastEvent: {
+    phase: 'prepared' | 'disabled' | 'error';
+    provider: 'apple_sandbox' | 'podman' | 'docker' | 'host' | null;
+    commandPreview?: string;
+    cwd?: string;
+    network?: 'allow' | 'deny';
+    reason?: string;
+    timestamp: string;
+  } | null;
+}
+
 function FeatureSettings() {
   const [terminalEnabled, setTerminalEnabled] = useState(false);
   const [dangerousToolPolicyEnabled, setDangerousToolPolicyEnabled] = useState(false);
   const [dangerousToolPolicyMode, setDangerousToolPolicyMode] = useState<'audit' | 'block'>('audit');
   const [toolApprovalMode, setToolApprovalMode] = useState<'always_allow' | 'ask'>('always_allow');
   const [sandboxEnabled, setSandboxEnabled] = useState(false);
-  const [sandboxProvider, setSandboxProvider] = useState<'auto' | 'apple_sandbox' | 'podman' | 'docker'>('auto');
+  const [sandboxProvider, setSandboxProvider] = useState<SandboxProviderOption>('auto');
   const [sandboxNetwork, setSandboxNetwork] = useState<'allow' | 'deny'>('deny');
   const [savingToolApprovalMode, setSavingToolApprovalMode] = useState(false);
   const [savingDangerousPolicy, setSavingDangerousPolicy] = useState(false);
   const [savingSandboxRuntime, setSavingSandboxRuntime] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingSandboxStatus, setLoadingSandboxStatus] = useState(true);
+  const [refreshingSandboxStatus, setRefreshingSandboxStatus] = useState(false);
+  const [sandboxStatus, setSandboxStatus] = useState<SandboxStatusView | null>(null);
   const { addToast } = useUIStore();
 
+  const providerLabel = (provider: SandboxProviderOption | 'host' | null): string => {
+    if (provider === 'apple_sandbox') return 'Apple Sandbox';
+    if (provider === 'podman') return 'Podman';
+    if (provider === 'docker') return 'Docker';
+    if (provider === 'host') return 'Host';
+    if (provider === 'auto') return 'Auto Detect';
+    return 'None';
+  };
+
+  const refreshSandboxStatus = useCallback(async (silent = false): Promise<SandboxStatusView | null> => {
+    if (!silent) {
+      setRefreshingSandboxStatus(true);
+    } else {
+      setLoadingSandboxStatus(true);
+    }
+    try {
+      const result = await settingsApi.getSandboxStatus();
+      if (result.success && result.data) {
+        const nextStatus = result.data as SandboxStatusView;
+        setSandboxStatus(nextStatus);
+        return nextStatus;
+      }
+      return null;
+    } catch {
+      // Ignore status refresh errors.
+      return null;
+    } finally {
+      setLoadingSandboxStatus(false);
+      if (!silent) setRefreshingSandboxStatus(false);
+    }
+  }, []);
+
   useEffect(() => {
-    settingsApi.getConfig()
-      .then((result) => {
-        const data = result.success ? result.data : undefined;
+    let mounted = true;
+    const load = async () => {
+      try {
+        const [configResult, sandboxResult] = await Promise.all([
+          settingsApi.getConfig(),
+          settingsApi.getSandboxStatus(),
+        ]);
+        if (!mounted) return;
+
+        const data = configResult.success ? configResult.data : undefined;
         setTerminalEnabled(data?.terminal_enabled === true);
         const policy = data?.dangerous_tool_policy as
           | { enabled?: boolean; mode?: string }
@@ -132,9 +205,20 @@ function FeatureSettings() {
             : 'auto'
         );
         setSandboxNetwork(sandboxRaw?.network === 'allow' ? 'allow' : 'deny');
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+        if (sandboxResult.success && sandboxResult.data) {
+          setSandboxStatus(sandboxResult.data as SandboxStatusView);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+          setLoadingSandboxStatus(false);
+        }
+      }
+    };
+    void load();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const toggleTerminal = async (enabled: boolean) => {
@@ -203,7 +287,7 @@ function FeatureSettings() {
 
   const updateSandboxRuntime = async (next: {
     enabled: boolean;
-    provider: 'auto' | 'apple_sandbox' | 'podman' | 'docker';
+    provider: SandboxProviderOption;
     network: 'allow' | 'deny';
   }) => {
     const previous = {
@@ -221,7 +305,15 @@ function FeatureSettings() {
       if (!result.success || !result.data?.success) {
         throw new Error(result.error || 'Config update failed');
       }
-      addToast('success', next.enabled ? 'Sandbox runtime enabled' : 'Sandbox runtime disabled');
+      const refreshedStatus = await refreshSandboxStatus(true);
+      if (next.enabled && refreshedStatus && !refreshedStatus.available) {
+        addToast(
+          'error',
+          `Sandbox unavailable: ${refreshedStatus.reason || 'No compatible provider on this machine'}`
+        );
+      } else {
+        addToast('success', next.enabled ? 'Sandbox runtime enabled' : 'Sandbox runtime disabled');
+      }
     } catch {
       setSandboxEnabled(previous.enabled);
       setSandboxProvider(previous.provider);
@@ -413,6 +505,96 @@ function FeatureSettings() {
               </div>
             </div>
           )}
+          <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-white flex items-center gap-2">
+                  <Shield className="w-3.5 h-3.5 text-emerald-300" />
+                  Sandbox Diagnostics
+                </p>
+                <p className="text-[11px] text-gray-400 mt-1">
+                  Real-time provider checks. Docker/Podman must be installed locally to be used.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void refreshSandboxStatus()}
+                className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-white/10 hover:bg-white/5 ${
+                  refreshingSandboxStatus ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'
+                }`}
+                disabled={refreshingSandboxStatus}
+              >
+                <RefreshCw className={`w-3 h-3 ${refreshingSandboxStatus ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
+            </div>
+            {loadingSandboxStatus ? (
+              <p className="text-[11px] text-gray-500 mt-3">Checking sandbox runtime...</p>
+            ) : sandboxStatus ? (
+              <div className="mt-3 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge
+                    variant={
+                      !sandboxStatus.enabled
+                        ? 'default'
+                        : sandboxStatus.available
+                          ? 'success'
+                          : 'error'
+                    }
+                  >
+                    {!sandboxStatus.enabled
+                      ? 'Disabled'
+                      : sandboxStatus.available
+                        ? 'Ready'
+                        : 'Unavailable'}
+                  </Badge>
+                  <span className="text-[11px] text-gray-400">
+                    Configured: <span className="text-white">{providerLabel(sandboxStatus.configuredProvider)}</span>
+                  </span>
+                  <span className="text-[11px] text-gray-400">
+                    Resolved: <span className="text-white">{providerLabel(sandboxStatus.resolvedProvider)}</span>
+                  </span>
+                  <span className="text-[11px] text-gray-400">
+                    Network: <span className="text-white">{sandboxStatus.network === 'allow' ? 'Allow' : 'Deny'}</span>
+                  </span>
+                </div>
+                {sandboxStatus.reason && (
+                  <div className="text-[11px] text-amber-200 bg-amber-500/10 border border-amber-500/20 rounded px-2 py-1 inline-flex items-start gap-1.5">
+                    <AlertTriangle className="w-3 h-3 mt-0.5" />
+                    <span>{sandboxStatus.reason}</span>
+                  </div>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1">
+                  {sandboxStatus.providers.map((entry) => (
+                    <div key={entry.provider} className="rounded border border-white/10 px-2 py-1.5">
+                      <p className="text-[11px] text-white">{providerLabel(entry.provider)}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        {entry.available
+                          ? 'Available'
+                          : entry.reason || (!entry.installed ? 'Not installed' : 'Unavailable')}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                {sandboxStatus.lastEvent && (
+                  <div className="pt-1">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-500">Last sandbox event</p>
+                    <p className="text-[11px] text-gray-300 mt-0.5">
+                      {providerLabel(sandboxStatus.lastEvent.provider)} · {sandboxStatus.lastEvent.phase} ·{' '}
+                      {new Date(sandboxStatus.lastEvent.timestamp).toLocaleTimeString()}
+                    </p>
+                    {sandboxStatus.lastEvent.commandPreview && (
+                      <p className="text-[10px] text-gray-500 mt-0.5 font-mono truncate">
+                        {sandboxStatus.lastEvent.commandPreview}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-[11px] text-gray-500 mt-3">Sandbox diagnostics unavailable.</p>
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>

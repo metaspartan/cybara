@@ -32,7 +32,7 @@
     "sexy": "bun run typecheck && bun run lint && bun run format:check",
     "sexy:write": "bun run typecheck && bun run lint && bun run format",
     "tauri": "tauri",
-    "tauri:dev": "bun run tauri:dev:prep && bun run tauri:sidecar && bunx tauri dev -- --enable-terminal",
+    "tauri:dev": "bun run tauri:dev:prep && bun run tauri:sidecar && bunx tauri dev",
     "tauri:dev:prep": "bun run scripts/prepare-tauri-dev.ts && bun run package",
     "tauri:build": "bun run tauri:sidecar && bunx tauri build",
     "tauri:sidecar": "bun run scripts/build-sidecar.ts"
