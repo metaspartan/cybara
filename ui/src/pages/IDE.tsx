@@ -1597,7 +1597,7 @@ function CodeViewer({
               <div className="relative flex-1 min-w-0">
                 <div
                   ref={highlightScrollRef}
-                  className="absolute inset-0 overflow-auto pointer-events-none"
+                  className="absolute inset-0 overflow-auto pointer-events-none z-20"
                 >
                   <Highlight theme={themes.nightOwl} code={sourceText} language={language}>
                     {({ className, style, tokens, getLineProps, getTokenProps }) => (
@@ -1734,7 +1734,7 @@ function CodeViewer({
                   onSelect={(e) => updateCursorFromSelection(e.currentTarget)}
                   onContextMenu={handleEditorContextMenu}
                   onScroll={(e) => syncEditorScroll(e.currentTarget)}
-                className="absolute inset-0 p-4 font-mono text-[13px] leading-[20px] bg-transparent text-transparent caret-indigo-200 resize-none !outline-none focus:!outline-none selection:bg-indigo-500/30"
+                className="absolute inset-0 z-10 p-4 font-mono text-[13px] leading-[20px] bg-transparent text-transparent caret-indigo-200 resize-none !outline-none focus:!outline-none selection:bg-indigo-500/30"
                 spellCheck={false}
                 wrap="off"
                 style={{
