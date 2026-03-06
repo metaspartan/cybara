@@ -15,6 +15,7 @@ export type DangerousToolPolicyMode = "audit" | "block";
 export type ToolApprovalMode = "always_allow" | "ask";
 export type SandboxProvider = "auto" | "apple_sandbox" | "podman" | "docker";
 export type SandboxNetworkMode = "allow" | "deny";
+export type EmbeddingProviderPreference = "auto" | "openai" | "gemini" | "ollama" | "transformers_js";
 
 export interface DangerousToolPolicyConfig {
   enabled: boolean;
@@ -39,6 +40,11 @@ export interface WorkspaceIndexerSettings {
   includeHidden: boolean;
   maxFileSizeBytes: number;
   maxFiles: number;
+  semanticEnabled: boolean;
+  semanticMaxFiles: number;
+  semanticMinScore: number;
+  embeddingProvider: EmbeddingProviderPreference;
+  embeddingModel: string;
   ignoreDirs: string[];
   includeExtensions: string[];
 }
@@ -68,6 +74,11 @@ export const DEFAULT_WORKSPACE_INDEXER_SETTINGS: WorkspaceIndexerSettings = {
   includeHidden: false,
   maxFileSizeBytes: 1024 * 1024,
   maxFiles: 25000,
+  semanticEnabled: true,
+  semanticMaxFiles: 2000,
+  semanticMinScore: 0.45,
+  embeddingProvider: "auto",
+  embeddingModel: "",
   ignoreDirs: [
     ".git",
     "node_modules",
@@ -191,8 +202,43 @@ function normalizeExtensions(value: unknown): string[] {
   return [...new Set(normalized)];
 }
 
+function normalizeEmbeddingProvider(value: unknown): EmbeddingProviderPreference {
+  if (typeof value !== "string") return DEFAULT_WORKSPACE_INDEXER_SETTINGS.embeddingProvider;
+  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (
+    normalized === "auto" ||
+    normalized === "openai" ||
+    normalized === "gemini" ||
+    normalized === "ollama" ||
+    normalized === "transformers_js"
+  ) {
+    return normalized as EmbeddingProviderPreference;
+  }
+  if (normalized === "transformers") {
+    return "transformers_js";
+  }
+  return DEFAULT_WORKSPACE_INDEXER_SETTINGS.embeddingProvider;
+}
+
+function normalizeEmbeddingModel(value: unknown): string {
+  if (typeof value !== "string") return DEFAULT_WORKSPACE_INDEXER_SETTINGS.embeddingModel;
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return trimmed.slice(0, 160);
+}
+
 function normalizeWorkspaceIndexerSettings(value: unknown): WorkspaceIndexerSettings {
   const parsed = asObject(value);
+  const rawSemanticMinScore =
+    typeof parsed?.semanticMinScore === "number"
+      ? parsed.semanticMinScore
+      : typeof parsed?.semanticMinScore === "string" && parsed.semanticMinScore.trim().length > 0
+        ? Number(parsed.semanticMinScore)
+        : Number.NaN;
+  const semanticMinScore = Number.isFinite(rawSemanticMinScore)
+    ? Math.min(0.99, Math.max(0.05, rawSemanticMinScore))
+    : DEFAULT_WORKSPACE_INDEXER_SETTINGS.semanticMinScore;
+
   return {
     enabled:
       typeof parsed?.enabled === "boolean"
@@ -218,6 +264,19 @@ function normalizeWorkspaceIndexerSettings(value: unknown): WorkspaceIndexerSett
       100,
       1_000_000
     ),
+    semanticEnabled:
+      typeof parsed?.semanticEnabled === "boolean"
+        ? parsed.semanticEnabled
+        : DEFAULT_WORKSPACE_INDEXER_SETTINGS.semanticEnabled,
+    semanticMaxFiles: normalizePositiveInteger(
+      parsed?.semanticMaxFiles,
+      DEFAULT_WORKSPACE_INDEXER_SETTINGS.semanticMaxFiles,
+      100,
+      50_000
+    ),
+    semanticMinScore,
+    embeddingProvider: normalizeEmbeddingProvider(parsed?.embeddingProvider),
+    embeddingModel: normalizeEmbeddingModel(parsed?.embeddingModel),
     ignoreDirs:
       normalizeStringList(parsed?.ignoreDirs).length > 0
         ? normalizeStringList(parsed?.ignoreDirs)

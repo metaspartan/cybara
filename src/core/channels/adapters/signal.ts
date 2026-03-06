@@ -202,15 +202,18 @@ export class SignalAdapter implements ChannelAdapter {
     if (!text && attachments.length === 0) return;
 
     const sender = envelope.sourceNumber || envelope.sourceUuid || "unknown";
+    const isGroupMessage = !!envelope.dataMessage?.groupInfo?.groupId;
 
     const accessCheck = securityManager.checkAccess(
       channelId,
       sender,
       "signal",
-      envelope.sourceName
+      envelope.sourceName,
+      { isGroup: isGroupMessage }
     );
 
     if (!accessCheck.permitted) {
+      if (accessCheck.silent) return;
       if (accessCheck.reason === "new_pairing" || accessCheck.reason === "blocked") {
         await this.sendSignalMessage(
           channelId,

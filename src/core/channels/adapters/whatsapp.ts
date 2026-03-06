@@ -795,12 +795,14 @@ export class WhatsAppAdapter implements ChannelAdapter {
       return;
     }
     const userId = msg.author || msg.from; // author is set in groups
+    const isGroupChat = chatId.endsWith("@g.us");
 
     const accessCheck = isSelfChat && allowSelfMessages
       ? ({ permitted: true } as const)
-      : securityManager.checkAccess(channelId, userId, "whatsapp");
+      : securityManager.checkAccess(channelId, userId, "whatsapp", undefined, { isGroup: isGroupChat });
 
     if (!accessCheck.permitted) {
+      if (accessCheck.silent) return;
       if (accessCheck.reason === "new_pairing" || accessCheck.reason === "blocked") {
         try {
           await msg.reply(accessCheck.message || `🔐 Pairing code: ${accessCheck.code}`);

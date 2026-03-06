@@ -286,7 +286,7 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
   workspace_index_search: {
     name: "workspace_index_search",
     description:
-      "Search files in the active workspace using the workspace index when available, with filesystem fallback when needed. Best for quick file discovery by name/path.",
+      "Search files in the active workspace using the workspace index (hybrid lexical + semantic embeddings when enabled), with filesystem fallback when needed. Best for fast file discovery by name, path, or intent.",
     category: "file",
     input_schema: {
       type: "object",

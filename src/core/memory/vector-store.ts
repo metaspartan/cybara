@@ -1,12 +1,17 @@
-
 import { Database } from "bun:sqlite";
-import { join } from "path";
-import { mkdirSync, existsSync } from "fs";
+import { existsSync, mkdirSync } from "fs";
 import { homedir } from "os";
+import { join } from "path";
 import {
     createEmbeddingProvider,
     findTopKSimilar,
+    getTransformersRuntimeStatus,
+    loadEmbeddingRuntime,
+    stopEmbeddingRuntime,
+    type EmbeddingRuntimeLoadResult,
     type EmbeddingProvider,
+    type EmbeddingProviderId,
+    type EmbeddingSelection,
 } from "./embeddings";
 
 const MEMORY_DIR = join(process.env.HOME || process.env.USERPROFILE || homedir(), ".cybara", "memory");
@@ -19,7 +24,7 @@ export interface MemoryChunk {
     endLine: number;
     content: string;
     embedding: number[];
-    source: "memory" | "sessions";
+    source: "memory" | "sessions" | "workspace";
     createdAt: number;
     hash: string;
 }
@@ -31,17 +36,28 @@ export interface VectorSearchResult {
     endLine: number;
     content: string;
     score: number;
-    source: "memory" | "sessions";
+    source: "memory" | "sessions" | "workspace";
 }
 
 function hashContent(content: string): string {
     let hash = 0;
-    for (let i = 0; i < content.length; i++) {
+    for (let i = 0; i < content.length; i += 1) {
         const char = content.charCodeAt(i);
         hash = ((hash << 5) - hash) + char;
-        hash = hash & hash;
+        hash &= hash;
     }
     return hash.toString(16);
+}
+
+function normalizeSelection(selection?: EmbeddingSelection): Required<EmbeddingSelection> {
+    return {
+        provider: typeof selection?.provider === "string" ? selection.provider : "auto",
+        model: typeof selection?.model === "string" ? selection.model.trim().slice(0, 180) : "",
+    };
+}
+
+function selectionKey(selection: Required<EmbeddingSelection>): string {
+    return `${selection.provider}:${selection.model}`;
 }
 
 export function chunkMarkdown(
@@ -54,13 +70,11 @@ export function chunkMarkdown(
     let currentChunk: string[] = [];
     let currentStartLine = 1;
     let currentTokens = 0;
-
     const estimateTokens = (text: string) => Math.ceil(text.length / 4);
 
-    for (let i = 0; i < lines.length; i++) {
+    for (let i = 0; i < lines.length; i += 1) {
         const line = lines[i];
         const lineTokens = estimateTokens(line);
-
         const isHeader = /^#{1,6}\s/.test(line);
 
         if (isHeader && currentChunk.length > 0) {
@@ -72,7 +86,10 @@ export function chunkMarkdown(
             currentChunk = [line];
             currentStartLine = i + 1;
             currentTokens = lineTokens;
-        } else if (currentTokens + lineTokens > maxTokens && currentChunk.length > 0) {
+            continue;
+        }
+
+        if (currentTokens + lineTokens > maxTokens && currentChunk.length > 0) {
             chunks.push({
                 text: currentChunk.join("\n"),
                 startLine: currentStartLine,
@@ -81,10 +98,11 @@ export function chunkMarkdown(
             currentChunk = [line];
             currentStartLine = i + 1;
             currentTokens = lineTokens;
-        } else {
-            currentChunk.push(line);
-            currentTokens += lineTokens;
+            continue;
         }
+
+        currentChunk.push(line);
+        currentTokens += lineTokens;
     }
 
     if (currentChunk.length > 0) {
@@ -95,14 +113,20 @@ export function chunkMarkdown(
         });
     }
 
-    return chunks.filter(c => c.text.trim().length > 10);
+    return chunks.filter((chunk) => chunk.text.trim().length > 10);
 }
 
 export class VectorStore {
     private db: Database;
     private provider: EmbeddingProvider | null = null;
     private providerReady: Promise<void>;
+    private providerSource: EmbeddingProviderId = "none";
+    private providerFallbackReason: string | null = null;
     private chunks: Map<string, MemoryChunk> = new Map();
+    private embeddingSelection: Required<EmbeddingSelection> = {
+        provider: "auto",
+        model: "",
+    };
 
     constructor() {
         if (!existsSync(MEMORY_DIR)) {
@@ -112,7 +136,6 @@ export class VectorStore {
         this.db = new Database(VECTOR_DB_PATH);
         this.initSchema();
         this.loadChunks();
-
         this.providerReady = this.initProvider();
     }
 
@@ -129,7 +152,6 @@ export class VectorStore {
         created_at INTEGER NOT NULL,
         hash TEXT NOT NULL
       );
-      
       CREATE INDEX IF NOT EXISTS idx_chunks_path ON chunks(path);
       CREATE INDEX IF NOT EXISTS idx_chunks_hash ON chunks(hash);
       CREATE INDEX IF NOT EXISTS idx_chunks_source ON chunks(source);
@@ -137,9 +159,11 @@ export class VectorStore {
     }
 
     private loadChunks(): void {
-        const rows = this.db.query(
-            "SELECT id, path, start_line, end_line, content, embedding, source, created_at, hash FROM chunks"
-        ).all() as Array<{
+        const rows = this.db
+            .query(
+                "SELECT id, path, start_line, end_line, content, embedding, source, created_at, hash FROM chunks"
+            )
+            .all() as Array<{
             id: string;
             path: string;
             start_line: number;
@@ -161,12 +185,12 @@ export class VectorStore {
                     endLine: row.end_line,
                     content: row.content,
                     embedding,
-                    source: row.source as "memory" | "sessions",
+                    source: row.source as "memory" | "sessions" | "workspace",
                     createdAt: row.created_at,
                     hash: row.hash,
                 });
             } catch {
-            void 0;
+                // Corrupt rows are ignored and can be rebuilt.
             }
         }
 
@@ -174,13 +198,17 @@ export class VectorStore {
     }
 
     private async initProvider(): Promise<void> {
-        const result = await createEmbeddingProvider();
+        const result = await createEmbeddingProvider(this.embeddingSelection);
         this.provider = result.provider;
+        this.providerSource = result.source;
+        this.providerFallbackReason = result.fallbackReason || null;
 
         if (result.source === "none") {
             console.warn("[VectorStore] No embedding provider available:", result.fallbackReason);
         } else {
-            console.log(`[VectorStore] Using ${result.source} embeddings (${result.provider.model})`);
+            console.log(
+                `[VectorStore] Using ${result.source} embeddings (${result.provider.model}) with selection ${selectionKey(this.embeddingSelection)}`
+            );
         }
     }
 
@@ -188,10 +216,98 @@ export class VectorStore {
         await this.providerReady;
     }
 
+    async configureEmbeddings(selection?: EmbeddingSelection): Promise<void> {
+        const normalized = normalizeSelection(selection);
+        if (selectionKey(normalized) === selectionKey(this.embeddingSelection)) {
+            return;
+        }
+        this.embeddingSelection = normalized;
+        this.provider = null;
+        this.providerSource = "none";
+        this.providerFallbackReason = null;
+        this.providerReady = this.initProvider();
+        await this.providerReady;
+    }
+
+    async stopLocalRuntime(selection?: EmbeddingSelection): Promise<{
+        success: boolean;
+        provider: string;
+        model: string;
+        message: string;
+    }> {
+        const requested = normalizeSelection(selection);
+        const provider =
+            requested.provider !== "auto"
+                ? requested.provider
+                : this.providerSource !== "none"
+                    ? this.providerSource
+                    : this.embeddingSelection.provider;
+        const model = requested.model || this.provider?.model || this.embeddingSelection.model || "";
+        return await stopEmbeddingRuntime({
+            provider: provider as EmbeddingSelection["provider"],
+            model,
+        });
+    }
+
+    async startLocalRuntime(selection?: EmbeddingSelection): Promise<EmbeddingRuntimeLoadResult> {
+        const requested = normalizeSelection(selection);
+        const requestedProvider = requested.provider;
+        if (requestedProvider !== "ollama" && requestedProvider !== "transformers_js") {
+            return {
+                success: false,
+                provider: requestedProvider,
+                model: requested.model,
+                message: "Select a local provider (Transformers.js or Ollama) to load runtime",
+            };
+        }
+
+        if (selectionKey(requested) !== selectionKey(this.embeddingSelection)) {
+            await this.configureEmbeddings(requested);
+        } else {
+            await this.ensureReady();
+        }
+
+        const provider = requestedProvider;
+        const model = requested.model || this.provider?.model || this.embeddingSelection.model || "";
+        return await loadEmbeddingRuntime({
+            provider,
+            model,
+        });
+    }
+
+    getLocalRuntimeStatus(selection?: EmbeddingSelection): {
+        selectedProvider: string;
+        selectedModel: string;
+        vectorProvider: string;
+        vectorModel: string;
+        vectorFallbackReason: string | null;
+        transformers: ReturnType<typeof getTransformersRuntimeStatus>;
+    } {
+        const requested = normalizeSelection(selection);
+        const selectedProvider = requested.provider;
+        const selectedModel = requested.model;
+        const vectorProvider = this.provider?.id || "none";
+        const vectorModel = this.provider?.model || "none";
+
+        const transformerTargetModel =
+            selectedProvider === "transformers_js"
+                ? selectedModel || this.provider?.model || ""
+                : selectedModel || "";
+
+        return {
+            selectedProvider,
+            selectedModel,
+            vectorProvider,
+            vectorModel,
+            vectorFallbackReason: this.providerFallbackReason || null,
+            transformers: getTransformersRuntimeStatus(transformerTargetModel),
+        };
+    }
+
     async indexFile(
         path: string,
         content: string,
-        source: "memory" | "sessions" = "memory"
+        source: "memory" | "sessions" | "workspace" = "memory"
     ): Promise<number> {
         await this.ensureReady();
 
@@ -199,7 +315,7 @@ export class VectorStore {
             return 0;
         }
 
-        const oldChunks = Array.from(this.chunks.values()).filter(c => c.path === path);
+        const oldChunks = Array.from(this.chunks.values()).filter((chunk) => chunk.path === path);
         for (const chunk of oldChunks) {
             this.chunks.delete(chunk.id);
             this.db.run("DELETE FROM chunks WHERE id = ?", [chunk.id]);
@@ -208,23 +324,21 @@ export class VectorStore {
         const textChunks = chunkMarkdown(content);
         if (textChunks.length === 0) return 0;
 
-        const embeddings = await this.provider.embedBatch(textChunks.map(c => c.text));
-
+        const embeddings = await this.provider.embedBatch(textChunks.map((chunk) => chunk.text));
         const now = Date.now();
         const stmt = this.db.prepare(
             "INSERT OR REPLACE INTO chunks (id, path, start_line, end_line, content, embedding, source, created_at, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
         );
 
-        for (let i = 0; i < textChunks.length; i++) {
+        let insertedCount = 0;
+        for (let i = 0; i < textChunks.length; i += 1) {
             const chunk = textChunks[i];
             const embedding = embeddings[i];
-
             if (!embedding || embedding.length === 0) continue;
 
             const hash = hashContent(chunk.text);
             const id = `${path}:${chunk.startLine}:${hash}`;
-
-            const memChunk: MemoryChunk = {
+            const memoryChunk: MemoryChunk = {
                 id,
                 path,
                 startLine: chunk.startLine,
@@ -236,7 +350,7 @@ export class VectorStore {
                 hash,
             };
 
-            this.chunks.set(id, memChunk);
+            this.chunks.set(id, memoryChunk);
             stmt.run(
                 id,
                 path,
@@ -248,10 +362,11 @@ export class VectorStore {
                 now,
                 hash
             );
+            insertedCount += 1;
         }
 
-        console.log(`[VectorStore] Indexed ${textChunks.length} chunks for ${path}`);
-        return textChunks.length;
+        console.log(`[VectorStore] Indexed ${insertedCount} chunks for ${path}`);
+        return insertedCount;
     }
 
     async search(
@@ -259,7 +374,7 @@ export class VectorStore {
         options: {
             maxResults?: number;
             minScore?: number;
-            source?: "memory" | "sessions";
+            source?: "memory" | "sessions" | "workspace";
         } = {}
     ): Promise<VectorSearchResult[]> {
         await this.ensureReady();
@@ -278,33 +393,37 @@ export class VectorStore {
 
         let candidates = Array.from(this.chunks.values());
         if (options.source) {
-            candidates = candidates.filter(c => c.source === options.source);
+            candidates = candidates.filter((chunk) => chunk.source === options.source);
         }
 
         const similar = findTopKSimilar(
             queryEmbedding,
-            candidates.map(c => ({ id: c.id, embedding: c.embedding })),
-            maxResults * 2 // Get more for hybrid ranking
+            candidates.map((chunk) => ({
+                id: chunk.id,
+                embedding: chunk.embedding,
+            })),
+            maxResults * 2
         );
 
         const vectorResults = similar
-            .filter(s => s.score >= minScore)
-            .map(s => {
-                const chunk = this.chunks.get(s.id)!;
+            .filter((result) => result.score >= minScore)
+            .map((result) => {
+                const chunk = this.chunks.get(result.id);
+                if (!chunk) return null;
                 return {
-                    id: s.id,
+                    id: result.id,
                     path: chunk.path,
                     startLine: chunk.startLine,
                     endLine: chunk.endLine,
                     content: chunk.content.slice(0, 500),
-                    score: s.score,
+                    score: result.score,
                     source: chunk.source,
-                };
-            });
+                } as VectorSearchResult;
+            })
+            .filter((result): result is VectorSearchResult => Boolean(result));
 
         const keywordResults = this.keywordSearch(query, maxResults);
         const merged = this.mergeResults(vectorResults, keywordResults, 0.7, 0.3);
-
         return merged.slice(0, maxResults);
     }
 
@@ -317,30 +436,25 @@ export class VectorStore {
 
         const k1 = 1.5;
         const b = 0.75;
-
-        const avgDl = chunks.reduce((sum, c) => sum + c.content.length, 0) / chunks.length;
+        const avgDl = chunks.reduce((sum, chunk) => sum + chunk.content.length, 0) / chunks.length;
 
         const idf = new Map<string, number>();
         for (const term of terms) {
-            const docsWithTerm = chunks.filter(c =>
-                c.content.toLowerCase().includes(term)
-            ).length;
+            const docsWithTerm = chunks.filter((chunk) => chunk.content.toLowerCase().includes(term)).length;
             const idfScore = Math.log((chunks.length - docsWithTerm + 0.5) / (docsWithTerm + 0.5) + 1);
-            idf.set(term, Math.max(0, idfScore)); // Ensure non-negative
+            idf.set(term, Math.max(0, idfScore));
         }
 
         const scored: Array<VectorSearchResult & { bm25Score: number }> = [];
-
         for (const chunk of chunks) {
             const contentLower = chunk.content.toLowerCase();
             const dl = chunk.content.length;
             let score = 0;
 
             for (const term of terms) {
-                const regex = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+                const regex = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
                 const matches = contentLower.match(regex);
                 const tf = matches ? matches.length : 0;
-
                 if (tf === 0) continue;
 
                 const termIdf = idf.get(term) || 0;
@@ -356,20 +470,20 @@ export class VectorStore {
                     startLine: chunk.startLine,
                     endLine: chunk.endLine,
                     content: chunk.content.slice(0, 500),
-                    score: score,
+                    score,
                     source: chunk.source,
                     bm25Score: score,
                 });
             }
         }
 
-        const maxScore = Math.max(...scored.map(s => s.score), 1);
-        for (const s of scored) {
-            s.score = s.score / maxScore;
+        const maxScore = Math.max(...scored.map((result) => result.score), 1);
+        for (const result of scored) {
+            result.score = result.score / maxScore;
         }
 
         return scored
-            .sort((a, b) => b.score - a.score)
+            .sort((left, right) => right.score - left.score)
             .slice(0, maxResults);
     }
 
@@ -377,8 +491,8 @@ export class VectorStore {
         return text
             .toLowerCase()
             .split(/[\s\-_.,;:!?()[\]{}'"<>]+/)
-            .filter(t => t.length > 2)
-            .filter((t, i, arr) => arr.indexOf(t) === i); // Dedupe
+            .filter((token) => token.length > 2)
+            .filter((token, index, values) => values.indexOf(token) === index);
     }
 
     private mergeResults(
@@ -389,16 +503,16 @@ export class VectorStore {
     ): VectorSearchResult[] {
         const byId = new Map<string, { vector: number; keyword: number; result: VectorSearchResult }>();
 
-        for (const r of vectorResults) {
-            byId.set(r.id, { vector: r.score, keyword: 0, result: r });
+        for (const result of vectorResults) {
+            byId.set(result.id, { vector: result.score, keyword: 0, result });
         }
 
-        for (const r of keywordResults) {
-            const existing = byId.get(r.id);
+        for (const result of keywordResults) {
+            const existing = byId.get(result.id);
             if (existing) {
-                existing.keyword = r.score;
+                existing.keyword = result.score;
             } else {
-                byId.set(r.id, { vector: 0, keyword: r.score, result: r });
+                byId.set(result.id, { vector: 0, keyword: result.score, result });
             }
         }
 
@@ -407,16 +521,24 @@ export class VectorStore {
                 ...result,
                 score: vector * vectorWeight + keyword * keywordWeight,
             }))
-            .sort((a, b) => b.score - a.score);
+            .sort((left, right) => right.score - left.score);
     }
 
     removeFile(path: string): number {
-        const oldChunks = Array.from(this.chunks.values()).filter(c => c.path === path);
+        const oldChunks = Array.from(this.chunks.values()).filter((chunk) => chunk.path === path);
         for (const chunk of oldChunks) {
             this.chunks.delete(chunk.id);
         }
-
         const result = this.db.run("DELETE FROM chunks WHERE path = ?", [path]);
+        return result.changes;
+    }
+
+    removeBySource(source: "memory" | "sessions" | "workspace"): number {
+        const oldChunks = Array.from(this.chunks.values()).filter((chunk) => chunk.source === source);
+        for (const chunk of oldChunks) {
+            this.chunks.delete(chunk.id);
+        }
+        const result = this.db.run("DELETE FROM chunks WHERE source = ?", [source]);
         return result.changes;
     }
 
@@ -425,13 +547,17 @@ export class VectorStore {
         files: number;
         provider: string;
         model: string;
+        source: EmbeddingProviderId;
+        fallbackReason?: string | null;
     } {
-        const paths = new Set(Array.from(this.chunks.values()).map(c => c.path));
+        const paths = new Set(Array.from(this.chunks.values()).map((chunk) => chunk.path));
         return {
             chunks: this.chunks.size,
             files: paths.size,
             provider: this.provider?.id ?? "none",
             model: this.provider?.model ?? "none",
+            source: this.providerSource,
+            fallbackReason: this.providerFallbackReason,
         };
     }
 

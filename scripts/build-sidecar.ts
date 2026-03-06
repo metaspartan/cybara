@@ -78,7 +78,26 @@ export async function buildSidecar(): Promise<void> {
     "lib",
     "secp256k1.wasm"
   );
+  const onnxBindingPath = join(
+    import.meta.dirname,
+    "..",
+    "node_modules",
+    "onnxruntime-node",
+    "dist",
+    "binding.js"
+  );
+  const onnxSourceDir = join(
+    import.meta.dirname,
+    "..",
+    "node_modules",
+    "onnxruntime-node",
+    "bin",
+    "napi-v3",
+    process.platform,
+    process.arch
+  );
   let originalWasmLoader = "";
+  let originalOnnxBinding = "";
   const patchedWasmLoader = `
 import { readFileSync, existsSync } from "fs";
 import { dirname, join } from "path";
@@ -114,11 +133,74 @@ const mod = new WebAssembly.Module(binary);
 const instance = new WebAssembly.Instance(mod, imports);
 export default instance.exports;
 `.trim();
+  const patchedOnnxBinding = `
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.initOrt = exports.binding = void 0;
+const fs = require("fs");
+const path = require("path");
+const onnxruntime_common_1 = require("onnxruntime-common");
+
+function resolveOnnxBindingPath() {
+  const bundledRelativePath = path.join("..", "bin", "napi-v3", process.platform, process.arch, "onnxruntime_binding.node");
+  const candidates = [
+    path.join(__dirname, bundledRelativePath),
+    path.join(path.dirname(process.execPath), "onnxruntime", process.platform, process.arch, "onnxruntime_binding.node"),
+    path.join(process.cwd(), "onnxruntime", process.platform, process.arch, "onnxruntime_binding.node"),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error(\`onnxruntime binding not found; checked: \${candidates.join(", ")}\`);
+}
+
+exports.binding = require(resolveOnnxBindingPath());
+
+let ortInitialized = false;
+const initOrt = () => {
+  if (!ortInitialized) {
+    ortInitialized = true;
+    let logLevel = 2;
+    if (onnxruntime_common_1.env.logLevel) {
+      switch (onnxruntime_common_1.env.logLevel) {
+        case "verbose":
+          logLevel = 0;
+          break;
+        case "info":
+          logLevel = 1;
+          break;
+        case "warning":
+          logLevel = 2;
+          break;
+        case "error":
+          logLevel = 3;
+          break;
+        case "fatal":
+          logLevel = 4;
+          break;
+        default:
+          throw new Error(\`Unsupported log level: \${onnxruntime_common_1.env.logLevel}\`);
+      }
+    }
+    exports.binding.initOrtOnce(logLevel, onnxruntime_common_1.Tensor);
+  }
+};
+exports.initOrt = initOrt;
+`.trim();
 
   if (existsSync(wasmLoaderPath)) {
     originalWasmLoader = await Bun.file(wasmLoaderPath).text();
     await Bun.write(wasmLoaderPath, patchedWasmLoader);
     console.log(`  🔧 Patched tiny-secp256k1 wasm_loader.js for sidecar build`);
+  }
+  if (existsSync(onnxBindingPath)) {
+    originalOnnxBinding = await Bun.file(onnxBindingPath).text();
+    await Bun.write(onnxBindingPath, patchedOnnxBinding);
+    console.log(`  🔧 Patched onnxruntime-node binding.js for sidecar build`);
   }
 
   try {
@@ -128,6 +210,11 @@ export default instance.exports;
     if (originalWasmLoader) {
       await Bun.write(wasmLoaderPath, originalWasmLoader);
       console.log(`  🔧 Restored original wasm_loader.js`);
+    }
+    // Restore original onnxruntime binding.js
+    if (originalOnnxBinding) {
+      await Bun.write(onnxBindingPath, originalOnnxBinding);
+      console.log(`  🔧 Restored original onnxruntime-node binding.js`);
     }
   }
 
@@ -142,6 +229,20 @@ export default instance.exports;
     console.log(`  📦 Copied secp256k1.wasm to sidecar directories`);
   } else {
     console.warn(`  ⚠️ secp256k1.wasm not found — BTC wallet operations may be unavailable`);
+  }
+
+  if (existsSync(onnxSourceDir)) {
+    for (const dir of [RELEASE_DIR, TAURI_BIN_DIR, tauriDebugDir]) {
+      const onnxTargetDir = join(dir, "onnxruntime", process.platform, process.arch);
+      if (existsSync(onnxTargetDir)) {
+        rmSync(onnxTargetDir, { recursive: true, force: true });
+      }
+      mkdirSync(onnxTargetDir, { recursive: true });
+      cpSync(onnxSourceDir, onnxTargetDir, { recursive: true });
+    }
+    console.log(`  📦 Copied onnxruntime native binaries to sidecar directories`);
+  } else {
+    console.warn(`  ⚠️ onnxruntime native binaries not found — local Transformers embeddings may be unavailable`);
   }
 
   // Ensure the sidecar can serve the packaged UI in tauri:dev.

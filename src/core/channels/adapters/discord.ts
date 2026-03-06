@@ -246,10 +246,12 @@ export class DiscordAdapter implements ChannelAdapter {
       channelId,
       userId,
       "discord",
-      message.author.username
+      message.author.username,
+      { isGroup: !isDM }
     );
 
     if (!accessCheck.permitted) {
+      if (accessCheck.silent) return;
       if (accessCheck.reason === "new_pairing") {
         try {
           await message.reply(accessCheck.message || `🔐 Pairing code: ${accessCheck.code}`);
@@ -551,9 +553,11 @@ export class DiscordAdapter implements ChannelAdapter {
       channelId,
       userId,
       "discord",
-      interaction.user.username
+      interaction.user.username,
+      { isGroup: !!interaction.guildId }
     );
     if (!accessCheck.permitted) {
+      if (accessCheck.silent) return;
       if (accessCheck.reason === "new_pairing" || accessCheck.reason === "blocked") {
         await this.replyToInteraction(
           interaction,

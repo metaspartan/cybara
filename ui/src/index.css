@@ -6,8 +6,8 @@
 
   --font-ui: 'Outfit', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-zed-ui: 'Zed Sans', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'Zed Mono', 'JetBrains Mono', 'SF Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
-  --font-zed-mono: 'Zed Mono', 'JetBrains Mono', 'SF Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  --font-mono: 'Zed Mono', Menlo, Monaco, Consolas, 'Courier New', 'Droid Sans Mono', 'Liberation Mono', monospace;
+  --font-zed-mono: 'Zed Mono', Menlo, Monaco, Consolas, 'Courier New', 'Droid Sans Mono', 'Liberation Mono', monospace;
 
   font-family: var(--font-ui);
   line-height: 1.5;
@@ -362,7 +362,7 @@ body::before {
 
 /* Code Blocks */
 code {
-  font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+  font-family: var(--font-zed-mono), var(--font-mono);
   font-size: 0.9em;
 }
 

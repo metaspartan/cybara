@@ -33,10 +33,15 @@ import {
   Copy,
   RotateCcw,
   ListTree,
+  Settings2,
+  TerminalSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/auth";
 import { chatApi, agentsApi } from "@/lib/api";
+import EmbeddedTerminalPanel, {
+  type IdeTerminalPanelState,
+} from "@/components/ide/EmbeddedTerminalPanel";
 
 interface FileEntry {
   name: string;
@@ -80,10 +85,16 @@ interface Diagnostic {
   code?: string | number;
 }
 
-interface LSPLanguage {
+interface LspActiveServer {
+  id: string;
   name: string;
+  command: string;
+  args: string[];
   available: boolean;
   bundled: boolean;
+  primary: boolean;
+  running: boolean;
+  initialized: boolean;
 }
 
 interface IdeSearchMatch {
@@ -151,8 +162,56 @@ interface WorkspaceIndexerSettings {
   includeHidden: boolean;
   maxFileSizeBytes: number;
   maxFiles: number;
+  semanticEnabled: boolean;
+  semanticMaxFiles: number;
+  semanticMinScore: number;
+  embeddingProvider: "auto" | "openai" | "gemini" | "ollama" | "transformers_js";
+  embeddingModel: string;
   ignoreDirs: string[];
   includeExtensions: string[];
+}
+
+interface WorkspaceEmbeddingProviderOption {
+  id: "auto" | "openai" | "gemini" | "ollama" | "transformers_js";
+  label: string;
+  local: boolean;
+  available: boolean;
+  reason?: string;
+  defaultModel: string;
+  models: string[];
+}
+
+interface WorkspaceEmbeddingCatalogResponse {
+  success: boolean;
+  selected?: {
+    provider: WorkspaceIndexerSettings["embeddingProvider"];
+    model: string;
+  };
+  providers?: WorkspaceEmbeddingProviderOption[];
+  error?: string;
+}
+
+interface WorkspaceEmbeddingRuntimeModelStatus {
+  model: string;
+  state: "idle" | "loading" | "ready" | "error";
+  loadedAt: string | null;
+  lastUsedAt: string | null;
+  lastError: string | null;
+}
+
+interface WorkspaceEmbeddingRuntimeResponse {
+  success: boolean;
+  selectedProvider?: string;
+  selectedModel?: string;
+  vectorProvider?: string;
+  vectorModel?: string;
+  vectorFallbackReason?: string | null;
+  transformers?: {
+    selectedModel: string;
+    selectedState: "idle" | "loading" | "ready" | "error";
+    loadedModels: WorkspaceEmbeddingRuntimeModelStatus[];
+  };
+  error?: string;
 }
 
 interface WorkspaceIndexerStatusResponse {
@@ -170,6 +229,12 @@ interface WorkspaceIndexerStatusResponse {
   finishedAt: string | null;
   durationMs: number | null;
   lastIndexedAt: string | null;
+  semanticReady: boolean;
+  semanticProvider: string | null;
+  semanticModel: string | null;
+  semanticIndexedFiles: number;
+  semanticIndexedChunks: number;
+  semanticError: string | null;
   error: string | null;
   settings: WorkspaceIndexerSettings;
   message?: string;
@@ -204,6 +269,8 @@ interface IdeBlameResult {
   error?: string;
 }
 
+type GitHistoryStatus = "idle" | "loading" | "ready" | "unavailable" | "error";
+
 interface IdeTab {
   path: string;
   name: string;
@@ -215,12 +282,38 @@ interface IdeChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: string;
+  thinking?: string;
+  tool_calls?: Array<Record<string, unknown>>;
+  process_activities?: IdeProcessActivity[];
 }
 
 interface IdeChatAgentOption {
   id: string;
   name: string;
   status?: string;
+}
+
+interface IdeProcessActivity {
+  id: string;
+  phase: "start" | "result" | "error";
+  text: string;
+  timestamp: number;
+  toolName?: string;
+  toolCallId?: string;
+}
+
+interface IdeFileChangeItem {
+  path: string;
+  type: "created" | "updated" | "deleted";
+  added: number;
+  removed: number;
+  diff?: string;
+}
+
+interface IdeFileChangeSummary {
+  files: IdeFileChangeItem[];
+  totalAdded: number;
+  totalRemoved: number;
 }
 
 interface TreeContextMenuState {
@@ -269,6 +362,15 @@ interface IdeCompletionResponse {
   error?: string;
 }
 
+interface IdeInlineCompletionResponse {
+  success: boolean;
+  completion?: string;
+  error?: string;
+  agentId?: string;
+  model?: string;
+  provider?: string;
+}
+
 interface FlattenedOutlineSymbol extends IdeOutlineSymbol {
   depth: number;
   key: string;
@@ -278,6 +380,23 @@ interface IdeBreadcrumb {
   label: string;
   path: string;
   isFile: boolean;
+}
+
+type IdeSettingsSectionId = "general" | "editor" | "completion" | "indexing" | "terminal";
+
+interface IdePreferences {
+  editorFontSizePx: number;
+  editorLineHeightPx: number;
+  showMinimap: boolean;
+  enableCompletions: boolean;
+  enableGhostCompletions: boolean;
+  completionDebounceMs: number;
+  ghostDebounceMs: number;
+  useChatAgentForCompletions: boolean;
+  completionAgentId: string;
+  openTerminalOnStartup: boolean;
+  autoCreateTerminalOnOpen: boolean;
+  terminalPanelHeight: number;
 }
 
 const IDE_SIDEBAR_WIDTH_STORAGE_KEY = "cybara.ide.sidebar.width";
@@ -291,6 +410,8 @@ const IDE_CHAT_MIN_WIDTH = 320;
 const IDE_CHAT_MAX_WIDTH = 720;
 const IDE_WORKSPACE_PATH_STORAGE_KEY = "cybara.ide.workspace.path";
 const IDE_CHAT_AGENT_STORAGE_KEY = "cybara.ide.chat.agent";
+const IDE_TERMINAL_OPEN_STORAGE_KEY = "cybara.ide.terminal.open";
+const IDE_SETTINGS_STORAGE_KEY = "cybara.ide.settings";
 const EXPLORER_VIRTUALIZATION_MIN_ENTRIES = 400;
 const EXPLORER_VIRTUALIZATION_ROW_HEIGHT = 30;
 const EXPLORER_VIRTUALIZATION_OVERSCAN = 12;
@@ -301,12 +422,36 @@ const COMPLETION_LOCAL_SCAN_AFTER = 8_000;
 const COMPLETION_CACHE_TTL_MS = 20_000;
 const COMPLETION_CACHE_MAX_ENTRIES = 180;
 const EDITOR_TYPING_BURST_MS = 160;
+const EDITOR_FONT_SIZE_PX = 14;
+const EDITOR_LINE_HEIGHT_PX = 22;
+const IDE_TERMINAL_DEFAULT_HEIGHT = 240;
+const IDE_TERMINAL_MIN_HEIGHT = 120;
+const IDE_TERMINAL_MAX_HEIGHT = 520;
+const IDE_DEFAULT_PREFERENCES: IdePreferences = {
+  editorFontSizePx: EDITOR_FONT_SIZE_PX,
+  editorLineHeightPx: EDITOR_LINE_HEIGHT_PX,
+  showMinimap: true,
+  enableCompletions: true,
+  enableGhostCompletions: true,
+  completionDebounceMs: 110,
+  ghostDebounceMs: 240,
+  useChatAgentForCompletions: true,
+  completionAgentId: "",
+  openTerminalOnStartup: false,
+  autoCreateTerminalOnOpen: false,
+  terminalPanelHeight: IDE_TERMINAL_DEFAULT_HEIGHT,
+};
 const DEFAULT_INDEXER_SETTINGS_DRAFT: WorkspaceIndexerSettings = {
   enabled: true,
   autoReindexOnWorkspaceSet: true,
   includeHidden: false,
   maxFileSizeBytes: 1024 * 1024,
   maxFiles: 25000,
+  semanticEnabled: true,
+  semanticMaxFiles: 2000,
+  semanticMinScore: 0.45,
+  embeddingProvider: "auto",
+  embeddingModel: "",
   ignoreDirs: [".git", "node_modules", "dist", "build"],
   includeExtensions: [],
 };
@@ -385,6 +530,65 @@ function persistIdeChatAgentId(agentId: string): void {
     return;
   }
   window.localStorage.setItem(IDE_CHAT_AGENT_STORAGE_KEY, normalized);
+}
+
+function clampTerminalHeight(height: number): number {
+  if (!Number.isFinite(height)) return IDE_TERMINAL_DEFAULT_HEIGHT;
+  return Math.min(IDE_TERMINAL_MAX_HEIGHT, Math.max(IDE_TERMINAL_MIN_HEIGHT, Math.round(height)));
+}
+
+function readPersistedTerminalOpen(defaultOpen: boolean): boolean {
+  if (typeof window === "undefined") return defaultOpen;
+  const raw = window.localStorage.getItem(IDE_TERMINAL_OPEN_STORAGE_KEY);
+  if (raw === "1") return true;
+  if (raw === "0") return false;
+  return defaultOpen;
+}
+
+function persistTerminalOpen(isOpen: boolean): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(IDE_TERMINAL_OPEN_STORAGE_KEY, isOpen ? "1" : "0");
+}
+
+function readPersistedIdePreferences(): IdePreferences {
+  if (typeof window === "undefined") return IDE_DEFAULT_PREFERENCES;
+  const raw = window.localStorage.getItem(IDE_SETTINGS_STORAGE_KEY);
+  if (!raw) return IDE_DEFAULT_PREFERENCES;
+  try {
+    const parsed = JSON.parse(raw) as Partial<IdePreferences>;
+    return {
+      ...IDE_DEFAULT_PREFERENCES,
+      ...parsed,
+      editorFontSizePx: Number.isFinite(parsed.editorFontSizePx)
+        ? Math.max(11, Math.min(22, Math.round(parsed.editorFontSizePx || EDITOR_FONT_SIZE_PX)))
+        : IDE_DEFAULT_PREFERENCES.editorFontSizePx,
+      editorLineHeightPx: Number.isFinite(parsed.editorLineHeightPx)
+        ? Math.max(16, Math.min(38, Math.round(parsed.editorLineHeightPx || EDITOR_LINE_HEIGHT_PX)))
+        : IDE_DEFAULT_PREFERENCES.editorLineHeightPx,
+      completionDebounceMs: Number.isFinite(parsed.completionDebounceMs)
+        ? Math.max(30, Math.min(800, Math.round(parsed.completionDebounceMs || 110)))
+        : IDE_DEFAULT_PREFERENCES.completionDebounceMs,
+      ghostDebounceMs: Number.isFinite(parsed.ghostDebounceMs)
+        ? Math.max(60, Math.min(1400, Math.round(parsed.ghostDebounceMs || 240)))
+        : IDE_DEFAULT_PREFERENCES.ghostDebounceMs,
+      completionAgentId:
+        typeof parsed.completionAgentId === "string"
+          ? parsed.completionAgentId.trim()
+          : IDE_DEFAULT_PREFERENCES.completionAgentId,
+      terminalPanelHeight: clampTerminalHeight(
+        Number.isFinite(parsed.terminalPanelHeight)
+          ? Number(parsed.terminalPanelHeight)
+          : IDE_DEFAULT_PREFERENCES.terminalPanelHeight
+      ),
+    };
+  } catch {
+    return IDE_DEFAULT_PREFERENCES;
+  }
+}
+
+function persistIdePreferences(preferences: IdePreferences): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(IDE_SETTINGS_STORAGE_KEY, JSON.stringify(preferences));
 }
 
 function getFileIcon(entry: FileEntry) {
@@ -935,7 +1139,17 @@ function CodeViewer({
   saveRequestToken,
   onSaveSuccess,
   onCursorChange,
+  onGitHistoryStatusChange,
   onOpenLocation,
+  completionAgentId,
+  editorFontSizePx = EDITOR_FONT_SIZE_PX,
+  editorLineHeightPx = EDITOR_LINE_HEIGHT_PX,
+  showMinimap = true,
+  enableCompletions = true,
+  enableGhostCompletions = true,
+  completionDebounceMs = 110,
+  ghostDebounceMs = 240,
+  pendingFileDiffs,
 }: {
   path: string | null;
   previewMode?: boolean;
@@ -945,7 +1159,17 @@ function CodeViewer({
   saveRequestToken?: number;
   onSaveSuccess?: () => void;
   onCursorChange?: (position: { line: number; column: number } | null) => void;
+  onGitHistoryStatusChange?: (status: GitHistoryStatus) => void;
   onOpenLocation?: (filePath: string, line: number) => void;
+  completionAgentId?: string | null;
+  editorFontSizePx?: number;
+  editorLineHeightPx?: number;
+  showMinimap?: boolean;
+  enableCompletions?: boolean;
+  enableGhostCompletions?: boolean;
+  completionDebounceMs?: number;
+  ghostDebounceMs?: number;
+  pendingFileDiffs?: Array<{ path: string; diff?: string }>;
 }) {
   const [content, setContent] = useState<string | null>(null);
   const [editContent, setEditContent] = useState<string>("");
@@ -958,6 +1182,8 @@ function CodeViewer({
   const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
   const [blameLines, setBlameLines] = useState<Map<number, IdeBlameLine>>(new Map());
   const [blameLoading, setBlameLoading] = useState(false);
+  const [gitHistoryStatus, setGitHistoryStatus] = useState<GitHistoryStatus>("idle");
+  const [addedChangeLines, setAddedChangeLines] = useState<Set<number>>(new Set());
   const [activeLine, setActiveLine] = useState(1);
   const [blamePopoverLine, setBlamePopoverLine] = useState<number | null>(null);
   const [copiedCommit, setCopiedCommit] = useState<string | null>(null);
@@ -988,9 +1214,12 @@ function CodeViewer({
   const [completionItems, setCompletionItems] = useState<IdeCompletionItem[]>([]);
   const [completionIndex, setCompletionIndex] = useState(0);
   const [completionVisible, setCompletionVisible] = useState(false);
+  const [completionLoading, setCompletionLoading] = useState(false);
   const [completionReplaceStart, setCompletionReplaceStart] = useState(0);
   const [completionPrefix, setCompletionPrefix] = useState("");
   const [completionOrigin, setCompletionOrigin] = useState<{ line: number; column: number } | null>(null);
+  const [ghostCompletion, setGhostCompletion] = useState("");
+  const [ghostOrigin, setGhostOrigin] = useState<{ line: number; column: number; replaceStart: number } | null>(null);
   const [isTypingBurst, setIsTypingBurst] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
   const highlightScrollRef = useRef<HTMLDivElement | null>(null);
@@ -1013,15 +1242,32 @@ function CodeViewer({
   const completionDebounceRef = useRef<number | null>(null);
   const completionAbortRef = useRef<AbortController | null>(null);
   const completionCacheRef = useRef<Map<string, { ts: number; items: IdeCompletionItem[] }>>(new Map());
+  const ghostRequestSeqRef = useRef(0);
+  const ghostDebounceRef = useRef<number | null>(null);
+  const ghostAbortRef = useRef<AbortController | null>(null);
+  const ghostCacheRef = useRef<Map<string, { ts: number; text: string }>>(new Map());
   const fileReadRequestSeqRef = useRef(0);
   const fileReadAbortRef = useRef<AbortController | null>(null);
   const blameRequestSeqRef = useRef(0);
   const blameAbortRef = useRef<AbortController | null>(null);
+  const lineChangesRequestSeqRef = useRef(0);
+  const lineChangesAbortRef = useRef<AbortController | null>(null);
   const typingBurstTimeoutRef = useRef<number | null>(null);
   const pendingCursorNotifyRef = useRef<{ line: number; column: number } | null>(null);
   const cursorNotifyFrameRef = useRef<number | null>(null);
   const pendingCursorSelectionRef = useRef<HTMLTextAreaElement | null>(null);
   const cursorSelectionFrameRef = useRef<number | null>(null);
+  const normalizedFontSize = Math.max(11, Math.min(22, Math.round(editorFontSizePx)));
+  const normalizedLineHeight = Math.max(16, Math.min(38, Math.round(editorLineHeightPx)));
+  const normalizedCompletionDebounce = Math.max(30, Math.min(800, Math.round(completionDebounceMs)));
+  const normalizedGhostDebounce = Math.max(60, Math.min(1400, Math.round(ghostDebounceMs)));
+  const charWidthPx = Math.max(6.4, Math.min(14, Number((normalizedFontSize * 0.586).toFixed(2))));
+  const normalizedExtension = (extension || "").toLowerCase().replace(/^\./, "");
+  const isMarkdownFile =
+    normalizedExtension === "md" ||
+    normalizedExtension === "markdown" ||
+    normalizedExtension === "mdx" ||
+    /\.(md|markdown|mdx)$/i.test(path || "");
 
   const hasUnsavedChanges = editContent !== (content || "");
   const isLargeFileMode = useMemo(() => {
@@ -1038,6 +1284,7 @@ function CodeViewer({
     }
     return false;
   }, [content, editContent]);
+  const disableTokenizedHighlight = isLargeFileMode || isTypingBurst;
 
   useEffect(() => {
     hasUnsavedChangesRef.current = hasUnsavedChanges;
@@ -1127,6 +1374,7 @@ function CodeViewer({
       }
       setBlameLines(new Map());
       setBlameLoading(false);
+      setGitHistoryStatus("unavailable");
       return;
     }
 
@@ -1142,6 +1390,7 @@ function CodeViewer({
     const maxBlameLines = Math.max(3000, Math.min(contentLineCount + 64, 50000));
 
     setBlameLoading(true);
+    setGitHistoryStatus("loading");
     try {
       const res = await apiFetch(
         `/api/ide/blame?path=${encodeURIComponent(path)}&maxLines=${encodeURIComponent(String(maxBlameLines))}`,
@@ -1155,12 +1404,15 @@ function CodeViewer({
           nextMap.set(line.line, line);
         }
         setBlameLines(nextMap);
+        setGitHistoryStatus("ready");
       } else {
         setBlameLines(new Map());
+        setGitHistoryStatus("unavailable");
       }
     } catch (errorValue) {
       if ((errorValue as Error)?.name !== "AbortError") {
         setBlameLines(new Map());
+        setGitHistoryStatus("error");
       }
     } finally {
       if (blameAbortRef.current === controller) {
@@ -1172,6 +1424,65 @@ function CodeViewer({
     }
   }, [content, isBinary, isLargeFileMode, path]);
 
+  const fetchLineChanges = useCallback(async () => {
+    if (!path || isBinary || isLargeFileMode) {
+      if (lineChangesAbortRef.current) {
+        lineChangesAbortRef.current.abort();
+        lineChangesAbortRef.current = null;
+      }
+      setAddedChangeLines(new Set());
+      return;
+    }
+
+    if (Array.isArray(pendingFileDiffs)) {
+      const forCurrentFile = pendingFileDiffs.filter((entry) =>
+        entry && typeof entry.path === "string" && isSameIdePath(path, entry.path)
+      );
+      if (forCurrentFile.length === 0) {
+        setAddedChangeLines(new Set());
+        return;
+      }
+      const merged = new Set<number>();
+      for (const entry of forCurrentFile) {
+        const parsed = parseGitDiffAddedLineNumbers(typeof entry.diff === "string" ? entry.diff : "");
+        for (const line of parsed) {
+          merged.add(line);
+        }
+      }
+      setAddedChangeLines(merged);
+      return;
+    }
+
+    const requestId = lineChangesRequestSeqRef.current + 1;
+    lineChangesRequestSeqRef.current = requestId;
+    if (lineChangesAbortRef.current) {
+      lineChangesAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    lineChangesAbortRef.current = controller;
+
+    try {
+      const res = await apiFetch(`/api/git/diff?path=${encodeURIComponent(path)}`, {
+        signal: controller.signal,
+      });
+      const data = (await res.json()) as { success?: boolean; diff?: string };
+      if (lineChangesRequestSeqRef.current !== requestId) return;
+      if (!res.ok || !data?.success) {
+        setAddedChangeLines(new Set());
+        return;
+      }
+      setAddedChangeLines(parseGitDiffAddedLineNumbers(typeof data.diff === "string" ? data.diff : ""));
+    } catch (errorValue) {
+      if ((errorValue as Error)?.name !== "AbortError") {
+        setAddedChangeLines(new Set());
+      }
+    } finally {
+      if (lineChangesAbortRef.current === controller) {
+        lineChangesAbortRef.current = null;
+      }
+    }
+  }, [isBinary, isLargeFileMode, path, pendingFileDiffs]);
+
   useEffect(() => {
     if (fileReadAbortRef.current) {
       fileReadAbortRef.current.abort();
@@ -1181,13 +1492,19 @@ function CodeViewer({
       blameAbortRef.current.abort();
       blameAbortRef.current = null;
     }
+    if (lineChangesAbortRef.current) {
+      lineChangesAbortRef.current.abort();
+      lineChangesAbortRef.current = null;
+    }
     setContent(null);
     setEditContent("");
     setExtension("");
     setIsBinary(false);
     setDiagnostics([]);
     setBlameLines(new Map());
+    setAddedChangeLines(new Set());
     setBlameLoading(false);
+    setGitHistoryStatus("idle");
     setShowFindBar(false);
     setFindQuery("");
     setFindReplaceValue("");
@@ -1209,9 +1526,12 @@ function CodeViewer({
     setCompletionItems([]);
     setCompletionIndex(0);
     setCompletionVisible(false);
+    setCompletionLoading(false);
     setCompletionReplaceStart(0);
     setCompletionPrefix("");
     setCompletionOrigin(null);
+    setGhostCompletion("");
+    setGhostOrigin(null);
     setIsTypingBurst(false);
     if (typingBurstTimeoutRef.current !== null) {
       window.clearTimeout(typingBurstTimeoutRef.current);
@@ -1221,17 +1541,30 @@ function CodeViewer({
       completionAbortRef.current.abort();
       completionAbortRef.current = null;
     }
+    if (ghostDebounceRef.current !== null) {
+      window.clearTimeout(ghostDebounceRef.current);
+      ghostDebounceRef.current = null;
+    }
+    if (ghostAbortRef.current) {
+      ghostAbortRef.current.abort();
+      ghostAbortRef.current = null;
+    }
     emitCursorChange(path ? { line: 1, column: 1 } : null);
     appliedJumpRequestRef.current = "";
     void fetchContent({ resetEditor: true });
   }, [emitCursorChange, fetchContent, path]);
 
   useEffect(() => {
+    onGitHistoryStatusChange?.(gitHistoryStatus);
+  }, [gitHistoryStatus, onGitHistoryStatusChange]);
+
+  useEffect(() => {
     if (content !== null && path) {
       fetchDiagnostics();
       fetchBlame();
+      fetchLineChanges();
     }
-  }, [content, path, fetchBlame, fetchDiagnostics]);
+  }, [content, path, fetchBlame, fetchDiagnostics, fetchLineChanges]);
 
   useEffect(() => {
     if (!autoRefresh || !path) return;
@@ -1241,9 +1574,10 @@ function CodeViewer({
         void fetchContent();
       }
       void fetchDiagnostics();
+      void fetchLineChanges();
     }, 3000);
     return () => clearInterval(interval);
-  }, [autoRefresh, path, fetchContent, fetchDiagnostics]);
+  }, [autoRefresh, path, fetchContent, fetchDiagnostics, fetchLineChanges]);
 
   useEffect(() => {
     return () => {
@@ -1259,6 +1593,14 @@ function CodeViewer({
         completionAbortRef.current.abort();
         completionAbortRef.current = null;
       }
+      if (ghostDebounceRef.current !== null) {
+        window.clearTimeout(ghostDebounceRef.current);
+        ghostDebounceRef.current = null;
+      }
+      if (ghostAbortRef.current) {
+        ghostAbortRef.current.abort();
+        ghostAbortRef.current = null;
+      }
       if (fileReadAbortRef.current) {
         fileReadAbortRef.current.abort();
         fileReadAbortRef.current = null;
@@ -1266,6 +1608,10 @@ function CodeViewer({
       if (blameAbortRef.current) {
         blameAbortRef.current.abort();
         blameAbortRef.current = null;
+      }
+      if (lineChangesAbortRef.current) {
+        lineChangesAbortRef.current.abort();
+        lineChangesAbortRef.current = null;
       }
       if (cursorNotifyFrameRef.current !== null) {
         window.cancelAnimationFrame(cursorNotifyFrameRef.current);
@@ -1291,7 +1637,8 @@ function CodeViewer({
     void fetchContent();
     void fetchDiagnostics();
     void fetchBlame();
-  }, [externalRefreshKey, fetchBlame, fetchContent, fetchDiagnostics, path]);
+    void fetchLineChanges();
+  }, [externalRefreshKey, fetchBlame, fetchContent, fetchDiagnostics, fetchLineChanges, path]);
 
   const updateScrollMetrics = useCallback((textarea: HTMLTextAreaElement | null) => {
     if (!textarea) return;
@@ -1390,8 +1737,14 @@ function CodeViewer({
     setCompletionItems([]);
     setCompletionIndex(0);
     setCompletionVisible(false);
+    setCompletionLoading(false);
     setCompletionPrefix("");
     setCompletionOrigin(null);
+  }, []);
+
+  const clearGhostCompletion = useCallback(() => {
+    setGhostCompletion("");
+    setGhostOrigin(null);
   }, []);
 
   const scoreCompletionItem = useCallback((item: IdeCompletionItem, normalizedPrefix: string): number => {
@@ -1513,8 +1866,9 @@ function CodeViewer({
   );
 
   const requestCompletions = useCallback(async (options?: { force?: boolean }) => {
-    if (!path || !editorRef.current || isBinary || showFindBar) {
+    if (!enableCompletions || !path || !editorRef.current || isBinary || showFindBar) {
       clearCompletions();
+      clearGhostCompletion();
       return;
     }
     const force = options?.force === true;
@@ -1524,16 +1878,19 @@ function CodeViewer({
     const selectionEnd = editor.selectionEnd ?? selectionStart;
     if (selectionStart !== selectionEnd) {
       clearCompletions();
+      clearGhostCompletion();
       return;
     }
 
     const context = getCompletionContext(editContent, selectionStart);
     if (!context.trigger) {
       clearCompletions();
+      clearGhostCompletion();
       return;
     }
     if (!force && !context.memberAccessTrigger && context.prefix.length < 2) {
       clearCompletions();
+      clearGhostCompletion();
       return;
     }
 
@@ -1549,6 +1906,7 @@ function CodeViewer({
       const cached = completionCacheRef.current.get(cacheKey);
       const now = Date.now();
       if (cached && now - cached.ts <= COMPLETION_CACHE_TTL_MS) {
+        setCompletionLoading(false);
         const known = new Set(mergedItems.map((item) => `${item.label}:${item.insertText || ""}`));
         for (const item of cached.items) {
           const key = `${item.label}:${item.insertText || ""}`;
@@ -1558,6 +1916,7 @@ function CodeViewer({
           if (mergedItems.length >= 120) break;
         }
       } else {
+        setCompletionLoading(true);
         if (completionAbortRef.current) {
           completionAbortRef.current.abort();
         }
@@ -1606,8 +1965,14 @@ function CodeViewer({
           if (completionAbortRef.current === controller) {
             completionAbortRef.current = null;
           }
+        } finally {
+          if (completionRequestSeqRef.current === requestId) {
+            setCompletionLoading(false);
+          }
         }
       }
+    } else {
+      setCompletionLoading(false);
     }
 
     if (completionRequestSeqRef.current !== requestId) return;
@@ -1636,12 +2001,135 @@ function CodeViewer({
     setCompletionOrigin({ line: context.line, column: context.column });
   }, [
     buildLocalCompletions,
+    clearGhostCompletion,
     clearCompletions,
     editContent,
     getCompletionContext,
     isBinary,
+    enableCompletions,
     path,
     scoreCompletionItem,
+    showFindBar,
+  ]);
+
+  const requestInlineGhostCompletion = useCallback(async () => {
+    if (
+      !enableCompletions ||
+      !enableGhostCompletions ||
+      !path ||
+      !editorRef.current ||
+      isBinary ||
+      showFindBar ||
+      isLargeFileMode
+    ) {
+      clearGhostCompletion();
+      return;
+    }
+    if (completionVisible && completionItems.length > 0) {
+      clearGhostCompletion();
+      return;
+    }
+
+    const editor = editorRef.current;
+    const selectionStart = editor.selectionStart ?? 0;
+    const selectionEnd = editor.selectionEnd ?? selectionStart;
+    if (selectionStart !== selectionEnd) {
+      clearGhostCompletion();
+      return;
+    }
+
+    const context = getCompletionContext(editContent, selectionStart);
+    if (!context.trigger || (!context.memberAccessTrigger && context.prefix.length < 2)) {
+      clearGhostCompletion();
+      return;
+    }
+
+    const before = editContent.slice(Math.max(0, selectionStart - 6000), selectionStart);
+    const after = editContent.slice(selectionStart, Math.min(editContent.length, selectionStart + 1800));
+    const suffixMatch = after.match(/^[A-Za-z0-9_$]+/);
+    const suffix = suffixMatch?.[0] || "";
+    const cacheKey = `${path}::${context.line}:${context.column}:${context.prefix.toLowerCase()}::${suffix.toLowerCase()}`;
+    const now = Date.now();
+    const cached = ghostCacheRef.current.get(cacheKey);
+    if (cached && now - cached.ts <= COMPLETION_CACHE_TTL_MS) {
+      setGhostCompletion(cached.text);
+      setGhostOrigin({ line: context.line, column: context.column, replaceStart: context.replaceStart });
+      return;
+    }
+
+    const requestId = ghostRequestSeqRef.current + 1;
+    ghostRequestSeqRef.current = requestId;
+    if (ghostAbortRef.current) {
+      ghostAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    ghostAbortRef.current = controller;
+
+    try {
+      const response = await apiFetch("/api/ide/inline-completion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          path,
+          before,
+          after,
+          prefix: context.prefix,
+          suffix,
+          agentId: completionAgentId || undefined,
+          maxChars: 360,
+        }),
+      });
+      const data: IdeInlineCompletionResponse = await response.json();
+      if (ghostRequestSeqRef.current !== requestId) return;
+      if (!data.success) {
+        clearGhostCompletion();
+        return;
+      }
+
+      let completionText = (data.completion || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      if (context.prefix && completionText.toLowerCase().startsWith(context.prefix.toLowerCase())) {
+        completionText = completionText.slice(context.prefix.length);
+      }
+      if (!completionText.trim()) {
+        clearGhostCompletion();
+        return;
+      }
+      if (completionText.length > 720) {
+        completionText = completionText.slice(0, 720);
+      }
+
+      ghostCacheRef.current.set(cacheKey, { ts: now, text: completionText });
+      if (ghostCacheRef.current.size > COMPLETION_CACHE_MAX_ENTRIES) {
+        const oldest = ghostCacheRef.current.keys().next().value;
+        if (typeof oldest === "string") {
+          ghostCacheRef.current.delete(oldest);
+        }
+      }
+
+      setGhostCompletion(completionText);
+      setGhostOrigin({ line: context.line, column: context.column, replaceStart: context.replaceStart });
+    } catch (errorValue) {
+      if ((errorValue as Error)?.name !== "AbortError") {
+        clearGhostCompletion();
+      }
+    } finally {
+      if (ghostAbortRef.current === controller) {
+        ghostAbortRef.current = null;
+      }
+    }
+  }, [
+    clearGhostCompletion,
+    completionAgentId,
+    completionItems.length,
+    completionVisible,
+    editContent,
+    getCompletionContext,
+    isBinary,
+    enableCompletions,
+    enableGhostCompletions,
+    isLargeFileMode,
+    path,
     showFindBar,
   ]);
 
@@ -1668,6 +2156,7 @@ function CodeViewer({
       setEditContent(nextContent);
       setCompletionVisible(false);
       setCompletionItems([]);
+      clearGhostCompletion();
       const nextCursor = completionReplaceStart + insertText.length;
       window.requestAnimationFrame(() => {
         if (!editorRef.current) return;
@@ -1678,12 +2167,50 @@ function CodeViewer({
       });
       return true;
     },
-    [completionIndex, completionItems, completionReplaceStart, editContent, syncEditorScroll, updateCursorFromSelection]
+    [
+      clearGhostCompletion,
+      completionIndex,
+      completionItems,
+      completionReplaceStart,
+      editContent,
+      syncEditorScroll,
+      updateCursorFromSelection,
+    ]
   );
+
+  const applyGhostCompletion = useCallback((): boolean => {
+    if (!editorRef.current || !ghostOrigin || !ghostCompletion) return false;
+    const editor = editorRef.current;
+    const cursor = editor.selectionStart ?? 0;
+    if (cursor < ghostOrigin.replaceStart) return false;
+
+    const nextContent =
+      editContent.slice(0, ghostOrigin.replaceStart) + ghostCompletion + editContent.slice(cursor);
+    const nextCursor = ghostOrigin.replaceStart + ghostCompletion.length;
+    setEditContent(nextContent);
+    clearGhostCompletion();
+    markTypingBurst();
+    window.requestAnimationFrame(() => {
+      if (!editorRef.current) return;
+      editorRef.current.focus();
+      editorRef.current.setSelectionRange(nextCursor, nextCursor);
+      updateCursorFromSelection(editorRef.current);
+      syncEditorScroll(editorRef.current);
+    });
+    return true;
+  }, [
+    clearGhostCompletion,
+    editContent,
+    ghostCompletion,
+    ghostOrigin,
+    markTypingBurst,
+    syncEditorScroll,
+    updateCursorFromSelection,
+  ]);
 
   const tryInlineTabCompletion = useCallback((): boolean => {
     const editor = editorRef.current;
-    if (!editor || isBinary || showFindBar) return false;
+    if (!enableCompletions || !editor || isBinary || showFindBar) return false;
 
     const selectionStart = editor.selectionStart ?? 0;
     const selectionEnd = editor.selectionEnd ?? selectionStart;
@@ -1721,6 +2248,7 @@ function CodeViewer({
     setEditContent(nextContent);
     setCompletionVisible(false);
     setCompletionItems([]);
+    clearGhostCompletion();
     markTypingBurst();
 
     const nextCursor = context.replaceStart + insertText.length;
@@ -1737,18 +2265,20 @@ function CodeViewer({
     editContent,
     getCompletionContext,
     isBinary,
+    enableCompletions,
     markTypingBurst,
     scoreCompletionItem,
     showFindBar,
     syncEditorScroll,
     updateCursorFromSelection,
+    clearGhostCompletion,
   ]);
 
   useEffect(() => {
     const isMarkdownPreview =
       previewMode &&
       (extension.toLowerCase() === ".md" || extension.toLowerCase() === ".markdown");
-    if (!path || isBinary || isMarkdownPreview || showFindBar) {
+    if (!enableCompletions || !path || isBinary || isMarkdownPreview || showFindBar) {
       clearCompletions();
       return;
     }
@@ -1760,7 +2290,7 @@ function CodeViewer({
       () => {
         void requestCompletions();
       },
-      isLargeFileMode ? 260 : isTypingBurst ? 180 : 110
+      isLargeFileMode ? Math.max(normalizedCompletionDebounce, 220) : isTypingBurst ? Math.max(normalizedCompletionDebounce, 160) : normalizedCompletionDebounce
     );
 
     return () => {
@@ -1772,6 +2302,7 @@ function CodeViewer({
   }, [
     clearCompletions,
     editContent,
+    enableCompletions,
     extension,
     isBinary,
     isTypingBurst,
@@ -1780,8 +2311,62 @@ function CodeViewer({
     previewMode,
     requestCompletions,
     showFindBar,
+    normalizedCompletionDebounce,
     cursorLine,
     cursorColumn,
+  ]);
+
+  useEffect(() => {
+    const isMarkdownPreview =
+      previewMode &&
+      (extension.toLowerCase() === ".md" || extension.toLowerCase() === ".markdown");
+    if (
+      !enableCompletions ||
+      !enableGhostCompletions ||
+      !path ||
+      isBinary ||
+      isMarkdownPreview ||
+      showFindBar ||
+      isLargeFileMode ||
+      completionVisible
+    ) {
+      clearGhostCompletion();
+      return;
+    }
+
+    if (ghostDebounceRef.current !== null) {
+      window.clearTimeout(ghostDebounceRef.current);
+    }
+    ghostDebounceRef.current = window.setTimeout(
+      () => {
+        void requestInlineGhostCompletion();
+      },
+      isTypingBurst ? Math.max(normalizedGhostDebounce, 280) : normalizedGhostDebounce
+    );
+
+    return () => {
+      if (ghostDebounceRef.current !== null) {
+        window.clearTimeout(ghostDebounceRef.current);
+        ghostDebounceRef.current = null;
+      }
+    };
+  }, [
+    clearGhostCompletion,
+    completionVisible,
+    cursorColumn,
+    cursorLine,
+    editContent,
+    enableCompletions,
+    enableGhostCompletions,
+    extension,
+    isBinary,
+    isLargeFileMode,
+    isTypingBurst,
+    path,
+    previewMode,
+    requestInlineGhostCompletion,
+    showFindBar,
+    normalizedGhostDebounce,
   ]);
 
   const computeFindMatches = useCallback(
@@ -1848,7 +2433,9 @@ function CodeViewer({
 
       textarea.focus();
       textarea.setSelectionRange(match.start, match.end);
-      const lineHeight = Number.parseFloat(window.getComputedStyle(textarea).lineHeight || "20") || 20;
+      const lineHeight =
+        Number.parseFloat(window.getComputedStyle(textarea).lineHeight || String(normalizedLineHeight)) ||
+        normalizedLineHeight;
       const line = getLineAndColumn(editContent, match.start).line;
       textarea.scrollTop = Math.max((line - 2) * lineHeight, 0);
       syncEditorScroll(textarea);
@@ -1950,8 +2537,10 @@ function CodeViewer({
 
       textarea.focus();
       textarea.setSelectionRange(offset, offset);
-      const computedLineHeight = Number.parseFloat(window.getComputedStyle(textarea).lineHeight || "20");
-      const lineHeight = Number.isFinite(computedLineHeight) ? computedLineHeight : 20;
+      const computedLineHeight = Number.parseFloat(
+        window.getComputedStyle(textarea).lineHeight || String(normalizedLineHeight)
+      );
+      const lineHeight = Number.isFinite(computedLineHeight) ? computedLineHeight : normalizedLineHeight;
       textarea.scrollTop = Math.max((line - 2) * lineHeight, 0);
       syncEditorScroll(textarea);
       updateCursorFromSelection(textarea);
@@ -2083,7 +2672,7 @@ function CodeViewer({
       }
     }
 
-    if ((e.metaKey || e.ctrlKey) && e.key === " ") {
+    if (enableCompletions && (e.metaKey || e.ctrlKey) && e.key === " ") {
       e.preventDefault();
       e.stopPropagation();
       void requestCompletions({ force: true });
@@ -2126,6 +2715,11 @@ function CodeViewer({
     }
 
     if (e.key === "Tab") {
+      if (enableGhostCompletions && applyGhostCompletion()) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       if (tryInlineTabCompletion()) {
         e.preventDefault();
         e.stopPropagation();
@@ -2503,7 +3097,7 @@ function CodeViewer({
 
   const sourceText = useDeferredValue(editContent);
   const sourceLines = useMemo(() => sourceText.split("\n"), [sourceText]);
-  const lineHeightPx = 20;
+  const lineHeightPx = normalizedLineHeight;
   const gutterStartLine = Math.max(0, Math.floor(scrollMetrics.top / lineHeightPx) - 80);
   const gutterVisibleCount = Math.max(Math.ceil(scrollMetrics.height / lineHeightPx) + 160, 220);
   const gutterEndLine = Math.min(sourceLines.length, gutterStartLine + gutterVisibleCount);
@@ -2561,6 +3155,7 @@ function CodeViewer({
   }
 
   const language = getPrismLanguage(extension);
+  const highlightLanguage = isMarkdownFile ? "plaintext" : language;
 
   const lineDiagnostics = new Map<number, Diagnostic[]>();
   diagnostics.forEach((d) => {
@@ -2569,26 +3164,43 @@ function CodeViewer({
     lineDiagnostics.set(d.line, existing);
   });
 
-  const showInlineBlame = !isLargeFileMode && !isTypingBurst && (blameLoading || blameLines.size > 0);
-  const popoverBlameDetails = blamePopoverLine ? blameLines.get(blamePopoverLine) || null : null;
-  const popoverBlameTimestamp = formatBlameDateTime(popoverBlameDetails?.authorDate);
   const isMarkdownPreview =
     !isBinary &&
     previewMode &&
     (extension.toLowerCase() === ".md" || extension.toLowerCase() === ".markdown");
-  const showCompletionPanel = completionVisible && completionItems.length > 0 && !!completionOrigin;
+  const showCompletionPanel =
+    enableCompletions && completionVisible && completionItems.length > 0 && !!completionOrigin;
   const completionPanelPosition = completionOrigin
     ? {
         left: Math.max(
           8,
-          16 + (completionOrigin.column - 1) * 7.4 - scrollMetrics.left
+          16 + (completionOrigin.column - 1) * charWidthPx - scrollMetrics.left
         ),
         top: Math.max(
           8,
-          16 + (completionOrigin.line - 1) * 20 - scrollMetrics.top + 20
+          16 + (completionOrigin.line - 1) * normalizedLineHeight - scrollMetrics.top + normalizedLineHeight
         ),
       }
     : null;
+  const ghostInlineText = ghostCompletion ? ghostCompletion.split("\n")[0] || "" : "";
+  const showGhostCompletion =
+    enableCompletions && enableGhostCompletions && !!ghostOrigin && !!ghostInlineText && !showCompletionPanel;
+  const ghostPosition = ghostOrigin
+    ? {
+        left: Math.max(8, 16 + (ghostOrigin.column - 1) * charWidthPx - scrollMetrics.left),
+        top: Math.max(8, 16 + (ghostOrigin.line - 1) * normalizedLineHeight - scrollMetrics.top),
+      }
+    : null;
+  const showInlineBlame =
+    !isLargeFileMode &&
+    !isTypingBurst &&
+    !completionLoading &&
+    !showCompletionPanel &&
+    !showGhostCompletion &&
+    !completionVisible &&
+    blameLines.size > 0;
+  const popoverBlameDetails = blamePopoverLine ? blameLines.get(blamePopoverLine) || null : null;
+  const popoverBlameTimestamp = formatBlameDateTime(popoverBlameDetails?.authorDate);
   const editorContextMenuPosition = editorContextMenu
     ? {
         left:
@@ -2772,7 +3384,8 @@ function CodeViewer({
           <>
             <div
               ref={gutterRef}
-              className="w-16 shrink-0 overflow-hidden border-r border-white/10 bg-black/30 py-4 px-2 text-right select-none font-mono text-[13px] leading-[20px]"
+              className="w-16 shrink-0 overflow-hidden border-r border-white/10 bg-black/30 py-4 px-2 text-right select-none font-mono text-[14px] leading-[22px]"
+              style={{ fontFamily: "var(--font-zed-mono), var(--font-mono), ui-monospace, monospace" }}
             >
               <div className="relative" style={{ height: `${sourceLines.length * lineHeightPx}px` }}>
                 <div
@@ -2784,21 +3397,25 @@ function CodeViewer({
                     const lineDiags = lineDiagnostics.get(lineNum) || [];
                     const hasError = lineDiags.some((d) => d.severity === "error");
                     const hasWarning = lineDiags.some((d) => d.severity === "warning");
+                    const isAddedChangeLine = addedChangeLines.has(i + 1);
                     return (
                       <button
                         key={i}
                         type="button"
                         onClick={() => jumpToLine(i + 1)}
                         className={cn(
-                          "h-[20px] w-full flex items-center justify-end px-1 m-0 py-0 border-0 rounded-none appearance-none bg-transparent leading-none transition-colors",
+                          "w-full flex items-center justify-end px-1 m-0 py-0 border-0 rounded-none appearance-none bg-transparent leading-none transition-colors",
                           activeLine === i + 1 && "bg-indigo-500/20 text-indigo-200",
                           hasError && "text-red-400",
                           hasWarning && !hasError && "text-yellow-400",
+                          isAddedChangeLine && !hasError && !hasWarning && "text-emerald-300",
                           !hasError &&
                             !hasWarning &&
+                            !isAddedChangeLine &&
                             activeLine !== i + 1 &&
                             "text-gray-600 hover:text-gray-400"
                         )}
+                        style={{ height: `${lineHeightPx}px` }}
                         title={lineDiags.map((d) => d.message).join("\n") || `Line ${i + 1}`}
                       >
                         {lineDiags.length > 0 ? (
@@ -2822,9 +3439,9 @@ function CodeViewer({
                   ref={highlightScrollRef}
                   className="absolute inset-0 overflow-auto pointer-events-none z-20"
                 >
-                  {isLargeFileMode || isTypingBurst ? (
+                  {disableTokenizedHighlight ? (
                     <pre
-                      className="m-0 p-4 font-mono text-[13px] min-w-full leading-[20px] text-gray-200"
+                      className="m-0 p-4 font-mono text-[14px] min-w-full leading-[22px] text-gray-200"
                       style={{
                         background: "transparent",
                         width: "max-content",
@@ -2832,19 +3449,19 @@ function CodeViewer({
                         whiteSpace: "pre",
                         overflowWrap: "normal",
                         wordBreak: "normal",
-                        lineHeight: "20px",
-                        fontSize: "13px",
+                        lineHeight: `${normalizedLineHeight}px`,
+                        fontSize: `${normalizedFontSize}px`,
                         fontFamily:
-                          "var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                          "var(--font-zed-mono), var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', 'Liberation Mono', monospace",
                       }}
                     >
                       {sourceText}
                     </pre>
                   ) : (
-                    <Highlight theme={themes.nightOwl} code={sourceText} language={language}>
+                    <Highlight theme={themes.nightOwl} code={sourceText} language={highlightLanguage}>
                       {({ className, style, tokens, getLineProps, getTokenProps }) => (
                         <pre
-                          className={cn(className, "m-0 p-4 font-mono text-[13px] min-w-full leading-[20px]")}
+                          className={cn(className, "m-0 p-4 font-mono text-[14px] min-w-full leading-[22px]")}
                           style={{
                             ...style,
                             background: "transparent",
@@ -2853,10 +3470,10 @@ function CodeViewer({
                             whiteSpace: "pre",
                             overflowWrap: "normal",
                             wordBreak: "normal",
-                            lineHeight: "20px",
-                            fontSize: "13px",
+                            lineHeight: `${normalizedLineHeight}px`,
+                            fontSize: `${normalizedFontSize}px`,
                             fontFamily:
-                              "var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                              "var(--font-zed-mono), var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', 'Liberation Mono', monospace",
                           }}
                         >
                           {tokens.map((line, i) => {
@@ -2865,36 +3482,51 @@ function CodeViewer({
                             const hasError = lineDiags.some((d) => d.severity === "error");
                             const hasWarning = lineDiags.some((d) => d.severity === "warning");
                             const isActiveLine = activeLine === i + 1;
+                            const isAddedChangeLine = addedChangeLines.has(i + 1);
                             const blameLine = blameLines.get(i + 1) || null;
                             const blameDate = formatBlameStamp(blameLine?.authorDate);
                             const blameSummary =
                               blameLine?.summary || (blameLine?.isUncommitted ? "Uncommitted" : "");
                             const blameText = blameLine
                               ? `${blameLine.author} · ${blameLine.shortCommit}${blameDate ? ` · ${blameDate}` : ""}${blameSummary ? ` · ${blameSummary}` : ""}`
-                              : blameLoading
-                                ? "Loading history..."
-                                : "No history";
-                            const shouldShowLineBlame = isActiveLine && showInlineBlame;
+                              : "";
+                            const shouldShowLineBlame = isActiveLine && showInlineBlame && !!blameLine;
                             const lineProps = getLineProps({ line });
                             return (
                               <div
                                 key={i}
                                 data-line-number={i + 1}
                                 {...lineProps}
-                                style={{ ...(lineProps.style || {}), height: "20px", lineHeight: "20px" }}
+                                style={{
+                                  ...(lineProps.style || {}),
+                                  height: `${normalizedLineHeight}px`,
+                                  lineHeight: `${normalizedLineHeight}px`,
+                                }}
                                 className={cn(
                                   lineProps.className,
-                                  "h-[20px] w-max min-w-full flex items-center",
+                                  "w-max min-w-full flex items-center",
                                   hasError && "bg-red-500/10",
                                   hasWarning && !hasError && "bg-yellow-500/10",
+                                  isAddedChangeLine && !hasError && !hasWarning && "bg-emerald-500/14",
                                   isActiveLine && "bg-indigo-500/20"
                                 )}
                               >
                                 <span className="flex-shrink-0">
                                   {line.length > 0 ? (
-                                    line.map((token, key) => (
-                                      <span key={key} {...getTokenProps({ token })} />
-                                    ))
+                                    line.map((token, key) => {
+                                      const tokenProps = getTokenProps({ token });
+                                      const tokenText =
+                                        typeof tokenProps.children === "string"
+                                          ? tokenProps.children.split(/\r?\n/, 1)[0] || ""
+                                          : typeof token.content === "string"
+                                            ? token.content.split(/\r?\n/, 1)[0] || ""
+                                            : tokenProps.children;
+                                      return (
+                                        <span key={key} {...tokenProps}>
+                                          {tokenText}
+                                        </span>
+                                      );
+                                    })
                                   ) : (
                                     <span>&nbsp;</span>
                                   )}
@@ -2907,7 +3539,7 @@ function CodeViewer({
                                       onMouseLeave={scheduleHideBlamePopover}
                                       disabled={!blameLine}
                                       className={cn(
-                                        "max-w-full truncate border-0 bg-transparent p-0 text-left font-mono text-[13px] leading-[20px]",
+                                        "max-w-full truncate border-0 bg-transparent p-0 text-left font-mono text-[14px] leading-[22px]",
                                         blameLine
                                           ? "pointer-events-auto text-gray-500 hover:text-gray-300"
                                           : "text-gray-700 cursor-default"
@@ -2996,20 +3628,40 @@ function CodeViewer({
                 }}
                 onContextMenu={handleEditorContextMenu}
                 onScroll={(e) => syncEditorScroll(e.currentTarget)}
-                className="absolute inset-0 z-10 p-4 font-mono text-[13px] leading-[20px] bg-transparent text-transparent caret-indigo-200 resize-none !outline-none focus:!outline-none selection:bg-indigo-500/30"
+                className="absolute inset-0 z-10 p-4 font-mono text-[14px] leading-[22px] bg-transparent text-transparent caret-indigo-200 resize-none !outline-none focus:!outline-none selection:bg-indigo-500/30"
                 spellCheck={false}
                 wrap="off"
                 style={{
                   tabSize: 2,
-                  lineHeight: "20px",
-                  fontSize: "13px",
+                  lineHeight: `${normalizedLineHeight}px`,
+                  fontSize: `${normalizedFontSize}px`,
+                  color: "transparent",
+                  WebkitTextFillColor: "transparent",
+                  textShadow: "none",
+                  caretColor: "#c7d2fe",
                   whiteSpace: "pre",
                   overflowWrap: "normal",
                   wordBreak: "normal",
-                  fontFamily: "var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                  fontFamily:
+                    "var(--font-zed-mono), var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', 'Liberation Mono', monospace",
                   margin: 0,
                 }}
               />
+              {showGhostCompletion && ghostPosition && (
+                <div
+                  className="absolute z-20 pointer-events-none text-gray-500/75 whitespace-pre"
+                  style={{
+                    left: `${ghostPosition.left}px`,
+                    top: `${ghostPosition.top}px`,
+                    lineHeight: `${normalizedLineHeight}px`,
+                    fontSize: `${normalizedFontSize}px`,
+                    fontFamily:
+                      "var(--font-zed-mono), var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', 'Liberation Mono', monospace",
+                  }}
+                >
+                  {ghostInlineText}
+                </div>
+              )}
               {showCompletionPanel && completionPanelPosition && (
                 <div
                   className="absolute z-30 w-[340px] max-w-[80%] max-h-64 overflow-y-auto rounded-md border border-white/15 bg-[#0a0a10]/95 shadow-xl backdrop-blur"
@@ -3049,59 +3701,53 @@ function CodeViewer({
                   </div>
                 </div>
               )}
-              {blameLoading && (
-                <div className="absolute left-6 top-2 z-20 px-1 py-0.5 text-[12px] leading-[20px] text-gray-600">
-                  <div className="flex items-center gap-1.5">
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                    <span>Loading git history...</span>
+              </div>
+
+              {showMinimap && (
+                <div className="w-24 shrink-0 border-l border-white/10 bg-[#080810] hidden xl:flex flex-col">
+                  <div
+                    className="relative flex-1 overflow-hidden cursor-pointer"
+                    onMouseDown={(event) => {
+                      const textarea = editorRef.current;
+                      if (!textarea) return;
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      const ratio = Math.max(0, Math.min(1, (event.clientY - rect.top) / Math.max(rect.height, 1)));
+                      const target = ratio * textarea.scrollHeight - textarea.clientHeight / 2;
+                      const maxScroll = Math.max(textarea.scrollHeight - textarea.clientHeight, 0);
+                      textarea.scrollTop = Math.max(0, Math.min(target, maxScroll));
+                      syncEditorScroll(textarea);
+                      textarea.focus();
+                    }}
+                    title="Minimap"
+                  >
+                    <div className="absolute inset-0 px-2 py-3 space-y-px overflow-hidden">
+                      {minimapRows.rows.map((row, index) => {
+                        const len = row.length;
+                        const width = Math.max(10, Math.min(100, (len / 140) * 100));
+                        const isActive = activeMinimapRow === index;
+                        return (
+                          <div
+                            key={`minimap:${row.sourceLine}`}
+                            className={cn("h-[2px] rounded-sm", isActive ? "bg-indigo-300/70" : "bg-white/20")}
+                            style={{ width: `${width}%` }}
+                          />
+                        );
+                      })}
+                    </div>
+                    <div
+                      className="absolute left-0 right-0 border border-indigo-400/40 bg-indigo-500/10 pointer-events-none"
+                      style={{
+                        height: `${Math.max((scrollMetrics.height / Math.max(scrollMetrics.scrollHeight, 1)) * 100, 6)}%`,
+                        top: `${Math.min(
+                          (scrollMetrics.top / Math.max(scrollMetrics.scrollHeight - scrollMetrics.height, 1)) *
+                            (100 - Math.max((scrollMetrics.height / Math.max(scrollMetrics.scrollHeight, 1)) * 100, 6)),
+                          100
+                        )}%`,
+                      }}
+                    />
                   </div>
                 </div>
               )}
-              </div>
-
-              <div className="w-24 shrink-0 border-l border-white/10 bg-[#080810] hidden xl:flex flex-col">
-                <div
-                  className="relative flex-1 overflow-hidden cursor-pointer"
-                  onMouseDown={(event) => {
-                    const textarea = editorRef.current;
-                    if (!textarea) return;
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    const ratio = Math.max(0, Math.min(1, (event.clientY - rect.top) / Math.max(rect.height, 1)));
-                    const target = ratio * textarea.scrollHeight - textarea.clientHeight / 2;
-                    const maxScroll = Math.max(textarea.scrollHeight - textarea.clientHeight, 0);
-                    textarea.scrollTop = Math.max(0, Math.min(target, maxScroll));
-                    syncEditorScroll(textarea);
-                    textarea.focus();
-                  }}
-                  title="Minimap"
-                >
-                  <div className="absolute inset-0 px-2 py-3 space-y-px overflow-hidden">
-                    {minimapRows.rows.map((row, index) => {
-                      const len = row.length;
-                      const width = Math.max(10, Math.min(100, (len / 140) * 100));
-                      const isActive = activeMinimapRow === index;
-                      return (
-                        <div
-                          key={`minimap:${row.sourceLine}`}
-                          className={cn("h-[2px] rounded-sm", isActive ? "bg-indigo-300/70" : "bg-white/20")}
-                          style={{ width: `${width}%` }}
-                        />
-                      );
-                    })}
-                  </div>
-                  <div
-                    className="absolute left-0 right-0 border border-indigo-400/40 bg-indigo-500/10 pointer-events-none"
-                    style={{
-                      height: `${Math.max((scrollMetrics.height / Math.max(scrollMetrics.scrollHeight, 1)) * 100, 6)}%`,
-                      top: `${Math.min(
-                        (scrollMetrics.top / Math.max(scrollMetrics.scrollHeight - scrollMetrics.height, 1)) *
-                          (100 - Math.max((scrollMetrics.height / Math.max(scrollMetrics.scrollHeight, 1)) * 100, 6)),
-                        100
-                      )}%`,
-                    }}
-                  />
-                </div>
-              </div>
             </div>
           </>
         )}
@@ -3415,44 +4061,173 @@ function getActiveLanguageFromExtension(extension?: string | null): string | nul
 
 function LSPStatus({
   compact = false,
+  activeFilePath,
   activeExtension,
 }: {
   compact?: boolean;
+  activeFilePath?: string | null;
   activeExtension?: string | null;
 }) {
-  const [languages, setLanguages] = useState<LSPLanguage[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [languageId, setLanguageId] = useState<string | null>(
+    getActiveLanguageFromExtension(activeExtension)
+  );
+  const [servers, setServers] = useState<LspActiveServer[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        const res = await apiFetch("/api/lsp/languages");
-        const data = await res.json();
-        setLanguages(data.languages || []);
-      } catch {
-        // Ignore errors
+    if (!isOpen) return;
+    const handleClickAway = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (popoverRef.current && target && !popoverRef.current.contains(target)) {
+        setIsOpen(false);
       }
-      setIsLoading(false);
     };
-    fetchStatus();
-  }, []);
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsOpen(false);
+    };
+    window.addEventListener("mousedown", handleClickAway);
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("mousedown", handleClickAway);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [isOpen]);
 
-  if (isLoading) return null;
+  useEffect(() => {
+    const fallbackLanguage = getActiveLanguageFromExtension(activeExtension);
+    if (!activeFilePath) {
+      setServers([]);
+      setLanguageId(fallbackLanguage);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
 
-  const available = languages.filter((l) => l.available);
-  const activeLanguage = getActiveLanguageFromExtension(activeExtension);
-  const active = activeLanguage
-    ? available.find((lang) => lang.name.toLowerCase() === activeLanguage)
-    : null;
-  const label = active ? active.name : "none";
-  const labelClass = active ? "text-emerald-400" : "text-gray-600";
+    let isCancelled = false;
+    const fetchStatus = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const res = await apiFetch(`/api/lsp/active?path=${encodeURIComponent(activeFilePath)}`);
+        const data = await res.json();
+        if (isCancelled) return;
+        setServers(Array.isArray(data?.servers) ? (data.servers as LspActiveServer[]) : []);
+        setLanguageId(
+          typeof data?.languageId === "string" && data.languageId
+            ? data.languageId
+            : fallbackLanguage
+        );
+        if (data?.success === false && typeof data?.error === "string") {
+          setError(data.error);
+        }
+      } catch (err) {
+        if (isCancelled) return;
+        setServers([]);
+        setLanguageId(fallbackLanguage);
+        setError((err as Error)?.message || "Failed to load LSP status");
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+    void fetchStatus();
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeExtension, activeFilePath]);
+
+  const runningCount = servers.filter((server) => server.running && server.initialized).length;
+  const availableCount = servers.filter((server) => server.available).length;
+  const summaryLabel = isLoading
+    ? "loading"
+    : runningCount > 0
+      ? `${runningCount} active`
+      : availableCount > 0
+        ? `${availableCount} ready`
+        : "none";
+  const summaryClass =
+    runningCount > 0
+      ? "text-emerald-400"
+      : availableCount > 0
+        ? "text-amber-300"
+        : "text-gray-600";
 
   return (
     <div className={cn(compact ? "flex items-center gap-2 text-xs text-gray-500" : "px-3 py-2 border-t border-white/10 bg-white/5")}>
-      <div className="flex items-center gap-2 text-xs text-gray-500">
-        <Zap className="w-3 h-3" />
-        <span>LSP:</span>
-        <span className={labelClass}>{label}</span>
+      <div ref={popoverRef} className="relative">
+        <button
+          type="button"
+          onClick={() => setIsOpen((previous) => !previous)}
+          className="inline-flex items-center gap-2 rounded px-1.5 py-0.5 hover:bg-white/5"
+          title="Show active language servers"
+        >
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <Zap className="w-3 h-3" />
+            <span>LSP:</span>
+            <span className={summaryClass}>{summaryLabel}</span>
+            <span className="text-gray-600">{languageId || "unknown"}</span>
+            <ChevronDown className={cn("w-3 h-3 transition-transform", isOpen && "rotate-180")} />
+          </div>
+        </button>
+        {isOpen && (
+          <div className="absolute bottom-[calc(100%+8px)] right-0 z-30 w-[360px] overflow-hidden rounded-md border border-white/10 bg-[#0b0f19] shadow-[0_20px_40px_rgba(0,0,0,0.45)]">
+            <div className="border-b border-white/10 px-3 py-2">
+              <div className="text-xs font-medium text-gray-200">Language Servers</div>
+              <div className="mt-0.5 text-[11px] text-gray-500">
+                {languageId || "unknown"} • {runningCount}/{servers.length} running
+              </div>
+            </div>
+            {error ? (
+              <div className="px-3 py-2 text-[11px] text-red-300">{error}</div>
+            ) : servers.length === 0 ? (
+              <div className="px-3 py-2 text-[11px] text-gray-500">No servers configured for this file.</div>
+            ) : (
+              <div className="max-h-72 overflow-y-auto py-1">
+                {servers.map((server) => {
+                  const statusLabel = server.running && server.initialized
+                    ? "running"
+                    : server.available
+                      ? "available"
+                      : "unavailable";
+                  const statusClass = server.running && server.initialized
+                    ? "text-emerald-300"
+                    : server.available
+                      ? "text-amber-300"
+                      : "text-red-300";
+                  return (
+                    <div
+                      key={`lsp-server:${server.id}`}
+                      className="border-b border-white/5 px-3 py-2 text-[11px] last:border-b-0"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-200">{server.name}</span>
+                        {server.primary && (
+                          <span className="rounded border border-indigo-400/40 bg-indigo-500/15 px-1.5 py-0.5 text-[10px] text-indigo-200">
+                            primary
+                          </span>
+                        )}
+                        {server.bundled && (
+                          <span className="rounded border border-cyan-400/40 bg-cyan-500/15 px-1.5 py-0.5 text-[10px] text-cyan-200">
+                            bundled
+                          </span>
+                        )}
+                        <span className={cn("ml-auto font-medium", statusClass)}>{statusLabel}</span>
+                      </div>
+                      <div className="mt-1 truncate text-gray-500">
+                        {server.command}
+                        {Array.isArray(server.args) && server.args.length > 0 ? ` ${server.args.join(" ")}` : ""}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -3496,18 +4271,518 @@ function GitStatus({ path, compact = false }: { path: string; compact?: boolean 
   );
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeIdePath(value: string): string {
+  return value.replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/+/, "/");
+}
+
+function isSameIdePath(currentPath: string, candidatePath: string): boolean {
+  const current = normalizeIdePath(currentPath);
+  const candidate = normalizeIdePath(candidatePath).replace(/^[ab]\//, "");
+  if (!current || !candidate) return false;
+  if (current === candidate) return true;
+  if (current.endsWith(`/${candidate}`)) return true;
+  if (candidate.endsWith(`/${current}`)) return true;
+  return false;
+}
+
+function countDiffLines(content: string): number {
+  if (!content) return 0;
+  return content.split(/\r?\n/).length;
+}
+
+function toFiniteDiffNumber(raw: unknown): number {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string" && raw.trim()) {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+}
+
+function normalizeIdeChangeType(raw: unknown): IdeFileChangeItem["type"] {
+  const normalized = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (normalized === "created" || normalized === "create" || normalized === "new") return "created";
+  if (normalized === "deleted" || normalized === "delete" || normalized === "remove") return "deleted";
+  return "updated";
+}
+
+function truncateDiffPreview(diff: string, maxLines = 220): string {
+  const lines = diff.split(/\r?\n/);
+  if (lines.length <= maxLines) return diff;
+  const omitted = lines.length - maxLines;
+  return [...lines.slice(0, maxLines), `... [diff truncated, ${omitted} lines omitted]`].join("\n");
+}
+
+function parseGitDiffAddedLineNumbers(diffText: string): Set<number> {
+  const addedLines = new Set<number>();
+  if (typeof diffText !== "string" || !diffText.trim() || diffText.includes("(No changes)")) {
+    return addedLines;
+  }
+
+  const lines = diffText.split(/\r?\n/);
+  let newLine = 0;
+  for (const line of lines) {
+    if (line.startsWith("@@")) {
+      const match = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (match) {
+        newLine = Number(match[1]) || 0;
+      }
+      continue;
+    }
+    if (line.startsWith("diff --git ") || line.startsWith("index ") || line.startsWith("--- ") || line.startsWith("+++ ")) {
+      continue;
+    }
+    if (line.startsWith("+") && !line.startsWith("+++")) {
+      if (newLine > 0) {
+        addedLines.add(newLine);
+      }
+      newLine += 1;
+      continue;
+    }
+    if (line.startsWith("-") && !line.startsWith("---")) {
+      continue;
+    }
+    if (line.startsWith(" ")) {
+      newLine += 1;
+    }
+  }
+
+  return addedLines;
+}
+
+function parseIdePatchFileChanges(patch: string): IdeFileChangeItem[] {
+  const lines = patch.split(/\r?\n/);
+  const changes: IdeFileChangeItem[] = [];
+  let current: IdeFileChangeItem | null = null;
+  let diffLines: string[] = [];
+
+  const pushCurrent = () => {
+    if (!current) return;
+    if (diffLines.length > 0) {
+      current.diff = truncateDiffPreview(diffLines.join("\n"));
+    }
+    changes.push(current);
+    current = null;
+    diffLines = [];
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+
+    if (line.startsWith("--- ")) {
+      pushCurrent();
+      const oldPathRaw = line.slice(4).trim();
+      const next = lines[index + 1] || "";
+      const newPathRaw = next.startsWith("+++ ") ? next.slice(4).trim() : oldPathRaw;
+      const oldPath = oldPathRaw.replace(/^[ab]\//, "");
+      const newPath = newPathRaw.replace(/^[ab]\//, "");
+      const type: IdeFileChangeItem["type"] =
+        oldPathRaw === "/dev/null"
+          ? "created"
+          : newPathRaw === "/dev/null"
+            ? "deleted"
+            : "updated";
+      const path = type === "deleted" ? oldPath : newPath;
+      current = {
+        path,
+        type,
+        added: 0,
+        removed: 0,
+      };
+      diffLines.push(line);
+      if (next.startsWith("+++ ")) {
+        diffLines.push(next);
+        index += 1;
+      }
+      continue;
+    }
+
+    if (!current) continue;
+    if (line.startsWith("+") && !line.startsWith("+++")) {
+      current.added += 1;
+      diffLines.push(line);
+      continue;
+    }
+    if (line.startsWith("-") && !line.startsWith("---")) {
+      current.removed += 1;
+      diffLines.push(line);
+      continue;
+    }
+    if (line.startsWith("@@") || line.startsWith("diff --git ") || line.startsWith(" ")) {
+      diffLines.push(line);
+    }
+  }
+
+  pushCurrent();
+  return changes.filter((change) => !!change.path);
+}
+
+function parseIdeChangeRecord(value: unknown): IdeFileChangeItem | null {
+  if (!isPlainRecord(value)) return null;
+  const path = typeof value.path === "string" ? value.path.trim() : "";
+  if (!path) return null;
+  const added =
+    toFiniteDiffNumber(value.added) ||
+    toFiniteDiffNumber(value.addedLines) ||
+    toFiniteDiffNumber(value.plus);
+  const removed =
+    toFiniteDiffNumber(value.removed) ||
+    toFiniteDiffNumber(value.removedLines) ||
+    toFiniteDiffNumber(value.minus);
+  const diff =
+    typeof value.diff === "string" && value.diff.trim()
+      ? truncateDiffPreview(value.diff)
+      : undefined;
+  return {
+    path,
+    type: normalizeIdeChangeType(value.type || value.kind),
+    added: Math.max(0, Math.floor(added)),
+    removed: Math.max(0, Math.floor(removed)),
+    diff,
+  };
+}
+
+function getIdeToolCallsInTimelineOrder(
+  toolCalls: Array<Record<string, unknown>> | undefined
+): Array<Record<string, unknown>> {
+  if (!Array.isArray(toolCalls) || toolCalls.length <= 1) {
+    return toolCalls ? [...toolCalls] : [];
+  }
+  const hasTimeline = toolCalls.some(
+    (toolCall) =>
+      typeof toolCall.timeline_index === "number" &&
+      Number.isFinite(toolCall.timeline_index as number)
+  );
+  if (!hasTimeline) return [...toolCalls];
+  return [...toolCalls].sort((left, right) => {
+    const leftRank =
+      typeof left.timeline_index === "number" && Number.isFinite(left.timeline_index as number)
+        ? (left.timeline_index as number)
+        : Number.MAX_SAFE_INTEGER;
+    const rightRank =
+      typeof right.timeline_index === "number" && Number.isFinite(right.timeline_index as number)
+        ? (right.timeline_index as number)
+        : Number.MAX_SAFE_INTEGER;
+    return leftRank - rightRank;
+  });
+}
+
+function extractIdeToolFileChanges(toolCall: Record<string, unknown>): IdeFileChangeItem[] {
+  const toolName = typeof toolCall.name === "string" ? toolCall.name.toLowerCase() : "";
+  const args = isPlainRecord(toolCall.args)
+    ? toolCall.args
+    : isPlainRecord(toolCall.arguments)
+      ? toolCall.arguments
+      : {};
+  const result = isPlainRecord(toolCall.result) ? toolCall.result : null;
+  const parsedFromResult: IdeFileChangeItem[] = [];
+
+  if (result && Array.isArray(result.changes)) {
+    for (const change of result.changes) {
+      const parsed = parseIdeChangeRecord(change);
+      if (parsed) parsedFromResult.push(parsed);
+    }
+  }
+
+  if (result && isPlainRecord(result.change)) {
+    const parsed = parseIdeChangeRecord({
+      path:
+        (typeof result.path === "string" && result.path) ||
+        (typeof args.path === "string" && args.path) ||
+        "",
+      ...(result.change as Record<string, unknown>),
+    });
+    if (parsed) parsedFromResult.push(parsed);
+  }
+
+  if (parsedFromResult.length > 0) return parsedFromResult;
+
+  if (toolName === "apply_patch") {
+    const patch = typeof args.patch === "string" ? args.patch : "";
+    if (!patch.trim()) return [];
+    return parseIdePatchFileChanges(patch);
+  }
+
+  if (toolName === "write") {
+    const path = typeof args.path === "string" ? args.path : "";
+    const content = typeof args.content === "string" ? args.content : "";
+    if (!path || !content) return [];
+    const diffLines = [
+      `--- a/${path}`,
+      `+++ b/${path}`,
+      `@@ -1,0 +1,${countDiffLines(content)} @@`,
+      ...content.split(/\r?\n/).map((line) => `+${line}`),
+    ];
+    return [
+      {
+        path,
+        type: "created",
+        added: countDiffLines(content),
+        removed: 0,
+        diff: truncateDiffPreview(diffLines.join("\n")),
+      },
+    ];
+  }
+
+  if (toolName === "edit") {
+    const path = typeof args.path === "string" ? args.path : "";
+    const oldText = typeof args.oldText === "string" ? args.oldText : "";
+    const newText = typeof args.newText === "string" ? args.newText : "";
+    if (!path || (!oldText && !newText)) return [];
+    const oldLines = oldText ? oldText.split(/\r?\n/) : [];
+    const newLines = newText ? newText.split(/\r?\n/) : [];
+    const diffLines = [
+      `--- a/${path}`,
+      `+++ b/${path}`,
+      `@@ -1,${oldLines.length} +1,${newLines.length} @@`,
+      ...oldLines.map((line) => `-${line}`),
+      ...newLines.map((line) => `+${line}`),
+    ];
+    return [
+      {
+        path,
+        type: "updated",
+        added: newLines.length,
+        removed: oldLines.length,
+        diff: truncateDiffPreview(diffLines.join("\n")),
+      },
+    ];
+  }
+
+  return [];
+}
+
+function summarizeIdeFileChanges(changes: IdeFileChangeItem[]): IdeFileChangeSummary | null {
+  if (!Array.isArray(changes) || changes.length === 0) return null;
+  const byPath = new Map<string, IdeFileChangeItem>();
+  for (const change of changes) {
+    if (!change?.path) continue;
+    const existing = byPath.get(change.path);
+    if (!existing) {
+      byPath.set(change.path, { ...change });
+      continue;
+    }
+    existing.added += change.added;
+    existing.removed += change.removed;
+    if (change.diff) existing.diff = change.diff;
+    if (change.type === "deleted") existing.type = "deleted";
+    if (existing.type !== "deleted" && change.type === "updated") existing.type = "updated";
+  }
+  const files = Array.from(byPath.values()).sort((left, right) => left.path.localeCompare(right.path));
+  if (files.length === 0) return null;
+  return {
+    files,
+    totalAdded: files.reduce((sum, file) => sum + file.added, 0),
+    totalRemoved: files.reduce((sum, file) => sum + file.removed, 0),
+  };
+}
+
+function mergeIdeFileChangeSummaries(
+  ...summaries: Array<IdeFileChangeSummary | null | undefined>
+): IdeFileChangeSummary | null {
+  const merged: IdeFileChangeItem[] = [];
+  for (const summary of summaries) {
+    if (!summary || !Array.isArray(summary.files)) continue;
+    merged.push(...summary.files);
+  }
+  return summarizeIdeFileChanges(merged);
+}
+
+function parseIdeChangeFromTextLine(line: string): IdeFileChangeItem | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(
+    /^(Edited|Updated|Created|Deleted)\s+(.+?)(?:\s+\+(\d+)\s*-\s*(\d+))?(?:\s+\(.*\))?$/i
+  );
+  if (!match) return null;
+  const action = (match[1] || "").toLowerCase();
+  const rawPath = (match[2] || "").trim();
+  const path = rawPath.replace(/^["'`]|["'`]$/g, "").trim();
+  if (!path) return null;
+
+  const addedRaw = match[3] ? Number(match[3]) : NaN;
+  const removedRaw = match[4] ? Number(match[4]) : NaN;
+  const type: IdeFileChangeItem["type"] =
+    action === "created" ? "created" : action === "deleted" ? "deleted" : "updated";
+  const added = Number.isFinite(addedRaw) ? Math.max(0, Math.floor(addedRaw)) : type === "created" ? 1 : 0;
+  const removed =
+    Number.isFinite(removedRaw) ? Math.max(0, Math.floor(removedRaw)) : type === "deleted" ? 1 : 0;
+
+  return { path, type, added, removed };
+}
+
+function summarizeIdeActivityFileChanges(
+  activities?: IdeProcessActivity[]
+): IdeFileChangeSummary | null {
+  if (!Array.isArray(activities) || activities.length === 0) return null;
+  const parsed: IdeFileChangeItem[] = [];
+  for (const activity of activities) {
+    const line = typeof activity?.text === "string" ? activity.text : "";
+    const change = parseIdeChangeFromTextLine(line);
+    if (change) parsed.push(change);
+  }
+  return summarizeIdeFileChanges(parsed);
+}
+
+function summarizeIdeTextFileChanges(text?: string): IdeFileChangeSummary | null {
+  if (typeof text !== "string" || !text.trim()) return null;
+  const parsed: IdeFileChangeItem[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const change = parseIdeChangeFromTextLine(line);
+    if (change) parsed.push(change);
+  }
+  return summarizeIdeFileChanges(parsed);
+}
+
+function summarizeIdeMessageFileChanges(
+  toolCalls?: Array<Record<string, unknown>>
+): IdeFileChangeSummary | null {
+  if (!Array.isArray(toolCalls) || toolCalls.length === 0) return null;
+  const collectedChanges: IdeFileChangeItem[] = [];
+  const orderedToolCalls = getIdeToolCallsInTimelineOrder(toolCalls);
+
+  for (const toolCall of orderedToolCalls) {
+    collectedChanges.push(...extractIdeToolFileChanges(toolCall));
+  }
+  return summarizeIdeFileChanges(collectedChanges);
+}
+
+function reverseUnifiedDiff(
+  diff: string,
+  changeType: IdeFileChangeItem["type"]
+): string | null {
+  if (!diff.trim() || diff.includes("[diff truncated")) return null;
+  const lines = diff.split(/\r?\n/);
+  if (lines.length === 0) return null;
+  const oldLineIndex = lines.findIndex((line) => line.startsWith("--- "));
+  const newLineIndex = lines.findIndex((line) => line.startsWith("+++ "));
+  if (oldLineIndex < 0 || newLineIndex < 0) return null;
+
+  const oldHeader = lines[oldLineIndex].slice(4).trim();
+  const newHeader = lines[newLineIndex].slice(4).trim();
+  const reversed = [...lines];
+  if (changeType === "created") {
+    reversed[oldLineIndex] = `--- ${newHeader}`;
+    reversed[newLineIndex] = "+++ /dev/null";
+  } else if (changeType === "deleted") {
+    reversed[oldLineIndex] = "--- /dev/null";
+    reversed[newLineIndex] = `+++ ${oldHeader}`;
+  } else {
+    reversed[oldLineIndex] = `--- ${newHeader}`;
+    reversed[newLineIndex] = `+++ ${oldHeader}`;
+  }
+
+  for (let index = 0; index < reversed.length; index += 1) {
+    const line = reversed[index] || "";
+    if (line.startsWith("@@")) {
+      const match = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/);
+      if (match) {
+        const oldStart = match[1];
+        const oldCount = match[2] || "1";
+        const newStart = match[3];
+        const newCount = match[4] || "1";
+        const suffix = match[5] || "";
+        reversed[index] = `@@ -${newStart},${newCount} +${oldStart},${oldCount} @@${suffix}`;
+      }
+      continue;
+    }
+    if (line.startsWith("+++ ") || line.startsWith("--- ")) continue;
+    if (line.startsWith("+")) {
+      reversed[index] = `-${line.slice(1)}`;
+      continue;
+    }
+    if (line.startsWith("-")) {
+      reversed[index] = `+${line.slice(1)}`;
+    }
+  }
+
+  return reversed.join("\n");
+}
+
+function getIdeToolCallArgs(toolCall: Record<string, unknown>): Record<string, unknown> | null {
+  if (isPlainRecord(toolCall.args)) return toolCall.args;
+  if (isPlainRecord(toolCall.arguments)) return toolCall.arguments;
+  return null;
+}
+
+function getIdeToolCallCommand(toolCall: Record<string, unknown>): string | null {
+  const args = getIdeToolCallArgs(toolCall);
+  if (!args) return null;
+  const directCommand =
+    (typeof args.command === "string" && args.command.trim()) ||
+    (typeof args.cmd === "string" && args.cmd.trim()) ||
+    "";
+  if (directCommand) return directCommand;
+
+  const toolName = typeof toolCall.name === "string" ? toolCall.name : "tool";
+  const path =
+    typeof args.path === "string" && args.path.trim()
+      ? args.path.trim()
+      : typeof args.file === "string" && args.file.trim()
+        ? args.file.trim()
+        : "";
+  const pattern = typeof args.pattern === "string" ? args.pattern.trim() : "";
+  const query = typeof args.query === "string" ? args.query.trim() : "";
+
+  if (pattern && path) return `${toolName} "${pattern}" ${path}`;
+  if (query) return `${toolName} "${query}"`;
+  if (path) return `${toolName} ${path}`;
+  return null;
+}
+
+function getIdeToolCallResultSummary(toolCall: Record<string, unknown>, maxLength = 320): string | null {
+  const result = toolCall.result;
+  if (typeof result === "string" && result.trim()) {
+    const compact = result.replace(/\s+/g, " ").trim();
+    return compact.length > maxLength ? `${compact.slice(0, maxLength - 1)}…` : compact;
+  }
+  if (!isPlainRecord(result)) return null;
+
+  const keys = ["output", "stdout", "message", "error", "content", "diff"] as const;
+  for (const key of keys) {
+    const value = result[key];
+    if (typeof value === "string" && value.trim()) {
+      const compact = value.replace(/\s+/g, " ").trim();
+      return compact.length > maxLength ? `${compact.slice(0, maxLength - 1)}…` : compact;
+    }
+  }
+  return null;
+}
+
+function getIdeToolCallExitCode(toolCall: Record<string, unknown>): string | null {
+  const result = toolCall.result;
+  if (!isPlainRecord(result)) return null;
+  const exitCode = result.exitCode;
+  const code = result.code;
+  if (typeof exitCode === "number" && Number.isFinite(exitCode)) return String(exitCode);
+  if (typeof exitCode === "string" && exitCode.trim()) return exitCode.trim();
+  if (typeof code === "number" && Number.isFinite(code)) return String(code);
+  if (typeof code === "string" && code.trim()) return code.trim();
+  return null;
+}
+
 function IDEChatPanel({
   workspaceDir,
   contextPath,
+  terminalContext,
+  onWorkspaceMutated,
   onClose,
   selectedAgentId,
   onSelectedAgentIdChange,
+  onPendingFileDiffsChange,
 }: {
   workspaceDir: string;
   contextPath: string | null;
+  terminalContext?: { isOpen: boolean; sessionCount: number; activeSessionId: string | null };
+  onWorkspaceMutated: () => void;
   onClose: () => void;
   selectedAgentId: string;
   onSelectedAgentIdChange: (agentId: string) => void;
+  onPendingFileDiffsChange?: (diffs: Array<{ path: string; diff?: string }>) => void;
 }) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<IdeChatMessage[]>([]);
@@ -3515,7 +4790,14 @@ function IDEChatPanel({
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isReverting, setIsReverting] = useState(false);
+  const [isApplyingDiffAction, setIsApplyingDiffAction] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [messageDiffDecision, setMessageDiffDecision] = useState<
+    Record<string, "accepted" | "rejected">
+  >({});
+  const [expandedDiffs, setExpandedDiffs] = useState<Record<string, boolean>>({});
+  const [collapseProgressUpdates, setCollapseProgressUpdates] = useState(false);
+  const [copiedToolCallKey, setCopiedToolCallKey] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -3557,17 +4839,132 @@ function IDEChatPanel({
     onSelectedAgentIdChange("");
   }, [agents, onSelectedAgentIdChange, selectedAgentId]);
 
+  const getMessageKey = useCallback((message: IdeChatMessage, index: number): string => {
+    return `${message.role}:${message.timestamp}:${index}`;
+  }, []);
+
+  const messageChangeSummaryByKey = useMemo(() => {
+    const map = new Map<string, IdeFileChangeSummary>();
+    messages.forEach((message, index) => {
+      if (message.role !== "assistant") return;
+      const toolSummary = summarizeIdeMessageFileChanges(message.tool_calls);
+      const summary =
+        toolSummary ||
+        mergeIdeFileChangeSummaries(
+          summarizeIdeActivityFileChanges(message.process_activities),
+          summarizeIdeTextFileChanges(message.content)
+        );
+      if (!summary) return;
+      map.set(getMessageKey(message, index), summary);
+    });
+    return map;
+  }, [getMessageKey, messages]);
+
+  const pendingMessageChangeKeys = useMemo(
+    () =>
+      Array.from(messageChangeSummaryByKey.keys()).filter((key) => !messageDiffDecision[key]),
+    [messageChangeSummaryByKey, messageDiffDecision]
+  );
+
+  const pendingFileDiffs = useMemo(() => {
+    const items: Array<{ path: string; diff?: string }> = [];
+    for (const key of pendingMessageChangeKeys) {
+      const summary = messageChangeSummaryByKey.get(key);
+      if (!summary) continue;
+      for (const file of summary.files) {
+        items.push({
+          path: file.path,
+          diff: typeof file.diff === "string" ? file.diff : undefined,
+        });
+      }
+    }
+    return items;
+  }, [messageChangeSummaryByKey, pendingMessageChangeKeys]);
+
+  const pendingChangeAggregate = useMemo(() => {
+    const byPath = new Map<string, { added: number; removed: number }>();
+    for (const key of pendingMessageChangeKeys) {
+      const summary = messageChangeSummaryByKey.get(key);
+      if (!summary) continue;
+      for (const file of summary.files) {
+        const existing = byPath.get(file.path) || { added: 0, removed: 0 };
+        existing.added += file.added;
+        existing.removed += file.removed;
+        byPath.set(file.path, existing);
+      }
+    }
+    const files = Array.from(byPath.entries()).map(([path, values]) => ({
+      path,
+      ...values,
+    }));
+    return {
+      fileCount: files.length,
+      totalAdded: files.reduce((sum, file) => sum + file.added, 0),
+      totalRemoved: files.reduce((sum, file) => sum + file.removed, 0),
+    };
+  }, [messageChangeSummaryByKey, pendingMessageChangeKeys]);
+
+  useEffect(() => {
+    onPendingFileDiffsChange?.(pendingFileDiffs);
+  }, [onPendingFileDiffsChange, pendingFileDiffs]);
+
+  useEffect(() => {
+    return () => {
+      onPendingFileDiffsChange?.([]);
+    };
+  }, [onPendingFileDiffsChange]);
+
   const mapApiMessageToIde = useCallback((value: unknown): IdeChatMessage | null => {
-    if (!value || typeof value !== "object") return null;
-    const item = value as Record<string, unknown>;
-    const role = item.role === "assistant" || item.role === "user" ? item.role : null;
-    const content = typeof item.content === "string" ? item.content : "";
+    if (!isPlainRecord(value)) return null;
+    const role = value.role === "assistant" || value.role === "user" ? value.role : null;
+    const content = typeof value.content === "string" ? value.content : "";
     const timestamp =
-      typeof item.timestamp === "string" && item.timestamp
-        ? item.timestamp
+      typeof value.timestamp === "string" && value.timestamp
+        ? value.timestamp
         : new Date().toISOString();
     if (!role || !content.trim()) return null;
-    return { role, content, timestamp };
+
+    const toolCalls = Array.isArray(value.tool_calls)
+      ? value.tool_calls.filter((entry): entry is Record<string, unknown> => isPlainRecord(entry))
+      : undefined;
+    const processActivities = Array.isArray((value as { process_activities?: unknown }).process_activities)
+        ? ((value as { process_activities?: unknown[] }).process_activities || [])
+          .map((entry): IdeProcessActivity | null => {
+            if (!isPlainRecord(entry)) return null;
+            const phase =
+              entry.phase === "start" || entry.phase === "result" || entry.phase === "error"
+                ? entry.phase
+                : "result";
+            const text = typeof entry.text === "string" ? entry.text.trim() : "";
+            const timestampRaw =
+              typeof entry.timestamp === "number" && Number.isFinite(entry.timestamp)
+                ? entry.timestamp
+                : Date.now();
+            if (!text) return null;
+            return {
+              id:
+                typeof entry.id === "string" && entry.id.trim()
+                  ? entry.id
+                  : `${timestampRaw}-${Math.random().toString(36).slice(2, 8)}`,
+              phase,
+              text,
+              timestamp: timestampRaw,
+              toolName: typeof entry.toolName === "string" ? entry.toolName : undefined,
+              toolCallId: typeof entry.toolCallId === "string" ? entry.toolCallId : undefined,
+            };
+          })
+          .filter((entry): entry is IdeProcessActivity => entry !== null)
+      : undefined;
+
+    return {
+      role,
+      content,
+      timestamp,
+      thinking: typeof value.thinking === "string" ? value.thinking : undefined,
+      tool_calls: toolCalls && toolCalls.length > 0 ? toolCalls : undefined,
+      process_activities:
+        processActivities && processActivities.length > 0 ? processActivities : undefined,
+    };
   }, []);
 
   const handleSend = useCallback(async () => {
@@ -3584,9 +4981,17 @@ function IDEChatPanel({
     setIsSending(true);
     setError(null);
 
-    const contextualPrompt = contextPath
-      ? `${trimmed}\n\nCurrent IDE file context: ${contextPath}`
-      : trimmed;
+    const contextParts: string[] = [];
+    if (contextPath) {
+      contextParts.push(`Current IDE file context: ${contextPath}`);
+    }
+    if (terminalContext?.isOpen) {
+      contextParts.push(
+        `IDE terminal context: open (${terminalContext.sessionCount} session${terminalContext.sessionCount === 1 ? "" : "s"})${terminalContext.activeSessionId ? `, active=${terminalContext.activeSessionId}` : ""}`
+      );
+    }
+    const contextualPrompt =
+      contextParts.length > 0 ? `${trimmed}\n\n${contextParts.join("\n")}` : trimmed;
 
     try {
       const response = await chatApi.send(
@@ -3600,24 +5005,38 @@ function IDEChatPanel({
         return;
       }
       setSessionId(response.data.sessionId || sessionId);
-      const assistantContent = response.data.message?.content || "(No assistant response)";
-      const assistantMessage: IdeChatMessage = {
-        role: "assistant",
-        content: assistantContent,
-        timestamp: new Date().toISOString(),
-      };
+      const mappedAssistant = mapApiMessageToIde(response.data.message);
+      const assistantMessage: IdeChatMessage =
+        mappedAssistant ||
+        ({
+          role: "assistant",
+          content: response.data.message?.content || "(No assistant response)",
+          timestamp: new Date().toISOString(),
+        } satisfies IdeChatMessage);
       setMessages((previous) => [...previous, assistantMessage]);
     } catch (sendError) {
       setError(String(sendError));
     } finally {
       setIsSending(false);
     }
-  }, [contextPath, input, isReverting, isSending, selectedAgentId, sessionId, workspaceDir]);
+  }, [
+    contextPath,
+    input,
+    isReverting,
+    isSending,
+    mapApiMessageToIde,
+    selectedAgentId,
+    sessionId,
+    terminalContext,
+    workspaceDir,
+  ]);
 
   const handleNewChat = useCallback(() => {
     setSessionId(null);
     setMessages([]);
     setError(null);
+    setMessageDiffDecision({});
+    setExpandedDiffs({});
   }, []);
 
   const handleRevertToHere = useCallback(
@@ -3652,6 +5071,8 @@ function IDEChatPanel({
         } else {
           setMessages(messages.slice(0, messageIndex + 1));
         }
+        setMessageDiffDecision({});
+        setExpandedDiffs({});
         setInput(target.content);
       } catch (revertError) {
         setError(String(revertError));
@@ -3662,15 +5083,185 @@ function IDEChatPanel({
     [isReverting, isSending, mapApiMessageToIde, messages, sessionId]
   );
 
+  const setDecisionForKeys = useCallback(
+    (keys: string[], decision: "accepted" | "rejected") => {
+      if (keys.length === 0) return;
+      setMessageDiffDecision((previous) => {
+        const next = { ...previous };
+        for (const key of keys) {
+          next[key] = decision;
+        }
+        return next;
+      });
+    },
+    []
+  );
+
+  const applyReversePatchForMessages = useCallback(
+    async (messageKeys: string[]): Promise<boolean> => {
+      const patchParts: string[] = [];
+      for (const messageKey of messageKeys) {
+        const summary = messageChangeSummaryByKey.get(messageKey);
+        if (!summary) continue;
+        for (const file of summary.files) {
+          const diff = typeof file.diff === "string" ? file.diff : "";
+          if (!diff.trim()) continue;
+          const reversePatch = reverseUnifiedDiff(diff, file.type);
+          if (!reversePatch) {
+            setError(
+              `Cannot auto-reject ${file.path} because its diff is missing or truncated.`
+            );
+            return false;
+          }
+          patchParts.push(reversePatch.trimEnd());
+        }
+      }
+
+      if (patchParts.length === 0) {
+        setError("No reversible file diffs found for this selection.");
+        return false;
+      }
+
+      setIsApplyingDiffAction(true);
+      setError(null);
+      try {
+        const response = await apiFetch("/api/tools/execute", {
+          method: "POST",
+          body: JSON.stringify({
+            name: "apply_patch",
+            args: { patch: `${patchParts.join("\n\n")}\n` },
+            context: {
+              workspaceDir,
+              sessionId: sessionId || "ide-chat",
+              agentId: selectedAgentId || "ide-chat",
+              channel: "ide",
+              userId: "ide-user",
+              allowDangerousTools: true,
+            },
+          }),
+        });
+        const payload = (await response.json()) as Record<string, unknown>;
+        if (!response.ok) {
+          const message =
+            typeof payload.error === "string" && payload.error.trim()
+              ? payload.error
+              : "Failed to apply reverse patch.";
+          setError(message);
+          return false;
+        }
+        if (payload.success === false) {
+          const failed = Array.isArray(payload.failed)
+            ? payload.failed
+                .map((entry) =>
+                  isPlainRecord(entry) && typeof entry.error === "string" ? entry.error : null
+                )
+                .filter((entry): entry is string => !!entry)
+            : [];
+          const message = failed.length > 0 ? failed.join(" | ") : "Failed to apply reverse patch.";
+          setError(message);
+          return false;
+        }
+
+        onWorkspaceMutated();
+        return true;
+      } catch (applyError) {
+        setError(String(applyError));
+        return false;
+      } finally {
+        setIsApplyingDiffAction(false);
+      }
+    },
+    [messageChangeSummaryByKey, onWorkspaceMutated, selectedAgentId, sessionId, workspaceDir]
+  );
+
+  const handleAcceptMessageChanges = useCallback(
+    (messageKey: string) => {
+      setDecisionForKeys([messageKey], "accepted");
+    },
+    [setDecisionForKeys]
+  );
+
+  const handleAcceptAllMessageChanges = useCallback(() => {
+    if (pendingMessageChangeKeys.length === 0) return;
+    setDecisionForKeys(pendingMessageChangeKeys, "accepted");
+  }, [pendingMessageChangeKeys, setDecisionForKeys]);
+
+  const handleRejectMessageChanges = useCallback(
+    async (messageKey: string) => {
+      if (isSending || isReverting || isApplyingDiffAction) return;
+      const confirmed = window.confirm(
+        "Reject these file changes? Cybara will apply a reverse patch to undo them."
+      );
+      if (!confirmed) return;
+      const ok = await applyReversePatchForMessages([messageKey]);
+      if (ok) {
+        setDecisionForKeys([messageKey], "rejected");
+      }
+    },
+    [
+      applyReversePatchForMessages,
+      isApplyingDiffAction,
+      isReverting,
+      isSending,
+      setDecisionForKeys,
+    ]
+  );
+
+  const handleRejectAllMessageChanges = useCallback(async () => {
+    if (pendingMessageChangeKeys.length === 0 || isSending || isReverting || isApplyingDiffAction) {
+      return;
+    }
+    const confirmed = window.confirm(
+      `Reject all pending file changes (${pendingMessageChangeKeys.length} message${pendingMessageChangeKeys.length === 1 ? "" : "s"})?`
+    );
+    if (!confirmed) return;
+    const ok = await applyReversePatchForMessages(pendingMessageChangeKeys);
+    if (ok) {
+      setDecisionForKeys(pendingMessageChangeKeys, "rejected");
+    }
+  }, [
+    applyReversePatchForMessages,
+    isApplyingDiffAction,
+    isReverting,
+    isSending,
+    pendingMessageChangeKeys,
+    setDecisionForKeys,
+  ]);
+
+  const handleCopyToolCommand = useCallback(async (key: string, command: string) => {
+    if (!command.trim()) return;
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopiedToolCallKey(key);
+      window.setTimeout(() => {
+        setCopiedToolCallKey((current) => (current === key ? null : current));
+      }, 1500);
+    } catch {
+      // noop
+    }
+  }, []);
+
   return (
     <div className="h-full flex flex-col bg-[#0a0a12]">
       <div className="h-9 px-3 border-b border-white/10 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-xs text-gray-400">
+        <div className="flex items-center gap-2 text-xs text-gray-300">
           <MessageSquare className="w-3.5 h-3.5 text-indigo-300" />
-          <span>IDE Chat</span>
-          {sessionId && <span className="text-[10px] text-gray-600">{sessionId.slice(0, 8)}</span>}
+          <span className="font-medium">IDE Chat</span>
+          {pendingMessageChangeKeys.length > 0 && (
+            <span className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-200">
+              {pendingMessageChangeKeys.length} pending
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setCollapseProgressUpdates((previous) => !previous)}
+            className="h-7 px-2 rounded text-[11px] text-gray-400 hover:text-gray-200 hover:bg-white/5"
+            title={collapseProgressUpdates ? "Expand progress updates" : "Collapse progress updates"}
+          >
+            {collapseProgressUpdates ? "Expand all" : "Collapse all"}
+          </button>
           <Button
             variant="ghost"
             size="sm"
@@ -3704,35 +5295,284 @@ function IDEChatPanel({
           </div>
         ) : (
           messages.map((message, index) => (
-            <div
-              key={`${message.role}:${message.timestamp}:${index}`}
-              className={cn(
-                "rounded-md px-2.5 py-2 text-xs whitespace-pre-wrap break-words border",
-                message.role === "user"
-                  ? "border-indigo-500/30 bg-indigo-500/10 text-indigo-100"
-                  : "border-white/10 bg-black/30 text-gray-200"
-              )}
-            >
-              <div className="mb-1 flex items-center justify-between gap-2 text-[10px] text-gray-500">
-                <span>{message.role === "user" ? "You" : "Assistant"}</span>
-                <div className="flex items-center gap-2">
-                  <span>{new Date(message.timestamp).toLocaleTimeString()}</span>
-                  {message.role === "user" && sessionId && (
-                    <button
-                      type="button"
-                      disabled={isReverting || isSending}
-                      onClick={() => void handleRevertToHere(index)}
-                      className="inline-flex items-center rounded border border-amber-500/30 bg-amber-500/10 p-1 text-amber-200 hover:bg-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Revert this IDE chat session to this message"
-                      aria-label="Revert to here"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                    </button>
+            (() => {
+              const messageKey = getMessageKey(message, index);
+              const changeSummary =
+                message.role === "assistant"
+                  ? messageChangeSummaryByKey.get(messageKey) || null
+                  : null;
+              const decision = messageDiffDecision[messageKey];
+              const processActivities =
+                message.role === "assistant" && Array.isArray(message.process_activities)
+                  ? message.process_activities
+                  : [];
+              const orderedToolCalls =
+                message.role === "assistant" && Array.isArray(message.tool_calls)
+                  ? getIdeToolCallsInTimelineOrder(message.tool_calls)
+                  : [];
+              return (
+                <div
+                  key={messageKey}
+                  className={cn(
+                    "rounded-md px-2.5 py-2 text-xs whitespace-pre-wrap break-words border",
+                    message.role === "user"
+                      ? "border-indigo-500/30 bg-indigo-500/10 text-indigo-100"
+                      : "border-white/10 bg-black/30 text-gray-200"
+                  )}
+                >
+                  <div className="mb-1 flex items-center justify-between gap-2 text-[10px] text-gray-500">
+                    <span>{message.role === "user" ? "You" : "Assistant"}</span>
+                    <div className="flex items-center gap-2">
+                      <span>{new Date(message.timestamp).toLocaleTimeString()}</span>
+                      {message.role === "user" && sessionId && (
+                        <button
+                          type="button"
+                          disabled={isReverting || isSending || isApplyingDiffAction}
+                          onClick={() => void handleRevertToHere(index)}
+                          className="inline-flex items-center rounded border border-amber-500/30 bg-amber-500/10 p-1 text-amber-200 hover:bg-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Revert this IDE chat session to this message"
+                          aria-label="Revert to here"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div>{message.content}</div>
+
+                  {message.role === "assistant" && message.thinking && (
+                    <div className="mt-2 rounded border border-indigo-500/20 bg-indigo-500/10 px-2 py-1 text-[11px] text-indigo-200">
+                      {message.thinking}
+                    </div>
+                  )}
+
+                  {message.role === "assistant" && changeSummary && (
+                    <div className="mt-2 rounded border border-white/10 bg-black/25 px-2 py-1.5">
+                      <div className="text-[10px] uppercase tracking-wide text-gray-500">
+                        Files Edited
+                      </div>
+                      <div className="mt-1 space-y-1">
+                        {changeSummary.files.map((file) => (
+                          <div
+                            key={`${messageKey}:files-edited:${file.path}`}
+                            className="flex items-center justify-between gap-2 text-[11px]"
+                          >
+                            <span className="truncate text-gray-200" title={file.path}>
+                              {file.path}
+                            </span>
+                            <span className="shrink-0 text-gray-500">
+                              <span className="text-emerald-300">+{file.added}</span>{" "}
+                              <span className="text-red-300">-{file.removed}</span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {message.role === "assistant" &&
+                    (processActivities.length > 0 || orderedToolCalls.length > 0) && (
+                      <div className="mt-2 rounded border border-white/10 bg-black/25 px-2 py-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-[10px] uppercase tracking-wide text-gray-500">
+                            Progress Updates
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setCollapseProgressUpdates((previous) => !previous)}
+                            className="text-[10px] text-gray-500 hover:text-gray-300"
+                            title={collapseProgressUpdates ? "Expand all progress updates" : "Collapse all progress updates"}
+                          >
+                            {collapseProgressUpdates ? "Expand all" : "Collapse all"}
+                          </button>
+                        </div>
+                        {!collapseProgressUpdates && (
+                          <div className="mt-1 space-y-2">
+                            {processActivities.map((activity, activityIndex) => (
+                              <div
+                                key={`${messageKey}:activity:${activity.id}`}
+                                className="rounded border border-white/10 bg-black/30 px-2 py-1.5"
+                              >
+                                <div className="text-[10px] text-gray-500 mb-0.5">
+                                  {activityIndex + 1}
+                                </div>
+                                <div className="text-[11px] text-gray-300">{activity.text}</div>
+                              </div>
+                            ))}
+                            {orderedToolCalls.map((toolCall, toolIndex) => {
+                              const toolKey = `${messageKey}:tool:${toolCall.id || toolIndex}`;
+                              const toolName =
+                                typeof toolCall.name === "string" ? toolCall.name : "tool";
+                              const toolStatus =
+                                typeof toolCall.status === "string" ? toolCall.status : "completed";
+                              const command = getIdeToolCallCommand(toolCall);
+                              const resultSummary = getIdeToolCallResultSummary(toolCall);
+                              const exitCode = getIdeToolCallExitCode(toolCall);
+                              return (
+                                <div
+                                  key={toolKey}
+                                  className="rounded border border-white/10 bg-black/35 px-2 py-1.5"
+                                >
+                                  <div className="flex items-center justify-between gap-2 text-[10px] text-gray-500">
+                                    <span className="uppercase tracking-wide">
+                                      {command ? "Ran command" : toolName}
+                                    </span>
+                                    <span>{toolStatus}</span>
+                                  </div>
+                                  {command && (
+                                    <div className="mt-1 rounded border border-white/10 bg-black/40 px-2 py-1 font-mono text-[11px] text-gray-200 whitespace-pre-wrap break-words">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <span className="break-all">{command}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => void handleCopyToolCommand(toolKey, command)}
+                                          className="shrink-0 rounded border border-white/10 p-1 text-gray-400 hover:text-gray-200 hover:bg-white/5"
+                                          title={
+                                            copiedToolCallKey === toolKey ? "Copied" : "Copy command"
+                                          }
+                                        >
+                                          <Copy className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {resultSummary && (
+                                    <div className="mt-1 text-[11px] text-gray-300 whitespace-pre-wrap break-words">
+                                      {resultSummary}
+                                    </div>
+                                  )}
+                                  <div className="mt-1 text-[10px] text-gray-500">
+                                    {exitCode !== null ? `Exit code ${exitCode}` : "Completed"}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                  {message.role === "assistant" && changeSummary && (
+                    <div className="mt-2 rounded border border-white/10 bg-black/35 px-2 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-[11px] text-gray-300">
+                          Edited files {changeSummary.files.length}{" "}
+                          <span className="text-emerald-300">+{changeSummary.totalAdded}</span>{" "}
+                          <span className="text-red-300">-{changeSummary.totalRemoved}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {decision ? (
+                            <span
+                              className={cn(
+                                "text-[10px] px-1.5 py-0.5 rounded border",
+                                decision === "accepted"
+                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                                  : "border-red-500/30 bg-red-500/10 text-red-200"
+                              )}
+                            >
+                              {decision === "accepted" ? "Accepted" : "Rejected"}
+                            </span>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleAcceptMessageChanges(messageKey)}
+                                disabled={isSending || isReverting || isApplyingDiffAction}
+                                className="inline-flex items-center rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-50"
+                                title="Accept these file changes"
+                              >
+                                <Check className="w-3 h-3 mr-1" />
+                                Accept
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleRejectMessageChanges(messageKey)}
+                                disabled={isSending || isReverting || isApplyingDiffAction}
+                                className="inline-flex items-center rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-[10px] text-red-200 hover:bg-red-500/20 disabled:opacity-50"
+                                title="Reject and undo these file changes"
+                              >
+                                {isApplyingDiffAction ? (
+                                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                ) : (
+                                  <RotateCcw className="w-3 h-3 mr-1" />
+                                )}
+                                Reject
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-2 space-y-1.5">
+                        {changeSummary.files.map((file) => {
+                          const diffKey = `${messageKey}:${file.path}`;
+                          const isExpanded = !!expandedDiffs[diffKey];
+                          return (
+                            <div
+                              key={`${messageKey}:file:${file.path}`}
+                              className="rounded border border-white/10 bg-black/30"
+                            >
+                              <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-[11px]">
+                                <div className="min-w-0">
+                                  <div className="truncate text-gray-200" title={file.path}>
+                                    {file.path}
+                                  </div>
+                                  <div className="text-[10px] text-gray-500">
+                                    {file.type} · <span className="text-emerald-300">+{file.added}</span>{" "}
+                                    <span className="text-red-300">-{file.removed}</span>
+                                  </div>
+                                </div>
+                                {file.diff && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setExpandedDiffs((previous) => ({
+                                        ...previous,
+                                        [diffKey]: !previous[diffKey],
+                                      }))
+                                    }
+                                    className="rounded border border-white/10 px-1.5 py-0.5 text-[10px] text-gray-300 hover:bg-white/5"
+                                  >
+                                    {isExpanded ? "Hide diff" : "Show diff"}
+                                  </button>
+                                )}
+                              </div>
+                              {isExpanded && file.diff && (
+                                <div className="max-h-52 overflow-auto border-t border-white/10 bg-[#06060b] px-2 py-1.5 font-mono text-[10px] leading-4">
+                                  {file.diff.split(/\r?\n/).map((line, lineIndex) => {
+                                    const isAdd = line.startsWith("+") && !line.startsWith("+++");
+                                    const isRemove = line.startsWith("-") && !line.startsWith("---");
+                                    const isHeader =
+                                      line.startsWith("diff --git") ||
+                                      line.startsWith("--- ") ||
+                                      line.startsWith("+++ ");
+                                    const isHunk = line.startsWith("@@");
+                                    return (
+                                      <div
+                                        key={`${diffKey}:line:${lineIndex}`}
+                                        className={cn(
+                                          "whitespace-pre",
+                                          isAdd && "bg-emerald-500/15 text-emerald-200",
+                                          isRemove && "bg-red-500/15 text-red-200",
+                                          isHeader && "text-sky-300",
+                                          isHunk && "text-indigo-300",
+                                          !isAdd && !isRemove && !isHeader && !isHunk && "text-gray-300"
+                                        )}
+                                      >
+                                        {line || " "}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   )}
                 </div>
-              </div>
-              {message.content}
-            </div>
+              );
+            })()
           ))
         )}
         {isSending && (
@@ -3755,6 +5595,43 @@ function IDEChatPanel({
         </div>
       )}
 
+      {pendingMessageChangeKeys.length > 0 && (
+        <div className="px-3 py-2 border-t border-indigo-500/20 bg-[#121423] flex items-center justify-between gap-2">
+          <div className="text-[11px] text-gray-200 min-w-0 truncate">
+            {pendingChangeAggregate.fileCount} file
+            {pendingChangeAggregate.fileCount === 1 ? "" : "s"} with changes{" "}
+            <span className="text-emerald-300">+{pendingChangeAggregate.totalAdded}</span>{" "}
+            <span className="text-red-300">-{pendingChangeAggregate.totalRemoved}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => void handleRejectAllMessageChanges()}
+              disabled={isApplyingDiffAction || isSending || isReverting}
+              className="inline-flex items-center rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-200 hover:bg-red-500/20 disabled:opacity-50"
+              title="Reject all pending file changes"
+            >
+              {isApplyingDiffAction ? (
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+              ) : (
+                <RotateCcw className="w-3 h-3 mr-1" />
+              )}
+              Reject all
+            </button>
+            <button
+              type="button"
+              onClick={handleAcceptAllMessageChanges}
+              disabled={isApplyingDiffAction || isSending || isReverting}
+              className="inline-flex items-center rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-50"
+              title="Accept all pending file changes"
+            >
+              <Check className="w-3 h-3 mr-1" />
+              Accept all
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="p-3 border-t border-white/10 space-y-2">
         <textarea
           value={input}
@@ -3766,6 +5643,7 @@ function IDEChatPanel({
             }
           }}
           placeholder="Message IDE chat (Shift+Enter for newline)"
+          disabled={isApplyingDiffAction}
           className="w-full min-h-[82px] max-h-56 px-2 py-1.5 rounded border border-white/10 bg-black/40 text-xs text-gray-200 !outline-none focus:border-indigo-500/40 resize-y"
         />
         <div className="flex items-center gap-2">
@@ -3786,7 +5664,7 @@ function IDEChatPanel({
           <Button
             variant="ghost"
             size="sm"
-            disabled={isSending || isReverting || !input.trim()}
+            disabled={isSending || isReverting || isApplyingDiffAction || !input.trim()}
             onClick={() => void handleSend()}
             className="h-7 px-2.5"
           >
@@ -3918,6 +5796,7 @@ export function IDE() {
   const [saveRequestToken, setSaveRequestToken] = useState(0);
   const [requestedJumpLine, setRequestedJumpLine] = useState<number | null>(null);
   const [cursorPosition, setCursorPosition] = useState<{ line: number; column: number } | null>(null);
+  const [gitHistoryStatus, setGitHistoryStatus] = useState<GitHistoryStatus>("idle");
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => readPersistedSidebarWidth());
   const [sidebarMode, setSidebarMode] = useState<"explorer" | "search" | "outline">("explorer");
   const [openMenu, setOpenMenu] = useState<"file" | null>(null);
@@ -3950,6 +5829,11 @@ export function IDE() {
   const [ideChatSelectedAgentId, setIdeChatSelectedAgentId] = useState<string>(() =>
     readPersistedIdeChatAgentId()
   );
+  const [ideAgentOptions, setIdeAgentOptions] = useState<IdeChatAgentOption[]>([]);
+  const [showIdeSettings, setShowIdeSettings] = useState(false);
+  const [ideSettingsSection, setIdeSettingsSection] = useState<IdeSettingsSectionId>("general");
+  const [ideSettingsSearch, setIdeSettingsSearch] = useState("");
+  const [idePreferences, setIdePreferences] = useState<IdePreferences>(() => readPersistedIdePreferences());
   const [showIndexerSettings, setShowIndexerSettings] = useState(false);
   const [indexStatus, setIndexStatus] = useState<WorkspaceIndexerStatusResponse | null>(null);
   const [indexSettingsDraft, setIndexSettingsDraft] = useState<WorkspaceIndexerSettings | null>(null);
@@ -3957,11 +5841,33 @@ export function IDE() {
   const [indexStatusLoading, setIndexStatusLoading] = useState(false);
   const [indexActionLoading, setIndexActionLoading] = useState(false);
   const [indexSettingsError, setIndexSettingsError] = useState<string | null>(null);
+  const [indexSettingsMessage, setIndexSettingsMessage] = useState<string | null>(null);
+  const [embeddingProviders, setEmbeddingProviders] = useState<WorkspaceEmbeddingProviderOption[]>([]);
+  const [embeddingCatalogLoading, setEmbeddingCatalogLoading] = useState(false);
+  const [embeddingRuntime, setEmbeddingRuntime] = useState<WorkspaceEmbeddingRuntimeResponse | null>(null);
+  const [embeddingRuntimeLoading, setEmbeddingRuntimeLoading] = useState(false);
+  const [embeddingRuntimeActionLoading, setEmbeddingRuntimeActionLoading] = useState(false);
   const [isIdeChatOpen, setIsIdeChatOpen] = useState<boolean>(() => readPersistedChatOpen());
+  const [idePendingFileDiffs, setIdePendingFileDiffs] = useState<Array<{ path: string; diff?: string }>>(
+    []
+  );
+  const [isTerminalPanelOpen, setIsTerminalPanelOpen] = useState<boolean>(() =>
+    readPersistedTerminalOpen(readPersistedIdePreferences().openTerminalOnStartup)
+  );
+  const [terminalPanelHeight, setTerminalPanelHeight] = useState<number>(() =>
+    clampTerminalHeight(readPersistedIdePreferences().terminalPanelHeight)
+  );
+  const [terminalCreateRequestToken, setTerminalCreateRequestToken] = useState(0);
+  const [terminalPanelState, setTerminalPanelState] = useState<IdeTerminalPanelState>({
+    capability: "checking",
+    sessionCount: 0,
+    activeSessionId: null,
+  });
   const [chatPanelWidth, setChatPanelWidth] = useState<number>(() => readPersistedChatWidth());
   const workspacePaneRef = useRef<HTMLDivElement | null>(null);
   const sidebarResizeCleanupRef = useRef<(() => void) | null>(null);
   const chatResizeCleanupRef = useRef<(() => void) | null>(null);
+  const terminalResizeCleanupRef = useRef<(() => void) | null>(null);
   const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
   const treeFilterInputRef = useRef<HTMLInputElement | null>(null);
   const outlineInputRef = useRef<HTMLInputElement | null>(null);
@@ -3972,6 +5878,7 @@ export function IDE() {
   const lastIndexedWorkspaceAssignmentRef = useRef<string | null>(null);
   const pendingCursorPositionRef = useRef<{ line: number; column: number } | null>(null);
   const cursorPublishTimeoutRef = useRef<number | null>(null);
+  const settingsSearchRef = useRef<HTMLInputElement | null>(null);
   const effectiveWorkspacePath = rootInfo?.path || currentPath;
 
   const handleCursorPositionChange = useCallback((position: { line: number; column: number } | null) => {
@@ -3988,6 +5895,30 @@ export function IDE() {
         return next;
       });
     }, 75);
+  }, []);
+
+  useEffect(() => {
+    let isCancelled = false;
+    const loadAgents = async () => {
+      try {
+        const response = await agentsApi.list();
+        if (!response.success || !response.data || isCancelled) return;
+        const options = (response.data || [])
+          .map((agent) => ({
+            id: typeof agent.id === "string" ? agent.id : "",
+            name: typeof agent.name === "string" ? agent.name : "Agent",
+            status: typeof agent.status === "string" ? agent.status : undefined,
+          }))
+          .filter((agent) => agent.id);
+        setIdeAgentOptions(options);
+      } catch {
+        // Keep previously fetched options on transient API failures.
+      }
+    };
+    void loadAgents();
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   const fetchIndexStatus = useCallback(
@@ -4031,6 +5962,79 @@ export function IDE() {
     [effectiveWorkspacePath, indexSettingsDirty]
   );
 
+  const fetchEmbeddingCatalog = useCallback(async () => {
+    setEmbeddingCatalogLoading(true);
+    try {
+      const response = await apiFetch("/api/ide/index/embeddings");
+      const data: WorkspaceEmbeddingCatalogResponse = await response.json();
+      if (data.success) {
+        setEmbeddingProviders(Array.isArray(data.providers) ? data.providers : []);
+      } else {
+        setEmbeddingProviders([]);
+        setIndexSettingsError(data.error || "Failed to load embedding providers");
+      }
+    } catch (error) {
+      setEmbeddingProviders([]);
+      setIndexSettingsError(String(error));
+    } finally {
+      setEmbeddingCatalogLoading(false);
+    }
+  }, []);
+
+  const resolveEmbeddingRuntimeSelection = useCallback(() => {
+    const activeSettings = indexSettingsDraft || indexStatus?.settings || DEFAULT_INDEXER_SETTINGS_DRAFT;
+    const explicitProvider = activeSettings.embeddingProvider;
+    const runtimeProvider =
+      explicitProvider === "auto"
+        ? embeddingRuntime?.vectorProvider === "transformers_js" || embeddingRuntime?.vectorProvider === "ollama"
+          ? embeddingRuntime.vectorProvider
+          : "transformers_js"
+        : explicitProvider;
+    const runtimeModel =
+      activeSettings.embeddingModel ||
+      (runtimeProvider === "transformers_js"
+        ? embeddingRuntime?.transformers?.selectedModel || ""
+        : embeddingRuntime?.vectorModel || "");
+
+    return {
+      provider: runtimeProvider,
+      model: runtimeModel,
+    };
+  }, [embeddingRuntime?.transformers?.selectedModel, embeddingRuntime?.vectorModel, embeddingRuntime?.vectorProvider, indexSettingsDraft, indexStatus?.settings]);
+
+  const fetchEmbeddingRuntimeStatus = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const selection = resolveEmbeddingRuntimeSelection();
+      const silent = options?.silent === true;
+      if (!silent) setEmbeddingRuntimeLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (selection.provider) params.set("provider", selection.provider);
+        if (selection.model) params.set("model", selection.model);
+        const query = params.toString();
+        const response = await apiFetch(
+          `/api/ide/index/embedding/runtime${query ? `?${query}` : ""}`
+        );
+        const data: WorkspaceEmbeddingRuntimeResponse = await response.json();
+        if (data.success) {
+          setEmbeddingRuntime(data);
+          if (!silent) {
+            setIndexSettingsError(null);
+          }
+        } else if (!silent) {
+          setIndexSettingsError(data.error || "Failed to load embedding runtime status");
+        }
+      } catch (error) {
+        if (!silent) {
+          setIndexSettingsError(String(error));
+        }
+      } finally {
+        if (!silent) setEmbeddingRuntimeLoading(false);
+      }
+    },
+    [resolveEmbeddingRuntimeSelection]
+  );
+
   const assignWorkspaceToIndexer = useCallback(async (workspacePath: string) => {
     try {
       const response = await apiFetch("/api/ide/index/workspace", {
@@ -4056,6 +6060,7 @@ export function IDE() {
     if (!indexSettingsDraft) return;
     setIndexActionLoading(true);
     setIndexSettingsError(null);
+    setIndexSettingsMessage(null);
     try {
       const response = await apiFetch("/api/ide/index/settings", {
         method: "PUT",
@@ -4067,6 +6072,8 @@ export function IDE() {
         setIndexStatus(data);
         setIndexSettingsDraft(data.settings);
         setIndexSettingsDirty(false);
+        setIndexSettingsMessage("Indexer settings saved.");
+        void fetchEmbeddingCatalog();
       } else {
         setIndexSettingsError(data.error || "Failed to save indexer settings");
       }
@@ -4075,11 +6082,12 @@ export function IDE() {
     } finally {
       setIndexActionLoading(false);
     }
-  }, [indexSettingsDraft]);
+  }, [fetchEmbeddingCatalog, indexSettingsDraft]);
 
   const runWorkspaceReindex = useCallback(async () => {
     setIndexActionLoading(true);
     setIndexSettingsError(null);
+    setIndexSettingsMessage(null);
     try {
       const response = await apiFetch("/api/ide/index/reindex", {
         method: "POST",
@@ -4089,6 +6097,7 @@ export function IDE() {
       const data: WorkspaceIndexerStatusResponse = await response.json();
       if (data.success) {
         setIndexStatus(data);
+        setIndexSettingsMessage("Workspace reindex started.");
       } else {
         setIndexSettingsError(data.error || "Failed to reindex workspace");
       }
@@ -4102,6 +6111,7 @@ export function IDE() {
   const stopWorkspaceIndexing = useCallback(async () => {
     setIndexActionLoading(true);
     setIndexSettingsError(null);
+    setIndexSettingsMessage(null);
     try {
       const response = await apiFetch("/api/ide/index/stop", {
         method: "POST",
@@ -4109,6 +6119,7 @@ export function IDE() {
       const data: WorkspaceIndexerStatusResponse = await response.json();
       if (data.success) {
         setIndexStatus(data);
+        setIndexSettingsMessage("Workspace indexing stopped.");
       } else {
         setIndexSettingsError(data.error || "Failed to stop workspace indexer");
       }
@@ -4118,6 +6129,74 @@ export function IDE() {
       setIndexActionLoading(false);
     }
   }, []);
+
+  const loadEmbeddingRuntime = useCallback(async () => {
+    const selection = resolveEmbeddingRuntimeSelection();
+    setEmbeddingRuntimeActionLoading(true);
+    setIndexSettingsError(null);
+    setIndexSettingsMessage(null);
+    try {
+      const response = await apiFetch("/api/ide/index/embedding/load", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(selection),
+      });
+      const data = (await response.json()) as {
+        success: boolean;
+        message?: string;
+        status?: WorkspaceIndexerStatusResponse;
+        runtime?: WorkspaceEmbeddingRuntimeResponse;
+        error?: string;
+      };
+      if (data.success) {
+        if (data.status) setIndexStatus(data.status);
+        if (data.runtime) setEmbeddingRuntime(data.runtime);
+        setIndexSettingsMessage(data.message || "Local embedding runtime loaded.");
+      } else {
+        setIndexSettingsError(data.error || data.message || "Failed to load embedding runtime");
+      }
+    } catch (error) {
+      setIndexSettingsError(String(error));
+    } finally {
+      setEmbeddingRuntimeActionLoading(false);
+    }
+  }, [resolveEmbeddingRuntimeSelection]);
+
+  const stopEmbeddingRuntime = useCallback(async () => {
+    const selection = resolveEmbeddingRuntimeSelection();
+    setEmbeddingRuntimeActionLoading(true);
+    setIndexSettingsError(null);
+    setIndexSettingsMessage(null);
+    try {
+      const response = await apiFetch("/api/ide/index/embedding/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(selection),
+      });
+      const data = (await response.json()) as {
+        success: boolean;
+        message?: string;
+        status?: WorkspaceIndexerStatusResponse;
+        runtime?: WorkspaceEmbeddingRuntimeResponse;
+        error?: string;
+      };
+      if (data.success) {
+        if (data.status) {
+          setIndexStatus(data.status);
+        }
+        if (data.runtime) {
+          setEmbeddingRuntime(data.runtime);
+        }
+        setIndexSettingsMessage(data.message || "Local embedding runtime stopped.");
+      } else {
+        setIndexSettingsError(data.error || data.message || "Failed to stop embedding runtime");
+      }
+    } catch (error) {
+      setIndexSettingsError(String(error));
+    } finally {
+      setEmbeddingRuntimeActionLoading(false);
+    }
+  }, [resolveEmbeddingRuntimeSelection]);
 
   useEffect(() => {
     const fetchRoot = async () => {
@@ -4148,17 +6227,42 @@ export function IDE() {
   }, [currentPath, fetchIndexStatus]);
 
   useEffect(() => {
-    if (!showIndexerSettings && !indexStatus?.isIndexing) return;
+    const indexingSettingsVisible = showIndexerSettings || (showIdeSettings && ideSettingsSection === "indexing");
+    if (!indexingSettingsVisible && !indexStatus?.isIndexing) return;
     const interval = window.setInterval(() => {
       void fetchIndexStatus(effectiveWorkspacePath, { silent: true });
+      if (indexingSettingsVisible) {
+        void fetchEmbeddingRuntimeStatus({ silent: true });
+      }
     }, 1200);
     return () => window.clearInterval(interval);
-  }, [effectiveWorkspacePath, fetchIndexStatus, indexStatus?.isIndexing, showIndexerSettings]);
+  }, [
+    effectiveWorkspacePath,
+    fetchEmbeddingRuntimeStatus,
+    fetchIndexStatus,
+    ideSettingsSection,
+    indexStatus?.isIndexing,
+    showIdeSettings,
+    showIndexerSettings,
+  ]);
 
   useEffect(() => {
-    if (!showIndexerSettings) return;
+    const indexingSettingsVisible = showIndexerSettings || (showIdeSettings && ideSettingsSection === "indexing");
+    if (!indexingSettingsVisible) return;
     void fetchIndexStatus(effectiveWorkspacePath);
-  }, [effectiveWorkspacePath, fetchIndexStatus, showIndexerSettings]);
+  }, [effectiveWorkspacePath, fetchIndexStatus, ideSettingsSection, showIdeSettings, showIndexerSettings]);
+
+  useEffect(() => {
+    const indexingSettingsVisible = showIndexerSettings || (showIdeSettings && ideSettingsSection === "indexing");
+    if (!indexingSettingsVisible) return;
+    void fetchEmbeddingCatalog();
+  }, [fetchEmbeddingCatalog, ideSettingsSection, showIdeSettings, showIndexerSettings]);
+
+  useEffect(() => {
+    const indexingSettingsVisible = showIndexerSettings || (showIdeSettings && ideSettingsSection === "indexing");
+    if (!indexingSettingsVisible) return;
+    void fetchEmbeddingRuntimeStatus();
+  }, [fetchEmbeddingRuntimeStatus, ideSettingsSection, showIdeSettings, showIndexerSettings]);
 
   useEffect(() => {
     const updateViewport = () => {
@@ -4652,6 +6756,61 @@ export function IDE() {
     setShowCommandPalette(false);
   }, []);
 
+  const openIdeSettings = useCallback((section: IdeSettingsSectionId = "general") => {
+    setIdeSettingsSection(section);
+    setShowIdeSettings(true);
+    setIdeSettingsSearch("");
+    window.requestAnimationFrame(() => {
+      settingsSearchRef.current?.focus();
+      settingsSearchRef.current?.select();
+    });
+  }, []);
+
+  const updateIdePreferences = useCallback((patch: Partial<IdePreferences>) => {
+    setIdePreferences((previous) => {
+      const merged: IdePreferences = {
+        ...previous,
+        ...patch,
+      };
+      merged.editorFontSizePx = Math.max(11, Math.min(22, Math.round(merged.editorFontSizePx)));
+      merged.editorLineHeightPx = Math.max(16, Math.min(38, Math.round(merged.editorLineHeightPx)));
+      merged.completionDebounceMs = Math.max(30, Math.min(800, Math.round(merged.completionDebounceMs)));
+      merged.ghostDebounceMs = Math.max(60, Math.min(1400, Math.round(merged.ghostDebounceMs)));
+      merged.terminalPanelHeight = clampTerminalHeight(merged.terminalPanelHeight);
+      return merged;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (ideAgentOptions.length === 0) return;
+    if (!ideChatSelectedAgentId) return;
+    if (ideAgentOptions.some((agent) => agent.id === ideChatSelectedAgentId)) return;
+    setIdeChatSelectedAgentId("");
+  }, [ideAgentOptions, ideChatSelectedAgentId]);
+
+  useEffect(() => {
+    if (ideAgentOptions.length === 0) return;
+    if (idePreferences.useChatAgentForCompletions) return;
+    const selected = idePreferences.completionAgentId;
+    if (!selected) return;
+    if (ideAgentOptions.some((agent) => agent.id === selected)) return;
+    updateIdePreferences({ completionAgentId: "" });
+  }, [
+    ideAgentOptions,
+    idePreferences.completionAgentId,
+    idePreferences.useChatAgentForCompletions,
+    updateIdePreferences,
+  ]);
+
+  const toggleTerminalPanel = useCallback(() => {
+    setIsTerminalPanelOpen((previous) => !previous);
+  }, []);
+
+  const openNewTerminal = useCallback(() => {
+    setIsTerminalPanelOpen(true);
+    setTerminalCreateRequestToken((previous) => previous + 1);
+  }, []);
+
   const handleQuickOpenConfirm = useCallback(
     (index?: number) => {
       if (quickOpenResults.length === 0) return;
@@ -4681,6 +6840,12 @@ export function IDE() {
         label: "Quick Open",
         shortcut: "Ctrl/Cmd+P",
         run: () => openQuickOpenPalette(),
+      },
+      {
+        id: "ide-settings",
+        label: "IDE Settings",
+        shortcut: "Ctrl/Cmd+,",
+        run: () => openIdeSettings("general"),
       },
       {
         id: "new-file",
@@ -4745,6 +6910,18 @@ export function IDE() {
         run: () => setIsIdeChatOpen((previous) => !previous),
       },
       {
+        id: "new-terminal",
+        label: "New Terminal",
+        shortcut: "Ctrl/Cmd+Shift+`",
+        run: () => openNewTerminal(),
+      },
+      {
+        id: "toggle-terminal-panel",
+        label: isTerminalPanelOpen ? "Hide Terminal Panel" : "Show Terminal Panel",
+        shortcut: "Ctrl/Cmd+`",
+        run: () => toggleTerminalPanel(),
+      },
+      {
         id: "refresh-workspace",
         label: "Refresh Workspace",
         run: () => handleRefresh(),
@@ -4797,8 +6974,12 @@ export function IDE() {
       handlePromptOpenWorkspace,
       fetchIndexStatus,
       isIdeChatOpen,
+      isTerminalPanelOpen,
+      openIdeSettings,
+      openNewTerminal,
       openQuickOpenPalette,
       rootInfo?.path,
+      toggleTerminalPanel,
       workspaceSearchPath,
     ]
   );
@@ -4980,6 +7161,24 @@ export function IDE() {
         return;
       }
 
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key === ",") {
+        event.preventDefault();
+        openIdeSettings("general");
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.code === "Backquote") {
+        event.preventDefault();
+        toggleTerminalPanel();
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.code === "Backquote") {
+        event.preventDefault();
+        openNewTerminal();
+        return;
+      }
+
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "f") {
         event.preventDefault();
         openGlobalSearchPanel();
@@ -5075,11 +7274,14 @@ export function IDE() {
     openCommandPalette,
     openGlobalSearchPanel,
     handlePromptOpenWorkspace,
+    openIdeSettings,
+    openNewTerminal,
     openQuickOpenPalette,
     rootInfo?.path,
     sidebarMode,
     showCommandPalette,
     showQuickOpen,
+    toggleTerminalPanel,
   ]);
 
   const handleSidebarResizeStart = useCallback(
@@ -5136,10 +7338,44 @@ export function IDE() {
     chatResizeCleanupRef.current = onMouseUp;
   }, []);
 
+  const handleTerminalResizeStart = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const container = workspacePaneRef.current;
+    if (!container) return;
+
+    const bounds = container.getBoundingClientRect();
+    const startY = event.clientY;
+    const startHeight = terminalPanelHeight;
+    const maxHeight = Math.max(IDE_TERMINAL_MIN_HEIGHT, Math.floor(bounds.height * 0.72));
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const delta = startY - moveEvent.clientY;
+      const nextHeight = Math.min(maxHeight, Math.max(IDE_TERMINAL_MIN_HEIGHT, startHeight + delta));
+      setTerminalPanelHeight(nextHeight);
+      setIdePreferences((previous) => ({
+        ...previous,
+        terminalPanelHeight: clampTerminalHeight(nextHeight),
+      }));
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.body.style.userSelect = "";
+      terminalResizeCleanupRef.current = null;
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    document.body.style.userSelect = "none";
+    terminalResizeCleanupRef.current = onMouseUp;
+  }, [terminalPanelHeight]);
+
   useEffect(() => {
     return () => {
       sidebarResizeCleanupRef.current?.();
       chatResizeCleanupRef.current?.();
+      terminalResizeCleanupRef.current?.();
     };
   }, []);
 
@@ -5152,8 +7388,26 @@ export function IDE() {
   }, [currentPath]);
 
   useEffect(() => {
+    if (!selectedFile?.path) {
+      setGitHistoryStatus("idle");
+    }
+  }, [selectedFile?.path]);
+
+  useEffect(() => {
     persistIdeChatAgentId(ideChatSelectedAgentId);
   }, [ideChatSelectedAgentId]);
+
+  useEffect(() => {
+    persistIdePreferences(idePreferences);
+  }, [idePreferences]);
+
+  useEffect(() => {
+    persistTerminalOpen(isTerminalPanelOpen);
+  }, [isTerminalPanelOpen]);
+
+  useEffect(() => {
+    setTerminalPanelHeight(clampTerminalHeight(idePreferences.terminalPanelHeight));
+  }, [idePreferences.terminalPanelHeight]);
 
   useEffect(() => {
     if (!openMenu) return;
@@ -5187,6 +7441,22 @@ export function IDE() {
 
   const activeTab = openTabs.find((tab) => tab.path === (activeTabPath || selectedFile?.path || ""));
   const workspaceRootPath = rootInfo?.path || currentPath;
+  const resolvedCompletionAgentId = useMemo(() => {
+    if (idePreferences.useChatAgentForCompletions) {
+      return ideChatSelectedAgentId || null;
+    }
+    const configuredAgentId = idePreferences.completionAgentId?.trim() || "";
+    if (!configuredAgentId) return null;
+    if (ideAgentOptions.some((agent) => agent.id === configuredAgentId)) {
+      return configuredAgentId;
+    }
+    return null;
+  }, [
+    ideAgentOptions,
+    ideChatSelectedAgentId,
+    idePreferences.completionAgentId,
+    idePreferences.useChatAgentForCompletions,
+  ]);
   const breadcrumbs = useMemo<IdeBreadcrumb[]>(() => {
     if (!selectedFile?.path) return [];
     const filePath = selectedFile.path.replace(/\\/g, "/");
@@ -5245,6 +7515,14 @@ export function IDE() {
   const statusEncoding = selectedFile ? "UTF-8" : null;
   const statusEol = selectedFile ? "LF" : null;
   const statusIndent = selectedFile ? "Spaces: 2" : null;
+  const gitHistoryStatusLabel = useMemo(() => {
+    if (!selectedFile?.path) return null;
+    if (gitHistoryStatus === "loading") return "Git history: loading";
+    if (gitHistoryStatus === "ready") return "Git history: ready";
+    if (gitHistoryStatus === "unavailable") return "Git history: unavailable";
+    if (gitHistoryStatus === "error") return "Git history: error";
+    return "Git history: idle";
+  }, [gitHistoryStatus, selectedFile?.path]);
   const contextMenuPosition = treeContextMenu
     ? {
         left:
@@ -5277,6 +7555,126 @@ export function IDE() {
     return "Index idle";
   }, [indexStatus]);
   const activeIndexSettings = indexSettingsDraft || indexStatus?.settings || DEFAULT_INDEXER_SETTINGS_DRAFT;
+  const selectedEmbeddingProvider = useMemo(
+    () => embeddingProviders.find((option) => option.id === activeIndexSettings.embeddingProvider) || null,
+    [activeIndexSettings.embeddingProvider, embeddingProviders]
+  );
+  const selectedEmbeddingModelOptions = useMemo(() => {
+    if (!selectedEmbeddingProvider) return [];
+    return selectedEmbeddingProvider.models || [];
+  }, [selectedEmbeddingProvider]);
+  const runtimeTargetProvider = useMemo(() => {
+    if (activeIndexSettings.embeddingProvider !== "auto") {
+      return activeIndexSettings.embeddingProvider;
+    }
+    if (embeddingRuntime?.vectorProvider === "transformers_js" || embeddingRuntime?.vectorProvider === "ollama") {
+      return embeddingRuntime.vectorProvider;
+    }
+    return "transformers_js";
+  }, [activeIndexSettings.embeddingProvider, embeddingRuntime?.vectorProvider]);
+  const runtimeTargetModel = useMemo(() => {
+    if (activeIndexSettings.embeddingModel.trim()) {
+      return activeIndexSettings.embeddingModel.trim();
+    }
+    if (runtimeTargetProvider === "transformers_js") {
+      return embeddingRuntime?.transformers?.selectedModel || selectedEmbeddingProvider?.defaultModel || "";
+    }
+    return embeddingRuntime?.vectorModel || selectedEmbeddingProvider?.defaultModel || "";
+  }, [
+    activeIndexSettings.embeddingModel,
+    embeddingRuntime?.transformers?.selectedModel,
+    embeddingRuntime?.vectorModel,
+    runtimeTargetProvider,
+    selectedEmbeddingProvider?.defaultModel,
+  ]);
+  const canManageLocalRuntime =
+    runtimeTargetProvider === "transformers_js" || runtimeTargetProvider === "ollama";
+  const canUnloadLocalRuntime =
+    canManageLocalRuntime &&
+    (runtimeTargetProvider !== "transformers_js"
+      ? true
+      : embeddingRuntime?.transformers?.selectedState === "ready" ||
+        embeddingRuntime?.transformers?.selectedState === "loading" ||
+        (embeddingRuntime?.transformers?.loadedModels?.length || 0) > 0);
+  const selectedTransformersRuntimeError = useMemo(() => {
+    if (!embeddingRuntime?.transformers) return null;
+    const selectedModel = embeddingRuntime.transformers.selectedModel;
+    const selectedEntry = embeddingRuntime.transformers.loadedModels.find(
+      (entry) => entry.model === selectedModel
+    );
+    return selectedEntry?.lastError || null;
+  }, [embeddingRuntime?.transformers]);
+  const effectiveRuntimeNote = useMemo(() => {
+    if (runtimeTargetProvider === "transformers_js" && selectedTransformersRuntimeError) {
+      return selectedTransformersRuntimeError;
+    }
+    if (
+      runtimeTargetProvider === "transformers_js" &&
+      embeddingRuntime?.transformers?.selectedState === "ready"
+    ) {
+      return null;
+    }
+    if (runtimeTargetProvider === "ollama" && embeddingRuntime?.vectorProvider === "ollama") {
+      return null;
+    }
+    return embeddingRuntime?.vectorFallbackReason || null;
+  }, [
+    embeddingRuntime?.transformers?.selectedState,
+    embeddingRuntime?.vectorFallbackReason,
+    embeddingRuntime?.vectorProvider,
+    runtimeTargetProvider,
+    selectedTransformersRuntimeError,
+  ]);
+
+  useEffect(() => {
+    const indexingSettingsVisible = showIndexerSettings || (showIdeSettings && ideSettingsSection === "indexing");
+    if (!indexingSettingsVisible) return;
+    const timeout = window.setTimeout(() => {
+      void fetchEmbeddingRuntimeStatus({ silent: true });
+    }, 180);
+    return () => window.clearTimeout(timeout);
+  }, [
+    activeIndexSettings.embeddingModel,
+    activeIndexSettings.embeddingProvider,
+    fetchEmbeddingRuntimeStatus,
+    ideSettingsSection,
+    showIdeSettings,
+    showIndexerSettings,
+  ]);
+  const normalizedSettingsSearch = ideSettingsSearch.trim().toLowerCase();
+  const matchesIdeSettingsSearch = (...parts: string[]) => {
+    if (!normalizedSettingsSearch) return true;
+    return parts.join(" ").toLowerCase().includes(normalizedSettingsSearch);
+  };
+  const settingsSections: Array<{ id: IdeSettingsSectionId; label: string; description: string }> = [
+    { id: "general", label: "General", description: "Workspace and layout defaults" },
+    { id: "editor", label: "Editor", description: "Font, line-height, minimap" },
+    { id: "completion", label: "AI & Completion", description: "Completions and agent usage" },
+    { id: "indexing", label: "Indexing", description: "Workspace index and semantic search" },
+    { id: "terminal", label: "Terminal", description: "Integrated terminal behavior" },
+  ];
+  const visibleSettingsSectionIds = useMemo(() => {
+    if (!normalizedSettingsSearch) return settingsSections.map((section) => section.id);
+    return settingsSections
+      .filter((section) =>
+        [section.label, section.description].join(" ").toLowerCase().includes(normalizedSettingsSearch)
+      )
+      .map((section) => section.id);
+  }, [normalizedSettingsSearch, settingsSections]);
+  const terminalCapabilityLabel =
+    terminalPanelState.capability === "checking"
+      ? "Checking..."
+      : terminalPanelState.capability === "enabled"
+        ? "Enabled"
+        : "Disabled";
+
+  useEffect(() => {
+    if (!showIdeSettings) return;
+    if (visibleSettingsSectionIds.length === 0) return;
+    if (!visibleSettingsSectionIds.includes(ideSettingsSection)) {
+      setIdeSettingsSection(visibleSettingsSectionIds[0] || "general");
+    }
+  }, [ideSettingsSection, showIdeSettings, visibleSettingsSectionIds]);
 
   return (
     <div className="h-screen flex flex-col bg-[#050508]">
@@ -5393,6 +7791,28 @@ export function IDE() {
               <button
                 type="button"
                 onClick={() => {
+                  toggleTerminalPanel();
+                  setOpenMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm flex items-center justify-between"
+              >
+                <span>{isTerminalPanelOpen ? "Hide Terminal Panel" : "Show Terminal Panel"}</span>
+                <span className="text-xs text-gray-500">Ctrl/Cmd+`</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  openNewTerminal();
+                  setOpenMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm flex items-center justify-between"
+              >
+                <span>New Terminal</span>
+                <span className="text-xs text-gray-500">Ctrl/Cmd+Shift+`</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
                   handleRefresh();
                   setOpenMenu(null);
                 }}
@@ -5403,15 +7823,12 @@ export function IDE() {
               <button
                 type="button"
                 onClick={() => {
-                  setShowIndexerSettings(true);
-                  setIndexSettingsError(null);
-                  setIndexSettingsDirty(false);
-                  void fetchIndexStatus(effectiveWorkspacePath);
+                  openIdeSettings("indexing");
                   setOpenMenu(null);
                 }}
                 className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm"
               >
-                Indexer Settings
+                IDE Settings
               </button>
               <div className="h-px bg-white/10" />
               <button
@@ -5457,6 +7874,20 @@ export function IDE() {
           </div>
           <button
             type="button"
+            onClick={() => toggleTerminalPanel()}
+            className={cn(
+              "px-2 py-1 rounded text-xs border transition-colors flex items-center gap-1",
+              isTerminalPanelOpen
+                ? "border-indigo-500/40 bg-indigo-500/20 text-indigo-200"
+                : "border-white/10 text-gray-400 hover:text-gray-200 hover:bg-white/5"
+            )}
+            title={isTerminalPanelOpen ? "Hide terminal panel" : "Show terminal panel"}
+          >
+            <TerminalSquare className="w-3.5 h-3.5" />
+            Terminal
+          </button>
+          <button
+            type="button"
             onClick={() => setIsIdeChatOpen((previous) => !previous)}
             className={cn(
               "px-2 py-1 rounded text-xs border transition-colors flex items-center gap-1",
@@ -5468,6 +7899,15 @@ export function IDE() {
           >
             <MessageSquare className="w-3.5 h-3.5" />
             Chat
+          </button>
+          <button
+            type="button"
+            onClick={() => openIdeSettings("general")}
+            className="px-2 py-1 rounded text-xs border border-white/10 text-gray-400 hover:text-gray-200 hover:bg-white/5 transition-colors flex items-center gap-1"
+            title="Open IDE settings"
+          >
+            <Settings2 className="w-3.5 h-3.5" />
+            Settings
           </button>
         </div>
       </div>
@@ -5859,117 +8299,152 @@ export function IDE() {
 
         <div className="flex-1 flex overflow-hidden bg-[#0d0d12]">
           <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-            <div
-              className="h-9 border-b border-white/10 bg-black/20 flex items-center overflow-x-auto"
-              style={{ fontFamily: "var(--font-zed-ui), var(--font-ui), Inter, system-ui, sans-serif" }}
-            >
-              {openTabs.length > 0 ? (
-                openTabs.map((tab) => {
-                  const isActive = (activeTabPath || selectedFile?.path) === tab.path;
-                  return (
-                    <div
-                      key={`tab:${tab.path}`}
-                      className={cn(
-                        "h-full min-w-[160px] max-w-[320px] px-3 border-r border-white/10 flex items-center gap-2 text-xs",
-                        isActive
-                          ? "bg-indigo-500/20 text-indigo-200"
-                          : "bg-transparent text-gray-400 hover:text-gray-200 hover:bg-white/5"
-                      )}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedFile(fileEntryFromPath(tab.path));
-                          setActiveTabPath(tab.path);
-                          setRequestedJumpLine(null);
-                        }}
-                        className="flex-1 min-w-0 truncate text-left"
-                        title={tab.path}
-                      >
-                        {tab.previewMode && (
-                          <Eye className="w-3 h-3 text-indigo-300/80 flex-shrink-0" />
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+              <div
+                className="h-9 border-b border-white/10 bg-black/20 flex items-center overflow-x-auto"
+                style={{ fontFamily: "var(--font-zed-ui), var(--font-ui), Inter, system-ui, sans-serif" }}
+              >
+                {openTabs.length > 0 ? (
+                  openTabs.map((tab) => {
+                    const isActive = (activeTabPath || selectedFile?.path) === tab.path;
+                    return (
+                      <div
+                        key={`tab:${tab.path}`}
+                        className={cn(
+                          "h-full min-w-[160px] max-w-[320px] px-3 border-r border-white/10 flex items-center gap-2 text-xs",
+                          isActive
+                            ? "bg-indigo-500/20 text-indigo-200"
+                            : "bg-transparent text-gray-400 hover:text-gray-200 hover:bg-white/5"
                         )}
-                        {tab.name}
-                      </button>
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedFile(fileEntryFromPath(tab.path));
+                            setActiveTabPath(tab.path);
+                            setRequestedJumpLine(null);
+                          }}
+                          className="flex-1 min-w-0 truncate text-left"
+                          title={tab.path}
+                        >
+                          {tab.previewMode && (
+                            <Eye className="w-3 h-3 text-indigo-300/80 flex-shrink-0" />
+                          )}
+                          {tab.name}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCloseTab(tab.path)}
+                          className="p-0.5 rounded text-gray-500 hover:text-gray-300 hover:bg-white/10"
+                          title="Close tab"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="h-full min-w-[160px] max-w-[320px] px-3 border-r border-white/10 flex items-center gap-2 text-xs bg-indigo-500/20 text-indigo-200">
+                    <Code className="w-3.5 h-3.5" />
+                    <span>Welcome</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="h-8 border-b border-white/10 bg-black/25 px-2 flex items-center gap-1 overflow-x-auto">
+                {breadcrumbs.length > 0 ? (
+                  breadcrumbs.map((crumb, index) => (
+                    <div key={`crumb:${crumb.path}`} className="flex items-center gap-1 min-w-0">
+                      {index > 0 && <ChevronRight className="w-3 h-3 text-gray-600 flex-shrink-0" />}
                       <button
                         type="button"
-                        onClick={() => handleCloseTab(tab.path)}
-                        className="p-0.5 rounded text-gray-500 hover:text-gray-300 hover:bg-white/10"
-                        title="Close tab"
+                        onClick={() => handleNavigateToBreadcrumb(crumb)}
+                        className={cn(
+                          "px-1.5 py-0.5 rounded text-xs truncate",
+                          crumb.isFile
+                            ? "text-indigo-200 bg-indigo-500/15"
+                            : "text-gray-400 hover:text-gray-200 hover:bg-white/5"
+                        )}
+                        title={crumb.path}
                       >
-                        <X className="w-3 h-3" />
+                        {crumb.label}
                       </button>
                     </div>
-                  );
-                })
+                  ))
+                ) : (
+                  <span className="text-xs text-gray-600 px-1">No file selected</span>
+                )}
+              </div>
+
+              {selectedFile?.path ? (
+                <CodeViewer
+                  path={selectedFile.path}
+                  previewMode={activeTab?.previewMode === true}
+                  autoRefresh={true}
+                  jumpToLineRequest={requestedJumpLine}
+                  externalRefreshKey={refreshKey}
+                  saveRequestToken={saveRequestToken}
+                  onSaveSuccess={handleRefresh}
+                  onCursorChange={handleCursorPositionChange}
+                  onGitHistoryStatusChange={setGitHistoryStatus}
+                  onOpenLocation={(filePath, line) => {
+                    openFileAtPath(filePath, line, false);
+                  }}
+                  completionAgentId={resolvedCompletionAgentId}
+                  editorFontSizePx={idePreferences.editorFontSizePx}
+                  editorLineHeightPx={idePreferences.editorLineHeightPx}
+                  showMinimap={idePreferences.showMinimap}
+                  enableCompletions={idePreferences.enableCompletions}
+                  enableGhostCompletions={idePreferences.enableGhostCompletions}
+                  completionDebounceMs={idePreferences.completionDebounceMs}
+                  ghostDebounceMs={idePreferences.ghostDebounceMs}
+                  pendingFileDiffs={idePendingFileDiffs}
+                />
               ) : (
-                <div className="h-full min-w-[160px] max-w-[320px] px-3 border-r border-white/10 flex items-center gap-2 text-xs bg-indigo-500/20 text-indigo-200">
-                  <Code className="w-3.5 h-3.5" />
-                  <span>Welcome</span>
-                </div>
+                <IDEWelcomeScreen
+                  workspacePath={effectiveWorkspacePath}
+                  onNewFile={() => {
+                    setCreateParentPath(rootInfo?.path || currentPath);
+                    setCreateType("file");
+                  }}
+                  onOpenWorkspace={() => {
+                    void handlePromptOpenWorkspace();
+                  }}
+                  onOpenCommandPalette={openCommandPalette}
+                  onOpenSettings={() => openIdeSettings("general")}
+                  onOpenAiSettings={() => navigate("/providers")}
+                  onOpenIndexerSettings={() => {
+                    openIdeSettings("indexing");
+                  }}
+                />
               )}
             </div>
 
-            <div className="h-8 border-b border-white/10 bg-black/25 px-2 flex items-center gap-1 overflow-x-auto">
-              {breadcrumbs.length > 0 ? (
-                breadcrumbs.map((crumb, index) => (
-                  <div key={`crumb:${crumb.path}`} className="flex items-center gap-1 min-w-0">
-                    {index > 0 && <ChevronRight className="w-3 h-3 text-gray-600 flex-shrink-0" />}
-                    <button
-                      type="button"
-                      onClick={() => handleNavigateToBreadcrumb(crumb)}
-                      className={cn(
-                        "px-1.5 py-0.5 rounded text-xs truncate",
-                        crumb.isFile
-                          ? "text-indigo-200 bg-indigo-500/15"
-                          : "text-gray-400 hover:text-gray-200 hover:bg-white/5"
-                      )}
-                      title={crumb.path}
-                    >
-                      {crumb.label}
-                    </button>
-                  </div>
-                ))
-              ) : (
-                <span className="text-xs text-gray-600 px-1">No file selected</span>
-              )}
-            </div>
-
-            {selectedFile?.path ? (
-              <CodeViewer
-                path={selectedFile.path}
-                previewMode={activeTab?.previewMode === true}
-                autoRefresh={true}
-                jumpToLineRequest={requestedJumpLine}
-                externalRefreshKey={refreshKey}
-                saveRequestToken={saveRequestToken}
-                onSaveSuccess={handleRefresh}
-                onCursorChange={handleCursorPositionChange}
-                onOpenLocation={(filePath, line) => {
-                  openFileAtPath(filePath, line, false);
-                }}
-              />
-            ) : (
-              <IDEWelcomeScreen
-                workspacePath={effectiveWorkspacePath}
-                onNewFile={() => {
-                  setCreateParentPath(rootInfo?.path || currentPath);
-                  setCreateType("file");
-                }}
-                onOpenWorkspace={() => {
-                  void handlePromptOpenWorkspace();
-                }}
-                onOpenCommandPalette={openCommandPalette}
-                onOpenSettings={() => navigate("/settings")}
-                onOpenAiSettings={() => navigate("/providers")}
-                onOpenIndexerSettings={() => {
-                  setShowIndexerSettings(true);
-                  setIndexSettingsError(null);
-                  setIndexSettingsDirty(false);
-                  void fetchIndexStatus(effectiveWorkspacePath);
-                }}
+            {isTerminalPanelOpen && (
+              <div
+                role="separator"
+                aria-label="Resize terminal panel"
+                aria-orientation="horizontal"
+                onMouseDown={handleTerminalResizeStart}
+                className="h-1.5 cursor-row-resize bg-transparent hover:bg-indigo-500/40 transition-colors"
               />
             )}
+
+            <div
+              className={cn(
+                "border-t border-white/10 bg-[#050508] overflow-hidden transition-[height] duration-150",
+                !isTerminalPanelOpen && "border-transparent"
+              )}
+              style={{ height: isTerminalPanelOpen ? `${terminalPanelHeight}px` : "0px" }}
+            >
+              <EmbeddedTerminalPanel
+                workspacePath={effectiveWorkspacePath}
+                visible={isTerminalPanelOpen}
+                createRequestToken={terminalCreateRequestToken}
+                autoCreateOnVisible={idePreferences.autoCreateTerminalOnOpen}
+                onStateChange={setTerminalPanelState}
+              />
+            </div>
           </div>
 
           {isIdeChatOpen && (
@@ -5988,9 +8463,16 @@ export function IDE() {
                 <IDEChatPanel
                   workspaceDir={rootInfo?.path || currentPath}
                   contextPath={selectedFile?.path || null}
+                  terminalContext={{
+                    isOpen: isTerminalPanelOpen,
+                    sessionCount: terminalPanelState.sessionCount,
+                    activeSessionId: terminalPanelState.activeSessionId,
+                  }}
+                  onWorkspaceMutated={handleRefresh}
                   onClose={() => setIsIdeChatOpen(false)}
                   selectedAgentId={ideChatSelectedAgentId}
                   onSelectedAgentIdChange={setIdeChatSelectedAgentId}
+                  onPendingFileDiffsChange={setIdePendingFileDiffs}
                 />
               </div>
             </>
@@ -6184,6 +8666,607 @@ export function IDE() {
         </div>
       )}
 
+      {showIdeSettings && (
+        <div
+          className="absolute inset-0 z-50 bg-black/45 flex items-start justify-center pt-10"
+          onMouseDown={() => setShowIdeSettings(false)}
+        >
+          <div
+            className="w-[1040px] max-w-[96vw] max-h-[86vh] rounded-xl border border-white/15 bg-[#0b0b12] shadow-2xl overflow-hidden flex"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="w-64 border-r border-white/10 bg-black/20 flex flex-col">
+              <div className="px-3 py-3 border-b border-white/10">
+                <input
+                  ref={settingsSearchRef}
+                  type="text"
+                  value={ideSettingsSearch}
+                  onChange={(event) => setIdeSettingsSearch(event.target.value)}
+                  placeholder="Search settings..."
+                  className="w-full rounded border border-white/10 bg-black/40 px-2.5 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
+                />
+              </div>
+              <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                {settingsSections
+                  .filter(
+                    (section) =>
+                      visibleSettingsSectionIds.includes(section.id) ||
+                      normalizedSettingsSearch.length === 0
+                  )
+                  .map((section) => (
+                    <button
+                      key={`ide-settings-section:${section.id}`}
+                      type="button"
+                      onClick={() => setIdeSettingsSection(section.id)}
+                      className={cn(
+                        "w-full rounded px-2.5 py-2 text-left transition-colors",
+                        ideSettingsSection === section.id
+                          ? "bg-indigo-500/20 text-indigo-200"
+                          : "text-gray-300 hover:bg-white/5"
+                      )}
+                    >
+                      <div className="text-xs font-medium">{section.label}</div>
+                      <div className="text-[11px] text-gray-500 truncate">{section.description}</div>
+                    </button>
+                  ))}
+              </div>
+            </div>
+
+            <div className="flex-1 flex flex-col min-w-0">
+              <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-gray-100">IDE Settings</div>
+                  <div className="text-xs text-gray-500">Editor, completion, indexing, and terminal preferences.</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowIdeSettings(false)}
+                  className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-white/5"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-5">
+                {ideSettingsSection === "general" && (
+                  <div className="space-y-3">
+                    {matchesIdeSettingsSearch("workspace", "remember", "path") && (
+                      <div className="rounded border border-white/10 bg-white/[0.02] px-3 py-2.5 text-xs">
+                        <div className="text-gray-200 font-medium">Workspace path persistence</div>
+                        <div className="text-gray-500 mt-1">
+                          Cybara restores your last workspace automatically.
+                        </div>
+                      </div>
+                    )}
+                    {matchesIdeSettingsSearch("chat", "panel", "startup") && (
+                      <label className="flex items-start gap-2 text-xs text-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={isIdeChatOpen}
+                          onChange={(event) => setIsIdeChatOpen(event.target.checked)}
+                          className="mt-0.5 rounded border-white/20 bg-black/40"
+                        />
+                        <span>
+                          <span className="text-gray-200 font-medium">Open IDE chat panel</span>
+                          <span className="block text-gray-500 mt-0.5">Persist this as your default chat panel state.</span>
+                        </span>
+                      </label>
+                    )}
+                    {matchesIdeSettingsSearch("settings", "providers") && (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigate("/providers")}
+                          className="h-7 px-2 text-xs"
+                        >
+                          Open AI Providers
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigate("/settings")}
+                          className="h-7 px-2 text-xs"
+                        >
+                          Open Global App Settings
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {ideSettingsSection === "editor" && (
+                  <div className="space-y-3">
+                    {matchesIdeSettingsSearch("font", "size") && (
+                      <label className="block text-xs text-gray-400 space-y-1.5">
+                        <span>Editor font size</span>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="range"
+                            min={11}
+                            max={22}
+                            value={idePreferences.editorFontSizePx}
+                            onChange={(event) =>
+                              updateIdePreferences({ editorFontSizePx: Number.parseInt(event.target.value || "14", 10) })
+                            }
+                            className="flex-1"
+                          />
+                          <span className="w-10 text-right text-gray-200 tabular-nums">
+                            {idePreferences.editorFontSizePx}
+                          </span>
+                        </div>
+                      </label>
+                    )}
+                    {matchesIdeSettingsSearch("line", "height", "spacing") && (
+                      <label className="block text-xs text-gray-400 space-y-1.5">
+                        <span>Editor line height</span>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="range"
+                            min={16}
+                            max={38}
+                            value={idePreferences.editorLineHeightPx}
+                            onChange={(event) =>
+                              updateIdePreferences({ editorLineHeightPx: Number.parseInt(event.target.value || "22", 10) })
+                            }
+                            className="flex-1"
+                          />
+                          <span className="w-10 text-right text-gray-200 tabular-nums">
+                            {idePreferences.editorLineHeightPx}
+                          </span>
+                        </div>
+                      </label>
+                    )}
+                    {matchesIdeSettingsSearch("minimap") && (
+                      <label className="flex items-start gap-2 text-xs text-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={idePreferences.showMinimap}
+                          onChange={(event) => updateIdePreferences({ showMinimap: event.target.checked })}
+                          className="mt-0.5 rounded border-white/20 bg-black/40"
+                        />
+                        <span>
+                          <span className="text-gray-200 font-medium">Show minimap</span>
+                          <span className="block text-gray-500 mt-0.5">Display the minimap in the editor gutter.</span>
+                        </span>
+                      </label>
+                    )}
+                  </div>
+                )}
+
+                {ideSettingsSection === "completion" && (
+                  <div className="space-y-3">
+                    {matchesIdeSettingsSearch("completion", "enable") && (
+                      <label className="flex items-start gap-2 text-xs text-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={idePreferences.enableCompletions}
+                          onChange={(event) => updateIdePreferences({ enableCompletions: event.target.checked })}
+                          className="mt-0.5 rounded border-white/20 bg-black/40"
+                        />
+                        <span>
+                          <span className="text-gray-200 font-medium">Enable code completions</span>
+                          <span className="block text-gray-500 mt-0.5">Use local + LSP completions in the editor.</span>
+                        </span>
+                      </label>
+                    )}
+                    {matchesIdeSettingsSearch("ghost", "inline", "completion") && (
+                      <label className="flex items-start gap-2 text-xs text-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={idePreferences.enableGhostCompletions}
+                          onChange={(event) =>
+                            updateIdePreferences({ enableGhostCompletions: event.target.checked })
+                          }
+                          className="mt-0.5 rounded border-white/20 bg-black/40"
+                        />
+                        <span>
+                          <span className="text-gray-200 font-medium">Enable inline ghost completions</span>
+                          <span className="block text-gray-500 mt-0.5">Show AI completion suggestions inline.</span>
+                        </span>
+                      </label>
+                    )}
+                    {matchesIdeSettingsSearch("debounce", "completion") && (
+                      <label className="block text-xs text-gray-400 space-y-1.5">
+                        <span>Completion debounce (ms)</span>
+                        <input
+                          type="number"
+                          min={30}
+                          max={800}
+                          value={idePreferences.completionDebounceMs}
+                          onChange={(event) =>
+                            updateIdePreferences({
+                              completionDebounceMs: Number.parseInt(event.target.value || "110", 10),
+                            })
+                          }
+                          className="w-40 rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
+                        />
+                      </label>
+                    )}
+                    {matchesIdeSettingsSearch("ghost", "debounce") && (
+                      <label className="block text-xs text-gray-400 space-y-1.5">
+                        <span>Ghost completion debounce (ms)</span>
+                        <input
+                          type="number"
+                          min={60}
+                          max={1400}
+                          value={idePreferences.ghostDebounceMs}
+                          onChange={(event) =>
+                            updateIdePreferences({
+                              ghostDebounceMs: Number.parseInt(event.target.value || "240", 10),
+                            })
+                          }
+                          className="w-40 rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
+                        />
+                      </label>
+                    )}
+                    {matchesIdeSettingsSearch("agent", "completion") && (
+                      <div className="space-y-2.5">
+                        <label className="flex items-start gap-2 text-xs text-gray-300">
+                          <input
+                            type="checkbox"
+                            checked={idePreferences.useChatAgentForCompletions}
+                            onChange={(event) =>
+                              updateIdePreferences({ useChatAgentForCompletions: event.target.checked })
+                            }
+                            className="mt-0.5 rounded border-white/20 bg-black/40"
+                          />
+                          <span>
+                            <span className="text-gray-200 font-medium">Use IDE chat-selected agent for AI completion</span>
+                            <span className="block text-gray-500 mt-0.5">
+                              Uses the live agent from IDE chat.
+                            </span>
+                          </span>
+                        </label>
+                        {!idePreferences.useChatAgentForCompletions && (
+                          <label className="block text-xs text-gray-400 space-y-1.5">
+                            <span>Completion agent override</span>
+                            <select
+                              value={idePreferences.completionAgentId}
+                              onChange={(event) =>
+                                updateIdePreferences({ completionAgentId: event.target.value || "" })
+                              }
+                              className="w-full rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
+                            >
+                              <option value="">Backend default routing</option>
+                              {ideAgentOptions.map((agent) => (
+                                <option key={`ide-completion-agent:${agent.id}`} value={agent.id}>
+                                  {agent.name}
+                                  {agent.status ? ` (${agent.status})` : ""}
+                                </option>
+                              ))}
+                            </select>
+                            <span className="block text-gray-500">
+                              Choose a dedicated agent for AI inline completion when chat-agent mode is off.
+                            </span>
+                          </label>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {ideSettingsSection === "indexing" && (
+                  <div className="space-y-3">
+                    <div className="rounded border border-white/10 bg-white/[0.02] px-3 py-2.5 text-xs">
+                      <div className="text-gray-200 font-medium">Workspace index status</div>
+                      <div className="mt-1 text-gray-500">
+                        {indexStatus?.state || "idle"} • {indexStatus?.filesIndexed?.toLocaleString() || "0"} files
+                      </div>
+                    </div>
+                    <div className="rounded border border-white/10 bg-white/[0.02] px-3 py-3 space-y-3">
+                      <div className="text-xs font-medium text-gray-200">Embedding Runtime</div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <label className="text-xs text-gray-400 space-y-1">
+                          <span>Embedding provider</span>
+                          <select
+                            value={activeIndexSettings.embeddingProvider}
+                            onChange={(event) => {
+                              const nextProvider =
+                                event.target.value as WorkspaceIndexerSettings["embeddingProvider"];
+                              const option = embeddingProviders.find((candidate) => candidate.id === nextProvider);
+                              const nextModel =
+                                option && option.defaultModel
+                                  ? option.defaultModel
+                                  : activeIndexSettings.embeddingModel;
+                              setIndexSettingsDraft({
+                                ...activeIndexSettings,
+                                embeddingProvider: nextProvider,
+                                embeddingModel: nextModel,
+                              });
+                              setIndexSettingsDirty(true);
+                            }}
+                            className="w-full rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
+                          >
+                            {embeddingProviders.length === 0 && (
+                              <option value={activeIndexSettings.embeddingProvider}>
+                                {activeIndexSettings.embeddingProvider}
+                              </option>
+                            )}
+                            {embeddingProviders.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.label}
+                                {!option.available ? " (unavailable)" : ""}
+                              </option>
+                            ))}
+                          </select>
+                          {selectedEmbeddingProvider?.reason && (
+                            <span className="block text-[11px] text-amber-300/90">
+                              {selectedEmbeddingProvider.reason}
+                            </span>
+                          )}
+                        </label>
+
+                        <label className="text-xs text-gray-400 space-y-1">
+                          <span>Embedding model</span>
+                          <input
+                            type="text"
+                            list="ide-settings-embedding-models"
+                            value={activeIndexSettings.embeddingModel}
+                            onChange={(event) => {
+                              setIndexSettingsDraft({
+                                ...activeIndexSettings,
+                                embeddingModel: event.target.value,
+                              });
+                              setIndexSettingsDirty(true);
+                            }}
+                            placeholder={selectedEmbeddingProvider?.defaultModel || "provider default"}
+                            className="w-full rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
+                          />
+                          <datalist id="ide-settings-embedding-models">
+                            {selectedEmbeddingModelOptions.map((model) => (
+                              <option key={model} value={model} />
+                            ))}
+                          </datalist>
+                          {selectedEmbeddingModelOptions.length > 0 && (
+                            <span className="block text-[11px] text-gray-500 truncate">
+                              Suggested: {selectedEmbeddingModelOptions.slice(0, 3).join(", ")}
+                            </span>
+                          )}
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <div className="text-gray-500">Runtime target</div>
+                          <div className="text-gray-200 truncate">
+                            {runtimeTargetProvider}
+                            {runtimeTargetModel ? ` · ${runtimeTargetModel}` : ""}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-gray-500">Transformers state</div>
+                          <div
+                            className={cn(
+                              "font-medium",
+                              embeddingRuntime?.transformers?.selectedState === "ready"
+                                ? "text-emerald-300"
+                                : embeddingRuntime?.transformers?.selectedState === "loading"
+                                  ? "text-indigo-300"
+                                  : embeddingRuntime?.transformers?.selectedState === "error"
+                                    ? "text-red-300"
+                                    : "text-gray-300"
+                            )}
+                          >
+                            {embeddingRuntime?.transformers?.selectedState || "idle"}
+                          </div>
+                        </div>
+                      </div>
+
+                      {effectiveRuntimeNote && (
+                        <div
+                          className={cn(
+                            "rounded px-2 py-1.5 text-[11px]",
+                            runtimeTargetProvider === "transformers_js" &&
+                              embeddingRuntime?.transformers?.selectedState === "error"
+                              ? "border border-red-500/25 bg-red-500/10 text-red-300"
+                              : "border border-amber-500/25 bg-amber-500/10 text-amber-200"
+                          )}
+                        >
+                          Runtime note: {effectiveRuntimeNote}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void fetchEmbeddingCatalog()}
+                          disabled={embeddingCatalogLoading || embeddingRuntimeActionLoading || embeddingRuntimeLoading}
+                          className="h-7 px-2 text-xs"
+                        >
+                          Refresh Models
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void fetchEmbeddingRuntimeStatus()}
+                          disabled={embeddingRuntimeLoading || embeddingRuntimeActionLoading}
+                          className="h-7 px-2 text-xs"
+                        >
+                          {embeddingRuntimeLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Refresh Runtime"}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void loadEmbeddingRuntime()}
+                          disabled={!canManageLocalRuntime || embeddingRuntimeActionLoading || embeddingRuntimeLoading}
+                          className="h-7 px-2 text-xs"
+                        >
+                          {embeddingRuntimeActionLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Load Runtime"}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void stopEmbeddingRuntime()}
+                          disabled={!canUnloadLocalRuntime || embeddingRuntimeActionLoading || embeddingRuntimeLoading}
+                          className="h-7 px-2 text-xs"
+                        >
+                          Unload Runtime
+                        </Button>
+                      </div>
+                    </div>
+                    {matchesIdeSettingsSearch("indexer", "open", "advanced") && (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setShowIndexerSettings(true);
+                            setIndexSettingsError(null);
+                            setIndexSettingsDirty(false);
+                            void fetchIndexStatus(effectiveWorkspacePath);
+                          }}
+                          className="h-7 px-2 text-xs"
+                        >
+                          Open Advanced Indexer Settings
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void saveIndexSettings()}
+                          disabled={indexActionLoading || !indexSettingsDirty}
+                          className="h-7 px-2 text-xs"
+                        >
+                          Save Index Settings
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void runWorkspaceReindex()}
+                          disabled={indexActionLoading}
+                          className="h-7 px-2 text-xs"
+                        >
+                          Reindex Workspace
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {ideSettingsSection === "terminal" && (
+                  <div className="space-y-3">
+                    <div className="rounded border border-white/10 bg-white/[0.02] px-3 py-2.5 text-xs">
+                      <div className="text-gray-200 font-medium">Terminal capability</div>
+                      <div
+                        className={cn(
+                          "mt-1",
+                          terminalPanelState.capability === "enabled"
+                            ? "text-emerald-300"
+                            : terminalPanelState.capability === "disabled"
+                              ? "text-amber-300"
+                              : "text-gray-400"
+                        )}
+                      >
+                        {terminalCapabilityLabel}
+                      </div>
+                      {terminalPanelState.capability === "disabled" && (
+                        <div className="mt-1 text-gray-500">
+                          Enable via <code>--enable-terminal</code> or <code>terminal_enabled=true</code>.
+                        </div>
+                      )}
+                    </div>
+                    <label className="flex items-start gap-2 text-xs text-gray-300">
+                      <input
+                        type="checkbox"
+                        checked={idePreferences.openTerminalOnStartup}
+                        onChange={(event) => {
+                          updateIdePreferences({ openTerminalOnStartup: event.target.checked });
+                          setIsTerminalPanelOpen(event.target.checked);
+                        }}
+                        className="mt-0.5 rounded border-white/20 bg-black/40"
+                      />
+                      <span>
+                        <span className="text-gray-200 font-medium">Open terminal panel on IDE startup</span>
+                        <span className="block text-gray-500 mt-0.5">
+                          Uses the stored terminal panel visibility at startup.
+                        </span>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-2 text-xs text-gray-300">
+                      <input
+                        type="checkbox"
+                        checked={idePreferences.autoCreateTerminalOnOpen}
+                        onChange={(event) =>
+                          updateIdePreferences({ autoCreateTerminalOnOpen: event.target.checked })
+                        }
+                        className="mt-0.5 rounded border-white/20 bg-black/40"
+                      />
+                      <span>
+                        <span className="text-gray-200 font-medium">Auto-create terminal when panel opens</span>
+                        <span className="block text-gray-500 mt-0.5">Create one terminal tab automatically.</span>
+                      </span>
+                    </label>
+                    <label className="block text-xs text-gray-400 space-y-1.5">
+                      <span>Terminal panel height (px)</span>
+                      <input
+                        type="number"
+                        min={IDE_TERMINAL_MIN_HEIGHT}
+                        max={IDE_TERMINAL_MAX_HEIGHT}
+                        value={idePreferences.terminalPanelHeight}
+                        onChange={(event) =>
+                          updateIdePreferences({
+                            terminalPanelHeight: Number.parseInt(
+                              event.target.value || String(IDE_TERMINAL_DEFAULT_HEIGHT),
+                              10
+                            ),
+                          })
+                        }
+                        className="w-44 rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
+                      />
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={openNewTerminal}
+                        className="h-7 px-2 text-xs"
+                        disabled={terminalPanelState.capability !== "enabled"}
+                      >
+                        New Terminal
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={toggleTerminalPanel}
+                        className="h-7 px-2 text-xs"
+                      >
+                        {isTerminalPanelOpen ? "Hide Panel" : "Show Panel"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="px-4 py-3 border-t border-white/10 flex items-center justify-between text-[11px] text-gray-500">
+                <span>Settings are saved automatically.</span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setIdePreferences(IDE_DEFAULT_PREFERENCES);
+                      setTerminalPanelHeight(IDE_DEFAULT_PREFERENCES.terminalPanelHeight);
+                    }}
+                    className="h-7 px-2 text-xs"
+                  >
+                    Reset IDE Defaults
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowIdeSettings(false)}
+                    className="h-7 px-2 text-xs"
+                  >
+                    Close
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showIndexerSettings && (
         <div
           className="absolute inset-0 z-50 bg-black/45 flex items-start justify-center pt-14"
@@ -6262,6 +9345,40 @@ export function IDE() {
                         : "Never"}
                     </div>
                   </div>
+                  <div>
+                    <div className="text-gray-500">Semantic Index</div>
+                    <div
+                      className={cn(
+                        "font-medium",
+                        indexStatus?.semanticReady ? "text-emerald-300" : "text-gray-300"
+                      )}
+                    >
+                      {indexStatus?.semanticReady ? "ready" : "disabled/unavailable"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">Semantic Chunks</div>
+                    <div className="text-gray-200 tabular-nums">
+                      {indexStatus?.semanticIndexedChunks?.toLocaleString() || "0"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">Embedding Provider</div>
+                    <div className="text-gray-200 truncate">
+                      {indexStatus?.semanticProvider && indexStatus?.semanticProvider !== "none"
+                        ? `${indexStatus.semanticProvider}${indexStatus.semanticModel ? ` · ${indexStatus.semanticModel}` : ""}`
+                        : "none"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">Configured Embedding</div>
+                    <div className="text-gray-200 truncate">
+                      {activeIndexSettings.embeddingProvider}
+                      {activeIndexSettings.embeddingModel
+                        ? ` · ${activeIndexSettings.embeddingModel}`
+                        : ""}
+                    </div>
+                  </div>
                 </div>
                 <div className="mt-3 h-1.5 w-full rounded bg-white/10 overflow-hidden">
                   <div
@@ -6272,6 +9389,11 @@ export function IDE() {
                     style={{ width: `${Math.max(0, Math.min(indexStatus?.progress || 0, 100))}%` }}
                   />
                 </div>
+                {indexStatus?.semanticError && (
+                  <div className="mt-2 text-[11px] text-amber-300/90">
+                    Semantic index note: {indexStatus.semanticError}
+                  </div>
+                )}
               </div>
 
               <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 space-y-3">
@@ -6320,6 +9442,21 @@ export function IDE() {
                   />
                   Include hidden files/folders
                 </label>
+                <label className="flex items-center gap-2 text-xs text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={activeIndexSettings.semanticEnabled}
+                    onChange={(event) => {
+                      setIndexSettingsDraft({
+                        ...activeIndexSettings,
+                        semanticEnabled: event.target.checked,
+                      });
+                      setIndexSettingsDirty(true);
+                    }}
+                    className="rounded border-white/20 bg-black/40"
+                  />
+                  Enable semantic vector index (embeddings)
+                </label>
 
                 <div className="grid grid-cols-2 gap-3">
                   <label className="text-xs text-gray-400 space-y-1">
@@ -6354,6 +9491,44 @@ export function IDE() {
                         setIndexSettingsDraft({
                           ...activeIndexSettings,
                           maxFileSizeBytes: Math.round(nextMb * 1024 * 1024),
+                        });
+                        setIndexSettingsDirty(true);
+                      }}
+                      className="w-full rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
+                    />
+                  </label>
+                  <label className="text-xs text-gray-400 space-y-1">
+                    <span>Semantic max files</span>
+                    <input
+                      type="number"
+                      min={100}
+                      max={50000}
+                      value={activeIndexSettings.semanticMaxFiles}
+                      onChange={(event) => {
+                        const parsed = Number.parseInt(event.target.value || "", 10);
+                        setIndexSettingsDraft({
+                          ...activeIndexSettings,
+                          semanticMaxFiles: Number.isFinite(parsed) ? Math.max(100, parsed) : 100,
+                        });
+                        setIndexSettingsDirty(true);
+                      }}
+                      className="w-full rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
+                    />
+                  </label>
+                  <label className="text-xs text-gray-400 space-y-1">
+                    <span>Semantic min score</span>
+                    <input
+                      type="number"
+                      min={0.05}
+                      max={0.99}
+                      step={0.05}
+                      value={activeIndexSettings.semanticMinScore}
+                      onChange={(event) => {
+                        const parsed = Number.parseFloat(event.target.value || "");
+                        const nextValue = Number.isFinite(parsed) ? Math.min(0.99, Math.max(0.05, parsed)) : 0.45;
+                        setIndexSettingsDraft({
+                          ...activeIndexSettings,
+                          semanticMinScore: Number(nextValue.toFixed(2)),
                         });
                         setIndexSettingsDirty(true);
                       }}
@@ -6407,6 +9582,11 @@ export function IDE() {
                 </label>
               </div>
 
+              {indexSettingsMessage && (
+                <div className="rounded border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+                  {indexSettingsMessage}
+                </div>
+              )}
               {indexSettingsError && (
                 <div className="rounded border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs text-red-300">
                   {indexSettingsError}
@@ -6436,6 +9616,15 @@ export function IDE() {
                   className="h-7 px-2 text-xs"
                 >
                   Stop
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void fetchEmbeddingCatalog()}
+                  disabled={embeddingCatalogLoading || indexActionLoading}
+                  className="h-7 px-2 text-xs"
+                >
+                  Refresh Models
                 </Button>
                 <Button
                   variant="ghost"
@@ -6590,6 +9779,24 @@ export function IDE() {
           <span className="text-gray-600">{statusEol || "-"}</span>
           <span className="text-gray-600">{statusIndent || "-"}</span>
           <span className="text-gray-500">{statusLanguage || "-"}</span>
+          {gitHistoryStatusLabel && (
+            <span
+              className={cn(
+                "inline-flex items-center gap-1",
+                gitHistoryStatus === "loading"
+                  ? "text-indigo-300"
+                  : gitHistoryStatus === "error"
+                    ? "text-red-300"
+                    : gitHistoryStatus === "ready"
+                      ? "text-emerald-300"
+                      : "text-gray-500"
+              )}
+              title="Git line history status for the active file"
+            >
+              {gitHistoryStatus === "loading" && <Loader2 className="w-3 h-3 animate-spin" />}
+              {gitHistoryStatusLabel}
+            </span>
+          )}
           <span className="text-gray-600">
             {sidebarMode === "search"
               ? "Global Search"
@@ -6597,14 +9804,35 @@ export function IDE() {
                 ? "Outline"
                 : "Editor"}
           </span>
+          <button
+            type="button"
+            onClick={() => toggleTerminalPanel()}
+            className={cn(
+              "text-xs transition-colors inline-flex items-center gap-1",
+              terminalPanelState.capability === "disabled"
+                ? "text-amber-300 hover:text-amber-200"
+                : isTerminalPanelOpen
+                  ? "text-indigo-300 hover:text-indigo-200"
+                  : "text-gray-500 hover:text-gray-300"
+            )}
+            title={
+              terminalPanelState.capability === "disabled"
+                ? "Terminal disabled"
+                : isTerminalPanelOpen
+                  ? "Hide terminal panel"
+                  : "Show terminal panel"
+            }
+          >
+            <TerminalSquare className="w-3.5 h-3.5" />
+            {terminalPanelState.capability === "disabled"
+              ? "Terminal off"
+              : `Term ${terminalPanelState.sessionCount}`}
+          </button>
           {indexStatusLabel && (
             <button
               type="button"
               onClick={() => {
-                setShowIndexerSettings(true);
-                setIndexSettingsError(null);
-                setIndexSettingsDirty(false);
-                void fetchIndexStatus(effectiveWorkspacePath);
+                openIdeSettings("indexing");
               }}
               className={cn(
                 "text-xs transition-colors",
@@ -6614,12 +9842,16 @@ export function IDE() {
                     ? "text-indigo-300 hover:text-indigo-200"
                     : "text-gray-500 hover:text-gray-300"
               )}
-              title="Open indexer settings"
+              title="Open IDE indexing settings"
             >
               {indexStatusLabel}
             </button>
           )}
-          <LSPStatus compact activeExtension={selectedFile?.extension || null} />
+          <LSPStatus
+            compact
+            activeFilePath={selectedFile?.path || null}
+            activeExtension={selectedFile?.extension || null}
+          />
         </div>
       </div>
 

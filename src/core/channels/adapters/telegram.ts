@@ -1128,10 +1128,12 @@ export class TelegramBotManager implements ChannelAdapter {
       channelId,
       userId.toString(),
       "telegram",
-      message.from.username || message.from.first_name
+      message.from.username || message.from.first_name,
+      { isGroup: message.chat.type !== "private" }
     );
 
     if (!accessCheck.permitted) {
+      if (accessCheck.silent) return;
       if (accessCheck.reason === "new_pairing") {
         await sendTelegramMessage(
           botToken,

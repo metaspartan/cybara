@@ -131,10 +131,14 @@ export class IMessageAdapter implements ChannelAdapter {
 
     const chatGuid = message.chatGuid;
     const sender = message.handle?.address || "unknown";
+    const isGroupChat = chatGuid.toLowerCase().startsWith("chat");
 
-    const accessCheck = securityManager.checkAccess(channelId, sender, "imessage");
+    const accessCheck = securityManager.checkAccess(channelId, sender, "imessage", undefined, {
+      isGroup: isGroupChat,
+    });
 
     if (!accessCheck.permitted) {
+      if (accessCheck.silent) return;
       if (accessCheck.reason === "new_pairing" || accessCheck.reason === "blocked") {
         await this.sendBlueBubblesMessage(
           channelId,

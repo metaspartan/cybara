@@ -71,13 +71,11 @@ function useAgentStatus() {
   const globalLastSeenRef = useRef<number>(0);
 
   useEffect(() => {
-    const ACTIVE_WINDOW_MS = 45_000;
+    const ACTIVE_WINDOW_MS = 10_000;
     const ACTIVE_STATUSES = new Set([
       'thinking',
       'generating',
       'tool_executing',
-      'tool_completed',
-      'error',
     ]);
 
     const refreshDerivedStatus = () => {

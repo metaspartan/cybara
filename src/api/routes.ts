@@ -1,6 +1,6 @@
 import { config } from "../core/config";
 import { tables } from "../core/database";
-import { agentManager, getBuiltinTools } from "../core/agent";
+import { agentManager, getBuiltinTools, type AgentMessage } from "../core/agent";
 import {
   providerManager,
   providers,
@@ -1120,12 +1120,52 @@ function trackIdeOperation(
     | "index_reindex"
     | "index_stop"
     | "index_search"
-    | "index_settings",
+    | "index_settings"
+    | "index_embeddings"
+    | "index_embedding_runtime"
+    | "index_embedding_load"
+    | "index_embedding_stop"
+    | "inline_completion",
   path: string | undefined,
   success: boolean,
   metadata?: Record<string, unknown>
 ): void {
   trackMetric("ide_operation", operation, 1, { path, success, ...metadata });
+}
+
+function stripInlineCompletionFormatting(value: string): string {
+  const withoutThinking = value
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
+    .replace(/<think>[\s\S]*?<\/think>/gi, "");
+  const withoutCodeFences = withoutThinking
+    .replace(/^```[a-zA-Z0-9_-]*\s*/g, "")
+    .replace(/```$/g, "");
+  return withoutCodeFences.trim();
+}
+
+function sanitizeInlineCompletion(value: string, prefix: string, maxChars = 320): string {
+  let next = stripInlineCompletionFormatting(value);
+  if (!next) return "";
+
+  if (prefix && next.toLowerCase().startsWith(prefix.toLowerCase())) {
+    next = next.slice(prefix.length);
+  }
+
+  // Keep inline completion concise and deterministic for ghost text rendering.
+  const maxLength = Math.max(24, Math.min(2000, Math.floor(maxChars)));
+  if (next.length > maxLength) {
+    next = next.slice(0, maxLength);
+  }
+
+  // Remove leading chatty labels if models ignore instruction.
+  next = next.replace(/^(here(?:'s| is)\s+)?(?:the\s+)?(?:completion|suggestion)\s*[:-]\s*/i, "");
+  return next;
+}
+
+function truncateInlineContext(value: string, maxChars: number): string {
+  const text = typeof value === "string" ? value : "";
+  if (text.length <= maxChars) return text;
+  return text.slice(text.length - maxChars);
 }
 
 function normalizeFileUriToPath(uri: string): string {
@@ -3080,6 +3120,42 @@ const routes: Record<string, RouteHandler> = {
       return { languages: [] };
     }
   },
+  "GET /api/lsp/active": async (_body, params) => {
+    const filePath = params?.path as string | undefined;
+    if (!filePath) {
+      trackLspOperation("active_servers", { success: false, reason: "missing_path" });
+      return { success: false, error: "Missing 'path' parameter", servers: [] };
+    }
+
+    const normalizedPath = isAbsolute(filePath) ? filePath : resolve(process.cwd(), filePath);
+    const workspacePath = resolveWorkspacePath(normalizedPath);
+    try {
+      const manager = getOrInitLspManager(workspacePath);
+      const active = await manager.getActiveServersForFile(normalizedPath);
+      trackLspOperation("active_servers", {
+        workspace: manager.getWorkspacePath(),
+        filePath: normalizedPath,
+        languageId: active.languageId,
+        serverCount: active.servers.length,
+        activeCount: active.servers.filter((server) => server.available).length,
+        success: true,
+      });
+      return {
+        success: true,
+        path: normalizedPath,
+        languageId: active.languageId,
+        servers: active.servers,
+      };
+    } catch (error) {
+      trackLspOperation("active_servers", {
+        workspace: workspacePath,
+        filePath: normalizedPath,
+        success: false,
+        error: String(error),
+      });
+      return { success: false, error: String(error), servers: [] };
+    }
+  },
   "GET /api/lsp/diagnostics": () => {
     try {
       const manager = getOrInitLspManager(process.cwd());
@@ -3598,8 +3674,67 @@ const routes: Record<string, RouteHandler> = {
       directoriesScanned: status.directoriesScanned,
       skippedFiles: status.skippedFiles,
       isIndexing: status.isIndexing,
+      semanticReady: status.semanticReady,
+      semanticProvider: status.semanticProvider || "",
+      semanticModel: status.semanticModel || "",
+      semanticIndexedFiles: status.semanticIndexedFiles,
+      semanticIndexedChunks: status.semanticIndexedChunks,
     });
     return { success: true, ...status };
+  },
+
+  "GET /api/ide/index/embeddings": async () => {
+    try {
+      const catalog = await workspaceIndexer.getEmbeddingCatalog();
+      const status = workspaceIndexer.getStatus();
+      trackIdeOperation("index_embeddings", status.workspacePath || undefined, true, {
+        selectedProvider: catalog.selected.provider,
+        selectedModel: catalog.selected.model || "",
+      });
+      return {
+        success: true,
+        ...catalog,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      trackIdeOperation("index_embeddings", undefined, false, { error: message });
+      return { success: false, error: message };
+    }
+  },
+
+  "GET /api/ide/index/embedding/runtime": (_body, params) => {
+    try {
+      const provider =
+        typeof (params?.provider as string | undefined) === "string"
+          ? ((params?.provider as string | undefined) || "").trim()
+          : "";
+      const model =
+        typeof (params?.model as string | undefined) === "string"
+          ? ((params?.model as string | undefined) || "").trim()
+          : "";
+      const runtime = workspaceIndexer.getEmbeddingRuntimeStatus({
+        provider: provider || undefined,
+        model: model || undefined,
+      });
+      const status = workspaceIndexer.getStatus();
+      trackIdeOperation("index_embedding_runtime", status.workspacePath || undefined, true, {
+        selectedProvider: runtime.selectedProvider,
+        selectedModel: runtime.selectedModel,
+        vectorProvider: runtime.vectorProvider,
+        vectorModel: runtime.vectorModel,
+        transformerSelectedModel: runtime.transformers.selectedModel,
+        transformerSelectedState: runtime.transformers.selectedState,
+        transformerLoadedCount: runtime.transformers.loadedModels.length,
+      });
+      return {
+        success: true,
+        ...runtime,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      trackIdeOperation("index_embedding_runtime", undefined, false, { error: message });
+      return { success: false, error: message };
+    }
   },
 
   "POST /api/ide/index/workspace": async (body) => {
@@ -3658,11 +3793,72 @@ const routes: Record<string, RouteHandler> = {
         includeHidden: settings.includeHidden,
         maxFiles: settings.maxFiles,
         maxFileSizeBytes: settings.maxFileSizeBytes,
+        semanticEnabled: settings.semanticEnabled,
+        semanticMaxFiles: settings.semanticMaxFiles,
+        semanticMinScore: settings.semanticMinScore,
+        embeddingProvider: settings.embeddingProvider,
+        embeddingModel: settings.embeddingModel || "",
       });
       return { success: true, ...status };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       trackIdeOperation("index_settings", undefined, false, { error: message });
+      return { success: false, error: message };
+    }
+  },
+
+  "POST /api/ide/index/embedding/load": async (body) => {
+    const data = (body || {}) as { provider?: string; model?: string };
+    try {
+      const result = await workspaceIndexer.loadEmbeddingRuntime({
+        provider: typeof data.provider === "string" ? data.provider : undefined,
+        model: typeof data.model === "string" ? data.model : undefined,
+      });
+      const status = workspaceIndexer.getStatus();
+      const runtime = workspaceIndexer.getEmbeddingRuntimeStatus({
+        provider: typeof data.provider === "string" ? data.provider : undefined,
+        model: typeof data.model === "string" ? data.model : undefined,
+      });
+      trackIdeOperation("index_embedding_load", status.workspacePath || undefined, result.success, {
+        provider: result.provider,
+        model: result.model,
+      });
+      return {
+        ...result,
+        status,
+        runtime,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      trackIdeOperation("index_embedding_load", undefined, false, { error: message });
+      return { success: false, error: message };
+    }
+  },
+
+  "POST /api/ide/index/embedding/stop": async (body) => {
+    const data = (body || {}) as { provider?: string; model?: string };
+    try {
+      const result = await workspaceIndexer.stopEmbeddingRuntime({
+        provider: typeof data.provider === "string" ? data.provider : undefined,
+        model: typeof data.model === "string" ? data.model : undefined,
+      });
+      const status = workspaceIndexer.getStatus();
+      trackIdeOperation("index_embedding_stop", status.workspacePath || undefined, result.success, {
+        provider: result.provider,
+        model: result.model,
+      });
+      const runtime = workspaceIndexer.getEmbeddingRuntimeStatus({
+        provider: typeof data.provider === "string" ? data.provider : undefined,
+        model: typeof data.model === "string" ? data.model : undefined,
+      });
+      return {
+        ...result,
+        status,
+        runtime,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      trackIdeOperation("index_embedding_stop", undefined, false, { error: message });
       return { success: false, error: message };
     }
   },
@@ -3675,7 +3871,7 @@ const routes: Record<string, RouteHandler> = {
     const query = (params?.query as string | undefined) || "";
     const parsedLimit = Number.parseInt((params?.limit as string | undefined) || "", 10);
     const limit = Number.isFinite(parsedLimit) ? parsedLimit : undefined;
-    const indexedResult = workspaceIndexer.search(query, {
+    const indexedResult = await workspaceIndexer.search(query, {
       workspacePath: path,
       limit,
     });
@@ -3686,6 +3882,7 @@ const routes: Record<string, RouteHandler> = {
         queryLength: query.length,
         totalFiles: indexedResult.totalFiles,
         truncated: indexedResult.truncated,
+        semanticMatches: indexedResult.semanticMatches || 0,
       });
       return indexedResult;
     }
@@ -3708,6 +3905,119 @@ const routes: Record<string, RouteHandler> = {
       indexError: indexedResult.error,
       workspacePath: path,
     };
+  },
+
+  "POST /api/ide/inline-completion": async (body) => {
+    const data = body as {
+      path?: string;
+      before?: string;
+      after?: string;
+      prefix?: string;
+      suffix?: string;
+      agentId?: string;
+      workspacePath?: string;
+      maxChars?: number;
+    };
+
+    const path = typeof data.path === "string" ? data.path.trim() : "";
+    const before = typeof data.before === "string" ? data.before : "";
+    const after = typeof data.after === "string" ? data.after : "";
+    const prefix = typeof data.prefix === "string" ? data.prefix : "";
+    const suffix = typeof data.suffix === "string" ? data.suffix : "";
+    const requestedMaxChars = Number.isFinite(Number(data.maxChars)) ? Number(data.maxChars) : 320;
+    const maxChars = Math.max(40, Math.min(2000, Math.floor(requestedMaxChars)));
+
+    if (!path) {
+      trackIdeOperation("inline_completion", path || undefined, false, { reason: "missing_path" });
+      return { success: false, error: "Missing 'path' parameter" };
+    }
+
+    const requestedAgentId = typeof data.agentId === "string" && data.agentId.trim() ? data.agentId.trim() : "";
+    const selectedAgent =
+      (requestedAgentId ? agentManager.get(requestedAgentId) : undefined) ||
+      agentManager.list().find((agent) => agent.status === "running") ||
+      agentManager.list()[0];
+
+    if (!selectedAgent) {
+      trackIdeOperation("inline_completion", path, false, { reason: "no_agent_available" });
+      return { success: false, error: "No available agent for inline completion" };
+    }
+
+    const provider = agentManager.resolveProvider(selectedAgent.id);
+    if (!provider) {
+      trackIdeOperation("inline_completion", path, false, {
+        reason: "provider_unavailable",
+        agentId: selectedAgent.id,
+      });
+      return { success: false, error: "Selected agent has no configured provider" };
+    }
+
+    const workspaceDirRaw =
+      typeof data.workspacePath === "string" && data.workspacePath.trim()
+        ? data.workspacePath.trim()
+        : resolveWorkspacePath(path);
+    const workspaceDir = workspaceDirRaw || undefined;
+    const beforeContext = truncateInlineContext(before, 5000);
+    const afterContext = (after || "").slice(0, 1800);
+    const suffixContext = suffix.slice(0, 320);
+
+    try {
+      const messages: AgentMessage[] = [
+        {
+          role: "system",
+          content: [
+            "You are an IDE inline code completion engine.",
+            "Return only the exact continuation text to insert at the cursor.",
+            "Do not return markdown, backticks, labels, or explanations.",
+            "Do not repeat code already present before the cursor.",
+            "Prefer concise completions and keep style consistent with surrounding code.",
+          ].join("\n"),
+        },
+        {
+          role: "user",
+          content: [
+            `File: ${path}`,
+            prefix ? `Already typed prefix: ${prefix}` : "Already typed prefix: (none)",
+            suffixContext ? `Existing suffix hint: ${suffixContext}` : "Existing suffix hint: (none)",
+            "",
+            "Code before cursor:",
+            beforeContext || "(empty)",
+            "",
+            "Code after cursor:",
+            afterContext || "(empty)",
+            "",
+            "Return only the completion text now.",
+          ].join("\n"),
+        },
+      ];
+
+      const result = await agentManager.callLLM(provider, selectedAgent.model, messages, [], {
+        agentId: selectedAgent.id,
+        workspaceDir,
+      });
+      const completion = sanitizeInlineCompletion(result.content || "", prefix, maxChars);
+
+      trackIdeOperation("inline_completion", path, true, {
+        agentId: selectedAgent.id,
+        providerId: provider.id,
+        model: selectedAgent.model || "",
+        completionLength: completion.length,
+      });
+      return {
+        success: true,
+        completion,
+        agentId: selectedAgent.id,
+        model: selectedAgent.model,
+        provider: provider.provider,
+      };
+    } catch (errorValue) {
+      const message = errorValue instanceof Error ? errorValue.message : String(errorValue);
+      trackIdeOperation("inline_completion", path, false, {
+        agentId: selectedAgent.id,
+        error: message,
+      });
+      return { success: false, error: message };
+    }
   },
 
   "GET /api/ide/browse": async (_body, params) => {
@@ -4263,6 +4573,8 @@ const routes: Record<string, RouteHandler> = {
     const channelId = params!.id;
     const config = body as {
       dm_policy?: string;
+      group_policy?: string;
+      group_owner_sender_id?: string;
       pairing_expiry_minutes?: number;
       max_pending_pairings?: number;
     };

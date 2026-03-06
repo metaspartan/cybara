@@ -5,6 +5,7 @@ import db from "../database";
 const log = createLogger("Security");
 
 export type DMPolicy = "pairing" | "allowlist" | "open" | "disabled";
+export type GroupPolicy = "owner_only" | "allowlist" | "open" | "disabled";
 
 export interface PairingRequest {
   id: string;
@@ -21,6 +22,8 @@ export interface PairingRequest {
 
 export interface ChannelSecurityConfig {
   dm_policy: DMPolicy;
+  group_policy: GroupPolicy;
+  group_owner_sender_id: string;
   allowed_senders: string[]; // Platform-specific sender IDs
   pairing_expiry_minutes: number; // Default: 60
   max_pending_pairings: number; // Default: 3
@@ -31,16 +34,25 @@ export interface AccessCheckResult {
   reason?: "allowed" | "pending_pairing" | "new_pairing" | "blocked" | "disabled";
   code?: string; // Pairing code if new_pairing
   message?: string;
+  silent?: boolean;
 }
 
 export const DEFAULT_SECURITY_CONFIG: ChannelSecurityConfig = {
   dm_policy: "pairing",
+  group_policy: "owner_only",
+  group_owner_sender_id: "",
   allowed_senders: [],
   pairing_expiry_minutes: 60,
   max_pending_pairings: 3,
 };
 
 const VALID_DM_POLICIES: readonly DMPolicy[] = ["pairing", "allowlist", "open", "disabled"];
+const VALID_GROUP_POLICIES: readonly GroupPolicy[] = [
+  "owner_only",
+  "allowlist",
+  "open",
+  "disabled",
+];
 
 export function buildChannelSecurityConfig(
   config: Record<string, unknown>
@@ -50,9 +62,20 @@ export function buildChannelSecurityConfig(
     typeof dmPolicyRaw === "string" && VALID_DM_POLICIES.includes(dmPolicyRaw as DMPolicy)
       ? (dmPolicyRaw as DMPolicy)
       : "pairing";
+  const groupPolicyRaw = config.group_policy;
+  const groupPolicy =
+    typeof groupPolicyRaw === "string" &&
+    VALID_GROUP_POLICIES.includes(groupPolicyRaw as GroupPolicy)
+      ? (groupPolicyRaw as GroupPolicy)
+      : "owner_only";
+  const groupOwnerRaw = config.group_owner_sender_id ?? config.owner_sender_id;
+  const groupOwnerSenderId =
+    typeof groupOwnerRaw === "string" ? groupOwnerRaw.trim() : "";
 
   const securityConfig: Partial<ChannelSecurityConfig> = {
     dm_policy: dmPolicy,
+    group_policy: groupPolicy,
+    group_owner_sender_id: groupOwnerSenderId,
   };
 
   if (Array.isArray(config.allowed_senders)) {
@@ -130,21 +153,64 @@ export class ChannelSecurityManager {
     channelId: string,
     senderId: string,
     platform: string,
-    senderName?: string
+    senderName?: string,
+    options?: { isGroup?: boolean }
   ): AccessCheckResult {
     const config = this.getConfig(channelId);
+    const isGroup = options?.isGroup === true;
 
-    // Policy: disabled - ignore all messages
+    const allowed = this.allowedSenders.get(channelId);
+    if (allowed?.has(senderId) || allowed?.has("*")) {
+      return { permitted: true, reason: "allowed" };
+    }
+
+    if (isGroup) {
+      if (config.group_policy === "disabled") {
+        return {
+          permitted: false,
+          reason: "disabled",
+          message: "Group messages are disabled for this channel",
+          silent: true,
+        };
+      }
+
+      if (config.group_policy === "open") {
+        return { permitted: true, reason: "allowed" };
+      }
+
+      if (config.group_policy === "owner_only") {
+        const ownerSenderId = (config.group_owner_sender_id || "").trim();
+        if (ownerSenderId && senderId === ownerSenderId) {
+          return { permitted: true, reason: "allowed" };
+        }
+        return {
+          permitted: false,
+          reason: "blocked",
+          message: ownerSenderId
+            ? "Only the configured channel owner can use this bot in groups."
+            : "Channel owner is not configured for group access.",
+          silent: true,
+        };
+      }
+
+      if (config.group_policy === "allowlist") {
+        return {
+          permitted: false,
+          reason: "blocked",
+          message: "You are not authorized to use this bot in this group.",
+          silent: true,
+        };
+      }
+
+      return { permitted: false, reason: "blocked", silent: true };
+    }
+
+    // DM policy: disabled - ignore all messages
     if (config.dm_policy === "disabled") {
       return { permitted: false, reason: "disabled", message: "DMs are disabled for this channel" };
     }
 
     if (config.dm_policy === "open") {
-      return { permitted: true, reason: "allowed" };
-    }
-
-    const allowed = this.allowedSenders.get(channelId);
-    if (allowed?.has(senderId) || allowed?.has("*")) {
       return { permitted: true, reason: "allowed" };
     }
 

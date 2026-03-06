@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  Cybara combines a powerful multi-agent runtime with a clean web UI, a production-ready CLI, encrypted local wallet controls,
-  and a broad tool layer so one platform can run your workflows end-to-end.
+  Cybara is a production-ready agent operating system that combines a powerful multi-agent runtime with a clean web UI, production-ready CLI, encrypted local wallet controls,
+  and a comprehensive tool layer. Deploy autonomous agents that can code, execute browser automation, manage communications across 7 channels, and handle crypto operations—with full operator control.
 </p>
 
 <p align="center">
@@ -18,8 +18,8 @@
   <img src="https://img.shields.io/badge/runtime-Bun-f9f1e1?logo=bun" alt="Bun" />
   <img src="https://img.shields.io/badge/language-TypeScript-blue?logo=typescript" alt="TypeScript" />
   <img src="https://img.shields.io/badge/ui-React_19-61dafb?logo=react" alt="React" />
-  <img src="https://img.shields.io/badge/tools-49-green" alt="49 Tools" />
-  <img src="https://img.shields.io/badge/providers-33-purple" alt="33 Providers" />
+  <img src="https://img.shields.io/badge/tools-50-green" alt="50 Tools" />
+  <img src="https://img.shields.io/badge/providers-31-purple" alt="31 Providers" />
   <img src="https://img.shields.io/badge/channels-7-orange" alt="7 Channels" />
   <img src="https://img.shields.io/badge/desktop-Tauri-orange?logo=tauri" alt="Tauri Desktop" />
 </p>
@@ -42,11 +42,11 @@ If you need an agent platform that can plan, execute, verify, and report with st
 
 ## Capability Snapshot
 
-- 49 built-in tools (`src/core/tools/index.ts`)
-- 33 built-in provider integrations (`src/core/providers.ts`)
+- 50 built-in tools (`src/core/tools/index.ts`)
+- 31 built-in provider integrations with aliases (`src/core/providers.ts`)
 - 7 channel adapters (`src/core/channels/adapters`)
-- 20 production UI pages (`ui/src/pages/*.tsx`)
-- 78 automated Bun test files (`tests/**/*.test.ts`)
+- 21 production UI pages (`ui/src/pages/*.tsx`)
+- 80 automated Bun test files (`tests/**/*.test.ts`)
 - Tauri desktop app + Bun server/CLI runtime
 
 ---
@@ -99,15 +99,15 @@ Then open `http://localhost:4269`.
 - Session-aware execution with persistence and recovery
 - Agent tool allowlist and permission enforcement support
 
-### Tooling Layer (49 Tools)
+### Tooling Layer (50 Tools)
 
 Tool categories currently shipped:
 
-- `file` (6): read/write/edit/search/patch
+- `file` (7): read/write/edit/search/grep/workspace_index/apply_patch
 - `process` (3): exec/process/git
 - `browser` (4): browser/web_fetch/web_search/canvas
 - `memory` (5): search/get/save/context/durable save
-- `core` (15): sessions/agents/artifacts/http/env/data/wallet/etc.
+- `core` (17): sessions/agents/artifacts/wallet/http/env/data/nodes/clipboard/cron/gateway/etc.
 - `lsp` (5): diagnostics/definition/references/hover/languages
 - `media` (2): image/tts
 - `skill` (7): calc/convert/pdf/ocr/summarization/video_frames/weather
@@ -160,14 +160,30 @@ DM policy modes:
 
 ### UI + Desktop
 
-- Web UI with 20 pages for agents, channels, providers, tools, wallet, logs, metrics, tasks, sessions, IDE, terminal, setup, and artifacts
+- Web UI with 21 pages for agents, channels, providers, tools, wallet, logs, metrics, tasks, sessions, IDE, terminal, setup, artifacts, skills, MCP servers, and memory
 - Tauri desktop app with sidecar server wiring
 
-### Provider Layer (33 Built-In Integrations)
+### Provider Layer (31 Built-In Integrations)
 
 Includes OpenAI, Anthropic, Google AI, Antigravity, MiniMax (API + OAuth portal), Moonshot, Kimi Code, Qwen Portal, Together, Hugging Face, Synthetic, Venice, Xiaomi, Ollama, vLLM, LiteLLM, Cloudflare AI Gateway, GitHub Copilot, AWS Bedrock, Groq, OpenRouter, OpenCode Zen, Z.AI variants, OpenAI Codex, Chutes, Vercel AI Gateway, Google Gemini CLI, Copilot Proxy, xAI, Baidu Qianfan, and NVIDIA.
 
 See provider details: [docs/providers.md](docs/providers.md)
+
+### MCP Server Integration
+
+Cybara supports [Model Context Protocol](https://spec.modelcontextprotocol.io/) (MCP) servers for extending agent capabilities:
+
+- **MCP Server Management**: Install, configure, start, stop, and manage MCP servers via UI or CLI
+- **MCP Registry Integration**: Browse and install servers from multiple registries:
+  - Official MCP registry
+  - [MCP.so](https://mcp.so) registry
+  - [Smithery](https://smithery.ai) registry
+  - npm package installation
+- **Popular Pre-configured Servers**: Filesystem, GitHub, GitLab, PostgreSQL, SQLite, Puppeteer, Brave Search, Google Maps, Slack, Fetch, Obsidian, Raycast, and more
+- **Tool Exposure**: MCP server tools are automatically exposed to agents with full JSON-RPC communication
+
+UI: Dedicated MCP Servers page in the web interface (`/mcp-servers`)
+CLI: `cybara mcp list`, `cybara mcp search <query>`, `cybara mcp install <package>`, `cybara mcp popular`
 
 ---
 
@@ -200,7 +216,7 @@ Cybara exposes a broad REST API and streaming interfaces.
 Common surfaces:
 
 - Chat & sessions: `/api/chat`, `/api/sessions` (legacy `/api/chat/sessions` remains supported)
-- Agents/providers/channels/tasks/skills/memory
+- Agents/providers/channels/tasks/skills/memory/mcp
 - Wallet and dapp routes under `/api/wallet/*`
 - Browser + terminal automation endpoints
 - Status streams:
@@ -223,6 +239,9 @@ cybara wallet status
 cybara wallet swap --venue uniswap_v3 --token LINK --amount-eth 0.2
 cybara wallet x402 --url https://merchant.example/x402/resource --dry-run
 cybara subagent spawn "Research X and return a summary"
+cybara mcp list
+cybara mcp search <query>
+cybara mcp install <package>
 ```
 
 Full CLI reference: [docs/cli.md](docs/cli.md)

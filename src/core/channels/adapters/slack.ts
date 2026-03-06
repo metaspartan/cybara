@@ -159,10 +159,14 @@ export class SlackAdapter implements ChannelAdapter {
 
     const userId = message.user;
     const chatId = message.channel;
+    const isGroupChannel = !chatId.startsWith("D");
 
-    const accessCheck = securityManager.checkAccess(channelId, userId, "slack");
+    const accessCheck = securityManager.checkAccess(channelId, userId, "slack", undefined, {
+      isGroup: isGroupChannel,
+    });
 
     if (!accessCheck.permitted) {
+      if (accessCheck.silent) return;
       if (accessCheck.reason === "new_pairing" || accessCheck.reason === "blocked") {
         try {
           await say(accessCheck.message || `🔐 Pairing code: ${accessCheck.code}`);
@@ -248,9 +252,13 @@ export class SlackAdapter implements ChannelAdapter {
     const text = event.text || "";
     const userId = event.user;
     const chatId = event.channel;
+    const isGroupChannel = !chatId.startsWith("D");
 
-    const accessCheck = securityManager.checkAccess(channelId, userId, "slack");
+    const accessCheck = securityManager.checkAccess(channelId, userId, "slack", undefined, {
+      isGroup: isGroupChannel,
+    });
     if (!accessCheck.permitted) {
+      if (accessCheck.silent) return;
       if (accessCheck.reason === "new_pairing" || accessCheck.reason === "blocked") {
         try {
           await say(accessCheck.message || `🔐 Pairing code: ${accessCheck.code}`);

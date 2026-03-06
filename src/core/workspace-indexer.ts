@@ -1,12 +1,18 @@
-import { readdir, stat } from "fs/promises";
+import { readdir, readFile, stat } from "fs/promises";
 import { existsSync, realpathSync, statSync } from "fs";
 import { basename, extname, isAbsolute, join, relative, resolve } from "path";
 import { homedir } from "os";
+import { createHash } from "crypto";
 import {
   config,
   type WorkspaceIndexerSettings,
 } from "./config";
 import { createLogger } from "./logger";
+import {
+  getEmbeddingProviderCatalog,
+  type EmbeddingProviderPreference,
+} from "./memory/embeddings";
+import { getVectorStore } from "./memory/vector-store";
 
 type WorkspaceIndexerState = "idle" | "indexing" | "ready" | "stopped" | "error";
 
@@ -31,6 +37,12 @@ export interface WorkspaceIndexerStatus {
   finishedAt: string | null;
   durationMs: number | null;
   lastIndexedAt: string | null;
+  semanticReady: boolean;
+  semanticProvider: string | null;
+  semanticModel: string | null;
+  semanticIndexedFiles: number;
+  semanticIndexedChunks: number;
+  semanticError: string | null;
   error: string | null;
   settings: WorkspaceIndexerSettings;
 }
@@ -45,6 +57,7 @@ export interface WorkspaceIndexerSearchResult {
   query: string;
   totalFiles: number;
   truncated: boolean;
+  semanticMatches: number;
   files: Array<{ path: string; relativePath: string }>;
   error?: string;
 }
@@ -161,6 +174,12 @@ class WorkspaceIndexer {
   private finishedAt: string | null = null;
   private durationMs: number | null = null;
   private lastIndexedAt: string | null = null;
+  private semanticReady = false;
+  private semanticProvider: string | null = null;
+  private semanticModel: string | null = null;
+  private semanticIndexedFiles = 0;
+  private semanticIndexedChunks = 0;
+  private semanticError: string | null = null;
   private error: string | null = null;
 
   getStatus(): WorkspaceIndexerStatus {
@@ -178,6 +197,12 @@ class WorkspaceIndexer {
       finishedAt: this.finishedAt,
       durationMs: this.durationMs,
       lastIndexedAt: this.lastIndexedAt,
+      semanticReady: this.semanticReady,
+      semanticProvider: this.semanticProvider,
+      semanticModel: this.semanticModel,
+      semanticIndexedFiles: this.semanticIndexedFiles,
+      semanticIndexedChunks: this.semanticIndexedChunks,
+      semanticError: this.semanticError,
       error: this.error,
       settings: config.getWorkspaceIndexerSettings(),
     };
@@ -190,11 +215,147 @@ class WorkspaceIndexer {
         ? { ...previous, ...(nextSettings as Record<string, unknown>) }
         : nextSettings;
     const settings = config.setWorkspaceIndexerSettings(merged);
+    const embeddingSelectionChanged =
+      previous.embeddingProvider !== settings.embeddingProvider ||
+      previous.embeddingModel !== settings.embeddingModel;
 
     if (!settings.enabled && this.state === "indexing") {
       this.stop();
     }
+    if (embeddingSelectionChanged) {
+      this.semanticReady = false;
+      this.semanticError = "Embedding provider/model changed. Run Reindex to refresh semantic vectors.";
+    }
     return settings;
+  }
+
+  async getEmbeddingCatalog() {
+    const settings = config.getWorkspaceIndexerSettings();
+    return await getEmbeddingProviderCatalog({
+      provider: settings.embeddingProvider,
+      model: settings.embeddingModel,
+    });
+  }
+
+  getEmbeddingRuntimeStatus(selection?: {
+    provider?: string;
+    model?: string;
+  }): {
+    selectedProvider: string;
+    selectedModel: string;
+    vectorProvider: string;
+    vectorModel: string;
+    vectorFallbackReason: string | null;
+    transformers: {
+      selectedModel: string;
+      selectedState: "idle" | "loading" | "ready" | "error";
+      loadedModels: Array<{
+        model: string;
+        state: "idle" | "loading" | "ready" | "error";
+        loadedAt: string | null;
+        lastUsedAt: string | null;
+        lastError: string | null;
+      }>;
+    };
+  } {
+    const settings = config.getWorkspaceIndexerSettings();
+    const providerPreference =
+      typeof selection?.provider === "string" && selection.provider.trim()
+        ? selection.provider.trim()
+        : settings.embeddingProvider;
+    const modelPreference =
+      typeof selection?.model === "string" && selection.model.trim()
+        ? selection.model.trim()
+        : settings.embeddingModel;
+
+    const vectorStore = getVectorStore();
+    return vectorStore.getLocalRuntimeStatus({
+      provider: providerPreference as EmbeddingProviderPreference,
+      model: modelPreference,
+    });
+  }
+
+  async loadEmbeddingRuntime(selection?: {
+    provider?: string;
+    model?: string;
+  }): Promise<{
+    success: boolean;
+    provider: string;
+    model: string;
+    message: string;
+  }> {
+    const settings = config.getWorkspaceIndexerSettings();
+    const providerPreference =
+      typeof selection?.provider === "string" && selection.provider.trim()
+        ? selection.provider.trim()
+        : settings.embeddingProvider;
+    const modelPreference =
+      typeof selection?.model === "string" && selection.model.trim()
+        ? selection.model.trim()
+        : settings.embeddingModel;
+
+    const vectorStore = getVectorStore();
+    return await vectorStore.startLocalRuntime({
+      provider: providerPreference as EmbeddingProviderPreference,
+      model: modelPreference,
+    });
+  }
+
+  async stopEmbeddingRuntime(selection?: {
+    provider?: string;
+    model?: string;
+  }): Promise<{
+    success: boolean;
+    provider: string;
+    model: string;
+    message: string;
+  }> {
+    const settings = config.getWorkspaceIndexerSettings();
+    const providerPreference =
+      typeof selection?.provider === "string" && selection.provider.trim()
+        ? selection.provider.trim()
+        : settings.embeddingProvider;
+    const modelPreference =
+      typeof selection?.model === "string" && selection.model.trim()
+        ? selection.model.trim()
+        : settings.embeddingModel;
+
+    const vectorStore = getVectorStore();
+    await vectorStore.configureEmbeddings({
+      provider: providerPreference as
+        | "auto"
+        | "openai"
+        | "gemini"
+        | "ollama"
+        | "transformers_js",
+      model: modelPreference,
+    });
+
+    const stats = vectorStore.stats();
+    const provider =
+      providerPreference !== "auto"
+        ? providerPreference
+        : stats.provider !== "none"
+          ? stats.provider
+          : "auto";
+    const model = modelPreference || (stats.model !== "none" ? stats.model : "");
+
+    const result = await vectorStore.stopLocalRuntime({
+      provider: provider as
+        | "auto"
+        | "openai"
+        | "gemini"
+        | "ollama"
+        | "transformers_js",
+      model,
+    });
+
+    if (result.success) {
+      this.semanticError = null;
+    } else {
+      this.semanticError = result.message;
+    }
+    return result;
   }
 
   async setWorkspace(pathValue: string): Promise<WorkspaceIndexerStatus> {
@@ -247,10 +408,10 @@ class WorkspaceIndexer {
     return this.getStatus();
   }
 
-  search(
+  async search(
     queryValue: string,
     options?: { workspacePath?: string | null; limit?: number }
-  ): WorkspaceIndexerSearchResult {
+  ): Promise<WorkspaceIndexerSearchResult> {
     const limit = clamp(options?.limit ?? 250, 1, 5000);
     const query = typeof queryValue === "string" ? queryValue.trim() : "";
     const requestedPath = options?.workspacePath?.trim();
@@ -269,6 +430,7 @@ class WorkspaceIndexer {
           query,
           totalFiles: 0,
           truncated: false,
+          semanticMatches: 0,
           files: [],
           error: "invalid_workspace_path",
         };
@@ -287,6 +449,7 @@ class WorkspaceIndexer {
         query,
         totalFiles: 0,
         truncated: false,
+        semanticMatches: 0,
         files: [],
         error: "index_not_available",
       };
@@ -304,6 +467,7 @@ class WorkspaceIndexer {
         query,
         totalFiles: 0,
         truncated: false,
+        semanticMatches: 0,
         files: [],
         error: "index_workspace_mismatch",
       };
@@ -328,9 +492,82 @@ class WorkspaceIndexer {
       return left.relativePath.localeCompare(right.relativePath);
     });
 
-    const files = rankedFiles.slice(0, limit).map((file) => ({
-      path: file.path,
-      relativePath: file.relativePath,
+    const rankedByPath = new Map(
+      rankedFiles.map((file) => [file.relativePathLower, scoreIndexedFile(file.relativePath, query)])
+    );
+    const indexedByPath = new Map(this.indexedFiles.map((file) => [file.relativePathLower, file]));
+    const combined = new Map<
+      string,
+      { file: IndexedFileRecord; lexicalScore: number; semanticScore: number }
+    >();
+
+    for (const file of rankedFiles) {
+      combined.set(file.relativePathLower, {
+        file,
+        lexicalScore: rankedByPath.get(file.relativePathLower) ?? 10,
+        semanticScore: 0,
+      });
+    }
+
+    let semanticMatches = 0;
+    const settings = config.getWorkspaceIndexerSettings();
+    if (query.length > 0 && settings.semanticEnabled && this.semanticReady) {
+      try {
+        const vectorStore = getVectorStore();
+        await vectorStore.configureEmbeddings({
+          provider: settings.embeddingProvider,
+          model: settings.embeddingModel,
+        });
+        await vectorStore.ensureReady();
+        const workspacePrefix = this.getWorkspaceSemanticPrefix(indexedPath);
+        const vectorResults = await vectorStore.search(query, {
+          source: "workspace",
+          maxResults: Math.min(Math.max(limit * 2, 50), 5000),
+          minScore: settings.semanticMinScore,
+        });
+        const seenSemantic = new Set<string>();
+
+        for (const result of vectorResults) {
+          if (!result.path.startsWith(`${workspacePrefix}/`)) continue;
+          const relativePath = result.path.slice(workspacePrefix.length + 1);
+          if (!relativePath) continue;
+          const key = relativePath.toLowerCase();
+          const indexedFile = indexedByPath.get(key);
+          if (!indexedFile) continue;
+          seenSemantic.add(key);
+          const existing = combined.get(key);
+          if (existing) {
+            existing.semanticScore = Math.max(existing.semanticScore, result.score);
+            continue;
+          }
+          combined.set(key, {
+            file: indexedFile,
+            lexicalScore: Math.min(scoreIndexedFile(indexedFile.relativePath, query), 6.5),
+            semanticScore: result.score,
+          });
+        }
+
+        semanticMatches = seenSemantic.size;
+      } catch (errorValue) {
+        const message =
+          errorValue instanceof Error ? errorValue.message : `Semantic search error: ${String(errorValue)}`;
+        this.semanticError = message;
+      }
+    }
+
+    const rankedCombined = [...combined.values()].sort((left, right) => {
+      const leftScore = left.lexicalScore - left.semanticScore * 2;
+      const rightScore = right.lexicalScore - right.semanticScore * 2;
+      if (leftScore !== rightScore) return leftScore - rightScore;
+      if (left.file.relativePath.length !== right.file.relativePath.length) {
+        return left.file.relativePath.length - right.file.relativePath.length;
+      }
+      return left.file.relativePath.localeCompare(right.file.relativePath);
+    });
+
+    const files = rankedCombined.slice(0, limit).map((entry) => ({
+      path: entry.file.path,
+      relativePath: entry.file.relativePath,
     }));
 
     return {
@@ -341,10 +578,16 @@ class WorkspaceIndexer {
       path: targetPath,
       workspacePath: this.workspacePath,
       query,
-      totalFiles: rankedFiles.length,
-      truncated: rankedFiles.length > limit,
+      totalFiles: rankedCombined.length,
+      truncated: rankedCombined.length > limit,
+      semanticMatches,
       files,
     };
+  }
+
+  private getWorkspaceSemanticPrefix(workspacePath: string): string {
+    const digest = createHash("sha1").update(resolveCanonicalPath(workspacePath)).digest("hex").slice(0, 12);
+    return `workspace://${digest}`;
   }
 
   private resolveWorkspacePath(pathValue: string): string {
@@ -390,6 +633,12 @@ class WorkspaceIndexer {
     this.finishedAt = null;
     this.durationMs = null;
     this.lastIndexedAt = null;
+    this.semanticReady = false;
+    this.semanticProvider = null;
+    this.semanticModel = null;
+    this.semanticIndexedFiles = 0;
+    this.semanticIndexedChunks = 0;
+    this.semanticError = null;
     this.error = null;
     log.info("Indexer reset to idle", {
       workspacePath: this.workspacePath,
@@ -437,6 +686,10 @@ class WorkspaceIndexer {
     }
 
     const token = ++this.runSequence;
+    const previousIndexedFiles =
+      this.indexedWorkspacePath && resolve(this.indexedWorkspacePath) === resolve(workspacePath)
+        ? [...this.indexedFiles]
+        : [];
     this.activeToken = token;
     this.state = "indexing";
     this.error = null;
@@ -448,6 +701,12 @@ class WorkspaceIndexer {
     this.startedAt = new Date().toISOString();
     this.finishedAt = null;
     this.durationMs = null;
+    this.semanticReady = false;
+    this.semanticProvider = null;
+    this.semanticModel = null;
+    this.semanticIndexedFiles = 0;
+    this.semanticIndexedChunks = 0;
+    this.semanticError = null;
 
     const discoveredFiles: IndexedFileRecord[] = [];
     const pendingDirs: string[] = [workspacePath];
@@ -529,10 +788,16 @@ class WorkspaceIndexer {
         left.relativePath.localeCompare(right.relativePath)
       );
       this.indexedWorkspacePath = workspacePath;
-      this.state = "ready";
-      this.progress = 100;
       this.lastIndexedAt = new Date().toISOString();
       this.error = null;
+      this.progress = settings.semanticEnabled ? 96 : 100;
+
+      if (settings.semanticEnabled && this.indexedFiles.length > 0) {
+        await this.indexSemanticWorkspace(workspacePath, token, settings, previousIndexedFiles);
+      }
+
+      this.state = "ready";
+      this.progress = 100;
       if (maxFilesReached) {
         log.warn("Indexing reached max file limit", {
           workspacePath,
@@ -572,6 +837,95 @@ class WorkspaceIndexer {
           ? Math.max(0, Date.parse(this.finishedAt) - Date.parse(this.startedAt))
           : null;
       }
+    }
+  }
+
+  private async indexSemanticWorkspace(
+    workspacePath: string,
+    token: number,
+    settings: WorkspaceIndexerSettings,
+    previousIndexedFiles: IndexedFileRecord[]
+  ): Promise<void> {
+    const semanticCandidates = this.indexedFiles.slice(0, settings.semanticMaxFiles);
+    if (semanticCandidates.length === 0) {
+      this.semanticReady = false;
+      return;
+    }
+
+    const workspacePrefix = this.getWorkspaceSemanticPrefix(workspacePath);
+
+    try {
+      const vectorStore = getVectorStore();
+      await vectorStore.configureEmbeddings({
+        provider: settings.embeddingProvider,
+        model: settings.embeddingModel,
+      });
+      await vectorStore.ensureReady();
+
+      const statsBefore = vectorStore.stats();
+      this.semanticProvider = statsBefore.provider || null;
+      this.semanticModel = statsBefore.model || null;
+
+      if (!statsBefore.provider || statsBefore.provider === "none") {
+        this.semanticReady = false;
+        this.semanticError = "No embedding provider configured";
+        return;
+      }
+
+      for (const file of previousIndexedFiles) {
+        this.ensureActive(token);
+        vectorStore.removeFile(`${workspacePrefix}/${file.relativePath}`);
+      }
+
+      let indexedFileCount = 0;
+      let indexedChunkCount = 0;
+
+      for (let index = 0; index < semanticCandidates.length; index += 1) {
+        this.ensureActive(token);
+        const candidate = semanticCandidates[index];
+
+        try {
+          const content = await readFile(candidate.path, "utf-8");
+          const chunks = await vectorStore.indexFile(
+            `${workspacePrefix}/${candidate.relativePath}`,
+            content,
+            "workspace"
+          );
+          if (chunks > 0) {
+            indexedFileCount += 1;
+            indexedChunkCount += chunks;
+          }
+        } catch {
+          continue;
+        }
+
+        const ratio = (index + 1) / semanticCandidates.length;
+        this.progress = Math.max(this.progress, Math.min(99, Math.floor(96 + ratio * 3)));
+        if (index % 25 === 0) {
+          await new Promise<void>((resolveYield) => setTimeout(resolveYield, 0));
+        }
+      }
+
+      this.semanticIndexedFiles = indexedFileCount;
+      this.semanticIndexedChunks = indexedChunkCount;
+      this.semanticReady = indexedChunkCount > 0;
+      if (indexedChunkCount === 0) {
+        this.semanticError = "No semantic chunks indexed";
+      } else {
+        this.semanticError = null;
+      }
+    } catch (errorValue) {
+      if ((errorValue as Error)?.message === "__INDEX_CANCELLED__") {
+        throw errorValue;
+      }
+      const message =
+        errorValue instanceof Error ? errorValue.message : `Semantic indexing error: ${String(errorValue)}`;
+      this.semanticReady = false;
+      this.semanticError = message;
+      log.warn("Semantic indexing failed", {
+        workspacePath,
+        error: message,
+      });
     }
   }
 }

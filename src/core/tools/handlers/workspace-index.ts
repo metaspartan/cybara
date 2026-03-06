@@ -12,6 +12,7 @@ interface WorkspaceIndexSearchResult {
   query: string;
   totalFiles: number;
   truncated: boolean;
+  semanticMatches?: number;
   files: Array<{ path: string; relativePath: string }>;
   indexError?: string;
   error?: string;
@@ -45,7 +46,7 @@ export async function handleWorkspaceIndexSearch(
   const limit = normalizeLimit(args);
   const path = normalizePath(args, context?.workspaceDir);
 
-  const indexedResult = workspaceIndexer.search(query, {
+  const indexedResult = await workspaceIndexer.search(query, {
     workspacePath: path,
     limit,
   });
@@ -56,6 +57,7 @@ export async function handleWorkspaceIndexSearch(
       indexed: true,
       resultCount: indexedResult.files.length,
       totalFiles: indexedResult.totalFiles,
+      semanticMatches: indexedResult.semanticMatches || 0,
     });
     return indexedResult;
   }
