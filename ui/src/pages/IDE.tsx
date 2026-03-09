@@ -1,4 +1,13 @@
-import { useState, useEffect, useCallback, useMemo, useRef, useDeferredValue, memo } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  useDeferredValue,
+  memo,
+  type CSSProperties,
+} from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -49,7 +58,19 @@ import {
   mergeActivityLists,
   normalizeActivityTextForPhase,
   type LiveActivityItem,
+  type ToolCallLike,
 } from "@/lib/chatActivities";
+import {
+  countGitDiffLineChanges,
+  buildPendingInlinePreviewRows,
+  emptyIdePendingDiffDecorations,
+  mergeGitDiffDecorations,
+  parseGitDiffDecorations,
+  type IdePendingInlinePreviewRow,
+  type IdePendingDeletedBlock,
+  type IdePendingDiffDecorations,
+  type IdePendingLineState,
+} from "@/lib/idePendingDiffDecorations";
 import EmbeddedTerminalPanel, {
   type IdeTerminalPanelState,
 } from "@/components/ide/EmbeddedTerminalPanel";
@@ -295,7 +316,7 @@ interface IdeChatMessage {
   content: string;
   timestamp: string;
   thinking?: string;
-  tool_calls?: Array<Record<string, unknown>>;
+  tool_calls?: ToolCallLike[];
   process_activities?: IdeProcessActivity[];
 }
 
@@ -319,6 +340,24 @@ interface IdeFileChangeSummary {
   files: IdeFileChangeItem[];
   totalAdded: number;
   totalRemoved: number;
+}
+
+interface IdePendingFileDiff {
+  key: string;
+  messageKey: string;
+  path: string;
+  type: IdeFileChangeItem["type"];
+  added: number;
+  removed: number;
+  diff?: string;
+}
+
+interface IdePendingFileDiffController {
+  items: IdePendingFileDiff[];
+  acceptFile: (fileKey: string) => void;
+  rejectFile: (fileKey: string) => Promise<void>;
+  acceptAll: () => void;
+  rejectAll: () => Promise<void>;
 }
 
 interface TreeContextMenuState {
@@ -1190,7 +1229,7 @@ function CodeViewer({
   enableGhostCompletions?: boolean;
   completionDebounceMs?: number;
   ghostDebounceMs?: number;
-  pendingFileDiffs?: Array<{ path: string; diff?: string }>;
+  pendingFileDiffs?: IdePendingFileDiff[];
 }) {
   const [content, setContent] = useState<string | null>(null);
   const [editContent, setEditContent] = useState<string>("");
@@ -1204,7 +1243,10 @@ function CodeViewer({
   const [blameLines, setBlameLines] = useState<Map<number, IdeBlameLine>>(new Map());
   const [blameLoading, setBlameLoading] = useState(false);
   const [gitHistoryStatus, setGitHistoryStatus] = useState<GitHistoryStatus>("idle");
-  const [addedChangeLines, setAddedChangeLines] = useState<Set<number>>(new Set());
+  const [pendingLineDecorations, setPendingLineDecorations] = useState<IdePendingDiffDecorations>(
+    () => emptyIdePendingDiffDecorations()
+  );
+  const [pendingPreviewDiff, setPendingPreviewDiff] = useState<string | null>(null);
   const [activeLine, setActiveLine] = useState(1);
   const [blamePopoverLine, setBlamePopoverLine] = useState<number | null>(null);
   const [copiedCommit, setCopiedCommit] = useState<string | null>(null);
@@ -1249,6 +1291,7 @@ function CodeViewer({
   } | null>(null);
   const [isTypingBurst, setIsTypingBurst] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
+  const previewScrollRef = useRef<HTMLDivElement | null>(null);
   const highlightScrollRef = useRef<HTMLDivElement | null>(null);
   const gutterRef = useRef<HTMLDivElement | null>(null);
   const findInputRef = useRef<HTMLInputElement | null>(null);
@@ -1286,6 +1329,8 @@ function CodeViewer({
   const cursorNotifyFrameRef = useRef<number | null>(null);
   const pendingCursorSelectionRef = useRef<HTMLTextAreaElement | null>(null);
   const cursorSelectionFrameRef = useRef<number | null>(null);
+  const showPendingInlinePreviewRef = useRef(false);
+  const pendingPreviewRowIndexByLineRef = useRef<Map<number, number>>(new Map());
   const normalizedFontSize = Math.max(11, Math.min(22, Math.round(editorFontSizePx)));
   const normalizedLineHeight = Math.max(16, Math.min(38, Math.round(editorLineHeightPx)));
   const normalizedCompletionDebounce = Math.max(
@@ -1460,12 +1505,14 @@ function CodeViewer({
   }, [content, isBinary, isLargeFileMode, path]);
 
   const fetchLineChanges = useCallback(async () => {
+    const currentLineCount = Math.max(1, (content || "").split("\n").length);
     if (!path || isBinary || isLargeFileMode) {
       if (lineChangesAbortRef.current) {
         lineChangesAbortRef.current.abort();
         lineChangesAbortRef.current = null;
       }
-      setAddedChangeLines(new Set());
+      setPendingLineDecorations(emptyIdePendingDiffDecorations());
+      setPendingPreviewDiff(null);
       return;
     }
 
@@ -1474,21 +1521,65 @@ function CodeViewer({
         (entry) => entry && typeof entry.path === "string" && isSameIdePath(path, entry.path)
       );
       if (forCurrentFile.length === 0) {
-        setAddedChangeLines(new Set());
+        setPendingLineDecorations(emptyIdePendingDiffDecorations());
+        setPendingPreviewDiff(null);
         return;
       }
-      const merged = new Set<number>();
-      for (const entry of forCurrentFile) {
-        const parsed = parseGitDiffAddedLineNumbers(
-          typeof entry.diff === "string" ? entry.diff : ""
-        );
-        for (const line of parsed) {
-          merged.add(line);
+
+      const directDiff =
+        forCurrentFile.length === 1 && typeof forCurrentFile[0]?.diff === "string"
+          ? forCurrentFile[0].diff.trim()
+            ? forCurrentFile[0].diff
+            : null
+          : null;
+      const fallbackDecorations = mergeGitDiffDecorations(
+        forCurrentFile.map((entry) => (typeof entry.diff === "string" ? entry.diff : undefined)),
+        currentLineCount
+      );
+      const needsGitHydration =
+        forCurrentFile.length > 1 || forCurrentFile.some((entry) => shouldHydratePendingFileDiffFromGit(entry));
+
+      if (!needsGitHydration && directDiff) {
+        setPendingLineDecorations(parseGitDiffDecorations(directDiff, currentLineCount));
+        setPendingPreviewDiff(directDiff);
+        return;
+      }
+
+      const requestId = lineChangesRequestSeqRef.current + 1;
+      lineChangesRequestSeqRef.current = requestId;
+      if (lineChangesAbortRef.current) {
+        lineChangesAbortRef.current.abort();
+      }
+      const controller = new AbortController();
+      lineChangesAbortRef.current = controller;
+
+      try {
+        const res = await apiFetch(`/api/git/diff?path=${encodeURIComponent(path)}`, {
+          signal: controller.signal,
+        });
+        const data = (await res.json()) as { success?: boolean; diff?: string };
+        if (lineChangesRequestSeqRef.current !== requestId) return;
+        if (!res.ok || !data?.success || typeof data.diff !== "string") {
+          setPendingLineDecorations(fallbackDecorations);
+          setPendingPreviewDiff(directDiff);
+          return;
+        }
+        setPendingLineDecorations(parseGitDiffDecorations(data.diff, currentLineCount));
+        setPendingPreviewDiff(data.diff);
+      } catch (errorValue) {
+        if ((errorValue as Error)?.name !== "AbortError") {
+          setPendingLineDecorations(fallbackDecorations);
+          setPendingPreviewDiff(directDiff);
+        }
+      } finally {
+        if (lineChangesAbortRef.current === controller) {
+          lineChangesAbortRef.current = null;
         }
       }
-      setAddedChangeLines(merged);
       return;
     }
+
+    setPendingPreviewDiff(null);
 
     const requestId = lineChangesRequestSeqRef.current + 1;
     lineChangesRequestSeqRef.current = requestId;
@@ -1505,22 +1596,24 @@ function CodeViewer({
       const data = (await res.json()) as { success?: boolean; diff?: string };
       if (lineChangesRequestSeqRef.current !== requestId) return;
       if (!res.ok || !data?.success) {
-        setAddedChangeLines(new Set());
+        setPendingLineDecorations(emptyIdePendingDiffDecorations());
+        setPendingPreviewDiff(null);
         return;
       }
-      setAddedChangeLines(
-        parseGitDiffAddedLineNumbers(typeof data.diff === "string" ? data.diff : "")
+      setPendingLineDecorations(
+        parseGitDiffDecorations(typeof data.diff === "string" ? data.diff : "", currentLineCount)
       );
     } catch (errorValue) {
       if ((errorValue as Error)?.name !== "AbortError") {
-        setAddedChangeLines(new Set());
+        setPendingLineDecorations(emptyIdePendingDiffDecorations());
+        setPendingPreviewDiff(null);
       }
     } finally {
       if (lineChangesAbortRef.current === controller) {
         lineChangesAbortRef.current = null;
       }
     }
-  }, [isBinary, isLargeFileMode, path, pendingFileDiffs]);
+  }, [content, isBinary, isLargeFileMode, path, pendingFileDiffs]);
 
   useEffect(() => {
     if (fileReadAbortRef.current) {
@@ -1541,7 +1634,8 @@ function CodeViewer({
     setIsBinary(false);
     setDiagnostics([]);
     setBlameLines(new Map());
-    setAddedChangeLines(new Set());
+    setPendingLineDecorations(emptyIdePendingDiffDecorations());
+    setPendingPreviewDiff(null);
     setBlameLoading(false);
     setGitHistoryStatus("idle");
     setShowFindBar(false);
@@ -1679,15 +1773,15 @@ function CodeViewer({
     void fetchLineChanges();
   }, [externalRefreshKey, fetchBlame, fetchContent, fetchDiagnostics, fetchLineChanges, path]);
 
-  const updateScrollMetrics = useCallback((textarea: HTMLTextAreaElement | null) => {
-    if (!textarea) return;
+  const updateScrollMetrics = useCallback((scrollElement: HTMLElement | null) => {
+    if (!scrollElement) return;
     pendingScrollMetricsRef.current = {
-      top: textarea.scrollTop,
-      left: textarea.scrollLeft,
-      height: textarea.clientHeight || 1,
-      width: textarea.clientWidth || 1,
-      scrollHeight: textarea.scrollHeight || 1,
-      scrollWidth: textarea.scrollWidth || 1,
+      top: scrollElement.scrollTop,
+      left: scrollElement.scrollLeft,
+      height: scrollElement.clientHeight || 1,
+      width: scrollElement.clientWidth || 1,
+      scrollHeight: scrollElement.scrollHeight || 1,
+      scrollWidth: scrollElement.scrollWidth || 1,
     };
 
     if (scrollMetricsFrameRef.current !== null) return;
@@ -1723,16 +1817,16 @@ function CodeViewer({
   }, []);
 
   const syncEditorScroll = useCallback(
-    (textarea: HTMLTextAreaElement | null) => {
-      if (!textarea) return;
+    (scrollElement: HTMLElement | null) => {
+      if (!scrollElement) return;
       if (highlightScrollRef.current) {
-        highlightScrollRef.current.scrollTop = textarea.scrollTop;
-        highlightScrollRef.current.scrollLeft = textarea.scrollLeft;
+        highlightScrollRef.current.scrollTop = scrollElement.scrollTop;
+        highlightScrollRef.current.scrollLeft = scrollElement.scrollLeft;
       }
       if (gutterRef.current) {
-        gutterRef.current.scrollTop = textarea.scrollTop;
+        gutterRef.current.scrollTop = scrollElement.scrollTop;
       }
-      updateScrollMetrics(textarea);
+      updateScrollMetrics(scrollElement);
     },
     [updateScrollMetrics]
   );
@@ -2606,8 +2700,34 @@ function CodeViewer({
     setActiveFindMatchIndex((previous) => Math.min(previous, matches.length - 1));
   }, [computeFindMatches, findQuery]);
 
+  const selectPendingPreviewLine = useCallback(
+    (requestedLine: number, options?: { scrollIntoView?: boolean }) => {
+      const previewElement = previewScrollRef.current;
+      if (!previewElement) return;
+      const line = Math.max(1, Math.round(requestedLine));
+      if (options?.scrollIntoView) {
+        const rowIndex =
+          pendingPreviewRowIndexByLineRef.current.get(line) ?? Math.max(line - 1, 0);
+        const targetTop = Math.max((rowIndex - 2) * normalizedLineHeight, 0);
+        const maxScroll = Math.max(previewElement.scrollHeight - previewElement.clientHeight, 0);
+        previewElement.scrollTop = Math.min(targetTop, maxScroll);
+        syncEditorScroll(previewElement);
+      }
+      setCursorLine((previous) => (previous === line ? previous : line));
+      setCursorColumn((previous) => (previous === 1 ? previous : 1));
+      setActiveLine((previous) => (previous === line ? previous : line));
+      emitCursorChange({ line, column: 1 });
+    },
+    [emitCursorChange, normalizedLineHeight, syncEditorScroll]
+  );
+
   const jumpToLine = useCallback(
     (requestedLine: number) => {
+      if (showPendingInlinePreviewRef.current) {
+        selectPendingPreviewLine(requestedLine, { scrollIntoView: true });
+        return;
+      }
+
       const textarea = editorRef.current;
       if (!textarea) return;
 
@@ -2633,7 +2753,7 @@ function CodeViewer({
       syncEditorScroll(textarea);
       updateCursorFromSelection(textarea);
     },
-    [editContent, syncEditorScroll, updateCursorFromSelection]
+    [editContent, selectPendingPreviewLine, syncEditorScroll, updateCursorFromSelection]
   );
 
   useEffect(() => {
@@ -3200,19 +3320,62 @@ function CodeViewer({
   }, [editorContextMenu]);
 
   useEffect(() => {
-    if (!path || isBinary || !editorRef.current) return;
+    if (!path || isBinary) return;
     window.requestAnimationFrame(() => {
-      syncEditorScroll(editorRef.current);
-      updateCursorFromSelection(editorRef.current);
+      const scrollElement = showPendingInlinePreviewRef.current
+        ? previewScrollRef.current
+        : editorRef.current;
+      if (scrollElement) {
+        syncEditorScroll(scrollElement);
+      }
+      if (!showPendingInlinePreviewRef.current && editorRef.current) {
+        updateCursorFromSelection(editorRef.current);
+      }
     });
   }, [path, isBinary, syncEditorScroll, updateCursorFromSelection]);
 
+  const isMarkdownPreview =
+    !isBinary &&
+    previewMode &&
+    (extension.toLowerCase() === ".md" || extension.toLowerCase() === ".markdown");
   const sourceText = useDeferredValue(editContent);
   const sourceLines = useMemo(() => sourceText.split("\n"), [sourceText]);
+  const hasCurrentPendingFileDiff = useMemo(
+    () =>
+      !!path &&
+      Array.isArray(pendingFileDiffs) &&
+      pendingFileDiffs.some((entry) => entry && typeof entry.path === "string" && isSameIdePath(path, entry.path)),
+    [path, pendingFileDiffs]
+  );
+  const pendingInlinePreviewRows = useMemo<IdePendingInlinePreviewRow[]>(
+    () =>
+      hasCurrentPendingFileDiff && pendingPreviewDiff
+        ? buildPendingInlinePreviewRows(pendingPreviewDiff, sourceText)
+        : [],
+    [hasCurrentPendingFileDiff, pendingPreviewDiff, sourceText]
+  );
+  const pendingInlinePreviewIndexByLine = useMemo(() => {
+    const indexByLine = new Map<number, number>();
+    pendingInlinePreviewRows.forEach((row, index) => {
+      if (row.lineNumber === null || indexByLine.has(row.lineNumber)) return;
+      indexByLine.set(row.lineNumber, index);
+    });
+    return indexByLine;
+  }, [pendingInlinePreviewRows]);
+  const showPendingInlinePreview =
+    !isBinary &&
+    !isMarkdownPreview &&
+    !hasUnsavedChanges &&
+    !showFindBar &&
+    hasCurrentPendingFileDiff &&
+    pendingInlinePreviewRows.length > 0;
+  const renderedEditorRowCount = showPendingInlinePreview
+    ? pendingInlinePreviewRows.length
+    : sourceLines.length;
   const lineHeightPx = normalizedLineHeight;
   const gutterStartLine = Math.max(0, Math.floor(scrollMetrics.top / lineHeightPx) - 80);
   const gutterVisibleCount = Math.max(Math.ceil(scrollMetrics.height / lineHeightPx) + 160, 220);
-  const gutterEndLine = Math.min(sourceLines.length, gutterStartLine + gutterVisibleCount);
+  const gutterEndLine = Math.min(renderedEditorRowCount, gutterStartLine + gutterVisibleCount);
   const visibleLineIndices = useMemo(() => {
     const indices: number[] = [];
     for (let line = gutterStartLine; line < gutterEndLine; line += 1) {
@@ -3220,21 +3383,54 @@ function CodeViewer({
     }
     return indices;
   }, [gutterEndLine, gutterStartLine]);
+  const pendingDeletedBlocksByLine = useMemo(() => {
+    const grouped = new Map<number, IdePendingDeletedBlock[]>();
+    for (const block of pendingLineDecorations.deletedBlocks) {
+      const existing = grouped.get(block.anchorLine) || [];
+      existing.push(block);
+      grouped.set(block.anchorLine, existing);
+    }
+    return grouped;
+  }, [pendingLineDecorations]);
   const minimapRows = useMemo(() => {
     const maxRows = 1200;
-    const step = Math.max(1, Math.ceil(sourceLines.length / maxRows));
-    const rows: Array<{ sourceLine: number; length: number }> = [];
-    for (let i = 0; i < sourceLines.length; i += step) {
+    const previewRows = showPendingInlinePreview ? pendingInlinePreviewRows : null;
+    const totalRows = previewRows ? previewRows.length : sourceLines.length;
+    const step = Math.max(1, Math.ceil(Math.max(totalRows, 1) / maxRows));
+    const rows: Array<{ sourceLine: number; length: number; kind: IdePendingInlinePreviewRow["kind"] | "mixed" }> = [];
+    for (let i = 0; i < totalRows; i += step) {
       let longest = 0;
-      const end = Math.min(i + step, sourceLines.length);
+      let segmentKind: IdePendingInlinePreviewRow["kind"] | "mixed" = "context";
+      const end = Math.min(i + step, totalRows);
       for (let j = i; j < end; j += 1) {
-        longest = Math.max(longest, sourceLines[j]?.trim().length || 0);
+        const previewRow = previewRows?.[j] || null;
+        const lengthSource = previewRow ? previewRow.text : sourceLines[j] || "";
+        longest = Math.max(longest, lengthSource.trim().length || 0);
+        const nextKind = previewRow?.kind || "context";
+        if (segmentKind === "context") {
+          segmentKind = nextKind;
+        } else if (nextKind !== "context" && nextKind !== segmentKind) {
+          segmentKind = "mixed";
+        }
       }
-      rows.push({ sourceLine: i + 1, length: longest });
+      rows.push({ sourceLine: i + 1, length: longest, kind: segmentKind });
     }
     return { rows, step };
-  }, [sourceLines]);
-  const activeMinimapRow = Math.floor(Math.max(activeLine - 1, 0) / Math.max(minimapRows.step, 1));
+  }, [pendingInlinePreviewRows, showPendingInlinePreview, sourceLines]);
+  const activeEditorRowIndex = showPendingInlinePreview
+    ? pendingInlinePreviewIndexByLine.get(activeLine) ?? Math.max(activeLine - 1, 0)
+    : Math.max(activeLine - 1, 0);
+  const activeMinimapRow = Math.floor(activeEditorRowIndex / Math.max(minimapRows.step, 1));
+
+  useEffect(() => {
+    showPendingInlinePreviewRef.current = showPendingInlinePreview;
+    pendingPreviewRowIndexByLineRef.current = pendingInlinePreviewIndexByLine;
+  }, [pendingInlinePreviewIndexByLine, showPendingInlinePreview]);
+
+  useEffect(() => {
+    if (!showPendingInlinePreview || !previewScrollRef.current) return;
+    syncEditorScroll(previewScrollRef.current);
+  }, [pendingInlinePreviewRows, showPendingInlinePreview, syncEditorScroll]);
 
   if (!path) {
     return (
@@ -3276,10 +3472,6 @@ function CodeViewer({
     lineDiagnostics.set(d.line, existing);
   });
 
-  const isMarkdownPreview =
-    !isBinary &&
-    previewMode &&
-    (extension.toLowerCase() === ".md" || extension.toLowerCase() === ".markdown");
   const showCompletionPanel =
     enableCompletions && completionVisible && completionItems.length > 0 && !!completionOrigin;
   const completionPanelPosition = completionOrigin
@@ -3507,18 +3699,82 @@ function CodeViewer({
             >
               <div
                 className="relative"
-                style={{ height: `${sourceLines.length * lineHeightPx}px` }}
+                style={{ height: `${renderedEditorRowCount * lineHeightPx}px` }}
               >
                 <div
                   className="absolute left-0 right-0"
                   style={{ transform: `translateY(${gutterStartLine * lineHeightPx}px)` }}
                 >
                   {visibleLineIndices.map((i) => {
+                    if (showPendingInlinePreview) {
+                      const previewRow = pendingInlinePreviewRows[i];
+                      if (!previewRow) return null;
+                      const lineNum = previewRow.lineNumber;
+                      const diagnosticsIndex = lineNum === null ? null : lineNum - 1;
+                      const lineDiags =
+                        diagnosticsIndex === null ? [] : lineDiagnostics.get(diagnosticsIndex) || [];
+                      const hasError = lineDiags.some((d) => d.severity === "error");
+                      const hasWarning = lineDiags.some((d) => d.severity === "warning");
+                      const isActivePreviewLine = lineNum !== null && activeLine === lineNum;
+                      const previewLineTextClass =
+                        previewRow.kind === "added"
+                          ? "text-emerald-300"
+                          : previewRow.kind === "removed"
+                            ? "text-red-300"
+                            : hasError
+                              ? "text-red-400"
+                              : hasWarning
+                                ? "text-yellow-400"
+                                : isActivePreviewLine
+                                  ? "text-indigo-200"
+                                  : "text-gray-600 hover:text-gray-400";
+                      return (
+                        <button
+                          key={`preview-gutter:${i}:${lineNum ?? "removed"}`}
+                          type="button"
+                          onClick={() => {
+                            if (lineNum !== null) {
+                              selectPendingPreviewLine(lineNum, { scrollIntoView: false });
+                            }
+                          }}
+                          disabled={lineNum === null}
+                          className={cn(
+                            "w-full flex items-center justify-end px-1 m-0 py-0 border-0 rounded-none appearance-none bg-transparent leading-none transition-colors",
+                            lineNum === null && "cursor-default",
+                            isActivePreviewLine && "bg-indigo-500/20",
+                            previewLineTextClass
+                          )}
+                          style={{ height: `${lineHeightPx}px` }}
+                          title={
+                            lineDiags.map((d) => d.message).join("\n") ||
+                            (lineNum === null ? "Removed line" : `Line ${lineNum}`)
+                          }
+                        >
+                          {lineNum === null ? (
+                            <span className="font-semibold">-</span>
+                          ) : lineDiags.length > 0 ? (
+                            hasError ? (
+                              <AlertCircle className="w-3 h-3" />
+                            ) : (
+                              <AlertTriangle className="w-3 h-3" />
+                            )
+                          ) : (
+                            lineNum
+                          )}
+                        </button>
+                      );
+                    }
+
                     const lineNum = i;
                     const lineDiags = lineDiagnostics.get(lineNum) || [];
                     const hasError = lineDiags.some((d) => d.severity === "error");
                     const hasWarning = lineDiags.some((d) => d.severity === "warning");
-                    const isAddedChangeLine = addedChangeLines.has(i + 1);
+                    const pendingLineState = pendingLineDecorations.lineStates.get(i + 1);
+                    const pendingLineTextClass = getPendingLineTextClass(
+                      pendingLineState,
+                      hasError,
+                      hasWarning
+                    );
                     return (
                       <button
                         key={i}
@@ -3529,10 +3785,10 @@ function CodeViewer({
                           activeLine === i + 1 && "bg-indigo-500/20 text-indigo-200",
                           hasError && "text-red-400",
                           hasWarning && !hasError && "text-yellow-400",
-                          isAddedChangeLine && !hasError && !hasWarning && "text-emerald-300",
+                          pendingLineTextClass,
                           !hasError &&
                             !hasWarning &&
-                            !isAddedChangeLine &&
+                            !pendingLineTextClass &&
                             activeLine !== i + 1 &&
                             "text-gray-600 hover:text-gray-400"
                         )}
@@ -3556,11 +3812,12 @@ function CodeViewer({
             </div>
             <div className="flex-1 min-w-0 flex">
               <div className="relative flex-1 min-w-0">
-                <div
-                  ref={highlightScrollRef}
-                  className="absolute inset-0 overflow-auto pointer-events-none z-20"
-                >
-                  {disableTokenizedHighlight ? (
+                {showPendingInlinePreview ? (
+                  <div
+                    ref={previewScrollRef}
+                    className="absolute inset-0 z-10 overflow-auto"
+                    onScroll={(event) => syncEditorScroll(event.currentTarget)}
+                  >
                     <pre
                       className="m-0 p-4 font-mono text-[14px] min-w-full leading-[22px] text-gray-200"
                       style={{
@@ -3576,22 +3833,81 @@ function CodeViewer({
                           "var(--font-zed-mono), var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', 'Liberation Mono', monospace",
                       }}
                     >
-                      {sourceText}
+                      {pendingInlinePreviewRows.map((row, index) => {
+                        const diagnosticsIndex = row.lineNumber === null ? null : row.lineNumber - 1;
+                        const lineDiags =
+                          diagnosticsIndex === null ? [] : lineDiagnostics.get(diagnosticsIndex) || [];
+                        const hasError = lineDiags.some((d) => d.severity === "error");
+                        const hasWarning = lineDiags.some((d) => d.severity === "warning");
+                        const isActivePreviewLine =
+                          row.lineNumber !== null && activeLine === row.lineNumber;
+                        const previewDecorationStyle: CSSProperties = {
+                          height: `${normalizedLineHeight}px`,
+                          lineHeight: `${normalizedLineHeight}px`,
+                        };
+                        if (row.kind === "added") {
+                          previewDecorationStyle.boxShadow =
+                            "inset 3px 0 0 rgba(52, 211, 153, 0.72)";
+                        } else if (row.kind === "removed") {
+                          previewDecorationStyle.boxShadow =
+                            "inset 3px 0 0 rgba(248, 113, 113, 0.74)";
+                        }
+                        if (isActivePreviewLine) {
+                          previewDecorationStyle.outline = "1px solid rgba(129, 140, 248, 0.45)";
+                          previewDecorationStyle.outlineOffset = "-1px";
+                        }
+                        return (
+                          <div
+                            key={`preview-row:${index}:${row.lineNumber ?? "removed"}`}
+                            data-line-number={row.lineNumber ?? undefined}
+                            style={previewDecorationStyle}
+                            className={cn(
+                              "w-max min-w-full flex items-center",
+                              row.kind === "added" && "bg-emerald-500/14 text-emerald-100/95",
+                              row.kind === "removed" && "bg-red-500/12 text-red-100/95",
+                              row.kind === "context" && hasError && "bg-red-500/10",
+                              row.kind === "context" && hasWarning && !hasError && "bg-yellow-500/10",
+                              row.kind === "context" &&
+                                !hasError &&
+                                !hasWarning &&
+                                isActivePreviewLine &&
+                                "bg-indigo-500/20"
+                            )}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (row.lineNumber !== null) {
+                                  selectPendingPreviewLine(row.lineNumber, {
+                                    scrollIntoView: false,
+                                  });
+                                }
+                              }}
+                              disabled={row.lineNumber === null}
+                              className={cn(
+                                "min-w-full flex-1 border-0 bg-transparent px-0 text-left font-inherit text-inherit",
+                                row.lineNumber !== null ? "cursor-pointer" : "cursor-default",
+                                row.kind === "removed" && "line-through"
+                              )}
+                              title={row.lineNumber === null ? "Removed line" : `Line ${row.lineNumber}`}
+                            >
+                              {row.text.length > 0 ? row.text : "\u00a0"}
+                            </button>
+                          </div>
+                        );
+                      })}
                     </pre>
-                  ) : (
-                    <Highlight
-                      theme={themes.nightOwl}
-                      code={sourceText}
-                      language={highlightLanguage}
+                  </div>
+                ) : (
+                  <>
+                    <div
+                      ref={highlightScrollRef}
+                      className="absolute inset-0 overflow-auto pointer-events-none z-20"
                     >
-                      {({ className, style, tokens, getLineProps, getTokenProps }) => (
+                      {disableTokenizedHighlight ? (
                         <pre
-                          className={cn(
-                            className,
-                            "m-0 p-4 font-mono text-[14px] min-w-full leading-[22px]"
-                          )}
+                          className="m-0 p-4 font-mono text-[14px] min-w-full leading-[22px] text-gray-200"
                           style={{
-                            ...style,
                             background: "transparent",
                             width: "max-content",
                             minWidth: "100%",
@@ -3604,141 +3920,47 @@ function CodeViewer({
                               "var(--font-zed-mono), var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', 'Liberation Mono', monospace",
                           }}
                         >
-                          {tokens.map((line, i) => {
+                          {sourceLines.map((line, i) => {
                             const lineNum = i;
                             const lineDiags = lineDiagnostics.get(lineNum) || [];
                             const hasError = lineDiags.some((d) => d.severity === "error");
                             const hasWarning = lineDiags.some((d) => d.severity === "warning");
                             const isActiveLine = activeLine === i + 1;
-                            const isAddedChangeLine = addedChangeLines.has(i + 1);
-                            const blameLine = blameLines.get(i + 1) || null;
-                            const blameDate = formatBlameStamp(blameLine?.authorDate);
-                            const blameSummary =
-                              blameLine?.summary || (blameLine?.isUncommitted ? "Uncommitted" : "");
-                            const blameText = blameLine
-                              ? `${blameLine.author} · ${blameLine.shortCommit}${blameDate ? ` · ${blameDate}` : ""}${blameSummary ? ` · ${blameSummary}` : ""}`
-                              : "";
-                            const shouldShowLineBlame =
-                              isActiveLine && showInlineBlame && !!blameLine;
-                            const lineProps = getLineProps({ line });
+                            const pendingLineState = pendingLineDecorations.lineStates.get(i + 1);
+                            const pendingDeletedSummary = summarizePendingDeletedBlocks(
+                              pendingDeletedBlocksByLine.get(i + 1)
+                            );
                             return (
                               <div
                                 key={i}
                                 data-line-number={i + 1}
-                                {...lineProps}
                                 style={{
-                                  ...(lineProps.style || {}),
                                   height: `${normalizedLineHeight}px`,
                                   lineHeight: `${normalizedLineHeight}px`,
+                                  ...getPendingLineDecorationStyle(pendingLineState, isActiveLine),
                                 }}
                                 className={cn(
-                                  lineProps.className,
                                   "w-max min-w-full flex items-center",
                                   hasError && "bg-red-500/10",
                                   hasWarning && !hasError && "bg-yellow-500/10",
-                                  isAddedChangeLine &&
-                                    !hasError &&
-                                    !hasWarning &&
-                                    "bg-emerald-500/14",
-                                  isActiveLine && "bg-indigo-500/20"
+                                  !pendingLineState && isActiveLine && "bg-indigo-500/20",
+                                  getPendingLineContainerClass(
+                                    pendingLineState,
+                                    hasError,
+                                    hasWarning
+                                  )
                                 )}
                               >
-                                <span className="flex-shrink-0">
-                                  {line.length > 0 ? (
-                                    line.map((token, key) => {
-                                      const tokenProps = getTokenProps({ token });
-                                      const tokenText =
-                                        typeof tokenProps.children === "string"
-                                          ? tokenProps.children.split(/\r?\n/, 1)[0] || ""
-                                          : typeof token.content === "string"
-                                            ? token.content.split(/\r?\n/, 1)[0] || ""
-                                            : tokenProps.children;
-                                      return (
-                                        <span key={key} {...tokenProps}>
-                                          {tokenText}
-                                        </span>
-                                      );
-                                    })
-                                  ) : (
-                                    <span>&nbsp;</span>
-                                  )}
-                                </span>
-                                {shouldShowLineBlame && (
-                                  <span className="relative ml-5 inline-flex max-w-[54vw] flex-shrink-0 items-center">
-                                    <button
-                                      type="button"
-                                      onMouseEnter={() => showBlamePopover(i + 1)}
-                                      onMouseLeave={scheduleHideBlamePopover}
-                                      disabled={!blameLine}
-                                      className={cn(
-                                        "max-w-full truncate border-0 bg-transparent p-0 text-left font-mono text-[14px] leading-[22px]",
-                                        blameLine
-                                          ? "pointer-events-auto text-gray-500 hover:text-gray-300"
-                                          : "text-gray-700 cursor-default"
-                                      )}
-                                      title={blameText}
-                                    >
-                                      {blameText}
-                                    </button>
-                                    {popoverBlameDetails && blamePopoverLine === i + 1 && (
-                                      <div
-                                        className="pointer-events-auto absolute left-0 top-[18px] z-30 mt-1 rounded-md border border-white/15 bg-black/80 px-2.5 py-2 text-[11px] text-gray-300 shadow-lg backdrop-blur min-w-[280px]"
-                                        onMouseEnter={clearBlameHideTimer}
-                                        onMouseLeave={scheduleHideBlamePopover}
-                                      >
-                                        <div className="flex items-center justify-between gap-2">
-                                          <span className="font-medium text-emerald-200">
-                                            Line {blamePopoverLine}
-                                          </span>
-                                          <div className="flex items-center gap-1">
-                                            {!popoverBlameDetails.isUncommitted && (
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  void handleCopyCommit(popoverBlameDetails.commit)
-                                                }
-                                                className="p-1 rounded border border-white/15 text-gray-300 hover:text-white hover:bg-white/10"
-                                                title={
-                                                  copiedCommit === popoverBlameDetails.commit
-                                                    ? "Copied"
-                                                    : "Copy commit hash"
-                                                }
-                                              >
-                                                <Copy className="w-3 h-3" />
-                                              </button>
-                                            )}
-                                            {popoverBlameDetails.commitUrl && (
-                                              <a
-                                                href={popoverBlameDetails.commitUrl}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="p-1 rounded border border-white/15 text-indigo-300 hover:text-indigo-200 hover:bg-white/10"
-                                                title="Open commit details"
-                                              >
-                                                <ExternalLink className="w-3 h-3" />
-                                              </a>
-                                            )}
-                                          </div>
-                                        </div>
-                                        <div className="mt-1 text-[10px] text-gray-400">
-                                          {popoverBlameDetails.author}
-                                          {popoverBlameTimestamp
-                                            ? ` · ${popoverBlameTimestamp}`
-                                            : ""}
-                                        </div>
-                                        <div className="mt-1 text-[10px] text-gray-500 break-all">
-                                          {popoverBlameDetails.isUncommitted
-                                            ? "Uncommitted local changes"
-                                            : `${popoverBlameDetails.shortCommit} · ${popoverBlameDetails.commit}`}
-                                        </div>
-                                        {(popoverBlameDetails.commitDescription ||
-                                          popoverBlameDetails.summary) && (
-                                          <div className="mt-1 whitespace-pre-wrap text-[11px] text-gray-300 break-words">
-                                            {popoverBlameDetails.commitDescription ||
-                                              popoverBlameDetails.summary}
-                                          </div>
-                                        )}
-                                      </div>
+                                <span className="flex-shrink-0">{line.length > 0 ? line : "\u00a0"}</span>
+                                {pendingDeletedSummary && (
+                                  <span className="ml-4 inline-flex max-w-[40vw] min-w-0 flex-shrink items-center rounded border border-red-500/25 bg-red-500/10 px-1.5 py-0.5 text-[10px] text-red-200/90">
+                                    <span className="truncate font-mono line-through">
+                                      {pendingDeletedSummary.preview}
+                                    </span>
+                                    {pendingDeletedSummary.extraLines > 0 && (
+                                      <span className="ml-1 flex-shrink-0 text-red-100/85 no-underline">
+                                        +{pendingDeletedSummary.extraLines}
+                                      </span>
                                     )}
                                   </span>
                                 )}
@@ -3746,102 +3968,289 @@ function CodeViewer({
                             );
                           })}
                         </pre>
-                      )}
-                    </Highlight>
-                  )}
-                </div>
-
-                <textarea
-                  ref={editorRef}
-                  value={editContent}
-                  onChange={(e) => {
-                    setEditContent(e.target.value);
-                    markTypingBurst();
-                  }}
-                  onKeyDown={handleEditorKeyDown}
-                  onSelect={(e) => scheduleCursorUpdate(e.currentTarget)}
-                  onBlur={() => {
-                    if (typingBurstTimeoutRef.current !== null) {
-                      window.clearTimeout(typingBurstTimeoutRef.current);
-                      typingBurstTimeoutRef.current = null;
-                    }
-                    setIsTypingBurst(false);
-                    window.setTimeout(() => {
-                      setCompletionVisible(false);
-                    }, 80);
-                  }}
-                  onContextMenu={handleEditorContextMenu}
-                  onScroll={(e) => syncEditorScroll(e.currentTarget)}
-                  className="absolute inset-0 z-10 p-4 font-mono text-[14px] leading-[22px] bg-transparent text-transparent caret-indigo-200 resize-none !outline-none focus:!outline-none selection:bg-indigo-500/30"
-                  spellCheck={false}
-                  wrap="off"
-                  style={{
-                    tabSize: 2,
-                    lineHeight: `${normalizedLineHeight}px`,
-                    fontSize: `${normalizedFontSize}px`,
-                    color: "transparent",
-                    WebkitTextFillColor: "transparent",
-                    textShadow: "none",
-                    caretColor: "#c7d2fe",
-                    whiteSpace: "pre",
-                    overflowWrap: "normal",
-                    wordBreak: "normal",
-                    fontFamily:
-                      "var(--font-zed-mono), var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', 'Liberation Mono', monospace",
-                    margin: 0,
-                  }}
-                />
-                {showGhostCompletion && ghostPosition && (
-                  <div
-                    className="absolute z-20 pointer-events-none text-gray-500/75 whitespace-pre"
-                    style={{
-                      left: `${ghostPosition.left}px`,
-                      top: `${ghostPosition.top}px`,
-                      lineHeight: `${normalizedLineHeight}px`,
-                      fontSize: `${normalizedFontSize}px`,
-                      fontFamily:
-                        "var(--font-zed-mono), var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', 'Liberation Mono', monospace",
-                    }}
-                  >
-                    {ghostInlineText}
-                  </div>
-                )}
-                {showCompletionPanel && completionPanelPosition && (
-                  <div
-                    className="absolute z-30 w-[340px] max-w-[80%] max-h-64 overflow-y-auto rounded-md border border-white/15 bg-[#0a0a10]/95 shadow-xl backdrop-blur"
-                    style={{
-                      left: `${Math.min(completionPanelPosition.left, 560)}px`,
-                      top: `${completionPanelPosition.top}px`,
-                    }}
-                  >
-                    <div className="px-2 py-1.5 border-b border-white/10 text-[10px] text-gray-500 flex items-center justify-between">
-                      <span>Completions {completionPrefix ? `for "${completionPrefix}"` : ""}</span>
-                      <span>Tab to accept</span>
-                    </div>
-                    <div className="divide-y divide-white/5">
-                      {completionItems.slice(0, 12).map((item, index) => (
-                        <button
-                          key={`${item.label}:${item.insertText || ""}:${index}`}
-                          type="button"
-                          onMouseDown={(event) => {
-                            event.preventDefault();
-                            void applyCompletion(index);
-                          }}
-                          className={cn(
-                            "w-full text-left px-2 py-1.5 hover:bg-white/10",
-                            index === completionIndex && "bg-indigo-500/20"
-                          )}
+                      ) : (
+                        <Highlight
+                          theme={themes.nightOwl}
+                          code={sourceText}
+                          language={highlightLanguage}
                         >
-                          <div className="text-xs text-gray-100 truncate">{item.label}</div>
-                          {(item.detail || item.kind) && (
-                            <div className="text-[10px] text-gray-500 truncate">
-                              {item.detail || `Kind ${item.kind}`}
-                            </div>
+                          {({ className, style, tokens, getLineProps, getTokenProps }) => (
+                            <pre
+                              className={cn(
+                                className,
+                                "m-0 p-4 font-mono text-[14px] min-w-full leading-[22px]"
+                              )}
+                              style={{
+                                ...style,
+                                background: "transparent",
+                                width: "max-content",
+                                minWidth: "100%",
+                                whiteSpace: "pre",
+                                overflowWrap: "normal",
+                                wordBreak: "normal",
+                                lineHeight: `${normalizedLineHeight}px`,
+                                fontSize: `${normalizedFontSize}px`,
+                                fontFamily:
+                                  "var(--font-zed-mono), var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', 'Liberation Mono', monospace",
+                              }}
+                            >
+                              {tokens.map((line, i) => {
+                                const lineNum = i;
+                                const lineDiags = lineDiagnostics.get(lineNum) || [];
+                                const hasError = lineDiags.some((d) => d.severity === "error");
+                                const hasWarning = lineDiags.some((d) => d.severity === "warning");
+                                const isActiveLine = activeLine === i + 1;
+                                const pendingLineState = pendingLineDecorations.lineStates.get(i + 1);
+                                const pendingDeletedSummary = summarizePendingDeletedBlocks(
+                                  pendingDeletedBlocksByLine.get(i + 1)
+                                );
+                                const blameLine = blameLines.get(i + 1) || null;
+                                const blameDate = formatBlameStamp(blameLine?.authorDate);
+                                const blameSummary =
+                                  blameLine?.summary || (blameLine?.isUncommitted ? "Uncommitted" : "");
+                                const blameText = blameLine
+                                  ? `${blameLine.author} · ${blameLine.shortCommit}${blameDate ? ` · ${blameDate}` : ""}${blameSummary ? ` · ${blameSummary}` : ""}`
+                                  : "";
+                                const shouldShowLineBlame =
+                                  isActiveLine && showInlineBlame && !!blameLine;
+                                const lineProps = getLineProps({ line });
+                                return (
+                                  <div
+                                    key={i}
+                                    data-line-number={i + 1}
+                                    {...lineProps}
+                                    style={{
+                                      ...(lineProps.style || {}),
+                                      height: `${normalizedLineHeight}px`,
+                                      lineHeight: `${normalizedLineHeight}px`,
+                                      ...getPendingLineDecorationStyle(pendingLineState, isActiveLine),
+                                    }}
+                                    className={cn(
+                                      lineProps.className,
+                                      "w-max min-w-full flex items-center",
+                                      hasError && "bg-red-500/10",
+                                      hasWarning && !hasError && "bg-yellow-500/10",
+                                      !pendingLineState && isActiveLine && "bg-indigo-500/20",
+                                      getPendingLineContainerClass(
+                                        pendingLineState,
+                                        hasError,
+                                        hasWarning
+                                      )
+                                    )}
+                                  >
+                                    <span className="flex-shrink-0">
+                                      {line.length > 0 ? (
+                                        line.map((token, key) => {
+                                          const tokenProps = getTokenProps({ token });
+                                          const tokenText =
+                                            typeof tokenProps.children === "string"
+                                              ? tokenProps.children.split(/\r?\n/, 1)[0] || ""
+                                              : typeof token.content === "string"
+                                                ? token.content.split(/\r?\n/, 1)[0] || ""
+                                                : tokenProps.children;
+                                          return (
+                                            <span key={key} {...tokenProps}>
+                                              {tokenText}
+                                            </span>
+                                          );
+                                        })
+                                      ) : (
+                                        <span>&nbsp;</span>
+                                      )}
+                                    </span>
+                                    {pendingDeletedSummary && (
+                                      <span className="ml-4 inline-flex max-w-[40vw] min-w-0 flex-shrink items-center rounded border border-red-500/25 bg-red-500/10 px-1.5 py-0.5 text-[10px] text-red-200/90">
+                                        <span className="truncate font-mono line-through">
+                                          {pendingDeletedSummary.preview}
+                                        </span>
+                                        {pendingDeletedSummary.extraLines > 0 && (
+                                          <span className="ml-1 flex-shrink-0 text-red-100/85 no-underline">
+                                            +{pendingDeletedSummary.extraLines}
+                                          </span>
+                                        )}
+                                      </span>
+                                    )}
+                                    {shouldShowLineBlame && (
+                                      <span className="relative ml-5 inline-flex max-w-[54vw] flex-shrink-0 items-center">
+                                        <button
+                                          type="button"
+                                          onMouseEnter={() => showBlamePopover(i + 1)}
+                                          onMouseLeave={scheduleHideBlamePopover}
+                                          disabled={!blameLine}
+                                          className={cn(
+                                            "max-w-full truncate border-0 bg-transparent p-0 text-left font-mono text-[14px] leading-[22px]",
+                                            blameLine
+                                              ? "pointer-events-auto text-gray-500 hover:text-gray-300"
+                                              : "text-gray-700 cursor-default"
+                                          )}
+                                          title={blameText}
+                                        >
+                                          {blameText}
+                                        </button>
+                                        {popoverBlameDetails && blamePopoverLine === i + 1 && (
+                                          <div
+                                            className="pointer-events-auto absolute left-0 top-[18px] z-30 mt-1 rounded-md border border-white/15 bg-black/80 px-2.5 py-2 text-[11px] text-gray-300 shadow-lg backdrop-blur min-w-[280px]"
+                                            onMouseEnter={clearBlameHideTimer}
+                                            onMouseLeave={scheduleHideBlamePopover}
+                                          >
+                                            <div className="flex items-center justify-between gap-2">
+                                              <span className="font-medium text-emerald-200">
+                                                Line {blamePopoverLine}
+                                              </span>
+                                              <div className="flex items-center gap-1">
+                                                {!popoverBlameDetails.isUncommitted && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      void handleCopyCommit(popoverBlameDetails.commit)
+                                                    }
+                                                    className="p-1 rounded border border-white/15 text-gray-300 hover:text-white hover:bg-white/10"
+                                                    title={
+                                                      copiedCommit === popoverBlameDetails.commit
+                                                        ? "Copied"
+                                                        : "Copy commit hash"
+                                                    }
+                                                  >
+                                                    <Copy className="w-3 h-3" />
+                                                  </button>
+                                                )}
+                                                {popoverBlameDetails.commitUrl && (
+                                                  <a
+                                                    href={popoverBlameDetails.commitUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="p-1 rounded border border-white/15 text-indigo-300 hover:text-indigo-200 hover:bg-white/10"
+                                                    title="Open commit details"
+                                                  >
+                                                    <ExternalLink className="w-3 h-3" />
+                                                  </a>
+                                                )}
+                                              </div>
+                                            </div>
+                                            <div className="mt-1 text-[10px] text-gray-400">
+                                              {popoverBlameDetails.author}
+                                              {popoverBlameTimestamp
+                                                ? ` · ${popoverBlameTimestamp}`
+                                                : ""}
+                                            </div>
+                                            <div className="mt-1 text-[10px] text-gray-500 break-all">
+                                              {popoverBlameDetails.isUncommitted
+                                                ? "Uncommitted local changes"
+                                                : `${popoverBlameDetails.shortCommit} · ${popoverBlameDetails.commit}`}
+                                            </div>
+                                            {(popoverBlameDetails.commitDescription ||
+                                              popoverBlameDetails.summary) && (
+                                              <div className="mt-1 whitespace-pre-wrap text-[11px] text-gray-300 break-words">
+                                                {popoverBlameDetails.commitDescription ||
+                                                  popoverBlameDetails.summary}
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </pre>
                           )}
-                        </button>
-                      ))}
+                        </Highlight>
+                      )}
                     </div>
-                  </div>
+
+                    <textarea
+                      ref={editorRef}
+                      value={editContent}
+                      onChange={(e) => {
+                        setEditContent(e.target.value);
+                        markTypingBurst();
+                      }}
+                      onKeyDown={handleEditorKeyDown}
+                      onSelect={(e) => scheduleCursorUpdate(e.currentTarget)}
+                      onBlur={() => {
+                        if (typingBurstTimeoutRef.current !== null) {
+                          window.clearTimeout(typingBurstTimeoutRef.current);
+                          typingBurstTimeoutRef.current = null;
+                        }
+                        setIsTypingBurst(false);
+                        window.setTimeout(() => {
+                          setCompletionVisible(false);
+                        }, 80);
+                      }}
+                      onContextMenu={handleEditorContextMenu}
+                      onScroll={(e) => syncEditorScroll(e.currentTarget)}
+                      className="absolute inset-0 z-10 p-4 font-mono text-[14px] leading-[22px] bg-transparent text-transparent caret-indigo-200 resize-none !outline-none focus:!outline-none selection:bg-indigo-500/30"
+                      spellCheck={false}
+                      wrap="off"
+                      style={{
+                        tabSize: 2,
+                        lineHeight: `${normalizedLineHeight}px`,
+                        fontSize: `${normalizedFontSize}px`,
+                        color: "transparent",
+                        WebkitTextFillColor: "transparent",
+                        textShadow: "none",
+                        caretColor: "#c7d2fe",
+                        whiteSpace: "pre",
+                        overflowWrap: "normal",
+                        wordBreak: "normal",
+                        fontFamily:
+                          "var(--font-zed-mono), var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', 'Liberation Mono', monospace",
+                        margin: 0,
+                      }}
+                    />
+                    {showGhostCompletion && ghostPosition && (
+                      <div
+                        className="absolute z-20 pointer-events-none text-gray-500/75 whitespace-pre"
+                        style={{
+                          left: `${ghostPosition.left}px`,
+                          top: `${ghostPosition.top}px`,
+                          lineHeight: `${normalizedLineHeight}px`,
+                          fontSize: `${normalizedFontSize}px`,
+                          fontFamily:
+                            "var(--font-zed-mono), var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', 'Liberation Mono', monospace",
+                        }}
+                      >
+                        {ghostInlineText}
+                      </div>
+                    )}
+                    {showCompletionPanel && completionPanelPosition && (
+                      <div
+                        className="absolute z-30 w-[340px] max-w-[80%] max-h-64 overflow-y-auto rounded-md border border-white/15 bg-[#0a0a10]/95 shadow-xl backdrop-blur"
+                        style={{
+                          left: `${Math.min(completionPanelPosition.left, 560)}px`,
+                          top: `${completionPanelPosition.top}px`,
+                        }}
+                      >
+                        <div className="px-2 py-1.5 border-b border-white/10 text-[10px] text-gray-500 flex items-center justify-between">
+                          <span>Completions {completionPrefix ? `for "${completionPrefix}"` : ""}</span>
+                          <span>Tab to accept</span>
+                        </div>
+                        <div className="divide-y divide-white/5">
+                          {completionItems.slice(0, 12).map((item, index) => (
+                            <button
+                              key={`${item.label}:${item.insertText || ""}:${index}`}
+                              type="button"
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                void applyCompletion(index);
+                              }}
+                              className={cn(
+                                "w-full text-left px-2 py-1.5 hover:bg-white/10",
+                                index === completionIndex && "bg-indigo-500/20"
+                              )}
+                            >
+                              <div className="text-xs text-gray-100 truncate">{item.label}</div>
+                              {(item.detail || item.kind) && (
+                                <div className="text-[10px] text-gray-500 truncate">
+                                  {item.detail || `Kind ${item.kind}`}
+                                </div>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -3850,18 +4259,26 @@ function CodeViewer({
                   <div
                     className="relative flex-1 overflow-hidden cursor-pointer"
                     onMouseDown={(event) => {
-                      const textarea = editorRef.current;
-                      if (!textarea) return;
+                      const scrollElement = showPendingInlinePreview
+                        ? previewScrollRef.current
+                        : editorRef.current;
+                      if (!scrollElement) return;
                       const rect = event.currentTarget.getBoundingClientRect();
                       const ratio = Math.max(
                         0,
                         Math.min(1, (event.clientY - rect.top) / Math.max(rect.height, 1))
                       );
-                      const target = ratio * textarea.scrollHeight - textarea.clientHeight / 2;
-                      const maxScroll = Math.max(textarea.scrollHeight - textarea.clientHeight, 0);
-                      textarea.scrollTop = Math.max(0, Math.min(target, maxScroll));
-                      syncEditorScroll(textarea);
-                      textarea.focus();
+                      const target =
+                        ratio * scrollElement.scrollHeight - scrollElement.clientHeight / 2;
+                      const maxScroll = Math.max(
+                        scrollElement.scrollHeight - scrollElement.clientHeight,
+                        0
+                      );
+                      scrollElement.scrollTop = Math.max(0, Math.min(target, maxScroll));
+                      syncEditorScroll(scrollElement);
+                      if (scrollElement instanceof HTMLTextAreaElement) {
+                        scrollElement.focus();
+                      }
                     }}
                     title="Minimap"
                   >
@@ -3875,7 +4292,15 @@ function CodeViewer({
                             key={`minimap:${row.sourceLine}`}
                             className={cn(
                               "h-[2px] rounded-sm",
-                              isActive ? "bg-indigo-300/70" : "bg-white/20"
+                              isActive
+                                ? "bg-indigo-300/70"
+                                : row.kind === "added"
+                                  ? "bg-emerald-300/40"
+                                  : row.kind === "removed"
+                                    ? "bg-red-300/40"
+                                    : row.kind === "mixed"
+                                      ? "bg-amber-300/35"
+                                      : "bg-white/20"
                             )}
                             style={{ width: `${width}%` }}
                           />
@@ -4452,6 +4877,10 @@ function normalizeIdePath(value: string): string {
   return value.replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/+/, "/");
 }
 
+function getIdePendingFileDecisionKey(messageKey: string, filePath: string): string {
+  return `${messageKey}::${normalizeIdePath(filePath)}`;
+}
+
 function isSameIdePath(currentPath: string, candidatePath: string): boolean {
   const current = normalizeIdePath(currentPath);
   const candidate = normalizeIdePath(candidatePath).replace(/^[ab]\//, "");
@@ -4491,46 +4920,77 @@ function truncateDiffPreview(diff: string, maxLines = 220): string {
   return [...lines.slice(0, maxLines), `... [diff truncated, ${omitted} lines omitted]`].join("\n");
 }
 
-function parseGitDiffAddedLineNumbers(diffText: string): Set<number> {
-  const addedLines = new Set<number>();
-  if (typeof diffText !== "string" || !diffText.trim() || diffText.includes("(No changes)")) {
-    return addedLines;
-  }
+function shouldHydratePendingFileDiffFromGit(file: IdePendingFileDiff): boolean {
+  const diff = typeof file.diff === "string" ? file.diff : "";
+  if (!diff.trim()) return true;
+  const counts = countGitDiffLineChanges(diff);
+  if (counts.truncated) return true;
+  if (file.added > 0 && counts.added === 0) return true;
+  if (file.removed > 0 && counts.removed === 0) return true;
+  return counts.added !== file.added || counts.removed !== file.removed;
+}
 
-  const lines = diffText.split(/\r?\n/);
-  let newLine = 0;
-  for (const line of lines) {
-    if (line.startsWith("@@")) {
-      const match = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-      if (match) {
-        newLine = Number(match[1]) || 0;
-      }
-      continue;
-    }
-    if (
-      line.startsWith("diff --git ") ||
-      line.startsWith("index ") ||
-      line.startsWith("--- ") ||
-      line.startsWith("+++ ")
-    ) {
-      continue;
-    }
-    if (line.startsWith("+") && !line.startsWith("+++")) {
-      if (newLine > 0) {
-        addedLines.add(newLine);
-      }
-      newLine += 1;
-      continue;
-    }
-    if (line.startsWith("-") && !line.startsWith("---")) {
-      continue;
-    }
-    if (line.startsWith(" ")) {
-      newLine += 1;
-    }
-  }
+function getPendingLineTextClass(
+  state: IdePendingLineState | undefined,
+  hasError: boolean,
+  hasWarning: boolean
+): string | null {
+  if (hasError || hasWarning) return null;
+  if (state === "added") return "text-emerald-300";
+  if (state === "removed") return "text-red-300";
+  if (state === "mixed") return "text-amber-300";
+  return null;
+}
 
-  return addedLines;
+function getPendingLineContainerClass(
+  state: IdePendingLineState | undefined,
+  hasError: boolean,
+  hasWarning: boolean
+): string | null {
+  if (hasError || hasWarning) return null;
+  if (state === "added") return "bg-emerald-500/14";
+  if (state === "removed") return "bg-red-500/12";
+  return null;
+}
+
+function getPendingLineDecorationStyle(
+  state: IdePendingLineState | undefined,
+  isActiveLine: boolean
+): CSSProperties | undefined {
+  const style: CSSProperties = {};
+  if (state === "added") {
+    style.boxShadow = "inset 3px 0 0 rgba(52, 211, 153, 0.72)";
+  } else if (state === "removed") {
+    style.boxShadow = "inset 3px 0 0 rgba(248, 113, 113, 0.74)";
+  } else if (state === "mixed") {
+    style.backgroundImage =
+      "linear-gradient(90deg, rgba(248,113,113,0.12) 0%, rgba(248,113,113,0.12) 34%, rgba(52,211,153,0.12) 34%, rgba(52,211,153,0.12) 100%)";
+    style.boxShadow = "inset 3px 0 0 rgba(251, 191, 36, 0.74)";
+  }
+  if (isActiveLine) {
+    style.outline = "1px solid rgba(129, 140, 248, 0.45)";
+    style.outlineOffset = "-1px";
+  }
+  return Object.keys(style).length > 0 ? style : undefined;
+}
+
+function summarizePendingDeletedBlocks(
+  blocks: IdePendingDeletedBlock[] | undefined
+): { preview: string; extraLines: number } | null {
+  if (!Array.isArray(blocks) || blocks.length === 0) return null;
+  const removedLines: string[] = [];
+  for (const block of blocks) {
+    removedLines.push(...block.lines);
+  }
+  if (removedLines.length === 0) return null;
+  const trimmedPreview = removedLines.find((line) => line.trim().length > 0)?.trim() || "";
+  const previewSource = trimmedPreview || removedLines[0] || "deleted line";
+  const preview =
+    previewSource.length > 96 ? `${previewSource.slice(0, 93).trimEnd()}...` : previewSource;
+  return {
+    preview,
+    extraLines: Math.max(0, removedLines.length - 1),
+  };
 }
 
 function parseIdePatchFileChanges(patch: string): IdeFileChangeItem[] {
@@ -4621,9 +5081,11 @@ function parseIdeChangeRecord(value: unknown): IdeFileChangeItem | null {
   };
 }
 
-function getIdeToolCallsInTimelineOrder(
-  toolCalls: Array<Record<string, unknown>> | undefined
-): Array<Record<string, unknown>> {
+function isIdeToolCallLike(value: unknown): value is ToolCallLike {
+  return isPlainRecord(value) && typeof value.name === "string" && value.name.trim().length > 0;
+}
+
+function getIdeToolCallsInTimelineOrder(toolCalls: ToolCallLike[] | undefined): ToolCallLike[] {
   if (!Array.isArray(toolCalls) || toolCalls.length <= 1) {
     return toolCalls ? [...toolCalls] : [];
   }
@@ -4646,7 +5108,7 @@ function getIdeToolCallsInTimelineOrder(
   });
 }
 
-function extractIdeToolFileChanges(toolCall: Record<string, unknown>): IdeFileChangeItem[] {
+function extractIdeToolFileChanges(toolCall: ToolCallLike): IdeFileChangeItem[] {
   const toolName = typeof toolCall.name === "string" ? toolCall.name.toLowerCase() : "";
   const args = isPlainRecord(toolCall.args)
     ? toolCall.args
@@ -4823,7 +5285,7 @@ function summarizeIdeTextFileChanges(text?: string): IdeFileChangeSummary | null
 }
 
 function summarizeIdeMessageFileChanges(
-  toolCalls?: Array<Record<string, unknown>>
+  toolCalls?: ToolCallLike[]
 ): IdeFileChangeSummary | null {
   if (!Array.isArray(toolCalls) || toolCalls.length === 0) return null;
   const collectedChanges: IdeFileChangeItem[] = [];
@@ -4884,13 +5346,13 @@ function reverseUnifiedDiff(diff: string, changeType: IdeFileChangeItem["type"])
   return reversed.join("\n");
 }
 
-function getIdeToolCallArgs(toolCall: Record<string, unknown>): Record<string, unknown> | null {
+function getIdeToolCallArgs(toolCall: ToolCallLike): Record<string, unknown> | null {
   if (isPlainRecord(toolCall.args)) return toolCall.args;
   if (isPlainRecord(toolCall.arguments)) return toolCall.arguments;
   return null;
 }
 
-function getIdeToolCallCommand(toolCall: Record<string, unknown>): string | null {
+function getIdeToolCallCommand(toolCall: ToolCallLike): string | null {
   const args = getIdeToolCallArgs(toolCall);
   if (!args) return null;
   const directCommand =
@@ -4916,7 +5378,7 @@ function getIdeToolCallCommand(toolCall: Record<string, unknown>): string | null
 }
 
 function getIdeToolCallResultSummary(
-  toolCall: Record<string, unknown>,
+  toolCall: ToolCallLike,
   maxLength = 320
 ): string | null {
   const formatOutput = (value: string, maxChars = 2400, maxLines = 32): string => {
@@ -4958,7 +5420,7 @@ function getIdeToolCallResultSummary(
   return null;
 }
 
-function getIdeToolCallExitCode(toolCall: Record<string, unknown>): string | null {
+function getIdeToolCallExitCode(toolCall: ToolCallLike): string | null {
   const result = toolCall.result;
   if (!isPlainRecord(result)) return null;
   const exitCode = result.exitCode;
@@ -5227,6 +5689,7 @@ function IDEChatPanel({
   selectedAgentId,
   onSelectedAgentIdChange,
   onPendingFileDiffsChange,
+  onPendingFileDiffControllerChange,
 }: {
   workspaceDir: string;
   contextPath: string | null;
@@ -5235,7 +5698,8 @@ function IDEChatPanel({
   onClose: () => void;
   selectedAgentId: string;
   onSelectedAgentIdChange: (agentId: string) => void;
-  onPendingFileDiffsChange?: (diffs: Array<{ path: string; diff?: string }>) => void;
+  onPendingFileDiffsChange?: (diffs: IdePendingFileDiff[]) => void;
+  onPendingFileDiffControllerChange?: (controller: IdePendingFileDiffController | null) => void;
 }) {
   const stopAgent = useStopAgent();
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -5251,9 +5715,10 @@ function IDEChatPanel({
   const [liveActivities, setLiveActivities] = useState<LiveActivityItem[]>([]);
   const [liveCurrentStep, setLiveCurrentStep] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [messageDiffDecision, setMessageDiffDecision] = useState<
-    Record<string, "accepted" | "rejected">
-  >({});
+  const [fileDiffDecision, setFileDiffDecision] = useState<Record<string, "accepted" | "rejected">>(
+    {}
+  );
+  const [resolvedPendingDiffs, setResolvedPendingDiffs] = useState<Record<string, string>>({});
   const [expandedDiffs, setExpandedDiffs] = useState<Record<string, boolean>>({});
   const [collapseProgressUpdates, setCollapseProgressUpdates] = useState(false);
   const [copiedToolCallKey, setCopiedToolCallKey] = useState<string | null>(null);
@@ -5329,37 +5794,59 @@ function IDEChatPanel({
     return map;
   }, [getMessageKey, messages]);
 
-  const pendingMessageChangeKeys = useMemo(
-    () => Array.from(messageChangeSummaryByKey.keys()).filter((key) => !messageDiffDecision[key]),
-    [messageChangeSummaryByKey, messageDiffDecision]
-  );
+  const resolvedFileEntriesByMessageKey = useMemo(() => {
+    const map = new Map<string, IdePendingFileDiff[]>();
+    for (const [messageKey, summary] of messageChangeSummaryByKey.entries()) {
+      map.set(
+        messageKey,
+        summary.files.map((file) => {
+          const fileKey = getIdePendingFileDecisionKey(messageKey, file.path);
+          return {
+            key: fileKey,
+            messageKey,
+            path: file.path,
+            type: file.type,
+            added: file.added,
+            removed: file.removed,
+            diff:
+              resolvedPendingDiffs[fileKey] ||
+              (typeof file.diff === "string" ? file.diff : undefined),
+          } satisfies IdePendingFileDiff;
+        })
+      );
+    }
+    return map;
+  }, [messageChangeSummaryByKey, resolvedPendingDiffs]);
 
   const pendingFileDiffs = useMemo(() => {
-    const items: Array<{ path: string; diff?: string }> = [];
-    for (const key of pendingMessageChangeKeys) {
-      const summary = messageChangeSummaryByKey.get(key);
-      if (!summary) continue;
-      for (const file of summary.files) {
-        items.push({
-          path: file.path,
-          diff: typeof file.diff === "string" ? file.diff : undefined,
-        });
+    const items: IdePendingFileDiff[] = [];
+    for (const files of resolvedFileEntriesByMessageKey.values()) {
+      for (const file of files) {
+        if (!fileDiffDecision[file.key]) {
+          items.push(file);
+        }
       }
     }
     return items;
-  }, [messageChangeSummaryByKey, pendingMessageChangeKeys]);
+  }, [fileDiffDecision, resolvedFileEntriesByMessageKey]);
+
+  const pendingMessageChangeKeys = useMemo(() => {
+    const keys: string[] = [];
+    for (const [messageKey, files] of resolvedFileEntriesByMessageKey.entries()) {
+      if (files.some((file) => !fileDiffDecision[file.key])) {
+        keys.push(messageKey);
+      }
+    }
+    return keys;
+  }, [fileDiffDecision, resolvedFileEntriesByMessageKey]);
 
   const pendingChangeAggregate = useMemo(() => {
     const byPath = new Map<string, { added: number; removed: number }>();
-    for (const key of pendingMessageChangeKeys) {
-      const summary = messageChangeSummaryByKey.get(key);
-      if (!summary) continue;
-      for (const file of summary.files) {
-        const existing = byPath.get(file.path) || { added: 0, removed: 0 };
-        existing.added += file.added;
-        existing.removed += file.removed;
-        byPath.set(file.path, existing);
-      }
+    for (const file of pendingFileDiffs) {
+      const existing = byPath.get(file.path) || { added: 0, removed: 0 };
+      existing.added += file.added;
+      existing.removed += file.removed;
+      byPath.set(file.path, existing);
     }
     const files = Array.from(byPath.entries()).map(([path, values]) => ({
       path,
@@ -5370,7 +5857,7 @@ function IDEChatPanel({
       totalAdded: files.reduce((sum, file) => sum + file.added, 0),
       totalRemoved: files.reduce((sum, file) => sum + file.removed, 0),
     };
-  }, [messageChangeSummaryByKey, pendingMessageChangeKeys]);
+  }, [pendingFileDiffs]);
 
   const conversationTitle = useMemo(
     () => getIdeHeaderTitle(sessionTitle, messages),
@@ -5395,6 +5882,52 @@ function IDEChatPanel({
     };
   }, [onPendingFileDiffsChange]);
 
+  useEffect(() => {
+    const filesNeedingHydration = pendingFileDiffs.filter(
+      (file) => !resolvedPendingDiffs[file.key] && shouldHydratePendingFileDiffFromGit(file)
+    );
+    if (filesNeedingHydration.length === 0) return;
+
+    let isCancelled = false;
+    const controller = new AbortController();
+
+    const hydratePendingDiffs = async () => {
+      for (const file of filesNeedingHydration) {
+        try {
+          const response = await apiFetch(`/api/git/diff?path=${encodeURIComponent(file.path)}`, {
+            signal: controller.signal,
+          });
+          const payload = (await response.json()) as { success?: boolean; diff?: string };
+          if (
+            !response.ok ||
+            !payload.success ||
+            typeof payload.diff !== "string" ||
+            !payload.diff.trim() ||
+            payload.diff === "(No changes)" ||
+            isCancelled
+          ) {
+            continue;
+          }
+
+          setResolvedPendingDiffs((previous) => {
+            if (previous[file.key]) return previous;
+            return { ...previous, [file.key]: payload.diff as string };
+          });
+        } catch (errorValue) {
+          if ((errorValue as Error)?.name === "AbortError") {
+            return;
+          }
+        }
+      }
+    };
+
+    void hydratePendingDiffs();
+    return () => {
+      isCancelled = true;
+      controller.abort();
+    };
+  }, [pendingFileDiffs, resolvedPendingDiffs]);
+
   const mapApiMessageToIde = useCallback((value: unknown): IdeChatMessage | null => {
     if (!isPlainRecord(value)) return null;
     const role = value.role === "assistant" || value.role === "user" ? value.role : null;
@@ -5406,7 +5939,7 @@ function IDEChatPanel({
     if (!role || !content.trim()) return null;
 
     const toolCalls = Array.isArray(value.tool_calls)
-      ? value.tool_calls.filter((entry): entry is Record<string, unknown> => isPlainRecord(entry))
+      ? value.tool_calls.filter((entry): entry is ToolCallLike => isIdeToolCallLike(entry))
       : undefined;
     const processActivities = Array.isArray(
       (value as { process_activities?: unknown }).process_activities
@@ -5936,7 +6469,8 @@ function IDEChatPanel({
     setInput("");
     setIsSending(false);
     setError(null);
-    setMessageDiffDecision({});
+    setFileDiffDecision({});
+    setResolvedPendingDiffs({});
     setExpandedDiffs({});
     clearLiveRunState();
   }, [clearLiveRunState, selectedAgentId]);
@@ -5973,7 +6507,8 @@ function IDEChatPanel({
         } else {
           setMessages(messages.slice(0, messageIndex + 1));
         }
-        setMessageDiffDecision({});
+        setFileDiffDecision({});
+        setResolvedPendingDiffs({});
         setExpandedDiffs({});
         setInput(target.content);
       } catch (revertError) {
@@ -5985,9 +6520,9 @@ function IDEChatPanel({
     [isReverting, isSending, mapApiMessageToIde, messages, sessionId]
   );
 
-  const setDecisionForKeys = useCallback((keys: string[], decision: "accepted" | "rejected") => {
+  const setDecisionForFileKeys = useCallback((keys: string[], decision: "accepted" | "rejected") => {
     if (keys.length === 0) return;
-    setMessageDiffDecision((previous) => {
+    setFileDiffDecision((previous) => {
       const next = { ...previous };
       for (const key of keys) {
         next[key] = decision;
@@ -5996,22 +6531,18 @@ function IDEChatPanel({
     });
   }, []);
 
-  const applyReversePatchForMessages = useCallback(
-    async (messageKeys: string[]): Promise<boolean> => {
+  const applyReversePatchForFiles = useCallback(
+    async (files: IdePendingFileDiff[]): Promise<boolean> => {
       const patchParts: string[] = [];
-      for (const messageKey of messageKeys) {
-        const summary = messageChangeSummaryByKey.get(messageKey);
-        if (!summary) continue;
-        for (const file of summary.files) {
-          const diff = typeof file.diff === "string" ? file.diff : "";
-          if (!diff.trim()) continue;
-          const reversePatch = reverseUnifiedDiff(diff, file.type);
-          if (!reversePatch) {
-            setError(`Cannot auto-reject ${file.path} because its diff is missing or truncated.`);
-            return false;
-          }
-          patchParts.push(reversePatch.trimEnd());
+      for (const file of files) {
+        const diff = typeof file.diff === "string" ? file.diff : "";
+        if (!diff.trim()) continue;
+        const reversePatch = reverseUnifiedDiff(diff, file.type);
+        if (!reversePatch) {
+          setError(`Cannot auto-reject ${file.path} because its diff is missing or truncated.`);
+          return false;
         }
+        patchParts.push(reversePatch.trimEnd());
       }
 
       if (patchParts.length === 0) {
@@ -6068,55 +6599,108 @@ function IDEChatPanel({
         setIsApplyingDiffAction(false);
       }
     },
-    [messageChangeSummaryByKey, onWorkspaceMutated, selectedAgentId, sessionId, workspaceDir]
+    [onWorkspaceMutated, selectedAgentId, sessionId, workspaceDir]
+  );
+
+  const getPendingFilesForMessage = useCallback(
+    (messageKey: string): IdePendingFileDiff[] =>
+      (resolvedFileEntriesByMessageKey.get(messageKey) || []).filter((file) => !fileDiffDecision[file.key]),
+    [fileDiffDecision, resolvedFileEntriesByMessageKey]
+  );
+
+  const handleAcceptFileChange = useCallback(
+    (fileKey: string) => {
+      setDecisionForFileKeys([fileKey], "accepted");
+    },
+    [setDecisionForFileKeys]
   );
 
   const handleAcceptMessageChanges = useCallback(
     (messageKey: string) => {
-      setDecisionForKeys([messageKey], "accepted");
+      const files = getPendingFilesForMessage(messageKey);
+      if (files.length === 0) return;
+      setDecisionForFileKeys(
+        files.map((file) => file.key),
+        "accepted"
+      );
     },
-    [setDecisionForKeys]
+    [getPendingFilesForMessage, setDecisionForFileKeys]
   );
 
   const handleAcceptAllMessageChanges = useCallback(() => {
-    if (pendingMessageChangeKeys.length === 0) return;
-    setDecisionForKeys(pendingMessageChangeKeys, "accepted");
-  }, [pendingMessageChangeKeys, setDecisionForKeys]);
+    if (pendingFileDiffs.length === 0) return;
+    setDecisionForFileKeys(
+      pendingFileDiffs.map((file) => file.key),
+      "accepted"
+    );
+  }, [pendingFileDiffs, setDecisionForFileKeys]);
+
+  const handleRejectFileChange = useCallback(
+    async (fileKey: string) => {
+      if (isSending || isReverting || isApplyingDiffAction) return;
+      const file = pendingFileDiffs.find((entry) => entry.key === fileKey);
+      if (!file) return;
+      const confirmed = window.confirm(
+        `Reject changes for ${file.path}? Cybara will apply a reverse patch to undo them.`
+      );
+      if (!confirmed) return;
+      const ok = await applyReversePatchForFiles([file]);
+      if (ok) {
+        setDecisionForFileKeys([file.key], "rejected");
+      }
+    },
+    [applyReversePatchForFiles, isApplyingDiffAction, isReverting, isSending, pendingFileDiffs, setDecisionForFileKeys]
+  );
 
   const handleRejectMessageChanges = useCallback(
     async (messageKey: string) => {
       if (isSending || isReverting || isApplyingDiffAction) return;
+      const files = getPendingFilesForMessage(messageKey);
+      if (files.length === 0) return;
       const confirmed = window.confirm(
         "Reject these file changes? Cybara will apply a reverse patch to undo them."
       );
       if (!confirmed) return;
-      const ok = await applyReversePatchForMessages([messageKey]);
+      const ok = await applyReversePatchForFiles(files);
       if (ok) {
-        setDecisionForKeys([messageKey], "rejected");
+        setDecisionForFileKeys(
+          files.map((file) => file.key),
+          "rejected"
+        );
       }
     },
-    [applyReversePatchForMessages, isApplyingDiffAction, isReverting, isSending, setDecisionForKeys]
+    [
+      applyReversePatchForFiles,
+      getPendingFilesForMessage,
+      isApplyingDiffAction,
+      isReverting,
+      isSending,
+      setDecisionForFileKeys,
+    ]
   );
 
   const handleRejectAllMessageChanges = useCallback(async () => {
-    if (pendingMessageChangeKeys.length === 0 || isSending || isReverting || isApplyingDiffAction) {
+    if (pendingFileDiffs.length === 0 || isSending || isReverting || isApplyingDiffAction) {
       return;
     }
     const confirmed = window.confirm(
-      `Reject all pending file changes (${pendingMessageChangeKeys.length} message${pendingMessageChangeKeys.length === 1 ? "" : "s"})?`
+      `Reject all pending file changes (${pendingFileDiffs.length} file${pendingFileDiffs.length === 1 ? "" : "s"})?`
     );
     if (!confirmed) return;
-    const ok = await applyReversePatchForMessages(pendingMessageChangeKeys);
+    const ok = await applyReversePatchForFiles(pendingFileDiffs);
     if (ok) {
-      setDecisionForKeys(pendingMessageChangeKeys, "rejected");
+      setDecisionForFileKeys(
+        pendingFileDiffs.map((file) => file.key),
+        "rejected"
+      );
     }
   }, [
-    applyReversePatchForMessages,
+    applyReversePatchForFiles,
     isApplyingDiffAction,
     isReverting,
     isSending,
-    pendingMessageChangeKeys,
-    setDecisionForKeys,
+    pendingFileDiffs,
+    setDecisionForFileKeys,
   ]);
 
   const handleCopyToolCommand = useCallback(async (key: string, command: string) => {
@@ -6132,6 +6716,29 @@ function IDEChatPanel({
     }
   }, []);
 
+  useEffect(() => {
+    onPendingFileDiffControllerChange?.({
+      items: pendingFileDiffs,
+      acceptFile: handleAcceptFileChange,
+      rejectFile: handleRejectFileChange,
+      acceptAll: handleAcceptAllMessageChanges,
+      rejectAll: handleRejectAllMessageChanges,
+    });
+  }, [
+    handleAcceptAllMessageChanges,
+    handleAcceptFileChange,
+    handleRejectAllMessageChanges,
+    handleRejectFileChange,
+    onPendingFileDiffControllerChange,
+    pendingFileDiffs,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      onPendingFileDiffControllerChange?.(null);
+    };
+  }, [onPendingFileDiffControllerChange]);
+
   return (
     <div className="h-full flex flex-col bg-[#0a0a12]">
       <div className="px-3 py-2 border-b border-white/10 flex items-start justify-between gap-3">
@@ -6145,11 +6752,6 @@ function IDEChatPanel({
               {showWorkingTimeline && (
                 <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-200">
                   Working
-                </span>
-              )}
-              {pendingMessageChangeKeys.length > 0 && (
-                <span className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-200">
-                  {pendingMessageChangeKeys.length} pending
                 </span>
               )}
             </div>
@@ -6230,7 +6832,27 @@ function IDEChatPanel({
                 message.role === "assistant"
                   ? messageChangeSummaryByKey.get(messageKey) || null
                   : null;
-              const decision = messageDiffDecision[messageKey];
+              const resolvedMessageFiles =
+                message.role === "assistant"
+                  ? resolvedFileEntriesByMessageKey.get(messageKey) || []
+                  : [];
+              const pendingMessageFiles = resolvedMessageFiles.filter(
+                (file) => !fileDiffDecision[file.key]
+              );
+              const acceptedMessageFiles = resolvedMessageFiles.filter(
+                (file) => fileDiffDecision[file.key] === "accepted"
+              ).length;
+              const rejectedMessageFiles = resolvedMessageFiles.filter(
+                (file) => fileDiffDecision[file.key] === "rejected"
+              ).length;
+              const messageResolutionLabel =
+                pendingMessageFiles.length > 0 || resolvedMessageFiles.length === 0
+                  ? null
+                  : acceptedMessageFiles === resolvedMessageFiles.length
+                    ? "Accepted"
+                    : rejectedMessageFiles === resolvedMessageFiles.length
+                      ? "Rejected"
+                      : "Resolved";
               const processActivities =
                 message.role === "assistant" && Array.isArray(message.process_activities)
                   ? message.process_activities
@@ -6296,7 +6918,7 @@ function IDEChatPanel({
                         Files Edited
                       </div>
                       <div className="mt-1 space-y-1">
-                        {changeSummary.files.map((file) => (
+                        {resolvedMessageFiles.map((file) => (
                           <div
                             key={`${messageKey}:files-edited:${file.path}`}
                             className="flex items-center justify-between gap-2 text-[11px]"
@@ -6407,28 +7029,35 @@ function IDEChatPanel({
                     <div className="mt-2 rounded border border-white/10 bg-black/35 px-2 py-2">
                       <div className="flex items-center justify-between gap-2">
                         <div className="text-[11px] text-gray-300">
-                          Edited files {changeSummary.files.length}{" "}
+                          Edited files {resolvedMessageFiles.length}{" "}
                           <span className="text-emerald-300">+{changeSummary.totalAdded}</span>{" "}
                           <span className="text-red-300">-{changeSummary.totalRemoved}</span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          {decision ? (
+                          {messageResolutionLabel ? (
                             <span
                               className={cn(
                                 "text-[10px] px-1.5 py-0.5 rounded border",
-                                decision === "accepted"
+                                messageResolutionLabel === "Accepted"
                                   ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-                                  : "border-red-500/30 bg-red-500/10 text-red-200"
+                                  : messageResolutionLabel === "Rejected"
+                                    ? "border-red-500/30 bg-red-500/10 text-red-200"
+                                    : "border-white/15 bg-white/5 text-gray-300"
                               )}
                             >
-                              {decision === "accepted" ? "Accepted" : "Rejected"}
+                              {messageResolutionLabel}
                             </span>
                           ) : (
                             <>
                               <button
                                 type="button"
                                 onClick={() => handleAcceptMessageChanges(messageKey)}
-                                disabled={isSending || isReverting || isApplyingDiffAction}
+                                disabled={
+                                  pendingMessageFiles.length === 0 ||
+                                  isSending ||
+                                  isReverting ||
+                                  isApplyingDiffAction
+                                }
                                 className="inline-flex items-center rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-50"
                                 title="Accept these file changes"
                               >
@@ -6438,7 +7067,12 @@ function IDEChatPanel({
                               <button
                                 type="button"
                                 onClick={() => void handleRejectMessageChanges(messageKey)}
-                                disabled={isSending || isReverting || isApplyingDiffAction}
+                                disabled={
+                                  pendingMessageFiles.length === 0 ||
+                                  isSending ||
+                                  isReverting ||
+                                  isApplyingDiffAction
+                                }
                                 className="inline-flex items-center rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-[10px] text-red-200 hover:bg-red-500/20 disabled:opacity-50"
                                 title="Reject and undo these file changes"
                               >
@@ -6454,9 +7088,10 @@ function IDEChatPanel({
                         </div>
                       </div>
                       <div className="mt-2 space-y-1.5">
-                        {changeSummary.files.map((file) => {
+                        {resolvedMessageFiles.map((file) => {
                           const diffKey = `${messageKey}:${file.path}`;
                           const isExpanded = !!expandedDiffs[diffKey];
+                          const fileDecision = fileDiffDecision[file.key];
                           return (
                             <div
                               key={`${messageKey}:file:${file.path}`}
@@ -6473,20 +7108,34 @@ function IDEChatPanel({
                                     <span className="text-red-300">-{file.removed}</span>
                                   </div>
                                 </div>
-                                {file.diff && (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setExpandedDiffs((previous) => ({
-                                        ...previous,
-                                        [diffKey]: !previous[diffKey],
-                                      }))
-                                    }
-                                    className="rounded border border-white/10 px-1.5 py-0.5 text-[10px] text-gray-300 hover:bg-white/5"
-                                  >
-                                    {isExpanded ? "Hide diff" : "Show diff"}
-                                  </button>
-                                )}
+                                <div className="flex items-center gap-1.5">
+                                  {fileDecision && (
+                                    <span
+                                      className={cn(
+                                        "rounded border px-1.5 py-0.5 text-[10px]",
+                                        fileDecision === "accepted"
+                                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                                          : "border-red-500/30 bg-red-500/10 text-red-200"
+                                      )}
+                                    >
+                                      {fileDecision === "accepted" ? "Accepted" : "Rejected"}
+                                    </span>
+                                  )}
+                                  {file.diff && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setExpandedDiffs((previous) => ({
+                                          ...previous,
+                                          [diffKey]: !previous[diffKey],
+                                        }))
+                                      }
+                                      className="rounded border border-white/10 px-1.5 py-0.5 text-[10px] text-gray-300 hover:bg-white/5"
+                                    >
+                                      {isExpanded ? "Hide diff" : "Show diff"}
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                               {isExpanded && file.diff && (
                                 <div className="max-h-52 overflow-auto border-t border-white/10 bg-[#06060b] px-2 py-1.5 font-mono text-[10px] leading-4">
@@ -6841,9 +7490,9 @@ export function IDE() {
   const [embeddingRuntimeLoading, setEmbeddingRuntimeLoading] = useState(false);
   const [embeddingRuntimeActionLoading, setEmbeddingRuntimeActionLoading] = useState(false);
   const [isIdeChatOpen, setIsIdeChatOpen] = useState<boolean>(() => readPersistedChatOpen());
-  const [idePendingFileDiffs, setIdePendingFileDiffs] = useState<
-    Array<{ path: string; diff?: string }>
-  >([]);
+  const [idePendingFileDiffs, setIdePendingFileDiffs] = useState<IdePendingFileDiff[]>([]);
+  const [idePendingFileDiffController, setIdePendingFileDiffController] =
+    useState<IdePendingFileDiffController | null>(null);
   const [isTerminalPanelOpen, setIsTerminalPanelOpen] = useState<boolean>(() =>
     readPersistedTerminalOpen(readPersistedIdePreferences().openTerminalOnStartup)
   );
@@ -8487,6 +9136,16 @@ export function IDE() {
   const activeTab = openTabs.find(
     (tab) => tab.path === (activeTabPath || selectedFile?.path || "")
   );
+  const pendingEditorFiles = idePendingFileDiffController?.items || idePendingFileDiffs;
+  const activePendingEditorFileIndex = useMemo(() => {
+    if (pendingEditorFiles.length === 0) return -1;
+    const activePath = selectedFile?.path || activeTabPath || null;
+    if (!activePath) return 0;
+    const matchingIndex = pendingEditorFiles.findIndex((file) => isSameIdePath(activePath, file.path));
+    return matchingIndex >= 0 ? matchingIndex : 0;
+  }, [activeTabPath, pendingEditorFiles, selectedFile?.path]);
+  const activePendingEditorFile =
+    activePendingEditorFileIndex >= 0 ? pendingEditorFiles[activePendingEditorFileIndex] || null : null;
   const workspaceRootPath = rootInfo?.path || currentPath;
   const resolvedCompletionAgentId = useMemo(() => {
     if (idePreferences.useChatAgentForCompletions) {
@@ -8503,6 +9162,51 @@ export function IDE() {
     ideChatSelectedAgentId,
     idePreferences.completionAgentId,
     idePreferences.useChatAgentForCompletions,
+  ]);
+  const openPendingEditorFile = useCallback(
+    (nextIndex: number) => {
+      if (pendingEditorFiles.length === 0) return;
+      const boundedIndex = Math.max(0, Math.min(nextIndex, pendingEditorFiles.length - 1));
+      const target = pendingEditorFiles[boundedIndex];
+      if (!target?.path) return;
+      openFileAtPath(target.path, null, false);
+    },
+    [openFileAtPath, pendingEditorFiles]
+  );
+  const getNeighborPendingEditorFile = useCallback(
+    (currentIndex: number): IdePendingFileDiff | null =>
+      pendingEditorFiles[currentIndex + 1] ||
+      pendingEditorFiles[currentIndex - 1] ||
+      null,
+    [pendingEditorFiles]
+  );
+  const handleAcceptActivePendingEditorFile = useCallback(() => {
+    if (!activePendingEditorFile || !idePendingFileDiffController) return;
+    const nextTarget = getNeighborPendingEditorFile(activePendingEditorFileIndex);
+    idePendingFileDiffController.acceptFile(activePendingEditorFile.key);
+    if (nextTarget?.path) {
+      openFileAtPath(nextTarget.path, null, false);
+    }
+  }, [
+    activePendingEditorFile,
+    activePendingEditorFileIndex,
+    getNeighborPendingEditorFile,
+    idePendingFileDiffController,
+    openFileAtPath,
+  ]);
+  const handleRejectActivePendingEditorFile = useCallback(async () => {
+    if (!activePendingEditorFile || !idePendingFileDiffController) return;
+    const nextTarget = getNeighborPendingEditorFile(activePendingEditorFileIndex);
+    await idePendingFileDiffController.rejectFile(activePendingEditorFile.key);
+    if (nextTarget?.path) {
+      openFileAtPath(nextTarget.path, null, false);
+    }
+  }, [
+    activePendingEditorFile,
+    activePendingEditorFileIndex,
+    getNeighborPendingEditorFile,
+    idePendingFileDiffController,
+    openFileAtPath,
   ]);
   const breadcrumbs = useMemo<IdeBreadcrumb[]>(() => {
     if (!selectedFile?.path) return [];
@@ -9462,29 +10166,89 @@ export function IDE() {
               </div>
 
               {selectedFile?.path ? (
-                <CodeViewer
-                  path={selectedFile.path}
-                  previewMode={activeTab?.previewMode === true}
-                  autoRefresh={true}
-                  jumpToLineRequest={requestedJumpLine}
-                  externalRefreshKey={refreshKey}
-                  saveRequestToken={saveRequestToken}
-                  onSaveSuccess={handleRefresh}
-                  onCursorChange={handleCursorPositionChange}
-                  onGitHistoryStatusChange={setGitHistoryStatus}
-                  onOpenLocation={(filePath, line) => {
-                    openFileAtPath(filePath, line, false);
-                  }}
-                  completionAgentId={resolvedCompletionAgentId}
-                  editorFontSizePx={idePreferences.editorFontSizePx}
-                  editorLineHeightPx={idePreferences.editorLineHeightPx}
-                  showMinimap={idePreferences.showMinimap}
-                  enableCompletions={idePreferences.enableCompletions}
-                  enableGhostCompletions={idePreferences.enableGhostCompletions}
-                  completionDebounceMs={idePreferences.completionDebounceMs}
-                  ghostDebounceMs={idePreferences.ghostDebounceMs}
-                  pendingFileDiffs={idePendingFileDiffs}
-                />
+                <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
+                  <CodeViewer
+                    path={selectedFile.path}
+                    previewMode={activeTab?.previewMode === true}
+                    autoRefresh={true}
+                    jumpToLineRequest={requestedJumpLine}
+                    externalRefreshKey={refreshKey}
+                    saveRequestToken={saveRequestToken}
+                    onSaveSuccess={handleRefresh}
+                    onCursorChange={handleCursorPositionChange}
+                    onGitHistoryStatusChange={setGitHistoryStatus}
+                    onOpenLocation={(filePath, line) => {
+                      openFileAtPath(filePath, line, false);
+                    }}
+                    completionAgentId={resolvedCompletionAgentId}
+                    editorFontSizePx={idePreferences.editorFontSizePx}
+                    editorLineHeightPx={idePreferences.editorLineHeightPx}
+                    showMinimap={idePreferences.showMinimap}
+                    enableCompletions={idePreferences.enableCompletions}
+                    enableGhostCompletions={idePreferences.enableGhostCompletions}
+                    completionDebounceMs={idePreferences.completionDebounceMs}
+                    ghostDebounceMs={idePreferences.ghostDebounceMs}
+                    pendingFileDiffs={idePendingFileDiffs}
+                  />
+                  {activePendingEditorFile && idePendingFileDiffController && (
+                    <div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex justify-center px-4">
+                      <div className="pointer-events-auto inline-flex max-w-[calc(100%-2rem)] items-center gap-2 rounded-full border border-white/10 bg-[#0b0f19]/95 px-3 py-2 shadow-[0_18px_45px_rgba(0,0,0,0.42)] backdrop-blur">
+                        <button
+                          type="button"
+                          onClick={() => openPendingEditorFile(activePendingEditorFileIndex - 1)}
+                          disabled={activePendingEditorFileIndex <= 0}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-gray-300 hover:bg-white/5 disabled:opacity-40"
+                          title="Previous pending file"
+                        >
+                          <ChevronRight className="h-4 w-4 rotate-180" />
+                        </button>
+                        <div className="min-w-0 px-1 text-center">
+                          <div
+                            className="max-w-[32vw] truncate text-[11px] font-medium text-gray-100"
+                            title={activePendingEditorFile.path}
+                          >
+                            {activePendingEditorFile.path}
+                          </div>
+                          <div className="text-[10px] text-gray-500">
+                            File {activePendingEditorFileIndex + 1} of {pendingEditorFiles.length} ·{" "}
+                            <span className="text-emerald-300">+{activePendingEditorFile.added}</span>{" "}
+                            <span className="text-red-300">-{activePendingEditorFile.removed}</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void handleRejectActivePendingEditorFile()}
+                          className="inline-flex h-8 items-center gap-1 rounded-full border border-red-500/30 bg-red-500/10 px-3 text-[11px] text-red-200 hover:bg-red-500/20"
+                          title="Reject changes for this file"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          Reject Changes
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleAcceptActivePendingEditorFile}
+                          className="inline-flex h-8 items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 text-[11px] text-emerald-200 hover:bg-emerald-500/20"
+                          title="Accept changes for this file"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                          Accept Changes
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openPendingEditorFile(activePendingEditorFileIndex + 1)}
+                          disabled={
+                            activePendingEditorFileIndex < 0 ||
+                            activePendingEditorFileIndex >= pendingEditorFiles.length - 1
+                          }
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-gray-300 hover:bg-white/5 disabled:opacity-40"
+                          title="Next pending file"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <IDEWelcomeScreen
                   workspacePath={effectiveWorkspacePath}
@@ -9558,6 +10322,7 @@ export function IDE() {
                   selectedAgentId={ideChatSelectedAgentId}
                   onSelectedAgentIdChange={setIdeChatSelectedAgentId}
                   onPendingFileDiffsChange={setIdePendingFileDiffs}
+                  onPendingFileDiffControllerChange={setIdePendingFileDiffController}
                 />
               </div>
             </>

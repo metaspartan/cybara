@@ -79,17 +79,89 @@ function truncateDiff(diff: string, maxLines = 220): string {
   return [...lines.slice(0, maxLines), `... [diff truncated, ${omitted} lines omitted]`].join("\n");
 }
 
-function buildUnifiedDiff(path: string, before: string, after: string): string {
+function buildLineDiffOperations(beforeLines: string[], afterLines: string[]): string[] {
+  const matrixBudget = beforeLines.length * afterLines.length;
+  if (matrixBudget > 160_000) {
+    const operations: string[] = [];
+    const maxLength = Math.max(beforeLines.length, afterLines.length);
+    for (let index = 0; index < maxLength; index += 1) {
+      const beforeLine = beforeLines[index];
+      const afterLine = afterLines[index];
+      if (beforeLine === afterLine && beforeLine !== undefined) {
+        operations.push(` ${beforeLine}`);
+        continue;
+      }
+      if (beforeLine !== undefined) {
+        operations.push(`-${beforeLine}`);
+      }
+      if (afterLine !== undefined) {
+        operations.push(`+${afterLine}`);
+      }
+    }
+    return operations;
+  }
+
+  const lcsMatrix = Array.from({ length: beforeLines.length + 1 }, () =>
+    new Array<number>(afterLines.length + 1).fill(0)
+  );
+
+  for (let beforeIndex = beforeLines.length - 1; beforeIndex >= 0; beforeIndex -= 1) {
+    for (let afterIndex = afterLines.length - 1; afterIndex >= 0; afterIndex -= 1) {
+      lcsMatrix[beforeIndex][afterIndex] =
+        beforeLines[beforeIndex] === afterLines[afterIndex]
+          ? lcsMatrix[beforeIndex + 1][afterIndex + 1] + 1
+          : Math.max(lcsMatrix[beforeIndex + 1][afterIndex], lcsMatrix[beforeIndex][afterIndex + 1]);
+    }
+  }
+
+  const operations: string[] = [];
+  let beforeIndex = 0;
+  let afterIndex = 0;
+
+  while (beforeIndex < beforeLines.length && afterIndex < afterLines.length) {
+    if (beforeLines[beforeIndex] === afterLines[afterIndex]) {
+      operations.push(` ${beforeLines[beforeIndex]}`);
+      beforeIndex += 1;
+      afterIndex += 1;
+      continue;
+    }
+
+    if (lcsMatrix[beforeIndex + 1][afterIndex] >= lcsMatrix[beforeIndex][afterIndex + 1]) {
+      operations.push(`-${beforeLines[beforeIndex]}`);
+      beforeIndex += 1;
+    } else {
+      operations.push(`+${afterLines[afterIndex]}`);
+      afterIndex += 1;
+    }
+  }
+
+  while (beforeIndex < beforeLines.length) {
+    operations.push(`-${beforeLines[beforeIndex]}`);
+    beforeIndex += 1;
+  }
+
+  while (afterIndex < afterLines.length) {
+    operations.push(`+${afterLines[afterIndex]}`);
+    afterIndex += 1;
+  }
+
+  return operations;
+}
+
+export function buildUnifiedDiff(path: string, before: string, after: string): string {
   const beforeLines = splitLines(before);
   const afterLines = splitLines(after);
+  const operations = buildLineDiffOperations(beforeLines, afterLines);
+  const hasChanges = operations.some((line) => line.startsWith("+") || line.startsWith("-"));
+  if (!hasChanges) {
+    return "(No changes)";
+  }
   const header = [
     `--- a/${path}`,
     `+++ b/${path}`,
     `@@ -1,${beforeLines.length} +1,${afterLines.length} @@`,
   ];
-  const removed = beforeLines.map((line) => `-${line}`);
-  const added = afterLines.map((line) => `+${line}`);
-  return truncateDiff([...header, ...removed, ...added].join("\n"));
+  return truncateDiff([...header, ...operations].join("\n"));
 }
 
 export async function handleRead(

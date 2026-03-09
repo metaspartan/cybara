@@ -19,7 +19,7 @@
   <img src="https://img.shields.io/badge/language-TypeScript-blue?logo=typescript" alt="TypeScript" />
   <img src="https://img.shields.io/badge/ui-React_19-61dafb?logo=react" alt="React" />
   <img src="https://img.shields.io/badge/tools-50-green" alt="50 Tools" />
-  <img src="https://img.shields.io/badge/providers-31-purple" alt="31 Providers" />
+  <img src="https://img.shields.io/badge/providers-33-purple" alt="33 Providers" />
   <img src="https://img.shields.io/badge/channels-7-orange" alt="7 Channels" />
   <img src="https://img.shields.io/badge/desktop-Tauri-orange?logo=tauri" alt="Tauri Desktop" />
 </p>
@@ -43,10 +43,10 @@ If you need an agent platform that can plan, execute, verify, and report with st
 ## Capability Snapshot
 
 - 50 built-in tools (`src/core/tools/index.ts`)
-- 31 built-in provider integrations with aliases (`src/core/providers.ts`)
+- 33 built-in provider integrations with aliases (`src/core/providers.ts`)
 - 7 channel adapters (`src/core/channels/adapters`)
-- 21 production UI pages (`ui/src/pages/*.tsx`)
-- 80 automated Bun test files (`tests/**/*.test.ts`)
+- 20 production UI pages (`ui/src/pages/*.tsx`)
+- 83 automated Bun test files (`tests/**/*.test.ts`)
 - Tauri desktop app + Bun server/CLI runtime
 
 ---
@@ -160,12 +160,12 @@ DM policy modes:
 
 ### UI + Desktop
 
-- Web UI with 21 pages for agents, channels, providers, tools, wallet, logs, metrics, tasks, sessions, IDE, terminal, setup, artifacts, skills, MCP servers, and memory
+- Web UI with 20 pages for agents, channels, providers, tools, wallet, logs, metrics, tasks, sessions, IDE, terminal, setup, artifacts, skills, MCP servers, and memory
 - Tauri desktop app with sidecar server wiring
 
-### Provider Layer (31 Built-In Integrations)
+### Provider Layer (33 Built-In Integrations)
 
-Includes OpenAI, Anthropic, Google AI, Antigravity, MiniMax (API + OAuth portal), Moonshot, Kimi Code, Qwen Portal, Together, Hugging Face, Synthetic, Venice, Xiaomi, Ollama, vLLM, LiteLLM, Cloudflare AI Gateway, GitHub Copilot, AWS Bedrock, Groq, OpenRouter, OpenCode Zen, Z.AI variants, OpenAI Codex, Chutes, Vercel AI Gateway, Google Gemini CLI, Copilot Proxy, xAI, Baidu Qianfan, and NVIDIA.
+Includes OpenAI, Anthropic, Google AI, Antigravity, MiniMax (API + OAuth portal), Moonshot, Kimi Code, Qwen Portal, Together, Hugging Face, Synthetic, Venice, Xiaomi, Ollama, vLLM, LiteLLM, Cloudflare AI Gateway, GitHub Copilot, AWS Bedrock, Groq, OpenRouter, OpenCode Zen, Z.AI variants, OpenAI Codex (ChatGPT OAuth), Chutes, Vercel AI Gateway, Google Gemini CLI, Copilot Proxy, xAI, Baidu Qianfan, and NVIDIA.
 
 See provider details: [docs/providers.md](docs/providers.md)
 
@@ -275,7 +275,7 @@ src/
   cli.tsx               # CLI/TUI entry
   index.ts              # server entry
 ui/
-  src/pages/            # 19 UI pages
+  src/pages/            # 20 UI pages
 src-tauri/              # Tauri desktop shell
 docs/                   # product and technical docs
 tests/                  # Bun test suites (unit/integration/e2e)
