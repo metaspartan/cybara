@@ -139,6 +139,9 @@ describe("IDE editor pending diff highlighting", () => {
     expect(source).toContain("const selectPendingPreviewLine = useCallback(");
     expect(source).toContain("selectPendingPreviewLine(requestedLine, { scrollIntoView: true });");
     expect(source).toContain("selectPendingPreviewLine(row.lineNumber, {");
+    expect(source).toContain("const wasShowingPendingPreview = previousPendingInlinePreviewRef.current;");
+    expect(source).toContain("textarea.setSelectionRange(offset, offset);");
+    expect(source).toContain("textarea.scrollTop = scrollMetrics.top;");
     expect(source).toContain("pendingLineDecorations.lineStates.get(i + 1)");
     expect(source).toContain("getPendingLineDecorationStyle(pendingLineState, isActiveLine)");
     expect(source).toContain("ref={previewScrollRef}");
@@ -149,6 +152,10 @@ describe("IDE editor pending diff highlighting", () => {
     expect(source).toContain("Accept Changes");
     expect(source).toContain("Reject Changes");
     expect(source).toContain("File {activePendingEditorFileIndex + 1} of {pendingEditorFiles.length}");
+    expect(source).toContain("enableCompletions={false}");
+    expect(source).toContain("enableGhostCompletions={false}");
+    expect(source).not.toContain('id: "completion"');
+    expect(source).not.toContain('ideSettingsSection === "completion"');
     expect(source).not.toContain("{pendingMessageChangeKeys.length} pending");
   });
 });

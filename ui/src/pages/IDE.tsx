@@ -426,7 +426,7 @@ interface IdeBreadcrumb {
   isFile: boolean;
 }
 
-type IdeSettingsSectionId = "general" | "editor" | "completion" | "indexing" | "terminal";
+type IdeSettingsSectionId = "general" | "editor" | "indexing" | "terminal";
 
 interface IdePreferences {
   editorFontSizePx: number;
@@ -475,11 +475,11 @@ const IDE_DEFAULT_PREFERENCES: IdePreferences = {
   editorFontSizePx: EDITOR_FONT_SIZE_PX,
   editorLineHeightPx: EDITOR_LINE_HEIGHT_PX,
   showMinimap: true,
-  enableCompletions: true,
-  enableGhostCompletions: true,
+  enableCompletions: false,
+  enableGhostCompletions: false,
   completionDebounceMs: 110,
   ghostDebounceMs: 240,
-  useChatAgentForCompletions: true,
+  useChatAgentForCompletions: false,
   completionAgentId: "",
   openTerminalOnStartup: false,
   autoCreateTerminalOnOpen: false,
@@ -1205,8 +1205,8 @@ function CodeViewer({
   editorFontSizePx = EDITOR_FONT_SIZE_PX,
   editorLineHeightPx = EDITOR_LINE_HEIGHT_PX,
   showMinimap = true,
-  enableCompletions = true,
-  enableGhostCompletions = true,
+  enableCompletions = false,
+  enableGhostCompletions = false,
   completionDebounceMs = 110,
   ghostDebounceMs = 240,
   pendingFileDiffs,
@@ -1330,6 +1330,7 @@ function CodeViewer({
   const pendingCursorSelectionRef = useRef<HTMLTextAreaElement | null>(null);
   const cursorSelectionFrameRef = useRef<number | null>(null);
   const showPendingInlinePreviewRef = useRef(false);
+  const previousPendingInlinePreviewRef = useRef(false);
   const pendingPreviewRowIndexByLineRef = useRef<Map<number, number>>(new Map());
   const normalizedFontSize = Math.max(11, Math.min(22, Math.round(editorFontSizePx)));
   const normalizedLineHeight = Math.max(16, Math.min(38, Math.round(editorLineHeightPx)));
@@ -3426,6 +3427,36 @@ function CodeViewer({
     showPendingInlinePreviewRef.current = showPendingInlinePreview;
     pendingPreviewRowIndexByLineRef.current = pendingInlinePreviewIndexByLine;
   }, [pendingInlinePreviewIndexByLine, showPendingInlinePreview]);
+
+  useEffect(() => {
+    const wasShowingPendingPreview = previousPendingInlinePreviewRef.current;
+    previousPendingInlinePreviewRef.current = showPendingInlinePreview;
+    if (!wasShowingPendingPreview || showPendingInlinePreview) return;
+    window.requestAnimationFrame(() => {
+      const textarea = editorRef.current;
+      if (!textarea) return;
+      const lines = editContent.split("\n");
+      const line = Math.min(Math.max(activeLine, 1), Math.max(lines.length, 1));
+      let offset = 0;
+      for (let i = 0; i < line - 1; i += 1) {
+        offset += lines[i]?.length || 0;
+        offset += 1;
+      }
+      textarea.setSelectionRange(offset, offset);
+      textarea.scrollTop = scrollMetrics.top;
+      textarea.scrollLeft = scrollMetrics.left;
+      syncEditorScroll(textarea);
+      updateCursorFromSelection(textarea);
+    });
+  }, [
+    activeLine,
+    editContent,
+    scrollMetrics.left,
+    scrollMetrics.top,
+    showPendingInlinePreview,
+    syncEditorScroll,
+    updateCursorFromSelection,
+  ]);
 
   useEffect(() => {
     if (!showPendingInlinePreview || !previewScrollRef.current) return;
@@ -9410,7 +9441,6 @@ export function IDE() {
     [
       { id: "general", label: "General", description: "Workspace and layout defaults" },
       { id: "editor", label: "Editor", description: "Font, line-height, minimap" },
-      { id: "completion", label: "AI & Completion", description: "Completions and agent usage" },
       { id: "indexing", label: "Indexing", description: "Workspace index and semantic search" },
       { id: "terminal", label: "Terminal", description: "Integrated terminal behavior" },
     ];
@@ -10184,10 +10214,8 @@ export function IDE() {
                     editorFontSizePx={idePreferences.editorFontSizePx}
                     editorLineHeightPx={idePreferences.editorLineHeightPx}
                     showMinimap={idePreferences.showMinimap}
-                    enableCompletions={idePreferences.enableCompletions}
-                    enableGhostCompletions={idePreferences.enableGhostCompletions}
-                    completionDebounceMs={idePreferences.completionDebounceMs}
-                    ghostDebounceMs={idePreferences.ghostDebounceMs}
+                    enableCompletions={false}
+                    enableGhostCompletions={false}
                     pendingFileDiffs={idePendingFileDiffs}
                   />
                   {activePendingEditorFile && idePendingFileDiffController && (
@@ -10569,7 +10597,7 @@ export function IDE() {
                 <div>
                   <div className="text-sm font-semibold text-gray-100">IDE Settings</div>
                   <div className="text-xs text-gray-500">
-                    Editor, completion, indexing, and terminal preferences.
+                    Editor, indexing, and terminal preferences.
                   </div>
                 </div>
                 <button
@@ -10694,136 +10722,6 @@ export function IDE() {
                           </span>
                         </span>
                       </label>
-                    )}
-                  </div>
-                )}
-
-                {ideSettingsSection === "completion" && (
-                  <div className="space-y-3">
-                    {matchesIdeSettingsSearch("completion", "enable") && (
-                      <label className="flex items-start gap-2 text-xs text-gray-300">
-                        <input
-                          type="checkbox"
-                          checked={idePreferences.enableCompletions}
-                          onChange={(event) =>
-                            updateIdePreferences({ enableCompletions: event.target.checked })
-                          }
-                          className="mt-0.5 rounded border-white/20 bg-black/40"
-                        />
-                        <span>
-                          <span className="text-gray-200 font-medium">Enable code completions</span>
-                          <span className="block text-gray-500 mt-0.5">
-                            Use local + LSP completions in the editor.
-                          </span>
-                        </span>
-                      </label>
-                    )}
-                    {matchesIdeSettingsSearch("ghost", "inline", "completion") && (
-                      <label className="flex items-start gap-2 text-xs text-gray-300">
-                        <input
-                          type="checkbox"
-                          checked={idePreferences.enableGhostCompletions}
-                          onChange={(event) =>
-                            updateIdePreferences({ enableGhostCompletions: event.target.checked })
-                          }
-                          className="mt-0.5 rounded border-white/20 bg-black/40"
-                        />
-                        <span>
-                          <span className="text-gray-200 font-medium">
-                            Enable inline ghost completions
-                          </span>
-                          <span className="block text-gray-500 mt-0.5">
-                            Show AI completion suggestions inline.
-                          </span>
-                        </span>
-                      </label>
-                    )}
-                    {matchesIdeSettingsSearch("debounce", "completion") && (
-                      <label className="block text-xs text-gray-400 space-y-1.5">
-                        <span>Completion debounce (ms)</span>
-                        <input
-                          type="number"
-                          min={30}
-                          max={800}
-                          value={idePreferences.completionDebounceMs}
-                          onChange={(event) =>
-                            updateIdePreferences({
-                              completionDebounceMs: Number.parseInt(
-                                event.target.value || "110",
-                                10
-                              ),
-                            })
-                          }
-                          className="w-40 rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
-                        />
-                      </label>
-                    )}
-                    {matchesIdeSettingsSearch("ghost", "debounce") && (
-                      <label className="block text-xs text-gray-400 space-y-1.5">
-                        <span>Ghost completion debounce (ms)</span>
-                        <input
-                          type="number"
-                          min={60}
-                          max={1400}
-                          value={idePreferences.ghostDebounceMs}
-                          onChange={(event) =>
-                            updateIdePreferences({
-                              ghostDebounceMs: Number.parseInt(event.target.value || "240", 10),
-                            })
-                          }
-                          className="w-40 rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
-                        />
-                      </label>
-                    )}
-                    {matchesIdeSettingsSearch("agent", "completion") && (
-                      <div className="space-y-2.5">
-                        <label className="flex items-start gap-2 text-xs text-gray-300">
-                          <input
-                            type="checkbox"
-                            checked={idePreferences.useChatAgentForCompletions}
-                            onChange={(event) =>
-                              updateIdePreferences({
-                                useChatAgentForCompletions: event.target.checked,
-                              })
-                            }
-                            className="mt-0.5 rounded border-white/20 bg-black/40"
-                          />
-                          <span>
-                            <span className="text-gray-200 font-medium">
-                              Use IDE chat-selected agent for AI completion
-                            </span>
-                            <span className="block text-gray-500 mt-0.5">
-                              Uses the live agent from IDE chat.
-                            </span>
-                          </span>
-                        </label>
-                        {!idePreferences.useChatAgentForCompletions && (
-                          <label className="block text-xs text-gray-400 space-y-1.5">
-                            <span>Completion agent override</span>
-                            <select
-                              value={idePreferences.completionAgentId}
-                              onChange={(event) =>
-                                updateIdePreferences({
-                                  completionAgentId: event.target.value || "",
-                                })
-                              }
-                              className="w-full rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
-                            >
-                              <option value="">Backend default routing</option>
-                              {ideAgentOptions.map((agent) => (
-                                <option key={`ide-completion-agent:${agent.id}`} value={agent.id}>
-                                  {agent.name}
-                                  {agent.status ? ` (${agent.status})` : ""}
-                                </option>
-                              ))}
-                            </select>
-                            <span className="block text-gray-500">
-                              Choose a dedicated agent for AI inline completion when chat-agent mode
-                              is off.
-                            </span>
-                          </label>
-                        )}
-                      </div>
                     )}
                   </div>
                 )}
