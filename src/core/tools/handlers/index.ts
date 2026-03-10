@@ -38,6 +38,7 @@ import { handleData } from "./data";
 import { handleEnv } from "./env";
 import { handleWebSearch } from "./web-search";
 import { handleArtifacts } from "./artifacts";
+import { handlePhoneCall } from "./phone";
 import { handleWallet } from "./wallet";
 import { handleWorkspaceIndexSearch } from "./workspace-index";
 import {
@@ -76,6 +77,7 @@ export * from "./env";
 export * from "./web-search";
 export * from "./artifacts";
 export * from "./workspace-index";
+export * from "./phone";
 
 export {
   checkToolPermissions,
@@ -190,6 +192,8 @@ const toolHandlers: Record<
   http: handleHttp,
   data: handleData,
   env: handleEnv,
+
+  phone: handlePhoneCall,
 
   diagnostics: handleLSPDiagnostics,
   definition: handleLSPDefinition,

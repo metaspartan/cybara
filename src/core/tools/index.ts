@@ -1625,6 +1625,29 @@ ACTIONS:
     permissions: ["env:read"],
   },
 
+  phone: {
+    name: "phone",
+    description:
+      "Make phone calls on macOS using FaceTime. Opens FaceTime and initiates a call to the specified phone number. Only works on macOS.",
+    category: "core",
+    input_schema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: ["call", "check"],
+          description: "Action to perform: 'call' to initiate a phone call, 'check' to verify FaceTime availability",
+        },
+        phone: {
+          type: "string",
+          description: "Phone number to call (E.164 format recommended, e.g., +15551234567)",
+        },
+      },
+      required: ["action"],
+    },
+    permissions: ["phone:use"],
+  },
+
   calc: {
     name: "calc",
     description: "Safely evaluate mathematical expressions",
