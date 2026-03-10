@@ -427,6 +427,7 @@ interface IdeBreadcrumb {
 }
 
 type IdeSettingsSectionId = "general" | "editor" | "indexing" | "terminal";
+type IdeTopMenuId = "file" | "edit" | "view" | "terminal" | "go";
 
 interface IdePreferences {
   editorFontSizePx: number;
@@ -7461,7 +7462,7 @@ export function IDE() {
   const [gitHistoryStatus, setGitHistoryStatus] = useState<GitHistoryStatus>("idle");
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => readPersistedSidebarWidth());
   const [sidebarMode, setSidebarMode] = useState<"explorer" | "search" | "outline">("explorer");
-  const [openMenu, setOpenMenu] = useState<"file" | null>(null);
+  const [openMenu, setOpenMenu] = useState<IdeTopMenuId | null>(null);
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
   const [globalSearchReplace, setGlobalSearchReplace] = useState("");
   const [globalSearchCaseSensitive, setGlobalSearchCaseSensitive] = useState(false);
@@ -9470,195 +9471,250 @@ export function IDE() {
     }
   }, [ideSettingsSection, showIdeSettings, visibleSettingsSectionIds]);
 
+  const topMenus = useMemo<
+    Array<{
+      id: IdeTopMenuId;
+      label: string;
+      widthClassName?: string;
+      items: Array<{
+        id: string;
+        label: string;
+        shortcut?: string;
+        dividerAbove?: boolean;
+        run: () => void;
+      }>;
+    }>
+  >(
+    () => [
+      {
+        id: "file",
+        label: "File",
+        widthClassName: "w-72",
+        items: [
+          {
+            id: "save",
+            label: "Save",
+            shortcut: "Ctrl/Cmd+S",
+            run: () => setSaveRequestToken((previous) => previous + 1),
+          },
+          {
+            id: "new-file",
+            label: "New File",
+            shortcut: "Ctrl/Cmd+N",
+            dividerAbove: true,
+            run: () => {
+              setCreateParentPath(rootInfo?.path || currentPath);
+              setCreateType("file");
+            },
+          },
+          {
+            id: "new-folder",
+            label: "New Folder",
+            shortcut: "Ctrl/Cmd+Shift+N",
+            run: () => {
+              setCreateParentPath(rootInfo?.path || currentPath);
+              setCreateType("directory");
+            },
+          },
+          {
+            id: "open-workspace",
+            label: "Open Workspace Folder",
+            shortcut: "Ctrl/Cmd+O",
+            run: () => {
+              void handlePromptOpenWorkspace();
+            },
+          },
+          {
+            id: "refresh-workspace",
+            label: "Refresh Workspace",
+            dividerAbove: true,
+            run: () => handleRefresh(),
+          },
+          {
+            id: "ide-settings",
+            label: "IDE Settings",
+            shortcut: "Ctrl/Cmd+,",
+            run: () => openIdeSettings("general"),
+          },
+        ],
+      },
+      {
+        id: "edit",
+        label: "Edit",
+        widthClassName: "w-72",
+        items: [
+          {
+            id: "command-palette",
+            label: "Command Palette",
+            shortcut: "Ctrl/Cmd+Shift+P",
+            run: () => openCommandPalette(),
+          },
+          {
+            id: "quick-open",
+            label: "Quick Open",
+            shortcut: "Ctrl/Cmd+P",
+            run: () => openQuickOpenPalette(),
+          },
+          {
+            id: "global-search",
+            label: "Search in Workspace",
+            shortcut: "Ctrl/Cmd+Shift+F",
+            dividerAbove: true,
+            run: () => openGlobalSearchPanel(),
+          },
+        ],
+      },
+      {
+        id: "view",
+        label: "View",
+        widthClassName: "w-72",
+        items: [
+          {
+            id: "show-explorer",
+            label: "Show Explorer",
+            shortcut: "Ctrl/Cmd+Shift+E",
+            run: () => setSidebarMode("explorer"),
+          },
+          {
+            id: "show-search",
+            label: "Show Search",
+            shortcut: "Ctrl/Cmd+Shift+F",
+            run: () => openGlobalSearchPanel(),
+          },
+          {
+            id: "show-outline",
+            label: "Show Outline",
+            shortcut: "Ctrl/Cmd+Shift+O",
+            run: () => {
+              setSidebarMode("outline");
+              window.requestAnimationFrame(() => {
+                outlineInputRef.current?.focus();
+                outlineInputRef.current?.select();
+              });
+            },
+          },
+          {
+            id: "toggle-chat",
+            label: isIdeChatOpen ? "Hide IDE Chat" : "Show IDE Chat",
+            shortcut: "Ctrl/Cmd+\\",
+            dividerAbove: true,
+            run: () => setIsIdeChatOpen((previous) => !previous),
+          },
+        ],
+      },
+      {
+        id: "terminal",
+        label: "Terminal",
+        widthClassName: "w-72",
+        items: [
+          {
+            id: "toggle-terminal",
+            label: isTerminalPanelOpen ? "Hide Terminal Panel" : "Show Terminal Panel",
+            shortcut: "Ctrl/Cmd+`",
+            run: () => toggleTerminalPanel(),
+          },
+          {
+            id: "new-terminal",
+            label: "New Terminal",
+            shortcut: "Ctrl/Cmd+Shift+`",
+            run: () => openNewTerminal(),
+          },
+        ],
+      },
+      {
+        id: "go",
+        label: "Go",
+        widthClassName: "w-72",
+        items: [
+          {
+            id: "next-tab",
+            label: "Next Tab",
+            shortcut: "Ctrl/Cmd+Tab",
+            run: () => handleCycleTabs(1),
+          },
+          {
+            id: "previous-tab",
+            label: "Previous Tab",
+            shortcut: "Ctrl/Cmd+Shift+Tab",
+            run: () => handleCycleTabs(-1),
+          },
+          {
+            id: "go-home",
+            label: "Go Home Workspace",
+            dividerAbove: true,
+            run: () => handleGoHome(),
+          },
+        ],
+      },
+    ],
+    [
+      currentPath,
+      handleCycleTabs,
+      handleGoHome,
+      handlePromptOpenWorkspace,
+      handleRefresh,
+      isIdeChatOpen,
+      isTerminalPanelOpen,
+      openCommandPalette,
+      openGlobalSearchPanel,
+      openIdeSettings,
+      openNewTerminal,
+      openQuickOpenPalette,
+      rootInfo?.path,
+      toggleTerminalPanel,
+    ]
+  );
+
   return (
     <div className="h-screen flex flex-col bg-[#050508]">
       <div
         ref={menuRef}
         className="h-8 px-2 border-b border-white/10 bg-white/[0.02] flex items-center justify-between text-xs"
       >
-        <div className="flex items-center gap-2 relative">
-          <button
-            type="button"
-            onClick={() => setOpenMenu((previous) => (previous === "file" ? null : "file"))}
-            className={cn(
-              "px-2 py-1 rounded text-gray-300 hover:bg-white/5",
-              openMenu === "file" && "bg-white/10"
-            )}
-          >
-            File
-          </button>
-          {openMenu === "file" && (
-            <div className="absolute top-full left-0 mt-1 w-72 rounded-md border border-white/10 bg-[#0a0a10] shadow-xl z-40 overflow-hidden">
+        <div className="flex items-center gap-1 relative">
+          {topMenus.map((menu) => (
+            <div key={`top-menu:${menu.id}`} className="relative">
               <button
                 type="button"
-                onClick={() => {
-                  setSaveRequestToken((previous) => previous + 1);
-                  setOpenMenu(null);
-                }}
-                className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm flex items-center justify-between"
+                onClick={() => setOpenMenu((previous) => (previous === menu.id ? null : menu.id))}
+                className={cn(
+                  "px-2 py-1 rounded text-gray-300 hover:bg-white/5",
+                  openMenu === menu.id && "bg-white/10"
+                )}
               >
-                <span>Save</span>
-                <span className="text-xs text-gray-500">Ctrl/Cmd+S</span>
+                {menu.label}
               </button>
-              <div className="h-px bg-white/10" />
-              <button
-                type="button"
-                onClick={() => {
-                  setCreateParentPath(rootInfo?.path || currentPath);
-                  setCreateType("file");
-                  setOpenMenu(null);
-                }}
-                className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm flex items-center justify-between"
-              >
-                <span>New File</span>
-                <span className="text-xs text-gray-500">Ctrl/Cmd+N</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setCreateParentPath(rootInfo?.path || currentPath);
-                  setCreateType("directory");
-                  setOpenMenu(null);
-                }}
-                className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm"
-              >
-                New Folder
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setOpenMenu(null);
-                  void handlePromptOpenWorkspace();
-                }}
-                className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm"
-              >
-                Open Workspace Folder
-              </button>
-              <div className="h-px bg-white/10" />
-              <button
-                type="button"
-                onClick={() => {
-                  setSidebarMode("explorer");
-                  setOpenMenu(null);
-                }}
-                className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm flex items-center justify-between"
-              >
-                <span>Show Explorer</span>
-                <span className="text-xs text-gray-500">Ctrl/Cmd+Shift+E</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  openGlobalSearchPanel();
-                  setOpenMenu(null);
-                }}
-                className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm flex items-center justify-between"
-              >
-                <span>Show Search</span>
-                <span className="text-xs text-gray-500">Ctrl/Cmd+Shift+F</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSidebarMode("outline");
-                  setOpenMenu(null);
-                  window.requestAnimationFrame(() => {
-                    outlineInputRef.current?.focus();
-                    outlineInputRef.current?.select();
-                  });
-                }}
-                className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm flex items-center justify-between"
-              >
-                <span>Show Outline</span>
-                <span className="text-xs text-gray-500">Ctrl/Cmd+Shift+O</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsIdeChatOpen((previous) => !previous);
-                  setOpenMenu(null);
-                }}
-                className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm"
-              >
-                {isIdeChatOpen ? "Hide IDE Chat" : "Show IDE Chat"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  toggleTerminalPanel();
-                  setOpenMenu(null);
-                }}
-                className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm flex items-center justify-between"
-              >
-                <span>{isTerminalPanelOpen ? "Hide Terminal Panel" : "Show Terminal Panel"}</span>
-                <span className="text-xs text-gray-500">Ctrl/Cmd+`</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  openNewTerminal();
-                  setOpenMenu(null);
-                }}
-                className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm flex items-center justify-between"
-              >
-                <span>New Terminal</span>
-                <span className="text-xs text-gray-500">Ctrl/Cmd+Shift+`</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  handleRefresh();
-                  setOpenMenu(null);
-                }}
-                className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm"
-              >
-                Refresh Workspace
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  openIdeSettings("indexing");
-                  setOpenMenu(null);
-                }}
-                className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm"
-              >
-                IDE Settings
-              </button>
-              <div className="h-px bg-white/10" />
-              <button
-                type="button"
-                onClick={() => {
-                  openCommandPalette();
-                  setOpenMenu(null);
-                }}
-                className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm flex items-center justify-between"
-              >
-                <span>Command Palette</span>
-                <span className="text-xs text-gray-500">Ctrl/Cmd+Shift+P</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  openQuickOpenPalette();
-                  setOpenMenu(null);
-                }}
-                className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm flex items-center justify-between"
-              >
-                <span>Quick Open</span>
-                <span className="text-xs text-gray-500">Ctrl/Cmd+P</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  handleGoHome();
-                  setOpenMenu(null);
-                }}
-                className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm"
-              >
-                Go Home
-              </button>
+              {openMenu === menu.id && (
+                <div
+                  className={cn(
+                    "absolute top-full left-0 mt-1 rounded-md border border-white/10 bg-[#0a0a10] shadow-xl z-40 overflow-hidden",
+                    menu.widthClassName || "w-72"
+                  )}
+                >
+                  {menu.items.map((item) => (
+                    <div key={`top-menu-item:${menu.id}:${item.id}`}>
+                      {item.dividerAbove && <div className="h-px bg-white/10" />}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          item.run();
+                          setOpenMenu(null);
+                        }}
+                        className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm flex items-center justify-between gap-3"
+                      >
+                        <span>{item.label}</span>
+                        {item.shortcut ? (
+                          <span className="text-xs text-gray-500">{item.shortcut}</span>
+                        ) : (
+                          <span />
+                        )}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+          ))}
         </div>
         <div className="flex items-center gap-2 min-w-0 max-w-[70vw]">
           <div className="text-gray-500 truncate" title={rootInfo?.path || currentPath}>
