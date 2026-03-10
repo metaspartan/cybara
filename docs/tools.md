@@ -1,6 +1,6 @@
 # Cybara Tools Reference
 
-Agents have access to 49 tools for file, process, browser, memory, artifacts, data, wallet, and messaging operations.
+Agents have access to built-in tools for file, process, browser, memory, artifacts, data, wallet, calling, and messaging operations.
 
 ## Permission Context
 
@@ -81,6 +81,27 @@ Git operations (status, diff, log, etc.).
 ```json
 {"name": "git", "args": {"action": "status", "cwd": "/project"}}
 ```
+
+## Calling
+
+### phone
+Start a FaceTime phone call on macOS.
+```json
+{"name": "phone", "args": {"action": "call", "phone": "+15551234567"}}
+{"name": "phone", "args": {"action": "check"}}
+```
+Actions: `call`, `check`
+
+### voice_call
+Manage an agent-tracked call lifecycle. On macOS this uses FaceTime for dialing and the system `say` voice for spoken prompts. For tests and dry runs, use `mode: "mock"`.
+```json
+{"name": "voice_call", "args": {"action": "check_support", "mode": "mock"}}
+{"name": "voice_call", "args": {"action": "initiate_call", "to": "+15551234567", "message": "Hello from Cybara"}}
+{"name": "voice_call", "args": {"action": "speak_to_user", "callId": "voice_call_123", "message": "Please confirm your name"}}
+{"name": "voice_call", "args": {"action": "end_call", "callId": "voice_call_123"}}
+```
+Actions: `check_support`, `initiate_call`, `continue_call`, `speak_to_user`, `end_call`, `get_status`  
+Common args: `to`/`phone`, `callId`, `message`, `mode`, `voice`, `rate`
 
 ## Browser Automation
 

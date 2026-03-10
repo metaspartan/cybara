@@ -57,7 +57,8 @@ The tool returns a JSON object with:
 - This tool only works on macOS
 - The call is initiated through FaceTime, which must be signed in with an Apple ID
 - The agent cannot control the call once initiated (no hangup, mute, etc.)
-- For more advanced voice calls with two-way conversation, see the `voice-call` skill which supports VoIP providers like Twilio, Telnyx, and Plivo
+- For tracked agent call flows, use the `voice-call` skill. It uses FaceTime for dialing and the macOS `say` voice for local spoken prompts, and also supports `mode: "mock"` for dry runs.
+- Cybara does not currently provide a managed carrier/VoIP backend like Twilio, Telnyx, or Plivo for this skill
 
 ## Security Considerations
 

@@ -1648,6 +1648,61 @@ ACTIONS:
     permissions: ["phone:use"],
   },
 
+  voice_call: {
+    name: "voice_call",
+    description:
+      "Manage a voice call session for agents. On macOS this uses FaceTime for dialing and the system voice for spoken prompts; mock mode is available for tests and dry runs.",
+    category: "core",
+    input_schema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: [
+            "check_support",
+            "initiate_call",
+            "continue_call",
+            "speak_to_user",
+            "end_call",
+            "get_status",
+          ],
+          description: "Voice call action to perform.",
+        },
+        to: {
+          type: "string",
+          description: "Destination phone number for initiate_call (E.164 recommended).",
+        },
+        phone: {
+          type: "string",
+          description: "Alias for `to`.",
+        },
+        callId: {
+          type: "string",
+          description: "Tracked voice call identifier for continue/status/end actions.",
+        },
+        message: {
+          type: "string",
+          description: "Prompt to speak or queue for the active call.",
+        },
+        mode: {
+          type: "string",
+          enum: ["auto", "macos", "mock"],
+          description: "Force a backend. `auto` prefers macOS FaceTime when available.",
+        },
+        voice: {
+          type: "string",
+          description: "Optional macOS `say` voice name for spoken prompts.",
+        },
+        rate: {
+          type: "number",
+          description: "Optional speaking rate for macOS `say` prompts.",
+        },
+      },
+      required: ["action"],
+    },
+    permissions: ["phone:use"],
+  },
+
   calc: {
     name: "calc",
     description: "Safely evaluate mathematical expressions",

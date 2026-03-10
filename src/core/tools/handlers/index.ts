@@ -38,7 +38,7 @@ import { handleData } from "./data";
 import { handleEnv } from "./env";
 import { handleWebSearch } from "./web-search";
 import { handleArtifacts } from "./artifacts";
-import { handlePhoneCall } from "./phone";
+import { handlePhoneCall, handleVoiceCall } from "./phone";
 import { handleWallet } from "./wallet";
 import { handleWorkspaceIndexSearch } from "./workspace-index";
 import {
@@ -194,6 +194,7 @@ const toolHandlers: Record<
   env: handleEnv,
 
   phone: handlePhoneCall,
+  voice_call: handleVoiceCall,
 
   diagnostics: handleLSPDiagnostics,
   definition: handleLSPDefinition,
