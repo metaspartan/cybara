@@ -19,13 +19,15 @@ describe("package.json script wiring", () => {
 
     expect(pkg.scripts?.["postinstall"]).toBe("bun run scripts/postinstall.ts");
     expect(pkg.scripts?.["tauri:sidecar"]).toBe("bun run scripts/build-sidecar.ts");
+    expect(pkg.scripts?.["tauri:prepare-release"]).toBe("bun run scripts/prepare-tauri-release.ts");
+    expect(pkg.scripts?.["tauri:build:release"]).toContain("bun run tauri:prepare-release");
 
     expect(pkg.scripts?.["build:all"]).toContain("bun run ui:build");
     expect(pkg.scripts?.["build:all"]).toContain("bun run build:cli");
     expect(pkg.scripts?.["build:all"]).toContain("bun run build:main");
 
     expect(pkg.scripts?.["tauri:dev"]).toContain("bun run tauri:sidecar");
-    expect(pkg.scripts?.["tauri:dev"]).toContain("--enable-terminal");
     expect(pkg.scripts?.["tauri:dev"]).toContain("bunx tauri dev");
+    expect(pkg.scripts?.["tauri:dev:prep"]).toContain("bun run package");
   });
 });

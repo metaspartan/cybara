@@ -24,7 +24,7 @@ describe("Tauri wiring", () => {
     const mainRs = readFileSync(mainRsPath, "utf8");
 
     expect(mainRs).toContain("sidecar(\"cybara\")");
-    expect(mainRs).toContain(".args([\"start\"])");
+    expect(mainRs).toContain(".args([\"start\", \"--enable-terminal\"])");
     expect(mainRs).toContain("window.navigate(\"http://localhost:4269\"");
     expect(mainRs).toContain("child.kill()");
   });
@@ -36,10 +36,10 @@ describe("Tauri wiring", () => {
     expect(mainRs).toContain("if is_server_running()");
     expect(mainRs).toContain("Server already running on port 4269");
     expect(mainRs).toContain("SidecarState(std::sync::Mutex::new(None))");
-    expect(mainRs).toContain("SidecarState(std::sync::Mutex::new(Some(child)))");
-    expect(mainRs).toContain("std::thread::sleep(std::time::Duration::from_millis(2000))");
+    expect(mainRs).toContain("*guard = Some(child)");
+    expect(mainRs).toContain("wait_for_server_ready(Duration::from_secs(25))");
     expect(mainRs).toContain("if let tauri::WindowEvent::CloseRequested");
-    expect(mainRs).toContain("if let Some(state) = window.try_state::<SidecarState>()");
+    expect(mainRs).toContain("if let Some(state) = app.try_state::<SidecarState>()");
     expect(mainRs).toContain("if let Some(child) = guard.take()");
   });
 });

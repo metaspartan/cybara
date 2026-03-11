@@ -43,6 +43,8 @@ const CLI_COMMANDS = [
   "channel",
   "chat",
   "config",
+  "update",
+  "version",
   "wizard",
   "help",
   "--help",
@@ -173,6 +175,8 @@ Usage:
   cybara status             Show platform status
   cybara metrics            Show token usage and metrics
   cybara doctor             Run environment diagnostics
+  cybara update             Download and install the latest CLI release
+  cybara version            Show the current version
   cybara agents             List all agents
   cybara chat               Interactive TUI chat
   cybara config             Show / get / set config

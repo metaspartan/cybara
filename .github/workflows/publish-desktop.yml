@@ -9,7 +9,7 @@ on:
       version:
         description: 'Version number (e.g., 1.0.0)'
         required: false
-        default: '1.0.0'
+        default: ''
 
 jobs:
   create-release:
@@ -17,7 +17,8 @@ jobs:
       contents: write
     runs-on: ubuntu-latest
     outputs:
-      release_id: ${{ steps.create-release.outputs.result }}
+      release_id: ${{ steps.create-release.outputs.release_id }}
+      tag_name: ${{ steps.create-release.outputs.tag_name }}
     steps:
       - uses: actions/checkout@v4
       - name: Create Release
@@ -25,16 +26,39 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const fs = require('node:fs');
+            const packageVersion = JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
+            const requestedVersion = `${{ github.event.inputs.version }}`.trim();
+            const resolvedVersion = requestedVersion || packageVersion;
+            const tagName = context.ref.startsWith('refs/tags/')
+              ? context.ref.replace('refs/tags/', '')
+              : `v${resolvedVersion}`;
+            core.setOutput('tag_name', tagName);
+
+            try {
+              const existing = await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: tagName,
+              })
+              core.setOutput('release_id', String(existing.data.id));
+              return;
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error;
+              }
+            }
+
             const { data } = await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              tag_name: context.ref.startsWith('refs/tags/') ? context.ref.replace('refs/tags/', '') : `v${{ github.event.inputs.version || '1.0.0' }}`,
-              name: `Cybara Desktop v${{ github.event.inputs.version || github.ref_name }}`,
+              tag_name: tagName,
+              name: `Cybara Desktop ${tagName}`,
               body: 'Download the appropriate installer for your platform below.',
               draft: true,
               prerelease: false
-            })
-            return data.id
+            });
+            core.setOutput('release_id', String(data.id));
 
   build-tauri:
     needs: create-release
@@ -44,22 +68,36 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macOS Universal (Intel + Apple Silicon)
+          # macOS arm64
           - platform: 'macos-latest'
-            args: '--target universal-apple-darwin'
-            target: 'universal-apple-darwin'
+            args: '--target aarch64-apple-darwin'
+            target: 'aarch64-apple-darwin'
+            bun_target: 'bun-darwin-arm64'
+            sidecar_out: 'src-tauri/bin/cybara-aarch64-apple-darwin'
+          # macOS x64
+          - platform: 'macos-latest'
+            args: '--target x86_64-apple-darwin'
+            target: 'x86_64-apple-darwin'
+            bun_target: 'bun-darwin-x64'
+            sidecar_out: 'src-tauri/bin/cybara-x86_64-apple-darwin'
           # Windows x64
           - platform: 'windows-latest'
             args: ''
             target: 'x86_64-pc-windows-msvc'
+            bun_target: 'bun-windows-x64'
+            sidecar_out: 'src-tauri/bin/cybara-x86_64-pc-windows-msvc.exe'
           # Linux x64
           - platform: 'ubuntu-22.04'
             args: ''
             target: 'x86_64-unknown-linux-gnu'
+            bun_target: 'bun-linux-x64'
+            sidecar_out: 'src-tauri/bin/cybara-x86_64-unknown-linux-gnu'
           # Linux arm64
           - platform: 'ubuntu-22.04-arm'
             args: ''
             target: 'aarch64-unknown-linux-gnu'
+            bun_target: 'bun-linux-arm64'
+            sidecar_out: 'src-tauri/bin/cybara-aarch64-unknown-linux-gnu'
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -73,12 +111,11 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
-      # macOS: Install both targets for universal binary
+      # macOS: install the explicit target being bundled for deterministic updater keys.
       - name: Install macOS targets
         if: matrix.platform == 'macos-latest'
         run: |
-          rustup target add aarch64-apple-darwin
-          rustup target add x86_64-apple-darwin
+          rustup target add ${{ matrix.target }}
 
       # Linux: Install system dependencies
       - name: Install Linux dependencies
@@ -90,38 +127,34 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Sync version metadata
+        env:
+          CYBARA_RELEASE_VERSION: ${{ github.event.inputs.version }}
+        run: bun run version:sync
+
       - name: Build UI
         run: bun run ui:build
 
-      # Build the Bun sidecar for the target platform
-      - name: Build Sidecar (macOS Universal)
-        if: matrix.platform == 'macos-latest'
+      - name: Build Sidecar
         run: |
-          bun build src/index.ts --compile --target=bun-darwin-arm64 --outfile src-tauri/bin/cybara-aarch64-apple-darwin
-          bun build src/index.ts --compile --target=bun-darwin-x64 --outfile src-tauri/bin/cybara-x86_64-apple-darwin
+          bun build src/index.ts --compile --target=${{ matrix.bun_target }} --outfile ${{ matrix.sidecar_out }}
 
-      - name: Build Sidecar (Windows)
-        if: matrix.platform == 'windows-latest'
-        run: |
-          bun build src/index.ts --compile --target=bun-windows-x64 --outfile src-tauri/bin/cybara-x86_64-pc-windows-msvc.exe
-
-      - name: Build Sidecar (Linux x64)
-        if: matrix.target == 'x86_64-unknown-linux-gnu'
-        run: |
-          bun build src/index.ts --compile --target=bun-linux-x64 --outfile src-tauri/bin/cybara-x86_64-unknown-linux-gnu
-
-      - name: Build Sidecar (Linux arm64)
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          bun build src/index.ts --compile --target=bun-linux-arm64 --outfile src-tauri/bin/cybara-aarch64-unknown-linux-gnu
+      - name: Prepare updater config
+        env:
+          CYBARA_TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
+          CYBARA_RELEASE_REPOSITORY: ${{ github.repository }}
+        run: bun run tauri:prepare-release
 
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}
-          args: ${{ matrix.args }}
+          tagName: ${{ needs.create-release.outputs.tag_name }}
+          args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
 
   publish-release:
     permissions:

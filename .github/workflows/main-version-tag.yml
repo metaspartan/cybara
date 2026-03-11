@@ -1,0 +1,66 @@
+name: Main Version And Tag
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  sync_version_and_tag:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Resolve release version
+        id: version
+        env:
+          CYBARA_RELEASE_COMMIT_OFFSET: "1"
+        run: echo "value=$(bun run version:print)" >> "$GITHUB_OUTPUT"
+
+      - name: Sync version files
+        env:
+          CYBARA_RELEASE_COMMIT_OFFSET: "1"
+        run: bun run version:sync
+
+      - name: Commit synced version
+        run: |
+          if git diff --quiet -- package.json ui/package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json; then
+            echo "No version changes to commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json ui/package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
+          git commit -m "chore: sync release version to v${{ steps.version.outputs.value }} [skip ci]"
+          git push
+
+      - name: Refresh refs after sync
+        run: git fetch --tags origin main
+
+      - name: Create and push release tag
+        run: |
+          TAG="v${{ steps.version.outputs.value }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists."
+            exit 0
+          fi
+
+          git tag "$TAG"
+          git push origin "$TAG"

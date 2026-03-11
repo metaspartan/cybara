@@ -21,10 +21,19 @@ Download the latest release from [GitHub Releases](https://github.com/metasparta
 |----------|------|
 | macOS (Apple Silicon) | `Cybara_x.x.x_aarch64.dmg` |
 | macOS (Intel) | `Cybara_x.x.x_x64.dmg` |
-| macOS (Universal) | `Cybara_x.x.x_universal.dmg` |
 | Linux (x64) | `cybara_x.x.x_amd64.deb` / `.rpm` / `.AppImage` |
 | Linux (arm64) | `cybara_x.x.x_arm64.deb` / `.rpm` / `.AppImage` |
-| Windows (x64 and arm64) | `Cybara_x.x.x_x64-setup.exe` |
+| Windows (x64) | `Cybara_x.x.x_x64-setup.exe` |
+
+## Desktop Auto Updates
+
+Official release builds include a signed updater channel backed by GitHub Releases:
+
+- open `Settings -> Desktop Updates`
+- click `Check Now`
+- click `Install And Restart` when a newer version is available
+
+The updater consumes the `latest.json` artifact uploaded by the desktop publish workflow and relaunches the app after install.
 
 ### From Source
 
@@ -44,6 +53,20 @@ bun run tauri:dev
 
 # Build for production
 bun run tauri:build
+
+# Build a signed release locally
+export TAURI_SIGNING_PUBLIC_KEY='...'
+export TAURI_SIGNING_PRIVATE_KEY='...'
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='...'
+bun run tauri:build:release
+```
+
+### CLI Bootstrap
+
+For macOS/Linux release installs, the repository also ships an `install.sh` bootstrapper that downloads the latest CLI binary from GitHub Releases:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash
 ```
 
 ## Architecture
@@ -71,6 +94,7 @@ On launch:
 3. Sidecar finds `ui/dist/` in `Resources/_up_/ui/dist/`
 4. Tauri webview navigates to `http://localhost:4269`
 5. On close, Tauri kills the sidecar process
+6. On update checks, the desktop app consults GitHub Releases `latest.json` and can download/install the signed updater package
 
 ## Sidecar Build Script
 
@@ -106,6 +130,12 @@ bun run tauri:dev
 # Production build
 bun run tauri:build
 
+# Generate release-only updater config
+bun run tauri:prepare-release
+
+# Production build with updater artifacts/signatures
+bun run tauri:build:release
+
 # Clean build artifacts
 cd src-tauri && cargo clean
 ```
@@ -118,6 +148,18 @@ The desktop client uses the same configuration as the CLI/web:
 - **Database**: `~/.cybara/data/platform.db` (plus `-wal` / `-shm`)
 - **Runtime logs directory**: `~/.cybara/logs/`
 - **Daemon log file**: `~/.cybara/cybara.log` (when running via `cybara start -d`)
+- **Release versioning**: root `package.json`, `ui/package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` are synced by `bun run version:sync`
+- **Desktop updater**: signed release builds inject updater config through `src-tauri/tauri.release.conf.json`
+
+## Release Workflow Notes
+
+Desktop auto-updates require signing keys in GitHub Actions:
+
+- `TAURI_SIGNING_PUBLIC_KEY`
+- `TAURI_SIGNING_PRIVATE_KEY`
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+
+The desktop publish workflow generates `src-tauri/tauri.release.conf.json`, enables updater artifacts, signs the updater bundle, and uploads `latest.json` to the tagged GitHub release.
 
 ## Troubleshooting
 

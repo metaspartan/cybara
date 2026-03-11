@@ -1,93 +1,93 @@
 {
-    "$schema": "https://schema.tauri.app/config/2",
-    "productName": "Cybara",
-    "version": "1.0.0",
-    "identifier": "com.cybara.desktop",
-    "build": {
-        "frontendDist": "../ui/dist",
-        "devUrl": "http://localhost:5173",
-        "beforeDevCommand": "cd ui && bun run dev",
-        "beforeBuildCommand": "cd ui && bun run build"
-    },
-    "app": {
-        "windows": [
-            {
-                "title": "Cybara",
-                "width": 1320,
-                "height": 900,
-                "minWidth": 800,
-                "minHeight": 600,
-                "resizable": true,
-                "fullscreen": false
-            }
-        ],
-        "security": {
-            "csp": null
-        }
-    },
-    "bundle": {
-        "active": true,
-        "icon": [
-            "icons/32x32.png",
-            "icons/128x128.png",
-            "icons/128x128@2x.png",
-            "icons/icon.icns",
-            "icons/icon.ico",
-            "icons/icon.png"
-        ],
-        "resources": [
-            "../ui/dist/**/*"
-        ],
-        "targets": [
-            "dmg",
-            "app",
-            "msi",
-            "nsis",
-            "deb",
-            "rpm",
-            "appimage"
-        ],
-        "externalBin": [
-            "bin/cybara"
-        ],
-        "category": "DeveloperTool",
-        "shortDescription": "AI Agent Platform",
-        "longDescription": "Cybara - A powerful AI agent platform with beautiful web UI",
-        "macOS": {
-            "minimumSystemVersion": "10.15",
-            "dmg": {
-                "windowPosition": {
-                    "x": 200,
-                    "y": 200
-                },
-                "windowSize": {
-                    "width": 660,
-                    "height": 400
-                },
-                "appPosition": {
-                    "x": 180,
-                    "y": 170
-                },
-                "applicationFolderPosition": {
-                    "x": 480,
-                    "y": 170
-                }
-            }
-        },
-        "windows": {
-            "nsis": {
-                "installMode": "currentUser"
-            }
-        },
-        "linux": {
-            "appimage": {
-                "bundleMediaFramework": true
-            }
-        }
-    },
-    "plugins": {
-        "shell": {
-            "open": true
-        }
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Cybara",
+  "version": "1.0.186",
+  "identifier": "com.cybara.desktop",
+  "build": {
+    "frontendDist": "../ui/dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "cd ui && bun run dev",
+    "beforeBuildCommand": "cd ui && bun run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Cybara",
+        "width": 1320,
+        "height": 900,
+        "minWidth": 800,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
     }
+  },
+  "bundle": {
+    "active": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "resources": [
+      "../ui/dist/**/*"
+    ],
+    "targets": [
+      "dmg",
+      "app",
+      "msi",
+      "nsis",
+      "deb",
+      "rpm",
+      "appimage"
+    ],
+    "externalBin": [
+      "bin/cybara"
+    ],
+    "category": "DeveloperTool",
+    "shortDescription": "AI Agent Platform",
+    "longDescription": "Cybara - A powerful AI agent platform with beautiful web UI",
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "dmg": {
+        "windowPosition": {
+          "x": 200,
+          "y": 200
+        },
+        "windowSize": {
+          "width": 660,
+          "height": 400
+        },
+        "appPosition": {
+          "x": 180,
+          "y": 170
+        },
+        "applicationFolderPosition": {
+          "x": 480,
+          "y": 170
+        }
+      }
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": true
+      }
+    }
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    }
+  }
 }

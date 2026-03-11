@@ -3,6 +3,14 @@ import { Badge } from '@/components/ui/Badge';
 import { PageLayout } from '@/components/layout';
 import { useHealth, useInfo, useSystemPrompt, useSystemPromptPreview, useUpdateSystemPrompt, useIdentity, useUpdateIdentity, type SystemPromptConfig, type IdentityConfig, type HealthData, type InfoData } from '@/hooks/useApi';
 import { settingsApi } from '@/lib/api';
+import { openExternal } from '@/utils/openExternal';
+import {
+  checkForDesktopUpdate,
+  describeDesktopUpdaterError,
+  installDesktopUpdate,
+  isTauriDesktopRuntime,
+  relaunchDesktopApp,
+} from '@/lib/desktopUpdater';
 import { Input, Textarea, Select } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useUIStore, themeAccents, type ThemeAccent } from '@/stores/uiStore';
@@ -24,8 +32,12 @@ import {
   Palette,
   RefreshCw,
   Shield,
+  Download,
+  ExternalLink,
+  MonitorUp,
 } from 'lucide-react';
 import { useState, useRef, useEffect, useCallback } from 'react';
+import type { Update, DownloadEvent } from '@tauri-apps/plugin-updater';
 
 function getCheckStatus(value: unknown): { status: 'healthy' | 'warning' | 'error'; details?: string } {
   if (typeof value === 'string') {
@@ -92,6 +104,220 @@ function ThemeSettings() {
           ))}
         </div>
         <p className="text-xs text-gray-500 mt-3">Selected: {themeAccents[accent].name}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DesktopUpdateSettings({
+  currentVersion,
+  releaseRepositoryUrl,
+}: {
+  currentVersion: string;
+  releaseRepositoryUrl?: string;
+}) {
+  const { addToast } = useUIStore();
+  const isDesktopRuntime = isTauriDesktopRuntime();
+  const [status, setStatus] = useState<
+    'idle' | 'checking' | 'current' | 'available' | 'installing' | 'error'
+  >('idle');
+  const [statusMessage, setStatusMessage] = useState(
+    'Check for signed Cybara desktop updates published to GitHub Releases.'
+  );
+  const [availableUpdate, setAvailableUpdate] = useState<Update | null>(null);
+  const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
+  const [downloadedBytes, setDownloadedBytes] = useState(0);
+  const [totalBytes, setTotalBytes] = useState<number | null>(null);
+  const checkedOnMountRef = useRef(false);
+
+  const handleCheck = useCallback(
+    async (silent = false) => {
+      if (!isDesktopRuntime) return;
+
+      setStatus('checking');
+      setDownloadedBytes(0);
+      setTotalBytes(null);
+      if (!silent) {
+        setStatusMessage('Checking GitHub Releases for a newer desktop build...');
+      }
+
+      try {
+        const update = await checkForDesktopUpdate();
+        setLastCheckedAt(new Date().toISOString());
+
+        if (update) {
+          setAvailableUpdate(update);
+          setStatus('available');
+          setStatusMessage(`Version ${update.version} is available to install.`);
+          if (!silent) {
+            addToast('success', `Desktop update ${update.version} is ready to install`);
+          }
+          return;
+        }
+
+        setAvailableUpdate(null);
+        setStatus('current');
+        setStatusMessage('This desktop build is already on the latest published release.');
+        if (!silent) {
+          addToast('success', 'Cybara desktop is already up to date');
+        }
+      } catch (error) {
+        const message = describeDesktopUpdaterError(error);
+        setAvailableUpdate(null);
+        setStatus('error');
+        setStatusMessage(message);
+        if (!silent) {
+          addToast('error', message);
+        }
+      }
+    },
+    [addToast, isDesktopRuntime]
+  );
+
+  const handleInstall = useCallback(async () => {
+    if (!availableUpdate) return;
+
+    setStatus('installing');
+    setDownloadedBytes(0);
+    setTotalBytes(null);
+    setStatusMessage(`Downloading and installing ${availableUpdate.version}...`);
+
+    try {
+      await installDesktopUpdate(availableUpdate, (event: DownloadEvent) => {
+        if (event.event === 'Started') {
+          setDownloadedBytes(0);
+          setTotalBytes(event.data.contentLength || null);
+          return;
+        }
+        if (event.event === 'Progress') {
+          setDownloadedBytes((previous) => previous + event.data.chunkLength);
+          return;
+        }
+        if (event.event === 'Finished') {
+          setStatusMessage(`Installed ${availableUpdate.version}. Restarting Cybara...`);
+        }
+      });
+      addToast('success', `Installed ${availableUpdate.version}. Restarting Cybara...`);
+      await relaunchDesktopApp();
+    } catch (error) {
+      const message = describeDesktopUpdaterError(error);
+      setStatus('available');
+      setStatusMessage(message);
+      addToast('error', message);
+    }
+  }, [addToast, availableUpdate]);
+
+  useEffect(() => {
+    if (!isDesktopRuntime || checkedOnMountRef.current) return;
+    checkedOnMountRef.current = true;
+    void handleCheck(true);
+  }, [handleCheck, isDesktopRuntime]);
+
+  if (!isDesktopRuntime) {
+    return null;
+  }
+
+  const releasesUrl = releaseRepositoryUrl ? `${releaseRepositoryUrl}/releases` : null;
+  const updateBodyPreview = availableUpdate?.body?.trim()
+    ? availableUpdate.body.trim().slice(0, 280)
+    : null;
+  const progressLabel =
+    status === 'installing'
+      ? totalBytes && totalBytes > 0
+        ? `${formatByteCount(downloadedBytes)} / ${formatByteCount(totalBytes)}`
+        : `${formatByteCount(downloadedBytes)} downloaded`
+      : null;
+  const statusVariant =
+    status === 'available'
+      ? 'warning'
+      : status === 'current'
+        ? 'success'
+        : status === 'error'
+          ? 'error'
+          : 'default';
+  const statusLabel =
+    status === 'available'
+      ? 'Update Available'
+      : status === 'current'
+        ? 'Up To Date'
+        : status === 'installing'
+          ? 'Installing'
+          : status === 'error'
+            ? 'Unavailable'
+            : status === 'checking'
+              ? 'Checking'
+              : 'Idle';
+
+  return (
+    <Card variant="liquid">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <MonitorUp className="w-5 h-5 text-emerald-400" />
+          Desktop Updates
+        </CardTitle>
+        <CardDescription>Signed updates for the Tauri desktop app</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={statusVariant}>{statusLabel}</Badge>
+          <span className="text-xs text-gray-400">
+            Current version: <span className="text-white">{currentVersion || 'unknown'}</span>
+          </span>
+          {availableUpdate && (
+            <span className="text-xs text-emerald-300">
+              Latest: {availableUpdate.version}
+            </span>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+          <p className="text-sm text-white">{statusMessage}</p>
+          {progressLabel && <p className="mt-1 text-xs text-emerald-300">{progressLabel}</p>}
+          {lastCheckedAt && (
+            <p className="mt-1 text-[11px] text-gray-500">
+              Last checked {new Date(lastCheckedAt).toLocaleString()}
+            </p>
+          )}
+          {updateBodyPreview && (
+            <p className="mt-2 text-xs text-gray-300 whitespace-pre-wrap break-words">
+              {updateBodyPreview}
+              {availableUpdate?.body && availableUpdate.body.trim().length > updateBodyPreview.length
+                ? '...'
+                : ''}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={() => void handleCheck()}
+            disabled={status === 'checking' || status === 'installing'}
+          >
+            <RefreshCw className={`w-4 h-4 ${status === 'checking' ? 'animate-spin' : ''}`} />
+            Check Now
+          </Button>
+          {availableUpdate && (
+            <Button
+              variant="primary"
+              onClick={() => void handleInstall()}
+              disabled={status === 'installing'}
+            >
+              <Download className="w-4 h-4" />
+              Install And Restart
+            </Button>
+          )}
+          {releasesUrl && (
+            <Button
+              variant="ghost"
+              onClick={() => void openExternal(releasesUrl)}
+              disabled={status === 'installing'}
+            >
+              <ExternalLink className="w-4 h-4" />
+              View Releases
+            </Button>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
@@ -623,7 +849,7 @@ export function Settings() {
     },
     {
       label: 'Version',
-      value: String(infoData.version || '1.0.0'),
+      value: String(infoData.version || 'unknown'),
       icon: CheckCircle,
       color: 'text-amber-400'
     },
@@ -639,6 +865,11 @@ export function Settings() {
         <ThemeSettings />
 
         <FeatureSettings />
+
+        <DesktopUpdateSettings
+          currentVersion={String(infoData.version || 'unknown')}
+          releaseRepositoryUrl={infoData.releaseRepositoryUrl}
+        />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {stats.map((stat) => (
@@ -671,7 +902,7 @@ export function Settings() {
               </div>
               <div className="flex justify-between py-2 border-b border-white/10">
                 <span className="text-gray-400">Version</span>
-                <span className="text-white">{infoData?.version || '1.0.0'}</span>
+                <span className="text-white">{infoData?.version || 'unknown'}</span>
               </div>
               <div className="flex justify-between py-2 border-b border-white/10">
                 <span className="text-gray-400">Setup Complete</span>
@@ -748,6 +979,18 @@ function formatUptime(seconds: number): string {
   if (days > 0) return `${days}d ${hours}h ${minutes}m`;
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
+}
+
+function formatByteCount(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let unitIndex = 0;
+  let amount = value;
+  while (amount >= 1024 && unitIndex < units.length - 1) {
+    amount /= 1024;
+    unitIndex += 1;
+  }
+  return `${amount >= 10 || unitIndex === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[unitIndex]}`;
 }
 
 function cn(...classes: (string | boolean | undefined)[]) {

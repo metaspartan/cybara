@@ -72,6 +72,22 @@ Then open:
 - UI: `http://localhost:4269`
 - API health: `http://localhost:4269/api/health`
 
+## Install CLI From Releases
+
+For a release binary install on macOS/Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash
+```
+
+Then update later with:
+
+```bash
+cybara update
+```
+
+The desktop app now checks the same GitHub release channel from `Settings -> Desktop Updates` and can install signed app updates in place.
+
 ---
 
 ## Docker
@@ -161,7 +177,7 @@ DM policy modes:
 ### UI + Desktop
 
 - Web UI with 20 pages for agents, channels, providers, tools, wallet, logs, metrics, tasks, sessions, IDE, terminal, setup, artifacts, skills, MCP servers, and memory
-- Tauri desktop app with sidecar server wiring
+- Tauri desktop app with sidecar server wiring and in-app signed update checks via GitHub Releases
 
 ### Provider Layer (33 Built-In Integrations)
 
@@ -204,6 +220,8 @@ bun run check:ci     # CI gate (typecheck + lint + loc + smoke + deadcode report
 
 bun run tauri:dev    # Desktop dev mode
 bun run tauri:build  # Desktop production build
+bun run tauri:prepare-release   # Generate signed updater config from env
+bun run tauri:build:release     # Build desktop app with updater artifacts
 bun run package      # Release packaging
 ```
 

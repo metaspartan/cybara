@@ -8,4 +8,5 @@ node_modules
 release/
 src-tauri/target/
 src-tauri/bin/
+src-tauri/tauri.release.conf.json
 **/.wwebjs_cache/

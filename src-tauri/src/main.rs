@@ -7,6 +7,14 @@ use tauri::Manager;
 use tauri::RunEvent;
 use tauri_plugin_shell::ShellExt;
 
+fn should_log_sidecar_output() -> bool {
+    cfg!(debug_assertions)
+        || matches!(
+            std::env::var("CYBARA_TAURI_LOG_SIDECAR"),
+            Ok(value) if value == "1" || value.eq_ignore_ascii_case("true")
+        )
+}
+
 fn is_server_running_at(addr: &str) -> bool {
     TcpStream::connect(addr).is_ok()
 }
@@ -42,6 +50,8 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             app.manage(SidecarState(std::sync::Mutex::new(None)));
 
@@ -67,17 +77,22 @@ fn main() {
                 .expect("Failed to spawn Cybara sidecar");
 
             // Log sidecar output
+            let log_sidecar_output = should_log_sidecar_output();
             tauri::async_runtime::spawn(async move {
                 use tauri_plugin_shell::process::CommandEvent;
                 while let Some(event) = rx.recv().await {
                     match event {
                         CommandEvent::Stdout(line) => {
-                            let output = String::from_utf8_lossy(&line);
-                            println!("[Cybara] {}", output);
+                            if log_sidecar_output {
+                                let output = String::from_utf8_lossy(&line);
+                                println!("[Cybara] {}", output);
+                            }
                         }
                         CommandEvent::Stderr(line) => {
-                            let output = String::from_utf8_lossy(&line);
-                            eprintln!("[Cybara] {}", output);
+                            if log_sidecar_output {
+                                let output = String::from_utf8_lossy(&line);
+                                eprintln!("[Cybara] {}", output);
+                            }
                         }
                         CommandEvent::Terminated(payload) => {
                             println!("[Cybara] Sidecar terminated with code: {:?}", payload.code);

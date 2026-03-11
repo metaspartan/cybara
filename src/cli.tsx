@@ -5,9 +5,16 @@ import Gradient from "ink-gradient";
 import BigText from "ink-big-text";
 import Spinner from "ink-spinner";
 import { spawn } from "child_process";
-import { readFileSync } from "fs";
-import { join } from "path";
+import { chmodSync, copyFileSync, mkdirSync, readFileSync, renameSync, unlinkSync } from "fs";
+import { dirname, join } from "path";
 import { createInterface } from "readline";
+import { tmpdir } from "os";
+import { getAppVersion, getReleaseRepository } from "./core/build-info";
+import {
+  buildGitHubReleaseApiUrl,
+  resolveReleaseBinaryFilename,
+  resolveSelfUpdateDestination,
+} from "./core/versioning";
 
 const API_BASE = process.env.CYBARA_API || "http://localhost:4269";
 
@@ -3372,6 +3379,8 @@ function rawHelp(): void {
   console.log("  status      Show system status");
   console.log("  metrics     Show token usage and metrics");
   console.log("  doctor      Run environment diagnostics");
+  console.log("  update      Download and install the latest CLI release");
+  console.log("  version     Show the current version");
   console.log("    metrics             Usage summary");
   console.log("    metrics analysis    Advanced token analysis");
   console.log("  agents      List configured agents");
@@ -4308,12 +4317,97 @@ const TUIApp = ({ command }: { command?: string }) => {
 const args = process.argv.slice(2);
 const command = args[0];
 
+interface GitHubReleaseAsset {
+  name?: string;
+  browser_download_url?: string;
+}
+
+interface GitHubReleaseResponse {
+  tag_name?: string;
+  html_url?: string;
+  assets?: GitHubReleaseAsset[];
+}
+
 function getVersion(): string {
-  try {
-    const pkg = JSON.parse(readFileSync(join(__dirname, "../package.json"), "utf-8"));
-    return pkg.version || "unknown";
-  } catch {
-    return "unknown";
+  return getAppVersion();
+}
+
+async function rawUpdate(versionArg?: string): Promise<void> {
+  const repository = getReleaseRepository();
+  const releaseApiUrl = buildGitHubReleaseApiUrl(repository, versionArg);
+  const assetName = resolveReleaseBinaryFilename(process.platform, process.arch);
+
+  if (!assetName) {
+    console.error(`No release asset mapping exists for ${process.platform}/${process.arch}.`);
+    process.exit(1);
+  }
+
+  const releaseResponse = await fetch(releaseApiUrl, {
+    headers: {
+      Accept: "application/vnd.github+json",
+      "User-Agent": "cybara-cli",
+    },
+  });
+  if (!releaseResponse.ok) {
+    console.error(`Failed to fetch release metadata (${releaseResponse.status}).`);
+    process.exit(1);
+  }
+
+  const release = (await releaseResponse.json()) as GitHubReleaseResponse;
+  const asset = (release.assets || []).find((candidate) => candidate.name === assetName);
+  const downloadUrl = asset?.browser_download_url;
+
+  if (!downloadUrl) {
+    console.error(`Release ${release.tag_name || "latest"} does not contain ${assetName}.`);
+    process.exit(1);
+  }
+
+  const destinationPath = resolveSelfUpdateDestination(process.execPath, process.platform);
+  const destinationDir = dirname(destinationPath);
+  mkdirSync(destinationDir, { recursive: true });
+
+  const extension = process.platform === "win32" ? ".exe" : "";
+  const tempPath = join(destinationDir, `.cybara-update-${Date.now()}${extension}`);
+
+  console.log(`Downloading ${release.tag_name || "latest"} from ${repository}...`);
+  const downloadResponse = await fetch(downloadUrl, {
+    headers: {
+      Accept: "application/octet-stream",
+      "User-Agent": "cybara-cli",
+    },
+  });
+  if (!downloadResponse.ok) {
+    console.error(`Failed to download release asset (${downloadResponse.status}).`);
+    process.exit(1);
+  }
+
+  await Bun.write(tempPath, Buffer.from(await downloadResponse.arrayBuffer()));
+
+  if (process.platform !== "win32") {
+    chmodSync(tempPath, 0o755);
+  }
+
+  if (process.platform === "win32" && destinationPath === process.execPath) {
+    const fallbackPath = join(tmpdir(), `cybara-${release.tag_name || "latest"}${extension}`);
+    copyFileSync(tempPath, fallbackPath);
+    unlinkSync(tempPath);
+    console.log("Windows cannot replace the running executable in place.");
+    console.log(`Downloaded the update to: ${fallbackPath}`);
+    console.log(`Replace ${process.execPath} with that file after exiting Cybara.`);
+    return;
+  }
+
+  if (process.platform === "win32") {
+    copyFileSync(tempPath, destinationPath);
+    unlinkSync(tempPath);
+  } else {
+    renameSync(tempPath, destinationPath);
+  }
+
+  console.log(`Updated Cybara to ${release.tag_name || "latest"}.`);
+  console.log(`Binary path: ${destinationPath}`);
+  if (destinationPath !== process.execPath) {
+    console.log("If this binary is not already on your PATH, add it before the next run.");
   }
 }
 
@@ -4324,6 +4418,9 @@ async function main() {
       break;
     case "doctor":
       await rawDoctor();
+      break;
+    case "update":
+      await rawUpdate(getFlagValue(args.slice(1), "--version"));
       break;
     case "metrics":
       if (args[1] === "analysis" || args[1] === "token-analysis") {
@@ -4660,6 +4757,7 @@ async function main() {
       rawHelp();
       break;
 
+    case "version":
     case "--version":
     case "-v":
       console.log(`cybara v${getVersion()}`);

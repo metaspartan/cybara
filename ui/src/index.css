@@ -44,6 +44,10 @@ html {
   scroll-behavior: smooth;
 }
 
+html[data-runtime="tauri"][data-platform="linux"] {
+  scroll-behavior: auto;
+}
+
 body {
   margin: 0;
   min-width: 320px;
@@ -51,6 +55,18 @@ body {
   background: #050508;
   position: relative;
   overflow-x: hidden;
+}
+
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+summary,
+a[href] {
+  cursor: pointer;
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
 }
 
 /* ==================== BACKGROUND ==================== */
@@ -152,6 +168,41 @@ body::before {
 .glass-card:hover {
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(255, 255, 255, 0.12);
+}
+
+html[data-runtime="tauri"][data-platform="linux"] body::before {
+  background:
+    radial-gradient(circle at 15% 50%, rgba(20, 20, 28, 0.22) 0%, transparent 44%),
+    radial-gradient(circle at 85% 30%, rgba(20, 20, 28, 0.14) 0%, transparent 42%);
+}
+
+html[data-runtime="tauri"][data-platform="linux"] .glass,
+html[data-runtime="tauri"][data-platform="linux"] .glass-strong,
+html[data-runtime="tauri"][data-platform="linux"] .glass-card,
+html[data-runtime="tauri"][data-platform="linux"] .glass-button {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+}
+
+html[data-runtime="tauri"][data-platform="linux"] .glass {
+  background: rgba(18, 18, 26, 0.94);
+}
+
+html[data-runtime="tauri"][data-platform="linux"] .glass-strong {
+  background: rgba(13, 13, 18, 0.98);
+}
+
+html[data-runtime="tauri"][data-platform="linux"] .glass-card {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+html[data-runtime="tauri"][data-platform="linux"] .glass-button {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+html[data-runtime="tauri"][data-platform="linux"] .shimmer {
+  animation: none;
 }
 
 /* Liquid Chip/Badge Style - Simplified */

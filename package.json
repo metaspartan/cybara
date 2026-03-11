@@ -1,6 +1,6 @@
 {
   "name": "cybara",
-  "version": "1.0.0",
+  "version": "1.0.186",
   "description": "AI agent platform with beautiful web UI",
   "type": "module",
   "bin": {
@@ -9,6 +9,8 @@
   "scripts": {
     "dev": "bun run build && cd ui && bun run build && cd .. && bun run --watch src/index.ts",
     "postinstall": "bun run scripts/postinstall.ts",
+    "version:print": "bun run scripts/version.ts print",
+    "version:sync": "bun run scripts/version.ts sync",
     "build": "bun build src/index.ts --outdir dist --target bun --external electron",
     "build:cli": "bun build src/cli.tsx --outdir dist --target bun --external electron",
     "build:main": "bun build src/main.ts --outdir dist --target bun --external electron",
@@ -34,7 +36,9 @@
     "tauri": "tauri",
     "tauri:dev": "bun run tauri:dev:prep && bun run tauri:sidecar && bunx tauri dev",
     "tauri:dev:prep": "bun run scripts/prepare-tauri-dev.ts && bun run package",
+    "tauri:prepare-release": "bun run scripts/prepare-tauri-release.ts",
     "tauri:build": "bun run tauri:sidecar && bunx tauri build",
+    "tauri:build:release": "bun run tauri:sidecar && bun run tauri:prepare-release && bunx tauri build --config src-tauri/tauri.release.conf.json",
     "tauri:sidecar": "bun run scripts/build-sidecar.ts"
   },
   "dependencies": {

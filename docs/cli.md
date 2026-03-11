@@ -34,6 +34,8 @@ cybara tui                # Main menu (interactive TUI)
 cybara status             # Show status and health
 cybara doctor             # Run API + stream + sandbox diagnostics
 cybara metrics            # Show token usage and metrics
+cybara update            # Download and install the latest CLI release
+cybara version           # Show the current version
 cybara logs [count]       # Show recent logs (default: 20)
 ```
 
@@ -233,6 +235,9 @@ cybara chat
 
 # Check platform health
 cybara status
+
+# Install the newest released CLI binary
+cybara update
 
 # List AI providers
 cybara providers

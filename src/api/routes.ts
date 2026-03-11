@@ -66,6 +66,7 @@ import {
   getAgentLogs,
 } from "../core/logging";
 import { buildSystemPrompt } from "../core/system-prompt";
+import { getAppVersion, getReleaseRepositoryUrl } from "../core/build-info";
 import * as pwManager from "../core/browser/pw-manager";
 import { homedir } from "os";
 import { dirname, isAbsolute, resolve, join } from "path";
@@ -1657,7 +1658,7 @@ const routes: Record<string, RouteHandler> = {
       status: "healthy",
       timestamp: now.toISOString(),
       uptime: process.uptime(),
-      version: "1.0.0",
+      version: getAppVersion(),
       checks: {
         database: checkDatabaseHealth(),
         agents: agentManager.getStats(),
@@ -1690,7 +1691,8 @@ const routes: Record<string, RouteHandler> = {
 
   "GET /api/info": () => ({
     name: "Cybara",
-    version: "1.0.0",
+    version: getAppVersion(),
+    releaseRepositoryUrl: getReleaseRepositoryUrl(),
     setupComplete: config.isSetupComplete(),
     homeDir: process.env.HOME || homedir(),
     stats: {

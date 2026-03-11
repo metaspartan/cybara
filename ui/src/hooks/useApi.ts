@@ -590,6 +590,7 @@ export interface HealthData {
 export interface InfoData {
   name: string;
   version: string;
+  releaseRepositoryUrl?: string;
   setupComplete: boolean;
   homeDir?: string;
   stats: {
