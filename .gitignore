@@ -9,4 +9,6 @@ release/
 src-tauri/target/
 src-tauri/bin/
 src-tauri/tauri.release.conf.json
+**/.build/
+**/.swiftpm/
 **/.wwebjs_cache/

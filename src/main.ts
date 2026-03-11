@@ -26,6 +26,8 @@ const CLI_COMMANDS = [
   "agents",
   "tasks",
   "skills",
+  "plugin",
+  "plugins",
   "mcp",
   "lsp",
   "pair",
@@ -180,6 +182,7 @@ Usage:
   cybara agents             List all agents
   cybara chat               Interactive TUI chat
   cybara config             Show / get / set config
+  cybara plugin             Plugin management (list, validate, install, remove)
   cybara provider           Provider management (add, update, delete, models)
   cybara sessions           List chat sessions
   cybara memory [query]     List or search memory

@@ -3,6 +3,7 @@ import { readdir, readFile, stat, watch } from "fs/promises";
 import { existsSync } from "fs";
 import { join, resolve, dirname } from "path";
 import { homedir } from "os";
+import { getPluginRoots, listInstalledPlugins } from "../plugins";
 import type {
     Skill,
     SkillEntry,
@@ -162,7 +163,8 @@ export function parseSkillFile(content: string, filePath: string, source: SkillE
 
 export async function scanSkillsDirectory(
     dir: string,
-    source: SkillEntry["source"]
+    source: SkillEntry["source"],
+    plugin?: SkillEntry["plugin"]
 ): Promise<SkillEntry[]> {
     const skills: SkillEntry[] = [];
 
@@ -178,6 +180,9 @@ export async function scanSkillsDirectory(
                 const content = await readFile(skillPath, "utf-8");
                 const skillEntry = parseSkillFile(content, skillPath, source);
                 if (skillEntry) {
+                    if (plugin) {
+                        skillEntry.plugin = plugin;
+                    }
                     skills.push(skillEntry);
                 }
             } catch {
@@ -229,6 +234,7 @@ export async function loadAllSkills(options: {
 }): Promise<SkillEntry[]> {
     const dirs = getSkillDirectories(options.workspaceDir);
     const skillsByName = new Map<string, SkillEntry>();
+    const plugins = listInstalledPlugins({ workspaceDir: options.workspaceDir });
 
     for (const dir of options.extraDirs ?? options.config?.load?.extraDirs ?? []) {
         const resolved = dir.startsWith("~") ? join(homedir(), dir.slice(1)) : dir;
@@ -247,15 +253,57 @@ export async function loadAllSkills(options: {
         skillsByName.set(skill.skill.name, skill);
     }
 
+    for (const plugin of plugins.filter((entry) => entry.source === "bundled")) {
+        for (const dir of plugin.skillDirs) {
+            const pluginSkills = await scanSkillsDirectory(dir, "plugin", {
+                id: plugin.manifest.id,
+                name: plugin.manifest.name,
+                version: plugin.manifest.version,
+                source: plugin.source,
+            });
+            for (const skill of pluginSkills) {
+                skillsByName.set(skill.skill.name, skill);
+            }
+        }
+    }
+
     const localSkills = await scanSkillsDirectory(dirs.local, "local");
     for (const skill of localSkills) {
         skillsByName.set(skill.skill.name, skill);
+    }
+
+    for (const plugin of plugins.filter((entry) => entry.source === "local")) {
+        for (const dir of plugin.skillDirs) {
+            const pluginSkills = await scanSkillsDirectory(dir, "plugin", {
+                id: plugin.manifest.id,
+                name: plugin.manifest.name,
+                version: plugin.manifest.version,
+                source: plugin.source,
+            });
+            for (const skill of pluginSkills) {
+                skillsByName.set(skill.skill.name, skill);
+            }
+        }
     }
 
     if (dirs.workspace) {
         const workspaceSkills = await scanSkillsDirectory(dirs.workspace, "workspace");
         for (const skill of workspaceSkills) {
             skillsByName.set(skill.skill.name, skill);
+        }
+    }
+
+    for (const plugin of plugins.filter((entry) => entry.source === "workspace")) {
+        for (const dir of plugin.skillDirs) {
+            const pluginSkills = await scanSkillsDirectory(dir, "plugin", {
+                id: plugin.manifest.id,
+                name: plugin.manifest.name,
+                version: plugin.manifest.version,
+                source: plugin.source,
+            });
+            for (const skill of pluginSkills) {
+                skillsByName.set(skill.skill.name, skill);
+            }
         }
     }
 
@@ -276,6 +324,7 @@ export async function watchSkillDirectories(
     }
 ): Promise<{ close: () => void }> {
     const dirs = getSkillDirectories(options.workspaceDir);
+    const plugins = listInstalledPlugins({ workspaceDir: options.workspaceDir });
     const debounceMs = options.config?.load?.watchDebounceMs ?? 250;
 
     const controllers: AbortController[] = [];
@@ -326,6 +375,15 @@ export async function watchSkillDirectories(
     for (const dir of options.config?.load?.extraDirs ?? []) {
         const resolved = dir.startsWith("~") ? join(homedir(), dir.slice(1)) : dir;
         watchDir(resolved);
+    }
+    for (const root of getPluginRoots(options.workspaceDir)) {
+        watchDir(root.path);
+    }
+    for (const plugin of plugins) {
+        watchDir(plugin.rootDir);
+        for (const dir of plugin.skillDirs) {
+            watchDir(dir);
+        }
     }
 
     return {

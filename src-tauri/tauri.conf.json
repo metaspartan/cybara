@@ -86,6 +86,10 @@
     }
   },
   "plugins": {
+    "updater": {
+      "endpoints": [],
+      "pubkey": "dev-placeholder-updater-key"
+    },
     "shell": {
       "open": true
     }

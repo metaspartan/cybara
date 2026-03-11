@@ -1,11 +1,5 @@
 import type { DownloadEvent, Update } from "@tauri-apps/plugin-updater";
-
-export function isTauriDesktopRuntime(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    ("__TAURI_INTERNALS__" in window || "__TAURI__" in window)
-  );
-}
+import { isTauriDesktopRuntime } from "./desktopHost";
 
 export function describeDesktopUpdaterError(error: unknown): string {
   const message =

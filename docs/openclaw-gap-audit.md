@@ -13,7 +13,7 @@ Cybara is already stronger in a few areas:
 - local wallet / on-chain tooling
 - Bun-first single-repo developer flow
 
-OpenClaw is ahead on platform breadth and product polish:
+OpenClaw is still ahead on platform breadth and product polish:
 
 - much wider channel/plugin ecosystem
 - stronger onboarding and doctor/update workflows
@@ -49,17 +49,31 @@ This pass adds the foundation:
 - shared runtime version reporting
 - signed Tauri desktop updater wiring
 - GitHub-release-backed desktop update UI in Settings
+- native SwiftUI macOS bundle packaging with release zip + checksum artifacts
 
 ### 2. Plugin / extension ecosystem
 
 OpenClaw exposes a real plugin SDK and ships many optional integrations as installable extensions.
 
-Cybara today has bundled tools/skills/channels, but not a first-class external plugin runtime. This is the single biggest platform gap if the goal is “all the features they have and more”.
+Cybara now has the beginning of a first-class plugin runtime:
+
+- `cybara-plugin.json` manifests
+- bundled/local/workspace plugin discovery
+- local install/remove/validate
+- plugin-contributed skill directories
+- CLI and API plugin management
+
+What is still missing versus OpenClaw:
+
+- plugin SDK / lifecycle hooks
+- registry/npm/GitHub install sources
+- permissions/policy model
+- plugin updates, integrity metadata, and richer diagnostics
 
 Recommendation:
 
-1. Define a Cybara plugin manifest and lifecycle.
-2. Support installing plugins from local paths and GitHub/npm specs.
+1. Add plugin lifecycle hooks and typed SDK boundaries.
+2. Support GitHub/npm/registry install sources with integrity tracking.
 3. Move optional/high-churn integrations behind that boundary.
 
 ### 3. Channel breadth
@@ -108,12 +122,20 @@ Recommendation:
 
 OpenClaw has a broader “device node” model across macOS, iOS, and Android.
 
-Cybara’s Tauri desktop app is currently a shell around the Bun sidecar and web UI. That is a good base, but not yet a device-node platform.
+Cybara now has:
+
+- Tauri desktop app around the Bun sidecar
+- a native SwiftUI macOS shell that targets the same `127.0.0.1:4269` local gateway contract, can attach to an existing gateway, and injects a native runtime bridge into the web UI for notifications/external links/workspace picking
+- a native macOS packaging/release path that emits `.app` zip artifacts and can optionally codesign/notarize them in GitHub Actions
+- a documented Android API-first shell strategy
+
+Cybara is still not a true device-node platform.
 
 Recommendation:
 
-1. Stabilize Tauri first.
+1. Keep all shells on the same local HTTP/WebSocket runtime contract.
 2. Add desktop-local command/camera/notification primitives only after updater/release health is solid.
+3. Split Bun-dependent runtime concerns from transport/API concerns before attempting Android local-node mode.
 
 ## Immediate Priorities
 
@@ -121,13 +143,13 @@ Recommendation:
 
 - stabilize Linux/Tauri runtime performance
 - unify CLI and desktop update UX beyond Settings
-- plugin runtime design for optional integrations
+- plugin SDK/lifecycle for optional integrations
 
 ### P1
 
 - onboarding wizard parity
 - richer doctor/repair flows
-- plugin runtime design
+- plugin registry/integrity/update path
 
 ### P2
 
@@ -142,6 +164,10 @@ Recommendation:
 - CLI self-update command
 - release-binary install script
 - signed Tauri updater workflow + desktop update UI
+- native macOS app bundle packaging + release asset workflow
+- plugin runtime foundation with CLI/API/local install
+- native SwiftUI macOS shell with desktop-host bridge and gateway parity with Tauri
+- Android shell strategy grounded in API parity instead of Bun-on-Android assumptions
 - Linux/Tauri performance mode to reduce heavy glass effects
 - desktop sidecar log throttling in release builds
 - global pointer affordance for clickable IDE/UI controls

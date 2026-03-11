@@ -323,6 +323,51 @@ function route(method: string, url: URL, body: string): Response {
     });
   }
 
+  if (method === "GET" && pathname === "/api/plugins") {
+    return json({
+      plugins: [
+        {
+          id: "acme-plugin",
+          name: "Acme Plugin",
+          version: "1.2.3",
+          description: "Example plugin",
+          source: "local",
+          rootDir: "/tmp/acme-plugin",
+          skillDirs: ["/tmp/acme-plugin/skills"],
+        },
+      ],
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/plugins/validate") {
+    return json({
+      valid: true,
+      errors: [],
+      warnings: [],
+      manifest: {
+        id: "acme-plugin",
+        name: "Acme Plugin",
+        version: "1.2.3",
+      },
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/plugins/install") {
+    return json({
+      success: true,
+      plugin: {
+        id: "acme-plugin",
+        name: "Acme Plugin",
+        version: "1.2.3",
+        skillDirs: ["/tmp/acme-plugin/skills"],
+      },
+    });
+  }
+
+  if (method === "DELETE" && pathname === "/api/plugins/acme-plugin") {
+    return json({ success: true });
+  }
+
   if (
     method === "GET" &&
     (pathname === "/api/chat/sessions" || pathname === "/api/sessions")
@@ -1209,6 +1254,7 @@ describe("CLI Commands", () => {
     expect(stdout).toContain("CYBARA CLI");
     expect(stdout).toContain("provider");
     expect(stdout).toContain("channels");
+    expect(stdout).toContain("plugin");
   });
 
   test("status command renders health summary", async () => {
@@ -1281,6 +1327,26 @@ describe("CLI Commands", () => {
     const logs = await runCli(["logs", "1"]);
     expect(logs.exitCode).toBe(0);
     expect(logs.stdout).toContain("CYBARA LOGS");
+  });
+
+  test("plugin command group is wired", async () => {
+    const list = await runCli(["plugin"]);
+    expect(list.exitCode).toBe(0);
+    expect(list.stdout).toContain("CYBARA PLUGINS");
+    expect(list.stdout).toContain("Acme Plugin");
+
+    const validate = await runCli(["plugin", "validate", "/tmp/acme-plugin"]);
+    expect(validate.exitCode).toBe(0);
+    expect(validate.stdout).toContain("PLUGIN VALIDATION");
+    expect(validate.stdout).toContain("valid: yes");
+
+    const install = await runCli(["plugin", "install", "/tmp/acme-plugin"]);
+    expect(install.exitCode).toBe(0);
+    expect(install.stdout).toContain("SUCCESS: Installed Acme Plugin");
+
+    const remove = await runCli(["plugin", "remove", "acme-plugin"]);
+    expect(remove.exitCode).toBe(0);
+    expect(remove.stdout).toContain("Removed plugin: acme-plugin");
   });
 
   test("config commands list/get/set are wired", async () => {

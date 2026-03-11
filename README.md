@@ -47,7 +47,7 @@ If you need an agent platform that can plan, execute, verify, and report with st
 - 7 channel adapters (`src/core/channels/adapters`)
 - 20 production UI pages (`ui/src/pages/*.tsx`)
 - 83 automated Bun test files (`tests/**/*.test.ts`)
-- Tauri desktop app + Bun server/CLI runtime
+- Tauri desktop app + native SwiftUI macOS app + Bun server/CLI runtime
 
 ---
 
@@ -80,6 +80,12 @@ For a release binary install on macOS/Linux:
 curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash
 ```
 
+To pin a specific release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash -s -- --version 1.0.186
+```
+
 Then update later with:
 
 ```bash
@@ -87,6 +93,8 @@ cybara update
 ```
 
 The desktop app now checks the same GitHub release channel from `Settings -> Desktop Updates` and can install signed app updates in place.
+
+Production deployment guidance: [docs/production.md](docs/production.md)
 
 ---
 
@@ -178,6 +186,7 @@ DM policy modes:
 
 - Web UI with 20 pages for agents, channels, providers, tools, wallet, logs, metrics, tasks, sessions, IDE, terminal, setup, artifacts, skills, MCP servers, and memory
 - Tauri desktop app with sidecar server wiring and in-app signed update checks via GitHub Releases
+- Native SwiftUI macOS app in `apps/macos/Cybara` that reuses the same local Cybara sidecar contract and can be packaged into a release-ready `.app` bundle
 
 ### Provider Layer (33 Built-In Integrations)
 
@@ -209,6 +218,7 @@ CLI: `cybara mcp list`, `cybara mcp search <query>`, `cybara mcp install <packag
 bun run dev          # Full dev flow
 bun run build        # Build backend
 bun run build:all    # Build UI + backend + CLI + main
+bun run native:macos:package   # Package the native SwiftUI macOS app bundle
 bun run start        # Run built backend
 bun run start:prod   # Build all then run
 
@@ -222,6 +232,7 @@ bun run tauri:dev    # Desktop dev mode
 bun run tauri:build  # Desktop production build
 bun run tauri:prepare-release   # Generate signed updater config from env
 bun run tauri:build:release     # Build desktop app with updater artifacts
+bun run native:macos:build      # Build the SwiftUI macOS app shell from source
 bun run package      # Release packaging
 ```
 

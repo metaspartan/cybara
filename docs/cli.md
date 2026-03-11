@@ -39,6 +39,12 @@ cybara version           # Show the current version
 cybara logs [count]       # Show recent logs (default: 20)
 ```
 
+You can pin a specific release with:
+
+```bash
+cybara update --version 1.0.186
+```
+
 ### Agents
 
 ```bash
@@ -177,6 +183,10 @@ cybara mcp popular        # Show popular servers
 
 ```bash
 cybara skills             # List installed skills
+cybara plugin             # List installed plugins
+cybara plugin validate <path>
+cybara plugin install <path>
+cybara plugin remove <plugin-id>
 ```
 
 ### LSP (Language Servers)
@@ -212,10 +222,12 @@ cybara config set <key> <val> # Set config value
 
 ```bash
 PORT=4269                 # Server port
+CYBARA_HOME=~/.cybara     # Runtime data root
 CYBARA_HOST=127.0.0.1     # Bind address (default: localhost only)
 CYBARA_API_KEY=...        # API key (auto-generated if not set)
 CYBARA_API=http://localhost:4269  # API endpoint for CLI
 BRAVE_API_KEY=...         # Web search API key
+CYBARA_RELEASE_REPOSITORY=metaspartan/cybara  # Alternate GitHub release repo for update/install
 ```
 
 ## Examples

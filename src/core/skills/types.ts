@@ -121,7 +121,13 @@ export type SkillEntry = {
     metadata?: SkillMetadata;
     invocation?: SkillInvocationPolicy;
     filePath: string;
-    source: "bundled" | "local" | "workspace";
+    source: "bundled" | "local" | "workspace" | "plugin";
+    plugin?: {
+        id: string;
+        name: string;
+        version: string;
+        source: "bundled" | "local" | "workspace";
+    };
 };
 
 /**

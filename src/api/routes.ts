@@ -33,6 +33,12 @@ import {
   createLocalSkill,
 } from "../core/skills/index";
 import {
+  installLocalPluginFromPath,
+  listInstalledPlugins,
+  uninstallLocalPlugin,
+  validatePluginAtPath,
+} from "../core/plugins";
+import {
   handleChat,
   getSession,
   getSessionMessages,
@@ -4854,6 +4860,53 @@ const routes: Record<string, RouteHandler> = {
   "POST /api/skills/:name/execute": async (body, params) => {
     const args = body as Record<string, unknown>;
     return await executeSkill(params!.name, args);
+  },
+  "GET /api/plugins": (_body, params) => {
+    const workspaceDir = typeof params?.workspaceDir === "string" ? params.workspaceDir : undefined;
+    return {
+      plugins: listInstalledPlugins({ workspaceDir }).map((plugin) => ({
+        id: plugin.manifest.id,
+        name: plugin.manifest.name,
+        version: plugin.manifest.version,
+        description: plugin.manifest.description,
+        author: plugin.manifest.author,
+        homepage: plugin.manifest.homepage,
+        source: plugin.source,
+        rootDir: plugin.rootDir,
+        skillDirs: plugin.skillDirs,
+        skillCount: plugin.skillDirs.length,
+      })),
+    };
+  },
+  "GET /api/plugins/validate": (_body, params) => {
+    const targetPath = typeof params?.path === "string" ? params.path.trim() : "";
+    if (!targetPath) {
+      throw new Error("Plugin path is required");
+    }
+    return validatePluginAtPath(targetPath);
+  },
+  "POST /api/plugins/install": (body) => {
+    const { path } = body as { path?: string };
+    if (!path || !path.trim()) {
+      throw new Error("Plugin path is required");
+    }
+    const plugin = installLocalPluginFromPath(path);
+    clearSkillsCache();
+    return {
+      success: true,
+      plugin: {
+        id: plugin.manifest.id,
+        name: plugin.manifest.name,
+        version: plugin.manifest.version,
+        source: plugin.source,
+        skillDirs: plugin.skillDirs,
+      },
+    };
+  },
+  "DELETE /api/plugins/:id": (_body, params) => {
+    const removed = uninstallLocalPlugin(params!.id);
+    clearSkillsCache();
+    return { success: removed };
   },
 
   "GET /api/logs/system": async () => getCombinedLogs(),

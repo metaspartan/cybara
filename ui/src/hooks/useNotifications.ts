@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
-import {
-    isPermissionGranted as tauriIsPermissionGranted,
-    requestPermission as tauriRequestPermission,
-    sendNotification as tauriSendNotification,
-} from '@tauri-apps/plugin-notification';
 import { connectStatusStream } from '@/lib/status-stream';
+import {
+    getDesktopHostRuntime,
+    getDesktopNotificationPermission,
+    requestDesktopNotificationPermission,
+    sendDesktopNotification,
+} from '@/lib/desktopHost';
 
 interface TaskEvent {
     type: 'task_completed';
@@ -17,40 +18,18 @@ interface TaskEvent {
     timestamp?: number;
 }
 
-const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
-
-async function sendTauriNotification(title: string, body?: string) {
-    if (!isTauri) return;
-    try {
-        let granted = await tauriIsPermissionGranted();
-        if (!granted) {
-            const permission = await tauriRequestPermission();
-            granted = permission === 'granted';
-        }
-
-        if (granted) {
-            tauriSendNotification({ title, body: body || '' });
-        }
-    } catch (e) {
-        console.warn('Tauri notification failed:', e);
-    }
-}
-
 export function useNotifications() {
+    const desktopRuntime = getDesktopHostRuntime();
     const [permission, setPermission] = useState<NotificationPermission>(
         typeof Notification !== 'undefined' ? Notification.permission : 'denied'
     );
 
     const requestPermission = useCallback(async () => {
-        if (isTauri) {
+        if (desktopRuntime) {
             try {
-                let granted = await tauriIsPermissionGranted();
-                if (!granted) {
-                    const result = await tauriRequestPermission();
-                    granted = result === 'granted';
-                }
-                setPermission(granted ? 'granted' : 'denied');
-                return granted ? 'granted' : 'denied';
+                const result = await requestDesktopNotificationPermission();
+                setPermission(result);
+                return result;
             } catch {
                 return 'denied';
             }
@@ -64,8 +43,8 @@ export function useNotifications() {
     }, []);
 
     const showNotification = useCallback((title: string, options?: NotificationOptions) => {
-        if (isTauri) {
-            sendTauriNotification(title, options?.body);
+        if (desktopRuntime) {
+            void sendDesktopNotification(title, options);
             return null;
         }
 
@@ -78,19 +57,19 @@ export function useNotifications() {
         });
 
         return notification;
-    }, [permission]);
+    }, [desktopRuntime, permission]);
 
     useEffect(() => {
-        if (isTauri) {
-            tauriIsPermissionGranted()
-                .then(granted => {
-                    setPermission(granted ? 'granted' : 'default');
+        if (desktopRuntime) {
+            void getDesktopNotificationPermission()
+                .then((nextPermission) => {
+                    setPermission(nextPermission);
                 })
                 .catch(() => { });
         }
-    }, []);
+    }, [desktopRuntime]);
 
-    return { permission, requestPermission, showNotification, isTauri };
+    return { permission, requestPermission, showNotification, isTauri: desktopRuntime === 'tauri' };
 }
 
 export function useTaskNotifications() {

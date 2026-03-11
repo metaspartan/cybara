@@ -39,7 +39,9 @@ bun run package
 ./release/cybara status
 ```
 
-### Desktop (Tauri)
+For release installs, updates, backups, and production operator guidance, see [Production Guide](./production.md).
+
+### Desktop
 
 ```bash
 # Development mode (includes terminal support)
@@ -47,6 +49,9 @@ bun run tauri:dev
 
 # Production build (macOS .dmg, Linux .deb/.rpm/.appimage)
 bun run tauri:build
+
+# Native SwiftUI macOS app bundle
+bun run native:macos:package
 ```
 
 See [Desktop Guide](./desktop.md) for platform-specific build info.
@@ -66,6 +71,7 @@ See [Desktop Guide](./desktop.md) for platform-specific build info.
 | `bun run check` | TypeScript + ESLint + Prettier |
 | `bun run tauri:dev` | Tauri desktop dev mode |
 | `bun run tauri:build` | Tauri desktop production build |
+| `bun run native:macos:package` | Package the native SwiftUI macOS app bundle |
 | `bun run package` | Build release binaries |
 
 
@@ -75,13 +81,16 @@ See [Desktop Guide](./desktop.md) for platform-specific build info.
 |-------|-------------|
 | [Architecture](./architecture.md) | Platform design and data flow |
 | [CLI Reference](./cli.md) | Command-line interface |
-| [Tools Reference](./tools.md) | 49 available tools |
+| [Plugins](./plugins.md) | Installable plugin runtime and manifests |
+| [Tools Reference](./tools.md) | 50 available tools |
 | [Skills Guide](./skills.md) | Creating and managing skills |
 | [Channels](./channels.md) | Multi-platform messaging |
 | [Providers](./providers.md) | 33 AI provider configurations |
 | [Configuration](./configuration.md) | Settings and environment |
+| [Production](./production.md) | Release installs, updates, backups, and operator guidance |
 | [API Reference](./api.md) | REST API endpoints |
-| [Desktop](./desktop.md) | Tauri desktop client |
+| [Desktop](./desktop.md) | Tauri + native macOS desktop release paths |
+| [Native Shells](./native-shells.md) | SwiftUI macOS shell and Android strategy |
 | [Security](./security.md) | Self-hosting security model |
 | [Testing](./testing.md) | Automated test strategy and commands |
 
@@ -104,7 +113,7 @@ Conversation contexts with message history, token tracking, and adaptive context
 Modular capabilities loaded from SKILL.md files with eligibility gating (OS, env, binaries).
 
 ### Tools
-49 functions the agent can invoke: file I/O, browser, exec, web search, memory, artifacts (.md.resolved), data processing, LSP, scheduling, and more.
+50 functions the agent can invoke: file I/O, browser, exec, web search, memory, artifacts (.md.resolved), data processing, LSP, scheduling, and more.
 
 ### Channels
 Communication interfaces: Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Web.

@@ -3,11 +3,11 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
+import { getDesktopHostRuntime } from './lib/desktopHost';
 import './index.css';
 
 const rootElement = document.documentElement;
-const isTauriRuntime =
-  typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
+const desktopRuntime = getDesktopHostRuntime();
 const platformHint = (() => {
   const ua = `${navigator.userAgent} ${navigator.platform}`.toLowerCase();
   if (ua.includes('linux')) return 'linux';
@@ -16,7 +16,7 @@ const platformHint = (() => {
   return 'web';
 })();
 
-rootElement.dataset.runtime = isTauriRuntime ? 'tauri' : 'web';
+rootElement.dataset.runtime = desktopRuntime || 'web';
 rootElement.dataset.platform = platformHint;
 
 const queryClient = new QueryClient({

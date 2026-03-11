@@ -39,7 +39,10 @@
     "tauri:prepare-release": "bun run scripts/prepare-tauri-release.ts",
     "tauri:build": "bun run tauri:sidecar && bunx tauri build",
     "tauri:build:release": "bun run tauri:sidecar && bun run tauri:prepare-release && bunx tauri build --config src-tauri/tauri.release.conf.json",
-    "tauri:sidecar": "bun run scripts/build-sidecar.ts"
+    "tauri:sidecar": "bun run scripts/build-sidecar.ts",
+    "native:macos:build": "swift build --package-path apps/macos/Cybara",
+    "native:macos:run": "swift run --package-path apps/macos/Cybara",
+    "native:macos:package": "bun run scripts/package-native-macos.ts"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.993.0",

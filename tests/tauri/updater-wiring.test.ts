@@ -24,6 +24,7 @@ describe("desktop updater wiring", () => {
       join(ROOT_DIR, "src-tauri", "capabilities", "default.json"),
       "utf8"
     );
+    const tauriConfig = readFileSync(join(ROOT_DIR, "src-tauri", "tauri.conf.json"), "utf8");
 
     expect(cargoToml).toContain('tauri-plugin-updater = "2"');
     expect(cargoToml).toContain('tauri-plugin-process = "2"');
@@ -31,6 +32,9 @@ describe("desktop updater wiring", () => {
     expect(mainRs).toContain("tauri_plugin_process::init()");
     expect(capabilityJson).toContain('"updater:default"');
     expect(capabilityJson).toContain('"process:default"');
+    expect(tauriConfig).toContain('"updater"');
+    expect(tauriConfig).toContain('"endpoints": []');
+    expect(tauriConfig).toContain('"pubkey": "dev-placeholder-updater-key"');
   });
 
   test("desktop publish workflow prepares updater config and passes the release tag", () => {
@@ -43,5 +47,16 @@ describe("desktop updater wiring", () => {
     expect(workflow).toContain("tagName: ${{ needs.create-release.outputs.tag_name }}");
     expect(workflow).toContain("--config src-tauri/tauri.release.conf.json");
     expect(workflow).not.toContain("universal-apple-darwin");
+  });
+
+  test("desktop publish workflow also packages native macOS app bundles", () => {
+    const workflowPath = join(ROOT_DIR, ".github", "workflows", "publish-desktop.yml");
+    const workflow = readFileSync(workflowPath, "utf8");
+
+    expect(workflow).toContain("build-native-macos");
+    expect(workflow).toContain("bun run native:macos:package");
+    expect(workflow).toContain("Cybara-native-macos-${{ matrix.arch }}-*.zip");
+    expect(workflow).toContain("APPLE_DEVELOPER_ID_SIGNING_IDENTITY");
+    expect(workflow).toContain("xcrun notarytool store-credentials cybara-notary");
   });
 });

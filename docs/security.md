@@ -92,6 +92,17 @@ When enabled:
 - Only accessible from localhost unless `--expose` is also set
 - Tauri desktop app can use terminal natively
 
+## Plugins
+
+Cybara plugins are trusted local code, not a sandbox boundary.
+
+Production guidance:
+
+- install only reviewed plugins from trusted sources
+- prefer workspace-local plugins for project-specific behavior
+- understand that plugin-contributed skills execute with the same host trust boundary as other local Cybara runtime code
+- use extra caution on shared operator machines until plugin signatures/integrity metadata are in place
+
 ## Best Practices for Self-Hosting
 
 1. **Keep it local** — Don't expose to the internet. Use a VPN if remote access is needed.
@@ -99,6 +110,7 @@ When enabled:
 3. **Run behind a reverse proxy** — For HTTPS, use nginx/caddy with TLS.
 4. **Update regularly** — Pull latest for security patches.
 5. **Review agent permissions** — Limit tool access for agents that interact with external channels.
+6. **Treat plugin installs as privileged** — Review manifests and contributed content before installing.
 
 ## Files & Permissions
 

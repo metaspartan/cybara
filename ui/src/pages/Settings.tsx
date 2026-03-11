@@ -8,9 +8,13 @@ import {
   checkForDesktopUpdate,
   describeDesktopUpdaterError,
   installDesktopUpdate,
-  isTauriDesktopRuntime,
   relaunchDesktopApp,
 } from '@/lib/desktopUpdater';
+import {
+  getDesktopHostRuntime,
+  getDesktopRuntimeLabel,
+  isDesktopUpdaterSupported,
+} from '@/lib/desktopHost';
 import { Input, Textarea, Select } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useUIStore, themeAccents, type ThemeAccent } from '@/stores/uiStore';
@@ -117,7 +121,10 @@ function DesktopUpdateSettings({
   releaseRepositoryUrl?: string;
 }) {
   const { addToast } = useUIStore();
-  const isDesktopRuntime = isTauriDesktopRuntime();
+  const desktopRuntime = getDesktopHostRuntime();
+  const isDesktopRuntime = desktopRuntime !== null;
+  const supportsUpdater = isDesktopUpdaterSupported();
+  const runtimeLabel = getDesktopRuntimeLabel(desktopRuntime);
   const [status, setStatus] = useState<
     'idle' | 'checking' | 'current' | 'available' | 'installing' | 'error'
   >('idle');
@@ -133,6 +140,15 @@ function DesktopUpdateSettings({
   const handleCheck = useCallback(
     async (silent = false) => {
       if (!isDesktopRuntime) return;
+      if (!supportsUpdater) {
+        setStatus('current');
+        setAvailableUpdate(null);
+        setLastCheckedAt(new Date().toISOString());
+        setStatusMessage(
+          'This native Cybara macOS app uses the same local gateway on http://127.0.0.1:4269, but in-app signed updater installs are not wired for this host yet. Use GitHub Releases or rebuild from source.'
+        );
+        return;
+      }
 
       setStatus('checking');
       setDownloadedBytes(0);
@@ -150,7 +166,7 @@ function DesktopUpdateSettings({
           setStatus('available');
           setStatusMessage(`Version ${update.version} is available to install.`);
           if (!silent) {
-            addToast('success', `Desktop update ${update.version} is ready to install`);
+          addToast('success', `Desktop update ${update.version} is ready to install`);
           }
           return;
         }
@@ -171,7 +187,7 @@ function DesktopUpdateSettings({
         }
       }
     },
-    [addToast, isDesktopRuntime]
+    [addToast, isDesktopRuntime, supportsUpdater]
   );
 
   const handleInstall = useCallback(async () => {
@@ -255,11 +271,16 @@ function DesktopUpdateSettings({
           <MonitorUp className="w-5 h-5 text-emerald-400" />
           Desktop Updates
         </CardTitle>
-        <CardDescription>Signed updates for the Tauri desktop app</CardDescription>
+        <CardDescription>
+          {supportsUpdater
+            ? `Signed updates for the ${runtimeLabel}`
+            : `${runtimeLabel} runtime attached to the local Cybara gateway`}
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={statusVariant}>{statusLabel}</Badge>
+          <Badge variant="info">{runtimeLabel}</Badge>
           <span className="text-xs text-gray-400">
             Current version: <span className="text-white">{currentVersion || 'unknown'}</span>
           </span>
@@ -292,12 +313,12 @@ function DesktopUpdateSettings({
           <Button
             variant="outline"
             onClick={() => void handleCheck()}
-            disabled={status === 'checking' || status === 'installing'}
+            disabled={status === 'checking' || status === 'installing' || !supportsUpdater}
           >
             <RefreshCw className={`w-4 h-4 ${status === 'checking' ? 'animate-spin' : ''}`} />
-            Check Now
+            {supportsUpdater ? 'Check Now' : 'Built From Source'}
           </Button>
-          {availableUpdate && (
+          {availableUpdate && supportsUpdater && (
             <Button
               variant="primary"
               onClick={() => void handleInstall()}

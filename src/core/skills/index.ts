@@ -2,6 +2,7 @@ import { readFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 
 import { join, dirname, basename, extname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { homedir } from "os";
+import { listInstalledPlugins } from "../plugins";
 import { handleCalc, handleConvert } from "./calc";
 import { handlePdf } from "./pdf";
 import { handleOcr, handleImageDescribe } from "./ocr";
@@ -170,6 +171,24 @@ export function getSkills(): Skill[] {
         const skill = loadSkillFromFile(skillPath);
         if (skill && !skills.find((s) => s.name === skill.name)) {
           skill.category = "installed";
+          skills.push(skill);
+        }
+      }
+    }
+  }
+
+  for (const plugin of listInstalledPlugins()) {
+    for (const dir of plugin.skillDirs) {
+      if (!existsSync(dir)) continue;
+      const entries = readdirSync(dir);
+      for (const entry of entries) {
+        const skillPath = join(dir, entry, "SKILL.md");
+        if (!existsSync(skillPath)) {
+          continue;
+        }
+        const skill = loadSkillFromFile(skillPath);
+        if (skill && !skills.find((s) => s.name === skill.name)) {
+          skill.category = "plugin";
           skills.push(skill);
         }
       }

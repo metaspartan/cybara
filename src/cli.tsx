@@ -137,6 +137,19 @@ interface SkillItem {
   source: string;
 }
 
+interface PluginItem {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  author?: string;
+  homepage?: string;
+  source: "bundled" | "local" | "workspace";
+  rootDir: string;
+  skillDirs: string[];
+  skillCount: number;
+}
+
 interface AgentItem {
   id: string;
   name: string;
@@ -596,6 +609,115 @@ async function rawSkills(): Promise<void> {
   for (const skill of skills.filter((s) => !s.eligible)) {
     console.log(`  - ${skill.name} (${skill.source})`);
   }
+}
+
+async function rawPlugins(): Promise<void> {
+  const data = await fetchAPI<{ plugins: PluginItem[] }>("/api/plugins");
+  if (!data) {
+    console.error("ERROR: Failed to fetch plugins from", API_BASE);
+    process.exit(1);
+  }
+
+  const plugins = Array.isArray(data.plugins) ? data.plugins : [];
+  console.log("CYBARA PLUGINS");
+  console.log("==============");
+  console.log(`total: ${plugins.length}`);
+  console.log("");
+
+  if (plugins.length === 0) {
+    console.log("No plugins installed");
+    console.log("");
+    console.log("Install one with: cybara plugin install <path>");
+    return;
+  }
+
+  for (const plugin of plugins) {
+    console.log(`- ${plugin.name} (${plugin.version})`);
+    console.log(`  id: ${plugin.id}`);
+    console.log(`  source: ${plugin.source}`);
+    console.log(`  skills: ${plugin.skillDirs.length}`);
+    console.log(`  root: ${plugin.rootDir}`);
+    if (plugin.author) console.log(`  author: ${plugin.author}`);
+    if (plugin.description) console.log(`  description: ${plugin.description}`);
+  }
+}
+
+async function rawPluginValidate(inputPath: string): Promise<void> {
+  const data = await fetchAPI<{
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+    manifest?: { id: string; name: string; version: string };
+  }>(`/api/plugins/validate?path=${encodeURIComponent(inputPath)}`);
+
+  if (!data) {
+    console.error("ERROR: Failed to validate plugin path against", API_BASE);
+    process.exit(1);
+  }
+
+  console.log("PLUGIN VALIDATION");
+  console.log("=================");
+  console.log(`path: ${inputPath}`);
+  console.log(`valid: ${data.valid ? "yes" : "no"}`);
+  if (data.manifest) {
+    console.log(`id: ${data.manifest.id}`);
+    console.log(`name: ${data.manifest.name}`);
+    console.log(`version: ${data.manifest.version}`);
+  }
+  if (data.warnings?.length) {
+    console.log("");
+    console.log("WARNINGS:");
+    for (const warning of data.warnings) {
+      console.log(`  - ${warning}`);
+    }
+  }
+  if (data.errors?.length) {
+    console.log("");
+    console.log("ERRORS:");
+    for (const error of data.errors) {
+      console.log(`  - ${error}`);
+    }
+    process.exit(1);
+  }
+}
+
+async function rawPluginInstall(inputPath: string): Promise<void> {
+  console.log(`Installing plugin from ${inputPath}...`);
+  const data = await fetchAPI<{
+    success: boolean;
+    plugin?: { id: string; name: string; version: string; skillDirs: string[] };
+  }>("/api/plugins/install", {
+    method: "POST",
+    body: JSON.stringify({ path: inputPath }),
+  });
+
+  if (!data || !data.success || !data.plugin) {
+    console.error("ERROR: Failed to install plugin");
+    process.exit(1);
+  }
+
+  console.log(`SUCCESS: Installed ${data.plugin.name}`);
+  console.log(`  id: ${data.plugin.id}`);
+  console.log(`  version: ${data.plugin.version}`);
+  console.log(`  skill_dirs: ${data.plugin.skillDirs.length}`);
+}
+
+async function rawPluginRemove(pluginId: string): Promise<void> {
+  const data = await fetchAPI<{ success: boolean }>(`/api/plugins/${encodeURIComponent(pluginId)}`, {
+    method: "DELETE",
+  });
+
+  if (!data) {
+    console.error("ERROR: Failed to remove plugin from", API_BASE);
+    process.exit(1);
+  }
+
+  if (!data.success) {
+    console.error(`Plugin not found: ${pluginId}`);
+    process.exit(1);
+  }
+
+  console.log(`Removed plugin: ${pluginId}`);
 }
 
 interface MCPRegistryServer {
@@ -3398,6 +3520,11 @@ function rawHelp(): void {
   console.log("    provider discover     Discover Ollama models");
   console.log("  tasks       List scheduled tasks");
   console.log("  skills      List installed skills");
+  console.log("  plugin      Plugin management commands");
+  console.log("    plugin list                List installed plugins");
+  console.log("    plugin validate <path>     Validate a plugin manifest and dirs");
+  console.log("    plugin install <path>      Install a local plugin");
+  console.log("    plugin remove <plugin-id>  Remove an installed local plugin");
   console.log("  sessions    List chat sessions");
   console.log("  memory      Memory commands");
   console.log("    memory         List recent memories");
@@ -4437,6 +4564,45 @@ async function main() {
       break;
     case "skills":
       await rawSkills();
+      break;
+    case "plugin":
+    case "plugins":
+      switch (args[1]) {
+        case "list":
+        case undefined:
+          await rawPlugins();
+          break;
+        case "validate":
+          if (!args[2]) {
+            console.error("Usage: cybara plugin validate <path>");
+            process.exit(1);
+          }
+          await rawPluginValidate(args[2]);
+          break;
+        case "install":
+          if (!args[2]) {
+            console.error("Usage: cybara plugin install <path>");
+            process.exit(1);
+          }
+          await rawPluginInstall(args[2]);
+          break;
+        case "delete":
+        case "remove":
+        case "uninstall":
+          if (!args[2]) {
+            console.error("Usage: cybara plugin remove <plugin-id>");
+            process.exit(1);
+          }
+          await rawPluginRemove(args[2]);
+          break;
+        default:
+          console.log("Plugin Commands:");
+          console.log("  cybara plugin list                - List installed plugins");
+          console.log("  cybara plugin validate <path>     - Validate a plugin manifest and dirs");
+          console.log("  cybara plugin install <path>      - Install a local plugin");
+          console.log("  cybara plugin remove <plugin-id>  - Remove an installed local plugin");
+          break;
+      }
       break;
 
     case "provider":

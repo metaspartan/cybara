@@ -2,6 +2,8 @@
 
 Cybara is available as a native desktop application built with [Tauri](https://tauri.app/), providing a lightweight, secure, and performant experience.
 
+This document covers the production desktop release paths for both the Tauri desktop app and the native SwiftUI macOS shell in `apps/macos/Cybara`.
+
 ## Features
 
 - **Native Performance**: Built with Rust, minimal resource usage
@@ -21,6 +23,8 @@ Download the latest release from [GitHub Releases](https://github.com/metasparta
 |----------|------|
 | macOS (Apple Silicon) | `Cybara_x.x.x_aarch64.dmg` |
 | macOS (Intel) | `Cybara_x.x.x_x64.dmg` |
+| macOS native SwiftUI (Apple Silicon) | `Cybara-native-macos-arm64-x.y.z.zip` |
+| macOS native SwiftUI (Intel) | `Cybara-native-macos-x86_64-x.y.z.zip` |
 | Linux (x64) | `cybara_x.x.x_amd64.deb` / `.rpm` / `.AppImage` |
 | Linux (arm64) | `cybara_x.x.x_arm64.deb` / `.rpm` / `.AppImage` |
 | Windows (x64) | `Cybara_x.x.x_x64-setup.exe` |
@@ -34,6 +38,8 @@ Official release builds include a signed updater channel backed by GitHub Releas
 - click `Install And Restart` when a newer version is available
 
 The updater consumes the `latest.json` artifact uploaded by the desktop publish workflow and relaunches the app after install.
+
+The native SwiftUI macOS bundles do not use the Tauri updater. Update those by downloading the latest bundle zip from GitHub Releases.
 
 ### From Source
 
@@ -59,6 +65,9 @@ export TAURI_SIGNING_PUBLIC_KEY='...'
 export TAURI_SIGNING_PRIVATE_KEY='...'
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='...'
 bun run tauri:build:release
+
+# Build a native SwiftUI macOS app bundle + zip
+bun run native:macos:package
 ```
 
 ### CLI Bootstrap
@@ -69,32 +78,40 @@ For macOS/Linux release installs, the repository also ships an `install.sh` boot
 curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash
 ```
 
+To install a pinned CLI release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash -s -- --version 1.0.186
+```
+
 ## Architecture
 
-The desktop client embeds the Cybara sidecar binary and bundles the web UI as resources:
+The native SwiftUI macOS bundle embeds the Cybara sidecar binary and bundles the web UI alongside the shell:
 
 ```
+
+Tauri release builds package the same sidecar/runtime contract, but keep the web UI under `Contents/Resources/_up_/ui/dist/` and use the Rust shell executable instead of the SwiftUI shell.
 Cybara.app/
 ├── Contents/
 │   ├── MacOS/
-│   │   ├── cybara-desktop     # Tauri shell (Rust)
-│   │   └── cybara-<triple>    # Sidecar binary (Bun-compiled)
+│   │   ├── Cybara            # Native SwiftUI shell executable
+│   │   └── sidecar/
+│   │       ├── cybara        # Sidecar binary (Bun-compiled)
+│   │       ├── secp256k1.wasm
+│   │       ├── onnxruntime/
+│   │       └── ui/dist/
 │   ├── Resources/
-│   │   ├── icon.icns
-│   │   └── _up_/ui/dist/      # Bundled web UI
-│   │       ├── index.html
-│   │       ├── cybara.png      # App icon
-│   │       └── assets/         # JS, CSS
+│   │   └── AppIcon.icns
 │   └── Info.plist
 ```
 
 On launch:
-1. Tauri shell starts the sidecar binary with `cybara start`
-2. Sidecar starts the HTTP server on port 4269
-3. Sidecar finds `ui/dist/` in `Resources/_up_/ui/dist/`
-4. Tauri webview navigates to `http://localhost:4269`
-5. On close, Tauri kills the sidecar process
-6. On update checks, the desktop app consults GitHub Releases `latest.json` and can download/install the signed updater package
+1. The shell attaches to an existing local Cybara gateway on `127.0.0.1:4269` when one is already healthy
+2. Otherwise it starts the sidecar binary with `cybara start --enable-terminal`
+3. The sidecar starts the HTTP server on port 4269
+4. The shell webview navigates to `http://localhost:4269`
+5. Tauri release builds can consume `latest.json` for in-app signed updates
+6. Native SwiftUI macOS bundles are updated manually from GitHub Releases
 
 ## Sidecar Build Script
 
@@ -136,6 +153,9 @@ bun run tauri:prepare-release
 # Production build with updater artifacts/signatures
 bun run tauri:build:release
 
+# Native macOS app bundle + zip artifact
+bun run native:macos:package
+
 # Clean build artifacts
 cd src-tauri && cargo clean
 ```
@@ -148,6 +168,7 @@ The desktop client uses the same configuration as the CLI/web:
 - **Database**: `~/.cybara/data/platform.db` (plus `-wal` / `-shm`)
 - **Runtime logs directory**: `~/.cybara/logs/`
 - **Daemon log file**: `~/.cybara/cybara.log` (when running via `cybara start -d`)
+- **Runtime root override**: set `CYBARA_HOME` to move the entire runtime data root
 - **Release versioning**: root `package.json`, `ui/package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` are synced by `bun run version:sync`
 - **Desktop updater**: signed release builds inject updater config through `src-tauri/tauri.release.conf.json`
 
@@ -160,6 +181,18 @@ Desktop auto-updates require signing keys in GitHub Actions:
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
 
 The desktop publish workflow generates `src-tauri/tauri.release.conf.json`, enables updater artifacts, signs the updater bundle, and uploads `latest.json` to the tagged GitHub release.
+
+The same workflow also packages native SwiftUI macOS `.app` bundles and uploads zip + `.sha256` artifacts. If Apple signing/notary secrets are configured, those native bundles are also codesigned and notarized before upload.
+
+Optional native macOS signing/notary secrets:
+
+- `APPLE_DEVELOPER_ID_CERTIFICATE_P12`
+- `APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD`
+- `APPLE_DEVELOPER_ID_SIGNING_IDENTITY`
+- `APPLE_KEYCHAIN_PASSWORD`
+- `APPLE_ID`
+- `APPLE_APP_SPECIFIC_PASSWORD`
+- `APPLE_TEAM_ID`
 
 ## Troubleshooting
 

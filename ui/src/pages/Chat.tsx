@@ -37,7 +37,6 @@ import {
   Mic,
   MicOff,
 } from "lucide-react";
-import { open as tauriOpenDialog } from "@tauri-apps/plugin-dialog";
 import { Highlight, themes } from "prism-react-renderer";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -71,6 +70,7 @@ import {
   type LiveActivityItem,
 } from "@/lib/chatActivities";
 import { preprocessChatMarkdown } from "@/lib/chatMarkdownPreprocessor";
+import { isDesktopHostRuntime, openDesktopDirectoryDialog } from "@/lib/desktopHost";
 
 interface ToolCall {
   id: string;
@@ -4168,27 +4168,13 @@ export function Chat() {
 
   const handleSelectWorkspace = useCallback(async () => {
     try {
-      const isTauriRuntime =
-        typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
       let selectedPath: string | null = null;
 
-      if (isTauriRuntime) {
-        const selected = await tauriOpenDialog({
-          directory: true,
-          multiple: false,
+      if (isDesktopHostRuntime()) {
+        selectedPath = await openDesktopDirectoryDialog({
           defaultPath: effectiveWorkspaceDir || undefined,
           title: "Select Session Workspace",
         });
-        if (typeof selected === "string" && selected.trim()) {
-          selectedPath = selected.trim();
-        } else if (Array.isArray(selected)) {
-          const first = selected.find(
-            (entry): entry is string => typeof entry === "string" && entry.trim().length > 0
-          );
-          if (first) {
-            selectedPath = first.trim();
-          }
-        }
       } else {
         const manual = window.prompt("Enter workspace folder path", effectiveWorkspaceDir || "");
         if (typeof manual === "string" && manual.trim()) {

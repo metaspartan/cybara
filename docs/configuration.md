@@ -13,6 +13,8 @@
 | `LOG_LEVEL` | info | Logging verbosity |
 | `LOG_FORMAT` | pretty | Log output format (`pretty` or `json`) |
 
+`CYBARA_HOME` is the root for operator state. When set, Cybara resolves config, database, logs, local plugins, and local skills under that directory instead of `~/.cybara`.
+
 ## Workspace Files
 
 Place in your workspace root for auto-loading:
@@ -48,7 +50,7 @@ Casual but professional. Use "we" language.
 
 ## Database (SQLite)
 
-Location: `~/.cybara/data/platform.db`
+Location: `$CYBARA_HOME/data/platform.db` (defaults to `~/.cybara/data/platform.db`)
 
 ### Tables
 
@@ -111,7 +113,7 @@ cybara browser profile create "work"
 
 ## Skill Registries
 
-Configure in settings or `~/.cybara/config.json`:
+Configure in settings or `$CYBARA_HOME/config.json`:
 
 ```json
 {
@@ -162,7 +164,7 @@ cybara mcp add memory '{"command": "bunx", "args": ["@modelcontextprotocol/serve
 
 ## Logging
 
-Runtime logs are emitted to stdout/stderr. Daemon mode also writes `~/.cybara/cybara.log`.
+Runtime logs are emitted to stdout/stderr. Daemon mode also writes `$CYBARA_HOME/cybara.log`.
 
 ```bash
 # Daemon logs (when started with -d)
@@ -176,9 +178,9 @@ LOG_LEVEL=debug cybara start
 
 ```bash
 # Clear all data
-rm -rf ~/.cybara
+rm -rf "${CYBARA_HOME:-$HOME/.cybara}"
 
 # Clear only sessions
-rm ~/.cybara/data/platform.db-shm ~/.cybara/data/platform.db-wal
-sqlite3 ~/.cybara/data/platform.db "DELETE FROM sessions; DELETE FROM messages;"
+rm "${CYBARA_HOME:-$HOME/.cybara}"/data/platform.db-shm "${CYBARA_HOME:-$HOME/.cybara}"/data/platform.db-wal
+sqlite3 "${CYBARA_HOME:-$HOME/.cybara}"/data/platform.db "DELETE FROM sessions; DELETE FROM messages;"
 ```
