@@ -1,6 +1,6 @@
 {
   "name": "cybara",
-  "version": "1.0.186",
+  "version": "1.0.188",
   "description": "AI agent platform with beautiful web UI",
   "type": "module",
   "bin": {
