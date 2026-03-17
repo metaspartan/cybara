@@ -35,6 +35,7 @@ import { handleSummarization, handleVideoFrames, handleWeather } from "./skill";
 import { handleClipboard } from "./clipboard";
 import { handleHttp } from "./http";
 import { handleData } from "./data";
+import { handleCalc, handleConvert } from "./calc";
 import { handleEnv } from "./env";
 import { handleWebSearch } from "./web-search";
 import { handleArtifacts } from "./artifacts";
@@ -73,6 +74,7 @@ export * from "./skill";
 export * from "./clipboard";
 export * from "./http";
 export * from "./data";
+export * from "./calc";
 export * from "./env";
 export * from "./web-search";
 export * from "./artifacts";
@@ -191,6 +193,8 @@ const toolHandlers: Record<
   clipboard: handleClipboard,
   http: handleHttp,
   data: handleData,
+  calc: handleCalc,
+  convert: handleConvert,
   env: handleEnv,
 
   phone: handlePhoneCall,

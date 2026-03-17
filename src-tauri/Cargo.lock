@@ -607,7 +607,7 @@ dependencies = [
 
 [[package]]
 name = "cybara-desktop"
-version = "1.0.186"
+version = "1.0.188"
 dependencies = [
  "serde",
  "serde_json",
