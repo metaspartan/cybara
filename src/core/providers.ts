@@ -255,6 +255,30 @@ export const providers = {
     authType: "api_key",
     models: [
       {
+        id: "MiniMax-M2.7",
+        name: "MiniMax M2.7",
+        context: 204800,
+        maxTokens: 64000,
+        reasoning: true,
+        input: ["text"],
+      },
+      {
+        id: "MiniMax-M2.7-highspeed",
+        name: "MiniMax M2.7 HighSpeed",
+        context: 204800,
+        maxTokens: 64000,
+        reasoning: true,
+        input: ["text"],
+      },
+      {
+        id: "MiniMax-M2.7-lightning",
+        name: "MiniMax M2.7 Lightning",
+        context: 204800,
+        maxTokens: 64000,
+        reasoning: true,
+        input: ["text"],
+      },
+      {
         id: "MiniMax-M2.5",
         name: "MiniMax M2.5",
         context: 204800,
@@ -1481,8 +1505,8 @@ class ProviderManager {
     if (!staticConfig) return dbProvider;
     const baseUrl =
       dbProvider.provider === "openai-codex" &&
-      typeof dbProvider.base_url === "string" &&
-      dbProvider.base_url.trim().toLowerCase() === "https://api.openai.com/v1"
+        typeof dbProvider.base_url === "string" &&
+        dbProvider.base_url.trim().toLowerCase() === "https://api.openai.com/v1"
         ? staticConfig.baseUrl
         : dbProvider.base_url;
     return {
