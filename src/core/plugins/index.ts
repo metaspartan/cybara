@@ -51,7 +51,7 @@ function getBundledPluginsRoot(): string {
   return resolve(__dirname, "../../../plugins");
 }
 
-function getLocalPluginsRoot(): string {
+export function getLocalPluginsRoot(): string {
   return join(getCybaraHomeDir(), "plugins");
 }
 
@@ -220,7 +220,7 @@ function pluginSourcePriority(source: CybaraPluginSource): number {
   return 1;
 }
 
-function loadPluginFromRoot(rootDir: string, source: CybaraPluginSource): InstalledCybaraPlugin | null {
+export function loadPluginFromRoot(rootDir: string, source: CybaraPluginSource): InstalledCybaraPlugin | null {
   const validation = validatePluginAtPath(rootDir);
   if (!validation.valid || !validation.manifest) {
     return null;
@@ -303,3 +303,5 @@ export function uninstallLocalPlugin(pluginId: string): boolean {
   rmSync(targetRoot, { recursive: true, force: true });
   return true;
 }
+
+export * from "./install";

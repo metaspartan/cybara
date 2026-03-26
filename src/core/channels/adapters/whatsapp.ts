@@ -602,8 +602,14 @@ export class WhatsAppAdapter implements ChannelAdapter {
     });
 
     client.on("qr", (qr) => {
-      console.log(`[WhatsApp] Scan QR code to link device for channel ${channelId}:`);
-      qrcode.generate(qr, { small: true });
+      const existingQr = this.runtimeStates.get(channelId)?.qr;
+      if (existingQr) {
+        console.log(`[WhatsApp] QR code updated for channel ${channelId} (view in UI)`);
+      } else {
+        console.log(`[WhatsApp] Scan QR code to link device for channel ${channelId}:`);
+        qrcode.generate(qr, { small: true });
+      }
+
       this.updateRuntimeState(channelId, {
         awaitingQr: true,
         ready: false,

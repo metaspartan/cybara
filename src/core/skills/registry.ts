@@ -139,7 +139,7 @@ function mapClawHubTags(input: unknown): string[] | undefined {
  */
 export class ClawdHubRegistry implements SkillRegistry {
     name = "clawhub";
-    baseUrl = "https://www.clawhub.ai";
+    baseUrl = "https://clawhub.ai";
 
     // Simple in-memory cache with TTL
     private cache = new Map<string, { data: unknown; expires: number }>();
@@ -373,6 +373,12 @@ export class ClawdHubRegistry implements SkillRegistry {
                 updatedAt: typeof s.updatedAt === "number" ? s.updatedAt : undefined,
                 version: s.latestVersion?.version,
             }));
+            
+            if (items.length === 0 && (!cursor || cursor === "")) {
+                const searchFallback = await this.search("openclaw", { limit });
+                return { items: searchFallback, nextCursor: null };
+            }
+
             const result: RegistryListResult = {
                 items,
                 nextCursor: typeof data.nextCursor === "string" ? data.nextCursor : null,
@@ -556,7 +562,10 @@ export class SkillsShRegistry implements SkillRegistry {
         try {
             const url = `${this.baseUrl}/api/skills`;
             const res = await fetch(url);
-            if (!res.ok) return [];
+            if (!res.ok) {
+                // If api/skills returns 404, we use the working search API as a fallback to list popular skills
+                return await this.search("openclaw", { limit });
+            }
             const data = await res.json() as {
                 skills?: Array<{
                     id: string;
@@ -902,9 +911,9 @@ export class SkillRegistryManager {
     }
 
     /**
-     * Find skill directory by looking in all possible locations
+     * Find skill directory or file by looking in all possible locations
      */
-    private async findSkillDir(slug: string): Promise<string | null> {
+    private async findSkillPath(slug: string): Promise<string | null> {
         // Normalize slug for comparison
         const normalizedSlug = slug.toLowerCase().replace(/[\s_]+/g, "-");
         
@@ -921,11 +930,15 @@ export class SkillRegistryManager {
                 
                 const entries = await readdir(skillsDir, { withFileTypes: true });
                 for (const entry of entries) {
-                    if (!entry.isDirectory()) continue;
+                    if (!entry.isDirectory() && !(entry.isFile() && entry.name.endsWith(".md"))) continue;
+                    
+                    const baseName = entry.isFile() && entry.name.endsWith(".md")
+                        ? entry.name.slice(0, -3)
+                        : entry.name;
                     
                     // Compare normalized names
-                    const entryNormalized = entry.name.toLowerCase().replace(/[\s_]+/g, "-");
-                    if (entryNormalized === normalizedSlug || entry.name === slug) {
+                    const entryNormalized = baseName.toLowerCase().replace(/[\s_]+/g, "-");
+                    if (entryNormalized === normalizedSlug || baseName === slug) {
                         return join(skillsDir, entry.name);
                     }
                 }
@@ -956,15 +969,15 @@ export class SkillRegistryManager {
         }
 
         // Otherwise, search for the skill in all possible locations
-        const skillDir = await this.findSkillDir(slug);
+        const skillPath = await this.findSkillPath(slug);
         
-        if (!skillDir) {
+        if (!skillPath) {
             return { success: false, error: `Skill not found: ${slug}` };
         }
 
         try {
-            await rm(skillDir, { recursive: true, force: true });
-            return { success: true, location: skillDir };
+            await rm(skillPath, { recursive: true, force: true });
+            return { success: true, location: skillPath };
         } catch (err) {
             return { success: false, error: String(err) };
         }

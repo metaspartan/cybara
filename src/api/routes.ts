@@ -4846,7 +4846,15 @@ const routes: Record<string, RouteHandler> = {
     return result;
   },
   "DELETE /api/skills/:name": async (_body, params) => {
-    const result = await registryManager.uninstall(params!.name);
+    const skillName = decodeURIComponent(params!.name);
+    const skill = getSkill(skillName);
+    
+    let targetDir: string | undefined = undefined;
+    if (skill?.location?.includes(".cybara/skills")) {
+        targetDir = skill.location.endsWith("SKILL.md") ? dirname(skill.location) : skill.location;
+    }
+
+    const result = await registryManager.uninstall(skillName, { targetDir });
     if (result.success) {
       clearSkillsCache(); // Invalidate cache so deleted skill disappears from list
     }
