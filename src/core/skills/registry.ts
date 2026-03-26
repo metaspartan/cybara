@@ -3,9 +3,11 @@
  * Multi-registry compatible skill install/sync (ClawdHub, skills.sh, CybaraHub)
  */
 
-import { mkdir, writeFile, readFile, rm, readdir } from "fs/promises";
-import { join } from "path";
+import { mkdir, writeFile, readFile, rm, readdir, stat } from "fs/promises";
+import { existsSync } from "fs";
+import { join, dirname } from "path";
 import { homedir } from "os";
+import { fileURLToPath } from "url";
 
 /**
  * Registry provider interface
@@ -886,17 +888,83 @@ export class SkillRegistryManager {
     }
 
     /**
+     * Get workspace path for skills directory
+     */
+    private getWorkspaceSkillsDir(): string {
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = dirname(__filename);
+        // Handle bunfs paths (production builds)
+        if (__dirname.startsWith("/$bunfs") || __dirname.includes("$bunfs")) {
+            const execDir = dirname(process.execPath);
+            return join(execDir, "..", "..", "skills");
+        }
+        return join(__dirname, "..", "..", "..", "skills");
+    }
+
+    /**
+     * Find skill directory by looking in all possible locations
+     */
+    private async findSkillDir(slug: string): Promise<string | null> {
+        // Normalize slug for comparison
+        const normalizedSlug = slug.toLowerCase().replace(/[\s_]+/g, "-");
+        
+        // Check possible locations in order of priority
+        const possibleDirs = [
+            join(homedir(), ".cybara", "skills"),  // User-installed
+            this.getWorkspaceSkillsDir(),              // Workspace skills
+        ];
+
+        for (const skillsDir of possibleDirs) {
+            try {
+                // Check if directory exists
+                if (!existsSync(skillsDir)) continue;
+                
+                const entries = await readdir(skillsDir, { withFileTypes: true });
+                for (const entry of entries) {
+                    if (!entry.isDirectory()) continue;
+                    
+                    // Compare normalized names
+                    const entryNormalized = entry.name.toLowerCase().replace(/[\s_]+/g, "-");
+                    if (entryNormalized === normalizedSlug || entry.name === slug) {
+                        return join(skillsDir, entry.name);
+                    }
+                }
+            } catch {
+                // Skip this directory if we can't read it
+                continue;
+            }
+        }
+        
+        return null;
+    }
+
+    /**
      * Uninstall a skill
      */
     async uninstall(
         slug: string,
         options: { targetDir?: string } = {}
-    ): Promise<{ success: boolean; error?: string }> {
-        const targetDir = options.targetDir ?? join(homedir(), ".cybara", "skills", slug);
+    ): Promise<{ success: boolean; error?: string; location?: string }> {
+        // If targetDir is explicitly specified, use it
+        if (options.targetDir) {
+            try {
+                await rm(options.targetDir, { recursive: true, force: true });
+                return { success: true, location: options.targetDir };
+            } catch (err) {
+                return { success: false, error: String(err) };
+            }
+        }
+
+        // Otherwise, search for the skill in all possible locations
+        const skillDir = await this.findSkillDir(slug);
+        
+        if (!skillDir) {
+            return { success: false, error: `Skill not found: ${slug}` };
+        }
 
         try {
-            await rm(targetDir, { recursive: true, force: true });
-            return { success: true };
+            await rm(skillDir, { recursive: true, force: true });
+            return { success: true, location: skillDir };
         } catch (err) {
             return { success: false, error: String(err) };
         }
@@ -905,59 +973,78 @@ export class SkillRegistryManager {
     /**
      * Update all installed skills
      */
+    /**
+     * Get all skills directories to check for updates
+     */
+    private getSkillsDirs(): string[] {
+        const dirs: string[] = [join(homedir(), ".cybara", "skills")];
+        
+        // Add workspace skills directory
+        const workspaceDir = this.getWorkspaceSkillsDir();
+        if (!dirs.includes(workspaceDir)) {
+            dirs.push(workspaceDir);
+        }
+        
+        return dirs;
+    }
+
     async updateAll(options: {
         skillsDir?: string;
     } = {}): Promise<Array<{ slug: string; updated: boolean; error?: string }>> {
-        const skillsDir = options.skillsDir ?? join(homedir(), ".cybara", "skills");
+        const targetDir = options.skillsDir ?? null;
+        const skillsDirs = targetDir ? [targetDir] : this.getSkillsDirs();
         const results: Array<{ slug: string; updated: boolean; error?: string }> = [];
 
-        // Find all installed skills with registry metadata
+        for (const skillsDir of skillsDirs) {
+            // Find all installed skills with registry metadata
+            try {
+                if (!existsSync(skillsDir)) continue;
+                
+                const dirs = await readdir(skillsDir, { withFileTypes: true });
 
-        try {
-            const dirs = await readdir(skillsDir, { withFileTypes: true });
+                for (const dir of dirs) {
+                    if (!dir.isDirectory()) continue;
 
-            for (const dir of dirs) {
-                if (!dir.isDirectory()) continue;
+                    const metadataPath = join(skillsDir, dir.name, ".registry.json");
+                    try {
+                        const metadata = JSON.parse(await readFile(metadataPath, "utf-8")) as {
+                            slug: string;
+                            version: string;
+                            registry: string;
+                        };
 
-                const metadataPath = join(skillsDir, dir.name, ".registry.json");
-                try {
-                    const metadata = JSON.parse(await readFile(metadataPath, "utf-8")) as {
-                        slug: string;
-                        version: string;
-                        registry: string;
-                    };
+                        const registry = this.get(metadata.registry);
+                        if (!registry) {
+                            results.push({ slug: dir.name, updated: false, error: "Unknown registry" });
+                            continue;
+                        }
 
-                    const registry = this.get(metadata.registry);
-                    if (!registry) {
-                        results.push({ slug: dir.name, updated: false, error: "Unknown registry" });
-                        continue;
+                        const latest = await registry.get(metadata.slug);
+                        if (!latest) {
+                            results.push({ slug: dir.name, updated: false, error: "Not found in registry" });
+                            continue;
+                        }
+
+                        if (latest.version !== metadata.version) {
+                            const installResult = await this.install(metadata.slug, {
+                                registry: metadata.registry,
+                                targetDir: join(skillsDir, dir.name),
+                            });
+                            results.push({
+                                slug: dir.name,
+                                updated: installResult.success,
+                                error: installResult.error,
+                            });
+                        } else {
+                            results.push({ slug: dir.name, updated: false }); // Already up to date
+                        }
+                    } catch {
+                        // No metadata file, skip
                     }
-
-                    const latest = await registry.get(metadata.slug);
-                    if (!latest) {
-                        results.push({ slug: dir.name, updated: false, error: "Not found in registry" });
-                        continue;
-                    }
-
-                    if (latest.version !== metadata.version) {
-                        const installResult = await this.install(metadata.slug, {
-                            registry: metadata.registry,
-                            targetDir: join(skillsDir, dir.name),
-                        });
-                        results.push({
-                            slug: dir.name,
-                            updated: installResult.success,
-                            error: installResult.error,
-                        });
-                    } else {
-                        results.push({ slug: dir.name, updated: false }); // Already up to date
-                    }
-                } catch {
-                    // No metadata file, skip
                 }
+            } catch {
+                // Skills directory doesn't exist, skip
             }
-        } catch {
-            // Skills directory doesn't exist
         }
 
         return results;

@@ -4847,6 +4847,9 @@ const routes: Record<string, RouteHandler> = {
   },
   "DELETE /api/skills/:name": async (_body, params) => {
     const result = await registryManager.uninstall(params!.name);
+    if (result.success) {
+      clearSkillsCache(); // Invalidate cache so deleted skill disappears from list
+    }
     return result;
   },
   "POST /api/skills/update": async () => {
