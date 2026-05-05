@@ -3478,6 +3478,9 @@ export function Chat() {
     }
 
     pendingProcessCaptureRef.current = null;
+    runActivityBufferRef.current = [];
+    setLiveActivities([]);
+    setLiveCurrentStep(null);
   }, [isLoading, liveActivities, sessionId, typedMessages]);
 
   const appendLiveActivity = useCallback(

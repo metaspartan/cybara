@@ -21,6 +21,14 @@ describe("Chat live activity persistence", () => {
     expect(source).toContain("runActivityBufferRef.current = [];");
   });
 
+  test("clears the temporary live timeline after attaching it to the completed assistant message", () => {
+    const source = readFileSync(chatSourcePath, "utf8");
+    expect(source).toContain("pendingProcessCaptureRef.current = null;");
+    expect(source).toContain("runActivityBufferRef.current = [];");
+    expect(source).toContain("setLiveActivities([]);");
+    expect(source).toContain("setLiveCurrentStep(null);");
+  });
+
   test("uses server event timestamps when appending live activities to preserve order", () => {
     const source = readFileSync(chatSourcePath, "utf8");
     expect(source).toContain("eventTimestamp?: number");

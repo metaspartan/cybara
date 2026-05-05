@@ -4256,16 +4256,37 @@ class AgentManager {
     this.broadcastAgentStatus("generating", toolContext, "Generating response...");
 
     const startTime = performance.now();
+    const INITIAL_TRANSIENT_CODES = new Set([500, 502, 503, 520, 529]);
+    const INITIAL_MAX_RETRIES = 3;
+    let response: Response | null = null;
+    let lastInitialError = "";
 
-    const response = await fetch(`${baseUrl}/messages`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(requestBody),
-    });
+    for (let attempt = 0; attempt <= INITIAL_MAX_RETRIES; attempt++) {
+      response = await fetch(`${baseUrl}/messages`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(requestBody),
+      });
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`API error: ${response.status} - ${error}`);
+      if (response.ok) break;
+
+      lastInitialError = await response.text();
+
+      if (INITIAL_TRANSIENT_CODES.has(response.status) && attempt < INITIAL_MAX_RETRIES) {
+        const backoffMs = Math.min(1000 * Math.pow(2, attempt), 8000);
+        console.warn(
+          `[Agent] Anthropic transient error ${response.status} on initial call, ` +
+          `retrying in ${backoffMs}ms (attempt ${attempt + 1}/${INITIAL_MAX_RETRIES})...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        continue;
+      }
+
+      throw new Error(`API error: ${response.status} - ${lastInitialError}`);
+    }
+
+    if (!response || !response.ok) {
+      throw new Error(`API error after ${INITIAL_MAX_RETRIES} retries: ${lastInitialError}`);
     }
 
     const data = (await response.json()) as AnthropicResponse;
@@ -4465,49 +4486,96 @@ class AgentManager {
         }));
       }
 
-      const loopResponse = await fetch(`${baseUrl}/messages`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(loopRequestBody),
-      });
+      const TRANSIENT_STATUS_CODES = new Set([500, 502, 503, 520, 529]);
+      const MAX_RETRIES = 3;
+      let loopResponse: Response | null = null;
+      let lastLoopError = "";
+      let loopFatalError = false;
 
-      if (!loopResponse.ok) {
-        const loopError = await loopResponse.text();
-        if (loopResponse.status === 400 && this.isContextWindowExceededError(loopError)) {
-          this.compactAnthropicLoopMessagesForContext(
-            currentMessages,
-            Math.max(4096, Math.floor(contextGuard.contextBudgetChars * 0.65)),
-            true
-          );
-          const retryBody: Record<string, unknown> = {
-            ...loopRequestBody,
-            messages: currentMessages,
-          };
-          const retryResponse = await fetch(`${baseUrl}/messages`, {
+      try {
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+          loopResponse = await fetch(`${baseUrl}/messages`, {
             method: "POST",
             headers,
-            body: JSON.stringify(retryBody),
+            body: JSON.stringify(loopRequestBody),
           });
-          if (!retryResponse.ok) {
-            const retryError = await retryResponse.text();
-            throw new Error(`API error in agentic loop: ${retryResponse.status} - ${retryError}`);
+
+          if (loopResponse.ok) break;
+
+          lastLoopError = await loopResponse.text();
+
+          // Context window exceeded — compact and retry immediately
+          if (loopResponse.status === 400 && this.isContextWindowExceededError(lastLoopError)) {
+            this.compactAnthropicLoopMessagesForContext(
+              currentMessages,
+              Math.max(4096, Math.floor(contextGuard.contextBudgetChars * 0.65)),
+              true
+            );
+            const retryBody: Record<string, unknown> = {
+              ...loopRequestBody,
+              messages: currentMessages,
+            };
+            const retryResponse = await fetch(`${baseUrl}/messages`, {
+              method: "POST",
+              headers,
+              body: JSON.stringify(retryBody),
+            });
+            if (!retryResponse.ok) {
+              loopFatalError = true;
+              lastLoopError = await retryResponse.text();
+              break;
+            }
+            loopResponse = retryResponse;
+            break;
           }
-          currentData = (await retryResponse.json()) as AnthropicResponse;
-          const latestRetryText = currentData.content?.find((c) => c.type === "text")?.text;
-          if (latestRetryText) {
-            finalContent = latestRetryText;
+
+          // Transient server error — retry with exponential backoff
+          if (TRANSIENT_STATUS_CODES.has(loopResponse.status) && attempt < MAX_RETRIES) {
+            const backoffMs = Math.min(1000 * Math.pow(2, attempt), 8000);
+            console.warn(
+              `[Agent] Anthropic transient error ${loopResponse.status} on iteration ${iterations}, ` +
+              `retrying in ${backoffMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})...`
+            );
+            await new Promise((resolve) => setTimeout(resolve, backoffMs));
+            continue;
           }
-          continue;
+
+          // Exhausted retries or non-retryable error
+          loopFatalError = true;
+          break;
         }
-        throw new Error(`API error in agentic loop: ${loopResponse.status} - ${loopError}`);
+      } catch (fetchError) {
+        // Network-level error (DNS, timeout, etc.)
+        console.error(`[Agent] Anthropic fetch error on iteration ${iterations}:`, fetchError);
+        loopFatalError = true;
+        lastLoopError = String(fetchError);
       }
 
-      currentData = (await loopResponse.json()) as AnthropicResponse;
+      // If the API call failed after retries, gracefully stop the loop
+      // and return whatever content we've accumulated so far
+      if (loopFatalError || !loopResponse || !loopResponse.ok) {
+        const statusCode = loopResponse?.status ?? "unknown";
+        console.warn(
+          `[Agent] Anthropic API error ${statusCode} after ${MAX_RETRIES} retries on iteration ${iterations}. ` +
+          `Gracefully stopping loop with ${allToolCalls.length} completed tool calls.`
+        );
+        if (!finalContent.trim()) {
+          finalContent = "I encountered a temporary API error and couldn't complete my response. " +
+            "The work I've done so far has been preserved. Please try again.";
+        } else {
+          finalContent += "\n\n---\n*Note: I encountered a temporary API error and had to stop early. " +
+            "The above represents partial progress.*";
+        }
+        break;
+      }
 
-      const latestText = currentData.content?.find((c) => c.type === "text")?.text;
+      // Parse successful response
+      const responseData = (await loopResponse.json()) as AnthropicResponse;
+      const latestText = responseData.content?.find((c3) => c3.type === "text")?.text;
       if (latestText) {
         finalContent = latestText;
       }
+      currentData = responseData;
     }
 
     if (limitReason) {
