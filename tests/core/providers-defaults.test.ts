@@ -10,24 +10,31 @@ import {
 
 describe("Provider model defaults and API-family parity", () => {
   test("uses updated defaults for OpenClaw-parity providers", () => {
-    expect(getDefaultModel("openai")).toBe("gpt-5.2");
-    expect(getDefaultModel("minimax")).toBe("MiniMax-M2.5");
-    expect(getDefaultModel("minimax-portal")).toBe("MiniMax-M2.5");
-    expect(getDefaultModel("moonshot")).toBe("kimi-k2.5");
+    expect(getDefaultModel("openai")).toBe("gpt-5.5");
+    expect(getDefaultModel("anthropic")).toBe("claude-opus-4-8");
+    expect(getDefaultModel("minimax")).toBe("MiniMax-M3");
+    expect(getDefaultModel("minimax-portal")).toBe("MiniMax-M3");
+    expect(getDefaultModel("moonshot")).toBe("kimi-k2.6");
     expect(getDefaultModel("litellm")).toBe("gpt-4o");
-    expect(getDefaultModel("z.ai")).toBe("glm-5");
-    expect(getDefaultModel("zai")).toBe("glm-5");
-    expect(getDefaultModel("antigravity")).toBe("gemini-3-pro-preview");
-    expect(getDefaultModel("google-antigravity")).toBe("gemini-3-pro-preview");
-    expect(getDefaultModel("google-gemini-cli")).toBe("gemini-3-pro-preview");
-    expect(getDefaultModel("gemini-cli")).toBe("gemini-3-pro-preview");
-    expect(getDefaultModel("opencode_zen")).toBe("claude-sonnet-4-6");
-    expect(getDefaultModel("opencode")).toBe("claude-sonnet-4-6");
-    expect(getDefaultModel("openai-codex")).toBe("gpt-5.3-codex");
-    expect(getDefaultModel("github_copilot")).toBe("gpt-4o");
-    expect(getDefaultModel("github-copilot")).toBe("gpt-4o");
+    expect(getDefaultModel("z.ai")).toBe("glm-5.2");
+    expect(getDefaultModel("zai")).toBe("glm-5.2");
+    expect(getDefaultModel("z.ai-coding")).toBe("glm-5.2");
+    expect(getDefaultModel("antigravity")).toBe("gemini-3.1-pro-preview");
+    expect(getDefaultModel("google-antigravity")).toBe("gemini-3.1-pro-preview");
+    expect(getDefaultModel("google-gemini-cli")).toBe("gemini-3.1-pro-preview");
+    expect(getDefaultModel("gemini-cli")).toBe("gemini-3.1-pro-preview");
+    expect(getDefaultModel("opencode_zen")).toBe("claude-opus-4-8");
+    expect(getDefaultModel("opencode")).toBe("claude-opus-4-8");
+    expect(getDefaultModel("openai-codex")).toBe("gpt-5.5");
+    expect(getDefaultModel("github_copilot")).toBe("gpt-5.5");
+    expect(getDefaultModel("github-copilot")).toBe("gpt-5.5");
     expect(getDefaultModel("kimi-coding")).toBe("kimi-for-coding");
     expect(getDefaultModel("qianfan")).toBe("deepseek-v3.2");
+    expect(getDefaultModel("deepseek")).toBe("deepseek-v4-flash");
+    expect(getDefaultModel("alibaba")).toBe("qwen3.6-plus");
+    expect(getDefaultModel("xiaomi")).toBe("mimo-v2.5-pro");
+    expect(getDefaultModel("nvidia")).toBe("nvidia/nemotron-3-super-120b-a12b");
+    expect(getDefaultModel("ollama-cloud")).toBe("glm-5.2:cloud");
   });
 
   test("normalizes OpenClaw-style provider aliases", () => {

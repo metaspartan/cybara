@@ -1,19 +1,32 @@
 # Testing Guide
 
-Cybara uses Bun-native automated tests for core backend, CLI, channel adapters, and key UI/Tauri seams.
+Cybara uses Bun-native automated tests for core backend, CLI, channel adapters, and key UI/Tauri seams. Core modules have dedicated unit tests covering pure logic (prompt caching, path policy, error classification, rate-limit/credential rotation, retry, kanban orchestration, media-generation registry, planning tools, and versioning helpers).
 
 ## Run Everything
 
 ```bash
-bun test
-bun run test:smoke
-bun run check
+bun run test           # all unit/integration tests (core, api, channels, cli, runtime)
+bun run test:core      # core unit tests only (fast, no network)
+bun run test:smoke     # CI gate: core + runtime + security + e2e
+bun run check          # typecheck + lint + format check
 bun run build:all
 ```
 
 ## Focused Test Runs
 
 ```bash
+# Core unit tests for the new engine modules
+bun test tests/core/prompt-cache.test.ts
+bun test tests/core/path-policy.test.ts
+bun test tests/core/error-classifier.test.ts
+bun test tests/core/rate-limit-tracker.test.ts
+bun test tests/core/credential-pool.test.ts
+bun test tests/core/retry.test.ts
+bun test tests/core/kanban.test.ts
+bun test tests/core/media-generation.test.ts
+bun test tests/core/planning-tools.test.ts
+bun test tests/core/versioning-helpers.test.ts
+
 # CLI command integration (mocked API server)
 bun test tests/cli/commands.test.ts
 

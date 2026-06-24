@@ -461,14 +461,26 @@ export function startDispatcherTick(
   };
 }
 
-/** For tests: close + clear the DB connection. */
+/**
+ * For tests: clear all kanban data and close the connection so the next call
+ * starts from an empty board. In production this is never called; the tick
+ * timer is also stopped.
+ */
 export function resetKanbanForTests(): void {
-  if (db) {
-    db.close();
-    db = null;
-  }
   if (tickTimer) {
     clearInterval(tickTimer);
     tickTimer = null;
+  }
+  if (db) {
+    try {
+      db.exec("DELETE FROM task_events;");
+      db.exec("DELETE FROM task_comments;");
+      db.exec("DELETE FROM task_links;");
+      db.exec("DELETE FROM tasks;");
+    } catch {
+      /* ignore if schema not yet created */
+    }
+    db.close();
+    db = null;
   }
 }

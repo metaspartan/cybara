@@ -66,8 +66,20 @@ describe("Agent provider API-family routing", () => {
     expect(result.content).toBe("anthropic-ok");
     expect(requestUrl.endsWith("/messages")).toBe(true);
     expect(requestHeaders.get("x-api-key")).toBe("synthetic-test-key");
-    expect(requestBody.system).toBe("SYSTEM_FROM_AGENT");
-    expect(requestBody.messages).toEqual([{ role: "user", content: "hello synthetic" }]);
+    // Prompt caching transforms system into an array form with cache_control;
+    // the system text must still be forwarded.
+    const systemValue = requestBody.system;
+    if (typeof systemValue === "string") {
+      expect(systemValue).toBe("SYSTEM_FROM_AGENT");
+    } else {
+      expect(Array.isArray(systemValue)).toBe(true);
+      expect(JSON.stringify(systemValue)).toContain("SYSTEM_FROM_AGENT");
+      expect(JSON.stringify(systemValue)).toContain("cache_control");
+    }
+    // Messages may be in block form after cache-breakpoint injection.
+    expect(requestBody.messages.length).toBeGreaterThanOrEqual(1);
+    expect(requestBody.messages[0].role).toBe("user");
+    expect(JSON.stringify(requestBody.messages)).toContain("hello synthetic");
     expect(requestBody.max_tokens).toBe(65536);
   });
 
