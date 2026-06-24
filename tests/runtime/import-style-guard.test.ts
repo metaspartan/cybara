@@ -9,6 +9,17 @@ const EXCLUDED_FILES = new Set(["tests/runtime/import-style-guard.test.ts"]);
 const DYNAMIC_IMPORT_ALLOWLIST = new Set([
   "src/core/tools/handlers/wallet.ts",
   "src/api/routes.ts",
+  // Lazy-loads optional/native ML runtimes (onnxruntime-node,
+  // @huggingface/transformers) and runtime-resolved model paths. Eagerly
+  // importing these would break the server-only runtime and pull native deps.
+  "src/core/memory/embeddings.ts",
+  // Lazy-load the Tauri/desktop bridge modules, which only exist when running
+  // inside the desktop app (not the server/CLI runtime).
+  "ui/src/lib/desktopHost.ts",
+  "ui/src/lib/desktopUpdater.ts",
+  // Uses a top-level await import() to isolate the SQLite HOME before the
+  // module under test initializes its DB connection.
+  "tests/core/kanban.test.ts",
 ]);
 
 function normalizePath(path: string): string {

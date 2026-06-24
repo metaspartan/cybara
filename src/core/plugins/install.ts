@@ -77,8 +77,12 @@ export async function installPluginFromNpmSpec(spec: string): Promise<InstalledC
         throw new Error(`Failed to fetch npm package info for ${pkgName} (HTTP ${res.status})`);
     }
 
-    const data = await res.json() as any;
-    
+    // npm packument shape: { "dist-tags": {...}, versions: { [ver]: { dist: { tarball } } } }
+    const data = (await res.json()) as {
+      "dist-tags"?: Record<string, string>;
+      versions?: Record<string, { dist?: { tarball?: string } }>;
+    };
+
     // 2. Resolve version to a specific semantic version string
     let resolvedVersion = versionSpec;
     if (data["dist-tags"] && data["dist-tags"][versionSpec]) {
@@ -87,7 +91,11 @@ export async function installPluginFromNpmSpec(spec: string): Promise<InstalledC
         throw new Error(`Version ${versionSpec} not found for package ${pkgName}`);
     }
 
-    const tarballUrl = data.versions[resolvedVersion]?.dist?.tarball;
+    const versions = data.versions;
+    if (!versions) {
+        throw new Error(`No versions found for package ${pkgName}`);
+    }
+    const tarballUrl = versions[resolvedVersion]?.dist?.tarball;
     if (!tarballUrl) {
         throw new Error(`No tarball URL found for ${pkgName}@${resolvedVersion}`);
     }

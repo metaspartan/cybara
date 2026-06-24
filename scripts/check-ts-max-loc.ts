@@ -47,15 +47,26 @@ const existingRoots = roots.filter((root) => {
   }
 });
 
+// Legacy large modules that previously exceeded the LOC guard. Both have now
+// been decomposed under the 5500-line limit (IDE.tsx split into ui/src/pages/ide/*,
+// routes.ts split into src/api/routes/_shared.ts), so the exception list is empty.
+// Kept as a mechanism so future intentional exceptions can be documented here.
+const LOC_EXCEPTIONS: ReadonlySet<string> = new Set<string>([]);
+
 const files = existingRoots.flatMap((root) => collectTsFiles(root));
 const stats: FileStat[] = files.map((path) => ({ path, lines: countLines(path) }));
-const offenders = stats.filter((stat) => stat.lines > maxLines).sort((a, b) => b.lines - a.lines);
+const offenders = stats
+  .filter((stat) => stat.lines > maxLines)
+  .filter((stat) => !LOC_EXCEPTIONS.has(stat.path))
+  .sort((a, b) => b.lines - a.lines);
 const largest = [...stats].sort((a, b) => b.lines - a.lines).slice(0, 10);
 
 console.log(`Checked ${stats.length} TypeScript files (max ${maxLines} LOC per file).`);
 console.log("Top 10 largest files:");
 for (const item of largest) {
-  console.log(`  ${item.lines.toString().padStart(5)}  ${item.path}`);
+  const flagged = item.lines > maxLines && !LOC_EXCEPTIONS.has(item.path) ? "  <-- OVER" : "";
+  const exempt = LOC_EXCEPTIONS.has(item.path) ? "  (exempt: legacy monolith)" : "";
+  console.log(`  ${item.lines.toString().padStart(5)}  ${item.path}${flagged}${exempt}`);
 }
 
 if (offenders.length > 0) {
@@ -67,3 +78,4 @@ if (offenders.length > 0) {
 }
 
 console.log("\nLOC gate passed.");
+
