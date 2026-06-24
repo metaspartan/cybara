@@ -42,11 +42,14 @@ If you need an agent platform that can plan, execute, verify, and report with st
 
 ## Capability Snapshot
 
-- 50 built-in tools (`src/core/tools/index.ts`)
-- 33 built-in provider integrations with aliases (`src/core/providers.ts`)
+- 71 built-in tools (`src/core/tools/index.ts`)
+- 50 built-in provider integrations with aliases (`src/core/providers.ts`)
 - 7 channel adapters (`src/core/channels/adapters`)
 - 20 production UI pages (`ui/src/pages/*.tsx`)
-- 83 automated Bun test files (`tests/**/*.test.ts`)
+- 60+ bundled skills (`skills/`)
+- Anthropic prompt caching, multi-key credential pools + rate-limit rotation, and a centralized LLM error taxonomy
+- MCP host mode (expose cybara's tools to other MCP clients) + MCP client (consume external servers)
+- Media generation (image/video/music) via swappable provider registry, dynamic tool discovery, a tool-calling code sandbox, desktop control, and a multi-agent kanban orchestration tier
 - Tauri desktop app + native SwiftUI macOS app + Bun server/CLI runtime
 
 ---
@@ -89,8 +92,12 @@ curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh 
 Then update later with:
 
 ```bash
-cybara update
+cybara update              # verify SHA256, then download + install
+cybara update --check      # just report whether a newer release exists (non-zero if stale)
+cybara update --force      # reinstall even when already current
 ```
+
+Every CLI release ships with per-asset SHA256 sidecars; `cybara update` and `install.sh` both verify the checksum before installing, and refuse an unverified binary unless you pass `--force`.
 
 The desktop app now checks the same GitHub release channel from `Settings -> Desktop Updates` and can install signed app updates in place.
 
@@ -123,19 +130,23 @@ Then open `http://localhost:4269`.
 - Session-aware execution with persistence and recovery
 - Agent tool allowlist and permission enforcement support
 
-### Tooling Layer (50 Tools)
+### Tooling Layer (71 Tools)
 
 Tool categories currently shipped:
 
-- `file` (7): read/write/edit/search/grep/workspace_index/apply_patch
+- `file` (7): read/write/edit/search/grep/workspace_index/apply_patch — with a hard path-safety deny-list (credentials, SSH keys, `.env`) enforced before every write
 - `process` (3): exec/process/git
 - `browser` (4): browser/web_fetch/web_search/canvas
 - `memory` (5): search/get/save/context/durable save
 - `core` (17): sessions/agents/artifacts/wallet/http/env/data/nodes/clipboard/cron/gateway/etc.
 - `lsp` (5): diagnostics/definition/references/hover/languages
-- `media` (2): image/tts
+- `media` (4): image/tts + **image_generate** / **video_generate** / **music_generate** via a swappable provider registry (OpenAI, fal.ai)
 - `skill` (7): calc/convert/pdf/ocr/summarization/video_frames/weather
 - `channel` (2): message/telegram_media
+- `planning` (2): **todo** (session task-list with status discipline) + **clarify** (structured multi-choice questions to the user)
+- `discovery` (4): **tool_search** / **tool_describe** / **tool_call** (dynamic discovery over built-in + MCP + skills) + **execute_code** (run code that calls cybara tools programmatically)
+- `media` (1): **computer_use** (background desktop control via cua-driver — capture/click/type/scroll/drag without stealing the cursor)
+- `orchestration` (9): the **kanban** multi-agent tier — show/list/complete/block/heartbeat/comment/create/unblock/link for durable task graphs
 
 See full reference: [docs/tools.md](docs/tools.md)
 
@@ -188,15 +199,24 @@ DM policy modes:
 - Tauri desktop app with sidecar server wiring and in-app signed update checks via GitHub Releases
 - Native SwiftUI macOS app in `apps/macos/Cybara` that reuses the same local Cybara sidecar contract and can be packaged into a release-ready `.app` bundle
 
-### Provider Layer (33 Built-In Integrations)
+### Provider Layer (50 Built-In Integrations)
 
-Includes OpenAI, Anthropic, Google AI, Antigravity, MiniMax (API + OAuth portal), Moonshot, Kimi Code, Qwen Portal, Together, Hugging Face, Synthetic, Venice, Xiaomi, Ollama, vLLM, LiteLLM, Cloudflare AI Gateway, GitHub Copilot, AWS Bedrock, Groq, OpenRouter, OpenCode Zen, Z.AI variants, OpenAI Codex (ChatGPT OAuth), Chutes, Vercel AI Gateway, Google Gemini CLI, Copilot Proxy, xAI, Baidu Qianfan, and NVIDIA.
+Includes the newest frontier models: **GPT-5.5 / GPT-5.4 / GPT-5.3 Codex**, **Claude Opus 4.8 / Fable 5 / Sonnet 4.6**, **Gemini 3.5 Flash / 3.1 Pro**, **GLM-5.2 / GLM-5.1**, **MiniMax M3**, **DeepSeek V4 Pro/Flash**, **Kimi K2.6 / K2.7**, **Grok 4.3 / 4.20**, **Nemotron 3 Ultra**, **Qwen 3.7 Max**, and **MiMo V2.5 Pro**.
+
+Providers: OpenAI, Anthropic, Google, Antigravity, MiniMax (API + OAuth portal), Moonshot (Kimi), Z.AI + Z.AI Coding, DeepSeek, Alibaba DashScope + Coding Plan, xAI, NVIDIA, Qianfan, Together, Hugging Face, Synthetic, Venice, Xiaomi, Cerebras, Cohere, Mistral, DeepInfra, Fireworks, Novita, StepFun, Tencent, Volcengine, BytePlus, GMI, Kilo Code, OpenCode Go, Ollama Cloud, Ollama, vLLM, LiteLLM, Cloudflare AI Gateway, GitHub Copilot, AWS Bedrock, Groq, OpenRouter, OpenCode Zen, Copilot Proxy, OpenAI Codex (ChatGPT OAuth), Chutes, Vercel AI Gateway, and Google Gemini CLI.
+
+Multi-key **credential pools** (`ANTHROPIC_API_KEY`, `_2`, `_3`, …) rotate automatically on rate-limit/auth errors, and **Anthropic prompt caching** (`cache_control`) is applied to every Claude request for ~75% input-token savings on multi-turn sessions.
 
 See provider details: [docs/providers.md](docs/providers.md)
 
-### MCP Server Integration
+### MCP Host + Client
 
-Cybara supports [Model Context Protocol](https://spec.modelcontextprotocol.io/) (MCP) servers for extending agent capabilities:
+Cybara both **consumes** external MCP servers (extending agent capabilities) and **exposes itself** as an MCP server so other clients can call cybara's tools:
+
+- **Consume** (client): register servers in Settings → MCP or via the CLI; tools are automatically exposed to agents
+- **Host** (server): run `cybara mcp serve` to expose all 71 built-in tools over stdio JSON-RPC (compatible with Claude Desktop, IDEs, and other agents)
+
+MCP server management and registry integration:
 
 - **MCP Server Management**: Install, configure, start, stop, and manage MCP servers via UI or CLI
 - **MCP Registry Integration**: Browse and install servers from multiple registries:
@@ -208,7 +228,7 @@ Cybara supports [Model Context Protocol](https://spec.modelcontextprotocol.io/) 
 - **Tool Exposure**: MCP server tools are automatically exposed to agents with full JSON-RPC communication
 
 UI: Dedicated MCP Servers page in the web interface (`/mcp-servers`)
-CLI: `cybara mcp list`, `cybara mcp search <query>`, `cybara mcp install <package>`, `cybara mcp popular`
+CLI: `cybara mcp list`, `cybara mcp search <query>`, `cybara mcp install <package>`, `cybara mcp popular`, `cybara mcp serve`
 
 ---
 

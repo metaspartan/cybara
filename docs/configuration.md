@@ -83,9 +83,10 @@ curl -X POST http://localhost:4269/api/providers \
   -d '{"type": "openai", "apiKey": "sk-..."}'
 ```
 
-### Supported Providers (33)
+### Supported Providers (50)
 
-See `/docs/providers.md` for the complete up-to-date provider matrix.
+See `/docs/providers.md` for the complete up-to-date provider matrix and the newest models
+(GPT-5.5, Claude Opus 4.8, Gemini 3.5 Flash, GLM-5.2, MiniMax M3, DeepSeek V4, Kimi K2.6, Grok 4.3).
 
 Quick discovery commands:
 
@@ -96,6 +97,49 @@ curl -s http://localhost:4269/api/providers/available | jq 'length'
 # CLI model discovery for a configured provider
 cybara provider models <provider-id>
 ```
+
+### Credential Pools (multi-key rotation)
+
+For any provider, set multiple API keys via environment variables (`<PROVIDER>_API_KEY`,
+`<PROVIDER>_API_KEY_2`, `<PROVIDER>_API_KEY_3`, …, or comma-separated lists). Cybara rotates
+round-robin and cools a key down on rate-limit/auth errors, so a 429 on one key triggers rotation
+instead of failing the request. See `.env.example` and `src/core/credential-pool.ts`.
+
+### Anthropic Prompt Caching
+
+Anthropic requests automatically get `cache_control` breakpoints on the stable system prompt +
+recent turns, giving ~75% input-token savings on multi-turn sessions. No configuration required.
+
+## Shell Hooks
+
+User-defined shell scripts can run on agent lifecycle events (tool calls, LLM requests, messages).
+Configure them in the runtime config under `hooks.shell`:
+
+```json
+{
+  "hooks": {
+    "shell": [
+      {
+        "events": ["tool_before"],
+        "command": "/path/to/my-hook.sh",
+        "timeoutMs": 5000
+      }
+    ]
+  }
+}
+```
+
+The script receives the event as JSON on stdin. For `tool_before`, returning
+`{"block": true, "reason": "..."}` on stdout blocks the tool call. Supported events: `tool_before`,
+`tool_after`, `tool_error`, `tool_blocked`, `llm_request`, `llm_response`, `llm_error`,
+`message:received`, `message:sent`, or `*` (all). See `src/core/shell-hooks.ts`.
+
+## File-Write Safety
+
+All file-writing tools enforce a hard deny-list before writing (credentials, SSH keys, `.env`,
+`.aws/credentials`, OAuth tokens, etc.) — see `docs/tools.md#file-write-safety-policy`. The deny-list
+cannot be bypassed by the agent. Optional workspace confinement can be enabled via the execution
+context (`confineToWorkspace` + `workspaceDir`).
 
 ## Browser Profiles
 

@@ -52,6 +52,8 @@ export const CORE_TOOL_SUMMARIES: Record<string, string> = {
   lsp_references: "Find all references to a symbol",
   lsp_hover: "Get type info and documentation for a symbol",
   lsp_languages: "List available LSP languages and their install status",
+  todo: "Create/update a session task list (max one in_progress); use for multi-step work",
+  clarify: "Ask the user a clarifying question with optional multiple-choice options",
 };
 
 export interface SystemPromptParams {
@@ -381,6 +383,8 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
     "write",
     "edit",
     "apply_patch",
+    "todo",
+    "clarify",
     "grep",
     "workspace_index_search",
     "find",
@@ -502,6 +506,27 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
         "- `action=read` accepts either `name` or `kind`; prefer exact `name` when available.",
         "- Keep any human-written dates in artifacts aligned with the Current Date & Time section (local timezone), and include UTC only when needed for precision.",
         "- Keep artifacts concise, decision-focused, and tied to concrete verification steps.",
+        ""
+      );
+    }
+
+    if (availableTools.has("todo")) {
+      lines.push(
+        "### Task Planning (`todo`)",
+        "- For ANY non-trivial multi-step task, create a `todo` list FIRST before diving in.",
+        "- Send the COMPLETE list on every call (not a delta). Mark exactly one item `in_progress` at a time.",
+        "- Update statuses as you go: pending → in_progress → completed. Add new items when you discover more work.",
+        "- Prefer this over holding the plan in prose; it reduces drift and forgotten steps.",
+        ""
+      );
+    }
+
+    if (availableTools.has("clarify")) {
+      lines.push(
+        "### Asking Clarifying Questions (`clarify`)",
+        "- When a request is genuinely ambiguous AND the answer changes what you build, use `clarify` to ask the user.",
+        "- Provide up to 4 concrete options when the choice is discrete; omit options for open-ended questions.",
+        "- Do NOT overuse this: only ask when you cannot make a reasonable default assumption. When in doubt, pick the obvious choice, state it, and proceed.",
         ""
       );
     }

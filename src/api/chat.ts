@@ -9,6 +9,7 @@ import {
   getRateLimitStatus,
 } from "../core/tools/index";
 import { getSubagentSession } from "../core/tools/handlers/index";
+import { maybeRunBackgroundReview } from "../core/background-review";
 import { logSessionMessage, logAgentActivity } from "../core/logging";
 import {
   listPersistedSessions,
@@ -365,7 +366,11 @@ function formatProcessActivityFromToolCall(toolCall: ToolCallInfo): string {
   if (key === "exec" || key === "process" || key === "git") {
     const command = readToolArgString(args, "command") || readToolArgString(args, "cmd");
     if (command) {
-      const compact = command.split(/\r?\n/).map((line) => line.trim()).join(" ").trim();
+      const compact = command
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .join(" ")
+        .trim();
       if (compact.length > 0) {
         return `Ran ${compact.length > 80 ? `${compact.slice(0, 77)}...` : compact}`;
       }
@@ -385,11 +390,17 @@ function formatProcessActivityFromToolCall(toolCall: ToolCallInfo): string {
       readToolArgString(args, "fileName");
     if (action === "list") return "Listed session artifacts";
     if (action === "create")
-      return name ? `Created ${name.endsWith(".md.resolved") ? name : `${name}.md.resolved`}` : "Created artifact";
+      return name
+        ? `Created ${name.endsWith(".md.resolved") ? name : `${name}.md.resolved`}`
+        : "Created artifact";
     if (action === "update" || action === "append")
-      return name ? `Updated ${name.endsWith(".md.resolved") ? name : `${name}.md.resolved`}` : "Updated artifact";
+      return name
+        ? `Updated ${name.endsWith(".md.resolved") ? name : `${name}.md.resolved`}`
+        : "Updated artifact";
     if (action === "read")
-      return name ? `Read ${name.endsWith(".md.resolved") ? name : `${name}.md.resolved`}` : "Read artifact";
+      return name
+        ? `Read ${name.endsWith(".md.resolved") ? name : `${name}.md.resolved`}`
+        : "Read artifact";
     return name ? `Artifact ${action} complete for ${name}` : `Artifact ${action} complete`;
   }
 
@@ -421,7 +432,10 @@ function dedupeProcessActivities(activities: ProcessActivityInfo[]): ProcessActi
   const seen = new Set<string>();
   const deduped: ProcessActivityInfo[] = [];
   for (const activity of activities.sort((a, b) => a.timestamp - b.timestamp)) {
-    const normalizedText = normalizeProcessActivityTextForPhase(activity.text.trim(), activity.phase);
+    const normalizedText = normalizeProcessActivityTextForPhase(
+      activity.text.trim(),
+      activity.phase
+    );
     if (!normalizedText) continue;
     const toolCallIdKey =
       typeof activity.toolCallId === "string" && activity.toolCallId.trim()
@@ -803,6 +817,20 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
         workspaceDir: session.workspaceDir || undefined,
       });
       responseContent = result.content;
+
+      // Opportunistic, non-blocking background memory review. Forks a restricted
+      // subagent (memory tools only) to persist durable facts/preferences from
+      // this turn. Throttled per-session; failures are swallowed.
+      void maybeRunBackgroundReview(
+        {
+          agentId: agent.id,
+          sessionId: session.id,
+          workspaceDir: session.workspaceDir || undefined,
+        },
+        responseContent
+      ).catch(() => {
+        /* best-effort; never affects the main turn */
+      });
 
       let toolResults = result.tool_calls || [];
       const shouldForceToolExecution =
@@ -1237,10 +1265,7 @@ export async function getSessionMessages(sessionId: string): Promise<ChatMessage
   return session?.messages || [];
 }
 
-export async function listSessions(options?: {
-  limit?: number;
-  offset?: number;
-}): Promise<
+export async function listSessions(options?: { limit?: number; offset?: number }): Promise<
   Array<{
     id: string;
     agentId: string;

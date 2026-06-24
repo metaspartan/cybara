@@ -19,6 +19,22 @@ Execution can enforce those tags when a context includes:
 This is supported by `POST /api/tools/execute` and by agentic tool loops when an agent config sets
 `tool_permissions`/`toolPermissions` (and optional `enforce_tool_permissions`/`enforceToolPermissions`).
 
+## File-Write Safety Policy
+
+Every file-writing tool (`write`, `edit`, `apply_patch`) enforces a hard **path-safety deny-list**
+before writing, implemented in `src/core/tools/path-policy.ts`. Writes are refused to sensitive
+locations, including:
+
+- `~/.ssh/*` (private keys, `authorized_keys`, `known_hosts`)
+- `.env*` files, `.netrc`, `.pgpass`, `.my.cnf`, `.npmrc`, `.pypirc`, `.htpasswd`, `.git-credentials`
+- `~/.aws/credentials`, `~/.config/gcloud/*`, `~/.docker/config.json`, `~/.kube/config`
+- OAuth tokens, service-account JSON files
+- `~/.gnupg`, macOS `Library/Keychains` and `Library/Cookies`
+
+Optional workspace confinement can be enabled per-tool via the execution context
+(`confineToWorkspace: true` + `workspaceDir`). The deny-list cannot be bypassed by the agent; it
+exists to protect credentials regardless of an agent's permission tags.
+
 ## File Operations
 
 ### read
@@ -403,3 +419,176 @@ List available LSP languages and installation status.
 ```json
 {"name": "lsp_languages", "args": {}}
 ```
+
+## Planning
+
+### todo
+Create or update the session task list. Send the FULL list each call (not a delta). At most one
+item may be `in_progress` at a time — extras are demoted to `pending` automatically. Use this for
+any non-trivial multi-step work to stay organized and avoid drift.
+```json
+{
+  "name": "todo",
+  "args": {
+    "items": [
+      { "content": "Read the spec", "status": "completed", "priority": "high" },
+      { "content": "Implement the feature", "status": "in_progress", "priority": "high" },
+      { "content": "Add tests", "status": "pending", "priority": "medium" }
+    ]
+  }
+}
+```
+Statuses: `pending` | `in_progress` | `completed`. Priorities: `high` | `medium` | `low`.
+
+### clarify
+Ask the user a clarifying question when a task is genuinely ambiguous. Provide up to 4
+multiple-choice options OR omit `options` for an open-ended question. Prefer this over guessing
+and proceeding on a wrong assumption.
+```json
+{
+  "name": "clarify",
+  "args": {
+    "question": "Which database should the new feature target?",
+    "options": [
+      { "label": "PostgreSQL", "description": "Existing infra" },
+      { "label": "SQLite", "description": "Zero-config, local" }
+    ]
+  }
+}
+```
+
+## Dynamic Tool Discovery
+
+As the tool surface grows (built-in + MCP + skills), these three tools let the model find what it
+needs at runtime instead of every schema being registered in the prompt.
+
+### tool_search
+Search the full tool inventory (built-in, MCP, and skills) by keyword. Returns matching names with
+short descriptions.
+```json
+{"name": "tool_search", "args": { "query": "write file to disk", "limit": 10 }}
+```
+
+### tool_describe
+Fetch the full input schema for one tool. MCP tools are named `<server>__<tool>`; skills are
+`skill__<name>`. Call this before `tool_call`.
+```json
+{"name": "tool_describe", "args": { "name": "write" }}
+```
+
+### tool_call
+Invoke a discovered tool by name with an arguments object. Supports built-in and MCP tools.
+```json
+{"name": "tool_call", "args": { "name": "github__create_issue", "arguments": { "title": "..." } }}
+```
+
+### execute_code
+Run JavaScript/TypeScript that calls other cybara tools programmatically via the `cybara` namespace.
+Use this to collapse many tool round-trips into one call for data processing, loops, and aggregation.
+The last expression's value is returned. Runs with a timeout (default 15s, max 60s).
+```json
+{
+  "name": "execute_code",
+  "args": {
+    "code": "const files = await cybara.file_search({ pattern: '*.ts' });\nreturn files.length;"
+  }
+}
+```
+
+## Media Generation
+
+Image, video, and music generation via a swappable provider registry (`src/core/media-generation.ts`).
+Set `OPENAI_API_KEY` for OpenAI images or `FAL_KEY` for fal.ai image/video/music. Generated files are
+saved to `<workspace>/.cybara/media/` and their paths returned.
+
+### image_generate
+Generate images from a text prompt.
+```json
+{"name": "image_generate", "args": { "prompt": "a serene mountain lake at dawn", "provider": "openai", "model": "gpt-image-1", "size": "1024x1024" }}
+```
+
+### video_generate
+Generate video from a text prompt (fal.ai: minimax, kling, veo3). Async job; the tool waits for
+completion.
+```json
+{"name": "video_generate", "args": { "prompt": "a drone shot over a forest", "model": "fal-ai/minimax/video-01", "durationSeconds": 5 }}
+```
+
+### music_generate
+Generate music/audio from a text prompt (fal.ai: minimax-music, ace-step, stable-audio).
+```json
+{"name": "music_generate", "args": { "prompt": "upbeat synthwave, 120bpm", "durationSeconds": 30, "format": "mp3" }}
+```
+
+## Desktop Control
+
+### computer_use
+Control the desktop in the background (capture, click, type, scroll, drag, key, focus app) via the
+external [cua-driver](https://github.com/trycua/cua) binary over MCP stdio. Does NOT steal the user's
+cursor by default. Requires the `cua-driver` binary on `$PATH` and, on macOS, Accessibility + Screen
+Recording TCC grants. Prefer `element` (1-based SOM index) over pixel `coordinate`.
+```json
+{"name": "computer_use", "args": { "action": "capture", "mode": "som" }}
+{"name": "computer_use", "args": { "action": "click", "element": 3 }}
+{"name": "computer_use", "args": { "action": "type", "text": "hello world" }}
+{"name": "computer_use", "args": { "action": "key", "keys": "cmd+s" }}
+```
+Actions: `capture` | `click` | `double_click` | `right_click` | `scroll` | `drag` | `type` | `key` |
+`wait` | `list_apps` | `focus_app`.
+
+## Kanban (Multi-Agent Orchestration)
+
+A durable SQLite-backed task board with a dependency engine and dispatcher. Tasks flow
+`triage → todo → ready → running → (done|blocked)`. The dispatcher promotes tasks to `ready` once
+their parent dependencies complete, then claims + spawns a worker for each. Workers self-report
+progress via these tools. See `src/core/kanban.ts`.
+
+### kanban_show
+Read one task with its comments.
+```json
+{"name": "kanban_show", "args": { "id": "task_..." }}
+```
+
+### kanban_list
+List/filter tasks.
+```json
+{"name": "kanban_list", "args": { "status": "ready" }}
+```
+
+### kanban_create
+Create a task (optionally as a child of parents).
+```json
+{"name": "kanban_create", "args": { "title": "Add login flow", "parents": ["task_parent1"], "assignee": "coder" }}
+```
+
+### kanban_complete
+Mark a task done with a result summary.
+```json
+{"name": "kanban_complete", "args": { "id": "task_...", "result": "Implemented and tested" }}
+```
+
+### kanban_block / kanban_unblock
+Mark a task blocked (with a reason) or return it to `todo`.
+```json
+{"name": "kanban_block", "args": { "id": "task_...", "reason": "waiting on API access" }}
+{"name": "kanban_unblock", "args": { "id": "task_..." }}
+```
+
+### kanban_heartbeat
+Worker liveness ping — call periodically on long-running tasks so the dispatcher doesn't reclaim them.
+```json
+{"name": "kanban_heartbeat", "args": { "id": "task_..." }}
+```
+
+### kanban_comment
+Append a comment (shared state / blackboard between workers).
+```json
+{"name": "kanban_comment", "args": { "id": "task_...", "body": "Found the root cause: ..." }}
+```
+
+### kanban_link
+Add a parent→child dependency edge. The child becomes `ready` only after the parent is `done`.
+```json
+{"name": "kanban_link", "args": { "parentId": "task_a", "childId": "task_b" }}
+```
+

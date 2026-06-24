@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+message: "If you use Cybara in your research or project, please cite it as below."
+title: "Cybara: An open-source multi-agent AI platform (CLI, web, and desktop)"
+abstract: >-
+  Cybara is an open-source, local-first AI agent platform with a CLI, web UI, and desktop apps.
+  It ships 71 built-in tools, 50 LLM provider integrations, 7 channel adapters, a multi-agent
+  runtime with subagent spawning, MCP host and client support, media generation, desktop control,
+  a multi-agent kanban orchestration tier, encrypted wallet automation, and execution sandboxing.
+  Built on Bun + TypeScript + Tauri.
+authors:
+  - family-names: "Klock"
+    given-names: "Carsen"
+    orcid: "https://orcid.org/0009-0000-0000-0000"
+keywords:
+  - "ai-agent"
+  - "llm"
+  - "multi-agent"
+  - "mcp"
+  - "open-source"
+  - "bun"
+  - "tauri"
+license: "MIT"
+repository-code: "https://github.com/metaspartan/cybara"
+type: software
+version: "1.0.203"
+date-released: "2026-06-23"
+preferred-citation:
+  type: software
+  title: "Cybara"
+  authors:
+    - family-names: "Klock"
+      given-names: "Carsen"
+  repository-code: "https://github.com/metaspartan/cybara"
+  license: "MIT"

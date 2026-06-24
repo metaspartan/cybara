@@ -32,6 +32,23 @@ import {
   handleGateway,
 } from "./channel";
 import { handleSummarization, handleVideoFrames, handleWeather } from "./skill";
+import { handleTodo } from "./todo";
+import { handleClarify } from "./clarify";
+import { handleToolSearch, handleToolDescribe, handleToolCall } from "./tool-discovery";
+import { handleExecuteCode } from "./execute-code";
+import { handleImageGenerate, handleVideoGenerate, handleMusicGenerate } from "./media-generation";
+import { handleComputerUse } from "../../computer-use";
+import {
+  handleKanbanShow,
+  handleKanbanList,
+  handleKanbanComplete,
+  handleKanbanBlock,
+  handleKanbanHeartbeat,
+  handleKanbanComment,
+  handleKanbanCreate,
+  handleKanbanUnblock,
+  handleKanbanLink,
+} from "./kanban";
 import { handleClipboard } from "./clipboard";
 import { handleHttp } from "./http";
 import { handleData } from "./data";
@@ -189,6 +206,31 @@ const toolHandlers: Record<
   summarization: handleSummarization,
   video_frames: handleVideoFrames,
   weather: handleWeather,
+
+  todo: handleTodo,
+  clarify: handleClarify,
+
+  tool_search: handleToolSearch,
+  tool_describe: handleToolDescribe,
+  tool_call: handleToolCall,
+
+  execute_code: handleExecuteCode,
+
+  image_generate: handleImageGenerate,
+  video_generate: handleVideoGenerate,
+  music_generate: handleMusicGenerate,
+
+  computer_use: handleComputerUse,
+
+  kanban_show: handleKanbanShow,
+  kanban_list: handleKanbanList,
+  kanban_complete: handleKanbanComplete,
+  kanban_block: handleKanbanBlock,
+  kanban_heartbeat: handleKanbanHeartbeat,
+  kanban_comment: handleKanbanComment,
+  kanban_create: handleKanbanCreate,
+  kanban_unblock: handleKanbanUnblock,
+  kanban_link: handleKanbanLink,
 
   clipboard: handleClipboard,
   http: handleHttp,

@@ -38,6 +38,10 @@ export interface ToolContext {
   allowDangerousTools?: boolean;
   requireToolUse?: boolean;
   requiredToolName?: string;
+  /** Extra path prefixes to deny for write/edit/apply_patch (sensitive dirs). */
+  denyWritePrefixes?: string[];
+  /** When true, file writes are confined to `workspaceDir`. Default false. */
+  confineToWorkspace?: boolean;
 }
 
 export interface Tool {
@@ -55,7 +59,11 @@ export interface Tool {
     | "channel"
     | "media"
     | "skill"
-    | "lsp";
+    | "lsp"
+    | "planning"
+    | "discovery"
+    | "media"
+    | "orchestration";
 }
 
 const _toolHandlers = new Map<string, ToolHandler>();
@@ -1636,7 +1644,8 @@ ACTIONS:
         action: {
           type: "string",
           enum: ["call", "check"],
-          description: "Action to perform: 'call' to initiate a phone call, 'check' to verify FaceTime availability",
+          description:
+            "Action to perform: 'call' to initiate a phone call, 'check' to verify FaceTime availability",
         },
         phone: {
           type: "string",
@@ -1835,6 +1844,417 @@ ACTIONS:
     input_schema: {
       type: "object",
       properties: {},
+    },
+    permissions: [],
+  },
+  todo: {
+    name: "todo",
+    description:
+      "Create and update a task list for the current session. Send the FULL list each call (not a delta). Keep at most ONE item in_progress at a time. Use this for any non-trivial multi-step work to stay organized and avoid drift.",
+    category: "planning",
+    input_schema: {
+      type: "object",
+      properties: {
+        items: {
+          type: "array",
+          description: "The complete, current task list.",
+          items: {
+            type: "object",
+            properties: {
+              content: { type: "string", description: "Short description of the task" },
+              status: {
+                type: "string",
+                enum: ["pending", "in_progress", "completed"],
+                description: "Current state of the task",
+              },
+              priority: {
+                type: "string",
+                enum: ["high", "medium", "low"],
+                description: "Priority of the task",
+              },
+            },
+            required: ["content", "status", "priority"],
+          },
+        },
+      },
+      required: ["items"],
+    },
+    permissions: [],
+  },
+  clarify: {
+    name: "clarify",
+    description:
+      "Ask the user a clarifying question when a task is genuinely ambiguous. Provide up to 4 multiple-choice options OR omit options for an open-ended question. Prefer this over guessing and proceeding on a wrong assumption.",
+    category: "planning",
+    input_schema: {
+      type: "object",
+      properties: {
+        question: { type: "string", description: "The question to ask the user" },
+        header: { type: "string", description: "Optional short label for the question" },
+        multiSelect: {
+          type: "boolean",
+          description: "Allow selecting multiple options (only with options). Default false.",
+        },
+        options: {
+          type: "array",
+          description: "Up to 4 multiple-choice options. Omit for an open-ended question.",
+          items: {
+            type: "object",
+            properties: {
+              label: { type: "string", description: "Short option label" },
+              description: { type: "string", description: "Optional detail about the option" },
+            },
+            required: ["label"],
+          },
+        },
+      },
+      required: ["question"],
+    },
+    permissions: [],
+  },
+  tool_search: {
+    name: "tool_search",
+    description:
+      "Search the full tool inventory (built-in tools, MCP server tools, and skills) by keyword. Returns matching tool names with short descriptions. Use this to discover available capabilities instead of assuming a tool exists.",
+    category: "discovery",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Search query (keywords describing what you want to do)",
+        },
+        limit: { type: "number", description: "Max results. Default 15, max 50." },
+      },
+      required: ["query"],
+    },
+    permissions: [],
+  },
+  tool_describe: {
+    name: "tool_describe",
+    description:
+      "Fetch the full input schema for a single tool (by name). Call this before tool_call to learn a discovered tool's exact parameters. Built-in tools, MCP tools (named '<server>__<tool>'), and skills ('skill__<name>') are supported.",
+    category: "discovery",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "The tool name to describe" },
+      },
+      required: ["name"],
+    },
+    permissions: [],
+  },
+  tool_call: {
+    name: "tool_call",
+    description:
+      "Invoke a discovered tool by name with the given arguments. Use tool_describe first to learn the schema. Supports built-in tools and MCP tools named '<server>__<tool>'.",
+    category: "discovery",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "The tool name to call" },
+        arguments: {
+          type: "object",
+          description: "Arguments object matching the tool's input schema",
+          additionalProperties: true,
+        },
+      },
+      required: ["name"],
+    },
+    permissions: [],
+  },
+  execute_code: {
+    name: "execute_code",
+    description:
+      "Run JavaScript/TypeScript code that calls other cybara tools programmatically via the `cybara` namespace (e.g. `await cybara.read({path})`). Use this to collapse many tool round-trips into one call for data-processing, loops, and aggregation. The last expression's value is returned.",
+    category: "discovery",
+    input_schema: {
+      type: "object",
+      properties: {
+        code: { type: "string", description: "The JS/TS code to run" },
+        language: {
+          type: "string",
+          enum: ["javascript", "typescript"],
+          description: "Language. Default javascript.",
+        },
+        timeoutMs: {
+          type: "number",
+          description: "Execution timeout in ms. Default 15000, max 60000.",
+        },
+      },
+      required: ["code"],
+    },
+    permissions: [],
+  },
+  image_generate: {
+    name: "image_generate",
+    description:
+      "Generate images from a text prompt (OpenAI DALL-E / gpt-image or fal.ai). Generated files are saved to the workspace and their paths returned. Set OPENAI_API_KEY or FAL_KEY to enable.",
+    category: "media",
+    input_schema: {
+      type: "object",
+      properties: {
+        prompt: { type: "string", description: "Text description of the image to generate" },
+        provider: {
+          type: "string",
+          description: "Provider id: 'openai' or 'fal'. Defaults to the configured one.",
+        },
+        model: {
+          type: "string",
+          description: "Model id (e.g. gpt-image-1, dall-e-3, fal-ai/flux/schnell).",
+        },
+        size: { type: "string", description: "Image size (e.g. '1024x1024'). Provider-dependent." },
+        quality: {
+          type: "string",
+          enum: ["standard", "hd"],
+          description: "Quality. Default standard.",
+        },
+        count: { type: "number", description: "Number of images. Default 1." },
+        timeoutMs: { type: "number", description: "Timeout in ms." },
+      },
+      required: ["prompt"],
+    },
+    permissions: [],
+  },
+  video_generate: {
+    name: "video_generate",
+    description:
+      "Generate video from a text prompt (fal.ai: minimax, kling, veo3). Async job; the tool waits for completion. Set FAL_KEY to enable. Output saved to the workspace.",
+    category: "media",
+    input_schema: {
+      type: "object",
+      properties: {
+        prompt: { type: "string", description: "Text description of the video to generate" },
+        provider: { type: "string", description: "Provider id. Defaults to 'fal'." },
+        model: { type: "string", description: "Model id (e.g. fal-ai/minimax/video-01)." },
+        durationSeconds: { type: "number", description: "Target video length in seconds." },
+        audio: { type: "boolean", description: "Generate output audio. Default false." },
+        timeoutMs: { type: "number", description: "Timeout in ms. Default 120000." },
+      },
+      required: ["prompt"],
+    },
+    permissions: [],
+  },
+  music_generate: {
+    name: "music_generate",
+    description:
+      "Generate music/audio from a text prompt (fal.ai: minimax-music, ace-step, stable-audio). Set FAL_KEY to enable. Output saved to the workspace.",
+    category: "media",
+    input_schema: {
+      type: "object",
+      properties: {
+        prompt: { type: "string", description: "Style/genre/mood description" },
+        provider: { type: "string", description: "Provider id. Defaults to 'fal'." },
+        model: { type: "string", description: "Model id (e.g. fal-ai/minimax-music/v2.6)." },
+        lyrics: { type: "string", description: "Optional lyrics for vocal tracks." },
+        instrumental: {
+          type: "boolean",
+          description: "Generate instrumental only. Default false.",
+        },
+        durationSeconds: { type: "number", description: "Duration in seconds." },
+        format: {
+          type: "string",
+          enum: ["mp3", "wav"],
+          description: "Output format. Default mp3.",
+        },
+        timeoutMs: { type: "number", description: "Timeout in ms." },
+      },
+      required: ["prompt"],
+    },
+    permissions: [],
+  },
+  computer_use: {
+    name: "computer_use",
+    description:
+      "Control the user's desktop in the background (capture, click, type, scroll, drag, key, focus app) via the cua-driver. Does NOT steal the cursor by default. Requires the external cua-driver binary and (on macOS) Accessibility + Screen Recording grants. Prefer 'element' (1-based SOM index) over pixel 'coordinate'.",
+    category: "media",
+    input_schema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: [
+            "capture",
+            "click",
+            "double_click",
+            "right_click",
+            "scroll",
+            "drag",
+            "type",
+            "key",
+            "wait",
+            "list_apps",
+            "focus_app",
+          ],
+          description: "The desktop action to perform.",
+        },
+        mode: {
+          type: "string",
+          enum: ["som", "vision", "ax"],
+          description: "Capture mode. 'som' adds numbered element overlays.",
+        },
+        app: { type: "string", description: "App name/bundle id, or 'screen'/'desktop'." },
+        element: {
+          type: "number",
+          description: "1-based SOM element index (preferred over coordinate).",
+        },
+        coordinate: {
+          type: "array",
+          items: { type: "number" },
+          description: "[x,y] pixel coordinate.",
+        },
+        direction: {
+          type: "string",
+          enum: ["up", "down", "left", "right"],
+          description: "Scroll direction.",
+        },
+        amount: { type: "number", description: "Scroll amount." },
+        text: { type: "string", description: "Text to type (action='type')." },
+        keys: { type: "string", description: "Key combo, e.g. 'cmd+s' (action='key')." },
+        seconds: { type: "number", description: "Seconds to wait (action='wait')." },
+        raiseWindow: {
+          type: "boolean",
+          description: "Raise the app window (focus_app). Default false.",
+        },
+      },
+      required: ["action"],
+    },
+    permissions: [],
+  },
+  kanban_show: {
+    name: "kanban_show",
+    description:
+      "Read one kanban task with its comments. Use to load task context before working it.",
+    category: "orchestration",
+    input_schema: {
+      type: "object",
+      properties: { id: { type: "string", description: "Task id" } },
+      required: ["id"],
+    },
+    permissions: [],
+  },
+  kanban_list: {
+    name: "kanban_list",
+    description:
+      "List/filter kanban tasks (by status or assignee). Default returns the whole board.",
+    category: "orchestration",
+    input_schema: {
+      type: "object",
+      properties: {
+        status: {
+          type: "string",
+          description: "Filter by status: triage|todo|ready|running|blocked|done|archived",
+        },
+        assignee: { type: "string", description: "Filter by assignee" },
+        limit: { type: "number", description: "Max results. Default 50, max 200." },
+      },
+    },
+    permissions: [],
+  },
+  kanban_complete: {
+    name: "kanban_complete",
+    description:
+      "Mark a kanban task done with an optional result summary. Call this when your task's work is finished.",
+    category: "orchestration",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Task id" },
+        result: { type: "string", description: "Summary of what was accomplished" },
+      },
+      required: ["id"],
+    },
+    permissions: [],
+  },
+  kanban_block: {
+    name: "kanban_block",
+    description:
+      "Mark a task blocked with a reason. Use when you cannot proceed (missing dependency, external blocker).",
+    category: "orchestration",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Task id" },
+        reason: { type: "string", description: "Why the task is blocked" },
+      },
+      required: ["id"],
+    },
+    permissions: [],
+  },
+  kanban_heartbeat: {
+    name: "kanban_heartbeat",
+    description:
+      "Worker liveness ping. Call periodically while working a long-running task so the dispatcher knows you're alive.",
+    category: "orchestration",
+    input_schema: {
+      type: "object",
+      properties: { id: { type: "string", description: "Task id" } },
+      required: ["id"],
+    },
+    permissions: [],
+  },
+  kanban_comment: {
+    name: "kanban_comment",
+    description:
+      "Append a comment to a task. Used for shared state, findings, and blackboard updates between workers.",
+    category: "orchestration",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Task id" },
+        body: { type: "string", description: "Comment text" },
+        author: { type: "string", description: "Author label. Default 'agent'." },
+      },
+      required: ["id", "body"],
+    },
+    permissions: [],
+  },
+  kanban_create: {
+    name: "kanban_create",
+    description:
+      "Create a new kanban task (optionally as a child of parent tasks). Builds the dependency graph; the dispatcher promotes + spawns children once parents complete.",
+    category: "orchestration",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Short task title" },
+        body: { type: "string", description: "Detailed task description / acceptance criteria" },
+        assignee: { type: "string", description: "Which agent/role should work this task" },
+        priority: { type: "number", description: "Priority (higher = more important). Default 5." },
+        parents: {
+          type: "array",
+          items: { type: "string" },
+          description: "Parent task ids this depends on",
+        },
+        status: { type: "string", description: "Initial status. Default 'todo'." },
+      },
+      required: ["title"],
+    },
+    permissions: [],
+  },
+  kanban_unblock: {
+    name: "kanban_unblock",
+    description: "Return a blocked task to 'todo' so it can be re-promoted to ready.",
+    category: "orchestration",
+    input_schema: {
+      type: "object",
+      properties: { id: { type: "string", description: "Task id" } },
+      required: ["id"],
+    },
+    permissions: [],
+  },
+  kanban_link: {
+    name: "kanban_link",
+    description:
+      "Add a parent→child dependency edge. The child becomes ready only after the parent is done.",
+    category: "orchestration",
+    input_schema: {
+      type: "object",
+      properties: {
+        parentId: { type: "string", description: "Parent (dependency) task id" },
+        childId: { type: "string", description: "Child (dependent) task id" },
+      },
+      required: ["parentId", "childId"],
     },
     permissions: [],
   },

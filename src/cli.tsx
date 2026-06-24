@@ -20,6 +20,7 @@ import {
   resolveSelfUpdateDestination,
 } from "./core/versioning";
 import { checkForUpdateInBackground, isUpdateCheckDisabled } from "./core/update-check";
+import { runMcpStdioServer } from "./core/mcp-host-server";
 
 const API_BASE = process.env.CYBARA_API || "http://localhost:4269";
 
@@ -5125,12 +5126,18 @@ async function main() {
         case "popular":
           await rawMcpPopular();
           break;
+        case "serve":
+          // Expose cybara's own tools as an MCP server over stdio, so other MCP
+          // clients (Claude Desktop, other agents, IDEs) can call them.
+          await runMcpStdioServer();
+          break;
         default:
           console.log("MCP Commands:");
           console.log("  cybara mcp list       - List installed servers");
           console.log("  cybara mcp search <q> - Search registry");
           console.log("  cybara mcp install <p> - Install package");
           console.log("  cybara mcp popular    - Show popular servers");
+          console.log("  cybara mcp serve      - Expose cybara tools as an MCP server (stdio)");
           break;
       }
       break;

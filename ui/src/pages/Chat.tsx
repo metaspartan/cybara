@@ -697,6 +697,25 @@ function formatToolIntent(
     return `Artifact update failed for ${artifactName}`;
   }
 
+  if (key === "todo") {
+    const totalItems = Array.isArray(args.items) ? args.items.length : undefined;
+    if (phase === "start")
+      return totalItems
+        ? `Planning ${totalItems} task${totalItems === 1 ? "" : "s"}...`
+        : "Updating task list...";
+    if (phase === "result")
+      return totalItems
+        ? `Planned ${totalItems} task${totalItems === 1 ? "" : "s"}`
+        : "Updated task list";
+    return "Task list update failed";
+  }
+
+  if (key === "clarify") {
+    if (phase === "start") return "Asking a clarifying question...";
+    if (phase === "result") return "Asked a clarifying question";
+    return "Clarify failed";
+  }
+
   if (phase === "start") return `${toolName} running...`;
   if (phase === "result") return `${toolName} complete`;
   return `${toolName} failed`;
@@ -1222,9 +1241,7 @@ function LiveActivityTimeline({
   const visibleActivities = activities.filter((activity) => !isGenericStatusLabel(activity.text));
   const activeStartStep = getLatestInFlightStep(visibleActivities);
   const explicitCurrentStep =
-    typeof currentStep === "string" && currentStep.trim().length > 0
-      ? currentStep.trim()
-      : null;
+    typeof currentStep === "string" && currentStep.trim().length > 0 ? currentStep.trim() : null;
   const normalizedCurrentStep =
     explicitCurrentStep && !isGenericStatusLabel(explicitCurrentStep) ? explicitCurrentStep : null;
   const displayCurrentStep = activeStartStep
@@ -1839,16 +1856,16 @@ function AssistantMetaInline({
   );
   const inferredThoughtActivities = !hasPersistedThoughtActivities
     ? inferThoughtActivitiesFromContent(
-      message.content,
-      parseTimestampMs(message.timestamp) ?? turnStartedAtMs
-    )
+        message.content,
+        parseTimestampMs(message.timestamp) ?? turnStartedAtMs
+      )
     : [];
   const inferredThinkingActivities =
     !hasPersistedThoughtActivities && inferredThoughtActivities.length === 0
       ? inferThoughtActivitiesFromThinking(
-        message.thinking,
-        parseTimestampMs(message.timestamp) ?? turnStartedAtMs
-      )
+          message.thinking,
+          parseTimestampMs(message.timestamp) ?? turnStartedAtMs
+        )
       : [];
   const contentAndThinkingActivities = mergeActivityLists(
     inferredThoughtActivities,
@@ -2093,11 +2110,16 @@ function DiffCodeBlock({ code }: { code: string }) {
             )}
           >
             <span
-              className={cn("select-none pr-2 text-right text-[12px]", lineMeta[index]?.numberClass)}
+              className={cn(
+                "select-none pr-2 text-right text-[12px]",
+                lineMeta[index]?.numberClass
+              )}
             >
               {index + 1}
             </span>
-            <span className={cn("select-none text-center text-[12px]", lineMeta[index]?.markerClass)}>
+            <span
+              className={cn("select-none text-center text-[12px]", lineMeta[index]?.markerClass)}
+            >
               {lineMeta[index]?.prefix}
             </span>
             <span className={cn("whitespace-pre", lineMeta[index]?.textClass)}>
@@ -2134,8 +2156,8 @@ function SyntaxCodeBlock({ code, language }: { code: string; language: string })
               <div key={`line-${lineIndex}`} {...getLineProps({ line })}>
                 {line.length > 0
                   ? line.map((token, tokenIndex) => (
-                    <span key={`${lineIndex}-${tokenIndex}`} {...getTokenProps({ token })} />
-                  ))
+                      <span key={`${lineIndex}-${tokenIndex}`} {...getTokenProps({ token })} />
+                    ))
                   : "\u00A0"}
               </div>
             ))}
@@ -2706,10 +2728,11 @@ function SubagentPanel({
               <div>
                 <p className="text-[12px] text-gray-500 mb-1">Result</p>
                 <div
-                  className={`p-3 rounded-lg border ${selectedSubagent.status === "completed"
-                    ? "bg-emerald-500/10 border-emerald-500/30"
-                    : "bg-red-500/10 border-red-500/30"
-                    }`}
+                  className={`p-3 rounded-lg border ${
+                    selectedSubagent.status === "completed"
+                      ? "bg-emerald-500/10 border-emerald-500/30"
+                      : "bg-red-500/10 border-red-500/30"
+                  }`}
                 >
                   <pre className="text-sm text-gray-300 whitespace-pre-wrap overflow-x-auto max-h-48 overflow-y-auto">
                     {typeof selectedSubagent.result === "string"
@@ -2949,10 +2972,11 @@ function SessionsPanel({
               return (
                 <div
                   key={session.id}
-                  className={`p-2.5 rounded-lg transition-all cursor-pointer group ${currentSessionId === session.id
-                    ? "bg-[rgba(var(--accent-primary),0.12)] border border-[rgba(var(--accent-primary),0.3)]"
-                    : "bg-white/[0.03] border border-white/5 hover:border-white/15"
-                    }`}
+                  className={`p-2.5 rounded-lg transition-all cursor-pointer group ${
+                    currentSessionId === session.id
+                      ? "bg-[rgba(var(--accent-primary),0.12)] border border-[rgba(var(--accent-primary),0.3)]"
+                      : "bg-white/[0.03] border border-white/5 hover:border-white/15"
+                  }`}
                   onClick={() => handleLoadSession(session.id)}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -3022,10 +3046,10 @@ function SessionsPanel({
                       </p>
                       {typeof (session as { workspace_dir?: string | null }).workspace_dir ===
                         "string" && (
-                          <p className="text-[10px] text-blue-300/90 mt-0.5 truncate">
-                            {(session as { workspace_dir?: string }).workspace_dir}
-                          </p>
-                        )}
+                        <p className="text-[10px] text-blue-300/90 mt-0.5 truncate">
+                          {(session as { workspace_dir?: string }).workspace_dir}
+                        </p>
+                      )}
                       {session.last_message && (
                         <p className="text-[10px] text-gray-500 mt-0.5 truncate">
                           {session.last_message.content.slice(0, 40)}...
@@ -3455,7 +3479,8 @@ export function Chat() {
     const fallbackToolActivities =
       embeddedActivities.length === 0
         ? buildActivitiesFromToolCalls(target.message.tool_calls, formatToolIntent, {
-            baseTimestampMs: parseTimestampMs(target.message.timestamp) ?? targetTurnStartedAtMs ?? 0,
+            baseTimestampMs:
+              parseTimestampMs(target.message.timestamp) ?? targetTurnStartedAtMs ?? 0,
           })
         : [];
     const mergedActivities =
@@ -3503,9 +3528,7 @@ export function Chat() {
           : Date.now();
       const normalizedToolName = typeof toolName === "string" ? toolName.trim().toLowerCase() : "";
       const normalizedToolCallId =
-        typeof toolCallId === "string" && toolCallId.trim()
-          ? toolCallId.trim().toLowerCase()
-          : "";
+        typeof toolCallId === "string" && toolCallId.trim() ? toolCallId.trim().toLowerCase() : "";
       const normalizedSandboxProvider = normalizeSandboxProviderValue(sandboxProvider);
       const nextId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const sortAndMergeActivities = (items: LiveActivityItem[]): LiveActivityItem[] =>
@@ -3630,7 +3653,9 @@ export function Chat() {
       if (!resolvedSessionId) return;
       const snapshot = payload.session;
       const snapshotAgeMs =
-        snapshot && typeof snapshot.timestamp === "number" ? Date.now() - snapshot.timestamp : Infinity;
+        snapshot && typeof snapshot.timestamp === "number"
+          ? Date.now() - snapshot.timestamp
+          : Infinity;
       const snapshotFresh = snapshotAgeMs <= SESSION_ACTIVITY_STALE_MS;
       const nextActiveIds =
         snapshot && !snapshotFresh
@@ -3743,147 +3768,154 @@ export function Chat() {
   useEffect(() => {
     const disconnect = connectStatusStream({
       onEvent: (payload) => {
-      if (!payload || typeof payload !== "object") return;
-      if (payload.type === "snapshot") {
-        const snapshotIds = Array.isArray(payload.activeSessionIds)
-          ? payload.activeSessionIds.filter(
-              (candidate): candidate is string => typeof candidate === "string" && candidate.trim().length > 0
-            )
-          : [];
-        setActiveSessionIds(snapshotIds);
-        const activeSession = activeSessionRef.current;
-        if (activeSession) {
-          void hydrateSessionStatus(activeSession);
-        }
-        return;
-      }
-      if (payload.type !== "status") return;
-      const status = typeof payload.status === "string" ? payload.status : "";
-      if (!status) return;
-      const payloadSessionId =
-        typeof payload.sessionId === "string" && payload.sessionId.trim()
-          ? payload.sessionId
-          : null;
-      const payloadTimestamp =
-        typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
-          ? payload.timestamp
-          : 0;
-      if (payloadSessionId && payloadTimestamp > 0) {
-        const previousTimestamp =
-          latestStatusTimestampBySessionRef.current[payloadSessionId] || 0;
-        if (payloadTimestamp > previousTimestamp) {
-          latestStatusTimestampBySessionRef.current[payloadSessionId] = payloadTimestamp;
-        }
-      }
-
-      if (payloadSessionId) {
-        if (
-          status === "thinking" ||
-          status === "generating" ||
-          status === "tool_executing" ||
-          status === "tool_completed"
-        ) {
-          setActiveSessionIds((previous) =>
-            previous.includes(payloadSessionId) ? previous : [...previous, payloadSessionId]
-          );
-        }
-        if (status === "idle" || status === "error") {
-          setActiveSessionIds((previous) => previous.filter((id) => id !== payloadSessionId));
-        }
-      }
-
-      const activeSession = activeSessionRef.current;
-      const isEventForVisibleSession =
-        !!activeSession && !!payloadSessionId && payloadSessionId === activeSession;
-      if (
-        !loadingRef.current &&
-        Date.now() > acceptEventsUntilRef.current &&
-        !isEventForVisibleSession
-      ) {
-        return;
-      }
-
-      if (activeSession && payload.sessionId && payload.sessionId !== activeSession) return;
-      if (activeSession && !payload.sessionId) return;
-
-      if (status === "thinking") {
-        if (!payload.toolName) {
-          const activeToolStep = getLatestInFlightStep(runActivityBufferRef.current);
-          const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
-          const eventTimestamp =
-            typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
-              ? payload.timestamp
-              : undefined;
-          if (isMeaningfulThoughtDetail(detail)) {
-            appendLiveActivity("result", detail, "__thought", eventTimestamp);
-            setLiveCurrentStep(activeToolStep || detail);
-          } else {
-            setLiveCurrentStep(activeToolStep || "Thinking...");
+        if (!payload || typeof payload !== "object") return;
+        if (payload.type === "snapshot") {
+          const snapshotIds = Array.isArray(payload.activeSessionIds)
+            ? payload.activeSessionIds.filter(
+                (candidate): candidate is string =>
+                  typeof candidate === "string" && candidate.trim().length > 0
+              )
+            : [];
+          setActiveSessionIds(snapshotIds);
+          const activeSession = activeSessionRef.current;
+          if (activeSession) {
+            void hydrateSessionStatus(activeSession);
           }
+          return;
         }
-        setLiveStatus("thinking");
-        return;
-      }
-      if (status === "generating") {
-        if (!payload.toolName) {
-          const activeToolStep = getLatestInFlightStep(runActivityBufferRef.current);
-          const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
-          const eventTimestamp =
-            typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
-              ? payload.timestamp
-              : undefined;
-          if (isMeaningfulThoughtDetail(detail)) {
-            appendLiveActivity("result", detail, "__thought", eventTimestamp);
-            setLiveCurrentStep(activeToolStep || detail);
-          } else {
-            setLiveCurrentStep(activeToolStep || "Generating response...");
-          }
-        }
-        setLiveStatus("generating");
-        return;
-      }
-      if (status === "idle") {
-        setLiveStatus("idle");
-        setLiveCurrentStep(null);
-        const pendingCapture = pendingProcessCaptureRef.current;
-        const hasPendingCaptureForVisibleSession =
-          !!pendingCapture &&
-          (!payloadSessionId || !pendingCapture.sessionId || pendingCapture.sessionId === payloadSessionId);
-        if (!loadingRef.current && !hasPendingCaptureForVisibleSession) {
-          setLiveActivities([]);
-          runActivityBufferRef.current = [];
-        }
-        return;
-      }
-      if (status === "tool_executing" || status === "tool_completed" || status === "error") {
-        const phase: "start" | "result" | "error" =
-          status === "tool_executing" ? "start" : status === "tool_completed" ? "result" : "error";
-        const toolName = payload.toolName || "tool";
-        const text = formatToolIntent(toolName, {}, phase, payload.detail);
-        const eventTimestamp =
+        if (payload.type !== "status") return;
+        const status = typeof payload.status === "string" ? payload.status : "";
+        if (!status) return;
+        const payloadSessionId =
+          typeof payload.sessionId === "string" && payload.sessionId.trim()
+            ? payload.sessionId
+            : null;
+        const payloadTimestamp =
           typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
             ? payload.timestamp
-            : undefined;
-        appendLiveActivity(
-          phase,
-          text,
-          payload.toolName,
-          eventTimestamp,
-          payload.toolCallId,
-          payload.sandboxProvider
-        );
-        if (phase === "start") {
-          setLiveStatus("thinking");
-          setLiveCurrentStep(isGenericStatusLabel(text) ? "Thinking..." : text);
-        } else {
-          const nextActiveStep = getLatestInFlightStep(runActivityBufferRef.current);
-          if (nextActiveStep) {
-            setLiveCurrentStep(nextActiveStep);
-          } else {
-            setLiveCurrentStep(null);
+            : 0;
+        if (payloadSessionId && payloadTimestamp > 0) {
+          const previousTimestamp =
+            latestStatusTimestampBySessionRef.current[payloadSessionId] || 0;
+          if (payloadTimestamp > previousTimestamp) {
+            latestStatusTimestampBySessionRef.current[payloadSessionId] = payloadTimestamp;
           }
         }
-      }
+
+        if (payloadSessionId) {
+          if (
+            status === "thinking" ||
+            status === "generating" ||
+            status === "tool_executing" ||
+            status === "tool_completed"
+          ) {
+            setActiveSessionIds((previous) =>
+              previous.includes(payloadSessionId) ? previous : [...previous, payloadSessionId]
+            );
+          }
+          if (status === "idle" || status === "error") {
+            setActiveSessionIds((previous) => previous.filter((id) => id !== payloadSessionId));
+          }
+        }
+
+        const activeSession = activeSessionRef.current;
+        const isEventForVisibleSession =
+          !!activeSession && !!payloadSessionId && payloadSessionId === activeSession;
+        if (
+          !loadingRef.current &&
+          Date.now() > acceptEventsUntilRef.current &&
+          !isEventForVisibleSession
+        ) {
+          return;
+        }
+
+        if (activeSession && payload.sessionId && payload.sessionId !== activeSession) return;
+        if (activeSession && !payload.sessionId) return;
+
+        if (status === "thinking") {
+          if (!payload.toolName) {
+            const activeToolStep = getLatestInFlightStep(runActivityBufferRef.current);
+            const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
+            const eventTimestamp =
+              typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
+                ? payload.timestamp
+                : undefined;
+            if (isMeaningfulThoughtDetail(detail)) {
+              appendLiveActivity("result", detail, "__thought", eventTimestamp);
+              setLiveCurrentStep(activeToolStep || detail);
+            } else {
+              setLiveCurrentStep(activeToolStep || "Thinking...");
+            }
+          }
+          setLiveStatus("thinking");
+          return;
+        }
+        if (status === "generating") {
+          if (!payload.toolName) {
+            const activeToolStep = getLatestInFlightStep(runActivityBufferRef.current);
+            const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
+            const eventTimestamp =
+              typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
+                ? payload.timestamp
+                : undefined;
+            if (isMeaningfulThoughtDetail(detail)) {
+              appendLiveActivity("result", detail, "__thought", eventTimestamp);
+              setLiveCurrentStep(activeToolStep || detail);
+            } else {
+              setLiveCurrentStep(activeToolStep || "Generating response...");
+            }
+          }
+          setLiveStatus("generating");
+          return;
+        }
+        if (status === "idle") {
+          setLiveStatus("idle");
+          setLiveCurrentStep(null);
+          const pendingCapture = pendingProcessCaptureRef.current;
+          const hasPendingCaptureForVisibleSession =
+            !!pendingCapture &&
+            (!payloadSessionId ||
+              !pendingCapture.sessionId ||
+              pendingCapture.sessionId === payloadSessionId);
+          if (!loadingRef.current && !hasPendingCaptureForVisibleSession) {
+            setLiveActivities([]);
+            runActivityBufferRef.current = [];
+          }
+          return;
+        }
+        if (status === "tool_executing" || status === "tool_completed" || status === "error") {
+          const phase: "start" | "result" | "error" =
+            status === "tool_executing"
+              ? "start"
+              : status === "tool_completed"
+                ? "result"
+                : "error";
+          const toolName = payload.toolName || "tool";
+          const text = formatToolIntent(toolName, {}, phase, payload.detail);
+          const eventTimestamp =
+            typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
+              ? payload.timestamp
+              : undefined;
+          appendLiveActivity(
+            phase,
+            text,
+            payload.toolName,
+            eventTimestamp,
+            payload.toolCallId,
+            payload.sandboxProvider
+          );
+          if (phase === "start") {
+            setLiveStatus("thinking");
+            setLiveCurrentStep(isGenericStatusLabel(text) ? "Thinking..." : text);
+          } else {
+            const nextActiveStep = getLatestInFlightStep(runActivityBufferRef.current);
+            if (nextActiveStep) {
+              setLiveCurrentStep(nextActiveStep);
+            } else {
+              setLiveCurrentStep(null);
+            }
+          }
+        }
       },
     });
 
@@ -4218,47 +4250,50 @@ export function Chat() {
     [effectiveWorkspaceDir, navigate]
   );
 
-  const handleDiffPanelResizeStart = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    diffPanelResizeCleanupRef.current?.();
-    diffPanelResizeCleanupRef.current = null;
-    diffPanelResizeStateRef.current = {
-      startX: event.clientX,
-      startWidth: diffPanelWidth,
-    };
-    const previousCursor = document.body.style.cursor;
-    const previousUserSelect = document.body.style.userSelect;
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      const state = diffPanelResizeStateRef.current;
-      if (!state) return;
-      const delta = state.startX - moveEvent.clientX;
-      setDiffPanelWidth(clampDiffPanelWidth(state.startWidth + delta));
-    };
-
-    const handleMouseUp = () => {
-      diffPanelResizeStateRef.current = null;
-      document.body.style.cursor = previousCursor;
-      document.body.style.userSelect = previousUserSelect;
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
+  const handleDiffPanelResizeStart = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      diffPanelResizeCleanupRef.current?.();
       diffPanelResizeCleanupRef.current = null;
-    };
+      diffPanelResizeStateRef.current = {
+        startX: event.clientX,
+        startWidth: diffPanelWidth,
+      };
+      const previousCursor = document.body.style.cursor;
+      const previousUserSelect = document.body.style.userSelect;
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
 
-    diffPanelResizeCleanupRef.current = () => {
-      diffPanelResizeStateRef.current = null;
-      document.body.style.cursor = previousCursor;
-      document.body.style.userSelect = previousUserSelect;
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        const state = diffPanelResizeStateRef.current;
+        if (!state) return;
+        const delta = state.startX - moveEvent.clientX;
+        setDiffPanelWidth(clampDiffPanelWidth(state.startWidth + delta));
+      };
 
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-  }, [diffPanelWidth]);
+      const handleMouseUp = () => {
+        diffPanelResizeStateRef.current = null;
+        document.body.style.cursor = previousCursor;
+        document.body.style.userSelect = previousUserSelect;
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+        diffPanelResizeCleanupRef.current = null;
+      };
+
+      diffPanelResizeCleanupRef.current = () => {
+        diffPanelResizeStateRef.current = null;
+        document.body.style.cursor = previousCursor;
+        document.body.style.userSelect = previousUserSelect;
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+      };
+
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    },
+    [diffPanelWidth]
+  );
 
   const openArtifactViewer = useCallback(async (artifact: ArtifactSummaryView) => {
     setArtifactViewerTarget(artifact);
@@ -4638,10 +4673,11 @@ export function Chat() {
                           className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}
                         >
                           <div
-                            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${message.role === "user"
-                              ? "bg-[rgba(var(--accent-primary),0.2)]"
-                              : "bg-emerald-500/20"
-                              }`}
+                            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                              message.role === "user"
+                                ? "bg-[rgba(var(--accent-primary),0.2)]"
+                                : "bg-emerald-500/20"
+                            }`}
                           >
                             {message.role === "user" ? (
                               <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 accent-text" />
@@ -4653,10 +4689,11 @@ export function Chat() {
                             className={`max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] ${message.role === "user" ? "text-right" : ""}`}
                           >
                             <div
-                              className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${message.role === "user"
-                                ? "border border-[rgba(var(--accent-primary),0.2)]"
-                                : "border border-white/5"
-                                }`}
+                              className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${
+                                message.role === "user"
+                                  ? "border border-[rgba(var(--accent-primary),0.2)]"
+                                  : "border border-white/5"
+                              }`}
                             >
                               {message.role !== "user" && (
                                 <AssistantMetaInline

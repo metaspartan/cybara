@@ -3,6 +3,8 @@ import { join, dirname } from "path";
 import { glob } from "tinyglobby";
 import { homeDir } from "../../paths";
 import { trackMetric } from "../../metrics";
+import type { ToolContext } from "../index";
+import { assertWritablePath } from "../path-policy";
 
 const workspace = homeDir;
 
@@ -110,7 +112,10 @@ function buildLineDiffOperations(beforeLines: string[], afterLines: string[]): s
       lcsMatrix[beforeIndex][afterIndex] =
         beforeLines[beforeIndex] === afterLines[afterIndex]
           ? lcsMatrix[beforeIndex + 1][afterIndex + 1] + 1
-          : Math.max(lcsMatrix[beforeIndex + 1][afterIndex], lcsMatrix[beforeIndex][afterIndex + 1]);
+          : Math.max(
+              lcsMatrix[beforeIndex + 1][afterIndex],
+              lcsMatrix[beforeIndex][afterIndex + 1]
+            );
     }
   }
 
@@ -206,11 +211,16 @@ export async function handleRead(
 }
 
 export async function handleWrite(
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  context?: ToolContext
 ): Promise<{ success: boolean; path: string; change: FileChangeMeta }> {
   const rawPath = typeof args.path === "string" ? args.path : undefined;
-  const path = expandTilde(rawPath);
-  if (!path) {
+  const path = assertWritablePath(expandTilde(rawPath), {
+    workspaceRoot: context?.workspaceDir,
+    extraDenyPrefixes: context?.denyWritePrefixes,
+    confineToWorkspace: context?.confineToWorkspace,
+  });
+  if (!rawPath) {
     throw new Error(
       'Validation error: path is required. Provide a file path (for example: {"path":"src/index.ts"}).'
     );
@@ -244,11 +254,16 @@ export async function handleWrite(
 }
 
 export async function handleEdit(
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  context?: ToolContext
 ): Promise<{ success: boolean; path: string; change: FileChangeMeta }> {
   const rawPath = typeof args.path === "string" ? args.path : undefined;
-  const path = expandTilde(rawPath);
-  if (!path) {
+  const path = assertWritablePath(expandTilde(rawPath), {
+    workspaceRoot: context?.workspaceDir,
+    extraDenyPrefixes: context?.denyWritePrefixes,
+    confineToWorkspace: context?.confineToWorkspace,
+  });
+  if (!rawPath) {
     throw new Error(
       'Validation error: path is required. Provide a file path (for example: {"path":"src/index.ts"}).'
     );
@@ -542,7 +557,10 @@ async function searchDirectory(
   }
 }
 
-export async function handleApplyPatch(args: Record<string, unknown>): Promise<{
+export async function handleApplyPatch(
+  args: Record<string, unknown>,
+  context?: ToolContext
+): Promise<{
   success: boolean;
   applied: Array<{ path: string; hunks: number }>;
   failed: Array<{ path: string; error: string }>;
@@ -560,6 +578,12 @@ export async function handleApplyPatch(args: Record<string, unknown>): Promise<{
     throw new Error("Patch content is required");
   }
 
+  const policyOptions = {
+    workspaceRoot: context?.workspaceDir,
+    extraDenyPrefixes: context?.denyWritePrefixes,
+    confineToWorkspace: context?.confineToWorkspace,
+  };
+
   const applied: Array<{ path: string; hunks: number }> = [];
   const failed: Array<{ path: string; error: string }> = [];
   const changes: FileChangeMeta[] = [];
@@ -568,6 +592,8 @@ export async function handleApplyPatch(args: Record<string, unknown>): Promise<{
 
   for (const filePatch of filePatches) {
     try {
+      // Enforce the write path-policy on each file touched by the patch.
+      assertWritablePath(expandTilde(filePatch.path), policyOptions);
       const result = await applyFilePatch(filePatch, dryRun);
       if (result.success) {
         applied.push({ path: filePatch.path, hunks: filePatch.hunks.length });

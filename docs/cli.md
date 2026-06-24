@@ -34,12 +34,16 @@ cybara tui                # Main menu (interactive TUI)
 cybara status             # Show status and health
 cybara doctor             # Run API + stream + sandbox diagnostics
 cybara metrics            # Show token usage and metrics
-cybara update            # Download and install the latest CLI release
+cybara update            # Verify SHA256, then download + install the latest CLI release
+cybara update --check    # Only report whether a newer release exists (non-zero if stale)
+cybara update --force    # Reinstall even when already current
 cybara version           # Show the current version
 cybara logs [count]       # Show recent logs (default: 20)
 ```
 
-You can pin a specific release with:
+`cybara update` verifies the downloaded binary against its published SHA256 sidecar before
+installing; it refuses an unverified binary unless you pass `--force`. You can also pin a specific
+release:
 
 ```bash
 cybara update --version 1.0.186
@@ -177,7 +181,12 @@ cybara mcp list           # List installed MCP servers
 cybara mcp search <query> # Search MCP registry
 cybara mcp install <pkg>  # Install MCP server package
 cybara mcp popular        # Show popular servers
+cybara mcp serve          # Expose cybara's own tools as an MCP server (stdio)
 ```
+
+`cybara mcp serve` speaks the MCP JSON-RPC protocol over stdio so other MCP clients (Claude Desktop,
+IDEs, other agents) can call cybara's built-in tools. It reads newline-delimited JSON-RPC requests
+on stdin and writes responses on stdout.
 
 ### Skills
 

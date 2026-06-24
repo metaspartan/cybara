@@ -7,6 +7,18 @@ import {
   type ProviderType,
 } from "./providers";
 import { getToolSchemasForLLM, isToolEnabledForAgent, type ToolContext } from "./tools/index";
+import {
+  acquireCredential,
+  markCredentialCooldown,
+  markCredentialHealthy,
+  msUntilAnyAvailable,
+  poolSize,
+  registerCredentialsFromEnv,
+  type PooledCredential,
+} from "./credential-pool";
+import { recordRateLimit } from "./rate-limit-tracker";
+import { registerShellHooks } from "./shell-hooks";
+import { applyAnthropicCacheControl, type AnthropicCacheRequest } from "./prompt-cache";
 import { executeTool, hasTool } from "./tools/handlers/index";
 import {
   buildSystemPrompt,
@@ -28,6 +40,20 @@ import {
   type ToolUseBlock,
 } from "@aws-sdk/client-bedrock-runtime";
 import type { DocumentType as SmithyDocumentType } from "@smithy/types";
+
+// Register credential pools from the environment so multi-key rotation is
+// available across providers. Each pool reads PREFIX, PREFIX_2, … (and
+// comma-separated lists). No-op when only the base key is set.
+registerCredentialsFromEnv("anthropic", "ANTHROPIC_API_KEY");
+registerCredentialsFromEnv("openai", "OPENAI_API_KEY");
+registerCredentialsFromEnv("google", "GEMINI_API_KEY");
+registerCredentialsFromEnv("google", "GOOGLE_API_KEY");
+registerCredentialsFromEnv("deepseek", "DEEPSEEK_API_KEY");
+registerCredentialsFromEnv("xai", "XAI_API_KEY");
+
+// Register user-defined shell-script hooks from config (hooks.shell[]). Best-effort:
+// missing/invalid hooks are skipped. Safe at module load; idempotent.
+registerShellHooks();
 
 export interface AgentDefinition {
   name: string;
@@ -2495,7 +2521,10 @@ class AgentManager {
   }
 
   private estimateOpenAIContextChars(messages: Record<string, unknown>[]): number {
-    return messages.reduce((sum, message) => sum + this.estimateOpenAIMessageChars(message) + 64, 0);
+    return messages.reduce(
+      (sum, message) => sum + this.estimateOpenAIMessageChars(message) + 64,
+      0
+    );
   }
 
   private truncateTextToContextBudget(text: string, maxChars: number): string {
@@ -2655,7 +2684,9 @@ class AgentManager {
     return mentionsToolChoice && mentionsThinkingIncompatibility && !alreadyAuto;
   }
 
-  private toAutoToolChoiceRequestBody(requestBody: Record<string, unknown>): Record<string, unknown> {
+  private toAutoToolChoiceRequestBody(
+    requestBody: Record<string, unknown>
+  ): Record<string, unknown> {
     const nextBody: Record<string, unknown> = { ...requestBody };
     if (nextBody.tools !== undefined) {
       nextBody.tool_choice = "auto";
@@ -4255,28 +4286,67 @@ class AgentManager {
 
     this.broadcastAgentStatus("generating", toolContext, "Generating response...");
 
+    // Prompt caching: mark the stable system prompt + recent turns as cacheable.
+    // Anthropic honors up to 4 ephemeral breakpoints and reuses the cached prefix,
+    // cutting input-token cost/latency substantially on multi-turn sessions.
+    // No-op for requests too small to benefit; safe for all Anthropic models.
+    const cached = applyAnthropicCacheControl(
+      {
+        system: requestBody.system as string | undefined,
+        messages: requestBody.messages as AnthropicCacheRequest["messages"],
+      },
+      { strategy: "system_and_3", ttl: "1h" }
+    );
+    if (cached.system !== undefined) requestBody.system = cached.system;
+    requestBody.messages = cached.messages;
+
     const startTime = performance.now();
-    const INITIAL_TRANSIENT_CODES = new Set([500, 502, 503, 520, 529]);
+    // 429 is now retryable (with credential rotation) in addition to transient 5xx/529.
+    const INITIAL_TRANSIENT_CODES = new Set([429, 500, 502, 503, 520, 529]);
     const INITIAL_MAX_RETRIES = 3;
     let response: Response | null = null;
     let lastInitialError = "";
+    const poolName = "anthropic";
+    // Prefer a pooled credential when available; fall back to the provided auth.
+    let activeCredential: PooledCredential | null =
+      poolSize(poolName) > 0 ? acquireCredential(poolName) : null;
+    let currentApiKey = activeCredential?.value ?? auth;
 
     for (let attempt = 0; attempt <= INITIAL_MAX_RETRIES; attempt++) {
+      headers["x-api-key"] = currentApiKey;
       response = await fetch(`${baseUrl}/messages`, {
         method: "POST",
         headers,
         body: JSON.stringify(requestBody),
       });
 
-      if (response.ok) break;
+      if (response.ok) {
+        if (activeCredential) markCredentialHealthy(poolName, activeCredential);
+        break;
+      }
 
       lastInitialError = await response.text();
 
+      // Capture rate-limit headers (per credential) for future scheduling decisions.
+      if (activeCredential) recordRateLimit(activeCredential.label, response.headers);
+
       if (INITIAL_TRANSIENT_CODES.has(response.status) && attempt < INITIAL_MAX_RETRIES) {
-        const backoffMs = Math.min(1000 * Math.pow(2, attempt), 8000);
+        // On rate-limit / auth-like failures, try rotating to another credential first.
+        if (response.status === 429 && activeCredential) {
+          markCredentialCooldown(poolName, activeCredential, "rate_limit");
+        }
+        const rotated = poolSize(poolName) > 0 ? acquireCredential(poolName) : null;
+        if (rotated) {
+          activeCredential = rotated;
+          currentApiKey = rotated.value;
+        }
+        const backoffMs =
+          response.status === 429
+            ? Math.max(msUntilAnyAvailable(poolName), Math.min(1000 * Math.pow(2, attempt), 8000))
+            : Math.min(1000 * Math.pow(2, attempt), 8000);
         console.warn(
           `[Agent] Anthropic transient error ${response.status} on initial call, ` +
-          `retrying in ${backoffMs}ms (attempt ${attempt + 1}/${INITIAL_MAX_RETRIES})...`
+            `retrying in ${backoffMs}ms (attempt ${attempt + 1}/${INITIAL_MAX_RETRIES})...`
         );
         await new Promise((resolve) => setTimeout(resolve, backoffMs));
         continue;
@@ -4534,7 +4604,7 @@ class AgentManager {
             const backoffMs = Math.min(1000 * Math.pow(2, attempt), 8000);
             console.warn(
               `[Agent] Anthropic transient error ${loopResponse.status} on iteration ${iterations}, ` +
-              `retrying in ${backoffMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})...`
+                `retrying in ${backoffMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})...`
             );
             await new Promise((resolve) => setTimeout(resolve, backoffMs));
             continue;
@@ -4557,13 +4627,15 @@ class AgentManager {
         const statusCode = loopResponse?.status ?? "unknown";
         console.warn(
           `[Agent] Anthropic API error ${statusCode} after ${MAX_RETRIES} retries on iteration ${iterations}. ` +
-          `Gracefully stopping loop with ${allToolCalls.length} completed tool calls.`
+            `Gracefully stopping loop with ${allToolCalls.length} completed tool calls.`
         );
         if (!finalContent.trim()) {
-          finalContent = "I encountered a temporary API error and couldn't complete my response. " +
+          finalContent =
+            "I encountered a temporary API error and couldn't complete my response. " +
             "The work I've done so far has been preserved. Please try again.";
         } else {
-          finalContent += "\n\n---\n*Note: I encountered a temporary API error and had to stop early. " +
+          finalContent +=
+            "\n\n---\n*Note: I encountered a temporary API error and had to stop early. " +
             "The above represents partial progress.*";
         }
         break;
