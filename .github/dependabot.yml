@@ -1,0 +1,60 @@
+# Dependabot configuration for Cybara.
+# Keeps the Bun/TypeScript dependencies, the UI's dependencies, and the
+# GitHub Actions used in CI/release workflows up to date. Updates are grouped
+# per ecosystem and batched weekly to keep PR noise low.
+version: 2
+
+updates:
+  # Root workspace (Bun) — server, CLI, core.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      bun-production:
+        dependency-type: "production"
+      bun-development:
+        dependency-type: "development"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    labels:
+      - "dependencies"
+
+  # Web UI workspace.
+  - package-ecosystem: "npm"
+    directory: "/ui"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      ui-dependencies:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "deps(ui)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "ui"
+
+  # GitHub Actions used across .github/workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "deps(ci)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "ci"

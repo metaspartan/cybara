@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Sidebar, SidebarProvider, useSidebar } from '@/components/layout/Sidebar';
+import { UpdateBanner } from '@/components/layout/UpdateBanner';
 import { ToastContainer } from '@/components/ui/Toast';
 import { Dashboard } from '@/pages/Dashboard';
 import { Agents } from '@/pages/Agents';
@@ -59,6 +60,7 @@ function MainContent({ children }: { children: React.ReactNode }) {
       collapsed ? 'md:ml-16' : 'md:ml-64',
       'ml-0'
     )}>
+      <UpdateBanner />
       {children}
     </div>
   );

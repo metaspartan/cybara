@@ -61,7 +61,10 @@ export function resolveReleaseAssetBasename(
   return null;
 }
 
-export function resolveReleaseBinaryFilename(platformValue: string, archValue: string): string | null {
+export function resolveReleaseBinaryFilename(
+  platformValue: string,
+  archValue: string
+): string | null {
   const base = resolveReleaseAssetBasename(platformValue, archValue);
   if (!base) return null;
   const platform = platformValue.toLowerCase();
@@ -104,6 +107,51 @@ export function buildGitHubUpdaterEndpoint(repository: string): string {
 export function buildGitHubReleasesPageUrl(repository: string): string {
   const normalizedRepository = repository.trim() || DEFAULT_RELEASE_REPOSITORY;
   return `https://github.com/${normalizedRepository}/releases`;
+}
+
+/**
+ * Build the GitHub download URL for the SHA256 sidecar of a release asset.
+ * Sidecars are published by release.yml as `<asset>.sha256` and mirror the
+ * binary's per-tag download path so the self-updater can verify integrity.
+ */
+export function buildReleaseChecksumUrl(
+  repository: string,
+  assetName: string,
+  tagName?: string
+): string {
+  const normalizedRepository = repository.trim() || DEFAULT_RELEASE_REPOSITORY;
+  const normalizedTag = tagName ? normalizeReleaseTag(tagName) : "latest";
+  const tagSegment = normalizedTag === "latest" ? "latest" : `tags/v${normalizedTag}`;
+  return `https://github.com/${normalizedRepository}/releases/download/${tagSegment}/${assetName}.sha256`;
+}
+
+/**
+ * Compare two semver-ish versions (e.g. "1.0.203" vs "1.0.204").
+ * Returns a positive number if `left` is newer, negative if `right` is newer,
+ * and 0 if equal. Non-numeric / malformed segments are compared lexically.
+ */
+export function compareVersions(left: string, right: string): number {
+  const strip = (value: string) => value.trim().replace(/^v/i, "").split(/[+-]/)[0];
+  const leftParts = strip(left).split(".");
+  const rightParts = strip(right).split(".");
+  const maxLen = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < maxLen; index += 1) {
+    const leftSegment = leftParts[index] ?? "0";
+    const rightSegment = rightParts[index] ?? "0";
+    const leftNumber = Number(leftSegment);
+    const rightNumber = Number(rightSegment);
+    if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) {
+      if (leftNumber !== rightNumber) return leftNumber - rightNumber;
+    } else {
+      const lexical = leftSegment.localeCompare(rightSegment);
+      if (lexical !== 0) return lexical;
+    }
+  }
+  return 0;
+}
+
+export function isNewerVersion(candidate: string, current: string): boolean {
+  return compareVersions(candidate, current) > 0;
 }
 
 export interface TauriReleaseConfigPatch {

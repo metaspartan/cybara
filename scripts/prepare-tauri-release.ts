@@ -15,7 +15,13 @@ function resolveUpdaterPublicKey(): string {
     process.env.TAURI_SIGNING_PUBLIC_KEY?.trim();
   if (!publicKey) {
     throw new Error(
-      "Missing updater public key. Set CYBARA_TAURI_UPDATER_PUBKEY or TAURI_SIGNING_PUBLIC_KEY."
+      "Missing Tauri updater public key. Without TAURI_SIGNING_PUBLIC_KEY the " +
+        "release build cannot sign updater artifacts, so tauri-action will skip " +
+        "latest.json and the desktop in-app updater will break for all users. " +
+        "Generate a signing keypair (`bunx @tauri-apps/cli signer generate`), " +
+        "then set the repo secrets TAURI_SIGNING_PUBLIC_KEY, " +
+        "TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD " +
+        "(see docs/desktop.md). Aborting release prep."
     );
   }
   return publicKey;

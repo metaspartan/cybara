@@ -7,6 +7,10 @@ on:
       - master
   pull_request:
 
+# Pin Bun for reproducible CI runs.
+env:
+  BUN_VERSION: '1.2.19'
+
 jobs:
   quality:
     runs-on: ubuntu-latest
@@ -17,7 +21,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install root dependencies
         run: bun install

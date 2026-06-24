@@ -5,6 +5,7 @@ import Gradient from "ink-gradient";
 import BigText from "ink-big-text";
 import Spinner from "ink-spinner";
 import { spawn } from "child_process";
+import { createHash } from "crypto";
 import { chmodSync, copyFileSync, mkdirSync, readFileSync, renameSync, unlinkSync } from "fs";
 import { dirname, join } from "path";
 import { createInterface } from "readline";
@@ -12,9 +13,13 @@ import { tmpdir } from "os";
 import { getAppVersion, getReleaseRepository } from "./core/build-info";
 import {
   buildGitHubReleaseApiUrl,
+  buildReleaseChecksumUrl,
+  compareVersions,
+  isNewerVersion,
   resolveReleaseBinaryFilename,
   resolveSelfUpdateDestination,
 } from "./core/versioning";
+import { checkForUpdateInBackground, isUpdateCheckDisabled } from "./core/update-check";
 
 const API_BASE = process.env.CYBARA_API || "http://localhost:4269";
 
@@ -282,9 +287,9 @@ async function checkStatusWebSocket(): Promise<{ ok: boolean; details: string }>
       }
       const isSnapshot = Boolean(
         payload &&
-          typeof payload === "object" &&
-          "type" in payload &&
-          (payload as { type?: string }).type === "snapshot"
+        typeof payload === "object" &&
+        "type" in payload &&
+        (payload as { type?: string }).type === "snapshot"
       );
       resolve({
         ok: isSnapshot,
@@ -327,8 +332,7 @@ function checkSandboxRuntime(): { ok: boolean; details: string } {
     }
     return {
       ok: false,
-      details:
-        "sandbox-exec and docker missing (install Xcode command line tools or Docker)",
+      details: "sandbox-exec and docker missing (install Xcode command line tools or Docker)",
     };
   }
 
@@ -374,7 +378,9 @@ async function rawDoctor(): Promise<void> {
 
   checks.push(
     await runDoctorCheck("info", async () => {
-      const data = await fetchAPI<{ version?: string; stats?: Record<string, unknown> }>("/api/info");
+      const data = await fetchAPI<{ version?: string; stats?: Record<string, unknown> }>(
+        "/api/info"
+      );
       if (!data) return { ok: false, details: "no response from /api/info" };
       return { ok: true, details: `version=${data.version || "unknown"}` };
     })
@@ -703,9 +709,12 @@ async function rawPluginInstall(inputPath: string): Promise<void> {
 }
 
 async function rawPluginRemove(pluginId: string): Promise<void> {
-  const data = await fetchAPI<{ success: boolean }>(`/api/plugins/${encodeURIComponent(pluginId)}`, {
-    method: "DELETE",
-  });
+  const data = await fetchAPI<{ success: boolean }>(
+    `/api/plugins/${encodeURIComponent(pluginId)}`,
+    {
+      method: "DELETE",
+    }
+  );
 
   if (!data) {
     console.error("ERROR: Failed to remove plugin from", API_BASE);
@@ -2309,6 +2318,10 @@ function getFlagValue(args: string[], flag: string): string | undefined {
   return args[index + 1];
 }
 
+function hasFlag(args: string[], flag: string): boolean {
+  return args.includes(flag);
+}
+
 function formatWalletTimestamp(value?: string): string {
   if (!value) return "N/A";
   try {
@@ -3218,9 +3231,7 @@ async function rawWalletX402(args: string[]): Promise<void> {
   }
   if (data.body !== undefined) {
     console.log("body:");
-    console.log(
-      typeof data.body === "string" ? data.body : JSON.stringify(data.body, null, 2)
-    );
+    console.log(typeof data.body === "string" ? data.body : JSON.stringify(data.body, null, 2));
   }
 }
 
@@ -3501,7 +3512,12 @@ function rawHelp(): void {
   console.log("  status      Show system status");
   console.log("  metrics     Show token usage and metrics");
   console.log("  doctor      Run environment diagnostics");
-  console.log("  update      Download and install the latest CLI release");
+  console.log("  update      Download and install the latest CLI release (verifies SHA256)");
+  console.log(
+    "    update --check     Only report whether a newer release exists (non-zero if stale)"
+  );
+  console.log("    update --force     Reinstall even when already current / no checksum sidecar");
+  console.log("    update --version X Install a specific release");
   console.log("  version     Show the current version");
   console.log("    metrics             Usage summary");
   console.log("    metrics analysis    Advanced token analysis");
@@ -3975,6 +3991,34 @@ const TUITasksCommand = () => {
   );
 };
 
+/** Non-blocking banner that surfaces when a newer Cybara release is available. */
+const UpdateBanner = () => {
+  const [message, setMessage] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (isUpdateCheckDisabled()) return;
+    let active = true;
+    checkForUpdateInBackground()
+      .then((result) => {
+        if (!active || !result?.updateAvailable || !result.latestVersion) return;
+        setMessage(`v${result.latestVersion} is available — run \`cybara update\` to upgrade.`);
+      })
+      .catch(() => {
+        /* never block the TUI on an update probe */
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (!message) return null;
+  return (
+    <Box marginY={1}>
+      <Text color="yellow">↑ {message}</Text>
+    </Box>
+  );
+};
+
 const MainMenu = () => {
   const { exit } = useApp();
   const [selected, setSelected] = React.useState(0);
@@ -4032,6 +4076,7 @@ const MainMenu = () => {
   return (
     <Box flexDirection="column">
       <Logo />
+      <UpdateBanner />
       <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={2} paddingY={1}>
         <Text bold>Main Menu</Text>
         {menuItems.map((item, i) => (
@@ -4110,9 +4155,8 @@ const SetupWizard = () => {
   const [step, setStep] = React.useState<
     "welcome" | "provider" | "apikey" | "permissions" | "agent" | "complete"
   >("welcome");
-  const [providerOptions, setProviderOptions] = React.useState<ProviderOption[]>(
-    FALLBACK_PROVIDER_OPTIONS
-  );
+  const [providerOptions, setProviderOptions] =
+    React.useState<ProviderOption[]>(FALLBACK_PROVIDER_OPTIONS);
   const [selectedProvider, setSelectedProvider] = React.useState(0);
   const [apiKey, setApiKey] = React.useState("");
   const [toolApprovalMode, setToolApprovalMode] = React.useState<"always_allow" | "ask">(
@@ -4329,7 +4373,9 @@ const SetupWizard = () => {
 
         {step === "apikey" && (
           <>
-            <Text bold>Enter API Key for {providerOptions[selectedProvider]?.name || "Provider"}</Text>
+            <Text bold>
+              Enter API Key for {providerOptions[selectedProvider]?.name || "Provider"}
+            </Text>
             <Box marginTop={1}>
               <Text color="gray">API Key: </Text>
               <Text>{apiKey.length > 0 ? "•".repeat(apiKey.length) : "(type your key)"}</Text>
@@ -4351,12 +4397,12 @@ const SetupWizard = () => {
                 {toolApprovalMode === "always_allow" ? "❯ " : "  "}
                 1) Always Allow
               </Text>
-              <Text color="gray">   Run tools immediately in chat and channels.</Text>
+              <Text color="gray"> Run tools immediately in chat and channels.</Text>
               <Text color={toolApprovalMode === "ask" ? "cyan" : "white"}>
                 {toolApprovalMode === "ask" ? "❯ " : "  "}
                 2) Ask Me First
               </Text>
-              <Text color="gray">   Require approval before dangerous tool calls.</Text>
+              <Text color="gray"> Require approval before dangerous tool calls.</Text>
             </Box>
             <Box marginTop={1}>
               <Text color="gray">1/A or 2/S to choose, ENTER to continue</Text>
@@ -4459,8 +4505,10 @@ function getVersion(): string {
   return getAppVersion();
 }
 
-async function rawUpdate(versionArg?: string): Promise<void> {
-  const repository = getReleaseRepository();
+async function fetchGitHubRelease(
+  repository: string,
+  versionArg?: string
+): Promise<{ release: GitHubReleaseResponse; assetName: string; downloadUrl: string }> {
   const releaseApiUrl = buildGitHubReleaseApiUrl(repository, versionArg);
   const assetName = resolveReleaseBinaryFilename(process.platform, process.arch);
 
@@ -4489,6 +4537,73 @@ async function rawUpdate(versionArg?: string): Promise<void> {
     process.exit(1);
   }
 
+  return { release, assetName, downloadUrl };
+}
+
+/** Compute the SHA256 hex digest of a file on disk. */
+function computeFileSha256(filePath: string): string {
+  const hash = createHash("sha256");
+  hash.update(readFileSync(filePath));
+  return hash.digest("hex");
+}
+
+/** Fetch the expected SHA256 for an asset from its published sidecar. Returns null if unavailable. */
+async function fetchExpectedChecksum(
+  repository: string,
+  assetName: string,
+  tagName?: string
+): Promise<string | null> {
+  const checksumUrl = buildReleaseChecksumUrl(repository, assetName, tagName);
+  try {
+    const response = await fetch(checksumUrl, {
+      headers: { "User-Agent": "cybara-cli" },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!response.ok) return null;
+    const raw = (await response.text()).trim();
+    // Sidecars are written as "<hash>  <filename>"; tolerate bare hashes too.
+    const firstToken = raw.split(/\s+/)[0]?.toLowerCase();
+    return /^[0-9a-f]{64}$/.test(firstToken) ? firstToken : null;
+  } catch {
+    return null;
+  }
+}
+
+interface UpdateOptions {
+  version?: string;
+  checkOnly?: boolean;
+  force?: boolean;
+}
+
+async function rawUpdate(options: UpdateOptions = {}): Promise<void> {
+  const { version: versionArg, checkOnly = false, force = false } = options;
+  const repository = getReleaseRepository();
+  const { release, assetName, downloadUrl } = await fetchGitHubRelease(repository, versionArg);
+
+  const currentVersion = getAppVersion();
+  const latestTag = release.tag_name?.trim() || "";
+  const latestVersion = latestTag.replace(/^v/i, "");
+  const updateAvailable = latestVersion ? isNewerVersion(latestVersion, currentVersion) : false;
+
+  if (checkOnly) {
+    if (!latestVersion) {
+      console.log("Could not determine the latest published version.");
+      process.exit(1);
+    }
+    if (updateAvailable) {
+      console.log(`Update available: ${currentVersion} -> ${latestVersion}`);
+      console.log(release.html_url || `https://github.com/${repository}/releases/latest`);
+      process.exit(1); // non-zero signals "stale" for scripts/CI
+    }
+    console.log(`Already on the latest release (${currentVersion}).`);
+    process.exit(0);
+  }
+
+  if (latestVersion && !updateAvailable && !force) {
+    console.log(`Already on the latest release (${currentVersion}). Use --force to reinstall.`);
+    return;
+  }
+
   const destinationPath = resolveSelfUpdateDestination(process.execPath, process.platform);
   const destinationDir = dirname(destinationPath);
   mkdirSync(destinationDir, { recursive: true });
@@ -4509,6 +4624,33 @@ async function rawUpdate(versionArg?: string): Promise<void> {
   }
 
   await Bun.write(tempPath, Buffer.from(await downloadResponse.arrayBuffer()));
+
+  // Integrity check: verify the downloaded binary against its published SHA256 sidecar.
+  const expectedChecksum = await fetchExpectedChecksum(repository, assetName, release.tag_name);
+  if (expectedChecksum) {
+    const actualChecksum = computeFileSha256(tempPath);
+    if (actualChecksum !== expectedChecksum) {
+      unlinkSync(tempPath);
+      console.error(
+        "Checksum verification FAILED — the downloaded asset is corrupted or tampered."
+      );
+      console.error(`Expected: ${expectedChecksum}`);
+      console.error(`Actual:   ${actualChecksum}`);
+      console.error("Aborting update. Re-run later or download manually from GitHub Releases.");
+      process.exit(1);
+    }
+    console.log("Checksum verified.");
+  } else if (!force) {
+    // Refuse to install an unverified binary unless the user explicitly opts in with --force.
+    unlinkSync(tempPath);
+    console.error("No SHA256 checksum sidecar was found for this release asset.");
+    console.error(
+      "For your safety, the update was aborted. If you understand the risk, re-run with --force."
+    );
+    process.exit(1);
+  } else {
+    console.warn("Warning: no checksum sidecar found; installing unverified (--force).");
+  }
 
   if (process.platform !== "win32") {
     chmodSync(tempPath, 0o755);
@@ -4547,7 +4689,11 @@ async function main() {
       await rawDoctor();
       break;
     case "update":
-      await rawUpdate(getFlagValue(args.slice(1), "--version"));
+      await rawUpdate({
+        version: getFlagValue(args.slice(1), "--version"),
+        checkOnly: hasFlag(args.slice(1), "--check") || args[1] === "check",
+        force: hasFlag(args.slice(1), "--force"),
+      });
       break;
     case "metrics":
       if (args[1] === "analysis" || args[1] === "token-analysis") {

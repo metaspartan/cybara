@@ -11,8 +11,32 @@ on:
         required: false
         default: ''
 
+# Pin Bun for reproducible release builds across runs.
+env:
+  BUN_VERSION: '1.2.19'
+
 jobs:
+  # Quality gate: never publish desktop apps from a broken build.
+  quality:
+    name: CI Quality Gate
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Install root dependencies
+        run: bun install
+      - name: Install UI dependencies
+        run: cd ui && bun install
+      - name: Run CI checks
+        run: bun run check:ci
+
   create-release:
+    needs: quality
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -106,7 +130,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -176,7 +200,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install dependencies
         run: bun install
@@ -242,6 +266,44 @@ jobs:
     runs-on: ubuntu-latest
     needs: [create-release, build-tauri, build-native-macos]
     steps:
+      # Guard: refuse to publish if the Tauri updater manifest is missing. A
+      # release without latest.json ships a desktop app whose in-app updater
+      # 404s forever. This happens when TAURI_SIGNING_PRIVATE_KEY is absent.
+      - name: Verify updater manifest (latest.json) is present
+        uses: actions/github-script@v7
+        env:
+          TAG_NAME: ${{ needs.create-release.outputs.tag_name }}
+          release_id: ${{ needs.create-release.outputs.release_id }}
+        with:
+          script: |
+            const tag = process.env.TAG_NAME || context.ref.replace('refs/tags/', '');
+            if (!tag) {
+              core.setFailed('Could not resolve release tag name.');
+              return;
+            }
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const assets = await github.paginate(github.rest.repos.listReleaseAssets, {
+              owner,
+              repo,
+              release_id: Number(process.env.release_id || 0),
+              per_page: 100,
+            });
+            core.info(`Release ${tag} has ${assets.length} assets.`);
+            const names = assets.map((a) => a.name);
+            core.info(`Assets: ${names.join(', ') || '(none)'}`);
+            const hasManifest = names.some((n) => n === 'latest.json');
+            if (!hasManifest) {
+              core.setFailed(
+                'latest.json updater manifest is missing from this release. ' +
+                'This usually means TAURI_SIGNING_PRIVATE_KEY is not configured, ' +
+                'so tauri-action skipped updater artifacts. Set the Tauri signing ' +
+                'secrets (see docs/desktop.md) and re-run, or the desktop in-app ' +
+                'updater will break for all users.'
+              );
+              return;
+            }
+            core.info('latest.json present — updater will resolve correctly.');
       - name: Publish Release
         uses: actions/github-script@v7
         env:

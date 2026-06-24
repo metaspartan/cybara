@@ -182,6 +182,12 @@ Desktop auto-updates require signing keys in GitHub Actions:
 
 The desktop publish workflow generates `src-tauri/tauri.release.conf.json`, enables updater artifacts, signs the updater bundle, and uploads `latest.json` to the tagged GitHub release.
 
+The publish workflow refuses to flip a release from draft to published unless `latest.json` is present on the release. If the signing secrets are missing, `tauri-action` silently skips `latest.json`, so the workflow fails loudly with a maintainer-actionable message instead of shipping a desktop app whose in-app updater 404s forever.
+
+### CLI updater integrity
+
+The compiled CLI binaries published by `release.yml` ship with per-asset `<asset>.sha256` sidecars (plus a combined `checksums.txt`). The `cybara update` command and `install.sh` both fetch the matching sidecar and verify the SHA256 of the downloaded binary before installing it. If no sidecar exists, `cybara update` aborts unless run with `--force`, and `install.sh` warns. This protects the `curl | bash` install path against a tampered or CDN-poisoned asset.
+
 The same workflow also packages native SwiftUI macOS `.app` bundles and uploads zip + `.sha256` artifacts. If Apple signing/notary secrets are configured, those native bundles are also codesigned and notarized before upload.
 
 Optional native macOS signing/notary secrets:

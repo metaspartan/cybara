@@ -73,6 +73,7 @@ import {
 } from "../core/logging";
 import { buildSystemPrompt } from "../core/system-prompt";
 import { getAppVersion, getReleaseRepositoryUrl } from "../core/build-info";
+import { checkForUpdate, isUpdateCheckDisabled } from "../core/update-check";
 import * as pwManager from "../core/browser/pw-manager";
 import { homedir } from "os";
 import { dirname, isAbsolute, resolve, join } from "path";
@@ -272,8 +273,8 @@ async function getWalletManager(): Promise<WalletManagerInstance> {
       walletModulePromise = null;
       throw new Error(
         "Wallet module loaded but walletManager is undefined. " +
-        "This usually means a native dependency (tiny-secp256k1 WASM) " +
-        "failed during module initialization. Check server logs for details."
+          "This usually means a native dependency (tiny-secp256k1 WASM) " +
+          "failed during module initialization. Check server logs for details."
       );
     }
     return walletModule.walletManager;
@@ -1197,9 +1198,9 @@ function normalizeFileUriToPath(uri: string): string {
   return uri;
 }
 
-function normalizeDefinitionLocation(raw: unknown):
-  | { uri: string; path: string; line: number; character: number }
-  | null {
+function normalizeDefinitionLocation(
+  raw: unknown
+): { uri: string; path: string; line: number; character: number } | null {
   if (!raw || typeof raw !== "object") return null;
   const location = raw as LspLocationLike;
 
@@ -1224,14 +1225,12 @@ function normalizeDefinitionLocation(raw: unknown):
   };
 }
 
-function normalizeSymbolRange(raw: unknown):
-  | {
-      line: number;
-      character: number;
-      endLine: number;
-      endCharacter: number;
-    }
-  | null {
+function normalizeSymbolRange(raw: unknown): {
+  line: number;
+  character: number;
+  endLine: number;
+  endCharacter: number;
+} | null {
   if (!raw || typeof raw !== "object") return null;
   const range = raw as {
     start?: { line?: number; character?: number };
@@ -1521,27 +1520,27 @@ function sanitizeSessionMessages(
     const selectedToolCalls =
       MAX_TOOL_CALLS <= 0
         ? indexedToolCalls.map((entry) => ({
-          toolCall: entry.toolCall,
-          sourceIndex: entry.index,
-        }))
+            toolCall: entry.toolCall,
+            sourceIndex: entry.index,
+          }))
         : [...selectedIndexes]
-          .sort((a, b) => a - b)
-          .map((index) => {
-            const entry = indexedToolCalls[index];
-            if (!entry) return null;
-            return {
-              toolCall: entry.toolCall,
-              sourceIndex: entry.index,
-            };
-          })
-          .filter(
-            (
-              entry
-            ): entry is {
-              toolCall: NonNullable<SessionMessageView["tool_calls"]>[number];
-              sourceIndex: number;
-            } => !!entry
-          );
+            .sort((a, b) => a - b)
+            .map((index) => {
+              const entry = indexedToolCalls[index];
+              if (!entry) return null;
+              return {
+                toolCall: entry.toolCall,
+                sourceIndex: entry.index,
+              };
+            })
+            .filter(
+              (
+                entry
+              ): entry is {
+                toolCall: NonNullable<SessionMessageView["tool_calls"]>[number];
+                sourceIndex: number;
+              } => !!entry
+            );
 
     const sanitizedToolCalls = selectedToolCalls.map(({ toolCall: tc, sourceIndex }) => {
       const sanitized = { ...tc };
@@ -1708,6 +1707,21 @@ const routes: Record<string, RouteHandler> = {
       tasks: taskScheduler.getStats(),
     },
   }),
+
+  "GET /api/update-check": async () => {
+    if (isUpdateCheckDisabled()) {
+      return {
+        updateAvailable: false,
+        latestVersion: null,
+        currentVersion: getAppVersion(),
+        releaseUrl: null,
+        checkedAt: Date.now(),
+        cached: true,
+        disabled: true,
+      };
+    }
+    return checkForUpdate();
+  },
 
   "GET /api/setup/status": () => ({
     complete: config.isSetupComplete(),
@@ -2018,9 +2032,9 @@ const routes: Record<string, RouteHandler> = {
         await walletManager.getPriceQuote({
           source:
             data.source === "auto" ||
-              data.source === "chainlink" ||
-              data.source === "pyth" ||
-              data.source === "jupiter"
+            data.source === "chainlink" ||
+            data.source === "pyth" ||
+            data.source === "jupiter"
               ? data.source
               : undefined,
           symbol: typeof data.symbol === "string" ? data.symbol : undefined,
@@ -2318,8 +2332,8 @@ const routes: Record<string, RouteHandler> = {
 
     const contextPermissions = Array.isArray(data.context?.permissions)
       ? data.context.permissions.filter(
-        (entry): entry is string => typeof entry === "string" && entry.trim().length > 0
-      )
+          (entry): entry is string => typeof entry === "string" && entry.trim().length > 0
+        )
       : undefined;
     const context: ToolContext = {
       agentId:
@@ -2771,15 +2785,15 @@ const routes: Record<string, RouteHandler> = {
 
     const oauthConfigRaw = providerConfig.oauthConfig as
       | {
-        authorizeUrl?: string;
-        tokenUrl?: string;
-        clientId?: string;
-        clientSecret?: string;
-        scope?: string;
-        callbackPort?: number;
-        callbackPath?: string;
-        authorizeParams?: Record<string, string>;
-      }
+          authorizeUrl?: string;
+          tokenUrl?: string;
+          clientId?: string;
+          clientSecret?: string;
+          scope?: string;
+          callbackPort?: number;
+          callbackPath?: string;
+          authorizeParams?: Record<string, string>;
+        }
       | undefined;
 
     const oauthConfig = {
@@ -3256,9 +3270,14 @@ const routes: Record<string, RouteHandler> = {
     try {
       const manager = getOrInitLspManager(workspacePath);
       const definitions = await manager.getDefinition(normalizedPath, line, character);
-      const normalizedLocations = (Array.isArray(definitions) ? definitions : definitions ? [definitions] : [])
+      const normalizedLocations = (
+        Array.isArray(definitions) ? definitions : definitions ? [definitions] : []
+      )
         .map((location) => normalizeDefinitionLocation(location))
-        .filter((location): location is { uri: string; path: string; line: number; character: number } => !!location);
+        .filter(
+          (location): location is { uri: string; path: string; line: number; character: number } =>
+            !!location
+        );
       const location = normalizedLocations[0] || null;
       trackLspOperation("definition", {
         workspace: manager.getWorkspacePath(),
@@ -3307,9 +3326,14 @@ const routes: Record<string, RouteHandler> = {
     try {
       const manager = getOrInitLspManager(workspacePath);
       const declarations = await manager.getDeclaration(normalizedPath, line, character);
-      const normalizedLocations = (Array.isArray(declarations) ? declarations : declarations ? [declarations] : [])
+      const normalizedLocations = (
+        Array.isArray(declarations) ? declarations : declarations ? [declarations] : []
+      )
         .map((location) => normalizeDefinitionLocation(location))
-        .filter((location): location is { uri: string; path: string; line: number; character: number } => !!location);
+        .filter(
+          (location): location is { uri: string; path: string; line: number; character: number } =>
+            !!location
+        );
       const location = normalizedLocations[0] || null;
       trackLspOperation("declaration", {
         workspace: manager.getWorkspacePath(),
@@ -3358,9 +3382,14 @@ const routes: Record<string, RouteHandler> = {
     try {
       const manager = getOrInitLspManager(workspacePath);
       const definitions = await manager.getTypeDefinition(normalizedPath, line, character);
-      const normalizedLocations = (Array.isArray(definitions) ? definitions : definitions ? [definitions] : [])
+      const normalizedLocations = (
+        Array.isArray(definitions) ? definitions : definitions ? [definitions] : []
+      )
         .map((location) => normalizeDefinitionLocation(location))
-        .filter((location): location is { uri: string; path: string; line: number; character: number } => !!location);
+        .filter(
+          (location): location is { uri: string; path: string; line: number; character: number } =>
+            !!location
+        );
       const location = normalizedLocations[0] || null;
       trackLspOperation("type_definition", {
         workspace: manager.getWorkspacePath(),
@@ -3409,9 +3438,14 @@ const routes: Record<string, RouteHandler> = {
     try {
       const manager = getOrInitLspManager(workspacePath);
       const implementations = await manager.getImplementation(normalizedPath, line, character);
-      const normalizedLocations = (Array.isArray(implementations) ? implementations : implementations ? [implementations] : [])
+      const normalizedLocations = (
+        Array.isArray(implementations) ? implementations : implementations ? [implementations] : []
+      )
         .map((location) => normalizeDefinitionLocation(location))
-        .filter((location): location is { uri: string; path: string; line: number; character: number } => !!location);
+        .filter(
+          (location): location is { uri: string; path: string; line: number; character: number } =>
+            !!location
+        );
       const location = normalizedLocations[0] || null;
       trackLspOperation("implementation", {
         workspace: manager.getWorkspacePath(),
@@ -3462,7 +3496,10 @@ const routes: Record<string, RouteHandler> = {
       const references = await manager.getReferences(normalizedPath, line, character);
       const normalizedLocations = (references || [])
         .map((location) => normalizeDefinitionLocation(location))
-        .filter((location): location is { uri: string; path: string; line: number; character: number } => !!location);
+        .filter(
+          (location): location is { uri: string; path: string; line: number; character: number } =>
+            !!location
+        );
       trackLspOperation("references", {
         workspace: manager.getWorkspacePath(),
         filePath: normalizedPath,
@@ -3787,7 +3824,9 @@ const routes: Record<string, RouteHandler> = {
 
   "POST /api/ide/index/stop": () => {
     const status = workspaceIndexer.stop();
-    trackIdeOperation("index_stop", status.workspacePath || undefined, true, { state: status.state });
+    trackIdeOperation("index_stop", status.workspacePath || undefined, true, {
+      state: status.state,
+    });
     return { success: true, ...status };
   },
 
@@ -3874,7 +3913,7 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/ide/index/search": async (_body, params) => {
     const path =
       typeof (params?.path as string | undefined) === "string"
-        ? ((params?.path as string | undefined) || "~")
+        ? (params?.path as string | undefined) || "~"
         : "~";
     const query = (params?.query as string | undefined) || "";
     const parsedLimit = Number.parseInt((params?.limit as string | undefined) || "", 10);
@@ -3940,7 +3979,8 @@ const routes: Record<string, RouteHandler> = {
       return { success: false, error: "Missing 'path' parameter" };
     }
 
-    const requestedAgentId = typeof data.agentId === "string" && data.agentId.trim() ? data.agentId.trim() : "";
+    const requestedAgentId =
+      typeof data.agentId === "string" && data.agentId.trim() ? data.agentId.trim() : "";
     const selectedAgent =
       (requestedAgentId ? agentManager.get(requestedAgentId) : undefined) ||
       agentManager.list().find((agent) => agent.status === "running") ||
@@ -3986,7 +4026,9 @@ const routes: Record<string, RouteHandler> = {
           content: [
             `File: ${path}`,
             prefix ? `Already typed prefix: ${prefix}` : "Already typed prefix: (none)",
-            suffixContext ? `Existing suffix hint: ${suffixContext}` : "Existing suffix hint: (none)",
+            suffixContext
+              ? `Existing suffix hint: ${suffixContext}`
+              : "Existing suffix hint: (none)",
             "",
             "Code before cursor:",
             beforeContext || "(empty)",
@@ -4235,14 +4277,7 @@ const routes: Record<string, RouteHandler> = {
   },
 
   "POST /api/ide/replace": async (body) => {
-    const {
-      path,
-      query,
-      replacement,
-      caseSensitive,
-      wholeWord,
-      files,
-    } = body as {
+    const { path, query, replacement, caseSensitive, wholeWord, files } = body as {
       path?: string;
       query?: string;
       replacement?: string;
@@ -4503,9 +4538,9 @@ const routes: Record<string, RouteHandler> = {
       enabled: channel.enabled,
       ...(channel.type === "discord" && running
         ? {
-          message:
-            "Discord connection looks good. Invite the bot to your server before expecting messages in guild channels.",
-        }
+            message:
+              "Discord connection looks good. Invite the bot to your server before expecting messages in guild channels.",
+          }
         : {}),
     };
   },
@@ -4848,10 +4883,10 @@ const routes: Record<string, RouteHandler> = {
   "DELETE /api/skills/:name": async (_body, params) => {
     const skillName = decodeURIComponent(params!.name);
     const skill = getSkill(skillName);
-    
+
     let targetDir: string | undefined = undefined;
     if (skill?.location?.includes(".cybara/skills")) {
-        targetDir = skill.location.endsWith("SKILL.md") ? dirname(skill.location) : skill.location;
+      targetDir = skill.location.endsWith("SKILL.md") ? dirname(skill.location) : skill.location;
     }
 
     const result = await registryManager.uninstall(skillName, { targetDir });
@@ -4970,8 +5005,7 @@ const routes: Record<string, RouteHandler> = {
           ? {
               role: lastMessage.role,
               content:
-                lastMessage.content.slice(0, 100) +
-                (lastMessage.content.length > 100 ? "..." : ""),
+                lastMessage.content.slice(0, 100) + (lastMessage.content.length > 100 ? "..." : ""),
             }
           : null,
       };
@@ -4994,7 +5028,7 @@ const routes: Record<string, RouteHandler> = {
       const truncatedContent =
         MAX_CONTENT_SIZE > 0 && typeof m.content === "string" && m.content.length > MAX_CONTENT_SIZE
           ? m.content.slice(0, MAX_CONTENT_SIZE) +
-          `\n\n... [content truncated, ${m.content.length - MAX_CONTENT_SIZE} chars omitted]`
+            `\n\n... [content truncated, ${m.content.length - MAX_CONTENT_SIZE} chars omitted]`
           : m.content;
       return {
         ...m,
@@ -5139,7 +5173,7 @@ const routes: Record<string, RouteHandler> = {
         const truncatedContent =
           typeof m.content === "string" && m.content.length > MAX_CONTENT_SIZE
             ? m.content.slice(0, MAX_CONTENT_SIZE) +
-            `\n\n... [content truncated, ${m.content.length - MAX_CONTENT_SIZE} chars omitted]`
+              `\n\n... [content truncated, ${m.content.length - MAX_CONTENT_SIZE} chars omitted]`
             : m.content;
         return {
           ...m,
@@ -5846,10 +5880,10 @@ const routes: Record<string, RouteHandler> = {
       topModel:
         topModel && topModel.key
           ? {
-            model: topModel.key,
-            tokens: topModel.total,
-            sharePct: topModelSharePct,
-          }
+              model: topModel.key,
+              tokens: topModel.total,
+              sharePct: topModelSharePct,
+            }
           : null,
       providerEfficiency,
       modelInsights,
@@ -5891,12 +5925,12 @@ const routes: Record<string, RouteHandler> = {
         : sortedCallTotals.length % 2 === 1
           ? sortedCallTotals[(sortedCallTotals.length - 1) / 2]!
           : Number(
-            (
-              (sortedCallTotals[sortedCallTotals.length / 2 - 1]! +
-                sortedCallTotals[sortedCallTotals.length / 2]!) /
-              2
-            ).toFixed(2)
-          );
+              (
+                (sortedCallTotals[sortedCallTotals.length / 2 - 1]! +
+                  sortedCallTotals[sortedCallTotals.length / 2]!) /
+                2
+              ).toFixed(2)
+            );
 
     const ratioBands = [
       { band: "very_input_heavy", min: 4, max: Number.POSITIVE_INFINITY, calls: 0 },
