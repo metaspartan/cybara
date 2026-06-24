@@ -1012,7 +1012,17 @@ export interface ToolDefinition {
 
 export interface Channel {
   id: string;
-  type: "telegram" | "whatsapp" | "discord" | "slack" | "signal" | "imessage" | "web";
+  type:
+    | "telegram"
+    | "whatsapp"
+    | "discord"
+    | "slack"
+    | "signal"
+    | "imessage"
+    | "web"
+    | "webhook"
+    | "sms"
+    | "email";
   name: string;
   config: Record<string, unknown>;
   enabled: boolean;

@@ -14,13 +14,16 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/metaspartan/cybara/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/metaspartan/cybara/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
+  <a href="https://github.com/metaspartan/cybara/releases"><img src="https://img.shields.io/github/v/release/metaspartan/cybara?include_prereleases&display_name=tag&sort=semver" alt="Release" /></a>
   <img src="https://img.shields.io/badge/runtime-Bun-f9f1e1?logo=bun" alt="Bun" />
   <img src="https://img.shields.io/badge/language-TypeScript-blue?logo=typescript" alt="TypeScript" />
   <img src="https://img.shields.io/badge/ui-React_19-61dafb?logo=react" alt="React" />
-  <img src="https://img.shields.io/badge/tools-50-green" alt="50 Tools" />
-  <img src="https://img.shields.io/badge/providers-33-purple" alt="33 Providers" />
-  <img src="https://img.shields.io/badge/channels-7-orange" alt="7 Channels" />
+  <img src="https://img.shields.io/badge/tools-71-green" alt="71 Tools" />
+  <img src="https://img.shields.io/badge/providers-50-purple" alt="50 Providers" />
+  <img src="https://img.shields.io/badge/channels-10-orange" alt="10 Channels" />
+  <img src="https://img.shields.io/badge/skills-60+-teal" alt="60+ Skills" />
   <img src="https://img.shields.io/badge/desktop-Tauri-orange?logo=tauri" alt="Tauri Desktop" />
 </p>
 
@@ -33,7 +36,7 @@ Cybara is an agent operating system for developers and operators who want one st
 - AI chat and multi-agent orchestration
 - local and remote tool execution
 - browser and API automation
-- secure messaging channels (Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Web)
+- secure messaging channels (Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Web, plus Webhook, SMS, and Email)
 - encrypted wallet operations across ETH/BTC/SOL with policy controls
 
 If you need an agent platform that can plan, execute, verify, and report with strong operator control, Cybara is built for that.
@@ -44,7 +47,7 @@ If you need an agent platform that can plan, execute, verify, and report with st
 
 - 71 built-in tools (`src/core/tools/index.ts`)
 - 50 built-in provider integrations with aliases (`src/core/providers.ts`)
-- 7 channel adapters (`src/core/channels/adapters`)
+- 10 channel adapters (`src/core/channels/adapters`)
 - 20 production UI pages (`ui/src/pages/*.tsx`)
 - 60+ bundled skills (`skills/`)
 - Anthropic prompt caching, multi-key credential pools + rate-limit rotation, and a centralized LLM error taxonomy
@@ -185,6 +188,9 @@ Adapters:
 - Signal (`signal-cli`)
 - iMessage (BlueBubbles)
 - Web chat
+- Webhook (inbound — signed triggers from CI, monitoring, forms; HMAC-SHA256 verified)
+- SMS (Twilio)
+- Email (SMTP send + IMAP poll)
 
 DM policy modes:
 

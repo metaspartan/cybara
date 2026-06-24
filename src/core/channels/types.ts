@@ -240,6 +240,71 @@ export const channels = {
     color: "#6366f1",
     fields: [],
   },
+  webhook: {
+    name: "Webhook",
+    icon: "🪝",
+    description: "Receive inbound webhooks from external systems (CI, monitoring, forms)",
+    color: "#0ea5e9",
+    fields: [
+      {
+        name: "secret",
+        label: "HMAC Secret",
+        type: "password",
+        required: false,
+        description: "Shared secret for HMAC-SHA256 signature verification (x-cybara-signature header).",
+      },
+      {
+        name: "dm_policy",
+        label: "Sender Policy",
+        type: "select",
+        required: false,
+        options: ["open", "allowlist", "disabled"],
+        default: "open",
+      },
+    ],
+  },
+  sms: {
+    name: "SMS (Twilio)",
+    icon: "💬",
+    description: "Send and receive SMS via Twilio",
+    color: "#f22f46",
+    fields: [
+      { name: "account_sid", label: "Account SID", type: "string", required: true },
+      { name: "auth_token", label: "Auth Token", type: "password", required: true },
+      { name: "from_number", label: "From Number (E.164)", type: "string", required: true },
+      {
+        name: "dm_policy",
+        label: "DM Policy",
+        type: "select",
+        required: false,
+        options: ["pairing", "allowlist", "open", "disabled"],
+        default: "pairing",
+      },
+    ],
+  },
+  email: {
+    name: "Email (SMTP/IMAP)",
+    icon: "📧",
+    description: "Send (SMTP) and receive (IMAP) email",
+    color: "#16a34a",
+    fields: [
+      { name: "smtp_host", label: "SMTP Host", type: "string", required: true },
+      { name: "smtp_port", label: "SMTP Port", type: "number", required: false, default: 587 },
+      { name: "imap_host", label: "IMAP Host", type: "string", required: false },
+      { name: "imap_port", label: "IMAP Port", type: "number", required: false, default: 993 },
+      { name: "username", label: "Username", type: "string", required: true },
+      { name: "password", label: "Password", type: "password", required: true },
+      { name: "from_address", label: "From Address", type: "string", required: true },
+      {
+        name: "dm_policy",
+        label: "Sender Policy",
+        type: "select",
+        required: false,
+        options: ["allowlist", "open", "disabled"],
+        default: "allowlist",
+      },
+    ],
+  },
 } as const;
 
 export type ChannelType = keyof typeof channels;

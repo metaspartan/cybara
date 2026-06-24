@@ -523,18 +523,33 @@ Generate music/audio from a text prompt (fal.ai: minimax-music, ace-step, stable
 ## Desktop Control
 
 ### computer_use
-Control the desktop in the background (capture, click, type, scroll, drag, key, focus app) via the
-external [cua-driver](https://github.com/trycua/cua) binary over MCP stdio. Does NOT steal the user's
-cursor by default. Requires the `cua-driver` binary on `$PATH` and, on macOS, Accessibility + Screen
-Recording TCC grants. Prefer `element` (1-based SOM index) over pixel `coordinate`.
+Control the desktop in the background (capture, click, type, scroll, drag, key, set_value, focus app)
+via the external [cua-driver](https://github.com/trycua/cua) binary over MCP stdio. Does NOT steal
+the user's cursor by default. Requires the `cua-driver` binary on `$PATH` and, on macOS, Accessibility
++ Screen Recording TCC grants (run the `computerUseDoctor()` check to verify). Prefer `element`
+(1-based SOM index) over pixel `coordinate`; prefer `set_value` over typing into dropdowns.
+
+**Safety hardening:** `computer_use` is gated as a **dangerous tool** (routed through the ask/block
+approval flow). Dangerous key combos (logout/lock) and shell-injection typed text (`curl … | bash`,
+`rm -rf /`, fork bombs, `mkfs`, `dd if=/dev/`) are hard-blocked and cannot be overridden. Read-only
+actions (`capture`, `wait`, `list_apps`) are always allowed; destructive actions require consent
+(unless `setComputerUseAutoApprove(true)` or an approval callback permits them).
+
 ```json
 {"name": "computer_use", "args": { "action": "capture", "mode": "som" }}
 {"name": "computer_use", "args": { "action": "click", "element": 3 }}
 {"name": "computer_use", "args": { "action": "type", "text": "hello world" }}
 {"name": "computer_use", "args": { "action": "key", "keys": "cmd+s" }}
+{"name": "computer_use", "args": { "action": "set_value", "element": 5, "value": "Option B" }}
+{"name": "computer_use", "args": { "action": "click", "element": 3, "captureAfter": true }}
 ```
-Actions: `capture` | `click` | `double_click` | `right_click` | `scroll` | `drag` | `type` | `key` |
-`wait` | `list_apps` | `focus_app`.
+Actions: `capture` | `click` | `double_click` | `right_click` | `middle_click` | `scroll` | `drag` |
+`type` | `key` | `set_value` | `wait` | `list_apps` | `focus_app`.
+
+- `captureAfter: true` re-captures after an action so the model can verify the result.
+- `set_value` sets a native accessibility value (e.g. selects a dropdown option) without stealing focus.
+- Results carry a `screenshot` (base64) + `screenshotMime` so vision models receive a real image block; the driver auto-reconnects once on a closed session.
+
 
 ## Kanban (Multi-Agent Orchestration)
 

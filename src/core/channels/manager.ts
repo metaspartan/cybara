@@ -7,6 +7,9 @@ import { signalAdapter, signalSessions } from "./adapters/signal";
 import { whatsappAdapter, whatsappSessions } from "./adapters/whatsapp";
 import { imessageAdapter, imessageSessions } from "./adapters/imessage";
 import { webAdapter } from "./adapters/web";
+import { webhookAdapter } from "./adapters/webhook";
+import { smsAdapter } from "./adapters/sms";
+import { emailAdapter } from "./adapters/email";
 import {
   formatToolCallsForTelegram,
   formatToolCallsForDiscord,
@@ -58,6 +61,9 @@ export class ChannelManager {
     this.registerAdapter("whatsapp", whatsappAdapter);
     this.registerAdapter("imessage", imessageAdapter);
     this.registerAdapter("web", webAdapter);
+    this.registerAdapter("webhook", webhookAdapter);
+    this.registerAdapter("sms", smsAdapter);
+    this.registerAdapter("email", emailAdapter);
   }
 
   registerAdapter(type: ChannelType, adapter: ChannelAdapter) {

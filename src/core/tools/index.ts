@@ -94,6 +94,8 @@ const dangerousToolNames = new Set([
   "cron",
   "env",
   "http",
+  "computer_use",
+  "execute_code",
 ]);
 
 export function checkRateLimit(
@@ -2066,7 +2068,7 @@ ACTIONS:
   computer_use: {
     name: "computer_use",
     description:
-      "Control the user's desktop in the background (capture, click, type, scroll, drag, key, focus app) via the cua-driver. Does NOT steal the cursor by default. Requires the external cua-driver binary and (on macOS) Accessibility + Screen Recording grants. Prefer 'element' (1-based SOM index) over pixel 'coordinate'.",
+      "Control the user's desktop in the background (capture, click, type, scroll, drag, key, set_value, focus app) via the cua-driver. Does NOT steal the cursor by default. Requires the external cua-driver binary and (on macOS) Accessibility + Screen Recording grants. Prefer 'element' (1-based SOM index) over pixel 'coordinate'; prefer 'set_value' over typing into dropdowns. Dangerous key combos (logout/lock) and shell-injection text are hard-blocked.",
     category: "media",
     input_schema: {
       type: "object",
@@ -2078,10 +2080,12 @@ ACTIONS:
             "click",
             "double_click",
             "right_click",
+            "middle_click",
             "scroll",
             "drag",
             "type",
             "key",
+            "set_value",
             "wait",
             "list_apps",
             "focus_app",
@@ -2112,9 +2116,17 @@ ACTIONS:
         text: { type: "string", description: "Text to type (action='type')." },
         keys: { type: "string", description: "Key combo, e.g. 'cmd+s' (action='key')." },
         seconds: { type: "number", description: "Seconds to wait (action='wait')." },
+        value: {
+          type: "string",
+          description: "Value to set (action='set_value' — sets a native AX value without focus steal).",
+        },
         raiseWindow: {
           type: "boolean",
           description: "Raise the app window (focus_app). Default false.",
+        },
+        captureAfter: {
+          type: "boolean",
+          description: "Re-capture the screen after the action so the model can verify the result.",
         },
       },
       required: ["action"],

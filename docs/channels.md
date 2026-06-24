@@ -13,6 +13,9 @@ Connect agents to multiple messaging platforms.
 | Signal | ✅ | via signal-cli |
 | iMessage | ✅ | via BlueBubbles |
 | Web | ✅ | Built-in chat UI |
+| Webhook | ✅ | Inbound signed triggers (HMAC-SHA256) from CI, monitoring, forms |
+| SMS | ✅ | Twilio REST — send + receive text messages |
+| Email | ✅ | SMTP send + IMAP poll receive |
 
 ## Quick Setup
 
@@ -204,3 +207,48 @@ Quote/reply to specific messages:
 [[reply_to_current]]     # Reply to triggering message
 [[reply_to:12345]]       # Reply to specific message ID
 ```
+
+## Webhook (inbound triggers)
+
+Let any external system (CI, monitoring, IFTTT, forms) trigger a cybara agent via a signed HTTP POST. Inbound-only — there is no chat to reply into; the agent's response surfaces in logs / other channels.
+
+1. Create a webhook channel in the UI (or API):
+   ```bash
+   curl -X POST http://localhost:4269/api/channels \
+     -H "Content-Type: application/json" \
+     -d '{"type":"webhook","name":"CI Hook","config":{"secret":"shared-hmac-secret"}}'
+   ```
+2. POST to the channel's inbound endpoint:
+   ```bash
+   curl -X POST http://localhost:4269/api/channels/<channel-id>/webhook \
+     -H "x-cybara-signature: sha256=<hex-hmac>" \
+     -H "Content-Type: application/json" \
+     -d '{"event":"deploy","message":"Production deploy finished"}'
+   ```
+3. The HMAC-SHA256 signature (hex of the raw body with the shared secret) is verified when a `secret` is configured. If no secret is set, unsigned webhooks are accepted.
+
+## SMS (Twilio)
+
+Send and receive SMS via Twilio.
+
+1. Create a channel:
+   ```bash
+   curl -X POST http://localhost:4269/api/channels \
+     -H "Content-Type: application/json" \
+     -d '{"type":"sms","name":"Twilio","config":{"account_sid":"AC...","auth_token":"...","from_number":"+15551234567"}}'
+   ```
+2. For inbound SMS, point a Twilio messaging webhook at the channel's inbound URL.
+3. Outbound messages go via the Twilio REST API (`POST /2010-04-01/Accounts/{sid}/Messages.json`).
+
+## Email (SMTP/IMAP)
+
+Send email via raw SMTP and receive via IMAP poll.
+
+1. Create a channel:
+   ```bash
+   curl -X POST http://localhost:4269/api/channels \
+     -H "Content-Type: application/json" \
+     -d '{"type":"email","name":"Support","config":{"smtp_host":"smtp.gmail.com","imap_host":"imap.gmail.com","username":"bot@example.com","password":"app-password","from_address":"bot@example.com"}}'
+   ```
+2. Outbound mail is submitted over a raw SMTP socket with AUTH LOGIN (no nodemailer dependency).
+3. Inbound mail is polled from the configured IMAP inbox; the `dm_policy` (`allowlist` default) gates which senders are accepted.
