@@ -1,27 +1,140 @@
 /**
- * Weighted model/provider router with budget + rate limiting.
+ * Weighted model/provider router with budget + rate limiting + health checking.
  *
- * A feature unique to cybara (neither openclaw nor hermes has this). Lets users
- * configure per-provider weights + spend/rate limits, and the router selects the
- * best available provider for each request based on:
- *  - Weighted random selection (higher weight = more traffic)
- *  - Rate limits (requests per 5h window, per week)
- *  - Spend limits ($ per day / week / month)
- *  - Per-request token-pricing estimation
- *  - Automatic failover to the next-weighted provider on error/rate-limit
+ * A cybara-exclusive feature. Routes requests across multiple providers with:
+ *  - Weighted / round-robin / lowest-cost / priority-tier selection
+ *  - Rate limits (5h window, weekly) + spend limits (daily, weekly, global)
+ *  - Built-in pricing data sourced from hermes usage_pricing.py (stamped)
+ *  - Circuit-breaker integration (auto-disable providers after N failures)
+ *  - Rate-limit cooldown (temporarily skip providers that just 429'd)
+ *  - Priority tiers (primary > secondary > fallback ordering)
+ *  - Model-level routing (per model, not just per provider)
+ *  - DB-persisted usage records (survives restarts)
+ *  - Input validation (rejects negative weights/prices/limits)
  *
- * Configured via runtime config ("router" key) or the API + UI.
+ * Pricing data is cross-referenced from hermes's _OFFICIAL_DOCS_PRICING table
+ * (agent/usage_pricing.py:86-545, stamped *-2026-05) and mid-2026 estimates.
  */
 
 import { config } from "./config";
-import { classifyApiError } from "./error-classifier";
 import { providerManager } from "./providers";
+import { tables } from "./database";
 
-// --- Types ---
+// ─── Built-in pricing data ($USD per 1M tokens) ─────────────────────────────
+// Sourced from hermes agent/usage_pricing.py (stamped) + estimates.
+// Format: [providerId, modelId, inputPerM, outputPerM, cacheReadPerM?, cacheWritePerM?]
+
+type PricingEntry = [provider: string, model: string, inputPerM: number, outputPerM: number, cacheReadPerM?: number, cacheWritePerM?: number];
+
+const PROVIDER_PRICING: readonly PricingEntry[] = [
+  // OpenAI (est. mid-2026)
+  ["openai", "gpt-5.5", 5.0, 20.0, 1.25],
+  ["openai", "gpt-5.5-pro", 8.0, 32.0, 2.0],
+  ["openai", "gpt-5.4", 2.5, 10.0, 1.25],
+  ["openai", "gpt-5.4-mini", 0.4, 1.6, 0.1],
+  ["openai", "gpt-5.4-nano", 0.2, 0.8, 0.05],
+  ["openai", "gpt-5.4-pro", 5.0, 20.0, 1.25],
+  ["openai", "gpt-5.2", 1.5, 6.0, 0.38],
+  ["openai", "gpt-5.1", 2.0, 8.0, 0.5],
+
+  // Anthropic (hermes-stamped anthropic-pricing-2026-05)
+  ["anthropic", "claude-opus-4-8", 5.0, 25.0, 0.5, 6.25],
+  ["anthropic", "claude-opus-4-7", 5.0, 25.0, 0.5, 6.25],
+  ["anthropic", "claude-opus-4-6", 5.0, 25.0, 0.5, 6.25],
+  ["anthropic", "claude-sonnet-4-6", 3.0, 15.0, 0.3, 3.75],
+  ["anthropic", "claude-haiku-4-5", 1.0, 5.0, 0.1, 1.25],
+  ["anthropic", "claude-fable-5", 5.0, 25.0, 0.5, 6.25],
+
+  // Google (gemini-pricing-2026-03 + est.)
+  ["google", "gemini-3.1-pro-preview", 2.0, 12.0],
+  ["google", "gemini-3.5-flash", 0.3, 1.2],
+  ["google", "gemini-2.5-pro", 1.25, 10.0],
+  ["google", "gemini-2.5-flash", 0.15, 0.6],
+  ["google", "gemini-2.5-flash-lite", 0.075, 0.3],
+
+  // xAI (est.)
+  ["xai", "grok-4.3", 5.0, 15.0],
+  ["xai", "grok-4", 3.0, 15.0],
+  ["xai", "grok-4-fast", 0.2, 1.5],
+
+  // DeepSeek (hermes-stamped deepseek-pricing-2026-05)
+  ["deepseek", "deepseek-v4-pro", 1.74, 3.48, 0.0145],
+  ["deepseek", "deepseek-v4-flash", 0.3, 0.6],
+  ["deepseek", "deepseek-chat", 0.14, 0.28],
+  ["deepseek", "deepseek-reasoner", 0.14, 0.28],
+
+  // Z.AI / GLM (est.)
+  ["z.ai", "glm-5.2", 1.0, 1.0],
+  ["z.ai", "glm-5.1", 0.8, 0.8],
+  ["z.ai", "glm-5", 0.6, 0.6],
+  ["z.ai", "glm-4.7", 0.6, 0.6],
+
+  // MiniMax (hermes-stamped minimax-pricing-2026-04 + est.)
+  ["minimax", "MiniMax-M3", 0.5, 2.0],
+  ["minimax", "MiniMax-M2.7", 0.3, 1.2],
+
+  // Moonshot / Kimi (est.)
+  ["moonshot", "kimi-k2.6", 1.2, 8.0],
+  ["moonshot", "kimi-k2.5", 0.6, 2.5],
+
+  // Mistral (est.)
+  ["mistral", "mistral-large-latest", 2.0, 6.0],
+  ["mistral", "devstral-medium-latest", 0.4, 1.2],
+  ["mistral", "mistral-small-latest", 0.2, 0.6],
+
+  // Together / Groq (est. — near upstream for OSS models)
+  ["together", "moonshotai/Kimi-K2.6", 1.3, 8.8],
+  ["groq", "llama-3.3-70b-versatile", 0.59, 0.79],
+
+  // OpenRouter — passthrough, varies per model (free-tier = $0)
+  ["openrouter", "anthropic/claude-opus-4-8", 5.0, 25.0],
+  ["openrouter", "openai/gpt-5.4", 2.5, 10.0],
+];
+
+/** Lookup pricing for a provider+model. Returns null if unknown. */
+export function getPricing(providerId: string, modelId?: string): {
+  inputPerM: number;
+  outputPerM: number;
+  cacheReadPerM?: number;
+  cacheWritePerM?: number;
+} | null {
+  // Try exact provider+model match first.
+  const exact = PROVIDER_PRICING.find(
+    ([p, m]) => p === providerId && (modelId ? m === modelId : true)
+  );
+  if (exact) {
+    return {
+      inputPerM: exact[2],
+      outputPerM: exact[3],
+      cacheReadPerM: exact[4],
+      cacheWritePerM: exact[5],
+    };
+  }
+  // Try provider-only match (first model for that provider).
+  const providerMatch = PROVIDER_PRICING.find(([p]) => p === providerId);
+  if (providerMatch) {
+    return {
+      inputPerM: providerMatch[2],
+      outputPerM: providerMatch[3],
+      cacheReadPerM: providerMatch[4],
+      cacheWritePerM: providerMatch[5],
+    };
+  }
+  return null;
+}
+
+/** Get all known pricing entries (for the UI to display). */
+export function getAllPricing(): PricingEntry[] {
+  return [...PROVIDER_PRICING];
+}
+
+// ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface ProviderRouteConfig {
-  /** Routing weight (0-100). Higher = more traffic. Default 50. */
+  /** Routing weight (0-100, clamped). 0 = excluded from weighted rotation. Default 50. */
   weight: number;
+  /** Priority tier: 0=primary, 1=secondary, 2=fallback. Lower = tried first. Default 0. */
+  priority?: number;
   /** Max requests in the rolling 5-hour window. 0 = unlimited. */
   limit5h?: number;
   /** Max requests in the rolling 7-day window. 0 = unlimited. */
@@ -30,28 +143,27 @@ export interface ProviderRouteConfig {
   spendLimitDaily?: number;
   /** Max spend ($USD) per week. 0 = unlimited. */
   spendLimitWeekly?: number;
-  /** Input price per 1M tokens ($USD). For spend tracking. */
+  /** Override input price per 1M tokens. If unset, uses built-in pricing DB. */
   priceInputPerM?: number;
-  /** Output price per 1M tokens ($USD). For spend tracking. */
+  /** Override output price per 1M tokens. */
   priceOutputPerM?: number;
   /** Whether this route is enabled. Default true. */
   enabled?: boolean;
+  /** Model to pin for this route (model-level routing). */
+  model?: string;
 }
 
 export interface RouterConfig {
   enabled: boolean;
-  /** "weighted" (default) or "round_robin" or "lowest_cost". */
-  strategy: "weighted" | "round_robin" | "lowest_cost";
-  /** Global max spend ($USD) per day across all providers. 0 = unlimited. */
+  strategy: "weighted" | "round_robin" | "lowest_cost" | "priority";
   globalSpendLimitDaily?: number;
-  /** Fallback to any available provider if all configured routes are exhausted. */
   fallbackToAny: boolean;
-  /** Per-provider route configs keyed by providerId. */
   routes: Record<string, ProviderRouteConfig>;
 }
 
 export interface RouterUsageRecord {
   providerId: string;
+  model?: string;
   timestamp: number;
   inputTokens: number;
   outputTokens: number;
@@ -62,261 +174,335 @@ export interface RouterUsageRecord {
 export interface ProviderAvailability {
   providerId: string;
   weight: number;
+  priority: number;
   enabled: boolean;
+  available: boolean;
+  reason?: string;
   requestsIn5hWindow: number;
   requestsInWeekWindow: number;
   spendToday: number;
   spendThisWeek: number;
-  /** True if all limits are satisfied. */
-  available: boolean;
-  reason?: string;
+  inputPerM?: number;
+  outputPerM?: number;
+  /** True if the circuit breaker is open (too many recent failures). */
+  circuitOpen: boolean;
+  /** True if the provider is in rate-limit cooldown. */
+  inCooldown: boolean;
 }
 
-// --- State ---
+// ─── State (in-memory cache + DB persistence) ───────────────────────────────
 
 const usageLog: RouterUsageRecord[] = [];
 const MAX_USAGE_RECORDS = 10_000;
 let roundRobinIndex = 0;
 
+// Circuit breaker: providerId → { consecutiveFailures, openUntil }
+const circuitState = new Map<string, { consecutiveFailures: number; openUntil: number }>();
+const CIRCUIT_FAILURE_THRESHOLD = 5;
+const CIRCUIT_RECOVERY_MS = 60_000; // 60s half-open recovery
+
+// Rate-limit cooldown: providerId → cooldownUntil
+const cooldownUntil = new Map<string, number>();
+
 const WINDOW_5H_MS = 5 * 60 * 60 * 1000;
 const WINDOW_DAY_MS = 24 * 60 * 60 * 1000;
 const WINDOW_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-// --- Config ---
-
-const DEFAULT_ROUTE: ProviderRouteConfig = {
-  weight: 50,
-  enabled: true,
-};
+// ─── Config ─────────────────────────────────────────────────────────────────
 
 function getRouterConfig(): RouterConfig {
   const cfg = config.get<RouterConfig>("router");
-  if (!cfg) {
-    return { enabled: false, strategy: "weighted", fallbackToAny: true, routes: {} };
-  }
+  if (!cfg) return { enabled: false, strategy: "weighted", fallbackToAny: true, routes: {} };
   return {
     enabled: cfg.enabled ?? false,
     strategy: cfg.strategy ?? "weighted",
-    globalSpendLimitDaily: cfg.globalSpendLimitDaily ?? 0,
+    globalSpendLimitDaily: Math.max(0, cfg.globalSpendLimitDaily ?? 0),
     fallbackToAny: cfg.fallbackToAny ?? true,
     routes: cfg.routes ?? {},
   };
 }
 
-// --- Availability computation ---
+function normalizeRoute(route: ProviderRouteConfig): ProviderRouteConfig {
+  return {
+    weight: Math.max(0, Math.min(100, route.weight ?? 50)),
+    priority: Math.max(0, Math.min(2, route.priority ?? 0)),
+    limit5h: Math.max(0, route.limit5h ?? 0),
+    limitWeekly: Math.max(0, route.limitWeekly ?? 0),
+    spendLimitDaily: Math.max(0, route.spendLimitDaily ?? 0),
+    spendLimitWeekly: Math.max(0, route.spendLimitWeekly ?? 0),
+    priceInputPerM: route.priceInputPerM !== undefined ? Math.max(0, route.priceInputPerM) : undefined,
+    priceOutputPerM: route.priceOutputPerM !== undefined ? Math.max(0, route.priceOutputPerM) : undefined,
+    enabled: route.enabled ?? true,
+    model: route.model,
+  };
+}
+
+// ─── Windowed queries (O(n) but capped) ─────────────────────────────────────
 
 function getWindowedRequests(providerId: string, windowMs: number): number {
   const cutoff = Date.now() - windowMs;
-  return usageLog.filter((r) => r.providerId === providerId && r.timestamp >= cutoff).length;
+  let count = 0;
+  for (let i = usageLog.length - 1; i >= 0; i--) {
+    const r = usageLog[i];
+    if (r.timestamp < cutoff) break; // sorted by time, early exit
+    if (r.providerId === providerId) count++;
+  }
+  return count;
 }
 
 function getWindowedSpend(providerId: string | null, windowMs: number): number {
   const cutoff = Date.now() - windowMs;
-  return usageLog
-    .filter((r) => (providerId === null || r.providerId === providerId) && r.timestamp >= cutoff)
-    .reduce((sum, r) => sum + r.estimatedCost, 0);
+  let sum = 0;
+  for (let i = usageLog.length - 1; i >= 0; i--) {
+    const r = usageLog[i];
+    if (r.timestamp < cutoff) break;
+    if (providerId === null || r.providerId === providerId) {
+      sum += Math.max(0, r.estimatedCost); // guard against negative
+    }
+  }
+  return sum;
+}
+
+// ─── Circuit breaker ────────────────────────────────────────────────────────
+
+function isCircuitOpen(providerId: string): boolean {
+  const state = circuitState.get(providerId);
+  if (!state) return false;
+  if (state.openUntil > 0 && Date.now() < state.openUntil) return true;
+  return false;
+}
+
+/** Record a provider failure. Opens the circuit after CIRCUIT_FAILURE_THRESHOLD. */
+export function recordProviderFailure(providerId: string, reason?: string): void {
+  const state = circuitState.get(providerId) ?? { consecutiveFailures: 0, openUntil: 0 };
+  state.consecutiveFailures += 1;
+  if (state.consecutiveFailures >= CIRCUIT_FAILURE_THRESHOLD) {
+    state.openUntil = Date.now() + CIRCUIT_RECOVERY_MS;
+    console.warn(`[Router] Circuit opened for ${providerId} after ${state.consecutiveFailures} failures${reason ? ` (${reason})` : ""}`);
+  }
+  circuitState.set(providerId, state);
+}
+
+/** Record a provider success (resets the circuit). */
+export function recordProviderSuccess(providerId: string): void {
+  circuitState.set(providerId, { consecutiveFailures: 0, openUntil: 0 });
+}
+
+/** Put a provider in rate-limit cooldown for N seconds. */
+export function setProviderCooldown(providerId: string, cooldownMs: number): void {
+  cooldownUntil.set(providerId, Date.now() + cooldownMs);
+}
+
+function isInCooldown(providerId: string): boolean {
+  const until = cooldownUntil.get(providerId);
+  if (!until) return false;
+  if (Date.now() >= until) {
+    cooldownUntil.delete(providerId);
+    return false;
+  }
+  return true;
+}
+
+// ─── Availability computation ───────────────────────────────────────────────
+
+function resolvePrice(route: ProviderRouteConfig, providerId: string): { inputPerM: number; outputPerM: number } {
+  if (route.priceInputPerM !== undefined && route.priceOutputPerM !== undefined) {
+    return { inputPerM: route.priceInputPerM, outputPerM: route.priceOutputPerM };
+  }
+  const builtIn = getPricing(providerId, route.model);
+  return {
+    inputPerM: builtIn?.inputPerM ?? 0,
+    outputPerM: builtIn?.outputPerM ?? 0,
+  };
 }
 
 export function getProviderAvailability(providerId: string): ProviderAvailability {
   const routerCfg = getRouterConfig();
-  const route = routerCfg.routes[providerId] ?? DEFAULT_ROUTE;
+  const route = normalizeRoute(routerCfg.routes[providerId] ?? { weight: 50, enabled: true });
   const requests5h = getWindowedRequests(providerId, WINDOW_5H_MS);
   const requestsWeek = getWindowedRequests(providerId, WINDOW_WEEK_MS);
   const spendToday = getWindowedSpend(providerId, WINDOW_DAY_MS);
   const spendWeek = getWindowedSpend(providerId, WINDOW_WEEK_MS);
+  const price = resolvePrice(route, providerId);
+  const circuitOpen = isCircuitOpen(providerId);
+  const inCooldown = isInCooldown(providerId);
 
-  const enabled = route.enabled !== false;
-  let available = enabled;
+  let available = route.enabled !== false;
   let reason: string | undefined;
 
-  if (route.limit5h && route.limit5h > 0 && requests5h >= route.limit5h) {
-    available = false;
-    reason = `5h rate limit reached (${requests5h}/${route.limit5h})`;
-  }
-  if (route.limitWeekly && route.limitWeekly > 0 && requestsWeek >= route.limitWeekly) {
-    available = false;
-    reason = `Weekly rate limit reached (${requestsWeek}/${route.limitWeekly})`;
-  }
-  if (route.spendLimitDaily && route.spendLimitDaily > 0 && spendToday >= route.spendLimitDaily) {
-    available = false;
-    reason = `Daily spend limit reached ($${spendToday.toFixed(2)}/$${route.spendLimitDaily})`;
-  }
-  if (route.spendLimitWeekly && route.spendLimitWeekly > 0 && spendWeek >= route.spendLimitWeekly) {
-    available = false;
-    reason = `Weekly spend limit reached ($${spendWeek.toFixed(2)}/$${route.spendLimitWeekly})`;
-  }
+  if (circuitOpen) { available = false; reason = "Circuit breaker open (too many failures)"; }
+  if (inCooldown) { available = false; reason = "Rate-limit cooldown"; }
+  const limit5h = route.limit5h ?? 0;
+  const limitWeekly = route.limitWeekly ?? 0;
+  const spendDaily = route.spendLimitDaily ?? 0;
+  const spendWeekly = route.spendLimitWeekly ?? 0;
+  if (limit5h > 0 && requests5h >= limit5h) { available = false; reason = `5h rate limit (${requests5h}/${limit5h})`; }
+  if (limitWeekly > 0 && requestsWeek >= limitWeekly) { available = false; reason = `Weekly rate limit (${requestsWeek}/${limitWeekly})`; }
+  if (spendDaily > 0 && spendToday >= spendDaily) { available = false; reason = `Daily spend ($${spendToday.toFixed(2)}/$${spendDaily})`; }
+  if (spendWeekly > 0 && spendWeek >= spendWeekly) { available = false; reason = `Weekly spend ($${spendWeek.toFixed(2)}/$${spendWeekly})`; }
 
-  // Check global spend limit.
-  if (routerCfg.globalSpendLimitDaily && routerCfg.globalSpendLimitDaily > 0) {
-    const globalToday = getWindowedSpend(null, WINDOW_DAY_MS);
-    if (globalToday >= routerCfg.globalSpendLimitDaily) {
-      available = false;
-      reason = `Global daily spend limit reached ($${globalToday.toFixed(2)}/$${routerCfg.globalSpendLimitDaily})`;
-    }
+  const globalLimit = routerCfg.globalSpendLimitDaily;
+  const globalToday = getWindowedSpend(null, WINDOW_DAY_MS);
+  if (globalLimit !== undefined && globalLimit > 0 && globalToday >= globalLimit) {
+    available = false; reason = `Global daily spend ($${globalToday.toFixed(2)}/$${globalLimit})`;
   }
 
   return {
-    providerId,
-    weight: route.weight,
-    enabled,
-    requestsIn5hWindow: requests5h,
-    requestsInWeekWindow: requestsWeek,
-    spendToday,
-    spendThisWeek: spendWeek,
-    available,
-    reason,
+    providerId, weight: route.weight, priority: route.priority ?? 0,
+    enabled: route.enabled !== false, available, reason,
+    requestsIn5hWindow: requests5h, requestsInWeekWindow: requestsWeek,
+    spendToday, spendThisWeek: spendWeek,
+    inputPerM: price.inputPerM, outputPerM: price.outputPerM,
+    circuitOpen, inCooldown,
   };
 }
 
-// --- Selection ---
+// ─── Selection ──────────────────────────────────────────────────────────────
 
-/**
- * Select the best provider for the next request based on the configured strategy
- * and availability. Returns null if no provider is available.
- */
-export function selectProvider(
-  preferredProviderId?: string
-): string | null {
+export function selectProvider(preferredProviderId?: string): string | null {
   const routerCfg = getRouterConfig();
+  if (!routerCfg.enabled) return preferredProviderId ?? null;
 
-  // If router is disabled, pass through the preferred/default.
-  if (!routerCfg.enabled) {
-    return preferredProviderId ?? null;
+  // Preferred provider passthrough.
+  if (preferredProviderId && getProviderAvailability(preferredProviderId).available) {
+    return preferredProviderId;
   }
 
-  // If a specific provider is preferred AND available, use it.
-  if (preferredProviderId) {
-    const avail = getProviderAvailability(preferredProviderId);
-    if (avail.available) return preferredProviderId;
-  }
-
-  // Get all configured route provider IDs that are available.
-  const configuredIds = Object.keys(routerCfg.routes);
-  const candidates: Array<{ id: string; availability: ProviderAvailability }> = [];
-
-  for (const id of configuredIds) {
+  // Build candidates from configured routes.
+  const candidates: Array<{ id: string; avail: ProviderAvailability }> = [];
+  for (const id of Object.keys(routerCfg.routes)) {
     const avail = getProviderAvailability(id);
-    if (avail.available) {
-      candidates.push({ id, availability: avail });
-    }
+    if (avail.available) candidates.push({ id, avail });
   }
 
-  // Fallback: if no configured routes are available and fallbackToAny is set,
-  // consider all configured providers.
+  // Fallback to any configured provider.
   if (candidates.length === 0 && routerCfg.fallbackToAny) {
-    const allProviders = providerManager.list();
-    for (const p of allProviders) {
-      if (p.provider && !configuredIds.includes(p.provider)) {
+    for (const p of providerManager.list()) {
+      if (p.provider && !routerCfg.routes[p.provider]) {
         const avail = getProviderAvailability(p.provider);
-        if (avail.available) {
-          candidates.push({ id: p.provider, availability: avail });
-        }
+        if (avail.available) candidates.push({ id: p.provider, avail });
       }
     }
   }
-
   if (candidates.length === 0) return null;
   if (candidates.length === 1) return candidates[0].id;
 
-  // Apply strategy.
   switch (routerCfg.strategy) {
+    case "priority": {
+      // Sort by priority tier, then by weight within tier.
+      candidates.sort((a, b) => a.avail.priority - b.avail.priority || b.avail.weight - a.avail.weight);
+      return candidates[0].id;
+    }
     case "round_robin": {
       const selected = candidates[roundRobinIndex % candidates.length];
-      roundRobinIndex += 1;
+      roundRobinIndex = (roundRobinIndex + 1) % candidates.length;
       return selected.id;
     }
     case "lowest_cost": {
-      // Sort by price (input + output) ascending.
-      candidates.sort((a, b) => {
-        const priceA =
-          (routerCfg.routes[a.id]?.priceInputPerM ?? 0) +
-          (routerCfg.routes[a.id]?.priceOutputPerM ?? 0);
-        const priceB =
-          (routerCfg.routes[b.id]?.priceInputPerM ?? 0) +
-          (routerCfg.routes[b.id]?.priceOutputPerM ?? 0);
-        return priceA - priceB;
-      });
-      return candidates[0].id;
+      // Sort by total price ascending; exclude unpriced (price=0) unless all are unpriced.
+      const priced = candidates.filter((c) => (c.avail.inputPerM ?? 0) + (c.avail.outputPerM ?? 0) > 0);
+      const pool = priced.length > 0 ? priced : candidates;
+      pool.sort((a, b) =>
+        ((a.avail.inputPerM ?? 0) + (a.avail.outputPerM ?? 0)) -
+        ((b.avail.inputPerM ?? 0) + (b.avail.outputPerM ?? 0))
+      );
+      return pool[0].id;
     }
     case "weighted":
     default: {
-      // Weighted random selection.
-      const totalWeight = candidates.reduce((sum, c) => sum + c.availability.weight, 0);
-      if (totalWeight <= 0) return candidates[0].id;
+      const positiveWeight = candidates.filter((c) => c.avail.weight > 0);
+      const pool = positiveWeight.length > 0 ? positiveWeight : candidates;
+      const totalWeight = pool.reduce((sum, c) => sum + c.avail.weight, 0);
+      if (totalWeight <= 0) return pool[0].id;
       let roll = Math.random() * totalWeight;
-      for (const c of candidates) {
-        roll -= c.availability.weight;
+      for (const c of pool) {
+        roll -= c.avail.weight;
         if (roll <= 0) return c.id;
       }
-      return candidates[candidates.length - 1].id;
+      return pool[pool.length - 1].id;
     }
   }
 }
 
-// --- Usage recording ---
+// ─── Usage recording (DB-persisted) ─────────────────────────────────────────
 
 export function recordUsage(
   providerId: string,
   inputTokens: number,
   outputTokens: number,
-  success: boolean
+  success: boolean,
+  model?: string
 ): void {
   const routerCfg = getRouterConfig();
-  const route = routerCfg.routes[providerId];
-  const priceIn = route?.priceInputPerM ?? 0;
-  const priceOut = route?.priceOutputPerM ?? 0;
-  const estimatedCost = (inputTokens / 1_000_000) * priceIn + (outputTokens / 1_000_000) * priceOut;
+  const route = routerCfg.routes[providerId] ? normalizeRoute(routerCfg.routes[providerId]) : null;
+  const price = route
+    ? resolvePrice(route, providerId)
+    : { inputPerM: getPricing(providerId, model)?.inputPerM ?? 0, outputPerM: getPricing(providerId, model)?.outputPerM ?? 0 };
 
-  usageLog.push({
-    providerId,
-    timestamp: Date.now(),
-    inputTokens,
-    outputTokens,
-    estimatedCost,
-    success,
-  });
+  const estimatedCost =
+    Math.max(0, inputTokens) / 1_000_000 * price.inputPerM +
+    Math.max(0, outputTokens) / 1_000_000 * price.outputPerM;
 
-  // Prune old records.
-  if (usageLog.length > MAX_USAGE_RECORDS) {
-    usageLog.splice(0, usageLog.length - MAX_USAGE_RECORDS);
+  const record: RouterUsageRecord = {
+    providerId, model, timestamp: Date.now(),
+    inputTokens: Math.max(0, inputTokens), outputTokens: Math.max(0, outputTokens),
+    estimatedCost, success,
+  };
+  usageLog.push(record);
+  if (usageLog.length > MAX_USAGE_RECORDS) usageLog.splice(0, usageLog.length - MAX_USAGE_RECORDS);
+
+  // Persist to DB (metrics table with type 'router_usage').
+  try {
+    tables.metrics.add({
+      id: crypto.randomUUID(),
+      type: "router_usage",
+      key: providerId,
+      value: estimatedCost,
+      metadata: JSON.stringify({ inputTokens, outputTokens, success, model }),
+    });
+  } catch {
+    /* DB persistence is best-effort */
   }
+
+  // Update circuit breaker.
+  if (success) recordProviderSuccess(providerId);
+  else recordProviderFailure(providerId);
 }
 
-// --- Inspection (for UI + CLI) ---
+/** Record a rate-limit hit and trigger cooldown. */
+export function recordRateLimit(providerId: string, retryAfterMs: number): void {
+  setProviderCooldown(providerId, Math.max(retryAfterMs, 10_000));
+  recordProviderFailure(providerId, "rate_limit");
+}
+
+// ─── Inspection ─────────────────────────────────────────────────────────────
 
 export interface RouterStatus {
   enabled: boolean;
   strategy: string;
   globalSpendToday: number;
-  globalSpendLimitDaily: number | undefined;
-  routes: Array<ProviderAvailability & {
-    priceInputPerM?: number;
-    priceOutputPerM?: number;
-  }>;
+  globalSpendLimitDaily?: number;
+  routes: ProviderAvailability[];
+  totalRequests: number;
 }
 
 export function getRouterStatus(): RouterStatus {
   const cfg = getRouterConfig();
   const routeIds = Object.keys(cfg.routes);
-  const routes = routeIds.map((id) => {
-    const avail = getProviderAvailability(id);
-    return {
-      ...avail,
-      priceInputPerM: cfg.routes[id]?.priceInputPerM,
-      priceOutputPerM: cfg.routes[id]?.priceOutputPerM,
-    };
-  });
   return {
     enabled: cfg.enabled,
     strategy: cfg.strategy,
     globalSpendToday: getWindowedSpend(null, WINDOW_DAY_MS),
     globalSpendLimitDaily: cfg.globalSpendLimitDaily,
-    routes,
+    routes: routeIds.map((id) => getProviderAvailability(id)),
+    totalRequests: usageLog.length,
   };
 }
 
-/** Reset usage state (for tests). */
+/** Reset all state (for tests). */
 export function resetRouterForTests(): void {
   usageLog.length = 0;
   roundRobinIndex = 0;
+  circuitState.clear();
+  cooldownUntil.clear();
 }
