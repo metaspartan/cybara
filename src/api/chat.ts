@@ -769,6 +769,16 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
       const messagesBefore = session.messages.length;
       const tokensBefore = estimateMessagesTokens(session.messages);
 
+      // Surface an explicit "compacting" lifecycle state so the UI shows an
+      // indicator instead of an apparent silent reset (mirrors hermes).
+      broadcastStatus({
+        status: "compacting",
+        sessionId: session.id,
+        agentId: agent.id,
+        timestamp: Date.now(),
+        detail: "Summarizing earlier conversation to continue...",
+      });
+
       const compaction = await compactContext(session.messages, agent.model, agent.provider_id);
       if (compaction.wasCompacted) {
         session.messages = compaction.messages;

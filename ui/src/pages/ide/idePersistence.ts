@@ -1,5 +1,5 @@
 /** IDE localStorage persistence helpers — extracted from IDE.tsx. */
-import type { IdePreferences } from "./ideTypes";
+import type { IdePreferences, IdeTab } from "./ideTypes";
 import {
   IDE_SIDEBAR_DEFAULT_WIDTH,
   IDE_SIDEBAR_MIN_WIDTH,
@@ -155,4 +155,44 @@ export function readPersistedIdePreferences(): IdePreferences {
 export function persistIdePreferences(preferences: IdePreferences): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(IDE_SETTINGS_STORAGE_KEY, JSON.stringify(preferences));
+}
+
+// --- Open-tab persistence (restore open files on reload) ---
+
+const IDE_OPEN_TABS_STORAGE_KEY = "cybara.ide.openTabs";
+const IDE_ACTIVE_TAB_STORAGE_KEY = "cybara.ide.activeTab";
+
+export function readPersistedOpenTabs(): { tabs: IdeTab[]; activeTabPath: string | null } {
+  if (typeof window === "undefined") return { tabs: [], activeTabPath: null };
+  try {
+    const raw = window.localStorage.getItem(IDE_OPEN_TABS_STORAGE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as IdeTab[]) : [];
+    const tabs = Array.isArray(parsed)
+      ? parsed
+          .filter(
+            (t) => t && typeof t === "object" && typeof (t as IdeTab).path === "string" && typeof (t as IdeTab).name === "string"
+          )
+          .slice(0, 20) // cap to avoid unbounded restore
+      : [];
+    const activeTabPath = window.localStorage.getItem(IDE_ACTIVE_TAB_STORAGE_KEY);
+    return { tabs, activeTabPath: activeTabPath && typeof activeTabPath === "string" ? activeTabPath : null };
+  } catch {
+    return { tabs: [], activeTabPath: null };
+  }
+}
+
+export function persistOpenTabs(tabs: IdeTab[], activeTabPath: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    // Only persist path + name (not transient fields); cap to 20.
+    const minimal = tabs.slice(0, 20).map((t) => ({ path: t.path, name: t.name, extension: t.extension, previewMode: t.previewMode }));
+    window.localStorage.setItem(IDE_OPEN_TABS_STORAGE_KEY, JSON.stringify(minimal));
+    if (activeTabPath) {
+      window.localStorage.setItem(IDE_ACTIVE_TAB_STORAGE_KEY, activeTabPath);
+    } else {
+      window.localStorage.removeItem(IDE_ACTIVE_TAB_STORAGE_KEY);
+    }
+  } catch {
+    /* localStorage may be full or unavailable — best-effort */
+  }
 }

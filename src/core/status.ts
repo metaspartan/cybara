@@ -6,6 +6,7 @@ export type AgentStatus =
   | "tool_executing"
   | "tool_completed"
   | "generating"
+  | "compacting"
   | "error";
 
 export type ToolStatusPhase = "start" | "result" | "error";

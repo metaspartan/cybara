@@ -264,16 +264,28 @@ export async function compactContext(
   const systemMessages = messages.filter((m) => m.role === "system");
   const nonSystemMessages = messages.filter((m) => m.role !== "system");
 
-  const recentMessages = nonSystemMessages.slice(-4);
-  const olderMessages = nonSystemMessages.slice(0, -4);
+  // Token-aware recent window: keep as many trailing messages as fit the budget,
+  // rather than a fixed -4 tail. Ensures the model retains the most context.
+  const minRecent = 4;
+  let recentCount = Math.min(nonSystemMessages.length, minRecent);
+  const systemTokens = estimateMessagesTokens(systemMessages);
+  const reserveForSummaryAndSystem = systemTokens + SUMMARY_RESERVE_TOKENS;
+  for (let n = recentCount + 1; n <= nonSystemMessages.length; n += 1) {
+    const candidateRecent = nonSystemMessages.slice(-n);
+    const candidateTokens = estimateMessagesTokens(candidateRecent);
+    // Keep up to ~40% of the history budget for the recent window.
+    if (candidateTokens > (maxHistoryTokens - reserveForSummaryAndSystem) * 0.4) break;
+    recentCount = n;
+  }
+  const recentMessages = nonSystemMessages.slice(-recentCount);
+  const olderMessages = nonSystemMessages.slice(0, -recentCount);
 
   if (olderMessages.length === 0) {
     return { messages, wasCompacted: false };
   }
 
   const recentTokens = estimateMessagesTokens(recentMessages);
-  const systemTokens = estimateMessagesTokens(systemMessages);
-  const availableForOlder = maxHistoryTokens - recentTokens - systemTokens - SUMMARY_RESERVE_TOKENS;
+  const availableForOlder = maxHistoryTokens - recentTokens - reserveForSummaryAndSystem;
 
   const olderTokens = estimateMessagesTokens(olderMessages);
   if (olderTokens <= availableForOlder) {
@@ -317,6 +329,38 @@ export async function compactContext(
   };
 }
 
+/**
+ * Structured summary prompt mirroring openclaw's compaction quality contract.
+ * Forces explicit sections + literal identifier preservation so the summary is
+ * genuinely useful for continuing work, not a vague paragraph.
+ */
+function buildStructuredSummaryPrompt(conversationText: string, previousSummary?: string): string {
+  return `Summarize the conversation history below so work can continue without it. Be precise, not generic.
+
+Use EXACTLY these markdown sections (omit a section if empty):
+## Decisions
+- Concrete decisions made (one per bullet).
+## Open TODOs
+- Outstanding tasks / next steps.
+## Constraints / Rules
+- Preferences, constraints, or requirements the user stated.
+## Pending user asks
+- Unanswered questions or requested follow-ups.
+## Exact identifiers
+- Literal file paths, URLs, IDs, ports, hashes, version numbers, function/symbol names that must be preserved verbatim. Do NOT paraphrase these.
+
+Keep each section tight. Total under 250 words. Do NOT include filler like "The user discussed...". Only durable facts.
+${previousSummary ? `\nA prior summary of even-older context exists; fold it in where relevant:\n<prior_summary>\n${previousSummary}\n</prior_summary>\n` : ""}
+Conversation to summarize:
+${conversationText}`;
+}
+
+function messagesToConversationText(messages: ChatMessage[]): string {
+  return messages
+    .map((m) => `${m.role}: ${m.content.slice(0, 800)}${m.content.length > 800 ? " [...truncated]" : ""}`)
+    .join("\n\n");
+}
+
 async function generateContextSummary(
   messages: ChatMessage[],
   providerId: string,
@@ -327,25 +371,39 @@ async function generateContextSummary(
     throw new Error("Provider not found");
   }
 
-  const summaryPrompt = `Please summarize the following conversation history into a concise paragraph. Focus on:
-- Key topics discussed
-- Important decisions made
-- Action items or TODOs
-- Any critical context needed to continue the conversation
+  // If the older history is large, chunk it by token share, summarize each chunk,
+  // then merge the chunk summaries in a final pass (mirrors openclaw summarizeInStages).
+  // ~2k tokens per chunk keeps each summary call well within the aux model's window.
+  const totalTokens = estimateMessagesTokens(messages);
+  const chunkCount = totalTokens > 8000 ? Math.min(4, Math.ceil(totalTokens / 4000)) : 1;
 
-Keep it under 200 words.
+  if (chunkCount <= 1) {
+    const prompt = buildStructuredSummaryPrompt(messagesToConversationText(messages));
+    const response = await agentManager.callLLM(provider, model, [{ role: "user", content: prompt }], []);
+    return response.content.slice(0, 1200);
+  }
 
-Conversation to summarize:
-${messages.map((m) => `${m.role}: ${m.content.slice(0, 500)}${m.content.length > 500 ? "..." : ""}`).join("\n\n")}`;
+  // Multi-stage: summarize each chunk, then merge.
+  const chunks = splitMessagesByTokenShare(messages, chunkCount);
+  const chunkSummaries: string[] = [];
+  let previousSummary: string | undefined;
+  for (const chunk of chunks) {
+    const prompt = buildStructuredSummaryPrompt(messagesToConversationText(chunk), previousSummary);
+    const response = await agentManager.callLLM(provider, model, [{ role: "user", content: prompt }], []);
+    const summary = response.content.slice(0, 600);
+    chunkSummaries.push(summary);
+    previousSummary = summary;
+  }
 
-  const response = await agentManager.callLLM(
-    provider,
-    model,
-    [{ role: "user", content: summaryPrompt }],
-    []
-  );
+  // Final merge pass.
+  const mergePrompt = `Merge these partial context summaries into one concise summary with these sections:
+## Decisions / ## Open TODOs / ## Constraints / ## Pending asks / ## Exact identifiers
+Deduplicate. Keep it under 250 words. Preserve all literal identifiers.
 
-  return response.content.slice(0, 1000); // Limit summary length
+Partial summaries:
+${chunkSummaries.map((s, i) => `--- Part ${i + 1} ---\n${s}`).join("\n")}`;
+  const merged = await agentManager.callLLM(provider, model, [{ role: "user", content: mergePrompt }], []);
+  return merged.content.slice(0, 1200);
 }
 
 function createFallbackSummary(messages: ChatMessage[]): string {

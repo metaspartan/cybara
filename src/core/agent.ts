@@ -2543,6 +2543,28 @@ class AgentManager {
     return text.slice(0, cutPoint) + suffix;
   }
 
+  /**
+   * Truncate text keeping the HEAD and the TAIL with a truncation marker in the
+   * middle. Preserves the beginning (setup/context) and the end (most-recent
+   * output/errors) of long tool results (read/grep/exec), which a flat head-only
+   * slice would discard. Falls back to head-only for very small budgets.
+   */
+  private truncateTextWithHeadAndTail(text: string, maxChars: number): string {
+    if (text.length <= maxChars) return text;
+    // Include the canonical truncation notice so callers/tests that detect it still match.
+    const marker = `\n${CONTEXT_LIMIT_TRUNCATION_NOTICE}\n[...${Math.max(1, text.length - maxChars)} chars truncated...]\n`;
+    const budget = Math.max(0, maxChars - marker.length);
+    if (budget <= 16) {
+      return this.truncateTextToContextBudget(text, maxChars);
+    }
+    // Keep ~70% of the budget for the head (setup/context) and ~30% for the tail (recent output).
+    const headBudget = Math.floor(budget * 0.7);
+    const tailBudget = budget - headBudget;
+    const head = text.slice(0, headBudget);
+    const tail = text.slice(text.length - tailBudget);
+    return head + marker + tail;
+  }
+
   private truncateToolResultContentForContext(resultPayload: unknown, maxChars: number): string {
     let serialized = "";
     try {
@@ -2550,7 +2572,9 @@ class AgentManager {
     } catch {
       serialized = String(resultPayload);
     }
-    return this.truncateTextToContextBudget(serialized, maxChars);
+    // Tool results often have important context at both ends (file headers vs.
+    // final output/errors), so preserve head + tail with a truncation marker.
+    return this.truncateTextWithHeadAndTail(serialized, maxChars);
   }
 
   private compactAnthropicLoopMessagesForContext(

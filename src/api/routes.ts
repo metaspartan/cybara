@@ -2121,6 +2121,66 @@ const routes: Record<string, RouteHandler> = {
       return { success: false, error: String(errorValue) };
     }
   },
+  "GET /api/lsp/hover": async (_body, params) => {
+    const filePath = params?.path as string | undefined;
+    const rawLine = params?.line as string | undefined;
+    const rawCharacter = params?.character as string | undefined;
+    if (!filePath) {
+      trackLspOperation("hover", { success: false, reason: "missing_path" });
+      return { success: false, error: "Missing 'path' parameter" };
+    }
+
+    const normalizedPath = isAbsolute(filePath) ? filePath : resolve(process.cwd(), filePath);
+    const workspacePath = resolveWorkspacePath(normalizedPath);
+    const parsedLine = Number.parseInt(rawLine || "", 10);
+    const parsedCharacter = Number.parseInt(rawCharacter || "", 10);
+    const line = Number.isFinite(parsedLine) ? Math.max(parsedLine, 0) : 0;
+    const character = Number.isFinite(parsedCharacter) ? Math.max(parsedCharacter, 0) : 0;
+
+    try {
+      const manager = getOrInitLspManager(workspacePath);
+      const hover = await manager.getHover(normalizedPath, line, character);
+      // Normalize the LSP Hover contents into a plain string for the UI.
+      let text: string | null = null;
+      if (hover) {
+        const contents = (hover as { contents?: unknown }).contents;
+        if (typeof contents === "string") {
+          text = contents;
+        } else if (Array.isArray(contents)) {
+          text = contents
+            .map((c) => (typeof c === "string" ? c : (c as { value?: string })?.value || ""))
+            .filter(Boolean)
+            .join("\n\n");
+        } else if (contents && typeof contents === "object") {
+          text = (contents as { value?: string }).value || null;
+        }
+      }
+      trackLspOperation("hover", {
+        workspace: manager.getWorkspacePath(),
+        filePath: normalizedPath,
+        line,
+        character,
+        success: true,
+      });
+      return {
+        success: true,
+        path: normalizedPath,
+        line,
+        character,
+        text,
+      };
+    } catch (errorValue) {
+      trackLspOperation("hover", {
+        workspace: workspacePath,
+        filePath: normalizedPath,
+        line,
+        character,
+        success: false,
+        error: String(errorValue),
+      });
+      return { success: false, error: String(errorValue) };
+    }
+  },
   "GET /api/lsp/declaration": async (_body, params) => {
     const filePath = params?.path as string | undefined;
     const rawLine = params?.line as string | undefined;

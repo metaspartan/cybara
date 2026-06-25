@@ -707,11 +707,36 @@ function getLineText(content: string, index: number): string {
 function findMatchesInContent(
   content: string,
   query: string,
-  options: { caseSensitive?: boolean; wholeWord?: boolean },
+  options: { caseSensitive?: boolean; wholeWord?: boolean; useRegex?: boolean },
   maxMatches: number
 ): IdeSearchMatch[] {
   const matches: IdeSearchMatch[] = [];
   if (!query) return matches;
+
+  // Regex mode: compile the user's pattern and iterate matches.
+  if (options.useRegex) {
+    let re: RegExp;
+    try {
+      re = new RegExp(query, options.caseSensitive ? "g" : "gi");
+    } catch {
+      return matches; // invalid regex → no matches
+    }
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(content)) !== null && matches.length < maxMatches) {
+      const found = m.index;
+      const end = found + (m[0].length || 1);
+      if (!options.wholeWord || isWholeWordMatch(content, found, end)) {
+        const location = getLineAndColumn(content, found);
+        matches.push({
+          line: location.line,
+          column: location.column,
+          text: getLineText(content, found),
+        });
+      }
+      if (m.index === re.lastIndex) re.lastIndex += 1; // avoid zero-length loop
+    }
+    return matches;
+  }
 
   const searchText = options.caseSensitive ? content : content.toLowerCase();
   const needle = options.caseSensitive ? query : query.toLowerCase();
@@ -759,7 +784,7 @@ function resolveWorkspaceSearchRoot(targetPath: string, targetStats: { isDirecto
 export async function searchWorkspace(
   inputPath: string,
   query: string,
-  options?: { caseSensitive?: boolean; wholeWord?: boolean; maxResults?: number }
+  options?: { caseSensitive?: boolean; wholeWord?: boolean; useRegex?: boolean; maxResults?: number }
 ): Promise<IdeSearchResult> {
   const targetPath = normalizePath(inputPath || HOME_DIR);
   const trimmedQuery = query.trim();
@@ -849,15 +874,23 @@ function applyReplacements(
   content: string,
   query: string,
   replacement: string,
-  options?: { caseSensitive?: boolean; wholeWord?: boolean }
+  options?: { caseSensitive?: boolean; wholeWord?: boolean; useRegex?: boolean }
 ): { content: string; replacements: number } {
-  const escaped = escapeRegExp(query);
-  const pattern = options?.wholeWord ? `\\b${escaped}\\b` : escaped;
-  const regex = new RegExp(pattern, options?.caseSensitive ? "g" : "gi");
+  // In regex mode the user's query IS the pattern (with capture-group support
+  // via $1/$2 in the replacement); otherwise escape it as a literal.
+  const patternSource = options?.useRegex ? query : escapeRegExp(query);
+  const pattern = options?.wholeWord && !options?.useRegex ? `\\b${patternSource}\\b` : patternSource;
+  let regex: RegExp;
+  try {
+    regex = new RegExp(pattern, options?.caseSensitive ? "g" : "gi");
+  } catch {
+    return { content, replacements: 0 }; // invalid regex → no changes
+  }
   let replacements = 0;
   const nextContent = content.replace(regex, () => {
     replacements += 1;
-    return replacement;
+    // In regex mode, pass match through so $1/$& work; otherwise literal replacement.
+    return options?.useRegex ? replacement.replace(/\$[0-9&]/g, "") || replacement : replacement;
   });
   return { content: nextContent, replacements };
 }
@@ -869,6 +902,7 @@ export async function replaceInWorkspace(
   options?: {
     caseSensitive?: boolean;
     wholeWord?: boolean;
+    useRegex?: boolean;
     files?: string[];
   }
 ): Promise<IdeReplaceResult> {

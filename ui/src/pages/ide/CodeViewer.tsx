@@ -2374,12 +2374,15 @@ export function CodeViewer({
   const language = getPrismLanguage(extension);
   const highlightLanguage = isMarkdownFile ? "plaintext" : language;
 
-  const lineDiagnostics = new Map<number, Diagnostic[]>();
-  diagnostics.forEach((d) => {
-    const existing = lineDiagnostics.get(d.line) || [];
-    existing.push(d);
-    lineDiagnostics.set(d.line, existing);
-  });
+  const lineDiagnostics = useMemo(() => {
+    const map = new Map<number, Diagnostic[]>();
+    diagnostics.forEach((d) => {
+      const existing = map.get(d.line) || [];
+      existing.push(d);
+      map.set(d.line, existing);
+    });
+    return map;
+  }, [diagnostics]);
 
   const showCompletionPanel =
     enableCompletions && completionVisible && completionItems.length > 0 && !!completionOrigin;
