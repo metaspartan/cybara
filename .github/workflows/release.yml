@@ -15,7 +15,7 @@ permissions:
 
 # Pin Bun for reproducible release binaries across runs.
 env:
-  BUN_VERSION: '1.2.19'
+  BUN_VERSION: '1.3.14'
 
 jobs:
   # Quality gate: never release a broken build. Tag-triggered builds always run
