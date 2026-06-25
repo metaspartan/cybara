@@ -13,13 +13,6 @@ import { formatToolCallsForTelegram, escapeMarkdown } from "../formatting";
 import { buildChannelSecurityConfig, securityManager } from "../security";
 import { getTelegramInboundMediaDir } from "../paths";
 
-/** Escape text for Telegram HTML parse mode. */
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
 import { handleChannelManagementCommand } from "../commands";
 import {
   getChannelRuntimeMemoryContext,
@@ -29,6 +22,14 @@ import {
   searchChannelRuntimeMemory,
   sendChannelRuntimeMessage,
 } from "../chat-runtime";
+
+/** Escape text for Telegram HTML parse mode. */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
 
 export const telegramSessions = new Map<string, string>();
 const telegramUserSessionHistory = new Map<string, string[]>();
