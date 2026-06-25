@@ -96,6 +96,8 @@ import {
   getAlwaysAllowlist,
   resolveApproval,
 } from "../core/tool-approval";
+import { discoverProviderModels } from "../core/model-discovery";
+import { listCheckpoints, deleteCheckpoint } from "../core/checkpoint";
 import * as pwManager from "../core/browser/pw-manager";
 import { homedir } from "os";
 import { dirname, isAbsolute, resolve } from "path";
@@ -1496,7 +1498,21 @@ const routes: Record<string, RouteHandler> = {
   },
   "DELETE /api/providers/:id": (_body, params) => ({ success: providerManager.delete(params!.id) }),
   "GET /api/providers/:id/models": (_body, params) => providerManager.getModels(params!.id),
+  "POST /api/providers/:id/models/discover": async (_body, params) =>
+    await discoverProviderModels(params!.id),
   "POST /api/providers/discover/ollama": async () => await providerManager.discoverOllamaModels(),
+
+  "GET /api/checkpoints": (_body, params) => {
+    const workspaceDir = params?.workspace as string;
+    if (!workspaceDir) return { checkpoints: [] };
+    return { checkpoints: listCheckpoints(workspaceDir) };
+  },
+  "DELETE /api/checkpoints/:id": (_body, params) => {
+    const workspaceDir = params?.workspace as string;
+    const id = params?.id as string;
+    if (!workspaceDir || !id) return { success: false, error: "workspace and id are required" };
+    return { success: deleteCheckpoint(workspaceDir, id) };
+  },
 
   "POST /api/providers/oauth/device-code": async (body) => {
     const { providerType } = body as { providerType: string };

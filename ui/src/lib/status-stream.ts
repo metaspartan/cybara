@@ -6,6 +6,7 @@ export type StreamAgentStatus =
   | "tool_executing"
   | "tool_completed"
   | "generating"
+  | "compacting"
   | "error";
 
 export interface StatusActivity {
@@ -60,10 +61,19 @@ export interface StatusStreamSnapshotEvent {
   count: number;
 }
 
+export interface StatusStreamTokenEvent {
+  type: "assistant_token";
+  sessionId: string;
+  agentId?: string;
+  delta: string;
+  timestamp: number;
+}
+
 export type StatusStreamEvent =
   | StatusStreamStatusEvent
   | StatusStreamTaskEvent
-  | StatusStreamSnapshotEvent;
+  | StatusStreamSnapshotEvent
+  | StatusStreamTokenEvent;
 
 interface ConnectStatusStreamHandlers {
   onEvent: (event: StatusStreamEvent) => void;

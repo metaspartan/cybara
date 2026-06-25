@@ -46,13 +46,16 @@ If you need an agent platform that can plan, execute, verify, and report with st
 ## Capability Snapshot
 
 - 71 built-in tools (`src/core/tools/index.ts`)
-- 50 built-in provider integrations with aliases (`src/core/providers.ts`)
+- 50 built-in provider integrations with dynamic model discovery (`src/core/providers.ts`)
 - 10 channel adapters (`src/core/channels/adapters`)
 - 20 production UI pages (`ui/src/pages/*.tsx`)
 - 60+ bundled skills (`skills/`)
 - Anthropic prompt caching, multi-key credential pools + rate-limit rotation, and a centralized LLM error taxonomy
+- Smart context compaction (token-aware chunking + structured summaries with identifier preservation)
+- Interactive tool approval with per-session/persistent allowlists, filesystem checkpoint/snapshot+rollback, and transform hooks (tool_result/llm_output/terminal_output)
+- Token streaming to the UI (real-time assistant text deltas via WebSocket)
 - MCP host mode (expose cybara's tools to other MCP clients) + MCP client (consume external servers)
-- Media generation (image/video/music) via swappable provider registry, dynamic tool discovery, a tool-calling code sandbox, desktop control, and a multi-agent kanban orchestration tier
+- Media generation (image/video/music) via swappable provider registry, dynamic tool discovery, a tool-calling code sandbox, desktop control with safety hardening, and a multi-agent kanban orchestration tier
 - Tauri desktop app + native SwiftUI macOS app + Bun server/CLI runtime
 
 ---

@@ -228,3 +228,64 @@ rm -rf "${CYBARA_HOME:-$HOME/.cybara}"
 rm "${CYBARA_HOME:-$HOME/.cybara}"/data/platform.db-shm "${CYBARA_HOME:-$HOME/.cybara}"/data/platform.db-wal
 sqlite3 "${CYBARA_HOME:-$HOME/.cybara}"/data/platform.db "DELETE FROM sessions; DELETE FROM messages;"
 ```
+
+## Tool Approval System
+
+Dangerous tools (exec, git, wallet, browser, computer_use, execute_code) can require operator
+approval before execution. When `tool_approval_mode` is set to `"ask"` (vs the default
+`"always_allow"`), the agent suspends the tool call and emits an approval request. The UI or API
+can then resolve it with `approve_once`, `approve_session`, `approve_always`, or `deny`.
+
+```bash
+# Set approval mode to "ask"
+curl -X PUT http://localhost:4269/api/config -H "Content-Type: application/json" \
+  -d '{"tool_approval_mode": "ask"}'
+
+# List pending approval requests
+curl http://localhost:4269/api/tools/approvals
+
+# Resolve a request
+curl -X POST http://localhost:4269/api/tools/approvals/resolve \
+  -H "Content-Type: application/json" \
+  -d '{"requestId": "<id>", "decision": "approve_session"}'
+```
+
+Per-session and persistent allowlists avoid re-prompting for approved tools.
+
+## Dynamic Model Discovery
+
+Cybara can fetch live model lists from OpenAI-compatible providers and merge new models into
+the catalog without code changes:
+
+```bash
+# Discover models for a provider
+curl -X POST http://localhost:4269/api/providers/<provider-id>/models/discover
+```
+
+This queries the provider's `/v1/models` endpoint and adds any new models to the DB-backed
+catalog. Use this to stay current as providers release new models.
+
+## Filesystem Checkpoints
+
+Cybara snapshots the workspace before file-mutating turns (via git write-tree). List and manage
+checkpoints:
+
+```bash
+# List checkpoints for a workspace
+curl "http://localhost:4269/api/checkpoints?workspace=/path/to/workspace"
+
+# Delete a checkpoint
+curl -X DELETE "http://localhost:4269/api/checkpoints/<id>?workspace=/path/to/workspace"
+```
+
+Checkpoints are stored in `<workspace>/.cybara/checkpoints/` and pruned to the 20 most recent.
+
+## Transform Hooks
+
+In addition to shell-script hooks, the agent hook system supports transform hooks that rewrite
+output before it's stored/returned. Register via the TS hook API:
+
+- `transform:tool_result` — rewrite a tool's result before the model sees it (PII scrubbing,
+  output sanitization).
+- `transform:llm_output` — rewrite the assistant's response text.
+- `transform:terminal_output` — rewrite exec/process output.
