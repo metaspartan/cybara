@@ -74,6 +74,29 @@ export interface AgentMessageSentEvent {
   metadata?: Record<string, unknown>;
 }
 
+/** Transform hook: rewrite a tool result before it's stored/returned to the model. */
+export interface AgentTransformToolResultEvent {
+  type: "transform:tool_result";
+  context: AgentHookContext;
+  toolName: string;
+  result: unknown;
+}
+
+/** Transform hook: rewrite LLM output before it's finalized. */
+export interface AgentTransformLLMOutputEvent {
+  type: "transform:llm_output";
+  context: AgentHookContext;
+  content: string;
+}
+
+/** Transform hook: rewrite terminal/exec output before it's stored. */
+export interface AgentTransformTerminalOutputEvent {
+  type: "transform:terminal_output";
+  context: AgentHookContext;
+  command: string;
+  output: string;
+}
+
 export type AgentHookEvent =
   | AgentLLMRequestEvent
   | AgentLLMResponseEvent
@@ -83,11 +106,18 @@ export type AgentHookEvent =
   | AgentToolErrorEvent
   | AgentToolBlockedEvent
   | AgentMessageReceivedEvent
-  | AgentMessageSentEvent;
+  | AgentMessageSentEvent
+  | AgentTransformToolResultEvent
+  | AgentTransformLLMOutputEvent
+  | AgentTransformTerminalOutputEvent;
 
 export interface AgentHookDecision {
   block?: boolean;
   reason?: string;
+  /** For transform hooks: the rewritten value (if the hook modified it). */
+  transformedResult?: unknown;
+  transformedContent?: string;
+  transformedOutput?: string;
 }
 
 export type AgentHook = (
@@ -126,7 +156,10 @@ export async function emitAgentHook(event: AgentHookEvent): Promise<AgentHookDec
   for (const hook of hooks.values()) {
     try {
       const result = await hook(event);
-      if (event.type === "tool_before" && result && typeof result === "object" && result.block) {
+      if (!result || typeof result !== "object") continue;
+
+      // Block handling for tool_before.
+      if (event.type === "tool_before" && result.block) {
         if (!decision) {
           decision = {
             block: true,
@@ -136,6 +169,15 @@ export async function emitAgentHook(event: AgentHookEvent): Promise<AgentHookDec
                 : "Tool execution blocked by hook",
           };
         }
+      }
+
+      // Transform handling: the last hook's transformed value wins.
+      if (event.type === "transform:tool_result" && result.transformedResult !== undefined) {
+        (event as AgentTransformToolResultEvent).result = result.transformedResult;
+      } else if (event.type === "transform:llm_output" && typeof result.transformedContent === "string") {
+        (event as AgentTransformLLMOutputEvent).content = result.transformedContent;
+      } else if (event.type === "transform:terminal_output" && typeof result.transformedOutput === "string") {
+        (event as AgentTransformTerminalOutputEvent).output = result.transformedOutput;
       }
     } catch (error) {
       console.warn(`[AgentHook] Hook execution failed: ${normalizeHookError(error)}`);

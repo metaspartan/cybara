@@ -91,6 +91,11 @@ import {
 import { buildSystemPrompt } from "../core/system-prompt";
 import { getAppVersion, getReleaseRepositoryUrl } from "../core/build-info";
 import { checkForUpdate, isUpdateCheckDisabled } from "../core/update-check";
+import {
+  getPendingApprovals,
+  getAlwaysAllowlist,
+  resolveApproval,
+} from "../core/tool-approval";
 import * as pwManager from "../core/browser/pw-manager";
 import { homedir } from "os";
 import { dirname, isAbsolute, resolve } from "path";
@@ -1127,6 +1132,22 @@ const routes: Record<string, RouteHandler> = {
     policy: config.getDangerousToolPolicy(),
     tools: getDangerousToolNames(),
   }),
+  "GET /api/tools/approvals": () => ({
+    pending: getPendingApprovals(),
+    alwaysAllowed: getAlwaysAllowlist(),
+  }),
+  "POST /api/tools/approvals/resolve": (body) => {
+    const data = body as { requestId?: string; decision?: string };
+    if (!data.requestId || !data.decision) {
+      return { success: false, error: "requestId and decision are required" };
+    }
+    const valid = ["approve_once", "approve_session", "approve_always", "deny"];
+    if (!valid.includes(data.decision)) {
+      return { success: false, error: `Invalid decision. Must be one of: ${valid.join(", ")}` };
+    }
+    const ok = resolveApproval(data.requestId, data.decision as never);
+    return { success: ok };
+  },
   "GET /api/tools/:name": (_body, params) => {
     const schemas = getToolSchemasForLLM();
     const found = schemas.find((t) => t.name === params!.name);

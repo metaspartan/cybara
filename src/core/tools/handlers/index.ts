@@ -79,6 +79,7 @@ import {
   type ToolContext,
 } from "../index";
 import { createLogger } from "../../logger";
+import { requestToolApproval } from "../../tool-approval";
 
 const log = createLogger("Tools");
 
@@ -444,16 +445,41 @@ export async function executeTool(
   }
 
   if (isDangerous && toolApprovalMode === "ask" && !allowDangerous) {
-    trackMetric("dangerous_tool_usage", name, 1, {
-      blocked: true,
-      mode: dangerousPolicy.mode,
-      approvalMode: toolApprovalMode,
-      sessionId: context?.sessionId,
-      agentId: context?.agentId,
-    });
-    throw new Error(
-      `Validation error: Tool '${name}' requires approval while tool approval mode is set to ask. Use /permissions allow in channels or set Tool Approvals to Always Allow in Settings, then retry.`
-    );
+    // Interactive approval: suspend the tool call and wait for user consent,
+    // rather than throwing immediately. If no session context (e.g. CLI one-shot),
+    // fall back to the throw.
+    if (context?.sessionId) {
+      const decision = await requestToolApproval({
+        sessionId: context.sessionId,
+        agentId: context.agentId,
+        toolName: name,
+        argsSummary: createArgsPreview(args).slice(0, 200),
+        argsPreview: args,
+      });
+      if (decision === "deny") {
+        trackMetric("dangerous_tool_usage", name, 1, {
+          blocked: true,
+          mode: dangerousPolicy.mode,
+          approvalMode: toolApprovalMode,
+          sessionId: context?.sessionId,
+          agentId: context?.agentId,
+        });
+        throw new Error(`Tool '${name}' was denied by the operator.`);
+      }
+      // Approved — fall through to execute.
+    } else {
+      // No session context — can't suspend for approval, so throw the old error.
+      trackMetric("dangerous_tool_usage", name, 1, {
+        blocked: true,
+        mode: dangerousPolicy.mode,
+        approvalMode: toolApprovalMode,
+        sessionId: context?.sessionId,
+        agentId: context?.agentId,
+      });
+      throw new Error(
+        `Validation error: Tool '${name}' requires approval. Set Tool Approvals to Always Allow in Settings, or run from a chat session to get an interactive prompt.`
+      );
+    }
   }
 
   const resolvedArgs = applyWorkspaceDefaults(name, args, context);

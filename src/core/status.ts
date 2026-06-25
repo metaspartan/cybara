@@ -46,7 +46,18 @@ export interface StatusSnapshotEventPayload {
 export type StatusStreamEvent =
   | ({ type: "status" } & StatusPayload)
   | TaskEventPayload
-  | StatusSnapshotEventPayload;
+  | StatusSnapshotEventPayload
+  | TokenStreamEventPayload;
+
+/** A delta of assistant text streamed to the UI in real time. */
+export interface TokenStreamEventPayload {
+  type: "assistant_token";
+  sessionId: string;
+  agentId?: string;
+  /** The text delta (may be a few characters or a line). */
+  delta: string;
+  timestamp: number;
+}
 
 export interface SessionActivitySnapshot {
   id: string;
@@ -403,5 +414,20 @@ export function broadcastTaskEvent(event: TaskEventPayload): void {
     taskStatus: event.status,
     streamCallbacks: statusStreamCallbacks.size,
     sseClients: sseClients.size,
+  });
+}
+
+/** Stream an assistant text delta to the UI in real time. */
+export function broadcastTokenDelta(event: {
+  sessionId: string;
+  agentId?: string;
+  delta: string;
+}): void {
+  emitStatusStreamEvent({
+    type: "assistant_token",
+    sessionId: event.sessionId,
+    agentId: event.agentId,
+    delta: event.delta,
+    timestamp: Date.now(),
   });
 }

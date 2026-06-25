@@ -27,7 +27,7 @@ import {
   getDefaultSystemPrompt,
 } from "./system-prompt";
 import { getSandboxPromptInfo } from "./sandbox";
-import { broadcastStatus, type AgentStatus, type StatusPayload } from "./status";
+import { broadcastStatus, broadcastTokenDelta, type AgentStatus, type StatusPayload } from "./status";
 import { homedir } from "os";
 import { loadAllSkills, createEligibilityContext, filterEligibleSkills } from "./skills";
 import { emitAgentHook, type AgentHookContext } from "./agent-hooks";
@@ -3387,7 +3387,11 @@ class AgentManager {
     }));
   }
 
-  private async parseOpenAICodexTurnResponse(response: Response): Promise<OpenAICodexTurnResult> {
+  private async parseOpenAICodexTurnResponse(
+    response: Response,
+    sessionId?: string,
+    agentId?: string
+  ): Promise<OpenAICodexTurnResult> {
     const contentType = response.headers.get("content-type")?.toLowerCase() || "";
 
     if (contentType.includes("application/json")) {
@@ -3443,6 +3447,18 @@ class AgentManager {
       if (type === "response.output_text.delta") {
         if (typeof event.delta === "string") {
           outputText += event.delta;
+          // Stream the delta to the UI so users see text appear in real time.
+          if (sessionId) {
+            try {
+              broadcastTokenDelta({
+                sessionId,
+                agentId,
+                delta: event.delta,
+              });
+            } catch {
+              /* streaming is best-effort */
+            }
+          }
         }
         continue;
       }
@@ -3597,7 +3613,9 @@ class AgentManager {
     url: string,
     headers: Record<string, string>,
     requestBody: Record<string, unknown>,
-    requestedModel: string
+    requestedModel: string,
+    sessionId?: string,
+    agentId?: string
   ): Promise<OpenAICodexTurnResult & { resolvedModel: string }> {
     const candidates = this.getOpenAICodexModelCandidates(requestedModel);
     let finalError = "OpenAI Codex request failed";
@@ -3626,7 +3644,11 @@ class AgentManager {
         throw new Error(finalError);
       }
 
-      const parsed = await this.parseOpenAICodexTurnResponse(response);
+      const parsed = await this.parseOpenAICodexTurnResponse(
+        response,
+        sessionId,
+        agentId
+      );
       return { ...parsed, resolvedModel: candidate };
     }
 
@@ -3717,7 +3739,14 @@ class AgentManager {
       }
 
       const startTime = performance.now();
-      const turn = await this.postOpenAICodexTurn(codexUrl, headers, requestBody, activeModelId);
+      const turn = await this.postOpenAICodexTurn(
+        codexUrl,
+        headers,
+        requestBody,
+        activeModelId,
+        toolContext?.sessionId,
+        toolContext?.agentId
+      );
       activeModelId = turn.resolvedModel;
       const durationMs = Math.round(performance.now() - startTime);
 
