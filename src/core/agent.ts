@@ -231,6 +231,12 @@ function trackTokenUsage(
   durationMs?: number
 ) {
   try {
+    // ── Feed the model router's usage tracking + circuit breaker ──
+    recordUsage(provider, inputTokens, outputTokens, true, model);
+  } catch {
+    /* router tracking is best-effort */
+  }
+  try {
     const totalTokens = inputTokens + outputTokens;
     const callId = crypto.randomUUID();
     const timestamp = Date.now();
@@ -4407,6 +4413,9 @@ class AgentManager {
         // On rate-limit / auth-like failures, try rotating to another credential first.
         if (response.status === 429 && activeCredential) {
           markCredentialCooldown(poolName, activeCredential, "rate_limit");
+          // Also feed the model router's cooldown + circuit breaker.
+          const retryAfter = parseInt(response.headers.get("retry-after") || "60", 10) * 1000;
+          try { recordRouterRateLimit("anthropic", retryAfter || 60_000); } catch { /* best-effort */ }
         }
         const rotated = poolSize(poolName) > 0 ? acquireCredential(poolName) : null;
         if (rotated) {
