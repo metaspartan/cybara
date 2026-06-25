@@ -19,6 +19,7 @@ import {
 import { recordRateLimit } from "./rate-limit-tracker";
 import { registerShellHooks } from "./shell-hooks";
 import { applyAnthropicCacheControl, type AnthropicCacheRequest } from "./prompt-cache";
+import { selectProvider, recordUsage, recordRateLimit as recordRouterRateLimit } from "./router";
 import { executeTool, hasTool } from "./tools/handlers/index";
 import {
   buildSystemPrompt,
@@ -1041,6 +1042,25 @@ class AgentManager {
     agent: Pick<Agent, "id" | "provider_id" | "config">,
     persistIfResolved = false
   ): ReturnType<typeof providerManager.getWithCredentials> {
+    // ── Model Router integration ──
+    // If the router is enabled, use it to select the best provider based on
+    // weights, limits, spend, circuit-breaker state, and strategy. Falls through
+    // to the normal resolution if the router returns null or is disabled.
+    const routerSelected = selectProvider(agent.provider_id);
+    if (routerSelected) {
+      const routedProvider = providerManager.getWithCredentials(routerSelected);
+      if (routedProvider) {
+        if (persistIfResolved && agent.provider_id !== routerSelected) {
+          this.update(agent.id, { provider_id: routerSelected });
+          if ("provider_id" in agent) {
+            agent.provider_id = routerSelected;
+          }
+        }
+        return routedProvider;
+      }
+    }
+
+    // ── Normal provider resolution (router disabled or no provider available) ──
     let resolvedProvider =
       typeof agent.provider_id === "string" && agent.provider_id.trim()
         ? providerManager.getWithCredentials(agent.provider_id)

@@ -102,6 +102,7 @@ import {
   getRouterStatus,
   selectProvider,
   recordUsage,
+  getAllPricing,
   type RouterConfig,
 } from "../core/router";
 import * as pwManager from "../core/browser/pw-manager";
@@ -1521,6 +1522,7 @@ const routes: Record<string, RouteHandler> = {
   },
 
   "GET /api/router/status": () => getRouterStatus(),
+  "GET /api/router/pricing": () => ({ pricing: getAllPricing() }),
   "PUT /api/router/config": (body) => {
     const cfg = body as RouterConfig;
     config.set("router", cfg);
