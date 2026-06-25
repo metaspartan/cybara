@@ -12,7 +12,7 @@ import {
   type User,
   type PartialUser,
 } from "discord.js";
-import type { ChannelAdapter, ToolCallInfo, MessageHandler } from "../types";
+import type { ChannelAdapter, ToolCallInfo, MessageHandler, ChannelEmbed } from "../types";
 import { formatToolCallsForDiscord } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { tables } from "../../database";
@@ -802,6 +802,115 @@ export class DiscordAdapter implements ChannelAdapter {
     } catch (error) {
       console.error("[Discord] Failed to send message:", error);
       return false;
+    }
+  }
+
+  async editMessage(
+    channelId: string,
+    chatId: string | number,
+    messageId: string,
+    text: string,
+    _options?: Record<string, unknown>
+  ): Promise<boolean> {
+    const client = this.clients.get(channelId);
+    if (!client?.isReady()) return false;
+    try {
+      const channel = await client.channels.fetch(String(chatId));
+      if (channel?.isTextBased() && "messages" in channel) {
+        const message = await channel.messages.fetch(String(messageId));
+        await message.edit(text);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("[Discord] Failed to edit message:", error);
+      return false;
+    }
+  }
+
+  async sendAttachment(
+    channelId: string,
+    chatId: string | number,
+    file: string | Buffer,
+    filename: string,
+    caption?: string
+  ): Promise<boolean> {
+    const client = this.clients.get(channelId);
+    if (!client?.isReady()) return false;
+    try {
+      const channel = await client.channels.fetch(String(chatId));
+      if (channel?.isTextBased() && "send" in channel) {
+        const attachment =
+          typeof file === "string"
+            ? { attachment: file, name: filename }
+            : { attachment: Buffer.from(file), name: filename };
+        await channel.send({ content: caption || "", files: [attachment] });
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("[Discord] Failed to send attachment:", error);
+      return false;
+    }
+  }
+
+  async sendEmbed(
+    channelId: string,
+    chatId: string | number,
+    embed: ChannelEmbed
+  ): Promise<boolean> {
+    const client = this.clients.get(channelId);
+    if (!client?.isReady()) return false;
+    try {
+      const channel = await client.channels.fetch(String(chatId));
+      if (channel?.isTextBased() && "send" in channel) {
+        await channel.send({
+          embeds: [
+            {
+              title: embed.title,
+              description: embed.description,
+              color: embed.color,
+              url: embed.url,
+              thumbnail: embed.thumbnail ? { url: embed.thumbnail } : undefined,
+              image: embed.imageUrl ? { url: embed.imageUrl } : undefined,
+              fields: embed.fields?.map((f) => ({ name: f.name, value: f.value, inline: f.inline })),
+              footer: embed.footer ? { text: embed.footer } : undefined,
+              timestamp: embed.timestamp ? new Date(embed.timestamp).toISOString() : undefined,
+            },
+          ],
+        });
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("[Discord] Failed to send embed:", error);
+      return false;
+    }
+  }
+
+  async createThread(
+    channelId: string,
+    chatId: string | number,
+    messageId: string,
+    name: string,
+    message?: string
+  ): Promise<string | null> {
+    const client = this.clients.get(channelId);
+    if (!client?.isReady()) return null;
+    try {
+      const channel = await client.channels.fetch(String(chatId));
+      if (channel?.isTextBased() && "messages" in channel) {
+        const msg = await channel.messages.fetch(String(messageId));
+        const thread = await msg.startThread({ name, reason: "Agent-created thread" });
+        if (message) {
+          await thread.send(message);
+        }
+        return thread.id;
+      }
+      return null;
+    } catch (error) {
+      console.error("[Discord] Failed to create thread:", error);
+      return null;
     }
   }
 

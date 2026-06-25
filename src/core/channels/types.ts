@@ -347,6 +347,15 @@ export interface ChannelAdapter {
     options?: Record<string, unknown>
   ): Promise<boolean>;
 
+  /** Edit a previously-sent message. Returns the (possibly new) message id. */
+  editMessage?(
+    channelId: string,
+    chatId: string | number,
+    messageId: string,
+    text: string,
+    options?: Record<string, unknown>
+  ): Promise<string | boolean>;
+
   sendReaction?(
     channelId: string,
     chatId: string | number,
@@ -383,6 +392,76 @@ export interface ChannelAdapter {
     video: string | Buffer,
     caption?: string
   ): Promise<boolean>;
+  sendVoice?(
+    channelId: string,
+    chatId: string | number,
+    voice: string | Buffer,
+    caption?: string
+  ): Promise<boolean>;
+  sendAudio?(
+    channelId: string,
+    chatId: string | number,
+    audio: string | Buffer,
+    caption?: string
+  ): Promise<boolean>;
+  sendVideoNote?(
+    channelId: string,
+    chatId: string | number,
+    videoNote: string | Buffer
+  ): Promise<boolean>;
+
+  /** Send a file attachment (generic — Discord attachment, Telegram document). */
+  sendAttachment?(
+    channelId: string,
+    chatId: string | number,
+    file: string | Buffer,
+    filename: string,
+    caption?: string
+  ): Promise<boolean>;
+
+  /** Send a rich embed (Discord) or HTML-formatted message (Telegram). */
+  sendEmbed?(
+    channelId: string,
+    chatId: string | number,
+    embed: ChannelEmbed
+  ): Promise<boolean>;
+
+  /** Create a thread under a message (Discord) or forum topic (Telegram). */
+  createThread?(
+    channelId: string,
+    chatId: string | number,
+    messageId: string,
+    name: string,
+    message?: string
+  ): Promise<string | null>;
+
+  /** Send a message with inline keyboard buttons (Telegram). */
+  sendInlineKeyboard?(
+    channelId: string,
+    chatId: string | number,
+    text: string,
+    buttons: InlineKeyboardButton[][]
+  ): Promise<boolean>;
+}
+
+/** Rich embed definition (Discord embeds, Telegram HTML). */
+export interface ChannelEmbed {
+  title?: string;
+  description?: string;
+  color?: number;
+  url?: string;
+  thumbnail?: string;
+  imageUrl?: string;
+  fields?: Array<{ name: string; value: string; inline?: boolean }>;
+  footer?: string;
+  timestamp?: number;
+}
+
+/** Inline keyboard button (Telegram callback/url buttons). */
+export interface InlineKeyboardButton {
+  text: string;
+  callbackData?: string;
+  url?: string;
 }
 
 export interface ChannelInfo extends Channel {

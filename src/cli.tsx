@@ -2212,6 +2212,139 @@ async function rawConfig(subCmd?: string, key?: string, value?: string): Promise
   }
 }
 
+async function rawRouter(args: string[]): Promise<void> {
+  const subCmd = args[0];
+
+  if (subCmd === "status" || !subCmd) {
+    const status = await fetchAPI<{
+      enabled: boolean;
+      strategy: string;
+      globalSpendToday: number;
+      globalSpendLimitDaily?: number;
+      routes: Array<{
+        providerId: string;
+        weight: number;
+        enabled: boolean;
+        available: boolean;
+        reason?: string;
+        requestsIn5hWindow: number;
+        requestsInWeekWindow: number;
+        spendToday: number;
+        spendThisWeek: number;
+        priceInputPerM?: number;
+        priceOutputPerM?: number;
+      }>;
+    }>("/api/router/status");
+    if (!status) {
+      console.error("ERROR: Failed to fetch router status");
+      process.exit(1);
+    }
+    console.log("MODEL ROUTER");
+    console.log("============");
+    console.log(`  Enabled:     ${status.enabled ? "yes" : "no"}`);
+    console.log(`  Strategy:    ${status.strategy}`);
+    console.log(
+      `  Global Spend: $${status.globalSpendToday.toFixed(4)}${status.globalSpendLimitDaily ? ` / $${status.globalSpendLimitDaily} (daily limit)` : ""}`
+    );
+    console.log("");
+    console.log("ROUTES");
+    console.log("------");
+    for (const route of status.routes) {
+      const state = !route.enabled ? "DISABLED" : route.available ? "available" : `BLOCKED (${route.reason})`;
+      console.log(`  ${route.providerId}`);
+      console.log(`    Weight:    ${route.weight}`);
+      console.log(`    State:     ${state}`);
+      console.log(`    5h reqs:   ${route.requestsIn5hWindow}`);
+      console.log(`    Week reqs: ${route.requestsInWeekWindow}`);
+      console.log(`    Today:     $${route.spendToday.toFixed(4)}`);
+      console.log(`    Week:      $${route.spendThisWeek.toFixed(4)}`);
+      if (route.priceInputPerM || route.priceOutputPerM) {
+        console.log(`    Price:     $${route.priceInputPerM ?? 0}/M in, $${route.priceOutputPerM ?? 0}/M out`);
+      }
+      console.log("");
+    }
+    return;
+  }
+
+  if (subCmd === "enable") {
+    const resp = await fetch(`${API_BASE}/api/router/config`, {
+      method: "PUT",
+      headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ enabled: true, strategy: "weighted", fallbackToAny: true, routes: {} }),
+    });
+    console.log(resp.ok ? "✓ Router enabled" : `ERROR: ${resp.status}`);
+    return;
+  }
+
+  if (subCmd === "disable") {
+    const resp = await fetch(`${API_BASE}/api/router/config`, {
+      method: "PUT",
+      headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ enabled: false, strategy: "weighted", fallbackToAny: true, routes: {} }),
+    });
+    console.log(resp.ok ? "✓ Router disabled" : `ERROR: ${resp.status}`);
+    return;
+  }
+
+  if (subCmd === "set" && args[1]) {
+    // cybara router set <providerId> weight=70 limit5h=100 spendDaily=5 priceIn=10 priceOut=30
+    const providerId = args[1];
+    const flags = args.slice(2);
+    const routeConfig: Record<string, unknown> = { weight: 50, enabled: true };
+    for (const flag of flags) {
+      const [k, v] = flag.split("=");
+      if (!k || v === undefined) continue;
+      const num = Number(v);
+      switch (k) {
+        case "weight":
+          routeConfig.weight = num;
+          break;
+        case "limit5h":
+          routeConfig.limit5h = num;
+          break;
+        case "limitWeekly":
+          routeConfig.limitWeekly = num;
+          break;
+        case "spendDaily":
+          routeConfig.spendLimitDaily = num;
+          break;
+        case "spendWeekly":
+          routeConfig.spendLimitWeekly = num;
+          break;
+        case "priceIn":
+          routeConfig.priceInputPerM = num;
+          break;
+        case "priceOut":
+          routeConfig.priceOutputPerM = num;
+          break;
+        case "enabled":
+          routeConfig.enabled = v === "true";
+          break;
+      }
+    }
+    // Fetch current config, merge the route, and save.
+    const currentResp = await fetchAPI<Record<string, unknown>>("/api/router/config");
+    const current = currentResp ?? { enabled: true, strategy: "weighted", fallbackToAny: true, routes: {} };
+    const routes = (current.routes ?? {}) as Record<string, unknown>;
+    routes[providerId] = routeConfig;
+    const resp = await fetch(`${API_BASE}/api/router/config`, {
+      method: "PUT",
+      headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ ...current, enabled: true, routes }),
+    });
+    console.log(resp.ok ? `✓ Route set for ${providerId}` : `ERROR: ${resp.status}`);
+    return;
+  }
+
+  console.log("Router Commands:");
+  console.log("  cybara router status              Show router status + route availability");
+  console.log("  cybara router enable              Enable the router");
+  console.log("  cybara router disable             Disable the router");
+  console.log("  cybara router set <id> <flags>    Configure a route");
+  console.log("    Flags: weight=70 limit5h=100 limitWeekly=500 spendDaily=5 spendWeekly=20");
+  console.log("           priceIn=10 priceOut=30 enabled=true");
+}
+
 interface CliWalletStatus {
   exists: boolean;
   unlocked: boolean;
@@ -4814,6 +4947,9 @@ async function main() {
       break;
     case "config":
       await rawConfig(args[1], args[2], args[3]);
+      break;
+    case "router":
+      await rawRouter(args.slice(1));
       break;
     case "sessions":
       await rawSessions();

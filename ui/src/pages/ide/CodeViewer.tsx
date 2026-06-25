@@ -128,6 +128,9 @@ export function CodeViewer({
   const [activeLine, setActiveLine] = useState(1);
   const [blamePopoverLine, setBlamePopoverLine] = useState<number | null>(null);
   const [copiedCommit, setCopiedCommit] = useState<string | null>(null);
+  const [hoverInfo, setHoverInfo] = useState<{ line: number; text: string | null; loading: boolean } | null>(null);
+  const hoverAbortRef = useRef<AbortController | null>(null);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [cursorLine, setCursorLine] = useState(1);
   const [cursorColumn, setCursorColumn] = useState(1);
   const [findQuery, setFindQuery] = useState("");
@@ -2465,6 +2468,48 @@ export function CodeViewer({
     }, 130);
   };
 
+  // --- LSP hover tooltip ---
+
+  const clearHoverTimer = () => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  };
+
+  const scheduleHover = (line: number, character: number) => {
+    clearHoverTimer();
+    hoverTimerRef.current = setTimeout(async () => {
+      hoverTimerRef.current = null;
+      // Abort any previous hover fetch.
+      hoverAbortRef.current?.abort();
+      const controller = new AbortController();
+      hoverAbortRef.current = controller;
+      setHoverInfo({ line, text: null, loading: true });
+      try {
+        const params = new URLSearchParams({
+          path: path,
+          line: String(line),
+          character: String(character),
+        });
+        const res = await apiFetch(`/api/lsp/hover?${params}`, { signal: controller.signal });
+        const data = await res.json();
+        if (controller.signal.aborted) return;
+        setHoverInfo({ line, text: data.text || null, loading: false });
+      } catch {
+        if (!controller.signal.aborted) {
+          setHoverInfo(null);
+        }
+      }
+    }, 350); // 350ms debounce
+  };
+
+  const scheduleHideHover = () => {
+    clearHoverTimer();
+    hoverAbortRef.current?.abort();
+    setHoverInfo(null);
+  };
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {saveError && (
@@ -2846,13 +2891,15 @@ export function CodeViewer({
                               <div
                                 key={i}
                                 data-line-number={i + 1}
+                                onMouseEnter={() => scheduleHover(i, 0)}
+                                onMouseLeave={scheduleHideHover}
                                 style={{
                                   height: `${normalizedLineHeight}px`,
                                   lineHeight: `${normalizedLineHeight}px`,
                                   ...getPendingLineDecorationStyle(pendingLineState, isActiveLine),
                                 }}
                                 className={cn(
-                                  "w-max min-w-full flex items-center",
+                                  "w-max min-w-full flex items-center relative",
                                   hasError && "bg-red-500/10",
                                   hasWarning && !hasError && "bg-yellow-500/10",
                                   !pendingLineState && isActiveLine && "bg-indigo-500/20",
@@ -2875,6 +2922,13 @@ export function CodeViewer({
                                       </span>
                                     )}
                                   </span>
+                                )}
+                                {hoverInfo?.line === i + 1 && hoverInfo.text && (
+                                  <div className="absolute z-30 left-0 top-full mt-1 max-w-[500px] rounded-md border border-white/15 bg-[#0b0f19] shadow-[0_10px_30px_rgba(0,0,0,0.5)] px-3 py-2 text-xs text-gray-300 whitespace-pre-wrap break-words pointer-events-none">
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={ideMarkdownComponents}>
+                                      {hoverInfo.text}
+                                    </ReactMarkdown>
+                                  </div>
                                 )}
                               </div>
                             );

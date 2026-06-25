@@ -98,6 +98,12 @@ import {
 } from "../core/tool-approval";
 import { discoverProviderModels } from "../core/model-discovery";
 import { listCheckpoints, deleteCheckpoint } from "../core/checkpoint";
+import {
+  getRouterStatus,
+  selectProvider,
+  recordUsage,
+  type RouterConfig,
+} from "../core/router";
 import * as pwManager from "../core/browser/pw-manager";
 import { homedir } from "os";
 import { dirname, isAbsolute, resolve } from "path";
@@ -1512,6 +1518,19 @@ const routes: Record<string, RouteHandler> = {
     const id = params?.id as string;
     if (!workspaceDir || !id) return { success: false, error: "workspace and id are required" };
     return { success: deleteCheckpoint(workspaceDir, id) };
+  },
+
+  "GET /api/router/status": () => getRouterStatus(),
+  "PUT /api/router/config": (body) => {
+    const cfg = body as RouterConfig;
+    config.set("router", cfg);
+    return { success: true };
+  },
+  "GET /api/router/config": () => config.get("router") || { enabled: false, strategy: "weighted", fallbackToAny: true, routes: {} },
+  "POST /api/router/select": (body) => {
+    const { preferredProviderId } = body as { preferredProviderId?: string };
+    const selected = selectProvider(preferredProviderId);
+    return { providerId: selected };
   },
 
   "POST /api/providers/oauth/device-code": async (body) => {

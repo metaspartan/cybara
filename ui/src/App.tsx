@@ -5,6 +5,7 @@ import { ToastContainer } from '@/components/ui/Toast';
 import { Dashboard } from '@/pages/Dashboard';
 import { Agents } from '@/pages/Agents';
 import { Providers } from '@/pages/Providers';
+import { RouterSettings } from '@/pages/RouterSettings';
 import { Channels } from '@/pages/Channels';
 import { Tasks } from '@/pages/Tasks';
 import { Skills } from '@/pages/Skills';
@@ -72,6 +73,7 @@ function AppRoutes() {
       <Route path="/" element={<Dashboard />} />
       <Route path="/agents" element={<Agents />} />
       <Route path="/providers" element={<Providers />} />
+      <Route path="/router" element={<RouterSettings />} />
       <Route path="/mcp" element={<MCPServers />} />
       <Route path="/channels" element={<Channels />} />
       <Route path="/tasks" element={<Tasks />} />

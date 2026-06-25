@@ -36,6 +36,7 @@ import {
   ArrowDown,
   Mic,
   MicOff,
+  ShieldAlert,
 } from "lucide-react";
 import { Highlight, themes } from "prism-react-renderer";
 import ReactMarkdown from "react-markdown";
@@ -60,7 +61,7 @@ import { chatApi } from "@/lib/api";
 import { PageLayout } from "@/components/layout";
 import { GlassCard, GlassButton, Input, Badge, Modal, Button } from "@/components/ui";
 import { formatRelativeTime } from "@/lib/utils";
-import { appendApiTokenParam } from "@/lib/auth";
+import { appendApiTokenParam, apiFetch } from "@/lib/auth";
 import { connectStatusStream } from "@/lib/status-stream";
 import {
   buildActivitiesFromToolCalls,
@@ -3123,6 +3124,86 @@ function SessionsPanel({
   );
 }
 
+/** Banner showing pending tool-approval requests with resolve buttons. */
+function PendingApprovalsBanner() {
+  const [approvals, setApprovals] = useState<
+    Array<{ id: string; toolName: string; argsSummary: string; createdAt: number }>
+  >([]);
+
+  useEffect(() => {
+    let active = true;
+    const poll = async () => {
+      try {
+        const res = await apiFetch("/api/tools/approvals");
+        const data = await res.json();
+        if (active && Array.isArray(data.pending)) {
+          setApprovals(data.pending);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    void poll();
+    const interval = setInterval(poll, 3000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const resolve = async (requestId: string, decision: string) => {
+    try {
+      await apiFetch("/api/tools/approvals/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId, decision }),
+      });
+      setApprovals((prev) => prev.filter((a) => a.id !== requestId));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  if (approvals.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-1 px-3 py-2 border-b border-amber-500/30 bg-amber-500/10">
+      {approvals.map((req) => (
+        <div key={req.id} className="flex items-center gap-2 text-sm">
+          <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+          <span className="text-amber-200">
+            <span className="font-medium">{req.toolName}</span>
+            <span className="text-amber-200/60 ml-2 truncate">{req.argsSummary}</span>
+          </span>
+          <div className="ml-auto flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => resolve(req.id, "approve_once")}
+              className="rounded px-2 py-0.5 text-xs bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 transition-colors"
+            >
+              Allow once
+            </button>
+            <button
+              type="button"
+              onClick={() => resolve(req.id, "approve_session")}
+              className="rounded px-2 py-0.5 text-xs bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition-colors"
+            >
+              Allow session
+            </button>
+            <button
+              type="button"
+              onClick={() => resolve(req.id, "deny")}
+              className="rounded px-2 py-0.5 text-xs bg-red-500/20 text-red-300 hover:bg-red-500/30 transition-colors"
+            >
+              Deny
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Chat() {
   const navigate = useNavigate();
   const { data: agents = [] } = useAgents();
@@ -3166,6 +3247,7 @@ export function Chat() {
   const [liveStatus, setLiveStatus] = useState<"thinking" | "generating" | "idle">("idle");
   const [liveActivities, setLiveActivities] = useState<LiveActivityItem[]>([]);
   const [liveCurrentStep, setLiveCurrentStep] = useState<string | null>(null);
+  const [streamingContent, setStreamingContent] = useState<string | null>(null);
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
   const [dictationSupported, setDictationSupported] = useState(false);
   const [dictating, setDictating] = useState(false);
@@ -3754,6 +3836,7 @@ export function Chat() {
   useEffect(() => {
     setLiveStatus("idle");
     setLiveActivities([]);
+    setStreamingContent(null);
     setLiveCurrentStep(null);
     runActivityBufferRef.current = [];
     acceptEventsUntilRef.current = 0;
@@ -3783,7 +3866,20 @@ export function Chat() {
           }
           return;
         }
-        if (payload.type !== "status") return;
+        if (payload.type !== "status") {
+          // Token streaming: accumulate assistant text deltas for live display.
+          if (payload.type === "assistant_token") {
+            const delta = typeof payload.delta === "string" ? payload.delta : "";
+            if (delta) {
+              const sessionId = typeof payload.sessionId === "string" ? payload.sessionId : "";
+              const activeSession = activeSessionRef.current;
+              if (activeSession && sessionId === activeSession) {
+                setStreamingContent((prev) => (prev === null ? delta : prev + delta));
+              }
+            }
+          }
+          return;
+        }
         const status = typeof payload.status === "string" ? payload.status : "";
         if (!status) return;
         const payloadSessionId =
@@ -3871,6 +3967,7 @@ export function Chat() {
         if (status === "idle") {
           setLiveStatus("idle");
           setLiveCurrentStep(null);
+          setStreamingContent(null);
           const pendingCapture = pendingProcessCaptureRef.current;
           const hasPendingCaptureForVisibleSession =
             !!pendingCapture &&
@@ -4449,6 +4546,7 @@ export function Chat() {
 
   return (
     <div className="h-screen flex flex-col bg-[#050508]">
+      <PendingApprovalsBanner />
       <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-white/5 bg-[#0a0a0f]/90 backdrop-blur-xl flex-shrink-0">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
@@ -4753,7 +4851,7 @@ export function Chat() {
                 {showWorkingTimeline && (
                   <div className="flex gap-3">
                     <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                      <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
+                      <Bot className="w-3.5 h-3.5 sm:w-4 h-4 text-emerald-400" />
                     </div>
                     <div className="max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] px-0.5 py-0.5">
                       <LiveActivityTimeline
@@ -4761,6 +4859,19 @@ export function Chat() {
                         activities={timelineActivities}
                         currentStep={liveCurrentStep}
                       />
+                    </div>
+                  </div>
+                )}
+                {streamingContent && (
+                  <div className="flex gap-3">
+                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                      <Bot className="w-3.5 h-3.5 sm:w-4 h-4 text-emerald-400" />
+                    </div>
+                    <div className="max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] rounded-2xl rounded-tl-sm bg-[#1a1e2b] border border-white/10 px-4 py-3">
+                      <div className="text-sm text-gray-200 whitespace-pre-wrap break-words">
+                        {streamingContent}
+                        <span className="inline-block w-2 h-4 ml-0.5 bg-emerald-400/70 animate-pulse align-middle" />
+                      </div>
                     </div>
                   </div>
                 )}

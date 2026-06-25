@@ -2,10 +2,24 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
 import path from "path";
 import { tables } from "../../database";
 import { logChannelMessage } from "../../logging";
-import type { ChannelAdapter, MessageHandlerFileInfo, ToolCallInfo } from "../types";
+import type {
+  ChannelAdapter,
+  MessageHandlerFileInfo,
+  ToolCallInfo,
+  ChannelEmbed,
+  InlineKeyboardButton,
+} from "../types";
 import { formatToolCallsForTelegram, escapeMarkdown } from "../formatting";
 import { buildChannelSecurityConfig, securityManager } from "../security";
 import { getTelegramInboundMediaDir } from "../paths";
+
+/** Escape text for Telegram HTML parse mode. */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
 import { handleChannelManagementCommand } from "../commands";
 import {
   getChannelRuntimeMemoryContext,
@@ -128,7 +142,8 @@ const TELEGRAM_COMMANDS: TelegramBotCommand[] = [
 async function telegramApi(
   botToken: string,
   method: string,
-  body?: Record<string, unknown>
+  body?: Record<string, unknown>,
+  retryCount = 0
 ): Promise<{ ok: boolean; result?: unknown }> {
   const url = `https://api.telegram.org/bot${botToken}/${method}`;
   const response = await fetch(url, {
@@ -136,7 +151,30 @@ async function telegramApi(
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
-  return response.json() as Promise<{ ok: boolean; result?: unknown }>;
+  const data = (await response.json()) as {
+    ok: boolean;
+    result?: unknown;
+    error_code?: number;
+    parameters?: { retry_after?: number };
+    description?: string;
+  };
+
+  // Rate-limit handling: on 429, wait retry_after and retry (up to 3 times).
+  if (
+    !data.ok &&
+    data.error_code === 429 &&
+    typeof data.parameters?.retry_after === "number" &&
+    retryCount < 3
+  ) {
+    const retryAfterMs = Math.ceil(data.parameters.retry_after) * 1000;
+    console.warn(
+      `[Telegram] Rate limited on ${method}, retrying after ${retryAfterMs}ms (attempt ${retryCount + 1}/3)`
+    );
+    await new Promise((resolve) => setTimeout(resolve, retryAfterMs));
+    return telegramApi(botToken, method, body, retryCount + 1);
+  }
+
+  return data as { ok: boolean; result?: unknown };
 }
 
 async function registerTelegramCommands(botToken: string): Promise<boolean> {
@@ -891,6 +929,116 @@ export class TelegramBotManager implements ChannelAdapter {
         reply_markup?: Record<string, unknown>;
       }
     );
+  }
+
+  async editMessage(
+    channelId: string,
+    chatId: string | number,
+    messageId: string,
+    text: string,
+    options?: Record<string, unknown>
+  ): Promise<boolean> {
+    const bot = this.bots.get(channelId);
+    if (!bot) return false;
+    const result = await telegramApi(bot.token, "editMessageText", {
+      chat_id: chatId,
+      message_id: Number(messageId),
+      text,
+      parse_mode: (options?.parse_mode as string) || "Markdown",
+    });
+    return result.ok === true;
+  }
+
+  async sendVoice(
+    channelId: string,
+    chatId: string | number,
+    voice: string | Buffer,
+    caption?: string
+  ): Promise<boolean> {
+    const bot = this.bots.get(channelId);
+    if (!bot) return false;
+    const formData = new FormData();
+    formData.append("chat_id", String(chatId));
+    const blob = typeof voice === "string" ? new Blob([await Bun.file(voice).arrayBuffer()]) : new Blob([voice]);
+    formData.append("voice", blob, "voice.ogg");
+    if (caption) formData.append("caption", caption);
+    const res = await fetch(`https://api.telegram.org/bot${bot.token}/sendVoice`, { method: "POST", body: formData });
+    const data = (await res.json()) as { ok: boolean };
+    return data.ok === true;
+  }
+
+  async sendAudio(
+    channelId: string,
+    chatId: string | number,
+    audio: string | Buffer,
+    caption?: string
+  ): Promise<boolean> {
+    const bot = this.bots.get(channelId);
+    if (!bot) return false;
+    const formData = new FormData();
+    formData.append("chat_id", String(chatId));
+    const blob = typeof audio === "string" ? new Blob([await Bun.file(audio).arrayBuffer()]) : new Blob([audio]);
+    formData.append("audio", blob, "audio.mp3");
+    if (caption) formData.append("caption", caption);
+    const res = await fetch(`https://api.telegram.org/bot${bot.token}/sendAudio`, { method: "POST", body: formData });
+    const data = (await res.json()) as { ok: boolean };
+    return data.ok === true;
+  }
+
+  async sendVideoNote(
+    channelId: string,
+    chatId: string | number,
+    videoNote: string | Buffer
+  ): Promise<boolean> {
+    const bot = this.bots.get(channelId);
+    if (!bot) return false;
+    const formData = new FormData();
+    formData.append("chat_id", String(chatId));
+    const blob =
+      typeof videoNote === "string" ? new Blob([await Bun.file(videoNote).arrayBuffer()]) : new Blob([videoNote]);
+    formData.append("video_note", blob, "video_note.mp4");
+    const res = await fetch(`https://api.telegram.org/bot${bot.token}/sendVideoNote`, {
+      method: "POST",
+      body: formData,
+    });
+    const data = (await res.json()) as { ok: boolean };
+    return data.ok === true;
+  }
+
+  async sendInlineKeyboard(
+    channelId: string,
+    chatId: string | number,
+    text: string,
+    buttons: InlineKeyboardButton[][]
+  ): Promise<boolean> {
+    const bot = this.bots.get(channelId);
+    if (!bot) return false;
+    const replyMarkup = {
+      inline_keyboard: buttons.map((row) =>
+        row.map((b) => ({ text: b.text, callback_data: b.callbackData, url: b.url }))
+      ),
+    };
+    return sendTelegramMessage(bot.token, chatId, text, { reply_markup: replyMarkup });
+  }
+
+  async sendEmbed(
+    channelId: string,
+    chatId: string | number,
+    embed: ChannelEmbed
+  ): Promise<boolean> {
+    const bot = this.bots.get(channelId);
+    if (!bot) return false;
+    // Telegram doesn't have native embeds; render as HTML-formatted text.
+    const parts: string[] = [];
+    if (embed.title) parts.push(`<b>${escapeHtml(embed.title)}</b>`);
+    if (embed.description) parts.push(escapeHtml(embed.description));
+    if (embed.fields) {
+      for (const f of embed.fields) {
+        parts.push(`\n<b>${escapeHtml(f.name)}</b>\n${escapeHtml(f.value)}`);
+      }
+    }
+    if (embed.footer) parts.push(`\n<i>${escapeHtml(embed.footer)}</i>`);
+    return sendTelegramMessage(bot.token, chatId, parts.join("\n"), { parse_mode: "HTML" });
   }
 
   private parseTelegramMessageId(messageId: string): number | null {

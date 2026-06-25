@@ -169,6 +169,8 @@ import {
   persistTerminalOpen,
   readPersistedIdePreferences,
   persistIdePreferences,
+  readPersistedOpenTabs,
+  persistOpenTabs,
 } from "./ide/idePersistence";
 import {
   getFileIcon,
@@ -526,8 +528,16 @@ export function IDE() {
   const location = useLocation();
   const [currentPath, setCurrentPath] = useState<string>(() => readPersistedWorkspacePath());
   const [selectedFile, setSelectedFile] = useState<FileEntry | null>(null);
-  const [openTabs, setOpenTabs] = useState<IdeTab[]>([]);
-  const [activeTabPath, setActiveTabPath] = useState<string | null>(null);
+  // Restore open tabs from localStorage on mount.
+  const [openTabs, setOpenTabs] = useState<IdeTab[]>(() => {
+    if (typeof window === "undefined") return [];
+    const restored = readPersistedOpenTabs();
+    return restored.tabs;
+  });
+  const [activeTabPath, setActiveTabPath] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return readPersistedOpenTabs().activeTabPath;
+  });
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [treeFilter, setTreeFilter] = useState("");
   const deferredTreeFilter = useDeferredValue(treeFilter);
@@ -2207,6 +2217,11 @@ export function IDE() {
   useEffect(() => {
     persistIdePreferences(idePreferences);
   }, [idePreferences]);
+
+  // Persist open tabs so they're restored on reload.
+  useEffect(() => {
+    persistOpenTabs(openTabs, activeTabPath);
+  }, [openTabs, activeTabPath]);
 
   useEffect(() => {
     persistTerminalOpen(isTerminalPanelOpen);
