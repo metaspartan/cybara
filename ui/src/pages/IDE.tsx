@@ -229,6 +229,7 @@ import {
   getIdeHeaderTitle,
 } from "./ide/ideActivityHelpers";
 import { CodeViewer } from "./ide/CodeViewer";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { CreateDialog } from "./ide/CreateDialog";
 import { LSPStatus } from "./ide/LSPStatus";
 import { GitStatus } from "./ide/GitStatus";
@@ -3351,6 +3352,12 @@ export function IDE() {
 
               {selectedFile?.path ? (
                 <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
+                  <ErrorBoundary
+                    onReset={() => {
+                      setSelectedFile(null);
+                      setRefreshKey((k) => k + 1);
+                    }}
+                  >
                   <CodeViewer
                     path={selectedFile.path}
                     previewMode={activeTab?.previewMode === true}
@@ -3372,6 +3379,7 @@ export function IDE() {
                     enableGhostCompletions={false}
                     pendingFileDiffs={idePendingFileDiffs}
                   />
+                  </ErrorBoundary>
                   {activePendingEditorFile && idePendingFileDiffController && (
                     <div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex justify-center px-4">
                       <div className="pointer-events-auto inline-flex max-w-[calc(100%-2rem)] items-center gap-2 rounded-full border border-white/10 bg-[#0b0f19]/95 px-3 py-2 shadow-[0_18px_45px_rgba(0,0,0,0.42)] backdrop-blur">

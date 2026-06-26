@@ -2,6 +2,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Sidebar, SidebarProvider, useSidebar } from '@/components/layout/Sidebar';
 import { UpdateBanner } from '@/components/layout/UpdateBanner';
 import { ToastContainer } from '@/components/ui/Toast';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Dashboard } from '@/pages/Dashboard';
 import { Agents } from '@/pages/Agents';
 import { Providers } from '@/pages/Providers';
@@ -96,6 +97,7 @@ function AppRoutes() {
 
 function App() {
   return (
+    <ErrorBoundary>
     <SidebarProvider>
       <div className="flex min-h-screen bg-[#0a0a0f] overflow-hidden">
         <Routes>
@@ -115,6 +117,7 @@ function App() {
         <ToastContainer />
       </div>
     </SidebarProvider>
+    </ErrorBoundary>
   );
 }
 
