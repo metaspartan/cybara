@@ -53,7 +53,8 @@ export function resolveReleaseAssetBasename(
   }
 
   if (platform === "win32" || platform === "windows") {
-    if (arch === "arm64" || arch === "aarch64") return "cybara-windows-arm64";
+    // Windows ARM64 not supported — Bun doesn't ship a pre-built aarch64
+    // Windows executable. Falls through to null.
     if (arch === "x64" || arch === "x86_64") return "cybara-windows-x64";
     return null;
   }

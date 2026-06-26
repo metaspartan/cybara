@@ -64,9 +64,11 @@ jobs:
           - target: windows-x64
             os: windows-latest
             artifact: cybara-windows-x64.exe
-          - target: windows-arm64
-            os: windows-latest
-            artifact: cybara-windows-arm64.exe
+          # windows-arm64 removed: Bun doesn't ship a pre-built aarch64 Windows
+          # executable for cross-compilation yet. Re-add when supported.
+          # - target: windows-arm64
+          #   os: windows-latest
+          #   artifact: cybara-windows-arm64.exe
 
     runs-on: ${{ matrix.os }}
 
