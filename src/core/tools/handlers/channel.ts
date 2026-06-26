@@ -72,6 +72,7 @@ export async function handleSessionsSpawn(
         ? Math.max(0, Math.floor(args.timeoutSeconds))
         : 0;
   const cleanup = args.cleanup === "delete" ? "delete" : "keep";
+  const silent = args.silent === true;
 
   const requesterSessionKey =
     (args._requesterSessionKey as string) || (context?.sessionId as string) || "main";
@@ -125,7 +126,8 @@ export async function handleSessionsSpawn(
           childSessionKey,
           task,
           label,
-          requestedWorkspaceDir
+          requestedWorkspaceDir,
+          silent
         ),
         timestamp: new Date().toISOString(),
       },
@@ -160,7 +162,8 @@ function buildSubagentSystemPrompt(
   childSessionKey: string,
   task: string,
   label?: string,
-  workspaceDir?: string
+  workspaceDir?: string,
+  silent?: boolean
 ): string {
   const lines = [
     "You are a sub-agent running a specific task.",
@@ -172,7 +175,9 @@ function buildSubagentSystemPrompt(
     "## Instructions",
     "- Complete the task thoroughly but concisely",
     "- Focus only on the specified task",
-    "- When done, use sessions_send to announce your result to the requester",
+    silent
+      ? "- This is a silent background task. Do NOT announce your result to the requester."
+      : "- When done, use sessions_send to announce your result to the requester",
     "",
     `Requester session: ${requesterSessionKey}`,
     `Your session: ${childSessionKey}`,

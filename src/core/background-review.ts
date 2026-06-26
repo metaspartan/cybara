@@ -62,6 +62,12 @@ function buildReviewPrompt(conversationExcerpt: string, _context?: ToolContext):
 /**
  * Fire-and-forget background review. Always resolves (never rejects) so callers
  * can invoke it without try/catch on the critical path.
+ *
+ * IMPORTANT: This spawns a subagent that makes its own LLM call. If the provider
+ * has auth issues, the subagent will fail — but we must NOT let that failure
+ * surface to the user's chat. The subagent is spawned with cleanup="delete" and
+ * we swallow all errors. The review is also disabled entirely via env var
+ * CYBARA_DISABLE_BACKGROUND_REVIEW=1.
  */
 export async function maybeRunBackgroundReview(
   context: ToolContext | undefined,
@@ -69,6 +75,8 @@ export async function maybeRunBackgroundReview(
   options: BackgroundReviewOptions = {}
 ): Promise<void> {
   if (options.disabled) return;
+  // Allow disabling via env var.
+  if (process.env.CYBARA_DISABLE_BACKGROUND_REVIEW === "1") return;
   if (!context?.sessionId) return;
   if (!looksReviewable(lastAssistantText)) return;
 
@@ -90,6 +98,10 @@ export async function maybeRunBackgroundReview(
         workspaceDir: context.workspaceDir,
         runTimeoutSeconds: options.timeoutSeconds ?? DEFAULT_REVIEW_TIMEOUT_S,
         cleanup: "delete",
+        // Silent: don't announce results/errors back to the parent session.
+        // The background review is fire-and-forget; any errors (401, etc.)
+        // must NOT surface to the user's chat.
+        silent: true,
       } as Record<string, unknown>,
       context
     );
