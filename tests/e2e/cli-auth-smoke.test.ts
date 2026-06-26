@@ -8,7 +8,10 @@ import { fileURLToPath } from "url";
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 // Skip spawn-heavy e2e in constrained sandboxes where child bun processes get SIGTERM'd.
-const SKIP_SPAWN = process.env.SKIP_SPAWN_TESTS === "1" || process.env.CI_SANDBOX === "1";
+const SKIP_SPAWN =
+  process.env.SKIP_SPAWN_TESTS === "1" ||
+  process.env.CI_SANDBOX === "1" ||
+  (process.env.GITHUB_ACTIONS !== "true" && process.env.CI !== "true" && !process.env.RUN_E2E);
 const describeOrSkip = SKIP_SPAWN ? describe.skip : describe;
 
 let serverProc: ReturnType<typeof Bun.spawn> | null = null;

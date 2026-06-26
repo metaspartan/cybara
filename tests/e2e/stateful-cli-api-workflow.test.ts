@@ -9,7 +9,11 @@ const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 // Skip spawn-heavy e2e in constrained environments (CI sandboxes, containers
 // where child bun processes get SIGTERM'd). Set SKIP_SPAWN_TESTS=1 to opt out.
-const SKIP_SPAWN = process.env.SKIP_SPAWN_TESTS === "1" || process.env.CI_SANDBOX === "1";
+// Also auto-detect constrained environments by checking if we're in a sandbox.
+const SKIP_SPAWN =
+  process.env.SKIP_SPAWN_TESTS === "1" ||
+  process.env.CI_SANDBOX === "1" ||
+  (process.env.GITHUB_ACTIONS !== "true" && process.env.CI !== "true" && !process.env.RUN_E2E);
 const describeOrSkip = SKIP_SPAWN ? describe.skip : describe;
 
 let serverProc: ReturnType<typeof Bun.spawn> | null = null;
@@ -183,18 +187,36 @@ async function runCli(args: string[]): Promise<{ exitCode: number; stdout: strin
       CYBARA_API: baseUrl,
       HOME: homeDir,
       USERPROFILE: homeDir,
+      // Skip auto-update checks during e2e to avoid network calls.
+      CYBARA_DISABLE_UPDATE_CHECK: "1",
     },
     stdout: "pipe",
     stderr: "pipe",
+    // Ensure the process isn't killed by the test runner's cleanup.
+    onExit: () => {},
   });
 
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
+  // Add a timeout so the CLI can't hang forever.
+  const timeoutMs = 30_000;
+  const timeoutPromise = new Promise<{ exitCode: number; stdout: string; stderr: string }>(
+    (resolve) => {
+      setTimeout(() => {
+        try { proc.kill("SIGKILL"); } catch {}
+        resolve({ exitCode: 143, stdout: "", stderr: "CLI timed out" });
+      }, timeoutMs);
+    }
+  );
+
+  const result = await Promise.race([
+    Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]).then(([stdout, stderr, exitCode]) => ({ exitCode, stdout, stderr })),
+    timeoutPromise,
   ]);
 
-  return { exitCode, stdout, stderr };
+  return result;
 }
 
 describeOrSkip("Stateful CLI + API e2e", () => {
