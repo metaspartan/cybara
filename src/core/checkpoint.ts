@@ -163,6 +163,13 @@ export function deleteCheckpoint(workspaceDir: string, checkpointId: string): bo
   try {
     const files = readdirSync(path);
     for (const f of files) unlinkSync(join(path, f));
+    // Remove the now-empty directory too.
+    try {
+      const { rmdirSync } = require("fs");
+      rmdirSync(path);
+    } catch {
+      /* ignore rmdir failure */
+    }
     return true;
   } catch {
     return false;
