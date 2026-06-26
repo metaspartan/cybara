@@ -1,5 +1,6 @@
 import { agentManager, type AgentMessage } from "../core/agent";
 import { providerManager } from "../core/providers";
+import { config } from "../core/config";
 import {
   getToolSchemasForLLM,
   checkCircuit,
@@ -589,9 +590,18 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   const isNewSession = !session;
 
   if (!session) {
+    // Resolve the agent for a brand-new session. Honor the explicit agentId if
+    // provided; otherwise fall back to the user-configured default agent
+    // (default_agent_id) before the arbitrary first agent. Channel handlers
+    // (Discord/Slack/etc.) call handleChat WITHOUT an agentId, so without this
+    // they'd silently land on agentManager.list()[0] — which may be an agent
+    // whose provider token is expired (the source of spurious 401s in chat).
+    const configuredDefaultId = config.get<string>("default_agent_id");
     const agent = agentId
       ? agentManager.get(agentId)
-      : agentManager.list().find((a) => a.status === "running") || agentManager.list()[0];
+      : (configuredDefaultId ? agentManager.get(configuredDefaultId) : undefined) ||
+        agentManager.list().find((a) => a.status === "running") ||
+        agentManager.list()[0];
 
     if (!agent) {
       return {
