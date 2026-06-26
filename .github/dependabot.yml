@@ -17,6 +17,11 @@ updates:
         dependency-type: "production"
       bun-development:
         dependency-type: "development"
+    # @noble/hashes 2.x removed the standalone ripemd160.js file that ethers 6.x
+    # imports. Pin to 1.x until ethers ships a fix.
+    ignore:
+      - dependency-name: "@noble/hashes"
+        versions: [">=2.0.0"]
     commit-message:
       prefix: "deps"
       include: "scope"
