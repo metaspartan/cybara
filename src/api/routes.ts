@@ -101,7 +101,7 @@ import { listCheckpoints, deleteCheckpoint } from "../core/checkpoint";
 import {
   getRouterStatus,
   selectProvider,
-  recordUsage,
+
   getAllPricing,
   type RouterConfig,
 } from "../core/router";

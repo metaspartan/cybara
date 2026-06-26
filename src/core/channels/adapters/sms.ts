@@ -69,7 +69,7 @@ export class SmsAdapter implements ChannelAdapter {
     return true;
   }
 
-  formatResponse(content: string, toolCalls?: ToolCallInfo[], thinking?: string): string {
+  formatResponse(content: string, toolCalls?: ToolCallInfo[], _thinking?: string): string {
     let text = content;
     if (toolCalls && toolCalls.length > 0) {
       text = formatToolCallsPlain(toolCalls) + "\n\n" + text;

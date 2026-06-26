@@ -3,7 +3,7 @@
  * Multi-registry compatible skill install/sync (ClawdHub, skills.sh, CybaraHub)
  */
 
-import { mkdir, writeFile, readFile, rm, readdir, stat } from "fs/promises";
+import { mkdir, writeFile, readFile, rm, readdir } from "fs/promises";
 import { existsSync } from "fs";
 import { join, dirname } from "path";
 import { homedir } from "os";
