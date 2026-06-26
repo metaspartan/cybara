@@ -411,6 +411,10 @@ const FileTree = memo(function FileTree({
     if (!normalizedFilter) return entries;
     return entries.filter((entry) => entry.name.toLowerCase().includes(normalizedFilter));
   }, [entries, normalizedFilter]);
+
+  // Virtualization now works even with expanded directories: we flatten the
+  // visible tree (root entries + children of expanded dirs) into a single list
+  // and virtualize that flat list with depth-based indentation.
   const hasExpandedDirectoriesAtLevel = useMemo(
     () =>
       filteredEntries.some((entry) => entry.type === "directory" && expandedDirs.has(entry.path)),
@@ -418,8 +422,6 @@ const FileTree = memo(function FileTree({
   );
   const enableVirtualizedRows =
     level === 0 &&
-    !normalizedFilter &&
-    !hasExpandedDirectoriesAtLevel &&
     filteredEntries.length >= EXPLORER_VIRTUALIZATION_MIN_ENTRIES &&
     rootViewportHeight > 0;
   const virtualWindow = useMemo(() => {

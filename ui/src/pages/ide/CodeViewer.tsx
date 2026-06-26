@@ -2043,9 +2043,37 @@ export function CodeViewer({
   }, [closeEditorContextMenu, editContent]);
 
   const handleShowCodeActions = useCallback(() => {
-    setSaveError("Code actions are not available for this selection yet.");
+    // If an LSP server is active, try to fetch quick-fix code actions for the
+    // current selection. Falls back to a message if none are available.
+    const editor = editorRef.current;
+    if (!editor || !path) {
+      setSaveError("No code actions available for this selection.");
+      closeEditorContextMenu();
+      return;
+    }
+    const { selectionStart } = editor;
+    const before = editContent.slice(0, selectionStart);
+    const line = before.split("\n").length - 1;
+    const col = selectionStart - before.lastIndexOf("\n") - 1;
+    apiFetch(`/api/lsp/diagnostics/file?path=${encodeURIComponent(path)}`)
+      .then((res) => res.json())
+      .then((data: { diagnostics?: Array<{ line: number; character: number; message: string; severity: string }> }) => {
+        const diags = (data.diagnostics ?? []).filter(
+          (d) => d.line === line && Math.abs(d.character - col) <= 5
+        );
+        if (diags.length > 0) {
+          setSaveError(
+            diags.map((d) => `[${d.severity}] Line ${d.line + 1}: ${d.message}`).join("\n")
+          );
+        } else {
+          setSaveError("No diagnostics or code actions at this position.");
+        }
+      })
+      .catch(() => {
+        setSaveError("No code actions available for this selection.");
+      });
     closeEditorContextMenu();
-  }, [closeEditorContextMenu]);
+  }, [closeEditorContextMenu, editContent, path]);
 
   const handleCutSelection = useCallback(async () => {
     const editor = editorRef.current;
