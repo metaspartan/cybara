@@ -114,6 +114,25 @@ async function ensureDriver(): Promise<void> {
     console.warn(`[cua-driver] ${chunk.toString().trim()}`);
   });
 
+  // CRITICAL: a spawn failure (e.g. cua-driver not installed -> ENOENT) emits an
+  // asynchronous "error" event. An unhandled "error" event on a ChildProcess is
+  // a fatal uncaught exception in Bun/Node and would crash the whole server.
+  // Handle it: reject any in-flight requests and clear the dead process so the
+  // next call can retry, surfacing a clean tool error instead of a crash.
+  driverProcess.on("error", (err) => {
+    console.warn(`[cua-driver] failed to start: ${err instanceof Error ? err.message : err}`);
+    for (const [id, entry] of pending) {
+      clearTimeout(entry.timer);
+      pending.delete(id);
+      entry.reject(
+        new Error(
+          "cua-driver is not available. Install cua-driver and grant macOS TCC permissions."
+        )
+      );
+    }
+    driverProcess = null;
+  });
+
   driverProcess.on("exit", (code) => {
     // Reject any in-flight requests on unexpected exit.
     for (const [id, entry] of pending) {
