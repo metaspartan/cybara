@@ -12,3 +12,4 @@ src-tauri/tauri.release.conf.json
 **/.build/
 **/.swiftpm/
 **/.wwebjs_cache/
+.research/
