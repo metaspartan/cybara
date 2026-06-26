@@ -96,7 +96,7 @@ jobs:
 
       - name: Compile binary
         run: |
-          bun build src/main.ts --compile --target=bun-${{ matrix.target }} --outfile=${{ matrix.artifact }} --external @noble/hashes --external @scure/bip39 --external @scure/base
+          bun build src/index.ts --compile --target=bun-${{ matrix.target }} --outfile=${{ matrix.artifact }} --external electron
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
