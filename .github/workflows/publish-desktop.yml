@@ -161,7 +161,7 @@ jobs:
 
       - name: Build Sidecar
         run: |
-          bun build src/index.ts --compile --target=${{ matrix.bun_target }} --outfile ${{ matrix.sidecar_out }}
+          bun build src/index.ts --compile --target=${{ matrix.bun_target }} --outfile ${{ matrix.sidecar_out }} --external @noble/hashes --external @scure/bip39 --external @scure/base
 
       - name: Prepare updater config
         env:
