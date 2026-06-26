@@ -108,6 +108,7 @@ export async function handleSessionsSpawn(
     cleanup,
     label,
     runTimeoutSeconds: runTimeoutSeconds > 0 ? runTimeoutSeconds : undefined,
+    silent,
   });
 
   const session: SubagentSession = {

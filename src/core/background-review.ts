@@ -93,6 +93,12 @@ export async function maybeRunBackgroundReview(
       {
         task: prompt,
         label: "background-memory-review",
+        // Reuse the requester's agent so the reviewer runs on the SAME provider
+        // the user already has working. Without this, executeSubagent falls back
+        // to availableAgents[0] (often a different provider whose token may be
+        // expired), producing a spurious 401 that the user blamed on their
+        // working MiniMax setup.
+        agentId: context.agentId,
         // Restrict the reviewer to memory tools only.
         _requesterSessionKey: context.sessionId,
         workspaceDir: context.workspaceDir,

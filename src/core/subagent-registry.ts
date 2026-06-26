@@ -32,6 +32,12 @@ export interface SubagentRunRecord {
   archiveAtMs?: number;
   cleanupCompletedAt?: number;
   cleanupHandled?: boolean;
+  /**
+   * Silent runs (e.g. the background memory review) must never surface their
+   * lifecycle completion to the requester's chat. When true, runAnnounceFlow
+   * skips the announcement entirely.
+   */
+  silent?: boolean;
 }
 
 interface SubagentConfig {
@@ -196,6 +202,14 @@ function ensureListener(): void {
 async function runAnnounceFlow(runId: string): Promise<boolean> {
   const entry = subagentRuns.get(runId);
   if (!entry) return false;
+
+  // Silent runs (background memory review, etc.) must NOT post their completion
+  // — including any provider errors like 401 — into the requester's chat. Treat
+  // as "handled" so cleanup still finalizes, but emit no announcement.
+  if (entry.silent) {
+    console.log(`[Subagent] Suppressed announcement for silent run ${runId}`);
+    return true;
+  }
 
   try {
     const duration =
@@ -362,6 +376,7 @@ export function registerSubagentRun(params: {
   cleanup?: "keep" | "delete";
   label?: string;
   runTimeoutSeconds?: number;
+  silent?: boolean;
 }): SubagentRunRecord {
   const runId = params.runId || randomUUID();
   const now = Date.now();
@@ -378,6 +393,7 @@ export function registerSubagentRun(params: {
     task: params.task,
     cleanup: params.cleanup || "keep",
     label: params.label,
+    silent: params.silent === true,
     createdAt: now,
     startedAt: now,
     archiveAtMs,
