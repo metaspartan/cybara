@@ -41,27 +41,21 @@ jobs:
   build:
     name: Build ${{ matrix.target }}
     needs: quality
+    runs-on: self-hosted
     strategy:
       fail-fast: false
       matrix:
         include:
           - target: linux-x64
-            os: get32
             artifact: cybara-linux-x64
           - target: linux-arm64
-            os: get32
             artifact: cybara-linux-arm64
           - target: darwin-x64
-            os: macos-latest
             artifact: cybara-darwin-x64
           - target: darwin-arm64
-            os: macos-latest
             artifact: cybara-darwin-arm64
           - target: windows-x64
-            os: windows-latest
             artifact: cybara-windows-x64.exe
-
-    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
@@ -87,7 +81,7 @@ jobs:
       - name: Build TypeScript
         run: bun run build
 
-      - name: Compile binary
+      - name: Cross-compile binary
         run: |
           bun build src/index.ts --compile --target=bun-${{ matrix.target }} --outfile=${{ matrix.artifact }} --external electron
 
