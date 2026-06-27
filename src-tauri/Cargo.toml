@@ -1,6 +1,6 @@
 [package]
 name = "cybara-desktop"
-version = "1.0.310"
+version = "1.0.312"
 description = "Cybara Desktop Client"
 authors = ["Carsen Klock"]
 edition = "2024"
