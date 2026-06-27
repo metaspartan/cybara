@@ -82,10 +82,16 @@ jobs:
 
   # ── Tauri desktop apps (platform-native builds) ────────────────────────────
   build-tauri:
-    name: Tauri ${{ matrix.target }}
+    name: Tauri ${{ matrix.rust_target }}
     needs: quality
     # Tauri builds are best-effort — they don't block the CLI release.
     continue-on-error: true
+    # Use bash on every OS so the run-steps (which use bash syntax like &&)
+    # behave the same on the self-hosted Windows runner (whose default shell
+    # would otherwise be PowerShell). Requires git-bash on the Windows runner.
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
@@ -104,9 +110,9 @@ jobs:
             rust_target: x86_64-apple-darwin
             bun_target: bun-darwin-x64
             sidecar: 'src-tauri/bin/cybara-x86_64-apple-darwin'
-          # Windows x64 (GitHub-hosted; no self-hosted Windows runner yet)
-          - platform: windows-latest
-            runner: windows-latest
+          # Windows x64 — self-hosted Windows runner (AI370)
+          - platform: windows
+            runner: [self-hosted, Windows, X64]
             args: ''
             rust_target: x86_64-pc-windows-msvc
             bun_target: bun-windows-x64
