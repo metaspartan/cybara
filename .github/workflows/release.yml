@@ -16,7 +16,7 @@ env:
 jobs:
   quality:
     name: CI Quality Gate
-    runs-on: get32
+    runs-on: self-hosted
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -101,7 +101,7 @@ jobs:
   release:
     name: Create Release
     needs: build
-    runs-on: get32
+    runs-on: self-hosted
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
 
     steps:

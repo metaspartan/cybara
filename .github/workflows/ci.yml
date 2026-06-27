@@ -15,7 +15,7 @@ env:
 
 jobs:
   quality:
-    runs-on: get32
+    runs-on: self-hosted
     steps:
       - name: Checkout
         uses: actions/checkout@v4
