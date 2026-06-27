@@ -1,4 +1,7 @@
-allow-dependencies-licenses:
+# Dependency Review config — fail on high/critical vulnerabilities.
+# The allow-licenses list uses SPDX IDs (not package URLs).
+fail-on-severity: high
+allow-licenses:
   - MIT
   - Apache-2.0
   - BSD-2-Clause
@@ -8,4 +11,3 @@ allow-dependencies-licenses:
   - Unlicense
   - CC0-1.0
   - Python-2.0
-fail-on-severity: high
