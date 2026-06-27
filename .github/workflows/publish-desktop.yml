@@ -93,7 +93,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macOS arm64
+          # macOS arm64 (needs macOS runner for Tauri native build)
           - platform: 'macos-latest'
             args: '--target aarch64-apple-darwin'
             target: 'aarch64-apple-darwin'
@@ -105,20 +105,20 @@ jobs:
             target: 'x86_64-apple-darwin'
             bun_target: 'bun-darwin-x64'
             sidecar_out: 'src-tauri/bin/cybara-x86_64-apple-darwin'
-          # Windows x64
+          # Windows x64 (needs Windows runner for Tauri native build)
           - platform: 'windows-latest'
             args: ''
             target: 'x86_64-pc-windows-msvc'
             bun_target: 'bun-windows-x64'
             sidecar_out: 'src-tauri/bin/cybara-x86_64-pc-windows-msvc.exe'
-          # Linux x64
-          - platform: 'ubuntu-22.04'
+          # Linux x64 — self-hosted runner (Tauri on Linux works natively)
+          - platform: 'self-hosted'
             args: ''
             target: 'x86_64-unknown-linux-gnu'
             bun_target: 'bun-linux-x64'
             sidecar_out: 'src-tauri/bin/cybara-x86_64-unknown-linux-gnu'
-          # Linux arm64
-          - platform: 'ubuntu-22.04-arm'
+          # Linux arm64 — self-hosted runner
+          - platform: 'self-hosted'
             args: ''
             target: 'aarch64-unknown-linux-gnu'
             bun_target: 'bun-linux-arm64'
