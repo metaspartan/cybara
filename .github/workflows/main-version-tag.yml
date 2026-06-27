@@ -9,9 +9,10 @@ permissions:
   contents: write
   actions: write
 
-# Pin Bun for reproducible version resolution.
+# Pin Bun for reproducible version resolution + skip puppeteer.
 env:
   BUN_VERSION: '1.3.14'
+  PUPPETEER_SKIP_DOWNLOAD: 'true'
 
 jobs:
   sync_version_and_tag:

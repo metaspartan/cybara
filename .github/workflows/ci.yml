@@ -7,9 +7,10 @@ on:
       - master
   pull_request:
 
-# Pin Bun for reproducible CI runs.
+# Pin Bun for reproducible CI runs + skip puppeteer browser download.
 env:
   BUN_VERSION: '1.3.14'
+  PUPPETEER_SKIP_DOWNLOAD: 'true'
 
 jobs:
   quality:

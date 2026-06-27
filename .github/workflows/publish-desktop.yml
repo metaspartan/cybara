@@ -11,9 +11,10 @@ on:
         required: false
         default: ''
 
-# Pin Bun for reproducible release builds across runs.
+# Pin Bun for reproducible release builds + skip puppeteer.
 env:
   BUN_VERSION: '1.3.14'
+  PUPPETEER_SKIP_DOWNLOAD: 'true'
 
 jobs:
   # Quality gate: never publish desktop apps from a broken build.
