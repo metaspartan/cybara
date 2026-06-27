@@ -22,7 +22,7 @@ jobs:
     name: CI Quality Gate
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: get32
     steps:
       - uses: actions/checkout@v4
       - name: Setup Bun
@@ -40,7 +40,7 @@ jobs:
     needs: quality
     permissions:
       contents: write
-    runs-on: ubuntu-latest
+    runs-on: get32
     outputs:
       release_id: ${{ steps.create-release.outputs.release_id }}
       tag_name: ${{ steps.create-release.outputs.tag_name }}
@@ -264,7 +264,7 @@ jobs:
   publish-release:
     permissions:
       contents: write
-    runs-on: ubuntu-latest
+    runs-on: get32
     needs: [create-release, build-tauri, build-native-macos]
     steps:
       # Guard: refuse to publish if the Tauri updater manifest is missing. A
