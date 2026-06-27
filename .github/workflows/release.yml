@@ -169,7 +169,7 @@ jobs:
           releaseName: 'Cybara ${{ github.ref_name }}'
           releaseBody: 'Download the appropriate installer for your platform below.'
           releaseDraft: false
-          args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json --bundles deb,appimage,nsis,dmg
+          args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
 
   # ── Create GitHub Release with CLI binaries + checksums ─────────────────────
   release:
