@@ -169,6 +169,13 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           NO_STRIP: 'true'
+          # linuxdeploy/appimagetool are themselves AppImages and need FUSE to
+          # run. Self-hosted runners typically lack FUSE (libfuse2 + fusermount),
+          # so linuxdeploy fails to launch -> "failed to run linuxdeploy".
+          # APPIMAGE_EXTRACT_AND_RUN makes every AppImage self-extract to a temp
+          # dir and run without FUSE; it propagates to the appimagetool that
+          # linuxdeploy spawns internally.
+          APPIMAGE_EXTRACT_AND_RUN: '1'
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Cybara ${{ github.ref_name }}'
