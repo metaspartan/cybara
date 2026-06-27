@@ -164,7 +164,6 @@ jobs:
     runs-on: self-hosted
     # Proceed even if Tauri builds fail (billing-blocked macOS/Windows runners).
     # CLI binaries always release; Tauri desktop apps are best-effort.
-    if: always() && needs.build-cli.result == 'success'
     if: always() && (needs.build-cli.result == 'success')
     steps:
       - name: Checkout
