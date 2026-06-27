@@ -84,6 +84,8 @@ jobs:
   build-tauri:
     name: Tauri ${{ matrix.target }}
     needs: quality
+    # Tauri builds are best-effort — they don't block the CLI release.
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -160,11 +162,8 @@ jobs:
   # ── Create GitHub Release with CLI binaries + checksums ─────────────────────
   release:
     name: Create Release
-    needs: [build-cli, build-tauri]
+    needs: [build-cli]
     runs-on: self-hosted
-    # Proceed even if Tauri builds fail (billing-blocked macOS/Windows runners).
-    # CLI binaries always release; Tauri desktop apps are best-effort.
-    if: always() && (needs.build-cli.result == 'success')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
