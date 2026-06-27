@@ -17,7 +17,7 @@ jobs:
   # ── Quality gate ────────────────────────────────────────────────────────────
   quality:
     name: CI Quality Gate
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,7 +38,7 @@ jobs:
   build-cli:
     name: CLI ${{ matrix.target }}
     needs: quality
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux, X64]
     strategy:
       fail-fast: false
       matrix:
@@ -90,32 +90,36 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macOS arm64 (needs macOS runner for native build)
-          - platform: macos-latest
+          # macOS arm64 — native build on the self-hosted Apple Silicon mac (Meta-Mini)
+          - platform: macos
+            runner: [self-hosted, macOS, ARM64]
             args: '--target aarch64-apple-darwin'
             rust_target: aarch64-apple-darwin
             bun_target: bun-darwin-arm64
             sidecar: 'src-tauri/bin/cybara-aarch64-apple-darwin'
-          # macOS x64
-          - platform: macos-latest
+          # macOS x64 — cross-compiled on the same Apple Silicon mac
+          - platform: macos
+            runner: [self-hosted, macOS, ARM64]
             args: '--target x86_64-apple-darwin'
             rust_target: x86_64-apple-darwin
             bun_target: bun-darwin-x64
             sidecar: 'src-tauri/bin/cybara-x86_64-apple-darwin'
-          # Windows x64
+          # Windows x64 (GitHub-hosted; no self-hosted Windows runner yet)
           - platform: windows-latest
+            runner: windows-latest
             args: ''
             rust_target: x86_64-pc-windows-msvc
             bun_target: bun-windows-x64
             sidecar: 'src-tauri/bin/cybara-x86_64-pc-windows-msvc.exe'
-          # Linux x64 (self-hosted runner)
+          # Linux x64 — self-hosted Linux runner (get32)
           - platform: self-hosted
+            runner: [self-hosted, Linux, X64]
             args: ''
             rust_target: x86_64-unknown-linux-gnu
             bun_target: bun-linux-x64
             sidecar: 'src-tauri/bin/cybara-x86_64-unknown-linux-gnu'
 
-    runs-on: ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -164,7 +168,7 @@ jobs:
   release:
     name: Create Release
     needs: [build-cli]
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
