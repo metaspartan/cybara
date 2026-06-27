@@ -176,12 +176,15 @@ jobs:
           # dir and run without FUSE; it propagates to the appimagetool that
           # linuxdeploy spawns internally.
           APPIMAGE_EXTRACT_AND_RUN: '1'
+          # appimagetool/linuxdeploy require ARCH to be set; it is not always
+          # inferred on a self-hosted runner.
+          ARCH: 'x86_64'
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Cybara ${{ github.ref_name }}'
           releaseBody: 'Download the appropriate installer for your platform below.'
           releaseDraft: false
-          args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
+          args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json --verbose
 
   # ── Create GitHub Release with CLI binaries + checksums ─────────────────────
   release:
