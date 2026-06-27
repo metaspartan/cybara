@@ -86,12 +86,6 @@ jobs:
     needs: quality
     # Tauri builds are best-effort — they don't block the CLI release.
     continue-on-error: true
-    # Use bash on every OS so the run-steps (which use bash syntax like &&)
-    # behave the same on the self-hosted Windows runner (whose default shell
-    # would otherwise be PowerShell). Requires git-bash on the Windows runner.
-    defaults:
-      run:
-        shell: bash
     strategy:
       fail-fast: false
       matrix:
@@ -142,8 +136,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      # Split into two steps (no '&&') so it runs under each OS's native shell
+      # — bash on Linux/macOS, PowerShell on the self-hosted Windows runner —
+      # without relying on a 'bash' shell that resolves to WSL on Windows.
       - name: Install dependencies
-        run: bun install --ignore-scripts && bun run scripts/postinstall.ts
+        run: bun install --ignore-scripts
+      - name: Run postinstall
+        run: bun run scripts/postinstall.ts
       - name: Sync version metadata
         run: bun run version:sync
       - name: Build UI
