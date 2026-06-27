@@ -1050,6 +1050,19 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
       "No AI provider configured. Please add a provider (like MiniMax, OpenAI, or Ollama) to enable AI responses.";
   }
 
+  // Surface any image files produced by tools (e.g. computer_use/browser
+  // screenshots) so channel adapters can attach them. We append a file:// link
+  // for each image path not already referenced; the adapter extracts these,
+  // attaches the file, and strips the marker from the visible text.
+  const imageToolPaths = allToolCalls
+    .map((tc) => (tc.result as { filePath?: unknown } | undefined)?.filePath)
+    .filter((p): p is string => typeof p === "string" && /\.(png|jpe?g|gif|webp)$/i.test(p));
+  for (const imgPath of [...new Set(imageToolPaths)]) {
+    if (!responseContent.includes(imgPath)) {
+      responseContent += `\n\n![screenshot](file://${imgPath})`;
+    }
+  }
+
   const { content: cleanContent, thinking: extractedThinking } = stripThinkingTags(responseContent);
   const finalThinking = thinkingContent || extractedThinking;
 

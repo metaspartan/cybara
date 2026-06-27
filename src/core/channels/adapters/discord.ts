@@ -1,8 +1,10 @@
+import { existsSync } from "fs";
 import {
   Client,
   GatewayIntentBits,
   Events,
   Partials,
+  AttachmentBuilder,
   SlashCommandBuilder,
   type ChatInputCommandInteraction,
   type Interaction,
@@ -740,18 +742,49 @@ export class DiscordAdapter implements ChannelAdapter {
     });
   }
 
+  /**
+   * Extract local image files referenced via file:// (e.g. screenshots produced
+   * by computer_use/browser tools), returning the attachments plus the response
+   * text with those markers stripped so Discord shows the image, not a raw path.
+   */
+  private extractFileAttachments(response: string): {
+    text: string;
+    files: AttachmentBuilder[];
+  } {
+    const files: AttachmentBuilder[] = [];
+    const seen = new Set<string>();
+    // Match optional markdown image wrapper around a file:// path.
+    const pattern = /(?:!\[[^\]]*\]\()?file:\/\/(\/[^\s)]+)\)?/g;
+    const text = response
+      .replace(pattern, (_match, rawPath: string) => {
+        const path = decodeURI(rawPath);
+        if (!seen.has(path) && existsSync(path) && /\.(png|jpe?g|gif|webp)$/i.test(path)) {
+          seen.add(path);
+          files.push(new AttachmentBuilder(path));
+        }
+        return ""; // strip the marker from the visible text
+      })
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    return { text, files };
+  }
+
   private async sendLongMessage(message: Message, response: string): Promise<void> {
-    const chunks = this.splitLongResponse(response);
+    const { text, files } = this.extractFileAttachments(response);
+    const chunks = this.splitLongResponse(text);
+
     if (chunks.length === 0) {
-      await message.reply("Done.");
-      return;
-    }
-    if (chunks.length === 1) {
-      await message.reply(response);
+      // No text left, but we may still have an image to deliver.
+      if (files.length > 0) {
+        await message.reply({ content: "📸 Screenshot:", files });
+      } else {
+        await message.reply("Done.");
+      }
       return;
     }
 
-    await message.reply(chunks[0]);
+    // Attach files to the first message so the image shows inline with the reply.
+    await message.reply(files.length > 0 ? { content: chunks[0], files } : chunks[0]);
 
     for (let i = 1; i < chunks.length; i++) {
       if ("send" in message.channel) {

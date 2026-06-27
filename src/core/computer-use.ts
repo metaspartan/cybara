@@ -19,6 +19,9 @@
  * cua-driver's identity (verified by computerUseDoctor()).
  */
 import { spawn, type ChildProcess } from "child_process";
+import { mkdirSync, existsSync, readFileSync, statSync } from "fs";
+import { join } from "path";
+import { homedir } from "os";
 
 const CUA_DRIVER_CMD =
   process.env.CYBARA_CUA_DRIVER_CMD || process.env.HERMES_CUA_DRIVER_CMD || "cua-driver";
@@ -328,7 +331,79 @@ export interface ComputerUseResult {
   screenshotMime?: string;
   /** Whether a follow-up capture was performed (when captureAfter was set). */
   capturedAfter?: boolean;
+  /** Absolute path to the saved screenshot PNG (set by the native capture fallback). */
+  filePath?: string;
   error?: string;
+}
+
+const SCREENSHOTS_DIR = join(
+  process.env.HOME || process.env.USERPROFILE || homedir(),
+  ".cybara",
+  "screenshots"
+);
+
+/**
+ * Native OS screenshot fallback for the `capture` action when cua-driver isn't
+ * installed. Uses the platform's built-in screenshot tool, saves a PNG under
+ * ~/.cybara/screenshots, and returns base64 + filePath so the result rides the
+ * existing screenshot-delivery path. Returns null if no native tool is available
+ * or the capture failed.
+ *
+ * macOS note: the capturing process (your terminal/bun) needs Screen Recording
+ * permission, or the image will be of the desktop wallpaper only — macOS will
+ * prompt once on first use.
+ */
+async function nativeScreenCapture(): Promise<ComputerUseResult | null> {
+  try {
+    if (!existsSync(SCREENSHOTS_DIR)) {
+      mkdirSync(SCREENSHOTS_DIR, { recursive: true });
+    }
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const filePath = join(SCREENSHOTS_DIR, `screen_${stamp}.png`);
+
+    let cmd: string[] | null = null;
+    if (process.platform === "darwin") {
+      // -x: silent (no shutter sound), -t png, capture the full main display.
+      cmd = ["screencapture", "-x", "-t", "png", filePath];
+    } else if (process.platform === "linux") {
+      // Prefer grim (wayland) -> scrot -> ImageMagick import, whichever exists.
+      if (Bun.which("grim")) cmd = ["grim", filePath];
+      else if (Bun.which("scrot")) cmd = ["scrot", "-o", filePath];
+      else if (Bun.which("import")) cmd = ["import", "-window", "root", filePath];
+    } else if (process.platform === "win32") {
+      cmd = [
+        "powershell",
+        "-NoProfile",
+        "-Command",
+        `Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $b=[System.Windows.Forms.SystemInformation]::VirtualScreen; $bmp=New-Object System.Drawing.Bitmap($b.Width,$b.Height); $g=[System.Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size); $bmp.Save('${filePath.replace(/\\/g, "\\\\")}',[System.Drawing.Imaging.ImageFormat]::Png)`,
+      ];
+    }
+
+    if (!cmd) return null;
+
+    const proc = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "pipe" });
+    if (!proc.success || !existsSync(filePath) || statSync(filePath).size === 0) {
+      console.warn(
+        `[computer_use] native screenshot failed: ${proc.stderr?.toString().trim() || "no output"}`
+      );
+      return null;
+    }
+
+    const screenshot = readFileSync(filePath).toString("base64");
+    return {
+      action: "capture",
+      ok: true,
+      text: "Captured the screen using the native OS screenshot tool (cua-driver is not installed, so click/type/scroll control is unavailable — capture only).",
+      screenshot,
+      screenshotMime: "image/png",
+      filePath,
+    };
+  } catch (error) {
+    console.warn(
+      `[computer_use] native screenshot error: ${error instanceof Error ? error.message : error}`
+    );
+    return null;
+  }
 }
 
 export async function handleComputerUse(args: Record<string, unknown>): Promise<ComputerUseResult> {
@@ -414,6 +489,13 @@ export async function handleComputerUse(args: Record<string, unknown>): Promise<
       capturedAfter,
     };
   } catch (error) {
+    // cua-driver unavailable (e.g. not installed). For the read-only `capture`
+    // action, fall back to the native OS screenshot tool so "give me a
+    // screenshot" still works without the full driver.
+    if (typedArgs.action === "capture") {
+      const native = await nativeScreenCapture();
+      if (native) return native;
+    }
     return {
       action: typedArgs.action,
       ok: false,
