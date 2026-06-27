@@ -14,32 +14,29 @@ env:
   SKIP_SPAWN_TESTS: '1'
 
 jobs:
+  # ── Quality gate ────────────────────────────────────────────────────────────
   quality:
     name: CI Quality Gate
     runs-on: self-hosted
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
-
       - name: Install root dependencies
         run: bun install --ignore-scripts && bun run scripts/postinstall.ts
-
       - name: Install UI dependencies
         run: cd ui && bun install
-
       - name: Run CI checks
         run: bun run check:ci
-
       - name: Security audit
         run: bun audit || true
 
-  build:
-    name: Build ${{ matrix.target }}
+  # ── CLI binaries (cross-compiled from self-hosted) ──────────────────────────
+  build-cli:
+    name: CLI ${{ matrix.target }}
     needs: quality
     runs-on: self-hosted
     strategy:
@@ -56,57 +53,133 @@ jobs:
             artifact: cybara-darwin-arm64
           - target: windows-x64
             artifact: cybara-windows-x64.exe
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
-
       - name: Install dependencies
         run: bun install --ignore-scripts && bun run scripts/postinstall.ts
-
       - name: Sync version metadata
         run: bun run version:sync
-
       - name: Type check
         run: bun run typecheck
-
       - name: Build UI
         run: cd ui && bun install && bun run build
-
       - name: Build TypeScript
         run: bun run build
-
-      - name: Cross-compile binary
+      - name: Cross-compile CLI binary
         run: |
           bun build src/index.ts --compile --target=bun-${{ matrix.target }} --outfile=${{ matrix.artifact }} --external electron
-
-      - name: Upload artifact
+      - name: Upload CLI artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
           retention-days: 30
 
-  release:
-    name: Create Release
-    needs: build
-    runs-on: self-hosted
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+  # ── Tauri desktop apps (platform-native builds) ────────────────────────────
+  build-tauri:
+    name: Tauri ${{ matrix.target }}
+    needs: quality
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS arm64 (needs macOS runner for native build)
+          - platform: macos-latest
+            args: '--target aarch64-apple-darwin'
+            rust_target: aarch64-apple-darwin
+            bun_target: bun-darwin-arm64
+            sidecar: 'src-tauri/bin/cybara-aarch64-apple-darwin'
+          # macOS x64
+          - platform: macos-latest
+            args: '--target x86_64-apple-darwin'
+            rust_target: x86_64-apple-darwin
+            bun_target: bun-darwin-x64
+            sidecar: 'src-tauri/bin/cybara-x86_64-apple-darwin'
+          # Windows x64
+          - platform: windows-latest
+            args: ''
+            rust_target: x86_64-pc-windows-msvc
+            bun_target: bun-windows-x64
+            sidecar: 'src-tauri/bin/cybara-x86_64-pc-windows-msvc.exe'
+          # Linux x64 (self-hosted runner)
+          - platform: self-hosted
+            args: ''
+            rust_target: x86_64-unknown-linux-gnu
+            bun_target: bun-linux-x64
+            sidecar: 'src-tauri/bin/cybara-x86_64-unknown-linux-gnu'
 
+    runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+      - name: Install Linux dependencies
+        if: startsWith(matrix.platform, 'self-hosted') || startsWith(matrix.platform, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf || true
+      - name: Install dependencies
+        run: bun install --ignore-scripts && bun run scripts/postinstall.ts
+      - name: Sync version metadata
+        run: bun run version:sync
+      - name: Build UI
+        run: bun run ui:build
+      - name: Build Sidecar binary
+        run: |
+          bun build src/index.ts --compile --target=${{ matrix.bun_target }} --outfile ${{ matrix.sidecar }} --external electron
+      - name: Prepare updater config
+        env:
+          CYBARA_TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
+          CYBARA_RELEASE_REPOSITORY: ${{ github.repository }}
+        run: bun run tauri:prepare-release
+      - name: Build Tauri App
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Cybara ${{ github.ref_name }}'
+          releaseBody: 'Download the appropriate installer for your platform below.'
+          releaseDrafts: false
+          args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
 
-      - name: Download all artifacts
+  # ── Create GitHub Release with CLI binaries + checksums ─────────────────────
+  release:
+    name: Create Release
+    needs: [build-cli, build-tauri]
+    runs-on: self-hosted
+    if: always() && (needs.build-cli.result == 'success')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Determine tag name
+        id: tag
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            git fetch --tags
+            TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            echo "name=$TAG" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Download CLI artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-
       - name: Flatten artifacts and generate checksums
         run: |
           set -euo pipefail
@@ -124,19 +197,7 @@ jobs:
           done
           echo "Checksums:"
           cat checksums.txt
-
-      - name: Determine tag name
-        id: tag
-        run: |
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-          else
-            git fetch --tags
-            TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-            echo "name=$TAG" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Create Release
+      - name: Create or Update Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.name }}
