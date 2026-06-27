@@ -85,9 +85,6 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               workflow_id: 'release.yml',
-              ref: '${{ steps.tag.outputs.tag }}',
-              inputs: {
-                skip_tests: 'false'
-              }
+              ref: '${{ steps.tag.outputs.tag }}'
             });
             core.info('Triggered release.yml for ${{ steps.tag.outputs.tag }}');
