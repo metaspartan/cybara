@@ -135,15 +135,19 @@ jobs:
       - name: Install linuxdeploy (self-hosted Linux only)
         if: startsWith(matrix.platform, 'self-hosted')
         run: |
-          # linuxdeploy + appimagetool are needed for AppImage bundling.
-          # Install to /usr/local/bin so they're on PATH regardless of HOME override.
-          # Also set APPDIR / no_strip env vars for AppImage compat.
-          curl -fsSL https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -o /usr/local/bin/linuxdeploy
-          chmod +x /usr/local/bin/linuxdeploy
-          curl -fsSL https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -o /usr/local/bin/appimagetool
-          chmod +x /usr/local/bin/appimagetool
-          # Verify they're accessible
-          which linuxdeploy && which appimagetool
+          # linuxdeploy + appimagetool needed for AppImage bundling.
+          # Use wget instead of curl (curl has network issues on this runner).
+          # Install to /usr/local/bin (always on PATH, survives HOME override).
+          if ! command -v linuxdeploy &>/dev/null; then
+            wget -q -O /usr/local/bin/linuxdeploy "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage" || true
+            chmod +x /usr/local/bin/linuxdeploy 2>/dev/null || true
+          fi
+          if ! command -v appimagetool &>/dev/null; then
+            wget -q -O /usr/local/bin/appimagetool "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" || true
+            chmod +x /usr/local/bin/appimagetool 2>/dev/null || true
+          fi
+          which linuxdeploy || echo "linuxdeploy not found (AppImage will be skipped)"
+          which appimagetool || echo "appimagetool not found"
       - name: Install dependencies
         run: bun install --ignore-scripts && bun run scripts/postinstall.ts
       - name: Sync version metadata
