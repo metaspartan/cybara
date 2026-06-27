@@ -146,8 +146,20 @@ jobs:
             wget -q -O /usr/local/bin/appimagetool "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" || true
             chmod +x /usr/local/bin/appimagetool 2>/dev/null || true
           fi
+          # linuxdeploy REQUIRES patchelf to rewrite rpaths of bundled libs.
+          # The apt step that installs patchelf is gated to ubuntu runners and
+          # skipped here, so install a static patchelf binary if missing —
+          # without it linuxdeploy runs a few seconds then exits non-zero
+          # ("failed to run linuxdeploy").
+          if ! command -v patchelf &>/dev/null; then
+            wget -q -O /tmp/patchelf.tar.gz "https://github.com/NixOS/patchelf/releases/download/0.18.0/patchelf-0.18.0-x86_64.tar.gz" || true
+            tar -xzf /tmp/patchelf.tar.gz -C /tmp ./bin/patchelf 2>/dev/null || true
+            mv /tmp/bin/patchelf /usr/local/bin/patchelf 2>/dev/null || true
+            chmod +x /usr/local/bin/patchelf 2>/dev/null || true
+          fi
           which linuxdeploy || echo "linuxdeploy not found (AppImage will be skipped)"
           which appimagetool || echo "appimagetool not found"
+          which patchelf || echo "patchelf not found (linuxdeploy will fail)"
       - name: Install dependencies
         run: bun install --ignore-scripts && bun run scripts/postinstall.ts
       - name: Sync version metadata
