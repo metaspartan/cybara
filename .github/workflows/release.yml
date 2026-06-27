@@ -132,6 +132,17 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Install linuxdeploy (self-hosted Linux only)
+        if: startsWith(matrix.platform, 'self-hosted')
+        run: |
+          # linuxdeploy + appimagetool are needed for AppImage bundling.
+          # Download to a directory on PATH (no sudo needed on self-hosted).
+          mkdir -p ~/.local/bin
+          curl -fsSL https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -o ~/.local/bin/linuxdeploy
+          chmod +x ~/.local/bin/linuxdeploy
+          curl -fsSL https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -o ~/.local/bin/appimagetool
+          chmod +x ~/.local/bin/appimagetool
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Install dependencies
         run: bun install --ignore-scripts && bun run scripts/postinstall.ts
       - name: Sync version metadata
@@ -152,12 +163,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          NO_STRIP: 'true'
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Cybara ${{ github.ref_name }}'
           releaseBody: 'Download the appropriate installer for your platform below.'
-          releaseDrafts: false
-          args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
+          releaseDraft: false
+          args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json --bundles deb,appimage,nsis,dmg
 
   # ── Create GitHub Release with CLI binaries + checksums ─────────────────────
   release:
