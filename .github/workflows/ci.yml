@@ -25,7 +25,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install root dependencies
-        run: bun install
+        run: bun install --ignore-scripts && bun run scripts/postinstall.ts
 
       - name: Install UI dependencies
         run: cd ui && bun install
