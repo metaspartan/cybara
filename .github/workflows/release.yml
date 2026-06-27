@@ -111,7 +111,8 @@ jobs:
     name: Create Release
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    # Run on both tag pushes AND workflow_dispatch (triggered by main-version-tag.yml)
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Download all artifacts
@@ -139,9 +140,26 @@ jobs:
           echo "Checksums:"
           cat checksums.txt
 
+      - name: Determine tag name
+        id: tag
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            # workflow_dispatch: find the latest tag
+            TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ -z "$TAG" ]; then
+              # Fetch tags if needed
+              git fetch --tags
+              TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            fi
+            echo "name=$TAG" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.name }}
           files: |
             release-assets/*
             release-assets/*.sha256

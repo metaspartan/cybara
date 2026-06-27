@@ -59,12 +59,25 @@ jobs:
         run: git fetch --tags origin main
 
       - name: Create and push release tag
+        id: tag
         run: |
           TAG="v${{ steps.version.outputs.value }}"
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG already exists."
+            echo "created=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           git tag "$TAG"
           git push origin "$TAG"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger Release workflow
+        if: steps.tag.outputs.created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run release.yml --ref ${{ steps.tag.outputs.tag }} \
+            -f skip_tests=false
+          echo "Triggered release.yml for ${{ steps.tag.outputs.tag }}"
