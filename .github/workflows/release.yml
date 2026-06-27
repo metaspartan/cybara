@@ -127,10 +127,22 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      - name: Install Rust stable
+      - name: Install Rust stable (non-Windows)
+        if: matrix.platform != 'windows'
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_target }}
+      # dtolnay/rust-toolchain runs its setup via `shell: bash`, which on the
+      # self-hosted Windows runner resolves to WSL's bash (System32\bash.exe)
+      # and mangles Windows paths ("No such file or directory"). Install via
+      # rustup in the native (PowerShell) shell instead. (Permanent fix: remove
+      # WSL bash from the runner so `shell: bash` uses git-bash.)
+      - name: Install Rust stable (Windows)
+        if: matrix.platform == 'windows'
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add ${{ matrix.rust_target }}
       - name: Install Linux dependencies
         if: startsWith(matrix.platform, 'ubuntu')
         run: |
