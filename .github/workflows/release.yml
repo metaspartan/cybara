@@ -136,13 +136,14 @@ jobs:
         if: startsWith(matrix.platform, 'self-hosted')
         run: |
           # linuxdeploy + appimagetool are needed for AppImage bundling.
-          # Download to a directory on PATH (no sudo needed on self-hosted).
-          mkdir -p ~/.local/bin
-          curl -fsSL https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -o ~/.local/bin/linuxdeploy
-          chmod +x ~/.local/bin/linuxdeploy
-          curl -fsSL https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -o ~/.local/bin/appimagetool
-          chmod +x ~/.local/bin/appimagetool
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          # Install to /usr/local/bin so they're on PATH regardless of HOME override.
+          # Also set APPDIR / no_strip env vars for AppImage compat.
+          curl -fsSL https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -o /usr/local/bin/linuxdeploy
+          chmod +x /usr/local/bin/linuxdeploy
+          curl -fsSL https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -o /usr/local/bin/appimagetool
+          chmod +x /usr/local/bin/appimagetool
+          # Verify they're accessible
+          which linuxdeploy && which appimagetool
       - name: Install dependencies
         run: bun install --ignore-scripts && bun run scripts/postinstall.ts
       - name: Sync version metadata
