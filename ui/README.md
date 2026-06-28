@@ -10,7 +10,7 @@ React 19 + Vite + TanStack Query frontend for the Cybara Agent Platform.
 - **Tailwind CSS v4** with Liquid Glass design system
 - **xterm.js** for the web terminal
 
-## Pages (18)
+## Pages (21)
 
 | Page | Description |
 |------|-------------|
@@ -22,6 +22,7 @@ React 19 + Vite + TanStack Query frontend for the Cybara Agent Platform.
 | **Memory** | Semantic memory browser and search |
 | **Agents** | Create and manage AI agents |
 | **Providers** | Configure AI providers (API key + OAuth flows) |
+| **Router** | Model routing and provider fallback settings |
 | **Sessions** | Active session monitoring |
 | **Tasks** | Cron job management with run history |
 | **Channels** | Multi-channel configuration (Telegram, Discord, etc.) |
@@ -30,6 +31,8 @@ React 19 + Vite + TanStack Query frontend for the Cybara Agent Platform.
 | **Metrics** | Token usage and performance analytics |
 | **Logs** | System and agent activity logs |
 | **Tools** | Tool registry and documentation |
+| **Wallet** | Encrypted local wallet, balances, transfers, and policy controls |
+| **Artifacts** | Generated artifact browser and previews |
 | **Settings** | Platform configuration with 10 theme accent colors |
 | **Setup** | First-run setup wizard |
 
@@ -62,7 +65,7 @@ ui/
 │   ├── App.tsx           # Router + layout
 │   ├── index.css         # Global styles + design tokens
 │   ├── main.tsx          # Entry point
-│   ├── pages/            # 18 page components
+│   ├── pages/            # 21 page components
 │   ├── components/       # Shared components
 │   └── stores/           # State management
 ├── public/               # Static assets

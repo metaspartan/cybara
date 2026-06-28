@@ -2352,7 +2352,7 @@ getSkillExecutors()
     console.error("Failed to initialize skill executors:", err);
   });
 
-async function handleTelegramMedia(
+export async function handleTelegramMedia(
   args: Record<string, unknown>,
   context?: ToolContext
 ): Promise<{ success: boolean; message: string }> {

@@ -82,10 +82,10 @@ See [Desktop Guide](./desktop.md) for platform-specific build info.
 | [Architecture](./architecture.md) | Platform design and data flow |
 | [CLI Reference](./cli.md) | Command-line interface |
 | [Plugins](./plugins.md) | Installable plugin runtime and manifests |
-| [Tools Reference](./tools.md) | 50 available tools |
+| [Tools Reference](./tools.md) | 71 available tools |
 | [Skills Guide](./skills.md) | Creating and managing skills |
 | [Channels](./channels.md) | Multi-platform messaging |
-| [Providers](./providers.md) | 33 AI provider configurations |
+| [Providers](./providers.md) | 50 AI provider integrations |
 | [Configuration](./configuration.md) | Settings and environment |
 | [Production](./production.md) | Release installs, updates, backups, and operator guidance |
 | [API Reference](./api.md) | REST API endpoints |
@@ -113,16 +113,16 @@ Conversation contexts with message history, token tracking, and adaptive context
 Modular capabilities loaded from SKILL.md files with eligibility gating (OS, env, binaries).
 
 ### Tools
-50 functions the agent can invoke: file I/O, browser, exec, web search, memory, artifacts (.md.resolved), data processing, LSP, scheduling, and more.
+71 functions the agent can invoke: file I/O, browser, exec, web search, memory, artifacts, data processing, LSP, scheduling, media generation, planning, dynamic tool discovery, wallet operations, and more.
 
 ### Channels
-Communication interfaces: Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Web.
+Communication interfaces: Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Web, Webhook, SMS, and Email.
 
 ### Memory
 Vector store with hybrid BM25 search, durable MEMORY.md, and daily logs.
 
 ### Providers
-33 AI providers: OpenAI, Anthropic, Google, Antigravity (OAuth), xAI, MiniMax, Moonshot, Kimi Code, Qwen (OAuth), Together, Hugging Face, Venice, Groq, OpenRouter, Ollama, vLLM, LiteLLM, Bedrock, GitHub Copilot, Synthetic, OpenCode Zen, Chutes, Xiaomi, Qianfan, NVIDIA, and additional gateway/proxy integrations.
+50 built-in provider integrations with dynamic model discovery, covering frontier APIs, OAuth-backed coding providers, local runtimes, gateway/proxy providers, and AWS Bedrock.
 
 ### Security
 API key authentication, rate limiting, SSRF protection, path sandboxing. See [Security](./security.md).

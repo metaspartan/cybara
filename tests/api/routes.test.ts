@@ -52,7 +52,9 @@ async function waitForServerReady(baseUrl: string, timeoutMs = 30000): Promise<v
 }
 
 async function api(method: string, path: string, body?: unknown) {
-  const headers: Record<string, string> = {};
+  // Simulate the same-origin web UI (browsers send Sec-Fetch-Site) so localhost
+  // auth bypass applies; non-browser header-less requests now require the key.
+  const headers: Record<string, string> = { "sec-fetch-site": "same-origin" };
 
   if (body) {
     headers["Content-Type"] = "application/json";
@@ -1112,13 +1114,17 @@ describe("Tools API", () => {
     expect(blocked.data.code).toBe("VALIDATION_ERROR");
     expect(String(blocked.data.error || "")).toContain("Dangerous tool 'exec' blocked by policy");
 
-    const allowedWithOverride = await api("POST", "/api/tools/execute", {
+    // SECURITY: a client-supplied allowDangerousTools must NOT bypass the
+    // policy — the server ignores it, so the dangerous tool stays blocked.
+    const overrideIgnored = await api("POST", "/api/tools/execute", {
       name: "exec",
       args: { command: "echo policy-allowed" },
       context: { agentId: "dangerous-policy-test", allowDangerousTools: true },
     });
-    expect(allowedWithOverride.status).toBe(200);
-    expect(String(allowedWithOverride.data.output || "")).toContain("policy-allowed");
+    expect(overrideIgnored.status).toBe(400);
+    expect(String(overrideIgnored.data.error || "")).toContain(
+      "Dangerous tool 'exec' blocked by policy"
+    );
 
     const resetPolicy = await api("PUT", "/api/config", {
       dangerous_tool_policy: { enabled: false, mode: "audit" },
@@ -1141,13 +1147,15 @@ describe("Tools API", () => {
     expect(blocked.data.code).toBe("VALIDATION_ERROR");
     expect(String(blocked.data.error || "")).toContain("requires approval");
 
-    const allowedWithOverride = await api("POST", "/api/tools/execute", {
+    // SECURITY: a client-supplied allowDangerousTools must NOT bypass the
+    // approval gate — the server ignores it, so approval is still required.
+    const overrideIgnored = await api("POST", "/api/tools/execute", {
       name: "exec",
       args: { command: "echo approval-override" },
       context: { agentId: "dangerous-approval-test", allowDangerousTools: true },
     });
-    expect(allowedWithOverride.status).toBe(200);
-    expect(String(allowedWithOverride.data.output || "")).toContain("approval-override");
+    expect(overrideIgnored.status).toBe(400);
+    expect(String(overrideIgnored.data.error || "")).toContain("requires approval");
 
     const resetMode = await api("PUT", "/api/config", {
       tool_approval_mode: "always_allow",

@@ -516,7 +516,7 @@ function route(method: string, url: URL, body: string): Response {
       {
         id: "mcp-1",
         name: "Filesystem MCP",
-        command: "npx @modelcontextprotocol/server-filesystem",
+        command: "bunx @modelcontextprotocol/server-filesystem",
         status: "running",
         toolCount: 12,
       },
@@ -531,7 +531,7 @@ function route(method: string, url: URL, body: string): Response {
         description: "Read and write files",
         registry: "modelcontextprotocol",
         package: "@modelcontextprotocol/server-filesystem",
-        command: "npx",
+        command: "bunx",
       },
     ]);
   }
@@ -545,7 +545,7 @@ function route(method: string, url: URL, body: string): Response {
         description: "Registry search result",
         registry: "modelcontextprotocol",
         package: "@modelcontextprotocol/server-git",
-        command: "npx",
+        command: "bunx",
       },
     ]);
   }

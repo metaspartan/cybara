@@ -66,14 +66,14 @@ Cybara now has the beginning of a first-class plugin runtime:
 What is still missing versus OpenClaw:
 
 - plugin SDK / lifecycle hooks
-- registry/npm/GitHub install sources
+- registry/JavaScript package/GitHub install sources
 - permissions/policy model
 - plugin updates, integrity metadata, and richer diagnostics
 
 Recommendation:
 
 1. Add plugin lifecycle hooks and typed SDK boundaries.
-2. Support GitHub/npm/registry install sources with integrity tracking.
+2. Support GitHub/JavaScript package/registry install sources with integrity tracking.
 3. Move optional/high-churn integrations behind that boundary.
 
 ### 3. Channel breadth

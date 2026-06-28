@@ -4,9 +4,14 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const pagesDir = fileURLToPath(new URL("../../ui/src/pages", import.meta.url));
+const libDir = fileURLToPath(new URL("../../ui/src/lib", import.meta.url));
 
 function readPage(fileName: string): string {
   return readFileSync(join(pagesDir, fileName), "utf8");
+}
+
+function readLib(fileName: string): string {
+  return readFileSync(join(libDir, fileName), "utf8");
 }
 
 describe("UI page API wiring", () => {
@@ -59,27 +64,32 @@ describe("UI page API wiring", () => {
   });
 
   test("IDE page routes file and git operations through encoded API paths", () => {
-    const source = readPage("IDE.tsx");
+    const ideSource = readPage("IDE.tsx");
+    const codeViewerSource = readPage("ide/CodeViewer.tsx");
+    const createDialogSource = readPage("ide/CreateDialog.tsx");
+    const gitStatusSource = readPage("ide/GitStatus.tsx");
 
-    expect(source).toContain("apiFetch(`/api/ide/browse?path=${encodeURIComponent(path)}`)");
-    expect(source).toContain("apiFetch(`/api/ide/read?path=${encodeURIComponent(path)}`)");
-    expect(source).toContain('apiFetch("/api/ide/write",');
-    expect(source).toContain('apiFetch("/api/ide/create",');
-    expect(source).toContain(
+    expect(ideSource).toContain("apiFetch(`/api/ide/browse?path=${encodeURIComponent(path)}`)");
+    expect(codeViewerSource).toContain("apiFetch(`/api/ide/read?path=${encodeURIComponent(path)}`");
+    expect(codeViewerSource).toContain('apiFetch("/api/ide/write",');
+    expect(codeViewerSource).toContain("apiFetch(`/api/git/diff?path=${encodeURIComponent(path)}`");
+    expect(createDialogSource).toContain('apiFetch("/api/ide/create",');
+    expect(codeViewerSource).toContain(
       "apiFetch(`/api/lsp/diagnostics/file?path=${encodeURIComponent(path)}`)"
     );
-    expect(source).toContain('apiFetch("/api/lsp/languages")');
-    expect(source).toContain("apiFetch(`/api/git/status?path=${encodeURIComponent(path)}`)");
+    expect(gitStatusSource).toContain("apiFetch(`/api/git/status?path=${encodeURIComponent(path)}`)");
   });
 
   test("IDE page includes quick navigation controls for filtering and line jump", () => {
-    const source = readPage("IDE.tsx");
+    const ideSource = readPage("IDE.tsx");
+    const codeViewerSource = readPage("ide/CodeViewer.tsx");
 
-    expect(source).toContain('placeholder="Filter files"');
-    expect(source).toContain('setTreeFilter("")');
-    expect(source).toContain("lineJumpInputRef.current?.focus()");
-    expect(source).toContain('e.key.toLowerCase() === "g"');
-    expect(source).toContain("data-line-number={i + 1}");
+    expect(ideSource).toContain('placeholder="Filter files"');
+    expect(ideSource).toContain('setTreeFilter("")');
+    expect(ideSource).toContain("jumpToLineRequest={requestedJumpLine}");
+    expect(codeViewerSource).toContain("const promptJumpToLine = useCallback(");
+    expect(codeViewerSource).toContain('e.key.toLowerCase() === "g"');
+    expect(codeViewerSource).toContain("data-line-number={i + 1}");
   });
 
   test("Terminal page uses token-aware websocket URL helper", () => {
@@ -129,7 +139,8 @@ describe("UI page API wiring", () => {
     expect(logsSource).not.toContain("apiFetch(");
 
     expect(sessionsSource).toContain("import { sessionsApi } from '@/lib/api';");
-    expect(sessionsSource).toContain("sessionsApi.list()");
+    expect(sessionsSource).toContain("sessionsApi.list({ limit: targetLimit, offset: 0 })");
+    expect(sessionsSource).toContain("sessionsApi.list({");
     expect(sessionsSource).toContain("sessionsApi.get(session.id)");
     expect(sessionsSource).toContain("sessionsApi.delete(sessionToDelete.id)");
     expect(sessionsSource).not.toContain("apiFetch(");
@@ -185,10 +196,13 @@ describe("UI page API wiring", () => {
     expect(source).not.toContain('provider: formData.get("provider") as string');
   });
 
-  test("Chat page wires live activity timeline to SSE status events", () => {
+  test("Chat page wires live activity timeline to websocket status events", () => {
     const source = readPage("Chat.tsx");
+    const statusStreamSource = readLib("status-stream.ts");
 
-    expect(source).toContain('appendApiTokenParam("/api/sse/status")');
+    expect(source).toContain("connectStatusStream({");
+    expect(statusStreamSource).toContain('new WebSocket(toWebSocketUrl("/api/ws/status"))');
+    expect(statusStreamSource).toContain("appendApiTokenParam(path)");
     expect(source).toContain('status === "tool_executing"');
     expect(source).toContain('status === "tool_completed"');
     expect(source).toContain("<LiveActivityTimeline");

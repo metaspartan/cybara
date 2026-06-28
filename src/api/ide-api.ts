@@ -3,6 +3,7 @@ import { join, basename, extname, dirname, resolve, relative, isAbsolute } from 
 import { homedir } from "os";
 import { existsSync, realpathSync } from "fs";
 import { getGitStatus } from "./git-api";
+import { checkWritePath } from "../core/tools/path-policy";
 
 const HOME_DIR = homedir();
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit (industry standard for browser IDEs)
@@ -22,7 +23,16 @@ function isWithinRoot(rootPath: string, resolvedPath: string): boolean {
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 }
 
+// Sensitive credential/key/app-secret paths are denied even though they live
+// under $HOME — the IDE endpoints must not read or write SSH keys, .env, cloud
+// creds, keychains, or Cybara's own secrets DB.
+function isSensitivePath(resolvedPath: string): boolean {
+  const decision = checkWritePath(resolvedPath);
+  return !decision.allowed && decision.reason === "sensitive-path";
+}
+
 function isWithinHome(resolvedPath: string): boolean {
+  if (isSensitivePath(resolvedPath)) return false;
   return HOME_ROOTS.some((rootPath) => isWithinRoot(rootPath, resolvedPath));
 }
 

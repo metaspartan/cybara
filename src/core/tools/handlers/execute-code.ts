@@ -1,17 +1,18 @@
 /**
  * `execute_code` — run code that calls other cybara tools programmatically.
  *
- * Distinct from `exec` (which runs shell): this is a sandboxed JS/TS evaluator
- * exposing a `cybara` namespace whose methods map to cybara's tool handlers
- * (read, write, grep, http, calc, ...). It collapses many LLM round-trips for
- * data-processing tasks (e.g. fetch 5 URLs, parse JSON, aggregate) into one
- * tool call.
+ * Distinct from `exec` (which runs shell): this is a JS/TS evaluator exposing a
+ * `cybara` namespace whose methods map to cybara's tool handlers (read, write,
+ * grep, http, calc, ...). It collapses many LLM round-trips for data-processing
+ * tasks (e.g. fetch 5 URLs, parse JSON, aggregate) into one tool call.
  *
- * Ports hermes's `execute_code` (code_execution_tool). Safety:
- *  - Runs via a constrained `new Function` evaluator with a timeout.
- *  - The `cybara` object only exposes read/tool methods, never raw FS.
- *  - Network/disk side-effects happen only through explicit tool calls, which
- *    are themselves subject to the existing permission/sandbox system.
+ * SECURITY — this is NOT a security sandbox. The code runs in-process via
+ * `new Function`, which shares the host realm: `globalThis`, `process`, `Bun`,
+ * `require`, and dynamic `import()` are reachable from the evaluated code. Treat
+ * `execute_code` as equivalent to arbitrary code execution (`exec`). It is
+ * gated as a dangerous tool (see dangerousToolNames) and must go through the
+ * dangerous-tool/approval policy. The `cybara` namespace and timeout are
+ * ergonomics, not isolation.
  */
 import { executeTool, toolSchemas } from "./index";
 import type { ToolContext } from "../index";

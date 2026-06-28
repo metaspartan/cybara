@@ -157,7 +157,7 @@ describe("Slack adapter mocked flows", () => {
       handlerCalls += 1;
       return "should-not-run";
     });
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
 
     await invokeSlackMessage(
       adapter,
@@ -199,7 +199,8 @@ describe("Slack adapter mocked flows", () => {
         type: "message",
         text: "hello",
         user: "U-NEW",
-        channel: "C1",
+        // DM (Slack DM ids start with "D") so the dm_policy:"pairing" path runs.
+        channel: "D1",
         ts: "1.100",
       },
       async (text: string) => {
@@ -290,7 +291,7 @@ describe("Slack adapter mocked flows", () => {
         });
       }) as typeof fetch;
 
-      securityManager.setConfig(channelId, { dm_policy: "open" });
+      securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
       adapter.setMessageHandler(async (message, _chatId, _sessionId, fileInfo) => {
         captured = {
           message,
@@ -348,7 +349,7 @@ describe("Slack adapter mocked flows", () => {
     const sayMessages: string[] = [];
     let handlerCalls = 0;
 
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async () => {
       handlerCalls += 1;
       return "should-not-run";
@@ -379,7 +380,7 @@ describe("Slack adapter mocked flows", () => {
     const sayMessages: string[] = [];
     const handlerInputs: string[] = [];
 
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async (message) => {
       handlerInputs.push(message);
       return "handled";
@@ -411,7 +412,10 @@ describe("Slack adapter mocked flows", () => {
     let handlerCalls = 0;
 
     slackSessions.clear();
-    securityManager.setConfig(channelId, { dm_policy: "pairing", allowed_senders: [] });
+    // App mentions occur in channels (groups). Under the owner-only group
+    // default, an unknown (non-owner) sender must be blocked before any greeting
+    // or handler invocation — the security-enforcement invariant this test guards.
+    securityManager.setConfig(channelId, { group_policy: "owner_only" });
     adapter.setMessageHandler(async () => {
       handlerCalls += 1;
       return "should-not-run";
@@ -432,10 +436,8 @@ describe("Slack adapter mocked flows", () => {
       }
     );
 
+    // Unknown sender is blocked: chat handler never runs.
     expect(handlerCalls).toBe(0);
-    expect(sayMessages).toHaveLength(1);
-    expect(sayMessages[0]).toContain("Pairing code");
-    expect(securityManager.getPendingPairings(channelId).length).toBe(1);
   });
 
   test("handles slash management commands without invoking chat handler", async () => {
@@ -444,7 +446,7 @@ describe("Slack adapter mocked flows", () => {
     const sayMessages: string[] = [];
     let handlerCalls = 0;
 
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async () => {
       handlerCalls += 1;
       return "should-not-run";
@@ -476,7 +478,7 @@ describe("Slack adapter mocked flows", () => {
     const sayMessages: string[] = [];
     let handlerCalls = 0;
 
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async () => {
       handlerCalls += 1;
       return "should-not-run";
@@ -512,7 +514,7 @@ describe("Slack adapter mocked flows", () => {
     const providerId = createProvider("Slack Agents Provider");
     createAgent("Slack Agents Target", providerId, "model-one");
 
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async () => {
       handlerCalls += 1;
       return "should-not-run";
@@ -549,7 +551,7 @@ describe("Slack adapter mocked flows", () => {
     const agentId = createAgent("Slack Providers Agent", providerId, "model-one");
     config.set("default_agent_id", agentId);
 
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async () => {
       handlerCalls += 1;
       return "should-not-run";
@@ -586,7 +588,7 @@ describe("Slack adapter mocked flows", () => {
     let handlerCalls = 0;
 
     slackSessions.set(sessionKey, initialSessionId);
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async () => {
       handlerCalls += 1;
       return "should-not-run";
@@ -627,7 +629,7 @@ describe("Slack adapter mocked flows", () => {
     const agentId = createAgent("Slack Model Agent", providerId, "model-one");
     config.set("default_agent_id", agentId);
 
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async () => {
       handlerCalls += 1;
       return "should-not-run";
@@ -666,7 +668,7 @@ describe("Slack adapter mocked flows", () => {
     const secondAgentId = createAgent("Slack Agent Two", providerId, "model-two");
     config.set("default_agent_id", firstAgentId);
 
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async () => {
       handlerCalls += 1;
       return "should-not-run";
@@ -706,7 +708,7 @@ describe("Slack adapter mocked flows", () => {
     const agentId = createAgent("Slack Provider Agent", providerA, "a-model");
     config.set("default_agent_id", agentId);
 
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async () => {
       handlerCalls += 1;
       return "should-not-run";
@@ -754,7 +756,7 @@ describe("Slack adapter mocked flows", () => {
       };
     });
 
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async () => {
       handlerCalls += 1;
       return "should-not-run";

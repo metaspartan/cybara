@@ -229,7 +229,7 @@ describe("Security auth e2e", () => {
     }
   });
 
-  test("development mode allows localhost bypass even when API key is configured", async () => {
+  test("development localhost bypass requires a same-origin browser signal", async () => {
     const apiKey = `cybara_e2e_key_${Date.now()}`;
     const port = await getFreePort();
     const baseUrl = `http://127.0.0.1:${port}`;
@@ -242,9 +242,24 @@ describe("Security auth e2e", () => {
       });
       await waitForServerReady(baseUrl);
 
-      const info = await request(baseUrl, "/api/info");
-      expect(info.status).toBe(200);
-      expect(info.data.name).toBe("Cybara");
+      // A non-browser localhost client (no Origin, no Sec-Fetch-Site — e.g. curl
+      // or another local process) must NOT inherit the localhost bypass.
+      const noSignal = await request(baseUrl, "/api/info");
+      expect(noSignal.status).toBe(401);
+
+      // A same-origin browser request (Sec-Fetch-Site: same-origin, as the web
+      // UI sends) is still bypassed for local-dev convenience.
+      const browser = await request(baseUrl, "/api/info", {
+        "sec-fetch-site": "same-origin",
+      });
+      expect(browser.status).toBe(200);
+      expect(browser.data.name).toBe("Cybara");
+
+      // And an explicit bearer token always works.
+      const bearer = await request(baseUrl, "/api/info", {
+        authorization: `Bearer ${apiKey}`,
+      });
+      expect(bearer.status).toBe(200);
     } finally {
       await stopServer(proc);
     }

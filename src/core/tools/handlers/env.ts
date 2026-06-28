@@ -1,3 +1,12 @@
+// Env vars commonly hold provider keys, tokens, and secrets. Redact their
+// values so the `env` tool can't be used to exfiltrate credentials to the LLM.
+const SENSITIVE_ENV_KEY = /(key|token|secret|password|passwd|credential|mnemonic|seed|private|auth|session)/i;
+function redactEnvValue(key: string, value: string | undefined): string | null {
+  if (value == null) return null;
+  if (SENSITIVE_ENV_KEY.test(key)) return "***redacted***";
+  return value.slice(0, 100) + (value.length > 100 ? "..." : "");
+}
+
 export async function handleEnv(args: Record<string, unknown>): Promise<unknown> {
   const action = (args.action as string) || "info";
   const key = args.key as string | undefined;
@@ -10,7 +19,7 @@ export async function handleEnv(args: Record<string, unknown>): Promise<unknown>
       }
       return {
         key,
-        value: process.env[key] ?? null,
+        value: key in process.env ? redactEnvValue(key, process.env[key]) : null,
         exists: key in process.env,
       };
     }
@@ -23,9 +32,7 @@ export async function handleEnv(args: Record<string, unknown>): Promise<unknown>
 
       return {
         count: entries.length,
-        variables: Object.fromEntries(
-          entries.map(([k, v]) => [k, v?.slice(0, 100) + (v && v.length > 100 ? "..." : "")])
-        ),
+        variables: Object.fromEntries(entries.map(([k, v]) => [k, redactEnvValue(k, v)])),
       };
     }
 

@@ -465,10 +465,26 @@ const corsBaseHeaders: Record<string, string> = {
   "Access-Control-Max-Age": "86400",
 };
 
+// Config rows can hold secrets (session_secret, stored tokens, etc.). The
+// config table accepts arbitrary keys, so redact anything whose key looks
+// sensitive before returning it over the API.
+const SECRET_CONFIG_KEY = /(secret|token|password|passwd|api[_-]?key|private[_-]?key|mnemonic|credential|seed)/i;
+function redactSecretConfig(cfg: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(cfg)) {
+    out[key] = SECRET_CONFIG_KEY.test(key) && value != null && value !== "" ? "***redacted***" : value;
+  }
+  return out;
+}
+
 function buildCorsHeaders(origin?: string): Record<string, string> {
   const headers: Record<string, string> = { ...corsBaseHeaders };
-  if (!isProduction) {
-    headers["Access-Control-Allow-Origin"] = origin || "*";
+  // Never emit a wildcard for an API that exposes file/wallet/tool operations.
+  // In dev, reflect the specific requesting origin (so the local web UI works)
+  // rather than "*"; requests still require the API key / same-origin browser
+  // signal to authenticate (see security.ts). In prod, omit CORS entirely.
+  if (!isProduction && origin) {
+    headers["Access-Control-Allow-Origin"] = origin;
     headers["Vary"] = "Origin";
   }
   return headers;
@@ -1007,7 +1023,7 @@ const routes: Record<string, RouteHandler> = {
   },
 
   "GET /api/config": () => ({
-    ...config.getAll(),
+    ...redactSecretConfig(config.getAll()),
     dangerous_tool_policy: config.getDangerousToolPolicy(),
     tool_approval_mode: config.getToolApprovalMode(),
     web_tool_url_policy: config.getWebToolUrlPolicy(),
@@ -1202,7 +1218,12 @@ const routes: Record<string, RouteHandler> = {
           : undefined,
       permissions: contextPermissions,
       enforcePermissions: data.context?.enforcePermissions === true,
-      allowDangerousTools: data.context?.allowDangerousTools === true,
+      // SECURITY: never let the HTTP caller self-grant dangerous-tool access.
+      // Honoring a client-supplied `allowDangerousTools` let any API caller
+      // bypass the dangerous-tool block and the approval gate (privilege
+      // escalation). Dangerous tools must go through the normal
+      // dangerous-tool policy / approval flow regardless of the request body.
+      allowDangerousTools: false,
     };
 
     return await executeTool(data.name, data.args, {

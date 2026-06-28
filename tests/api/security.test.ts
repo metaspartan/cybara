@@ -17,9 +17,22 @@ describe("API security module", () => {
     process.env.CYBARA_API_KEY = previousApiKey;
   });
 
-  test("authenticateRequest allows localhost bypass in dev", () => {
-    const result = security.authenticateRequest({}, "127.0.0.1");
+  test("authenticateRequest allows localhost bypass for same-origin browser requests in dev", () => {
+    // Browser fetch/SSE send Sec-Fetch-Site: same-origin — that legit UI path
+    // is bypassed in dev.
+    const result = security.authenticateRequest(
+      { "sec-fetch-site": "same-origin" },
+      "127.0.0.1"
+    );
     expect(result.authenticated).toBe(true);
+  });
+
+  test("authenticateRequest does NOT bypass header-less (non-browser) localhost requests", () => {
+    // curl / another local process with no Origin and no Sec-Fetch-Site must
+    // present the API key — they don't inherit the localhost bypass.
+    const result = security.authenticateRequest({}, "127.0.0.1");
+    expect(result.authenticated).toBe(false);
+    expect(result.reason).toContain("Missing Authorization");
   });
 
   test("authenticateRequest blocks localhost bypass for cross-origin browser requests", () => {

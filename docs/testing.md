@@ -12,6 +12,15 @@ bun run check          # typecheck + lint + format check
 bun run build:all
 ```
 
+## Supply Chain Checks
+
+```bash
+bun audit
+(cd ui && bun audit)
+cargo audit --file src-tauri/Cargo.lock
+go run github.com/google/osv-scanner/v2/cmd/osv-scanner@latest scan source -r .
+```
+
 ## Focused Test Runs
 
 ```bash
@@ -57,6 +66,9 @@ bun test tests/scripts
 # End-to-end smoke flows (live server + CLI/UI/terminal)
 bun test tests/e2e
 
+# Real browser IDE smoke (builds UI, starts an isolated server, opens and switches .ts files)
+RUN_BROWSER_E2E=1 bun test tests/e2e/ide-web-ui-browser-smoke.test.ts
+
 # Chat/session/log/metrics end-to-end contracts (live server)
 bun test tests/e2e/chat-logs-metrics-smoke.test.ts
 
@@ -72,7 +84,7 @@ bun test tests/e2e/security-auth-smoke.test.ts
 # CLI auth behavior against production API-key enforcement
 bun test tests/e2e/cli-auth-smoke.test.ts
 
-# Runtime guards (path hardcoding, package scripts, UI path resolution)
+# Runtime guards (path hardcoding, package scripts, UI path resolution, IDE hook order)
 bun test tests/runtime
 
 # Tauri desktop wiring guards
@@ -92,6 +104,7 @@ bun test tests/core/tool-schema-import.test.ts tests/core/agent-tool-allowlist.t
 - CLI command wiring: providers, channels, pairing, MCP, tasks, skills, sessions, memory, logs, subagents
 - UI/Tauri utility seam: `openExternal` backend-first with browser fallback
 - UI API client contracts: chat/session routes, logs query params, skill execute wiring
+- IDE React regression guard: `CodeViewer` keeps top-level hooks before loading/error/empty render returns, preventing React error #300 (`Rendered fewer hooks than expected`)
 - UI auth token helpers and guardrails: shared `apiFetch` bearer injection and no direct `fetch('/api/...')` bypasses
 - Tauri sidecar build target mapping
 - Browser route contracts (mocked manager): tabs lifecycle, navigate/click/type forwarding, snapshot/screenshot encoding
@@ -109,9 +122,11 @@ bun test tests/core/tool-schema-import.test.ts tests/core/agent-tool-allowlist.t
 - Live E2E resilience: config/memory/channel/task persistence across restart and `/api/sse/status` initial stream event
 - Live E2E security auth: production API-key enforcement, header contract (`WWW-Authenticate`), development localhost bypass behavior, stricter chat/OAuth/pairing rate-limit windows, terminal REST/WebSocket auth enforcement, status SSE auth enforcement (including `token` and `api_key` query auth), and rate-limit headers on validation errors
 - Live E2E CLI auth: protected command behavior with missing auth, `CYBARA_API_KEY` env auth, `~/.cybara/api_key` fallback, and env-vs-file precedence
+- Opt-in browser E2E: `RUN_BROWSER_E2E=1 bun test tests/e2e/ide-web-ui-browser-smoke.test.ts` builds the UI, starts a live isolated server, completes setup, opens a TypeScript file in `/ide`, switches to another TypeScript file through the explorer, and fails on React hook-order/runtime errors
 - Runtime guards: no hardcoded workspace paths, package script contracts, compiled UI path resolution
 - Tauri wiring contracts: sidecar spawn/kill and bundled UI/resources configuration
+- Supply chain checks: Bun audit for root/UI packages, Cargo audit for desktop crates, and OSV source scanning for lockfile advisories
 
 ## Playwright Note
 
-Playwright remains available for browser automation features in runtime, but the automated test suite intentionally prioritizes Bun-compatible tests. This avoids flaky `bunx`/browser-install coupling in CI while still validating feature wiring across CLI, API, and adapter layers.
+Playwright remains available for browser automation features in runtime. The default automated suite intentionally prioritizes Bun-compatible tests to avoid flaky browser-install coupling in CI while still validating feature wiring across CLI, API, and adapter layers. For release and open-source readiness checks, run the opt-in real browser smoke with `RUN_BROWSER_E2E=1 bun test tests/e2e/ide-web-ui-browser-smoke.test.ts`.

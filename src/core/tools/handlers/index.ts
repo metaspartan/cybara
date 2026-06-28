@@ -66,6 +66,8 @@ import {
   handleLSPHover,
   handleLSPLanguages,
 } from "./lsp";
+import { handleOcr } from "../../skills/ocr";
+import { handlePdf } from "../../skills/pdf";
 import { trackMetric, trackToolCall } from "../../metrics";
 import { logToolExecution } from "../../logging";
 import { config } from "../../config";
@@ -76,6 +78,7 @@ import {
   checkToolPermissions,
   getToolRequiredPermissions,
   isDangerousTool,
+  handleTelegramMedia,
   type ToolContext,
 } from "../index";
 import { createLogger } from "../../logger";
@@ -243,11 +246,16 @@ const toolHandlers: Record<
   phone: handlePhoneCall,
   voice_call: handleVoiceCall,
 
-  diagnostics: handleLSPDiagnostics,
-  definition: handleLSPDefinition,
-  references: handleLSPReferences,
-  hover: handleLSPHover,
-  languages: handleLSPLanguages,
+  // Keys MUST match the tool schema names in tools/index.ts (lsp_*), otherwise
+  // executeTool throws "Unknown tool" for tools the LLM is advertised.
+  lsp_diagnostics: handleLSPDiagnostics,
+  lsp_definition: handleLSPDefinition,
+  lsp_references: handleLSPReferences,
+  lsp_hover: handleLSPHover,
+  lsp_languages: handleLSPLanguages,
+  ocr: handleOcr,
+  pdf: handlePdf,
+  telegram_media: handleTelegramMedia,
 };
 
 function getDangerousToolPolicy(): { enabled: boolean; mode: "audit" | "block" } {

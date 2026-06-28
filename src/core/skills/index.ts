@@ -366,8 +366,14 @@ builtinExecutors.summarization = async (args: Record<string, unknown>) => {
 
 builtinExecutors.video_frames = async (args: Record<string, unknown>) => {
   const video = args.video as string;
-  const interval = (args.interval as number) || 10;
-  const count = (args.count as number) || 5;
+  // Coerce to safe, bounded positive integers. These are interpolated into the
+  // ffmpeg invocation, so non-numeric input must never reach the command.
+  const toPosInt = (v: unknown, def: number, max: number): number => {
+    const n = Math.floor(Number(v));
+    return Number.isFinite(n) && n > 0 ? Math.min(n, max) : def;
+  };
+  const interval = toPosInt(args.interval, 10, 86_400);
+  const count = toPosInt(args.count, 5, 10_000);
   const output = (args.output as string) || "/tmp/frames";
 
   if (!video) {
@@ -394,10 +400,21 @@ builtinExecutors.video_frames = async (args: Record<string, unknown>) => {
     }
 
     const framePattern = join(output, "frame_%04d.jpg");
-    const cmd = `ffmpeg -i "${video}" -vf "fps=1/${interval}" -frames:v ${count} "${framePattern}" -y 2>&1`;
 
     try {
-      Bun.spawnSync(["sh", "-c", cmd]);
+      // Run ffmpeg directly with an argument array — never via `sh -c` — so that
+      // interval/count/paths cannot be used for shell command injection.
+      Bun.spawnSync([
+        "ffmpeg",
+        "-i",
+        video,
+        "-vf",
+        `fps=1/${interval}`,
+        "-frames:v",
+        String(count),
+        framePattern,
+        "-y",
+      ]);
 
       const frames = readdirSync(output)
         .filter(f => f.startsWith("frame_"))

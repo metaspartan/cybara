@@ -77,6 +77,33 @@ bunx @tauri-apps/cli signer generate -w ~/.cybara/tauri-updater.key
 Store the private key + password as repo secrets and the public key as
 `TAURI_SIGNING_PUBLIC_KEY`. Never commit signing keys to the repository.
 
+## Local API trust model
+
+The HTTP API binds to `127.0.0.1` by default and requires an API key. For local
+development convenience, **same-origin browser requests** (the bundled web UI,
+identified by the `Sec-Fetch-Site: same-origin` signal) are allowed without a
+token. Non-browser local clients (curl, scripts, other processes) must present
+the API key — they do **not** inherit the bypass. To require the key for every
+request (including the web UI), set `CYBARA_REQUIRE_AUTH=1`. Only expose the API
+beyond localhost (`--expose` / `CYBARA_HOST`) on a trusted network; the API key
+is then mandatory for all callers.
+
+Dangerous tools (shell/code execution, file writes, wallet sends, computer-use)
+are additionally gated by the dangerous-tool approval policy
+(`tool_approval_mode`). Wallet sends honor an optional recipient allowlist and
+per-transaction cap (`wallet` agent policy). Provider credentials are stored in
+`~/.cybara/data/platform.db` with owner-only file permissions.
+
+## Third-party channels (use at your own risk)
+
+The **WhatsApp** channel uses [`whatsapp-web.js`](https://github.com/pedroslopez/whatsapp-web.js),
+an **unofficial, reverse-engineered** automation of WhatsApp Web that is **not**
+affiliated with or endorsed by WhatsApp/Meta. Automating WhatsApp this way may
+violate WhatsApp's Terms of Service and **can get your account banned**. The
+WhatsApp channel is opt-in; enable it only if you accept that risk. Other
+channels (Discord, Telegram, Slack, Signal, SMS, email) use official or
+documented APIs.
+
 ## Scope
 
 This policy covers the Cybara codebase and its official release artifacts. It

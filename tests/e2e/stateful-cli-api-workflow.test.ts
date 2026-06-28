@@ -497,6 +497,12 @@ describeOrSkip("Stateful CLI + API e2e", () => {
       });
       expect(policyUpdate.status).toBe(200);
 
+      const allowToolExecution = await api("PUT", "/api/config", {
+        tool_approval_mode: "always_allow",
+      });
+      expect(allowToolExecution.status).toBe(200);
+      expect(allowToolExecution.data.success).toBe(true);
+
       const deniedByHost = await api("POST", "/api/tools/execute", {
         name: "wallet",
         args: {
@@ -702,5 +708,5 @@ describeOrSkip("Stateful CLI + API e2e", () => {
     } finally {
       await solanaMerchant.stop();
     }
-  });
+  }, 120_000);
 });

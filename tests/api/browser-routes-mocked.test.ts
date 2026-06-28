@@ -107,7 +107,7 @@ async function api(method: string, path: string, body?: unknown) {
   return await handleRequest({
     method,
     url: `http://localhost:4269${path}`,
-    headers: { host: "localhost:4269" },
+    headers: { host: "localhost:4269", "sec-fetch-site": "same-origin" },
     body,
   });
 }

@@ -4,7 +4,7 @@ import { glob } from "tinyglobby";
 import { homeDir } from "../../paths";
 import { trackMetric } from "../../metrics";
 import type { ToolContext } from "../index";
-import { assertWritablePath } from "../path-policy";
+import { assertWritablePath, assertReadablePath } from "../path-policy";
 
 const workspace = homeDir;
 
@@ -184,6 +184,11 @@ export async function handleRead(
       'Validation error: path is required. Provide a file path (for example: {"path":"src/index.ts"}).'
     );
   }
+  // Block reads of sensitive credential/key files (SSH keys, .env, cloud creds,
+  // etc.) so an agent/prompt-injection can't read and exfiltrate them. Validate
+  // only — keep using the original (non-normalized) path for the actual read so
+  // case-sensitive filesystems and the returned path are preserved.
+  assertReadablePath(path);
   if (!existsSync(path)) {
     throw new Error(`File not found: ${path}`);
   }

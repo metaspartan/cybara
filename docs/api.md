@@ -71,7 +71,7 @@ Returns an array of session summaries:
     "title": "Mini: Cybara codebase audit report",
     "created_at": "2026-02-28T05:31:22.102Z",
     "updated_at": "2026-02-28T05:36:03.884Z",
-    "workspace_dir": "/Users/carsen/clawd/claw-agent-platform",
+    "workspace_dir": "/home/user/workspace",
     "message_count": 12,
     "last_message": {
       "role": "assistant",

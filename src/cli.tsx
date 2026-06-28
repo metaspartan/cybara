@@ -2,7 +2,6 @@
 import React from "react";
 import { render, Box, Text, useApp, useInput } from "ink";
 import Gradient from "ink-gradient";
-import BigText from "ink-big-text";
 import Spinner from "ink-spinner";
 import { spawn } from "child_process";
 import { createHash } from "crypto";
@@ -3755,7 +3754,7 @@ const Logo = ({ compact = false }: { compact?: boolean }) => (
   <Box flexDirection="column" alignItems="center" marginBottom={compact ? 0 : 1}>
     {!compact && (
       <Gradient name="rainbow">
-        <BigText text="Cybara" font="chrome" />
+        <Text bold>{"█▀▀ █▄█ █▄▄ █▀█ █▀█ █▀█\n█▄▄  █  █▄█ █▀█ █▀▄ █▀█  CYBARA"}</Text>
       </Gradient>
     )}
     <Text color="gray">Cybara TUI</Text>

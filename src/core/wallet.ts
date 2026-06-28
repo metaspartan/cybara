@@ -301,6 +301,17 @@ interface WalletAgentPolicy {
   allowedDappHosts: string[];
   allowedX402Networks: string[];
   x402MaxAmountAtomic: string;
+  /**
+   * Recipient allowlist for agent-initiated native/token sends. When non-empty,
+   * sends are only permitted to these addresses (defense against a prompt
+   * injection draining funds to an attacker address). Empty = no restriction.
+   */
+  allowedSendRecipients: string[];
+  /**
+   * Per-transaction cap (in human units of the asset) for agent-initiated
+   * native/token sends. Empty/"0" = no cap.
+   */
+  maxSendAmount: string;
 }
 
 type WalletDappAdapter =
@@ -1216,6 +1227,8 @@ class WalletManager {
         allowedDappHosts: input.allowedDappHosts ?? current.allowedDappHosts,
         allowedX402Networks: input.allowedX402Networks ?? current.allowedX402Networks,
         x402MaxAmountAtomic: input.x402MaxAmountAtomic ?? current.x402MaxAmountAtomic,
+        allowedSendRecipients: input.allowedSendRecipients ?? current.allowedSendRecipients,
+        maxSendAmount: input.maxSendAmount ?? current.maxSendAmount,
       },
       true
     );
@@ -1327,12 +1340,43 @@ class WalletManager {
     return this.getReceiveAddress(chain, index);
   }
 
+  /**
+   * Enforce the recipient allowlist and per-transaction cap for agent-initiated
+   * sends. A single prompt-injection should not be able to move funds to an
+   * arbitrary address or in an arbitrary amount.
+   */
+  private assertAgentSendWithinPolicy(
+    to: string,
+    amount: string,
+    policy: WalletAgentPolicy
+  ): void {
+    const recipient = String(to || "").trim();
+    if (policy.allowedSendRecipients.length > 0) {
+      const allow = policy.allowedSendRecipients.map((a) => a.trim().toLowerCase());
+      if (!recipient || !allow.includes(recipient.toLowerCase())) {
+        throw new Error(
+          "Validation error: Recipient is not in the agent send allowlist (wallet policy)"
+        );
+      }
+    }
+    const cap = Number(policy.maxSendAmount);
+    if (policy.maxSendAmount?.trim() && Number.isFinite(cap) && cap > 0) {
+      const amt = Number(amount);
+      if (!Number.isFinite(amt) || amt > cap) {
+        throw new Error(
+          `Validation error: Send amount (${amount}) exceeds the agent per-transaction cap of ${policy.maxSendAmount} set by wallet policy`
+        );
+      }
+    }
+  }
+
   async sendForAgent(input: WalletSendInput): Promise<WalletSendResult> {
     this.assertAgentAccessEnabled();
     const policy = this.getAgentPolicy();
     if (!policy.allowNativeSend) {
       throw new Error("Validation error: Agent native sends are disabled by wallet policy");
     }
+    this.assertAgentSendWithinPolicy(input.to, input.amount, policy);
     return await this.send(input);
   }
 
@@ -1344,6 +1388,7 @@ class WalletManager {
     if (!policy.allowTokenSend) {
       throw new Error("Validation error: Agent token sends are disabled by wallet policy");
     }
+    this.assertAgentSendWithinPolicy(input.to, input.amount, policy);
     return await this.sendToken(input);
   }
 
@@ -4326,6 +4371,8 @@ class WalletManager {
       allowedDappHosts: [],
       allowedX402Networks: [],
       x402MaxAmountAtomic: X402_AGENT_MAX_DEFAULT_ATOMIC,
+      allowedSendRecipients: [],
+      maxSendAmount: "",
     };
   }
 
@@ -4411,6 +4458,22 @@ class WalletManager {
       }
     }
 
+    const allowedSendRecipients = Array.isArray(source.allowedSendRecipients)
+      ? [...new Set(normalizeAddressList(source.allowedSendRecipients))]
+      : defaults.allowedSendRecipients;
+
+    let maxSendAmount = defaults.maxSendAmount;
+    if (typeof source.maxSendAmount === "string" && source.maxSendAmount.trim()) {
+      const n = Number(source.maxSendAmount.trim());
+      if (!Number.isFinite(n) || n < 0) {
+        if (strict) {
+          throw new Error("Validation error: maxSendAmount must be a non-negative number");
+        }
+      } else {
+        maxSendAmount = source.maxSendAmount.trim();
+      }
+    }
+
     return {
       allowNativeSend,
       allowTokenSend,
@@ -4424,6 +4487,8 @@ class WalletManager {
       allowedDappHosts: [...new Set(allowedDappHostsRaw)],
       allowedX402Networks: [...new Set(allowedX402NetworksRaw)],
       x402MaxAmountAtomic,
+      allowedSendRecipients,
+      maxSendAmount,
     };
   }
 

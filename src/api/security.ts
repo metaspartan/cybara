@@ -9,12 +9,9 @@ import { cybaraDir } from "../core/paths";
 const log = createLogger("Security");
 
 const API_KEY_FILE = join(cybaraDir, "api_key");
+let cachedApiKey: string | null | undefined;
 
 function getOrCreateApiKey(): string | null {
-  if (process.env.CYBARA_API_KEY) {
-    return process.env.CYBARA_API_KEY;
-  }
-
   if (existsSync(API_KEY_FILE)) {
     try {
       const key = readFileSync(API_KEY_FILE, "utf-8").trim();
@@ -57,10 +54,27 @@ function getOrCreateApiKey(): string | null {
   return newKey;
 }
 
-const config = {
-  apiKey: getOrCreateApiKey(),
+function getEffectiveApiKey(): string | null {
+  const envKey = process.env.CYBARA_API_KEY?.trim();
+  if (envKey) {
+    return envKey;
+  }
 
-  allowLocalhostBypass: process.env.NODE_ENV !== "production",
+  if (cachedApiKey !== undefined) {
+    return cachedApiKey;
+  }
+
+  cachedApiKey = getOrCreateApiKey();
+  return cachedApiKey;
+}
+
+const config = {
+  get apiKey() {
+    return getEffectiveApiKey();
+  },
+
+  allowLocalhostBypass:
+    process.env.CYBARA_REQUIRE_AUTH === "1" ? false : process.env.NODE_ENV !== "production",
 
   rateLimits: {
     global: { windowMs: 60000, maxRequests: 200 }, // 200 req/min globally
@@ -172,8 +186,22 @@ function isLocalhostIP(ip: string): boolean {
 }
 
 function isSameOriginRequest(headers: Record<string, string>): boolean {
+  // Browser fetch-metadata: real same-origin fetch/XHR/SSE requests always send
+  // `Sec-Fetch-Site`. Non-browser local clients (curl, other local processes,
+  // daemons) do NOT — so a header-less request must NOT be treated as
+  // same-origin. This closes the "any local process inherits the localhost auth
+  // bypass" hole while keeping the same-origin web UI working.
+  const secFetchSite = (headers["sec-fetch-site"] || headers["Sec-Fetch-Site"] || "")
+    .toString()
+    .toLowerCase();
+  if (secFetchSite) {
+    // "same-origin" = UI fetch/SSE; "none" = top-level navigation to our own page.
+    return secFetchSite === "same-origin" || secFetchSite === "none";
+  }
+
+  // WebSocket upgrades (and some clients) send Origin but no Sec-Fetch-Site.
   const origin = headers.origin || headers.Origin;
-  if (!origin) return true;
+  if (!origin) return false; // no browser signal at all -> require the API key
 
   const host = headers.host || headers.Host;
   if (!host) return false;
@@ -187,7 +215,7 @@ function isSameOriginRequest(headers: Record<string, string>): boolean {
 }
 
 export function authenticateRequest(headers: Record<string, string>, ip: string): AuthResult {
-  const effectiveApiKey = process.env.CYBARA_API_KEY || config.apiKey;
+  const effectiveApiKey = config.apiKey;
 
   if (!effectiveApiKey) {
     return { authenticated: true };

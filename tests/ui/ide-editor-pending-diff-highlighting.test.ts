@@ -10,9 +10,23 @@ import {
 } from "../../ui/src/lib/idePendingDiffDecorations";
 
 const ideSourcePath = fileURLToPath(new URL("../../ui/src/pages/IDE.tsx", import.meta.url));
+const codeViewerSourcePath = fileURLToPath(
+  new URL("../../ui/src/pages/ide/CodeViewer.tsx", import.meta.url)
+);
+const ideChatPanelSourcePath = fileURLToPath(
+  new URL("../../ui/src/pages/ide/IDEChatPanel.tsx", import.meta.url)
+);
 
 function readIdeSource(): string {
   return readFileSync(ideSourcePath, "utf8");
+}
+
+function readCodeViewerSource(): string {
+  return readFileSync(codeViewerSourcePath, "utf8");
+}
+
+function readIdeChatPanelSource(): string {
+  return readFileSync(ideChatPanelSourcePath, "utf8");
 }
 
 describe("IDE editor pending diff highlighting", () => {
@@ -127,35 +141,38 @@ describe("IDE editor pending diff highlighting", () => {
   });
 
   test("renders pending diff line states, floating approval controls, and hides the title badge", () => {
-    const source = readIdeSource();
+    const ideSource = readIdeSource();
+    const codeViewerSource = readCodeViewerSource();
+    const ideChatPanelSource = readIdeChatPanelSource();
 
-    expect(source).toContain(
+    expect(codeViewerSource).toContain(
       "const [pendingLineDecorations, setPendingLineDecorations] = useState<IdePendingDiffDecorations>"
     );
-    expect(source).toContain("const [pendingPreviewDiff, setPendingPreviewDiff] = useState<string | null>(null);");
-    expect(source).toContain("mergeGitDiffDecorations(");
-    expect(source).toContain("parseGitDiffDecorations(");
-    expect(source).toContain("buildPendingInlinePreviewRows(pendingPreviewDiff, sourceText)");
-    expect(source).toContain("const selectPendingPreviewLine = useCallback(");
-    expect(source).toContain("selectPendingPreviewLine(requestedLine, { scrollIntoView: true });");
-    expect(source).toContain("selectPendingPreviewLine(row.lineNumber, {");
-    expect(source).toContain("const wasShowingPendingPreview = previousPendingInlinePreviewRef.current;");
-    expect(source).toContain("textarea.setSelectionRange(offset, offset);");
-    expect(source).toContain("textarea.scrollTop = scrollMetrics.top;");
-    expect(source).toContain("pendingLineDecorations.lineStates.get(i + 1)");
-    expect(source).toContain("getPendingLineDecorationStyle(pendingLineState, isActiveLine)");
-    expect(source).toContain("ref={previewScrollRef}");
-    expect(source).toContain("Removed line");
-    expect(source).toContain("border border-red-500/25 bg-red-500/10");
-    expect(source).toContain("setPendingLineDecorations(emptyIdePendingDiffDecorations());");
-    expect(source).toContain("onPendingFileDiffControllerChange={setIdePendingFileDiffController}");
-    expect(source).toContain("Accept Changes");
-    expect(source).toContain("Reject Changes");
-    expect(source).toContain("File {activePendingEditorFileIndex + 1} of {pendingEditorFiles.length}");
-    expect(source).toContain("enableCompletions={false}");
-    expect(source).toContain("enableGhostCompletions={false}");
-    expect(source).not.toContain('id: "completion"');
-    expect(source).not.toContain('ideSettingsSection === "completion"');
-    expect(source).not.toContain("{pendingMessageChangeKeys.length} pending");
+    expect(codeViewerSource).toContain("const [pendingPreviewDiff, setPendingPreviewDiff] = useState<string | null>(null);");
+    expect(codeViewerSource).toContain("mergeGitDiffDecorations(");
+    expect(codeViewerSource).toContain("parseGitDiffDecorations(");
+    expect(codeViewerSource).toContain("buildPendingInlinePreviewRows(pendingPreviewDiff, sourceText)");
+    expect(codeViewerSource).toContain("const selectPendingPreviewLine = useCallback(");
+    expect(codeViewerSource).toContain("selectPendingPreviewLine(requestedLine, { scrollIntoView: true });");
+    expect(codeViewerSource).toContain("selectPendingPreviewLine(row.lineNumber, {");
+    expect(codeViewerSource).toContain("const wasShowingPendingPreview = previousPendingInlinePreviewRef.current;");
+    expect(codeViewerSource).toContain("textarea.setSelectionRange(offset, offset);");
+    expect(codeViewerSource).toContain("textarea.scrollTop = scrollMetrics.top;");
+    expect(codeViewerSource).toContain("pendingLineDecorations.lineStates.get(i + 1)");
+    expect(codeViewerSource).toContain("getPendingLineDecorationStyle(pendingLineState, isActiveLine)");
+    expect(codeViewerSource).toContain("ref={previewScrollRef}");
+    expect(codeViewerSource).toContain("Removed line");
+    expect(codeViewerSource).toContain("border border-red-500/25 bg-red-500/10");
+    expect(codeViewerSource).toContain("setPendingLineDecorations(emptyIdePendingDiffDecorations());");
+    expect(ideChatPanelSource).toContain("onPendingFileDiffControllerChange?.({");
+    expect(ideSource).toContain("onPendingFileDiffControllerChange={setIdePendingFileDiffController}");
+    expect(ideSource).toContain("Accept Changes");
+    expect(ideSource).toContain("Reject Changes");
+    expect(ideSource).toContain("File {activePendingEditorFileIndex + 1} of {pendingEditorFiles.length}");
+    expect(ideSource).toContain("enableCompletions={false}");
+    expect(ideSource).toContain("enableGhostCompletions={false}");
+    expect(ideSource).not.toContain('id: "completion"');
+    expect(ideSource).not.toContain('ideSettingsSection === "completion"');
+    expect(ideSource).not.toContain("{pendingMessageChangeKeys.length} pending");
   });
 });

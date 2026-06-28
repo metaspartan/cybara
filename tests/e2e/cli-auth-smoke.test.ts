@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { createServer } from "net";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
@@ -161,6 +161,7 @@ describeOrSkip("CLI auth e2e", () => {
     const providers = await runCli(["provider"]);
     expect(providers.exitCode).toBe(0);
     expect(providers.stdout).toContain("CYBARA PROVIDERS");
+    expect(readFileSync(apiKeyPath(), "utf-8").trim()).toBe(apiKey);
   });
 
   test("CYBARA_API_KEY env takes precedence over ~/.cybara/api_key", async () => {
@@ -175,6 +176,7 @@ describeOrSkip("CLI auth e2e", () => {
     const providers = await runCli(["provider"]);
     expect(providers.exitCode).toBe(0);
     expect(providers.stdout).toContain("CYBARA PROVIDERS");
+    expect(readFileSync(apiKeyPath(), "utf-8").trim()).toBe(apiKey);
   });
 
   test("CLI direct-fetch mutation commands succeed when CYBARA_API_KEY is set", async () => {

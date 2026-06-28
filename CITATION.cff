@@ -10,7 +10,6 @@ abstract: >-
 authors:
   - family-names: "Klock"
     given-names: "Carsen"
-    orcid: "https://orcid.org/0009-0000-0000-0000"
 keywords:
   - "ai-agent"
   - "llm"
@@ -22,7 +21,7 @@ keywords:
 license: "MIT"
 repository-code: "https://github.com/metaspartan/cybara"
 type: software
-version: "1.0.203"
+version: "1.0.327"
 date-released: "2026-06-23"
 preferred-citation:
   type: software

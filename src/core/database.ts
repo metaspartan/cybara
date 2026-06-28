@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { join } from "path";
-import { mkdirSync, existsSync } from "fs";
+import { mkdirSync, existsSync, chmodSync } from "fs";
 import { dataDir } from "./paths";
 
 const dbPath = join(dataDir, "platform.db");
@@ -12,8 +12,25 @@ if (!existsSync(dataDir)) {
   mkdirSync(dataDir, { recursive: true });
 }
 
+// The DB holds provider API keys/tokens (and the encrypted wallet). Restrict it
+// to the owner so other local users / backups can't read credentials at rest.
+// Best-effort: no-op on platforms without POSIX permissions.
+function restrictPermissions(): void {
+  try {
+    chmodSync(dataDir, 0o700);
+    for (const suffix of ["", "-wal", "-shm"]) {
+      const p = `${dbPath}${suffix}`;
+      if (existsSync(p)) chmodSync(p, 0o600);
+    }
+  } catch {
+    /* best-effort */
+  }
+}
+restrictPermissions();
+
 const db = new Database(dbPath);
 console.log("[Database] Database instance created");
+restrictPermissions();
 db.exec("PRAGMA journal_mode = WAL");
 console.log("[Database] Journal mode set");
 

@@ -3,9 +3,14 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const chatPagePath = fileURLToPath(new URL("../../ui/src/pages/Chat.tsx", import.meta.url));
+const desktopHostPath = fileURLToPath(new URL("../../ui/src/lib/desktopHost.ts", import.meta.url));
 
 function readChatSource(): string {
   return readFileSync(chatPagePath, "utf8");
+}
+
+function readDesktopHostSource(): string {
+  return readFileSync(desktopHostPath, "utf8");
 }
 
 describe("Chat revert and diff wiring", () => {
@@ -43,12 +48,13 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain("getToolCallsInTimelineOrder");
     expect(source).toContain("border-t border-white/12");
     expect(source).toContain("function ProcessActivityList");
-    expect(source).toContain("<ProcessActivityList activities={workActivities} />");
+    expect(source).toContain("<ProcessActivityList activities={workActivitiesWithSandbox} />");
   });
 
   test("shows effective workspace in empty state and uses robust tauri runtime detection", () => {
     const source = readChatSource();
-    expect(source).toContain('("__TAURI_INTERNALS__" in window || "__TAURI__" in window)');
+    const desktopHostSource = readDesktopHostSource();
+    expect(desktopHostSource).toContain("('__TAURI_INTERNALS__' in window || '__TAURI__' in window)");
     expect(source).toContain("Workspace: {effectiveWorkspaceDir}");
     expect(source).toContain("cybara:lastWorkspaceDir");
     expect(source).toContain("Unable to open native folder picker. Enter workspace folder path manually:");

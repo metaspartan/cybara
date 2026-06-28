@@ -52,6 +52,8 @@ const DENY_FILENAME_PATTERNS: readonly RegExp[] = [
 const DENY_PATH_SEGMENTS: readonly string[] = [
   ".ssh",
   ".gnupg",
+  ".aws",
+  ".cybara", // Cybara's own data dir: provider-keys DB, encrypted wallet, sessions
   "Library/Cookies",
   "Library/Keychains",
 ];
@@ -160,6 +162,27 @@ export function assertWritablePath(
   const decision = checkWritePath(rawPath, options);
   if (!decision.allowed) {
     throw new Error(describeDenial(decision.reason!));
+  }
+  return decision.resolvedPath;
+}
+
+/**
+ * Read-side guard. The same sensitive-file deny-list applies to reads — an
+ * agent/prompt-injection must not be able to read `~/.ssh/id_rsa`, `.env`,
+ * `~/.aws/credentials`, etc. and exfiltrate them. Reuses checkWritePath's rules
+ * (workspace confinement is opt-in via options, same as writes).
+ */
+export function assertReadablePath(
+  rawPath: string | undefined,
+  options?: PathPolicyOptions
+): string {
+  const decision = checkWritePath(rawPath, options);
+  if (!decision.allowed) {
+    const message =
+      decision.reason === "sensitive-path"
+        ? "Refused: reading this path is blocked — it points at a sensitive credential or key file."
+        : describeDenial(decision.reason!);
+    throw new Error(message);
   }
   return decision.resolvedPath;
 }

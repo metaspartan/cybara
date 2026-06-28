@@ -35,8 +35,8 @@ describe("Chat live activity persistence", () => {
     expect(source).toContain(
       "typeof eventTimestamp === \"number\" && Number.isFinite(eventTimestamp)"
     );
-    expect(source).toContain(
-      "appendLiveActivity(\n          phase,\n          text,\n          payload.toolName,\n          eventTimestamp,\n          payload.toolCallId,\n          payload.sandboxProvider\n        );"
+    expect(source).toMatch(
+      /appendLiveActivity\(\s*phase,\s*text,\s*payload\.toolName,\s*eventTimestamp,\s*payload\.toolCallId,\s*payload\.sandboxProvider\s*\);/
     );
   });
 

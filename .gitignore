@@ -13,3 +13,10 @@ src-tauri/tauri.release.conf.json
 **/.swiftpm/
 **/.wwebjs_cache/
 .research/
+
+# Build caches / scratch / agent dirs
+*.tsbuildinfo
+.tmp/
+.agents/
+artifacts/
+.claude/

@@ -48,7 +48,7 @@ If you need an agent platform that can plan, execute, verify, and report with st
 - 71 built-in tools (`src/core/tools/index.ts`)
 - 50 built-in provider integrations with dynamic model discovery (`src/core/providers.ts`)
 - 10 channel adapters (`src/core/channels/adapters`)
-- 20 production UI pages (`ui/src/pages/*.tsx`)
+- 21 production UI page components (`ui/src/pages/*.tsx`)
 - 60+ bundled skills (`skills/`)
 - Anthropic prompt caching, multi-key credential pools + rate-limit rotation, and a centralized LLM error taxonomy
 - Smart context compaction (token-aware chunking + structured summaries with identifier preservation)
@@ -204,7 +204,7 @@ DM policy modes:
 
 ### UI + Desktop
 
-- Web UI with 20 pages for agents, channels, providers, tools, wallet, logs, metrics, tasks, sessions, IDE, terminal, setup, artifacts, skills, MCP servers, and memory
+- Web UI with 21 page components for agents, channels, providers, routing, tools, wallet, logs, metrics, tasks, sessions, IDE, terminal, setup, artifacts, skills, MCP servers, LSP, chat, dashboard, and memory
 - Tauri desktop app with sidecar server wiring and in-app signed update checks via GitHub Releases
 - Native SwiftUI macOS app in `apps/macos/Cybara` that reuses the same local Cybara sidecar contract and can be packaged into a release-ready `.app` bundle
 
@@ -232,7 +232,7 @@ MCP server management and registry integration:
   - Official MCP registry
   - [MCP.so](https://mcp.so) registry
   - [Smithery](https://smithery.ai) registry
-  - npm package installation
+  - Bun-compatible package installation
 - **Popular Pre-configured Servers**: Filesystem, GitHub, GitLab, PostgreSQL, SQLite, Puppeteer, Brave Search, Google Maps, Slack, Fetch, Obsidian, Raycast, and more
 - **Tool Exposure**: MCP server tools are automatically exposed to agents with full JSON-RPC communication
 
@@ -253,6 +253,7 @@ bun run start:prod   # Build all then run
 
 bun test             # Full test suite
 bun run test:smoke   # Runtime + API + E2E smoke
+RUN_BROWSER_E2E=1 bun test tests/e2e/ide-web-ui-browser-smoke.test.ts  # Real browser IDE smoke
 bun run check        # Typecheck + lint + format check
 bun run check:loc    # Enforce max TS/TSX file size
 bun run check:ci     # CI gate (typecheck + lint + loc + smoke + deadcode report)

@@ -11,12 +11,13 @@ function readSidebarSource(): string {
 }
 
 describe("Sidebar status indicator behavior", () => {
-  test("treats generating and tool execution events as active status", () => {
+  test("treats thinking, generating, and tool execution events as active status", () => {
     const source = readSidebarSource();
 
+    expect(source).toContain("'thinking'");
     expect(source).toContain("'generating'");
     expect(source).toContain("'tool_executing'");
-    expect(source).toContain("'tool_completed'");
+    expect(source).not.toContain("'tool_completed',");
     expect(source).toContain("setStatus(globalActive || hasActiveSessions ? 'active' : 'idle')");
   });
 

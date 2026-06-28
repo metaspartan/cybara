@@ -164,13 +164,16 @@ describe("iMessage adapter mocked flows", () => {
       adapter,
       channelId,
       makeMessage({
+        // DM chatGuid (does NOT start with "chat") so the dm_policy:"pairing"
+        // path runs — "chat…" guids are treated as group chats.
+        chatGuid: "im-dm-1",
         handle: { address: "new-user@icloud.com", service: "iMessage" },
       })
     );
 
     expect(handlerCalls).toBe(0);
     expect(sent).toHaveLength(1);
-    expect(sent[0].chatGuid).toBe("chat-1");
+    expect(sent[0].chatGuid).toBe("im-dm-1");
     expect(sent[0].message).toContain("Pairing code");
     expect(securityManager.getPendingPairings(channelId).length).toBe(1);
   });
@@ -243,7 +246,7 @@ describe("iMessage adapter mocked flows", () => {
     }> = [];
     const sent: string[] = [];
 
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async (content, _chatGuid, _sessionId, fileInfo) => {
       handlerInputs.push({
         content,
@@ -297,7 +300,7 @@ describe("iMessage adapter mocked flows", () => {
     const channelId = makeChannelId("imsg-error");
     const sent: string[] = [];
 
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async () => {
       throw new Error("handler exploded");
     });
@@ -326,7 +329,7 @@ describe("iMessage adapter mocked flows", () => {
     const sent: string[] = [];
     let handlerCalls = 0;
 
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async () => {
       handlerCalls += 1;
       return "should-not-run";
@@ -364,7 +367,7 @@ describe("iMessage adapter mocked flows", () => {
     const sent: string[] = [];
     let handlerCalls = 0;
 
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async () => {
       handlerCalls += 1;
       return "should-not-run";
@@ -406,7 +409,7 @@ describe("iMessage adapter mocked flows", () => {
     const providerId = createProvider("iMessage Agents Provider");
     createAgent("iMessage Agents Target", providerId, "model-one");
 
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async () => {
       handlerCalls += 1;
       return "should-not-run";
@@ -449,7 +452,7 @@ describe("iMessage adapter mocked flows", () => {
     const agentId = createAgent("iMessage Providers Agent", providerId, "model-one");
     config.set("default_agent_id", agentId);
 
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async () => {
       handlerCalls += 1;
       return "should-not-run";
@@ -491,7 +494,7 @@ describe("iMessage adapter mocked flows", () => {
     let handlerCalls = 0;
 
     imessageSessions.set(chatGuid, initialSessionId);
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async () => {
       handlerCalls += 1;
       return "should-not-run";
@@ -539,7 +542,7 @@ describe("iMessage adapter mocked flows", () => {
     const agentId = createAgent("iMessage Model Agent", providerId, "model-one");
     config.set("default_agent_id", agentId);
 
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async () => {
       handlerCalls += 1;
       return "should-not-run";
@@ -584,7 +587,7 @@ describe("iMessage adapter mocked flows", () => {
     const secondAgentId = createAgent("iMessage Agent Two", providerId, "model-two");
     config.set("default_agent_id", firstAgentId);
 
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async () => {
       handlerCalls += 1;
       return "should-not-run";
@@ -630,7 +633,7 @@ describe("iMessage adapter mocked flows", () => {
     const agentId = createAgent("iMessage Provider Agent", providerA, "a-model");
     config.set("default_agent_id", agentId);
 
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async () => {
       handlerCalls += 1;
       return "should-not-run";
@@ -684,7 +687,7 @@ describe("iMessage adapter mocked flows", () => {
       };
     });
 
-    securityManager.setConfig(channelId, { dm_policy: "open" });
+    securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async () => {
       handlerCalls += 1;
       return "should-not-run";
