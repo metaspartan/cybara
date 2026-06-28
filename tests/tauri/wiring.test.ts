@@ -25,15 +25,19 @@ describe("Tauri wiring", () => {
 
     expect(mainRs).toContain("sidecar(\"cybara\")");
     expect(mainRs).toContain(".args([\"start\", \"--enable-terminal\"])");
-    expect(mainRs).toContain("window.navigate(\"http://localhost:4269\"");
+    expect(mainRs).toContain('const CYBARA_SERVER_URL: &str = "http://127.0.0.1:4269"');
+    expect(mainRs).toContain("window.navigate(CYBARA_SERVER_URL.parse().unwrap())");
+    expect(mainRs).toContain('.env("CYBARA_HOST", "127.0.0.1")');
     expect(mainRs).toContain("child.kill()");
   });
 
-  test("main.rs preserves sidecar lifecycle and existing-server branch guards", () => {
+  test("main.rs preserves sidecar lifecycle and verifies existing server identity", () => {
     const mainRsPath = join(ROOT_DIR, "src-tauri", "src", "main.rs");
     const mainRs = readFileSync(mainRsPath, "utf8");
 
     expect(mainRs).toContain("if is_server_running()");
+    expect(mainRs).toContain("GET /api/health HTTP/1.1");
+    expect(mainRs).toContain('\\"status\\":\\"healthy\\"');
     expect(mainRs).toContain("Server already running on port 4269");
     expect(mainRs).toContain("SidecarState(std::sync::Mutex::new(None))");
     expect(mainRs).toContain("*guard = Some(child)");
@@ -41,5 +45,21 @@ describe("Tauri wiring", () => {
     expect(mainRs).toContain("if let tauri::WindowEvent::CloseRequested");
     expect(mainRs).toContain("if let Some(state) = app.try_state::<SidecarState>()");
     expect(mainRs).toContain("if let Some(child) = guard.take()");
+  });
+
+  test("desktop capability narrows webview origins and shell permissions", () => {
+    const capabilityPath = join(ROOT_DIR, "src-tauri", "capabilities", "default.json");
+    const capability = JSON.parse(readFileSync(capabilityPath, "utf8")) as {
+      remote?: { urls?: string[] };
+      permissions?: string[];
+    };
+    const tauriConfig = readFileSync(join(ROOT_DIR, "src-tauri", "tauri.conf.json"), "utf8");
+
+    expect(capability.remote?.urls).toContain("http://127.0.0.1:4269");
+    expect(capability.remote?.urls).toContain("http://localhost:5173");
+    expect(capability.remote?.urls).not.toContain("http://localhost:*");
+    expect(capability.permissions).not.toContain("shell:allow-spawn");
+    expect(capability.permissions).not.toContain("shell:allow-execute");
+    expect(tauriConfig).toContain('"csp": "default-src');
   });
 });

@@ -1187,7 +1187,7 @@ const routes: Record<string, RouteHandler> = {
       sessionId:
         typeof data.context?.sessionId === "string" && data.context.sessionId.trim()
           ? data.context.sessionId
-          : "api",
+          : undefined,
       channel:
         typeof data.context?.channel === "string" && data.context.channel.trim()
           ? data.context.channel

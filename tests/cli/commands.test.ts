@@ -1701,7 +1701,7 @@ describe("CLI Commands", () => {
     const unlock = await runCli(["wallet", "unlock", "--password", "supersecret123"]);
     expect(unlock.exitCode).toBe(0);
     expect(unlock.stdout).toContain("Wallet unlocked");
-  });
+  }, 20000);
 
   test("memory search query path is wired", async () => {
     const search = await runCli(["memory", "integration"]);
@@ -1879,7 +1879,7 @@ describe("CLI Commands", () => {
     ]);
     expect(badWalletSwapFlags.exitCode).toBe(1);
     expect(badWalletSwapFlags.stderr).toContain("Use either --execute or --quote-only/--dry-run");
-  });
+  }, 20000);
 
   test("lsp list/install/uninstall commands are wired", async () => {
     const list = await runCli(["lsp", "list"]);

@@ -7,6 +7,9 @@ const SOURCE_ROOTS = ["src", "tests", "ui/src", "scripts"];
 const TS_FILE_PATTERN = /\.(ts|tsx)$/;
 const EXCLUDED_FILES = new Set(["tests/runtime/import-style-guard.test.ts"]);
 const DYNAMIC_IMPORT_ALLOWLIST = new Set([
+  // Packaged launcher dispatches server vs CLI at runtime. Static importing
+  // both paths breaks one-shot CLI commands and bundled ESM startup.
+  "src/main.ts",
   "src/core/tools/handlers/wallet.ts",
   "src/api/routes.ts",
   // Lazy-loads optional/native ML runtimes (onnxruntime-node,

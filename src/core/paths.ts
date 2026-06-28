@@ -1,17 +1,20 @@
-import { dirname, join } from "path";
+import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { homedir } from "os";
 import { existsSync, mkdirSync } from "fs";
 
 export const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
 
-export const cybaraDir = join(homeDir, ".cybara");
+const configuredCybaraHome = process.env.CYBARA_HOME?.trim();
+export const cybaraDir = configuredCybaraHome
+  ? resolve(configuredCybaraHome)
+  : join(homeDir, ".cybara");
 
 export const dataDir = join(cybaraDir, "data");
 export const memoryDir = join(cybaraDir, "memory");
 export const logsDir = join(cybaraDir, "logs");
 export const secureDir = join(cybaraDir, "secure");
-export const configDir = process.env.CONFIG_DIR || cybaraDir;
+export const configDir = process.env.CONFIG_DIR ? resolve(process.env.CONFIG_DIR) : cybaraDir;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

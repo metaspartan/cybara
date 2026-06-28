@@ -3,12 +3,11 @@ import { spawn } from "bun";
 import { existsSync, readFileSync, writeFileSync, unlinkSync, appendFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
-import { createRequire } from "module";
 
-const CYBARA_DIR = join(homedir(), ".cybara");
+const USER_HOME = process.env.HOME || process.env.USERPROFILE || homedir();
+const CYBARA_DIR = process.env.CYBARA_HOME || join(USER_HOME, ".cybara");
 const PID_FILE = join(CYBARA_DIR, "cybara.pid");
 const LOG_FILE = join(CYBARA_DIR, "cybara.log");
-const require = createRequire(import.meta.url);
 
 try {
   mkdirSync(CYBARA_DIR, { recursive: true });
@@ -245,13 +244,13 @@ async function main() {
 
     try {
       logDaemon("Loading server module...");
-      require("./index");
+      await import("./index");
     } catch (err) {
       logDaemon(`Failed to start server: ${err}`);
       throw err;
     }
   } else if (isCliCommand) {
-    require("./cli");
+    await import("./cli");
   } else {
     await showHelp();
   }

@@ -37,26 +37,27 @@ describe("desktop updater wiring", () => {
     expect(tauriConfig).toContain('"pubkey": "dev-placeholder-updater-key"');
   });
 
-  test("desktop publish workflow prepares updater config and passes the release tag", () => {
-    const workflowPath = join(ROOT_DIR, ".github", "workflows", "publish-desktop.yml");
+  test("release workflow prepares updater config and passes the release tag", () => {
+    const workflowPath = join(ROOT_DIR, ".github", "workflows", "release.yml");
     const workflow = readFileSync(workflowPath, "utf8");
 
     expect(workflow).toContain("bun run tauri:prepare-release");
     expect(workflow).toContain("TAURI_SIGNING_PRIVATE_KEY");
     expect(workflow).toContain("TAURI_SIGNING_PRIVATE_KEY_PASSWORD");
-    expect(workflow).toContain("tagName: ${{ needs.create-release.outputs.tag_name }}");
+    expect(workflow).toContain("tagName: ${{ github.ref_name }}");
     expect(workflow).toContain("--config src-tauri/tauri.release.conf.json");
     expect(workflow).not.toContain("universal-apple-darwin");
   });
 
-  test("desktop publish workflow also packages native macOS app bundles", () => {
-    const workflowPath = join(ROOT_DIR, ".github", "workflows", "publish-desktop.yml");
+  test("release workflow builds platform Tauri apps as best-effort release artifacts", () => {
+    const workflowPath = join(ROOT_DIR, ".github", "workflows", "release.yml");
     const workflow = readFileSync(workflowPath, "utf8");
 
-    expect(workflow).toContain("build-native-macos");
-    expect(workflow).toContain("bun run native:macos:package");
-    expect(workflow).toContain("Cybara-native-macos-${{ matrix.arch }}-*.zip");
-    expect(workflow).toContain("APPLE_DEVELOPER_ID_SIGNING_IDENTITY");
-    expect(workflow).toContain("xcrun notarytool store-credentials cybara-notary");
+    expect(workflow).toContain("build-tauri:");
+    expect(workflow).toContain("continue-on-error: true");
+    expect(workflow).toContain("aarch64-apple-darwin");
+    expect(workflow).toContain("x86_64-pc-windows-msvc");
+    expect(workflow).toContain("x86_64-unknown-linux-gnu");
+    expect(workflow).toContain("tauri-apps/tauri-action@v0");
   });
 });

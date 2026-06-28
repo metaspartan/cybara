@@ -204,7 +204,7 @@ exports.initOrt = initOrt;
   }
 
   try {
-    await $`bun build src/index.ts --compile --target=${target.bunTarget} --outfile ${releasePath} --external electron`;
+    await $`bun build src/index.ts --compile --target=${target.bunTarget} --outfile ${releasePath} --external electron --external @aws-sdk/client-s3`;
   } finally {
     // Restore original wasm_loader.js
     if (originalWasmLoader) {

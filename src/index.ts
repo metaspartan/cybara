@@ -115,21 +115,57 @@ const mimeTypes: Record<string, string> = {
   ".webp": "image/webp",
 };
 
+const commonSecurityHeaders = {
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+  "X-Frame-Options": "DENY",
+};
+
+const platformConfig = config.getAll();
+const PORT = Number(process.env.PORT) || platformConfig.port || 4269;
+
+const contentSecurityPolicy = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https:",
+  `connect-src 'self' http://127.0.0.1:${PORT} http://localhost:${PORT} ws://127.0.0.1:${PORT} ws://localhost:${PORT}`,
+  "media-src 'self' data: blob:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+].join("; ");
+
 const htmlHeaders = {
   "Content-Type": "text/html; charset=utf-8",
   "Cache-Control": "no-cache",
+  "Content-Security-Policy": contentSecurityPolicy,
+  ...commonSecurityHeaders,
 };
 
 function isFileLikePath(pathname: string): boolean {
   return /\.[^/]+$/.test(pathname);
 }
 
-const platformConfig = config.getAll();
-const PORT = Number(process.env.PORT) || platformConfig.port || 4269;
+const isExposeFlagSet = process.argv.includes("--expose");
+function isAllInterfaceHost(host: string): boolean {
+  return host === "0.0.0.0" || host === "::" || host === "[::]";
+}
 
-const isExposed = process.argv.includes("--expose") || process.env.CYBARA_HOST === "0.0.0.0";
+const configuredHost =
+  typeof platformConfig.host === "string" && platformConfig.host.trim()
+    ? platformConfig.host.trim()
+    : "127.0.0.1";
 const HOST =
-  process.env.CYBARA_HOST || platformConfig.host || (isExposed ? "0.0.0.0" : "127.0.0.1");
+  process.env.CYBARA_HOST ||
+  (isExposeFlagSet
+    ? "0.0.0.0"
+    : isAllInterfaceHost(configuredHost)
+      ? "127.0.0.1"
+      : configuredHost) ||
+  "127.0.0.1";
 const TERMINAL_CLI_FLAG = process.argv.includes("--enable-terminal");
 function isTerminalEnabled(): boolean {
   return TERMINAL_CLI_FLAG || config.get<boolean>("terminal_enabled") === true;
@@ -236,7 +272,7 @@ Bun.serve<WsData>({
           JSON.stringify({ error: "Terminal disabled. Start with --enable-terminal" }),
           {
             status: 403,
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", ...commonSecurityHeaders },
           }
         );
       }
@@ -248,6 +284,7 @@ Bun.serve<WsData>({
           status: security.statusCode || 403,
           headers: {
             "Content-Type": "application/json",
+            ...commonSecurityHeaders,
             ...security.headers,
           },
         });
@@ -257,13 +294,17 @@ Bun.serve<WsData>({
         const sessionId = url.searchParams.get("session") || crypto.randomUUID();
         const success = server.upgrade(req, { data: { kind: "terminal", sessionId } });
         if (success) return undefined;
-        return new Response("WebSocket upgrade failed", { status: 400 });
+        return new Response("WebSocket upgrade failed", {
+          status: 400,
+          headers: { "Content-Type": "text/plain; charset=utf-8", ...commonSecurityHeaders },
+        });
       }
 
       if (pathname === "/api/terminal/sessions") {
         return new Response(JSON.stringify(listTerminalSessions()), {
           headers: {
             "Content-Type": "application/json",
+            ...commonSecurityHeaders,
             ...security.headers,
           },
         });
@@ -278,6 +319,7 @@ Bun.serve<WsData>({
           status: security.statusCode || 403,
           headers: {
             "Content-Type": "application/json",
+            ...commonSecurityHeaders,
             ...security.headers,
           },
         });
@@ -285,7 +327,10 @@ Bun.serve<WsData>({
 
       const success = server.upgrade(req, { data: { kind: "status" } });
       if (success) return undefined;
-      return new Response("WebSocket upgrade failed", { status: 400 });
+      return new Response("WebSocket upgrade failed", {
+        status: 400,
+        headers: { "Content-Type": "text/plain; charset=utf-8", ...commonSecurityHeaders },
+      });
     }
 
     if (pathname === "/api/sse/status") {
@@ -296,6 +341,7 @@ Bun.serve<WsData>({
           status: security.statusCode || 403,
           headers: {
             "Content-Type": "application/json",
+            ...commonSecurityHeaders,
             ...security.headers,
           },
         });
@@ -307,6 +353,7 @@ Bun.serve<WsData>({
           "Cache-Control": "no-cache, no-transform",
           Connection: "keep-alive",
           "X-Accel-Buffering": "no",
+          ...commonSecurityHeaders,
           ...security.headers,
         },
       });
@@ -330,7 +377,7 @@ Bun.serve<WsData>({
       });
       return new Response(JSON.stringify(response.body), {
         status: response.status,
-        headers: { "Content-Type": "application/json", ...response.headers },
+        headers: { "Content-Type": "application/json", ...commonSecurityHeaders, ...response.headers },
       });
     }
 
@@ -342,7 +389,7 @@ Bun.serve<WsData>({
       }
       return new Response("Static asset not found", {
         status: 404,
-        headers: { "Content-Type": "text/plain; charset=utf-8" },
+        headers: { "Content-Type": "text/plain; charset=utf-8", ...commonSecurityHeaders },
       });
     }
 
@@ -355,24 +402,34 @@ Bun.serve<WsData>({
 
     if (existsSync(filePath) && !filePath.includes(".git")) {
       if (statSync(filePath).isDirectory()) {
-        return new Response("Directory listing not allowed", { status: 403 });
+        return new Response("Directory listing not allowed", {
+          status: 403,
+          headers: { "Content-Type": "text/plain; charset=utf-8", ...commonSecurityHeaders },
+        });
       }
       const ext = pathname.substring(pathname.lastIndexOf("."));
       const contentType = mimeTypes[ext] || "application/octet-stream";
       try {
         const content = readFileSync(filePath);
         return new Response(content, {
-          headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=3600" },
+          headers: {
+            "Content-Type": contentType,
+            "Cache-Control": "public, max-age=3600",
+            ...commonSecurityHeaders,
+          },
         });
       } catch {
-        return new Response("File error", { status: 500 });
+        return new Response("File error", {
+          status: 500,
+          headers: { "Content-Type": "text/plain; charset=utf-8", ...commonSecurityHeaders },
+        });
       }
     }
 
     if (fileLikePath) {
       return new Response("Static asset not found", {
         status: 404,
-        headers: { "Content-Type": "text/plain; charset=utf-8" },
+        headers: { "Content-Type": "text/plain; charset=utf-8", ...commonSecurityHeaders },
       });
     }
 

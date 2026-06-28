@@ -54,7 +54,7 @@ export const DEFAULT_DANGEROUS_TOOL_POLICY: DangerousToolPolicyConfig = {
   mode: "audit",
 };
 
-export const DEFAULT_TOOL_APPROVAL_MODE: ToolApprovalMode = "always_allow";
+export const DEFAULT_TOOL_APPROVAL_MODE: ToolApprovalMode = "ask";
 
 export const DEFAULT_WEB_TOOL_URL_POLICY: WebToolUrlPolicyConfig = {
   enabled: false,
@@ -301,7 +301,7 @@ class ConfigManager {
   getAll(): PlatformConfig {
     const defaults: PlatformConfig = {
       name: "Cybara",
-      host: "0.0.0.0",
+      host: "127.0.0.1",
       port: 4269,
       dangerous_tool_policy: { ...DEFAULT_DANGEROUS_TOOL_POLICY },
       tool_approval_mode: DEFAULT_TOOL_APPROVAL_MODE,

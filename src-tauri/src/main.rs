@@ -1,11 +1,16 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::{Duration, Instant};
 use tauri::Manager;
 use tauri::RunEvent;
 use tauri_plugin_shell::ShellExt;
+
+const CYBARA_SERVER_ADDR: &str = "127.0.0.1:4269";
+const CYBARA_SERVER_URL: &str = "http://127.0.0.1:4269";
+const HEALTH_PROBE_TIMEOUT: Duration = Duration::from_millis(750);
 
 fn should_log_sidecar_output() -> bool {
     cfg!(debug_assertions)
@@ -16,11 +21,36 @@ fn should_log_sidecar_output() -> bool {
 }
 
 fn is_server_running_at(addr: &str) -> bool {
-    TcpStream::connect(addr).is_ok()
+    let Ok(mut stream) = TcpStream::connect(addr) else {
+        return false;
+    };
+
+    let _ = stream.set_read_timeout(Some(HEALTH_PROBE_TIMEOUT));
+    let _ = stream.set_write_timeout(Some(HEALTH_PROBE_TIMEOUT));
+
+    let request = format!(
+        "GET /api/health HTTP/1.1\r\nHost: {}\r\nAccept: application/json\r\nConnection: close\r\n\r\n",
+        addr
+    );
+    if stream.write_all(request.as_bytes()).is_err() {
+        return false;
+    }
+
+    let mut response = String::new();
+    if stream.read_to_string(&mut response).is_err() {
+        return false;
+    }
+
+    let Some((headers, body)) = response.split_once("\r\n\r\n") else {
+        return false;
+    };
+
+    (headers.starts_with("HTTP/1.1 200") || headers.starts_with("HTTP/1.0 200"))
+        && (body.contains("\"status\":\"healthy\"") || body.contains("\"status\": \"healthy\""))
 }
 
 fn is_server_running() -> bool {
-    is_server_running_at("127.0.0.1:4269")
+    is_server_running_at(CYBARA_SERVER_ADDR)
 }
 
 fn wait_for_server_ready(timeout: Duration) -> bool {
@@ -61,7 +91,7 @@ fn main() {
 
                 // Navigate to the backend URL so relative /api/ paths work
                 if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.navigate("http://localhost:4269".parse().unwrap());
+                    let _ = window.navigate(CYBARA_SERVER_URL.parse().unwrap());
                 }
 
                 return Ok(());
@@ -71,6 +101,7 @@ fn main() {
             println!("[Cybara] Starting sidecar...");
             let sidecar = app.shell().sidecar("cybara").unwrap();
             let (mut rx, child) = sidecar
+                .env("CYBARA_HOST", "127.0.0.1")
                 // Enable terminal APIs for desktop-sidecar runs without passing flags to cargo.
                 .args(["start", "--enable-terminal"])
                 .spawn()
@@ -115,7 +146,7 @@ fn main() {
             tauri::async_runtime::spawn(async move {
                 if wait_for_server_ready(Duration::from_secs(25)) {
                     if let Some(window) = app_handle.get_webview_window("main") {
-                        let _ = window.navigate("http://localhost:4269".parse().unwrap());
+                        let _ = window.navigate(CYBARA_SERVER_URL.parse().unwrap());
                     }
                 } else {
                     eprintln!("[Cybara] Sidecar did not become ready within timeout");
@@ -145,7 +176,9 @@ struct SidecarState(std::sync::Mutex<Option<tauri_plugin_shell::process::Command
 #[cfg(test)]
 mod tests {
     use super::is_server_running_at;
+    use std::io::{Read, Write};
     use std::net::TcpListener;
+    use std::thread;
 
     #[test]
     fn server_check_is_false_for_closed_port() {
@@ -153,9 +186,44 @@ mod tests {
     }
 
     #[test]
-    fn server_check_is_true_when_listener_exists() {
+    fn server_check_is_false_when_listener_is_not_cybara() {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
         let addr = listener.local_addr().expect("read local addr");
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept test connection");
+            let mut buffer = [0; 512];
+            let _ = stream.read(&mut buffer);
+            let body = "{\"ok\":true}";
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = stream.write_all(response.as_bytes());
+        });
+
+        assert!(!is_server_running_at(&addr.to_string()));
+        handle.join().expect("join test server");
+    }
+
+    #[test]
+    fn server_check_is_true_for_cybara_health_response() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
+        let addr = listener.local_addr().expect("read local addr");
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept test connection");
+            let mut buffer = [0; 512];
+            let _ = stream.read(&mut buffer);
+            let body = "{\"status\":\"healthy\"}";
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = stream.write_all(response.as_bytes());
+        });
+
         assert!(is_server_running_at(&addr.to_string()));
+        handle.join().expect("join test server");
     }
 }

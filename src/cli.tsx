@@ -36,7 +36,8 @@ function resolveCliApiKey(): string | null {
   }
 
   try {
-    const keyFromFile = readFileSync(join(home, ".cybara", "api_key"), "utf-8").trim();
+    const cybaraHome = process.env.CYBARA_HOME || join(home, ".cybara");
+    const keyFromFile = readFileSync(join(cybaraHome, "api_key"), "utf-8").trim();
     return keyFromFile || null;
   } catch {
     return null;
@@ -4293,9 +4294,7 @@ const SetupWizard = () => {
     React.useState<ProviderOption[]>(FALLBACK_PROVIDER_OPTIONS);
   const [selectedProvider, setSelectedProvider] = React.useState(0);
   const [apiKey, setApiKey] = React.useState("");
-  const [toolApprovalMode, setToolApprovalMode] = React.useState<"always_allow" | "ask">(
-    "always_allow"
-  );
+  const [toolApprovalMode, setToolApprovalMode] = React.useState<"always_allow" | "ask">("ask");
   const [status, setStatus] = React.useState<{
     message: string;
     type: "info" | "success" | "error" | "loading";
@@ -4623,6 +4622,13 @@ const TUIApp = ({ command }: { command?: string }) => {
 
 const args = process.argv.slice(2);
 const command = args[0];
+
+function shouldExitAfterMain(): boolean {
+  if (!command) return false;
+  if (command === "mcp" && args[1] === "serve") return false;
+  if (command === "chat") return false;
+  return !["start", "dev", "wizard", "setup", "install", "tui"].includes(command);
+}
 
 interface GitHubReleaseAsset {
   name?: string;
@@ -5321,4 +5327,13 @@ async function main() {
   }
 }
 
-main();
+main()
+  .then(() => {
+    if (shouldExitAfterMain()) {
+      process.exit(process.exitCode ?? 0);
+    }
+  })
+  .catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });

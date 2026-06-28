@@ -1,12 +1,15 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { createServer } from "net";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const PACKAGE_VERSION = (
+  JSON.parse(readFileSync(join(ROOT_DIR, "package.json"), "utf8")) as { version: string }
+).version;
 let BASE_URL = "";
 let serverProc: ReturnType<typeof Bun.spawn> | null = null;
 let testHome = "";
@@ -252,7 +255,7 @@ describe("API Health & Status", () => {
     expect(data.status).toBe("healthy");
     expect(data.timestamp).toBeDefined();
     expect(data.uptime).toBeDefined();
-    expect(data.version).toBe("1.0.0");
+    expect(data.version).toBe(PACKAGE_VERSION);
   });
 
   test("GET /api/health should include system checks", async () => {
@@ -2071,7 +2074,7 @@ describe("Config API", () => {
 
     const getInvalid = await api("GET", "/api/config");
     expect(getInvalid.status).toBe(200);
-    expect(getInvalid.data.tool_approval_mode).toBe("always_allow");
+    expect(getInvalid.data.tool_approval_mode).toBe("ask");
   });
 
   test("PUT /api/config normalizes web tool url policy payloads", async () => {

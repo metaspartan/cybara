@@ -846,7 +846,11 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
                 const element = await page.$(sel.trim());
                 if (element) {
                   if (request.clear !== false) {
-                    await element.click({ clickCount: 3 }); // Select all
+                    await element.focus();
+                    const selectModifier = process.platform === "darwin" ? "Meta" : "Control";
+                    await page.keyboard.down(selectModifier);
+                    await page.keyboard.press("A");
+                    await page.keyboard.up(selectModifier);
                   }
                   await element.type(text, { delay: request.slowly === true ? 100 : 0 });
                   if (request.submit === true) {

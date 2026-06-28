@@ -4,6 +4,7 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const SIDECAR_SCRIPT = join(ROOT_DIR, "scripts", "build-sidecar.ts");
 
 describe("package.json script wiring", () => {
   test("exposes cybara CLI bin and expected build/dev scripts", () => {
@@ -28,6 +29,10 @@ describe("package.json script wiring", () => {
     expect(pkg.scripts?.["build:all"]).toContain("bun run ui:build");
     expect(pkg.scripts?.["build:all"]).toContain("bun run build:cli");
     expect(pkg.scripts?.["build:all"]).toContain("bun run build:main");
+    expect(pkg.scripts?.["build"]).not.toContain("--external @noble/hashes");
+    expect(pkg.scripts?.["build:cli"]).not.toContain("--external @scure/bip39");
+    expect(pkg.scripts?.["build:main"]).not.toContain("--external @scure/base");
+    expect(readFileSync(SIDECAR_SCRIPT, "utf8")).toContain("--external @aws-sdk/client-s3");
 
     expect(pkg.scripts?.["tauri:dev"]).toContain("bun run tauri:sidecar");
     expect(pkg.scripts?.["tauri:dev"]).toContain("bunx tauri dev");

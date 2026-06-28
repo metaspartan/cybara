@@ -133,7 +133,7 @@ export async function requestToolApproval(params: {
   }
 
   // Check if approval mode is "always_allow" — skip entirely.
-  const mode = config.get<string>("tool_approval_mode") || "always_allow";
+  const mode = config.getToolApprovalMode();
   if (mode === "always_allow") {
     return "approve_always";
   }

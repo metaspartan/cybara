@@ -17,6 +17,7 @@
     "types": [
       "@types/bun"
     ],
+    "ignoreDeprecations": "6.0",
     "paths": {
       "@/*": [
         "./src/*"

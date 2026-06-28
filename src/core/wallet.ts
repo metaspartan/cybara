@@ -28,9 +28,9 @@ import {
   TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountInstruction,
   createTransferCheckedInstruction,
+  getMintDecimals,
   getAssociatedTokenAddressSync,
-  getMint,
-} from "@solana/spl-token";
+} from "./solana-token";
 import { createKeyPairSignerFromBytes } from "@solana/signers";
 import {
   SelectPaymentRequirements as X402SelectPaymentRequirements,
@@ -3547,11 +3547,11 @@ class WalletManager {
     const connection = new Connection(input.rpcUrl?.trim() || this.getSolRpc(), "confirmed");
     const signer = this.deriveSolKeypair(input.mnemonic, input.index);
 
-    const mintInfo = await getMint(connection, mint, "confirmed");
+    const mintDecimals = await getMintDecimals(connection, mint, "confirmed");
     const decimals =
       typeof input.decimals === "number" && Number.isFinite(input.decimals)
         ? Math.max(0, Math.floor(input.decimals))
-        : mintInfo.decimals;
+        : mintDecimals;
 
     const amountBaseUnits = parseAmountToUnits(input.amount, decimals);
     if (amountBaseUnits <= 0n) {
@@ -3604,7 +3604,6 @@ class WalletManager {
         signer.publicKey,
         amountBaseUnits,
         decimals,
-        [],
         TOKEN_PROGRAM_ID
       )
     );
@@ -4075,8 +4074,7 @@ class WalletManager {
     if (normalizedMint === SOL_MINT) {
       return 9;
     }
-    const mintAccount = await getMint(connection, new PublicKey(normalizedMint));
-    return Number(mintAccount.decimals);
+    return await getMintDecimals(connection, new PublicKey(normalizedMint), "confirmed");
   }
 
   private async resolveJupiterAmountRaw(input: {

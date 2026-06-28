@@ -592,7 +592,11 @@ export async function fillField(
   const el = await resolveRefToElement(page, refInfo);
   if (!el) return false;
 
-  await el.click({ clickCount: 3 });
+  await el.focus();
+  const selectModifier = process.platform === "darwin" ? "Meta" : "Control";
+  await page.keyboard.down(selectModifier);
+  await page.keyboard.press("A");
+  await page.keyboard.up(selectModifier);
   await page.keyboard.press("Backspace");
 
   if (options.slowly) {
