@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import type { CronJob, CronJobCreate, CronJobPatch, CronStoreFile, CronRunLog } from "./types";
+import { nextCronRun } from "./cron-expr";
 
 const CRON_DIR = join(process.env.HOME || process.env.USERPROFILE || homedir(), ".cybara", "cron");
 const JOBS_FILE = join(CRON_DIR, "jobs.json");
@@ -147,7 +148,14 @@ export function computeNextRun(schedule: CronJob["schedule"], fromMs: number = D
     }
 
     case "cron":
-      return fromMs + 60000;
+      try {
+        return nextCronRun(schedule.expr, fromMs, schedule.tz);
+      } catch (error) {
+        console.warn(
+          `[Cron] Invalid cron expression "${schedule.expr}": ${(error as Error).message}. Falling back to +1m.`
+        );
+        return fromMs + 60000;
+      }
 
     default:
       return fromMs + 60000;
