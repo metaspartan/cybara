@@ -1,0 +1,28 @@
+{
+  "name": "cybara-mobile",
+  "version": "1.0.330",
+  "private": true,
+  "main": "expo/AppEntry",
+  "scripts": {
+    "dev": "bunx expo start",
+    "android": "bunx expo start --android",
+    "ios": "bunx expo start --ios",
+    "web": "bunx expo start --web",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "^56.0.15",
+    "@react-native-async-storage/async-storage": "^3.1.1",
+    "expo": "^56.0.12",
+    "expo-blur": "^56.0.3",
+    "expo-camera": "^56.0.8",
+    "lucide-react-native": "^1.22.0",
+    "react": "^19.2.7",
+    "react-native": "^0.86.0",
+    "react-native-svg": "^15.15.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "typescript": "^6.0.3"
+  }
+}

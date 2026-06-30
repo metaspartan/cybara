@@ -3,6 +3,7 @@ import { $ } from "bun";
 
 interface PostinstallDeps {
   installUi: () => Promise<void>;
+  installMobile: () => Promise<void>;
   installPlaywright: () => Promise<void>;
   warn: (message: string) => void;
 }
@@ -10,6 +11,9 @@ interface PostinstallDeps {
 const defaultDeps: PostinstallDeps = {
   installUi: async () => {
     await $`cd ui && bun install`;
+  },
+  installMobile: async () => {
+    await $`cd apps/mobile && bun install`;
   },
   installPlaywright: async () => {
     await $`bunx playwright install`;
@@ -22,6 +26,7 @@ const defaultDeps: PostinstallDeps = {
 export async function runPostinstall(deps: Partial<PostinstallDeps> = {}): Promise<void> {
   const resolved: PostinstallDeps = { ...defaultDeps, ...deps };
   await resolved.installUi();
+  await resolved.installMobile();
 
   // Skip Playwright browser download when PUPPETEER_SKIP_DOWNLOAD is set
   // (CI builds don't need browser binaries for compiling server binaries).

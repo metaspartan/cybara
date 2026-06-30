@@ -60,6 +60,10 @@ bun test tests/api/security.test.ts
 # UI/Tauri utility seams
 bun test tests/ui
 
+# React Native mobile companion helpers
+bun run test:mobile
+bun run mobile:typecheck
+
 # Build script/platform mapping
 bun test tests/scripts
 
@@ -103,6 +107,7 @@ bun test tests/core/tool-schema-import.test.ts tests/core/agent-tool-allowlist.t
 - Channel manager lifecycle (start/stop/update/delete/masking)
 - CLI command wiring: providers, channels, pairing, MCP, tasks, skills, sessions, memory, logs, subagents
 - UI/Tauri utility seam: `openExternal` backend-first with browser fallback
+- React Native mobile companion: gateway payload parsing, API auth/fallback behavior, profile persistence, and mobile app script wiring/typecheck
 - UI API client contracts: chat/session routes, logs query params, skill execute wiring
 - IDE React regression guard: `CodeViewer` keeps top-level hooks before loading/error/empty render returns, preventing React error #300 (`Rendered fewer hooks than expected`)
 - UI auth token helpers and guardrails: shared `apiFetch` bearer injection and no direct `fetch('/api/...')` bypasses

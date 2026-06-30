@@ -2,13 +2,16 @@ import { describe, expect, test } from "bun:test";
 import { runPostinstall } from "../../scripts/postinstall";
 
 describe("postinstall flow", () => {
-  test("runs UI install then Playwright install", async () => {
+  test("runs UI and mobile install then Playwright install", async () => {
     const calls: string[] = [];
     const warnings: string[] = [];
 
     await runPostinstall({
       installUi: async () => {
         calls.push("ui");
+      },
+      installMobile: async () => {
+        calls.push("mobile");
       },
       installPlaywright: async () => {
         calls.push("playwright");
@@ -18,7 +21,7 @@ describe("postinstall flow", () => {
       },
     });
 
-    expect(calls).toEqual(["ui", "playwright"]);
+    expect(calls).toEqual(["ui", "mobile", "playwright"]);
     expect(warnings).toHaveLength(0);
   });
 
@@ -30,6 +33,9 @@ describe("postinstall flow", () => {
       installUi: async () => {
         calls.push("ui");
       },
+      installMobile: async () => {
+        calls.push("mobile");
+      },
       installPlaywright: async () => {
         calls.push("playwright");
         throw new Error("playwright install failed");
@@ -39,7 +45,7 @@ describe("postinstall flow", () => {
       },
     });
 
-    expect(calls).toEqual(["ui", "playwright"]);
+    expect(calls).toEqual(["ui", "mobile", "playwright"]);
     expect(warnings).toHaveLength(3);
     expect(warnings[0]).toContain("Playwright browser install skipped");
     expect(warnings[2]).toContain("playwright install failed");
@@ -51,6 +57,7 @@ describe("postinstall flow", () => {
         installUi: async () => {
           throw new Error("ui install failed");
         },
+        installMobile: async () => {},
         installPlaywright: async () => {},
         warn: () => {},
       })

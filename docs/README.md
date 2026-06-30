@@ -52,6 +52,11 @@ bun run tauri:build
 
 # Native SwiftUI macOS app bundle
 bun run native:macos:package
+
+# React Native mobile companion
+bun run mobile:dev
+bun run mobile:ios
+bun run mobile:android
 ```
 
 See [Desktop Guide](./desktop.md) for platform-specific build info.
@@ -72,6 +77,8 @@ See [Desktop Guide](./desktop.md) for platform-specific build info.
 | `bun run tauri:dev` | Tauri desktop dev mode |
 | `bun run tauri:build` | Tauri desktop production build |
 | `bun run native:macos:package` | Package the native SwiftUI macOS app bundle |
+| `bun run mobile:dev` | Start the React Native mobile companion with Expo |
+| `bun run mobile:typecheck` | Type-check the mobile companion |
 | `bun run package` | Build release binaries |
 
 
@@ -91,6 +98,7 @@ See [Desktop Guide](./desktop.md) for platform-specific build info.
 | [API Reference](./api.md) | REST API endpoints |
 | [Desktop](./desktop.md) | Tauri + native macOS desktop release paths |
 | [Native Shells](./native-shells.md) | SwiftUI macOS shell and Android strategy |
+| [Mobile App](../apps/mobile/README.md) | React Native iOS/Android companion app |
 | [Security](./security.md) | Self-hosting security model |
 | [Testing](./testing.md) | Automated test strategy and commands |
 

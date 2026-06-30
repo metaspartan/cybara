@@ -10,6 +10,7 @@ import { dirname, join } from "path";
 import { createInterface } from "readline";
 import { tmpdir } from "os";
 import { getAppVersion, getReleaseRepository } from "./core/build-info";
+import { generate as generateQr } from "qrcode-terminal";
 import {
   buildGitHubReleaseApiUrl,
   buildReleaseChecksumUrl,
@@ -44,6 +45,8 @@ function resolveCliApiKey(): string | null {
 }
 
 const CLI_API_KEY = resolveCliApiKey();
+
+const MOBILE_CONNECT_PROTOCOL = "cybara-mobile-connect-v1";
 
 function withCliAuthHeaders(
   headers?: RequestInit["headers"],
@@ -162,6 +165,64 @@ interface AgentItem {
   type: string;
   status: string;
   model?: string;
+}
+
+function normalizeMobileGatewayUrl(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) throw new Error("Gateway URL is required");
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  const parsed = new URL(withProtocol);
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    throw new Error("Gateway URL must use http or https");
+  }
+  parsed.search = "";
+  parsed.hash = "";
+  return parsed.toString().replace(/\/+$/, "");
+}
+
+async function rawMobileConnect(args: string[]): Promise<void> {
+  const baseUrl = normalizeMobileGatewayUrl(getFlagValue(args, "--url") || API_BASE);
+  const name = getFlagValue(args, "--name") || process.env.HOSTNAME || "Cybara Gateway";
+  const apiKey = getFlagValue(args, "--key") || CLI_API_KEY;
+  const showQr = hasFlag(args, "--qr");
+  const jsonOnly = hasFlag(args, "--json");
+
+  if (!apiKey) {
+    console.error("ERROR: No API key available for mobile pairing.");
+    console.error("Set CYBARA_API_KEY or create ~/.cybara/api_key, then rerun this command.");
+    process.exit(1);
+  }
+
+  const payload = {
+    protocol: MOBILE_CONNECT_PROTOCOL,
+    name,
+    baseUrl,
+    apiKey,
+    createdAt: new Date().toISOString(),
+  };
+  const encoded = JSON.stringify(payload);
+  const deepLink = `cybara://connect?name=${encodeURIComponent(name)}&baseUrl=${encodeURIComponent(baseUrl)}&apiKey=${encodeURIComponent(apiKey)}`;
+
+  if (jsonOnly) {
+    console.log(encoded);
+    return;
+  }
+
+  console.log("CYBARA MOBILE CONNECT");
+  console.log("=====================");
+  console.log(`name: ${name}`);
+  console.log(`gateway: ${baseUrl}`);
+  console.log("");
+  console.log("Payload:");
+  console.log(encoded);
+  console.log("");
+  console.log("Deep link:");
+  console.log(deepLink);
+
+  if (showQr) {
+    console.log("");
+    generateQr(encoded, { small: true });
+  }
 }
 
 async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T | null> {
@@ -3694,6 +3755,8 @@ function rawHelp(): void {
   console.log("    browser            Show browser status");
   console.log("    browser tabs       List open browser tabs");
   console.log("  channels    List configured channels");
+  console.log("  mobile      Mobile companion commands");
+  console.log("    mobile connect [--url URL] [--name NAME] [--qr] [--json]");
   console.log("  wallet      Wallet management commands");
   console.log("    wallet status                     Show wallet status and RPC settings");
   console.log("    wallet create --password <p>      Create 24-word wallet");
@@ -4958,6 +5021,18 @@ async function main() {
       break;
     case "sessions":
       await rawSessions();
+      break;
+    case "mobile":
+      switch (args[1]) {
+        case "connect":
+        case undefined:
+          await rawMobileConnect(args.slice(2));
+          break;
+        default:
+          console.log("Mobile Commands:");
+          console.log("  cybara mobile connect [--url URL] [--name NAME] [--qr] [--json]");
+          break;
+      }
       break;
     case "memory":
       await rawMemory(args[1]);

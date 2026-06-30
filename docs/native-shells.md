@@ -21,21 +21,22 @@ Design:
 
 This keeps CLI, Tauri, and native macOS aligned on one runtime instead of fragmenting behavior.
 
-## Android
+## Mobile: iOS + Android
 
-The current Bun-based local runtime should not be forced into Android prematurely.
+The mobile companion now lives in [apps/mobile/README.md](../apps/mobile/README.md). It is a React Native / Expo app for iOS and Android with a dark Liquid Glass-inspired interface.
 
 Recommended near-term path:
 
-- native Kotlin shell
-- embedded `WebView`
-- connect to a remote or local Cybara gateway over the existing API contract
-- add mobile-safe auth/reconnect/push first
+- connect to a remote or local Cybara gateway over the existing HTTP/WebSocket API contract
+- pair by scanning or pasting the `cybara mobile connect --qr` payload emitted by the device running Cybara
+- manage sessions, agents, providers, tools/approvals, wallet policy, channels, tasks, memory, terminal/log entrypoints, and settings summaries
+- keep API-first parity before attempting any local mobile runtime
+- add platform push notifications and deeper native share-sheet flows after the remote management foundation is stable
 
-Reference: [apps/android/README.md](../apps/android/README.md)
+The older Android-only note remains in [apps/android/README.md](../apps/android/README.md), but the active implementation track is React Native so iOS and Android share the same companion surface.
 
 ## Why this split matters
 
 - macOS can reuse the compiled local Cybara binary directly
-- Android needs API-first parity before a true local node/runtime
+- mobile needs API-first parity before a true local node/runtime
 - both shells should stay aligned with the same HTTP/WebSocket contracts used by CLI and Tauri

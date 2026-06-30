@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Cybara",
+    "slug": "cybara-mobile",
+    "version": "1.0.330",
+    "orientation": "portrait",
+    "scheme": "cybara",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "dev.cybara.mobile"
+    },
+    "android": {
+      "package": "dev.cybara.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#071016"
+      }
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Scan a Cybara gateway QR code to connect this device."
+        }
+      ]
+    ],
+    "extra": {
+      "gatewayContract": "cybara-mobile-connect-v1"
+    }
+  }
+}

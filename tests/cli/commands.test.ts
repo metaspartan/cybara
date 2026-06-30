@@ -1791,6 +1791,25 @@ describe("CLI Commands", () => {
     expect(mcpPopular.stdout).toContain("POPULAR MCP SERVERS");
   });
 
+  test("mobile connect emits QR-compatible gateway payload", async () => {
+    const mobile = await runCli(
+      ["mobile", "connect", "--name", "Test Gateway", "--url", apiBase, "--json"],
+      { CYBARA_API_KEY: "cybara_mobile_cli_test" }
+    );
+
+    expect(mobile.exitCode).toBe(0);
+    const payload = JSON.parse(mobile.stdout) as {
+      protocol?: string;
+      name?: string;
+      baseUrl?: string;
+      apiKey?: string;
+    };
+    expect(payload.protocol).toBe("cybara-mobile-connect-v1");
+    expect(payload.name).toBe("Test Gateway");
+    expect(payload.baseUrl).toBe(apiBase);
+    expect(payload.apiKey).toBe("cybara_mobile_cli_test");
+  });
+
   test("loop command group is wired", async () => {
     const list = await runCli(["loop", "list"]);
     expect(list.exitCode).toBe(0);

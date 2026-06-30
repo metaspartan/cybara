@@ -174,6 +174,16 @@ cybara pair policy <chan> <policy>  # Set DM policy
 
 Policies: `pairing`, `allowlist`, `open`, `disabled`
 
+### Mobile Companion
+
+```bash
+cybara mobile connect --qr
+cybara mobile connect --url http://192.168.1.20:4269 --name "Studio Gateway" --qr
+cybara mobile connect --json
+```
+
+`mobile connect` emits a `cybara-mobile-connect-v1` payload for the React Native iOS/Android app. Use a LAN-reachable URL or a trusted tunnel when pairing from a phone; `localhost` only works on the same machine.
+
 ### MCP Servers
 
 ```bash

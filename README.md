@@ -25,6 +25,7 @@
   <img src="https://img.shields.io/badge/channels-10-orange" alt="10 Channels" />
   <img src="https://img.shields.io/badge/skills-60+-teal" alt="60+ Skills" />
   <img src="https://img.shields.io/badge/desktop-Tauri-orange?logo=tauri" alt="Tauri Desktop" />
+  <img src="https://img.shields.io/badge/mobile-React_Native-61dafb?logo=react" alt="React Native Mobile" />
 </p>
 
 ---
@@ -56,7 +57,7 @@ If you need an agent platform that can plan, execute, verify, and report with st
 - Token streaming to the UI (real-time assistant text deltas via WebSocket)
 - MCP host mode (expose cybara's tools to other MCP clients) + MCP client (consume external servers)
 - Media generation (image/video/music) via swappable provider registry, dynamic tool discovery, a tool-calling code sandbox, desktop control with safety hardening, and a multi-agent kanban orchestration tier
-- Tauri desktop app + native SwiftUI macOS app + Bun server/CLI runtime
+- Tauri desktop app + native SwiftUI macOS app + React Native mobile companion + Bun server/CLI runtime
 
 ---
 
@@ -108,6 +109,21 @@ Every CLI release ships with per-asset SHA256 sidecars; `cybara update` and `ins
 The desktop app now checks the same GitHub release channel from `Settings -> Desktop Updates` and can install signed app updates in place.
 
 Production deployment guidance: [docs/production.md](docs/production.md)
+
+## Mobile Companion
+
+Cybara Mobile is a dark Liquid Glass-inspired React Native app for iOS and Android. It connects to a Cybara gateway already running from CLI, Tauri/Web UI, native macOS, or a hosted deployment, then manages remote sessions and operator settings.
+
+```bash
+bun run mobile:dev
+bun run mobile:ios
+bun run mobile:android
+
+# on the device running Cybara
+cybara mobile connect --qr
+```
+
+The initial mobile surface covers gateway health, sessions, agents, providers, tool approvals, wallet policy, channels, tasks, memory, terminal/log entrypoints, and settings summaries. See [apps/mobile/README.md](apps/mobile/README.md).
 
 ---
 
