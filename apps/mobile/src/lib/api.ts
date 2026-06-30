@@ -1,6 +1,8 @@
 import type { GatewayProfile } from "./connection";
 import { emptyMetricsAvailability, type MetricsEndpointKey, type MetricsSnapshot } from "./metrics";
 
+const MOBILE_SESSION_LIST_LIMIT = 100;
+
 export interface HealthResponse {
   status: string;
   version?: string;
@@ -476,12 +478,14 @@ export class CybaraMobileApi {
   }
 
   async sessions(): Promise<SessionSummary[]> {
-    return normalizeSessions(await this.request<unknown>("/api/chat/sessions"));
+    return normalizeSessions(
+      await this.request<unknown>(`/api/sessions?limit=${MOBILE_SESSION_LIST_LIMIT}`)
+    );
   }
 
   async session(id: string): Promise<SessionDetailSummary> {
     return normalizeSessionDetail(
-      await this.request<unknown>(`/api/chat/sessions/${encodeURIComponent(id)}`),
+      await this.request<unknown>(`/api/sessions/${encodeURIComponent(id)}`),
       id
     );
   }

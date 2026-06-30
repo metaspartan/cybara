@@ -2,7 +2,7 @@ import { Platform, StyleSheet } from "react-native";
 
 export const colors = {
   background: "#020407",
-  backgroundLift: "#070b10",
+  backgroundLift: "#05080d",
   text: "#f3f8fb",
   textMuted: "#94a3ad",
   textDim: "#5f6c75",
@@ -13,9 +13,9 @@ export const colors = {
   red: "#ff7b8b",
   border: "rgba(174, 195, 208, 0.14)",
   borderStrong: "rgba(190, 213, 226, 0.24)",
-  glass: "rgba(8, 13, 19, 0.82)",
-  glassElevated: "rgba(13, 20, 27, 0.88)",
-  glassPressed: "rgba(28, 41, 51, 0.88)",
+  glass: "rgba(3, 7, 11, 0.9)",
+  glassElevated: "rgba(6, 11, 16, 0.94)",
+  glassPressed: "rgba(13, 22, 30, 0.92)",
 };
 
 export const accentPalette = {

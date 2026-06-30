@@ -1,4 +1,4 @@
-import type { FeatureSummary, SessionSummary } from "./api";
+import type { FeatureSummary, HealthResponse, SessionSummary } from "./api";
 import type { GatewayProfile } from "./connection";
 
 export type MobileTabKey = "overview" | "sessions" | "metrics" | "settings";
@@ -60,6 +60,13 @@ export const MOBILE_CHAT_CHROME = {
   hidesSystemMessages: true,
 } as const;
 
+export const MOBILE_CHAT_DETAIL_CHROME = {
+  settingsInHeader: true,
+  detailsMenuIncludesSessionId: true,
+  detailsMenuIncludesWorkspaceDirectory: true,
+  timelineMetadataBar: false,
+} as const;
+
 export const MOBILE_CHAT_COMPOSER = {
   growsWithContent: true,
   lineHeight: 20,
@@ -69,6 +76,19 @@ export const MOBILE_CHAT_COMPOSER = {
   preserveDraftOnFailure: true,
   resetAfterSend: true,
   sendButtonMode: "icon" as const,
+} as const;
+
+export const MOBILE_MAIN_TAB_CHROME = {
+  edgeToEdge: true,
+  outerHorizontalPadding: 0,
+  panelRadius: 0,
+} as const;
+
+export const MOBILE_GATEWAY_PANEL_CHROME = {
+  showApiBaseRow: false,
+  showApiStatusTile: false,
+  showGatewayUrlRow: false,
+  showUptime: true,
 } as const;
 
 export function boundedMobileComposerHeight(height: number): number {
@@ -175,6 +195,50 @@ export function formatUptime(seconds?: number): string {
   return `${minutes}m`;
 }
 
+export function buildGatewayPanelMeta(health: HealthResponse | null | undefined): string {
+  const versionLabel = health?.version
+    ? `v${String(health.version).replace(/^v/i, "")}`
+    : "version pending";
+  return [
+    versionLabel,
+    MOBILE_GATEWAY_PANEL_CHROME.showUptime ? `uptime ${formatUptime(health?.uptime)}` : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" - ");
+}
+
+export function buildMobileChatSettingsLines({
+  agentId,
+  messageCount,
+  sessionId,
+  title,
+  updatedLabel,
+  workspaceDir,
+}: {
+  agentId?: string | null;
+  messageCount: number;
+  sessionId: string;
+  title?: string | null;
+  updatedLabel: string;
+  workspaceDir?: string | null;
+}): string[] {
+  const safeMessageCount = Math.max(0, messageCount);
+  const fallbackTitle = sessionId ? `Session ${sessionId.slice(0, 8)}` : "Chat";
+  const lines = [
+    `Title: ${title || fallbackTitle}`,
+    `Messages: ${safeMessageCount} message${safeMessageCount === 1 ? "" : "s"}`,
+    `Updated: ${updatedLabel}`,
+    `Agent: ${agentId || "unknown"}`,
+  ];
+  if (MOBILE_CHAT_DETAIL_CHROME.detailsMenuIncludesWorkspaceDirectory) {
+    lines.push(`Workspace directory: ${workspaceDir || "No workspace"}`);
+  }
+  if (MOBILE_CHAT_DETAIL_CHROME.detailsMenuIncludesSessionId) {
+    lines.push(`Session ID: ${sessionId}`);
+  }
+  return lines;
+}
+
 export function lastUpdatedLabel(session: SessionSummary, nowMs = Date.now()): string {
   const updated = Date.parse(session.updated_at);
   if (!Number.isFinite(updated)) return "recent";
@@ -233,7 +297,7 @@ export function formatMobileValue(value: unknown, fallback = "unknown"): string 
   return fallback;
 }
 
-const MOBILE_ACCENT_KEYS = new Set([
+export const MOBILE_ACCENT_KEYS = [
   "indigo",
   "blue",
   "cyan",
@@ -244,7 +308,20 @@ const MOBILE_ACCENT_KEYS = new Set([
   "rose",
   "pink",
   "purple",
-]);
+] as const;
+
+export type MobileAccentKey = (typeof MOBILE_ACCENT_KEYS)[number];
+
+const MOBILE_ACCENT_KEY_SET = new Set<string>(MOBILE_ACCENT_KEYS);
+
+export function mobileThemeConfigPayload(accent: MobileAccentKey): Record<string, string> {
+  return {
+    theme: accent,
+    themeAccent: accent,
+    theme_accent: accent,
+    ui_accent: accent,
+  };
+}
 
 function readNestedString(
   record: Record<string, unknown> | undefined,
@@ -262,6 +339,7 @@ export function readMobileAccent(config: Record<string, unknown> | undefined): s
   const candidates = [
     config?.themeAccent,
     config?.theme_accent,
+    config?.theme,
     config?.accent,
     config?.ui_accent,
     readNestedString(config, ["ui", "accent"]),
@@ -273,6 +351,6 @@ export function readMobileAccent(config: Record<string, unknown> | undefined): s
   const value = candidates
     .filter((candidate): candidate is string => typeof candidate === "string")
     .map((candidate) => candidate.trim().toLowerCase())
-    .find((candidate) => MOBILE_ACCENT_KEYS.has(candidate));
+    .find((candidate) => MOBILE_ACCENT_KEY_SET.has(candidate));
   return value || "cyan";
 }

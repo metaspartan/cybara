@@ -43,6 +43,46 @@ describe("mobile API client", () => {
     }
   });
 
+  test("persists mobile theme config through the gateway config endpoint", async () => {
+    const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      const method = init?.method || "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      calls.push({ method, path: parsedUrl.pathname, body });
+      if (parsedUrl.pathname === "/api/config" && method === "PUT") {
+        return Response.json({ success: true });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      await expect(
+        new CybaraMobileApi(profile).updateConfig({
+          theme: "emerald",
+          themeAccent: "emerald",
+          theme_accent: "emerald",
+          ui_accent: "emerald",
+        })
+      ).resolves.toEqual({ success: true });
+      expect(calls).toEqual([
+        {
+          method: "PUT",
+          path: "/api/config",
+          body: {
+            theme: "emerald",
+            themeAccent: "emerald",
+            theme_accent: "emerald",
+            ui_accent: "emerald",
+          },
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("loads a broad feature summary without failing when optional surfaces are unavailable", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (url) => {
@@ -50,7 +90,7 @@ describe("mobile API client", () => {
       if (path === "/api/health") {
         return Response.json({ status: "healthy", uptime: 12, timestamp: "now" });
       }
-      if (path === "/api/chat/sessions") {
+      if (path === "/api/sessions") {
         return Response.json([{ id: "s1", title: "Build", message_count: 3, updated_at: "now" }]);
       }
       if (path === "/api/agents") return Response.json([{ id: "a1", name: "Main" }]);
@@ -75,16 +115,16 @@ describe("mobile API client", () => {
     }
   });
 
-  test("uses chat session endpoints and posts into an existing mobile chat", async () => {
-    const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+  test("uses bounded session endpoints and posts into an existing mobile chat", async () => {
+    const calls: Array<{ method: string; path: string; search: string; body?: unknown }> = [];
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (url, init) => {
       const parsedUrl = new URL(String(url));
       const method = init?.method || "GET";
       const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
-      calls.push({ method, path: parsedUrl.pathname, body });
+      calls.push({ method, path: parsedUrl.pathname, search: parsedUrl.search, body });
 
-      if (parsedUrl.pathname === "/api/chat/sessions") {
+      if (parsedUrl.pathname === "/api/sessions") {
         return Response.json([
           {
             id: "s1",
@@ -96,7 +136,7 @@ describe("mobile API client", () => {
         ]);
       }
 
-      if (parsedUrl.pathname === "/api/chat/sessions/s1") {
+      if (parsedUrl.pathname === "/api/sessions/s1") {
         return Response.json({
           id: "s1",
           title: "Build mobile",
@@ -156,9 +196,9 @@ describe("mobile API client", () => {
       expect(detail.messages[0].processActivities?.[0].text).toBe("Read DashboardScreen");
       expect(sent.message.thinking).toBe("top-level thought");
       expect(sent.message.toolCalls?.[0].name).toBe("shell");
-      expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
-        "GET /api/chat/sessions",
-        "GET /api/chat/sessions/s1",
+      expect(calls.map((call) => `${call.method} ${call.path}${call.search}`)).toEqual([
+        "GET /api/sessions?limit=100",
+        "GET /api/sessions/s1",
         "POST /api/chat",
       ]);
       expect(calls[2].body).toMatchObject({
@@ -175,7 +215,7 @@ describe("mobile API client", () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (url) => {
       const path = new URL(String(url)).pathname;
-      if (path === "/api/chat/sessions") {
+      if (path === "/api/sessions") {
         return Response.json([
           {
             id: "recent",

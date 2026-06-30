@@ -121,6 +121,8 @@ interface SessionLastMessagePreview {
   content: string;
 }
 
+const SESSION_LAST_MESSAGE_PREVIEW_MAX_CHARS = 500;
+
 interface PersistedSessionIndexEntry {
   id: string;
   agentId: string;
@@ -136,11 +138,16 @@ interface PersistedSessionIndexEntry {
 const chatSessions = new Map<string, InMemoryChatSession>();
 const persistedSessionIndex = new Map<string, PersistedSessionIndexEntry>();
 
+function truncateSessionPreviewContent(content: string): string {
+  if (content.length <= SESSION_LAST_MESSAGE_PREVIEW_MAX_CHARS) return content;
+  return `${content.slice(0, SESSION_LAST_MESSAGE_PREVIEW_MAX_CHARS)}...`;
+}
+
 function buildLastMessagePreview(message?: ChatMessage): SessionLastMessagePreview | null {
   if (!message) return null;
   return {
     role: message.role,
-    content: message.content,
+    content: truncateSessionPreviewContent(message.content),
   };
 }
 
@@ -160,7 +167,7 @@ function normalizePersistedIndexEntry(
     lastMessage: entry.lastMessage
       ? {
           role: entry.lastMessage.role,
-          content: entry.lastMessage.content,
+          content: truncateSessionPreviewContent(entry.lastMessage.content),
         }
       : null,
   };
@@ -1458,7 +1465,8 @@ interface RevertSessionTarget {
 }
 
 function resolveRevertMessageIndex(messages: ChatMessage[], target: RevertSessionTarget): number {
-  const desiredRole: ChatMessage["role"] = target.messageRole === "assistant" ? "assistant" : "user";
+  const desiredRole: ChatMessage["role"] =
+    target.messageRole === "assistant" ? "assistant" : "user";
   const candidateIndex = Number.isInteger(target.messageIndex) ? Number(target.messageIndex) : -1;
   const content = typeof target.messageContent === "string" ? target.messageContent.trim() : "";
   const timestamp =

@@ -163,6 +163,7 @@ export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfi
 const styles = StyleSheet.create({
   wrap: {
     gap: spacing.md,
+    paddingHorizontal: spacing.lg,
   },
   brand: {
     alignItems: "center",

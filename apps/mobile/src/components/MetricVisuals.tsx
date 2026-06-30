@@ -229,7 +229,7 @@ export function MetricEndpointGrid({
 
 const styles = StyleSheet.create({
   section: {
-    backgroundColor: "rgba(3, 7, 11, 0.46)",
+    backgroundColor: "rgba(2, 6, 10, 0.78)",
     borderColor: colors.border,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   micro: {
-    backgroundColor: "rgba(255,255,255,0.045)",
+    backgroundColor: "rgba(2, 7, 11, 0.86)",
     borderColor: colors.border,
     borderRadius: radius.sm,
     borderWidth: 1,
@@ -291,13 +291,13 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   track: {
-    backgroundColor: "rgba(255,255,255,0.075)",
+    backgroundColor: "rgba(0,0,0,0.34)",
     borderRadius: 999,
     height: 9,
     overflow: "hidden",
   },
   trackSmall: {
-    backgroundColor: "rgba(255,255,255,0.075)",
+    backgroundColor: "rgba(0,0,0,0.34)",
     borderRadius: 999,
     height: 5,
     overflow: "hidden",
@@ -382,7 +382,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   cloudPill: {
-    backgroundColor: "rgba(255,255,255,0.045)",
+    backgroundColor: "rgba(2, 7, 11, 0.86)",
     borderColor: colors.border,
     borderRadius: radius.sm,
     borderWidth: 1,
@@ -407,7 +407,7 @@ const styles = StyleSheet.create({
   },
   endpointPill: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.045)",
+    backgroundColor: "rgba(2, 7, 11, 0.86)",
     borderColor: colors.border,
     borderRadius: radius.sm,
     borderWidth: 1,

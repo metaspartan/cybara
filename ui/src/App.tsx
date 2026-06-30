@@ -26,8 +26,11 @@ import { Artifacts } from '@/pages/Artifacts';
 import { Mobile } from '@/pages/Mobile';
 import { Setup } from '@/pages/Setup';
 import { useProviders, useAgents } from '@/hooks/useApi';
+import { settingsApi } from '@/lib/api';
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useEffect } from 'react';
+import { readThemeAccentFromConfig, useUIStore } from '@/stores/uiStore';
 
 function SetupGuard({ children }: { children: React.ReactNode }) {
   const location = useLocation();
@@ -97,11 +100,42 @@ function AppRoutes() {
   );
 }
 
+function ThemeConfigSync() {
+  const setAccent = useUIStore((state) => state.setAccent);
+
+  useEffect(() => {
+    let mounted = true;
+    const syncTheme = async () => {
+      try {
+        const result = await settingsApi.getConfig();
+        if (!mounted || !result.success) return;
+        const accent = readThemeAccentFromConfig(result.data);
+        if (accent) setAccent(accent);
+      } catch {
+        // The persisted local accent remains active while the gateway is unavailable.
+      }
+    };
+    void syncTheme();
+    const interval = window.setInterval(() => {
+      void syncTheme();
+    }, 30000);
+    window.addEventListener('focus', syncTheme);
+    return () => {
+      mounted = false;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', syncTheme);
+    };
+  }, [setAccent]);
+
+  return null;
+}
+
 function App() {
   return (
     <ErrorBoundary>
     <SidebarProvider>
       <div className="flex min-h-screen bg-[#0a0a0f] overflow-hidden">
+        <ThemeConfigSync />
         <Routes>
           <Route path="/setup" element={<Setup />} />
 

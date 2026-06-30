@@ -17,7 +17,14 @@ import {
 } from '@/lib/desktopHost';
 import { Input, Textarea, Select } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
-import { useUIStore, themeAccents, type ThemeAccent } from '@/stores/uiStore';
+import {
+  readThemeAccentFromConfig,
+  themeAccentKeys,
+  themeAccents,
+  themeConfigPayload,
+  useUIStore,
+  type ThemeAccent,
+} from '@/stores/uiStore';
 import {
   Activity,
   AlertTriangle,
@@ -64,6 +71,7 @@ function getCheckStatus(value: unknown): { status: 'healthy' | 'warning' | 'erro
 
 function ThemeSettings() {
   const { accent, setAccent, addToast } = useUIStore();
+  const [savingAccent, setSavingAccent] = useState<ThemeAccent | null>(null);
 
   const accentColors: Record<ThemeAccent, string> = {
     indigo: 'bg-indigo-500',
@@ -78,6 +86,43 @@ function ThemeSettings() {
     purple: 'bg-purple-500',
   };
 
+  useEffect(() => {
+    let mounted = true;
+    const loadGatewayTheme = async () => {
+      try {
+        const result = await settingsApi.getConfig();
+        if (!mounted || !result.success) return;
+        const configAccent = readThemeAccentFromConfig(result.data);
+        if (configAccent) setAccent(configAccent);
+      } catch {
+        // Keep the locally persisted accent if the gateway is unavailable.
+      }
+    };
+    void loadGatewayTheme();
+    return () => {
+      mounted = false;
+    };
+  }, [setAccent]);
+
+  const updateAccent = async (key: ThemeAccent) => {
+    if (savingAccent || key === accent) return;
+    const previous = accent;
+    setAccent(key);
+    setSavingAccent(key);
+    try {
+      const result = await settingsApi.updateConfig(themeConfigPayload(key));
+      if (!result.success || !result.data?.success) {
+        throw new Error(result.error || 'Config update failed');
+      }
+      addToast('success', `Theme changed to ${themeAccents[key].name}`);
+    } catch {
+      setAccent(previous);
+      addToast('error', 'Failed to update theme');
+    } finally {
+      setSavingAccent(null);
+    }
+  };
+
   return (
     <Card variant="liquid">
       <CardHeader>
@@ -89,19 +134,19 @@ function ThemeSettings() {
       </CardHeader>
       <CardContent>
         <div className="flex flex-wrap gap-3">
-          {(Object.keys(themeAccents) as ThemeAccent[]).map((key) => (
+          {themeAccentKeys.map((key) => (
             <button
               key={key}
-              onClick={() => {
-                setAccent(key);
-                addToast('success', `Theme changed to ${themeAccents[key].name}`);
-              }}
+              aria-pressed={accent === key}
+              disabled={savingAccent !== null}
+              onClick={() => void updateAccent(key)}
               className={cn(
                 'w-12 h-12 rounded-xl transition-all cursor-pointer',
                 accentColors[key],
                 accent === key
                   ? 'ring-2 ring-white ring-offset-2 ring-offset-[#0a0a0f] scale-110'
-                  : 'hover:scale-105 opacity-70 hover:opacity-100'
+                  : 'hover:scale-105 opacity-70 hover:opacity-100',
+                savingAccent !== null && 'cursor-not-allowed'
               )}
               title={themeAccents[key].name}
             />

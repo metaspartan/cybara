@@ -3,19 +3,24 @@ import type { FeatureSummary } from "../../apps/mobile/src/lib/api";
 import type { GatewayProfile } from "../../apps/mobile/src/lib/connection";
 import {
   MOBILE_FEATURE_SECTIONS,
+  MOBILE_ACCENT_KEYS,
   MOBILE_CHAT_COMPOSER,
   MOBILE_CHAT_CHROME,
+  MOBILE_GATEWAY_PANEL_CHROME,
+  MOBILE_MAIN_TAB_CHROME,
   MOBILE_METRICS_CHROME,
   MOBILE_NAV_CHROME,
   MOBILE_SETTINGS_SURFACES,
   MOBILE_SURFACES,
   MOBILE_TABS,
   boundedMobileComposerHeight,
+  buildGatewayPanelMeta,
   buildMobileHeaderCopy,
   formatMobileValue,
   formatUptime,
   lastUpdatedLabel,
   mobileComposerHeightForDraft,
+  mobileThemeConfigPayload,
   readMobileAccent,
   summarizeFeatureCounts,
 } from "../../apps/mobile/src/lib/dashboard";
@@ -81,6 +86,18 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_TABS.filter((tab) => tab.showsGatewayPanel).map((tab) => tab.key)).toEqual([
       "overview",
     ]);
+    expect(MOBILE_GATEWAY_PANEL_CHROME.showUptime).toBe(true);
+    expect(MOBILE_GATEWAY_PANEL_CHROME.showApiStatusTile).toBe(false);
+    expect(MOBILE_GATEWAY_PANEL_CHROME.showGatewayUrlRow).toBe(false);
+    expect(MOBILE_GATEWAY_PANEL_CHROME.showApiBaseRow).toBe(false);
+    expect(
+      buildGatewayPanelMeta({
+        status: "healthy",
+        version: "1.0.330",
+        uptime: 568,
+        timestamp: "2026-06-30T12:17:30.336Z",
+      })
+    ).toBe("v1.0.330 - uptime 9m");
   });
 
   test("keeps the pinned bottom nav squared to the viewport", () => {
@@ -93,6 +110,9 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_CHAT_CHROME.composerReservedBottom).toBe(MOBILE_NAV_CHROME.height);
     expect(MOBILE_CHAT_CHROME.autoScrollToLatestMessage).toBe(true);
     expect(MOBILE_CHAT_CHROME.hidesSystemMessages).toBe(true);
+    expect(MOBILE_MAIN_TAB_CHROME.edgeToEdge).toBe(true);
+    expect(MOBILE_MAIN_TAB_CHROME.outerHorizontalPadding).toBe(0);
+    expect(MOBILE_MAIN_TAB_CHROME.panelRadius).toBe(0);
   });
 
   test("keeps the chat composer compact, dynamic, and icon driven", () => {
@@ -201,8 +221,20 @@ describe("mobile dashboard model", () => {
 
   test("reads supported accent themes from gateway config without using dark mode as an accent", () => {
     expect(readMobileAccent({ ui_accent: "emerald" })).toBe("emerald");
+    expect(readMobileAccent({ theme: "teal" })).toBe("teal");
     expect(readMobileAccent({ ui: { accent: "rose" } })).toBe("rose");
+    expect(readMobileAccent({ theme: "dark" })).toBe("cyan");
     expect(readMobileAccent({ identity: { theme: "dark" } })).toBe("cyan");
     expect(readMobileAccent({ themeAccent: "purple" })).toBe("purple");
+  });
+
+  test("builds a shared gateway payload for mobile theme accents", () => {
+    expect(MOBILE_ACCENT_KEYS).toContain("emerald");
+    expect(mobileThemeConfigPayload("emerald")).toEqual({
+      theme: "emerald",
+      themeAccent: "emerald",
+      theme_accent: "emerald",
+      ui_accent: "emerald",
+    });
   });
 });

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const pagesDir = fileURLToPath(new URL("../../ui/src/pages", import.meta.url));
 const libDir = fileURLToPath(new URL("../../ui/src/lib", import.meta.url));
+const uiDir = fileURLToPath(new URL("../../ui/src", import.meta.url));
 
 function readPage(fileName: string): string {
   return readFileSync(join(pagesDir, fileName), "utf8");
@@ -12,6 +13,10 @@ function readPage(fileName: string): string {
 
 function readLib(fileName: string): string {
   return readFileSync(join(libDir, fileName), "utf8");
+}
+
+function readUiSource(fileName: string): string {
+  return readFileSync(join(uiDir, fileName), "utf8");
 }
 
 describe("UI page API wiring", () => {
@@ -56,6 +61,20 @@ describe("UI page API wiring", () => {
     expect(source).toContain("setTerminalEnabled(enabled);");
     expect(source).toContain("setTerminalEnabled(!enabled);");
     expect(source).not.toContain("apiFetch(");
+  });
+
+  test("Web and Tauri theme accents sync through gateway config", () => {
+    const settingsSource = readPage("Settings.tsx");
+    const appSource = readUiSource("App.tsx");
+    const storeSource = readUiSource("stores/uiStore.ts");
+
+    expect(settingsSource).toContain("settingsApi.updateConfig(themeConfigPayload(key))");
+    expect(settingsSource).toContain("readThemeAccentFromConfig(result.data)");
+    expect(appSource).toContain("function ThemeConfigSync()");
+    expect(appSource).toContain("settingsApi.getConfig()");
+    expect(appSource).toContain("window.addEventListener('focus', syncTheme)");
+    expect(storeSource).toContain("export function themeConfigPayload");
+    expect(storeSource).toContain("config?.theme,");
   });
 
   test("Setup page completes onboarding through setupApi helper", () => {

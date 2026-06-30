@@ -13,6 +13,8 @@ import {
   Text,
   TextInput,
   View,
+  type StyleProp,
+  type TextStyle,
 } from "react-native";
 import {
   ArrowLeft,
@@ -22,7 +24,6 @@ import {
   CalendarCheck,
   ChevronRight,
   Clock,
-  Copy,
   Cpu,
   Database,
   HeartPulse,
@@ -30,6 +31,7 @@ import {
   Link2,
   ListTodo,
   MessageCircle,
+  Palette,
   RefreshCw,
   Send,
   Settings,
@@ -65,24 +67,31 @@ import {
 } from "../lib/api";
 import {
   chatIsWaitingForAssistant,
+  hasUnicodeTextFallback,
+  latestVisibleChatMessages,
   splitMessageContent,
-  visibleChatMessages,
+  splitUnicodeTextRuns,
 } from "../lib/chat-format";
 import type { GatewayProfile } from "../lib/connection";
 import {
   MOBILE_NAV_CHROME,
   MOBILE_CHAT_COMPOSER,
   MOBILE_CHAT_CHROME,
+  MOBILE_ACCENT_KEYS,
+  MOBILE_GATEWAY_PANEL_CHROME,
+  MOBILE_MAIN_TAB_CHROME,
   MOBILE_METRICS_CHROME,
   MOBILE_SETTINGS_SURFACES,
   MOBILE_TABS,
   boundedMobileComposerHeight,
+  buildGatewayPanelMeta,
   buildMobileHeaderCopy,
   compactHost,
   formatUptime,
   formatMobileValue,
   lastUpdatedLabel,
   mobileComposerHeightForDraft,
+  mobileThemeConfigPayload,
   readMobileAccent,
   summarizeFeatureCounts,
   type FeatureCounts,
@@ -99,7 +108,14 @@ import {
   totalFileOperations,
   type MetricsSnapshot,
 } from "../lib/metrics";
-import { accentPalette, colors, radius, spacing, typography } from "../theme/liquidGlass";
+import {
+  accentPalette,
+  colors,
+  radius,
+  spacing,
+  typography,
+  type AccentKey,
+} from "../theme/liquidGlass";
 import cybaraLogo from "../../assets/cybara.png";
 
 type IconGlyph = ComponentType<{ color?: string; size?: number; strokeWidth?: number }>;
@@ -149,12 +165,6 @@ const surfaceMeta: Record<
   logs: { title: "Logs", Icon: ListTodo, tone: colors.textMuted, endpoint: "logs" },
   monitor: { title: "System Monitor", Icon: Cpu, tone: colors.blueText, endpoint: "health" },
 };
-
-const sparkBars = [8, 10, 7, 12, 9, 14, 20, 12, 8, 13, 11, 16, 9, 13, 18, 12, 25];
-
-function showValue(label: string, value: string) {
-  Alert.alert(label, value);
-}
 
 function endpointErrorDetail(endpoint: EndpointState, fallback: string): string {
   if (!endpoint || endpoint.ok) return fallback;
@@ -214,9 +224,8 @@ function displayFields(record: Record<string, unknown>): Array<{ label: string; 
     }));
 }
 
-function resolveAccentColor(summary: FeatureSummary | null): string {
-  const key = readMobileAccent(summary?.config) as keyof typeof accentPalette;
-  return accentPalette[key] || accentPalette.cyan;
+function resolveAccentKey(summary: FeatureSummary | null): AccentKey {
+  return readMobileAccent(summary?.config) as AccentKey;
 }
 
 function itemFromRecord(
@@ -381,8 +390,13 @@ export function DashboardScreen({
   const [detailRoute, setDetailRoute] = useState<DetailRoute | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [metricsError, setMetricsError] = useState<string | null>(null);
+  const [accentOverride, setAccentOverride] = useState<AccentKey | null>(null);
+  const refreshInFlight = useRef(false);
+  const metricsRefreshInFlight = useRef(false);
 
   const refresh = async (showRefreshing = true) => {
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
     if (showRefreshing) setRefreshing(true);
     setError(null);
     try {
@@ -390,16 +404,21 @@ export function DashboardScreen({
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : String(refreshError));
     } finally {
+      refreshInFlight.current = false;
       if (showRefreshing) setRefreshing(false);
     }
   };
 
   const refreshMetrics = async () => {
+    if (metricsRefreshInFlight.current) return;
+    metricsRefreshInFlight.current = true;
     setMetricsError(null);
     try {
       setMetrics(await api.metricsSnapshot());
     } catch (refreshError) {
       setMetricsError(refreshError instanceof Error ? refreshError.message : String(refreshError));
+    } finally {
+      metricsRefreshInFlight.current = false;
     }
   };
 
@@ -434,15 +453,24 @@ export function DashboardScreen({
   const health = summary?.health;
   const healthy = health?.status === "healthy";
   const statusColor = healthy ? colors.green : error ? colors.red : colors.amber;
+  const gatewayMeta = buildGatewayPanelMeta(health);
   const sessions = summary?.sessions ?? [];
   const orderedSessions = useMemo(() => sortSessionSummaries(sessions), [sessions]);
   const counts = summarizeFeatureCounts(summary);
-  const accentColor = resolveAccentColor(summary);
+  const gatewayAccentKey = resolveAccentKey(summary);
+  const accentKey = accentOverride ?? gatewayAccentKey;
+  const accentColor = accentPalette[accentKey] || accentPalette.cyan;
   const headerCopy = routeHeader(
     detailRoute,
     buildMobileHeaderCopy(activeTab, counts, profile),
     summary
   );
+
+  useEffect(() => {
+    if (accentOverride && gatewayAccentKey === accentOverride) {
+      setAccentOverride(null);
+    }
+  }, [accentOverride, gatewayAccentKey]);
 
   const selectTab = (tab: MobileTabKey) => {
     setDetailRoute(null);
@@ -617,7 +645,7 @@ export function DashboardScreen({
           }
         >
           {!detailRoute && activeTab === "overview" ? (
-            <GlassPanel elevated style={styles.gatewayPanel}>
+            <GlassPanel elevated style={[styles.gatewayPanel, styles.mainTabPanel]}>
               <View style={styles.connectionRow}>
                 <View style={[styles.liveDot, { backgroundColor: statusColor }]} />
                 <Text style={[styles.connectionText, { color: statusColor }]}>
@@ -628,9 +656,7 @@ export function DashboardScreen({
               <View style={styles.gatewayTop}>
                 <View style={styles.gatewayIdentity}>
                   <Text style={styles.gatewayName}>{profile.name}</Text>
-                  <Text style={styles.gatewayMeta}>
-                    {compactHost(profile.baseUrl)} - {health?.version || "version pending"}
-                  </Text>
+                  <Text style={styles.gatewayMeta}>{gatewayMeta}</Text>
                 </View>
                 <Pressable style={styles.reconnectButton} onPress={() => refreshAll(true)}>
                   <RefreshCw color={colors.blueText} size={18} strokeWidth={2.2} />
@@ -647,12 +673,14 @@ export function DashboardScreen({
                   value={healthy ? "Healthy" : "Check"}
                   tone={statusColor}
                 />
-                <StatusMetric
-                  Icon={Wifi}
-                  label="API"
-                  value={health ? "Online" : "Waiting"}
-                  tone={colors.cyan}
-                />
+                {MOBILE_GATEWAY_PANEL_CHROME.showApiStatusTile ? (
+                  <StatusMetric
+                    Icon={Wifi}
+                    label="API"
+                    value={health ? "Online" : "Waiting"}
+                    tone={colors.cyan}
+                  />
+                ) : null}
                 <StatusMetric
                   Icon={UsersRound}
                   label="Chats"
@@ -665,28 +693,6 @@ export function DashboardScreen({
                   value={`${counts.providers} enabled`}
                   tone={colors.textMuted}
                 />
-              </View>
-
-              <View style={styles.detailTable}>
-                <DetailRow
-                  label="Gateway URL"
-                  value={profile.baseUrl}
-                  onPress={() => showValue("Gateway URL", profile.baseUrl)}
-                />
-                <DetailRow
-                  label="API Base"
-                  value="/api"
-                  onPress={() => showValue("API Base", "/api")}
-                />
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Uptime</Text>
-                  <Text style={styles.detailValue}>{formatUptime(health?.uptime)}</Text>
-                  <View style={styles.sparkline}>
-                    {sparkBars.map((height, index) => (
-                      <View key={`${height}-${index}`} style={[styles.sparkBar, { height }]} />
-                    ))}
-                  </View>
-                </View>
               </View>
 
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -740,8 +746,13 @@ export function DashboardScreen({
           ) : null}
           {!detailRoute && activeTab === "settings" ? (
             <SettingsPanel
+              accentColor={accentColor}
+              accentKey={accentKey}
+              api={api}
               profile={profile}
+              refreshSummary={() => refresh(false)}
               summary={summary}
+              onThemeAccentChange={setAccentOverride}
               onDisconnect={onDisconnect}
               openSurface={openSurface}
             />
@@ -818,28 +829,6 @@ function StatusMetric({
   );
 }
 
-function DetailRow({
-  label,
-  value,
-  onPress,
-}: {
-  label: string;
-  value: string;
-  onPress: () => void;
-}) {
-  return (
-    <View style={styles.detailRow}>
-      <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={styles.detailValue} numberOfLines={1}>
-        {value}
-      </Text>
-      <Pressable style={styles.copyButton} onPress={onPress}>
-        <Copy color={colors.textMuted} size={19} strokeWidth={2} />
-      </Pressable>
-    </View>
-  );
-}
-
 function OverviewPanel({
   modules,
   sessions,
@@ -874,28 +863,30 @@ function OverviewPanel({
 
   return (
     <>
-      <Text style={styles.sectionTitle}>Remote management</Text>
-      <View style={styles.moduleGrid}>
-        {modules.slice(0, 9).map((module) => (
-          <ModuleTile
-            key={module.key}
-            module={module}
-            onPress={() => (module.surface ? openSurface(module.surface) : selectTab(module.tab))}
-          />
-        ))}
-        <Pressable
-          style={[styles.moduleTile, styles.monitorTile]}
-          onPress={() => selectTab("metrics")}
-        >
-          <View style={styles.moduleIcon}>
-            <Cpu color={colors.text} size={23} strokeWidth={2.1} />
-          </View>
-          <View style={styles.monitorText}>
-            <Text style={styles.moduleTitle}>System Monitor</Text>
-            <Text style={styles.moduleDetail}>CPU ready RAM ready Disk ready</Text>
-          </View>
-          <ChevronRight color={colors.text} size={22} strokeWidth={2.1} />
-        </Pressable>
+      <View style={styles.overviewInset}>
+        <Text style={styles.sectionTitle}>Remote management</Text>
+        <View style={styles.moduleGrid}>
+          {modules.slice(0, 9).map((module) => (
+            <ModuleTile
+              key={module.key}
+              module={module}
+              onPress={() => (module.surface ? openSurface(module.surface) : selectTab(module.tab))}
+            />
+          ))}
+          <Pressable
+            style={[styles.moduleTile, styles.monitorTile]}
+            onPress={() => selectTab("metrics")}
+          >
+            <View style={styles.moduleIcon}>
+              <Cpu color={colors.text} size={23} strokeWidth={2.1} />
+            </View>
+            <View style={styles.monitorText}>
+              <Text style={styles.moduleTitle}>System Monitor</Text>
+              <Text style={styles.moduleDetail}>CPU ready RAM ready Disk ready</Text>
+            </View>
+            <ChevronRight color={colors.text} size={22} strokeWidth={2.1} />
+          </Pressable>
+        </View>
       </View>
 
       <GlassPanel elevated style={styles.activityPanel}>
@@ -1008,7 +999,7 @@ function SessionsPanel({
   const endpoint = summary?.availability.sessions;
 
   return (
-    <GlassPanel elevated style={styles.detailPanel}>
+    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
       <View style={styles.summaryGrid}>
         <SummaryTile
           Icon={MessageCircle}
@@ -1142,7 +1133,7 @@ function MetricsPanel({
   const storageRows = storageCategoryEntries(metrics?.storage ?? null).slice(0, 8);
 
   return (
-    <GlassPanel elevated style={styles.detailPanel}>
+    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
       <View style={styles.summaryGrid}>
         <SummaryTile
           Icon={HeartPulse}
@@ -1492,8 +1483,11 @@ function SessionDetailPanel({
   const [pinned, setPinned] = useState(sessionSummary?.pinned ?? false);
   const [pinning, setPinning] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  const sessionRefreshInFlight = useRef(false);
 
   const loadSession = async (showLoading = false) => {
+    if (sessionRefreshInFlight.current) return;
+    sessionRefreshInFlight.current = true;
     if (showLoading) setLoading(true);
     setLoadError(null);
     try {
@@ -1505,6 +1499,7 @@ function SessionDetailPanel({
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : String(error));
     } finally {
+      sessionRefreshInFlight.current = false;
       if (showLoading) setLoading(false);
     }
   };
@@ -1673,7 +1668,10 @@ function SessionDetailPanel({
     );
   };
 
-  const visibleMessages = visibleChatMessages(detail?.messages ?? []);
+  const visibleMessages = useMemo(
+    () => latestVisibleChatMessages(detail?.messages ?? []),
+    [detail?.messages]
+  );
   const waitingForAssistant = chatIsWaitingForAssistant(detail?.messages ?? [], sending);
 
   return (
@@ -1839,9 +1837,11 @@ function ChatMessageRow({
         ]}
       >
         {!isUser && message.thinking ? (
-          <Text numberOfLines={4} style={styles.messageThinking}>
-            {message.thinking}
-          </Text>
+          <UnicodeText
+            content={message.thinking}
+            numberOfLines={4}
+            style={styles.messageThinking}
+          />
         ) : null}
         {!isUser && message.processActivities?.length ? (
           <MessageActivityList message={message} />
@@ -1870,7 +1870,7 @@ function MessageActivityList({ message }: { message: SessionDetailSummary["messa
           />
           <Text numberOfLines={2} style={styles.messageActivityText}>
             {activity.toolName ? `${activity.toolName}: ` : ""}
-            {activity.text}
+            <UnicodeInlineText content={activity.text} />
           </Text>
         </View>
       ))}
@@ -1885,7 +1885,7 @@ function ToolCallStrip({ message }: { message: SessionDetailSummary["messages"][
         <View key={toolCall.id} style={styles.toolCallPill}>
           <Wrench color={colors.textMuted} size={13} strokeWidth={2} />
           <Text numberOfLines={1} style={styles.toolCallText}>
-            {toolCall.name} - {toolCall.status}
+            <UnicodeInlineText content={`${toolCall.name} - ${toolCall.status}`} />
           </Text>
         </View>
       ))}
@@ -1901,18 +1901,59 @@ function MessageContent({ content }: { content: string }) {
           <View key={`code-${index}`} style={styles.codeBlock}>
             <Text style={styles.codeHeader}>{part.language}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator>
-              <Text selectable style={styles.codeText}>
-                {part.content}
-              </Text>
+              <UnicodeText
+                content={part.content}
+                selectable
+                style={[
+                  styles.codeText,
+                  !hasUnicodeTextFallback(part.content) && styles.codeTextMonospace,
+                ]}
+              />
             </ScrollView>
           </View>
         ) : (
-          <Text key={`text-${index}`} selectable style={styles.messageText}>
-            {part.content.trim().length > 0 ? part.content : "\n"}
-          </Text>
+          <UnicodeText
+            key={`text-${index}`}
+            content={part.content.trim().length > 0 ? part.content : "\n"}
+            selectable
+            style={styles.messageText}
+          />
         )
       )}
     </View>
+  );
+}
+
+function UnicodeInlineText({ content }: { content: string }) {
+  return (
+    <>
+      {splitUnicodeTextRuns(content).map((run, index) => (
+        <Text
+          key={`${run.type}-${index}`}
+          style={run.type === "emoji" ? styles.emojiGlyphText : undefined}
+        >
+          {run.content}
+        </Text>
+      ))}
+    </>
+  );
+}
+
+function UnicodeText({
+  content,
+  numberOfLines,
+  selectable,
+  style,
+}: {
+  content: string;
+  numberOfLines?: number;
+  selectable?: boolean;
+  style?: StyleProp<TextStyle>;
+}) {
+  return (
+    <Text numberOfLines={numberOfLines} selectable={selectable} style={style}>
+      <UnicodeInlineText content={content} />
+    </Text>
   );
 }
 
@@ -1932,7 +1973,7 @@ function SurfaceDetailPanel({
   const endpoint = meta.endpoint ? summary?.availability[meta.endpoint] : undefined;
 
   return (
-    <GlassPanel elevated style={styles.detailPanel}>
+    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
       <View style={styles.subsectionHeader}>
         <Text style={styles.subsectionTitle}>Live records</Text>
         <Text style={styles.counterText}>
@@ -1998,7 +2039,7 @@ function ItemDetailPanel({
   ];
 
   return (
-    <GlassPanel elevated style={styles.detailPanel}>
+    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
       <View style={styles.itemHero}>
         <View style={[styles.summaryIcon, { backgroundColor: `${meta.tone}18` }]}>
           <Icon color={meta.tone} size={21} strokeWidth={2.2} />
@@ -2031,20 +2072,50 @@ function ItemDetailPanel({
 }
 
 function SettingsPanel({
+  accentColor,
+  accentKey,
+  api,
   profile,
+  refreshSummary,
   summary,
+  onThemeAccentChange,
   onDisconnect,
   openSurface,
 }: {
+  accentColor: string;
+  accentKey: AccentKey;
+  api: CybaraMobileApi;
   profile: GatewayProfile;
+  refreshSummary: () => void;
   summary: FeatureSummary | null;
+  onThemeAccentChange: (accent: AccentKey) => void;
   onDisconnect: () => void;
   openSurface: (surface: MobileSurfaceKey) => void;
 }) {
   const counts = summarizeFeatureCounts(summary);
+  const [savingAccent, setSavingAccent] = useState<AccentKey | null>(null);
+
+  const updateThemeAccent = async (next: AccentKey) => {
+    if (savingAccent || next === accentKey) return;
+    const previous = readMobileAccent(summary?.config) as AccentKey;
+    onThemeAccentChange(next);
+    setSavingAccent(next);
+    try {
+      const result = await api.updateConfig(mobileThemeConfigPayload(next));
+      if (result.success === false) {
+        throw new Error("Config update failed");
+      }
+      await refreshSummary();
+    } catch (error) {
+      onThemeAccentChange(previous);
+      Alert.alert("Theme update failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setSavingAccent(null);
+    }
+  };
 
   return (
-    <GlassPanel elevated style={styles.detailPanel}>
+    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
       <View style={styles.summaryGrid}>
         <SummaryTile
           Icon={Wifi}
@@ -2060,6 +2131,57 @@ function SettingsPanel({
           detail={profile.deviceId || "API key profile"}
           tone={colors.green}
         />
+      </View>
+      <View style={styles.themePanel}>
+        <View style={styles.subsectionHeader}>
+          <View style={styles.subsectionHeaderTitle}>
+            <Palette color={accentColor} size={18} strokeWidth={2.2} />
+            <Text style={styles.subsectionTitle}>Highlight color</Text>
+          </View>
+          {savingAccent ? <ActivityIndicator color={accentColor} size="small" /> : null}
+        </View>
+        <View style={styles.accentGrid}>
+          {MOBILE_ACCENT_KEYS.map((key) => {
+            const themeKey = key as AccentKey;
+            const tone = accentPalette[themeKey];
+            const selected = accentKey === themeKey;
+            return (
+              <Pressable
+                key={key}
+                accessibilityRole="button"
+                accessibilityState={{ selected, disabled: Boolean(savingAccent) }}
+                disabled={Boolean(savingAccent)}
+                onPress={() => {
+                  void updateThemeAccent(themeKey);
+                }}
+                style={[
+                  styles.accentSwatch,
+                  selected && {
+                    borderColor: tone,
+                    backgroundColor: `${tone}16`,
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.accentSwatchDot,
+                    {
+                      backgroundColor: tone,
+                      shadowColor: tone,
+                    },
+                    selected && styles.accentSwatchDotActive,
+                  ]}
+                />
+                <Text
+                  numberOfLines={1}
+                  style={[styles.accentSwatchLabel, selected && { color: colors.text }]}
+                >
+                  {key}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
       <Text style={styles.subsectionTitle}>Connection</Text>
       <SettingsRow Icon={Wifi} label="Gateway" value={profile.baseUrl} />
@@ -2195,6 +2317,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: spacing.md,
+    paddingHorizontal: spacing.lg,
   },
   brandWrap: {
     alignItems: "center",
@@ -2219,7 +2342,7 @@ const styles = StyleSheet.create({
   },
   backButton: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.07)",
+    backgroundColor: "rgba(2, 7, 11, 0.9)",
     borderColor: colors.borderStrong,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -2247,7 +2370,7 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.07)",
+    backgroundColor: "rgba(2, 7, 11, 0.9)",
     borderColor: colors.borderStrong,
     borderRadius: 28,
     borderWidth: 1,
@@ -2296,7 +2419,7 @@ const styles = StyleSheet.create({
   },
   reconnectButton: {
     alignItems: "center",
-    backgroundColor: "rgba(70, 143, 182, 0.22)",
+    backgroundColor: "rgba(5, 17, 25, 0.9)",
     borderColor: "rgba(183, 230, 255, 0.42)",
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -2311,7 +2434,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   metricStrip: {
-    backgroundColor: "rgba(0, 0, 0, 0.16)",
+    backgroundColor: "rgba(0, 0, 0, 0.28)",
     borderColor: colors.border,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -2322,10 +2445,12 @@ const styles = StyleSheet.create({
   },
   metricCell: {
     alignItems: "center",
-    flexBasis: "48%",
+    flexBasis: "30%",
     flexDirection: "row",
+    flexGrow: 1,
     gap: spacing.sm,
     minHeight: 44,
+    minWidth: 104,
   },
   metricIcon: {
     alignItems: "center",
@@ -2345,56 +2470,6 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
     fontWeight: "800",
   },
-  detailTable: {
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    overflow: "hidden",
-  },
-  detailRow: {
-    alignItems: "center",
-    borderBottomColor: colors.border,
-    borderBottomWidth: 1,
-    flexDirection: "row",
-    gap: spacing.md,
-    minHeight: 50,
-    paddingHorizontal: spacing.md,
-  },
-  detailLabel: {
-    color: colors.textMuted,
-    fontSize: typography.body,
-    width: 96,
-  },
-  detailValue: {
-    color: colors.cyan,
-    flex: 1,
-    fontSize: typography.body,
-    fontWeight: "600",
-  },
-  copyButton: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    height: 34,
-    justifyContent: "center",
-    width: 40,
-  },
-  sparkline: {
-    alignItems: "flex-end",
-    flex: 1,
-    flexDirection: "row",
-    gap: 2,
-    height: 34,
-    justifyContent: "flex-end",
-  },
-  sparkBar: {
-    backgroundColor: colors.cyan,
-    borderRadius: 2,
-    opacity: 0.8,
-    width: 4,
-  },
   errorText: {
     color: colors.red,
     fontSize: typography.label,
@@ -2402,7 +2477,7 @@ const styles = StyleSheet.create({
   },
   disclosureRow: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.045)",
+    backgroundColor: "rgba(2, 7, 11, 0.86)",
     borderColor: colors.border,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -2421,13 +2496,17 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "800",
   },
+  overviewInset: {
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
   moduleGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.sm,
   },
   moduleTile: {
-    backgroundColor: "rgba(8, 13, 19, 0.9)",
+    backgroundColor: "rgba(4, 9, 14, 0.94)",
     borderColor: colors.borderStrong,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -2439,7 +2518,7 @@ const styles = StyleSheet.create({
   },
   moduleIcon: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.065)",
+    backgroundColor: "rgba(2, 8, 13, 0.92)",
     borderRadius: radius.md,
     height: 38,
     justifyContent: "center",
@@ -2514,7 +2593,7 @@ const styles = StyleSheet.create({
   },
   activityIcon: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: "rgba(2, 8, 13, 0.9)",
     borderRadius: 22,
     height: 44,
     justifyContent: "center",
@@ -2546,6 +2625,11 @@ const styles = StyleSheet.create({
   detailPanel: {
     gap: spacing.md,
   },
+  mainTabPanel: {
+    borderLeftWidth: 0,
+    borderRadius: MOBILE_MAIN_TAB_CHROME.panelRadius,
+    borderRightWidth: 0,
+  },
   metricMicroGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -2553,7 +2637,7 @@ const styles = StyleSheet.create({
   },
   itemHero: {
     alignItems: "center",
-    backgroundColor: "rgba(3, 7, 11, 0.58)",
+    backgroundColor: "rgba(2, 7, 11, 0.88)",
     borderColor: colors.border,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -2577,7 +2661,7 @@ const styles = StyleSheet.create({
   },
   chatShell: {
     flex: 1,
-    marginHorizontal: -spacing.lg,
+    marginHorizontal: MOBILE_MAIN_TAB_CHROME.outerHorizontalPadding,
     position: "relative",
   },
   chatScroll: {
@@ -2604,7 +2688,7 @@ const styles = StyleSheet.create({
   },
   chatMetaChip: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.045)",
+    backgroundColor: "rgba(2, 7, 11, 0.88)",
     borderColor: colors.border,
     borderRadius: radius.sm,
     borderWidth: 1,
@@ -2664,7 +2748,7 @@ const styles = StyleSheet.create({
     maxWidth: "92%",
   },
   userMessageBubble: {
-    backgroundColor: "rgba(255,255,255,0.052)",
+    backgroundColor: "rgba(4, 12, 18, 0.9)",
   },
   messageThinking: {
     color: colors.textMuted,
@@ -2696,7 +2780,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   codeHeader: {
-    backgroundColor: "rgba(255,255,255,0.045)",
+    backgroundColor: "rgba(2, 8, 13, 0.92)",
     color: colors.textMuted,
     fontSize: typography.tiny,
     fontWeight: "900",
@@ -2706,10 +2790,19 @@ const styles = StyleSheet.create({
   },
   codeText: {
     color: colors.text,
-    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
     fontSize: 12,
     lineHeight: 17,
     padding: spacing.sm,
+  },
+  codeTextMonospace: {
+    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+  },
+  emojiGlyphText: {
+    fontFamily: Platform.select({
+      ios: "Apple Color Emoji",
+      android: undefined,
+      default: undefined,
+    }),
   },
   messageActivityList: {
     borderColor: colors.border,
@@ -2738,7 +2831,7 @@ const styles = StyleSheet.create({
   },
   toolCallPill: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.045)",
+    backgroundColor: "rgba(2, 7, 11, 0.88)",
     borderColor: colors.border,
     borderRadius: radius.sm,
     borderWidth: 1,
@@ -2810,13 +2903,58 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: MOBILE_CHAT_COMPOSER.minHeight,
   },
+  themePanel: {
+    backgroundColor: "rgba(2, 7, 11, 0.88)",
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  accentGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  accentSwatch: {
+    alignItems: "center",
+    backgroundColor: "rgba(1, 5, 8, 0.76)",
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    flexBasis: "30%",
+    flexDirection: "row",
+    flexGrow: 1,
+    gap: spacing.xs,
+    minHeight: 38,
+    minWidth: 86,
+    paddingHorizontal: spacing.sm,
+  },
+  accentSwatchDot: {
+    borderRadius: 8,
+    height: 16,
+    shadowOpacity: 0.42,
+    shadowRadius: 8,
+    width: 16,
+  },
+  accentSwatchDotActive: {
+    height: 18,
+    width: 18,
+  },
+  accentSwatchLabel: {
+    color: colors.textMuted,
+    flex: 1,
+    fontSize: typography.tiny,
+    fontWeight: "800",
+    textTransform: "capitalize",
+  },
   summaryGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.sm,
   },
   summaryTile: {
-    backgroundColor: "rgba(3, 7, 11, 0.62)",
+    backgroundColor: "rgba(3, 8, 13, 0.92)",
     borderColor: colors.border,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -2852,6 +2990,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
   },
+  subsectionHeaderTitle: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
   subsectionTitle: {
     color: colors.text,
     fontSize: typography.body,
@@ -2873,7 +3016,7 @@ const styles = StyleSheet.create({
   },
   listIcon: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: "rgba(2, 8, 13, 0.9)",
     borderRadius: radius.md,
     height: 42,
     justifyContent: "center",
@@ -2937,15 +3080,16 @@ const styles = StyleSheet.create({
     borderLeftWidth: 0,
     borderRadius: MOBILE_NAV_CHROME.outerRadius,
     borderRightWidth: 0,
+    borderTopColor: colors.borderStrong,
     bottom: 0,
     height: MOBILE_NAV_CHROME.height,
-    left: -spacing.lg,
+    left: MOBILE_MAIN_TAB_CHROME.outerHorizontalPadding,
     position: "absolute",
-    right: -spacing.lg,
+    right: MOBILE_MAIN_TAB_CHROME.outerHorizontalPadding,
   },
   tabBarPanel: {
     flex: 1,
-    backgroundColor: "rgba(5, 9, 14, 0.94)",
+    backgroundColor: "rgba(1, 4, 7, 0.98)",
     paddingHorizontal: spacing.md,
     paddingVertical: 5,
   },
@@ -2964,8 +3108,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   tabItemActive: {
-    backgroundColor: "rgba(85, 216, 255, 0.16)",
-    borderColor: "rgba(190, 232, 255, 0.32)",
+    backgroundColor: "rgba(85, 216, 255, 0.12)",
+    borderColor: "rgba(190, 232, 255, 0.28)",
     borderWidth: 1,
   },
   tabLabel: {

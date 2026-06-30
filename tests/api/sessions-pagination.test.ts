@@ -46,7 +46,10 @@ async function createPersistedSession(params: {
       agentId: "test-agent",
     });
   }
-  db.prepare("UPDATE chat_sessions SET updated_at = ? WHERE id = ?").run(params.updatedAt, sessionId);
+  db.prepare("UPDATE chat_sessions SET updated_at = ? WHERE id = ?").run(
+    params.updatedAt,
+    sessionId
+  );
   createdSessionIds.push(sessionId);
   return sessionId;
 }
@@ -130,6 +133,23 @@ describe("session listing pagination", () => {
     expect(sessions.findIndex((s) => s.id === newer)).toBeLessThan(
       sessions.findIndex((s) => s.id === older)
     );
+  });
+
+  test("truncates last message previews in session listings", async () => {
+    const longReply = `reply-${"x".repeat(2000)}`;
+    const id = await createPersistedSession({
+      label: "long-preview",
+      updatedAt: "2099-01-02T00:00:10.000Z",
+      userPrompt: "long preview prompt",
+      assistantReply: longReply,
+    });
+
+    const session = (await listSessions({ limit: 10 })).find((entry) => entry.id === id);
+
+    expect(session?.lastMessage?.content.startsWith("reply-")).toBe(true);
+    expect(session?.lastMessage?.content.endsWith("...")).toBe(true);
+    expect(session?.lastMessage?.content.length).toBeLessThan(longReply.length);
+    expect(JSON.stringify(session).length).toBeLessThan(2000);
   });
 
   test("pin survives a title update (not reset by persistence)", async () => {

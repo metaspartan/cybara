@@ -17,6 +17,53 @@ export const themeAccents: Record<ThemeAccent, { primary: string; name: string }
   purple: { primary: '168, 85, 247', name: 'Purple' },
 };
 
+export const themeAccentKeys = Object.keys(themeAccents) as ThemeAccent[];
+
+const themeAccentKeySet = new Set<string>(themeAccentKeys);
+
+function readNestedString(
+  record: Record<string, unknown> | undefined,
+  keys: string[]
+): string | undefined {
+  let current: unknown = record;
+  for (const key of keys) {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) return undefined;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return typeof current === 'string' && current.trim().length > 0 ? current.trim() : undefined;
+}
+
+export function readThemeAccentFromConfig(
+  config: Record<string, unknown> | undefined
+): ThemeAccent | undefined {
+  const candidates = [
+    config?.themeAccent,
+    config?.theme_accent,
+    config?.theme,
+    config?.accent,
+    config?.ui_accent,
+    readNestedString(config, ['ui', 'accent']),
+    readNestedString(config, ['appearance', 'accent']),
+    readNestedString(config, ['settings', 'accent']),
+    readNestedString(config, ['identity', 'accent']),
+    readNestedString(config, ['identity', 'theme']),
+  ];
+  const value = candidates
+    .filter((candidate): candidate is string => typeof candidate === 'string')
+    .map((candidate) => candidate.trim().toLowerCase())
+    .find((candidate) => themeAccentKeySet.has(candidate));
+  return value as ThemeAccent | undefined;
+}
+
+export function themeConfigPayload(accent: ThemeAccent): Record<string, string> {
+  return {
+    theme: accent,
+    themeAccent: accent,
+    theme_accent: accent,
+    ui_accent: accent,
+  };
+}
+
 interface UIState {
   accent: ThemeAccent;
   setAccent: (accent: ThemeAccent) => void;
@@ -38,6 +85,7 @@ interface UIState {
 }
 
 const applyTheme = (accent: ThemeAccent) => {
+  if (typeof document === 'undefined') return;
   const colors = themeAccents[accent];
   document.documentElement.style.setProperty('--accent-primary', colors.primary);
 };
