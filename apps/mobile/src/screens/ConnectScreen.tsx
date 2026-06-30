@@ -74,7 +74,7 @@ export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfi
               barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
               facing="back"
               onBarcodeScanned={connectScannedPayload}
-              style={StyleSheet.absoluteFillObject}
+              style={styles.camera}
             />
             <View style={styles.cameraOverlay}>
               <View style={styles.scanFrame} />
@@ -151,12 +151,23 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderWidth: 1,
     borderColor: colors.borderStrong,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.backgroundLift,
+  },
+  camera: {
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
   },
   cameraOverlay: {
-    ...StyleSheet.absoluteFillObject,
     alignItems: "center",
+    bottom: 0,
     justifyContent: "center",
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
   },
   scanFrame: {
     width: 190,

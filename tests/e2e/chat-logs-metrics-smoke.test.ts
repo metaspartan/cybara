@@ -64,7 +64,9 @@ async function waitFor(
 }
 
 async function api(method: string, path: string, body?: unknown) {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = {
+    "sec-fetch-site": "same-origin",
+  };
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
   }

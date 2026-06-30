@@ -1,0 +1,88 @@
+# Current Tauri 2.11.3 still pulls these Linux WebKit/GTK transitive crates.
+# Re-check and remove these ignores when Tauri/wry move off gtk-rs GTK3 and
+# urlpattern's unic 0.9 stack.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0411"
+ignoreUntil = 2026-12-31
+reason = "Upstream Tauri Linux runtime warning via tao/gdkwayland-sys; no patched Tauri release is available."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0412"
+ignoreUntil = 2026-12-31
+reason = "Upstream Tauri Linux runtime warning via webkit2gtk/gtk/gdk; no patched Tauri release is available."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0413"
+ignoreUntil = 2026-12-31
+reason = "Upstream Tauri Linux runtime warning via gtk/atk; no patched Tauri release is available."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0414"
+ignoreUntil = 2026-12-31
+reason = "Upstream Tauri Linux runtime warning via tao/gdkx11-sys; no patched Tauri release is available."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0415"
+ignoreUntil = 2026-12-31
+reason = "Upstream Tauri Linux runtime warning via gtk; no patched Tauri release is available."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0416"
+ignoreUntil = 2026-12-31
+reason = "Upstream Tauri Linux runtime warning via gtk/atk-sys; no patched Tauri release is available."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0417"
+ignoreUntil = 2026-12-31
+reason = "Upstream Tauri Linux runtime warning via wry/gdkx11; no patched Tauri release is available."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0418"
+ignoreUntil = 2026-12-31
+reason = "Upstream Tauri Linux runtime warning via webkit2gtk/gtk/gdk-sys; no patched Tauri release is available."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0419"
+ignoreUntil = 2026-12-31
+reason = "Upstream Tauri Linux runtime warning via gtk3-macros; no patched Tauri release is available."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0420"
+ignoreUntil = 2026-12-31
+reason = "Upstream Tauri Linux runtime warning via webkit2gtk/gtk-sys; no patched Tauri release is available."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0429"
+ignoreUntil = 2026-12-31
+reason = "Upstream Tauri Linux runtime warning via gtk-rs glib 0.18.5; no patched 0.18.x or Tauri migration is available."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0370"
+ignoreUntil = 2026-12-31
+reason = "Upstream Tauri Linux runtime warning via gtk3-macros/glib-macros proc-macro-error; no patched Tauri release is available."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0075"
+ignoreUntil = 2026-12-31
+reason = "Upstream Tauri urlpattern warning via unic 0.9; no patched Tauri release is available."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0080"
+ignoreUntil = 2026-12-31
+reason = "Upstream Tauri urlpattern warning via unic 0.9; no patched Tauri release is available."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0081"
+ignoreUntil = 2026-12-31
+reason = "Upstream Tauri urlpattern warning via unic 0.9; no patched Tauri release is available."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0098"
+ignoreUntil = 2026-12-31
+reason = "Upstream Tauri urlpattern warning via unic 0.9; no patched Tauri release is available."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0100"
+ignoreUntil = 2026-12-31
+reason = "Upstream Tauri urlpattern warning via unic 0.9; no patched Tauri release is available."

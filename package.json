@@ -53,7 +53,7 @@
     "native:macos:package": "bun run scripts/package-native-macos.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock-runtime": "^3.1075.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1076.0",
     "@huggingface/transformers": "^4.2.0",
     "@scure/bip39": "^2.2.0",
     "@slack/bolt": "^4.7.3",
@@ -84,16 +84,17 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.11.3",
+    "@tauri-apps/cli": "^2.11.4",
     "@types/bun": "^1.3.14",
     "@types/react": "^19.2.17",
-    "@typescript-eslint/eslint-plugin": "^8.62.0",
-    "@typescript-eslint/parser": "^8.62.0",
+    "@typescript-eslint/eslint-plugin": "^8.62.1",
+    "@typescript-eslint/parser": "^8.62.1",
     "eslint": "^10.6.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.6",
-    "prettier": "^3.9.1",
-    "typescript": "^6.0.3"
+    "prettier": "^3.9.4",
+    "typescript": "^6.0.3",
+    "typescript-language-server": "^5.3.0"
   },
   "overrides": {
     "@discordjs/rest": "^2.6.1",

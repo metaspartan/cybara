@@ -13,13 +13,30 @@
  *   - tools/call          (dispatch to the cybara tool handler)
  *   - ping
  */
+import { createRequire } from "module";
 import { createInterface, type Interface } from "readline";
-import { executeTool, toolSchemas } from "./tools/handlers/index";
-import {
-  getToolSchemasForLLM,
-  type ToolContext,
-  type Tool as CybaraTool,
-} from "./tools/index";
+import type { ToolContext, Tool as CybaraTool } from "./tools/index";
+
+type ToolHandlersModule = typeof import("./tools/handlers/index");
+type ToolsModule = typeof import("./tools/index");
+
+const requireToolModule = createRequire(import.meta.url);
+let toolModules:
+  | {
+      handlers: ToolHandlersModule;
+      tools: ToolsModule;
+    }
+  | undefined;
+
+function getToolModules(): { handlers: ToolHandlersModule; tools: ToolsModule } {
+  if (!toolModules) {
+    toolModules = {
+      handlers: requireToolModule("./tools/handlers/index") as ToolHandlersModule,
+      tools: requireToolModule("./tools/index") as ToolsModule,
+    };
+  }
+  return toolModules;
+}
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_NAME = "cybara";
@@ -113,23 +130,25 @@ async function handleRequest(req: JsonRpcRequest): Promise<JsonRpcResponse | nul
       return makeResponse(id, {});
 
     case "tools/list": {
-      const tools = getToolSchemasForLLM().map(toMcpTool);
+      const { tools: toolModule } = getToolModules();
+      const tools = toolModule.getToolSchemasForLLM().map(toMcpTool);
       return makeResponse(id, { tools });
     }
 
     case "tools/call": {
+      const { handlers } = getToolModules();
       const params = req.params ?? {};
       const name = typeof params.name === "string" ? params.name : "";
       const args = (params.arguments as Record<string, unknown> | undefined) ?? {};
       if (!name) {
         return makeError(id, ERROR_CODES.INVALID_PARAMS, "Missing tool 'name'");
       }
-      if (!toolSchemas[name as keyof typeof toolSchemas]) {
+      if (!handlers.toolSchemas[name as keyof typeof handlers.toolSchemas]) {
         return makeError(id, ERROR_CODES.METHOD_NOT_FOUND, `Unknown tool: ${name}`);
       }
       try {
         const context = buildContext(params);
-        const result = await executeTool(name, args, context);
+        const result = await handlers.executeTool(name, args, context);
         const text = typeof result === "string" ? result : JSON.stringify(result, null, 2);
         return makeResponse(id, {
           content: [{ type: "text", text }],
