@@ -289,6 +289,26 @@ export const channels = {
       { name: "token", label: "Access Token", type: "password", required: false },
     ],
   },
+  googlechat: {
+    name: "Google Chat",
+    icon: "💬",
+    description: "Connect to Google Chat via incoming webhook + app events",
+    color: "#1A73E8",
+    fields: [
+      { name: "webhook_url", label: "Space Webhook URL", type: "password", required: true },
+      { name: "verify_token", label: "Inbound Verify Token", type: "password", required: false },
+    ],
+  },
+  synology: {
+    name: "Synology Chat",
+    icon: "🗄️",
+    description: "Connect to Synology Chat",
+    color: "#B5B5B5",
+    fields: [
+      { name: "incoming_url", label: "Incoming Webhook URL", type: "password", required: true },
+      { name: "token", label: "Outgoing Token", type: "password", required: true },
+    ],
+  },
   line: {
     name: "LINE",
     icon: "🟢",

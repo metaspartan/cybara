@@ -16,6 +16,8 @@ import { ircAdapter } from "./adapters/irc";
 import { ntfyAdapter } from "./adapters/ntfy";
 import { twitchAdapter } from "./adapters/twitch";
 import { lineAdapter } from "./adapters/line";
+import { googleChatAdapter } from "./adapters/googlechat";
+import { synologyAdapter } from "./adapters/synology";
 import {
   formatToolCallsForTelegram,
   formatToolCallsForDiscord,
@@ -76,6 +78,8 @@ export class ChannelManager {
     this.registerAdapter("ntfy", ntfyAdapter);
     this.registerAdapter("twitch", twitchAdapter);
     this.registerAdapter("line", lineAdapter);
+    this.registerAdapter("googlechat", googleChatAdapter);
+    this.registerAdapter("synology", synologyAdapter);
   }
 
   registerAdapter(type: ChannelType, adapter: ChannelAdapter) {

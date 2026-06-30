@@ -1073,7 +1073,9 @@ export interface Channel {
     | "irc"
     | "ntfy"
     | "twitch"
-    | "line";
+    | "line"
+    | "googlechat"
+    | "synology";
   name: string;
   config: Record<string, unknown>;
   enabled: boolean;
