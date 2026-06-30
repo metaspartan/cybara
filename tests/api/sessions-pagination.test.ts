@@ -6,7 +6,7 @@ import {
   setSessionPinned,
   type ChatMessage,
 } from "../../src/api/chat";
-import { persistSession } from "../../src/core/session-context";
+import { persistSession, setPersistedSessionTitle } from "../../src/core/session-context";
 import { logSessionMessage } from "../../src/core/logging";
 
 const createdSessionIds: string[] = [];
@@ -130,5 +130,29 @@ describe("session listing pagination", () => {
     expect(sessions.findIndex((s) => s.id === newer)).toBeLessThan(
       sessions.findIndex((s) => s.id === older)
     );
+  });
+
+  test("pin survives a title update (not reset by persistence)", async () => {
+    const id = await createPersistedSession({
+      label: "pin-persist",
+      updatedAt: "2099-03-01T00:00:10.000Z",
+      userPrompt: "persist prompt",
+      assistantReply: "persist reply",
+    });
+
+    await setSessionPinned(id, true);
+    expect((await listSessions()).find((s) => s.id === id)?.pinned).toBe(true);
+
+    // A subsequent title update must not clear the pin.
+    await setPersistedSessionTitle(id, "Renamed while pinned");
+    const after = await listSessions();
+    const session = after.find((s) => s.id === id);
+    expect(session?.pinned).toBe(true);
+    expect(session?.title).toBe("Renamed while pinned");
+  });
+
+  test("setSessionPinned reports found=false for an unknown session", async () => {
+    const result = await setSessionPinned("does-not-exist-" + Date.now(), true);
+    expect(result.found).toBe(false);
   });
 });

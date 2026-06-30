@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { chatApi, agentsApi } from '@/lib/api';
+import { chatApi, agentsApi, extractApiError } from '@/lib/api';
 import type { ChatMessage } from '@/types';
 
 interface ChatState {
@@ -157,11 +157,7 @@ export function useChat(agentId?: string) {
         messageTimestamp: target.timestamp,
       });
       if (!response.success || !response.data || response.data.success === false) {
-        const message =
-          (response.data && "error" in response.data ? response.data.error : null) ||
-          response.error ||
-          "Failed to revert session";
-        throw new Error(message || "Failed to revert session");
+        throw new Error(extractApiError(response, "Failed to revert session"));
       }
 
       setState((prev) => ({
@@ -233,11 +229,7 @@ export function useRenameSession() {
       if (response.success && response.data?.success) {
         return response.data;
       }
-      const message =
-        (response.data && "error" in response.data ? response.data.error : null) ||
-        response.error ||
-        "Failed to rename session";
-      throw new Error(message || "Failed to rename session");
+      throw new Error(extractApiError(response, "Failed to rename session"));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
@@ -254,11 +246,7 @@ export function usePinSession() {
       if (response.success && response.data?.success) {
         return response.data;
       }
-      const message =
-        (response.data && "error" in response.data ? response.data.error : null) ||
-        response.error ||
-        "Failed to pin session";
-      throw new Error(message || "Failed to pin session");
+      throw new Error(extractApiError(response, "Failed to pin session"));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });

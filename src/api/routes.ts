@@ -4041,8 +4041,11 @@ const routes: Record<string, RouteHandler> = {
   "PUT /api/sessions/:sessionId/pin": async (body, params) => {
     const data = (body || {}) as { pinned?: boolean };
     try {
-      const pinned = await setSessionPinned(params!.sessionId, data.pinned === true);
-      return { success: true, sessionId: params!.sessionId, pinned };
+      const result = await setSessionPinned(params!.sessionId, data.pinned === true);
+      if (!result.found) {
+        return { success: false, error: "Session not found" };
+      }
+      return { success: true, sessionId: params!.sessionId, pinned: result.pinned };
     } catch (error) {
       return {
         success: false,
@@ -4407,16 +4410,13 @@ const routes: Record<string, RouteHandler> = {
 
   "GET /api/system/status": () => {
     const metrics = tables.metrics;
-
     const lastActivity = (metrics.getByType("system_status") as MetricsEntry[]).find(
       (s) => s.key === "last_activity"
     );
     const lastActivityTime = lastActivity?.value ?? 0;
     const now = Date.now();
     const isThinking = lastActivityTime > 0 && now - lastActivityTime < 30000; // 30 second window
-
     const agentCount = agentManager.list().length;
-
     return {
       status: isThinking ? "thinking" : "idle",
       lastActivity: lastActivityTime,
@@ -4427,7 +4427,6 @@ const routes: Record<string, RouteHandler> = {
 
   "GET /api/metrics/overview": () => {
     const metrics = tables.metrics;
-
     const tokenTotals = {
       total:
         (metrics.getTotal("token_usage", "input") || 0) +
@@ -4437,21 +4436,14 @@ const routes: Record<string, RouteHandler> = {
       output: metrics.getTotal("token_usage", "output") || 0,
       cache: metrics.getTotal("token_usage", "cache") || 0,
     };
-
     const fileStats = {
       filesRead: metrics.getTotal("file_operation", "read") || 0,
       filesWritten: metrics.getTotal("file_operation", "write") || 0,
       filesEdited: metrics.getTotal("file_operation", "edit") || 0,
       filesSearched: metrics.getTotal("file_operation", "search") || 0,
     };
-
     const toolCallEntries = (metrics.getByType("tool_call") || []) as MetricsEntry[];
     const totalToolCalls = toolCallEntries.reduce((sum, entry) => sum + (entry.value || 0), 0);
-
-    const toolStats = {
-      totalCalls: totalToolCalls,
-    };
-
     const apiStats = {
       totalCalls:
         (metrics.getTotal("api_call", "success") || 0) +
@@ -4459,21 +4451,18 @@ const routes: Record<string, RouteHandler> = {
       successfulCalls: metrics.getTotal("api_call", "success") || 0,
       failedCalls: metrics.getTotal("api_call", "error") || 0,
     };
-
     const agentStats = {
       totalExecutions:
         (metrics.getTotal("agent_execution", "all") || 0) +
         (metrics.getTotal("agent_execution", "message") || 0),
       totalMessages: metrics.getTotal("agent_execution", "message") || 0,
     };
-
     const sessionStats = {
       totalSessions: metrics.getTotal("session_event", "created") || 0,
       memoryFlushes: metrics.getTotal("memory_flush", "success") || 0,
       memoryFlushFailures: metrics.getTotal("memory_flush", "failure") || 0,
       compactions: metrics.getTotal("context_compaction", "tokens") || 0,
     };
-
     const contextWarnings = (metrics.getByType("context_warning") || []) as MetricsEntry[];
     const contextStats = {
       warnings: contextWarnings.length,
@@ -4486,11 +4475,10 @@ const routes: Record<string, RouteHandler> = {
         }
       }).length,
     };
-
     return {
       tokenUsage: tokenTotals,
       fileOperations: fileStats,
-      toolCalls: toolStats,
+      toolCalls: { totalCalls: totalToolCalls },
       apiCalls: apiStats,
       agentActivity: agentStats,
       sessions: sessionStats,
@@ -4498,9 +4486,7 @@ const routes: Record<string, RouteHandler> = {
     };
   },
 
-  "GET /api/metrics/storage": () => {
-    return buildStorageMetrics();
-  },
+  "GET /api/metrics/storage": () => buildStorageMetrics(),
 
   "GET /api/metrics/tokens": () => {
     const metrics = tables.metrics;

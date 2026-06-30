@@ -16,6 +16,18 @@ import { apiFetch } from "@/lib/auth";
 
 const API_BASE = "/api";
 
+/**
+ * Resolve a human-readable error from an ApiResponse: prefer a nested
+ * `data.error` (envelope returned with HTTP 200), then the transport `error`,
+ * then the caller's fallback. Centralizes the chain repeated across hooks.
+ */
+export function extractApiError<T>(response: ApiResponse<T>, fallback: string): string {
+  const data = response.data as { error?: unknown } | undefined;
+  const dataError =
+    data && typeof data === "object" && typeof data.error === "string" ? data.error : null;
+  return dataError || response.error || fallback;
+}
+
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<ApiResponse<T>> {
   const url = `${API_BASE}${endpoint}`;
   const response = await apiFetch(url, {

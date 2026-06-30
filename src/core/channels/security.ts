@@ -141,7 +141,8 @@ export class ChannelSecurityManager {
   getConfig(channelId: string): ChannelSecurityConfig {
     if (!this.initialized) this.initialize();
 
-    const config = this.securityConfigs.get(channelId) || { ...DEFAULT_SECURITY_CONFIG };
+    // Copy so callers/cache holders never see the stored config mutated under them.
+    const config = { ...(this.securityConfigs.get(channelId) || DEFAULT_SECURITY_CONFIG) };
     const persistedSenders = this.allowedSenders.get(channelId);
     if (persistedSenders) {
       config.allowed_senders = Array.from(persistedSenders);
@@ -449,7 +450,9 @@ export class ChannelSecurityManager {
 
 export const securityManager = new ChannelSecurityManager();
 
-setInterval(
+// Periodic cleanup of expired pairings. unref() so it never keeps the process
+// (or a test runner) alive, and keep the handle so it can be stopped.
+const pairingCleanupInterval = setInterval(
   () => {
     const cleaned = securityManager.cleanupExpired();
     if (cleaned > 0) {
@@ -458,3 +461,8 @@ setInterval(
   },
   5 * 60 * 1000
 ); // Every 5 minutes
+pairingCleanupInterval.unref?.();
+
+export function stopPairingCleanup(): void {
+  clearInterval(pairingCleanupInterval);
+}

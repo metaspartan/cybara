@@ -877,8 +877,10 @@ export const tables = {
       if (!row) return null;
       return typeof row.title === "string" && row.title.trim().length > 0 ? row.title : null;
     },
-    setPinned: (id: string, pinned: boolean) =>
-      stmts.chatSessions?.setPinned.run(pinned ? 1 : 0, id),
+    setPinned: (id: string, pinned: boolean): boolean => {
+      const result = stmts.chatSessions?.setPinned.run(pinned ? 1 : 0, id);
+      return (result?.changes ?? 0) > 0;
+    },
     delete: (id: string) => stmts.chatSessions?.delete.run(id),
     all: () => stmts.chatSessions?.list.all() || [],
   },

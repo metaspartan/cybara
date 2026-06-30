@@ -580,14 +580,14 @@ export async function listPersistedSessions(): Promise<
           SELECT lm.role
           FROM session_messages lm
           WHERE lm.session_id = cs.id
-          ORDER BY lm.created_at DESC, lm.id DESC
+          ORDER BY lm.created_at DESC, lm.rowid DESC
           LIMIT 1
         ), json_extract(cs.messages, '$[#-1].role')) as lastMessageRole,
         COALESCE((
           SELECT lm.content
           FROM session_messages lm
           WHERE lm.session_id = cs.id
-          ORDER BY lm.created_at DESC, lm.id DESC
+          ORDER BY lm.created_at DESC, lm.rowid DESC
           LIMIT 1
         ), json_extract(cs.messages, '$[#-1].content')) as lastMessageContent
       FROM chat_sessions cs
@@ -638,12 +638,12 @@ export async function setPersistedSessionTitle(
   return normalizedTitle;
 }
 
+/** Returns true when a chat_sessions row was actually updated (i.e. it exists). */
 export async function setPersistedSessionPinned(
   sessionId: string,
   pinned: boolean
 ): Promise<boolean> {
-  tables.chatSessions.setPinned(sessionId, pinned);
-  return pinned;
+  return tables.chatSessions.setPinned(sessionId, pinned);
 }
 
 export async function deletePersistedSession(sessionId: string): Promise<boolean> {

@@ -3834,6 +3834,17 @@ class AgentManager {
           hookContext
         );
         if (executed.skipped || executed.result === undefined) {
+          // The Responses API rejects a follow-up turn if any function_call lacks
+          // a matching function_call_output. A skipped/empty tool still needs a
+          // paired output, or the whole conversation aborts on the next request.
+          functionCallOutputs.push({
+            type: "function_call_output",
+            call_id: toolCall.callId,
+            output: JSON.stringify({
+              skipped: true,
+              reason: executed.skipped ? "tool execution skipped" : "no result",
+            }),
+          });
           continue;
         }
 

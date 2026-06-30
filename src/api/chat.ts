@@ -1421,13 +1421,17 @@ export async function deleteSession(sessionId: string): Promise<boolean> {
  * and keeps the in-memory index in sync so the next listSessions reflects it
  * immediately.
  */
-export async function setSessionPinned(sessionId: string, pinned: boolean): Promise<boolean> {
-  await setPersistedSessionPinned(sessionId, pinned);
+export async function setSessionPinned(
+  sessionId: string,
+  pinned: boolean
+): Promise<{ found: boolean; pinned: boolean }> {
+  const dbUpdated = await setPersistedSessionPinned(sessionId, pinned);
   const indexEntry = persistedSessionIndex.get(sessionId);
   if (indexEntry) {
     persistedSessionIndex.set(sessionId, { ...indexEntry, pinned });
   }
-  return pinned;
+  const found = dbUpdated || !!indexEntry || chatSessions.has(sessionId);
+  return { found, pinned };
 }
 
 function extractPersistedMessageMetadata(
@@ -1454,7 +1458,7 @@ interface RevertSessionTarget {
 }
 
 function resolveRevertMessageIndex(messages: ChatMessage[], target: RevertSessionTarget): number {
-  const desiredRole: ChatMessage["role"] = target.messageRole === "user" ? "user" : "user";
+  const desiredRole: ChatMessage["role"] = target.messageRole === "assistant" ? "assistant" : "user";
   const candidateIndex = Number.isInteger(target.messageIndex) ? Number(target.messageIndex) : -1;
   const content = typeof target.messageContent === "string" ? target.messageContent.trim() : "";
   const timestamp =

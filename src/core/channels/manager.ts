@@ -252,7 +252,11 @@ export class ChannelManager {
     if (existing) {
       const adapter = this.adapters.get(existing.type as ChannelType);
       if (adapter?.isRunning(id)) {
-        adapter.stop(id);
+        // stop() may be async; isolate failures so a rejecting adapter neither
+        // throws an unhandled rejection nor blocks deleting the DB row.
+        Promise.resolve(adapter.stop(id)).catch((error) => {
+          log.warn(`Failed to stop adapter while deleting channel ${id}`, { error });
+        });
       }
     }
 
