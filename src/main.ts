@@ -43,6 +43,7 @@ const CLI_COMMANDS = [
   "channels",
   "channel",
   "chat",
+  "agent",
   "config",
   "update",
   "version",

@@ -167,6 +167,31 @@ interface AgentItem {
   model?: string;
 }
 
+interface MobileDeviceInfo {
+  id: string;
+  name: string;
+  baseUrl: string;
+  status: "active" | "revoked";
+  createdAt: string;
+  lastSeenAt?: string;
+  revokedAt?: string;
+}
+
+interface MobilePairingResponse {
+  success: boolean;
+  device: MobileDeviceInfo;
+  payload: {
+    protocol: string;
+    name: string;
+    baseUrl: string;
+    apiKey: string;
+    deviceId: string;
+    createdAt: string;
+  };
+  encoded: string;
+  qrDataUrl?: string;
+}
+
 function normalizeMobileGatewayUrl(input: string): string {
   const trimmed = input.trim();
   if (!trimmed) throw new Error("Gateway URL is required");
@@ -182,26 +207,33 @@ function normalizeMobileGatewayUrl(input: string): string {
 
 async function rawMobileConnect(args: string[]): Promise<void> {
   const baseUrl = normalizeMobileGatewayUrl(getFlagValue(args, "--url") || API_BASE);
-  const name = getFlagValue(args, "--name") || process.env.HOSTNAME || "Cybara Gateway";
-  const apiKey = getFlagValue(args, "--key") || CLI_API_KEY;
-  const showQr = hasFlag(args, "--qr");
+  const gatewayName = getFlagValue(args, "--name") || process.env.HOSTNAME || "Cybara Gateway";
+  const deviceName = getFlagValue(args, "--device") || getFlagValue(args, "--device-name");
+  const showQr = !hasFlag(args, "--no-qr");
   const jsonOnly = hasFlag(args, "--json");
 
-  if (!apiKey) {
+  if (!CLI_API_KEY) {
     console.error("ERROR: No API key available for mobile pairing.");
     console.error("Set CYBARA_API_KEY or create ~/.cybara/api_key, then rerun this command.");
     process.exit(1);
   }
 
-  const payload = {
-    protocol: MOBILE_CONNECT_PROTOCOL,
-    name,
-    baseUrl,
-    apiKey,
-    createdAt: new Date().toISOString(),
-  };
-  const encoded = JSON.stringify(payload);
-  const deepLink = `cybara://connect?name=${encodeURIComponent(name)}&baseUrl=${encodeURIComponent(baseUrl)}&apiKey=${encodeURIComponent(apiKey)}`;
+  const pairing = await fetchAPI<MobilePairingResponse>("/api/mobile/devices", {
+    method: "POST",
+    body: JSON.stringify({
+      baseUrl,
+      gatewayName,
+      deviceName,
+    }),
+  });
+
+  if (!pairing?.success) {
+    console.error("ERROR: Failed to create a managed mobile pairing.");
+    process.exit(1);
+  }
+
+  const encoded = pairing.encoded || JSON.stringify(pairing.payload);
+  const deepLink = `cybara://connect?name=${encodeURIComponent(pairing.payload.name)}&baseUrl=${encodeURIComponent(pairing.payload.baseUrl)}&apiKey=${encodeURIComponent(pairing.payload.apiKey)}&deviceId=${encodeURIComponent(pairing.payload.deviceId)}`;
 
   if (jsonOnly) {
     console.log(encoded);
@@ -210,19 +242,79 @@ async function rawMobileConnect(args: string[]): Promise<void> {
 
   console.log("CYBARA MOBILE CONNECT");
   console.log("=====================");
-  console.log(`name: ${name}`);
-  console.log(`gateway: ${baseUrl}`);
+  console.log(`gateway: ${pairing.payload.name}`);
+  console.log(`url: ${pairing.payload.baseUrl}`);
+  console.log(`device: ${pairing.device.name}`);
+  console.log(`device id: ${pairing.device.id}`);
+  console.log("");
+  console.log("Scan this QR code with Cybara Mobile:");
+  if (showQr) {
+    generateQr(encoded, { small: true });
+  } else {
+    console.log("(QR hidden because --no-qr was passed)");
+  }
   console.log("");
   console.log("Payload:");
   console.log(encoded);
   console.log("");
   console.log("Deep link:");
   console.log(deepLink);
+}
 
-  if (showQr) {
-    console.log("");
-    generateQr(encoded, { small: true });
+async function rawMobileList(): Promise<void> {
+  const data = await fetchAPI<{ devices: MobileDeviceInfo[] }>("/api/mobile/devices");
+  if (!data) {
+    console.error("ERROR: Failed to fetch mobile devices from", API_BASE);
+    process.exit(1);
   }
+
+  console.log("CYBARA MOBILE DEVICES");
+  console.log("=====================");
+  if (data.devices.length === 0) {
+    console.log("No mobile devices are paired.");
+    return;
+  }
+
+  for (const device of data.devices) {
+    console.log(`${device.id}  ${device.status.toUpperCase()}  ${device.name}`);
+    console.log(`  gateway: ${device.baseUrl}`);
+    console.log(`  created: ${new Date(device.createdAt).toLocaleString()}`);
+    if (device.lastSeenAt)
+      console.log(`  last seen: ${new Date(device.lastSeenAt).toLocaleString()}`);
+    if (device.revokedAt) console.log(`  revoked: ${new Date(device.revokedAt).toLocaleString()}`);
+  }
+}
+
+async function rawMobileRevoke(id?: string): Promise<void> {
+  if (!id) {
+    console.error("Usage: cybara mobile revoke <device-id>");
+    process.exit(1);
+  }
+  const data = await fetchAPI<{ success: boolean; device?: MobileDeviceInfo }>(
+    `/api/mobile/devices/${encodeURIComponent(id)}/revoke`,
+    { method: "POST" }
+  );
+  if (!data?.success) {
+    console.error(`ERROR: Failed to revoke mobile device ${id}`);
+    process.exit(1);
+  }
+  console.log(`Revoked mobile device: ${data.device?.name || id}`);
+}
+
+async function rawMobileRemove(id?: string): Promise<void> {
+  if (!id) {
+    console.error("Usage: cybara mobile remove <device-id>");
+    process.exit(1);
+  }
+  const data = await fetchAPI<{ success: boolean }>(
+    `/api/mobile/devices/${encodeURIComponent(id)}`,
+    { method: "DELETE" }
+  );
+  if (!data?.success) {
+    console.error(`ERROR: Failed to remove mobile device ${id}`);
+    process.exit(1);
+  }
+  console.log(`Removed mobile device: ${id}`);
 }
 
 async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T | null> {
@@ -2123,6 +2215,64 @@ async function rawChannels(): Promise<void> {
   }
 }
 
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+  return Buffer.concat(chunks).toString("utf-8").trim();
+}
+
+/**
+ * Headless one-shot agent turn: `cybara agent "<prompt>" [--json] [--session id] [--agent id]`.
+ * Posts a single message to /api/chat and prints the reply (or JSON). Reads the
+ * prompt from stdin if none is given on the command line (pipe support), so it
+ * is scriptable/composable — the non-interactive counterpart to `chat`.
+ */
+async function rawAgent(rawArgs: string[]): Promise<void> {
+  const json = rawArgs.includes("--json");
+  let sessionId: string | undefined;
+  let agentId: string | undefined;
+  const words: string[] = [];
+  for (let i = 0; i < rawArgs.length; i++) {
+    const a = rawArgs[i];
+    if (a === "--json") continue;
+    if (a === "--session" || a === "-s") {
+      sessionId = rawArgs[++i];
+      continue;
+    }
+    if (a === "--agent" || a === "-a") {
+      agentId = rawArgs[++i];
+      continue;
+    }
+    words.push(a);
+  }
+  let prompt = words.join(" ").trim();
+  if (!prompt && !process.stdin.isTTY) {
+    prompt = await readStdin();
+  }
+  if (!prompt) {
+    console.error('Usage: cybara agent "<prompt>" [--json] [--session <id>] [--agent <id>]');
+    console.error("       echo '<prompt>' | cybara agent --json");
+    process.exit(1);
+  }
+
+  const res = await fetchAPI<{ sessionId: string; message: { content: string } }>("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: prompt, sessionId, agentId, tools: true }),
+  });
+
+  if (!res) {
+    process.exit(1);
+  }
+
+  const content = res.message?.content ?? "";
+  if (json) {
+    console.log(JSON.stringify({ sessionId: res.sessionId, content }));
+  } else {
+    console.log(content);
+  }
+}
+
 async function rawChat(sessionArg?: string): Promise<void> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
 
@@ -2311,7 +2461,11 @@ async function rawRouter(args: string[]): Promise<void> {
     console.log("ROUTES");
     console.log("------");
     for (const route of status.routes) {
-      const state = !route.enabled ? "DISABLED" : route.available ? "available" : `BLOCKED (${route.reason})`;
+      const state = !route.enabled
+        ? "DISABLED"
+        : route.available
+          ? "available"
+          : `BLOCKED (${route.reason})`;
       console.log(`  ${route.providerId}`);
       console.log(`    Weight:    ${route.weight}`);
       console.log(`    State:     ${state}`);
@@ -2320,7 +2474,9 @@ async function rawRouter(args: string[]): Promise<void> {
       console.log(`    Today:     $${route.spendToday.toFixed(4)}`);
       console.log(`    Week:      $${route.spendThisWeek.toFixed(4)}`);
       if (route.priceInputPerM || route.priceOutputPerM) {
-        console.log(`    Price:     $${route.priceInputPerM ?? 0}/M in, $${route.priceOutputPerM ?? 0}/M out`);
+        console.log(
+          `    Price:     $${route.priceInputPerM ?? 0}/M in, $${route.priceOutputPerM ?? 0}/M out`
+        );
       }
       console.log("");
     }
@@ -2331,7 +2487,12 @@ async function rawRouter(args: string[]): Promise<void> {
     const resp = await fetch(`${API_BASE}/api/router/config`, {
       method: "PUT",
       headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ enabled: true, strategy: "weighted", fallbackToAny: true, routes: {} }),
+      body: JSON.stringify({
+        enabled: true,
+        strategy: "weighted",
+        fallbackToAny: true,
+        routes: {},
+      }),
     });
     console.log(resp.ok ? "✓ Router enabled" : `ERROR: ${resp.status}`);
     return;
@@ -2341,7 +2502,12 @@ async function rawRouter(args: string[]): Promise<void> {
     const resp = await fetch(`${API_BASE}/api/router/config`, {
       method: "PUT",
       headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ enabled: false, strategy: "weighted", fallbackToAny: true, routes: {} }),
+      body: JSON.stringify({
+        enabled: false,
+        strategy: "weighted",
+        fallbackToAny: true,
+        routes: {},
+      }),
     });
     console.log(resp.ok ? "✓ Router disabled" : `ERROR: ${resp.status}`);
     return;
@@ -2385,7 +2551,12 @@ async function rawRouter(args: string[]): Promise<void> {
     }
     // Fetch current config, merge the route, and save.
     const currentResp = await fetchAPI<Record<string, unknown>>("/api/router/config");
-    const current = currentResp ?? { enabled: true, strategy: "weighted", fallbackToAny: true, routes: {} };
+    const current = currentResp ?? {
+      enabled: true,
+      strategy: "weighted",
+      fallbackToAny: true,
+      routes: {},
+    };
     const routes = (current.routes ?? {}) as Record<string, unknown>;
     routes[providerId] = routeConfig;
     const resp = await fetch(`${API_BASE}/api/router/config`, {
@@ -3756,7 +3927,10 @@ function rawHelp(): void {
   console.log("    browser tabs       List open browser tabs");
   console.log("  channels    List configured channels");
   console.log("  mobile      Mobile companion commands");
-  console.log("    mobile connect [--url URL] [--name NAME] [--qr] [--json]");
+  console.log("    mobile connect [--url URL] [--name GATEWAY] [--device NAME] [--json] [--no-qr]");
+  console.log("    mobile list");
+  console.log("    mobile revoke <device-id>");
+  console.log("    mobile remove <device-id>");
   console.log("  wallet      Wallet management commands");
   console.log("    wallet status                     Show wallet status and RPC settings");
   console.log("    wallet create --password <p>      Create 24-word wallet");
@@ -5013,6 +5187,9 @@ async function main() {
     case "chat":
       await rawChat(args[1]);
       break;
+    case "agent":
+      await rawAgent(args.slice(1));
+      break;
     case "config":
       await rawConfig(args[1], args[2], args[3]);
       break;
@@ -5028,18 +5205,36 @@ async function main() {
         case undefined:
           await rawMobileConnect(args.slice(2));
           break;
+        case "list":
+        case "devices":
+          await rawMobileList();
+          break;
+        case "revoke":
+          await rawMobileRevoke(args[2]);
+          break;
+        case "remove":
+        case "delete":
+          await rawMobileRemove(args[2]);
+          break;
         default:
           console.log("Mobile Commands:");
-          console.log("  cybara mobile connect [--url URL] [--name NAME] [--qr] [--json]");
+          console.log(
+            "  cybara mobile connect [--url URL] [--name GATEWAY] [--device NAME] [--json] [--no-qr]"
+          );
+          console.log("  cybara mobile list");
+          console.log("  cybara mobile revoke <device-id>");
+          console.log("  cybara mobile remove <device-id>");
           break;
       }
       break;
     case "memory":
       await rawMemory(args[1]);
       break;
-    case "logs":
-      await rawLogs(args[1] ? parseInt(args[1]) : 20);
+    case "logs": {
+      const n = parseInt(args[1] ?? "", 10);
+      await rawLogs(Number.isFinite(n) && n > 0 ? n : 20);
       break;
+    }
     case "subagent":
     case "subagents":
       switch (args[1]) {

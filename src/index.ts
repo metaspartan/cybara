@@ -529,6 +529,22 @@ console.log(`
 
 providerManager.seedDefaults();
 
+// First-run nudge: if no LLM provider has credentials yet, the agent can't do
+// anything useful — point the user at setup instead of leaving them guessing.
+try {
+  const providerStats = providerManager.getStats();
+  if (providerStats.withAuth === 0) {
+    console.log(`
+  ⚠  No LLM provider is configured yet — Cybara can't answer prompts until you add one.
+     • Guided setup:  cybara wizard
+     • Or open the dashboard → Providers:  http://localhost:${PORT}
+     • Or set a key, e.g.:  OPENAI_API_KEY / ANTHROPIC_API_KEY / MINIMAX_API_KEY  (see .env.example)
+`);
+  }
+} catch {
+  /* best-effort nudge */
+}
+
 setAgentHandler(async (job) => {
   const agent = agentManager.list().find((a) => a.status === "running");
   if (!agent) return { success: false, error: "No running agent available" };
