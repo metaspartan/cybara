@@ -73,6 +73,7 @@ import {
   MOBILE_NAV_CHROME,
   MOBILE_CHAT_COMPOSER,
   MOBILE_CHAT_CHROME,
+  MOBILE_METRICS_CHROME,
   MOBILE_SETTINGS_SURFACES,
   MOBILE_TABS,
   boundedMobileComposerHeight,
@@ -81,6 +82,7 @@ import {
   formatUptime,
   formatMobileValue,
   lastUpdatedLabel,
+  mobileComposerHeightForDraft,
   readMobileAccent,
   summarizeFeatureCounts,
   type FeatureCounts,
@@ -419,11 +421,15 @@ export function DashboardScreen({
   }, [profile.id]);
 
   useEffect(() => {
+    const refreshMs =
+      activeTab === "metrics" && !detailRoute
+        ? MOBILE_METRICS_CHROME.liveRefreshMs
+        : MOBILE_METRICS_CHROME.backgroundRefreshMs;
     const interval = setInterval(() => {
       void refreshMetrics();
-    }, 30000);
+    }, refreshMs);
     return () => clearInterval(interval);
-  }, [profile.id]);
+  }, [profile.id, activeTab, detailRoute]);
 
   const health = summary?.health;
   const healthy = health?.status === "healthy";
@@ -441,6 +447,9 @@ export function DashboardScreen({
   const selectTab = (tab: MobileTabKey) => {
     setDetailRoute(null);
     setActiveTab(tab);
+    if (tab === "metrics") {
+      void refreshMetrics();
+    }
   };
 
   const openSurface = (surface: MobileSurfaceKey) => {
@@ -579,7 +588,7 @@ export function DashboardScreen({
             </Text>
           </View>
         </View>
-        {!detailRoute ? (
+        {!detailRoute && activeTab !== "metrics" ? (
           <Pressable style={styles.iconButton} onPress={() => selectTab("settings")}>
             <Settings color={colors.text} size={22} strokeWidth={2.1} />
           </Pressable>
@@ -727,7 +736,6 @@ export function DashboardScreen({
               metricsError={metricsError}
               summary={summary}
               openSurface={openSurface}
-              refreshMetrics={refreshMetrics}
             />
           ) : null}
           {!detailRoute && activeTab === "settings" ? (
@@ -1076,7 +1084,6 @@ function MetricsPanel({
   metricsError,
   summary,
   openSurface,
-  refreshMetrics,
 }: {
   accentColor: string;
   counts: FeatureCounts;
@@ -1084,7 +1091,6 @@ function MetricsPanel({
   metricsError: string | null;
   summary: FeatureSummary | null;
   openSurface: (surface: MobileSurfaceKey) => void;
-  refreshMetrics: () => void;
 }) {
   const health = summary?.health;
   const healthy = health?.status === "healthy";
@@ -1172,9 +1178,7 @@ function MetricsPanel({
 
       <View style={styles.subsectionHeader}>
         <Text style={styles.subsectionTitle}>Token flow</Text>
-        <Pressable style={styles.smallButton} onPress={refreshMetrics}>
-          <Text style={styles.smallButtonText}>Refresh</Text>
-        </Pressable>
+        <Text style={styles.counterText}>Live</Text>
       </View>
       <MetricBreakdown data={tokenBars} tone={accentColor} />
 
@@ -1483,6 +1487,7 @@ function SessionDetailPanel({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [composerHeight, setComposerHeight] = useState<number>(MOBILE_CHAT_COMPOSER.minHeight);
+  const draftRef = useRef("");
   const [sending, setSending] = useState(false);
   const [pinned, setPinned] = useState(sessionSummary?.pinned ?? false);
   const [pinning, setPinning] = useState(false);
@@ -1551,11 +1556,22 @@ function SessionDetailPanel({
     });
   }, [detail?.messages.length, sending]);
 
+  const setComposerDraft = (value: string) => {
+    draftRef.current = value;
+    setDraft(value);
+    setComposerHeight(mobileComposerHeightForDraft(value));
+  };
+
+  const resetComposerDraft = () => {
+    draftRef.current = "";
+    setDraft("");
+    setComposerHeight(MOBILE_CHAT_COMPOSER.minHeight);
+  };
+
   const sendMessage = async () => {
     const message = draft.trim();
     if (!message || sending) return;
-    setDraft("");
-    setComposerHeight(MOBILE_CHAT_COMPOSER.minHeight);
+    resetComposerDraft();
     setSending(true);
     const optimistic = {
       id: `local-${Date.now()}`,
@@ -1580,7 +1596,7 @@ function SessionDetailPanel({
       });
       await loadSession(false);
     } catch (error) {
-      setDraft(message);
+      setComposerDraft(message);
       setLoadError(error instanceof Error ? error.message : String(error));
     } finally {
       setSending(false);
@@ -1740,19 +1756,25 @@ function SessionDetailPanel({
       <View style={styles.chatComposerBar}>
         <View style={styles.composer}>
           <TextInput
+            blurOnSubmit={false}
             editable={!sending}
             multiline
             onContentSizeChange={(event) => {
               setComposerHeight(
-                boundedMobileComposerHeight(event.nativeEvent.contentSize.height)
+                mobileComposerHeightForDraft(
+                  draftRef.current,
+                  boundedMobileComposerHeight(event.nativeEvent.contentSize.height)
+                )
               );
             }}
             value={draft}
-            onChangeText={setDraft}
+            onChangeText={setComposerDraft}
             placeholder="Message this chat"
             placeholderTextColor={colors.textDim}
+            returnKeyType="default"
             scrollEnabled={composerHeight >= MOBILE_CHAT_COMPOSER.maxHeight}
             style={[styles.composerInput, { height: composerHeight }]}
+            submitBehavior="newline"
             textAlignVertical="top"
           />
           <Pressable

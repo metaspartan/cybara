@@ -62,8 +62,10 @@ export const MOBILE_CHAT_CHROME = {
 
 export const MOBILE_CHAT_COMPOSER = {
   growsWithContent: true,
+  lineHeight: 20,
   maxHeight: 132,
   minHeight: 42,
+  newlineExpandsInput: true,
   preserveDraftOnFailure: true,
   resetAfterSend: true,
   sendButtonMode: "icon" as const,
@@ -75,6 +77,24 @@ export function boundedMobileComposerHeight(height: number): number {
     Math.max(MOBILE_CHAT_COMPOSER.minHeight, Math.ceil(height))
   );
 }
+
+export function mobileComposerHeightForDraft(
+  draft: string,
+  measuredHeight: number = MOBILE_CHAT_COMPOSER.minHeight
+): number {
+  const explicitLines = draft.length === 0 ? 1 : draft.split(/\r\n|\n|\r/).length;
+  const explicitLineHeight =
+    MOBILE_CHAT_COMPOSER.minHeight +
+    Math.max(0, explicitLines - 1) * MOBILE_CHAT_COMPOSER.lineHeight;
+  return boundedMobileComposerHeight(Math.max(measuredHeight, explicitLineHeight));
+}
+
+export const MOBILE_METRICS_CHROME = {
+  backgroundRefreshMs: 30000,
+  headerRefreshButton: false,
+  liveRefreshMs: 5000,
+  pullToRefresh: true,
+} as const;
 
 export const MOBILE_FEATURE_SECTIONS = [
   "sessions",

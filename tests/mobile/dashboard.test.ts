@@ -5,6 +5,7 @@ import {
   MOBILE_FEATURE_SECTIONS,
   MOBILE_CHAT_COMPOSER,
   MOBILE_CHAT_CHROME,
+  MOBILE_METRICS_CHROME,
   MOBILE_NAV_CHROME,
   MOBILE_SETTINGS_SURFACES,
   MOBILE_SURFACES,
@@ -14,6 +15,7 @@ import {
   formatMobileValue,
   formatUptime,
   lastUpdatedLabel,
+  mobileComposerHeightForDraft,
   readMobileAccent,
   summarizeFeatureCounts,
 } from "../../apps/mobile/src/lib/dashboard";
@@ -98,10 +100,25 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_CHAT_COMPOSER.growsWithContent).toBe(true);
     expect(MOBILE_CHAT_COMPOSER.resetAfterSend).toBe(true);
     expect(MOBILE_CHAT_COMPOSER.preserveDraftOnFailure).toBe(true);
+    expect(MOBILE_CHAT_COMPOSER.newlineExpandsInput).toBe(true);
     expect(MOBILE_CHAT_COMPOSER.minHeight).toBeLessThan(MOBILE_CHAT_COMPOSER.maxHeight);
     expect(boundedMobileComposerHeight(20)).toBe(MOBILE_CHAT_COMPOSER.minHeight);
     expect(boundedMobileComposerHeight(84.2)).toBe(85);
     expect(boundedMobileComposerHeight(300)).toBe(MOBILE_CHAT_COMPOSER.maxHeight);
+    expect(mobileComposerHeightForDraft("one\ntwo")).toBe(
+      MOBILE_CHAT_COMPOSER.minHeight + MOBILE_CHAT_COMPOSER.lineHeight
+    );
+    expect(mobileComposerHeightForDraft("one\ntwo\nthree", 300)).toBe(
+      MOBILE_CHAT_COMPOSER.maxHeight
+    );
+  });
+
+  test("keeps metrics live without an in-page refresh button", () => {
+    expect(MOBILE_METRICS_CHROME.headerRefreshButton).toBe(false);
+    expect(MOBILE_METRICS_CHROME.pullToRefresh).toBe(true);
+    expect(MOBILE_METRICS_CHROME.liveRefreshMs).toBeLessThan(
+      MOBILE_METRICS_CHROME.backgroundRefreshMs
+    );
   });
 
   test("tracks the remote management surfaces the mobile app should expose", () => {
