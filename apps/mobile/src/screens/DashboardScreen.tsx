@@ -82,6 +82,7 @@ import {
   type RemoteItemSummary,
   type SessionDetailSummary,
   type SessionSummary,
+  type SystemPromptFeatureKey,
   type SystemMonitorSnapshot,
   type ToolApprovalDecision,
   type WalletAgentPolicyUpdate,
@@ -107,7 +108,9 @@ import {
   MOBILE_MAIN_TAB_CHROME,
   MOBILE_METRICS_CHROME,
   MOBILE_SETTINGS_DETAIL_CHROME,
+  MOBILE_SETTINGS_ROOT_CHROME,
   MOBILE_SETTINGS_SURFACES,
+  MOBILE_SYSTEM_PROMPT_FEATURE_KEYS,
   MOBILE_TABS,
   boundedMobileComposerHeight,
   buildGatewayPanelMeta,
@@ -122,7 +125,10 @@ import {
   mobileBackRouteForDetail,
   mobileThemeConfigPayload,
   recentSessionStateLabel,
+  readMobileDangerousToolPolicy,
+  readMobileSandboxRuntime,
   readMobileAccent,
+  readMobileToolApprovalMode,
   summarizeFeatureCounts,
   type FeatureCounts,
   type MobileSurfaceKey,
@@ -260,6 +266,30 @@ const walletPolicyToggleRows: Array<{
     detail: "Allow agent-initiated x402 payment requests.",
   },
 ];
+
+const systemPromptFeatureCopy: Record<SystemPromptFeatureKey, { label: string; detail: string }> = {
+  memoryEnabled: {
+    label: "Memory recall",
+    detail: "Include durable memory context in agent prompts.",
+  },
+  skillsEnabled: {
+    label: "Skills",
+    detail: "Expose installed skills in the agent prompt.",
+  },
+  messagingEnabled: {
+    label: "Messaging",
+    detail: "Let agents use configured messaging surfaces.",
+  },
+  replyTagsEnabled: {
+    label: "Reply tags",
+    detail: "Include structured reply tags for channel responses.",
+  },
+};
+
+const systemPromptFeatureRows = MOBILE_SYSTEM_PROMPT_FEATURE_KEYS.map((key) => ({
+  key,
+  ...systemPromptFeatureCopy[key],
+}));
 
 function objectRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -2425,11 +2455,13 @@ function SettingsTextField({
 }
 
 function SettingSelector({
+  disabled,
   label,
   options,
   selected,
   onSelect,
 }: {
+  disabled?: boolean;
   label: string;
   options: Array<{ label: string; value: string }>;
   selected: string;
@@ -2445,10 +2477,15 @@ function SettingSelector({
           return (
             <Pressable
               accessibilityRole="button"
-              accessibilityState={{ selected: isSelected }}
+              accessibilityState={{ disabled, selected: isSelected }}
+              disabled={disabled}
               key={option.value}
               onPress={() => onSelect(option.value)}
-              style={[styles.settingsChip, isSelected && styles.settingsChipActive]}
+              style={[
+                styles.settingsChip,
+                isSelected && styles.settingsChipActive,
+                disabled && styles.settingsActionButtonDisabled,
+              ]}
             >
               <Text
                 numberOfLines={1}
@@ -3860,6 +3897,84 @@ function SettingsPanel({
 }) {
   const counts = summarizeFeatureCounts(summary);
   const [savingAccent, setSavingAccent] = useState<AccentKey | null>(null);
+  const [savingConfigKey, setSavingConfigKey] = useState<string | null>(null);
+  const [savingPromptKey, setSavingPromptKey] = useState<SystemPromptFeatureKey | null>(null);
+  const [savingAgentAccess, setSavingAgentAccess] = useState(false);
+  const configAvailable = summary?.availability.config.ok === true;
+  const systemPromptAvailable =
+    summary?.availability.systemPrompt.ok === true && Boolean(summary.systemPrompt);
+  const terminalEnabled = summary?.config.terminal_enabled === true;
+  const toolApprovalMode = readMobileToolApprovalMode(summary?.config);
+  const dangerousPolicy = readMobileDangerousToolPolicy(summary?.config);
+  const sandboxRuntime = readMobileSandboxRuntime(summary?.config);
+  const walletStatus = objectRecord(summary?.walletStatus);
+  const walletStatusAvailable = Boolean(walletStatus);
+  const agentAccessEnabled = booleanSetting(walletStatus, "agentAccessEnabled");
+
+  const saveConfigPatch = async (
+    key: string,
+    patch: Record<string, unknown>,
+    errorTitle = "Setting update failed"
+  ) => {
+    if (!configAvailable || savingConfigKey) return;
+    setSavingConfigKey(key);
+    try {
+      const result = await api.updateConfig(patch);
+      if (result.success === false) {
+        throw new Error("Config update failed");
+      }
+      await refreshSummary();
+    } catch (error) {
+      Alert.alert(errorTitle, error instanceof Error ? error.message : String(error));
+    } finally {
+      setSavingConfigKey(null);
+    }
+  };
+
+  const toggleAgentAccess = async () => {
+    if (!walletStatusAvailable || savingAgentAccess) return;
+    setSavingAgentAccess(true);
+    try {
+      const result = await api.setWalletAgentAccess(!agentAccessEnabled);
+      if (result.success === false) {
+        throw new Error("The gateway did not update wallet agent access.");
+      }
+      await refreshSummary();
+    } catch (error) {
+      Alert.alert(
+        "Wallet access update failed",
+        error instanceof Error ? error.message : String(error)
+      );
+    } finally {
+      setSavingAgentAccess(false);
+    }
+  };
+
+  const toggleSystemPromptFeature = async (key: SystemPromptFeatureKey) => {
+    if (!summary?.systemPrompt || savingPromptKey) return;
+    setSavingPromptKey(key);
+    try {
+      const nextFeatures = {
+        ...summary.systemPrompt.features,
+        [key]: summary.systemPrompt.features[key] !== true,
+      };
+      const result = await api.updateSystemPrompt({
+        ...summary.systemPrompt,
+        features: nextFeatures,
+      });
+      if (result.success === false) {
+        throw new Error("System prompt update failed");
+      }
+      await refreshSummary();
+    } catch (error) {
+      Alert.alert(
+        "Prompt feature update failed",
+        error instanceof Error ? error.message : String(error)
+      );
+    } finally {
+      setSavingPromptKey(null);
+    }
+  };
 
   const updateThemeAccent = async (next: AccentKey) => {
     if (savingAccent || next === accentKey) return;
@@ -3949,6 +4064,212 @@ function SettingsPanel({
           })}
         </View>
       </View>
+      <Text style={styles.subsectionTitle}>Platform controls</Text>
+      {configAvailable ? (
+        <View style={styles.settingsForm}>
+          {MOBILE_SETTINGS_ROOT_CHROME.terminalToggle ? (
+            <SettingToggle
+              busy={savingConfigKey === "terminal_enabled"}
+              detail="Enable browser-based terminal access on the gateway."
+              disabled={savingConfigKey !== null}
+              label="Web terminal"
+              onPress={() => {
+                void saveConfigPatch(
+                  "terminal_enabled",
+                  { terminal_enabled: !terminalEnabled },
+                  "Terminal setting failed"
+                );
+              }}
+              value={terminalEnabled}
+            />
+          ) : null}
+          {MOBILE_SETTINGS_ROOT_CHROME.toolApprovalModeSelector ? (
+            <SettingSelector
+              disabled={savingConfigKey !== null}
+              label="Tool approvals"
+              onSelect={(value) => {
+                void saveConfigPatch(
+                  "tool_approval_mode",
+                  { tool_approval_mode: value === "ask" ? "ask" : "always_allow" },
+                  "Tool approval setting failed"
+                );
+              }}
+              options={[
+                { label: "Always Allow", value: "always_allow" },
+                { label: "Ask Me", value: "ask" },
+              ]}
+              selected={toolApprovalMode}
+            />
+          ) : null}
+          {MOBILE_SETTINGS_ROOT_CHROME.dangerousToolPolicyToggle ? (
+            <>
+              <SettingToggle
+                busy={savingConfigKey === "dangerous_tool_policy"}
+                detail="Guardrails for shell, wallet, and other high-impact tools."
+                disabled={savingConfigKey !== null}
+                label="Dangerous tool policy"
+                onPress={() => {
+                  void saveConfigPatch(
+                    "dangerous_tool_policy",
+                    {
+                      dangerous_tool_policy: {
+                        enabled: !dangerousPolicy.enabled,
+                        mode: dangerousPolicy.mode,
+                      },
+                    },
+                    "Dangerous tool policy failed"
+                  );
+                }}
+                value={dangerousPolicy.enabled}
+              />
+              {dangerousPolicy.enabled ? (
+                <SettingSelector
+                  disabled={savingConfigKey !== null}
+                  label="Dangerous policy mode"
+                  onSelect={(value) => {
+                    void saveConfigPatch(
+                      "dangerous_tool_policy",
+                      {
+                        dangerous_tool_policy: {
+                          enabled: true,
+                          mode: value === "block" ? "block" : "audit",
+                        },
+                      },
+                      "Dangerous tool policy failed"
+                    );
+                  }}
+                  options={[
+                    { label: "Audit", value: "audit" },
+                    { label: "Block", value: "block" },
+                  ]}
+                  selected={dangerousPolicy.mode}
+                />
+              ) : null}
+            </>
+          ) : null}
+          {MOBILE_SETTINGS_ROOT_CHROME.sandboxRuntimeControls ? (
+            <>
+              <SettingToggle
+                busy={savingConfigKey === "sandbox_runtime"}
+                detail="Run supported command tools in an isolated runtime."
+                disabled={savingConfigKey !== null}
+                label="Command sandbox"
+                onPress={() => {
+                  void saveConfigPatch(
+                    "sandbox_runtime",
+                    {
+                      sandbox_runtime: {
+                        ...sandboxRuntime,
+                        enabled: !sandboxRuntime.enabled,
+                      },
+                    },
+                    "Sandbox setting failed"
+                  );
+                }}
+                value={sandboxRuntime.enabled}
+              />
+              {sandboxRuntime.enabled ? (
+                <>
+                  <SettingSelector
+                    disabled={savingConfigKey !== null}
+                    label="Sandbox provider"
+                    onSelect={(value) => {
+                      const provider =
+                        value === "apple_sandbox" || value === "podman" || value === "docker"
+                          ? value
+                          : "auto";
+                      void saveConfigPatch(
+                        "sandbox_runtime",
+                        {
+                          sandbox_runtime: {
+                            ...sandboxRuntime,
+                            provider,
+                          },
+                        },
+                        "Sandbox setting failed"
+                      );
+                    }}
+                    options={[
+                      { label: "Auto", value: "auto" },
+                      { label: "Apple", value: "apple_sandbox" },
+                      { label: "Podman", value: "podman" },
+                      { label: "Docker", value: "docker" },
+                    ]}
+                    selected={sandboxRuntime.provider}
+                  />
+                  <SettingSelector
+                    disabled={savingConfigKey !== null}
+                    label="Sandbox network"
+                    onSelect={(value) => {
+                      void saveConfigPatch(
+                        "sandbox_runtime",
+                        {
+                          sandbox_runtime: {
+                            ...sandboxRuntime,
+                            network: value === "allow" ? "allow" : "deny",
+                          },
+                        },
+                        "Sandbox setting failed"
+                      );
+                    }}
+                    options={[
+                      { label: "Deny", value: "deny" },
+                      { label: "Allow", value: "allow" },
+                    ]}
+                    selected={sandboxRuntime.network}
+                  />
+                </>
+              ) : null}
+            </>
+          ) : null}
+          {MOBILE_SETTINGS_ROOT_CHROME.walletAccessShortcut ? (
+            <SettingToggle
+              busy={savingAgentAccess}
+              detail="Master switch for agent-initiated wallet actions."
+              disabled={!walletStatusAvailable || savingAgentAccess}
+              label="Agent wallet access"
+              onPress={() => {
+                void toggleAgentAccess();
+              }}
+              value={agentAccessEnabled}
+            />
+          ) : null}
+        </View>
+      ) : (
+        <EmptyState
+          label="Config unavailable"
+          detail={endpointErrorDetail(
+            summary?.availability.config,
+            "The gateway did not return editable settings."
+          )}
+        />
+      )}
+      <Text style={styles.subsectionTitle}>Agent prompt features</Text>
+      {systemPromptAvailable && summary?.systemPrompt ? (
+        <View style={styles.settingsForm}>
+          {systemPromptFeatureRows.map((row) => (
+            <SettingToggle
+              busy={savingPromptKey === row.key}
+              detail={row.detail}
+              disabled={savingPromptKey !== null}
+              key={row.key}
+              label={row.label}
+              onPress={() => {
+                void toggleSystemPromptFeature(row.key);
+              }}
+              value={summary.systemPrompt?.features[row.key] === true}
+            />
+          ))}
+        </View>
+      ) : (
+        <EmptyState
+          label="Prompt settings unavailable"
+          detail={endpointErrorDetail(
+            summary?.availability.systemPrompt,
+            "The gateway did not return system prompt settings."
+          )}
+        />
+      )}
       <Text style={styles.subsectionTitle}>Connection</Text>
       <SettingsRow Icon={Wifi} label="Gateway" value={profile.baseUrl} />
       <SettingsRow
@@ -3960,22 +4281,6 @@ function SettingsPanel({
         Icon={HeartPulse}
         label="Health API"
         value={endpointStatusLabel(summary?.availability.health)}
-      />
-      <Text style={styles.subsectionTitle}>Safety policy</Text>
-      <SettingsRow
-        Icon={Zap}
-        label="Tool approval"
-        value={formatMobileValue(summary?.config.tool_approval_mode)}
-      />
-      <SettingsRow
-        Icon={ShieldCheck}
-        label="Dangerous tools"
-        value={formatMobileValue(summary?.config.dangerous_tool_policy)}
-      />
-      <SettingsRow
-        Icon={ShieldCheck}
-        label="Wallet policy"
-        value={endpointStatusLabel(summary?.availability.walletPolicy)}
       />
       <Text style={styles.subsectionTitle}>Runtime</Text>
       <SettingsRow Icon={Cpu} label="Runtime" value={summary?.health?.version || "pending"} />

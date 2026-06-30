@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   CybaraMobileApi,
+  type SystemPromptConfig,
   normalizeActivityLogs,
   normalizeMemoryItems,
   normalizeRemoteItems,
@@ -14,6 +15,25 @@ const profile: GatewayProfile = {
   baseUrl: "http://127.0.0.1:4269",
   apiKey: "cybara_mobile_test",
   createdAt: "2026-06-30T00:00:00.000Z",
+};
+
+const systemPromptFixture: SystemPromptConfig = {
+  template: "default",
+  customPrompt: "",
+  defaultBasePrompt: "You are Cybara.",
+  identity: {
+    name: "Cybara",
+    emoji: "",
+    creature: "AI assistant",
+    vibe: "Useful",
+    theme: "dark",
+  },
+  features: {
+    memoryEnabled: true,
+    skillsEnabled: true,
+    messagingEnabled: true,
+    replyTagsEnabled: false,
+  },
 };
 
 describe("mobile API client", () => {
@@ -75,6 +95,56 @@ describe("mobile API client", () => {
             themeAccent: "emerald",
             theme_accent: "emerald",
             ui_accent: "emerald",
+          },
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("loads and updates system prompt settings through gateway routes", async () => {
+    const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      const method = init?.method || "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      calls.push({ method, path: parsedUrl.pathname, body });
+
+      if (parsedUrl.pathname === "/api/system-prompt" && method === "GET") {
+        return Response.json(systemPromptFixture);
+      }
+      if (parsedUrl.pathname === "/api/system-prompt" && method === "PUT") {
+        return Response.json({ success: true });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const api = new CybaraMobileApi(profile);
+      await expect(api.systemPrompt()).resolves.toEqual(systemPromptFixture);
+      await expect(
+        api.updateSystemPrompt({
+          ...systemPromptFixture,
+          features: {
+            ...systemPromptFixture.features,
+            memoryEnabled: false,
+          },
+        })
+      ).resolves.toEqual({ success: true });
+
+      expect(calls).toEqual([
+        { method: "GET", path: "/api/system-prompt", body: undefined },
+        {
+          method: "PUT",
+          path: "/api/system-prompt",
+          body: {
+            ...systemPromptFixture,
+            features: {
+              ...systemPromptFixture.features,
+              memoryEnabled: false,
+            },
           },
         },
       ]);
@@ -444,6 +514,7 @@ describe("mobile API client", () => {
           disk: { path: "/tmp", totalBytes: 1000, freeBytes: 250, usedBytes: 750, usedPct: 75 },
         });
       }
+      if (path === "/api/system-prompt") return Response.json(systemPromptFixture);
       if (path === "/api/config") return Response.json({ tool_approval_mode: "ask" });
       return new Response("missing", { status: 404 });
     }) as typeof fetch;
@@ -461,6 +532,8 @@ describe("mobile API client", () => {
       expect(summary.availability.systemMonitor.ok).toBe(true);
       expect(summary.systemMonitor?.cpu.usagePct).toBe(12.5);
       expect(summary.systemMonitor?.memory.swap?.usedPct).toBe(50);
+      expect(summary.availability.systemPrompt.ok).toBe(true);
+      expect(summary.systemPrompt?.features.memoryEnabled).toBe(true);
       expect(summary.config.tool_approval_mode).toBe("ask");
     } finally {
       globalThis.fetch = originalFetch;

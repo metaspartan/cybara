@@ -14,7 +14,10 @@ import {
   MOBILE_NAV_CHROME,
   MOBILE_RECENT_ACTIVITY_CHROME,
   MOBILE_SETTINGS_DETAIL_CHROME,
+  MOBILE_SETTINGS_ROOT_CHROME,
   MOBILE_SETTINGS_SURFACES,
+  MOBILE_PLATFORM_SETTING_KEYS,
+  MOBILE_SYSTEM_PROMPT_FEATURE_KEYS,
   MOBILE_SURFACES,
   MOBILE_TABS,
   boundedMobileComposerHeight,
@@ -29,7 +32,10 @@ import {
   mobileBackRouteForDetail,
   mobileThemeConfigPayload,
   recentSessionStateLabel,
+  readMobileDangerousToolPolicy,
+  readMobileSandboxRuntime,
   readMobileAccent,
+  readMobileToolApprovalMode,
   summarizeFeatureCounts,
 } from "../../apps/mobile/src/lib/dashboard";
 
@@ -113,6 +119,24 @@ const summary: FeatureSummary = {
       usedPct: 60,
     },
   },
+  systemPrompt: {
+    template: "default",
+    customPrompt: "",
+    defaultBasePrompt: "You are Cybara.",
+    identity: {
+      name: "Cybara",
+      emoji: "",
+      creature: "AI assistant",
+      vibe: "Useful",
+      theme: "dark",
+    },
+    features: {
+      memoryEnabled: true,
+      skillsEnabled: true,
+      messagingEnabled: true,
+      replyTagsEnabled: false,
+    },
+  },
   config: {},
   availability: {
     health: { ok: true },
@@ -128,6 +152,7 @@ const summary: FeatureSummary = {
     memory: { ok: true },
     logs: { ok: true },
     systemMonitor: { ok: true },
+    systemPrompt: { ok: true },
     config: { ok: true },
   },
 };
@@ -293,6 +318,38 @@ describe("mobile dashboard model", () => {
     expect(isMobileSettingsDetailFieldVisible("session id")).toBe(false);
     expect(isMobileSettingsDetailFieldVisible("api_key")).toBe(false);
     expect(isMobileSettingsDetailFieldVisible("access token")).toBe(false);
+  });
+
+  test("exposes root settings toggles that mirror web and Tauri settings", () => {
+    expect(MOBILE_SETTINGS_ROOT_CHROME.terminalToggle).toBe(true);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.toolApprovalModeSelector).toBe(true);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.dangerousToolPolicyToggle).toBe(true);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.sandboxRuntimeControls).toBe(true);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.systemPromptFeatureToggles).toBe(true);
+    expect(MOBILE_PLATFORM_SETTING_KEYS).toEqual([
+      "terminal_enabled",
+      "tool_approval_mode",
+      "dangerous_tool_policy",
+      "sandbox_runtime",
+    ]);
+    expect(MOBILE_SYSTEM_PROMPT_FEATURE_KEYS).toEqual([
+      "memoryEnabled",
+      "skillsEnabled",
+      "messagingEnabled",
+      "replyTagsEnabled",
+    ]);
+    expect(
+      readMobileDangerousToolPolicy({
+        dangerous_tool_policy: { enabled: true, mode: "block" },
+      })
+    ).toEqual({ enabled: true, mode: "block" });
+    expect(
+      readMobileSandboxRuntime({
+        sandbox_runtime: { enabled: true, provider: "podman", network: "allow" },
+      })
+    ).toEqual({ enabled: true, provider: "podman", network: "allow" });
+    expect(readMobileToolApprovalMode({ tool_approval_mode: "ask" })).toBe("ask");
+    expect(readMobileToolApprovalMode({ tool_approval_mode: "always_allow" })).toBe("always_allow");
   });
 
   test("keeps recent activity chat rows tappable and honest about state", () => {

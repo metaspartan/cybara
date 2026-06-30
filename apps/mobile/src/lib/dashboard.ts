@@ -87,6 +87,29 @@ export const MOBILE_SETTINGS_DETAIL_CHROME = {
   providerCredentialUpdateMode: "blank-keeps-existing" as const,
 } as const;
 
+export const MOBILE_SETTINGS_ROOT_CHROME = {
+  dangerousToolPolicyToggle: true,
+  sandboxRuntimeControls: true,
+  systemPromptFeatureToggles: true,
+  terminalToggle: true,
+  toolApprovalModeSelector: true,
+  walletAccessShortcut: true,
+} as const;
+
+export const MOBILE_PLATFORM_SETTING_KEYS = [
+  "terminal_enabled",
+  "tool_approval_mode",
+  "dangerous_tool_policy",
+  "sandbox_runtime",
+] as const;
+
+export const MOBILE_SYSTEM_PROMPT_FEATURE_KEYS = [
+  "memoryEnabled",
+  "skillsEnabled",
+  "messagingEnabled",
+  "replyTagsEnabled",
+] as const;
+
 export type MobileDetailBackInput =
   | { kind: "session" }
   | { kind: "newChat" }
@@ -363,6 +386,44 @@ export function formatMobileValue(value: unknown, fallback = "unknown"): string 
     return keys.length === 1 ? "1 setting" : `${keys.length} settings`;
   }
   return fallback;
+}
+
+function asObjectRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+export function readMobileToolApprovalMode(config: Record<string, unknown> | undefined): string {
+  return config?.tool_approval_mode === "ask" ? "ask" : "always_allow";
+}
+
+export function readMobileDangerousToolPolicy(config: Record<string, unknown> | undefined): {
+  enabled: boolean;
+  mode: "audit" | "block";
+} {
+  const policy = asObjectRecord(config?.dangerous_tool_policy);
+  return {
+    enabled: policy?.enabled === true,
+    mode: policy?.mode === "block" ? "block" : "audit",
+  };
+}
+
+export function readMobileSandboxRuntime(config: Record<string, unknown> | undefined): {
+  enabled: boolean;
+  provider: "auto" | "apple_sandbox" | "podman" | "docker";
+  network: "allow" | "deny";
+} {
+  const sandbox = asObjectRecord(config?.sandbox_runtime);
+  const provider = sandbox?.provider;
+  return {
+    enabled: sandbox?.enabled === true,
+    provider:
+      provider === "apple_sandbox" || provider === "podman" || provider === "docker"
+        ? provider
+        : "auto",
+    network: sandbox?.network === "allow" ? "allow" : "deny",
+  };
 }
 
 export const MOBILE_ACCENT_KEYS = [

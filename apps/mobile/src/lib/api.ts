@@ -142,6 +142,23 @@ export type WalletAgentPolicyUpdate = Partial<{
   x402MaxAmountAtomic: string;
 }>;
 
+export type SystemPromptFeatureKey =
+  "memoryEnabled" | "skillsEnabled" | "messagingEnabled" | "replyTagsEnabled";
+
+export interface SystemPromptConfig {
+  template: string;
+  customPrompt: string;
+  defaultBasePrompt: string;
+  identity: {
+    name: string;
+    emoji: string;
+    creature: string;
+    vibe: string;
+    theme: string;
+  };
+  features: Record<SystemPromptFeatureKey, boolean>;
+}
+
 export type ToolApprovalDecision = "approve_once" | "approve_session" | "approve_always" | "deny";
 
 export type FeatureEndpointKey =
@@ -158,6 +175,7 @@ export type FeatureEndpointKey =
   | "memory"
   | "logs"
   | "systemMonitor"
+  | "systemPrompt"
   | "config";
 
 export interface FeatureEndpointState {
@@ -257,6 +275,7 @@ export interface FeatureSummary {
   logsOffset?: number;
   logsHasMore?: boolean;
   systemMonitor: SystemMonitorSnapshot | null;
+  systemPrompt: SystemPromptConfig | null;
   config: Record<string, unknown>;
   availability: FeatureAvailability;
 }
@@ -288,6 +307,7 @@ function emptyAvailability(): FeatureAvailability {
     memory: { ok: false },
     logs: { ok: false },
     systemMonitor: { ok: false },
+    systemPrompt: { ok: false },
     config: { ok: false },
   };
 }
@@ -1095,6 +1115,17 @@ export class CybaraMobileApi {
     });
   }
 
+  systemPrompt(): Promise<SystemPromptConfig> {
+    return this.request<SystemPromptConfig>("/api/system-prompt");
+  }
+
+  updateSystemPrompt(data: Partial<SystemPromptConfig>): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>("/api/system-prompt", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
   updateWalletAgentPolicy(
     data: WalletAgentPolicyUpdate
   ): Promise<{ success: boolean; policy?: unknown }> {
@@ -1146,6 +1177,7 @@ export class CybaraMobileApi {
       memory,
       logPage,
       systemMonitor,
+      systemPrompt,
       config,
     ] = await Promise.all([
       safe<HealthResponse | null>("health", null, () => this.health()),
@@ -1203,6 +1235,7 @@ export class CybaraMobileApi {
       safe<SystemMonitorSnapshot | null>("systemMonitor", null, () =>
         this.request<SystemMonitorSnapshot>("/api/system/monitor")
       ),
+      safe<SystemPromptConfig | null>("systemPrompt", null, () => this.systemPrompt()),
       safe<Record<string, unknown>>("config", {}, () => this.config()),
     ]);
 
@@ -1225,6 +1258,7 @@ export class CybaraMobileApi {
       logsOffset: logPage.offset,
       logsHasMore: logPage.hasMore,
       systemMonitor,
+      systemPrompt,
       config,
       availability,
     };
