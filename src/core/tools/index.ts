@@ -564,13 +564,18 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
   web_search: {
     name: "web_search",
     description:
-      "Search the web. Returns titles, URLs, and snippets. Use for quick research before browsing. Set BRAVE_API_KEY for better results.",
+      "Search the web. Returns titles, URLs, and snippets. Use for quick research before browsing. Auto-selects the best configured backend (Tavily/Exa/Brave/SearXNG) and falls back to DuckDuckGo.",
     category: "browser",
     input_schema: {
       type: "object",
       properties: {
         query: { type: "string", description: "Search query string" },
         count: { type: "number", description: "Number of results (1-10, default 5)" },
+        provider: {
+          type: "string",
+          enum: ["tavily", "exa", "brave", "searxng", "duckduckgo"],
+          description: "Optional: force a specific search backend instead of auto-selecting.",
+        },
       },
       required: ["query"],
     },
