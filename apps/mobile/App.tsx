@@ -30,7 +30,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView edges={["top", "left", "right"]} style={styles.safe}>
         <StatusBar barStyle="light-content" />
         <View style={styles.background}>
           <View style={styles.content}>

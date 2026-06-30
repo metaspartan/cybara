@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { getActiveProfile, loadProfiles, saveProfile, type KeyValueStorage } from "../../apps/mobile/src/lib/storage";
+import {
+  clearActiveProfile,
+  getActiveProfile,
+  loadProfiles,
+  saveProfile,
+  type KeyValueStorage,
+} from "../../apps/mobile/src/lib/storage";
 import type { GatewayProfile } from "../../apps/mobile/src/lib/connection";
 
 function memoryStorage(): KeyValueStorage {
@@ -42,5 +48,14 @@ describe("mobile profile storage", () => {
     const profiles = await loadProfiles(storage);
     expect(profiles).toHaveLength(1);
     expect(profiles[0].apiKey).toBe("new_key");
+  });
+
+  test("disconnect removes the active bearer-token profile", async () => {
+    const storage = memoryStorage();
+    await saveProfile(profile, storage);
+    await clearActiveProfile(storage);
+
+    expect(await loadProfiles(storage)).toEqual([]);
+    expect(await getActiveProfile(storage)).toBeNull();
   });
 });

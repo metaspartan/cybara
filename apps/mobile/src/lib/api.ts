@@ -33,20 +33,250 @@ export interface ProviderSummary {
   is_default?: boolean;
 }
 
+export type FeatureEndpointKey =
+  | "health"
+  | "sessions"
+  | "agents"
+  | "providers"
+  | "channels"
+  | "tasks"
+  | "tools"
+  | "approvals"
+  | "walletStatus"
+  | "walletPolicy"
+  | "memory"
+  | "logs"
+  | "config";
+
+export interface FeatureEndpointState {
+  ok: boolean;
+  status?: number;
+  error?: string;
+}
+
+export type FeatureAvailability = Record<FeatureEndpointKey, FeatureEndpointState>;
+
+export interface RemoteItemSummary {
+  id: string;
+  title: string;
+  detail: string;
+  status?: string;
+  type?: string;
+}
+
+export interface ActivitySummary {
+  id: string;
+  title: string;
+  detail: string;
+  source: string;
+  createdAt?: string;
+}
+
 export interface FeatureSummary {
   health: HealthResponse | null;
   sessions: SessionSummary[];
   agents: AgentSummary[];
   providers: ProviderSummary[];
-  channels: unknown[];
-  tasks: unknown[];
-  tools: unknown[];
-  approvals: unknown[];
+  channels: RemoteItemSummary[];
+  tasks: RemoteItemSummary[];
+  tools: RemoteItemSummary[];
+  approvals: RemoteItemSummary[];
   walletStatus: unknown | null;
   walletPolicy: unknown | null;
-  memory: unknown[];
-  logs: unknown[];
+  memory: RemoteItemSummary[];
+  logs: ActivitySummary[];
   config: Record<string, unknown>;
+  availability: FeatureAvailability;
+}
+
+export class CybaraApiError extends Error {
+  status: number;
+  path: string;
+
+  constructor(status: number, path: string) {
+    super(`Cybara API ${status} for ${path}`);
+    this.name = "CybaraApiError";
+    this.status = status;
+    this.path = path;
+  }
+}
+
+function emptyAvailability(): FeatureAvailability {
+  return {
+    health: { ok: false },
+    sessions: { ok: false },
+    agents: { ok: false },
+    providers: { ok: false },
+    channels: { ok: false },
+    tasks: { ok: false },
+    tools: { ok: false },
+    approvals: { ok: false },
+    walletStatus: { ok: false },
+    walletPolicy: { ok: false },
+    memory: { ok: false },
+    logs: { ok: false },
+    config: { ok: false },
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function readString(record: Record<string, unknown> | null, keys: string[]): string | undefined {
+  if (!record) return undefined;
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim().length > 0) return value.trim();
+    if (typeof value === "number" || typeof value === "boolean") return String(value);
+  }
+  return undefined;
+}
+
+function readNumber(record: Record<string, unknown> | null, keys: string[]): number | undefined {
+  if (!record) return undefined;
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
+export function normalizeArrayResponse(value: unknown, keys: string[]): unknown[] {
+  if (Array.isArray(value)) return value;
+  const record = asRecord(value);
+  if (!record) return [];
+  for (const key of keys) {
+    const nested = record[key];
+    if (Array.isArray(nested)) return nested;
+  }
+  return [];
+}
+
+export function normalizeRemoteItems(
+  value: unknown,
+  keys: string[],
+  fallbackPrefix: string
+): RemoteItemSummary[] {
+  return normalizeArrayResponse(value, keys).map((item, index) => {
+    const record = asRecord(item);
+    const id = readString(record, ["id", "name", "key"]) || `${fallbackPrefix}-${index + 1}`;
+    const type = readString(record, ["type", "provider", "platform", "kind"]);
+    const status = readString(record, ["status", "state"]) || undefined;
+    const description = readString(record, ["description", "summary", "schedule"]);
+    const title =
+      readString(record, ["title", "name", "label", "id", "tool"]) ||
+      `${fallbackPrefix} ${index + 1}`;
+    const detailParts = [type, status, description].filter(Boolean);
+    return {
+      id,
+      title,
+      detail: detailParts.length > 0 ? detailParts.join(" - ") : "Available",
+      status,
+      type,
+    };
+  });
+}
+
+export function normalizeMemoryItems(value: unknown): RemoteItemSummary[] {
+  const record = asRecord(value);
+  if (!record) return normalizeRemoteItems(value, ["memory", "items", "entries"], "memory");
+  const memories = normalizeArrayResponse(record.memories, ["memories"]);
+  if (memories.length === 0) {
+    return normalizeArrayResponse(record.files, ["files"]).map((file, index) => ({
+      id: typeof file === "string" ? file : `memory-file-${index + 1}`,
+      title: typeof file === "string" ? file : `Memory file ${index + 1}`,
+      detail: "Memory file",
+      type: "file",
+    }));
+  }
+  return memories.map((memory, index) => {
+    const memoryRecord = asRecord(memory);
+    const file = readString(memoryRecord, ["file", "name"]) || `memory-${index + 1}`;
+    const entries = normalizeArrayResponse(memoryRecord?.entries, ["entries"]);
+    return {
+      id: file,
+      title: file,
+      detail: entries.length === 1 ? "1 entry" : `${entries.length} entries`,
+      type: "memory",
+    };
+  });
+}
+
+export function normalizeActivityLogs(value: unknown): ActivitySummary[] {
+  const record = asRecord(value);
+  const sourceArrays = record
+    ? Object.entries(record).flatMap(([source, entries]) =>
+        normalizeArrayResponse(entries, ["items", "entries"]).map((entry) => ({ source, entry }))
+      )
+    : normalizeArrayResponse(value, ["logs", "activity", "items"]).map((entry) => ({
+        source: "activity",
+        entry,
+      }));
+
+  return sourceArrays.map(({ source, entry }, index) => {
+    const item = asRecord(entry);
+    const createdAt = readString(item, ["created_at", "createdAt", "timestamp", "time"]);
+    const message =
+      readString(item, ["message", "content", "event", "action", "level"]) ||
+      `${source} event ${index + 1}`;
+    const actor = readString(item, ["agent_id", "session_id", "channel_id", "source"]);
+    return {
+      id: readString(item, ["id"]) || `${source}-${index + 1}`,
+      title: message,
+      detail: actor || source,
+      source,
+      createdAt,
+    };
+  });
+}
+
+function normalizeSessions(value: unknown): SessionSummary[] {
+  return normalizeArrayResponse(value, ["sessions", "items"]).map((session, index) => {
+    const record = asRecord(session);
+    const id = readString(record, ["id", "session_id"]) || `session-${index + 1}`;
+    return {
+      id,
+      title: readString(record, ["title", "name"]) || null,
+      agent_id: readString(record, ["agent_id", "agentId"]),
+      message_count: readNumber(record, ["message_count", "messageCount"]) ?? 0,
+      updated_at:
+        readString(record, ["updated_at", "updatedAt", "created_at", "createdAt"]) ||
+        new Date(0).toISOString(),
+      workspace_dir: readString(record, ["workspace_dir", "workspaceDir"]) || null,
+      last_message: asRecord(record?.last_message || record?.lastMessage) as
+        SessionSummary["last_message"] | null,
+    };
+  });
+}
+
+function normalizeAgents(value: unknown): AgentSummary[] {
+  return normalizeArrayResponse(value, ["agents", "items"]).map((agent, index) => {
+    const record = asRecord(agent);
+    const id = readString(record, ["id", "name"]) || `agent-${index + 1}`;
+    return {
+      id,
+      name: readString(record, ["name", "label", "id"]) || id,
+      type: readString(record, ["type"]),
+      status: readString(record, ["status", "state"]),
+      model: readString(record, ["model"]),
+    };
+  });
+}
+
+function normalizeProviders(value: unknown): ProviderSummary[] {
+  return normalizeArrayResponse(value, ["providers", "items"]).map((provider, index) => {
+    const record = asRecord(provider);
+    const id = readString(record, ["id", "provider", "name"]) || `provider-${index + 1}`;
+    return {
+      id,
+      name: readString(record, ["name", "label", "provider"]) || id,
+      provider: readString(record, ["provider", "type"]) || "provider",
+      is_default: Boolean(record?.is_default || record?.isDefault),
+    };
+  });
 }
 
 export class CybaraMobileApi {
@@ -69,7 +299,7 @@ export class CybaraMobileApi {
       headers: this.headers(),
     });
     if (!response.ok) {
-      throw new Error(`Cybara API ${response.status} for ${path}`);
+      throw new CybaraApiError(response.status, path);
     }
     return (await response.json()) as T;
   }
@@ -78,16 +308,16 @@ export class CybaraMobileApi {
     return this.request<HealthResponse>("/api/health");
   }
 
-  sessions(): Promise<SessionSummary[]> {
-    return this.request<SessionSummary[]>("/api/sessions?limit=50");
+  async sessions(): Promise<SessionSummary[]> {
+    return normalizeSessions(await this.request<unknown>("/api/sessions?limit=50"));
   }
 
-  agents(): Promise<AgentSummary[]> {
-    return this.request<AgentSummary[]>("/api/agents");
+  async agents(): Promise<AgentSummary[]> {
+    return normalizeAgents(await this.request<unknown>("/api/agents"));
   }
 
-  providers(): Promise<ProviderSummary[]> {
-    return this.request<ProviderSummary[]>("/api/providers");
+  async providers(): Promise<ProviderSummary[]> {
+    return normalizeProviders(await this.request<unknown>("/api/providers"));
   }
 
   config(): Promise<Record<string, unknown>> {
@@ -102,10 +332,22 @@ export class CybaraMobileApi {
   }
 
   async featureSummary(): Promise<FeatureSummary> {
-    const safe = async <T>(fallback: T, task: () => Promise<T>): Promise<T> => {
+    const availability = emptyAvailability();
+    const safe = async <T>(
+      key: FeatureEndpointKey,
+      fallback: T,
+      task: () => Promise<T>
+    ): Promise<T> => {
       try {
-        return await task();
-      } catch {
+        const result = await task();
+        availability[key] = { ok: true };
+        return result;
+      } catch (error) {
+        availability[key] = {
+          ok: false,
+          status: error instanceof CybaraApiError ? error.status : undefined,
+          error: error instanceof Error ? error.message : String(error),
+        };
         return fallback;
       }
     };
@@ -125,21 +367,41 @@ export class CybaraMobileApi {
       logs,
       config,
     ] = await Promise.all([
-      safe<HealthResponse | null>(null, () => this.health()),
-      safe<SessionSummary[]>([], () => this.sessions()),
-      safe<AgentSummary[]>([], () => this.agents()),
-      safe<ProviderSummary[]>([], () => this.providers()),
-      safe<unknown[]>([], () => this.request<unknown[]>("/api/channels")),
-      safe<unknown[]>([], () => this.request<unknown[]>("/api/tasks")),
-      safe<unknown[]>([], () => this.request<unknown[]>("/api/tools")),
-      safe<unknown[]>([], () =>
-        this.request<{ pending?: unknown[] }>("/api/tools/approvals").then((value) => value.pending || [])
+      safe<HealthResponse | null>("health", null, () => this.health()),
+      safe<SessionSummary[]>("sessions", [], () => this.sessions()),
+      safe<AgentSummary[]>("agents", [], () => this.agents()),
+      safe<ProviderSummary[]>("providers", [], () => this.providers()),
+      safe<RemoteItemSummary[]>("channels", [], async () =>
+        normalizeRemoteItems(
+          await this.request<unknown>("/api/channels"),
+          ["channels", "items"],
+          "channel"
+        )
       ),
-      safe<unknown | null>(null, () => this.request<unknown>("/api/wallet/status")),
-      safe<unknown | null>(null, () => this.request<unknown>("/api/wallet/agent-policy")),
-      safe<unknown[]>([], () => this.request<unknown[]>("/api/memory")),
-      safe<unknown[]>([], () => this.request<unknown[]>("/api/logs/activity")),
-      safe<Record<string, unknown>>({}, () => this.config()),
+      safe<RemoteItemSummary[]>("tasks", [], async () =>
+        normalizeRemoteItems(await this.request<unknown>("/api/tasks"), ["tasks", "items"], "task")
+      ),
+      safe<RemoteItemSummary[]>("tools", [], async () =>
+        normalizeRemoteItems(await this.request<unknown>("/api/tools"), ["tools", "items"], "tool")
+      ),
+      safe<RemoteItemSummary[]>("approvals", [], async () =>
+        normalizeRemoteItems(
+          await this.request<unknown>("/api/tools/approvals"),
+          ["pending", "approvals", "items"],
+          "approval"
+        )
+      ),
+      safe<unknown | null>("walletStatus", null, () => this.request<unknown>("/api/wallet/status")),
+      safe<unknown | null>("walletPolicy", null, () =>
+        this.request<unknown>("/api/wallet/agent-policy")
+      ),
+      safe<RemoteItemSummary[]>("memory", [], async () =>
+        normalizeMemoryItems(await this.request<unknown>("/api/memory"))
+      ),
+      safe<ActivitySummary[]>("logs", [], async () =>
+        normalizeActivityLogs(await this.request<unknown>("/api/logs/activity"))
+      ),
+      safe<Record<string, unknown>>("config", {}, () => this.config()),
     ]);
 
     return {
@@ -156,6 +418,7 @@ export class CybaraMobileApi {
       memory,
       logs,
       config,
+      availability,
     };
   }
 }

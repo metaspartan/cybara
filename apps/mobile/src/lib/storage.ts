@@ -12,13 +12,17 @@ export interface KeyValueStorage {
 
 const defaultStorage: KeyValueStorage = AsyncStorage;
 
-export async function loadProfiles(storage: KeyValueStorage = defaultStorage): Promise<GatewayProfile[]> {
+export async function loadProfiles(
+  storage: KeyValueStorage = defaultStorage
+): Promise<GatewayProfile[]> {
   const raw = await storage.getItem(PROFILE_KEY);
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed)
-      ? parsed.filter((item): item is GatewayProfile => Boolean(item?.id && item?.baseUrl && item?.apiKey))
+      ? parsed.filter((item): item is GatewayProfile =>
+          Boolean(item?.id && item?.baseUrl && item?.apiKey)
+        )
       : [];
   } catch {
     return [];
@@ -39,10 +43,26 @@ export async function saveProfile(
 export async function getActiveProfile(
   storage: KeyValueStorage = defaultStorage
 ): Promise<GatewayProfile | null> {
-  const [profiles, activeId] = await Promise.all([loadProfiles(storage), storage.getItem(ACTIVE_KEY)]);
+  const [profiles, activeId] = await Promise.all([
+    loadProfiles(storage),
+    storage.getItem(ACTIVE_KEY),
+  ]);
   return profiles.find((profile) => profile.id === activeId) || profiles[0] || null;
 }
 
 export async function clearActiveProfile(storage: KeyValueStorage = defaultStorage): Promise<void> {
+  const [profiles, activeId] = await Promise.all([
+    loadProfiles(storage),
+    storage.getItem(ACTIVE_KEY),
+  ]);
+  const nextProfiles = activeId
+    ? profiles.filter((profile) => profile.id !== activeId)
+    : profiles.slice(1);
+
+  if (nextProfiles.length > 0) {
+    await storage.setItem(PROFILE_KEY, JSON.stringify(nextProfiles));
+  } else {
+    await storage.removeItem(PROFILE_KEY);
+  }
   await storage.removeItem(ACTIVE_KEY);
 }

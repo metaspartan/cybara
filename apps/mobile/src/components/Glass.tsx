@@ -8,7 +8,11 @@ export function GlassPanel({
   contentStyle,
   style,
   elevated = false,
-}: PropsWithChildren<{ contentStyle?: StyleProp<ViewStyle>; style?: StyleProp<ViewStyle>; elevated?: boolean }>) {
+}: PropsWithChildren<{
+  contentStyle?: StyleProp<ViewStyle>;
+  style?: StyleProp<ViewStyle>;
+  elevated?: boolean;
+}>) {
   return (
     <BlurView
       blurMethod="dimezisBlurViewSdk31Plus"
@@ -16,6 +20,8 @@ export function GlassPanel({
       tint="systemUltraThinMaterialDark"
       style={[styles.panel, elevated && styles.elevated, elevated && shadows.glass, style]}
     >
+      <View pointerEvents="none" style={styles.liquidWash} />
+      <View pointerEvents="none" style={styles.liquidHighlight} />
       <View style={[styles.panelFill, contentStyle]}>{children}</View>
     </BlurView>
   );
@@ -35,7 +41,11 @@ export function GlassButton({
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.button, selected && styles.selected, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.button,
+        selected && styles.selected,
+        pressed && styles.pressed,
+      ]}
     >
       <Text style={styles.buttonLabel}>{label}</Text>
       {detail ? <Text style={styles.buttonDetail}>{detail}</Text> : null}
@@ -54,15 +64,29 @@ export function MetricPill({ label, value }: { label: string; value: string | nu
 
 const styles = StyleSheet.create({
   panel: {
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
     backgroundColor: colors.glass,
+    borderRadius: radius.lg,
+    borderColor: colors.border,
+    borderWidth: 1,
     overflow: "hidden",
   },
+  liquidWash: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: "rgba(255, 255, 255, 0.035)",
+  },
+  liquidHighlight: {
+    backgroundColor: "rgba(255, 255, 255, 0.18)",
+    borderRadius: 999,
+    height: 1,
+    left: 14,
+    opacity: 0.75,
+    position: "absolute",
+    right: 14,
+    top: 1,
+  },
   panelFill: {
-    padding: spacing.lg,
     gap: spacing.md,
+    padding: spacing.lg,
   },
   elevated: {
     borderColor: colors.borderStrong,

@@ -12,8 +12,8 @@ import { colors, radius, spacing, typography } from "../theme/liquidGlass";
 import cybaraLogo from "../../assets/cybara.png";
 
 export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfile) => void }) {
-  const [name, setName] = useState("Mac Studio Gateway");
-  const [baseUrl, setBaseUrl] = useState("http://192.168.1.20:4269");
+  const [name, setName] = useState("Cybara Gateway");
+  const [baseUrl, setBaseUrl] = useState("http://127.0.0.1:4269");
   const [apiKey, setApiKey] = useState("");
   const [payload, setPayload] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -86,7 +86,7 @@ export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfi
       </View>
       <GlassPanel elevated style={styles.card}>
         <Text style={styles.cardTitle}>Quick connect</Text>
-        <Text style={styles.help}>Scan the gateway QR or paste the pairing payload.</Text>
+        <Text style={styles.help}>Scan the Mobile page QR or paste a CLI pairing payload.</Text>
         <GlassButton
           label="Scan QR"
           detail="Camera pairing"
