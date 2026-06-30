@@ -17,8 +17,9 @@ bun run build:all
 ```bash
 bun audit
 (cd ui && bun audit)
-cargo audit --file src-tauri/Cargo.lock
-go run github.com/google/osv-scanner/v2/cmd/osv-scanner@latest scan source -r .
+(cd apps/mobile && bun audit)
+(cd src-tauri && cargo audit)
+(cd src-tauri && osv-scanner scan --config ../osv-scanner.toml --lockfile Cargo.lock)
 ```
 
 ## Focused Test Runs

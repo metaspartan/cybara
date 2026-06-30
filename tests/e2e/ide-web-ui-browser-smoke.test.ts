@@ -7,8 +7,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const RUN_BROWSER_E2E =
-  process.env.RUN_BROWSER_E2E === "1" || process.env.CI_BROWSER_E2E === "1";
+const RUN_BROWSER_E2E = process.env.RUN_BROWSER_E2E === "1" || process.env.CI_BROWSER_E2E === "1";
 const describeOrSkip = RUN_BROWSER_E2E ? describe : describe.skip;
 
 let serverProc: ReturnType<typeof Bun.spawn> | null = null;
@@ -53,8 +52,7 @@ async function waitForServerReady(url: string, timeoutMs = 30_000): Promise<void
     try {
       const res = await fetch(`${url}/api/health`);
       if (res.ok) return;
-    } catch {
-    }
+    } catch {}
     await sleep(250);
   }
   throw new Error(`Timed out waiting for server at ${url}`);
@@ -71,8 +69,7 @@ async function runBun(args: string[], timeoutMs = 120_000): Promise<void> {
   const timeout = setTimeout(() => {
     try {
       proc.kill("SIGKILL");
-    } catch {
-    }
+    } catch {}
   }, timeoutMs);
 
   const [stdout, stderr, exitCode] = await Promise.all([
@@ -91,7 +88,9 @@ async function runBun(args: string[], timeoutMs = 120_000): Promise<void> {
 
 function reactRuntimeFailures(): string[] {
   return browserMessages.filter((message) =>
-    /Minified React error #300|Rendered fewer hooks|React has detected|Uncaught Error/i.test(message)
+    /Minified React error #300|Rendered fewer hooks|React has detected|Uncaught Error/i.test(
+      message
+    )
   );
 }
 
@@ -178,8 +177,7 @@ describeOrSkip("IDE web UI browser smoke", () => {
     if (serverProc) {
       try {
         serverProc.kill("SIGTERM");
-      } catch {
-      }
+      } catch {}
       await Promise.race([serverProc.exited, sleep(5000)]);
       serverProc = null;
     }

@@ -32,10 +32,56 @@ interface WhatsAppRuntimeState {
 
 interface WhatsAppAdapterConfig {
   allow_self_messages?: boolean | string | number;
+  chrome_path?: string;
 }
 
 interface WhatsAppConnectionState extends WhatsAppRuntimeState {
   running: boolean;
+}
+
+function normalizeChromePath(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+export function resolveWhatsAppChromeExecutable(
+  config: Record<string, unknown> = {}
+): string | undefined {
+  const candidates = [
+    normalizeChromePath(config.chrome_path),
+    normalizeChromePath(process.env.CYBARA_WHATSAPP_CHROME_PATH),
+    normalizeChromePath(process.env.PUPPETEER_EXECUTABLE_PATH),
+    normalizeChromePath(process.env.CHROME_PATH),
+  ];
+
+  if (process.platform === "darwin") {
+    candidates.push(
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
+      "/Applications/Chromium.app/Contents/MacOS/Chromium"
+    );
+  } else if (process.platform === "win32") {
+    const programFiles = process.env.PROGRAMFILES;
+    const programFilesX86 = process.env["PROGRAMFILES(X86)"];
+    const localAppData = process.env.LOCALAPPDATA;
+    candidates.push(
+      programFiles ? `${programFiles}\\Google\\Chrome\\Application\\chrome.exe` : undefined,
+      programFilesX86 ? `${programFilesX86}\\Google\\Chrome\\Application\\chrome.exe` : undefined,
+      localAppData ? `${localAppData}\\Google\\Chrome\\Application\\chrome.exe` : undefined
+    );
+  } else {
+    candidates.push(
+      "/usr/bin/google-chrome",
+      "/usr/bin/google-chrome-stable",
+      "/usr/bin/chromium",
+      "/usr/bin/chromium-browser"
+    );
+  }
+
+  return candidates.find((candidate): candidate is string =>
+    Boolean(candidate && existsSync(candidate))
+  );
 }
 
 export class WhatsAppAdapter implements ChannelAdapter {
@@ -292,7 +338,10 @@ export class WhatsAppAdapter implements ChannelAdapter {
 
         const storedFingerprint = signature.slice(fingerprintPrefix.length);
         if (!storedFingerprint) continue;
-        if (!storedFingerprint.includes(fingerprintText) && !fingerprintText.includes(storedFingerprint)) {
+        if (
+          !storedFingerprint.includes(fingerprintText) &&
+          !fingerprintText.includes(storedFingerprint)
+        ) {
           continue;
         }
 
@@ -353,9 +402,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
 
   private normalizeJid(value: string | undefined | null): string {
     if (!value) return "";
-    return value
-      .split(":")[0]
-      .toLowerCase();
+    return value.split(":")[0].toLowerCase();
   }
 
   private normalizeJidForCompare(value: string | undefined | null): string {
@@ -582,12 +629,18 @@ export class WhatsAppAdapter implements ChannelAdapter {
       mkdirSync(authPath, { recursive: true });
     }
 
+    const executablePath = resolveWhatsAppChromeExecutable(config);
+    if (executablePath) {
+      console.log(`[WhatsApp] Using Chrome executable: ${executablePath}`);
+    }
+
     const client = new Client({
       authStrategy: new LocalAuth({
         clientId: channelId,
         dataPath: authPath,
       }),
       puppeteer: {
+        ...(executablePath ? { executablePath } : {}),
         headless: true,
         args: [
           "--no-sandbox",
@@ -650,8 +703,13 @@ export class WhatsAppAdapter implements ChannelAdapter {
 
       // Log registered event listeners so we know events are wired up
       const eventNames = (client as unknown as { _events?: Record<string, unknown> })._events;
-      console.log(`[WhatsApp] Event listeners registered for channel ${channelId}:`, eventNames ? Object.keys(eventNames).join(", ") : "NONE");
-      console.log(`[WhatsApp] Account ID: ${accountId || "unknown"} | allow_self_messages: ${JSON.stringify(this.channelConfigs.get(channelId)?.allow_self_messages ?? "<not set>")}`);
+      console.log(
+        `[WhatsApp] Event listeners registered for channel ${channelId}:`,
+        eventNames ? Object.keys(eventNames).join(", ") : "NONE"
+      );
+      console.log(
+        `[WhatsApp] Account ID: ${accountId || "unknown"} | allow_self_messages: ${JSON.stringify(this.channelConfigs.get(channelId)?.allow_self_messages ?? "<not set>")}`
+      );
     });
 
     client.on("authenticated", () => {
@@ -692,13 +750,17 @@ export class WhatsAppAdapter implements ChannelAdapter {
     });
 
     client.on("message", async (msg: Message) => {
-      console.log(`[WhatsApp] >>> message event fired for channel ${channelId} | from=${msg.from} | fromMe=${msg.fromMe} | body="${(msg.body || "").slice(0, 50)}"`);
+      console.log(
+        `[WhatsApp] >>> message event fired for channel ${channelId} | from=${msg.from} | fromMe=${msg.fromMe} | body="${(msg.body || "").slice(0, 50)}"`
+      );
       this.debugEvent(channelId, "message", msg, "listener");
       await this.handleMessage(channelId, msg, "message");
     });
 
     client.on("message_create", async (msg: Message) => {
-      console.log(`[WhatsApp] >>> message_create event fired for channel ${channelId} | from=${msg.from} | to=${msg.to} | fromMe=${msg.fromMe} | body="${(msg.body || "").slice(0, 50)}"`);
+      console.log(
+        `[WhatsApp] >>> message_create event fired for channel ${channelId} | from=${msg.from} | to=${msg.to} | fromMe=${msg.fromMe} | body="${(msg.body || "").slice(0, 50)}"`
+      );
       this.debugEvent(channelId, "message_create", msg, "listener");
       // Pass all messages through to handleMessage — it already has
       // proper filtering (fromMe, allowSelfMessages, isSelfEcho, security).
@@ -762,7 +824,12 @@ export class WhatsAppAdapter implements ChannelAdapter {
 
     // Self-chat loops should never be reprocessed.
     const isSelfChat = this.isSelfChatMessage(channelId, msg);
-    const isSelfEcho = this.isSelfEcho(channelId, msg, outboundChatId, eventType === "message_create");
+    const isSelfEcho = this.isSelfEcho(
+      channelId,
+      msg,
+      outboundChatId,
+      eventType === "message_create"
+    );
     if (msg.fromMe) {
       if (!allowSelfMessages || !isSelfChat) {
         if (!allowSelfMessages && isSelfChat) {
@@ -795,7 +862,8 @@ export class WhatsAppAdapter implements ChannelAdapter {
       return;
     }
 
-    const chatId = from || this.normalizeJid(msg.to) || this.normalizeJid(this.accountIds.get(channelId));
+    const chatId =
+      from || this.normalizeJid(msg.to) || this.normalizeJid(this.accountIds.get(channelId));
     if (!chatId) {
       this.debugEvent(channelId, eventType, msg, "skip_missing_chat_id");
       return;
@@ -803,9 +871,12 @@ export class WhatsAppAdapter implements ChannelAdapter {
     const userId = msg.author || msg.from; // author is set in groups
     const isGroupChat = chatId.endsWith("@g.us");
 
-    const accessCheck = isSelfChat && allowSelfMessages
-      ? ({ permitted: true } as const)
-      : securityManager.checkAccess(channelId, userId, "whatsapp", undefined, { isGroup: isGroupChat });
+    const accessCheck =
+      isSelfChat && allowSelfMessages
+        ? ({ permitted: true } as const)
+        : securityManager.checkAccess(channelId, userId, "whatsapp", undefined, {
+            isGroup: isGroupChat,
+          });
 
     if (!accessCheck.permitted) {
       if (accessCheck.silent) return;

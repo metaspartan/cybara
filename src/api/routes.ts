@@ -1,19 +1,39 @@
 import { config } from "../core/config";
-// Shared pure helpers + types extracted into ./routes/_shared.
+import { cacheMetricsRoutes } from "./route-cache";
 import {
-  parseJsonObject, parseMetricMetadata, metricTimestampToMs, sumMetricValues,
-  buildMetricTrend, localDateKeyFromMs,
+  parseJsonObject,
+  parseMetricMetadata,
+  metricTimestampToMs,
+  sumMetricValues,
+  buildMetricTrend,
+  localDateKeyFromMs,
   buildStorageMetrics,
-  isSessionStatusActive, buildTokenCallSnapshots,
-  buildAssistantOutputCloud, classifyModelBehavior,
-  parseWalletChains, parseWalletTokenChain,
-  parseJsonArray, parseOptionalNumber, normalizeOptionalString, normalizeSecretString,
-  buildGoogleAuthHeaders, isLikelyGoogleApiKey, formatChannelTestError,
-  normalizeSystemPromptConfig, normalizeIdentityConfig,
+  isSessionStatusActive,
+  buildTokenCallSnapshots,
+  buildAssistantOutputCloud,
+  classifyModelBehavior,
+  parseWalletChains,
+  parseWalletTokenChain,
+  parseJsonArray,
+  parseOptionalNumber,
+  normalizeOptionalString,
+  normalizeSecretString,
+  buildGoogleAuthHeaders,
+  isLikelyGoogleApiKey,
+  formatChannelTestError,
+  normalizeSystemPromptConfig,
+  normalizeIdentityConfig,
   sanitizeSessionMessages,
-  decodeDictationAudioBase64, pickDictationProvider, transcribeWithOpenAICompatibleProvider,
-  type LspDiagnosticLike, type LspLocationLike, type LspSymbolLike, type NormalizedLspSymbol,
-  type SessionMessageView, type MetricTopKey, type ProviderMetricSummary,
+  decodeDictationAudioBase64,
+  pickDictationProvider,
+  transcribeWithOpenAICompatibleProvider,
+  type LspDiagnosticLike,
+  type LspLocationLike,
+  type LspSymbolLike,
+  type NormalizedLspSymbol,
+  type SessionMessageView,
+  type MetricTopKey,
+  type ProviderMetricSummary,
   type TokenCloudEntry,
 } from "./routes/_shared";
 import { tables } from "../core/database";
@@ -91,20 +111,10 @@ import {
 import { buildSystemPrompt } from "../core/system-prompt";
 import { getAppVersion, getReleaseRepositoryUrl } from "../core/build-info";
 import { checkForUpdate, isUpdateCheckDisabled } from "../core/update-check";
-import {
-  getPendingApprovals,
-  getAlwaysAllowlist,
-  resolveApproval,
-} from "../core/tool-approval";
+import { getPendingApprovals, getAlwaysAllowlist, resolveApproval } from "../core/tool-approval";
 import { discoverProviderModels } from "../core/model-discovery";
 import { listCheckpoints, deleteCheckpoint } from "../core/checkpoint";
-import {
-  getRouterStatus,
-  selectProvider,
-
-  getAllPricing,
-  type RouterConfig,
-} from "../core/router";
+import { getRouterStatus, selectProvider, getAllPricing, type RouterConfig } from "../core/router";
 import * as pwManager from "../core/browser/pw-manager";
 import { homedir } from "os";
 import { dirname, isAbsolute, resolve } from "path";
@@ -137,12 +147,7 @@ import {
   getAgentLoopRun,
   cancelAgentLoopRun,
 } from "../core/agent-loop";
-import {
-  listArtifacts,
-  readArtifact,
-  deleteArtifact,
-  listAllArtifacts,
-} from "../core/artifacts";
+import { listArtifacts, readArtifact, deleteArtifact, listAllArtifacts } from "../core/artifacts";
 import { getSessionStatusSnapshot, listSessionStatusSnapshots } from "../core/status";
 import { getSandboxRuntimeStatus, logSandboxRuntimeStatus } from "../core/sandbox";
 import { workspaceIndexer } from "../core/workspace-indexer";
@@ -172,7 +177,6 @@ const oauthCallbacks = new Map<
   string,
   { status: string; access_token?: string; refresh_token?: string; error?: string }
 >();
-
 
 type WalletModule = typeof import("../core/wallet");
 type WalletManagerInstance = WalletModule["walletManager"];
@@ -210,7 +214,6 @@ async function withWalletManager<T>(
   return await callback(walletManager);
 }
 
-
 function validateProviderCredentialShape(
   providerType: string,
   credentials: { apiKey?: string; accessToken?: string }
@@ -235,7 +238,6 @@ function validateProviderCredentialShape(
     }
   }
 }
-
 
 function resolveWorkspacePath(filePath?: string): string {
   if (!filePath || typeof filePath !== "string") {
@@ -427,7 +429,6 @@ function normalizeLspSymbol(raw: unknown): NormalizedLspSymbol | null {
   };
 }
 
-
 interface RequestLog {
   timestamp: string;
   method: string;
@@ -468,11 +469,13 @@ const corsBaseHeaders: Record<string, string> = {
 // Config rows can hold secrets (session_secret, stored tokens, etc.). The
 // config table accepts arbitrary keys, so redact anything whose key looks
 // sensitive before returning it over the API.
-const SECRET_CONFIG_KEY = /(secret|token|password|passwd|api[_-]?key|private[_-]?key|mnemonic|credential|seed)/i;
+const SECRET_CONFIG_KEY =
+  /(secret|token|password|passwd|api[_-]?key|private[_-]?key|mnemonic|credential|seed)/i;
 function redactSecretConfig(cfg: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(cfg)) {
-    out[key] = SECRET_CONFIG_KEY.test(key) && value != null && value !== "" ? "***redacted***" : value;
+    out[key] =
+      SECRET_CONFIG_KEY.test(key) && value != null && value !== "" ? "***redacted***" : value;
   }
   return out;
 }
@@ -1549,7 +1552,13 @@ const routes: Record<string, RouteHandler> = {
     config.set("router", cfg);
     return { success: true };
   },
-  "GET /api/router/config": () => config.get("router") || { enabled: false, strategy: "weighted", fallbackToAny: true, routes: {} },
+  "GET /api/router/config": () =>
+    config.get("router") || {
+      enabled: false,
+      strategy: "weighted",
+      fallbackToAny: true,
+      routes: {},
+    },
   "POST /api/router/select": (body) => {
     const { preferredProviderId } = body as { preferredProviderId?: string };
     const selected = selectProvider(preferredProviderId);
@@ -1563,8 +1572,7 @@ const routes: Record<string, RouteHandler> = {
     if (!config) throw new Error(`Validation error: unknown provider '${providerType}'`);
 
     const oauthConfig = config.oauthConfig as
-      | { clientId?: string; deviceCodeUrl?: string; scope?: string }
-      | undefined;
+      { clientId?: string; deviceCodeUrl?: string; scope?: string } | undefined;
     if (!oauthConfig?.deviceCodeUrl || !oauthConfig?.clientId) {
       throw new Error(`Provider ${providerType} does not support device code OAuth flow`);
     }
@@ -5212,6 +5220,8 @@ const routes: Record<string, RouteHandler> = {
     return { success: true, id };
   },
 };
+
+cacheMetricsRoutes(routes);
 
 function checkDatabaseHealth(): { status: string; error?: string } {
   try {

@@ -2,16 +2,16 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 env:
-  BUN_VERSION: '1.3.14'
-  PUPPETEER_SKIP_DOWNLOAD: 'true'
-  SKIP_SPAWN_TESTS: '1'
+  BUN_VERSION: "1.3.14"
+  PUPPETEER_SKIP_DOWNLOAD: "true"
+  SKIP_SPAWN_TESTS: "1"
 
 jobs:
   # ── Quality gate ────────────────────────────────────────────────────────────
@@ -93,31 +93,31 @@ jobs:
           # macOS arm64 — native build on the self-hosted Apple Silicon mac (Meta-Mini)
           - platform: macos
             runner: [self-hosted, macOS, ARM64]
-            args: '--target aarch64-apple-darwin'
+            args: "--target aarch64-apple-darwin"
             rust_target: aarch64-apple-darwin
             bun_target: bun-darwin-arm64
-            sidecar: 'src-tauri/bin/cybara-aarch64-apple-darwin'
+            sidecar: "src-tauri/bin/cybara-aarch64-apple-darwin"
           # macOS x64 — cross-compiled on the same Apple Silicon mac
           - platform: macos
             runner: [self-hosted, macOS, ARM64]
-            args: '--target x86_64-apple-darwin'
+            args: "--target x86_64-apple-darwin"
             rust_target: x86_64-apple-darwin
             bun_target: bun-darwin-x64
-            sidecar: 'src-tauri/bin/cybara-x86_64-apple-darwin'
+            sidecar: "src-tauri/bin/cybara-x86_64-apple-darwin"
           # Windows x64 — self-hosted Windows runner (AI370)
           - platform: windows
             runner: [self-hosted, Windows, X64]
-            args: ''
+            args: ""
             rust_target: x86_64-pc-windows-msvc
             bun_target: bun-windows-x64
-            sidecar: 'src-tauri/bin/cybara-x86_64-pc-windows-msvc.exe'
+            sidecar: "src-tauri/bin/cybara-x86_64-pc-windows-msvc.exe"
           # Linux x64 — self-hosted Linux runner (get32)
           - platform: self-hosted
             runner: [self-hosted, Linux, X64]
-            args: ''
+            args: ""
             rust_target: x86_64-unknown-linux-gnu
             bun_target: bun-linux-x64
-            sidecar: 'src-tauri/bin/cybara-x86_64-unknown-linux-gnu'
+            sidecar: "src-tauri/bin/cybara-x86_64-unknown-linux-gnu"
 
     runs-on: ${{ matrix.runner }}
     steps:
@@ -173,11 +173,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          NO_STRIP: 'true'
+          NO_STRIP: "true"
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 'Cybara ${{ github.ref_name }}'
-          releaseBody: 'Download the appropriate installer for your platform below.'
+          releaseName: "Cybara ${{ github.ref_name }}"
+          releaseBody: "Download the appropriate installer for your platform below."
           releaseDraft: false
           args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
 

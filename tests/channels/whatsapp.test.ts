@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { WhatsAppAdapter, whatsappSessions } from "../../src/core/channels/adapters/whatsapp";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  resolveWhatsAppChromeExecutable,
+  WhatsAppAdapter,
+  whatsappSessions,
+} from "../../src/core/channels/adapters/whatsapp";
 import {
   clearChannelSubagentSpawnHandler,
   setChannelSubagentSpawnHandler,
@@ -105,7 +112,11 @@ async function invokeWhatsAppMessage(
 ): Promise<void> {
   await (
     adapter as unknown as {
-      handleMessage: (id: string, msg: FakeWhatsAppMessage, eventType?: "message" | "message_create") => Promise<void>;
+      handleMessage: (
+        id: string,
+        msg: FakeWhatsAppMessage,
+        eventType?: "message" | "message_create"
+      ) => Promise<void>;
     }
   ).handleMessage(channelId, message, eventType);
 }
@@ -122,6 +133,18 @@ afterEach(() => {
 });
 
 describe("WhatsApp adapter mocked flows", () => {
+  test("resolves explicit Chrome executable for Puppeteer launch", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "cybara-whatsapp-chrome-"));
+    const chromePath = join(tempDir, "chrome");
+    writeFileSync(chromePath, "");
+
+    try {
+      expect(resolveWhatsAppChromeExecutable({ chrome_path: chromePath })).toBe(chromePath);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   test("ignores own messages", async () => {
     const adapter = new WhatsAppAdapter();
     const channelId = makeChannelId("wa-ignore");
@@ -163,10 +186,9 @@ describe("WhatsApp adapter mocked flows", () => {
       return "self ok";
     });
     securityManager.setConfig(channelId, { dm_policy: "open" });
-    (adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }).channelConfigs.set(
-      channelId,
-      { allow_self_messages: true }
-    );
+    (
+      adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }
+    ).channelConfigs.set(channelId, { allow_self_messages: true });
 
     const message = createFakeWhatsAppMessage(
       {
@@ -200,11 +222,13 @@ describe("WhatsApp adapter mocked flows", () => {
       return "self echo";
     });
     securityManager.setConfig(channelId, { dm_policy: "open" });
-    (adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }).channelConfigs.set(
+    (
+      adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }
+    ).channelConfigs.set(channelId, { allow_self_messages: true });
+    (adapter as unknown as { accountIds: Map<string, string> }).accountIds.set(
       channelId,
-      { allow_self_messages: true }
+      `${chatId}@s.whatsapp.net`
     );
-    (adapter as unknown as { accountIds: Map<string, string> }).accountIds.set(channelId, `${chatId}@s.whatsapp.net`);
 
     const sourceMessage = createFakeWhatsAppMessage(
       {
@@ -225,7 +249,7 @@ describe("WhatsApp adapter mocked flows", () => {
             author: undefined,
             downloadMedia: async () => null,
             getChat: async () => ({
-              sendMessage: async () => { },
+              sendMessage: async () => {},
             }),
           } as Message;
         },
@@ -268,11 +292,13 @@ describe("WhatsApp adapter mocked flows", () => {
       return "self create ok";
     });
     securityManager.setConfig(channelId, { dm_policy: "open" });
-    (adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }).channelConfigs.set(
+    (
+      adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }
+    ).channelConfigs.set(channelId, { allow_self_messages: true });
+    (adapter as unknown as { accountIds: Map<string, string> }).accountIds.set(
       channelId,
-      { allow_self_messages: true }
+      `${chatId}@s.whatsapp.net`
     );
-    (adapter as unknown as { accountIds: Map<string, string> }).accountIds.set(channelId, `${chatId}@s.whatsapp.net`);
 
     const message = createFakeWhatsAppMessage(
       {
@@ -306,11 +332,13 @@ describe("WhatsApp adapter mocked flows", () => {
       return "fallback signature";
     });
     securityManager.setConfig(channelId, { dm_policy: "open" });
-    (adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }).channelConfigs.set(
+    (
+      adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }
+    ).channelConfigs.set(channelId, { allow_self_messages: true });
+    (adapter as unknown as { accountIds: Map<string, string> }).accountIds.set(
       channelId,
-      { allow_self_messages: true }
+      `${chatId}@s.whatsapp.net`
     );
-    (adapter as unknown as { accountIds: Map<string, string> }).accountIds.set(channelId, `${chatId}@s.whatsapp.net`);
 
     const sourceMessage = createFakeWhatsAppMessage(
       {
@@ -331,7 +359,7 @@ describe("WhatsApp adapter mocked flows", () => {
             author: undefined,
             downloadMedia: async () => null,
             getChat: async () => ({
-              sendMessage: async () => { },
+              sendMessage: async () => {},
             }),
           } as Message;
         },
@@ -373,11 +401,13 @@ describe("WhatsApp adapter mocked flows", () => {
       return "self flagged";
     });
     securityManager.setConfig(channelId, { dm_policy: "open" });
-    (adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }).channelConfigs.set(
+    (
+      adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }
+    ).channelConfigs.set(channelId, { allow_self_messages: true });
+    (adapter as unknown as { accountIds: Map<string, string> }).accountIds.set(
       channelId,
-      { allow_self_messages: true }
+      "15550001111@s.whatsapp.net"
     );
-    (adapter as unknown as { accountIds: Map<string, string> }).accountIds.set(channelId, "15550001111@s.whatsapp.net");
 
     const message = createFakeWhatsAppMessage(
       {
@@ -398,7 +428,7 @@ describe("WhatsApp adapter mocked flows", () => {
             author: undefined,
             downloadMedia: async () => null,
             getChat: async () => ({
-              sendMessage: async () => { },
+              sendMessage: async () => {},
             }),
           } as Message;
         },
@@ -441,11 +471,13 @@ describe("WhatsApp adapter mocked flows", () => {
       return "self flagged no echo";
     });
     securityManager.setConfig(channelId, { dm_policy: "open" });
-    (adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }).channelConfigs.set(
+    (
+      adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }
+    ).channelConfigs.set(channelId, { allow_self_messages: true });
+    (adapter as unknown as { accountIds: Map<string, string> }).accountIds.set(
       channelId,
-      { allow_self_messages: true }
+      `${chatId}@s.whatsapp.net`
     );
-    (adapter as unknown as { accountIds: Map<string, string> }).accountIds.set(channelId, `${chatId}@s.whatsapp.net`);
 
     const message = createFakeWhatsAppMessage(
       {
@@ -479,10 +511,9 @@ describe("WhatsApp adapter mocked flows", () => {
       return "self inbound";
     });
     securityManager.setConfig(channelId, { dm_policy: "pairing" });
-    (adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }).channelConfigs.set(
-      channelId,
-      { allow_self_messages: true }
-    );
+    (
+      adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }
+    ).channelConfigs.set(channelId, { allow_self_messages: true });
 
     const message = createFakeWhatsAppMessage(
       {
@@ -547,10 +578,9 @@ describe("WhatsApp adapter mocked flows", () => {
       return "domain ok";
     });
     securityManager.setConfig(channelId, { dm_policy: "open" });
-    (adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }).channelConfigs.set(
-      channelId,
-      { allow_self_messages: true }
-    );
+    (
+      adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }
+    ).channelConfigs.set(channelId, { allow_self_messages: true });
     (adapter as unknown as { accountIds: Map<string, string> }).accountIds.set(
       channelId,
       "15550001111@s.whatsapp.net"
@@ -587,10 +617,9 @@ describe("WhatsApp adapter mocked flows", () => {
       return "should-not-run";
     });
     securityManager.setConfig(channelId, { dm_policy: "open" });
-    (adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }).channelConfigs.set(
-      channelId,
-      { allow_self_messages: true }
-    );
+    (
+      adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }
+    ).channelConfigs.set(channelId, { allow_self_messages: true });
 
     const message = createFakeWhatsAppMessage(
       {
@@ -622,10 +651,9 @@ describe("WhatsApp adapter mocked flows", () => {
       return "should-not-run";
     });
     securityManager.setConfig(channelId, { dm_policy: "open" });
-    (adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }).channelConfigs.set(
-      channelId,
-      { allow_self_messages: true }
-    );
+    (
+      adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }
+    ).channelConfigs.set(channelId, { allow_self_messages: true });
     (adapter as unknown as { accountIds: Map<string, string> }).accountIds.set(
       channelId,
       "15550001111@s.whatsapp.net"
@@ -661,10 +689,9 @@ describe("WhatsApp adapter mocked flows", () => {
       return "once";
     });
     securityManager.setConfig(channelId, { dm_policy: "open" });
-    (adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }).channelConfigs.set(
-      channelId,
-      { allow_self_messages: true }
-    );
+    (
+      adapter as unknown as { channelConfigs: Map<string, { allow_self_messages?: boolean }> }
+    ).channelConfigs.set(channelId, { allow_self_messages: true });
 
     const message = createFakeWhatsAppMessage(
       {
@@ -1089,8 +1116,7 @@ describe("WhatsApp adapter mocked flows", () => {
     await invokeWhatsAppMessage(adapter, channelId, message);
 
     const updatedAgent = tables.agents.get(agentId) as
-      | { provider_id?: string; model?: string }
-      | undefined;
+      { provider_id?: string; model?: string } | undefined;
     expect(handlerCalls).toBe(0);
     expect(updatedAgent?.provider_id).toBe(providerB);
     expect(updatedAgent?.model).toBe("b-model");

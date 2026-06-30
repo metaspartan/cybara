@@ -28,7 +28,7 @@
     "package": "bun run scripts/package.ts",
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
-    "lint": "node node_modules/eslint/bin/eslint.js \"src/**/*.ts\"",
+    "lint": "bun eslint \"src/**/*.ts\"",
     "typecheck": "bunx tsc --noEmit",
     "check:loc": "bun run scripts/check-ts-max-loc.ts --max 5500",
     "deadcode:report": "bunx ts-prune src ui/src || true",

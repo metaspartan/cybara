@@ -23,7 +23,10 @@ export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfi
     try {
       onConnect(profileFromPayload(buildMobileConnectPayload({ name, baseUrl, apiKey })));
     } catch (error) {
-      Alert.alert("Connection details are incomplete", error instanceof Error ? error.message : String(error));
+      Alert.alert(
+        "Connection details are incomplete",
+        error instanceof Error ? error.message : String(error)
+      );
     }
   };
 
@@ -31,7 +34,10 @@ export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfi
     try {
       onConnect(profileFromPayload(parseMobileConnectPayload(payload)));
     } catch (error) {
-      Alert.alert("Could not parse connection payload", error instanceof Error ? error.message : String(error));
+      Alert.alert(
+        "Could not parse connection payload",
+        error instanceof Error ? error.message : String(error)
+      );
     }
   };
 
@@ -39,7 +45,10 @@ export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfi
     if (!cameraPermission?.granted) {
       const nextPermission = await requestCameraPermission();
       if (!nextPermission.granted) {
-        Alert.alert("Camera permission is required", "Enable camera access to scan a Cybara gateway QR code.");
+        Alert.alert(
+          "Camera permission is required",
+          "Enable camera access to scan a Cybara gateway QR code."
+        );
         return;
       }
     }
@@ -56,7 +65,10 @@ export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfi
       setScannerOpen(false);
     } catch (error) {
       setScanLocked(false);
-      Alert.alert("Could not parse scanned QR", error instanceof Error ? error.message : String(error));
+      Alert.alert(
+        "Could not parse scanned QR",
+        error instanceof Error ? error.message : String(error)
+      );
     }
   };
 
@@ -67,7 +79,12 @@ export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfi
       <GlassPanel elevated style={styles.card}>
         <Text style={styles.cardTitle}>Quick connect</Text>
         <Text style={styles.help}>Scan the gateway QR or paste the pairing payload.</Text>
-        <GlassButton label="Scan QR" detail="Camera pairing" onPress={openScanner} selected={scannerOpen} />
+        <GlassButton
+          label="Scan QR"
+          detail="Camera pairing"
+          onPress={openScanner}
+          selected={scannerOpen}
+        />
         {scannerOpen ? (
           <View style={styles.cameraWrap}>
             <CameraView
@@ -89,16 +106,47 @@ export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfi
           multiline
           style={[styles.input, styles.payload]}
         />
-        <GlassButton label="Connect from payload" detail="QR/manual payload" onPress={connectPayload} />
-        {scannerOpen ? <GlassButton label="Cancel scan" onPress={() => setScannerOpen(false)} /> : null}
+        <GlassButton
+          label="Connect from payload"
+          detail="QR/manual payload"
+          onPress={connectPayload}
+        />
+        {scannerOpen ? (
+          <GlassButton label="Cancel scan" onPress={() => setScannerOpen(false)} />
+        ) : null}
       </GlassPanel>
 
       <GlassPanel style={styles.card}>
         <Text style={styles.cardTitle}>Manual gateway</Text>
-        <TextInput value={name} onChangeText={setName} placeholder="Device name" placeholderTextColor={colors.textDim} style={styles.input} />
-        <TextInput value={baseUrl} onChangeText={setBaseUrl} autoCapitalize="none" placeholder="Gateway URL" placeholderTextColor={colors.textDim} style={styles.input} />
-        <TextInput value={apiKey} onChangeText={setApiKey} autoCapitalize="none" secureTextEntry placeholder="API key" placeholderTextColor={colors.textDim} style={styles.input} />
-        <GlassButton label="Connect gateway" detail="Stores this profile locally" onPress={connectManual} />
+        <TextInput
+          value={name}
+          onChangeText={setName}
+          placeholder="Device name"
+          placeholderTextColor={colors.textDim}
+          style={styles.input}
+        />
+        <TextInput
+          value={baseUrl}
+          onChangeText={setBaseUrl}
+          autoCapitalize="none"
+          placeholder="Gateway URL"
+          placeholderTextColor={colors.textDim}
+          style={styles.input}
+        />
+        <TextInput
+          value={apiKey}
+          onChangeText={setApiKey}
+          autoCapitalize="none"
+          secureTextEntry
+          placeholder="API key"
+          placeholderTextColor={colors.textDim}
+          style={styles.input}
+        />
+        <GlassButton
+          label="Connect gateway"
+          detail="Stores this profile locally"
+          onPress={connectManual}
+        />
       </GlassPanel>
     </View>
   );
