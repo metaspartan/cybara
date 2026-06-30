@@ -10,6 +10,7 @@ import { webAdapter } from "./adapters/web";
 import { webhookAdapter } from "./adapters/webhook";
 import { smsAdapter } from "./adapters/sms";
 import { emailAdapter } from "./adapters/email";
+import { matrixAdapter } from "./adapters/matrix";
 import {
   formatToolCallsForTelegram,
   formatToolCallsForDiscord,
@@ -64,6 +65,7 @@ export class ChannelManager {
     this.registerAdapter("webhook", webhookAdapter);
     this.registerAdapter("sms", smsAdapter);
     this.registerAdapter("email", emailAdapter);
+    this.registerAdapter("matrix", matrixAdapter);
   }
 
   registerAdapter(type: ChannelType, adapter: ChannelAdapter) {

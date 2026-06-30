@@ -25,6 +25,7 @@ import {
   signalAdapter,
   whatsappAdapter,
   imessageAdapter,
+  matrixAdapter,
   type MessageHandlerFileInfo,
 } from "./core/channels";
 import { handleSessionsSpawn } from "./core/tools/handlers/channel";
@@ -679,6 +680,7 @@ slackAdapter.setMessageHandler(createChannelChatHandler("slack"));
 signalAdapter.setMessageHandler(createChannelChatHandler("signal"));
 whatsappAdapter.setMessageHandler(createChannelChatHandler("whatsapp"));
 imessageAdapter.setMessageHandler(createChannelChatHandler("imessage"));
+matrixAdapter.setMessageHandler(createChannelChatHandler("matrix"));
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;

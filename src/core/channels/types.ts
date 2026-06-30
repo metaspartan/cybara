@@ -233,6 +233,26 @@ export const channels = {
       },
     ],
   },
+  matrix: {
+    name: "Matrix",
+    icon: "💬",
+    description: "Connect to a Matrix homeserver (Element, etc.)",
+    color: "#0DBD8B",
+    fields: [
+      { name: "homeserver", label: "Homeserver URL", type: "string", required: true },
+      { name: "access_token", label: "Access Token", type: "password", required: false },
+      { name: "user_id", label: "User ID (@user:server)", type: "string", required: false },
+      { name: "password", label: "Password", type: "password", required: false },
+      {
+        name: "dm_policy",
+        label: "DM Policy",
+        type: "select",
+        required: false,
+        options: ["pairing", "allowlist", "open", "disabled"],
+        default: "pairing",
+      },
+    ],
+  },
   web: {
     name: "Web UI",
     icon: "🌐",

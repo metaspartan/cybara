@@ -47,4 +47,5 @@ export { slackAdapter, SlackAdapter } from "./adapters/slack";
 export { signalAdapter, SignalAdapter } from "./adapters/signal";
 export { whatsappAdapter, WhatsAppAdapter, setQRCallback } from "./adapters/whatsapp";
 export { imessageAdapter, IMessageAdapter } from "./adapters/imessage";
+export { matrixAdapter, MatrixAdapter } from "./adapters/matrix";
 export { webAdapter, WebAdapter } from "./adapters/web";

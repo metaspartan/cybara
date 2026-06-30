@@ -1067,7 +1067,8 @@ export interface Channel {
     | "web"
     | "webhook"
     | "sms"
-    | "email";
+    | "email"
+    | "matrix";
   name: string;
   config: Record<string, unknown>;
   enabled: boolean;
