@@ -5,6 +5,7 @@ import { randomBytes } from "crypto";
 import { lookup } from "dns/promises";
 import { isIP } from "net";
 import { cybaraDir } from "../core/paths";
+import { authenticateMobileDeviceToken } from "../core/mobile-devices";
 
 const log = createLogger("Security");
 
@@ -234,11 +235,30 @@ export function authenticateRequest(headers: Record<string, string>, ip: string)
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
 
   if (token !== effectiveApiKey) {
+    const mobileDevice = authenticateMobileDeviceToken(token, {
+      userAgent: headers["user-agent"] || headers["User-Agent"],
+    });
+    if (mobileDevice) {
+      return { authenticated: true };
+    }
+
     log.warn("Invalid API key attempt", { ip });
     return { authenticated: false, reason: "Invalid API key" };
   }
 
   return { authenticated: true };
+}
+
+function getBearerToken(headers: Record<string, string>): string | null {
+  const authHeader = headers["authorization"] || headers["Authorization"];
+  if (!authHeader) return null;
+  return authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
+}
+
+function usesRootApiKey(headers: Record<string, string>): boolean {
+  const effectiveApiKey = config.apiKey;
+  const token = getBearerToken(headers);
+  return Boolean(effectiveApiKey && token && token === effectiveApiKey);
 }
 
 function isPrivateIpv6(ip: string): boolean {
@@ -455,6 +475,18 @@ export function securityCheck(
         "WWW-Authenticate": 'Bearer realm="cybara"',
       },
     };
+  }
+
+  if (path.startsWith("/api/mobile/devices")) {
+    const sameOriginLocalhost =
+      config.allowLocalhostBypass && isLocalhostIP(ip) && isSameOriginRequest(headers);
+    if (!sameOriginLocalhost && !usesRootApiKey(headers)) {
+      return {
+        passed: false,
+        error: "Root API key required for mobile device management",
+        statusCode: 403,
+      };
+    }
   }
 
   return {

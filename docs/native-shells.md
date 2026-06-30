@@ -18,8 +18,40 @@ Design:
 - supports native notification permission / delivery, external-link handling, and workspace folder picking through that bridge
 - can be bundled as a release-ready `Cybara.app` under `release/native-macos/<arch>/`
 - can be optionally codesigned and notarized during packaging when Apple signing credentials are configured
+- auto-restarts the managed sidecar on an unexpected crash (capped exponential backoff, then surfaces a failure)
+- handles `cybara://` deep links — `cybara://` / `cybara://open` (focus), `cybara://restart` (restart gateway), `cybara://browser` (open web UI)
+- persists window position/size across launches (frame autosave)
+- checks GitHub Releases for newer versions on launch and via **App ▸ Check for Updates…** (no auto-install — opens the release page)
 
 This keeps CLI, Tauri, and native macOS aligned on one runtime instead of fragmenting behavior.
+
+### Testing
+
+Pure logic (`SidecarCore`, `UpdateCore`) is covered by an XCTest target:
+
+```bash
+swift test --package-path apps/macos/Cybara
+```
+
+### Release signing (CI)
+
+The `build-native-macos` job in [.github/workflows/release.yml](../.github/workflows/release.yml)
+builds, signs, and notarizes the app on the self-hosted Apple-Silicon runner. It is
+best-effort and gated on these GitHub Actions secrets — if they're absent it still
+produces an unsigned build:
+
+| Secret | Purpose |
+| --- | --- |
+| `MACOS_CERTIFICATE` | base64 of the Developer ID Application `.p12` |
+| `MACOS_CERTIFICATE_PASSWORD` | password for that `.p12` |
+| `MACOS_SIGN_IDENTITY` | identity string, e.g. `Developer ID Application: Name (TEAMID)` |
+| `MACOS_KEYCHAIN_PASSWORD` | password for the ephemeral CI keychain |
+| `MACOS_NOTARY_API_KEY` | base64 of the App Store Connect API key `.p8` |
+| `MACOS_NOTARY_API_KEY_ID` | App Store Connect key ID |
+| `MACOS_NOTARY_API_ISSUER_ID` | App Store Connect issuer ID |
+
+Locally, packaging signs when `CYBARA_MACOS_SIGN_IDENTITY` is set and notarizes when
+`CYBARA_MACOS_NOTARY_KEYCHAIN_PROFILE` (a `notarytool store-credentials` profile) is also set.
 
 ## Mobile: iOS + Android
 
@@ -28,7 +60,10 @@ The mobile companion now lives in [apps/mobile/README.md](../apps/mobile/README.
 Recommended near-term path:
 
 - connect to a remote or local Cybara gateway over the existing HTTP/WebSocket API contract
-- pair by scanning or pasting the `cybara mobile connect --qr` payload emitted by the device running Cybara
+- pair by scanning or pasting the QR payload from `cybara mobile connect`, or from the Web UI/Tauri
+  `Mobile` page
+- manage and revoke paired mobile devices from the Web UI/Tauri `Mobile` page or the
+  `cybara mobile list|revoke|remove` CLI commands
 - manage sessions, agents, providers, tools/approvals, wallet policy, channels, tasks, memory, terminal/log entrypoints, and settings summaries
 - keep API-first parity before attempting any local mobile runtime
 - add platform push notifications and deeper native share-sheet flows after the remote management foundation is stable

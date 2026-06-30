@@ -10,7 +10,6 @@ import { dirname, join } from "path";
 import { createInterface } from "readline";
 import { tmpdir } from "os";
 import { getAppVersion, getReleaseRepository } from "./core/build-info";
-import { generate as generateQr } from "qrcode-terminal";
 import {
   buildGitHubReleaseApiUrl,
   buildReleaseChecksumUrl,
@@ -21,6 +20,7 @@ import {
 } from "./core/versioning";
 import { checkForUpdateInBackground, isUpdateCheckDisabled } from "./core/update-check";
 import { runMcpStdioServer } from "./core/mcp-host-server";
+import { printMobileHelp, runMobileCommand } from "./cli-mobile";
 
 const API_BASE = process.env.CYBARA_API || "http://localhost:4269";
 
@@ -45,8 +45,6 @@ function resolveCliApiKey(): string | null {
 }
 
 const CLI_API_KEY = resolveCliApiKey();
-
-const MOBILE_CONNECT_PROTOCOL = "cybara-mobile-connect-v1";
 
 function withCliAuthHeaders(
   headers?: RequestInit["headers"],
@@ -165,156 +163,6 @@ interface AgentItem {
   type: string;
   status: string;
   model?: string;
-}
-
-interface MobileDeviceInfo {
-  id: string;
-  name: string;
-  baseUrl: string;
-  status: "active" | "revoked";
-  createdAt: string;
-  lastSeenAt?: string;
-  revokedAt?: string;
-}
-
-interface MobilePairingResponse {
-  success: boolean;
-  device: MobileDeviceInfo;
-  payload: {
-    protocol: string;
-    name: string;
-    baseUrl: string;
-    apiKey: string;
-    deviceId: string;
-    createdAt: string;
-  };
-  encoded: string;
-  qrDataUrl?: string;
-}
-
-function normalizeMobileGatewayUrl(input: string): string {
-  const trimmed = input.trim();
-  if (!trimmed) throw new Error("Gateway URL is required");
-  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
-  const parsed = new URL(withProtocol);
-  if (!["http:", "https:"].includes(parsed.protocol)) {
-    throw new Error("Gateway URL must use http or https");
-  }
-  parsed.search = "";
-  parsed.hash = "";
-  return parsed.toString().replace(/\/+$/, "");
-}
-
-async function rawMobileConnect(args: string[]): Promise<void> {
-  const baseUrl = normalizeMobileGatewayUrl(getFlagValue(args, "--url") || API_BASE);
-  const gatewayName = getFlagValue(args, "--name") || process.env.HOSTNAME || "Cybara Gateway";
-  const deviceName = getFlagValue(args, "--device") || getFlagValue(args, "--device-name");
-  const showQr = !hasFlag(args, "--no-qr");
-  const jsonOnly = hasFlag(args, "--json");
-
-  if (!CLI_API_KEY) {
-    console.error("ERROR: No API key available for mobile pairing.");
-    console.error("Set CYBARA_API_KEY or create ~/.cybara/api_key, then rerun this command.");
-    process.exit(1);
-  }
-
-  const pairing = await fetchAPI<MobilePairingResponse>("/api/mobile/devices", {
-    method: "POST",
-    body: JSON.stringify({
-      baseUrl,
-      gatewayName,
-      deviceName,
-    }),
-  });
-
-  if (!pairing?.success) {
-    console.error("ERROR: Failed to create a managed mobile pairing.");
-    process.exit(1);
-  }
-
-  const encoded = pairing.encoded || JSON.stringify(pairing.payload);
-  const deepLink = `cybara://connect?name=${encodeURIComponent(pairing.payload.name)}&baseUrl=${encodeURIComponent(pairing.payload.baseUrl)}&apiKey=${encodeURIComponent(pairing.payload.apiKey)}&deviceId=${encodeURIComponent(pairing.payload.deviceId)}`;
-
-  if (jsonOnly) {
-    console.log(encoded);
-    return;
-  }
-
-  console.log("CYBARA MOBILE CONNECT");
-  console.log("=====================");
-  console.log(`gateway: ${pairing.payload.name}`);
-  console.log(`url: ${pairing.payload.baseUrl}`);
-  console.log(`device: ${pairing.device.name}`);
-  console.log(`device id: ${pairing.device.id}`);
-  console.log("");
-  console.log("Scan this QR code with Cybara Mobile:");
-  if (showQr) {
-    generateQr(encoded, { small: true });
-  } else {
-    console.log("(QR hidden because --no-qr was passed)");
-  }
-  console.log("");
-  console.log("Payload:");
-  console.log(encoded);
-  console.log("");
-  console.log("Deep link:");
-  console.log(deepLink);
-}
-
-async function rawMobileList(): Promise<void> {
-  const data = await fetchAPI<{ devices: MobileDeviceInfo[] }>("/api/mobile/devices");
-  if (!data) {
-    console.error("ERROR: Failed to fetch mobile devices from", API_BASE);
-    process.exit(1);
-  }
-
-  console.log("CYBARA MOBILE DEVICES");
-  console.log("=====================");
-  if (data.devices.length === 0) {
-    console.log("No mobile devices are paired.");
-    return;
-  }
-
-  for (const device of data.devices) {
-    console.log(`${device.id}  ${device.status.toUpperCase()}  ${device.name}`);
-    console.log(`  gateway: ${device.baseUrl}`);
-    console.log(`  created: ${new Date(device.createdAt).toLocaleString()}`);
-    if (device.lastSeenAt)
-      console.log(`  last seen: ${new Date(device.lastSeenAt).toLocaleString()}`);
-    if (device.revokedAt) console.log(`  revoked: ${new Date(device.revokedAt).toLocaleString()}`);
-  }
-}
-
-async function rawMobileRevoke(id?: string): Promise<void> {
-  if (!id) {
-    console.error("Usage: cybara mobile revoke <device-id>");
-    process.exit(1);
-  }
-  const data = await fetchAPI<{ success: boolean; device?: MobileDeviceInfo }>(
-    `/api/mobile/devices/${encodeURIComponent(id)}/revoke`,
-    { method: "POST" }
-  );
-  if (!data?.success) {
-    console.error(`ERROR: Failed to revoke mobile device ${id}`);
-    process.exit(1);
-  }
-  console.log(`Revoked mobile device: ${data.device?.name || id}`);
-}
-
-async function rawMobileRemove(id?: string): Promise<void> {
-  if (!id) {
-    console.error("Usage: cybara mobile remove <device-id>");
-    process.exit(1);
-  }
-  const data = await fetchAPI<{ success: boolean }>(
-    `/api/mobile/devices/${encodeURIComponent(id)}`,
-    { method: "DELETE" }
-  );
-  if (!data?.success) {
-    console.error(`ERROR: Failed to remove mobile device ${id}`);
-    process.exit(1);
-  }
-  console.log(`Removed mobile device: ${id}`);
 }
 
 async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T | null> {
@@ -3927,10 +3775,7 @@ function rawHelp(): void {
   console.log("    browser tabs       List open browser tabs");
   console.log("  channels    List configured channels");
   console.log("  mobile      Mobile companion commands");
-  console.log("    mobile connect [--url URL] [--name GATEWAY] [--device NAME] [--json] [--no-qr]");
-  console.log("    mobile list");
-  console.log("    mobile revoke <device-id>");
-  console.log("    mobile remove <device-id>");
+  printMobileHelp("    ");
   console.log("  wallet      Wallet management commands");
   console.log("    wallet status                     Show wallet status and RPC settings");
   console.log("    wallet create --password <p>      Create 24-word wallet");
@@ -5200,32 +5045,13 @@ async function main() {
       await rawSessions();
       break;
     case "mobile":
-      switch (args[1]) {
-        case "connect":
-        case undefined:
-          await rawMobileConnect(args.slice(2));
-          break;
-        case "list":
-        case "devices":
-          await rawMobileList();
-          break;
-        case "revoke":
-          await rawMobileRevoke(args[2]);
-          break;
-        case "remove":
-        case "delete":
-          await rawMobileRemove(args[2]);
-          break;
-        default:
-          console.log("Mobile Commands:");
-          console.log(
-            "  cybara mobile connect [--url URL] [--name GATEWAY] [--device NAME] [--json] [--no-qr]"
-          );
-          console.log("  cybara mobile list");
-          console.log("  cybara mobile revoke <device-id>");
-          console.log("  cybara mobile remove <device-id>");
-          break;
-      }
+      await runMobileCommand(args.slice(1), {
+        apiBase: API_BASE,
+        apiKey: CLI_API_KEY,
+        fetchAPI,
+        getFlagValue,
+        hasFlag,
+      });
       break;
     case "memory":
       await rawMemory(args[1]);

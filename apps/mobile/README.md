@@ -24,9 +24,20 @@ bun run test:mobile
 On the machine running Cybara:
 
 ```bash
-cybara mobile connect --qr
+cybara mobile connect --url http://192.168.1.20:4269 --device "Carsen iPhone"
 ```
 
-Paste or scan the emitted payload in the mobile app. The payload uses the `cybara-mobile-connect-v1` contract and includes the gateway URL plus the local API key.
+Scan the QR code from the mobile app, or paste the emitted payload. The payload uses the
+`cybara-mobile-connect-v1` contract and includes the gateway URL plus a revocable per-device token,
+not the root gateway API key.
+
+You can also create and manage pairings from the Web UI/Tauri `Mobile` page. Revoke or remove a
+device there, or from the CLI:
+
+```bash
+cybara mobile list
+cybara mobile revoke <device-id>
+cybara mobile remove <device-id>
+```
 
 For LAN devices, make sure the gateway is reachable from the phone. Localhost only works from the same machine; use the host LAN IP or a trusted tunnel for remote access.

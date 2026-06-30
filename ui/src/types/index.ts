@@ -250,6 +250,34 @@ export interface Tool {
   permissions?: string[];
 }
 
+export interface MobileDevice {
+  id: string;
+  name: string;
+  baseUrl: string;
+  status: "active" | "revoked";
+  createdAt: string;
+  lastSeenAt?: string;
+  revokedAt?: string;
+  userAgent?: string;
+}
+
+export interface MobileConnectPayload {
+  protocol: "cybara-mobile-connect-v1";
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  deviceId: string;
+  createdAt: string;
+}
+
+export interface MobilePairing {
+  success: boolean;
+  device: MobileDevice;
+  payload: MobileConnectPayload;
+  encoded: string;
+  qrDataUrl: string;
+}
+
 export interface SystemInfo {
   name: string;
   version: string;

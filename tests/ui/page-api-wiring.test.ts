@@ -29,6 +29,22 @@ describe("UI page API wiring", () => {
     expect(source).not.toContain("apiFetch(");
   });
 
+  test("Mobile page manages device pairing through mobile hooks", () => {
+    const source = readPage("Mobile.tsx");
+
+    expect(source).toContain("useMobileDevices");
+    expect(source).toContain("useCreateMobileDevice");
+    expect(source).toContain("useRevokeMobileDevice");
+    expect(source).toContain("useDeleteMobileDevice");
+    expect(source).toContain("pairing.qrDataUrl");
+    expect(source).toContain("pairing.payload.deviceId");
+    expect(source).toContain("setRevokeTarget(device)");
+    expect(source).toContain("setDeleteTarget(device)");
+    expect(source).not.toContain("apiFetch(");
+    expect(source).not.toContain("window.fetch(");
+    expect(source).not.toContain("globalThis.fetch(");
+  });
+
   test("Settings feature toggle uses settingsApi and restores state on update failure", () => {
     const source = readPage("Settings.tsx");
 
@@ -77,7 +93,9 @@ describe("UI page API wiring", () => {
     expect(codeViewerSource).toContain(
       "apiFetch(`/api/lsp/diagnostics/file?path=${encodeURIComponent(path)}`)"
     );
-    expect(gitStatusSource).toContain("apiFetch(`/api/git/status?path=${encodeURIComponent(path)}`)");
+    expect(gitStatusSource).toContain(
+      "apiFetch(`/api/git/status?path=${encodeURIComponent(path)}`)"
+    );
   });
 
   test("IDE page includes quick navigation controls for filtering and line jump", () => {

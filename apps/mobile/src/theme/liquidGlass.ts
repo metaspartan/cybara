@@ -7,6 +7,7 @@ export const colors = {
   textMuted: "#9badb8",
   textDim: "#647783",
   cyan: "#55d8ff",
+  blueText: "#8fcaff",
   green: "#6ff5b0",
   amber: "#f6c96b",
   red: "#ff7b8b",

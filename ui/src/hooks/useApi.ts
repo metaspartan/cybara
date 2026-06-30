@@ -12,6 +12,8 @@ import type {
   AvailableChannel,
   Session,
   Tool,
+  MobileDevice,
+  MobilePairing,
 } from "../types";
 import { subagentApi, skillsApi } from "@/lib/api";
 import { apiFetch } from "@/lib/auth";
@@ -285,6 +287,45 @@ export function useDeleteChannel() {
   return useMutation({
     mutationFn: (id: string) => fetchApi<void>(`/channels/${id}`, { method: "DELETE" }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["channels"] }),
+  });
+}
+
+export function useMobileDevices() {
+  return useQuery({
+    queryKey: ["mobile", "devices"],
+    queryFn: () => fetchApi<{ devices: MobileDevice[] }>("/mobile/devices"),
+  });
+}
+
+export function useCreateMobileDevice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { deviceName?: string; gatewayName?: string; baseUrl: string }) =>
+      fetchApi<MobilePairing>("/mobile/devices", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["mobile", "devices"] }),
+  });
+}
+
+export function useRevokeMobileDevice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      fetchApi<{ success: boolean; device: MobileDevice }>(`/mobile/devices/${id}/revoke`, {
+        method: "POST",
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["mobile", "devices"] }),
+  });
+}
+
+export function useDeleteMobileDevice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      fetchApi<{ success: boolean }>(`/mobile/devices/${id}`, { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["mobile", "devices"] }),
   });
 }
 

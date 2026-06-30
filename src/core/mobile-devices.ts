@@ -1,0 +1,216 @@
+import { createHash, randomBytes } from "crypto";
+import { existsSync, readFileSync, writeFileSync } from "fs";
+import { join } from "path";
+import { secureDir } from "./paths";
+
+export const MOBILE_CONNECT_PROTOCOL = "cybara-mobile-connect-v1";
+
+export interface MobileConnectPayload {
+  protocol: typeof MOBILE_CONNECT_PROTOCOL;
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  deviceId: string;
+  createdAt: string;
+}
+
+interface MobileDeviceRecord {
+  id: string;
+  name: string;
+  tokenHash: string;
+  baseUrl: string;
+  createdAt: string;
+  lastSeenAt?: string;
+  revokedAt?: string;
+  userAgent?: string;
+}
+
+export interface MobileDeviceView {
+  id: string;
+  name: string;
+  baseUrl: string;
+  status: "active" | "revoked";
+  createdAt: string;
+  lastSeenAt?: string;
+  revokedAt?: string;
+  userAgent?: string;
+}
+
+interface MobileDeviceStore {
+  version: 1;
+  devices: MobileDeviceRecord[];
+}
+
+const storePath = join(secureDir, "mobile-devices.json");
+let cachedStore: MobileDeviceStore | null = null;
+
+function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function sanitizeName(value: unknown): string {
+  if (typeof value !== "string") return "Mobile Device";
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed.slice(0, 80) : "Mobile Device";
+}
+
+export function normalizeMobileGatewayUrl(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) throw new Error("Gateway URL is required");
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  const parsed = new URL(withProtocol);
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    throw new Error("Gateway URL must use http or https");
+  }
+  parsed.search = "";
+  parsed.hash = "";
+  return parsed.toString().replace(/\/+$/, "");
+}
+
+function readStore(): MobileDeviceStore {
+  if (cachedStore) return cachedStore;
+  if (!existsSync(storePath)) {
+    cachedStore = { version: 1, devices: [] };
+    return cachedStore;
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(storePath, "utf8")) as Partial<MobileDeviceStore>;
+    cachedStore = {
+      version: 1,
+      devices: Array.isArray(parsed.devices)
+        ? parsed.devices.filter((device): device is MobileDeviceRecord =>
+            Boolean(device?.id && device?.name && device?.tokenHash && device?.createdAt)
+          )
+        : [],
+    };
+  } catch {
+    cachedStore = { version: 1, devices: [] };
+  }
+  return cachedStore;
+}
+
+function saveStore(store: MobileDeviceStore): void {
+  cachedStore = store;
+  writeFileSync(storePath, JSON.stringify(store, null, 2), { mode: 0o600 });
+}
+
+function toView(device: MobileDeviceRecord): MobileDeviceView {
+  return {
+    id: device.id,
+    name: device.name,
+    baseUrl: device.baseUrl,
+    status: device.revokedAt ? "revoked" : "active",
+    createdAt: device.createdAt,
+    lastSeenAt: device.lastSeenAt,
+    revokedAt: device.revokedAt,
+    userAgent: device.userAgent,
+  };
+}
+
+export function listMobileDevices(): MobileDeviceView[] {
+  return [...readStore().devices]
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+    .map(toView);
+}
+
+export function buildMobileConnectPayload(input: {
+  gatewayName?: string;
+  baseUrl: string;
+  apiKey: string;
+  deviceId: string;
+  createdAt?: string;
+}): MobileConnectPayload {
+  const apiKey = input.apiKey.trim();
+  if (!apiKey) throw new Error("API key is required");
+  return {
+    protocol: MOBILE_CONNECT_PROTOCOL,
+    name: sanitizeName(input.gatewayName || "Cybara Gateway"),
+    baseUrl: normalizeMobileGatewayUrl(input.baseUrl),
+    apiKey,
+    deviceId: input.deviceId,
+    createdAt: input.createdAt || new Date().toISOString(),
+  };
+}
+
+export function encodeMobileConnectPayload(payload: MobileConnectPayload): string {
+  return JSON.stringify(payload);
+}
+
+export function createMobileDevice(input: {
+  deviceName?: string;
+  gatewayName?: string;
+  baseUrl: string;
+}): { device: MobileDeviceView; token: string; payload: MobileConnectPayload; encoded: string } {
+  const now = new Date().toISOString();
+  const id = `mobile_${randomBytes(9).toString("hex")}`;
+  const token = `cybara_mobile_${randomBytes(24).toString("hex")}`;
+  const baseUrl = normalizeMobileGatewayUrl(input.baseUrl);
+  const store = readStore();
+  const record: MobileDeviceRecord = {
+    id,
+    name: sanitizeName(input.deviceName),
+    tokenHash: hashToken(token),
+    baseUrl,
+    createdAt: now,
+  };
+
+  store.devices.unshift(record);
+  saveStore(store);
+
+  const payload = buildMobileConnectPayload({
+    gatewayName: input.gatewayName,
+    baseUrl,
+    apiKey: token,
+    deviceId: id,
+    createdAt: now,
+  });
+  return { device: toView(record), token, payload, encoded: encodeMobileConnectPayload(payload) };
+}
+
+export function revokeMobileDevice(id: string): MobileDeviceView | null {
+  const store = readStore();
+  const device = store.devices.find((item) => item.id === id);
+  if (!device) return null;
+  if (!device.revokedAt) {
+    device.revokedAt = new Date().toISOString();
+    saveStore(store);
+  }
+  return toView(device);
+}
+
+export function removeMobileDevice(id: string): boolean {
+  const store = readStore();
+  const nextDevices = store.devices.filter((device) => device.id !== id);
+  if (nextDevices.length === store.devices.length) return false;
+  saveStore({ version: 1, devices: nextDevices });
+  return true;
+}
+
+export function authenticateMobileDeviceToken(
+  token: string,
+  metadata: { userAgent?: string } = {}
+): MobileDeviceView | null {
+  const normalized = token.trim();
+  if (!normalized) return null;
+  const store = readStore();
+  const tokenHash = hashToken(normalized);
+  const device = store.devices.find((item) => item.tokenHash === tokenHash && !item.revokedAt);
+  if (!device) return null;
+
+  const now = Date.now();
+  const previousSeenAt = device.lastSeenAt ? Date.parse(device.lastSeenAt) : 0;
+  if (!previousSeenAt || now - previousSeenAt > 60_000) {
+    device.lastSeenAt = new Date(now).toISOString();
+    if (metadata.userAgent?.trim()) {
+      device.userAgent = metadata.userAgent.trim().slice(0, 160);
+    }
+    saveStore(store);
+  }
+  return toView(device);
+}
+
+export function resetMobileDeviceStoreForTests(): void {
+  cachedStore = { version: 1, devices: [] };
+  saveStore(cachedStore);
+}

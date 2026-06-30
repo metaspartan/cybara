@@ -5,6 +5,7 @@ export interface GatewayProfile {
   name: string;
   baseUrl: string;
   apiKey: string;
+  deviceId?: string;
   createdAt: string;
   lastConnectedAt?: string;
 }
@@ -14,6 +15,7 @@ export interface MobileConnectPayload {
   name: string;
   baseUrl: string;
   apiKey: string;
+  deviceId?: string;
   createdAt?: string;
 }
 
@@ -38,6 +40,7 @@ export function buildMobileConnectPayload(input: {
   name?: string;
   baseUrl: string;
   apiKey: string;
+  deviceId?: string;
   createdAt?: string;
 }): MobileConnectPayload {
   const apiKey = input.apiKey.trim();
@@ -50,6 +53,7 @@ export function buildMobileConnectPayload(input: {
     name: input.name?.trim() || "Cybara Gateway",
     baseUrl: normalizeGatewayUrl(input.baseUrl),
     apiKey,
+    deviceId: input.deviceId,
     createdAt: input.createdAt,
   };
 }
@@ -74,8 +78,9 @@ export function parseMobileConnectPayload(raw: string): MobileConnectPayload {
     }
     const baseUrl = url.searchParams.get("baseUrl") || "";
     const apiKey = url.searchParams.get("apiKey") || "";
+    const deviceId = url.searchParams.get("deviceId") || undefined;
     const name = url.searchParams.get("name") || "Cybara Gateway";
-    return buildMobileConnectPayload({ name, baseUrl, apiKey });
+    return buildMobileConnectPayload({ name, baseUrl, apiKey, deviceId });
   }
 
   if (!parsed || typeof parsed !== "object") {
@@ -94,16 +99,21 @@ export function parseMobileConnectPayload(raw: string): MobileConnectPayload {
     name: typeof data.name === "string" ? data.name : undefined,
     baseUrl: data.baseUrl,
     apiKey: data.apiKey,
+    deviceId: typeof data.deviceId === "string" ? data.deviceId : undefined,
     createdAt: typeof data.createdAt === "string" ? data.createdAt : undefined,
   });
 }
 
-export function profileFromPayload(payload: MobileConnectPayload, now = new Date()): GatewayProfile {
+export function profileFromPayload(
+  payload: MobileConnectPayload,
+  now = new Date()
+): GatewayProfile {
   return {
     id: `${payload.name}:${payload.baseUrl}`.toLowerCase(),
     name: payload.name,
     baseUrl: payload.baseUrl,
     apiKey: payload.apiKey,
+    deviceId: payload.deviceId,
     createdAt: payload.createdAt || now.toISOString(),
   };
 }

@@ -71,6 +71,26 @@ async function api(method: string, path: string, body?: unknown) {
   };
 }
 
+async function apiWithBearer(method: string, path: string, token: string, body?: unknown) {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+  };
+
+  if (body) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return {
+    status: response.status,
+    data: await response.json().catch(() => null),
+  };
+}
+
 function insertRawMetric(type: string, key: string, value: number, metadata?: string): void {
   const dbPath = join(testHome, ".cybara", "data", "platform.db");
   const db = new Database(dbPath);
@@ -324,6 +344,63 @@ describe("Setup & Info API", () => {
       ? afterSecondCompleteAgents.data.length
       : 0;
     expect(afterSecondCount).toBe(afterFirstCount);
+  });
+});
+
+describe("Mobile API", () => {
+  test("creates revocable mobile device tokens without exposing the root key", async () => {
+    const created = await api("POST", "/api/mobile/devices", {
+      baseUrl: BASE_URL,
+      gatewayName: "Routes Gateway",
+      deviceName: "Routes Phone",
+    });
+
+    expect(created.status).toBe(200);
+    expect(created.data.success).toBe(true);
+    expect(created.data.device.id).toMatch(/^mobile_/);
+    expect(created.data.device.name).toBe("Routes Phone");
+    expect(created.data.payload.protocol).toBe("cybara-mobile-connect-v1");
+    expect(created.data.payload.deviceId).toBe(created.data.device.id);
+    expect(created.data.payload.name).toBe("Routes Gateway");
+    expect(created.data.payload.baseUrl).toBe(BASE_URL);
+    expect(created.data.payload.apiKey).toMatch(/^cybara_mobile_/);
+    expect(String(created.data.qrDataUrl).startsWith("data:image/png;base64,")).toBe(true);
+
+    const rootApiKey = readFileSync(join(testHome, ".cybara", "api_key"), "utf8").trim();
+    expect(created.data.payload.apiKey).not.toBe(rootApiKey);
+
+    const encoded = JSON.parse(created.data.encoded) as { apiKey?: string; deviceId?: string };
+    expect(encoded.apiKey).toBe(created.data.payload.apiKey);
+    expect(encoded.deviceId).toBe(created.data.device.id);
+
+    const list = await api("GET", "/api/mobile/devices");
+    expect(list.status).toBe(200);
+    expect(
+      list.data.devices.some((device: { id: string }) => device.id === created.data.device.id)
+    ).toBe(true);
+
+    const mobileInfo = await apiWithBearer("GET", "/api/info", created.data.payload.apiKey);
+    expect(mobileInfo.status).toBe(200);
+    expect(mobileInfo.data.name).toBe("Cybara");
+
+    const forbiddenManage = await apiWithBearer(
+      "GET",
+      "/api/mobile/devices",
+      created.data.payload.apiKey
+    );
+    expect(forbiddenManage.status).toBe(403);
+    expect(forbiddenManage.data.error).toContain("Root API key required");
+
+    const revoked = await api("POST", `/api/mobile/devices/${created.data.device.id}/revoke`);
+    expect(revoked.status).toBe(200);
+    expect(revoked.data.device.status).toBe("revoked");
+
+    const afterRevoke = await apiWithBearer("GET", "/api/info", created.data.payload.apiKey);
+    expect(afterRevoke.status).toBe(401);
+
+    const removed = await api("DELETE", `/api/mobile/devices/${created.data.device.id}`);
+    expect(removed.status).toBe(200);
+    expect(removed.data.success).toBe(true);
   });
 });
 

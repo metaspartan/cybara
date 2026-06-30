@@ -91,6 +91,32 @@ const loopRuns = new Map<
   ],
 ]);
 
+const mobileDevice = {
+  id: "mobile-1",
+  name: "CLI Test Phone",
+  baseUrl: "http://127.0.0.1:4269",
+  status: "active" as const,
+  createdAt: "2026-06-30T00:00:00.000Z",
+};
+
+function mobilePairing(baseUrl: string, gatewayName = "Cybara Gateway") {
+  const payload = {
+    protocol: "cybara-mobile-connect-v1",
+    name: gatewayName,
+    baseUrl,
+    apiKey: "cybara_mobile_cli_test_token",
+    deviceId: mobileDevice.id,
+    createdAt: mobileDevice.createdAt,
+  };
+  return {
+    success: true,
+    device: { ...mobileDevice, baseUrl, status: "active" },
+    payload,
+    encoded: JSON.stringify(payload),
+    qrDataUrl: "data:image/png;base64,cXItZGF0YQ==",
+  };
+}
+
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -368,10 +394,7 @@ function route(method: string, url: URL, body: string): Response {
     return json({ success: true });
   }
 
-  if (
-    method === "GET" &&
-    (pathname === "/api/chat/sessions" || pathname === "/api/sessions")
-  ) {
+  if (method === "GET" && (pathname === "/api/chat/sessions" || pathname === "/api/sessions")) {
     return json([
       {
         id: "session-1",
@@ -488,7 +511,12 @@ function route(method: string, url: URL, body: string): Response {
       modelOverride: parsed.model,
       useTools: parsed.useTools !== false,
       iterationsCompleted: 0,
-      steps: [] as Array<{ iteration: number; durationMs: number; toolCallCount: number; done: boolean }>,
+      steps: [] as Array<{
+        iteration: number;
+        durationMs: number;
+        toolCallCount: number;
+        done: boolean;
+      }>,
     };
     loopRuns.set(id, run);
     return json({ success: true, runId: id, run });
@@ -1055,8 +1083,7 @@ function route(method: string, url: URL, body: string): Response {
     return json({
       chain: parsed.chain,
       rpcUrl:
-        parsed.rpcUrl ||
-        (parsed.chain === "eth" ? walletRpcState.ethRpc : walletRpcState.solRpc),
+        parsed.rpcUrl || (parsed.chain === "eth" ? walletRpcState.ethRpc : walletRpcState.solRpc),
       method: parsed.method,
       id: parsed.id ?? 1,
       result:
@@ -1181,6 +1208,33 @@ function route(method: string, url: URL, body: string): Response {
     const parsed = body ? (JSON.parse(body) as { enabled?: boolean }) : {};
     walletState.agentAccessEnabled = parsed.enabled === true;
     return json({ success: true, enabled: walletState.agentAccessEnabled });
+  }
+
+  if (method === "GET" && pathname === "/api/mobile/devices") {
+    return json({ devices: [mobileDevice] });
+  }
+
+  if (method === "POST" && pathname === "/api/mobile/devices") {
+    const parsed = body
+      ? (JSON.parse(body) as { baseUrl?: string; gatewayName?: string; deviceName?: string })
+      : {};
+    return json(
+      mobilePairing(
+        parsed.baseUrl || "http://127.0.0.1:4269",
+        parsed.gatewayName || "Cybara Gateway"
+      )
+    );
+  }
+
+  if (method === "POST" && pathname === "/api/mobile/devices/mobile-1/revoke") {
+    return json({
+      success: true,
+      device: { ...mobileDevice, status: "revoked", revokedAt: "2026-06-30T01:00:00.000Z" },
+    });
+  }
+
+  if (method === "DELETE" && pathname === "/api/mobile/devices/mobile-1") {
+    return json({ success: true });
   }
 
   return json({ error: `Unhandled route: ${method} ${pathname}` }, 404);
@@ -1791,10 +1845,20 @@ describe("CLI Commands", () => {
     expect(mcpPopular.stdout).toContain("POPULAR MCP SERVERS");
   });
 
-  test("mobile connect emits QR-compatible gateway payload", async () => {
+  test("mobile connect creates a revocable QR-compatible device payload", async () => {
     const mobile = await runCli(
-      ["mobile", "connect", "--name", "Test Gateway", "--url", apiBase, "--json"],
-      { CYBARA_API_KEY: "cybara_mobile_cli_test" }
+      [
+        "mobile",
+        "connect",
+        "--name",
+        "Test Gateway",
+        "--device",
+        "CLI Test Phone",
+        "--url",
+        apiBase,
+        "--json",
+      ],
+      { CYBARA_API_KEY: "cybara_root_cli_test" }
     );
 
     expect(mobile.exitCode).toBe(0);
@@ -1803,11 +1867,34 @@ describe("CLI Commands", () => {
       name?: string;
       baseUrl?: string;
       apiKey?: string;
+      deviceId?: string;
     };
     expect(payload.protocol).toBe("cybara-mobile-connect-v1");
     expect(payload.name).toBe("Test Gateway");
     expect(payload.baseUrl).toBe(apiBase);
-    expect(payload.apiKey).toBe("cybara_mobile_cli_test");
+    expect(payload.apiKey).toBe("cybara_mobile_cli_test_token");
+    expect(payload.apiKey).not.toBe("cybara_root_cli_test");
+    expect(payload.deviceId).toBe("mobile-1");
+  });
+
+  test("mobile list/revoke/remove commands are wired", async () => {
+    const list = await runCli(["mobile", "list"], { CYBARA_API_KEY: "cybara_root_cli_test" });
+    expect(list.exitCode).toBe(0);
+    expect(list.stdout).toContain("CYBARA MOBILE DEVICES");
+    expect(list.stdout).toContain("mobile-1");
+    expect(list.stdout).toContain("CLI Test Phone");
+
+    const revoke = await runCli(["mobile", "revoke", "mobile-1"], {
+      CYBARA_API_KEY: "cybara_root_cli_test",
+    });
+    expect(revoke.exitCode).toBe(0);
+    expect(revoke.stdout).toContain("Revoked mobile device: CLI Test Phone");
+
+    const remove = await runCli(["mobile", "remove", "mobile-1"], {
+      CYBARA_API_KEY: "cybara_root_cli_test",
+    });
+    expect(remove.exitCode).toBe(0);
+    expect(remove.stdout).toContain("Removed mobile device: mobile-1");
   });
 
   test("loop command group is wired", async () => {

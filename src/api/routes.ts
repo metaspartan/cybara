@@ -1,5 +1,6 @@
 import { config } from "../core/config";
 import { cacheMetricsRoutes } from "./route-cache";
+import { mobileRoutes } from "./mobile";
 import {
   parseJsonObject,
   parseMetricMetadata,
@@ -500,10 +501,9 @@ const securityHeaders: Record<string, string> = {
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
 };
-
 type RouteHandler = (body?: unknown, params?: Record<string, string>) => Promise<unknown> | unknown;
-
 const routes: Record<string, RouteHandler> = {
+  ...mobileRoutes,
   "GET /api/health": () => {
     const now = new Date();
     return {

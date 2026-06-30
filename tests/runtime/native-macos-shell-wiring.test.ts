@@ -9,14 +9,16 @@ const MACOS_APP_DIR = join(ROOT_DIR, "apps", "macos", "Cybara", "Sources", "Cyba
 describe("native macOS shell wiring", () => {
   test("sidecar manager reuses gateway port 4269 and configures a managed local launch", () => {
     const sidecarManager = readFileSync(join(MACOS_APP_DIR, "SidecarManager.swift"), "utf8");
+    const sidecarCore = readFileSync(join(MACOS_APP_DIR, "SidecarCore.swift"), "utf8");
 
     expect(sidecarManager).toContain('CYBARA_NATIVE_PORT');
-    expect(sidecarManager).toContain('?? 4269');
+    expect(sidecarManager).toContain("SidecarCore.port(fromEnv:");
+    expect(sidecarCore).toContain("public static let defaultPort = 4269");
     expect(sidecarManager).toContain('Attached to existing Cybara gateway');
-    expect(sidecarManager).toContain('environment["PORT"] = String(port)');
-    expect(sidecarManager).toContain('environment["CYBARA_HOST"] = "127.0.0.1"');
+    expect(sidecarCore).toContain('environment["PORT"] = String(port)');
+    expect(sidecarCore).toContain('environment["CYBARA_HOST"] = "127.0.0.1"');
     expect(sidecarManager).toContain('arguments = ["start", "--enable-terminal"]');
-    expect(sidecarManager).toContain('bundledSidecarDirectory.appending(path: "cybara")');
+    expect(sidecarCore).toContain('bundledSidecar.appendingPathComponent("cybara").path');
     expect(sidecarManager).toContain("gatewayMode = .managed");
     expect(sidecarManager).toContain("gatewayMode = .attached");
   });

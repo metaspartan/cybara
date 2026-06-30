@@ -3,6 +3,7 @@ export { Agents } from './Agents';
 export { Providers } from './Providers';
 export { MCPServers } from './MCPServers';
 export { Channels } from './Channels';
+export { Mobile } from './Mobile';
 export { Tasks } from './Tasks';
 export { Skills } from './Skills';
 export { Tools } from './Tools';

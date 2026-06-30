@@ -9,6 +9,8 @@ import type {
   ChatSession,
   ApiResponse,
   DashboardStats,
+  MobileDevice,
+  MobilePairing,
 } from "@/types";
 import { apiFetch } from "@/lib/auth";
 
@@ -130,6 +132,21 @@ export const channelsApi = {
       method: "POST",
       body: JSON.stringify({ botToken, webhookUrl }),
     }),
+};
+
+export const mobileApi = {
+  listDevices: () => fetchApi<{ devices: MobileDevice[] }>("/mobile/devices"),
+  createDevice: (payload: { deviceName?: string; gatewayName?: string; baseUrl: string }) =>
+    fetchApi<MobilePairing>("/mobile/devices", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  revokeDevice: (id: string) =>
+    fetchApi<{ success: boolean; device: MobileDevice }>(`/mobile/devices/${id}/revoke`, {
+      method: "POST",
+    }),
+  deleteDevice: (id: string) =>
+    fetchApi<{ success: boolean }>(`/mobile/devices/${id}`, { method: "DELETE" }),
 };
 
 export interface MCPServer {

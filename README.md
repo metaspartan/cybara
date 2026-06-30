@@ -120,10 +120,10 @@ bun run mobile:ios
 bun run mobile:android
 
 # on the device running Cybara
-cybara mobile connect --qr
+cybara mobile connect --url http://192.168.1.20:4269 --device "Carsen iPhone"
 ```
 
-The initial mobile surface covers gateway health, sessions, agents, providers, tool approvals, wallet policy, channels, tasks, memory, terminal/log entrypoints, and settings summaries. See [apps/mobile/README.md](apps/mobile/README.md).
+The CLI and Web UI/Tauri `Mobile` page create QR pairings with revocable per-device tokens, so a phone can be revoked without rotating the root gateway API key. The initial mobile surface covers gateway health, sessions, agents, providers, tool approvals, wallet policy, channels, tasks, memory, terminal/log entrypoints, and settings summaries. See [apps/mobile/README.md](apps/mobile/README.md).
 
 ---
 

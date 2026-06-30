@@ -24,6 +24,7 @@ import {
   ChevronRight,
   Wallet as WalletIcon,
   FileText,
+  TabletSmartphone,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, createContext, useContext } from 'react';
@@ -160,6 +161,7 @@ const navCategories = [
       { path: '/agents', icon: Bot, label: 'Agents' },
       { path: '/providers', icon: Plug, label: 'Providers' },
       { path: '/channels', icon: Smartphone, label: 'Channels' },
+      { path: '/mobile', icon: TabletSmartphone, label: 'Mobile' },
     ],
   },
   {

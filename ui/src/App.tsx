@@ -23,6 +23,7 @@ import { IDE } from '@/pages/IDE';
 import { TerminalPage } from '@/pages/Terminal';
 import { Wallet } from '@/pages/Wallet';
 import { Artifacts } from '@/pages/Artifacts';
+import { Mobile } from '@/pages/Mobile';
 import { Setup } from '@/pages/Setup';
 import { useProviders, useAgents } from '@/hooks/useApi';
 import { Loader2 } from 'lucide-react';
@@ -77,6 +78,7 @@ function AppRoutes() {
       <Route path="/router" element={<RouterSettings />} />
       <Route path="/mcp" element={<MCPServers />} />
       <Route path="/channels" element={<Channels />} />
+      <Route path="/mobile" element={<Mobile />} />
       <Route path="/tasks" element={<Tasks />} />
       <Route path="/skills" element={<Skills />} />
       <Route path="/lsp" element={<LSP />} />

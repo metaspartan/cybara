@@ -46,6 +46,7 @@ import {
 import { logSandboxRuntimeStatus } from "./core/sandbox";
 import { onSubagentLifecycle } from "./core/subagent-registry";
 import { resolveUiPath } from "./core/runtime/ui-path";
+import { readUiIndexContent } from "./core/runtime/ui-index";
 import { securityCheck } from "./api/security";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -96,6 +97,10 @@ try {
     `[UI] Failed to load UI index at ${join(uiPath, "index.html")} (execPath=${process.execPath}, cwd=${process.cwd()})`
   );
   uiContent = `<!DOCTYPE html><html><head><title>Cybara</title></head><body style="font-family: system-ui; background: #0a0a0f; color: #f0f0f5; padding: 40px;"><h1>Cybara</h1><p>UI not built. Run <code>cd ui && bun run build</code> to build the React app.</p></body></html>`;
+}
+
+function readUiIndex(): string {
+  return readUiIndexContent({ uiPath, uiExists, fallbackContent: uiContent });
 }
 
 const mimeTypes: Record<string, string> = {
@@ -385,7 +390,7 @@ Bun.serve<WsData>({
 
     if (!uiExists) {
       if (pathname === "/" || pathname === "/index.html" || !fileLikePath) {
-        return new Response(uiContent, { headers: htmlHeaders });
+        return new Response(readUiIndex(), { headers: htmlHeaders });
       }
       return new Response("Static asset not found", {
         status: 404,
@@ -394,7 +399,7 @@ Bun.serve<WsData>({
     }
 
     if (pathname === "/" || pathname === "/index.html" || !fileLikePath) {
-      return new Response(uiContent, { headers: htmlHeaders });
+      return new Response(readUiIndex(), { headers: htmlHeaders });
     }
 
     const safePath = pathname.replace(/\.\./g, "").replace(/^\/+/, ""); // Prevent directory traversal
