@@ -29,6 +29,7 @@ import {
   mattermostAdapter,
   ircAdapter,
   ntfyAdapter,
+  twitchAdapter,
   type MessageHandlerFileInfo,
 } from "./core/channels";
 import { handleSessionsSpawn } from "./core/tools/handlers/channel";
@@ -687,6 +688,7 @@ matrixAdapter.setMessageHandler(createChannelChatHandler("matrix"));
 mattermostAdapter.setMessageHandler(createChannelChatHandler("mattermost"));
 ircAdapter.setMessageHandler(createChannelChatHandler("irc"));
 ntfyAdapter.setMessageHandler(createChannelChatHandler("ntfy"));
+twitchAdapter.setMessageHandler(createChannelChatHandler("twitch"));
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;

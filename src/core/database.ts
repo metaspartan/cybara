@@ -1071,7 +1071,8 @@ export interface Channel {
     | "matrix"
     | "mattermost"
     | "irc"
-    | "ntfy";
+    | "ntfy"
+    | "twitch";
   name: string;
   config: Record<string, unknown>;
   enabled: boolean;

@@ -51,4 +51,5 @@ export { matrixAdapter, MatrixAdapter } from "./adapters/matrix";
 export { mattermostAdapter, MattermostAdapter } from "./adapters/mattermost";
 export { ircAdapter, IrcAdapter } from "./adapters/irc";
 export { ntfyAdapter, NtfyAdapter } from "./adapters/ntfy";
+export { twitchAdapter, TwitchAdapter } from "./adapters/twitch";
 export { webAdapter, WebAdapter } from "./adapters/web";
