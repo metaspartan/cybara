@@ -284,6 +284,17 @@ describe("Chat + Logs + Metrics e2e smoke", () => {
     expect(systemStatusRes.data.status).toBe("thinking");
     expect(systemStatusRes.data.lastActivity).toBe(activityTimestamp);
     expect(typeof systemStatusRes.data.agentCount).toBe("number");
+    expect(typeof systemStatusRes.data.resources?.cpu?.usagePct).toBe("number");
+    expect(typeof systemStatusRes.data.resources?.memory?.totalBytes).toBe("number");
+
+    const systemMonitorRes = await api("GET", "/api/system/monitor");
+    expect(systemMonitorRes.status).toBe(200);
+    expect(systemMonitorRes.data.status).toBe("healthy");
+    expect(typeof systemMonitorRes.data.cpu.usagePct).toBe("number");
+    expect(typeof systemMonitorRes.data.cpu.cores).toBe("number");
+    expect(systemMonitorRes.data.memory.totalBytes).toBeGreaterThan(0);
+    expect(systemMonitorRes.data.memory.usedBytes).toBeGreaterThanOrEqual(0);
+    expect(typeof systemMonitorRes.data.process.memory.rssBytes).toBe("number");
 
     const overviewRes = await api("GET", "/api/metrics/overview");
     expect(overviewRes.status).toBe(200);

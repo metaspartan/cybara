@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { PageLayout } from '@/components/layout';
-import { useHealth, useInfo, useSystemPrompt, useSystemPromptPreview, useUpdateSystemPrompt, useIdentity, useUpdateIdentity, type SystemPromptConfig, type IdentityConfig, type HealthData, type InfoData } from '@/hooks/useApi';
+import { useHealth, useInfo, useSystemMonitor, useSystemPrompt, useSystemPromptPreview, useUpdateSystemPrompt, useIdentity, useUpdateIdentity, type SystemPromptConfig, type IdentityConfig, type HealthData, type InfoData } from '@/hooks/useApi';
 import { settingsApi } from '@/lib/api';
 import { openExternal } from '@/utils/openExternal';
 import {
@@ -30,6 +30,7 @@ import {
   AlertTriangle,
   Server,
   Database,
+  Cpu,
   Clock,
   CheckCircle,
   Bot,
@@ -67,6 +68,18 @@ function getCheckStatus(value: unknown): { status: 'healthy' | 'warning' | 'erro
     }
   }
   return { status: 'healthy' };
+}
+
+function formatBytes(bytes?: number): string {
+  const value = Number(bytes || 0);
+  if (value >= 1024 * 1024 * 1024) return `${(value / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${Math.round(value)} B`;
+}
+
+function formatPct(value?: number | null): string {
+  return typeof value === 'number' && Number.isFinite(value) ? `${value.toFixed(1)}%` : 'n/a';
 }
 
 function ThemeSettings() {
@@ -896,6 +909,7 @@ function FeatureSettings() {
 export function Settings() {
   const { data: health } = useHealth();
   const { data: info } = useInfo();
+  const { data: systemMonitor } = useSystemMonitor();
 
   const healthData = (health || {}) as HealthData;
   const infoData = (info || {}) as InfoData;
@@ -919,10 +933,24 @@ export function Settings() {
       icon: CheckCircle,
       color: 'text-amber-400'
     },
+    {
+      label: 'CPU',
+      value: formatPct(systemMonitor?.cpu.usagePct),
+      icon: Cpu,
+      color: 'text-cyan-400'
+    },
+    {
+      label: 'Memory',
+      value: formatPct(systemMonitor?.memory.usedPct),
+      icon: HardDrive,
+      color: 'text-emerald-400'
+    },
   ];
 
   const checks = healthData.checks
-    ? Object.entries(healthData.checks as Record<string, unknown>).filter(([key]) => key !== 'memory')
+    ? Object.entries(healthData.checks as Record<string, unknown>).filter(
+        ([key]) => key !== 'memory' && key !== 'system'
+      )
     : [];
 
   return (
@@ -937,7 +965,7 @@ export function Settings() {
           releaseRepositoryUrl={infoData.releaseRepositoryUrl}
         />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {stats.map((stat) => (
             <Card key={stat.label} variant="liquid">
               <CardContent>
@@ -954,6 +982,37 @@ export function Settings() {
             </Card>
           ))}
         </div>
+
+        <Card variant="liquid">
+          <CardHeader>
+            <CardTitle>System Monitor</CardTitle>
+            <CardDescription>Live host resource usage from the Cybara gateway</CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="rounded-xl bg-white/5 p-4">
+              <p className="text-sm text-gray-400">CPU</p>
+              <p className="mt-1 text-2xl font-semibold text-white">{formatPct(systemMonitor?.cpu.usagePct)}</p>
+              <p className="mt-1 text-xs text-gray-500">{systemMonitor?.cpu.cores || 0} cores - {systemMonitor?.cpu.model || 'Loading CPU'}</p>
+            </div>
+            <div className="rounded-xl bg-white/5 p-4">
+              <p className="text-sm text-gray-400">Memory</p>
+              <p className="mt-1 text-2xl font-semibold text-white">{formatPct(systemMonitor?.memory.usedPct)}</p>
+              <p className="mt-1 text-xs text-gray-500">{formatBytes(systemMonitor?.memory.usedBytes)} / {formatBytes(systemMonitor?.memory.totalBytes)} used</p>
+            </div>
+            <div className="rounded-xl bg-white/5 p-4">
+              <p className="text-sm text-gray-400">Cybara process</p>
+              <p className="mt-1 text-2xl font-semibold text-white">{formatPct(systemMonitor?.process.cpuUsagePct)}</p>
+              <p className="mt-1 text-xs text-gray-500">{formatBytes(systemMonitor?.process.memory.rssBytes)} RSS - PID {systemMonitor?.process.pid || 'n/a'}</p>
+            </div>
+            <div className="rounded-xl bg-white/5 p-4">
+              <p className="text-sm text-gray-400">Disk</p>
+              <p className="mt-1 text-2xl font-semibold text-white">{formatPct(systemMonitor?.disk?.usedPct)}</p>
+              <p className="mt-1 text-xs text-gray-500">
+                {systemMonitor?.disk ? `${formatBytes(systemMonitor.disk.freeBytes)} free at ${systemMonitor.disk.path}` : 'Disk telemetry unavailable'}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card variant="liquid">

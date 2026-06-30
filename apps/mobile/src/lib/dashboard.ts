@@ -81,7 +81,7 @@ export const MOBILE_SETTINGS_DETAIL_CHROME = {
   tasksActionable: true,
   tasksUseRunningToggle: true,
   walletPolicyUsesToggles: true,
-  monitorUsesStatusToggles: true,
+  monitorShowsHostTelemetry: true,
   itemBackReturnsToSurface: true,
   hidesRawInternalFields: true,
   providerCredentialUpdateMode: "blank-keeps-existing" as const,

@@ -82,6 +82,7 @@ import {
   type RemoteItemSummary,
   type SessionDetailSummary,
   type SessionSummary,
+  type SystemMonitorSnapshot,
   type ToolApprovalDecision,
   type WalletAgentPolicyUpdate,
 } from "../lib/api";
@@ -196,7 +197,12 @@ const surfaceMeta: Record<
   tasks: { title: "Tasks", Icon: CalendarCheck, tone: colors.blueText, endpoint: "tasks" },
   memory: { title: "Memory", Icon: Brain, tone: colors.green, endpoint: "memory" },
   logs: { title: "Logs", Icon: ListTodo, tone: colors.textMuted, endpoint: "logs" },
-  monitor: { title: "System Monitor", Icon: Cpu, tone: colors.blueText, endpoint: "health" },
+  monitor: {
+    title: "System Monitor",
+    Icon: Cpu,
+    tone: colors.blueText,
+    endpoint: "systemMonitor",
+  },
 };
 
 const agentTypeOptions = ["main", "research", "coder", "planner", "ops", "worker"] as const;
@@ -268,32 +274,6 @@ function arraySettingCount(record: Record<string, unknown> | null, key: string):
   const value = record?.[key];
   if (!Array.isArray(value) || value.length === 0) return "None";
   return value.length === 1 ? "1 entry" : `${value.length} entries`;
-}
-
-function healthCheckIsPassing(value: unknown): boolean {
-  const record = objectRecord(value);
-  const status = String(record?.status || "").toLowerCase();
-  if (["healthy", "ok", "online", "passing", "ready", "running"].includes(status)) return true;
-  if (["unhealthy", "failed", "error", "offline", "stopped"].includes(status)) return false;
-  if (typeof record?.running === "number" && typeof record?.total === "number") {
-    return record.total > 0 && record.running >= record.total;
-  }
-  return false;
-}
-
-function healthCheckDetail(value: unknown): string {
-  const record = objectRecord(value);
-  if (!record) return formatMobileValue(value);
-  const status = typeof record.status === "string" ? record.status : null;
-  const total = typeof record.total === "number" ? record.total : null;
-  const running = typeof record.running === "number" ? record.running : null;
-  const stopped = typeof record.stopped === "number" ? record.stopped : null;
-  const parts = [
-    status,
-    total !== null && running !== null ? `${running}/${total} running` : null,
-    stopped !== null && stopped > 0 ? `${stopped} stopped` : null,
-  ].filter((part): part is string => Boolean(part));
-  return parts.length > 0 ? parts.join(" - ") : formatMobileValue(value);
 }
 
 function endpointErrorDetail(endpoint: EndpointState, fallback: string): string {
@@ -381,6 +361,25 @@ function cleanSettingsFields(
     .map((field) => ({ ...field, label: displayFieldLabel(field.label) }));
 }
 
+function monitorPercent(value: number | null | undefined): number {
+  return Number.isFinite(value) ? Math.max(0, Math.min(100, Number(value))) : 0;
+}
+
+function monitorPercentLabel(value: number | null | undefined): string {
+  return Number.isFinite(value) ? `${Number(value).toFixed(1)}%` : "n/a";
+}
+
+function monitorOverviewLabel(snapshot: SystemMonitorSnapshot | null | undefined): string {
+  if (!snapshot) return "CPU loading - RAM loading - Disk loading";
+  const disk = snapshot.disk ? monitorPercentLabel(snapshot.disk.usedPct) : "n/a";
+  return `CPU ${monitorPercentLabel(snapshot.cpu.usagePct)} - RAM ${monitorPercentLabel(snapshot.memory.usedPct)} - Disk ${disk}`;
+}
+
+function monitorPlatformLabel(snapshot: SystemMonitorSnapshot | null | undefined): string {
+  if (!snapshot) return "Telemetry unavailable";
+  return `${snapshot.platform.type} ${snapshot.platform.arch} - ${snapshot.cpu.cores} cores`;
+}
+
 function agentProviderId(agent: AgentSummary | null | undefined): string {
   return agent?.provider_id || agent?.provider || "";
 }
@@ -464,16 +463,55 @@ function surfaceRows(
         }),
       ];
     case "monitor": {
-      const checks = summary.health?.checks || {};
+      const monitor = summary.systemMonitor;
+      if (!monitor) return [];
       return [
-        itemFromRecord("runtime", "Runtime", summary.health?.version || "pending", {
-          uptime: formatUptime(summary.health?.uptime),
-          version: summary.health?.version || "pending",
-          status: summary.health?.status || "unknown",
-        }),
-        ...Object.entries(checks).map(([key, value]) =>
-          itemFromRecord(key, key, formatMobileValue(value), value as Record<string, unknown>)
+        itemFromRecord(
+          "cpu",
+          "CPU",
+          `${monitorPercentLabel(monitor.cpu.usagePct)} - ${monitor.cpu.cores} cores`,
+          {
+            usagePct: monitor.cpu.usagePct,
+            loadPct: monitor.cpu.loadPct,
+            cores: monitor.cpu.cores,
+            model: monitor.cpu.model,
+            loadAverage: monitor.cpu.loadAverage.join(", "),
+          }
         ),
+        itemFromRecord(
+          "memory",
+          "Memory",
+          `${monitorPercentLabel(monitor.memory.usedPct)} - ${formatMetricBytes(monitor.memory.usedBytes)} used`,
+          monitor.memory
+        ),
+        itemFromRecord(
+          "process",
+          "Cybara process",
+          `${formatMetricBytes(monitor.process.memory.rssBytes)} RSS - ${monitorPercentLabel(monitor.process.cpuUsagePct)} CPU`,
+          {
+            pid: monitor.process.pid,
+            uptime: formatUptime(monitor.process.uptimeSeconds),
+            cpuUsagePct: monitor.process.cpuUsagePct,
+            ...monitor.process.memory,
+          }
+        ),
+        ...(monitor.disk
+          ? [
+              itemFromRecord(
+                "disk",
+                "Disk",
+                `${monitorPercentLabel(monitor.disk.usedPct)} - ${formatMetricBytes(monitor.disk.freeBytes)} free`,
+                monitor.disk
+              ),
+            ]
+          : []),
+        itemFromRecord("runtime", "Runtime", monitorPlatformLabel(monitor), {
+          platform: monitor.platform.type,
+          architecture: monitor.platform.arch,
+          release: monitor.platform.release,
+          timestamp: monitor.timestamp,
+          sampleIntervalMs: monitor.sampleIntervalMs,
+        }),
       ];
     }
   }
@@ -511,7 +549,11 @@ function surfaceMenuDetail(
     case "wallet":
       return summary.walletPolicy || summary.walletStatus ? "Policy and status" : "Unavailable";
     case "monitor":
-      return rowCount > 0 ? `${rowCount} health checks` : "Health checks";
+      return summary.systemMonitor
+        ? `CPU ${monitorPercentLabel(summary.systemMonitor.cpu.usagePct)} - RAM ${monitorPercentLabel(summary.systemMonitor.memory.usedPct)}`
+        : rowCount > 0
+          ? `${rowCount} readings`
+          : "Telemetry";
   }
 }
 
@@ -986,6 +1028,7 @@ export function DashboardScreen({
               modules={modules}
               sessions={orderedSessions}
               logs={summary?.logs ?? []}
+              systemMonitor={summary?.systemMonitor ?? null}
               selectTab={selectTab}
               openSurface={openSurface}
               openSession={(id) => setDetailRoute({ kind: "session", id })}
@@ -1099,6 +1142,7 @@ function OverviewPanel({
   modules,
   sessions,
   logs,
+  systemMonitor,
   selectTab,
   openSurface,
   openSession,
@@ -1106,6 +1150,7 @@ function OverviewPanel({
   modules: ModuleCard[];
   sessions: SessionSummary[];
   logs: ActivitySummary[];
+  systemMonitor: SystemMonitorSnapshot | null;
   selectTab: (tab: MobileTabKey) => void;
   openSurface: (surface: MobileSurfaceKey) => void;
   openSession: (id: string) => void;
@@ -1148,14 +1193,14 @@ function OverviewPanel({
           ))}
           <Pressable
             style={[styles.moduleTile, styles.monitorTile]}
-            onPress={() => selectTab("metrics")}
+            onPress={() => openSurface("monitor")}
           >
             <View style={styles.moduleIcon}>
               <Cpu color={colors.text} size={23} strokeWidth={2.1} />
             </View>
             <View style={styles.monitorText}>
               <Text style={styles.moduleTitle}>System Monitor</Text>
-              <Text style={styles.moduleDetail}>CPU ready RAM ready Disk ready</Text>
+              <Text style={styles.moduleDetail}>{monitorOverviewLabel(systemMonitor)}</Text>
             </View>
             <ChevronRight color={colors.text} size={22} strokeWidth={2.1} />
           </Pressable>
@@ -3429,7 +3474,33 @@ function WalletPolicyPanel({
   );
 }
 
-function SystemMonitorSettingsPanel({
+function MonitorUsageBar({
+  detail,
+  label,
+  tone,
+  value,
+}: {
+  detail?: string;
+  label: string;
+  tone: string;
+  value: number | null | undefined;
+}) {
+  const pct = monitorPercent(value);
+  return (
+    <View style={styles.monitorUsageRow}>
+      <View style={styles.monitorUsageHeader}>
+        <Text style={styles.listTitle}>{label}</Text>
+        <Text style={[styles.counterText, { color: tone }]}>{monitorPercentLabel(value)}</Text>
+      </View>
+      <View style={styles.monitorUsageTrack}>
+        <View style={[styles.monitorUsageFill, { backgroundColor: tone, width: `${pct}%` }]} />
+      </View>
+      {detail ? <Text style={styles.listDetail}>{detail}</Text> : null}
+    </View>
+  );
+}
+
+function SystemMonitorDetailPanel({
   item,
   refreshSummary,
   summary,
@@ -3439,22 +3510,51 @@ function SystemMonitorSettingsPanel({
   summary: FeatureSummary | null;
 }) {
   const [refreshingMonitor, setRefreshingMonitor] = useState(false);
-  const health = summary?.health;
-  const checks = health?.checks || {};
-  const entries =
-    item.id === "runtime"
-      ? Object.entries(checks)
-      : Object.entries(checks).filter(([key]) => key === item.id);
-  const runtimeHealthy = health?.status === "healthy";
-  const fields =
-    item.id === "runtime"
-      ? [
-          { label: "Status", value: health?.status || "Unknown" },
-          { label: "Version", value: health?.version || "Pending" },
-          { label: "Uptime", value: formatUptime(health?.uptime) },
-          { label: "Last check", value: absoluteTimestampLabel(health?.timestamp) },
-        ]
-      : cleanSettingsFields(item.fields);
+  const snapshot = summary?.systemMonitor ?? null;
+  const disk = snapshot?.disk ?? null;
+  const fields = (() => {
+    if (!snapshot) return cleanSettingsFields(item.fields);
+    if (item.id === "cpu") {
+      return [
+        { label: "Model", value: snapshot.cpu.model },
+        { label: "Cores", value: String(snapshot.cpu.cores) },
+        { label: "Load average", value: snapshot.cpu.loadAverage.join(", ") },
+        { label: "Load", value: monitorPercentLabel(snapshot.cpu.loadPct) },
+      ];
+    }
+    if (item.id === "memory") {
+      return [
+        { label: "Total", value: formatMetricBytes(snapshot.memory.totalBytes) },
+        { label: "Used", value: formatMetricBytes(snapshot.memory.usedBytes) },
+        { label: "Free", value: formatMetricBytes(snapshot.memory.freeBytes) },
+      ];
+    }
+    if (item.id === "process") {
+      return [
+        { label: "PID", value: String(snapshot.process.pid) },
+        { label: "Uptime", value: formatUptime(snapshot.process.uptimeSeconds) },
+        { label: "RSS", value: formatMetricBytes(snapshot.process.memory.rssBytes) },
+        { label: "Heap used", value: formatMetricBytes(snapshot.process.memory.heapUsedBytes) },
+        { label: "Heap total", value: formatMetricBytes(snapshot.process.memory.heapTotalBytes) },
+        { label: "External", value: formatMetricBytes(snapshot.process.memory.externalBytes) },
+      ];
+    }
+    if (item.id === "disk" && disk) {
+      return [
+        { label: "Path", value: disk.path },
+        { label: "Total", value: formatMetricBytes(disk.totalBytes) },
+        { label: "Used", value: formatMetricBytes(disk.usedBytes) },
+        { label: "Free", value: formatMetricBytes(disk.freeBytes) },
+      ];
+    }
+    return [
+      { label: "Platform", value: snapshot.platform.type },
+      { label: "Architecture", value: snapshot.platform.arch },
+      { label: "Release", value: snapshot.platform.release },
+      { label: "Snapshot", value: absoluteTimestampLabel(snapshot.timestamp) },
+      { label: "Sample interval", value: `${snapshot.sampleIntervalMs}ms` },
+    ];
+  })();
 
   const refreshMonitor = async () => {
     setRefreshingMonitor(true);
@@ -3476,30 +3576,75 @@ function SystemMonitorSettingsPanel({
             {item.title}
           </Text>
           <Text numberOfLines={2} style={styles.itemDetail}>
-            {item.id === "runtime" ? "Gateway runtime health" : healthCheckDetail(checks[item.id])}
+            {snapshot ? item.detail : "Waiting for system telemetry from the gateway"}
           </Text>
         </View>
       </View>
 
-      <View style={styles.settingsForm}>
-        <SettingToggle
-          detail={health ? `Gateway status is ${health.status}.` : "Waiting for gateway health."}
-          disabled
-          label="Gateway healthy"
-          onPress={() => undefined}
-          value={runtimeHealthy}
+      {snapshot ? (
+        <View style={styles.settingsForm}>
+          {item.id === "cpu" ? (
+            <>
+              <MonitorUsageBar
+                detail={`${snapshot.cpu.cores} cores - ${snapshot.cpu.model}`}
+                label="CPU usage"
+                tone={colors.blueText}
+                value={snapshot.cpu.usagePct}
+              />
+              <MonitorUsageBar
+                detail={snapshot.platform.type === "win32" ? "Load average unavailable on Windows" : "1-minute normalized load"}
+                label="CPU load"
+                tone={colors.cyan}
+                value={snapshot.cpu.loadPct}
+              />
+            </>
+          ) : null}
+          {item.id === "memory" ? (
+            <MonitorUsageBar
+              detail={`${formatMetricBytes(snapshot.memory.usedBytes)} of ${formatMetricBytes(snapshot.memory.totalBytes)} used`}
+              label="Memory used"
+              tone={colors.green}
+              value={snapshot.memory.usedPct}
+            />
+          ) : null}
+          {item.id === "process" ? (
+            <>
+              <MonitorUsageBar
+                detail="Cybara gateway process CPU"
+                label="Process CPU"
+                tone={colors.amber}
+                value={snapshot.process.cpuUsagePct}
+              />
+              <MonitorUsageBar
+                detail={`${formatMetricBytes(snapshot.process.memory.heapUsedBytes)} of ${formatMetricBytes(snapshot.process.memory.heapTotalBytes)} heap used`}
+                label="Heap used"
+                tone={colors.cyan}
+                value={
+                  (snapshot.process.memory.heapUsedBytes /
+                    Math.max(1, snapshot.process.memory.heapTotalBytes)) *
+                  100
+                }
+              />
+            </>
+          ) : null}
+          {item.id === "disk" && disk ? (
+            <MonitorUsageBar
+              detail={`${formatMetricBytes(disk.usedBytes)} of ${formatMetricBytes(disk.totalBytes)} used`}
+              label="Disk used"
+              tone={colors.blueText}
+              value={disk.usedPct}
+            />
+          ) : null}
+        </View>
+      ) : (
+        <EmptyState
+          label="System telemetry unavailable"
+          detail={endpointErrorDetail(
+            summary?.availability.systemMonitor,
+            "The gateway did not return host system telemetry."
+          )}
         />
-        {entries.map(([key, value]) => (
-          <SettingToggle
-            detail={healthCheckDetail(value)}
-            disabled
-            key={key}
-            label={displayFieldLabel(key)}
-            onPress={() => undefined}
-            value={healthCheckIsPassing(value)}
-          />
-        ))}
-      </View>
+      )}
 
       {fields.length > 0 ? (
         <View>
@@ -3594,9 +3739,9 @@ function ItemDetailPanel({
       <WalletPolicyPanel api={api} item={item} refreshSummary={refreshSummary} summary={summary} />
     );
   }
-  if (route.surface === "monitor" && MOBILE_SETTINGS_DETAIL_CHROME.monitorUsesStatusToggles) {
+  if (route.surface === "monitor" && MOBILE_SETTINGS_DETAIL_CHROME.monitorShowsHostTelemetry) {
     return (
-      <SystemMonitorSettingsPanel item={item} refreshSummary={refreshSummary} summary={summary} />
+      <SystemMonitorDetailPanel item={item} refreshSummary={refreshSummary} summary={summary} />
     );
   }
   if (route.surface === "approvals" && MOBILE_SETTINGS_DETAIL_CHROME.approvalsActionable) {
@@ -4636,6 +4781,30 @@ const styles = StyleSheet.create({
   toggleThumbActive: {
     alignSelf: "flex-end",
     backgroundColor: colors.cyan,
+  },
+  monitorUsageRow: {
+    backgroundColor: "rgba(1, 5, 8, 0.76)",
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  monitorUsageHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  monitorUsageTrack: {
+    backgroundColor: "rgba(148, 163, 184, 0.14)",
+    borderRadius: 5,
+    height: 10,
+    overflow: "hidden",
+  },
+  monitorUsageFill: {
+    borderRadius: 5,
+    height: "100%",
+    minWidth: 2,
   },
   summaryGrid: {
     flexDirection: "row",

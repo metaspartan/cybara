@@ -72,6 +72,7 @@ describe("UI hooks API wiring", () => {
     expect(source).toContain("fetchApi<ModelMetrics>('/metrics/models')");
     expect(source).toContain("fetchApi<MetricsInsights>('/metrics/insights')");
     expect(source).toContain("fetchApi<{ success: boolean; id: string }>('/metrics/track'");
+    expect(source).toContain("fetchApi<SystemMonitorData>(\"/system/monitor\")");
   });
 
   test("subagent and create-skill hooks stay on shared API client helpers", () => {

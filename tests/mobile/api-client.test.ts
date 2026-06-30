@@ -409,6 +409,29 @@ describe("mobile API client", () => {
       if (path === "/api/agents") return Response.json([{ id: "a1", name: "Main" }]);
       if (path === "/api/providers")
         return Response.json([{ id: "p1", name: "Anthropic", provider: "anthropic" }]);
+      if (path === "/api/system/monitor") {
+        return Response.json({
+          status: "healthy",
+          timestamp: "2026-06-30T08:00:00.000Z",
+          sampleIntervalMs: 1000,
+          platform: { type: "darwin", arch: "arm64", release: "26.0.0" },
+          cpu: { usagePct: 12.5, loadPct: 45, loadAverage: [1.2, 1.1, 1], cores: 10, model: "Test CPU" },
+          memory: { totalBytes: 1000, freeBytes: 400, usedBytes: 600, usedPct: 60 },
+          process: {
+            pid: 123,
+            uptimeSeconds: 60,
+            cpuUsagePct: 2.5,
+            memory: {
+              rssBytes: 100,
+              heapUsedBytes: 50,
+              heapTotalBytes: 80,
+              externalBytes: 10,
+              arrayBuffersBytes: 5,
+            },
+          },
+          disk: { path: "/tmp", totalBytes: 1000, freeBytes: 250, usedBytes: 750, usedPct: 75 },
+        });
+      }
       if (path === "/api/config") return Response.json({ tool_approval_mode: "ask" });
       return new Response("missing", { status: 404 });
     }) as typeof fetch;
@@ -423,6 +446,8 @@ describe("mobile API client", () => {
       expect(summary.channels).toEqual([]);
       expect(summary.availability.channels.ok).toBe(false);
       expect(summary.availability.channels.status).toBe(404);
+      expect(summary.availability.systemMonitor.ok).toBe(true);
+      expect(summary.systemMonitor?.cpu.usagePct).toBe(12.5);
       expect(summary.config.tool_approval_mode).toBe("ask");
     } finally {
       globalThis.fetch = originalFetch;

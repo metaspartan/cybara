@@ -12,6 +12,49 @@ export interface HealthResponse {
   checks?: Record<string, { status: string; total?: number; running?: number; stopped?: number }>;
 }
 
+export interface SystemMonitorSnapshot {
+  status: string;
+  timestamp: string;
+  sampleIntervalMs: number;
+  platform: {
+    type: string;
+    arch: string;
+    release: string;
+  };
+  cpu: {
+    usagePct: number;
+    loadPct: number | null;
+    loadAverage: number[];
+    cores: number;
+    model: string;
+  };
+  memory: {
+    totalBytes: number;
+    freeBytes: number;
+    usedBytes: number;
+    usedPct: number;
+  };
+  process: {
+    pid: number;
+    uptimeSeconds: number;
+    cpuUsagePct: number;
+    memory: {
+      rssBytes: number;
+      heapUsedBytes: number;
+      heapTotalBytes: number;
+      externalBytes: number;
+      arrayBuffersBytes: number;
+    };
+  };
+  disk: {
+    path: string;
+    totalBytes: number;
+    freeBytes: number;
+    usedBytes: number;
+    usedPct: number;
+  } | null;
+}
+
 export interface SessionSummary {
   id: string;
   title: string | null;
@@ -108,6 +151,7 @@ export type FeatureEndpointKey =
   | "walletPolicy"
   | "memory"
   | "logs"
+  | "systemMonitor"
   | "config";
 
 export interface FeatureEndpointState {
@@ -206,6 +250,7 @@ export interface FeatureSummary {
   logsLimit?: number;
   logsOffset?: number;
   logsHasMore?: boolean;
+  systemMonitor: SystemMonitorSnapshot | null;
   config: Record<string, unknown>;
   availability: FeatureAvailability;
 }
@@ -236,6 +281,7 @@ function emptyAvailability(): FeatureAvailability {
     walletPolicy: { ok: false },
     memory: { ok: false },
     logs: { ok: false },
+    systemMonitor: { ok: false },
     config: { ok: false },
   };
 }
@@ -1093,6 +1139,7 @@ export class CybaraMobileApi {
       walletPolicy,
       memory,
       logPage,
+      systemMonitor,
       config,
     ] = await Promise.all([
       safe<HealthResponse | null>("health", null, () => this.health()),
@@ -1147,6 +1194,9 @@ export class CybaraMobileApi {
         },
         () => this.logsPage()
       ),
+      safe<SystemMonitorSnapshot | null>("systemMonitor", null, () =>
+        this.request<SystemMonitorSnapshot>("/api/system/monitor")
+      ),
       safe<Record<string, unknown>>("config", {}, () => this.config()),
     ]);
 
@@ -1168,6 +1218,7 @@ export class CybaraMobileApi {
       logsLimit: logPage.limit,
       logsOffset: logPage.offset,
       logsHasMore: logPage.hasMore,
+      systemMonitor,
       config,
       availability,
     };

@@ -133,6 +133,27 @@ function route(method: string, url: URL, body: string): Response {
       status: "healthy",
       uptime: 321,
       timestamp: new Date().toISOString(),
+      system: {
+        cpu: { usagePct: 12.3, cores: 8, model: "Test CPU" },
+        memory: {
+          usedPct: 55.5,
+          usedBytes: 1024 * 1024 * 512,
+          totalBytes: 1024 * 1024 * 1024,
+          freeBytes: 1024 * 1024 * 512,
+        },
+        process: {
+          pid: 123,
+          cpuUsagePct: 1.2,
+          memory: { rssBytes: 1024 * 1024 * 64 },
+        },
+        disk: {
+          path: "/tmp",
+          usedPct: 60,
+          freeBytes: 1024 * 1024 * 1024,
+          totalBytes: 2 * 1024 * 1024 * 1024,
+          usedBytes: 1024 * 1024 * 1024,
+        },
+      },
       checks: {
         database: { status: "healthy", total: 1 },
         providers: { status: "healthy", total: 1 },
@@ -1325,6 +1346,9 @@ describe("CLI Commands", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toContain("CYBARA STATUS");
     expect(stdout).toContain("status: healthy");
+    expect(stdout).toContain("SYSTEM MONITOR");
+    expect(stdout).toContain("cpu: 12.3%");
+    expect(stdout).toContain("memory: 55.5% used");
     expect(stdout).toContain("HEALTH CHECKS");
   });
 

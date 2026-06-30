@@ -65,6 +65,36 @@ interface StatusResponse {
   uptime: number;
   checks: Record<string, { status: string; total?: number; running?: number }>;
   timestamp: string;
+  system?: {
+    cpu?: {
+      usagePct?: number;
+      loadPct?: number | null;
+      cores?: number;
+      model?: string;
+    };
+    memory?: {
+      totalBytes?: number;
+      freeBytes?: number;
+      usedBytes?: number;
+      usedPct?: number;
+    };
+    process?: {
+      pid?: number;
+      cpuUsagePct?: number;
+      memory?: {
+        rssBytes?: number;
+        heapUsedBytes?: number;
+        heapTotalBytes?: number;
+      };
+    };
+    disk?: {
+      path?: string;
+      totalBytes?: number;
+      freeBytes?: number;
+      usedBytes?: number;
+      usedPct?: number;
+    } | null;
+  };
 }
 
 interface MetricsResponse {
@@ -127,6 +157,24 @@ interface TokenAnalysisResponse {
     durationMs: number | null;
     tokensPerSecond: number | null;
   }>;
+}
+
+function formatStatusUptime(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+function formatStatusBytes(bytes?: number): string {
+  const value = Number(bytes || 0);
+  if (value >= 1024 * 1024 * 1024) return `${(value / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${Math.round(value)} B`;
+}
+
+function formatStatusPct(value?: number | null): string {
+  return typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(1)}%` : "n/a";
 }
 
 interface TaskItem {
@@ -195,17 +243,31 @@ async function rawStatus(): Promise<void> {
     process.exit(1);
   }
 
-  const formatUptime = (sec: number) => {
-    const h = Math.floor(sec / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    return h > 0 ? `${h}h ${m}m` : `${m}m`;
-  };
-
   console.log("CYBARA STATUS");
   console.log("=============");
   console.log(`status: ${data.status}`);
-  console.log(`uptime: ${formatUptime(data.uptime)}`);
+  console.log(`uptime: ${formatStatusUptime(data.uptime)}`);
   console.log(`timestamp: ${data.timestamp}`);
+  if (data.system) {
+    console.log("");
+    console.log("SYSTEM MONITOR");
+    console.log(
+      `  cpu: ${formatStatusPct(data.system.cpu?.usagePct)} (${data.system.cpu?.cores || 0} cores)`
+    );
+    console.log(
+      `  memory: ${formatStatusPct(data.system.memory?.usedPct)} used (${formatStatusBytes(data.system.memory?.usedBytes)} / ${formatStatusBytes(data.system.memory?.totalBytes)})`
+    );
+    if (data.system.process) {
+      console.log(
+        `  process: ${formatStatusPct(data.system.process.cpuUsagePct)} CPU, ${formatStatusBytes(data.system.process.memory?.rssBytes)} RSS`
+      );
+    }
+    if (data.system.disk) {
+      console.log(
+        `  disk: ${formatStatusPct(data.system.disk.usedPct)} used (${formatStatusBytes(data.system.disk.freeBytes)} free)`
+      );
+    }
+  }
   console.log("");
   console.log("HEALTH CHECKS");
   for (const [name, info] of Object.entries(data.checks || {})) {
@@ -3959,6 +4021,36 @@ const TUIStatusCommand = () => {
           <Text color="gray">Time: </Text>
           <Text>{new Date(data.timestamp).toLocaleString()}</Text>
         </Box>
+        {data.system && (
+          <Box flexDirection="column" marginTop={1}>
+            <Text bold color="cyan">
+              System Monitor
+            </Text>
+            <Box>
+              <Text color="gray">CPU: </Text>
+              <Text>
+                {formatPct(data.system.cpu?.usagePct)} ({data.system.cpu?.cores || 0} cores)
+              </Text>
+            </Box>
+            <Box>
+              <Text color="gray">Memory: </Text>
+              <Text>
+                {formatPct(data.system.memory?.usedPct)} used (
+                {formatBytes(data.system.memory?.usedBytes)} /{" "}
+                {formatBytes(data.system.memory?.totalBytes)})
+              </Text>
+            </Box>
+            {data.system.disk && (
+              <Box>
+                <Text color="gray">Disk: </Text>
+                <Text>
+                  {formatPct(data.system.disk.usedPct)} used (
+                  {formatBytes(data.system.disk.freeBytes)} free)
+                </Text>
+              </Box>
+            )}
+          </Box>
+        )}
       </Box>
       {checks.length > 0 && (
         <Box flexDirection="column" marginTop={1}>

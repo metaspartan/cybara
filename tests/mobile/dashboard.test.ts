@@ -69,6 +69,44 @@ const summary: FeatureSummary = {
   logsLimit: 150,
   logsOffset: 0,
   logsHasMore: true,
+  systemMonitor: {
+    status: "healthy",
+    timestamp: "2026-06-30T08:00:00.000Z",
+    sampleIntervalMs: 1000,
+    platform: { type: "darwin", arch: "arm64", release: "26.0.0" },
+    cpu: {
+      usagePct: 12.5,
+      loadPct: 45,
+      loadAverage: [1.2, 1.1, 1],
+      cores: 10,
+      model: "Apple M-series",
+    },
+    memory: {
+      totalBytes: 32 * 1024 * 1024 * 1024,
+      freeBytes: 12 * 1024 * 1024 * 1024,
+      usedBytes: 20 * 1024 * 1024 * 1024,
+      usedPct: 62.5,
+    },
+    process: {
+      pid: 123,
+      uptimeSeconds: 3600,
+      cpuUsagePct: 3.2,
+      memory: {
+        rssBytes: 512 * 1024 * 1024,
+        heapUsedBytes: 128 * 1024 * 1024,
+        heapTotalBytes: 256 * 1024 * 1024,
+        externalBytes: 64 * 1024 * 1024,
+        arrayBuffersBytes: 8 * 1024 * 1024,
+      },
+    },
+    disk: {
+      path: "/Users/carsen/Documents/GitHub/cybara",
+      totalBytes: 1000 * 1024 * 1024 * 1024,
+      freeBytes: 400 * 1024 * 1024 * 1024,
+      usedBytes: 600 * 1024 * 1024 * 1024,
+      usedPct: 60,
+    },
+  },
   config: {},
   availability: {
     health: { ok: true },
@@ -83,6 +121,7 @@ const summary: FeatureSummary = {
     walletPolicy: { ok: true },
     memory: { ok: true },
     logs: { ok: true },
+    systemMonitor: { ok: true },
     config: { ok: true },
   },
 };
@@ -226,7 +265,7 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_SETTINGS_DETAIL_CHROME.tasksActionable).toBe(true);
     expect(MOBILE_SETTINGS_DETAIL_CHROME.tasksUseRunningToggle).toBe(true);
     expect(MOBILE_SETTINGS_DETAIL_CHROME.walletPolicyUsesToggles).toBe(true);
-    expect(MOBILE_SETTINGS_DETAIL_CHROME.monitorUsesStatusToggles).toBe(true);
+    expect(MOBILE_SETTINGS_DETAIL_CHROME.monitorShowsHostTelemetry).toBe(true);
     expect(MOBILE_SETTINGS_DETAIL_CHROME.itemBackReturnsToSurface).toBe(true);
     expect(MOBILE_SETTINGS_DETAIL_CHROME.hidesRawInternalFields).toBe(true);
     expect(MOBILE_SETTINGS_DETAIL_CHROME.providerCredentialUpdateMode).toBe("blank-keeps-existing");

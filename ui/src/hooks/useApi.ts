@@ -668,7 +668,51 @@ export interface HealthData {
   timestamp: string;
   uptime: number;
   version: string;
+  system?: SystemMonitorData;
   checks: Record<string, unknown>;
+}
+
+export interface SystemMonitorData {
+  status: string;
+  timestamp: string;
+  sampleIntervalMs: number;
+  platform: {
+    type: string;
+    arch: string;
+    release: string;
+  };
+  cpu: {
+    usagePct: number;
+    loadPct: number | null;
+    loadAverage: number[];
+    cores: number;
+    model: string;
+  };
+  memory: {
+    totalBytes: number;
+    freeBytes: number;
+    usedBytes: number;
+    usedPct: number;
+  };
+  process: {
+    pid: number;
+    uptimeSeconds: number;
+    cpuUsagePct: number;
+    memory: {
+      rssBytes: number;
+      heapUsedBytes: number;
+      heapTotalBytes: number;
+      externalBytes: number;
+      arrayBuffersBytes: number;
+    };
+  };
+  disk: {
+    path: string;
+    totalBytes: number;
+    freeBytes: number;
+    usedBytes: number;
+    usedPct: number;
+  } | null;
 }
 
 export interface InfoData {
@@ -696,6 +740,15 @@ export function useHealth() {
     queryKey: ["health"],
     queryFn: () => fetchApi<HealthData>("/health"),
     refetchInterval: 30000,
+  });
+}
+
+export function useSystemMonitor() {
+  return useQuery({
+    queryKey: ["system", "monitor"],
+    queryFn: () => fetchApi<SystemMonitorData>("/system/monitor"),
+    refetchInterval: 5000,
+    staleTime: 1000,
   });
 }
 
