@@ -37,6 +37,23 @@ struct ContentView: View {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(sidecar.serverURL.absoluteString, forType: .string)
         }
+        .onOpenURL { url in
+            switch SidecarCore.parseDeepLink(url) {
+            case .focus:
+                NSApplication.shared.activate(ignoringOtherApps: true)
+            case .restart:
+                Task { await sidecar.restart() }
+            case .openBrowser:
+                openURL(sidecar.serverURL)
+            case .none:
+                break
+            }
+        }
+        .background(
+            WindowAccessor { window in
+                window.setFrameAutosaveName("CybaraMainWindow")
+            }
+        )
     }
 
     private var sidebar: some View {

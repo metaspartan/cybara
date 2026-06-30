@@ -16,6 +16,22 @@ extension View {
     }
 }
 
+/// Grabs the hosting `NSWindow` once it exists so we can persist its frame
+/// across launches (window-state restoration) and apply window-level chrome.
+struct WindowAccessor: NSViewRepresentable {
+    let onResolve: (NSWindow) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { [weak view] in
+            if let window = view?.window { onResolve(window) }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
 /// Behind-window translucency (`NSVisualEffectView`) so the desktop shows through
 /// for the Liquid Glass aesthetic. Used as the root window backing.
 struct VisualEffectBackground: NSViewRepresentable {

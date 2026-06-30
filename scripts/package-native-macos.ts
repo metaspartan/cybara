@@ -83,6 +83,17 @@ export function createNativeMacOSInfoPlist(version: string): string {
   <string>Cybara controls other apps (e.g. Finder) only when you ask an agent to via computer use.</string>
   <key>NSDesktopFolderUsageDescription</key>
   <string>Cybara reads files you point it at in agent tasks.</string>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>com.cybara.desktop</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>cybara</string>
+      </array>
+    </dict>
+  </array>
 </dict>
 </plist>
 `;

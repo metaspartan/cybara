@@ -14,5 +14,10 @@ let package = Package(
             name: "Cybara",
             path: "Sources/Cybara"
         ),
+        .testTarget(
+            name: "CybaraTests",
+            dependencies: ["Cybara"],
+            path: "Tests/CybaraTests"
+        ),
     ]
 )

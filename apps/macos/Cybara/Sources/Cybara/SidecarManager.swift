@@ -112,9 +112,14 @@ final class SidecarManager: ObservableObject {
     private var process: Process?
     private var outputHandle: FileHandle?
     private var readinessTask: Task<Void, Never>?
+    /// Set when the user explicitly stops/restarts, so an expected exit isn't
+    /// treated as a crash by the auto-restart logic.
+    private var userInitiatedStop = false
+    /// Consecutive auto-restart attempts since the gateway was last healthy.
+    private var restartAttempts = 0
 
     init() {
-        port = Int(ProcessInfo.processInfo.environment["CYBARA_NATIVE_PORT"] ?? "") ?? 4269
+        port = SidecarCore.port(fromEnv: ProcessInfo.processInfo.environment["CYBARA_NATIVE_PORT"])
     }
 
     deinit {
@@ -131,6 +136,7 @@ final class SidecarManager: ObservableObject {
     func start() async {
         guard process == nil else { return }
 
+        userInitiatedStop = false
         status = .starting
 
         if await isGatewayHealthy() {
@@ -155,20 +161,24 @@ final class SidecarManager: ObservableObject {
             observe(pipe: pipe)
 
             process.terminationHandler = { [weak self] terminated in
+                let code = terminated.terminationStatus
                 Task { @MainActor in
                     guard let self else { return }
-                    self.appendLog("Sidecar exited with code \(terminated.terminationStatus).")
+                    self.appendLog("Sidecar exited with code \(code).")
                     self.outputHandle?.readabilityHandler = nil
                     self.outputHandle = nil
                     self.process = nil
-                    if self.gatewayMode == .managed {
-                        if case .ready = self.status {
-                            self.status = .stopped
-                        } else if case .starting = self.status {
-                            self.status = .failed("Managed sidecar exited before the gateway became healthy.")
-                        }
-                        self.gatewayMode = .idle
+                    guard self.gatewayMode == .managed else { return }
+                    self.gatewayMode = .idle
+
+                    // Expected exit (user stop/restart) — don't auto-recover.
+                    if self.userInitiatedStop {
+                        self.status = .stopped
+                        return
                     }
+
+                    // Unexpected crash — auto-restart with capped exponential backoff.
+                    self.handleUnexpectedExit()
                 }
             }
 
@@ -188,6 +198,8 @@ final class SidecarManager: ObservableObject {
     }
 
     func stop() {
+        userInitiatedStop = true
+        restartAttempts = 0
         readinessTask?.cancel()
         readinessTask = nil
         outputHandle?.readabilityHandler = nil
@@ -221,6 +233,35 @@ final class SidecarManager: ObservableObject {
         await start()
     }
 
+    /// Recover from an unexpected managed-sidecar exit by restarting with a
+    /// capped exponential backoff. Gives up after `maxRestartAttempts` so a
+    /// crash-looping sidecar surfaces a failure instead of restarting forever.
+    private func handleUnexpectedExit() {
+        restartAttempts += 1
+        guard restartAttempts <= SidecarCore.maxRestartAttempts else {
+            status = .failed(
+                "The Cybara gateway crashed repeatedly (\(restartAttempts - 1) restarts). Use Gateway ▸ Restart to try again."
+            )
+            appendLog("Auto-restart giving up after \(restartAttempts - 1) attempts.")
+            restartAttempts = 0
+            return
+        }
+
+        let delay = SidecarCore.restartDelaySeconds(attempt: restartAttempts)
+        status = .starting
+        appendLog(
+            "Gateway crashed — auto-restarting in \(Int(delay))s (attempt \(restartAttempts)/\(SidecarCore.maxRestartAttempts))."
+        )
+        readinessTask?.cancel()
+        readinessTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard let self, !Task.isCancelled else { return }
+            // Bail if the user stopped us or another start already happened.
+            if self.userInitiatedStop || self.process != nil { return }
+            await self.start()
+        }
+    }
+
     func revealBinary() {
         let path = binaryPath
         guard path != "Unresolved" else { return }
@@ -234,6 +275,7 @@ final class SidecarManager: ObservableObject {
         while !Task.isCancelled && Date() < deadline {
             if await isGatewayHealthy() {
                 status = .ready
+                restartAttempts = 0
                 appendLog("Cybara gateway is healthy at \(serverURL.absoluteString)")
                 return
             }
@@ -254,11 +296,9 @@ final class SidecarManager: ObservableObject {
     private func isGatewayHealthy() async -> Bool {
         do {
             let (data, response) = try await URLSession.shared.data(from: healthURL)
-            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return false }
-            // Verify it's actually a Cybara gateway, not some other process squatting
-            // on the port — match the "healthy" status in the body (mirrors the Tauri shell).
-            let body = String(data: data, encoding: .utf8) ?? ""
-            return body.contains("\"status\":\"healthy\"") || body.contains("\"status\": \"healthy\"")
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            return SidecarCore.isHealthyResponse(
+                statusCode: code, body: String(data: data, encoding: .utf8) ?? "")
         } catch {
             return false
         }
@@ -293,12 +333,7 @@ final class SidecarManager: ObservableObject {
     }
 
     private func buildLaunchEnvironment() -> [String: String] {
-        var environment = ProcessInfo.processInfo.environment
-        environment["PORT"] = String(port)
-        environment["CYBARA_HOST"] = "127.0.0.1"
-        environment["CYBARA_NATIVE_APP"] = "1"
-        environment["CYBARA_NATIVE_PORT"] = String(port)
-        return environment
+        SidecarCore.launchEnvironment(base: ProcessInfo.processInfo.environment, port: port)
     }
 
     private func resolveLaunchCommand() throws -> LaunchCommand {
@@ -321,22 +356,12 @@ final class SidecarManager: ObservableObject {
             )
         }
 
-        let currentDirectory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         let executableDirectory = URL(fileURLWithPath: CommandLine.arguments[0])
             .deletingLastPathComponent()
-        let bundledSidecarDirectory = executableDirectory.appending(path: "sidecar")
-
-        let candidates = [
-            currentDirectory.appending(path: "src-tauri/bin/cybara-aarch64-apple-darwin").path(),
-            currentDirectory.appending(path: "src-tauri/bin/cybara-x86_64-apple-darwin").path(),
-            currentDirectory.appending(path: "release/cybara").path(),
-            bundledSidecarDirectory.appending(path: "cybara").path(),
-            bundledSidecarDirectory.appending(path: "cybara-aarch64-apple-darwin").path(),
-            bundledSidecarDirectory.appending(path: "cybara-x86_64-apple-darwin").path(),
-            executableDirectory.appending(path: "cybara-aarch64-apple-darwin").path(),
-            executableDirectory.appending(path: "cybara-x86_64-apple-darwin").path(),
-            executableDirectory.appending(path: "cybara").path(),
-        ]
+        let candidates = SidecarCore.sidecarCandidatePaths(
+            currentDirectory: FileManager.default.currentDirectoryPath,
+            executableDirectory: executableDirectory.path
+        )
 
         if let match = candidates.first(where: isExecutable(at:)) {
             return LaunchCommand(
