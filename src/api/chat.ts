@@ -1,4 +1,5 @@
 import { agentManager, type AgentMessage } from "../core/agent";
+import { type AgentImage, hasImages, sanitizeAgentImages } from "../core/llm/image-blocks";
 import { providerManager } from "../core/providers";
 import { config } from "../core/config";
 import {
@@ -77,6 +78,8 @@ export interface ChatMessage {
   thinking?: string;
   tool_calls?: ToolCallInfo[];
   process_activities?: ProcessActivityInfo[];
+  /** Optional image inputs (vision) attached to a user message. */
+  images?: AgentImage[];
 }
 
 export interface ChatRequest {
@@ -89,6 +92,8 @@ export interface ChatRequest {
   channel?: string;
   userId?: string;
   source?: string;
+  /** Optional image inputs (vision) for this user turn. */
+  images?: AgentImage[];
 }
 
 export interface ChatResponse {
@@ -673,10 +678,12 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     userId,
   };
 
+  const sanitizedImages = sanitizeAgentImages(request.images);
   const userMessage: ChatMessage = {
     role: "user",
     content: message,
     timestamp: new Date().toISOString(),
+    ...(hasImages(sanitizedImages) ? { images: sanitizedImages } : {}),
   };
   session.messages.push(userMessage);
   session.updatedAt = userMessage.timestamp || new Date().toISOString();
@@ -849,6 +856,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
       const executionMessages: AgentMessage[] = session.messages.map((sessionMessage) => ({
         role: sessionMessage.role,
         content: sessionMessage.content,
+        ...(sessionMessage.images ? { images: sessionMessage.images } : {}),
       }));
       const shouldPreferArtifacts = tools && shouldPreferArtifactsForMessage(message);
       let result = await agentManager.execute(agent.id, executionMessages, {

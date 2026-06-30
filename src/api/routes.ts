@@ -118,6 +118,7 @@ import { getPendingApprovals, getAlwaysAllowlist, resolveApproval } from "../cor
 import { discoverProviderModels } from "../core/model-discovery";
 import { listCheckpoints, deleteCheckpoint } from "../core/checkpoint";
 import { getRouterStatus, selectProvider, getAllPricing, type RouterConfig } from "../core/router";
+import { getSystemMonitorSnapshot } from "../core/system-monitor";
 import * as pwManager from "../core/browser/pw-manager";
 import { homedir } from "os";
 import { dirname, isAbsolute, resolve } from "path";
@@ -520,16 +521,19 @@ const routes: Record<string, RouteHandler> = {
   ...mobileRoutes,
   "GET /api/health": () => {
     const now = new Date();
+    const system = getSystemMonitorSnapshot();
     return {
       status: "healthy",
       timestamp: now.toISOString(),
       uptime: process.uptime(),
       version: getAppVersion(),
+      system,
       checks: {
         database: checkDatabaseHealth(),
         agents: agentManager.getStats(),
         providers: providerManager.getStats(),
         memory: getMemoryUsage(),
+        system: getSystemMonitorHealth(system),
       },
     };
   },
@@ -3637,6 +3641,7 @@ const routes: Record<string, RouteHandler> = {
       workspaceDir?: string;
       stream?: boolean;
       tools?: boolean;
+      images?: Array<{ data?: string; url?: string; mimeType?: string }>;
     };
     return await handleChat(data);
   },
@@ -4463,8 +4468,11 @@ const routes: Record<string, RouteHandler> = {
       lastActivity: lastActivityTime,
       agentCount,
       timestamp: now,
+      resources: getSystemMonitorSnapshot(),
     };
   },
+
+  "GET /api/system/monitor": () => getSystemMonitorSnapshot(),
 
   "GET /api/metrics/overview": () => {
     const metrics = tables.metrics;
@@ -5280,6 +5288,21 @@ function getMemoryUsage(): { heapUsed: number; heapTotal: number; external: numb
     heapTotal: Math.round(usage.heapTotal / 1024 / 1024),
     external: Math.round(usage.external / 1024 / 1024),
     rss: Math.round(usage.rss / 1024 / 1024),
+  };
+}
+
+function getSystemMonitorHealth(snapshot = getSystemMonitorSnapshot()): {
+  status: string;
+  cpuUsagePct: number;
+  memoryUsedPct: number;
+  diskUsedPct?: number;
+} {
+  const diskUsedPct = snapshot.disk?.usedPct;
+  return {
+    status: "healthy",
+    cpuUsagePct: snapshot.cpu.usagePct,
+    memoryUsedPct: snapshot.memory.usedPct,
+    ...(typeof diskUsedPct === "number" ? { diskUsedPct } : {}),
   };
 }
 

@@ -19,6 +19,13 @@ import {
 import { recordRateLimit } from "./rate-limit-tracker";
 import { registerShellHooks } from "./shell-hooks";
 import { applyAnthropicCacheControl, type AnthropicCacheRequest } from "./prompt-cache";
+import {
+  type AgentImage,
+  hasImages,
+  toAnthropicImageBlock,
+  toOpenAIImageBlock,
+  toGoogleImagePart,
+} from "./llm/image-blocks";
 import { selectProvider, recordUsage, recordRateLimit as recordRouterRateLimit } from "./router";
 import { executeTool, hasTool } from "./tools/handlers/index";
 import {
@@ -412,6 +419,8 @@ export const AGENT_TYPES = {
 export interface AgentMessage {
   role: "user" | "assistant" | "system" | "tool";
   content: string;
+  /** Optional image inputs (vision). Only honored on user messages. */
+  images?: AgentImage[];
   tool_calls?: Array<{
     id: string;
     name: string;
@@ -3002,10 +3011,19 @@ class AgentManager {
     );
     const requestBody: Record<string, unknown> = {
       model: modelId,
-      messages: messages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      })),
+      messages: messages.map((m) => {
+        // Attach images to user turns as multimodal content blocks.
+        if (m.role === "user" && hasImages(m.images)) {
+          return {
+            role: m.role,
+            content: [
+              ...(m.content ? [{ type: "text", text: m.content }] : []),
+              ...m.images.map(toOpenAIImageBlock),
+            ],
+          };
+        }
+        return { role: m.role, content: m.content };
+      }),
     };
     const initialTokenLimit = this.resolveOpenAIRequestTokenLimit(
       requestBody,
@@ -3918,10 +3936,20 @@ class AgentManager {
   }> {
     const systemMessage = messages.find((message) => message.role === "system");
     const chatMessages = messages.filter((message) => message.role !== "system");
-    const contents: GoogleContent[] = chatMessages.map((message) => ({
-      role: message.role === "assistant" ? "model" : "user",
-      parts: [{ text: message.content }],
-    }));
+    const contents: GoogleContent[] = chatMessages.map((message) => {
+      const role = message.role === "assistant" ? "model" : "user";
+      // Vision: inline image parts on user turns (Google needs base64 bytes).
+      if (role === "user" && hasImages(message.images)) {
+        const parts: unknown[] = [];
+        if (message.content) parts.push({ text: message.content });
+        for (const img of message.images) {
+          const part = toGoogleImagePart(img);
+          if (part) parts.push(part);
+        }
+        return { role, parts: parts as GooglePart[] };
+      }
+      return { role, parts: [{ text: message.content }] };
+    });
 
     const headers = parseGoogleAuthHeaders(auth, providerAuthType).headers;
     const normalizedModelId = normalizeGoogleModelId(modelId);
@@ -4340,10 +4368,20 @@ class AgentManager {
     const systemMessage = messages.find((m) => m.role === "system");
     const chatMessages = messages
       .filter((m) => m.role !== "system")
-      .map((m) => ({
-        role: m.role === "assistant" ? "assistant" : "user",
-        content: m.content,
-      }));
+      .map((m) => {
+        const role = m.role === "assistant" ? "assistant" : "user";
+        // Vision: user image inputs become image content blocks alongside text.
+        if (role === "user" && hasImages(m.images)) {
+          return {
+            role,
+            content: [
+              ...(m.content ? [{ type: "text", text: m.content }] : []),
+              ...m.images.map(toAnthropicImageBlock),
+            ],
+          };
+        }
+        return { role, content: m.content };
+      });
 
     const requestBody: Record<string, unknown> = {
       model: modelId,
