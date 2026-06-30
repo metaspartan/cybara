@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import db from "../../src/core/database";
 import {
+  listSessionPage,
   listSessions,
   deleteSession,
   setSessionPinned,
@@ -150,6 +151,34 @@ describe("session listing pagination", () => {
     expect(session?.lastMessage?.content.endsWith("...")).toBe(true);
     expect(session?.lastMessage?.content.length).toBeLessThan(longReply.length);
     expect(JSON.stringify(session).length).toBeLessThan(2000);
+  });
+
+  test("returns total metadata for bounded session pages", async () => {
+    const older = await createPersistedSession({
+      label: "page-total-older",
+      updatedAt: "2099-01-03T00:00:10.000Z",
+      userPrompt: "older page total prompt",
+      assistantReply: "older page total reply",
+    });
+    const newest = await createPersistedSession({
+      label: "page-total-newest",
+      updatedAt: "2099-01-03T00:00:30.000Z",
+      userPrompt: "newest page total prompt",
+      assistantReply: "newest page total reply",
+    });
+
+    const allSessions = await listSessions();
+    const page = await listSessionPage({ limit: 1, offset: 0 });
+
+    expect(allSessions.map((session) => session.id)).toEqual(
+      expect.arrayContaining([older, newest])
+    );
+    expect(page.sessions[0]?.id).toBe(allSessions[0]?.id);
+    expect(page.sessions).toHaveLength(1);
+    expect(page.total).toBe(allSessions.length);
+    expect(page.limit).toBe(1);
+    expect(page.offset).toBe(0);
+    expect(page.hasMore).toBe(allSessions.length > 1);
   });
 
   test("pin survives a title update (not reset by persistence)", async () => {

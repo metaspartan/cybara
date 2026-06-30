@@ -265,7 +265,9 @@ try {
   );
 
   -- Create indexes for performance
+  CREATE INDEX IF NOT EXISTS idx_chat_sessions_pinned_updated ON chat_sessions(pinned DESC, updated_at DESC);
   CREATE INDEX IF NOT EXISTS idx_session_messages_session ON session_messages(session_id);
+  CREATE INDEX IF NOT EXISTS idx_session_messages_session_created ON session_messages(session_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_session_messages_created ON session_messages(created_at);
   CREATE INDEX IF NOT EXISTS idx_system_logs_level ON system_logs(level);
   CREATE INDEX IF NOT EXISTS idx_system_logs_source ON system_logs(source);

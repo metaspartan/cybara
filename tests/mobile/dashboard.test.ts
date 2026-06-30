@@ -5,6 +5,7 @@ import {
   MOBILE_FEATURE_SECTIONS,
   MOBILE_ACCENT_KEYS,
   MOBILE_CHAT_COMPOSER,
+  MOBILE_CHAT_DETAIL_CHROME,
   MOBILE_CHAT_CHROME,
   MOBILE_GATEWAY_PANEL_CHROME,
   MOBILE_MAIN_TAB_CHROME,
@@ -15,6 +16,7 @@ import {
   MOBILE_TABS,
   boundedMobileComposerHeight,
   buildGatewayPanelMeta,
+  buildMobileChatSettingsLines,
   buildMobileHeaderCopy,
   formatMobileValue,
   formatUptime,
@@ -43,6 +45,7 @@ const summary: FeatureSummary = {
       updated_at: "2026-06-30T08:00:00.000Z",
     },
   ],
+  sessionTotal: 1234,
   agents: [{ id: "agent-1", name: "Agent" }],
   providers: [{ id: "provider-1", name: "OpenAI", provider: "openai" }],
   channels: [{ id: "web", title: "Web", detail: "enabled" }],
@@ -133,6 +136,30 @@ describe("mobile dashboard model", () => {
     );
   });
 
+  test("keeps chat settings in the persistent header with heavy metadata in the menu", () => {
+    expect(MOBILE_CHAT_DETAIL_CHROME.settingsInHeader).toBe(true);
+    expect(MOBILE_CHAT_DETAIL_CHROME.timelineMetadataBar).toBe(false);
+    expect(MOBILE_CHAT_DETAIL_CHROME.detailsMenuIncludesSessionId).toBe(true);
+    expect(MOBILE_CHAT_DETAIL_CHROME.detailsMenuIncludesWorkspaceDirectory).toBe(true);
+    expect(
+      buildMobileChatSettingsLines({
+        agentId: "minimax-m3-mini",
+        messageCount: 2,
+        sessionId: "session-abc123",
+        title: "Mobile chat polish",
+        updatedLabel: "6/30/2026, 12:30:00 PM",
+        workspaceDir: "/Users/carsen/Documents/GitHub/cybara",
+      })
+    ).toEqual([
+      "Title: Mobile chat polish",
+      "Messages: 2 messages",
+      "Updated: 6/30/2026, 12:30:00 PM",
+      "Agent: minimax-m3-mini",
+      "Workspace directory: /Users/carsen/Documents/GitHub/cybara",
+      "Session ID: session-abc123",
+    ]);
+  });
+
   test("keeps metrics live without an in-page refresh button", () => {
     expect(MOBILE_METRICS_CHROME.headerRefreshButton).toBe(false);
     expect(MOBILE_METRICS_CHROME.pullToRefresh).toBe(true);
@@ -177,7 +204,7 @@ describe("mobile dashboard model", () => {
 
   test("summarizes feature counts without requiring every optional endpoint", () => {
     expect(summarizeFeatureCounts(summary)).toEqual({
-      sessions: 1,
+      sessions: 1234,
       agents: 1,
       providers: 1,
       tools: 2,
@@ -198,7 +225,7 @@ describe("mobile dashboard model", () => {
     });
     expect(buildMobileHeaderCopy("sessions", counts, profile).title).toBe("Chats");
     expect(buildMobileHeaderCopy("metrics", counts, profile).detail).toBe(
-      "1 chat - 2 tools - 1 event"
+      "1234 chats - 2 tools - 1 event"
     );
     expect(buildMobileHeaderCopy("settings", counts, profile).title).toBe("Settings");
   });

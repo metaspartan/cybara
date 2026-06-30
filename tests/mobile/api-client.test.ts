@@ -91,7 +91,13 @@ describe("mobile API client", () => {
         return Response.json({ status: "healthy", uptime: 12, timestamp: "now" });
       }
       if (path === "/api/sessions") {
-        return Response.json([{ id: "s1", title: "Build", message_count: 3, updated_at: "now" }]);
+        return Response.json({
+          sessions: [{ id: "s1", title: "Build", message_count: 3, updated_at: "now" }],
+          total: 1200,
+          limit: 100,
+          offset: 0,
+          hasMore: true,
+        });
       }
       if (path === "/api/agents") return Response.json([{ id: "a1", name: "Main" }]);
       if (path === "/api/providers")
@@ -104,6 +110,7 @@ describe("mobile API client", () => {
       const summary = await new CybaraMobileApi(profile).featureSummary();
       expect(summary.health?.status).toBe("healthy");
       expect(summary.sessions).toHaveLength(1);
+      expect(summary.sessionTotal).toBe(1200);
       expect(summary.agents).toHaveLength(1);
       expect(summary.providers).toHaveLength(1);
       expect(summary.channels).toEqual([]);
@@ -197,7 +204,7 @@ describe("mobile API client", () => {
       expect(sent.message.thinking).toBe("top-level thought");
       expect(sent.message.toolCalls?.[0].name).toBe("shell");
       expect(calls.map((call) => `${call.method} ${call.path}${call.search}`)).toEqual([
-        "GET /api/sessions?limit=100",
+        "GET /api/sessions?limit=100&includeTotal=1",
         "GET /api/sessions/s1",
         "POST /api/chat",
       ]);
@@ -206,6 +213,42 @@ describe("mobile API client", () => {
         agentId: "agent-1",
         message: "continue",
       });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("keeps the mobile session list bounded while preserving the gateway total", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url) => {
+      const parsedUrl = new URL(String(url));
+      if (parsedUrl.pathname === "/api/sessions") {
+        return Response.json({
+          sessions: Array.from({ length: 100 }, (_, index) => ({
+            id: `s${index + 1}`,
+            title: `Session ${index + 1}`,
+            message_count: index + 1,
+            updated_at: `2026-06-30T08:${String(index % 60).padStart(2, "0")}:00.000Z`,
+          })),
+          total: 3407,
+          limit: 100,
+          offset: 0,
+          hasMore: true,
+        });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const api = new CybaraMobileApi(profile);
+      const page = await api.sessionList();
+      const summary = await api.featureSummary();
+
+      expect(page.sessions).toHaveLength(100);
+      expect(page.total).toBe(3407);
+      expect(page.hasMore).toBe(true);
+      expect(summary.sessions).toHaveLength(100);
+      expect(summary.sessionTotal).toBe(3407);
     } finally {
       globalThis.fetch = originalFetch;
     }

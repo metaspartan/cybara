@@ -123,7 +123,7 @@ interface SessionLastMessagePreview {
 
 const SESSION_LAST_MESSAGE_PREVIEW_MAX_CHARS = 500;
 
-interface PersistedSessionIndexEntry {
+interface SessionListEntry {
   id: string;
   agentId: string;
   title: string | null;
@@ -134,6 +134,8 @@ interface PersistedSessionIndexEntry {
   pinned: boolean;
   lastMessage: SessionLastMessagePreview | null;
 }
+
+type PersistedSessionIndexEntry = SessionListEntry;
 
 const chatSessions = new Map<string, InMemoryChatSession>();
 const persistedSessionIndex = new Map<string, PersistedSessionIndexEntry>();
@@ -1318,19 +1320,33 @@ export async function getSessionMessages(sessionId: string): Promise<ChatMessage
   return session?.messages || [];
 }
 
-export async function listSessions(options?: { limit?: number; offset?: number }): Promise<
-  Array<{
-    id: string;
-    agentId: string;
-    title: string | null;
-    messageCount: number;
-    createdAt: string;
-    updatedAt: string;
-    workspaceDir: string | null;
-    pinned: boolean;
-    lastMessage: SessionLastMessagePreview | null;
-  }>
-> {
+function normalizeSessionPageOptions(options?: { limit?: number; offset?: number }): {
+  limit?: number;
+  offset: number;
+} {
+  const limit =
+    typeof options?.limit === "number" && Number.isFinite(options.limit)
+      ? Math.max(1, Math.floor(options.limit))
+      : undefined;
+  const offset =
+    typeof options?.offset === "number" && Number.isFinite(options.offset)
+      ? Math.max(0, Math.floor(options.offset))
+      : 0;
+  return { limit, offset };
+}
+
+function sliceSessionPage(
+  sessions: SessionListEntry[],
+  options?: { limit?: number; offset?: number }
+) {
+  const { limit, offset } = normalizeSessionPageOptions(options);
+  if (!limit) {
+    return sessions.slice(offset);
+  }
+  return sessions.slice(offset, offset + limit);
+}
+
+async function buildSessionListIndex(): Promise<SessionListEntry[]> {
   const memorySessions = Array.from(chatSessions.values()).map((s) => ({
     id: s.id,
     agentId: s.agentId,
@@ -1398,18 +1414,33 @@ export async function listSessions(options?: { limit?: number; offset?: number }
       (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) ||
       new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   );
-  const limit =
-    typeof options?.limit === "number" && Number.isFinite(options.limit)
-      ? Math.max(1, Math.floor(options.limit))
-      : undefined;
-  const offset =
-    typeof options?.offset === "number" && Number.isFinite(options.offset)
-      ? Math.max(0, Math.floor(options.offset))
-      : 0;
-  if (!limit) {
-    return sortedSessions.slice(offset);
-  }
-  return sortedSessions.slice(offset, offset + limit);
+  return sortedSessions;
+}
+
+export async function listSessions(options?: {
+  limit?: number;
+  offset?: number;
+}): Promise<SessionListEntry[]> {
+  return sliceSessionPage(await buildSessionListIndex(), options);
+}
+
+export async function listSessionPage(options?: { limit?: number; offset?: number }): Promise<{
+  sessions: SessionListEntry[];
+  total: number;
+  limit: number | null;
+  offset: number;
+  hasMore: boolean;
+}> {
+  const sortedSessions = await buildSessionListIndex();
+  const { limit, offset } = normalizeSessionPageOptions(options);
+  const sessions = sliceSessionPage(sortedSessions, { limit, offset });
+  return {
+    sessions,
+    total: sortedSessions.length,
+    limit: limit ?? null,
+    offset,
+    hasMore: limit ? offset + sessions.length < sortedSessions.length : false,
+  };
 }
 
 export async function deleteSession(sessionId: string): Promise<boolean> {

@@ -81,6 +81,7 @@ import {
   getSession,
   getSessionMessages,
   listSessions,
+  listSessionPage,
   deleteSession,
   setSessionPinned,
   revertSessionToMessage,
@@ -3944,12 +3945,15 @@ const routes: Record<string, RouteHandler> = {
     };
     const limit = parseQueryNumber(params?.limit);
     const offset = parseQueryNumber(params?.offset);
-    const sessions = await listSessions({
+    const pageOptions = {
       limit: typeof limit === "number" ? Math.min(500, Math.max(1, limit)) : undefined,
       offset: typeof offset === "number" ? Math.max(0, offset) : undefined,
-    });
-
-    return sessions.map((session) => {
+    };
+    const includeTotal =
+      params?.includeTotal === "1" ||
+      params?.includeTotal === "true" ||
+      params?.includeTotal === "yes";
+    const toApiSession = (session: Awaited<ReturnType<typeof listSessions>>[number]) => {
       const updatedAt = session.updatedAt || session.createdAt;
       const lastMessage = session.lastMessage;
       return {
@@ -3972,7 +3976,21 @@ const routes: Record<string, RouteHandler> = {
             }
           : null,
       };
-    });
+    };
+
+    if (includeTotal) {
+      const page = await listSessionPage(pageOptions);
+      return {
+        sessions: page.sessions.map(toApiSession),
+        total: page.total,
+        limit: page.limit,
+        offset: page.offset,
+        has_more: page.hasMore,
+        hasMore: page.hasMore,
+      };
+    }
+
+    return (await listSessions(pageOptions)).map(toApiSession);
   },
   "GET /api/sessions/:sessionId": async (_body, params) => {
     const session = await getSession(params!.sessionId);

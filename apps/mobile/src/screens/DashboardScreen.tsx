@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -76,6 +84,7 @@ import type { GatewayProfile } from "../lib/connection";
 import {
   MOBILE_NAV_CHROME,
   MOBILE_CHAT_COMPOSER,
+  MOBILE_CHAT_DETAIL_CHROME,
   MOBILE_CHAT_CHROME,
   MOBILE_ACCENT_KEYS,
   MOBILE_GATEWAY_PANEL_CHROME,
@@ -85,6 +94,7 @@ import {
   MOBILE_TABS,
   boundedMobileComposerHeight,
   buildGatewayPanelMeta,
+  buildMobileChatSettingsLines,
   buildMobileHeaderCopy,
   compactHost,
   formatUptime,
@@ -136,6 +146,11 @@ type DetailRoute =
   | { kind: "newChat" }
   | { kind: "surface"; surface: MobileSurfaceKey }
   | { kind: "item"; surface: MobileSurfaceKey; item: RemoteItemSummary | ActivitySummary };
+
+interface ChatHeaderAction {
+  busy: boolean;
+  onPress: () => void;
+}
 
 const tabIcons: Record<MobileTabKey, IconGlyph> = {
   overview: House,
@@ -391,6 +406,7 @@ export function DashboardScreen({
   const [error, setError] = useState<string | null>(null);
   const [metricsError, setMetricsError] = useState<string | null>(null);
   const [accentOverride, setAccentOverride] = useState<AccentKey | null>(null);
+  const [chatHeaderAction, setChatHeaderAction] = useState<ChatHeaderAction | null>(null);
   const refreshInFlight = useRef(false);
   const metricsRefreshInFlight = useRef(false);
 
@@ -616,7 +632,21 @@ export function DashboardScreen({
             </Text>
           </View>
         </View>
-        {!detailRoute && activeTab !== "metrics" ? (
+        {detailRoute?.kind === "session" && MOBILE_CHAT_DETAIL_CHROME.settingsInHeader ? (
+          <Pressable
+            accessibilityLabel="Chat settings"
+            accessibilityRole="button"
+            disabled={!chatHeaderAction}
+            onPress={() => chatHeaderAction?.onPress()}
+            style={[styles.iconButton, !chatHeaderAction && styles.iconButtonDisabled]}
+          >
+            {chatHeaderAction?.busy ? (
+              <ActivityIndicator color={colors.textMuted} size="small" />
+            ) : (
+              <Settings color={colors.text} size={22} strokeWidth={2.1} />
+            )}
+          </Pressable>
+        ) : !detailRoute && activeTab !== "metrics" ? (
           <Pressable style={styles.iconButton} onPress={() => selectTab("settings")}>
             <Settings color={colors.text} size={22} strokeWidth={2.1} />
           </Pressable>
@@ -629,7 +659,11 @@ export function DashboardScreen({
           api={api}
           closeDetail={() => setDetailRoute(null)}
           refreshSummary={() => refresh(false)}
+          sessionSummary={
+            summary?.sessions.find((session) => session.id === detailRoute.id) ?? null
+          }
           sessionId={detailRoute.id}
+          setHeaderAction={setChatHeaderAction}
         />
       ) : (
         <ScrollView
@@ -997,6 +1031,10 @@ function SessionsPanel({
 }) {
   const latest = sessions[0];
   const endpoint = summary?.availability.sessions;
+  const totalChats = summary?.sessionTotal ?? sessions.length;
+  const visibleSessionCount = Math.min(sessions.length, 20);
+  const pageDetail =
+    totalChats > visibleSessionCount ? `showing ${visibleSessionCount} recent` : "total";
 
   return (
     <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
@@ -1004,8 +1042,8 @@ function SessionsPanel({
         <SummaryTile
           Icon={MessageCircle}
           label="Chats"
-          value={String(sessions.length)}
-          detail="total"
+          value={String(totalChats)}
+          detail={pageDetail}
           tone={accentColor}
         />
         <SummaryTile
@@ -1022,7 +1060,7 @@ function SessionsPanel({
           <Text style={styles.smallButtonText}>New</Text>
         </Pressable>
       </View>
-      {sessions.slice(0, 20).map((session) => (
+      {sessions.slice(0, visibleSessionCount).map((session) => (
         <Pressable key={session.id} style={styles.listRow} onPress={() => openSession(session.id)}>
           <View style={styles.listIcon}>
             {sessionMayBeInProgress(session) ? (
@@ -1465,6 +1503,7 @@ function SessionDetailPanel({
   refreshSummary,
   sessionSummary,
   sessionId,
+  setHeaderAction,
 }: {
   accentColor: string;
   api: CybaraMobileApi;
@@ -1472,6 +1511,7 @@ function SessionDetailPanel({
   refreshSummary: () => void;
   sessionSummary?: SessionSummary | null;
   sessionId: string;
+  setHeaderAction?: Dispatch<SetStateAction<ChatHeaderAction | null>>;
 }) {
   const [detail, setDetail] = useState<SessionDetailSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1483,6 +1523,7 @@ function SessionDetailPanel({
   const [pinned, setPinned] = useState(sessionSummary?.pinned ?? false);
   const [pinning, setPinning] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  const headerActionRef = useRef<() => void>(() => {});
   const sessionRefreshInFlight = useRef(false);
 
   const loadSession = async (showLoading = false) => {
@@ -1644,17 +1685,19 @@ function SessionDetailPanel({
       detail?.updatedAt ||
       sessionSummary?.updated_at ||
       detail?.messages[detail.messages.length - 1]?.timestamp;
-    const title = detail?.title || sessionSummary?.title || `Session ${sessionId.slice(0, 8)}`;
+    const title = detail?.title || sessionSummary?.title || null;
+    const agentId = detail?.agentId || sessionSummary?.agent_id || null;
+    const workspaceDir = detail?.workspaceDir || sessionSummary?.workspace_dir || null;
     Alert.alert(
-      "Chat details",
-      [
+      "Chat settings",
+      buildMobileChatSettingsLines({
+        agentId,
+        messageCount,
+        sessionId,
         title,
-        `${messageCount} message${messageCount === 1 ? "" : "s"}`,
-        `Updated: ${absoluteTimestampLabel(updatedAt)}`,
-        `Agent: ${detail?.agentId || sessionSummary?.agent_id || "unknown"}`,
-        `Workspace: ${compactWorkspace(detail?.workspaceDir || sessionSummary?.workspace_dir)}`,
-        `Session: ${sessionId}`,
-      ].join("\n"),
+        updatedLabel: absoluteTimestampLabel(updatedAt),
+        workspaceDir,
+      }).join("\n"),
       [
         {
           text: pinned ? "Unpin chat" : "Pin chat",
@@ -1667,6 +1710,20 @@ function SessionDetailPanel({
       ]
     );
   };
+  headerActionRef.current = showChatActions;
+
+  useEffect(() => {
+    return () => {
+      setHeaderAction?.(null);
+    };
+  }, [setHeaderAction, sessionId]);
+
+  useEffect(() => {
+    setHeaderAction?.({
+      busy: pinning,
+      onPress: () => headerActionRef.current(),
+    });
+  }, [setHeaderAction, sessionId, pinning]);
 
   const visibleMessages = useMemo(
     () => latestVisibleChatMessages(detail?.messages ?? []),
@@ -1699,38 +1756,6 @@ function SessionDetailPanel({
         {loadError ? <EmptyState label="Session unavailable" detail={loadError} /> : null}
         {detail ? (
           <>
-            <View style={styles.chatMetaBar}>
-              <View style={styles.chatMetaChips}>
-                {pinned ? (
-                  <View style={[styles.chatMetaChip, styles.chatPinnedChip]}>
-                    <ShieldCheck color={colors.amber} size={15} strokeWidth={2.2} />
-                    <Text numberOfLines={1} style={[styles.chatMetaText, { color: colors.amber }]}>
-                      Pinned
-                    </Text>
-                  </View>
-                ) : null}
-                <View style={styles.chatMetaChip}>
-                  <Bot color={colors.green} size={15} strokeWidth={2.2} />
-                  <Text numberOfLines={1} style={styles.chatMetaText}>
-                    {detail.agentId || sessionSummary?.agent_id || "unknown agent"}
-                  </Text>
-                </View>
-                <View style={styles.chatMetaChip}>
-                  <Database color={colors.blueText} size={15} strokeWidth={2.2} />
-                  <Text numberOfLines={1} style={styles.chatMetaText}>
-                    {compactWorkspace(detail.workspaceDir || sessionSummary?.workspace_dir)}
-                  </Text>
-                </View>
-              </View>
-              <Pressable style={styles.chatActionButton} onPress={showChatActions}>
-                {pinning ? (
-                  <ActivityIndicator color={colors.textMuted} size="small" />
-                ) : (
-                  <Settings color={colors.textMuted} size={18} strokeWidth={2.1} />
-                )}
-              </Pressable>
-            </View>
-
             {visibleMessages.map((message, index) => (
               <ChatMessageRow
                 key={`${message.id}-${index}`}
@@ -2378,6 +2403,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 48,
   },
+  iconButtonDisabled: {
+    opacity: 0.55,
+  },
   gatewayPanel: {
     gap: spacing.sm,
   },
@@ -2672,51 +2700,6 @@ const styles = StyleSheet.create({
     paddingBottom:
       MOBILE_CHAT_CHROME.composerReservedBottom + MOBILE_CHAT_COMPOSER.maxHeight + spacing.xl,
     paddingHorizontal: spacing.lg,
-  },
-  chatMetaBar: {
-    alignItems: "flex-start",
-    flexDirection: "row",
-    gap: spacing.sm,
-    justifyContent: "space-between",
-    paddingTop: spacing.xs,
-  },
-  chatMetaChips: {
-    flex: 1,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-  },
-  chatMetaChip: {
-    alignItems: "center",
-    backgroundColor: "rgba(2, 7, 11, 0.88)",
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    flexDirection: "row",
-    flexShrink: 1,
-    gap: spacing.xs,
-    minHeight: 30,
-    paddingHorizontal: spacing.sm,
-  },
-  chatPinnedChip: {
-    backgroundColor: `${colors.amber}14`,
-    borderColor: `${colors.amber}40`,
-  },
-  chatMetaText: {
-    color: colors.textMuted,
-    fontSize: typography.tiny,
-    fontWeight: "700",
-    maxWidth: 180,
-  },
-  chatActionButton: {
-    alignItems: "center",
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    height: 34,
-    justifyContent: "center",
-    minHeight: 30,
-    width: 38,
   },
   chatMessageRow: {
     alignItems: "flex-start",

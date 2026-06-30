@@ -357,7 +357,10 @@ ${conversationText}`;
 
 function messagesToConversationText(messages: ChatMessage[]): string {
   return messages
-    .map((m) => `${m.role}: ${m.content.slice(0, 800)}${m.content.length > 800 ? " [...truncated]" : ""}`)
+    .map(
+      (m) =>
+        `${m.role}: ${m.content.slice(0, 800)}${m.content.length > 800 ? " [...truncated]" : ""}`
+    )
     .join("\n\n");
 }
 
@@ -379,7 +382,12 @@ async function generateContextSummary(
 
   if (chunkCount <= 1) {
     const prompt = buildStructuredSummaryPrompt(messagesToConversationText(messages));
-    const response = await agentManager.callLLM(provider, model, [{ role: "user", content: prompt }], []);
+    const response = await agentManager.callLLM(
+      provider,
+      model,
+      [{ role: "user", content: prompt }],
+      []
+    );
     return response.content.slice(0, 1200);
   }
 
@@ -389,7 +397,12 @@ async function generateContextSummary(
   let previousSummary: string | undefined;
   for (const chunk of chunks) {
     const prompt = buildStructuredSummaryPrompt(messagesToConversationText(chunk), previousSummary);
-    const response = await agentManager.callLLM(provider, model, [{ role: "user", content: prompt }], []);
+    const response = await agentManager.callLLM(
+      provider,
+      model,
+      [{ role: "user", content: prompt }],
+      []
+    );
     const summary = response.content.slice(0, 600);
     chunkSummaries.push(summary);
     previousSummary = summary;
@@ -402,7 +415,12 @@ Deduplicate. Keep it under 250 words. Preserve all literal identifiers.
 
 Partial summaries:
 ${chunkSummaries.map((s, i) => `--- Part ${i + 1} ---\n${s}`).join("\n")}`;
-  const merged = await agentManager.callLLM(provider, model, [{ role: "user", content: mergePrompt }], []);
+  const merged = await agentManager.callLLM(
+    provider,
+    model,
+    [{ role: "user", content: mergePrompt }],
+    []
+  );
   return merged.content.slice(0, 1200);
 }
 
@@ -572,10 +590,11 @@ export async function listPersistedSessions(): Promise<
         cs.updated_at as updatedAt,
         cs.workspace_dir as workspaceDir,
         COALESCE(cs.pinned, 0) as pinned,
-        CASE
-          WHEN COUNT(sm.id) > 0 THEN COUNT(sm.id)
-          ELSE COALESCE(json_array_length(cs.messages), 0)
-        END as messageCount,
+        COALESCE(NULLIF((
+          SELECT COUNT(*)
+          FROM session_messages sm
+          WHERE sm.session_id = cs.id
+        ), 0), json_array_length(cs.messages), 0) as messageCount,
         COALESCE((
           SELECT lm.role
           FROM session_messages lm
@@ -591,8 +610,6 @@ export async function listPersistedSessions(): Promise<
           LIMIT 1
         ), json_extract(cs.messages, '$[#-1].content')) as lastMessageContent
       FROM chat_sessions cs
-      LEFT JOIN session_messages sm ON cs.id = sm.session_id
-      GROUP BY cs.id
       ORDER BY cs.pinned DESC, cs.updated_at DESC
     `
       )

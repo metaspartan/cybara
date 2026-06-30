@@ -165,7 +165,7 @@ function countArray(value: unknown[] | undefined): number {
 
 export function summarizeFeatureCounts(summary: FeatureSummary | null): FeatureCounts {
   return {
-    sessions: summary?.sessions.length ?? 0,
+    sessions: summary?.sessionTotal ?? summary?.sessions.length ?? 0,
     agents: summary?.agents.length ?? 0,
     providers: summary?.providers.length ?? 0,
     tools: countArray(summary?.tools),

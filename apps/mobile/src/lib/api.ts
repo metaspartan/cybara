@@ -23,6 +23,14 @@ export interface SessionSummary {
   last_message?: { role: string; content: string } | null;
 }
 
+export interface SessionListPage {
+  sessions: SessionSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
 export interface AgentSummary {
   id: string;
   name: string;
@@ -118,6 +126,7 @@ export interface SessionDetailSummary {
 export interface FeatureSummary {
   health: HealthResponse | null;
   sessions: SessionSummary[];
+  sessionTotal?: number;
   agents: AgentSummary[];
   providers: ProviderSummary[];
   channels: RemoteItemSummary[];
@@ -335,6 +344,30 @@ function normalizeSessions(value: unknown): SessionSummary[] {
   );
 }
 
+function normalizeSessionListPage(
+  value: unknown,
+  fallbackLimit = MOBILE_SESSION_LIST_LIMIT,
+  fallbackOffset = 0
+): SessionListPage {
+  const record = asRecord(value);
+  const sessions = normalizeSessions(value);
+  const total =
+    readNumber(record, ["total", "totalCount", "total_count", "count"]) ?? sessions.length;
+  const limit = readNumber(record, ["limit"]) ?? fallbackLimit;
+  const offset = readNumber(record, ["offset"]) ?? fallbackOffset;
+  const hasMore =
+    record?.hasMore === true ||
+    record?.has_more === true ||
+    offset + sessions.length < Math.max(total, sessions.length);
+  return {
+    sessions,
+    total: Math.max(sessions.length, total),
+    limit,
+    offset,
+    hasMore,
+  };
+}
+
 export function sessionSortTimestampMs(session: SessionSummary): number {
   const updated = Date.parse(session.updated_at || "");
   if (Number.isFinite(updated)) return updated;
@@ -477,10 +510,14 @@ export class CybaraMobileApi {
     return this.request<HealthResponse>("/api/health");
   }
 
-  async sessions(): Promise<SessionSummary[]> {
-    return normalizeSessions(
-      await this.request<unknown>(`/api/sessions?limit=${MOBILE_SESSION_LIST_LIMIT}`)
+  async sessionList(): Promise<SessionListPage> {
+    return normalizeSessionListPage(
+      await this.request<unknown>(`/api/sessions?limit=${MOBILE_SESSION_LIST_LIMIT}&includeTotal=1`)
     );
+  }
+
+  async sessions(): Promise<SessionSummary[]> {
+    return (await this.sessionList()).sessions;
   }
 
   async session(id: string): Promise<SessionDetailSummary> {
@@ -592,7 +629,7 @@ export class CybaraMobileApi {
 
     const [
       health,
-      sessions,
+      sessionList,
       agents,
       providers,
       channels,
@@ -606,7 +643,17 @@ export class CybaraMobileApi {
       config,
     ] = await Promise.all([
       safe<HealthResponse | null>("health", null, () => this.health()),
-      safe<SessionSummary[]>("sessions", [], () => this.sessions()),
+      safe<SessionListPage>(
+        "sessions",
+        {
+          sessions: [],
+          total: 0,
+          limit: MOBILE_SESSION_LIST_LIMIT,
+          offset: 0,
+          hasMore: false,
+        },
+        () => this.sessionList()
+      ),
       safe<AgentSummary[]>("agents", [], () => this.agents()),
       safe<ProviderSummary[]>("providers", [], () => this.providers()),
       safe<RemoteItemSummary[]>("channels", [], async () =>
@@ -644,7 +691,8 @@ export class CybaraMobileApi {
 
     return {
       health,
-      sessions,
+      sessions: sessionList.sessions,
+      sessionTotal: sessionList.total,
       agents,
       providers,
       channels,
