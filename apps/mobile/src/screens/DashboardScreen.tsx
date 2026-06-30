@@ -12,7 +12,6 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
-  Linking,
   Platform,
   Pressable,
   RefreshControl,
@@ -44,7 +43,6 @@ import {
   Send,
   Settings,
   ShieldCheck,
-  SquareTerminal,
   User,
   UsersRound,
   Wifi,
@@ -86,6 +84,7 @@ import {
   MOBILE_CHAT_COMPOSER,
   MOBILE_CHAT_DETAIL_CHROME,
   MOBILE_CHAT_CHROME,
+  MOBILE_RECENT_ACTIVITY_CHROME,
   MOBILE_ACCENT_KEYS,
   MOBILE_GATEWAY_PANEL_CHROME,
   MOBILE_MAIN_TAB_CHROME,
@@ -102,6 +101,7 @@ import {
   lastUpdatedLabel,
   mobileComposerHeightForDraft,
   mobileThemeConfigPayload,
+  recentSessionStateLabel,
   readMobileAccent,
   summarizeFeatureCounts,
   type FeatureCounts,
@@ -176,7 +176,6 @@ const surfaceMeta: Record<
   channels: { title: "Channels", Icon: Link2, tone: colors.cyan, endpoint: "channels" },
   tasks: { title: "Tasks", Icon: CalendarCheck, tone: colors.blueText, endpoint: "tasks" },
   memory: { title: "Memory", Icon: Brain, tone: colors.green, endpoint: "memory" },
-  terminal: { title: "Terminal", Icon: SquareTerminal, tone: colors.cyan },
   logs: { title: "Logs", Icon: ListTodo, tone: colors.textMuted, endpoint: "logs" },
   monitor: { title: "System Monitor", Icon: Cpu, tone: colors.blueText, endpoint: "health" },
 };
@@ -259,8 +258,7 @@ function itemFromRecord(
 
 function surfaceRows(
   surface: MobileSurfaceKey,
-  summary: FeatureSummary | null,
-  profile: GatewayProfile
+  summary: FeatureSummary | null
 ): Array<RemoteItemSummary | ActivitySummary> {
   if (!summary) return [];
   switch (surface) {
@@ -301,13 +299,6 @@ function surfaceRows(
         }),
         itemFromRecord("wallet-status", "Wallet status", formatMobileValue(summary.walletStatus), {
           status: summary.walletStatus,
-        }),
-      ];
-    case "terminal":
-      return [
-        itemFromRecord("terminal", "Gateway terminal", "Open the gateway terminal surface", {
-          url: `${profile.baseUrl}/terminal`,
-          status: "available from gateway web UI",
         }),
       ];
     case "monitor": {
@@ -357,8 +348,6 @@ function surfaceMenuDetail(
       return surfaceCount(summary, "logs", counts.logs, "events", "No recent events");
     case "wallet":
       return summary.walletPolicy || summary.walletStatus ? "Policy and status" : "Unavailable";
-    case "terminal":
-      return "Open gateway terminal";
     case "monitor":
       return rowCount > 0 ? `${rowCount} health checks` : "Health checks";
   }
@@ -582,15 +571,6 @@ export function DashboardScreen({
       surface: "memory",
     },
     {
-      key: "terminal",
-      label: "Terminal",
-      detail: "Web shell",
-      value: "CLI",
-      Icon: SquareTerminal,
-      tab: "settings",
-      surface: "terminal",
-    },
-    {
       key: "logs",
       label: "Logs",
       detail: surfaceCount(summary, "logs", counts.logs, "events", "No recent events"),
@@ -757,6 +737,7 @@ export function DashboardScreen({
               logs={summary?.logs ?? []}
               selectTab={selectTab}
               openSurface={openSurface}
+              openSession={(id) => setDetailRoute({ kind: "session", id })}
             />
           ) : null}
           {!detailRoute && activeTab === "sessions" ? (
@@ -869,30 +850,37 @@ function OverviewPanel({
   logs,
   selectTab,
   openSurface,
+  openSession,
 }: {
   modules: ModuleCard[];
   sessions: SessionSummary[];
   logs: ActivitySummary[];
   selectTab: (tab: MobileTabKey) => void;
   openSurface: (surface: MobileSurfaceKey) => void;
+  openSession: (id: string) => void;
 }) {
   const activityRows =
     sessions.length > 0
-      ? sessions.slice(0, 3).map((session, index) => ({
-          id: session.id,
-          Icon: index === 1 ? SquareTerminal : MessageCircle,
-          title: session.title || session.id.slice(0, 8),
-          detail: `${session.agent_id || "agent"} - ${lastUpdatedLabel(session)}`,
-          state: "Active",
-          tone: colors.green,
-        }))
+      ? sessions.slice(0, 3).map((session) => {
+          const state = recentSessionStateLabel(session);
+          return {
+            id: session.id,
+            Icon: MessageCircle,
+            title: session.title || session.id.slice(0, 8),
+            detail: `${session.agent_id || "agent"} - ${lastUpdatedLabel(session)}`,
+            state,
+            tone: state === "Working" ? colors.amber : colors.blueText,
+            onPress: () => openSession(session.id),
+          };
+        })
       : logs.slice(0, 3).map((log) => ({
           id: log.id,
           Icon: ListTodo,
           title: log.title,
           detail: `${log.source} - ${log.createdAt ? relativeTimestamp(log.createdAt) : "recent"}`,
-          state: "Event",
-          tone: colors.cyan,
+          state: "Recent",
+          tone: colors.blueText,
+          onPress: undefined,
         }));
 
   return (
@@ -941,6 +929,7 @@ function OverviewPanel({
             detail={row.detail}
             state={row.state}
             tone={row.tone}
+            onPress={row.onPress}
           />
         ))}
         {activityRows.length === 0 ? (
@@ -1005,8 +994,16 @@ function ActivityRow({
         <Icon color={colors.text} size={21} strokeWidth={2.1} />
       </View>
       <View style={styles.activityText}>
-        <Text style={styles.activityTitle}>{title}</Text>
-        <Text style={styles.activityDetail}>{detail}</Text>
+        <Text
+          ellipsizeMode="tail"
+          numberOfLines={MOBILE_RECENT_ACTIVITY_CHROME.truncateTitles ? 1 : undefined}
+          style={styles.activityTitle}
+        >
+          {title}
+        </Text>
+        <Text ellipsizeMode="tail" numberOfLines={1} style={styles.activityDetail}>
+          {detail}
+        </Text>
       </View>
       <View style={[styles.statePill, { borderColor: `${tone}55`, backgroundColor: `${tone}17` }]}>
         <Text style={[styles.stateText, { color: tone }]}>{state}</Text>
@@ -1484,7 +1481,7 @@ function DetailContent({
     );
   }
   if (route.kind === "item") {
-    return <ItemDetailPanel profile={profile} route={route} />;
+    return <ItemDetailPanel route={route} />;
   }
   return (
     <SurfaceDetailPanel
@@ -1994,7 +1991,7 @@ function SurfaceDetailPanel({
   openItem: (item: RemoteItemSummary | ActivitySummary) => void;
 }) {
   const meta = surfaceMeta[surface];
-  const rows = surfaceRows(surface, summary, profile);
+  const rows = surfaceRows(surface, summary);
   const endpoint = meta.endpoint ? summary?.availability[meta.endpoint] : undefined;
 
   return (
@@ -2042,13 +2039,7 @@ function SurfaceDetailPanel({
   );
 }
 
-function ItemDetailPanel({
-  profile,
-  route,
-}: {
-  profile: GatewayProfile;
-  route: Extract<DetailRoute, { kind: "item" }>;
-}) {
+function ItemDetailPanel({ route }: { route: Extract<DetailRoute, { kind: "item" }> }) {
   const item = route.item;
   const meta = surfaceMeta[route.surface];
   const Icon = meta.Icon;
@@ -2074,13 +2065,6 @@ function ItemDetailPanel({
           <Text style={styles.itemDetail}>{item.detail}</Text>
         </View>
       </View>
-      {route.surface === "terminal" ? (
-        <GlassButton
-          label="Open terminal"
-          detail={compactHost(profile.baseUrl)}
-          onPress={() => void Linking.openURL(`${profile.baseUrl}/terminal`)}
-        />
-      ) : null}
       <Text style={styles.subsectionTitle}>Details</Text>
       {fields.map((field, index) => (
         <View key={`${field.label}-${index}`} style={styles.listRow}>
@@ -2247,7 +2231,7 @@ function SettingsPanel({
       {MOBILE_SETTINGS_SURFACES.map((surface) => {
         const meta = surfaceMeta[surface];
         const Icon = meta.Icon;
-        const rows = surfaceRows(surface, summary, profile);
+        const rows = surfaceRows(surface, summary);
         return (
           <Pressable key={surface} style={styles.listRow} onPress={() => openSurface(surface)}>
             <View style={[styles.listIcon, { backgroundColor: `${meta.tone}18` }]}>

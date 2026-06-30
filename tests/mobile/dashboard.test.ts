@@ -11,6 +11,7 @@ import {
   MOBILE_MAIN_TAB_CHROME,
   MOBILE_METRICS_CHROME,
   MOBILE_NAV_CHROME,
+  MOBILE_RECENT_ACTIVITY_CHROME,
   MOBILE_SETTINGS_SURFACES,
   MOBILE_SURFACES,
   MOBILE_TABS,
@@ -23,6 +24,7 @@ import {
   lastUpdatedLabel,
   mobileComposerHeightForDraft,
   mobileThemeConfigPayload,
+  recentSessionStateLabel,
   readMobileAccent,
   summarizeFeatureCounts,
 } from "../../apps/mobile/src/lib/dashboard";
@@ -180,7 +182,6 @@ describe("mobile dashboard model", () => {
       "channels",
       "tasks",
       "memory",
-      "terminal",
       "logs",
       "monitor",
     ]);
@@ -192,7 +193,6 @@ describe("mobile dashboard model", () => {
       "providers",
       "tools",
       "approvals",
-      "terminal",
       "channels",
       "tasks",
       "memory",
@@ -200,6 +200,20 @@ describe("mobile dashboard model", () => {
       "monitor",
       "wallet",
     ]);
+    expect(MOBILE_RECENT_ACTIVITY_CHROME.showTerminalRows).toBe(false);
+  });
+
+  test("keeps recent activity chat rows tappable and honest about state", () => {
+    expect(MOBILE_RECENT_ACTIVITY_CHROME.chatsOpenSession).toBe(true);
+    expect(MOBILE_RECENT_ACTIVITY_CHROME.truncateTitles).toBe(true);
+    expect(MOBILE_RECENT_ACTIVITY_CHROME.useRecentStateForIdleChats).toBe(true);
+    expect(recentSessionStateLabel(summary.sessions[0])).toBe("Recent");
+    expect(
+      recentSessionStateLabel({
+        ...summary.sessions[0],
+        last_message: { role: "user", content: "continue" },
+      })
+    ).toBe("Working");
   });
 
   test("summarizes feature counts without requiring every optional endpoint", () => {

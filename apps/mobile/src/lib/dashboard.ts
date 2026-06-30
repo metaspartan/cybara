@@ -11,7 +11,6 @@ export type MobileSurfaceKey =
   | "channels"
   | "tasks"
   | "memory"
-  | "terminal"
   | "logs"
   | "monitor";
 
@@ -65,6 +64,13 @@ export const MOBILE_CHAT_DETAIL_CHROME = {
   detailsMenuIncludesSessionId: true,
   detailsMenuIncludesWorkspaceDirectory: true,
   timelineMetadataBar: false,
+} as const;
+
+export const MOBILE_RECENT_ACTIVITY_CHROME = {
+  chatsOpenSession: true,
+  showTerminalRows: false,
+  truncateTitles: true,
+  useRecentStateForIdleChats: true,
 } as const;
 
 export const MOBILE_CHAT_COMPOSER = {
@@ -126,7 +132,6 @@ export const MOBILE_FEATURE_SECTIONS = [
   "channels",
   "tasks",
   "memory",
-  "terminal",
   "logs",
   "monitor",
 ] as const;
@@ -140,7 +145,6 @@ export const MOBILE_SURFACES: MobileSurfaceKey[] = [
   "channels",
   "tasks",
   "memory",
-  "terminal",
   "logs",
   "monitor",
 ];
@@ -150,7 +154,6 @@ export const MOBILE_SETTINGS_SURFACES: MobileSurfaceKey[] = [
   "providers",
   "tools",
   "approvals",
-  "terminal",
   "channels",
   "tasks",
   "memory",
@@ -237,6 +240,10 @@ export function buildMobileChatSettingsLines({
     lines.push(`Session ID: ${sessionId}`);
   }
   return lines;
+}
+
+export function recentSessionStateLabel(session: SessionSummary): "Working" | "Recent" {
+  return session.last_message?.role === "user" ? "Working" : "Recent";
 }
 
 export function lastUpdatedLabel(session: SessionSummary, nowMs = Date.now()): string {
