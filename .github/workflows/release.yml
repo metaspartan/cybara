@@ -181,6 +181,92 @@ jobs:
           releaseDraft: false
           args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
 
+  # ── Native macOS app (SwiftUI shell) — signed + notarized ───────────────────
+  build-native-macos:
+    name: Native macOS ${{ matrix.arch }}
+    needs: quality
+    # Best-effort: the native app doesn't block the CLI release.
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: [self-hosted, macOS, ARM64]
+    runs-on: ${{ matrix.runner }}
+    env:
+      # Mapped from secrets so steps can gate on presence. Leave the secrets
+      # unset to produce an unsigned (Gatekeeper-quarantined) build instead.
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+      MACOS_NOTARY_API_KEY: ${{ secrets.MACOS_NOTARY_API_KEY }}
+      MACOS_NOTARY_API_KEY_ID: ${{ secrets.MACOS_NOTARY_API_KEY_ID }}
+      MACOS_NOTARY_API_ISSUER_ID: ${{ secrets.MACOS_NOTARY_API_ISSUER_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Install dependencies
+        run: bun install --ignore-scripts
+      - name: Run postinstall
+        run: bun run scripts/postinstall.ts
+      - name: Sync version metadata
+        run: bun run version:sync
+      - name: Run native-app unit tests
+        run: swift test --package-path apps/macos/Cybara
+      - name: Import signing certificate
+        if: env.MACOS_CERTIFICATE != ''
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/cybara-signing.keychain-db"
+          KC_PW="${MACOS_KEYCHAIN_PASSWORD:-cybara-ci}"
+          security create-keychain -p "$KC_PW" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KC_PW" "$KEYCHAIN"
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KC_PW" "$KEYCHAIN" >/dev/null
+          # Prepend the temp keychain to the search list so codesign can find it.
+          security list-keychains -d user -s "$KEYCHAIN" \
+            $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/cert.p12"
+      - name: Store notarization credentials
+        if: env.MACOS_NOTARY_API_KEY != ''
+        run: |
+          set -euo pipefail
+          echo "$MACOS_NOTARY_API_KEY" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+          xcrun notarytool store-credentials cybara-notary \
+            --key "$RUNNER_TEMP/notary.p8" \
+            --key-id "$MACOS_NOTARY_API_KEY_ID" \
+            --issuer "$MACOS_NOTARY_API_ISSUER_ID"
+          rm -f "$RUNNER_TEMP/notary.p8"
+      - name: Package native macOS app
+        env:
+          # The packaging script signs only when the identity is set, and
+          # notarizes only when the profile is set (requires the identity too).
+          CYBARA_MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          CYBARA_MACOS_NOTARY_KEYCHAIN_PROFILE: ${{ secrets.MACOS_NOTARY_API_KEY != '' && 'cybara-notary' || '' }}
+        run: bun run scripts/package-native-macos.ts
+      - name: Clean up signing keychain
+        if: always() && env.MACOS_CERTIFICATE != ''
+        run: security delete-keychain "$RUNNER_TEMP/cybara-signing.keychain-db" || true
+      - name: Upload native macOS artifact to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            release/native-macos/${{ matrix.arch }}/*.zip
+            release/native-macos/${{ matrix.arch }}/*.sha256
+          draft: false
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+
   # ── Create GitHub Release with CLI binaries + checksums ─────────────────────
   release:
     name: Create Release

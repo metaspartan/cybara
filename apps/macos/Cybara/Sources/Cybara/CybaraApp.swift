@@ -8,6 +8,7 @@ extension Notification.Name {
     static let cybaraRestartSidecar = Notification.Name("cybara.restartSidecar")
     static let cybaraOpenInBrowser = Notification.Name("cybara.openInBrowser")
     static let cybaraCopyURL = Notification.Name("cybara.copyURL")
+    static let cybaraCheckForUpdates = Notification.Name("cybara.checkForUpdates")
 }
 
 @MainActor
@@ -27,6 +28,7 @@ final class CybaraAppDelegate: NSObject, NSApplicationDelegate {
 struct CybaraApp: App {
     @NSApplicationDelegateAdaptor(CybaraAppDelegate.self) private var appDelegate
     @StateObject private var sidecar = SidecarManager()
+    @StateObject private var updateChecker = UpdateChecker()
 
     var body: some Scene {
         WindowGroup {
@@ -35,6 +37,11 @@ struct CybaraApp: App {
                 .task {
                     appDelegate.sidecar = sidecar
                     await sidecar.startIfNeeded()
+                    // Quiet background check on launch; only nags if newer exists.
+                    await updateChecker.check(userInitiated: false)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .cybaraCheckForUpdates)) { _ in
+                    Task { await updateChecker.check(userInitiated: true) }
                 }
         }
         .defaultSize(width: 1440, height: 920)
@@ -46,6 +53,12 @@ struct CybaraApp: App {
                     NotificationCenter.default.post(name: .cybaraReloadWebView, object: nil)
                 }
                 .keyboardShortcut("r", modifiers: .command)
+            }
+            // Manual update check, alongside the standard App menu items.
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    NotificationCenter.default.post(name: .cybaraCheckForUpdates, object: nil)
+                }
             }
             // Gateway controls under a dedicated top-level menu.
             CommandMenu("Gateway") {
