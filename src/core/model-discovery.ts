@@ -9,9 +9,51 @@
  */
 import { providerManager } from "./providers";
 import { tables, type ProviderModel } from "./database";
+import { discoverModelsDev, PROVIDER_TO_MODELS_DEV } from "./models-dev";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_MODELS_PER_PROVIDER = 200;
+
+async function discoverViaModelsDev(providerId: string): Promise<DiscoveryResult> {
+  if (!PROVIDER_TO_MODELS_DEV[providerId]) {
+    return { providerId, discovered: 0, added: 0, models: [], error: "No models.dev mapping" };
+  }
+  try {
+    const found = await discoverModelsDev(providerId);
+    const existing = tables.providerModels.byProvider(providerId) as ProviderModel[];
+    const existingIds = new Set(existing.map((m) => m.model_id));
+    const models: DiscoveredModel[] = [];
+    let added = 0;
+    for (const m of found.slice(0, MAX_MODELS_PER_PROVIDER)) {
+      models.push({ id: m.id, name: m.name || m.id, contextWindow: m.contextWindow });
+      if (existingIds.has(m.id)) continue;
+      try {
+        tables.providerModels.upsert({
+          id: crypto.randomUUID(),
+          provider_id: providerId,
+          model_id: m.id,
+          model_name: m.name || m.id,
+          context_window: m.contextWindow || 128000,
+          max_tokens: m.maxTokens || 8192,
+          reasoning: m.reasoning || false,
+          input_types: m.input && m.input.length > 0 ? m.input : ["text"],
+        });
+        added += 1;
+      } catch {
+        /* skip duplicates */
+      }
+    }
+    return { providerId, discovered: models.length, added, models, source: "models.dev" };
+  } catch (error) {
+    return {
+      providerId,
+      discovered: 0,
+      added: 0,
+      models: [],
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
 
 export interface DiscoveredModel {
   id: string;
@@ -25,6 +67,7 @@ export interface DiscoveryResult {
   added: number;
   models: DiscoveredModel[];
   error?: string;
+  source?: string;
 }
 
 /**
@@ -38,20 +81,15 @@ export async function discoverProviderModels(providerId: string): Promise<Discov
   }
 
   const baseUrl = (provider.base_url || "").replace(/\/$/, "");
-  // Only attempt discovery for OpenAI-compatible base URLs.
+  // Only attempt the live /v1/models endpoint for OpenAI-compatible providers;
+  // otherwise fall back to the models.dev catalog.
   if (!baseUrl || !baseUrl.includes("/v1")) {
-    return {
-      providerId,
-      discovered: 0,
-      added: 0,
-      models: [],
-      error: "Provider does not expose a /v1/models endpoint",
-    };
+    return discoverViaModelsDev(providerId);
   }
 
   const auth = provider.api_key || provider.access_token;
   if (!auth) {
-    return { providerId, discovered: 0, added: 0, models: [], error: "No credentials" };
+    return discoverViaModelsDev(providerId);
   }
 
   try {
@@ -63,13 +101,7 @@ export async function discoverProviderModels(providerId: string): Promise<Discov
       signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     });
     if (!response.ok) {
-      return {
-        providerId,
-        discovered: 0,
-        added: 0,
-        models: [],
-        error: `HTTP ${response.status}`,
-      };
+      return discoverViaModelsDev(providerId);
     }
     const data = (await response.json()) as { data?: Array<{ id: string; owned_by?: string }> };
     const models: DiscoveredModel[] = (data.data || [])
@@ -100,14 +132,9 @@ export async function discoverProviderModels(providerId: string): Promise<Discov
       }
     }
 
-    return { providerId, discovered: models.length, added, models };
-  } catch (error) {
-    return {
-      providerId,
-      discovered: 0,
-      added: 0,
-      models: [],
-      error: error instanceof Error ? error.message : String(error),
-    };
+    if (models.length === 0) return discoverViaModelsDev(providerId);
+    return { providerId, discovered: models.length, added, models, source: "endpoint" };
+  } catch {
+    return discoverViaModelsDev(providerId);
   }
 }
