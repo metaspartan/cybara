@@ -32,6 +32,10 @@ const db = new Database(dbPath);
 console.log("[Database] Database instance created");
 restrictPermissions();
 db.exec("PRAGMA journal_mode = WAL");
+// NORMAL is safe under WAL and much faster than FULL for our write-heavy
+// telemetry; busy_timeout avoids "database is locked" under concurrent access.
+db.exec("PRAGMA synchronous = NORMAL");
+db.exec("PRAGMA busy_timeout = 5000");
 console.log("[Database] Journal mode set");
 
 console.log("[Database] Creating schema...");
@@ -271,6 +275,13 @@ try {
   CREATE INDEX IF NOT EXISTS idx_channel_logs_type ON channel_logs(channel_type);
   CREATE INDEX IF NOT EXISTS idx_channel_logs_created ON channel_logs(created_at);
   CREATE INDEX IF NOT EXISTS idx_allowed_senders_channel ON allowed_senders(channel_id);
+  -- metrics is the largest, hottest table (telemetry); every /api/metrics query
+  -- filters by type/key and orders by created_at. Without these it was a full
+  -- multi-million-row scan per query (the slow Metrics page).
+  CREATE INDEX IF NOT EXISTS idx_metrics_type_key ON metrics(type, key);
+  CREATE INDEX IF NOT EXISTS idx_metrics_type_created ON metrics(type, created_at);
+  CREATE INDEX IF NOT EXISTS idx_metrics_created ON metrics(created_at);
+  CREATE INDEX IF NOT EXISTS idx_metrics_daily_date ON metrics_daily(date);
 `);
   console.log("[Database] Schema created successfully");
 
