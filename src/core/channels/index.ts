@@ -55,4 +55,6 @@ export { twitchAdapter, TwitchAdapter } from "./adapters/twitch";
 export { lineAdapter, LineAdapter } from "./adapters/line";
 export { googleChatAdapter, GoogleChatAdapter } from "./adapters/googlechat";
 export { synologyAdapter, SynologyAdapter } from "./adapters/synology";
+export { nextcloudAdapter, NextcloudAdapter } from "./adapters/nextcloud";
+export { zaloAdapter, ZaloAdapter } from "./adapters/zalo";
 export { webAdapter, WebAdapter } from "./adapters/web";

@@ -289,6 +289,27 @@ export const channels = {
       { name: "token", label: "Access Token", type: "password", required: false },
     ],
   },
+  nextcloud: {
+    name: "Nextcloud Talk",
+    icon: "☁️",
+    description: "Connect to Nextcloud Talk via a bot",
+    color: "#0082C9",
+    fields: [
+      { name: "base_url", label: "Nextcloud URL", type: "string", required: true },
+      { name: "secret", label: "Bot Shared Secret", type: "password", required: true },
+    ],
+  },
+  zalo: {
+    name: "Zalo",
+    icon: "🇻🇳",
+    description: "Connect to a Zalo Official Account",
+    color: "#0068FF",
+    fields: [
+      { name: "access_token", label: "OA Access Token", type: "password", required: true },
+      { name: "app_id", label: "App ID", type: "string", required: false },
+      { name: "app_secret", label: "App Secret", type: "password", required: false },
+    ],
+  },
   googlechat: {
     name: "Google Chat",
     icon: "💬",

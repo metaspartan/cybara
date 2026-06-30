@@ -1087,7 +1087,9 @@ export interface Channel {
     | "twitch"
     | "line"
     | "googlechat"
-    | "synology";
+    | "synology"
+    | "nextcloud"
+    | "zalo";
   name: string;
   config: Record<string, unknown>;
   enabled: boolean;

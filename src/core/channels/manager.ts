@@ -18,6 +18,8 @@ import { twitchAdapter } from "./adapters/twitch";
 import { lineAdapter } from "./adapters/line";
 import { googleChatAdapter } from "./adapters/googlechat";
 import { synologyAdapter } from "./adapters/synology";
+import { nextcloudAdapter } from "./adapters/nextcloud";
+import { zaloAdapter } from "./adapters/zalo";
 import {
   formatToolCallsForTelegram,
   formatToolCallsForDiscord,
@@ -80,6 +82,8 @@ export class ChannelManager {
     this.registerAdapter("line", lineAdapter);
     this.registerAdapter("googlechat", googleChatAdapter);
     this.registerAdapter("synology", synologyAdapter);
+    this.registerAdapter("nextcloud", nextcloudAdapter);
+    this.registerAdapter("zalo", zaloAdapter);
   }
 
   registerAdapter(type: ChannelType, adapter: ChannelAdapter) {

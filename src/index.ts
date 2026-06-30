@@ -33,6 +33,8 @@ import {
   lineAdapter,
   googleChatAdapter,
   synologyAdapter,
+  nextcloudAdapter,
+  zaloAdapter,
   type MessageHandlerFileInfo,
 } from "./core/channels";
 import { handleSessionsSpawn } from "./core/tools/handlers/channel";
@@ -707,6 +709,8 @@ twitchAdapter.setMessageHandler(createChannelChatHandler("twitch"));
 lineAdapter.setMessageHandler(createChannelChatHandler("line"));
 googleChatAdapter.setMessageHandler(createChannelChatHandler("googlechat"));
 synologyAdapter.setMessageHandler(createChannelChatHandler("synology"));
+nextcloudAdapter.setMessageHandler(createChannelChatHandler("nextcloud"));
+zaloAdapter.setMessageHandler(createChannelChatHandler("zalo"));
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
