@@ -155,6 +155,39 @@ function pruneOldCheckpoints(storeDir: string): void {
   }
 }
 
+/**
+ * Restore the workspace working tree to a checkpoint's snapshot. Restores all
+ * files captured in the snapshot tree (edited/deleted files revert to their
+ * snapshot state). Files created after the checkpoint are left in place.
+ * Returns false if the checkpoint is missing or was a non-git manifest snapshot.
+ */
+export async function restoreCheckpoint(
+  workspaceDir: string,
+  checkpointId: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!isGitAvailable()) return { success: false, error: "git is not available" };
+  const storeDir = checkpointStoreDir(workspaceDir);
+  const metaPath = join(storeDir, checkpointId, "meta.json");
+  if (!existsSync(metaPath)) return { success: false, error: "checkpoint not found" };
+
+  let tree: string | undefined;
+  try {
+    tree = JSON.parse(readFileSync(metaPath, "utf8")).tree;
+  } catch {
+    return { success: false, error: "checkpoint metadata is corrupt" };
+  }
+  if (!tree) {
+    return { success: false, error: "checkpoint has no git tree (manifest-only snapshot)" };
+  }
+
+  try {
+    await execGit(["checkout", tree, "--", "."], workspaceDir);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 /** Delete a specific checkpoint. */
 export function deleteCheckpoint(workspaceDir: string, checkpointId: string): boolean {
   const storeDir = checkpointStoreDir(workspaceDir);

@@ -113,7 +113,12 @@ import { getAppVersion, getReleaseRepositoryUrl } from "../core/build-info";
 import { checkForUpdate, isUpdateCheckDisabled } from "../core/update-check";
 import { getPendingApprovals, getAlwaysAllowlist, resolveApproval } from "../core/tool-approval";
 import { discoverProviderModels } from "../core/model-discovery";
-import { listCheckpoints, deleteCheckpoint } from "../core/checkpoint";
+import {
+  listCheckpoints,
+  deleteCheckpoint,
+  createCheckpoint,
+  restoreCheckpoint,
+} from "../core/checkpoint";
 import { getRouterStatus, selectProvider, getAllPricing, type RouterConfig } from "../core/router";
 import { getSystemMonitorSnapshot } from "../core/system-monitor";
 import * as pwManager from "../core/browser/pw-manager";
@@ -1073,6 +1078,20 @@ const routes: Record<string, RouteHandler> = {
     const workspaceDir = params?.workspace as string;
     if (!workspaceDir) return { checkpoints: [] };
     return { checkpoints: listCheckpoints(workspaceDir) };
+  },
+  "POST /api/checkpoints": async (body) => {
+    const data = (body || {}) as { workspaceDir?: string; label?: string };
+    if (!data.workspaceDir) return { success: false, error: "workspaceDir is required" };
+    const checkpoint = await createCheckpoint(data.workspaceDir, data.label || "manual checkpoint");
+    return checkpoint ? { success: true, checkpoint } : { success: false, error: "checkpoint failed" };
+  },
+  "POST /api/checkpoints/:id/restore": async (body, params) => {
+    const data = (body || {}) as { workspaceDir?: string };
+    const id = params?.id as string;
+    if (!data.workspaceDir || !id) {
+      return { success: false, error: "workspaceDir and id are required" };
+    }
+    return await restoreCheckpoint(data.workspaceDir, id);
   },
   "DELETE /api/checkpoints/:id": (_body, params) => {
     const workspaceDir = params?.workspace as string;
