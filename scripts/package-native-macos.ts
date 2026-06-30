@@ -8,6 +8,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -178,13 +179,43 @@ async function readSwiftReleaseBinPath(): Promise<string> {
 
 const ENTITLEMENTS_PATH = join(APP_PACKAGE_PATH, "Cybara.entitlements");
 
+/// Collect nested Mach-O binaries (dylibs, .node addons, .so) bundled with the
+/// sidecar. Notarization rejects any unsigned Mach-O, so every one must be
+/// signed inner-first before the executables and the bundle itself.
+function findNestedSignables(macOSPath: string): string[] {
+  const results: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.isFile() && /\.(dylib|node|so)$/.test(entry.name)) {
+        results.push(full);
+      }
+    }
+  };
+  walk(macOSPath);
+  return results;
+}
+
 async function codesignBundle(bundlePath: string, identity: string): Promise<void> {
   // Sign inner-out, applying the hardened-runtime entitlements (JIT/network/
   // capture) to the executables so the Bun sidecar's JS engine can run and the
   // app can request camera/screen/automation permissions when used.
   const ent = ENTITLEMENTS_PATH;
-  await $`codesign --force --timestamp --options runtime --entitlements ${ent} --sign ${identity} ${join(bundlePath, "Contents", "MacOS", "sidecar", "cybara")}`.quiet();
-  await $`codesign --force --timestamp --options runtime --entitlements ${ent} --sign ${identity} ${join(bundlePath, "Contents", "MacOS", APP_NAME)}`.quiet();
+  const macOSPath = join(bundlePath, "Contents", "MacOS");
+
+  // 1. Nested libraries/addons (onnxruntime dylib, .node binding, etc.).
+  for (const signable of findNestedSignables(macOSPath)) {
+    await $`codesign --force --timestamp --options runtime --sign ${identity} ${signable}`.quiet();
+  }
+
+  // 2. The bundled sidecar executable (Bun-compiled JS engine needs the
+  //    JIT/unsigned-memory entitlements).
+  await $`codesign --force --timestamp --options runtime --entitlements ${ent} --sign ${identity} ${join(macOSPath, "sidecar", "cybara")}`.quiet();
+  // 3. The main app executable.
+  await $`codesign --force --timestamp --options runtime --entitlements ${ent} --sign ${identity} ${join(macOSPath, APP_NAME)}`.quiet();
+  // 4. The bundle last, so the seal covers everything inside.
   await $`codesign --force --timestamp --options runtime --entitlements ${ent} --sign ${identity} ${bundlePath}`.quiet();
 }
 
