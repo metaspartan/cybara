@@ -12,6 +12,7 @@ const DYNAMIC_IMPORT_ALLOWLIST = new Set([
   "src/main.ts",
   "src/core/tools/handlers/wallet.ts",
   "src/api/routes.ts",
+  "src/api/routes/wallet.ts",
   // Lazy-loads optional/native ML runtimes (onnxruntime-node,
   // @huggingface/transformers) and runtime-resolved model paths. Eagerly
   // importing these would break the server-only runtime and pull native deps.

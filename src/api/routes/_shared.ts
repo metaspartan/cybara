@@ -126,6 +126,16 @@ export interface TokenCloudEntry {
 }
 export const WALLET_CHAIN_SET = new Set<WalletChain>(["eth", "btc", "sol"]);
 export const WALLET_TOKEN_CHAIN_SET = new Set<WalletTokenChain>(["eth", "sol"]);
+
+export interface RouteContext {
+  headers: Record<string, string>;
+  rawBody?: string;
+}
+export type RouteHandler = (
+  body?: unknown,
+  params?: Record<string, string>,
+  ctx?: RouteContext
+) => Promise<unknown> | unknown;
 export function parseJsonObject(value: unknown): Record<string, unknown> | null {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     return value as Record<string, unknown>;
