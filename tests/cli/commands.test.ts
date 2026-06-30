@@ -140,6 +140,12 @@ function route(method: string, url: URL, body: string): Response {
           usedBytes: 1024 * 1024 * 512,
           totalBytes: 1024 * 1024 * 1024,
           freeBytes: 1024 * 1024 * 512,
+          swap: {
+            usedPct: 25,
+            usedBytes: 1024 * 1024 * 256,
+            totalBytes: 1024 * 1024 * 1024,
+            freeBytes: 1024 * 1024 * 768,
+          },
         },
         process: {
           pid: 123,
@@ -1349,6 +1355,7 @@ describe("CLI Commands", () => {
     expect(stdout).toContain("SYSTEM MONITOR");
     expect(stdout).toContain("cpu: 12.3%");
     expect(stdout).toContain("memory: 55.5% used");
+    expect(stdout).toContain("swap: 25.0% used");
     expect(stdout).toContain("HEALTH CHECKS");
   });
 

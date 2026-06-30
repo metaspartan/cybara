@@ -693,6 +693,12 @@ export interface SystemMonitorData {
     freeBytes: number;
     usedBytes: number;
     usedPct: number;
+    swap?: {
+      totalBytes: number;
+      freeBytes: number;
+      usedBytes: number;
+      usedPct: number;
+    } | null;
   };
   process: {
     pid: number;

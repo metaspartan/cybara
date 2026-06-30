@@ -131,6 +131,7 @@ import {
 import {
   formatMetricBytes,
   formatMetricNumber,
+  formatStorageBytes,
   metricSuccessRate,
   storageCategoryEntries,
   timeSeriesTotals,
@@ -484,6 +485,16 @@ function surfaceRows(
           `${monitorPercentLabel(monitor.memory.usedPct)} - ${formatMetricBytes(monitor.memory.usedBytes)} used`,
           monitor.memory
         ),
+        ...(monitor.memory.swap
+          ? [
+              itemFromRecord(
+                "swap",
+                "Swap",
+                `${monitorPercentLabel(monitor.memory.swap.usedPct)} - ${formatMetricBytes(monitor.memory.swap.usedBytes)} used`,
+                monitor.memory.swap
+              ),
+            ]
+          : []),
         itemFromRecord(
           "process",
           "Cybara process",
@@ -500,7 +511,7 @@ function surfaceRows(
               itemFromRecord(
                 "disk",
                 "Disk",
-                `${monitorPercentLabel(monitor.disk.usedPct)} - ${formatMetricBytes(monitor.disk.freeBytes)} free`,
+                `${monitorPercentLabel(monitor.disk.usedPct)} - ${formatStorageBytes(monitor.disk.freeBytes)} free`,
                 monitor.disk
               ),
             ]
@@ -3523,10 +3534,24 @@ function SystemMonitorDetailPanel({
       ];
     }
     if (item.id === "memory") {
-      return [
+      const fields = [
         { label: "Total", value: formatMetricBytes(snapshot.memory.totalBytes) },
         { label: "Used", value: formatMetricBytes(snapshot.memory.usedBytes) },
         { label: "Free", value: formatMetricBytes(snapshot.memory.freeBytes) },
+      ];
+      if (snapshot.memory.swap) {
+        fields.push({
+          label: "Swap used",
+          value: `${formatMetricBytes(snapshot.memory.swap.usedBytes)} of ${formatMetricBytes(snapshot.memory.swap.totalBytes)}`,
+        });
+      }
+      return fields;
+    }
+    if (item.id === "swap" && snapshot.memory.swap) {
+      return [
+        { label: "Total", value: formatMetricBytes(snapshot.memory.swap.totalBytes) },
+        { label: "Used", value: formatMetricBytes(snapshot.memory.swap.usedBytes) },
+        { label: "Free", value: formatMetricBytes(snapshot.memory.swap.freeBytes) },
       ];
     }
     if (item.id === "process") {
@@ -3542,9 +3567,9 @@ function SystemMonitorDetailPanel({
     if (item.id === "disk" && disk) {
       return [
         { label: "Path", value: disk.path },
-        { label: "Total", value: formatMetricBytes(disk.totalBytes) },
-        { label: "Used", value: formatMetricBytes(disk.usedBytes) },
-        { label: "Free", value: formatMetricBytes(disk.freeBytes) },
+        { label: "Total", value: formatStorageBytes(disk.totalBytes) },
+        { label: "Used", value: formatStorageBytes(disk.usedBytes) },
+        { label: "Free", value: formatStorageBytes(disk.freeBytes) },
       ];
     }
     return [
@@ -3611,6 +3636,14 @@ function SystemMonitorDetailPanel({
               value={snapshot.memory.usedPct}
             />
           ) : null}
+          {item.id === "swap" && snapshot.memory.swap ? (
+            <MonitorUsageBar
+              detail={`${formatMetricBytes(snapshot.memory.swap.usedBytes)} of ${formatMetricBytes(snapshot.memory.swap.totalBytes)} used`}
+              label="Swap used"
+              tone={colors.amber}
+              value={snapshot.memory.swap.usedPct}
+            />
+          ) : null}
           {item.id === "process" ? (
             <>
               <MonitorUsageBar
@@ -3633,7 +3666,7 @@ function SystemMonitorDetailPanel({
           ) : null}
           {item.id === "disk" && disk ? (
             <MonitorUsageBar
-              detail={`${formatMetricBytes(disk.usedBytes)} of ${formatMetricBytes(disk.totalBytes)} used`}
+              detail={`${formatStorageBytes(disk.usedBytes)} of ${formatStorageBytes(disk.totalBytes)} used`}
               label="Disk used"
               tone={colors.blueText}
               value={disk.usedPct}

@@ -498,6 +498,25 @@ export interface ChannelAdapter {
     text: string,
     buttons: InlineKeyboardButton[][]
   ): Promise<boolean>;
+
+  setMessageHandler?(handler: MessageHandler): void;
+
+  handleWebhook?(
+    channelId: string,
+    payload: WebhookPayload
+  ): Promise<WebhookResult>;
+}
+
+export interface WebhookPayload {
+  body: unknown;
+  rawBody: string;
+  headers: Record<string, string>;
+  query: Record<string, string>;
+}
+
+export interface WebhookResult {
+  status?: number;
+  body?: unknown;
 }
 
 /** Rich embed definition (Discord embeds, Telegram HTML). */

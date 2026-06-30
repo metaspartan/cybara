@@ -94,6 +94,14 @@ function formatBytes(bytes?: number): string {
   return `${Math.round(value)} B`;
 }
 
+function formatStorageBytes(bytes?: number): string {
+  const value = Number(bytes || 0);
+  if (value >= 1000 * 1000 * 1000) return `${(value / (1000 * 1000 * 1000)).toFixed(2)} GB`;
+  if (value >= 1000 * 1000) return `${(value / (1000 * 1000)).toFixed(1)} MB`;
+  if (value >= 1000) return `${(value / 1000).toFixed(1)} KB`;
+  return `${Math.round(value)} B`;
+}
+
 function formatPct(value?: number | null): string {
   return typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(1)}%` : "n/a";
 }
@@ -499,14 +507,21 @@ function ComputerUseSettings() {
               {status.version && <span className="text-gray-400">v{status.version}</span>}
               {status.platform === "darwin" && (
                 <>
-                  <span className="flex items-center gap-2">Accessibility {yesNo(status.accessibility)}</span>
+                  <span className="flex items-center gap-2">
+                    Accessibility {yesNo(status.accessibility)}
+                  </span>
                   <span className="flex items-center gap-2">
                     Screen Recording {yesNo(status.screenRecording)}
                   </span>
                 </>
               )}
               <span className="flex items-center gap-2">
-                Ready {status.ready ? <Badge variant="success">Yes</Badge> : <Badge variant="error">No</Badge>}
+                Ready{" "}
+                {status.ready ? (
+                  <Badge variant="success">Yes</Badge>
+                ) : (
+                  <Badge variant="error">No</Badge>
+                )}
               </span>
             </div>
             <p className="text-sm text-gray-400">{status.message}</p>
@@ -516,7 +531,10 @@ function ComputerUseSettings() {
                 Recheck
               </Button>
               {!status.available && (
-                <Button variant="secondary" onClick={() => openExternal("https://github.com/trycua/cua")}>
+                <Button
+                  variant="secondary"
+                  onClick={() => openExternal("https://github.com/trycua/cua")}
+                >
                   Install cua-driver
                 </Button>
               )}
@@ -1143,6 +1161,18 @@ export function Settings() {
                 {formatBytes(systemMonitor?.memory.totalBytes)} used
               </p>
             </div>
+            {systemMonitor?.memory.swap ? (
+              <div className="rounded-xl bg-white/5 p-4">
+                <p className="text-sm text-gray-400">Swap</p>
+                <p className="mt-1 text-2xl font-semibold text-white">
+                  {formatPct(systemMonitor.memory.swap.usedPct)}
+                </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  {formatBytes(systemMonitor.memory.swap.usedBytes)} /{" "}
+                  {formatBytes(systemMonitor.memory.swap.totalBytes)} used
+                </p>
+              </div>
+            ) : null}
             <div className="rounded-xl bg-white/5 p-4">
               <p className="text-sm text-gray-400">Cybara process</p>
               <p className="mt-1 text-2xl font-semibold text-white">
@@ -1160,7 +1190,7 @@ export function Settings() {
               </p>
               <p className="mt-1 text-xs text-gray-500">
                 {systemMonitor?.disk
-                  ? `${formatBytes(systemMonitor.disk.freeBytes)} free at ${systemMonitor.disk.path}`
+                  ? `${formatStorageBytes(systemMonitor.disk.freeBytes)} free at ${systemMonitor.disk.path}`
                   : "Disk telemetry unavailable"}
               </p>
             </div>

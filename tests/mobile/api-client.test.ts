@@ -422,7 +422,13 @@ describe("mobile API client", () => {
             cores: 10,
             model: "Test CPU",
           },
-          memory: { totalBytes: 1000, freeBytes: 400, usedBytes: 600, usedPct: 60 },
+          memory: {
+            totalBytes: 1000,
+            freeBytes: 400,
+            usedBytes: 600,
+            usedPct: 60,
+            swap: { totalBytes: 500, freeBytes: 250, usedBytes: 250, usedPct: 50 },
+          },
           process: {
             pid: 123,
             uptimeSeconds: 60,
@@ -454,6 +460,7 @@ describe("mobile API client", () => {
       expect(summary.availability.channels.status).toBe(404);
       expect(summary.availability.systemMonitor.ok).toBe(true);
       expect(summary.systemMonitor?.cpu.usagePct).toBe(12.5);
+      expect(summary.systemMonitor?.memory.swap?.usedPct).toBe(50);
       expect(summary.config.tool_approval_mode).toBe("ask");
     } finally {
       globalThis.fetch = originalFetch;

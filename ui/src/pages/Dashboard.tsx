@@ -44,6 +44,14 @@ function formatBytes(bytes?: number): string {
   return `${Math.round(value)} B`;
 }
 
+function formatStorageBytes(bytes?: number): string {
+  const value = Number(bytes || 0);
+  if (value >= 1000 * 1000 * 1000) return `${(value / (1000 * 1000 * 1000)).toFixed(2)} GB`;
+  if (value >= 1000 * 1000) return `${(value / (1000 * 1000)).toFixed(1)} MB`;
+  if (value >= 1000) return `${(value / 1000).toFixed(1)} KB`;
+  return `${Math.round(value)} B`;
+}
+
 function formatPct(value?: number | null): string {
   return typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(1)}%` : "n/a";
 }
@@ -232,6 +240,13 @@ export function Dashboard() {
                 value={systemMonitor?.memory.usedPct}
                 detail={`${formatBytes(systemMonitor?.memory.usedBytes)} / ${formatBytes(systemMonitor?.memory.totalBytes)} used`}
               />
+              {systemMonitor?.memory.swap ? (
+                <ResourceBar
+                  label="Swap"
+                  value={systemMonitor.memory.swap.usedPct}
+                  detail={`${formatBytes(systemMonitor.memory.swap.usedBytes)} / ${formatBytes(systemMonitor.memory.swap.totalBytes)} used`}
+                />
+              ) : null}
               <ResourceBar
                 label="Process"
                 value={systemMonitor?.process.cpuUsagePct}
@@ -242,7 +257,7 @@ export function Dashboard() {
                 value={systemMonitor?.disk?.usedPct}
                 detail={
                   systemMonitor?.disk
-                    ? `${formatBytes(systemMonitor.disk.freeBytes)} free at ${systemMonitor.disk.path}`
+                    ? `${formatStorageBytes(systemMonitor.disk.freeBytes)} free at ${systemMonitor.disk.path}`
                     : "Disk telemetry unavailable"
                 }
               />

@@ -266,6 +266,14 @@ export function formatMetricBytes(value: number | undefined): string {
   return `${Math.round(bytes)} B`;
 }
 
+export function formatStorageBytes(value: number | undefined): string {
+  const bytes = Number.isFinite(value) ? Number(value) : 0;
+  if (bytes >= 1000 * 1000 * 1000) return `${(bytes / (1000 * 1000 * 1000)).toFixed(2)} GB`;
+  if (bytes >= 1000 * 1000) return `${(bytes / (1000 * 1000)).toFixed(2)} MB`;
+  if (bytes >= 1000) return `${(bytes / 1000).toFixed(1)} KB`;
+  return `${Math.round(bytes)} B`;
+}
+
 export function metricSuccessRate(overview: MetricsOverview | null): string {
   const total = overview?.apiCalls.totalCalls || 0;
   if (total <= 0) return "0%";

@@ -86,6 +86,12 @@ const summary: FeatureSummary = {
       freeBytes: 12 * 1024 * 1024 * 1024,
       usedBytes: 20 * 1024 * 1024 * 1024,
       usedPct: 62.5,
+      swap: {
+        totalBytes: 4 * 1024 * 1024 * 1024,
+        freeBytes: 1 * 1024 * 1024 * 1024,
+        usedBytes: 3 * 1024 * 1024 * 1024,
+        usedPct: 75,
+      },
     },
     process: {
       pid: 123,

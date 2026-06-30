@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   formatMetricBytes,
   formatMetricNumber,
+  formatStorageBytes,
   metricSuccessRate,
   storageCategoryEntries,
   timeSeriesTotals,
@@ -32,6 +33,7 @@ describe("mobile metrics helpers", () => {
   test("formats core web metrics for compact native cards", () => {
     expect(formatMetricNumber(1500)).toBe("1.5K");
     expect(formatMetricBytes(2048)).toBe("2.0 KB");
+    expect(formatStorageBytes(77_279_809_536)).toBe("77.28 GB");
     expect(metricSuccessRate(overview)).toBe("90.0%");
     expect(totalFileOperations(overview)).toBe(9);
     expect(tokenFlowBars(overview)).toEqual([

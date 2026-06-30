@@ -1,5 +1,13 @@
-import { statfsSync } from "fs";
+import { execFileSync } from "child_process";
+import { readFileSync, statfsSync } from "fs";
 import { arch, cpus, freemem, loadavg, platform, release, totalmem } from "os";
+
+export interface SystemByteUsage {
+  totalBytes: number;
+  freeBytes: number;
+  usedBytes: number;
+  usedPct: number;
+}
 
 export interface SystemMonitorSnapshot {
   status: "healthy";
@@ -17,11 +25,8 @@ export interface SystemMonitorSnapshot {
     cores: number;
     model: string;
   };
-  memory: {
-    totalBytes: number;
-    freeBytes: number;
-    usedBytes: number;
-    usedPct: number;
+  memory: SystemByteUsage & {
+    swap: SystemByteUsage | null;
   };
   process: {
     pid: number;
@@ -35,13 +40,11 @@ export interface SystemMonitorSnapshot {
       arrayBuffersBytes: number;
     };
   };
-  disk: {
-    path: string;
-    totalBytes: number;
-    freeBytes: number;
-    usedBytes: number;
-    usedPct: number;
-  } | null;
+  disk:
+    | (SystemByteUsage & {
+        path: string;
+      })
+    | null;
 }
 
 interface CpuTotals {
@@ -120,6 +123,157 @@ function readDiskUsage(path: string): SystemMonitorSnapshot["disk"] {
   }
 }
 
+function buildByteUsage(totalBytes: number, usedBytes: number): SystemByteUsage {
+  const normalizedTotalBytes = Math.max(1, Math.round(totalBytes));
+  const normalizedUsedBytes = Math.max(0, Math.min(normalizedTotalBytes, Math.round(usedBytes)));
+  const freeBytes = Math.max(0, normalizedTotalBytes - normalizedUsedBytes);
+
+  return {
+    totalBytes: normalizedTotalBytes,
+    freeBytes,
+    usedBytes: normalizedUsedBytes,
+    usedPct: roundPct((normalizedUsedBytes / normalizedTotalBytes) * 100),
+  };
+}
+
+function buildMemoryUsage(
+  totalBytes: number,
+  usedBytes: number,
+  swap: SystemByteUsage | null = null
+): SystemMonitorSnapshot["memory"] {
+  return {
+    ...buildByteUsage(totalBytes, usedBytes),
+    swap,
+  };
+}
+
+function parseUnitBytes(value: string, unit: string): number | null {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return null;
+
+  const normalizedUnit = unit.trim().toLowerCase();
+  if (normalizedUnit === "b" || normalizedUnit === "bytes" || normalizedUnit === "") {
+    return numericValue;
+  }
+  if (normalizedUnit === "k" || normalizedUnit === "kb") return numericValue * 1024;
+  if (normalizedUnit === "m" || normalizedUnit === "mb") return numericValue * 1024 * 1024;
+  if (normalizedUnit === "g" || normalizedUnit === "gb") return numericValue * 1024 * 1024 * 1024;
+  if (normalizedUnit === "t" || normalizedUnit === "tb") {
+    return numericValue * 1024 * 1024 * 1024 * 1024;
+  }
+
+  return null;
+}
+
+function parseVmStatPageValue(output: string, key: string): number | null {
+  const pattern = new RegExp(`^${key}:\\s+([0-9]+)\\.?$`, "im");
+  const match = output.match(pattern);
+  if (!match) return null;
+
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+export function parseDarwinVmStatMemory(
+  output: string,
+  totalBytes = totalmem()
+): SystemMonitorSnapshot["memory"] | null {
+  const pageSizeMatch = output.match(/page size of\s+([0-9]+)\s+bytes/i);
+  const pageSize = pageSizeMatch ? Number(pageSizeMatch[1]) : 0;
+  const activePages = parseVmStatPageValue(output, "Pages active");
+  const wiredPages = parseVmStatPageValue(output, "Pages wired down");
+  const compressedPages = parseVmStatPageValue(output, "Pages occupied by compressor");
+
+  if (
+    !Number.isFinite(pageSize) ||
+    pageSize <= 0 ||
+    activePages === null ||
+    wiredPages === null ||
+    compressedPages === null
+  ) {
+    return null;
+  }
+
+  return buildMemoryUsage(totalBytes, (activePages + wiredPages + compressedPages) * pageSize);
+}
+
+export function parseDarwinSwapUsage(output: string): SystemByteUsage | null {
+  const totalMatch = output.match(/total\s*=\s*([0-9.]+)\s*([kmgt]?)/i);
+  const usedMatch = output.match(/used\s*=\s*([0-9.]+)\s*([kmgt]?)/i);
+  if (!totalMatch || !usedMatch) return null;
+
+  const totalBytes = parseUnitBytes(totalMatch[1], totalMatch[2]);
+  const usedBytes = parseUnitBytes(usedMatch[1], usedMatch[2]);
+  if (totalBytes === null || usedBytes === null || totalBytes <= 0) return null;
+
+  return buildByteUsage(totalBytes, usedBytes);
+}
+
+export function parseLinuxMeminfoSwap(output: string): SystemByteUsage | null {
+  const readKb = (key: string): number | null => {
+    const match = output.match(new RegExp(`^${key}:\\s+([0-9]+)\\s+kB$`, "im"));
+    if (!match) return null;
+    const value = Number(match[1]);
+    return Number.isFinite(value) ? value * 1024 : null;
+  };
+
+  const totalBytes = readKb("SwapTotal");
+  const freeBytes = readKb("SwapFree");
+  if (totalBytes === null || freeBytes === null || totalBytes <= 0) return null;
+
+  return buildByteUsage(totalBytes, totalBytes - freeBytes);
+}
+
+function readSwapUsage(): SystemByteUsage | null {
+  const osPlatform = platform();
+
+  if (osPlatform === "darwin") {
+    try {
+      const output = execFileSync("/usr/sbin/sysctl", ["vm.swapusage"], {
+        encoding: "utf8",
+        maxBuffer: 16 * 1024,
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 500,
+      });
+      return parseDarwinSwapUsage(output);
+    } catch {
+      return null;
+    }
+  }
+
+  if (osPlatform === "linux") {
+    try {
+      return parseLinuxMeminfoSwap(readFileSync("/proc/meminfo", "utf8"));
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+function readGenericMemoryUsage(): SystemMonitorSnapshot["memory"] {
+  const totalBytes = totalmem();
+  return buildMemoryUsage(totalBytes, Math.max(0, totalBytes - freemem()), readSwapUsage());
+}
+
+function readMemoryUsage(): SystemMonitorSnapshot["memory"] {
+  if (platform() !== "darwin") return readGenericMemoryUsage();
+
+  try {
+    const output = execFileSync("/usr/bin/vm_stat", [], {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024,
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 750,
+    });
+    const memory = parseDarwinVmStatMemory(output);
+    return memory ? { ...memory, swap: readSwapUsage() } : readGenericMemoryUsage();
+  } catch {
+    return readGenericMemoryUsage();
+  }
+}
+
 export function getSystemMonitorSnapshot(): SystemMonitorSnapshot {
   const nowMs = Date.now();
   if (cachedSnapshot && cachedUntilMs > nowMs) return cachedSnapshot;
@@ -129,9 +283,7 @@ export function getSystemMonitorSnapshot(): SystemMonitorSnapshot {
   const cpuTotals = readCpuTotals();
   const currentProcessCpu = process.cpuUsage();
   const intervalMs = lastSample ? Math.max(0, nowMs - lastSample.sampledAtMs) : 0;
-  const totalMemoryBytes = totalmem();
-  const freeMemoryBytes = freemem();
-  const usedMemoryBytes = Math.max(0, totalMemoryBytes - freeMemoryBytes);
+  const memory = readMemoryUsage();
   const processMemory = process.memoryUsage();
   const loads = loadavg();
   const oneMinuteLoad = loads[0] || 0;
@@ -152,12 +304,7 @@ export function getSystemMonitorSnapshot(): SystemMonitorSnapshot {
       cores: coreCount,
       model: cpuRows[0]?.model || "Unknown CPU",
     },
-    memory: {
-      totalBytes: totalMemoryBytes,
-      freeBytes: freeMemoryBytes,
-      usedBytes: usedMemoryBytes,
-      usedPct: roundPct((usedMemoryBytes / Math.max(1, totalMemoryBytes)) * 100),
-    },
+    memory,
     process: {
       pid: process.pid,
       uptimeSeconds: process.uptime(),

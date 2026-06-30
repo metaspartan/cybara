@@ -77,6 +77,12 @@ interface StatusResponse {
       freeBytes?: number;
       usedBytes?: number;
       usedPct?: number;
+      swap?: {
+        totalBytes?: number;
+        freeBytes?: number;
+        usedBytes?: number;
+        usedPct?: number;
+      } | null;
     };
     process?: {
       pid?: number;
@@ -173,6 +179,14 @@ function formatStatusBytes(bytes?: number): string {
   return `${Math.round(value)} B`;
 }
 
+function formatStatusStorageBytes(bytes?: number): string {
+  const value = Number(bytes || 0);
+  if (value >= 1000 * 1000 * 1000) return `${(value / (1000 * 1000 * 1000)).toFixed(2)} GB`;
+  if (value >= 1000 * 1000) return `${(value / (1000 * 1000)).toFixed(1)} MB`;
+  if (value >= 1000) return `${(value / 1000).toFixed(1)} KB`;
+  return `${Math.round(value)} B`;
+}
+
 function formatStatusPct(value?: number | null): string {
   return typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(1)}%` : "n/a";
 }
@@ -257,6 +271,11 @@ async function rawStatus(): Promise<void> {
     console.log(
       `  memory: ${formatStatusPct(data.system.memory?.usedPct)} used (${formatStatusBytes(data.system.memory?.usedBytes)} / ${formatStatusBytes(data.system.memory?.totalBytes)})`
     );
+    if (data.system.memory?.swap) {
+      console.log(
+        `  swap: ${formatStatusPct(data.system.memory.swap.usedPct)} used (${formatStatusBytes(data.system.memory.swap.usedBytes)} / ${formatStatusBytes(data.system.memory.swap.totalBytes)})`
+      );
+    }
     if (data.system.process) {
       console.log(
         `  process: ${formatStatusPct(data.system.process.cpuUsagePct)} CPU, ${formatStatusBytes(data.system.process.memory?.rssBytes)} RSS`
@@ -264,7 +283,7 @@ async function rawStatus(): Promise<void> {
     }
     if (data.system.disk) {
       console.log(
-        `  disk: ${formatStatusPct(data.system.disk.usedPct)} used (${formatStatusBytes(data.system.disk.freeBytes)} free)`
+        `  disk: ${formatStatusPct(data.system.disk.usedPct)} used (${formatStatusStorageBytes(data.system.disk.freeBytes)} free)`
       );
     }
   }
@@ -4079,12 +4098,22 @@ const TUIStatusCommand = () => {
                 {formatStatusBytes(data.system.memory?.totalBytes)})
               </Text>
             </Box>
+            {data.system.memory?.swap && (
+              <Box>
+                <Text color="gray">Swap: </Text>
+                <Text>
+                  {formatStatusPct(data.system.memory.swap.usedPct)} used (
+                  {formatStatusBytes(data.system.memory.swap.usedBytes)} /{" "}
+                  {formatStatusBytes(data.system.memory.swap.totalBytes)})
+                </Text>
+              </Box>
+            )}
             {data.system.disk && (
               <Box>
                 <Text color="gray">Disk: </Text>
                 <Text>
                   {formatStatusPct(data.system.disk.usedPct)} used (
-                  {formatStatusBytes(data.system.disk.freeBytes)} free)
+                  {formatStatusStorageBytes(data.system.disk.freeBytes)} free)
                 </Text>
               </Box>
             )}
