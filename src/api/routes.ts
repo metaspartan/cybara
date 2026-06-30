@@ -3633,6 +3633,16 @@ const routes: Record<string, RouteHandler> = {
     return { ok: success };
   },
 
+  "GET /api/computer-use/status": async () => {
+    const { computerUseDoctor } = await import("../core/computer-use");
+    return await computerUseDoctor();
+  },
+
+  "POST /api/computer-use/permissions/grant": async () => {
+    const { requestComputerUsePermissionsGrant } = await import("../core/computer-use");
+    return await requestComputerUsePermissionsGrant();
+  },
+
   "POST /api/chat": async (body) => {
     const data = body as {
       message: string;

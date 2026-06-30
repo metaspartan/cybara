@@ -489,6 +489,51 @@ async function rawDoctor(): Promise<void> {
   }
 }
 
+interface ComputerUseStatus {
+  available: boolean;
+  command: string;
+  platform: string;
+  version?: string;
+  accessibility?: boolean;
+  screenRecording?: boolean;
+  ready: boolean;
+  message: string;
+}
+
+function printComputerUseStatus(s: ComputerUseStatus): void {
+  const yn = (v?: boolean) => (v === undefined ? "n/a" : v ? "yes" : "NO");
+  console.log("Computer Use (cua-driver)");
+  console.log(`  command:          ${s.command}`);
+  console.log(`  installed:        ${yn(s.available)}${s.version ? ` (${s.version})` : ""}`);
+  console.log(`  platform:         ${s.platform}`);
+  if (s.platform === "darwin") {
+    console.log(`  accessibility:    ${yn(s.accessibility)}`);
+    console.log(`  screen recording: ${yn(s.screenRecording)}`);
+  }
+  console.log(`  ready:            ${s.ready ? "yes" : "NO"}`);
+  console.log(`  ${s.message}`);
+}
+
+async function rawComputerUse(args: string[]): Promise<void> {
+  const sub = (args[1] || "status").toLowerCase();
+
+  if (sub === "setup" || sub === "grant") {
+    const grant = await fetchAPI<{ ok: boolean; message: string }>(
+      "/api/computer-use/permissions/grant",
+      { method: "POST" }
+    );
+    if (grant) console.log(grant.message);
+  }
+
+  const status = await fetchAPI<ComputerUseStatus>("/api/computer-use/status");
+  if (!status) {
+    console.error("ERROR: Failed to query computer-use status from", API_BASE);
+    process.exit(1);
+  }
+  printComputerUseStatus(status);
+  if (!status.ready) process.exitCode = 1;
+}
+
 async function rawMetrics(): Promise<void> {
   const data = await fetchAPI<MetricsResponse>("/api/metrics/overview");
   if (!data) {
@@ -3985,12 +4030,6 @@ const TUIStatusCommand = () => {
       .finally(() => setLoading(false));
   }, []);
 
-  const formatUptime = (sec: number) => {
-    const h = Math.floor(sec / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    return h > 0 ? `${h}h ${m}m` : `${m}m`;
-  };
-
   if (loading) return <LoadingState message="Fetching status..." />;
   if (error) return <ErrorState message={error} />;
   if (!data) return <ErrorState message="No data" />;
@@ -4015,7 +4054,7 @@ const TUIStatusCommand = () => {
         </Box>
         <Box>
           <Text color="gray">Uptime: </Text>
-          <Text>{formatUptime(data.uptime)}</Text>
+          <Text>{formatStatusUptime(data.uptime)}</Text>
         </Box>
         <Box>
           <Text color="gray">Time: </Text>
@@ -4029,23 +4068,23 @@ const TUIStatusCommand = () => {
             <Box>
               <Text color="gray">CPU: </Text>
               <Text>
-                {formatPct(data.system.cpu?.usagePct)} ({data.system.cpu?.cores || 0} cores)
+                {formatStatusPct(data.system.cpu?.usagePct)} ({data.system.cpu?.cores || 0} cores)
               </Text>
             </Box>
             <Box>
               <Text color="gray">Memory: </Text>
               <Text>
-                {formatPct(data.system.memory?.usedPct)} used (
-                {formatBytes(data.system.memory?.usedBytes)} /{" "}
-                {formatBytes(data.system.memory?.totalBytes)})
+                {formatStatusPct(data.system.memory?.usedPct)} used (
+                {formatStatusBytes(data.system.memory?.usedBytes)} /{" "}
+                {formatStatusBytes(data.system.memory?.totalBytes)})
               </Text>
             </Box>
             {data.system.disk && (
               <Box>
                 <Text color="gray">Disk: </Text>
                 <Text>
-                  {formatPct(data.system.disk.usedPct)} used (
-                  {formatBytes(data.system.disk.freeBytes)} free)
+                  {formatStatusPct(data.system.disk.usedPct)} used (
+                  {formatStatusBytes(data.system.disk.freeBytes)} free)
                 </Text>
               </Box>
             )}
@@ -5008,6 +5047,10 @@ async function main() {
       break;
     case "doctor":
       await rawDoctor();
+      break;
+    case "computer-use":
+    case "computeruse":
+      await rawComputerUse(args);
       break;
     case "update":
       await rawUpdate({

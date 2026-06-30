@@ -1,22 +1,35 @@
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { PageLayout } from '@/components/layout';
-import { useHealth, useInfo, useSystemMonitor, useSystemPrompt, useSystemPromptPreview, useUpdateSystemPrompt, useIdentity, useUpdateIdentity, type SystemPromptConfig, type IdentityConfig, type HealthData, type InfoData } from '@/hooks/useApi';
-import { settingsApi } from '@/lib/api';
-import { openExternal } from '@/utils/openExternal';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { PageLayout } from "@/components/layout";
+import {
+  useHealth,
+  useInfo,
+  useSystemMonitor,
+  useSystemPrompt,
+  useSystemPromptPreview,
+  useUpdateSystemPrompt,
+  useIdentity,
+  useUpdateIdentity,
+  type SystemPromptConfig,
+  type IdentityConfig,
+  type HealthData,
+  type InfoData,
+} from "@/hooks/useApi";
+import { settingsApi, computerUseApi, type ComputerUseStatus } from "@/lib/api";
+import { openExternal } from "@/utils/openExternal";
 import {
   checkForDesktopUpdate,
   describeDesktopUpdaterError,
   installDesktopUpdate,
   relaunchDesktopApp,
-} from '@/lib/desktopUpdater';
+} from "@/lib/desktopUpdater";
 import {
   getDesktopHostRuntime,
   getDesktopRuntimeLabel,
   isDesktopUpdaterSupported,
-} from '@/lib/desktopHost';
-import { Input, Textarea, Select } from '@/components/ui/Input';
-import { Button } from '@/components/ui/Button';
+} from "@/lib/desktopHost";
+import { Input, Textarea, Select } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 import {
   readThemeAccentFromConfig,
   themeAccentKeys,
@@ -24,7 +37,7 @@ import {
   themeConfigPayload,
   useUIStore,
   type ThemeAccent,
-} from '@/stores/uiStore';
+} from "@/stores/uiStore";
 import {
   Activity,
   AlertTriangle,
@@ -47,27 +60,30 @@ import {
   Download,
   ExternalLink,
   MonitorUp,
-} from 'lucide-react';
-import { useState, useRef, useEffect, useCallback } from 'react';
-import type { Update, DownloadEvent } from '@tauri-apps/plugin-updater';
+} from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import type { Update, DownloadEvent } from "@tauri-apps/plugin-updater";
 
-function getCheckStatus(value: unknown): { status: 'healthy' | 'warning' | 'error'; details?: string } {
-  if (typeof value === 'string') {
-    return { status: value === 'healthy' ? 'healthy' : 'error' };
+function getCheckStatus(value: unknown): {
+  status: "healthy" | "warning" | "error";
+  details?: string;
+} {
+  if (typeof value === "string") {
+    return { status: value === "healthy" ? "healthy" : "error" };
   }
-  if (typeof value === 'object' && value !== null) {
+  if (typeof value === "object" && value !== null) {
     const obj = value as Record<string, unknown>;
-    if (obj.status === 'healthy') return { status: 'healthy' };
-    if (obj.status) return { status: obj.status as 'error' };
-    if ('total' in obj) {
-      const running = obj.running !== undefined ? `, ${obj.running} running` : '';
-      return { status: 'healthy', details: `${obj.total} total${running}` };
+    if (obj.status === "healthy") return { status: "healthy" };
+    if (obj.status) return { status: obj.status as "error" };
+    if ("total" in obj) {
+      const running = obj.running !== undefined ? `, ${obj.running} running` : "";
+      return { status: "healthy", details: `${obj.total} total${running}` };
     }
-    if ('heapUsed' in obj) {
-      return { status: 'healthy', details: `${obj.heapUsed}MB / ${obj.heapTotal}MB` };
+    if ("heapUsed" in obj) {
+      return { status: "healthy", details: `${obj.heapUsed}MB / ${obj.heapTotal}MB` };
     }
   }
-  return { status: 'healthy' };
+  return { status: "healthy" };
 }
 
 function formatBytes(bytes?: number): string {
@@ -79,7 +95,7 @@ function formatBytes(bytes?: number): string {
 }
 
 function formatPct(value?: number | null): string {
-  return typeof value === 'number' && Number.isFinite(value) ? `${value.toFixed(1)}%` : 'n/a';
+  return typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(1)}%` : "n/a";
 }
 
 function ThemeSettings() {
@@ -87,16 +103,16 @@ function ThemeSettings() {
   const [savingAccent, setSavingAccent] = useState<ThemeAccent | null>(null);
 
   const accentColors: Record<ThemeAccent, string> = {
-    indigo: 'bg-indigo-500',
-    blue: 'bg-blue-500',
-    cyan: 'bg-cyan-500',
-    teal: 'bg-teal-500',
-    emerald: 'bg-emerald-500',
-    amber: 'bg-amber-500',
-    orange: 'bg-orange-500',
-    rose: 'bg-rose-500',
-    pink: 'bg-pink-500',
-    purple: 'bg-purple-500',
+    indigo: "bg-indigo-500",
+    blue: "bg-blue-500",
+    cyan: "bg-cyan-500",
+    teal: "bg-teal-500",
+    emerald: "bg-emerald-500",
+    amber: "bg-amber-500",
+    orange: "bg-orange-500",
+    rose: "bg-rose-500",
+    pink: "bg-pink-500",
+    purple: "bg-purple-500",
   };
 
   useEffect(() => {
@@ -125,12 +141,12 @@ function ThemeSettings() {
     try {
       const result = await settingsApi.updateConfig(themeConfigPayload(key));
       if (!result.success || !result.data?.success) {
-        throw new Error(result.error || 'Config update failed');
+        throw new Error(result.error || "Config update failed");
       }
-      addToast('success', `Theme changed to ${themeAccents[key].name}`);
+      addToast("success", `Theme changed to ${themeAccents[key].name}`);
     } catch {
       setAccent(previous);
-      addToast('error', 'Failed to update theme');
+      addToast("error", "Failed to update theme");
     } finally {
       setSavingAccent(null);
     }
@@ -154,12 +170,12 @@ function ThemeSettings() {
               disabled={savingAccent !== null}
               onClick={() => void updateAccent(key)}
               className={cn(
-                'w-12 h-12 rounded-xl transition-all cursor-pointer',
+                "w-12 h-12 rounded-xl transition-all cursor-pointer",
                 accentColors[key],
                 accent === key
-                  ? 'ring-2 ring-white ring-offset-2 ring-offset-[#0a0a0f] scale-110'
-                  : 'hover:scale-105 opacity-70 hover:opacity-100',
-                savingAccent !== null && 'cursor-not-allowed'
+                  ? "ring-2 ring-white ring-offset-2 ring-offset-[#0a0a0f] scale-110"
+                  : "hover:scale-105 opacity-70 hover:opacity-100",
+                savingAccent !== null && "cursor-not-allowed"
               )}
               title={themeAccents[key].name}
             />
@@ -184,10 +200,10 @@ function DesktopUpdateSettings({
   const supportsUpdater = isDesktopUpdaterSupported();
   const runtimeLabel = getDesktopRuntimeLabel(desktopRuntime);
   const [status, setStatus] = useState<
-    'idle' | 'checking' | 'current' | 'available' | 'installing' | 'error'
-  >('idle');
+    "idle" | "checking" | "current" | "available" | "installing" | "error"
+  >("idle");
   const [statusMessage, setStatusMessage] = useState(
-    'Check for signed Cybara desktop updates published to GitHub Releases.'
+    "Check for signed Cybara desktop updates published to GitHub Releases."
   );
   const [availableUpdate, setAvailableUpdate] = useState<Update | null>(null);
   const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
@@ -199,20 +215,20 @@ function DesktopUpdateSettings({
     async (silent = false) => {
       if (!isDesktopRuntime) return;
       if (!supportsUpdater) {
-        setStatus('current');
+        setStatus("current");
         setAvailableUpdate(null);
         setLastCheckedAt(new Date().toISOString());
         setStatusMessage(
-          'This native Cybara macOS app uses the same local gateway on http://127.0.0.1:4269, but in-app signed updater installs are not wired for this host yet. Use GitHub Releases or rebuild from source.'
+          "This native Cybara macOS app uses the same local gateway on http://127.0.0.1:4269, but in-app signed updater installs are not wired for this host yet. Use GitHub Releases or rebuild from source."
         );
         return;
       }
 
-      setStatus('checking');
+      setStatus("checking");
       setDownloadedBytes(0);
       setTotalBytes(null);
       if (!silent) {
-        setStatusMessage('Checking GitHub Releases for a newer desktop build...');
+        setStatusMessage("Checking GitHub Releases for a newer desktop build...");
       }
 
       try {
@@ -221,27 +237,27 @@ function DesktopUpdateSettings({
 
         if (update) {
           setAvailableUpdate(update);
-          setStatus('available');
+          setStatus("available");
           setStatusMessage(`Version ${update.version} is available to install.`);
           if (!silent) {
-          addToast('success', `Desktop update ${update.version} is ready to install`);
+            addToast("success", `Desktop update ${update.version} is ready to install`);
           }
           return;
         }
 
         setAvailableUpdate(null);
-        setStatus('current');
-        setStatusMessage('This desktop build is already on the latest published release.');
+        setStatus("current");
+        setStatusMessage("This desktop build is already on the latest published release.");
         if (!silent) {
-          addToast('success', 'Cybara desktop is already up to date');
+          addToast("success", "Cybara desktop is already up to date");
         }
       } catch (error) {
         const message = describeDesktopUpdaterError(error);
         setAvailableUpdate(null);
-        setStatus('error');
+        setStatus("error");
         setStatusMessage(message);
         if (!silent) {
-          addToast('error', message);
+          addToast("error", message);
         }
       }
     },
@@ -251,33 +267,33 @@ function DesktopUpdateSettings({
   const handleInstall = useCallback(async () => {
     if (!availableUpdate) return;
 
-    setStatus('installing');
+    setStatus("installing");
     setDownloadedBytes(0);
     setTotalBytes(null);
     setStatusMessage(`Downloading and installing ${availableUpdate.version}...`);
 
     try {
       await installDesktopUpdate(availableUpdate, (event: DownloadEvent) => {
-        if (event.event === 'Started') {
+        if (event.event === "Started") {
           setDownloadedBytes(0);
           setTotalBytes(event.data.contentLength || null);
           return;
         }
-        if (event.event === 'Progress') {
+        if (event.event === "Progress") {
           setDownloadedBytes((previous) => previous + event.data.chunkLength);
           return;
         }
-        if (event.event === 'Finished') {
+        if (event.event === "Finished") {
           setStatusMessage(`Installed ${availableUpdate.version}. Restarting Cybara...`);
         }
       });
-      addToast('success', `Installed ${availableUpdate.version}. Restarting Cybara...`);
+      addToast("success", `Installed ${availableUpdate.version}. Restarting Cybara...`);
       await relaunchDesktopApp();
     } catch (error) {
       const message = describeDesktopUpdaterError(error);
-      setStatus('available');
+      setStatus("available");
       setStatusMessage(message);
-      addToast('error', message);
+      addToast("error", message);
     }
   }, [addToast, availableUpdate]);
 
@@ -296,31 +312,31 @@ function DesktopUpdateSettings({
     ? availableUpdate.body.trim().slice(0, 280)
     : null;
   const progressLabel =
-    status === 'installing'
+    status === "installing"
       ? totalBytes && totalBytes > 0
         ? `${formatByteCount(downloadedBytes)} / ${formatByteCount(totalBytes)}`
         : `${formatByteCount(downloadedBytes)} downloaded`
       : null;
   const statusVariant =
-    status === 'available'
-      ? 'warning'
-      : status === 'current'
-        ? 'success'
-        : status === 'error'
-          ? 'error'
-          : 'default';
+    status === "available"
+      ? "warning"
+      : status === "current"
+        ? "success"
+        : status === "error"
+          ? "error"
+          : "default";
   const statusLabel =
-    status === 'available'
-      ? 'Update Available'
-      : status === 'current'
-        ? 'Up To Date'
-        : status === 'installing'
-          ? 'Installing'
-          : status === 'error'
-            ? 'Unavailable'
-            : status === 'checking'
-              ? 'Checking'
-              : 'Idle';
+    status === "available"
+      ? "Update Available"
+      : status === "current"
+        ? "Up To Date"
+        : status === "installing"
+          ? "Installing"
+          : status === "error"
+            ? "Unavailable"
+            : status === "checking"
+              ? "Checking"
+              : "Idle";
 
   return (
     <Card variant="liquid">
@@ -340,12 +356,10 @@ function DesktopUpdateSettings({
           <Badge variant={statusVariant}>{statusLabel}</Badge>
           <Badge variant="info">{runtimeLabel}</Badge>
           <span className="text-xs text-gray-400">
-            Current version: <span className="text-white">{currentVersion || 'unknown'}</span>
+            Current version: <span className="text-white">{currentVersion || "unknown"}</span>
           </span>
           {availableUpdate && (
-            <span className="text-xs text-emerald-300">
-              Latest: {availableUpdate.version}
-            </span>
+            <span className="text-xs text-emerald-300">Latest: {availableUpdate.version}</span>
           )}
         </div>
 
@@ -360,9 +374,10 @@ function DesktopUpdateSettings({
           {updateBodyPreview && (
             <p className="mt-2 text-xs text-gray-300 whitespace-pre-wrap break-words">
               {updateBodyPreview}
-              {availableUpdate?.body && availableUpdate.body.trim().length > updateBodyPreview.length
-                ? '...'
-                : ''}
+              {availableUpdate?.body &&
+              availableUpdate.body.trim().length > updateBodyPreview.length
+                ? "..."
+                : ""}
             </p>
           )}
         </div>
@@ -371,16 +386,16 @@ function DesktopUpdateSettings({
           <Button
             variant="outline"
             onClick={() => void handleCheck()}
-            disabled={status === 'checking' || status === 'installing' || !supportsUpdater}
+            disabled={status === "checking" || status === "installing" || !supportsUpdater}
           >
-            <RefreshCw className={`w-4 h-4 ${status === 'checking' ? 'animate-spin' : ''}`} />
-            {supportsUpdater ? 'Check Now' : 'Built From Source'}
+            <RefreshCw className={`w-4 h-4 ${status === "checking" ? "animate-spin" : ""}`} />
+            {supportsUpdater ? "Check Now" : "Built From Source"}
           </Button>
           {availableUpdate && supportsUpdater && (
             <Button
               variant="primary"
               onClick={() => void handleInstall()}
-              disabled={status === 'installing'}
+              disabled={status === "installing"}
             >
               <Download className="w-4 h-4" />
               Install And Restart
@@ -390,7 +405,7 @@ function DesktopUpdateSettings({
             <Button
               variant="ghost"
               onClick={() => void openExternal(releasesUrl)}
-              disabled={status === 'installing'}
+              disabled={status === "installing"}
             >
               <ExternalLink className="w-4 h-4" />
               View Releases
@@ -402,17 +417,17 @@ function DesktopUpdateSettings({
   );
 }
 
-type SandboxProviderOption = 'auto' | 'apple_sandbox' | 'podman' | 'docker';
+type SandboxProviderOption = "auto" | "apple_sandbox" | "podman" | "docker";
 
 interface SandboxStatusView {
   enabled: boolean;
   configuredProvider: SandboxProviderOption;
-  network: 'allow' | 'deny';
-  resolvedProvider: 'apple_sandbox' | 'podman' | 'docker' | null;
+  network: "allow" | "deny";
+  resolvedProvider: "apple_sandbox" | "podman" | "docker" | null;
   available: boolean;
   reason?: string;
   providers: Array<{
-    provider: 'apple_sandbox' | 'podman' | 'docker';
+    provider: "apple_sandbox" | "podman" | "docker";
     supported: boolean;
     installed: boolean;
     available: boolean;
@@ -420,24 +435,116 @@ interface SandboxStatusView {
   }>;
   checkedAt: string;
   lastEvent: {
-    phase: 'prepared' | 'disabled' | 'error';
-    provider: 'apple_sandbox' | 'podman' | 'docker' | 'host' | null;
+    phase: "prepared" | "disabled" | "error";
+    provider: "apple_sandbox" | "podman" | "docker" | "host" | null;
     commandPreview?: string;
     cwd?: string;
-    network?: 'allow' | 'deny';
+    network?: "allow" | "deny";
     reason?: string;
     timestamp: string;
   } | null;
 }
 
+function ComputerUseSettings() {
+  const [status, setStatus] = useState<ComputerUseStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [granting, setGranting] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const res = await computerUseApi.getStatus();
+    if (res.success && res.data) setStatus(res.data);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const grant = useCallback(async () => {
+    setGranting(true);
+    setNote(null);
+    const res = await computerUseApi.grantPermissions();
+    if (res.success && res.data) setNote(res.data.message);
+    setGranting(false);
+    await load();
+  }, [load]);
+
+  const yesNo = (v?: boolean) =>
+    v === undefined ? (
+      <Badge variant="default">n/a</Badge>
+    ) : v ? (
+      <Badge variant="success">Yes</Badge>
+    ) : (
+      <Badge variant="error">No</Badge>
+    );
+
+  return (
+    <Card variant="liquid">
+      <CardHeader>
+        <CardTitle>Computer Use</CardTitle>
+        <CardDescription>
+          Background desktop control via the cua-driver engine. Install it and grant macOS
+          permissions to let agents see and control the screen.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <p className="text-sm text-gray-400">Checking status…</p>
+        ) : status ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+              <span className="flex items-center gap-2">Installed {yesNo(status.available)}</span>
+              {status.version && <span className="text-gray-400">v{status.version}</span>}
+              {status.platform === "darwin" && (
+                <>
+                  <span className="flex items-center gap-2">Accessibility {yesNo(status.accessibility)}</span>
+                  <span className="flex items-center gap-2">
+                    Screen Recording {yesNo(status.screenRecording)}
+                  </span>
+                </>
+              )}
+              <span className="flex items-center gap-2">
+                Ready {status.ready ? <Badge variant="success">Yes</Badge> : <Badge variant="error">No</Badge>}
+              </span>
+            </div>
+            <p className="text-sm text-gray-400">{status.message}</p>
+            {note && <p className="text-sm text-indigo-300">{note}</p>}
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={() => void load()}>
+                Recheck
+              </Button>
+              {!status.available && (
+                <Button variant="secondary" onClick={() => openExternal("https://github.com/trycua/cua")}>
+                  Install cua-driver
+                </Button>
+              )}
+              {status.platform === "darwin" && status.available && !status.ready && (
+                <Button variant="primary" onClick={() => void grant()} disabled={granting}>
+                  {granting ? "Requesting…" : "Grant Permissions"}
+                </Button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-red-400">Could not load computer-use status.</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function FeatureSettings() {
   const [terminalEnabled, setTerminalEnabled] = useState(false);
   const [dangerousToolPolicyEnabled, setDangerousToolPolicyEnabled] = useState(false);
-  const [dangerousToolPolicyMode, setDangerousToolPolicyMode] = useState<'audit' | 'block'>('audit');
-  const [toolApprovalMode, setToolApprovalMode] = useState<'always_allow' | 'ask'>('always_allow');
+  const [dangerousToolPolicyMode, setDangerousToolPolicyMode] = useState<"audit" | "block">(
+    "audit"
+  );
+  const [toolApprovalMode, setToolApprovalMode] = useState<"always_allow" | "ask">("always_allow");
   const [sandboxEnabled, setSandboxEnabled] = useState(false);
-  const [sandboxProvider, setSandboxProvider] = useState<SandboxProviderOption>('auto');
-  const [sandboxNetwork, setSandboxNetwork] = useState<'allow' | 'deny'>('deny');
+  const [sandboxProvider, setSandboxProvider] = useState<SandboxProviderOption>("auto");
+  const [sandboxNetwork, setSandboxNetwork] = useState<"allow" | "deny">("deny");
   const [savingToolApprovalMode, setSavingToolApprovalMode] = useState(false);
   const [savingDangerousPolicy, setSavingDangerousPolicy] = useState(false);
   const [savingSandboxRuntime, setSavingSandboxRuntime] = useState(false);
@@ -447,37 +554,40 @@ function FeatureSettings() {
   const [sandboxStatus, setSandboxStatus] = useState<SandboxStatusView | null>(null);
   const { addToast } = useUIStore();
 
-  const providerLabel = (provider: SandboxProviderOption | 'host' | null): string => {
-    if (provider === 'apple_sandbox') return 'Apple Sandbox';
-    if (provider === 'podman') return 'Podman';
-    if (provider === 'docker') return 'Docker';
-    if (provider === 'host') return 'Host';
-    if (provider === 'auto') return 'Auto Detect';
-    return 'None';
+  const providerLabel = (provider: SandboxProviderOption | "host" | null): string => {
+    if (provider === "apple_sandbox") return "Apple Sandbox";
+    if (provider === "podman") return "Podman";
+    if (provider === "docker") return "Docker";
+    if (provider === "host") return "Host";
+    if (provider === "auto") return "Auto Detect";
+    return "None";
   };
 
-  const refreshSandboxStatus = useCallback(async (silent = false): Promise<SandboxStatusView | null> => {
-    if (!silent) {
-      setRefreshingSandboxStatus(true);
-    } else {
-      setLoadingSandboxStatus(true);
-    }
-    try {
-      const result = await settingsApi.getSandboxStatus();
-      if (result.success && result.data) {
-        const nextStatus = result.data as SandboxStatusView;
-        setSandboxStatus(nextStatus);
-        return nextStatus;
+  const refreshSandboxStatus = useCallback(
+    async (silent = false): Promise<SandboxStatusView | null> => {
+      if (!silent) {
+        setRefreshingSandboxStatus(true);
+      } else {
+        setLoadingSandboxStatus(true);
       }
-      return null;
-    } catch {
-      // Ignore status refresh errors.
-      return null;
-    } finally {
-      setLoadingSandboxStatus(false);
-      if (!silent) setRefreshingSandboxStatus(false);
-    }
-  }, []);
+      try {
+        const result = await settingsApi.getSandboxStatus();
+        if (result.success && result.data) {
+          const nextStatus = result.data as SandboxStatusView;
+          setSandboxStatus(nextStatus);
+          return nextStatus;
+        }
+        return null;
+      } catch {
+        // Ignore status refresh errors.
+        return null;
+      } finally {
+        setLoadingSandboxStatus(false);
+        if (!silent) setRefreshingSandboxStatus(false);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -492,24 +602,22 @@ function FeatureSettings() {
         const data = configResult.success ? configResult.data : undefined;
         setTerminalEnabled(data?.terminal_enabled === true);
         const policy = data?.dangerous_tool_policy as
-          | { enabled?: boolean; mode?: string }
-          | undefined;
-        const modeRaw = typeof data?.tool_approval_mode === 'string' ? data.tool_approval_mode : '';
+          { enabled?: boolean; mode?: string } | undefined;
+        const modeRaw = typeof data?.tool_approval_mode === "string" ? data.tool_approval_mode : "";
         const sandboxRaw = data?.sandbox_runtime as
-          | { enabled?: boolean; provider?: string; network?: string }
-          | undefined;
+          { enabled?: boolean; provider?: string; network?: string } | undefined;
         setDangerousToolPolicyEnabled(policy?.enabled === true);
-        setDangerousToolPolicyMode(policy?.mode === 'block' ? 'block' : 'audit');
-        setToolApprovalMode(modeRaw === 'ask' ? 'ask' : 'always_allow');
+        setDangerousToolPolicyMode(policy?.mode === "block" ? "block" : "audit");
+        setToolApprovalMode(modeRaw === "ask" ? "ask" : "always_allow");
         setSandboxEnabled(sandboxRaw?.enabled === true);
         setSandboxProvider(
-          sandboxRaw?.provider === 'apple_sandbox' ||
-            sandboxRaw?.provider === 'podman' ||
-            sandboxRaw?.provider === 'docker'
+          sandboxRaw?.provider === "apple_sandbox" ||
+            sandboxRaw?.provider === "podman" ||
+            sandboxRaw?.provider === "docker"
             ? sandboxRaw.provider
-            : 'auto'
+            : "auto"
         );
-        setSandboxNetwork(sandboxRaw?.network === 'allow' ? 'allow' : 'deny');
+        setSandboxNetwork(sandboxRaw?.network === "allow" ? "allow" : "deny");
         if (sandboxResult.success && sandboxResult.data) {
           setSandboxStatus(sandboxResult.data as SandboxStatusView);
         }
@@ -531,16 +639,16 @@ function FeatureSettings() {
     try {
       const result = await settingsApi.updateConfig({ terminal_enabled: enabled });
       if (!result.success || !result.data?.success) {
-        throw new Error(result.error || 'Config update failed');
+        throw new Error(result.error || "Config update failed");
       }
-      addToast('success', `Web terminal ${enabled ? 'enabled' : 'disabled'}`);
+      addToast("success", `Web terminal ${enabled ? "enabled" : "disabled"}`);
     } catch {
-      addToast('error', 'Failed to update terminal setting');
+      addToast("error", "Failed to update terminal setting");
       setTerminalEnabled(!enabled);
     }
   };
 
-  const updateDangerousPolicy = async (next: { enabled: boolean; mode: 'audit' | 'block' }) => {
+  const updateDangerousPolicy = async (next: { enabled: boolean; mode: "audit" | "block" }) => {
     const previous = {
       enabled: dangerousToolPolicyEnabled,
       mode: dangerousToolPolicyMode,
@@ -552,39 +660,37 @@ function FeatureSettings() {
     try {
       const result = await settingsApi.updateConfig({ dangerous_tool_policy: next });
       if (!result.success || !result.data?.success) {
-        throw new Error(result.error || 'Config update failed');
+        throw new Error(result.error || "Config update failed");
       }
       addToast(
-        'success',
-        `Dangerous tool policy ${next.enabled ? `${next.mode} mode` : 'disabled'}`
+        "success",
+        `Dangerous tool policy ${next.enabled ? `${next.mode} mode` : "disabled"}`
       );
     } catch {
       setDangerousToolPolicyEnabled(previous.enabled);
       setDangerousToolPolicyMode(previous.mode);
-      addToast('error', 'Failed to update dangerous tool policy');
+      addToast("error", "Failed to update dangerous tool policy");
     } finally {
       setSavingDangerousPolicy(false);
     }
   };
 
-  const updateToolApprovalMode = async (nextMode: 'always_allow' | 'ask') => {
+  const updateToolApprovalMode = async (nextMode: "always_allow" | "ask") => {
     const previousMode = toolApprovalMode;
     setToolApprovalMode(nextMode);
     setSavingToolApprovalMode(true);
     try {
       const result = await settingsApi.updateConfig({ tool_approval_mode: nextMode });
       if (!result.success || !result.data?.success) {
-        throw new Error(result.error || 'Config update failed');
+        throw new Error(result.error || "Config update failed");
       }
       addToast(
-        'success',
-        nextMode === 'ask'
-          ? 'Tool approvals set to Ask Me'
-          : 'Tool approvals set to Always Allow'
+        "success",
+        nextMode === "ask" ? "Tool approvals set to Ask Me" : "Tool approvals set to Always Allow"
       );
     } catch {
       setToolApprovalMode(previousMode);
-      addToast('error', 'Failed to update tool approval mode');
+      addToast("error", "Failed to update tool approval mode");
     } finally {
       setSavingToolApprovalMode(false);
     }
@@ -593,7 +699,7 @@ function FeatureSettings() {
   const updateSandboxRuntime = async (next: {
     enabled: boolean;
     provider: SandboxProviderOption;
-    network: 'allow' | 'deny';
+    network: "allow" | "deny";
   }) => {
     const previous = {
       enabled: sandboxEnabled,
@@ -608,22 +714,22 @@ function FeatureSettings() {
     try {
       const result = await settingsApi.updateConfig({ sandbox_runtime: next });
       if (!result.success || !result.data?.success) {
-        throw new Error(result.error || 'Config update failed');
+        throw new Error(result.error || "Config update failed");
       }
       const refreshedStatus = await refreshSandboxStatus(true);
       if (next.enabled && refreshedStatus && !refreshedStatus.available) {
         addToast(
-          'error',
-          `Sandbox unavailable: ${refreshedStatus.reason || 'No compatible provider on this machine'}`
+          "error",
+          `Sandbox unavailable: ${refreshedStatus.reason || "No compatible provider on this machine"}`
         );
       } else {
-        addToast('success', next.enabled ? 'Sandbox runtime enabled' : 'Sandbox runtime disabled');
+        addToast("success", next.enabled ? "Sandbox runtime enabled" : "Sandbox runtime disabled");
       }
     } catch {
       setSandboxEnabled(previous.enabled);
       setSandboxProvider(previous.provider);
       setSandboxNetwork(previous.network);
-      addToast('error', 'Failed to update sandbox runtime');
+      addToast("error", "Failed to update sandbox runtime");
     } finally {
       setSavingSandboxRuntime(false);
     }
@@ -643,7 +749,8 @@ function FeatureSettings() {
           <div>
             <p className="text-sm text-white font-medium">Web Terminal</p>
             <p className="text-xs text-gray-400 mt-0.5">
-              Enable browser-based terminal access. Also available via <code className="text-indigo-400">--enable-terminal</code> flag.
+              Enable browser-based terminal access. Also available via{" "}
+              <code className="text-indigo-400">--enable-terminal</code> flag.
             </p>
           </div>
           <button
@@ -652,12 +759,14 @@ function FeatureSettings() {
             aria-checked={terminalEnabled}
             disabled={loading}
             onClick={() => toggleTerminal(!terminalEnabled)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${terminalEnabled ? 'bg-indigo-500' : 'bg-white/10'
-              } ${loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              terminalEnabled ? "bg-indigo-500" : "bg-white/10"
+            } ${loading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
           >
             <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${terminalEnabled ? 'translate-x-6' : 'translate-x-1'
-                }`}
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                terminalEnabled ? "translate-x-6" : "translate-x-1"
+              }`}
             />
           </button>
         </div>
@@ -667,7 +776,8 @@ function FeatureSettings() {
             <div>
               <p className="text-sm text-white font-medium">Dangerous Tool Policy</p>
               <p className="text-xs text-gray-400 mt-0.5">
-                Guardrails for high-impact tools like shell execution, wallet signing, and external actions.
+                Guardrails for high-impact tools like shell execution, wallet signing, and external
+                actions.
               </p>
             </div>
             <button
@@ -681,12 +791,14 @@ function FeatureSettings() {
                   mode: dangerousToolPolicyMode,
                 })
               }
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${dangerousToolPolicyEnabled ? 'bg-amber-500' : 'bg-white/10'
-                } ${(loading || savingDangerousPolicy) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                dangerousToolPolicyEnabled ? "bg-amber-500" : "bg-white/10"
+              } ${loading || savingDangerousPolicy ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
             >
               <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${dangerousToolPolicyEnabled ? 'translate-x-6' : 'translate-x-1'
-                  }`}
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  dangerousToolPolicyEnabled ? "translate-x-6" : "translate-x-1"
+                }`}
               />
             </button>
           </div>
@@ -698,12 +810,12 @@ function FeatureSettings() {
                 onChange={(value) =>
                   updateDangerousPolicy({
                     enabled: true,
-                    mode: value === 'block' ? 'block' : 'audit',
+                    mode: value === "block" ? "block" : "audit",
                   })
                 }
                 options={[
-                  { value: 'audit', label: 'Audit (log only)' },
-                  { value: 'block', label: 'Block dangerous tools' },
+                  { value: "audit", label: "Audit (log only)" },
+                  { value: "block", label: "Block dangerous tools" },
                 ]}
               />
             </div>
@@ -713,23 +825,24 @@ function FeatureSettings() {
         <div className="py-3 border-b border-white/10">
           <p className="text-sm text-white font-medium">Tool Approvals</p>
           <p className="text-xs text-gray-400 mt-0.5">
-            Choose how dangerous tools are handled across chat, Telegram, Discord, Slack, Signal, iMessage, and WhatsApp.
+            Choose how dangerous tools are handled across chat, Telegram, Discord, Slack, Signal,
+            iMessage, and WhatsApp.
           </p>
           <div className="mt-3 max-w-xs">
             <Select
               value={toolApprovalMode}
               onChange={(value) =>
-                void updateToolApprovalMode(value === 'ask' ? 'ask' : 'always_allow')
+                void updateToolApprovalMode(value === "ask" ? "ask" : "always_allow")
               }
               options={[
-                { value: 'always_allow', label: 'Always Allow' },
-                { value: 'ask', label: 'Ask Me First' },
+                { value: "always_allow", label: "Always Allow" },
+                { value: "ask", label: "Ask Me First" },
               ]}
               disabled={loading || savingToolApprovalMode}
             />
           </div>
           <p className="text-[11px] text-gray-500 mt-2">
-            Channel shortcut: <code className="text-indigo-400">/permissions ask</code> or{' '}
+            Channel shortcut: <code className="text-indigo-400">/permissions ask</code> or{" "}
             <code className="text-indigo-400">/permissions allow</code>
           </p>
         </div>
@@ -755,12 +868,12 @@ function FeatureSettings() {
                 })
               }
               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                sandboxEnabled ? 'bg-emerald-500' : 'bg-white/10'
-              } ${(loading || savingSandboxRuntime) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                sandboxEnabled ? "bg-emerald-500" : "bg-white/10"
+              } ${loading || savingSandboxRuntime ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
             >
               <span
                 className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  sandboxEnabled ? 'translate-x-6' : 'translate-x-1'
+                  sandboxEnabled ? "translate-x-6" : "translate-x-1"
                 }`}
               />
             </button>
@@ -775,17 +888,17 @@ function FeatureSettings() {
                     updateSandboxRuntime({
                       enabled: true,
                       provider:
-                        value === 'apple_sandbox' || value === 'podman' || value === 'docker'
+                        value === "apple_sandbox" || value === "podman" || value === "docker"
                           ? value
-                          : 'auto',
+                          : "auto",
                       network: sandboxNetwork,
                     })
                   }
                   options={[
-                    { value: 'auto', label: 'Auto Detect' },
-                    { value: 'apple_sandbox', label: 'Apple Sandbox' },
-                    { value: 'podman', label: 'Podman' },
-                    { value: 'docker', label: 'Docker' },
+                    { value: "auto", label: "Auto Detect" },
+                    { value: "apple_sandbox", label: "Apple Sandbox" },
+                    { value: "podman", label: "Podman" },
+                    { value: "docker", label: "Docker" },
                   ]}
                   disabled={savingSandboxRuntime}
                 />
@@ -798,12 +911,12 @@ function FeatureSettings() {
                     updateSandboxRuntime({
                       enabled: true,
                       provider: sandboxProvider,
-                      network: value === 'allow' ? 'allow' : 'deny',
+                      network: value === "allow" ? "allow" : "deny",
                     })
                   }
                   options={[
-                    { value: 'deny', label: 'Deny Network' },
-                    { value: 'allow', label: 'Allow Network' },
+                    { value: "deny", label: "Deny Network" },
+                    { value: "allow", label: "Allow Network" },
                   ]}
                   disabled={savingSandboxRuntime}
                 />
@@ -825,11 +938,11 @@ function FeatureSettings() {
                 type="button"
                 onClick={() => void refreshSandboxStatus()}
                 className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-white/10 hover:bg-white/5 ${
-                  refreshingSandboxStatus ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'
+                  refreshingSandboxStatus ? "opacity-70 cursor-not-allowed" : "cursor-pointer"
                 }`}
                 disabled={refreshingSandboxStatus}
               >
-                <RefreshCw className={`w-3 h-3 ${refreshingSandboxStatus ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-3 h-3 ${refreshingSandboxStatus ? "animate-spin" : ""}`} />
                 Refresh
               </button>
             </div>
@@ -841,26 +954,35 @@ function FeatureSettings() {
                   <Badge
                     variant={
                       !sandboxStatus.enabled
-                        ? 'default'
+                        ? "default"
                         : sandboxStatus.available
-                          ? 'success'
-                          : 'error'
+                          ? "success"
+                          : "error"
                     }
                   >
                     {!sandboxStatus.enabled
-                      ? 'Disabled'
+                      ? "Disabled"
                       : sandboxStatus.available
-                        ? 'Ready'
-                        : 'Unavailable'}
+                        ? "Ready"
+                        : "Unavailable"}
                   </Badge>
                   <span className="text-[11px] text-gray-400">
-                    Configured: <span className="text-white">{providerLabel(sandboxStatus.configuredProvider)}</span>
+                    Configured:{" "}
+                    <span className="text-white">
+                      {providerLabel(sandboxStatus.configuredProvider)}
+                    </span>
                   </span>
                   <span className="text-[11px] text-gray-400">
-                    Resolved: <span className="text-white">{providerLabel(sandboxStatus.resolvedProvider)}</span>
+                    Resolved:{" "}
+                    <span className="text-white">
+                      {providerLabel(sandboxStatus.resolvedProvider)}
+                    </span>
                   </span>
                   <span className="text-[11px] text-gray-400">
-                    Network: <span className="text-white">{sandboxStatus.network === 'allow' ? 'Allow' : 'Deny'}</span>
+                    Network:{" "}
+                    <span className="text-white">
+                      {sandboxStatus.network === "allow" ? "Allow" : "Deny"}
+                    </span>
                   </span>
                 </div>
                 {sandboxStatus.reason && (
@@ -871,21 +993,27 @@ function FeatureSettings() {
                 )}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1">
                   {sandboxStatus.providers.map((entry) => (
-                    <div key={entry.provider} className="rounded border border-white/10 px-2 py-1.5">
+                    <div
+                      key={entry.provider}
+                      className="rounded border border-white/10 px-2 py-1.5"
+                    >
                       <p className="text-[11px] text-white">{providerLabel(entry.provider)}</p>
                       <p className="text-[10px] text-gray-400 mt-0.5">
                         {entry.available
-                          ? 'Available'
-                          : entry.reason || (!entry.installed ? 'Not installed' : 'Unavailable')}
+                          ? "Available"
+                          : entry.reason || (!entry.installed ? "Not installed" : "Unavailable")}
                       </p>
                     </div>
                   ))}
                 </div>
                 {sandboxStatus.lastEvent && (
                   <div className="pt-1">
-                    <p className="text-[10px] uppercase tracking-wide text-gray-500">Last sandbox event</p>
+                    <p className="text-[10px] uppercase tracking-wide text-gray-500">
+                      Last sandbox event
+                    </p>
                     <p className="text-[11px] text-gray-300 mt-0.5">
-                      {providerLabel(sandboxStatus.lastEvent.provider)} · {sandboxStatus.lastEvent.phase} ·{' '}
+                      {providerLabel(sandboxStatus.lastEvent.provider)} ·{" "}
+                      {sandboxStatus.lastEvent.phase} ·{" "}
                       {new Date(sandboxStatus.lastEvent.timestamp).toLocaleTimeString()}
                     </p>
                     {sandboxStatus.lastEvent.commandPreview && (
@@ -916,40 +1044,40 @@ export function Settings() {
 
   const stats = [
     {
-      label: 'System Status',
-      value: healthData.status || 'Unknown',
+      label: "System Status",
+      value: healthData.status || "Unknown",
       icon: Activity,
-      color: healthData.status === 'healthy' ? 'text-emerald-400' : 'text-red-400'
+      color: healthData.status === "healthy" ? "text-emerald-400" : "text-red-400",
     },
     {
-      label: 'Uptime',
+      label: "Uptime",
       value: formatUptime(Number(healthData.uptime) || 0),
       icon: Clock,
-      color: 'text-blue-400'
+      color: "text-blue-400",
     },
     {
-      label: 'Version',
-      value: String(infoData.version || 'unknown'),
+      label: "Version",
+      value: String(infoData.version || "unknown"),
       icon: CheckCircle,
-      color: 'text-amber-400'
+      color: "text-amber-400",
     },
     {
-      label: 'CPU',
+      label: "CPU",
       value: formatPct(systemMonitor?.cpu.usagePct),
       icon: Cpu,
-      color: 'text-cyan-400'
+      color: "text-cyan-400",
     },
     {
-      label: 'Memory',
+      label: "Memory",
       value: formatPct(systemMonitor?.memory.usedPct),
       icon: HardDrive,
-      color: 'text-emerald-400'
+      color: "text-emerald-400",
     },
   ];
 
   const checks = healthData.checks
     ? Object.entries(healthData.checks as Record<string, unknown>).filter(
-        ([key]) => key !== 'memory' && key !== 'system'
+        ([key]) => key !== "memory" && key !== "system"
       )
     : [];
 
@@ -960,8 +1088,10 @@ export function Settings() {
 
         <FeatureSettings />
 
+        <ComputerUseSettings />
+
         <DesktopUpdateSettings
-          currentVersion={String(infoData.version || 'unknown')}
+          currentVersion={String(infoData.version || "unknown")}
           releaseRepositoryUrl={infoData.releaseRepositoryUrl}
         />
 
@@ -970,7 +1100,12 @@ export function Settings() {
             <Card key={stat.label} variant="liquid">
               <CardContent>
                 <div className="flex items-center gap-3">
-                  <div className={cn('w-12 h-12 rounded-xl flex items-center justify-center bg-white/5', stat.color)}>
+                  <div
+                    className={cn(
+                      "w-12 h-12 rounded-xl flex items-center justify-center bg-white/5",
+                      stat.color
+                    )}
+                  >
                     <stat.icon className="w-6 h-6" />
                   </div>
                   <div>
@@ -991,24 +1126,42 @@ export function Settings() {
           <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="rounded-xl bg-white/5 p-4">
               <p className="text-sm text-gray-400">CPU</p>
-              <p className="mt-1 text-2xl font-semibold text-white">{formatPct(systemMonitor?.cpu.usagePct)}</p>
-              <p className="mt-1 text-xs text-gray-500">{systemMonitor?.cpu.cores || 0} cores - {systemMonitor?.cpu.model || 'Loading CPU'}</p>
+              <p className="mt-1 text-2xl font-semibold text-white">
+                {formatPct(systemMonitor?.cpu.usagePct)}
+              </p>
+              <p className="mt-1 text-xs text-gray-500">
+                {systemMonitor?.cpu.cores || 0} cores - {systemMonitor?.cpu.model || "Loading CPU"}
+              </p>
             </div>
             <div className="rounded-xl bg-white/5 p-4">
               <p className="text-sm text-gray-400">Memory</p>
-              <p className="mt-1 text-2xl font-semibold text-white">{formatPct(systemMonitor?.memory.usedPct)}</p>
-              <p className="mt-1 text-xs text-gray-500">{formatBytes(systemMonitor?.memory.usedBytes)} / {formatBytes(systemMonitor?.memory.totalBytes)} used</p>
+              <p className="mt-1 text-2xl font-semibold text-white">
+                {formatPct(systemMonitor?.memory.usedPct)}
+              </p>
+              <p className="mt-1 text-xs text-gray-500">
+                {formatBytes(systemMonitor?.memory.usedBytes)} /{" "}
+                {formatBytes(systemMonitor?.memory.totalBytes)} used
+              </p>
             </div>
             <div className="rounded-xl bg-white/5 p-4">
               <p className="text-sm text-gray-400">Cybara process</p>
-              <p className="mt-1 text-2xl font-semibold text-white">{formatPct(systemMonitor?.process.cpuUsagePct)}</p>
-              <p className="mt-1 text-xs text-gray-500">{formatBytes(systemMonitor?.process.memory.rssBytes)} RSS - PID {systemMonitor?.process.pid || 'n/a'}</p>
+              <p className="mt-1 text-2xl font-semibold text-white">
+                {formatPct(systemMonitor?.process.cpuUsagePct)}
+              </p>
+              <p className="mt-1 text-xs text-gray-500">
+                {formatBytes(systemMonitor?.process.memory.rssBytes)} RSS - PID{" "}
+                {systemMonitor?.process.pid || "n/a"}
+              </p>
             </div>
             <div className="rounded-xl bg-white/5 p-4">
               <p className="text-sm text-gray-400">Disk</p>
-              <p className="mt-1 text-2xl font-semibold text-white">{formatPct(systemMonitor?.disk?.usedPct)}</p>
+              <p className="mt-1 text-2xl font-semibold text-white">
+                {formatPct(systemMonitor?.disk?.usedPct)}
+              </p>
               <p className="mt-1 text-xs text-gray-500">
-                {systemMonitor?.disk ? `${formatBytes(systemMonitor.disk.freeBytes)} free at ${systemMonitor.disk.path}` : 'Disk telemetry unavailable'}
+                {systemMonitor?.disk
+                  ? `${formatBytes(systemMonitor.disk.freeBytes)} free at ${systemMonitor.disk.path}`
+                  : "Disk telemetry unavailable"}
               </p>
             </div>
           </CardContent>
@@ -1023,21 +1176,23 @@ export function Settings() {
             <CardContent className="space-y-4">
               <div className="flex justify-between py-2 border-b border-white/10">
                 <span className="text-gray-400">Platform Name</span>
-                <span className="text-white">{infoData?.name || 'Cybara'}</span>
+                <span className="text-white">{infoData?.name || "Cybara"}</span>
               </div>
               <div className="flex justify-between py-2 border-b border-white/10">
                 <span className="text-gray-400">Version</span>
-                <span className="text-white">{infoData?.version || 'unknown'}</span>
+                <span className="text-white">{infoData?.version || "unknown"}</span>
               </div>
               <div className="flex justify-between py-2 border-b border-white/10">
                 <span className="text-gray-400">Setup Complete</span>
-                <Badge variant={infoData?.setupComplete ? 'success' : 'warning'}>
-                  {infoData?.setupComplete ? 'Yes' : 'No'}
+                <Badge variant={infoData?.setupComplete ? "success" : "warning"}>
+                  {infoData?.setupComplete ? "Yes" : "No"}
                 </Badge>
               </div>
               <div className="flex justify-between py-2 border-b border-white/10">
                 <span className="text-gray-400">Server Time</span>
-                <span className="text-white">{healthData?.timestamp ? new Date(healthData.timestamp).toLocaleString() : 'N/A'}</span>
+                <span className="text-white">
+                  {healthData?.timestamp ? new Date(healthData.timestamp).toLocaleString() : "N/A"}
+                </span>
               </div>
             </CardContent>
           </Card>
@@ -1064,12 +1219,19 @@ export function Settings() {
                   };
 
                   return (
-                    <div key={key} className="flex items-center justify-between p-3 rounded-xl bg-white/5">
+                    <div
+                      key={key}
+                      className="flex items-center justify-between p-3 rounded-xl bg-white/5"
+                    >
                       <div className="flex items-center gap-3">
-                        <div className={cn(
-                          'w-10 h-10 rounded-lg flex items-center justify-center',
-                          check.status === 'healthy' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
-                        )}>
+                        <div
+                          className={cn(
+                            "w-10 h-10 rounded-lg flex items-center justify-center",
+                            check.status === "healthy"
+                              ? "bg-emerald-500/20 text-emerald-400"
+                              : "bg-red-500/20 text-red-400"
+                          )}
+                        >
                           {icons[key] || <Server className="w-5 h-5" />}
                         </div>
                         <div>
@@ -1079,7 +1241,7 @@ export function Settings() {
                           )}
                         </div>
                       </div>
-                      <Badge variant={check.status === 'healthy' ? 'success' : 'error'}>
+                      <Badge variant={check.status === "healthy" ? "success" : "error"}>
                         {check.status}
                       </Badge>
                     </div>
@@ -1107,8 +1269,8 @@ function formatUptime(seconds: number): string {
 }
 
 function formatByteCount(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
+  if (!Number.isFinite(value) || value <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
   let unitIndex = 0;
   let amount = value;
   while (amount >= 1024 && unitIndex < units.length - 1) {
@@ -1119,7 +1281,7 @@ function formatByteCount(value: number): string {
 }
 
 function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(' ');
+  return classes.filter(Boolean).join(" ");
 }
 
 function SystemPromptSection() {
@@ -1132,14 +1294,14 @@ function SystemPromptSection() {
   const initialized = useRef(false);
 
   const [identityForm, setIdentityForm] = useState<Partial<IdentityConfig>>({
-    name: '',
-    emoji: '',
-    creature: '',
-    vibe: '',
-    theme: 'dark',
+    name: "",
+    emoji: "",
+    creature: "",
+    vibe: "",
+    theme: "dark",
   });
 
-  const [customPrompt, setCustomPrompt] = useState('');
+  const [customPrompt, setCustomPrompt] = useState("");
   const [features, setFeatures] = useState({
     memoryEnabled: true,
     skillsEnabled: true,
@@ -1156,22 +1318,24 @@ function SystemPromptSection() {
 
     if (typedIdentity) {
       setIdentityForm({
-        name: typedIdentity.name || '',
-        emoji: typedIdentity.emoji || '',
-        creature: typedIdentity.creature || '',
-        vibe: typedIdentity.vibe || '',
-        theme: typedIdentity.theme || 'dark',
+        name: typedIdentity.name || "",
+        emoji: typedIdentity.emoji || "",
+        creature: typedIdentity.creature || "",
+        vibe: typedIdentity.vibe || "",
+        theme: typedIdentity.theme || "dark",
       });
     }
 
     if (typedSystemPrompt) {
-      setCustomPrompt(typedSystemPrompt.customPrompt || '');
-      setFeatures(typedSystemPrompt.features || {
-        memoryEnabled: true,
-        skillsEnabled: true,
-        messagingEnabled: true,
-        replyTagsEnabled: true,
-      });
+      setCustomPrompt(typedSystemPrompt.customPrompt || "");
+      setFeatures(
+        typedSystemPrompt.features || {
+          memoryEnabled: true,
+          skillsEnabled: true,
+          messagingEnabled: true,
+          replyTagsEnabled: true,
+        }
+      );
     }
 
     initialized.current = true;
@@ -1180,9 +1344,9 @@ function SystemPromptSection() {
   const handleSaveIdentity = async () => {
     try {
       await updateIdentity.mutateAsync(identityForm);
-      addToast('success', 'Identity settings saved');
+      addToast("success", "Identity settings saved");
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to save identity');
+      addToast("error", error instanceof Error ? error.message : "Failed to save identity");
     }
   };
 
@@ -1192,17 +1356,17 @@ function SystemPromptSection() {
         customPrompt,
         features,
       });
-      addToast('success', 'System prompt settings saved');
+      addToast("success", "System prompt settings saved");
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to save system prompt');
+      addToast("error", error instanceof Error ? error.message : "Failed to save system prompt");
     }
   };
 
   const featureLabels: Record<string, { label: string; desc: string }> = {
-    memoryEnabled: { label: 'Memory Recall', desc: 'Search memory before answering' },
-    skillsEnabled: { label: 'Skills', desc: 'Read and use skill files' },
-    messagingEnabled: { label: 'Messaging', desc: 'Multi-channel messaging' },
-    replyTagsEnabled: { label: 'Reply Tags', desc: 'Special reply behaviors' },
+    memoryEnabled: { label: "Memory Recall", desc: "Search memory before answering" },
+    skillsEnabled: { label: "Skills", desc: "Read and use skill files" },
+    messagingEnabled: { label: "Messaging", desc: "Multi-channel messaging" },
+    replyTagsEnabled: { label: "Reply Tags", desc: "Special reply behaviors" },
   };
 
   const isLoading = loadingPrompt || loadingIdentity;
@@ -1270,8 +1434,8 @@ function SystemPromptSection() {
                     value={identityForm.theme}
                     onChange={(value) => setIdentityForm({ ...identityForm, theme: value })}
                     options={[
-                      { value: 'dark', label: 'Dark' },
-                      { value: 'light', label: 'Light' },
+                      { value: "dark", label: "Dark" },
+                      { value: "light", label: "Light" },
                     ]}
                   />
                 </div>
@@ -1283,7 +1447,7 @@ function SystemPromptSection() {
                   variant="primary"
                 >
                   <Save className="w-4 h-4 mr-2" />
-                  {updateIdentity.isPending ? 'Saving...' : 'Save Identity'}
+                  {updateIdentity.isPending ? "Saving..." : "Save Identity"}
                 </Button>
               </div>
             </div>
@@ -1317,7 +1481,8 @@ function SystemPromptSection() {
                 Custom System Prompt
               </h4>
               <p className="text-sm text-gray-400 mb-3">
-                This text is appended to the default system prompt. Use it to add custom instructions or override behaviors.
+                This text is appended to the default system prompt. Use it to add custom
+                instructions or override behaviors.
               </p>
               <Textarea
                 value={customPrompt}
@@ -1333,7 +1498,7 @@ function SystemPromptSection() {
                   variant="primary"
                 >
                   <Save className="w-4 h-4 mr-2" />
-                  {updateSystemPrompt.isPending ? 'Saving...' : 'Save System Prompt'}
+                  {updateSystemPrompt.isPending ? "Saving..." : "Save System Prompt"}
                 </Button>
               </div>
             </div>
@@ -1366,7 +1531,7 @@ function SystemPromptPreviewSection() {
       ) : (
         <div className="bg-[#0a0a0f] rounded-xl p-4 max-h-96 overflow-y-auto">
           <pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono">
-            {preview?.preview || 'No preview available'}
+            {preview?.preview || "No preview available"}
           </pre>
         </div>
       )}

@@ -22,6 +22,8 @@ const CLI_COMMANDS = [
   "status",
   "metrics",
   "doctor",
+  "computer-use",
+  "computeruse",
   "agents",
   "tasks",
   "skills",

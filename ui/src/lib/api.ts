@@ -1017,6 +1017,25 @@ export const dashboardApi = {
   getStats: () => fetchApi<DashboardStats>("/dashboard/stats"),
 };
 
+export interface ComputerUseStatus {
+  available: boolean;
+  command: string;
+  platform: string;
+  version?: string;
+  accessibility?: boolean;
+  screenRecording?: boolean;
+  ready: boolean;
+  message: string;
+}
+
+export const computerUseApi = {
+  getStatus: () => fetchApi<ComputerUseStatus>("/computer-use/status"),
+  grantPermissions: () =>
+    fetchApi<{ ok: boolean; message: string }>("/computer-use/permissions/grant", {
+      method: "POST",
+    }),
+};
+
 export const logsApi = {
   getSystem: () =>
     fetchApi<{ id: string; level: string; source: string; message: string; created_at: string }[]>(
