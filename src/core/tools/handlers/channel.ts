@@ -1,6 +1,6 @@
-import { existsSync, readdirSync, statSync } from "fs";
+import { existsSync, readdirSync, statSync, mkdirSync } from "fs";
 import { join, dirname, basename, isAbsolute, resolve } from "path";
-import { homedir } from "os";
+import { homedir, hostname, platform, arch, release, cpus, totalmem, freemem, uptime } from "os";
 import { fileURLToPath } from "url";
 import type { CronJobCreate, CronJobPatch } from "../../cron/types";
 import * as cron from "../../cron";
@@ -758,20 +758,158 @@ export async function handleCanvas(
   }
 }
 
+/**
+ * Device nodes. Today the only node is the local host (the machine running
+ * Cybara) — `status`/`describe` report it with real system info, and
+ * `camera_snap`/`screen_record` capture from the local camera/screen via ffmpeg
+ * (gated as a dangerous tool — see dangerousToolNames). Remote device nodes
+ * (phones/tablets) require a paired companion app, which is not yet available;
+ * those paths return honest "not paired" messages rather than pretending.
+ */
+const LOCAL_NODE_ID = "local";
+
+function localNodeDescriptor(): Record<string, unknown> {
+  return {
+    id: LOCAL_NODE_ID,
+    name: hostname(),
+    kind: "host",
+    platform: platform(),
+    arch: arch(),
+    online: true,
+  };
+}
+
+function nodesCaptureDir(): string {
+  const dir = join(dirname(getInboundMediaRootDir()), "nodes");
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function isLocalNode(node: string | undefined): boolean {
+  return !node || node === LOCAL_NODE_ID || node === hostname();
+}
+
+/** Run a capture command (ffmpeg) with a hard timeout; return file path or honest error. */
+function runCapture(
+  cmd: string[],
+  outPath: string,
+  timeoutMs: number
+): { ok: boolean; error?: string } {
+  if (!Bun.which(cmd[0])) {
+    return { ok: false, error: `${cmd[0]} is not installed (required for local capture).` };
+  }
+  const proc = Bun.spawnSync(cmd, { stdout: "ignore", stderr: "pipe", timeout: timeoutMs });
+  if (!proc.success || !existsSync(outPath) || statSync(outPath).size === 0) {
+    const stderr = proc.stderr?.toString().trim().split("\n").slice(-3).join(" ") || "";
+    return {
+      ok: false,
+      error: `Capture failed${stderr ? `: ${stderr}` : ""}. On macOS, grant Camera/Screen Recording permission to the host process.`,
+    };
+  }
+  return { ok: true };
+}
+
 export async function handleNodes(
   args: Record<string, unknown>
-): Promise<{ success: boolean; action: string; nodes?: unknown[]; message: string }> {
+): Promise<{
+  success: boolean;
+  action: string;
+  nodes?: unknown[];
+  node?: string;
+  filePath?: string;
+  message: string;
+}> {
   const action = args.action as string;
+  const node = typeof args.node === "string" ? args.node.trim() : undefined;
+  const os = platform();
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 
   switch (action) {
     case "status":
-      return { success: true, action: "status", nodes: [], message: "No paired nodes" };
-    case "describe":
-      return { success: true, action: "describe", message: "No node specified" };
-    case "camera_snap":
-      return { success: false, action: "camera_snap", message: "No camera available" };
-    case "screen_record":
-      return { success: false, action: "screen_record", message: "No screen recording available" };
+      return {
+        success: true,
+        action: "status",
+        nodes: [localNodeDescriptor()],
+        message:
+          "1 node available (local host). Remote device nodes require pairing a companion app (not yet available).",
+      };
+
+    case "describe": {
+      if (!isLocalNode(node)) {
+        return {
+          success: false,
+          action: "describe",
+          node,
+          message: `Node '${node}' not found. Only the local host node is available; remote device nodes require a companion app (not yet available).`,
+        };
+      }
+      const desc = {
+        ...localNodeDescriptor(),
+        osRelease: release(),
+        cpus: cpus().length,
+        totalMemoryMB: Math.round(totalmem() / 1024 / 1024),
+        freeMemoryMB: Math.round(freemem() / 1024 / 1024),
+        uptimeSeconds: Math.round(uptime()),
+      };
+      return {
+        success: true,
+        action: "describe",
+        nodes: [desc],
+        message: `Local host node ${hostname()} (${platform()}/${arch()})`,
+      };
+    }
+
+    case "camera_snap": {
+      if (!isLocalNode(node)) {
+        return {
+          success: false,
+          action: "camera_snap",
+          node,
+          message: `Node '${node}' is not paired. Camera capture is only available on the local host today.`,
+        };
+      }
+      const outPath = join(nodesCaptureDir(), `camera_${stamp}.jpg`);
+      const cmd =
+        os === "darwin"
+          ? ["ffmpeg", "-hide_banner", "-f", "avfoundation", "-i", "0:none", "-frames:v", "1", "-y", outPath]
+          : os === "linux"
+            ? ["ffmpeg", "-hide_banner", "-f", "v4l2", "-i", "/dev/video0", "-frames:v", "1", "-y", outPath]
+            : null;
+      if (!cmd) {
+        return { success: false, action: "camera_snap", message: `Camera capture is not supported on ${os}.` };
+      }
+      const r = runCapture(cmd, outPath, 15_000);
+      return r.ok
+        ? { success: true, action: "camera_snap", node: LOCAL_NODE_ID, filePath: outPath, message: `Captured camera image to ${outPath}` }
+        : { success: false, action: "camera_snap", message: r.error! };
+    }
+
+    case "screen_record": {
+      if (!isLocalNode(node)) {
+        return {
+          success: false,
+          action: "screen_record",
+          node,
+          message: `Node '${node}' is not paired. Screen recording is only available on the local host today.`,
+        };
+      }
+      const seconds = Math.min(Math.max(Math.floor(Number(args.seconds) || 5), 1), 60);
+      const outPath = join(nodesCaptureDir(), `screen_${stamp}.mp4`);
+      const cmd =
+        os === "darwin"
+          ? ["ffmpeg", "-hide_banner", "-f", "avfoundation", "-i", "1:none", "-t", String(seconds), "-y", outPath]
+          : os === "linux"
+            ? ["ffmpeg", "-hide_banner", "-f", "x11grab", "-i", process.env.DISPLAY || ":0.0", "-t", String(seconds), "-y", outPath]
+            : null;
+      if (!cmd) {
+        return { success: false, action: "screen_record", message: `Screen recording is not supported on ${os}.` };
+      }
+      const r = runCapture(cmd, outPath, (seconds + 15) * 1000);
+      return r.ok
+        ? { success: true, action: "screen_record", node: LOCAL_NODE_ID, filePath: outPath, message: `Recorded ${seconds}s of the screen to ${outPath}` }
+        : { success: false, action: "screen_record", message: r.error! };
+    }
+
     default:
       throw new Error(`Unknown nodes action: ${action}`);
   }

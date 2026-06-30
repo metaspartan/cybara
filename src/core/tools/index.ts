@@ -96,6 +96,9 @@ const dangerousToolNames = new Set([
   "http",
   "computer_use",
   "execute_code",
+  // camera_snap / screen_record capture the user's camera and screen — gate
+  // them behind the dangerous-tool approval flow (privacy-sensitive).
+  "nodes",
 ]);
 
 export function checkRateLimit(
@@ -1347,7 +1350,8 @@ Use for tasks that may take longer or require separate context.`,
   },
   nodes: {
     name: "nodes",
-    description: "Discover and control paired nodes",
+    description:
+      "Discover and control device nodes. Today operates on the local host: 'status'/'describe' report it, 'camera_snap'/'screen_record' capture from the local camera/screen (requires ffmpeg + OS Camera/Screen-Recording permission). Remote device nodes (phones/tablets) require a paired companion app, which is not yet available.",
     category: "core",
     input_schema: {
       type: "object",
@@ -1357,7 +1361,11 @@ Use for tasks that may take longer or require separate context.`,
           enum: ["status", "describe", "camera_snap", "screen_record"],
           description: "Node action",
         },
-        node: { type: "string", description: "Node ID" },
+        node: { type: "string", description: "Node ID (default: 'local')" },
+        seconds: {
+          type: "number",
+          description: "screen_record duration in seconds (1-60, default 5)",
+        },
       },
       required: ["action"],
     },
