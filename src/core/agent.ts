@@ -26,6 +26,12 @@ import {
   toOpenAIImageBlock,
   toGoogleImagePart,
 } from "./llm/image-blocks";
+import {
+  normalizeReasoningEffort,
+  openAICompatReasoningParams,
+  anthropicThinkingBudget,
+  googleThinkingBudget,
+} from "./llm/reasoning";
 import { selectProvider, recordUsage, recordRateLimit as recordRouterRateLimit } from "./router";
 import { executeTool, hasTool } from "./tools/handlers/index";
 import {
@@ -3032,6 +3038,13 @@ class AgentManager {
     );
     this.applyOpenAITokenLimit(requestBody, preferMaxCompletionTokens, initialTokenLimit);
 
+    const openaiEffort = normalizeReasoningEffort(
+      this.resolveModelParams(toolContext).reasoning_effort
+    );
+    if (openaiEffort) {
+      Object.assign(requestBody, openAICompatReasoningParams(providerConfig || "", openaiEffort));
+    }
+
     if (tools && Array.isArray(tools) && tools.length > 0) {
       requestBody.tools = tools.map((t) => ({
         type: "function",
@@ -3980,11 +3993,16 @@ class AgentManager {
       }
       iterations++;
 
+      const googleGenConfig: Record<string, unknown> = { maxOutputTokens };
+      const googleEffort = normalizeReasoningEffort(
+        this.resolveModelParams(toolContext).reasoning_effort
+      );
+      if (googleEffort) {
+        googleGenConfig.thinkingConfig = { thinkingBudget: googleThinkingBudget(googleEffort) };
+      }
       const requestBody: Record<string, unknown> = {
         contents,
-        generationConfig: {
-          maxOutputTokens,
-        },
+        generationConfig: googleGenConfig,
       };
 
       if (systemMessage) {
@@ -4391,6 +4409,15 @@ class AgentManager {
 
     if (systemMessage) {
       requestBody.system = systemMessage.content;
+    }
+
+    const anthropicEffort = normalizeReasoningEffort(modelParams?.reasoning_effort);
+    if (anthropicEffort) {
+      requestBody.thinking = {
+        type: "enabled",
+        budget_tokens: anthropicThinkingBudget(anthropicEffort, maxOutputTokens),
+      };
+      delete requestBody.temperature;
     }
 
     if (tools && Array.isArray(tools) && tools.length > 0) {
