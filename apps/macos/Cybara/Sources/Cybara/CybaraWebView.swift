@@ -129,6 +129,21 @@ struct CybaraWebView: NSViewRepresentable {
 
 final class Coordinator: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationDelegate {
     weak var webView: WKWebView?
+    private nonisolated(unsafe) var reloadObserver: NSObjectProtocol?
+
+    override init() {
+        super.init()
+        // Cmd-R / menu "Reload" → reload the web UI.
+        reloadObserver = NotificationCenter.default.addObserver(
+            forName: .cybaraReloadWebView, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.webView?.reload()
+        }
+    }
+
+    deinit {
+        if let reloadObserver { NotificationCenter.default.removeObserver(reloadObserver) }
+    }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == "cybaraNative" else { return }

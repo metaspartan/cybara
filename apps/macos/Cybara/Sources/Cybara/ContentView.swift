@@ -13,17 +13,30 @@ struct ContentView: View {
             detail
         }
         .background(
-            LinearGradient(
-                colors: [
-                    Color(red: 0.05, green: 0.08, blue: 0.16),
-                    Color(red: 0.02, green: 0.05, blue: 0.10),
-                    Color(red: 0.02, green: 0.10, blue: 0.18),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            VisualEffectBackground()
+                .overlay(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.05, green: 0.08, blue: 0.16).opacity(0.72),
+                            Color(red: 0.02, green: 0.05, blue: 0.10).opacity(0.72),
+                            Color(red: 0.02, green: 0.10, blue: 0.18).opacity(0.72),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .ignoresSafeArea()
         )
+        .onReceive(NotificationCenter.default.publisher(for: .cybaraRestartSidecar)) { _ in
+            Task { await sidecar.restart() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cybaraOpenInBrowser)) { _ in
+            openURL(sidecar.serverURL)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cybaraCopyURL)) { _ in
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(sidecar.serverURL.absoluteString, forType: .string)
+        }
     }
 
     private var sidebar: some View {
@@ -148,7 +161,7 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(32)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .cybaraGlass(cornerRadius: 24)
             }
         }
         .padding(12)

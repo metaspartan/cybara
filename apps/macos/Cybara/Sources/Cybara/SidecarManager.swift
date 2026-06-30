@@ -253,8 +253,12 @@ final class SidecarManager: ObservableObject {
 
     private func isGatewayHealthy() async -> Bool {
         do {
-            let (_, response) = try await URLSession.shared.data(from: healthURL)
-            return (response as? HTTPURLResponse)?.statusCode == 200
+            let (data, response) = try await URLSession.shared.data(from: healthURL)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return false }
+            // Verify it's actually a Cybara gateway, not some other process squatting
+            // on the port — match the "healthy" status in the body (mirrors the Tauri shell).
+            let body = String(data: data, encoding: .utf8) ?? ""
+            return body.contains("\"status\":\"healthy\"") || body.contains("\"status\": \"healthy\"")
         } catch {
             return false
         }

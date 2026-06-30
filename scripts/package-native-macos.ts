@@ -75,6 +75,14 @@ export function createNativeMacOSInfoPlist(version: string): string {
   <true/>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
+  <key>NSCameraUsageDescription</key>
+  <string>Cybara uses the camera when you ask an agent to capture a photo via the nodes tool.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Cybara uses the microphone for voice/audio capture features you initiate.</string>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Cybara controls other apps (e.g. Finder) only when you ask an agent to via computer use.</string>
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>Cybara reads files you point it at in agent tasks.</string>
 </dict>
 </plist>
 `;
@@ -157,10 +165,16 @@ async function readSwiftReleaseBinPath(): Promise<string> {
   return path;
 }
 
+const ENTITLEMENTS_PATH = join(APP_PACKAGE_PATH, "Cybara.entitlements");
+
 async function codesignBundle(bundlePath: string, identity: string): Promise<void> {
-  await $`codesign --force --timestamp --options runtime --sign ${identity} ${join(bundlePath, "Contents", "MacOS", "sidecar", "cybara")}`.quiet();
-  await $`codesign --force --timestamp --options runtime --sign ${identity} ${join(bundlePath, "Contents", "MacOS", APP_NAME)}`.quiet();
-  await $`codesign --force --timestamp --options runtime --sign ${identity} --deep ${bundlePath}`.quiet();
+  // Sign inner-out, applying the hardened-runtime entitlements (JIT/network/
+  // capture) to the executables so the Bun sidecar's JS engine can run and the
+  // app can request camera/screen/automation permissions when used.
+  const ent = ENTITLEMENTS_PATH;
+  await $`codesign --force --timestamp --options runtime --entitlements ${ent} --sign ${identity} ${join(bundlePath, "Contents", "MacOS", "sidecar", "cybara")}`.quiet();
+  await $`codesign --force --timestamp --options runtime --entitlements ${ent} --sign ${identity} ${join(bundlePath, "Contents", "MacOS", APP_NAME)}`.quiet();
+  await $`codesign --force --timestamp --options runtime --entitlements ${ent} --sign ${identity} ${bundlePath}`.quiet();
 }
 
 async function createZipArchive(bundlePath: string, zipPath: string): Promise<void> {
