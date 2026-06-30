@@ -582,6 +582,34 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
     permissions: ["net:fetch"],
   },
 
+  x_search: {
+    name: "x_search",
+    description:
+      "Search X (Twitter) in real time via xAI Grok Live Search. Returns a summary of relevant posts plus citation URLs. Requires XAI_API_KEY. Use for current events, sentiment, or what people are posting now.",
+    category: "browser",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "What to search X/Twitter for" },
+        count: { type: "number", description: "Max posts to search (1-30, default 15)" },
+        fromHandles: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional: only include posts from these X handles (without @)",
+        },
+        excludeHandles: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional: exclude posts from these X handles",
+        },
+        fromDate: { type: "string", description: "Optional ISO date (YYYY-MM-DD) lower bound" },
+        toDate: { type: "string", description: "Optional ISO date (YYYY-MM-DD) upper bound" },
+      },
+      required: ["query"],
+    },
+    permissions: ["net:fetch"],
+  },
+
   memory_search: {
     name: "memory_search",
     description: "Search long-term memory for information",

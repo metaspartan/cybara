@@ -55,6 +55,7 @@ import { handleData } from "./data";
 import { handleCalc, handleConvert } from "./calc";
 import { handleEnv } from "./env";
 import { handleWebSearch } from "./web-search";
+import { handleXSearch } from "./x-search";
 import { handleArtifacts } from "./artifacts";
 import { handlePhoneCall, handleVoiceCall } from "./phone";
 import { handleWallet } from "./wallet";
@@ -98,6 +99,7 @@ export * from "./data";
 export * from "./calc";
 export * from "./env";
 export * from "./web-search";
+export * from "./x-search";
 export * from "./artifacts";
 export * from "./workspace-index";
 export * from "./phone";
@@ -179,6 +181,7 @@ const toolHandlers: Record<
   browser: handleBrowser,
   web_fetch: handleWebFetch,
   web_search: handleWebSearch,
+  x_search: handleXSearch,
   wallet: handleWallet,
   artifacts: handleArtifacts,
 
