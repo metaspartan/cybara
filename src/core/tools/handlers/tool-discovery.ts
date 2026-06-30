@@ -16,6 +16,7 @@ import { executeTool, toolSchemas } from "./index";
 import { getToolSchemasForLLM, type ToolContext } from "../index";
 import { mcpManager } from "../../mcp";
 import { getSkills } from "../../skills";
+import { executeSkill } from "../../skills/index";
 
 export interface InventoryEntry {
   name: string;
@@ -178,6 +179,13 @@ export async function handleToolCall(
   // Built-in tool.
   if (toolSchemas[name as keyof typeof toolSchemas]) {
     const result = await executeTool(name, toolArgs, context);
+    return { name, result };
+  }
+
+  // Skill (skill__<name>). Must be checked before the generic "__" MCP branch.
+  if (name.startsWith("skill__")) {
+    const skillName = name.slice("skill__".length);
+    const result = await executeSkill(skillName, toolArgs);
     return { name, result };
   }
 

@@ -79,9 +79,14 @@ export async function handleConvert(args: Record<string, unknown>): Promise<unkn
     in: 0.0254,
     inch: 0.0254,
     inches: 0.0254,
-    nm: 1.852e+9, // nautical miles
-    "nautical mile": 1.852e+9,
-    "nautical miles": 1.852e+9,
+    // A nautical mile is exactly 1852 meters (the previous 1.852e+9 was wrong by
+    // ~1e6). Use `nmi` for nautical miles; `nm` is the SI nanometer (1e-9 m).
+    nmi: 1852,
+    "nautical mile": 1852,
+    "nautical miles": 1852,
+    nm: 1e-9, // nanometer
+    nanometer: 1e-9,
+    nanometers: 1e-9,
   };
 
   const weightToKg: Record<string, number> = {

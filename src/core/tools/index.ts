@@ -1421,13 +1421,20 @@ Use for tasks that may take longer or require separate context.`,
   },
   tts: {
     name: "tts",
-    description: "Convert text to speech",
+    description:
+      "Convert text to speech using the macOS 'say' synthesizer; returns the path to a generated audio file. macOS only.",
     category: "media",
     input_schema: {
       type: "object",
       properties: {
         text: { type: "string", description: "Text to convert to speech" },
-        channel: { type: "string", description: "Output channel" },
+        voice: { type: "string", description: "Optional macOS voice name (e.g. Samantha, Alex)" },
+        rate: { type: "number", description: "Optional words-per-minute (80-500)" },
+        format: {
+          type: "string",
+          enum: ["aiff", "m4a", "wav"],
+          description: "Output audio format (default aiff)",
+        },
       },
       required: ["text"],
     },
