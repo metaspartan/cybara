@@ -981,6 +981,9 @@ class AgentManager {
     if (lower.includes("insufficient_quota") || lower.includes("quota")) {
       return "Provider quota/billing limit reached. Update billing or use a different provider.";
     }
+    if (lower.includes("402") || lower.includes("membership") || lower.includes("payment required")) {
+      return "Provider billing/membership inactive (402). Check your provider account's subscription or credits.";
+    }
     if (lower.includes("401")) {
       return "Provider authentication failed (401). Verify your provider API key/token.";
     }
