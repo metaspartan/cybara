@@ -60,6 +60,22 @@ export const MOBILE_CHAT_CHROME = {
   hidesSystemMessages: true,
 } as const;
 
+export const MOBILE_CHAT_COMPOSER = {
+  growsWithContent: true,
+  maxHeight: 132,
+  minHeight: 42,
+  preserveDraftOnFailure: true,
+  resetAfterSend: true,
+  sendButtonMode: "icon" as const,
+} as const;
+
+export function boundedMobileComposerHeight(height: number): number {
+  return Math.min(
+    MOBILE_CHAT_COMPOSER.maxHeight,
+    Math.max(MOBILE_CHAT_COMPOSER.minHeight, Math.ceil(height))
+  );
+}
+
 export const MOBILE_FEATURE_SECTIONS = [
   "sessions",
   "agents",

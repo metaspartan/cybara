@@ -71,9 +71,11 @@ import {
 import type { GatewayProfile } from "../lib/connection";
 import {
   MOBILE_NAV_CHROME,
+  MOBILE_CHAT_COMPOSER,
   MOBILE_CHAT_CHROME,
   MOBILE_SETTINGS_SURFACES,
   MOBILE_TABS,
+  boundedMobileComposerHeight,
   buildMobileHeaderCopy,
   compactHost,
   formatUptime,
@@ -147,15 +149,6 @@ const surfaceMeta: Record<
 };
 
 const sparkBars = [8, 10, 7, 12, 9, 14, 20, 12, 8, 13, 11, 16, 9, 13, 18, 12, 25];
-const CHAT_COMPOSER_MIN_HEIGHT = 42;
-const CHAT_COMPOSER_MAX_HEIGHT = 132;
-
-function boundedComposerHeight(height: number): number {
-  return Math.min(
-    CHAT_COMPOSER_MAX_HEIGHT,
-    Math.max(CHAT_COMPOSER_MIN_HEIGHT, Math.ceil(height))
-  );
-}
 
 function showValue(label: string, value: string) {
   Alert.alert(label, value);
@@ -1489,7 +1482,7 @@ function SessionDetailPanel({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  const [composerHeight, setComposerHeight] = useState(CHAT_COMPOSER_MIN_HEIGHT);
+  const [composerHeight, setComposerHeight] = useState<number>(MOBILE_CHAT_COMPOSER.minHeight);
   const [sending, setSending] = useState(false);
   const [pinned, setPinned] = useState(sessionSummary?.pinned ?? false);
   const [pinning, setPinning] = useState(false);
@@ -1562,7 +1555,7 @@ function SessionDetailPanel({
     const message = draft.trim();
     if (!message || sending) return;
     setDraft("");
-    setComposerHeight(CHAT_COMPOSER_MIN_HEIGHT);
+    setComposerHeight(MOBILE_CHAT_COMPOSER.minHeight);
     setSending(true);
     const optimistic = {
       id: `local-${Date.now()}`,
@@ -1750,13 +1743,15 @@ function SessionDetailPanel({
             editable={!sending}
             multiline
             onContentSizeChange={(event) => {
-              setComposerHeight(boundedComposerHeight(event.nativeEvent.contentSize.height));
+              setComposerHeight(
+                boundedMobileComposerHeight(event.nativeEvent.contentSize.height)
+              );
             }}
             value={draft}
             onChangeText={setDraft}
             placeholder="Message this chat"
             placeholderTextColor={colors.textDim}
-            scrollEnabled={composerHeight >= CHAT_COMPOSER_MAX_HEIGHT}
+            scrollEnabled={composerHeight >= MOBILE_CHAT_COMPOSER.maxHeight}
             style={[styles.composerInput, { height: composerHeight }]}
             textAlignVertical="top"
           />
@@ -2569,7 +2564,7 @@ const styles = StyleSheet.create({
   chatContent: {
     gap: spacing.sm,
     paddingBottom:
-      MOBILE_CHAT_CHROME.composerReservedBottom + CHAT_COMPOSER_MAX_HEIGHT + spacing.xl,
+      MOBILE_CHAT_CHROME.composerReservedBottom + MOBILE_CHAT_COMPOSER.maxHeight + spacing.xl,
     paddingHorizontal: spacing.lg,
   },
   chatMetaBar: {
@@ -2780,8 +2775,8 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
     includeFontPadding: false,
     lineHeight: 20,
-    maxHeight: CHAT_COMPOSER_MAX_HEIGHT,
-    minHeight: CHAT_COMPOSER_MIN_HEIGHT,
+    maxHeight: MOBILE_CHAT_COMPOSER.maxHeight,
+    minHeight: MOBILE_CHAT_COMPOSER.minHeight,
     paddingHorizontal: spacing.sm,
     paddingTop: Platform.OS === "ios" ? 10 : 8,
     paddingBottom: Platform.OS === "ios" ? 8 : 7,
@@ -2789,9 +2784,9 @@ const styles = StyleSheet.create({
   sendButton: {
     alignItems: "center",
     borderRadius: radius.md,
-    height: CHAT_COMPOSER_MIN_HEIGHT,
+    height: MOBILE_CHAT_COMPOSER.minHeight,
     justifyContent: "center",
-    width: CHAT_COMPOSER_MIN_HEIGHT,
+    width: MOBILE_CHAT_COMPOSER.minHeight,
   },
   summaryGrid: {
     flexDirection: "row",

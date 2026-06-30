@@ -3,11 +3,13 @@ import type { FeatureSummary } from "../../apps/mobile/src/lib/api";
 import type { GatewayProfile } from "../../apps/mobile/src/lib/connection";
 import {
   MOBILE_FEATURE_SECTIONS,
+  MOBILE_CHAT_COMPOSER,
   MOBILE_CHAT_CHROME,
   MOBILE_NAV_CHROME,
   MOBILE_SETTINGS_SURFACES,
   MOBILE_SURFACES,
   MOBILE_TABS,
+  boundedMobileComposerHeight,
   buildMobileHeaderCopy,
   formatMobileValue,
   formatUptime,
@@ -89,6 +91,17 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_CHAT_CHROME.composerReservedBottom).toBe(MOBILE_NAV_CHROME.height);
     expect(MOBILE_CHAT_CHROME.autoScrollToLatestMessage).toBe(true);
     expect(MOBILE_CHAT_CHROME.hidesSystemMessages).toBe(true);
+  });
+
+  test("keeps the chat composer compact, dynamic, and icon driven", () => {
+    expect(MOBILE_CHAT_COMPOSER.sendButtonMode).toBe("icon");
+    expect(MOBILE_CHAT_COMPOSER.growsWithContent).toBe(true);
+    expect(MOBILE_CHAT_COMPOSER.resetAfterSend).toBe(true);
+    expect(MOBILE_CHAT_COMPOSER.preserveDraftOnFailure).toBe(true);
+    expect(MOBILE_CHAT_COMPOSER.minHeight).toBeLessThan(MOBILE_CHAT_COMPOSER.maxHeight);
+    expect(boundedMobileComposerHeight(20)).toBe(MOBILE_CHAT_COMPOSER.minHeight);
+    expect(boundedMobileComposerHeight(84.2)).toBe(85);
+    expect(boundedMobileComposerHeight(300)).toBe(MOBILE_CHAT_COMPOSER.maxHeight);
   });
 
   test("tracks the remote management surfaces the mobile app should expose", () => {
