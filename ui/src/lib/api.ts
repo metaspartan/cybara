@@ -863,6 +863,7 @@ export const chatApi = {
         created_at: string;
         updated_at: string;
         workspace_dir?: string | null;
+        pinned?: boolean;
         message_count?: number;
         last_message?: { role: string; content: string };
       }[]
@@ -909,6 +910,14 @@ export const chatApi = {
       {
         method: "PUT",
         body: JSON.stringify({ title }),
+      }
+    ),
+  pinSession: (id: string, pinned: boolean) =>
+    fetchApi<{ success: boolean; sessionId: string; pinned: boolean; error?: string }>(
+      "/sessions/" + id + "/pin",
+      {
+        method: "PUT",
+        body: JSON.stringify({ pinned }),
       }
     ),
   updateSessionWorkspace: (id: string, workspaceDir: string | null) =>
@@ -1051,6 +1060,7 @@ export const sessionsApi = {
         created_at: string;
         updated_at: string;
         workspace_dir?: string | null;
+        pinned?: boolean;
         message_count?: number;
         last_message?: { role: string; content: string };
       }[]

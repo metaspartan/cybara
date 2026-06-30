@@ -305,6 +305,13 @@ try {
   } catch {
     // Column already exists, ignore
   }
+
+  try {
+    db.exec("ALTER TABLE chat_sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0");
+    console.log("[Database] Migration: Added pinned column to chat_sessions");
+  } catch {
+    // Column already exists, ignore
+  }
 } catch (error) {
   console.error("[Database] Schema creation error:", error);
 }
@@ -569,8 +576,10 @@ const stmts = {
     ),
     getWorkspace: prepare("SELECT workspace_dir FROM chat_sessions WHERE id = ?"),
     getTitle: prepare("SELECT title FROM chat_sessions WHERE id = ?"),
+    // Pin toggle deliberately does NOT bump updated_at — pinning is not chat activity.
+    setPinned: prepare("UPDATE chat_sessions SET pinned = ? WHERE id = ?"),
     delete: prepare("DELETE FROM chat_sessions WHERE id = ?"),
-    list: prepare("SELECT * FROM chat_sessions ORDER BY updated_at DESC"),
+    list: prepare("SELECT * FROM chat_sessions ORDER BY pinned DESC, updated_at DESC"),
   },
   chatMemory: {
     getBySession: prepare("SELECT * FROM chat_memory WHERE session_id = ? ORDER BY created_at ASC"),
@@ -868,6 +877,8 @@ export const tables = {
       if (!row) return null;
       return typeof row.title === "string" && row.title.trim().length > 0 ? row.title : null;
     },
+    setPinned: (id: string, pinned: boolean) =>
+      stmts.chatSessions?.setPinned.run(pinned ? 1 : 0, id),
     delete: (id: string) => stmts.chatSessions?.delete.run(id),
     all: () => stmts.chatSessions?.list.all() || [],
   },

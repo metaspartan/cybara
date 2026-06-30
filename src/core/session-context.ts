@@ -555,6 +555,7 @@ export async function listPersistedSessions(): Promise<
     updatedAt: string;
     messageCount: number;
     workspaceDir: string | null;
+    pinned: boolean;
     lastMessageRole: string | null;
     lastMessageContent: string | null;
   }>
@@ -563,13 +564,14 @@ export async function listPersistedSessions(): Promise<
     const sessions = db
       .prepare(
         `
-      SELECT 
+      SELECT
         cs.id,
         cs.agent_id as agentId,
         cs.title as title,
         cs.created_at as createdAt,
         cs.updated_at as updatedAt,
         cs.workspace_dir as workspaceDir,
+        COALESCE(cs.pinned, 0) as pinned,
         CASE
           WHEN COUNT(sm.id) > 0 THEN COUNT(sm.id)
           ELSE COALESCE(json_array_length(cs.messages), 0)
@@ -591,7 +593,7 @@ export async function listPersistedSessions(): Promise<
       FROM chat_sessions cs
       LEFT JOIN session_messages sm ON cs.id = sm.session_id
       GROUP BY cs.id
-      ORDER BY cs.updated_at DESC
+      ORDER BY cs.pinned DESC, cs.updated_at DESC
     `
       )
       .all() as Array<{
@@ -602,11 +604,12 @@ export async function listPersistedSessions(): Promise<
       updatedAt: string;
       messageCount: number;
       workspaceDir: string | null;
+      pinned: number;
       lastMessageRole: string | null;
       lastMessageContent: string | null;
     }>;
 
-    return sessions;
+    return sessions.map((session) => ({ ...session, pinned: !!session.pinned }));
   } catch (error) {
     log.exception("Failed to list persisted sessions", error);
     return [];
@@ -633,6 +636,14 @@ export async function setPersistedSessionTitle(
   const normalizedTitle = normalizeSessionTitle(title);
   tables.chatSessions.updateTitle(sessionId, normalizedTitle);
   return normalizedTitle;
+}
+
+export async function setPersistedSessionPinned(
+  sessionId: string,
+  pinned: boolean
+): Promise<boolean> {
+  tables.chatSessions.setPinned(sessionId, pinned);
+  return pinned;
 }
 
 export async function deletePersistedSession(sessionId: string): Promise<boolean> {

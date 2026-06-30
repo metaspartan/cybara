@@ -82,6 +82,7 @@ import {
   getSessionMessages,
   listSessions,
   deleteSession,
+  setSessionPinned,
   revertSessionToMessage,
   updateSessionWorkspace,
   updateSessionTitle,
@@ -3961,6 +3962,7 @@ const routes: Record<string, RouteHandler> = {
           "workspaceDir" in session && typeof session.workspaceDir === "string"
             ? session.workspaceDir
             : null,
+        pinned: session.pinned === true,
         message_count: session.messageCount,
         last_message: lastMessage
           ? {
@@ -4033,6 +4035,18 @@ const routes: Record<string, RouteHandler> = {
       return {
         success: false,
         error: error instanceof Error ? error.message : "Failed to update session title",
+      };
+    }
+  },
+  "PUT /api/sessions/:sessionId/pin": async (body, params) => {
+    const data = (body || {}) as { pinned?: boolean };
+    try {
+      const pinned = await setSessionPinned(params!.sessionId, data.pinned === true);
+      return { success: true, sessionId: params!.sessionId, pinned };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to update session pin",
       };
     }
   },

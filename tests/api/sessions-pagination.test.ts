@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import db from "../../src/core/database";
-import { listSessions, deleteSession, type ChatMessage } from "../../src/api/chat";
+import {
+  listSessions,
+  deleteSession,
+  setSessionPinned,
+  type ChatMessage,
+} from "../../src/api/chat";
 import { persistSession } from "../../src/core/session-context";
 import { logSessionMessage } from "../../src/core/logging";
 
@@ -87,5 +92,43 @@ describe("session listing pagination", () => {
     const newestSession = firstPage.find((session) => session.id === newest);
     expect(newestSession?.messageCount).toBe(3);
     expect(newestSession?.lastMessage?.content).toContain("new reply");
+  });
+
+  test("pinned sessions sort above more-recent unpinned ones", async () => {
+    const older = await createPersistedSession({
+      label: "pin-older",
+      updatedAt: "2099-02-01T00:00:10.000Z",
+      userPrompt: "older prompt",
+      assistantReply: "older reply",
+    });
+    const newer = await createPersistedSession({
+      label: "pin-newer",
+      updatedAt: "2099-02-01T00:00:30.000Z",
+      userPrompt: "newer prompt",
+      assistantReply: "newer reply",
+    });
+
+    // Without pinning, the newer session leads.
+    let sessions = await listSessions();
+    let olderIndex = sessions.findIndex((s) => s.id === older);
+    let newerIndex = sessions.findIndex((s) => s.id === newer);
+    expect(newerIndex).toBeLessThan(olderIndex);
+    expect(sessions[olderIndex]?.pinned).toBe(false);
+
+    // Pin the older one — it should jump above the newer, unpinned session.
+    await setSessionPinned(older, true);
+    sessions = await listSessions();
+    olderIndex = sessions.findIndex((s) => s.id === older);
+    newerIndex = sessions.findIndex((s) => s.id === newer);
+    expect(olderIndex).toBeLessThan(newerIndex);
+    expect(sessions[olderIndex]?.pinned).toBe(true);
+
+    // Unpin restores recency ordering.
+    await setSessionPinned(older, false);
+    sessions = await listSessions();
+    expect(sessions.find((s) => s.id === older)?.pinned).toBe(false);
+    expect(sessions.findIndex((s) => s.id === newer)).toBeLessThan(
+      sessions.findIndex((s) => s.id === older)
+    );
   });
 });

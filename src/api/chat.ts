@@ -15,6 +15,7 @@ import { logSessionMessage, logAgentActivity } from "../core/logging";
 import {
   listPersistedSessions,
   loadPersistedSession,
+  setPersistedSessionPinned,
   shouldCompactContext,
   compactContext,
   persistSession,
@@ -128,6 +129,7 @@ interface PersistedSessionIndexEntry {
   createdAt: string;
   updatedAt: string;
   workspaceDir: string | null;
+  pinned: boolean;
   lastMessage: SessionLastMessagePreview | null;
 }
 
@@ -143,14 +145,18 @@ function buildLastMessagePreview(message?: ChatMessage): SessionLastMessagePrevi
 }
 
 function normalizePersistedIndexEntry(
-  entry: Omit<PersistedSessionIndexEntry, "title" | "lastMessage"> & {
+  entry: Omit<PersistedSessionIndexEntry, "title" | "lastMessage" | "pinned"> & {
     title?: string | null;
+    pinned?: boolean;
     lastMessage?: SessionLastMessagePreview | null;
   }
 ): PersistedSessionIndexEntry {
   return {
     ...entry,
     title: normalizeSessionTitle(entry.title),
+    // Preserve an existing pin when the caller doesn't supply one, so unrelated
+    // index updates (new messages, title regen, etc.) never clear it.
+    pinned: entry.pinned ?? persistedSessionIndex.get(entry.id)?.pinned ?? false,
     lastMessage: entry.lastMessage
       ? {
           role: entry.lastMessage.role,
@@ -160,7 +166,13 @@ function normalizePersistedIndexEntry(
   };
 }
 
-function upsertPersistedSessionIndex(entry: PersistedSessionIndexEntry): void {
+function upsertPersistedSessionIndex(
+  entry: Omit<PersistedSessionIndexEntry, "title" | "lastMessage" | "pinned"> & {
+    title?: string | null;
+    pinned?: boolean;
+    lastMessage?: SessionLastMessagePreview | null;
+  }
+): void {
   persistedSessionIndex.set(entry.id, normalizePersistedIndexEntry(entry));
 }
 
@@ -181,6 +193,7 @@ async function loadPersistedSessions() {
         createdAt: sessionInfo.createdAt,
         updatedAt: sessionInfo.updatedAt || sessionInfo.createdAt,
         workspaceDir: sessionInfo.workspaceDir ?? null,
+        pinned: sessionInfo.pinned,
         lastMessage:
           sessionInfo.lastMessageRole && sessionInfo.lastMessageContent
             ? {
@@ -1307,6 +1320,7 @@ export async function listSessions(options?: { limit?: number; offset?: number }
     createdAt: string;
     updatedAt: string;
     workspaceDir: string | null;
+    pinned: boolean;
     lastMessage: SessionLastMessagePreview | null;
   }>
 > {
@@ -1320,6 +1334,9 @@ export async function listSessions(options?: { limit?: number; offset?: number }
     createdAt: s.createdAt,
     updatedAt: s.updatedAt || s.createdAt,
     workspaceDir: s.workspaceDir ?? null,
+    // In-memory sessions don't track pin state; inherit it from the persisted
+    // index when the session has been saved.
+    pinned: persistedSessionIndex.get(s.id)?.pinned ?? false,
     lastMessage: buildLastMessagePreview(s.messages[s.messages.length - 1]),
   }));
 
@@ -1335,6 +1352,7 @@ export async function listSessions(options?: { limit?: number; offset?: number }
       createdAt: persisted.createdAt,
       updatedAt: persisted.updatedAt,
       workspaceDir: persisted.workspaceDir ?? null,
+      pinned: persisted.pinned,
       lastMessage:
         persisted.lastMessageRole && persisted.lastMessageContent
           ? {
@@ -1361,12 +1379,17 @@ export async function listSessions(options?: { limit?: number; offset?: number }
       createdAt: persisted.createdAt,
       updatedAt: persisted.updatedAt,
       workspaceDir: persisted.workspaceDir,
+      pinned: persisted.pinned,
       lastMessage: persisted.lastMessage,
     });
   }
 
+  // Pinned sessions first, then most-recently-updated. Keeps important chats
+  // at the top regardless of activity.
   const sortedSessions = memorySessions.sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    (a, b) =>
+      (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) ||
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   );
   const limit =
     typeof options?.limit === "number" && Number.isFinite(options.limit)
@@ -1391,6 +1414,20 @@ export async function deleteSession(sessionId: string): Promise<boolean> {
   }
 
   return memoryDeleted || persistedDeleted;
+}
+
+/**
+ * Pin/unpin a session so it sorts to the top of the list. Persists to the DB
+ * and keeps the in-memory index in sync so the next listSessions reflects it
+ * immediately.
+ */
+export async function setSessionPinned(sessionId: string, pinned: boolean): Promise<boolean> {
+  await setPersistedSessionPinned(sessionId, pinned);
+  const indexEntry = persistedSessionIndex.get(sessionId);
+  if (indexEntry) {
+    persistedSessionIndex.set(sessionId, { ...indexEntry, pinned });
+  }
+  return pinned;
 }
 
 function extractPersistedMessageMetadata(

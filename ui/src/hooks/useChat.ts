@@ -245,6 +245,27 @@ export function useRenameSession() {
   });
 }
 
+export function usePinSession() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ sessionId, pinned }: { sessionId: string; pinned: boolean }) => {
+      const response = await chatApi.pinSession(sessionId, pinned);
+      if (response.success && response.data?.success) {
+        return response.data;
+      }
+      const message =
+        (response.data && "error" in response.data ? response.data.error : null) ||
+        response.error ||
+        "Failed to pin session";
+      throw new Error(message || "Failed to pin session");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sessions"] });
+    },
+  });
+}
+
 export function useLoadSession() {
   return useMutation({
     mutationFn: async (sessionId: string) => {

@@ -37,6 +37,9 @@ import {
   Mic,
   MicOff,
   ShieldAlert,
+  Pin,
+  PinOff,
+  Search,
 } from "lucide-react";
 import { Highlight, themes } from "prism-react-renderer";
 import ReactMarkdown from "react-markdown";
@@ -47,6 +50,7 @@ import {
   useDeleteSession,
   useLoadSession,
   useRenameSession,
+  usePinSession,
 } from "@/hooks/useChat";
 import {
   useAgents,
@@ -2828,10 +2832,46 @@ function SessionsPanel({
   const deleteSession = useDeleteSession();
   const loadSession = useLoadSession();
   const renameSession = useRenameSession();
+  const pinSession = usePinSession();
   const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const sessionsRefreshTimerRef = useRef<number | null>(null);
+
+  // Pinned first, then most-recently-updated. Client-side safeguard so order is
+  // correct even if the API response arrives unsorted, plus title/preview search.
+  const visibleSessions = useMemo(() => {
+    const list = Array.isArray(sessions) ? [...sessions] : [];
+    const query = searchQuery.trim().toLowerCase();
+    const filtered = query
+      ? list.filter((session) => {
+          const title = typeof session.title === "string" ? session.title.toLowerCase() : "";
+          const preview =
+            typeof session.last_message?.content === "string"
+              ? session.last_message.content.toLowerCase()
+              : "";
+          return title.includes(query) || preview.includes(query) || session.id.includes(query);
+        })
+      : list;
+    return filtered.sort((a, b) => {
+      const pinnedDelta = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
+      if (pinnedDelta !== 0) return pinnedDelta;
+      const aTime = new Date(a.updated_at || a.created_at || 0).getTime();
+      const bTime = new Date(b.updated_at || b.created_at || 0).getTime();
+      return bTime - aTime;
+    });
+  }, [sessions, searchQuery]);
+
+  const handleTogglePin = useCallback(
+    (event: React.MouseEvent, sessionId: string, pinned: boolean) => {
+      event.stopPropagation();
+      void pinSession.mutateAsync({ sessionId, pinned: !pinned }).catch((error) => {
+        console.error("Failed to toggle pin:", error);
+      });
+    },
+    [pinSession]
+  );
 
   useEffect(() => {
     const disconnect = connectStatusStream({
@@ -2941,6 +2981,29 @@ function SessionsPanel({
           </div>
         </div>
 
+        {sessions && sessions.length > 0 && (
+          <div className="px-3 py-2 border-b border-white/5">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+              <input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search sessions..."
+                className="w-full rounded-lg border border-white/10 bg-black/30 pl-8 pr-7 py-1.5 text-[12px] text-white placeholder:text-gray-600 !outline-none focus:border-indigo-400/50"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white cursor-pointer"
+                  title="Clear search"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
           <button
             onClick={onNewSession}
@@ -2961,8 +3024,14 @@ function SessionsPanel({
               <p className="text-xs">No sessions yet</p>
               <p className="text-[10px] mt-1 text-gray-600">Start chatting to create one</p>
             </div>
+          ) : visibleSessions.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <Search className="w-6 h-6 mx-auto mb-2 opacity-30" />
+              <p className="text-xs">No matching sessions</p>
+              <p className="text-[10px] mt-1 text-gray-600">Try a different search</p>
+            </div>
           ) : (
-            sessions?.map((session) => {
+            visibleSessions.map((session) => {
               const displayTitle =
                 typeof session.title === "string" && session.title.trim()
                   ? session.title.trim()
@@ -3039,11 +3108,26 @@ function SessionsPanel({
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
                             )
                           )}
+                          {session.pinned && (
+                            <Pin className="w-3 h-3 text-amber-400 flex-shrink-0 fill-amber-400/30" />
+                          )}
                           <span className="truncate">{displayTitle}</span>
                         </p>
                       )}
-                      <p className="text-[10px] text-gray-500 mt-0.5">
-                        {session.message_count || 0} messages
+                      <p className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-1.5">
+                        <span>{session.message_count || 0} messages</span>
+                        {(session.updated_at || session.created_at) && (
+                          <>
+                            <span className="text-gray-700">·</span>
+                            <span
+                              title={new Date(
+                                session.updated_at || session.created_at
+                              ).toLocaleString()}
+                            >
+                              {formatRelativeTime(session.updated_at || session.created_at)}
+                            </span>
+                          </>
+                        )}
                       </p>
                       {typeof (session as { workspace_dir?: string | null }).workspace_dir ===
                         "string" && (
@@ -3053,12 +3137,36 @@ function SessionsPanel({
                       )}
                       {session.last_message && (
                         <p className="text-[10px] text-gray-500 mt-0.5 truncate">
-                          {session.last_message.content.slice(0, 40)}...
+                          {session.last_message.content.slice(0, 40)}
+                          {session.last_message.content.length > 40 ? "…" : ""}
                         </p>
                       )}
                     </div>
                     {editingSessionId !== session.id && (
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div
+                        className={cn(
+                          "flex items-center gap-1 transition-opacity",
+                          session.pinned
+                            ? "opacity-100"
+                            : "opacity-0 group-hover:opacity-100"
+                        )}
+                      >
+                        <button
+                          className={cn(
+                            "p-1 rounded cursor-pointer",
+                            session.pinned
+                              ? "text-amber-400 hover:bg-amber-500/20"
+                              : "text-gray-400 hover:bg-amber-500/20 hover:text-amber-300"
+                          )}
+                          onClick={(event) => handleTogglePin(event, session.id, !!session.pinned)}
+                          title={session.pinned ? "Unpin session" : "Pin session"}
+                        >
+                          {session.pinned ? (
+                            <PinOff className="w-3 h-3" />
+                          ) : (
+                            <Pin className="w-3 h-3" />
+                          )}
+                        </button>
                         <button
                           className="p-1 rounded hover:bg-indigo-500/20 text-indigo-300 cursor-pointer"
                           onClick={(event) => beginRenameSession(event, session)}
