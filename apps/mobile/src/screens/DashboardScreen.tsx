@@ -31,6 +31,7 @@ import {
   ListTodo,
   MessageCircle,
   RefreshCw,
+  Send,
   Settings,
   ShieldCheck,
   SquareTerminal,
@@ -54,6 +55,7 @@ import {
 import { NewChatPanel } from "../components/NewChatPanel";
 import {
   CybaraMobileApi,
+  sortSessionSummaries,
   type ActivitySummary,
   type FeatureEndpointKey,
   type FeatureSummary,
@@ -145,6 +147,15 @@ const surfaceMeta: Record<
 };
 
 const sparkBars = [8, 10, 7, 12, 9, 14, 20, 12, 8, 13, 11, 16, 9, 13, 18, 12, 25];
+const CHAT_COMPOSER_MIN_HEIGHT = 42;
+const CHAT_COMPOSER_MAX_HEIGHT = 132;
+
+function boundedComposerHeight(height: number): number {
+  return Math.min(
+    CHAT_COMPOSER_MAX_HEIGHT,
+    Math.max(CHAT_COMPOSER_MIN_HEIGHT, Math.ceil(height))
+  );
+}
 
 function showValue(label: string, value: string) {
   Alert.alert(label, value);
@@ -190,6 +201,13 @@ function relativeTimestamp(value: string): string {
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
   return `${Math.round(hours / 24)}d ago`;
+}
+
+function absoluteTimestampLabel(value?: string): string {
+  if (!value) return "Unknown";
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return value;
+  return new Date(parsed).toLocaleString();
 }
 
 function displayFields(record: Record<string, unknown>): Array<{ label: string; value: string }> {
@@ -337,7 +355,9 @@ function routeHeader(
     const session = summary?.sessions.find((candidate) => candidate.id === route.id);
     return {
       title: session?.title || "Chat",
-      detail: `${session?.message_count ?? 0} messages - ${route.id}`,
+      detail: session
+        ? `${session.message_count ?? 0} messages - ${lastUpdatedLabel(session)}`
+        : "Chat details",
     };
   }
   if (route.kind === "newChat") {
@@ -416,6 +436,7 @@ export function DashboardScreen({
   const healthy = health?.status === "healthy";
   const statusColor = healthy ? colors.green : error ? colors.red : colors.amber;
   const sessions = summary?.sessions ?? [];
+  const orderedSessions = useMemo(() => sortSessionSummaries(sessions), [sessions]);
   const counts = summarizeFeatureCounts(summary);
   const accentColor = resolveAccentColor(summary);
   const headerCopy = routeHeader(
@@ -544,14 +565,18 @@ export function DashboardScreen({
             </Pressable>
           ) : (
             <View style={styles.logoMark}>
-              <Image accessibilityIgnoresInvertColors source={cybaraLogo} style={styles.logoImage} />
+              <Image
+                accessibilityIgnoresInvertColors
+                source={cybaraLogo}
+                style={styles.logoImage}
+              />
             </View>
           )}
           <View style={styles.headerText}>
             <Text
               ellipsizeMode="tail"
               maxFontSizeMultiplier={1.05}
-              numberOfLines={detailRoute ? 2 : 1}
+              numberOfLines={1}
               style={[styles.title, detailRoute && styles.detailTitle]}
             >
               {headerCopy.title}
@@ -561,16 +586,11 @@ export function DashboardScreen({
             </Text>
           </View>
         </View>
-        <Pressable
-          style={styles.iconButton}
-          onPress={detailRoute ? () => refreshAll(true) : () => selectTab("settings")}
-        >
-          {detailRoute ? (
-            <RefreshCw color={colors.text} size={22} strokeWidth={2.1} />
-          ) : (
+        {!detailRoute ? (
+          <Pressable style={styles.iconButton} onPress={() => selectTab("settings")}>
             <Settings color={colors.text} size={22} strokeWidth={2.1} />
-          )}
-        </Pressable>
+          </Pressable>
+        ) : null}
       </View>
 
       {detailRoute?.kind === "session" ? (
@@ -691,7 +711,7 @@ export function DashboardScreen({
           ) : activeTab === "overview" ? (
             <OverviewPanel
               modules={modules}
-              sessions={sessions}
+              sessions={orderedSessions}
               logs={summary?.logs ?? []}
               selectTab={selectTab}
               openSurface={openSurface}
@@ -699,7 +719,7 @@ export function DashboardScreen({
           ) : null}
           {!detailRoute && activeTab === "sessions" ? (
             <SessionsPanel
-              sessions={sessions}
+              sessions={orderedSessions}
               summary={summary}
               openSession={(id) => setDetailRoute({ kind: "session", id })}
               createChat={() => setDetailRoute({ kind: "newChat" })}
@@ -1020,10 +1040,24 @@ function SessionsPanel({
             )}
           </View>
           <View style={styles.listText}>
-            <Text style={styles.listTitle}>{session.title || session.id.slice(0, 8)}</Text>
-            <Text style={styles.listDetail}>
+            <View style={styles.sessionTitleRow}>
+              {session.pinned ? (
+                <View style={styles.sessionPinnedDot}>
+                  <ShieldCheck color={colors.amber} size={12} strokeWidth={2.4} />
+                </View>
+              ) : null}
+              <Text numberOfLines={2} style={[styles.listTitle, styles.sessionListTitle]}>
+                {session.title || session.id.slice(0, 8)}
+              </Text>
+            </View>
+            <Text numberOfLines={1} style={styles.listDetail}>
               {session.message_count} messages - {lastUpdatedLabel(session)}
             </Text>
+            {session.last_message?.content ? (
+              <Text numberOfLines={1} style={styles.sessionPreview}>
+                {session.last_message.content}
+              </Text>
+            ) : null}
           </View>
           <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
         </Pressable>
@@ -1405,6 +1439,7 @@ function DetailContent({
         api={api}
         closeDetail={closeDetail}
         refreshSummary={refreshSummary}
+        sessionSummary={summary?.sessions.find((session) => session.id === route.id) ?? null}
         sessionId={route.id}
       />
     );
@@ -1440,26 +1475,35 @@ function SessionDetailPanel({
   api,
   closeDetail,
   refreshSummary,
+  sessionSummary,
   sessionId,
 }: {
   accentColor: string;
   api: CybaraMobileApi;
   closeDetail: () => void;
   refreshSummary: () => void;
+  sessionSummary?: SessionSummary | null;
   sessionId: string;
 }) {
   const [detail, setDetail] = useState<SessionDetailSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [composerHeight, setComposerHeight] = useState(CHAT_COMPOSER_MIN_HEIGHT);
   const [sending, setSending] = useState(false);
+  const [pinned, setPinned] = useState(sessionSummary?.pinned ?? false);
+  const [pinning, setPinning] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
   const loadSession = async (showLoading = false) => {
     if (showLoading) setLoading(true);
     setLoadError(null);
     try {
-      setDetail(await api.session(sessionId));
+      const nextDetail = await api.session(sessionId);
+      setDetail(nextDetail);
+      if (typeof nextDetail.pinned === "boolean") {
+        setPinned(nextDetail.pinned);
+      }
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -1468,13 +1512,24 @@ function SessionDetailPanel({
   };
 
   useEffect(() => {
+    if (typeof sessionSummary?.pinned === "boolean") {
+      setPinned(sessionSummary.pinned);
+    }
+  }, [sessionId, sessionSummary?.pinned]);
+
+  useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setLoadError(null);
     api
       .session(sessionId)
       .then((nextDetail) => {
-        if (!cancelled) setDetail(nextDetail);
+        if (!cancelled) {
+          setDetail(nextDetail);
+          if (typeof nextDetail.pinned === "boolean") {
+            setPinned(nextDetail.pinned);
+          }
+        }
       })
       .catch((error) => {
         if (!cancelled) setLoadError(error instanceof Error ? error.message : String(error));
@@ -1507,6 +1562,7 @@ function SessionDetailPanel({
     const message = draft.trim();
     if (!message || sending) return;
     setDraft("");
+    setComposerHeight(CHAT_COMPOSER_MIN_HEIGHT);
     setSending(true);
     const optimistic = {
       id: `local-${Date.now()}`,
@@ -1531,6 +1587,7 @@ function SessionDetailPanel({
       });
       await loadSession(false);
     } catch (error) {
+      setDraft(message);
       setLoadError(error instanceof Error ? error.message : String(error));
     } finally {
       setSending(false);
@@ -1556,6 +1613,55 @@ function SessionDetailPanel({
         },
       },
     ]);
+  };
+
+  const togglePinned = async () => {
+    if (pinning) return;
+    const nextPinned = !pinned;
+    setPinning(true);
+    setPinned(nextPinned);
+    try {
+      const result = await api.pinSession(sessionId, nextPinned);
+      if (typeof result.pinned === "boolean") {
+        setPinned(result.pinned);
+      }
+      refreshSummary();
+    } catch (error) {
+      setPinned(!nextPinned);
+      setLoadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPinning(false);
+    }
+  };
+
+  const showChatActions = () => {
+    const messageCount = detail?.messages.length ?? sessionSummary?.message_count ?? 0;
+    const updatedAt =
+      detail?.updatedAt ||
+      sessionSummary?.updated_at ||
+      detail?.messages[detail.messages.length - 1]?.timestamp;
+    const title = detail?.title || sessionSummary?.title || `Session ${sessionId.slice(0, 8)}`;
+    Alert.alert(
+      "Chat details",
+      [
+        title,
+        `${messageCount} message${messageCount === 1 ? "" : "s"}`,
+        `Updated: ${absoluteTimestampLabel(updatedAt)}`,
+        `Agent: ${detail?.agentId || sessionSummary?.agent_id || "unknown"}`,
+        `Workspace: ${compactWorkspace(detail?.workspaceDir || sessionSummary?.workspace_dir)}`,
+        `Session: ${sessionId}`,
+      ].join("\n"),
+      [
+        {
+          text: pinned ? "Unpin chat" : "Pin chat",
+          onPress: () => {
+            void togglePinned();
+          },
+        },
+        { text: "Delete chat", style: "destructive", onPress: deleteChat },
+        { text: "Cancel", style: "cancel" },
+      ]
+    );
   };
 
   const visibleMessages = visibleChatMessages(detail?.messages ?? []);
@@ -1587,20 +1693,34 @@ function SessionDetailPanel({
         {detail ? (
           <>
             <View style={styles.chatMetaBar}>
-              <View style={styles.chatMetaChip}>
-                <Bot color={colors.green} size={15} strokeWidth={2.2} />
-                <Text numberOfLines={1} style={styles.chatMetaText}>
-                  {detail.agentId || "unknown agent"}
-                </Text>
+              <View style={styles.chatMetaChips}>
+                {pinned ? (
+                  <View style={[styles.chatMetaChip, styles.chatPinnedChip]}>
+                    <ShieldCheck color={colors.amber} size={15} strokeWidth={2.2} />
+                    <Text numberOfLines={1} style={[styles.chatMetaText, { color: colors.amber }]}>
+                      Pinned
+                    </Text>
+                  </View>
+                ) : null}
+                <View style={styles.chatMetaChip}>
+                  <Bot color={colors.green} size={15} strokeWidth={2.2} />
+                  <Text numberOfLines={1} style={styles.chatMetaText}>
+                    {detail.agentId || sessionSummary?.agent_id || "unknown agent"}
+                  </Text>
+                </View>
+                <View style={styles.chatMetaChip}>
+                  <Database color={colors.blueText} size={15} strokeWidth={2.2} />
+                  <Text numberOfLines={1} style={styles.chatMetaText}>
+                    {compactWorkspace(detail.workspaceDir || sessionSummary?.workspace_dir)}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.chatMetaChip}>
-                <Database color={colors.blueText} size={15} strokeWidth={2.2} />
-                <Text numberOfLines={1} style={styles.chatMetaText}>
-                  {compactWorkspace(detail.workspaceDir)}
-                </Text>
-              </View>
-              <Pressable style={styles.chatDeleteButton} onPress={deleteChat}>
-                <Text style={styles.chatDeleteText}>Delete</Text>
+              <Pressable style={styles.chatActionButton} onPress={showChatActions}>
+                {pinning ? (
+                  <ActivityIndicator color={colors.textMuted} size="small" />
+                ) : (
+                  <Settings color={colors.textMuted} size={18} strokeWidth={2.1} />
+                )}
               </Pressable>
             </View>
 
@@ -1629,24 +1749,34 @@ function SessionDetailPanel({
           <TextInput
             editable={!sending}
             multiline
+            onContentSizeChange={(event) => {
+              setComposerHeight(boundedComposerHeight(event.nativeEvent.contentSize.height));
+            }}
             value={draft}
             onChangeText={setDraft}
             placeholder="Message this chat"
             placeholderTextColor={colors.textDim}
-            style={styles.composerInput}
+            scrollEnabled={composerHeight >= CHAT_COMPOSER_MAX_HEIGHT}
+            style={[styles.composerInput, { height: composerHeight }]}
+            textAlignVertical="top"
           />
           <Pressable
+            accessibilityLabel="Send message"
+            accessibilityRole="button"
             disabled={!draft.trim() || sending}
             onPress={sendMessage}
             style={[
               styles.sendButton,
-              { backgroundColor: draft.trim() ? accentColor : "rgba(255,255,255,0.08)" },
+              {
+                backgroundColor: draft.trim() ? accentColor : "rgba(255,255,255,0.08)",
+                opacity: draft.trim() || sending ? 1 : 0.55,
+              },
             ]}
           >
             {sending ? (
               <ActivityIndicator color={colors.text} size="small" />
             ) : (
-              <Text style={styles.sendButtonText}>Send</Text>
+              <Send color={colors.text} size={19} strokeWidth={2.4} />
             )}
           </Pressable>
         </View>
@@ -2090,8 +2220,8 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   detailTitle: {
-    fontSize: 25,
-    lineHeight: 29,
+    fontSize: 22,
+    lineHeight: 26,
   },
   headerDetail: {
     color: colors.textMuted,
@@ -2439,15 +2569,21 @@ const styles = StyleSheet.create({
   chatContent: {
     gap: spacing.sm,
     paddingBottom:
-      MOBILE_CHAT_CHROME.composerReservedBottom + MOBILE_CHAT_CHROME.composerHeight + spacing.sm,
+      MOBILE_CHAT_CHROME.composerReservedBottom + CHAT_COMPOSER_MAX_HEIGHT + spacing.xl,
     paddingHorizontal: spacing.lg,
   },
   chatMetaBar: {
-    alignItems: "center",
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: spacing.sm,
+    justifyContent: "space-between",
+    paddingTop: spacing.xs,
+  },
+  chatMetaChips: {
+    flex: 1,
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.sm,
-    paddingTop: spacing.xs,
   },
   chatMetaChip: {
     alignItems: "center",
@@ -2456,9 +2592,14 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     borderWidth: 1,
     flexDirection: "row",
+    flexShrink: 1,
     gap: spacing.xs,
     minHeight: 30,
     paddingHorizontal: spacing.sm,
+  },
+  chatPinnedChip: {
+    backgroundColor: `${colors.amber}14`,
+    borderColor: `${colors.amber}40`,
   },
   chatMetaText: {
     color: colors.textMuted,
@@ -2466,19 +2607,15 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     maxWidth: 180,
   },
-  chatDeleteButton: {
+  chatActionButton: {
+    alignItems: "center",
     borderColor: colors.border,
     borderRadius: radius.sm,
     borderWidth: 1,
-    marginLeft: "auto",
-    minHeight: 30,
-    paddingHorizontal: spacing.sm,
+    height: 34,
     justifyContent: "center",
-  },
-  chatDeleteText: {
-    color: colors.textMuted,
-    fontSize: typography.tiny,
-    fontWeight: "800",
+    minHeight: 30,
+    width: 38,
   },
   chatMessageRow: {
     alignItems: "flex-start",
@@ -2615,16 +2752,18 @@ const styles = StyleSheet.create({
   },
   composer: {
     alignItems: "flex-end",
-    backgroundColor: "rgba(3, 7, 11, 0.9)",
+    backgroundColor: "rgba(2, 6, 10, 0.94)",
     borderColor: colors.border,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     borderWidth: 1,
     flexDirection: "row",
     gap: spacing.sm,
-    padding: spacing.sm,
+    minHeight: 58,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 8,
   },
   chatComposerBar: {
-    backgroundColor: "rgba(5, 9, 14, 0.96)",
+    backgroundColor: "rgba(3, 7, 11, 0.98)",
     borderTopColor: colors.borderStrong,
     borderTopWidth: 1,
     bottom: MOBILE_CHAT_CHROME.composerReservedBottom + MOBILE_CHAT_CHROME.composerGapToNav,
@@ -2639,22 +2778,20 @@ const styles = StyleSheet.create({
     color: colors.text,
     flex: 1,
     fontSize: typography.body,
-    maxHeight: 120,
-    minHeight: 44,
+    includeFontPadding: false,
+    lineHeight: 20,
+    maxHeight: CHAT_COMPOSER_MAX_HEIGHT,
+    minHeight: CHAT_COMPOSER_MIN_HEIGHT,
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    paddingTop: Platform.OS === "ios" ? 10 : 8,
+    paddingBottom: Platform.OS === "ios" ? 8 : 7,
   },
   sendButton: {
     alignItems: "center",
     borderRadius: radius.md,
-    minHeight: 44,
+    height: CHAT_COMPOSER_MIN_HEIGHT,
     justifyContent: "center",
-    paddingHorizontal: spacing.md,
-  },
-  sendButtonText: {
-    color: colors.text,
-    fontSize: typography.body,
-    fontWeight: "900",
+    width: CHAT_COMPOSER_MIN_HEIGHT,
   },
   summaryGrid: {
     flexDirection: "row",
@@ -2733,6 +2870,28 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: typography.body,
     fontWeight: "800",
+  },
+  sessionTitleRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: spacing.xs,
+  },
+  sessionListTitle: {
+    flex: 1,
+    lineHeight: 20,
+  },
+  sessionPinnedDot: {
+    alignItems: "center",
+    backgroundColor: `${colors.amber}16`,
+    borderRadius: 9,
+    height: 18,
+    justifyContent: "center",
+    marginTop: 1,
+    width: 18,
+  },
+  sessionPreview: {
+    color: colors.textDim,
+    fontSize: typography.tiny,
   },
   listDetail: {
     color: colors.textMuted,

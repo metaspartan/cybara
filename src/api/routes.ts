@@ -3982,7 +3982,6 @@ const routes: Record<string, RouteHandler> = {
       params?.includeFullToolCalls === "1" ||
       params?.includeFullToolCalls === "true" ||
       params?.includeFullToolCalls === "yes";
-
     const MAX_CONTENT_SIZE = includeFullToolCalls ? 0 : 10000;
     const sanitizedMessages = sanitizeSessionMessages(messages, {
       maxToolCalls: includeFullToolCalls ? 0 : 50,
@@ -4013,6 +4012,7 @@ const routes: Record<string, RouteHandler> = {
           ? session.updatedAt
           : messages[messages.length - 1]?.timestamp || session.createdAt
       ),
+      pinned: "pinned" in session && session.pinned === true,
       workspace_dir:
         "workspaceDir" in session && typeof session.workspaceDir === "string"
           ? session.workspaceDir

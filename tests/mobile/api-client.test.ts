@@ -4,6 +4,7 @@ import {
   normalizeActivityLogs,
   normalizeMemoryItems,
   normalizeRemoteItems,
+  sortSessionSummaries,
 } from "../../apps/mobile/src/lib/api";
 import type { GatewayProfile } from "../../apps/mobile/src/lib/connection";
 
@@ -165,6 +166,86 @@ describe("mobile API client", () => {
         agentId: "agent-1",
         message: "continue",
       });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("orders mobile chats by pinned state and gateway updated timestamp", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url) => {
+      const path = new URL(String(url)).pathname;
+      if (path === "/api/chat/sessions") {
+        return Response.json([
+          {
+            id: "recent",
+            title: "Recent unpinned",
+            message_count: 2,
+            created_at: "2026-06-30T07:00:00.000Z",
+            updated_at: "2026-06-30T09:00:00.000Z",
+            pinned: false,
+          },
+          {
+            id: "older-pinned",
+            title: "Older pinned",
+            message_count: 1,
+            created_at: "2026-06-29T07:00:00.000Z",
+            updated_at: "2026-06-29T09:00:00.000Z",
+            pinned: true,
+          },
+          {
+            id: "newer-pinned",
+            title: "Newer pinned",
+            message_count: 3,
+            created_at: "2026-06-30T07:00:00.000Z",
+            updated_at: "2026-06-30T08:00:00.000Z",
+            pinned: true,
+          },
+        ]);
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const sessions = await new CybaraMobileApi(profile).sessions();
+      expect(sessions.map((session) => session.id)).toEqual([
+        "newer-pinned",
+        "older-pinned",
+        "recent",
+      ]);
+      expect(sessions[0].updated_at).toBe("2026-06-30T08:00:00.000Z");
+      expect(sessions[0].pinned).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("pins a mobile chat through the gateway session endpoint", async () => {
+    const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      const method = init?.method || "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      calls.push({ method, path: parsedUrl.pathname, body });
+      if (parsedUrl.pathname === "/api/sessions/s1/pin" && method === "PUT") {
+        return Response.json({ success: true, sessionId: "s1", pinned: true });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      await expect(new CybaraMobileApi(profile).pinSession("s1", true)).resolves.toMatchObject({
+        success: true,
+        pinned: true,
+      });
+      expect(calls).toEqual([
+        {
+          method: "PUT",
+          path: "/api/sessions/s1/pin",
+          body: { pinned: true },
+        },
+      ]);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -364,5 +445,28 @@ describe("mobile API client", () => {
         ],
       },
     ]);
+  });
+});
+
+describe("mobile session sorting", () => {
+  test("falls back to created timestamps for deterministic recent-first ordering", () => {
+    expect(
+      sortSessionSummaries([
+        {
+          id: "old",
+          title: "old",
+          message_count: 1,
+          created_at: "2026-06-29T08:00:00.000Z",
+          updated_at: "",
+        },
+        {
+          id: "new",
+          title: "new",
+          message_count: 1,
+          created_at: "2026-06-30T08:00:00.000Z",
+          updated_at: "",
+        },
+      ]).map((session) => session.id)
+    ).toEqual(["new", "old"]);
   });
 });

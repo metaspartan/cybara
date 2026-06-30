@@ -14,8 +14,10 @@ export interface SessionSummary {
   title: string | null;
   agent_id?: string;
   message_count: number;
+  created_at?: string;
   updated_at: string;
   workspace_dir?: string | null;
+  pinned?: boolean;
   last_message?: { role: string; content: string } | null;
 }
 
@@ -105,6 +107,9 @@ export interface SessionDetailSummary {
   title: string | null;
   agentId?: string;
   workspaceDir?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  pinned?: boolean;
   messages: SessionMessageSummary[];
 }
 
@@ -304,22 +309,43 @@ export function normalizeActivityLogs(value: unknown): ActivitySummary[] {
 }
 
 function normalizeSessions(value: unknown): SessionSummary[] {
-  return normalizeArrayResponse(value, ["sessions", "items"]).map((session, index) => {
-    const record = asRecord(session);
-    const id = readString(record, ["id", "session_id"]) || `session-${index + 1}`;
-    return {
-      id,
-      title: readString(record, ["title", "name"]) || null,
-      agent_id: readString(record, ["agent_id", "agentId"]),
-      message_count: readNumber(record, ["message_count", "messageCount"]) ?? 0,
-      updated_at:
+  return sortSessionSummaries(
+    normalizeArrayResponse(value, ["sessions", "items"]).map((session, index) => {
+      const record = asRecord(session);
+      const id = readString(record, ["id", "session_id"]) || `session-${index + 1}`;
+      const createdAt = readString(record, ["created_at", "createdAt"]);
+      const updatedAt =
         readString(record, ["updated_at", "updatedAt", "created_at", "createdAt"]) ||
-        new Date(0).toISOString(),
-      workspace_dir: readString(record, ["workspace_dir", "workspaceDir"]) || null,
-      last_message: asRecord(record?.last_message || record?.lastMessage) as
-        SessionSummary["last_message"] | null,
-    };
-  });
+        new Date(0).toISOString();
+      return {
+        id,
+        title: readString(record, ["title", "name"]) || null,
+        agent_id: readString(record, ["agent_id", "agentId"]),
+        message_count: readNumber(record, ["message_count", "messageCount"]) ?? 0,
+        created_at: createdAt,
+        updated_at: updatedAt,
+        workspace_dir: readString(record, ["workspace_dir", "workspaceDir"]) || null,
+        pinned: record?.pinned === true,
+        last_message: asRecord(record?.last_message || record?.lastMessage) as
+          SessionSummary["last_message"] | null,
+      };
+    })
+  );
+}
+
+export function sessionSortTimestampMs(session: SessionSummary): number {
+  const updated = Date.parse(session.updated_at || "");
+  if (Number.isFinite(updated)) return updated;
+  const created = Date.parse(session.created_at || "");
+  return Number.isFinite(created) ? created : 0;
+}
+
+export function sortSessionSummaries(sessions: SessionSummary[]): SessionSummary[] {
+  return [...sessions].sort(
+    (a, b) =>
+      (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) ||
+      sessionSortTimestampMs(b) - sessionSortTimestampMs(a)
+  );
 }
 
 function normalizeSessionDetail(value: unknown, fallbackId: string): SessionDetailSummary {
@@ -350,6 +376,9 @@ function normalizeSessionDetail(value: unknown, fallbackId: string): SessionDeta
     title: readString(record, ["title", "name"]) || null,
     agentId: readString(record, ["agent_id", "agentId"]),
     workspaceDir: readString(record, ["workspace_dir", "workspaceDir"]) || null,
+    createdAt: readString(record, ["created_at", "createdAt"]),
+    updatedAt: readString(record, ["updated_at", "updatedAt", "created_at", "createdAt"]),
+    pinned: record?.pinned === true,
     messages,
   };
 }
@@ -499,6 +528,16 @@ export class CybaraMobileApi {
       method: "PUT",
       body: JSON.stringify({ title }),
     });
+  }
+
+  pinSession(id: string, pinned: boolean): Promise<{ success: boolean; pinned?: boolean }> {
+    return this.request<{ success: boolean; pinned?: boolean }>(
+      `/api/sessions/${encodeURIComponent(id)}/pin`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ pinned }),
+      }
+    );
   }
 
   deleteSession(id: string): Promise<{ success?: boolean }> {
