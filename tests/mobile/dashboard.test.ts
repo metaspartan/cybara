@@ -12,6 +12,7 @@ import {
   MOBILE_METRICS_CHROME,
   MOBILE_NAV_CHROME,
   MOBILE_RECENT_ACTIVITY_CHROME,
+  MOBILE_SETTINGS_DETAIL_CHROME,
   MOBILE_SETTINGS_SURFACES,
   MOBILE_SURFACES,
   MOBILE_TABS,
@@ -21,6 +22,7 @@ import {
   buildMobileHeaderCopy,
   formatMobileValue,
   formatUptime,
+  isMobileSettingsDetailFieldVisible,
   lastUpdatedLabel,
   mobileComposerHeightForDraft,
   mobileThemeConfigPayload,
@@ -201,6 +203,23 @@ describe("mobile dashboard model", () => {
       "wallet",
     ]);
     expect(MOBILE_RECENT_ACTIVITY_CHROME.showTerminalRows).toBe(false);
+  });
+
+  test("opens first-class editors for editable settings and hides internal fields", () => {
+    expect(MOBILE_SETTINGS_DETAIL_CHROME.agentsEditable).toBe(true);
+    expect(MOBILE_SETTINGS_DETAIL_CHROME.approvalsActionable).toBe(true);
+    expect(MOBILE_SETTINGS_DETAIL_CHROME.channelsEditable).toBe(true);
+    expect(MOBILE_SETTINGS_DETAIL_CHROME.providersEditable).toBe(true);
+    expect(MOBILE_SETTINGS_DETAIL_CHROME.tasksActionable).toBe(true);
+    expect(MOBILE_SETTINGS_DETAIL_CHROME.hidesRawInternalFields).toBe(true);
+    expect(MOBILE_SETTINGS_DETAIL_CHROME.providerCredentialUpdateMode).toBe("blank-keeps-existing");
+
+    expect(isMobileSettingsDetailFieldVisible("name")).toBe(true);
+    expect(isMobileSettingsDetailFieldVisible("model")).toBe(true);
+    expect(isMobileSettingsDetailFieldVisible("provider_id")).toBe(false);
+    expect(isMobileSettingsDetailFieldVisible("session id")).toBe(false);
+    expect(isMobileSettingsDetailFieldVisible("api_key")).toBe(false);
+    expect(isMobileSettingsDetailFieldVisible("access token")).toBe(false);
   });
 
   test("keeps recent activity chat rows tappable and honest about state", () => {

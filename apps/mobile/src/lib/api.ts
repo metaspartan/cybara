@@ -37,14 +37,47 @@ export interface AgentSummary {
   type?: string;
   status?: string;
   model?: string;
+  provider?: string;
+  provider_id?: string;
+  system_prompt?: string;
 }
 
 export interface ProviderSummary {
   id: string;
   name: string;
   provider: string;
+  base_url?: string;
+  is_default?: boolean;
+  configured?: boolean;
+  requiresCredentials?: boolean;
+  hasCredentials?: boolean;
+  authType?: string;
+}
+
+export interface AgentUpdatePayload {
+  name?: string;
+  type?: string;
+  model?: string;
+  provider_id?: string;
+  system_prompt?: string;
+}
+
+export interface ProviderUpdatePayload {
+  name?: string;
+  base_url?: string;
+  api_key?: string;
+  access_token?: string;
   is_default?: boolean;
 }
+
+export interface ProviderTestResult {
+  success: boolean;
+  provider?: string;
+  message?: string;
+  error?: string;
+}
+
+export type ToolApprovalDecision = "approve_once" | "approve_session" | "approve_always" | "deny";
 
 export type FeatureEndpointKey =
   | "health"
@@ -75,6 +108,7 @@ export interface RemoteItemSummary {
   detail: string;
   status?: string;
   type?: string;
+  enabled?: boolean;
   fields?: Array<{ label: string; value: string }>;
 }
 
@@ -241,7 +275,10 @@ export function normalizeRemoteItems(
     const record = asRecord(item);
     const id = readString(record, ["id", "name", "key"]) || `${fallbackPrefix}-${index + 1}`;
     const type = readString(record, ["type", "provider", "platform", "kind"]);
-    const status = readString(record, ["status", "state"]) || undefined;
+    const enabled = typeof record?.enabled === "boolean" ? record.enabled : undefined;
+    const status =
+      readString(record, ["status", "state"]) ||
+      (enabled !== undefined ? (enabled ? "enabled" : "disabled") : undefined);
     const description = readString(record, ["description", "summary", "schedule"]);
     const title =
       readString(record, ["title", "name", "label", "id", "tool"]) ||
@@ -253,6 +290,7 @@ export function normalizeRemoteItems(
       detail: detailParts.length > 0 ? detailParts.join(" - ") : "Available",
       status,
       type,
+      enabled,
       fields: detailFields(record),
     };
   });
@@ -454,31 +492,86 @@ function normalizeProcessActivities(value: unknown): SessionProcessActivitySumma
   });
 }
 
+function normalizeAgent(agent: unknown, index = 0): AgentSummary {
+  const record = asRecord(agent);
+  const id = readString(record, ["id", "name"]) || `agent-${index + 1}`;
+  const providerId = readString(record, ["provider_id", "providerId", "provider"]);
+  return {
+    id,
+    name: readString(record, ["name", "label", "id"]) || id,
+    type: readString(record, ["type"]),
+    status: readString(record, ["status", "state"]),
+    model: readString(record, ["model"]),
+    provider: providerId,
+    provider_id: providerId,
+    system_prompt: readString(record, ["system_prompt", "systemPrompt"]),
+  };
+}
+
 function normalizeAgents(value: unknown): AgentSummary[] {
-  return normalizeArrayResponse(value, ["agents", "items"]).map((agent, index) => {
-    const record = asRecord(agent);
-    const id = readString(record, ["id", "name"]) || `agent-${index + 1}`;
-    return {
-      id,
-      name: readString(record, ["name", "label", "id"]) || id,
-      type: readString(record, ["type"]),
-      status: readString(record, ["status", "state"]),
-      model: readString(record, ["model"]),
-    };
-  });
+  return normalizeArrayResponse(value, ["agents", "items"]).map((agent, index) =>
+    normalizeAgent(agent, index)
+  );
 }
 
 function normalizeProviders(value: unknown): ProviderSummary[] {
   return normalizeArrayResponse(value, ["providers", "items"]).map((provider, index) => {
     const record = asRecord(provider);
+    const info = asRecord(record?.info);
     const id = readString(record, ["id", "provider", "name"]) || `provider-${index + 1}`;
+    const hasCredentials = Boolean(
+      record?.hasCredentials ||
+      record?.has_credentials ||
+      record?.api_key ||
+      record?.apiKey ||
+      record?.access_token ||
+      record?.accessToken ||
+      record?.refresh_token ||
+      record?.refreshToken
+    );
     return {
       id,
       name: readString(record, ["name", "label", "provider"]) || id,
       provider: readString(record, ["provider", "type"]) || "provider",
+      base_url: readString(record, ["base_url", "baseUrl"]),
       is_default: Boolean(record?.is_default || record?.isDefault),
+      configured:
+        typeof record?.configured === "boolean" ? record.configured : hasCredentials || undefined,
+      requiresCredentials:
+        typeof record?.requiresCredentials === "boolean"
+          ? record.requiresCredentials
+          : typeof record?.requires_credentials === "boolean"
+            ? record.requires_credentials
+            : undefined,
+      hasCredentials,
+      authType: readString(record, ["authType", "auth_type"]) || readString(info, ["authType"]),
     };
   });
+}
+
+function normalizeProviderHealth(value: unknown): Map<string, Partial<ProviderSummary>> {
+  const health = new Map<string, Partial<ProviderSummary>>();
+  for (const item of normalizeArrayResponse(value, ["providers", "items"])) {
+    const record = asRecord(item);
+    const id = readString(record, ["id"]);
+    if (!id) continue;
+    const configured = typeof record?.configured === "boolean" ? record.configured : undefined;
+    const requiresCredentials =
+      typeof record?.requiresCredentials === "boolean"
+        ? record.requiresCredentials
+        : typeof record?.requires_credentials === "boolean"
+          ? record.requires_credentials
+          : undefined;
+    health.set(id, {
+      configured,
+      requiresCredentials,
+      hasCredentials:
+        configured !== undefined && requiresCredentials !== undefined
+          ? configured && requiresCredentials
+          : undefined,
+    });
+  }
+  return health;
 }
 
 export class CybaraMobileApi {
@@ -591,8 +684,117 @@ export class CybaraMobileApi {
     return normalizeAgents(await this.request<unknown>("/api/agents"));
   }
 
+  async updateAgent(id: string, data: AgentUpdatePayload): Promise<AgentSummary> {
+    const response = await this.request<unknown>(`/api/agents/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+    return normalizeAgent(response);
+  }
+
+  startAgent(id: string): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/api/agents/${encodeURIComponent(id)}/start`, {
+      method: "POST",
+    });
+  }
+
+  stopAgent(id: string): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/api/agents/${encodeURIComponent(id)}/stop`, {
+      method: "POST",
+    });
+  }
+
+  deleteAgent(id: string): Promise<{ success?: boolean }> {
+    return this.request<{ success?: boolean }>(`/api/agents/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  }
+
   async providers(): Promise<ProviderSummary[]> {
-    return normalizeProviders(await this.request<unknown>("/api/providers"));
+    const providerRows = normalizeProviders(await this.request<unknown>("/api/providers"));
+    let health = new Map<string, Partial<ProviderSummary>>();
+    try {
+      health = normalizeProviderHealth(await this.request<unknown>("/api/providers/health"));
+    } catch {
+      health = new Map<string, Partial<ProviderSummary>>();
+    }
+    return providerRows.map((provider) => ({ ...provider, ...health.get(provider.id) }));
+  }
+
+  updateProvider(id: string, data: ProviderUpdatePayload): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/api/providers/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  testProvider(id: string): Promise<ProviderTestResult> {
+    return this.request<ProviderTestResult>(`/api/providers/${encodeURIComponent(id)}/test`, {
+      method: "POST",
+    });
+  }
+
+  deleteProvider(id: string): Promise<{ success?: boolean }> {
+    return this.request<{ success?: boolean }>(`/api/providers/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  }
+
+  updateChannel(
+    id: string,
+    data: { name?: string; enabled?: boolean; config?: Record<string, unknown> }
+  ): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/api/channels/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  testChannel(id: string): Promise<{ success: boolean; message?: string; error?: string }> {
+    return this.request<{ success: boolean; message?: string; error?: string }>(
+      `/api/channels/${encodeURIComponent(id)}/test`,
+      { method: "POST" }
+    );
+  }
+
+  deleteChannel(id: string): Promise<{ success?: boolean }> {
+    return this.request<{ success?: boolean }>(`/api/channels/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  }
+
+  startTask(id: string): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/api/tasks/${encodeURIComponent(id)}/start`, {
+      method: "POST",
+    });
+  }
+
+  stopTask(id: string): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/api/tasks/${encodeURIComponent(id)}/stop`, {
+      method: "POST",
+    });
+  }
+
+  runTask(id: string): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/api/tasks/${encodeURIComponent(id)}/run`, {
+      method: "POST",
+    });
+  }
+
+  deleteTask(id: string): Promise<{ success?: boolean }> {
+    return this.request<{ success?: boolean }>(`/api/tasks/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  }
+
+  resolveToolApproval(
+    requestId: string,
+    decision: ToolApprovalDecision
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.request<{ success: boolean; error?: string }>("/api/tools/approvals/resolve", {
+      method: "POST",
+      body: JSON.stringify({ requestId, decision }),
+    });
   }
 
   config(): Promise<Record<string, unknown>> {

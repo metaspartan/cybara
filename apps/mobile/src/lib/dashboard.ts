@@ -73,6 +73,42 @@ export const MOBILE_RECENT_ACTIVITY_CHROME = {
   useRecentStateForIdleChats: true,
 } as const;
 
+export const MOBILE_SETTINGS_DETAIL_CHROME = {
+  agentsEditable: true,
+  approvalsActionable: true,
+  channelsEditable: true,
+  providersEditable: true,
+  tasksActionable: true,
+  hidesRawInternalFields: true,
+  providerCredentialUpdateMode: "blank-keeps-existing" as const,
+} as const;
+
+const INTERNAL_SETTINGS_FIELD_LABELS = new Set([
+  "id",
+  "uuid",
+  "source",
+  "surface",
+  "detail",
+  "raw",
+  "config",
+  "created at",
+  "created_at",
+  "updated at",
+  "updated_at",
+  "agent id",
+  "agent_id",
+  "provider id",
+  "provider_id",
+  "session id",
+  "session_id",
+]);
+
+export function isMobileSettingsDetailFieldVisible(label: string): boolean {
+  const normalized = label.trim().toLowerCase().replace(/[-_]+/g, " ");
+  if (INTERNAL_SETTINGS_FIELD_LABELS.has(normalized)) return false;
+  return !/secret|token|api key|password|credential|mnemonic/i.test(normalized);
+}
+
 export const MOBILE_CHAT_COMPOSER = {
   growsWithContent: true,
   lineHeight: 20,

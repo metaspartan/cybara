@@ -39,10 +39,14 @@ import {
   ListTodo,
   MessageCircle,
   Palette,
+  Play,
   RefreshCw,
+  Save,
   Send,
   Settings,
   ShieldCheck,
+  Square,
+  Trash2,
   User,
   UsersRound,
   Wifi,
@@ -65,11 +69,14 @@ import {
   CybaraMobileApi,
   sortSessionSummaries,
   type ActivitySummary,
+  type AgentSummary,
   type FeatureEndpointKey,
   type FeatureSummary,
+  type ProviderSummary,
   type RemoteItemSummary,
   type SessionDetailSummary,
   type SessionSummary,
+  type ToolApprovalDecision,
 } from "../lib/api";
 import {
   chatIsWaitingForAssistant,
@@ -89,6 +96,7 @@ import {
   MOBILE_GATEWAY_PANEL_CHROME,
   MOBILE_MAIN_TAB_CHROME,
   MOBILE_METRICS_CHROME,
+  MOBILE_SETTINGS_DETAIL_CHROME,
   MOBILE_SETTINGS_SURFACES,
   MOBILE_TABS,
   boundedMobileComposerHeight,
@@ -98,6 +106,7 @@ import {
   compactHost,
   formatUptime,
   formatMobileValue,
+  isMobileSettingsDetailFieldVisible,
   lastUpdatedLabel,
   mobileComposerHeightForDraft,
   mobileThemeConfigPayload,
@@ -180,6 +189,8 @@ const surfaceMeta: Record<
   monitor: { title: "System Monitor", Icon: Cpu, tone: colors.blueText, endpoint: "health" },
 };
 
+const agentTypeOptions = ["main", "research", "coder", "planner", "ops", "worker"] as const;
+
 function endpointErrorDetail(endpoint: EndpointState, fallback: string): string {
   if (!endpoint || endpoint.ok) return fallback;
   if (endpoint.status) return `Gateway returned ${endpoint.status}.`;
@@ -236,6 +247,37 @@ function displayFields(record: Record<string, unknown>): Array<{ label: string; 
       label: label.replace(/_/g, " "),
       value: formatMobileValue(value),
     }));
+}
+
+function displayFieldLabel(label: string): string {
+  return label.replace(/[_-]+/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function cleanSettingsFields(
+  fields: Array<{ label: string; value: string }> = []
+): Array<{ label: string; value: string }> {
+  return fields
+    .filter((field) => isMobileSettingsDetailFieldVisible(field.label))
+    .map((field) => ({ ...field, label: displayFieldLabel(field.label) }));
+}
+
+function agentProviderId(agent: AgentSummary | null | undefined): string {
+  return agent?.provider_id || agent?.provider || "";
+}
+
+function agentIsRunning(agent: AgentSummary | null | undefined): boolean {
+  return agent?.status === "running" || agent?.status === "active";
+}
+
+function remoteItemEnabled(item: RemoteItemSummary | ActivitySummary): boolean {
+  if ("enabled" in item && typeof item.enabled === "boolean") return item.enabled;
+  if (!("status" in item) || !item.status) return true;
+  return !["disabled", "paused", "stopped", "inactive"].includes(item.status.toLowerCase());
+}
+
+function remoteTaskRunning(item: RemoteItemSummary | ActivitySummary): boolean {
+  if (!("status" in item) || !item.status) return false;
+  return ["running", "pending", "active", "enabled"].includes(item.status.toLowerCase());
 }
 
 function resolveAccentKey(summary: FeatureSummary | null): AccentKey {
@@ -1481,7 +1523,15 @@ function DetailContent({
     );
   }
   if (route.kind === "item") {
-    return <ItemDetailPanel route={route} />;
+    return (
+      <ItemDetailPanel
+        api={api}
+        closeDetail={closeDetail}
+        refreshSummary={refreshSummary}
+        route={route}
+        summary={summary}
+      />
+    );
   }
   return (
     <SurfaceDetailPanel
@@ -2039,19 +2089,991 @@ function SurfaceDetailPanel({
   );
 }
 
-function ItemDetailPanel({ route }: { route: Extract<DetailRoute, { kind: "item" }> }) {
+function SettingsTextField({
+  autoCapitalize = "none",
+  help,
+  label,
+  multiline,
+  onChangeText,
+  placeholder,
+  secureTextEntry,
+  value,
+}: {
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
+  help?: string;
+  label: string;
+  multiline?: boolean;
+  onChangeText: (value: string) => void;
+  placeholder?: string;
+  secureTextEntry?: boolean;
+  value: string;
+}) {
+  return (
+    <View style={styles.settingsField}>
+      <Text style={styles.settingsFieldLabel}>{label}</Text>
+      <TextInput
+        autoCapitalize={autoCapitalize}
+        multiline={multiline}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={colors.textDim}
+        secureTextEntry={secureTextEntry}
+        style={[styles.settingsInput, multiline && styles.settingsTextArea]}
+        textAlignVertical={multiline ? "top" : "center"}
+        value={value}
+      />
+      {help ? <Text style={styles.settingsFieldHelp}>{help}</Text> : null}
+    </View>
+  );
+}
+
+function SettingSelector({
+  label,
+  options,
+  selected,
+  onSelect,
+}: {
+  label: string;
+  options: Array<{ label: string; value: string }>;
+  selected: string;
+  onSelect: (value: string) => void;
+}) {
+  if (options.length === 0) return null;
+  return (
+    <View style={styles.settingsField}>
+      <Text style={styles.settingsFieldLabel}>{label}</Text>
+      <View style={styles.settingsChipRow}>
+        {options.map((option) => {
+          const isSelected = selected === option.value;
+          return (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: isSelected }}
+              key={option.value}
+              onPress={() => onSelect(option.value)}
+              style={[styles.settingsChip, isSelected && styles.settingsChipActive]}
+            >
+              <Text
+                numberOfLines={1}
+                style={[styles.settingsChipText, isSelected && styles.settingsChipTextActive]}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function DetailActionButton({
+  Icon,
+  busy,
+  disabled,
+  label,
+  onPress,
+  tone = colors.cyan,
+}: {
+  Icon: IconGlyph;
+  busy?: boolean;
+  disabled?: boolean;
+  label: string;
+  onPress: () => void;
+  tone?: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      disabled={disabled || busy}
+      onPress={onPress}
+      style={[
+        styles.settingsActionButton,
+        { borderColor: `${tone}55`, backgroundColor: `${tone}12` },
+        (disabled || busy) && styles.settingsActionButtonDisabled,
+      ]}
+    >
+      {busy ? (
+        <ActivityIndicator color={tone} size="small" />
+      ) : (
+        <Icon color={tone} size={17} strokeWidth={2.3} />
+      )}
+      <Text style={[styles.settingsActionText, { color: tone }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function SettingToggle({
+  detail,
+  label,
+  onPress,
+  value,
+}: {
+  detail?: string;
+  label: string;
+  onPress: () => void;
+  value: boolean;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value }}
+      onPress={onPress}
+      style={styles.settingToggleRow}
+    >
+      <View style={styles.toggleTextWrap}>
+        <Text style={styles.toggleTitle}>{label}</Text>
+        {detail ? <Text style={styles.toggleDetail}>{detail}</Text> : null}
+      </View>
+      <View style={[styles.toggleSwitch, value && styles.toggleSwitchActive]}>
+        <View style={[styles.toggleThumb, value && styles.toggleThumbActive]} />
+      </View>
+    </Pressable>
+  );
+}
+
+function AgentSettingsPanel({
+  api,
+  closeDetail,
+  item,
+  refreshSummary,
+  summary,
+}: {
+  api: CybaraMobileApi;
+  closeDetail: () => void;
+  item: RemoteItemSummary | ActivitySummary;
+  refreshSummary: () => void;
+  summary: FeatureSummary | null;
+}) {
+  const summaryAgent = summary?.agents.find((agent) => agent.id === item.id);
+  const itemType = "type" in item ? item.type : undefined;
+  const itemStatus = "status" in item ? item.status : undefined;
+  const agent: AgentSummary = summaryAgent ?? {
+    id: item.id,
+    name: item.title,
+    model: itemType,
+    status: itemStatus,
+  };
+  const [name, setName] = useState(agent.name);
+  const [type, setType] = useState(agent.type || "main");
+  const [providerId, setProviderId] = useState(agentProviderId(agent));
+  const [model, setModel] = useState(agent.model || "");
+  const [systemPrompt, setSystemPrompt] = useState(agent.system_prompt || "");
+  const [saving, setSaving] = useState(false);
+  const [runningAction, setRunningAction] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const providerOptions = summary?.providers ?? [];
+  const running = agentIsRunning(agent);
+
+  useEffect(() => {
+    setName(agent.name);
+    setType(agent.type || "main");
+    setProviderId(agentProviderId(agent));
+    setModel(agent.model || "");
+    setSystemPrompt(agent.system_prompt || "");
+  }, [
+    agent.id,
+    agent.model,
+    agent.name,
+    agent.provider,
+    agent.provider_id,
+    agent.system_prompt,
+    agent.type,
+  ]);
+
+  const saveAgent = async () => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      Alert.alert("Name required", "Give the agent a display name before saving.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.updateAgent(agent.id, {
+        name: trimmedName,
+        type,
+        provider_id: providerId || undefined,
+        model: model.trim() || undefined,
+        system_prompt: systemPrompt,
+      });
+      await refreshSummary();
+      Alert.alert("Agent saved", `${trimmedName} was updated.`);
+    } catch (error) {
+      Alert.alert("Agent save failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleAgentRuntime = async () => {
+    setRunningAction(true);
+    try {
+      const result = running ? await api.stopAgent(agent.id) : await api.startAgent(agent.id);
+      await refreshSummary();
+      if (result.success === false) {
+        throw new Error(
+          running ? "The gateway did not stop this agent." : "The gateway did not start this agent."
+        );
+      }
+    } catch (error) {
+      Alert.alert("Agent action failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setRunningAction(false);
+    }
+  };
+
+  const deleteAgent = async () => {
+    setDeleting(true);
+    try {
+      const result = await api.deleteAgent(agent.id);
+      if (result.success === false) throw new Error("The gateway did not delete this agent.");
+      await refreshSummary();
+      closeDetail();
+    } catch (error) {
+      Alert.alert("Delete failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const confirmDelete = () => {
+    Alert.alert("Delete agent?", `${agent.name} will be removed from this gateway.`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          void deleteAgent();
+        },
+      },
+    ]);
+  };
+
+  return (
+    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+      <View style={styles.itemHero}>
+        <View style={[styles.summaryIcon, { backgroundColor: `${colors.cyan}18` }]}>
+          <Bot color={colors.cyan} size={21} strokeWidth={2.2} />
+        </View>
+        <View style={styles.itemHeroText}>
+          <Text numberOfLines={1} style={styles.itemTitle}>
+            {agent.name}
+          </Text>
+          <Text numberOfLines={1} style={styles.itemDetail}>
+            {[agent.status || "stopped", agent.model || "model not set"].join(" - ")}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.settingsForm}>
+        <SettingsTextField
+          autoCapitalize="words"
+          label="Display name"
+          onChangeText={setName}
+          placeholder="Agent name"
+          value={name}
+        />
+        <SettingSelector
+          label="Type"
+          options={agentTypeOptions.map((value) => ({ label: displayFieldLabel(value), value }))}
+          selected={type}
+          onSelect={setType}
+        />
+        <SettingSelector
+          label="Provider"
+          options={providerOptions.map((provider) => ({
+            label: provider.name,
+            value: provider.id,
+          }))}
+          selected={providerId}
+          onSelect={setProviderId}
+        />
+        <SettingsTextField
+          label="Model"
+          onChangeText={setModel}
+          placeholder="Model name"
+          value={model}
+        />
+        <SettingsTextField
+          help="Used as this agent's operating instructions."
+          label="System prompt"
+          multiline
+          onChangeText={setSystemPrompt}
+          placeholder="You are a helpful AI assistant..."
+          value={systemPrompt}
+        />
+      </View>
+
+      <View style={styles.settingsActionRow}>
+        <DetailActionButton Icon={Save} busy={saving} label="Save" onPress={saveAgent} />
+        <DetailActionButton
+          Icon={running ? Square : Play}
+          busy={runningAction}
+          label={running ? "Stop" : "Start"}
+          onPress={toggleAgentRuntime}
+          tone={running ? colors.amber : colors.green}
+        />
+        <DetailActionButton
+          Icon={Trash2}
+          busy={deleting}
+          label="Delete"
+          onPress={confirmDelete}
+          tone={colors.red}
+        />
+      </View>
+    </GlassPanel>
+  );
+}
+
+function ProviderSettingsPanel({
+  api,
+  closeDetail,
+  item,
+  refreshSummary,
+  summary,
+}: {
+  api: CybaraMobileApi;
+  closeDetail: () => void;
+  item: RemoteItemSummary | ActivitySummary;
+  refreshSummary: () => void;
+  summary: FeatureSummary | null;
+}) {
+  const summaryProvider = summary?.providers.find((provider) => provider.id === item.id);
+  const itemType = "type" in item ? item.type : undefined;
+  const provider: ProviderSummary = summaryProvider ?? {
+    id: item.id,
+    name: item.title,
+    provider: itemType || item.detail || "provider",
+  };
+  const [name, setName] = useState(provider.name);
+  const [baseUrl, setBaseUrl] = useState(provider.base_url || "");
+  const [apiKey, setApiKey] = useState("");
+  const [accessToken, setAccessToken] = useState("");
+  const [isDefault, setIsDefault] = useState(Boolean(provider.is_default));
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    setName(provider.name);
+    setBaseUrl(provider.base_url || "");
+    setApiKey("");
+    setAccessToken("");
+    setIsDefault(Boolean(provider.is_default));
+  }, [provider.base_url, provider.id, provider.is_default, provider.name]);
+
+  const saveProvider = async () => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      Alert.alert("Name required", "Give the provider a display name before saving.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const result = await api.updateProvider(provider.id, {
+        name: trimmedName,
+        base_url: baseUrl.trim() || undefined,
+        api_key: apiKey.trim() || undefined,
+        access_token: accessToken.trim() || undefined,
+        is_default: isDefault,
+      });
+      if (result.success === false) throw new Error("The gateway did not save this provider.");
+      setApiKey("");
+      setAccessToken("");
+      await refreshSummary();
+      Alert.alert("Provider saved", `${trimmedName} was updated.`);
+    } catch (error) {
+      Alert.alert("Provider save failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const testProvider = async () => {
+    setTesting(true);
+    try {
+      const result = await api.testProvider(provider.id);
+      Alert.alert(
+        result.success ? "Provider connected" : "Provider test failed",
+        result.message ||
+          result.error ||
+          (result.success ? "Connection verified." : "Connection failed.")
+      );
+    } catch (error) {
+      Alert.alert("Provider test failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const deleteProvider = async () => {
+    setDeleting(true);
+    try {
+      const result = await api.deleteProvider(provider.id);
+      if (result.success === false) throw new Error("The gateway did not delete this provider.");
+      await refreshSummary();
+      closeDetail();
+    } catch (error) {
+      Alert.alert("Delete failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const confirmDelete = () => {
+    Alert.alert(
+      "Delete provider?",
+      `${provider.name} will be removed. Agents using this provider may stop working.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void deleteProvider();
+          },
+        },
+      ]
+    );
+  };
+
+  return (
+    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+      <View style={styles.itemHero}>
+        <View style={[styles.summaryIcon, { backgroundColor: `${colors.blueText}18` }]}>
+          <Database color={colors.blueText} size={21} strokeWidth={2.2} />
+        </View>
+        <View style={styles.itemHeroText}>
+          <Text numberOfLines={1} style={styles.itemTitle}>
+            {provider.name}
+          </Text>
+          <Text numberOfLines={1} style={styles.itemDetail}>
+            {`${provider.provider}${provider.is_default ? " - default" : ""}`}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.settingsForm}>
+        <SettingsTextField
+          autoCapitalize="words"
+          label="Display name"
+          onChangeText={setName}
+          placeholder="Provider name"
+          value={name}
+        />
+        <SettingsTextField
+          help="Only change this for local or self-hosted model providers."
+          label="Base URL"
+          onChangeText={setBaseUrl}
+          placeholder="Provider default"
+          value={baseUrl}
+        />
+        <SettingsTextField
+          help={
+            MOBILE_SETTINGS_DETAIL_CHROME.providerCredentialUpdateMode === "blank-keeps-existing"
+              ? "Leave blank to keep the saved API key."
+              : undefined
+          }
+          label="API key"
+          onChangeText={setApiKey}
+          placeholder={provider.hasCredentials ? "Saved credential" : "Paste API key"}
+          secureTextEntry
+          value={apiKey}
+        />
+        <SettingsTextField
+          help="Leave blank to keep the saved access token."
+          label="Access token"
+          onChangeText={setAccessToken}
+          placeholder={provider.hasCredentials ? "Saved credential" : "Paste access token"}
+          secureTextEntry
+          value={accessToken}
+        />
+        <SettingToggle
+          detail="New chats use this provider when no agent-specific provider is selected."
+          label="Default provider"
+          onPress={() => setIsDefault((value) => !value)}
+          value={isDefault}
+        />
+      </View>
+
+      <View style={styles.settingsActionRow}>
+        <DetailActionButton Icon={Save} busy={saving} label="Save" onPress={saveProvider} />
+        <DetailActionButton
+          Icon={Zap}
+          busy={testing}
+          label="Test"
+          onPress={testProvider}
+          tone={colors.green}
+        />
+        <DetailActionButton
+          Icon={Trash2}
+          busy={deleting}
+          label="Delete"
+          onPress={confirmDelete}
+          tone={colors.red}
+        />
+      </View>
+    </GlassPanel>
+  );
+}
+
+function ChannelSettingsPanel({
+  api,
+  closeDetail,
+  item,
+  refreshSummary,
+}: {
+  api: CybaraMobileApi;
+  closeDetail: () => void;
+  item: RemoteItemSummary | ActivitySummary;
+  refreshSummary: () => void;
+}) {
+  const [name, setName] = useState(item.title);
+  const [enabled, setEnabled] = useState(remoteItemEnabled(item));
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    setName(item.title);
+    setEnabled(remoteItemEnabled(item));
+  }, [item]);
+
+  const saveChannel = async () => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      Alert.alert("Name required", "Give the channel a display name before saving.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const result = await api.updateChannel(item.id, {
+        name: trimmedName,
+        enabled,
+      });
+      if (result.success === false) throw new Error("The gateway did not save this channel.");
+      await refreshSummary();
+      Alert.alert("Channel saved", `${trimmedName} was updated.`);
+    } catch (error) {
+      Alert.alert("Channel save failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const testChannel = async () => {
+    setTesting(true);
+    try {
+      const result = await api.testChannel(item.id);
+      Alert.alert(
+        result.success ? "Channel connected" : "Channel test failed",
+        result.message ||
+          result.error ||
+          (result.success ? "Connection verified." : "Connection failed.")
+      );
+    } catch (error) {
+      Alert.alert("Channel test failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const deleteChannel = async () => {
+    setDeleting(true);
+    try {
+      const result = await api.deleteChannel(item.id);
+      if (result.success === false) throw new Error("The gateway did not delete this channel.");
+      await refreshSummary();
+      closeDetail();
+    } catch (error) {
+      Alert.alert("Delete failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const confirmDelete = () => {
+    Alert.alert("Delete channel?", `${item.title} will no longer receive remote messages.`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          void deleteChannel();
+        },
+      },
+    ]);
+  };
+
+  return (
+    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+      <View style={styles.itemHero}>
+        <View style={[styles.summaryIcon, { backgroundColor: `${colors.cyan}18` }]}>
+          <Link2 color={colors.cyan} size={21} strokeWidth={2.2} />
+        </View>
+        <View style={styles.itemHeroText}>
+          <Text numberOfLines={1} style={styles.itemTitle}>
+            {item.title}
+          </Text>
+          <Text numberOfLines={1} style={styles.itemDetail}>
+            {item.detail}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.settingsForm}>
+        <SettingsTextField
+          autoCapitalize="words"
+          label="Display name"
+          onChangeText={setName}
+          placeholder="Channel name"
+          value={name}
+        />
+        <SettingToggle
+          detail="Disabled channels stay configured but stop handling messages."
+          label="Enabled"
+          onPress={() => setEnabled((value) => !value)}
+          value={enabled}
+        />
+      </View>
+
+      <View style={styles.settingsActionRow}>
+        <DetailActionButton Icon={Save} busy={saving} label="Save" onPress={saveChannel} />
+        <DetailActionButton
+          Icon={Zap}
+          busy={testing}
+          label="Test"
+          onPress={testChannel}
+          tone={colors.green}
+        />
+        <DetailActionButton
+          Icon={Trash2}
+          busy={deleting}
+          label="Delete"
+          onPress={confirmDelete}
+          tone={colors.red}
+        />
+      </View>
+    </GlassPanel>
+  );
+}
+
+function TaskSettingsPanel({
+  api,
+  closeDetail,
+  item,
+  refreshSummary,
+}: {
+  api: CybaraMobileApi;
+  closeDetail: () => void;
+  item: RemoteItemSummary | ActivitySummary;
+  refreshSummary: () => void;
+}) {
+  const [toggling, setToggling] = useState(false);
+  const [runningNow, setRunningNow] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const running = remoteTaskRunning(item);
+
+  const toggleTask = async () => {
+    setToggling(true);
+    try {
+      const result = running ? await api.stopTask(item.id) : await api.startTask(item.id);
+      if (result.success === false) {
+        throw new Error(
+          running ? "The gateway did not stop this task." : "The gateway did not start this task."
+        );
+      }
+      await refreshSummary();
+    } catch (error) {
+      Alert.alert("Task action failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setToggling(false);
+    }
+  };
+
+  const runTask = async () => {
+    setRunningNow(true);
+    try {
+      const result = await api.runTask(item.id);
+      if (result.success === false) throw new Error("The gateway did not run this task.");
+      await refreshSummary();
+      Alert.alert("Task started", `${item.title} was triggered.`);
+    } catch (error) {
+      Alert.alert("Task run failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setRunningNow(false);
+    }
+  };
+
+  const deleteTask = async () => {
+    setDeleting(true);
+    try {
+      const result = await api.deleteTask(item.id);
+      if (result.success === false) throw new Error("The gateway did not delete this task.");
+      await refreshSummary();
+      closeDetail();
+    } catch (error) {
+      Alert.alert("Delete failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const confirmDelete = () => {
+    Alert.alert("Delete task?", `${item.title} will be removed from the scheduler.`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          void deleteTask();
+        },
+      },
+    ]);
+  };
+
+  const fields = [
+    ...("status" in item && item.status ? [{ label: "Status", value: item.status }] : []),
+    ...("type" in item && item.type ? [{ label: "Type", value: item.type }] : []),
+    ...cleanSettingsFields(item.fields),
+  ];
+
+  return (
+    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+      <View style={styles.itemHero}>
+        <View style={[styles.summaryIcon, { backgroundColor: `${colors.blueText}18` }]}>
+          <CalendarCheck color={colors.blueText} size={21} strokeWidth={2.2} />
+        </View>
+        <View style={styles.itemHeroText}>
+          <Text numberOfLines={1} style={styles.itemTitle}>
+            {item.title}
+          </Text>
+          <Text numberOfLines={1} style={styles.itemDetail}>
+            {item.detail}
+          </Text>
+        </View>
+      </View>
+
+      {fields.length > 0 ? (
+        <View>
+          {fields.map((field, index) => (
+            <View key={`${field.label}-${index}`} style={styles.listRow}>
+              <View style={styles.listText}>
+                <Text style={styles.listTitle}>{field.label}</Text>
+                <Text numberOfLines={1} style={styles.listDetail}>
+                  {field.value}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      <View style={styles.settingsActionRow}>
+        <DetailActionButton
+          Icon={running ? Square : Play}
+          busy={toggling}
+          label={running ? "Stop" : "Start"}
+          onPress={toggleTask}
+          tone={running ? colors.amber : colors.green}
+        />
+        <DetailActionButton
+          Icon={Zap}
+          busy={runningNow}
+          label="Run now"
+          onPress={runTask}
+          tone={colors.cyan}
+        />
+        <DetailActionButton
+          Icon={Trash2}
+          busy={deleting}
+          label="Delete"
+          onPress={confirmDelete}
+          tone={colors.red}
+        />
+      </View>
+    </GlassPanel>
+  );
+}
+
+function ApprovalSettingsPanel({
+  api,
+  closeDetail,
+  item,
+  refreshSummary,
+}: {
+  api: CybaraMobileApi;
+  closeDetail: () => void;
+  item: RemoteItemSummary | ActivitySummary;
+  refreshSummary: () => void;
+}) {
+  const [decision, setDecision] = useState<ToolApprovalDecision | null>(null);
+  const fields = cleanSettingsFields(item.fields);
+
+  const resolveApproval = async (nextDecision: ToolApprovalDecision) => {
+    setDecision(nextDecision);
+    try {
+      const result = await api.resolveToolApproval(item.id, nextDecision);
+      if (result.success === false) {
+        throw new Error(result.error || "The gateway did not resolve this approval.");
+      }
+      await refreshSummary();
+      closeDetail();
+    } catch (error) {
+      Alert.alert("Approval failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setDecision(null);
+    }
+  };
+
+  return (
+    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+      <View style={styles.itemHero}>
+        <View style={[styles.summaryIcon, { backgroundColor: `${colors.amber}18` }]}>
+          <ShieldCheck color={colors.amber} size={21} strokeWidth={2.2} />
+        </View>
+        <View style={styles.itemHeroText}>
+          <Text numberOfLines={1} style={styles.itemTitle}>
+            {item.title}
+          </Text>
+          <Text numberOfLines={2} style={styles.itemDetail}>
+            {item.detail}
+          </Text>
+        </View>
+      </View>
+
+      {fields.length > 0 ? (
+        <View>
+          {fields.map((field, index) => (
+            <View key={`${field.label}-${index}`} style={styles.listRow}>
+              <View style={styles.listText}>
+                <Text style={styles.listTitle}>{field.label}</Text>
+                <Text numberOfLines={2} style={styles.listDetail}>
+                  {field.value}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      <View style={styles.settingsActionRow}>
+        <DetailActionButton
+          Icon={ShieldCheck}
+          busy={decision === "approve_once"}
+          label="Approve once"
+          onPress={() => {
+            void resolveApproval("approve_once");
+          }}
+          tone={colors.green}
+        />
+        <DetailActionButton
+          Icon={ShieldCheck}
+          busy={decision === "approve_session"}
+          label="Session"
+          onPress={() => {
+            void resolveApproval("approve_session");
+          }}
+          tone={colors.cyan}
+        />
+        <DetailActionButton
+          Icon={ShieldCheck}
+          busy={decision === "approve_always"}
+          label="Always"
+          onPress={() => {
+            void resolveApproval("approve_always");
+          }}
+          tone={colors.blueText}
+        />
+        <DetailActionButton
+          Icon={Trash2}
+          busy={decision === "deny"}
+          label="Deny"
+          onPress={() => {
+            void resolveApproval("deny");
+          }}
+          tone={colors.red}
+        />
+      </View>
+    </GlassPanel>
+  );
+}
+
+function ItemDetailPanel({
+  api,
+  closeDetail,
+  refreshSummary,
+  route,
+  summary,
+}: {
+  api: CybaraMobileApi;
+  closeDetail: () => void;
+  refreshSummary: () => void;
+  route: Extract<DetailRoute, { kind: "item" }>;
+  summary: FeatureSummary | null;
+}) {
   const item = route.item;
   const meta = surfaceMeta[route.surface];
   const Icon = meta.Icon;
+  if (route.surface === "agents" && MOBILE_SETTINGS_DETAIL_CHROME.agentsEditable) {
+    return (
+      <AgentSettingsPanel
+        api={api}
+        closeDetail={closeDetail}
+        item={item}
+        refreshSummary={refreshSummary}
+        summary={summary}
+      />
+    );
+  }
+  if (route.surface === "providers" && MOBILE_SETTINGS_DETAIL_CHROME.providersEditable) {
+    return (
+      <ProviderSettingsPanel
+        api={api}
+        closeDetail={closeDetail}
+        item={item}
+        refreshSummary={refreshSummary}
+        summary={summary}
+      />
+    );
+  }
+  if (route.surface === "channels" && MOBILE_SETTINGS_DETAIL_CHROME.channelsEditable) {
+    return (
+      <ChannelSettingsPanel
+        api={api}
+        closeDetail={closeDetail}
+        item={item}
+        refreshSummary={refreshSummary}
+      />
+    );
+  }
+  if (route.surface === "tasks" && MOBILE_SETTINGS_DETAIL_CHROME.tasksActionable) {
+    return (
+      <TaskSettingsPanel
+        api={api}
+        closeDetail={closeDetail}
+        item={item}
+        refreshSummary={refreshSummary}
+      />
+    );
+  }
+  if (route.surface === "approvals" && MOBILE_SETTINGS_DETAIL_CHROME.approvalsActionable) {
+    return (
+      <ApprovalSettingsPanel
+        api={api}
+        closeDetail={closeDetail}
+        item={item}
+        refreshSummary={refreshSummary}
+      />
+    );
+  }
   const fields = [
-    { label: "id", value: item.id },
-    { label: "surface", value: meta.title },
-    { label: "detail", value: item.detail },
-    ...("source" in item ? [{ label: "source", value: item.source }] : []),
+    ...("status" in item && item.status ? [{ label: "Status", value: item.status }] : []),
+    ...("type" in item && item.type ? [{ label: "Type", value: item.type }] : []),
     ...("createdAt" in item && item.createdAt
-      ? [{ label: "updated", value: relativeTimestamp(item.createdAt) }]
+      ? [{ label: "Time", value: absoluteTimestampLabel(item.createdAt) }]
       : []),
-    ...(item.fields || []),
+    ...cleanSettingsFields(item.fields),
   ];
 
   return (
@@ -2061,21 +3083,32 @@ function ItemDetailPanel({ route }: { route: Extract<DetailRoute, { kind: "item"
           <Icon color={meta.tone} size={21} strokeWidth={2.2} />
         </View>
         <View style={styles.itemHeroText}>
-          <Text style={styles.itemTitle}>{item.title}</Text>
-          <Text style={styles.itemDetail}>{item.detail}</Text>
+          <Text numberOfLines={1} style={styles.itemTitle}>
+            {item.title}
+          </Text>
+          <Text numberOfLines={2} style={styles.itemDetail}>
+            {item.detail}
+          </Text>
         </View>
       </View>
       <Text style={styles.subsectionTitle}>Details</Text>
-      {fields.map((field, index) => (
-        <View key={`${field.label}-${index}`} style={styles.listRow}>
-          <View style={styles.listText}>
-            <Text style={styles.listTitle}>{field.label}</Text>
-            <Text selectable style={styles.listDetail}>
-              {field.value}
-            </Text>
+      {fields.length === 0 ? (
+        <EmptyState
+          label="No editable settings"
+          detail="This gateway surface does not expose mobile-editable settings yet."
+        />
+      ) : (
+        fields.map((field, index) => (
+          <View key={`${field.label}-${index}`} style={styles.listRow}>
+            <View style={styles.listText}>
+              <Text style={styles.listTitle}>{field.label}</Text>
+              <Text selectable style={styles.listDetail}>
+                {field.value}
+              </Text>
+            </View>
           </View>
-        </View>
-      ))}
+        ))
+      )}
     </GlassPanel>
   );
 }
@@ -2914,6 +3947,136 @@ const styles = StyleSheet.create({
     fontSize: typography.tiny,
     fontWeight: "800",
     textTransform: "capitalize",
+  },
+  settingsForm: {
+    gap: spacing.md,
+  },
+  settingsField: {
+    gap: spacing.xs,
+  },
+  settingsFieldLabel: {
+    color: colors.textMuted,
+    fontSize: typography.tiny,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  settingsInput: {
+    backgroundColor: "rgba(1, 5, 8, 0.82)",
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    color: colors.text,
+    fontSize: typography.body,
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    paddingVertical: Platform.OS === "ios" ? 12 : 8,
+  },
+  settingsTextArea: {
+    lineHeight: 20,
+    minHeight: 140,
+  },
+  settingsFieldHelp: {
+    color: colors.textDim,
+    fontSize: typography.tiny,
+    lineHeight: 16,
+  },
+  settingsChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  settingsChip: {
+    alignItems: "center",
+    backgroundColor: "rgba(1, 5, 8, 0.76)",
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    minHeight: 38,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+  },
+  settingsChipActive: {
+    backgroundColor: `${colors.cyan}16`,
+    borderColor: `${colors.cyan}88`,
+  },
+  settingsChipText: {
+    color: colors.textMuted,
+    fontSize: typography.label,
+    fontWeight: "800",
+  },
+  settingsChipTextActive: {
+    color: colors.text,
+  },
+  settingsActionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  settingsActionButton: {
+    alignItems: "center",
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.xs,
+    minHeight: 42,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 9,
+  },
+  settingsActionButtonDisabled: {
+    opacity: 0.65,
+  },
+  settingsActionText: {
+    fontSize: typography.label,
+    fontWeight: "900",
+  },
+  settingToggleRow: {
+    alignItems: "center",
+    backgroundColor: "rgba(1, 5, 8, 0.76)",
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.md,
+    minHeight: 58,
+    padding: spacing.md,
+  },
+  toggleTextWrap: {
+    flex: 1,
+    gap: 3,
+  },
+  toggleTitle: {
+    color: colors.text,
+    fontSize: typography.body,
+    fontWeight: "800",
+  },
+  toggleDetail: {
+    color: colors.textMuted,
+    fontSize: typography.tiny,
+    lineHeight: 16,
+  },
+  toggleSwitch: {
+    backgroundColor: "rgba(148, 163, 184, 0.18)",
+    borderColor: colors.border,
+    borderRadius: 15,
+    borderWidth: 1,
+    height: 30,
+    justifyContent: "center",
+    paddingHorizontal: 3,
+    width: 52,
+  },
+  toggleSwitchActive: {
+    backgroundColor: `${colors.cyan}22`,
+    borderColor: `${colors.cyan}88`,
+  },
+  toggleThumb: {
+    backgroundColor: colors.textMuted,
+    borderRadius: 11,
+    height: 22,
+    width: 22,
+  },
+  toggleThumbActive: {
+    alignSelf: "flex-end",
+    backgroundColor: colors.cyan,
   },
   summaryGrid: {
     flexDirection: "row",

@@ -83,6 +83,264 @@ describe("mobile API client", () => {
     }
   });
 
+  test("edits and controls agents through gateway agent routes", async () => {
+    const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      const method = init?.method || "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      calls.push({ method, path: parsedUrl.pathname, body });
+
+      if (parsedUrl.pathname === "/api/agents/agent-1" && method === "PUT") {
+        return Response.json({
+          id: "agent-1",
+          name: "Code Assistant",
+          type: "coder",
+          model: "MiniMax-M2.5",
+          provider_id: "provider-1",
+          system_prompt: "Work carefully.",
+        });
+      }
+      if (parsedUrl.pathname === "/api/agents/agent-1/start" && method === "POST") {
+        return Response.json({ success: true });
+      }
+      if (parsedUrl.pathname === "/api/agents/agent-1/stop" && method === "POST") {
+        return Response.json({ success: true });
+      }
+      if (parsedUrl.pathname === "/api/agents/agent-1" && method === "DELETE") {
+        return Response.json({ success: true });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const api = new CybaraMobileApi(profile);
+      const updated = await api.updateAgent("agent-1", {
+        name: "Code Assistant",
+        type: "coder",
+        provider_id: "provider-1",
+        model: "MiniMax-M2.5",
+        system_prompt: "Work carefully.",
+      });
+      await expect(api.startAgent("agent-1")).resolves.toEqual({ success: true });
+      await expect(api.stopAgent("agent-1")).resolves.toEqual({ success: true });
+      await expect(api.deleteAgent("agent-1")).resolves.toEqual({ success: true });
+
+      expect(updated).toMatchObject({
+        id: "agent-1",
+        name: "Code Assistant",
+        type: "coder",
+        provider_id: "provider-1",
+        provider: "provider-1",
+        system_prompt: "Work carefully.",
+      });
+      expect(calls).toEqual([
+        {
+          method: "PUT",
+          path: "/api/agents/agent-1",
+          body: {
+            name: "Code Assistant",
+            type: "coder",
+            provider_id: "provider-1",
+            model: "MiniMax-M2.5",
+            system_prompt: "Work carefully.",
+          },
+        },
+        { method: "POST", path: "/api/agents/agent-1/start", body: undefined },
+        { method: "POST", path: "/api/agents/agent-1/stop", body: undefined },
+        { method: "DELETE", path: "/api/agents/agent-1", body: undefined },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("edits, tests, and deletes providers through gateway provider routes", async () => {
+    const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      const method = init?.method || "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      calls.push({ method, path: parsedUrl.pathname, body });
+
+      if (parsedUrl.pathname === "/api/providers/provider-1" && method === "PUT") {
+        return Response.json({ success: true });
+      }
+      if (parsedUrl.pathname === "/api/providers/provider-1/test" && method === "POST") {
+        return Response.json({
+          success: true,
+          provider: "openai",
+          message: "OpenAI credentials verified",
+        });
+      }
+      if (parsedUrl.pathname === "/api/providers/provider-1" && method === "DELETE") {
+        return Response.json({ success: true });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const api = new CybaraMobileApi(profile);
+      await expect(
+        api.updateProvider("provider-1", {
+          name: "OpenAI Work",
+          base_url: "https://api.openai.com/v1",
+          api_key: "new-key",
+          is_default: true,
+        })
+      ).resolves.toEqual({ success: true });
+      await expect(api.testProvider("provider-1")).resolves.toMatchObject({
+        success: true,
+        message: "OpenAI credentials verified",
+      });
+      await expect(api.deleteProvider("provider-1")).resolves.toEqual({ success: true });
+
+      expect(calls).toEqual([
+        {
+          method: "PUT",
+          path: "/api/providers/provider-1",
+          body: {
+            name: "OpenAI Work",
+            base_url: "https://api.openai.com/v1",
+            api_key: "new-key",
+            is_default: true,
+          },
+        },
+        { method: "POST", path: "/api/providers/provider-1/test", body: undefined },
+        { method: "DELETE", path: "/api/providers/provider-1", body: undefined },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("merges provider health state without exposing provider secrets", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url) => {
+      const parsedUrl = new URL(String(url));
+      if (parsedUrl.pathname === "/api/providers") {
+        return Response.json([
+          {
+            id: "provider-1",
+            name: "OpenAI",
+            provider: "openai",
+            info: { authType: "api_key" },
+          },
+        ]);
+      }
+      if (parsedUrl.pathname === "/api/providers/health") {
+        return Response.json({
+          providers: [
+            {
+              id: "provider-1",
+              configured: true,
+              requiresCredentials: true,
+            },
+          ],
+        });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      await expect(new CybaraMobileApi(profile).providers()).resolves.toEqual([
+        {
+          id: "provider-1",
+          name: "OpenAI",
+          provider: "openai",
+          base_url: undefined,
+          is_default: false,
+          configured: true,
+          requiresCredentials: true,
+          hasCredentials: true,
+          authType: "api_key",
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("controls channel, task, and approval settings through gateway routes", async () => {
+    const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      const method = init?.method || "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      calls.push({ method, path: parsedUrl.pathname, body });
+
+      if (parsedUrl.pathname === "/api/channels/channel-1" && method === "PUT") {
+        return Response.json({ success: true });
+      }
+      if (parsedUrl.pathname === "/api/channels/channel-1/test" && method === "POST") {
+        return Response.json({ success: true, message: "Channel verified" });
+      }
+      if (parsedUrl.pathname === "/api/channels/channel-1" && method === "DELETE") {
+        return Response.json({ success: true });
+      }
+      if (
+        ["/api/tasks/task-1/start", "/api/tasks/task-1/stop", "/api/tasks/task-1/run"].includes(
+          parsedUrl.pathname
+        ) &&
+        method === "POST"
+      ) {
+        return Response.json({ success: true });
+      }
+      if (parsedUrl.pathname === "/api/tasks/task-1" && method === "DELETE") {
+        return Response.json({ success: true });
+      }
+      if (parsedUrl.pathname === "/api/tools/approvals/resolve" && method === "POST") {
+        return Response.json({ success: true });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const api = new CybaraMobileApi(profile);
+      await expect(
+        api.updateChannel("channel-1", { name: "Telegram", enabled: false })
+      ).resolves.toEqual({
+        success: true,
+      });
+      await expect(api.testChannel("channel-1")).resolves.toMatchObject({
+        success: true,
+        message: "Channel verified",
+      });
+      await expect(api.deleteChannel("channel-1")).resolves.toEqual({ success: true });
+      await expect(api.startTask("task-1")).resolves.toEqual({ success: true });
+      await expect(api.stopTask("task-1")).resolves.toEqual({ success: true });
+      await expect(api.runTask("task-1")).resolves.toEqual({ success: true });
+      await expect(api.deleteTask("task-1")).resolves.toEqual({ success: true });
+      await expect(api.resolveToolApproval("approval-1", "approve_once")).resolves.toEqual({
+        success: true,
+      });
+
+      expect(calls).toEqual([
+        {
+          method: "PUT",
+          path: "/api/channels/channel-1",
+          body: { name: "Telegram", enabled: false },
+        },
+        { method: "POST", path: "/api/channels/channel-1/test", body: undefined },
+        { method: "DELETE", path: "/api/channels/channel-1", body: undefined },
+        { method: "POST", path: "/api/tasks/task-1/start", body: undefined },
+        { method: "POST", path: "/api/tasks/task-1/stop", body: undefined },
+        { method: "POST", path: "/api/tasks/task-1/run", body: undefined },
+        { method: "DELETE", path: "/api/tasks/task-1", body: undefined },
+        {
+          method: "POST",
+          path: "/api/tools/approvals/resolve",
+          body: { requestId: "approval-1", decision: "approve_once" },
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("loads a broad feature summary without failing when optional surfaces are unavailable", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (url) => {
