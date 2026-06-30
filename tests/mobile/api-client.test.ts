@@ -415,7 +415,13 @@ describe("mobile API client", () => {
           timestamp: "2026-06-30T08:00:00.000Z",
           sampleIntervalMs: 1000,
           platform: { type: "darwin", arch: "arm64", release: "26.0.0" },
-          cpu: { usagePct: 12.5, loadPct: 45, loadAverage: [1.2, 1.1, 1], cores: 10, model: "Test CPU" },
+          cpu: {
+            usagePct: 12.5,
+            loadPct: 45,
+            loadAverage: [1.2, 1.1, 1],
+            cores: 10,
+            model: "Test CPU",
+          },
           memory: { totalBytes: 1000, freeBytes: 400, usedBytes: 600, usedPct: 60 },
           process: {
             pid: 123,

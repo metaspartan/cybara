@@ -3592,7 +3592,11 @@ function SystemMonitorDetailPanel({
                 value={snapshot.cpu.usagePct}
               />
               <MonitorUsageBar
-                detail={snapshot.platform.type === "win32" ? "Load average unavailable on Windows" : "1-minute normalized load"}
+                detail={
+                  snapshot.platform.type === "win32"
+                    ? "Load average unavailable on Windows"
+                    : "1-minute normalized load"
+                }
                 label="CPU load"
                 tone={colors.cyan}
                 value={snapshot.cpu.loadPct}

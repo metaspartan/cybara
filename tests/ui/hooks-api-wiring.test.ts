@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const hooksPath = fileURLToPath(new URL("../../ui/src/hooks/useApi.ts", import.meta.url));
 
 function readHooksSource(): string {
-  return readFileSync(hooksPath, "utf8");
+  return readFileSync(hooksPath, "utf8").replace(/"/g, "'").replace(/\s+/g, " ");
 }
 
 describe("UI hooks API wiring", () => {
@@ -18,7 +18,9 @@ describe("UI hooks API wiring", () => {
 
     expect(source).toContain("fetchApi<Provider[]>('/providers')");
     expect(source).toContain("fetchApi<AvailableProvider[]>('/providers/available')");
-    expect(source).toContain("fetchApi<{ models: string[] }>('/providers/discover/ollama', { method: 'POST' })");
+    expect(source).toContain(
+      "fetchApi<{ models: string[] }>('/providers/discover/ollama', { method: 'POST' })"
+    );
 
     expect(source).toContain("fetchApi<Channel[]>('/channels')");
     expect(source).toContain("fetchApi<AvailableChannel[]>('/channels/available')");
@@ -36,15 +38,23 @@ describe("UI hooks API wiring", () => {
     expect(source).toContain("fetchApi<Skill[]>('/skills')");
     expect(source).toContain("fetchApi<string[]>('/skills/categories')");
     expect(source).toContain("fetchApi<SkillsStatusResponse>('/skills/status')");
-    expect(source).toContain("fetchApi<SkillsRegistryResponse>(`/skills/registry/search${queryString}`)");
-    expect(source).toContain("fetchApi<SkillsRegistryResponse>(`/skills/registry/browse${queryString}`)");
+    expect(source).toContain(
+      "fetchApi<SkillsRegistryResponse>(`/skills/registry/search${queryString}`)"
+    );
+    expect(source).toContain(
+      "fetchApi<SkillsRegistryResponse>(`/skills/registry/browse${queryString}`)"
+    );
     expect(source).toContain("fetchApi<{");
     expect(source).toContain("blockedReason?: 'malware' | 'suspicious';");
     expect(source).toContain("}>('/skills/install'");
-    expect(source).toContain("fetchApi<{ updates: Array<{ slug: string; updated: boolean; error?: string }> }>('/skills/update', { method: 'POST' })");
+    expect(source).toContain("fetchApi<{ updates: Array<{");
+    expect(source).toContain("'/skills/update', { method: 'POST' }");
 
-    expect(source).toContain("fetchApi<{ files: string[]; memories: Array<{ file: string; entries: MemoryEntry[] }> }>('/memory')");
-    expect(source).toContain("fetchApi<{ results: Array<{ file: string; entry: MemoryEntry }> }>(`/memory/search?query=${encodeURIComponent(query)}`)");
+    expect(source).toContain("fetchApi<{ files: string[]; memories: Array<{");
+    expect(source).toContain("file: string; entries: MemoryEntry[]");
+    expect(source).toContain("}>('/memory')");
+    expect(source).toContain("fetchApi<{ results: Array<{ file: string; entry: MemoryEntry }> }>");
+    expect(source).toContain("`/memory/search?query=${encodeURIComponent(query)}`");
     expect(source).toContain("fetchApi<void>(`/memory/${file}`");
 
     expect(source).toContain("fetchApi<Session[]>('/sessions')");
@@ -60,7 +70,9 @@ describe("UI hooks API wiring", () => {
 
     expect(source).toContain("fetchApi<LSPStatus>('/lsp/status')");
     expect(source).toContain("fetchApi<{ status: LSPInstallStatus[] }>('/lsp/install-status')");
-    expect(source).toContain("fetchApi<{ success: boolean; path?: string; error?: string }>('/lsp/install'");
+    expect(source).toContain(
+      "fetchApi<{ success: boolean; path?: string; error?: string }>('/lsp/install'"
+    );
     expect(source).toContain("fetchApi<{ success: boolean; error?: string }>('/lsp/uninstall'");
 
     expect(source).toContain("fetchApi<MetricsOverview>('/metrics/overview')");
@@ -72,7 +84,7 @@ describe("UI hooks API wiring", () => {
     expect(source).toContain("fetchApi<ModelMetrics>('/metrics/models')");
     expect(source).toContain("fetchApi<MetricsInsights>('/metrics/insights')");
     expect(source).toContain("fetchApi<{ success: boolean; id: string }>('/metrics/track'");
-    expect(source).toContain("fetchApi<SystemMonitorData>(\"/system/monitor\")");
+    expect(source).toContain("fetchApi<SystemMonitorData>('/system/monitor')");
   });
 
   test("subagent and create-skill hooks stay on shared API client helpers", () => {
@@ -80,9 +92,13 @@ describe("UI hooks API wiring", () => {
 
     expect(source).toContain("import { subagentApi, skillsApi } from '@/lib/api';");
     expect(source).toContain("const response = await subagentApi.list();");
-    expect(source).toContain("const response = await subagentApi.spawn(task, { model, timeout, label });");
+    expect(source).toContain(
+      "const response = await subagentApi.spawn(task, { model, timeout, label });"
+    );
     expect(source).toContain("const response = await subagentApi.kill(id);");
     expect(source).toContain("const response = await skillsApi.create(skill);");
-    expect(source).not.toContain("fetchApi<{ subagentId: string; status: string }>('/subagents/spawn'");
+    expect(source).not.toContain(
+      "fetchApi<{ subagentId: string; status: string }>('/subagents/spawn'"
+    );
   });
 });

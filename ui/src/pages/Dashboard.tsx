@@ -7,30 +7,33 @@ import {
   ArrowRight,
   Database,
   Cpu,
-  CheckCircle
-} from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { PageLayout } from '@/components/layout';
-import { useInfo, useHealth, useSystemMonitor } from '@/hooks/useApi';
-import { Link } from 'react-router-dom';
+  CheckCircle,
+} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { PageLayout } from "@/components/layout";
+import { useInfo, useHealth, useSystemMonitor } from "@/hooks/useApi";
+import { Link } from "react-router-dom";
 
-function getCheckStatus(value: unknown): { status: 'healthy' | 'warning' | 'error'; details?: string } {
-  if (typeof value === 'string') {
-    return { status: value === 'healthy' ? 'healthy' : 'error' };
+function getCheckStatus(value: unknown): {
+  status: "healthy" | "warning" | "error";
+  details?: string;
+} {
+  if (typeof value === "string") {
+    return { status: value === "healthy" ? "healthy" : "error" };
   }
-  if (typeof value === 'object' && value !== null) {
+  if (typeof value === "object" && value !== null) {
     const obj = value as Record<string, unknown>;
-    if (obj.status === 'healthy') return { status: 'healthy' };
-    if (obj.status) return { status: obj.status as 'error' };
-    if ('total' in obj) {
-      return { status: 'healthy', details: `${obj.total} total` };
+    if (obj.status === "healthy") return { status: "healthy" };
+    if (obj.status) return { status: obj.status as "error" };
+    if ("total" in obj) {
+      return { status: "healthy", details: `${obj.total} total` };
     }
-    if ('heapUsed' in obj) {
-      return { status: 'healthy', details: `${obj.heapUsed}MB used` };
+    if ("heapUsed" in obj) {
+      return { status: "healthy", details: `${obj.heapUsed}MB used` };
     }
   }
-  return { status: 'healthy' };
+  return { status: "healthy" };
 }
 
 function formatBytes(bytes?: number): string {
@@ -42,11 +45,20 @@ function formatBytes(bytes?: number): string {
 }
 
 function formatPct(value?: number | null): string {
-  return typeof value === 'number' && Number.isFinite(value) ? `${value.toFixed(1)}%` : 'n/a';
+  return typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(1)}%` : "n/a";
 }
 
-function ResourceBar({ label, value, detail }: { label: string; value?: number | null; detail: string }) {
-  const pct = typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
+function ResourceBar({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value?: number | null;
+  detail: string;
+}) {
+  const pct =
+    typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
   return (
     <div className="space-y-2 rounded-xl bg-white/5 p-3">
       <div className="flex items-center justify-between gap-3">
@@ -67,14 +79,38 @@ export function Dashboard() {
   const { data: systemMonitor } = useSystemMonitor();
 
   const stats = [
-    { name: 'Agents', value: info?.stats.agents.total || 0, icon: Bot, href: '/agents', color: 'from-indigo-500 to-violet-500' },
-    { name: 'Providers', value: info?.stats.providers.total || 0, icon: Cloud, href: '/providers', color: 'from-blue-500 to-cyan-500' },
-    { name: 'Channels', value: info?.stats.channels.total || 0, icon: MessageSquare, href: '/channels', color: 'from-emerald-500 to-teal-500' },
-    { name: 'Tasks', value: info?.stats.tasks.total || 0, icon: Clock, href: '/tasks', color: 'from-amber-500 to-orange-500' },
+    {
+      name: "Agents",
+      value: info?.stats.agents.total || 0,
+      icon: Bot,
+      href: "/agents",
+      color: "from-indigo-500 to-violet-500",
+    },
+    {
+      name: "Providers",
+      value: info?.stats.providers.total || 0,
+      icon: Cloud,
+      href: "/providers",
+      color: "from-blue-500 to-cyan-500",
+    },
+    {
+      name: "Channels",
+      value: info?.stats.channels.total || 0,
+      icon: MessageSquare,
+      href: "/channels",
+      color: "from-emerald-500 to-teal-500",
+    },
+    {
+      name: "Tasks",
+      value: info?.stats.tasks.total || 0,
+      icon: Clock,
+      href: "/tasks",
+      color: "from-amber-500 to-orange-500",
+    },
   ];
 
   const checks = health?.checks
-    ? Object.entries(health.checks).filter(([key]) => key !== 'memory' && key !== 'system')
+    ? Object.entries(health.checks).filter(([key]) => key !== "memory" && key !== "system")
     : [];
 
   return (
@@ -82,7 +118,11 @@ export function Dashboard() {
       <div className="space-y-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-1">
           {stats.map((stat) => (
-            <Link key={stat.name} to={stat.href} className="block focus:outline-none active:outline-none">
+            <Link
+              key={stat.name}
+              to={stat.href}
+              className="block focus:outline-none active:outline-none"
+            >
               <Card className="h-full" variant="liquid">
                 <CardContent>
                   <div className="flex items-start justify-between">
@@ -90,10 +130,12 @@ export function Dashboard() {
                       <p className="text-sm font-medium text-gray-400">{stat.name}</p>
                       <p className="text-3xl font-bold text-white mt-2">{stat.value}</p>
                     </div>
-                    <div className={cn(
-                      'w-12 h-12 rounded-xl flex items-center justify-center bg-gradient-to-br shadow-lg',
-                      stat.color
-                    )}>
+                    <div
+                      className={cn(
+                        "w-12 h-12 rounded-xl flex items-center justify-center bg-gradient-to-br shadow-lg",
+                        stat.color
+                      )}
+                    >
                       <stat.icon className="w-6 h-6 text-white" />
                     </div>
                   </div>
@@ -121,7 +163,9 @@ export function Dashboard() {
                   </div>
                   <div className="flex-1">
                     <h4 className="text-white font-medium">Create an Agent</h4>
-                    <p className="text-sm text-gray-400">Set up a new AI agent with custom settings</p>
+                    <p className="text-sm text-gray-400">
+                      Set up a new AI agent with custom settings
+                    </p>
                   </div>
                   <ArrowRight className="w-5 h-5 text-gray-500" />
                 </div>
@@ -147,7 +191,9 @@ export function Dashboard() {
                   </div>
                   <div className="flex-1">
                     <h4 className="text-white font-medium">Configure Channels</h4>
-                    <p className="text-sm text-gray-400">Set up Telegram, Discord, or other channels</p>
+                    <p className="text-sm text-gray-400">
+                      Set up Telegram, Discord, or other channels
+                    </p>
                   </div>
                   <ArrowRight className="w-5 h-5 text-gray-500" />
                 </div>
@@ -163,21 +209,23 @@ export function Dashboard() {
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between p-3 rounded-xl bg-white/5">
                 <div className="flex items-center gap-3">
-                  <div className={cn(
-                    'w-2 h-2 rounded-full',
-                    health?.status === 'healthy' ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'
-                  )} />
+                  <div
+                    className={cn(
+                      "w-2 h-2 rounded-full",
+                      health?.status === "healthy" ? "bg-emerald-500 animate-pulse" : "bg-red-500"
+                    )}
+                  />
                   <span className="text-white font-medium">Overall Status</span>
                 </div>
-                <Badge variant={health?.status === 'healthy' ? 'success' : 'error'}>
-                  {health?.status || 'Unknown'}
+                <Badge variant={health?.status === "healthy" ? "success" : "error"}>
+                  {health?.status || "Unknown"}
                 </Badge>
               </div>
 
               <ResourceBar
                 label="CPU"
                 value={systemMonitor?.cpu.usagePct}
-                detail={`${systemMonitor?.cpu.cores || 0} cores - ${systemMonitor?.cpu.model || 'Loading CPU'}`}
+                detail={`${systemMonitor?.cpu.cores || 0} cores - ${systemMonitor?.cpu.model || "Loading CPU"}`}
               />
               <ResourceBar
                 label="Memory"
@@ -187,7 +235,7 @@ export function Dashboard() {
               <ResourceBar
                 label="Process"
                 value={systemMonitor?.process.cpuUsagePct}
-                detail={`${formatBytes(systemMonitor?.process.memory.rssBytes)} RSS - PID ${systemMonitor?.process.pid || 'n/a'}`}
+                detail={`${formatBytes(systemMonitor?.process.memory.rssBytes)} RSS - PID ${systemMonitor?.process.pid || "n/a"}`}
               />
               <ResourceBar
                 label="Disk"
@@ -195,7 +243,7 @@ export function Dashboard() {
                 detail={
                   systemMonitor?.disk
                     ? `${formatBytes(systemMonitor.disk.freeBytes)} free at ${systemMonitor.disk.path}`
-                    : 'Disk telemetry unavailable'
+                    : "Disk telemetry unavailable"
                 }
               />
 
@@ -209,23 +257,32 @@ export function Dashboard() {
                 };
 
                 return (
-                  <div key={key} className="flex items-center justify-between p-3 rounded-xl bg-white/5">
+                  <div
+                    key={key}
+                    className="flex items-center justify-between p-3 rounded-xl bg-white/5"
+                  >
                     <div className="flex items-center gap-3">
-                      <div className={cn(
-                        'w-8 h-8 rounded-lg flex items-center justify-center',
-                        check.status === 'healthy' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
-                      )}>
+                      <div
+                        className={cn(
+                          "w-8 h-8 rounded-lg flex items-center justify-center",
+                          check.status === "healthy"
+                            ? "bg-emerald-500/20 text-emerald-400"
+                            : "bg-red-500/20 text-red-400"
+                        )}
+                      >
                         {icons[key] || <Activity className="w-4 h-4" />}
                       </div>
                       <div>
                         <span className="text-white capitalize">{key}</span>
-                        {check.details && (
-                          <p className="text-xs text-gray-500">{check.details}</p>
-                        )}
+                        {check.details && <p className="text-xs text-gray-500">{check.details}</p>}
                       </div>
                     </div>
-                    <Badge variant={check.status === 'healthy' ? 'success' : 'error'}>
-                      {check.status === 'healthy' ? <CheckCircle className="w-3 h-3 mr-1" /> : <Activity className="w-3 h-3 mr-1" />}
+                    <Badge variant={check.status === "healthy" ? "success" : "error"}>
+                      {check.status === "healthy" ? (
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                      ) : (
+                        <Activity className="w-3 h-3 mr-1" />
+                      )}
                       {check.status}
                     </Badge>
                   </div>
@@ -240,5 +297,5 @@ export function Dashboard() {
 }
 
 function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(' ');
+  return classes.filter(Boolean).join(" ");
 }
