@@ -2,6 +2,18 @@ import type { FeatureSummary, SessionSummary } from "./api";
 import type { GatewayProfile } from "./connection";
 
 export type MobileTabKey = "overview" | "sessions" | "tools" | "settings";
+export type MobileSurfaceKey =
+  | "agents"
+  | "providers"
+  | "tools"
+  | "approvals"
+  | "wallet"
+  | "channels"
+  | "tasks"
+  | "memory"
+  | "terminal"
+  | "logs"
+  | "monitor";
 
 export interface MobileTabDefinition {
   key: MobileTabKey;
@@ -53,6 +65,20 @@ export const MOBILE_FEATURE_SECTIONS = [
   "logs",
   "monitor",
 ] as const;
+
+export const MOBILE_SURFACES: MobileSurfaceKey[] = [
+  "agents",
+  "providers",
+  "tools",
+  "approvals",
+  "wallet",
+  "channels",
+  "tasks",
+  "memory",
+  "terminal",
+  "logs",
+  "monitor",
+];
 
 function countArray(value: unknown[] | undefined): number {
   return Array.isArray(value) ? value.length : 0;
@@ -128,4 +154,19 @@ export function buildMobileHeaderCopy(
         detail: "Pairing, policies, and runtime safety",
       };
   }
+}
+
+export function formatMobileValue(value: unknown, fallback = "unknown"): string {
+  if (value === null || value === undefined || value === "") return fallback;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.length === 1 ? "1 item" : `${value.length} items`;
+  if (typeof value === "object") {
+    const keys = Object.keys(value as Record<string, unknown>);
+    if (keys.length === 0) return "Configured";
+    const enabled = keys.filter((key) => (value as Record<string, unknown>)[key] === true).length;
+    if (enabled > 0) return `${enabled}/${keys.length} enabled`;
+    return keys.length === 1 ? "1 setting" : `${keys.length} settings`;
+  }
+  return fallback;
 }

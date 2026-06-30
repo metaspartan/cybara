@@ -62,6 +62,7 @@ export interface RemoteItemSummary {
   detail: string;
   status?: string;
   type?: string;
+  fields?: Array<{ label: string; value: string }>;
 }
 
 export interface ActivitySummary {
@@ -70,6 +71,22 @@ export interface ActivitySummary {
   detail: string;
   source: string;
   createdAt?: string;
+  fields?: Array<{ label: string; value: string }>;
+}
+
+export interface SessionMessageSummary {
+  id: string;
+  role: string;
+  content: string;
+  timestamp?: string;
+}
+
+export interface SessionDetailSummary {
+  id: string;
+  title: string | null;
+  agentId?: string;
+  workspaceDir?: string | null;
+  messages: SessionMessageSummary[];
 }
 
 export interface FeatureSummary {
@@ -144,6 +161,29 @@ function readNumber(record: Record<string, unknown> | null, keys: string[]): num
   return undefined;
 }
 
+function describeValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "none";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.length === 1 ? "1 item" : `${value.length} items`;
+  if (typeof value === "object") {
+    const keys = Object.keys(value as Record<string, unknown>);
+    return keys.length === 1 ? "1 setting" : `${keys.length} settings`;
+  }
+  return "value";
+}
+
+function detailFields(record: Record<string, unknown> | null): Array<{ label: string; value: string }> {
+  if (!record) return [];
+  return Object.entries(record)
+    .filter(([key]) => !/secret|token|api[_-]?key|password|credential|mnemonic/i.test(key))
+    .slice(0, 12)
+    .map(([key, value]) => ({
+      label: key.replace(/_/g, " "),
+      value: describeValue(value),
+    }));
+}
+
 export function normalizeArrayResponse(value: unknown, keys: string[]): unknown[] {
   if (Array.isArray(value)) return value;
   const record = asRecord(value);
@@ -176,6 +216,7 @@ export function normalizeRemoteItems(
       detail: detailParts.length > 0 ? detailParts.join(" - ") : "Available",
       status,
       type,
+      fields: detailFields(record),
     };
   });
 }
@@ -190,6 +231,7 @@ export function normalizeMemoryItems(value: unknown): RemoteItemSummary[] {
       title: typeof file === "string" ? file : `Memory file ${index + 1}`,
       detail: "Memory file",
       type: "file",
+      fields: [{ label: "file", value: typeof file === "string" ? file : `memory-file-${index + 1}` }],
     }));
   }
   return memories.map((memory, index) => {
@@ -201,6 +243,10 @@ export function normalizeMemoryItems(value: unknown): RemoteItemSummary[] {
       title: file,
       detail: entries.length === 1 ? "1 entry" : `${entries.length} entries`,
       type: "memory",
+      fields: [
+        { label: "file", value: file },
+        { label: "entries", value: String(entries.length) },
+      ],
     };
   });
 }
@@ -229,6 +275,7 @@ export function normalizeActivityLogs(value: unknown): ActivitySummary[] {
       detail: actor || source,
       source,
       createdAt,
+      fields: detailFields(item),
     };
   });
 }
@@ -250,6 +297,30 @@ function normalizeSessions(value: unknown): SessionSummary[] {
         SessionSummary["last_message"] | null,
     };
   });
+}
+
+function normalizeSessionDetail(value: unknown, fallbackId: string): SessionDetailSummary {
+  const record = asRecord(value);
+  const messages = normalizeArrayResponse(record?.messages, ["messages", "items"]).map(
+    (message, index) => {
+      const messageRecord = asRecord(message);
+      const content = readString(messageRecord, ["content", "message", "text"]) || "";
+      return {
+        id: readString(messageRecord, ["id"]) || `${fallbackId}-message-${index + 1}`,
+        role: readString(messageRecord, ["role", "type", "author"]) || "message",
+        content,
+        timestamp: readString(messageRecord, ["timestamp", "created_at", "createdAt"]),
+      };
+    }
+  );
+
+  return {
+    id: readString(record, ["id", "session_id"]) || fallbackId,
+    title: readString(record, ["title", "name"]) || null,
+    agentId: readString(record, ["agent_id", "agentId"]),
+    workspaceDir: readString(record, ["workspace_dir", "workspaceDir"]) || null,
+    messages,
+  };
 }
 
 function normalizeAgents(value: unknown): AgentSummary[] {
@@ -310,6 +381,13 @@ export class CybaraMobileApi {
 
   async sessions(): Promise<SessionSummary[]> {
     return normalizeSessions(await this.request<unknown>("/api/sessions?limit=50"));
+  }
+
+  async session(id: string): Promise<SessionDetailSummary> {
+    return normalizeSessionDetail(
+      await this.request<unknown>(`/api/sessions/${encodeURIComponent(id)}`),
+      id
+    );
   }
 
   async agents(): Promise<AgentSummary[]> {

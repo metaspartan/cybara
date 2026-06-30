@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ComponentType } from "react";
 import {
   Alert,
   Image,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -11,6 +12,7 @@ import {
 } from "react-native";
 import {
   Activity,
+  ArrowLeft,
   Bot,
   Box,
   Brain,
@@ -42,18 +44,22 @@ import {
   type FeatureEndpointKey,
   type FeatureSummary,
   type RemoteItemSummary,
+  type SessionDetailSummary,
   type SessionSummary,
 } from "../lib/api";
 import type { GatewayProfile } from "../lib/connection";
 import {
   MOBILE_NAV_CHROME,
+  MOBILE_SURFACES,
   MOBILE_TABS,
   buildMobileHeaderCopy,
   compactHost,
   formatUptime,
+  formatMobileValue,
   lastUpdatedLabel,
   summarizeFeatureCounts,
   type FeatureCounts,
+  type MobileSurfaceKey,
   type MobileTabKey,
 } from "../lib/dashboard";
 import { colors, radius, spacing, typography } from "../theme/liquidGlass";
@@ -68,15 +74,37 @@ interface ModuleCard {
   value: string;
   Icon: IconGlyph;
   tab: MobileTabKey;
+  surface?: MobileSurfaceKey;
 }
 
 type EndpointState = FeatureSummary["availability"][FeatureEndpointKey] | undefined;
+type DetailRoute =
+  | { kind: "session"; id: string }
+  | { kind: "surface"; surface: MobileSurfaceKey }
+  | { kind: "item"; surface: MobileSurfaceKey; item: RemoteItemSummary | ActivitySummary };
 
 const tabIcons: Record<MobileTabKey, IconGlyph> = {
   overview: House,
   sessions: UsersRound,
   tools: Wrench,
   settings: Settings,
+};
+
+const surfaceMeta: Record<
+  MobileSurfaceKey,
+  { title: string; Icon: IconGlyph; tone: string; endpoint?: FeatureEndpointKey }
+> = {
+  agents: { title: "Agents", Icon: Bot, tone: colors.cyan, endpoint: "agents" },
+  providers: { title: "Providers", Icon: Database, tone: colors.blueText, endpoint: "providers" },
+  tools: { title: "Tools", Icon: Wrench, tone: colors.green, endpoint: "tools" },
+  approvals: { title: "Approvals", Icon: ShieldCheck, tone: colors.amber, endpoint: "approvals" },
+  wallet: { title: "Wallet Policy", Icon: ShieldCheck, tone: colors.green, endpoint: "walletPolicy" },
+  channels: { title: "Channels", Icon: Link2, tone: colors.cyan, endpoint: "channels" },
+  tasks: { title: "Tasks", Icon: CalendarCheck, tone: colors.blueText, endpoint: "tasks" },
+  memory: { title: "Memory", Icon: Brain, tone: colors.green, endpoint: "memory" },
+  terminal: { title: "Terminal", Icon: SquareTerminal, tone: colors.cyan },
+  logs: { title: "Logs", Icon: ListTodo, tone: colors.textMuted, endpoint: "logs" },
+  monitor: { title: "System Monitor", Icon: Activity, tone: colors.blueText, endpoint: "health" },
 };
 
 const sparkBars = [8, 10, 7, 12, 9, 14, 20, 12, 8, 13, 11, 16, 9, 13, 18, 12, 25];
@@ -120,6 +148,109 @@ function relativeTimestamp(value: string): string {
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
   return `${Math.round(hours / 24)}d ago`;
+}
+
+function displayFields(record: Record<string, unknown>): Array<{ label: string; value: string }> {
+  return Object.entries(record)
+    .filter(([key]) => !/secret|token|api[_-]?key|password|credential|mnemonic/i.test(key))
+    .map(([label, value]) => ({ label: label.replace(/_/g, " "), value: formatMobileValue(value) }));
+}
+
+function itemFromRecord(
+  id: string,
+  title: string,
+  detail: string,
+  fields: Record<string, unknown>
+): RemoteItemSummary {
+  return {
+    id,
+    title,
+    detail,
+    fields: displayFields(fields),
+  };
+}
+
+function surfaceRows(
+  surface: MobileSurfaceKey,
+  summary: FeatureSummary | null,
+  profile: GatewayProfile
+): Array<RemoteItemSummary | ActivitySummary> {
+  if (!summary) return [];
+  switch (surface) {
+    case "agents":
+      return summary.agents.map((agent) =>
+        itemFromRecord(
+          agent.id,
+          agent.name,
+          [agent.status, agent.model, agent.type].filter(Boolean).join(" - ") || "Configured",
+          agent as unknown as Record<string, unknown>
+        )
+      );
+    case "providers":
+      return summary.providers.map((provider) =>
+        itemFromRecord(
+          provider.id,
+          provider.name,
+          `${provider.provider}${provider.is_default ? " - default" : ""}`,
+          provider as unknown as Record<string, unknown>
+        )
+      );
+    case "tools":
+      return summary.tools;
+    case "approvals":
+      return summary.approvals;
+    case "channels":
+      return summary.channels;
+    case "tasks":
+      return summary.tasks;
+    case "memory":
+      return summary.memory;
+    case "logs":
+      return summary.logs;
+    case "wallet":
+      return [
+        itemFromRecord("wallet-policy", "Agent policy", formatMobileValue(summary.walletPolicy), {
+          policy: summary.walletPolicy,
+        }),
+        itemFromRecord("wallet-status", "Wallet status", formatMobileValue(summary.walletStatus), {
+          status: summary.walletStatus,
+        }),
+      ];
+    case "terminal":
+      return [
+        itemFromRecord("terminal", "Gateway terminal", "Open the gateway terminal surface", {
+          url: `${profile.baseUrl}/terminal`,
+          status: "available from gateway web UI",
+        }),
+      ];
+    case "monitor": {
+      const checks = summary.health?.checks || {};
+      return [
+        itemFromRecord("runtime", "Runtime", summary.health?.version || "pending", {
+          uptime: formatUptime(summary.health?.uptime),
+          version: summary.health?.version || "pending",
+          status: summary.health?.status || "unknown",
+        }),
+        ...Object.entries(checks).map(([key, value]) =>
+          itemFromRecord(key, key, formatMobileValue(value), value as Record<string, unknown>)
+        ),
+      ];
+    }
+  }
+}
+
+function routeHeader(
+  route: DetailRoute | null,
+  fallback: { title: string; detail: string }
+): { title: string; detail: string } {
+  if (!route) return fallback;
+  if (route.kind === "session") return { title: "Session", detail: route.id };
+  if (route.kind === "surface") {
+    const meta = surfaceMeta[route.surface];
+    return { title: meta.title, detail: "Live gateway data" };
+  }
+  const meta = surfaceMeta[route.surface];
+  return { title: route.item.title, detail: meta.title };
 }
 
 export function DashboardScreen({
