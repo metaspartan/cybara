@@ -78,6 +78,21 @@ export interface ProviderTestResult {
   error?: string;
 }
 
+export type WalletAgentPolicyUpdate = Partial<{
+  allowNativeSend: boolean;
+  allowTokenSend: boolean;
+  allowEthContractWrite: boolean;
+  allowSolProgramInstruction: boolean;
+  allowEthSwaps: boolean;
+  allowDappInteraction: boolean;
+  allowX402Payments: boolean;
+  allowedEthContracts: string[];
+  allowedSolPrograms: string[];
+  allowedDappHosts: string[];
+  allowedX402Networks: string[];
+  x402MaxAmountAtomic: string;
+}>;
+
 export type ToolApprovalDecision = "approve_once" | "approve_session" | "approve_always" | "deny";
 
 export type FeatureEndpointKey =
@@ -1025,6 +1040,22 @@ export class CybaraMobileApi {
     return this.request<{ success: boolean }>("/api/config", {
       method: "PUT",
       body: JSON.stringify(data),
+    });
+  }
+
+  updateWalletAgentPolicy(
+    data: WalletAgentPolicyUpdate
+  ): Promise<{ success: boolean; policy?: unknown }> {
+    return this.request<{ success: boolean; policy?: unknown }>("/api/wallet/agent-policy", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  setWalletAgentAccess(enabled: boolean): Promise<{ success: boolean; enabled?: boolean }> {
+    return this.request<{ success: boolean; enabled?: boolean }>("/api/wallet/agent-access", {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
     });
   }
 

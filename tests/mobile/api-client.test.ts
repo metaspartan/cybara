@@ -83,6 +83,55 @@ describe("mobile API client", () => {
     }
   });
 
+  test("updates wallet agent access and policy through gateway wallet routes", async () => {
+    const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      const method = init?.method || "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      calls.push({ method, path: parsedUrl.pathname, body });
+
+      if (parsedUrl.pathname === "/api/wallet/agent-access" && method === "PUT") {
+        return Response.json({ success: true, enabled: true });
+      }
+      if (parsedUrl.pathname === "/api/wallet/agent-policy" && method === "PUT") {
+        return Response.json({
+          success: true,
+          policy: { allowNativeSend: true, allowTokenSend: false },
+        });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const api = new CybaraMobileApi(profile);
+      await expect(api.setWalletAgentAccess(true)).resolves.toEqual({
+        success: true,
+        enabled: true,
+      });
+      await expect(api.updateWalletAgentPolicy({ allowNativeSend: true })).resolves.toEqual({
+        success: true,
+        policy: { allowNativeSend: true, allowTokenSend: false },
+      });
+
+      expect(calls).toEqual([
+        {
+          method: "PUT",
+          path: "/api/wallet/agent-access",
+          body: { enabled: true },
+        },
+        {
+          method: "PUT",
+          path: "/api/wallet/agent-policy",
+          body: { allowNativeSend: true },
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("edits and controls agents through gateway agent routes", async () => {
     const calls: Array<{ method: string; path: string; body?: unknown }> = [];
     const originalFetch = globalThis.fetch;

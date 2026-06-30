@@ -79,9 +79,28 @@ export const MOBILE_SETTINGS_DETAIL_CHROME = {
   channelsEditable: true,
   providersEditable: true,
   tasksActionable: true,
+  tasksUseRunningToggle: true,
+  walletPolicyUsesToggles: true,
+  monitorUsesStatusToggles: true,
+  itemBackReturnsToSurface: true,
   hidesRawInternalFields: true,
   providerCredentialUpdateMode: "blank-keeps-existing" as const,
 } as const;
+
+export type MobileDetailBackInput =
+  | { kind: "session" }
+  | { kind: "newChat" }
+  | { kind: "surface"; surface: MobileSurfaceKey }
+  | { kind: "item"; surface: MobileSurfaceKey };
+
+export function mobileBackRouteForDetail(
+  route: MobileDetailBackInput | null
+): { kind: "surface"; surface: MobileSurfaceKey } | null {
+  if (route?.kind === "item") {
+    return { kind: "surface", surface: route.surface };
+  }
+  return null;
+}
 
 const INTERNAL_SETTINGS_FIELD_LABELS = new Set([
   "id",

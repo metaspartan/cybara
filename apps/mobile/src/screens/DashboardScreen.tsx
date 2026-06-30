@@ -83,6 +83,7 @@ import {
   type SessionDetailSummary,
   type SessionSummary,
   type ToolApprovalDecision,
+  type WalletAgentPolicyUpdate,
 } from "../lib/api";
 import {
   chatIsWaitingForAssistant,
@@ -117,6 +118,7 @@ import {
   isMobileSettingsDetailFieldVisible,
   lastUpdatedLabel,
   mobileComposerHeightForDraft,
+  mobileBackRouteForDetail,
   mobileThemeConfigPayload,
   recentSessionStateLabel,
   readMobileAccent,
@@ -199,6 +201,101 @@ const surfaceMeta: Record<
 
 const agentTypeOptions = ["main", "research", "coder", "planner", "ops", "worker"] as const;
 
+type WalletPolicyToggleKey = Extract<
+  keyof WalletAgentPolicyUpdate,
+  | "allowNativeSend"
+  | "allowTokenSend"
+  | "allowEthContractWrite"
+  | "allowSolProgramInstruction"
+  | "allowEthSwaps"
+  | "allowDappInteraction"
+  | "allowX402Payments"
+>;
+
+const walletPolicyToggleRows: Array<{
+  key: WalletPolicyToggleKey;
+  label: string;
+  detail: string;
+}> = [
+  {
+    key: "allowNativeSend",
+    label: "Native sends",
+    detail: "Allow agents to send native wallet assets.",
+  },
+  {
+    key: "allowTokenSend",
+    label: "Token sends",
+    detail: "Allow agents to send token balances.",
+  },
+  {
+    key: "allowEthContractWrite",
+    label: "ETH contract writes",
+    detail: "Allow Ethereum contract write calls within policy limits.",
+  },
+  {
+    key: "allowSolProgramInstruction",
+    label: "Solana program instructions",
+    detail: "Allow Solana program instructions within policy limits.",
+  },
+  {
+    key: "allowEthSwaps",
+    label: "ETH swaps",
+    detail: "Allow Uniswap and compatible Ethereum swap actions.",
+  },
+  {
+    key: "allowDappInteraction",
+    label: "Dapp interaction",
+    detail: "Allow configured dapp adapters and host allowlists.",
+  },
+  {
+    key: "allowX402Payments",
+    label: "x402 payments",
+    detail: "Allow agent-initiated x402 payment requests.",
+  },
+];
+
+function objectRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function booleanSetting(record: Record<string, unknown> | null, key: string): boolean {
+  return record?.[key] === true;
+}
+
+function arraySettingCount(record: Record<string, unknown> | null, key: string): string {
+  const value = record?.[key];
+  if (!Array.isArray(value) || value.length === 0) return "None";
+  return value.length === 1 ? "1 entry" : `${value.length} entries`;
+}
+
+function healthCheckIsPassing(value: unknown): boolean {
+  const record = objectRecord(value);
+  const status = String(record?.status || "").toLowerCase();
+  if (["healthy", "ok", "online", "passing", "ready", "running"].includes(status)) return true;
+  if (["unhealthy", "failed", "error", "offline", "stopped"].includes(status)) return false;
+  if (typeof record?.running === "number" && typeof record?.total === "number") {
+    return record.total > 0 && record.running >= record.total;
+  }
+  return false;
+}
+
+function healthCheckDetail(value: unknown): string {
+  const record = objectRecord(value);
+  if (!record) return formatMobileValue(value);
+  const status = typeof record.status === "string" ? record.status : null;
+  const total = typeof record.total === "number" ? record.total : null;
+  const running = typeof record.running === "number" ? record.running : null;
+  const stopped = typeof record.stopped === "number" ? record.stopped : null;
+  const parts = [
+    status,
+    total !== null && running !== null ? `${running}/${total} running` : null,
+    stopped !== null && stopped > 0 ? `${stopped} stopped` : null,
+  ].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? parts.join(" - ") : formatMobileValue(value);
+}
+
 function endpointErrorDetail(endpoint: EndpointState, fallback: string): string {
   if (!endpoint || endpoint.ok) return fallback;
   if (endpoint.status) return `Gateway returned ${endpoint.status}.`;
@@ -270,7 +367,10 @@ function displayFields(record: Record<string, unknown>): Array<{ label: string; 
 }
 
 function displayFieldLabel(label: string): string {
-  return label.replace(/[_-]+/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
+  return label
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function cleanSettingsFields(
@@ -473,7 +573,13 @@ export function DashboardScreen({
   const refreshInFlight = useRef(false);
   const metricsRefreshInFlight = useRef(false);
   const logPageInFlight = useRef(false);
-  const activeSurface = detailRoute?.kind === "surface" ? detailRoute.surface : null;
+  const activeSurface =
+    detailRoute?.kind === "surface" || detailRoute?.kind === "item" ? detailRoute.surface : null;
+
+  const closeDetailRoute = () => {
+    setChatHeaderAction(null);
+    setDetailRoute((route) => mobileBackRouteForDetail(route));
+  };
 
   const refresh = async (showRefreshing = true) => {
     if (refreshInFlight.current) return;
@@ -606,6 +712,7 @@ export function DashboardScreen({
   }, [accentOverride, gatewayAccentKey]);
 
   const selectTab = (tab: MobileTabKey) => {
+    setChatHeaderAction(null);
     setDetailRoute(null);
     setActiveTab(tab);
     if (tab === "metrics") {
@@ -614,6 +721,7 @@ export function DashboardScreen({
   };
 
   const openSurface = (surface: MobileSurfaceKey) => {
+    setChatHeaderAction(null);
     setActiveTab("settings");
     setDetailRoute({ kind: "surface", surface });
   };
@@ -724,7 +832,7 @@ export function DashboardScreen({
       <View style={styles.header}>
         <View style={styles.brandWrap}>
           {detailRoute ? (
-            <Pressable style={styles.backButton} onPress={() => setDetailRoute(null)}>
+            <Pressable style={styles.backButton} onPress={closeDetailRoute}>
               <ArrowLeft color={colors.text} size={22} strokeWidth={2.2} />
             </Pressable>
           ) : (
@@ -775,7 +883,7 @@ export function DashboardScreen({
         <SessionDetailPanel
           accentColor={accentColor}
           api={api}
-          closeDetail={() => setDetailRoute(null)}
+          closeDetail={closeDetailRoute}
           refreshSummary={() => refresh(false)}
           sessionSummary={
             summary?.sessions.find((session) => session.id === detailRoute.id) ?? null
@@ -866,7 +974,7 @@ export function DashboardScreen({
               summary={detailSummary}
               openItem={openItem}
               accentColor={accentColor}
-              closeDetail={() => setDetailRoute(null)}
+              closeDetail={closeDetailRoute}
               refreshSummary={() => refresh(false)}
               openSession={(id) => setDetailRoute({ kind: "session", id })}
               loadMoreLogs={loadMoreLogs}
@@ -2337,30 +2445,40 @@ function DetailActionButton({
 }
 
 function SettingToggle({
+  busy,
   detail,
+  disabled,
   label,
   onPress,
   value,
 }: {
+  busy?: boolean;
   detail?: string;
+  disabled?: boolean;
   label: string;
   onPress: () => void;
   value: boolean;
 }) {
+  const inactive = disabled || busy;
   return (
     <Pressable
       accessibilityRole="switch"
-      accessibilityState={{ checked: value }}
+      accessibilityState={{ checked: value, disabled: inactive }}
+      disabled={inactive}
       onPress={onPress}
-      style={styles.settingToggleRow}
+      style={[styles.settingToggleRow, inactive && styles.settingToggleRowDisabled]}
     >
       <View style={styles.toggleTextWrap}>
         <Text style={styles.toggleTitle}>{label}</Text>
         {detail ? <Text style={styles.toggleDetail}>{detail}</Text> : null}
       </View>
-      <View style={[styles.toggleSwitch, value && styles.toggleSwitchActive]}>
-        <View style={[styles.toggleThumb, value && styles.toggleThumbActive]} />
-      </View>
+      {busy ? (
+        <ActivityIndicator color={value ? colors.cyan : colors.textMuted} size="small" />
+      ) : (
+        <View style={[styles.toggleSwitch, value && styles.toggleSwitchActive]}>
+          <View style={[styles.toggleThumb, value && styles.toggleThumbActive]} />
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -2987,6 +3105,20 @@ function TaskSettingsPanel({
         </View>
       </View>
 
+      <View style={styles.settingsForm}>
+        <SettingToggle
+          busy={toggling}
+          detail={
+            running
+              ? "The scheduler reports this task as running. Tap to stop it."
+              : "The scheduler reports this task as stopped. Tap to start it."
+          }
+          label="Running"
+          onPress={toggleTask}
+          value={running}
+        />
+      </View>
+
       {fields.length > 0 ? (
         <View>
           {fields.map((field, index) => (
@@ -3003,13 +3135,6 @@ function TaskSettingsPanel({
       ) : null}
 
       <View style={styles.settingsActionRow}>
-        <DetailActionButton
-          Icon={running ? Square : Play}
-          busy={toggling}
-          label={running ? "Stop" : "Start"}
-          onPress={toggleTask}
-          tone={running ? colors.amber : colors.green}
-        />
         <DetailActionButton
           Icon={Zap}
           busy={runningNow}
@@ -3132,6 +3257,280 @@ function ApprovalSettingsPanel({
   );
 }
 
+function WalletPolicyPanel({
+  api,
+  item,
+  refreshSummary,
+  summary,
+}: {
+  api: CybaraMobileApi;
+  item: RemoteItemSummary | ActivitySummary;
+  refreshSummary: () => void;
+  summary: FeatureSummary | null;
+}) {
+  const [savingPolicyKey, setSavingPolicyKey] = useState<WalletPolicyToggleKey | null>(null);
+  const [savingAgentAccess, setSavingAgentAccess] = useState(false);
+  const policy = objectRecord(summary?.walletPolicy);
+  const status = objectRecord(summary?.walletStatus);
+  const agentAccessEnabled = booleanSetting(status, "agentAccessEnabled");
+  const policyAvailable = Boolean(policy);
+  const statusAvailable = Boolean(status);
+
+  const updateAgentAccess = async () => {
+    if (!statusAvailable) return;
+    const nextValue = !agentAccessEnabled;
+    setSavingAgentAccess(true);
+    try {
+      const result = await api.setWalletAgentAccess(nextValue);
+      if (result.success === false) {
+        throw new Error("The gateway did not update wallet agent access.");
+      }
+      await refreshSummary();
+    } catch (error) {
+      Alert.alert(
+        "Wallet access update failed",
+        error instanceof Error ? error.message : String(error)
+      );
+    } finally {
+      setSavingAgentAccess(false);
+    }
+  };
+
+  const updatePolicyToggle = async (key: WalletPolicyToggleKey) => {
+    if (!policyAvailable) return;
+    const payload: WalletAgentPolicyUpdate = {};
+    payload[key] = !booleanSetting(policy, key);
+    setSavingPolicyKey(key);
+    try {
+      const result = await api.updateWalletAgentPolicy(payload);
+      if (result.success === false) {
+        throw new Error("The gateway did not update the wallet agent policy.");
+      }
+      await refreshSummary();
+    } catch (error) {
+      Alert.alert(
+        "Wallet policy update failed",
+        error instanceof Error ? error.message : String(error)
+      );
+    } finally {
+      setSavingPolicyKey(null);
+    }
+  };
+
+  const policyDetails = [
+    { label: "ETH contract allowlist", value: arraySettingCount(policy, "allowedEthContracts") },
+    { label: "Solana program allowlist", value: arraySettingCount(policy, "allowedSolPrograms") },
+    { label: "Dapp host allowlist", value: arraySettingCount(policy, "allowedDappHosts") },
+    { label: "x402 networks", value: arraySettingCount(policy, "allowedX402Networks") },
+    {
+      label: "Send recipient allowlist",
+      value: arraySettingCount(policy, "allowedSendRecipients"),
+    },
+    {
+      label: "Max send amount",
+      value: formatMobileValue(policy?.maxSendAmount, "No cap"),
+    },
+    {
+      label: "x402 max amount",
+      value: formatMobileValue(policy?.x402MaxAmountAtomic, "Default"),
+    },
+  ];
+  const statusFields = cleanSettingsFields(displayFields(status || {})).filter(
+    (field) =>
+      field.label !== "Agent Access Enabled" &&
+      field.label !== "Primary Addresses" &&
+      field.label !== "Kdf"
+  );
+
+  return (
+    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+      <View style={styles.itemHero}>
+        <View style={[styles.summaryIcon, { backgroundColor: `${colors.green}18` }]}>
+          <ShieldCheck color={colors.green} size={21} strokeWidth={2.2} />
+        </View>
+        <View style={styles.itemHeroText}>
+          <Text numberOfLines={1} style={styles.itemTitle}>
+            {item.title}
+          </Text>
+          <Text numberOfLines={2} style={styles.itemDetail}>
+            {policyAvailable || statusAvailable
+              ? "Agent wallet access and policy limits"
+              : item.detail}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.settingsForm}>
+        <SettingToggle
+          busy={savingAgentAccess}
+          disabled={!statusAvailable || savingPolicyKey !== null}
+          detail="Master switch for agent-initiated wallet actions."
+          label="Agent wallet access"
+          onPress={updateAgentAccess}
+          value={agentAccessEnabled}
+        />
+        {walletPolicyToggleRows.map((toggle) => (
+          <SettingToggle
+            busy={savingPolicyKey === toggle.key}
+            detail={toggle.detail}
+            disabled={!policyAvailable || savingAgentAccess || savingPolicyKey !== null}
+            key={toggle.key}
+            label={toggle.label}
+            onPress={() => {
+              void updatePolicyToggle(toggle.key);
+            }}
+            value={booleanSetting(policy, toggle.key)}
+          />
+        ))}
+      </View>
+
+      <Text style={styles.subsectionTitle}>Policy limits</Text>
+      {policyAvailable ? (
+        <View>
+          {policyDetails.map((field) => (
+            <View key={field.label} style={styles.listRow}>
+              <View style={styles.listText}>
+                <Text style={styles.listTitle}>{field.label}</Text>
+                <Text numberOfLines={1} style={styles.listDetail}>
+                  {field.value}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <EmptyState
+          label="Wallet policy unavailable"
+          detail={endpointErrorDetail(
+            summary?.availability.walletPolicy,
+            "The gateway did not return wallet policy settings."
+          )}
+        />
+      )}
+
+      {statusFields.length > 0 ? (
+        <>
+          <Text style={styles.subsectionTitle}>Wallet status</Text>
+          <View>
+            {statusFields.map((field) => (
+              <View key={field.label} style={styles.listRow}>
+                <View style={styles.listText}>
+                  <Text style={styles.listTitle}>{field.label}</Text>
+                  <Text numberOfLines={1} style={styles.listDetail}>
+                    {field.value}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </>
+      ) : null}
+    </GlassPanel>
+  );
+}
+
+function SystemMonitorSettingsPanel({
+  item,
+  refreshSummary,
+  summary,
+}: {
+  item: RemoteItemSummary | ActivitySummary;
+  refreshSummary: () => void;
+  summary: FeatureSummary | null;
+}) {
+  const [refreshingMonitor, setRefreshingMonitor] = useState(false);
+  const health = summary?.health;
+  const checks = health?.checks || {};
+  const entries =
+    item.id === "runtime"
+      ? Object.entries(checks)
+      : Object.entries(checks).filter(([key]) => key === item.id);
+  const runtimeHealthy = health?.status === "healthy";
+  const fields =
+    item.id === "runtime"
+      ? [
+          { label: "Status", value: health?.status || "Unknown" },
+          { label: "Version", value: health?.version || "Pending" },
+          { label: "Uptime", value: formatUptime(health?.uptime) },
+          { label: "Last check", value: absoluteTimestampLabel(health?.timestamp) },
+        ]
+      : cleanSettingsFields(item.fields);
+
+  const refreshMonitor = async () => {
+    setRefreshingMonitor(true);
+    try {
+      await refreshSummary();
+    } finally {
+      setRefreshingMonitor(false);
+    }
+  };
+
+  return (
+    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+      <View style={styles.itemHero}>
+        <View style={[styles.summaryIcon, { backgroundColor: `${colors.blueText}18` }]}>
+          <Cpu color={colors.blueText} size={21} strokeWidth={2.2} />
+        </View>
+        <View style={styles.itemHeroText}>
+          <Text numberOfLines={1} style={styles.itemTitle}>
+            {item.title}
+          </Text>
+          <Text numberOfLines={2} style={styles.itemDetail}>
+            {item.id === "runtime" ? "Gateway runtime health" : healthCheckDetail(checks[item.id])}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.settingsForm}>
+        <SettingToggle
+          detail={health ? `Gateway status is ${health.status}.` : "Waiting for gateway health."}
+          disabled
+          label="Gateway healthy"
+          onPress={() => undefined}
+          value={runtimeHealthy}
+        />
+        {entries.map(([key, value]) => (
+          <SettingToggle
+            detail={healthCheckDetail(value)}
+            disabled
+            key={key}
+            label={displayFieldLabel(key)}
+            onPress={() => undefined}
+            value={healthCheckIsPassing(value)}
+          />
+        ))}
+      </View>
+
+      {fields.length > 0 ? (
+        <View>
+          {fields.map((field, index) => (
+            <View key={`${field.label}-${index}`} style={styles.listRow}>
+              <View style={styles.listText}>
+                <Text style={styles.listTitle}>{field.label}</Text>
+                <Text numberOfLines={2} style={styles.listDetail}>
+                  {field.value}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      <View style={styles.settingsActionRow}>
+        <DetailActionButton
+          Icon={RefreshCw}
+          busy={refreshingMonitor}
+          label="Refresh"
+          onPress={() => {
+            void refreshMonitor();
+          }}
+          tone={colors.blueText}
+        />
+      </View>
+    </GlassPanel>
+  );
+}
+
 function ItemDetailPanel({
   api,
   closeDetail,
@@ -3188,6 +3587,16 @@ function ItemDetailPanel({
         item={item}
         refreshSummary={refreshSummary}
       />
+    );
+  }
+  if (route.surface === "wallet" && MOBILE_SETTINGS_DETAIL_CHROME.walletPolicyUsesToggles) {
+    return (
+      <WalletPolicyPanel api={api} item={item} refreshSummary={refreshSummary} summary={summary} />
+    );
+  }
+  if (route.surface === "monitor" && MOBILE_SETTINGS_DETAIL_CHROME.monitorUsesStatusToggles) {
+    return (
+      <SystemMonitorSettingsPanel item={item} refreshSummary={refreshSummary} summary={summary} />
     );
   }
   if (route.surface === "approvals" && MOBILE_SETTINGS_DETAIL_CHROME.approvalsActionable) {
@@ -4186,6 +4595,9 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     minHeight: 58,
     padding: spacing.md,
+  },
+  settingToggleRowDisabled: {
+    opacity: 0.72,
   },
   toggleTextWrap: {
     flex: 1,

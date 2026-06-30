@@ -26,6 +26,7 @@ import {
   isMobileSettingsDetailFieldVisible,
   lastUpdatedLabel,
   mobileComposerHeightForDraft,
+  mobileBackRouteForDetail,
   mobileThemeConfigPayload,
   recentSessionStateLabel,
   readMobileAccent,
@@ -223,8 +224,23 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_SETTINGS_DETAIL_CHROME.channelsEditable).toBe(true);
     expect(MOBILE_SETTINGS_DETAIL_CHROME.providersEditable).toBe(true);
     expect(MOBILE_SETTINGS_DETAIL_CHROME.tasksActionable).toBe(true);
+    expect(MOBILE_SETTINGS_DETAIL_CHROME.tasksUseRunningToggle).toBe(true);
+    expect(MOBILE_SETTINGS_DETAIL_CHROME.walletPolicyUsesToggles).toBe(true);
+    expect(MOBILE_SETTINGS_DETAIL_CHROME.monitorUsesStatusToggles).toBe(true);
+    expect(MOBILE_SETTINGS_DETAIL_CHROME.itemBackReturnsToSurface).toBe(true);
     expect(MOBILE_SETTINGS_DETAIL_CHROME.hidesRawInternalFields).toBe(true);
     expect(MOBILE_SETTINGS_DETAIL_CHROME.providerCredentialUpdateMode).toBe("blank-keeps-existing");
+
+    expect(mobileBackRouteForDetail({ kind: "item", surface: "logs" })).toEqual({
+      kind: "surface",
+      surface: "logs",
+    });
+    expect(mobileBackRouteForDetail({ kind: "item", surface: "wallet" })).toEqual({
+      kind: "surface",
+      surface: "wallet",
+    });
+    expect(mobileBackRouteForDetail({ kind: "surface", surface: "logs" })).toBeNull();
+    expect(mobileBackRouteForDetail({ kind: "session" })).toBeNull();
 
     expect(isMobileSettingsDetailFieldVisible("name")).toBe(true);
     expect(isMobileSettingsDetailFieldVisible("model")).toBe(true);
