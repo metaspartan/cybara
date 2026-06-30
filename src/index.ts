@@ -30,6 +30,7 @@ import {
   ircAdapter,
   ntfyAdapter,
   twitchAdapter,
+  lineAdapter,
   type MessageHandlerFileInfo,
 } from "./core/channels";
 import { handleSessionsSpawn } from "./core/tools/handlers/channel";
@@ -371,11 +372,22 @@ Bun.serve<WsData>({
 
     if (pathname.startsWith("/api/")) {
       let body: unknown;
+      let rawBody: string | undefined;
       if (req.method !== "GET" && req.method !== "HEAD") {
-        try {
-          body = await req.json();
-        } catch {
-          body = undefined;
+        const needsRaw = pathname.endsWith("/webhook") || pathname.includes("/webhooks/");
+        if (needsRaw) {
+          try {
+            rawBody = await req.text();
+            body = rawBody ? JSON.parse(rawBody) : undefined;
+          } catch {
+            body = undefined;
+          }
+        } else {
+          try {
+            body = await req.json();
+          } catch {
+            body = undefined;
+          }
         }
       }
       const response = await handleRequest({
@@ -383,6 +395,7 @@ Bun.serve<WsData>({
         url: req.url,
         headers: requestHeaders,
         body,
+        rawBody,
         ip: clientIp,
       });
       return new Response(JSON.stringify(response.body), {
@@ -689,6 +702,7 @@ mattermostAdapter.setMessageHandler(createChannelChatHandler("mattermost"));
 ircAdapter.setMessageHandler(createChannelChatHandler("irc"));
 ntfyAdapter.setMessageHandler(createChannelChatHandler("ntfy"));
 twitchAdapter.setMessageHandler(createChannelChatHandler("twitch"));
+lineAdapter.setMessageHandler(createChannelChatHandler("line"));
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;

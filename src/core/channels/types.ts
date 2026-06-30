@@ -289,6 +289,16 @@ export const channels = {
       { name: "token", label: "Access Token", type: "password", required: false },
     ],
   },
+  line: {
+    name: "LINE",
+    icon: "🟢",
+    description: "Connect to LINE Messaging API",
+    color: "#06C755",
+    fields: [
+      { name: "channel_access_token", label: "Channel Access Token", type: "password", required: true },
+      { name: "channel_secret", label: "Channel Secret", type: "password", required: true },
+    ],
+  },
   twitch: {
     name: "Twitch",
     icon: "🎮",
@@ -509,6 +519,20 @@ export interface ChannelAdapter {
     text: string,
     buttons: InlineKeyboardButton[][]
   ): Promise<boolean>;
+
+  handleWebhook?(channelId: string, payload: WebhookPayload): Promise<WebhookResult>;
+}
+
+export interface WebhookPayload {
+  body: unknown;
+  rawBody: string;
+  headers: Record<string, string>;
+  query: Record<string, string>;
+}
+
+export interface WebhookResult {
+  status?: number;
+  body?: unknown;
 }
 
 /** Rich embed definition (Discord embeds, Telegram HTML). */

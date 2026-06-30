@@ -15,6 +15,7 @@ import { mattermostAdapter } from "./adapters/mattermost";
 import { ircAdapter } from "./adapters/irc";
 import { ntfyAdapter } from "./adapters/ntfy";
 import { twitchAdapter } from "./adapters/twitch";
+import { lineAdapter } from "./adapters/line";
 import {
   formatToolCallsForTelegram,
   formatToolCallsForDiscord,
@@ -74,6 +75,7 @@ export class ChannelManager {
     this.registerAdapter("irc", ircAdapter);
     this.registerAdapter("ntfy", ntfyAdapter);
     this.registerAdapter("twitch", twitchAdapter);
+    this.registerAdapter("line", lineAdapter);
   }
 
   registerAdapter(type: ChannelType, adapter: ChannelAdapter) {

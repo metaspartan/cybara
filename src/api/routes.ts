@@ -516,7 +516,15 @@ const securityHeaders: Record<string, string> = {
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
 };
-type RouteHandler = (body?: unknown, params?: Record<string, string>) => Promise<unknown> | unknown;
+interface RouteContext {
+  headers: Record<string, string>;
+  rawBody?: string;
+}
+type RouteHandler = (
+  body?: unknown,
+  params?: Record<string, string>,
+  ctx?: RouteContext
+) => Promise<unknown> | unknown;
 const routes: Record<string, RouteHandler> = {
   ...mobileRoutes,
   "GET /api/health": () => {
@@ -3633,6 +3641,24 @@ const routes: Record<string, RouteHandler> = {
     return { ok: success };
   },
 
+  "POST /api/channels/:channelId/webhook": async (body, params, ctx) => {
+    const { channelId, ...query } = params || {};
+    if (!channelId) return { status: 400, body: { error: "channelId required" } };
+    const channel = channelManager.get(channelId);
+    if (!channel) return { status: 404, body: { error: "channel not found" } };
+    const adapter = channelManager.getAdapter(channel.type);
+    if (!adapter?.handleWebhook) {
+      return { status: 400, body: { error: `channel ${channel.type} does not accept webhooks` } };
+    }
+    const result = await adapter.handleWebhook(channelId, {
+      body,
+      rawBody: ctx?.rawBody ?? (body !== undefined ? JSON.stringify(body) : ""),
+      headers: ctx?.headers ?? {},
+      query: query as Record<string, string>,
+    });
+    return result?.body !== undefined ? result.body : { ok: true };
+  },
+
   "GET /api/computer-use/status": async () => {
     const { computerUseDoctor } = await import("../core/computer-use");
     return await computerUseDoctor();
@@ -5338,6 +5364,7 @@ export async function handleRequest(req: {
   url: string;
   headers: Record<string, string>;
   body?: unknown;
+  rawBody?: string;
   ip?: string;
 }): Promise<{
   status: number;
@@ -5418,7 +5445,10 @@ export async function handleRequest(req: {
   }
 
   try {
-    const result = await routes[routeKey](req.body, params);
+    const result = await routes[routeKey](req.body, params, {
+      headers: req.headers,
+      rawBody: req.rawBody,
+    });
     const duration = Date.now() - startTime;
     recordApiMetrics(method, path, 200, duration);
     logRequest({

@@ -450,6 +450,23 @@ export function securityCheck(
     return { passed: true };
   }
 
+  const isInboundWebhook =
+    method === "POST" &&
+    (path.startsWith("/api/webhooks/") ||
+      (path.startsWith("/api/channels/") && path.endsWith("/webhook")));
+  if (isInboundWebhook) {
+    const limit = rateLimitEndpoint(path, ip, "global");
+    if (!limit.allowed) {
+      return {
+        passed: false,
+        error: "Rate limit exceeded",
+        statusCode: 429,
+        headers: { "Retry-After": String(Math.ceil((limit.retryAfterMs || 60000) / 1000)) },
+      };
+    }
+    return { passed: true };
+  }
+
   const limitType = getRateLimitType(method, path);
   const rateLimit = rateLimitEndpoint(path, ip, limitType);
   if (!rateLimit.allowed) {
