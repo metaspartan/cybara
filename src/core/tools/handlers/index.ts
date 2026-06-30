@@ -56,6 +56,7 @@ import { handleCalc, handleConvert } from "./calc";
 import { handleEnv } from "./env";
 import { handleWebSearch } from "./web-search";
 import { handleXSearch } from "./x-search";
+import { handleTranscribe } from "./transcribe";
 import { handleArtifacts } from "./artifacts";
 import { handlePhoneCall, handleVoiceCall } from "./phone";
 import { handleWallet } from "./wallet";
@@ -100,6 +101,7 @@ export * from "./calc";
 export * from "./env";
 export * from "./web-search";
 export * from "./x-search";
+export * from "./transcribe";
 export * from "./artifacts";
 export * from "./workspace-index";
 export * from "./phone";
@@ -182,6 +184,7 @@ const toolHandlers: Record<
   web_fetch: handleWebFetch,
   web_search: handleWebSearch,
   x_search: handleXSearch,
+  transcribe: handleTranscribe,
   wallet: handleWallet,
   artifacts: handleArtifacts,
 

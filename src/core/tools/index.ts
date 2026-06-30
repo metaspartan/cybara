@@ -610,6 +610,25 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
     permissions: ["net:fetch"],
   },
 
+  transcribe: {
+    name: "transcribe",
+    description:
+      "Transcribe an audio file to text (speech-to-text) via Whisper. Accepts a local audioPath or a url. Requires GROQ_API_KEY or OPENAI_API_KEY.",
+    category: "media",
+    input_schema: {
+      type: "object",
+      properties: {
+        audioPath: { type: "string", description: "Local path to an audio file (<=25MB)" },
+        url: { type: "string", description: "URL of an audio file (alternative to audioPath)" },
+        language: { type: "string", description: "Optional ISO-639-1 language hint (e.g. en)" },
+        prompt: { type: "string", description: "Optional context prompt to guide transcription" },
+        model: { type: "string", description: "Optional model override" },
+      },
+      required: [],
+    },
+    permissions: ["net:fetch", "fs:read"],
+  },
+
   memory_search: {
     name: "memory_search",
     description: "Search long-term memory for information",
