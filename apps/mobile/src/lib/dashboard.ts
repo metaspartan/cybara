@@ -1,7 +1,7 @@
 import type { FeatureSummary, SessionSummary } from "./api";
 import type { GatewayProfile } from "./connection";
 
-export type MobileTabKey = "overview" | "sessions" | "tools" | "settings";
+export type MobileTabKey = "overview" | "sessions" | "metrics" | "settings";
 export type MobileSurfaceKey =
   | "agents"
   | "providers"
@@ -40,8 +40,8 @@ export interface MobileHeaderCopy {
 
 export const MOBILE_TABS: MobileTabDefinition[] = [
   { key: "overview", label: "Home", showsGatewayPanel: true },
-  { key: "sessions", label: "Sessions", showsGatewayPanel: false },
-  { key: "tools", label: "Tools", showsGatewayPanel: false },
+  { key: "sessions", label: "Chats", showsGatewayPanel: false },
+  { key: "metrics", label: "Metrics", showsGatewayPanel: false },
   { key: "settings", label: "Settings", showsGatewayPanel: false },
 ];
 
@@ -49,6 +49,15 @@ export const MOBILE_NAV_CHROME = {
   height: 78,
   outerRadius: 0,
   pinnedToViewport: true,
+} as const;
+
+export const MOBILE_CHAT_CHROME = {
+  autoScrollToLatestMessage: true,
+  composerGapToNav: 0,
+  composerHeight: 74,
+  composerPinnedAboveNav: true,
+  composerReservedBottom: MOBILE_NAV_CHROME.height,
+  hidesSystemMessages: true,
 } as const;
 
 export const MOBILE_FEATURE_SECTIONS = [
@@ -78,6 +87,20 @@ export const MOBILE_SURFACES: MobileSurfaceKey[] = [
   "terminal",
   "logs",
   "monitor",
+];
+
+export const MOBILE_SETTINGS_SURFACES: MobileSurfaceKey[] = [
+  "agents",
+  "providers",
+  "tools",
+  "approvals",
+  "terminal",
+  "channels",
+  "tasks",
+  "memory",
+  "logs",
+  "monitor",
+  "wallet",
 ];
 
 function countArray(value: unknown[] | undefined): number {
@@ -140,14 +163,17 @@ export function buildMobileHeaderCopy(
       };
     case "sessions":
       return {
-        title: "Sessions",
-        detail: counts.sessions === 1 ? "1 active chat" : `${counts.sessions} active chats`,
+        title: "Chats",
+        detail: counts.sessions === 1 ? "1 chat" : `${counts.sessions} chats`,
       };
-    case "tools":
+    case "metrics": {
+      const sessionLabel = counts.sessions === 1 ? "1 chat" : `${counts.sessions} chats`;
+      const eventLabel = counts.logs === 1 ? "1 event" : `${counts.logs} events`;
       return {
-        title: "Tools",
-        detail: `${counts.tools} tools - ${counts.approvals} approvals - ${counts.providers} providers`,
+        title: "Metrics",
+        detail: `${sessionLabel} - ${counts.tools} tools - ${eventLabel}`,
       };
+    }
     case "settings":
       return {
         title: "Settings",
@@ -169,4 +195,48 @@ export function formatMobileValue(value: unknown, fallback = "unknown"): string 
     return keys.length === 1 ? "1 setting" : `${keys.length} settings`;
   }
   return fallback;
+}
+
+const MOBILE_ACCENT_KEYS = new Set([
+  "indigo",
+  "blue",
+  "cyan",
+  "teal",
+  "emerald",
+  "amber",
+  "orange",
+  "rose",
+  "pink",
+  "purple",
+]);
+
+function readNestedString(
+  record: Record<string, unknown> | undefined,
+  keys: string[]
+): string | undefined {
+  let current: unknown = record;
+  for (const key of keys) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) return undefined;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return typeof current === "string" && current.trim().length > 0 ? current.trim() : undefined;
+}
+
+export function readMobileAccent(config: Record<string, unknown> | undefined): string {
+  const candidates = [
+    config?.themeAccent,
+    config?.theme_accent,
+    config?.accent,
+    config?.ui_accent,
+    readNestedString(config, ["ui", "accent"]),
+    readNestedString(config, ["appearance", "accent"]),
+    readNestedString(config, ["settings", "accent"]),
+    readNestedString(config, ["identity", "accent"]),
+    readNestedString(config, ["identity", "theme"]),
+  ];
+  const value = candidates
+    .filter((candidate): candidate is string => typeof candidate === "string")
+    .map((candidate) => candidate.trim().toLowerCase())
+    .find((candidate) => MOBILE_ACCENT_KEYS.has(candidate));
+  return value || "cyan";
 }

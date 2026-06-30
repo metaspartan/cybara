@@ -1,17 +1,20 @@
-import { useEffect, useMemo, useState, type ComponentType } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Linking,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import {
-  Activity,
   ArrowLeft,
   Bot,
   Box,
@@ -22,7 +25,6 @@ import {
   Copy,
   Cpu,
   Database,
-  Gauge,
   HeartPulse,
   House,
   Link2,
@@ -32,6 +34,7 @@ import {
   Settings,
   ShieldCheck,
   SquareTerminal,
+  User,
   UsersRound,
   Wifi,
   Wrench,
@@ -47,22 +50,29 @@ import {
   type SessionDetailSummary,
   type SessionSummary,
 } from "../lib/api";
+import {
+  chatIsWaitingForAssistant,
+  splitMessageContent,
+  visibleChatMessages,
+} from "../lib/chat-format";
 import type { GatewayProfile } from "../lib/connection";
 import {
   MOBILE_NAV_CHROME,
-  MOBILE_SURFACES,
+  MOBILE_CHAT_CHROME,
+  MOBILE_SETTINGS_SURFACES,
   MOBILE_TABS,
   buildMobileHeaderCopy,
   compactHost,
   formatUptime,
   formatMobileValue,
   lastUpdatedLabel,
+  readMobileAccent,
   summarizeFeatureCounts,
   type FeatureCounts,
   type MobileSurfaceKey,
   type MobileTabKey,
 } from "../lib/dashboard";
-import { colors, radius, spacing, typography } from "../theme/liquidGlass";
+import { accentPalette, colors, radius, spacing, typography } from "../theme/liquidGlass";
 import cybaraLogo from "../../assets/cybara.png";
 
 type IconGlyph = ComponentType<{ color?: string; size?: number; strokeWidth?: number }>;
@@ -86,7 +96,7 @@ type DetailRoute =
 const tabIcons: Record<MobileTabKey, IconGlyph> = {
   overview: House,
   sessions: UsersRound,
-  tools: Wrench,
+  metrics: Cpu,
   settings: Settings,
 };
 
@@ -98,13 +108,18 @@ const surfaceMeta: Record<
   providers: { title: "Providers", Icon: Database, tone: colors.blueText, endpoint: "providers" },
   tools: { title: "Tools", Icon: Wrench, tone: colors.green, endpoint: "tools" },
   approvals: { title: "Approvals", Icon: ShieldCheck, tone: colors.amber, endpoint: "approvals" },
-  wallet: { title: "Wallet Policy", Icon: ShieldCheck, tone: colors.green, endpoint: "walletPolicy" },
+  wallet: {
+    title: "Wallet Policy",
+    Icon: ShieldCheck,
+    tone: colors.green,
+    endpoint: "walletPolicy",
+  },
   channels: { title: "Channels", Icon: Link2, tone: colors.cyan, endpoint: "channels" },
   tasks: { title: "Tasks", Icon: CalendarCheck, tone: colors.blueText, endpoint: "tasks" },
   memory: { title: "Memory", Icon: Brain, tone: colors.green, endpoint: "memory" },
   terminal: { title: "Terminal", Icon: SquareTerminal, tone: colors.cyan },
   logs: { title: "Logs", Icon: ListTodo, tone: colors.textMuted, endpoint: "logs" },
-  monitor: { title: "System Monitor", Icon: Activity, tone: colors.blueText, endpoint: "health" },
+  monitor: { title: "System Monitor", Icon: Cpu, tone: colors.blueText, endpoint: "health" },
 };
 
 const sparkBars = [8, 10, 7, 12, 9, 14, 20, 12, 8, 13, 11, 16, 9, 13, 18, 12, 25];
@@ -130,13 +145,18 @@ function surfaceCount(
   key: FeatureEndpointKey,
   count: number,
   suffix: string,
-  empty: string
+  empty: string,
+  singularSuffix = suffix
 ): string {
   if (!summary) return "Loading";
   const endpoint = summary.availability[key];
   if (!endpoint.ok) return endpoint.status ? `Unavailable (${endpoint.status})` : "Unavailable";
   if (count === 0) return empty;
-  return `${count} ${suffix}`;
+  return `${count} ${count === 1 ? singularSuffix : suffix}`;
+}
+
+function sessionMayBeInProgress(session: SessionSummary): boolean {
+  return session.last_message?.role === "user";
 }
 
 function relativeTimestamp(value: string): string {
@@ -153,7 +173,15 @@ function relativeTimestamp(value: string): string {
 function displayFields(record: Record<string, unknown>): Array<{ label: string; value: string }> {
   return Object.entries(record)
     .filter(([key]) => !/secret|token|api[_-]?key|password|credential|mnemonic/i.test(key))
-    .map(([label, value]) => ({ label: label.replace(/_/g, " "), value: formatMobileValue(value) }));
+    .map(([label, value]) => ({
+      label: label.replace(/_/g, " "),
+      value: formatMobileValue(value),
+    }));
+}
+
+function resolveAccentColor(summary: FeatureSummary | null): string {
+  const key = readMobileAccent(summary?.config) as keyof typeof accentPalette;
+  return accentPalette[key] || accentPalette.cyan;
 }
 
 function itemFromRecord(
@@ -239,18 +267,63 @@ function surfaceRows(
   }
 }
 
+function surfaceMenuDetail(
+  surface: MobileSurfaceKey,
+  summary: FeatureSummary | null,
+  counts: FeatureCounts,
+  rowCount: number
+): string {
+  if (!summary) return "Loading";
+  const endpoint = surfaceMeta[surface].endpoint;
+  if (endpoint) {
+    const state = summary.availability[endpoint];
+    if (!state.ok) return endpointStatusLabel(state);
+  }
+  switch (surface) {
+    case "agents":
+      return surfaceCount(summary, "agents", counts.agents, "configured", "None configured");
+    case "providers":
+      return surfaceCount(summary, "providers", counts.providers, "enabled", "None enabled");
+    case "tools":
+      return surfaceCount(summary, "tools", counts.tools, "registered", "No tools");
+    case "approvals":
+      return counts.approvals > 0 ? `${counts.approvals} pending` : "No pending approvals";
+    case "channels":
+      return surfaceCount(summary, "channels", counts.channels, "configured", "None configured");
+    case "tasks":
+      return surfaceCount(summary, "tasks", counts.tasks, "scheduled", "No tasks");
+    case "memory":
+      return surfaceCount(summary, "memory", counts.memory, "files", "No memory files");
+    case "logs":
+      return surfaceCount(summary, "logs", counts.logs, "events", "No recent events");
+    case "wallet":
+      return summary.walletPolicy || summary.walletStatus ? "Policy and status" : "Unavailable";
+    case "terminal":
+      return "Open gateway terminal";
+    case "monitor":
+      return rowCount > 0 ? `${rowCount} health checks` : "Health checks";
+  }
+}
+
 function routeHeader(
   route: DetailRoute | null,
-  fallback: { title: string; detail: string }
+  fallback: { title: string; detail: string },
+  summary: FeatureSummary | null
 ): { title: string; detail: string } {
   if (!route) return fallback;
-  if (route.kind === "session") return { title: "Session", detail: route.id };
+  if (route.kind === "session") {
+    const session = summary?.sessions.find((candidate) => candidate.id === route.id);
+    return {
+      title: session?.title || "Chat",
+      detail: `${session?.message_count ?? 0} messages - ${route.id}`,
+    };
+  }
   if (route.kind === "surface") {
     const meta = surfaceMeta[route.surface];
     return { title: meta.title, detail: "Live gateway data" };
   }
   const meta = surfaceMeta[route.surface];
-  return { title: route.item.title, detail: meta.title };
+  return { title: meta.title, detail: route.item.title };
 }
 
 export function DashboardScreen({
@@ -264,17 +337,18 @@ export function DashboardScreen({
   const [summary, setSummary] = useState<FeatureSummary | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<MobileTabKey>("overview");
+  const [detailRoute, setDetailRoute] = useState<DetailRoute | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = async () => {
-    setRefreshing(true);
+  const refresh = async (showRefreshing = true) => {
+    if (showRefreshing) setRefreshing(true);
     setError(null);
     try {
       setSummary(await api.featureSummary());
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : String(refreshError));
     } finally {
-      setRefreshing(false);
+      if (showRefreshing) setRefreshing(false);
     }
   };
 
@@ -282,18 +356,44 @@ export function DashboardScreen({
     void refresh();
   }, [profile.id]);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void refresh(false);
+    }, 12000);
+    return () => clearInterval(interval);
+  }, [profile.id]);
+
   const health = summary?.health;
   const healthy = health?.status === "healthy";
   const statusColor = healthy ? colors.green : error ? colors.red : colors.amber;
   const sessions = summary?.sessions ?? [];
   const counts = summarizeFeatureCounts(summary);
-  const headerCopy = buildMobileHeaderCopy(activeTab, counts, profile);
+  const accentColor = resolveAccentColor(summary);
+  const headerCopy = routeHeader(
+    detailRoute,
+    buildMobileHeaderCopy(activeTab, counts, profile),
+    summary
+  );
+
+  const selectTab = (tab: MobileTabKey) => {
+    setDetailRoute(null);
+    setActiveTab(tab);
+  };
+
+  const openSurface = (surface: MobileSurfaceKey) => {
+    setActiveTab("settings");
+    setDetailRoute({ kind: "surface", surface });
+  };
+
+  const openItem = (surface: MobileSurfaceKey, item: RemoteItemSummary | ActivitySummary) => {
+    setDetailRoute({ kind: "item", surface, item });
+  };
 
   const modules: ModuleCard[] = [
     {
       key: "sessions",
-      label: "Chat Sessions",
-      detail: surfaceCount(summary, "sessions", counts.sessions, "active", "No active chats"),
+      label: "Chats",
+      detail: surfaceCount(summary, "sessions", counts.sessions, "chats", "No chats", "chat"),
       value: String(counts.sessions),
       Icon: MessageCircle,
       tab: "sessions",
@@ -304,7 +404,8 @@ export function DashboardScreen({
       detail: surfaceCount(summary, "agents", counts.agents, "configured", "None configured"),
       value: String(counts.agents),
       Icon: Bot,
-      tab: "tools",
+      tab: "settings",
+      surface: "agents",
     },
     {
       key: "providers",
@@ -312,7 +413,8 @@ export function DashboardScreen({
       detail: surfaceCount(summary, "providers", counts.providers, "enabled", "None enabled"),
       value: String(counts.providers),
       Icon: Box,
-      tab: "tools",
+      tab: "settings",
+      surface: "providers",
     },
     {
       key: "tools",
@@ -324,7 +426,8 @@ export function DashboardScreen({
         : "Approvals unavailable",
       value: String(counts.tools),
       Icon: Wrench,
-      tab: "tools",
+      tab: "settings",
+      surface: "tools",
     },
     {
       key: "wallet",
@@ -333,6 +436,7 @@ export function DashboardScreen({
       value: summary?.walletPolicy ? "On" : "-",
       Icon: ShieldCheck,
       tab: "settings",
+      surface: "wallet",
     },
     {
       key: "channels",
@@ -340,7 +444,8 @@ export function DashboardScreen({
       detail: surfaceCount(summary, "channels", counts.channels, "configured", "None configured"),
       value: String(counts.channels),
       Icon: Link2,
-      tab: "tools",
+      tab: "settings",
+      surface: "channels",
     },
     {
       key: "tasks",
@@ -348,7 +453,8 @@ export function DashboardScreen({
       detail: surfaceCount(summary, "tasks", counts.tasks, "scheduled", "No tasks"),
       value: String(counts.tasks),
       Icon: CalendarCheck,
-      tab: "tools",
+      tab: "settings",
+      surface: "tasks",
     },
     {
       key: "memory",
@@ -356,7 +462,8 @@ export function DashboardScreen({
       detail: surfaceCount(summary, "memory", counts.memory, "files", "No memory files"),
       value: String(counts.memory),
       Icon: Brain,
-      tab: "tools",
+      tab: "settings",
+      surface: "memory",
     },
     {
       key: "terminal",
@@ -364,7 +471,8 @@ export function DashboardScreen({
       detail: "Web shell",
       value: "CLI",
       Icon: SquareTerminal,
-      tab: "tools",
+      tab: "settings",
+      surface: "terminal",
     },
     {
       key: "logs",
@@ -372,21 +480,20 @@ export function DashboardScreen({
       detail: surfaceCount(summary, "logs", counts.logs, "events", "No recent events"),
       value: String(counts.logs),
       Icon: ListTodo,
-      tab: "tools",
+      tab: "settings",
+      surface: "logs",
     },
   ];
 
   return (
     <View style={styles.screen}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl tintColor={colors.cyan} refreshing={refreshing} onRefresh={refresh} />
-        }
-      >
-        <View style={styles.header}>
-          <View style={styles.brandWrap}>
+      <View style={styles.header}>
+        <View style={styles.brandWrap}>
+          {detailRoute ? (
+            <Pressable style={styles.backButton} onPress={() => setDetailRoute(null)}>
+              <ArrowLeft color={colors.text} size={22} strokeWidth={2.2} />
+            </Pressable>
+          ) : (
             <View style={styles.logoMark}>
               <Image
                 accessibilityIgnoresInvertColors
@@ -394,112 +501,182 @@ export function DashboardScreen({
                 style={styles.logoImage}
               />
             </View>
-            <View style={styles.headerText}>
-              <Text style={styles.title}>{headerCopy.title}</Text>
-              <Text numberOfLines={1} style={styles.headerDetail}>
-                {headerCopy.detail}
-              </Text>
-            </View>
+          )}
+          <View style={styles.headerText}>
+            <Text
+              ellipsizeMode="tail"
+              maxFontSizeMultiplier={1.05}
+              numberOfLines={detailRoute ? 2 : 1}
+              style={[styles.title, detailRoute && styles.detailTitle]}
+            >
+              {headerCopy.title}
+            </Text>
+            <Text numberOfLines={1} style={styles.headerDetail}>
+              {headerCopy.detail}
+            </Text>
           </View>
-          <Pressable style={styles.iconButton} onPress={() => setActiveTab("settings")}>
-            <Settings color={colors.text} size={22} strokeWidth={2.1} />
-          </Pressable>
         </View>
+        <Pressable
+          style={styles.iconButton}
+          onPress={detailRoute ? () => refresh(true) : () => selectTab("settings")}
+        >
+          {detailRoute ? (
+            <RefreshCw color={colors.text} size={22} strokeWidth={2.1} />
+          ) : (
+            <Settings color={colors.text} size={22} strokeWidth={2.1} />
+          )}
+        </Pressable>
+      </View>
 
-        {activeTab === "overview" ? (
-          <GlassPanel elevated style={styles.gatewayPanel}>
-            <View style={styles.connectionRow}>
-              <View style={[styles.liveDot, { backgroundColor: statusColor }]} />
-              <Text style={[styles.connectionText, { color: statusColor }]}>
-                {healthy ? "Gateway connected" : error ? "Gateway degraded" : "Checking gateway"}
-              </Text>
-            </View>
-
-            <View style={styles.gatewayTop}>
-              <View style={styles.gatewayIdentity}>
-                <Text style={styles.gatewayName}>{profile.name}</Text>
-                <Text style={styles.gatewayMeta}>
-                  {compactHost(profile.baseUrl)} - {health?.version || "version pending"}
+      {detailRoute?.kind === "session" ? (
+        <SessionDetailPanel
+          accentColor={accentColor}
+          api={api}
+          closeDetail={() => setDetailRoute(null)}
+          refreshSummary={() => refresh(false)}
+          sessionId={detailRoute.id}
+        />
+      ) : (
+        <ScrollView
+          style={styles.scrollArea}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              tintColor={accentColor}
+              refreshing={refreshing}
+              onRefresh={() => refresh(true)}
+            />
+          }
+        >
+          {!detailRoute && activeTab === "overview" ? (
+            <GlassPanel elevated style={styles.gatewayPanel}>
+              <View style={styles.connectionRow}>
+                <View style={[styles.liveDot, { backgroundColor: statusColor }]} />
+                <Text style={[styles.connectionText, { color: statusColor }]}>
+                  {healthy ? "Gateway connected" : error ? "Gateway degraded" : "Checking gateway"}
                 </Text>
               </View>
-              <Pressable style={styles.reconnectButton} onPress={refresh}>
-                <RefreshCw color={colors.blueText} size={18} strokeWidth={2.2} />
-                <Text style={styles.reconnectText}>{refreshing ? "Refreshing" : "Reconnect"}</Text>
-              </Pressable>
-            </View>
 
-            <View style={styles.metricStrip}>
-              <StatusMetric
-                Icon={HeartPulse}
-                label="Health"
-                value={healthy ? "Healthy" : "Check"}
-                tone={statusColor}
-              />
-              <StatusMetric
-                Icon={Wifi}
-                label="API"
-                value={health ? "Online" : "Waiting"}
-                tone={colors.cyan}
-              />
-              <StatusMetric
-                Icon={UsersRound}
-                label="Sessions"
-                value={`${counts.sessions} active`}
-                tone={colors.blueText}
-              />
-              <StatusMetric
-                Icon={Box}
-                label="Providers"
-                value={`${counts.providers} enabled`}
-                tone={colors.textMuted}
-              />
-            </View>
+              <View style={styles.gatewayTop}>
+                <View style={styles.gatewayIdentity}>
+                  <Text style={styles.gatewayName}>{profile.name}</Text>
+                  <Text style={styles.gatewayMeta}>
+                    {compactHost(profile.baseUrl)} - {health?.version || "version pending"}
+                  </Text>
+                </View>
+                <Pressable style={styles.reconnectButton} onPress={() => refresh(true)}>
+                  <RefreshCw color={colors.blueText} size={18} strokeWidth={2.2} />
+                  <Text style={styles.reconnectText}>
+                    {refreshing ? "Refreshing" : "Reconnect"}
+                  </Text>
+                </Pressable>
+              </View>
 
-            <View style={styles.detailTable}>
-              <DetailRow
-                label="Gateway URL"
-                value={profile.baseUrl}
-                onPress={() => showValue("Gateway URL", profile.baseUrl)}
-              />
-              <DetailRow
-                label="API Base"
-                value="/api/v1"
-                onPress={() => showValue("API Base", "/api/v1")}
-              />
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Uptime</Text>
-                <Text style={styles.detailValue}>{formatUptime(health?.uptime)}</Text>
-                <View style={styles.sparkline}>
-                  {sparkBars.map((height, index) => (
-                    <View key={`${height}-${index}`} style={[styles.sparkBar, { height }]} />
-                  ))}
+              <View style={styles.metricStrip}>
+                <StatusMetric
+                  Icon={HeartPulse}
+                  label="Health"
+                  value={healthy ? "Healthy" : "Check"}
+                  tone={statusColor}
+                />
+                <StatusMetric
+                  Icon={Wifi}
+                  label="API"
+                  value={health ? "Online" : "Waiting"}
+                  tone={colors.cyan}
+                />
+                <StatusMetric
+                  Icon={UsersRound}
+                  label="Chats"
+                  value={`${counts.sessions} chats`}
+                  tone={colors.blueText}
+                />
+                <StatusMetric
+                  Icon={Box}
+                  label="Providers"
+                  value={`${counts.providers} enabled`}
+                  tone={colors.textMuted}
+                />
+              </View>
+
+              <View style={styles.detailTable}>
+                <DetailRow
+                  label="Gateway URL"
+                  value={profile.baseUrl}
+                  onPress={() => showValue("Gateway URL", profile.baseUrl)}
+                />
+                <DetailRow
+                  label="API Base"
+                  value="/api"
+                  onPress={() => showValue("API Base", "/api")}
+                />
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Uptime</Text>
+                  <Text style={styles.detailValue}>{formatUptime(health?.uptime)}</Text>
+                  <View style={styles.sparkline}>
+                    {sparkBars.map((height, index) => (
+                      <View key={`${height}-${index}`} style={[styles.sparkBar, { height }]} />
+                    ))}
+                  </View>
                 </View>
               </View>
-            </View>
 
-            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+              {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-            <Pressable style={styles.disclosureRow} onPress={() => setActiveTab("settings")}>
-              <Text style={styles.disclosureText}>View connection details</Text>
-              <ChevronRight color={colors.text} size={22} strokeWidth={2.1} />
-            </Pressable>
-          </GlassPanel>
-        ) : null}
+              <Pressable style={styles.disclosureRow} onPress={() => selectTab("settings")}>
+                <Text style={styles.disclosureText}>View connection details</Text>
+                <ChevronRight color={colors.text} size={22} strokeWidth={2.1} />
+              </Pressable>
+            </GlassPanel>
+          ) : null}
 
-        {activeTab === "overview" ? (
-          <OverviewPanel
-            modules={modules}
-            sessions={sessions}
-            logs={summary?.logs ?? []}
-            selectTab={setActiveTab}
-          />
-        ) : null}
-        {activeTab === "sessions" ? <SessionsPanel sessions={sessions} summary={summary} /> : null}
-        {activeTab === "tools" ? <ToolsPanel counts={counts} summary={summary} /> : null}
-        {activeTab === "settings" ? (
-          <SettingsPanel profile={profile} summary={summary} onDisconnect={onDisconnect} />
-        ) : null}
-      </ScrollView>
+          {detailRoute ? (
+            <DetailContent
+              api={api}
+              profile={profile}
+              route={detailRoute}
+              summary={summary}
+              openItem={openItem}
+              accentColor={accentColor}
+              closeDetail={() => setDetailRoute(null)}
+              refreshSummary={() => refresh(false)}
+            />
+          ) : activeTab === "overview" ? (
+            <OverviewPanel
+              modules={modules}
+              sessions={sessions}
+              logs={summary?.logs ?? []}
+              selectTab={selectTab}
+              openSurface={openSurface}
+            />
+          ) : null}
+          {!detailRoute && activeTab === "sessions" ? (
+            <SessionsPanel
+              sessions={sessions}
+              summary={summary}
+              openSession={(id) => setDetailRoute({ kind: "session", id })}
+              accentColor={accentColor}
+            />
+          ) : null}
+          {!detailRoute && activeTab === "metrics" ? (
+            <MetricsPanel
+              accentColor={accentColor}
+              counts={counts}
+              summary={summary}
+              openSurface={openSurface}
+            />
+          ) : null}
+          {!detailRoute && activeTab === "settings" ? (
+            <SettingsPanel
+              profile={profile}
+              summary={summary}
+              onDisconnect={onDisconnect}
+              openSurface={openSurface}
+            />
+          ) : null}
+        </ScrollView>
+      )}
 
       <GlassPanel elevated contentStyle={styles.tabBarPanel} style={styles.tabBar}>
         <View style={styles.tabBarFill}>
@@ -511,18 +688,27 @@ export function DashboardScreen({
                 key={key}
                 accessibilityRole="tab"
                 accessibilityState={{ selected }}
-                onPress={() => setActiveTab(key)}
-                style={[styles.tabItem, selected && styles.tabItemActive]}
+                onPress={() => selectTab(key)}
+                style={[
+                  styles.tabItem,
+                  selected && [
+                    styles.tabItemActive,
+                    {
+                      backgroundColor: `${accentColor}20`,
+                      borderColor: `${accentColor}55`,
+                    },
+                  ],
+                ]}
               >
                 <Icon
-                  color={selected ? colors.cyan : colors.textMuted}
+                  color={selected ? accentColor : colors.textMuted}
                   size={21}
                   strokeWidth={2.2}
                 />
                 <Text
                   maxFontSizeMultiplier={1.05}
                   numberOfLines={1}
-                  style={[styles.tabLabel, selected && styles.tabLabelActive]}
+                  style={[styles.tabLabel, selected && { color: accentColor }]}
                 >
                   {label}
                 </Text>
@@ -588,11 +774,13 @@ function OverviewPanel({
   sessions,
   logs,
   selectTab,
+  openSurface,
 }: {
   modules: ModuleCard[];
   sessions: SessionSummary[];
   logs: ActivitySummary[];
   selectTab: (tab: MobileTabKey) => void;
+  openSurface: (surface: MobileSurfaceKey) => void;
 }) {
   const activityRows =
     sessions.length > 0
@@ -618,14 +806,18 @@ function OverviewPanel({
       <Text style={styles.sectionTitle}>Remote management</Text>
       <View style={styles.moduleGrid}>
         {modules.slice(0, 9).map((module) => (
-          <ModuleTile key={module.key} module={module} onPress={() => selectTab(module.tab)} />
+          <ModuleTile
+            key={module.key}
+            module={module}
+            onPress={() => (module.surface ? openSurface(module.surface) : selectTab(module.tab))}
+          />
         ))}
         <Pressable
           style={[styles.moduleTile, styles.monitorTile]}
-          onPress={() => selectTab("tools")}
+          onPress={() => selectTab("metrics")}
         >
           <View style={styles.moduleIcon}>
-            <Activity color={colors.text} size={23} strokeWidth={2.1} />
+            <Cpu color={colors.text} size={23} strokeWidth={2.1} />
           </View>
           <View style={styles.monitorText}>
             <Text style={styles.moduleTitle}>System Monitor</Text>
@@ -659,7 +851,7 @@ function OverviewPanel({
           <>
             <ActivityRow
               Icon={MessageCircle}
-              title="No active sessions"
+              title="No chats"
               detail="Start a chat from the gateway"
               state="Idle"
               tone={colors.amber}
@@ -700,15 +892,18 @@ function ActivityRow({
   detail,
   state,
   tone,
+  onPress,
 }: {
   Icon: IconGlyph;
   title: string;
   detail: string;
   state: string;
   tone: string;
+  onPress?: () => void;
 }) {
+  const Container = onPress ? Pressable : View;
   return (
-    <View style={styles.activityRow}>
+    <Container style={styles.activityRow} onPress={onPress}>
       <View style={[styles.activityDot, { backgroundColor: tone }]} />
       <View style={styles.activityIcon}>
         <Icon color={colors.text} size={21} strokeWidth={2.1} />
@@ -720,17 +915,21 @@ function ActivityRow({
       <View style={[styles.statePill, { borderColor: `${tone}55`, backgroundColor: `${tone}17` }]}>
         <Text style={[styles.stateText, { color: tone }]}>{state}</Text>
       </View>
-      <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
-    </View>
+      {onPress ? <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} /> : null}
+    </Container>
   );
 }
 
 function SessionsPanel({
+  accentColor,
   sessions,
   summary,
+  openSession,
 }: {
+  accentColor: string;
   sessions: SessionSummary[];
   summary: FeatureSummary | null;
+  openSession: (id: string) => void;
 }) {
   const latest = sessions[0];
   const endpoint = summary?.availability.sessions;
@@ -740,10 +939,10 @@ function SessionsPanel({
       <View style={styles.summaryGrid}>
         <SummaryTile
           Icon={MessageCircle}
-          label="Active"
+          label="Chats"
           value={String(sessions.length)}
-          detail="sessions"
-          tone={colors.cyan}
+          detail="total"
+          tone={accentColor}
         />
         <SummaryTile
           Icon={Clock}
@@ -754,13 +953,17 @@ function SessionsPanel({
         />
       </View>
       <View style={styles.subsectionHeader}>
-        <Text style={styles.subsectionTitle}>Live queue</Text>
+        <Text style={styles.subsectionTitle}>Recent chats</Text>
         <Text style={styles.counterText}>{sessions.length}</Text>
       </View>
-      {sessions.slice(0, 10).map((session) => (
-        <View key={session.id} style={styles.listRow}>
+      {sessions.slice(0, 20).map((session) => (
+        <Pressable key={session.id} style={styles.listRow} onPress={() => openSession(session.id)}>
           <View style={styles.listIcon}>
-            <MessageCircle color={colors.cyan} size={20} strokeWidth={2.1} />
+            {sessionMayBeInProgress(session) ? (
+              <ActivityIndicator color={accentColor} size="small" />
+            ) : (
+              <MessageCircle color={accentColor} size={20} strokeWidth={2.1} />
+            )}
           </View>
           <View style={styles.listText}>
             <Text style={styles.listTitle}>{session.title || session.id.slice(0, 8)}</Text>
@@ -769,233 +972,651 @@ function SessionsPanel({
             </Text>
           </View>
           <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
-        </View>
+        </Pressable>
       ))}
       {sessions.length === 0 ? (
         endpoint?.ok === false ? (
           <EmptyState
-            label="Sessions unavailable"
-            detail={endpointErrorDetail(endpoint, "The gateway did not return sessions.")}
+            label="Chats unavailable"
+            detail={endpointErrorDetail(endpoint, "The gateway did not return chats.")}
           />
         ) : (
-          <EmptyState label="No sessions yet" detail="Create a Cybara session from the gateway." />
+          <EmptyState label="No chats yet" detail="Create a Cybara chat from the gateway." />
         )
       ) : null}
     </GlassPanel>
   );
 }
 
-function ToolsPanel({
+function MetricsPanel({
+  accentColor,
   counts,
   summary,
+  openSurface,
 }: {
+  accentColor: string;
   counts: FeatureCounts;
   summary: FeatureSummary | null;
+  openSurface: (surface: MobileSurfaceKey) => void;
 }) {
-  const agentRows =
-    summary?.agents.map((agent) => ({
-      id: agent.id,
-      title: agent.name,
-      detail: [agent.status, agent.model, agent.type].filter(Boolean).join(" - ") || "Configured",
-      status: agent.status,
-      type: agent.type,
-    })) ?? [];
-  const providerRows =
-    summary?.providers.map((provider) => ({
-      id: provider.id,
-      title: provider.name,
-      detail: `${provider.provider}${provider.is_default ? " - default" : ""}`,
-      status: provider.is_default ? "default" : undefined,
-      type: provider.provider,
-    })) ?? [];
+  const health = summary?.health;
+  const healthy = health?.status === "healthy";
+  const checks = Object.entries(health?.checks || {});
+  const recentLogs = summary?.logs.slice(0, 3) ?? [];
 
   return (
     <GlassPanel elevated style={styles.detailPanel}>
       <View style={styles.summaryGrid}>
         <SummaryTile
-          Icon={Gauge}
-          label="Tools"
-          value={String(counts.tools)}
-          detail="registered"
-          tone={colors.green}
+          Icon={HeartPulse}
+          label="Health"
+          value={healthy ? "Healthy" : health ? "Check" : "Loading"}
+          detail={endpointStatusLabel(summary?.availability.health)}
+          tone={healthy ? colors.green : colors.amber}
         />
         <SummaryTile
-          Icon={ShieldCheck}
-          label="Approvals"
-          value={String(counts.approvals)}
-          detail="pending"
-          tone={counts.approvals > 0 ? colors.amber : colors.cyan}
+          Icon={Clock}
+          label="Uptime"
+          value={formatUptime(health?.uptime)}
+          detail={health?.version || "version pending"}
+          tone={accentColor}
         />
         <SummaryTile
-          Icon={Bot}
-          label="Agents"
-          value={String(counts.agents)}
-          detail="configured"
-          tone={colors.cyan}
-        />
-        <SummaryTile
-          Icon={Database}
-          label="Providers"
-          value={String(counts.providers)}
-          detail="enabled"
+          Icon={MessageCircle}
+          label="Chats"
+          value={String(counts.sessions)}
+          detail="stored chats"
           tone={colors.blueText}
         />
+        <SummaryTile
+          Icon={Wrench}
+          label="Tools"
+          value={String(counts.tools)}
+          detail={`${counts.approvals} approvals`}
+          tone={colors.green}
+        />
       </View>
-      <SurfaceSection
-        title="Agents"
-        endpoint="agents"
-        rows={agentRows}
-        Icon={Bot}
-        tone={colors.cyan}
-        summary={summary}
-        emptyDetail="No agents are configured on this gateway."
-      />
-      <SurfaceSection
-        title="Providers"
-        endpoint="providers"
-        rows={providerRows}
-        Icon={Database}
-        tone={colors.blueText}
-        summary={summary}
-        emptyDetail="No providers are enabled on this gateway."
-      />
-      <SurfaceSection
-        title="Tools"
-        endpoint="tools"
-        rows={summary?.tools ?? []}
-        Icon={Wrench}
-        tone={colors.green}
-        summary={summary}
-        emptyDetail="No tools were returned by the gateway."
-        maxRows={8}
-      />
-      <SurfaceSection
-        title="Approvals"
-        endpoint="approvals"
-        rows={summary?.approvals ?? []}
-        Icon={ShieldCheck}
-        tone={counts.approvals > 0 ? colors.amber : colors.green}
-        summary={summary}
-        emptyDetail="No pending approval requests."
-      />
-      <SurfaceSection
-        title="Channels"
-        endpoint="channels"
-        rows={summary?.channels ?? []}
-        Icon={Link2}
-        tone={colors.cyan}
-        summary={summary}
-        emptyDetail="No communication channels are configured."
-      />
-      <SurfaceSection
-        title="Tasks"
-        endpoint="tasks"
-        rows={summary?.tasks ?? []}
-        Icon={CalendarCheck}
-        tone={colors.blueText}
-        summary={summary}
-        emptyDetail="No scheduled tasks are configured."
-      />
-      <SurfaceSection
-        title="Memory"
-        endpoint="memory"
-        rows={summary?.memory ?? []}
-        Icon={Brain}
-        tone={colors.green}
-        summary={summary}
-        emptyDetail="No memory files are indexed yet."
-      />
-      <SurfaceSection
-        title="Recent Logs"
-        endpoint="logs"
-        rows={summary?.logs ?? []}
-        Icon={ListTodo}
-        tone={colors.textMuted}
-        summary={summary}
-        emptyDetail="No recent log activity was returned."
-        maxRows={6}
-      />
-      <Text style={styles.subsectionTitle}>Runtime controls</Text>
-      <View style={styles.listRow}>
-        <View style={styles.listIcon}>
-          <SquareTerminal color={colors.cyan} size={20} strokeWidth={2.1} />
+
+      <View style={styles.metricTrendPanel}>
+        <View style={styles.metricTrendText}>
+          <Text style={styles.subsectionTitle}>Gateway activity</Text>
+          <Text style={styles.listDetail}>
+            {counts.logs} events - {counts.tasks} tasks - {counts.memory} memory files
+          </Text>
         </View>
-        <View style={styles.listText}>
-          <Text style={styles.listTitle}>Terminal</Text>
-          <Text style={styles.listDetail}>Remote shell surface from the gateway</Text>
+        <View style={styles.metricTrendBars}>
+          {sparkBars.map((height, index) => (
+            <View
+              key={`${height}-${index}`}
+              style={[styles.metricTrendBar, { height, backgroundColor: accentColor }]}
+            />
+          ))}
         </View>
-        <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
       </View>
-      <View style={styles.listRow}>
-        <View style={styles.listIcon}>
-          <Activity color={colors.blueText} size={20} strokeWidth={2.1} />
-        </View>
-        <View style={styles.listText}>
-          <Text style={styles.listTitle}>System Monitor</Text>
-          <Text style={styles.listDetail}>CPU, memory, and disk telemetry from health checks</Text>
-        </View>
-        <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+
+      <View style={styles.subsectionHeader}>
+        <Text style={styles.subsectionTitle}>Runtime checks</Text>
+        <Text style={styles.counterText}>{checks.length}</Text>
       </View>
+      {checks.length > 0 ? (
+        checks.map(([key, value]) => {
+          const record = value as Record<string, unknown>;
+          const status =
+            typeof record.status === "string" && record.status.trim()
+              ? record.status
+              : formatMobileValue(value);
+          const detail = ["total", "running", "stopped"]
+            .map((metric) =>
+              typeof record[metric] === "number" ? `${metric} ${record[metric]}` : null
+            )
+            .filter(Boolean)
+            .join(" - ");
+          return (
+            <View key={key} style={styles.listRow}>
+              <View
+                style={[
+                  styles.listIcon,
+                  {
+                    backgroundColor:
+                      status === "healthy" ? `${colors.green}18` : `${colors.amber}18`,
+                  },
+                ]}
+              >
+                <HeartPulse
+                  color={status === "healthy" ? colors.green : colors.amber}
+                  size={20}
+                  strokeWidth={2.1}
+                />
+              </View>
+              <View style={styles.listText}>
+                <Text style={styles.listTitle}>{key}</Text>
+                <Text style={styles.listDetail} numberOfLines={1}>
+                  {detail || status}
+                </Text>
+              </View>
+            </View>
+          );
+        })
+      ) : (
+        <EmptyState label="Metrics loading" detail="Waiting for gateway health checks." />
+      )}
+
+      <View style={styles.subsectionHeader}>
+        <Text style={styles.subsectionTitle}>Recent signals</Text>
+        <Pressable style={styles.smallButton} onPress={() => openSurface("logs")}>
+          <Text style={styles.smallButtonText}>Logs</Text>
+        </Pressable>
+      </View>
+      {recentLogs.length > 0 ? (
+        recentLogs.map((log) => (
+          <ActivityRow
+            key={log.id}
+            Icon={ListTodo}
+            title={log.title}
+            detail={`${log.source} - ${log.createdAt ? relativeTimestamp(log.createdAt) : "recent"}`}
+            state="Event"
+            tone={accentColor}
+            onPress={() => openSurface("logs")}
+          />
+        ))
+      ) : (
+        <EmptyState
+          label="No recent signals"
+          detail="Gateway logs have not reported activity yet."
+        />
+      )}
     </GlassPanel>
   );
 }
 
-function SurfaceSection({
-  title,
-  endpoint,
-  rows,
-  Icon,
-  tone,
+function DetailContent({
+  api,
+  accentColor,
+  profile,
+  route,
   summary,
-  emptyDetail,
-  maxRows = 4,
+  openItem,
+  closeDetail,
+  refreshSummary,
 }: {
-  title: string;
-  endpoint: FeatureEndpointKey;
-  rows: Array<RemoteItemSummary | ActivitySummary>;
-  Icon: IconGlyph;
-  tone: string;
+  api: CybaraMobileApi;
+  accentColor: string;
+  profile: GatewayProfile;
+  route: DetailRoute;
   summary: FeatureSummary | null;
-  emptyDetail: string;
-  maxRows?: number;
+  openItem: (surface: MobileSurfaceKey, item: RemoteItemSummary | ActivitySummary) => void;
+  closeDetail: () => void;
+  refreshSummary: () => void;
 }) {
-  const state = summary?.availability[endpoint];
-  const visibleRows = rows.slice(0, maxRows);
+  if (route.kind === "session") {
+    return (
+      <SessionDetailPanel
+        accentColor={accentColor}
+        api={api}
+        closeDetail={closeDetail}
+        refreshSummary={refreshSummary}
+        sessionId={route.id}
+      />
+    );
+  }
+  if (route.kind === "item") {
+    return <ItemDetailPanel profile={profile} route={route} />;
+  }
+  return (
+    <SurfaceDetailPanel
+      profile={profile}
+      summary={summary}
+      surface={route.surface}
+      openItem={(item) => openItem(route.surface, item)}
+    />
+  );
+}
+
+function SessionDetailPanel({
+  accentColor,
+  api,
+  closeDetail,
+  refreshSummary,
+  sessionId,
+}: {
+  accentColor: string;
+  api: CybaraMobileApi;
+  closeDetail: () => void;
+  refreshSummary: () => void;
+  sessionId: string;
+}) {
+  const [detail, setDetail] = useState<SessionDetailSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+
+  const loadSession = async (showLoading = false) => {
+    if (showLoading) setLoading(true);
+    setLoadError(null);
+    try {
+      setDetail(await api.session(sessionId));
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+    api
+      .session(sessionId)
+      .then((nextDetail) => {
+        if (!cancelled) setDetail(nextDetail);
+      })
+      .catch((error) => {
+        if (!cancelled) setLoadError(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, sessionId]);
+
+  useEffect(() => {
+    const interval = setInterval(
+      () => {
+        void loadSession(false);
+      },
+      sending ? 1800 : 3500
+    );
+    return () => clearInterval(interval);
+  }, [api, sessionId, sending]);
+
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+  }, [detail?.messages.length, sending]);
+
+  const sendMessage = async () => {
+    const message = draft.trim();
+    if (!message || sending) return;
+    setDraft("");
+    setSending(true);
+    const optimistic = {
+      id: `local-${Date.now()}`,
+      role: "user",
+      content: message,
+      timestamp: new Date().toISOString(),
+    };
+    setDetail((current) =>
+      current
+        ? {
+            ...current,
+            messages: [...current.messages, optimistic],
+          }
+        : current
+    );
+    try {
+      await api.sendChat({
+        message,
+        sessionId,
+        agentId: detail?.agentId,
+        workspaceDir: detail?.workspaceDir,
+      });
+      await loadSession(false);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const deleteChat = () => {
+    Alert.alert("Delete chat?", "This removes the session from the gateway history.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          void api
+            .deleteSession(sessionId)
+            .then(() => {
+              refreshSummary();
+              closeDetail();
+            })
+            .catch((error) => {
+              setLoadError(error instanceof Error ? error.message : String(error));
+            });
+        },
+      },
+    ]);
+  };
+
+  const visibleMessages = visibleChatMessages(detail?.messages ?? []);
+  const waitingForAssistant = chatIsWaitingForAssistant(detail?.messages ?? [], sending);
 
   return (
-    <View style={styles.surfaceSection}>
-      <View style={styles.subsectionHeader}>
-        <Text style={styles.subsectionTitle}>{title}</Text>
-        <Text style={styles.counterText}>{endpointStatusLabel(state)}</Text>
-      </View>
-      {!summary ? (
-        <EmptyState label={`${title} loading`} detail="Refreshing from the gateway." />
-      ) : state?.ok === false ? (
-        <EmptyState
-          label={`${title} unavailable`}
-          detail={endpointErrorDetail(state, "The gateway did not return this surface.")}
-        />
-      ) : visibleRows.length === 0 ? (
-        <EmptyState label={`No ${title.toLowerCase()}`} detail={emptyDetail} />
-      ) : (
-        visibleRows.map((row) => (
-          <View key={row.id} style={styles.listRow}>
-            <View style={[styles.listIcon, { backgroundColor: `${tone}18` }]}>
-              <Icon color={tone} size={20} strokeWidth={2.1} />
-            </View>
-            <View style={styles.listText}>
-              <Text numberOfLines={1} style={styles.listTitle}>
-                {row.title}
-              </Text>
-              <Text numberOfLines={1} style={styles.listDetail}>
-                {row.detail}
-              </Text>
-            </View>
-            <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={MOBILE_NAV_CHROME.height}
+      style={styles.chatShell}
+    >
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.chatContent}
+        keyboardShouldPersistTaps="handled"
+        onContentSizeChange={() => {
+          scrollRef.current?.scrollToEnd({ animated: false });
+        }}
+        showsVerticalScrollIndicator={false}
+        style={styles.chatScroll}
+      >
+        {loading ? (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator color={accentColor} />
+            <Text style={styles.listDetail}>Loading chat from gateway</Text>
           </View>
-        ))
+        ) : null}
+        {loadError ? <EmptyState label="Session unavailable" detail={loadError} /> : null}
+        {detail ? (
+          <>
+            <View style={styles.chatMetaBar}>
+              <View style={styles.chatMetaChip}>
+                <Bot color={colors.green} size={15} strokeWidth={2.2} />
+                <Text numberOfLines={1} style={styles.chatMetaText}>
+                  {detail.agentId || "unknown agent"}
+                </Text>
+              </View>
+              <View style={styles.chatMetaChip}>
+                <Database color={colors.blueText} size={15} strokeWidth={2.2} />
+                <Text numberOfLines={1} style={styles.chatMetaText}>
+                  {compactWorkspace(detail.workspaceDir)}
+                </Text>
+              </View>
+              <Pressable style={styles.chatDeleteButton} onPress={deleteChat}>
+                <Text style={styles.chatDeleteText}>Delete</Text>
+              </Pressable>
+            </View>
+
+            {visibleMessages.map((message, index) => (
+              <ChatMessageRow
+                key={`${message.id}-${index}`}
+                accentColor={accentColor}
+                message={message}
+              />
+            ))}
+            {waitingForAssistant ? (
+              <View style={styles.typingRow}>
+                <ActivityIndicator color={accentColor} size="small" />
+                <Text style={styles.listDetail}>Waiting for assistant response</Text>
+              </View>
+            ) : null}
+            {visibleMessages.length === 0 ? (
+              <EmptyState label="No messages" detail="This session has no stored messages yet." />
+            ) : null}
+          </>
+        ) : null}
+      </ScrollView>
+
+      <View style={styles.chatComposerBar}>
+        <View style={styles.composer}>
+          <TextInput
+            editable={!sending}
+            multiline
+            value={draft}
+            onChangeText={setDraft}
+            placeholder="Message this chat"
+            placeholderTextColor={colors.textDim}
+            style={styles.composerInput}
+          />
+          <Pressable
+            disabled={!draft.trim() || sending}
+            onPress={sendMessage}
+            style={[
+              styles.sendButton,
+              { backgroundColor: draft.trim() ? accentColor : "rgba(255,255,255,0.08)" },
+            ]}
+          >
+            {sending ? (
+              <ActivityIndicator color={colors.text} size="small" />
+            ) : (
+              <Text style={styles.sendButtonText}>Send</Text>
+            )}
+          </Pressable>
+        </View>
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
+function compactWorkspace(value?: string | null): string {
+  if (!value) return "No workspace";
+  const parts = value.split(/[\\/]/).filter(Boolean);
+  if (parts.length <= 2) return value;
+  return `.../${parts.slice(-2).join("/")}`;
+}
+
+function ChatMessageRow({
+  accentColor,
+  message,
+}: {
+  accentColor: string;
+  message: SessionDetailSummary["messages"][number];
+}) {
+  const isUser = message.role === "user";
+  return (
+    <View style={[styles.chatMessageRow, isUser && styles.chatMessageRowUser]}>
+      <View
+        style={[
+          styles.chatAvatar,
+          { backgroundColor: isUser ? `${accentColor}22` : `${colors.green}18` },
+        ]}
+      >
+        {isUser ? (
+          <User color={accentColor} size={16} strokeWidth={2.2} />
+        ) : (
+          <Bot color={colors.green} size={16} strokeWidth={2.2} />
+        )}
+      </View>
+      <View
+        style={[
+          styles.messageBubble,
+          !isUser && styles.assistantMessageBubble,
+          isUser ? [styles.userMessageBubble, { borderColor: `${accentColor}55` }] : null,
+        ]}
+      >
+        {!isUser && message.thinking ? (
+          <Text numberOfLines={4} style={styles.messageThinking}>
+            {message.thinking}
+          </Text>
+        ) : null}
+        {!isUser && message.processActivities?.length ? (
+          <MessageActivityList message={message} />
+        ) : null}
+        <MessageContent content={message.content || "(empty message)"} />
+        {message.toolCalls?.length ? <ToolCallStrip message={message} /> : null}
+        {message.timestamp ? (
+          <Text style={[styles.messageTime, isUser && styles.messageTimeUser]}>
+            {relativeTimestamp(message.timestamp)}
+          </Text>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function MessageActivityList({ message }: { message: SessionDetailSummary["messages"][number] }) {
+  return (
+    <View style={styles.messageActivityList}>
+      {message.processActivities?.map((activity) => (
+        <View key={activity.id} style={styles.messageActivityRow}>
+          <Zap
+            color={activity.phase === "error" ? colors.red : colors.textMuted}
+            size={14}
+            strokeWidth={2}
+          />
+          <Text numberOfLines={2} style={styles.messageActivityText}>
+            {activity.toolName ? `${activity.toolName}: ` : ""}
+            {activity.text}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function ToolCallStrip({ message }: { message: SessionDetailSummary["messages"][number] }) {
+  return (
+    <View style={styles.toolCallStrip}>
+      {message.toolCalls?.map((toolCall) => (
+        <View key={toolCall.id} style={styles.toolCallPill}>
+          <Wrench color={colors.textMuted} size={13} strokeWidth={2} />
+          <Text numberOfLines={1} style={styles.toolCallText}>
+            {toolCall.name} - {toolCall.status}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function MessageContent({ content }: { content: string }) {
+  return (
+    <View style={styles.messageContent}>
+      {splitMessageContent(content).map((part, index) =>
+        part.type === "code" ? (
+          <View key={`code-${index}`} style={styles.codeBlock}>
+            <Text style={styles.codeHeader}>{part.language}</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator>
+              <Text selectable style={styles.codeText}>
+                {part.content}
+              </Text>
+            </ScrollView>
+          </View>
+        ) : (
+          <Text key={`text-${index}`} selectable style={styles.messageText}>
+            {part.content.trim().length > 0 ? part.content : "\n"}
+          </Text>
+        )
       )}
     </View>
+  );
+}
+
+function SurfaceDetailPanel({
+  profile,
+  summary,
+  surface,
+  openItem,
+}: {
+  profile: GatewayProfile;
+  summary: FeatureSummary | null;
+  surface: MobileSurfaceKey;
+  openItem: (item: RemoteItemSummary | ActivitySummary) => void;
+}) {
+  const meta = surfaceMeta[surface];
+  const rows = surfaceRows(surface, summary, profile);
+  const endpoint = meta.endpoint ? summary?.availability[meta.endpoint] : undefined;
+
+  return (
+    <GlassPanel elevated style={styles.detailPanel}>
+      <View style={styles.subsectionHeader}>
+        <Text style={styles.subsectionTitle}>Live records</Text>
+        <Text style={styles.counterText}>
+          {endpoint ? endpointStatusLabel(endpoint) : rows.length}
+        </Text>
+      </View>
+      {!summary ? (
+        <EmptyState label={`${meta.title} loading`} detail="Refreshing from the gateway." />
+      ) : endpoint?.ok === false ? (
+        <EmptyState
+          label={`${meta.title} unavailable`}
+          detail={endpointErrorDetail(endpoint, "The gateway did not return this surface.")}
+        />
+      ) : rows.length === 0 ? (
+        <EmptyState
+          label={`No ${meta.title.toLowerCase()}`}
+          detail="No records were returned for this gateway surface."
+        />
+      ) : (
+        rows.map((row) => {
+          const Icon = meta.Icon;
+          return (
+            <Pressable key={row.id} style={styles.listRow} onPress={() => openItem(row)}>
+              <View style={[styles.listIcon, { backgroundColor: `${meta.tone}18` }]}>
+                <Icon color={meta.tone} size={20} strokeWidth={2.1} />
+              </View>
+              <View style={styles.listText}>
+                <Text numberOfLines={1} style={styles.listTitle}>
+                  {row.title}
+                </Text>
+                <Text numberOfLines={1} style={styles.listDetail}>
+                  {row.detail}
+                </Text>
+              </View>
+              <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+            </Pressable>
+          );
+        })
+      )}
+    </GlassPanel>
+  );
+}
+
+function ItemDetailPanel({
+  profile,
+  route,
+}: {
+  profile: GatewayProfile;
+  route: Extract<DetailRoute, { kind: "item" }>;
+}) {
+  const item = route.item;
+  const meta = surfaceMeta[route.surface];
+  const Icon = meta.Icon;
+  const fields = [
+    { label: "id", value: item.id },
+    { label: "surface", value: meta.title },
+    { label: "detail", value: item.detail },
+    ...("source" in item ? [{ label: "source", value: item.source }] : []),
+    ...("createdAt" in item && item.createdAt
+      ? [{ label: "updated", value: relativeTimestamp(item.createdAt) }]
+      : []),
+    ...(item.fields || []),
+  ];
+
+  return (
+    <GlassPanel elevated style={styles.detailPanel}>
+      <View style={styles.itemHero}>
+        <View style={[styles.summaryIcon, { backgroundColor: `${meta.tone}18` }]}>
+          <Icon color={meta.tone} size={21} strokeWidth={2.2} />
+        </View>
+        <View style={styles.itemHeroText}>
+          <Text style={styles.itemTitle}>{item.title}</Text>
+          <Text style={styles.itemDetail}>{item.detail}</Text>
+        </View>
+      </View>
+      {route.surface === "terminal" ? (
+        <GlassButton
+          label="Open terminal"
+          detail={compactHost(profile.baseUrl)}
+          onPress={() => void Linking.openURL(`${profile.baseUrl}/terminal`)}
+        />
+      ) : null}
+      <Text style={styles.subsectionTitle}>Details</Text>
+      {fields.map((field, index) => (
+        <View key={`${field.label}-${index}`} style={styles.listRow}>
+          <View style={styles.listText}>
+            <Text style={styles.listTitle}>{field.label}</Text>
+            <Text selectable style={styles.listDetail}>
+              {field.value}
+            </Text>
+          </View>
+        </View>
+      ))}
+    </GlassPanel>
   );
 }
 
@@ -1003,11 +1624,15 @@ function SettingsPanel({
   profile,
   summary,
   onDisconnect,
+  openSurface,
 }: {
   profile: GatewayProfile;
   summary: FeatureSummary | null;
   onDisconnect: () => void;
+  openSurface: (surface: MobileSurfaceKey) => void;
 }) {
+  const counts = summarizeFeatureCounts(summary);
+
   return (
     <GlassPanel elevated style={styles.detailPanel}>
       <View style={styles.summaryGrid}>
@@ -1042,12 +1667,12 @@ function SettingsPanel({
       <SettingsRow
         Icon={Zap}
         label="Tool approval"
-        value={String(summary?.config.tool_approval_mode || "unknown")}
+        value={formatMobileValue(summary?.config.tool_approval_mode)}
       />
       <SettingsRow
         Icon={ShieldCheck}
         label="Dangerous tools"
-        value={String(summary?.config.dangerous_tool_policy || "unknown")}
+        value={formatMobileValue(summary?.config.dangerous_tool_policy)}
       />
       <SettingsRow
         Icon={ShieldCheck}
@@ -1061,6 +1686,26 @@ function SettingsPanel({
         label="Config API"
         value={endpointStatusLabel(summary?.availability.config)}
       />
+      <Text style={styles.subsectionTitle}>Gateway management</Text>
+      {MOBILE_SETTINGS_SURFACES.map((surface) => {
+        const meta = surfaceMeta[surface];
+        const Icon = meta.Icon;
+        const rows = surfaceRows(surface, summary, profile);
+        return (
+          <Pressable key={surface} style={styles.listRow} onPress={() => openSurface(surface)}>
+            <View style={[styles.listIcon, { backgroundColor: `${meta.tone}18` }]}>
+              <Icon color={meta.tone} size={20} strokeWidth={2.1} />
+            </View>
+            <View style={styles.listText}>
+              <Text style={styles.listTitle}>{meta.title}</Text>
+              <Text style={styles.listDetail} numberOfLines={1}>
+                {surfaceMenuDetail(surface, summary, counts, rows.length)}
+              </Text>
+            </View>
+            <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+          </Pressable>
+        );
+      })}
       <GlassButton
         label="Disconnect gateway"
         detail="Remove active mobile profile"
@@ -1128,14 +1773,18 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
   },
+  scrollArea: {
+    flex: 1,
+  },
   content: {
     gap: spacing.md,
-    paddingBottom: 92,
+    paddingBottom: MOBILE_NAV_CHROME.height + spacing.lg,
   },
   header: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
+    marginBottom: spacing.md,
   },
   brandWrap: {
     alignItems: "center",
@@ -1154,6 +1803,16 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     width: 50,
   },
+  backButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderColor: colors.borderStrong,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    height: 50,
+    justifyContent: "center",
+    width: 50,
+  },
   logoImage: {
     height: 40,
     width: 40,
@@ -1166,6 +1825,10 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 30,
     fontWeight: "900",
+  },
+  detailTitle: {
+    fontSize: 25,
+    lineHeight: 29,
   },
   headerDetail: {
     color: colors.textMuted,
@@ -1354,7 +2017,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   moduleTile: {
-    backgroundColor: "rgba(16, 34, 47, 0.72)",
+    backgroundColor: "rgba(8, 13, 19, 0.9)",
     borderColor: colors.borderStrong,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -1441,7 +2104,7 @@ const styles = StyleSheet.create({
   },
   activityIcon: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.065)",
+    backgroundColor: "rgba(255,255,255,0.04)",
     borderRadius: 22,
     height: 44,
     justifyContent: "center",
@@ -1473,8 +2136,283 @@ const styles = StyleSheet.create({
   detailPanel: {
     gap: spacing.md,
   },
-  surfaceSection: {
+  metricTrendPanel: {
+    alignItems: "center",
+    backgroundColor: "rgba(3, 7, 11, 0.62)",
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.md,
+    minHeight: 82,
+    padding: spacing.md,
+  },
+  metricTrendText: {
+    flex: 1,
+    gap: 3,
+  },
+  metricTrendBars: {
+    alignItems: "flex-end",
+    flexDirection: "row",
+    gap: 3,
+    height: 36,
+  },
+  metricTrendBar: {
+    borderRadius: 3,
+    opacity: 0.85,
+    width: 5,
+  },
+  itemHero: {
+    alignItems: "center",
+    backgroundColor: "rgba(3, 7, 11, 0.58)",
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  itemHeroText: {
+    flex: 1,
+    gap: 3,
+  },
+  itemTitle: {
+    color: colors.text,
+    fontSize: typography.heading,
+    fontWeight: "900",
+  },
+  itemDetail: {
+    color: colors.textMuted,
+    fontSize: typography.label,
+    lineHeight: 18,
+  },
+  chatShell: {
+    flex: 1,
+    marginHorizontal: -spacing.lg,
+    position: "relative",
+  },
+  chatScroll: {
+    flex: 1,
+  },
+  chatContent: {
     gap: spacing.sm,
+    paddingBottom:
+      MOBILE_CHAT_CHROME.composerReservedBottom + MOBILE_CHAT_CHROME.composerHeight + spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
+  chatMetaBar: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    paddingTop: spacing.xs,
+  },
+  chatMetaChip: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.045)",
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.xs,
+    minHeight: 30,
+    paddingHorizontal: spacing.sm,
+  },
+  chatMetaText: {
+    color: colors.textMuted,
+    fontSize: typography.tiny,
+    fontWeight: "700",
+    maxWidth: 180,
+  },
+  chatDeleteButton: {
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    marginLeft: "auto",
+    minHeight: 30,
+    paddingHorizontal: spacing.sm,
+    justifyContent: "center",
+  },
+  chatDeleteText: {
+    color: colors.textMuted,
+    fontSize: typography.tiny,
+    fontWeight: "800",
+  },
+  chatMessageRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  chatMessageRowUser: {
+    flexDirection: "row-reverse",
+  },
+  chatAvatar: {
+    alignItems: "center",
+    borderRadius: 16,
+    height: 32,
+    justifyContent: "center",
+    marginTop: 2,
+    width: 32,
+  },
+  messageBubble: {
+    backgroundColor: "rgba(3, 7, 11, 0.72)",
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexShrink: 1,
+    gap: spacing.xs,
+    maxWidth: "86%",
+    padding: spacing.md,
+  },
+  assistantMessageBubble: {
+    maxWidth: "92%",
+  },
+  userMessageBubble: {
+    backgroundColor: "rgba(255,255,255,0.052)",
+  },
+  messageThinking: {
+    color: colors.textMuted,
+    fontSize: typography.label,
+    fontStyle: "italic",
+    lineHeight: 18,
+  },
+  messageText: {
+    color: colors.text,
+    fontSize: typography.body,
+    lineHeight: 22,
+  },
+  messageTime: {
+    color: colors.textDim,
+    fontSize: typography.tiny,
+    marginTop: 2,
+  },
+  messageTimeUser: {
+    textAlign: "right",
+  },
+  messageContent: {
+    gap: spacing.sm,
+  },
+  codeBlock: {
+    backgroundColor: "rgba(0, 0, 0, 0.34)",
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  codeHeader: {
+    backgroundColor: "rgba(255,255,255,0.045)",
+    color: colors.textMuted,
+    fontSize: typography.tiny,
+    fontWeight: "900",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+    textTransform: "uppercase",
+  },
+  codeText: {
+    color: colors.text,
+    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+    fontSize: 12,
+    lineHeight: 17,
+    padding: spacing.sm,
+  },
+  messageActivityList: {
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+    padding: spacing.sm,
+  },
+  messageActivityRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
+  },
+  messageActivityText: {
+    color: colors.textMuted,
+    flex: 1,
+    fontSize: typography.tiny,
+    lineHeight: 16,
+  },
+  toolCallStrip: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  toolCallPill: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.045)",
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.xs,
+    maxWidth: "100%",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+  },
+  toolCallText: {
+    color: colors.textMuted,
+    fontSize: typography.tiny,
+    fontWeight: "700",
+  },
+  loadingRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  typingRow: {
+    alignItems: "center",
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  composer: {
+    alignItems: "flex-end",
+    backgroundColor: "rgba(3, 7, 11, 0.9)",
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.sm,
+    padding: spacing.sm,
+  },
+  chatComposerBar: {
+    backgroundColor: "rgba(5, 9, 14, 0.96)",
+    borderTopColor: colors.borderStrong,
+    borderTopWidth: 1,
+    bottom: MOBILE_CHAT_CHROME.composerReservedBottom + MOBILE_CHAT_CHROME.composerGapToNav,
+    left: 0,
+    minHeight: MOBILE_CHAT_CHROME.composerHeight,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    position: "absolute",
+    right: 0,
+  },
+  composerInput: {
+    color: colors.text,
+    flex: 1,
+    fontSize: typography.body,
+    maxHeight: 120,
+    minHeight: 44,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  sendButton: {
+    alignItems: "center",
+    borderRadius: radius.md,
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+  },
+  sendButtonText: {
+    color: colors.text,
+    fontSize: typography.body,
+    fontWeight: "900",
   },
   summaryGrid: {
     flexDirection: "row",
@@ -1482,7 +2420,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   summaryTile: {
-    backgroundColor: "rgba(4, 13, 20, 0.34)",
+    backgroundColor: "rgba(3, 7, 11, 0.62)",
     borderColor: colors.border,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -1539,7 +2477,7 @@ const styles = StyleSheet.create({
   },
   listIcon: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.065)",
+    backgroundColor: "rgba(255,255,255,0.04)",
     borderRadius: radius.md,
     height: 42,
     justifyContent: "center",
@@ -1589,6 +2527,7 @@ const styles = StyleSheet.create({
   },
   tabBarPanel: {
     flex: 1,
+    backgroundColor: "rgba(5, 9, 14, 0.94)",
     paddingHorizontal: spacing.md,
     paddingVertical: 5,
   },

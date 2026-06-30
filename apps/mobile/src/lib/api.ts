@@ -74,11 +74,29 @@ export interface ActivitySummary {
   fields?: Array<{ label: string; value: string }>;
 }
 
+export interface SessionToolCallSummary {
+  id: string;
+  name: string;
+  status: string;
+  detail?: string;
+}
+
+export interface SessionProcessActivitySummary {
+  id: string;
+  phase: string;
+  text: string;
+  timestamp?: number;
+  toolName?: string;
+}
+
 export interface SessionMessageSummary {
   id: string;
   role: string;
   content: string;
   timestamp?: string;
+  thinking?: string;
+  toolCalls?: SessionToolCallSummary[];
+  processActivities?: SessionProcessActivitySummary[];
 }
 
 export interface SessionDetailSummary {
@@ -173,7 +191,9 @@ function describeValue(value: unknown): string {
   return "value";
 }
 
-function detailFields(record: Record<string, unknown> | null): Array<{ label: string; value: string }> {
+function detailFields(
+  record: Record<string, unknown> | null
+): Array<{ label: string; value: string }> {
   if (!record) return [];
   return Object.entries(record)
     .filter(([key]) => !/secret|token|api[_-]?key|password|credential|mnemonic/i.test(key))
@@ -231,7 +251,9 @@ export function normalizeMemoryItems(value: unknown): RemoteItemSummary[] {
       title: typeof file === "string" ? file : `Memory file ${index + 1}`,
       detail: "Memory file",
       type: "file",
-      fields: [{ label: "file", value: typeof file === "string" ? file : `memory-file-${index + 1}` }],
+      fields: [
+        { label: "file", value: typeof file === "string" ? file : `memory-file-${index + 1}` },
+      ],
     }));
   }
   return memories.map((memory, index) => {
@@ -301,18 +323,26 @@ function normalizeSessions(value: unknown): SessionSummary[] {
 
 function normalizeSessionDetail(value: unknown, fallbackId: string): SessionDetailSummary {
   const record = asRecord(value);
-  const messages = normalizeArrayResponse(record?.messages, ["messages", "items"]).map(
-    (message, index) => {
-      const messageRecord = asRecord(message);
-      const content = readString(messageRecord, ["content", "message", "text"]) || "";
-      return {
-        id: readString(messageRecord, ["id"]) || `${fallbackId}-message-${index + 1}`,
-        role: readString(messageRecord, ["role", "type", "author"]) || "message",
-        content,
-        timestamp: readString(messageRecord, ["timestamp", "created_at", "createdAt"]),
-      };
-    }
-  );
+  const rawMessages = normalizeArrayResponse(record?.messagesList, ["messagesList", "items"]);
+  const messages = (
+    rawMessages.length > 0
+      ? rawMessages
+      : normalizeArrayResponse(record?.messages, ["messages", "items"])
+  ).map((message, index) => {
+    const messageRecord = asRecord(message);
+    const content = readString(messageRecord, ["content", "message", "text"]) || "";
+    return {
+      id: readString(messageRecord, ["id"]) || `${fallbackId}-message-${index + 1}`,
+      role: readString(messageRecord, ["role", "type", "author"]) || "message",
+      content,
+      timestamp: readString(messageRecord, ["timestamp", "created_at", "createdAt"]),
+      thinking: readString(messageRecord, ["thinking"]),
+      toolCalls: normalizeMessageToolCalls(messageRecord?.tool_calls ?? messageRecord?.toolCalls),
+      processActivities: normalizeProcessActivities(
+        messageRecord?.process_activities ?? messageRecord?.processActivities
+      ),
+    };
+  });
 
   return {
     id: readString(record, ["id", "session_id"]) || fallbackId,
@@ -321,6 +351,42 @@ function normalizeSessionDetail(value: unknown, fallbackId: string): SessionDeta
     workspaceDir: readString(record, ["workspace_dir", "workspaceDir"]) || null,
     messages,
   };
+}
+
+function normalizeMessageToolCalls(value: unknown): SessionToolCallSummary[] | undefined {
+  const calls = normalizeArrayResponse(value, ["tool_calls", "toolCalls", "items"]);
+  if (calls.length === 0) return undefined;
+  return calls.slice(0, 12).map((call, index) => {
+    const record = asRecord(call);
+    const name = readString(record, ["name", "toolName"]) || `tool ${index + 1}`;
+    const status = readString(record, ["status", "state"]) || "completed";
+    return {
+      id: readString(record, ["id", "toolCallId"]) || `${name}-${index + 1}`,
+      name,
+      status,
+      detail: describeValue(record?.result ?? record?.error ?? record?.args),
+    };
+  });
+}
+
+function normalizeProcessActivities(value: unknown): SessionProcessActivitySummary[] | undefined {
+  const activities = normalizeArrayResponse(value, [
+    "process_activities",
+    "processActivities",
+    "activities",
+    "items",
+  ]);
+  if (activities.length === 0) return undefined;
+  return activities.slice(-12).map((activity, index) => {
+    const record = asRecord(activity);
+    return {
+      id: readString(record, ["id"]) || `activity-${index + 1}`,
+      phase: readString(record, ["phase", "status"]) || "activity",
+      text: readString(record, ["text", "message", "detail"]) || "Working",
+      timestamp: readNumber(record, ["timestamp"]),
+      toolName: readString(record, ["toolName", "tool_name"]),
+    };
+  });
 }
 
 function normalizeAgents(value: unknown): AgentSummary[] {
@@ -380,14 +446,64 @@ export class CybaraMobileApi {
   }
 
   async sessions(): Promise<SessionSummary[]> {
-    return normalizeSessions(await this.request<unknown>("/api/sessions?limit=50"));
+    return normalizeSessions(await this.request<unknown>("/api/chat/sessions"));
   }
 
   async session(id: string): Promise<SessionDetailSummary> {
     return normalizeSessionDetail(
-      await this.request<unknown>(`/api/sessions/${encodeURIComponent(id)}`),
+      await this.request<unknown>(`/api/chat/sessions/${encodeURIComponent(id)}`),
       id
     );
+  }
+
+  async sendChat(input: {
+    message: string;
+    sessionId?: string;
+    agentId?: string;
+    workspaceDir?: string | null;
+  }): Promise<{ sessionId: string; message: SessionMessageSummary; workspaceDir?: string | null }> {
+    const response = await this.request<unknown>("/api/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        message: input.message,
+        sessionId: input.sessionId,
+        agentId: input.agentId,
+        workspaceDir: input.workspaceDir,
+      }),
+    });
+    const record = asRecord(response);
+    const messageRecord = asRecord(record?.message);
+    const thinking = readString(messageRecord, ["thinking"]) || readString(record, ["thinking"]);
+    return {
+      sessionId: readString(record, ["sessionId"]) || input.sessionId || "",
+      workspaceDir: readString(record, ["workspaceDir"]) || input.workspaceDir,
+      message: {
+        id: readString(messageRecord, ["id"]) || `assistant-${Date.now()}`,
+        role: readString(messageRecord, ["role"]) || "assistant",
+        content: readString(messageRecord, ["content"]) || "",
+        timestamp: readString(messageRecord, ["timestamp"]) || new Date().toISOString(),
+        thinking,
+        toolCalls: normalizeMessageToolCalls(
+          messageRecord?.tool_calls ?? messageRecord?.toolCalls ?? record?.tool_calls
+        ),
+        processActivities: normalizeProcessActivities(
+          messageRecord?.process_activities ?? messageRecord?.processActivities
+        ),
+      },
+    };
+  }
+
+  updateSessionTitle(id: string, title: string): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/api/sessions/${encodeURIComponent(id)}/title`, {
+      method: "PUT",
+      body: JSON.stringify({ title }),
+    });
+  }
+
+  deleteSession(id: string): Promise<{ success?: boolean }> {
+    return this.request<{ success?: boolean }>(`/api/chat/sessions/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
   }
 
   async agents(): Promise<AgentSummary[]> {

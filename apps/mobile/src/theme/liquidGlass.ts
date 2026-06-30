@@ -1,22 +1,37 @@
 import { Platform, StyleSheet } from "react-native";
 
 export const colors = {
-  background: "#03070b",
-  backgroundLift: "#071018",
+  background: "#020407",
+  backgroundLift: "#070b10",
   text: "#f3f8fb",
-  textMuted: "#9badb8",
-  textDim: "#647783",
+  textMuted: "#94a3ad",
+  textDim: "#5f6c75",
   cyan: "#55d8ff",
   blueText: "#8fcaff",
   green: "#6ff5b0",
   amber: "#f6c96b",
   red: "#ff7b8b",
-  border: "rgba(190, 232, 255, 0.18)",
-  borderStrong: "rgba(198, 244, 255, 0.34)",
-  glass: "rgba(17, 35, 47, 0.64)",
-  glassElevated: "rgba(27, 53, 68, 0.72)",
-  glassPressed: "rgba(58, 104, 124, 0.74)",
+  border: "rgba(174, 195, 208, 0.14)",
+  borderStrong: "rgba(190, 213, 226, 0.24)",
+  glass: "rgba(8, 13, 19, 0.82)",
+  glassElevated: "rgba(13, 20, 27, 0.88)",
+  glassPressed: "rgba(28, 41, 51, 0.88)",
 };
+
+export const accentPalette = {
+  indigo: "#6366f1",
+  blue: "#3b82f6",
+  cyan: "#06b6d4",
+  teal: "#14b8a6",
+  emerald: "#10b981",
+  amber: "#f59e0b",
+  orange: "#f97316",
+  rose: "#f43f5e",
+  pink: "#ec4899",
+  purple: "#a855f7",
+} as const;
+
+export type AccentKey = keyof typeof accentPalette;
 
 export const spacing = {
   xs: 4,

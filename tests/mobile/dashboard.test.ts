@@ -3,11 +3,16 @@ import type { FeatureSummary } from "../../apps/mobile/src/lib/api";
 import type { GatewayProfile } from "../../apps/mobile/src/lib/connection";
 import {
   MOBILE_FEATURE_SECTIONS,
+  MOBILE_CHAT_CHROME,
   MOBILE_NAV_CHROME,
+  MOBILE_SETTINGS_SURFACES,
+  MOBILE_SURFACES,
   MOBILE_TABS,
   buildMobileHeaderCopy,
+  formatMobileValue,
   formatUptime,
   lastUpdatedLabel,
+  readMobileAccent,
   summarizeFeatureCounts,
 } from "../../apps/mobile/src/lib/dashboard";
 
@@ -65,9 +70,10 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_TABS.map((tab) => tab.key)).toEqual([
       "overview",
       "sessions",
-      "tools",
+      "metrics",
       "settings",
     ]);
+    expect(MOBILE_TABS.find((tab) => tab.key === "sessions")?.label).toBe("Chats");
     expect(MOBILE_TABS.filter((tab) => tab.showsGatewayPanel).map((tab) => tab.key)).toEqual([
       "overview",
     ]);
@@ -77,6 +83,12 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_NAV_CHROME.pinnedToViewport).toBe(true);
     expect(MOBILE_NAV_CHROME.outerRadius).toBe(0);
     expect(MOBILE_NAV_CHROME.height).toBeLessThanOrEqual(82);
+    expect(MOBILE_CHAT_CHROME.composerPinnedAboveNav).toBe(true);
+    expect(MOBILE_CHAT_CHROME.composerGapToNav).toBe(0);
+    expect(MOBILE_CHAT_CHROME.composerHeight).toBeGreaterThanOrEqual(70);
+    expect(MOBILE_CHAT_CHROME.composerReservedBottom).toBe(MOBILE_NAV_CHROME.height);
+    expect(MOBILE_CHAT_CHROME.autoScrollToLatestMessage).toBe(true);
+    expect(MOBILE_CHAT_CHROME.hidesSystemMessages).toBe(true);
   });
 
   test("tracks the remote management surfaces the mobile app should expose", () => {
@@ -94,6 +106,22 @@ describe("mobile dashboard model", () => {
       "terminal",
       "logs",
       "monitor",
+    ]);
+    expect(MOBILE_SURFACES).toEqual(
+      MOBILE_FEATURE_SECTIONS.filter((surface) => surface !== "sessions")
+    );
+    expect(MOBILE_SETTINGS_SURFACES).toEqual([
+      "agents",
+      "providers",
+      "tools",
+      "approvals",
+      "terminal",
+      "channels",
+      "tasks",
+      "memory",
+      "logs",
+      "monitor",
+      "wallet",
     ]);
   });
 
@@ -118,9 +146,9 @@ describe("mobile dashboard model", () => {
       title: "Cybara",
       detail: "Studio Gateway - 127.0.0.1:4269",
     });
-    expect(buildMobileHeaderCopy("sessions", counts, profile).title).toBe("Sessions");
-    expect(buildMobileHeaderCopy("tools", counts, profile).detail).toBe(
-      "2 tools - 1 approvals - 1 providers"
+    expect(buildMobileHeaderCopy("sessions", counts, profile).title).toBe("Chats");
+    expect(buildMobileHeaderCopy("metrics", counts, profile).detail).toBe(
+      "1 chat - 2 tools - 1 event"
     );
     expect(buildMobileHeaderCopy("settings", counts, profile).title).toBe("Settings");
   });
@@ -132,5 +160,19 @@ describe("mobile dashboard model", () => {
     expect(lastUpdatedLabel(summary.sessions[0], Date.parse("2026-06-30T08:06:00.000Z"))).toBe(
       "6m ago"
     );
+  });
+
+  test("formats object values for native settings rows", () => {
+    expect(formatMobileValue("always_allow")).toBe("always_allow");
+    expect(formatMobileValue({ read_file: true, shell: false })).toBe("1/2 enabled");
+    expect(formatMobileValue({ mode: "ask", limit: 5 })).toBe("2 settings");
+    expect(formatMobileValue(undefined)).toBe("unknown");
+  });
+
+  test("reads supported accent themes from gateway config without using dark mode as an accent", () => {
+    expect(readMobileAccent({ ui_accent: "emerald" })).toBe("emerald");
+    expect(readMobileAccent({ ui: { accent: "rose" } })).toBe("rose");
+    expect(readMobileAccent({ identity: { theme: "dark" } })).toBe("cyan");
+    expect(readMobileAccent({ themeAccent: "purple" })).toBe("purple");
   });
 });

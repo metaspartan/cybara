@@ -72,10 +72,10 @@ const styles = StyleSheet.create({
   },
   liquidWash: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(255, 255, 255, 0.035)",
+    backgroundColor: "rgba(255, 255, 255, 0.018)",
   },
   liquidHighlight: {
-    backgroundColor: "rgba(255, 255, 255, 0.18)",
+    backgroundColor: "rgba(255, 255, 255, 0.11)",
     borderRadius: 999,
     height: 1,
     left: 14,
@@ -97,14 +97,14 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: "rgba(19, 39, 53, 0.58)",
+    backgroundColor: "rgba(9, 15, 22, 0.84)",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     justifyContent: "center",
   },
   selected: {
     borderColor: colors.cyan,
-    backgroundColor: "rgba(47, 117, 142, 0.38)",
+    backgroundColor: "rgba(32, 83, 102, 0.32)",
   },
   pressed: {
     backgroundColor: colors.glassPressed,
@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: "rgba(255, 255, 255, 0.045)",
+    backgroundColor: "rgba(255, 255, 255, 0.026)",
     padding: spacing.md,
   },
   metricValue: {
