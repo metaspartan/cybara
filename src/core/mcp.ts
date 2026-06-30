@@ -1,5 +1,6 @@
 import { tables, type MCPServer } from "./database";
 import { spawn, ChildProcess } from "child_process";
+import { parseMcpHttpResponse, isHttpMcpUrl } from "./mcp-http";
 import { EventEmitter } from "events";
 
 interface MCPTool {
@@ -15,6 +16,7 @@ interface MCPServerInstance {
   status: "stopped" | "starting" | "running" | "error";
   lastError?: string;
   startedAt?: Date;
+  httpSessionId?: string;
 }
 
 type MCPToolListResponse = {
@@ -147,6 +149,10 @@ class MCPServerManager extends EventEmitter {
     instance.status = "starting";
     this.emit("statusChange", { id, status: "starting" });
 
+    if (isHttpMcpUrl(instance.server.url)) {
+      return this.startHttp(id);
+    }
+
     try {
       const { command, args } = instance.server;
 
@@ -268,6 +274,79 @@ class MCPServerManager extends EventEmitter {
     return this.start(id);
   }
 
+  private async httpRpc(
+    instance: MCPServerInstance,
+    method: string,
+    params: Record<string, unknown>
+  ): Promise<unknown> {
+    const url = instance.server.url as string;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+    };
+    if (instance.httpSessionId) headers["Mcp-Session-Id"] = instance.httpSessionId;
+    if (instance.server.env) {
+      for (const pair of instance.server.env.split(",")) {
+        const [k, v] = pair.split("=");
+        if (k?.trim().toLowerCase() === "authorization" && v) headers.Authorization = v.trim();
+      }
+    }
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method, params }),
+    });
+    const sessionHeader = response.headers.get("mcp-session-id");
+    if (sessionHeader) instance.httpSessionId = sessionHeader;
+    if (!response.ok) {
+      throw new Error(`MCP HTTP ${method} -> ${response.status} ${response.statusText}`);
+    }
+    const parsed = parseMcpHttpResponse(
+      response.headers.get("content-type") || "",
+      await response.text()
+    );
+    if (parsed.error) throw new Error(parsed.error.message || "MCP HTTP error");
+    return parsed.result;
+  }
+
+  private async startHttp(id: string): Promise<{ success: boolean; error?: string }> {
+    const instance = this.instances.get(id);
+    if (!instance) return { success: false, error: "Server not found" };
+    try {
+      await this.httpRpc(instance, "initialize", {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "cybara", version: "1.0" },
+      });
+      const listed = (await this.httpRpc(instance, "tools/list", {})) as {
+        tools?: Array<{ name?: string; description?: string; inputSchema?: unknown }>;
+      };
+      instance.tools = (listed?.tools || [])
+        .filter((t): t is { name: string; description?: string; inputSchema?: unknown } =>
+          typeof t.name === "string"
+        )
+        .map((t) => ({
+          name: t.name,
+          description: t.description || "",
+          inputSchema:
+            t.inputSchema && typeof t.inputSchema === "object"
+              ? (t.inputSchema as Record<string, unknown>)
+              : { type: "object", properties: {} },
+        }));
+      this.toolCache.set(id, instance.tools);
+      instance.startedAt = new Date();
+      instance.status = "running";
+      this.emit("toolsUpdated", { id, tools: instance.tools });
+      this.emit("statusChange", { id, status: "running" });
+      return { success: true };
+    } catch (error) {
+      instance.status = "error";
+      instance.lastError = (error as Error).message;
+      return { success: false, error: (error as Error).message };
+    }
+  }
+
   private handleServerMessage(id: string, message: string): void {
     const instance = this.instances.get(id);
     if (!instance) return;
@@ -327,6 +406,13 @@ class MCPServerManager extends EventEmitter {
     const instance = this.instances.get(serverId);
     if (!instance) {
       throw new Error(`MCP server not found: ${serverId}`);
+    }
+
+    if (isHttpMcpUrl(instance.server.url)) {
+      if (instance.status !== "running") {
+        throw new Error(`MCP server not running: ${instance.server.name}`);
+      }
+      return this.httpRpc(instance, "tools/call", { name: toolName, arguments: args });
     }
 
     if (instance.status !== "running" || !instance.process?.stdin) {

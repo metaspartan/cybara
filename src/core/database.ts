@@ -87,6 +87,7 @@ try {
     command TEXT NOT NULL,
     args TEXT,
     env TEXT,
+    url TEXT,
     enabled BOOLEAN DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -315,6 +316,13 @@ try {
   } catch {
     // Column already exists, ignore
   }
+
+  try {
+    db.exec("ALTER TABLE mcp_servers ADD COLUMN url TEXT");
+    console.log("[Database] Migration: Added url column to mcp_servers");
+  } catch {
+    // Column already exists, ignore
+  }
 } catch (error) {
   console.error("[Database] Schema creation error:", error);
 }
@@ -366,6 +374,7 @@ db.exec(`
     command TEXT NOT NULL,
     args TEXT,
     env TEXT,
+    url TEXT,
     enabled BOOLEAN DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -507,10 +516,10 @@ const stmts = {
     all: prepare("SELECT * FROM mcp_servers ORDER BY created_at DESC"),
     get: prepare("SELECT * FROM mcp_servers WHERE id = ?"),
     create: prepare(
-      "INSERT INTO mcp_servers (id, name, command, args, env, enabled) VALUES (?, ?, ?, ?, ?, ?)"
+      "INSERT INTO mcp_servers (id, name, command, args, env, url, enabled) VALUES (?, ?, ?, ?, ?, ?, ?)"
     ),
     update: prepare(
-      "UPDATE mcp_servers SET name=?, command=?, args=?, env=?, enabled=? WHERE id=?"
+      "UPDATE mcp_servers SET name=?, command=?, args=?, env=?, url=COALESCE(?, url), enabled=? WHERE id=?"
     ),
     delete: prepare("DELETE FROM mcp_servers WHERE id = ?"),
   },
@@ -735,6 +744,7 @@ export const tables = {
         s.command,
         s.args || null,
         s.env || null,
+        s.url || null,
         s.enabled ? 1 : 0
       ),
     update: (id: string, s: Partial<MCPServer>) =>
@@ -743,6 +753,7 @@ export const tables = {
         s.command || null,
         s.args || null,
         s.env || null,
+        s.url ?? null,
         s.enabled ? 1 : 0,
         id
       ),
@@ -1031,6 +1042,7 @@ export interface MCPServer {
   command: string;
   args?: string;
   env?: string;
+  url?: string;
   enabled: boolean;
 }
 
