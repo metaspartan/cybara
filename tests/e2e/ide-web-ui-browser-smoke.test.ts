@@ -20,6 +20,7 @@ let cybaraHome = "";
 let alphaPath = "";
 let betaPath = "";
 let browserMessages: string[] = [];
+const apiKey = `cybara_ide_browser_e2e_${Date.now()}`;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -133,6 +134,7 @@ describeOrSkip("IDE web UI browser smoke", () => {
         ...process.env,
         CYBARA_DISABLE_UPDATE_CHECK: "1",
         CYBARA_HOME: cybaraHome,
+        CYBARA_API_KEY: apiKey,
         HOME: homeDir,
         USERPROFILE: homeDir,
         HOST: "127.0.0.1",
@@ -143,11 +145,17 @@ describeOrSkip("IDE web UI browser smoke", () => {
     });
 
     await waitForServerReady(baseUrl);
-    const setupResponse = await fetch(`${baseUrl}/api/setup/complete`, { method: "POST" });
+    const setupResponse = await fetch(`${baseUrl}/api/setup/complete`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
     expect(setupResponse.status).toBe(200);
 
     browser = await chromium.launch({ headless: true });
     page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+    await page.addInitScript((token) => {
+      window.localStorage.setItem("cybara_api_key", token);
+    }, apiKey);
     page.on("console", (message) => {
       if (message.type() === "error" || message.type() === "warning") {
         browserMessages.push(`${message.type()}: ${message.text()}`);
@@ -184,9 +192,12 @@ describeOrSkip("IDE web UI browser smoke", () => {
     expect(page).not.toBeNull();
     const targetPage = page!;
 
-    await targetPage.goto(`${baseUrl}/ide?path=${encodeURIComponent(alphaPath)}`, {
-      waitUntil: "domcontentloaded",
-    });
+    await targetPage.goto(
+      `${baseUrl}/ide?path=${encodeURIComponent(alphaPath)}&token=${encodeURIComponent(apiKey)}`,
+      {
+        waitUntil: "domcontentloaded",
+      }
+    );
     await targetPage.waitForSelector("textarea", { timeout: 15_000 });
     await targetPage.waitForFunction(
       () => document.querySelector("textarea")?.value.includes("alphaValue") === true,
