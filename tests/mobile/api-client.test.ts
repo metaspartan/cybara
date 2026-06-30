@@ -380,6 +380,152 @@ describe("mobile API client", () => {
     }
   });
 
+  test("loads combined desktop gateway logs for the mobile feature summary", async () => {
+    const calls: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url) => {
+      const parsedUrl = new URL(String(url));
+      calls.push(`${parsedUrl.pathname}${parsedUrl.search}`);
+      if (parsedUrl.pathname === "/api/logs/system") {
+        return Response.json({
+          logs: [
+            {
+              id: "newer-agent-log",
+              level: "info",
+              source: "agent",
+              message: "Agent abc12345... completed task",
+              created_at: "2026-06-30T09:00:00.000Z",
+              logType: "agent",
+            },
+            {
+              id: "older-system-log",
+              level: "info",
+              source: "system",
+              message: "Gateway started",
+              created_at: "2026-06-30T08:00:00.000Z",
+              logType: "system",
+            },
+          ],
+          total: 2604,
+          limit: 150,
+          offset: 0,
+          hasMore: true,
+        });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const summary = await new CybaraMobileApi(profile).featureSummary();
+
+      expect(summary.logs.map((log) => log.id)).toEqual(["newer-agent-log", "older-system-log"]);
+      expect(summary.logs[0]).toMatchObject({
+        title: "Agent abc12345... completed task",
+        detail: "agent",
+        source: "agent",
+        createdAt: "2026-06-30T09:00:00.000Z",
+      });
+      expect(summary.logsTotal).toBe(2604);
+      expect(summary.logsLimit).toBe(150);
+      expect(summary.logsHasMore).toBe(true);
+      expect(summary.availability.logs.ok).toBe(true);
+      expect(calls).toContain("/api/logs/system?limit=150&offset=0&includeTotal=1");
+      expect(calls).not.toContain("/api/logs/activity?minutes=1440");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("falls back to recent activity logs on older gateways without combined logs", async () => {
+    const calls: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url) => {
+      const parsedUrl = new URL(String(url));
+      calls.push(`${parsedUrl.pathname}${parsedUrl.search}`);
+      if (parsedUrl.pathname === "/api/logs/system") {
+        return new Response("missing", { status: 404 });
+      }
+      if (parsedUrl.pathname === "/api/logs/activity") {
+        return Response.json({
+          system: [
+            {
+              id: "system-activity",
+              message: "Health probe recovered",
+              created_at: "2026-06-30T08:00:00.000Z",
+            },
+          ],
+          messages: [
+            {
+              id: "message-activity",
+              content: "User asked for logs",
+              session_id: "session-1",
+              created_at: "2026-06-30T09:00:00.000Z",
+            },
+          ],
+        });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const logs = await new CybaraMobileApi(profile).logs();
+
+      expect(calls).toEqual([
+        "/api/logs/system?limit=150&offset=0&includeTotal=1",
+        "/api/logs/activity?minutes=1440",
+      ]);
+      expect(logs.map((log) => log.id)).toEqual(["message-activity", "system-activity"]);
+      expect(logs[0]).toMatchObject({
+        title: "User asked for logs",
+        detail: "session-1",
+        source: "messages",
+        createdAt: "2026-06-30T09:00:00.000Z",
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("loads additional mobile log pages with explicit offsets", async () => {
+    const calls: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url) => {
+      const parsedUrl = new URL(String(url));
+      calls.push(`${parsedUrl.pathname}${parsedUrl.search}`);
+      if (parsedUrl.pathname === "/api/logs/system") {
+        return Response.json({
+          logs: [
+            {
+              id: "log-151",
+              level: "info",
+              source: "channel",
+              message: "Next page row",
+              created_at: "2026-06-30T07:59:00.000Z",
+              logType: "channel",
+            },
+          ],
+          total: 2604,
+          limit: 150,
+          offset: 150,
+          hasMore: true,
+        });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const page = await new CybaraMobileApi(profile).logsPage(150, 150);
+
+      expect(calls).toEqual(["/api/logs/system?limit=150&offset=150&includeTotal=1"]);
+      expect(page.total).toBe(2604);
+      expect(page.offset).toBe(150);
+      expect(page.hasMore).toBe(true);
+      expect(page.logs[0]).toMatchObject({ id: "log-151", source: "channel" });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("uses bounded session endpoints and posts into an existing mobile chat", async () => {
     const calls: Array<{ method: string; path: string; search: string; body?: unknown }> = [];
     const originalFetch = globalThis.fetch;
@@ -438,7 +584,16 @@ describe("mobile API client", () => {
             role: "assistant",
             content: "Updated",
             timestamp: "2026-06-30T08:01:00.000Z",
-            tool_calls: [{ id: "tool-2", name: "shell", status: "completed" }],
+            tool_calls: [
+              {
+                id: "tool-2",
+                name: "shell",
+                status: "completed",
+                args: { cmd: "bun test" },
+                result: { stdout: "ok ✅", exit_code: 0 },
+                duration: "1.2s",
+              },
+            ],
           },
         });
       }
@@ -461,9 +616,15 @@ describe("mobile API client", () => {
       expect(detail.messages[0].processActivities?.[0].text).toBe("Read DashboardScreen");
       expect(sent.message.thinking).toBe("top-level thought");
       expect(sent.message.toolCalls?.[0].name).toBe("shell");
+      expect(sent.message.toolCalls?.[0]).toMatchObject({
+        command: "bun test",
+        resultSummary: "ok ✅",
+        exitCode: "0",
+        duration: "1.2s",
+      });
       expect(calls.map((call) => `${call.method} ${call.path}${call.search}`)).toEqual([
         "GET /api/sessions?limit=100&includeTotal=1",
-        "GET /api/sessions/s1",
+        "GET /api/sessions/s1?includeFullToolCalls=1",
         "POST /api/chat",
       ]);
       expect(calls[2].body).toMatchObject({

@@ -2,6 +2,7 @@ import type { GatewayProfile } from "./connection";
 import { emptyMetricsAvailability, type MetricsEndpointKey, type MetricsSnapshot } from "./metrics";
 
 const MOBILE_SESSION_LIST_LIMIT = 100;
+const MOBILE_LOG_LIST_LIMIT = 150;
 
 export interface HealthResponse {
   status: string;
@@ -121,11 +122,26 @@ export interface ActivitySummary {
   fields?: Array<{ label: string; value: string }>;
 }
 
+export interface ActivityLogPage {
+  logs: ActivitySummary[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
 export interface SessionToolCallSummary {
   id: string;
   name: string;
   status: string;
   detail?: string;
+  args?: Record<string, unknown>;
+  command?: string;
+  resultSummary?: string;
+  exitCode?: string;
+  duration?: string;
+  durationMs?: number;
+  startedAt?: number;
 }
 
 export interface SessionProcessActivitySummary {
@@ -171,6 +187,10 @@ export interface FeatureSummary {
   walletPolicy: unknown | null;
   memory: RemoteItemSummary[];
   logs: ActivitySummary[];
+  logsTotal?: number;
+  logsLimit?: number;
+  logsOffset?: number;
+  logsHasMore?: boolean;
   config: Record<string, unknown>;
   availability: FeatureAvailability;
 }
@@ -230,6 +250,27 @@ function readNumber(record: Record<string, unknown> | null, keys: string[]): num
   return undefined;
 }
 
+function readRecord(
+  record: Record<string, unknown> | null,
+  keys: string[]
+): Record<string, unknown> | null {
+  if (!record) return null;
+  for (const key of keys) {
+    const value = asRecord(record[key]);
+    if (value) return value;
+    if (typeof record[key] === "string") {
+      try {
+        const parsed = JSON.parse(record[key] as string);
+        const parsedRecord = asRecord(parsed);
+        if (parsedRecord) return parsedRecord;
+      } catch {
+        // Non-JSON strings are handled by readString/summarizeToolValue.
+      }
+    }
+  }
+  return null;
+}
+
 function describeValue(value: unknown): string {
   if (value === null || value === undefined || value === "") return "none";
   if (typeof value === "string") return value;
@@ -240,6 +281,57 @@ function describeValue(value: unknown): string {
     return keys.length === 1 ? "1 setting" : `${keys.length} settings`;
   }
   return "value";
+}
+
+function compactToolText(value: string, limit = 420): string {
+  const normalized = value.replace(/\r\n/g, "\n").trim();
+  if (normalized.length <= limit) return normalized;
+  return `${normalized.slice(0, limit).trimEnd()}...`;
+}
+
+function summarizeToolValue(value: unknown): string | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+  if (typeof value === "string") return compactToolText(value);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return compactToolText(JSON.stringify(value.slice(0, 8), null, 2));
+  const record = asRecord(value);
+  if (!record) return undefined;
+  const preferred =
+    readString(record, ["summary", "message", "stdout", "stderr", "output", "text", "error"]) ||
+    undefined;
+  if (preferred) return compactToolText(preferred);
+  return compactToolText(JSON.stringify(record, null, 2));
+}
+
+function resolveToolCommand(record: Record<string, unknown> | null): string | undefined {
+  const args = readRecord(record, ["args", "arguments", "input"]);
+  return (
+    readString(args, ["cmd", "command", "script", "query", "path", "file_path", "filePath"]) ||
+    readString(record, ["command", "cmd"])
+  );
+}
+
+function resolveToolExitCode(record: Record<string, unknown> | null): string | undefined {
+  const result = readRecord(record, ["result"]);
+  return readString(result, ["exitCode", "exit_code", "code", "statusCode", "status_code"]);
+}
+
+function parseDurationMs(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return Math.max(0, value);
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const numeric = Number(trimmed);
+  if (Number.isFinite(numeric)) return Math.max(0, numeric);
+  const match = trimmed.match(/^(\d+(?:\.\d+)?)(ms|s|m|h)$/i);
+  if (!match) return undefined;
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount)) return undefined;
+  const unit = match[2].toLowerCase();
+  if (unit === "ms") return amount;
+  if (unit === "s") return amount * 1000;
+  if (unit === "m") return amount * 60000;
+  return amount * 3600000;
 }
 
 function detailFields(
@@ -335,26 +427,105 @@ export function normalizeActivityLogs(value: unknown): ActivitySummary[] {
         normalizeArrayResponse(entries, ["items", "entries"]).map((entry) => ({ source, entry }))
       )
     : normalizeArrayResponse(value, ["logs", "activity", "items"]).map((entry) => ({
-        source: "activity",
+        source: readString(asRecord(entry), ["source", "logType", "log_type"]) || "log",
         entry,
       }));
 
-  return sourceArrays.map(({ source, entry }, index) => {
-    const item = asRecord(entry);
-    const createdAt = readString(item, ["created_at", "createdAt", "timestamp", "time"]);
-    const message =
-      readString(item, ["message", "content", "event", "action", "level"]) ||
-      `${source} event ${index + 1}`;
-    const actor = readString(item, ["agent_id", "session_id", "channel_id", "source"]);
-    return {
-      id: readString(item, ["id"]) || `${source}-${index + 1}`,
-      title: message,
-      detail: actor || source,
-      source,
-      createdAt,
-      fields: detailFields(item),
-    };
+  return sourceArrays
+    .map(({ source, entry }, index) => {
+      const item = asRecord(entry);
+      const itemSource = readString(item, ["source", "logType", "log_type"]) || source;
+      const createdAt = readString(item, ["created_at", "createdAt", "timestamp", "time"]);
+      const message =
+        readString(item, ["message", "content", "event", "action", "details", "level"]) ||
+        `${itemSource} event ${index + 1}`;
+      const actor = readString(item, [
+        "agent_id",
+        "agentId",
+        "session_id",
+        "sessionId",
+        "channel_id",
+        "channelId",
+      ]);
+      return {
+        id: readString(item, ["id"]) || `${itemSource}-${index + 1}`,
+        title: message,
+        detail: actor || itemSource,
+        source: itemSource,
+        createdAt,
+        fields: detailFields(item),
+      };
+    })
+    .sort((left, right) => {
+      const leftTime = Date.parse(left.createdAt || "");
+      const rightTime = Date.parse(right.createdAt || "");
+      if (!Number.isFinite(leftTime) && !Number.isFinite(rightTime)) return 0;
+      if (!Number.isFinite(leftTime)) return 1;
+      if (!Number.isFinite(rightTime)) return -1;
+      return rightTime - leftTime;
+    });
+}
+
+function normalizeRecentActivityLogs(value: unknown): ActivitySummary[] {
+  const record = asRecord(value);
+  if (!record) return normalizeActivityLogs(value);
+  const activityRows = Object.entries(record).flatMap(([source, entries]) =>
+    normalizeArrayResponse(entries, ["items", "entries"]).map((entry, index) => {
+      const item = asRecord(entry);
+      const createdAt = readString(item, ["created_at", "createdAt", "timestamp", "time"]);
+      const message =
+        readString(item, ["message", "content", "event", "action", "details", "level"]) ||
+        `${source} event ${index + 1}`;
+      const actor = readString(item, [
+        "agent_id",
+        "agentId",
+        "session_id",
+        "sessionId",
+        "channel_id",
+        "channelId",
+        "source",
+      ]);
+      return {
+        id: readString(item, ["id"]) || `${source}-${index + 1}`,
+        title: message,
+        detail: actor || source,
+        source,
+        createdAt,
+        fields: detailFields(item),
+      };
+    })
+  );
+  return activityRows.sort((left, right) => {
+    const leftTime = Date.parse(left.createdAt || "");
+    const rightTime = Date.parse(right.createdAt || "");
+    if (!Number.isFinite(leftTime) && !Number.isFinite(rightTime)) return 0;
+    if (!Number.isFinite(leftTime)) return 1;
+    if (!Number.isFinite(rightTime)) return -1;
+    return rightTime - leftTime;
   });
+}
+
+function normalizeActivityLogPage(
+  value: unknown,
+  fallbackLimit = MOBILE_LOG_LIST_LIMIT,
+  fallbackOffset = 0
+): ActivityLogPage {
+  const record = asRecord(value);
+  const logs = normalizeActivityLogs(record?.logs ?? value);
+  const total = readNumber(record, ["total", "totalCount", "total_count", "count"]) ?? logs.length;
+  const limit = readNumber(record, ["limit"]) ?? fallbackLimit;
+  const offset = readNumber(record, ["offset"]) ?? fallbackOffset;
+  const hasMore =
+    record?.hasMore === true ||
+    record?.has_more === true ||
+    offset + logs.length < Math.max(total, logs.length);
+  return {
+    logs,
+    total: Math.max(logs.length, total),
+    limit,
+    offset,
+    hasMore,
+  };
 }
 
 function normalizeSessions(value: unknown): SessionSummary[] {
@@ -459,15 +630,30 @@ function normalizeSessionDetail(value: unknown, fallbackId: string): SessionDeta
 function normalizeMessageToolCalls(value: unknown): SessionToolCallSummary[] | undefined {
   const calls = normalizeArrayResponse(value, ["tool_calls", "toolCalls", "items"]);
   if (calls.length === 0) return undefined;
-  return calls.slice(0, 12).map((call, index) => {
+  return calls.slice(0, 20).map((call, index) => {
     const record = asRecord(call);
     const name = readString(record, ["name", "toolName"]) || `tool ${index + 1}`;
     const status = readString(record, ["status", "state"]) || "completed";
+    const args = readRecord(record, ["args", "arguments", "input"]) || undefined;
+    const errorSummary = summarizeToolValue(record?.error);
+    const resultSummary = errorSummary || summarizeToolValue(record?.result);
+    const command = resolveToolCommand(record);
+    const exitCode = resolveToolExitCode(record);
+    const duration = readString(record, ["duration", "durationMs", "duration_ms", "elapsed"]);
+    const durationMs =
+      readNumber(record, ["durationMs", "duration_ms"]) ?? parseDurationMs(record?.duration);
     return {
       id: readString(record, ["id", "toolCallId"]) || `${name}-${index + 1}`,
       name,
       status,
-      detail: describeValue(record?.result ?? record?.error ?? record?.args),
+      detail: command || resultSummary || describeValue(record?.args ?? record?.arguments),
+      args,
+      command,
+      resultSummary,
+      exitCode,
+      duration,
+      durationMs,
+      startedAt: readNumber(record, ["started_at", "startedAt", "timestamp"]),
     };
   });
 }
@@ -615,7 +801,7 @@ export class CybaraMobileApi {
 
   async session(id: string): Promise<SessionDetailSummary> {
     return normalizeSessionDetail(
-      await this.request<unknown>(`/api/sessions/${encodeURIComponent(id)}`),
+      await this.request<unknown>(`/api/sessions/${encodeURIComponent(id)}?includeFullToolCalls=1`),
       id
     );
   }
@@ -801,6 +987,40 @@ export class CybaraMobileApi {
     return this.request<Record<string, unknown>>("/api/config");
   }
 
+  async logsPage(limit = MOBILE_LOG_LIST_LIMIT, offset = 0): Promise<ActivityLogPage> {
+    try {
+      const boundedLimit = Number.isFinite(limit)
+        ? Math.max(1, Math.min(1000, Math.floor(limit)))
+        : MOBILE_LOG_LIST_LIMIT;
+      const boundedOffset = Number.isFinite(offset) ? Math.max(0, Math.floor(offset)) : 0;
+      return normalizeActivityLogPage(
+        await this.request<unknown>(
+          `/api/logs/system?limit=${boundedLimit}&offset=${boundedOffset}&includeTotal=1`
+        ),
+        boundedLimit,
+        boundedOffset
+      );
+    } catch (error) {
+      if (error instanceof CybaraApiError && error.status === 404) {
+        const logs = normalizeRecentActivityLogs(
+          await this.request<unknown>("/api/logs/activity?minutes=1440")
+        );
+        return {
+          logs,
+          total: logs.length,
+          limit: logs.length,
+          offset: 0,
+          hasMore: false,
+        };
+      }
+      throw error;
+    }
+  }
+
+  async logs(limit = MOBILE_LOG_LIST_LIMIT): Promise<ActivitySummary[]> {
+    return (await this.logsPage(limit, 0)).logs;
+  }
+
   updateConfig(data: Record<string, unknown>): Promise<{ success: boolean }> {
     return this.request<{ success: boolean }>("/api/config", {
       method: "PUT",
@@ -841,7 +1061,7 @@ export class CybaraMobileApi {
       walletStatus,
       walletPolicy,
       memory,
-      logs,
+      logPage,
       config,
     ] = await Promise.all([
       safe<HealthResponse | null>("health", null, () => this.health()),
@@ -885,8 +1105,16 @@ export class CybaraMobileApi {
       safe<RemoteItemSummary[]>("memory", [], async () =>
         normalizeMemoryItems(await this.request<unknown>("/api/memory"))
       ),
-      safe<ActivitySummary[]>("logs", [], async () =>
-        normalizeActivityLogs(await this.request<unknown>("/api/logs/activity"))
+      safe<ActivityLogPage>(
+        "logs",
+        {
+          logs: [],
+          total: 0,
+          limit: MOBILE_LOG_LIST_LIMIT,
+          offset: 0,
+          hasMore: false,
+        },
+        () => this.logsPage()
       ),
       safe<Record<string, unknown>>("config", {}, () => this.config()),
     ]);
@@ -904,7 +1132,11 @@ export class CybaraMobileApi {
       walletStatus,
       walletPolicy,
       memory,
-      logs,
+      logs: logPage.logs,
+      logsTotal: logPage.total,
+      logsLimit: logPage.limit,
+      logsOffset: logPage.offset,
+      logsHasMore: logPage.hasMore,
       config,
       availability,
     };

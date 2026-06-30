@@ -6,6 +6,7 @@ const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 let server: ReturnType<typeof Bun.serve>;
 let apiBase = "";
+let lastLogsLimit: string | null = null;
 const configState: Record<string, unknown> = {
   host: "127.0.0.1",
   port: 4269,
@@ -430,8 +431,16 @@ function route(method: string, url: URL, body: string): Response {
   }
 
   if (method === "GET" && pathname === "/api/logs/system") {
+    lastLogsLimit = url.searchParams.get("limit");
     return json([
-      { timestamp: new Date().toISOString(), level: "info", module: "api", message: "ok" },
+      {
+        id: "log-1",
+        created_at: new Date().toISOString(),
+        level: "info",
+        source: "channel",
+        logType: "channel",
+        message: "incoming discord event",
+      },
     ]);
   }
 
@@ -1381,6 +1390,8 @@ describe("CLI Commands", () => {
     const logs = await runCli(["logs", "1"]);
     expect(logs.exitCode).toBe(0);
     expect(logs.stdout).toContain("CYBARA LOGS");
+    expect(logs.stdout).toContain("channel");
+    expect(lastLogsLimit).toBe("1");
   });
 
   test("plugin command group is wired", async () => {

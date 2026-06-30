@@ -168,6 +168,7 @@ import type {
 import {
   normalizeTimestamp,
   getCombinedLogs,
+  getCombinedLogsPage,
   getLogStats,
   getDailyLogCounts,
   getModelMetrics,
@@ -481,6 +482,17 @@ function redactSecretConfig(cfg: Record<string, unknown>): Record<string, unknow
       SECRET_CONFIG_KEY.test(key) && value != null && value !== "" ? "***redacted***" : value;
   }
   return out;
+}
+
+function parseBoundedQueryNumber(
+  raw: string | undefined,
+  min: number,
+  max: number
+): number | undefined {
+  if (typeof raw !== "string" || raw.trim().length === 0) return undefined;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return undefined;
+  return Math.min(max, Math.max(min, parsed));
 }
 
 function buildCorsHeaders(origin?: string): Record<string, string> {
@@ -3918,7 +3930,18 @@ const routes: Record<string, RouteHandler> = {
     return { success: removed };
   },
 
-  "GET /api/logs/system": async () => getCombinedLogs(),
+  "GET /api/logs/system": async (_body, params) => {
+    const limit = parseBoundedQueryNumber(params?.limit, 1, 1000);
+    const offset = parseBoundedQueryNumber(params?.offset, 0, 100000) ?? 0;
+    const includeTotal =
+      params?.includeTotal === "1" ||
+      params?.includeTotal === "true" ||
+      params?.includeTotal === "yes";
+    if (includeTotal) {
+      return getCombinedLogsPage({ limit: limit ?? 150, offset });
+    }
+    return getCombinedLogs({ limit, offset });
+  },
   "GET /api/logs/search": async (_body, params) => {
     return await searchAllLogs(params!.q || "", parseInt(params!.limit || "100"));
   },

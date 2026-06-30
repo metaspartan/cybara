@@ -20,15 +20,19 @@ import {
   Text,
   TextInput,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   type StyleProp,
   type TextStyle,
 } from "react-native";
 import {
+  AlertTriangle,
   ArrowLeft,
   Bot,
   Box,
   Brain,
   CalendarCheck,
+  CheckCircle2,
   ChevronRight,
   Clock,
   Cpu,
@@ -37,6 +41,7 @@ import {
   House,
   Link2,
   ListTodo,
+  Loader2,
   MessageCircle,
   Palette,
   Play,
@@ -45,6 +50,7 @@ import {
   Send,
   Settings,
   ShieldCheck,
+  Sparkles,
   Square,
   Trash2,
   User,
@@ -80,10 +86,11 @@ import {
 } from "../lib/api";
 import {
   chatIsWaitingForAssistant,
+  buildMobileWorkTimeline,
   hasUnicodeTextFallback,
   latestVisibleChatMessages,
+  shouldUseSelectableNativeText,
   splitMessageContent,
-  splitUnicodeTextRuns,
 } from "../lib/chat-format";
 import type { GatewayProfile } from "../lib/connection";
 import {
@@ -94,6 +101,7 @@ import {
   MOBILE_RECENT_ACTIVITY_CHROME,
   MOBILE_ACCENT_KEYS,
   MOBILE_GATEWAY_PANEL_CHROME,
+  MOBILE_LOGS_CHROME,
   MOBILE_MAIN_TAB_CHROME,
   MOBILE_METRICS_CHROME,
   MOBILE_SETTINGS_DETAIL_CHROME,
@@ -238,6 +246,18 @@ function absoluteTimestampLabel(value?: string): string {
   const parsed = Date.parse(value);
   if (!Number.isFinite(parsed)) return value;
   return new Date(parsed).toLocaleString();
+}
+
+function mergeActivityLogs(
+  existing: ActivitySummary[],
+  incoming: ActivitySummary[]
+): ActivitySummary[] {
+  const seen = new Set<string>();
+  return [...existing, ...incoming].filter((log) => {
+    if (seen.has(log.id)) return false;
+    seen.add(log.id);
+    return true;
+  });
 }
 
 function displayFields(record: Record<string, unknown>): Array<{ label: string; value: string }> {
@@ -438,8 +458,22 @@ export function DashboardScreen({
   const [metricsError, setMetricsError] = useState<string | null>(null);
   const [accentOverride, setAccentOverride] = useState<AccentKey | null>(null);
   const [chatHeaderAction, setChatHeaderAction] = useState<ChatHeaderAction | null>(null);
+  const [pagedLogs, setPagedLogs] = useState<ActivitySummary[]>([]);
+  const [logPageMeta, setLogPageMeta] = useState<{
+    total: number;
+    limit: number;
+    hasMore: boolean;
+  }>({
+    total: 0,
+    limit: MOBILE_LOGS_CHROME.pageSize,
+    hasMore: false,
+  });
+  const [loadingMoreLogs, setLoadingMoreLogs] = useState(false);
+  const [logPageError, setLogPageError] = useState<string | null>(null);
   const refreshInFlight = useRef(false);
   const metricsRefreshInFlight = useRef(false);
+  const logPageInFlight = useRef(false);
+  const activeSurface = detailRoute?.kind === "surface" ? detailRoute.surface : null;
 
   const refresh = async (showRefreshing = true) => {
     if (refreshInFlight.current) return;
@@ -466,6 +500,47 @@ export function DashboardScreen({
       setMetricsError(refreshError instanceof Error ? refreshError.message : String(refreshError));
     } finally {
       metricsRefreshInFlight.current = false;
+    }
+  };
+
+  useEffect(() => {
+    const firstPage = summary?.logs ?? [];
+    const keepExpandedLogs = activeSurface === "logs";
+    setPagedLogs((current) =>
+      keepExpandedLogs && current.length > firstPage.length
+        ? mergeActivityLogs(firstPage, current)
+        : firstPage
+    );
+    setLogPageError(null);
+  }, [activeSurface, summary?.logs]);
+
+  useEffect(() => {
+    const total = summary?.logsTotal ?? summary?.logs.length ?? 0;
+    setLogPageMeta({
+      total,
+      limit: summary?.logsLimit ?? MOBILE_LOGS_CHROME.pageSize,
+      hasMore: pagedLogs.length < total,
+    });
+  }, [pagedLogs.length, summary?.logs.length, summary?.logsLimit, summary?.logsTotal]);
+
+  const loadMoreLogs = async () => {
+    if (logPageInFlight.current || !logPageMeta.hasMore) return;
+    logPageInFlight.current = true;
+    setLoadingMoreLogs(true);
+    setLogPageError(null);
+    try {
+      const page = await api.logsPage(logPageMeta.limit, pagedLogs.length);
+      setPagedLogs((current) => mergeActivityLogs(current, page.logs));
+      setLogPageMeta({
+        total: page.total,
+        limit: page.limit,
+        hasMore: page.hasMore,
+      });
+    } catch (loadError) {
+      setLogPageError(loadError instanceof Error ? loadError.message : String(loadError));
+    } finally {
+      logPageInFlight.current = false;
+      setLoadingMoreLogs(false);
     }
   };
 
@@ -507,6 +582,17 @@ export function DashboardScreen({
   const gatewayAccentKey = resolveAccentKey(summary);
   const accentKey = accentOverride ?? gatewayAccentKey;
   const accentColor = accentPalette[accentKey] || accentPalette.cyan;
+  const detailSummary = useMemo(() => {
+    if (!summary) return null;
+    if (detailRoute?.kind !== "surface" || detailRoute.surface !== "logs") return summary;
+    return {
+      ...summary,
+      logs: pagedLogs,
+      logsTotal: logPageMeta.total,
+      logsLimit: logPageMeta.limit,
+      logsHasMore: logPageMeta.hasMore,
+    };
+  }, [detailRoute, logPageMeta.hasMore, logPageMeta.limit, logPageMeta.total, pagedLogs, summary]);
   const headerCopy = routeHeader(
     detailRoute,
     buildMobileHeaderCopy(activeTab, counts, profile),
@@ -534,6 +620,16 @@ export function DashboardScreen({
 
   const openItem = (surface: MobileSurfaceKey, item: RemoteItemSummary | ActivitySummary) => {
     setDetailRoute({ kind: "item", surface, item });
+  };
+
+  const handleMainScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (detailRoute?.kind !== "surface" || detailRoute.surface !== "logs") return;
+    if (!logPageMeta.hasMore || loadingMoreLogs) return;
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const distanceFromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height);
+    if (distanceFromBottom < 480) {
+      void loadMoreLogs();
+    }
   };
 
   const modules: ModuleCard[] = [
@@ -692,6 +788,8 @@ export function DashboardScreen({
           style={styles.scrollArea}
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
+          onScroll={handleMainScroll}
+          scrollEventThrottle={250}
           refreshControl={
             <RefreshControl
               tintColor={accentColor}
@@ -765,12 +863,15 @@ export function DashboardScreen({
               api={api}
               profile={profile}
               route={detailRoute}
-              summary={summary}
+              summary={detailSummary}
               openItem={openItem}
               accentColor={accentColor}
               closeDetail={() => setDetailRoute(null)}
               refreshSummary={() => refresh(false)}
               openSession={(id) => setDetailRoute({ kind: "session", id })}
+              loadMoreLogs={loadMoreLogs}
+              loadingMoreLogs={loadingMoreLogs}
+              logPageError={logPageError}
             />
           ) : activeTab === "overview" ? (
             <OverviewPanel
@@ -1486,6 +1587,9 @@ function DetailContent({
   openSession,
   closeDetail,
   refreshSummary,
+  loadMoreLogs,
+  loadingMoreLogs,
+  logPageError,
 }: {
   api: CybaraMobileApi;
   accentColor: string;
@@ -1496,6 +1600,9 @@ function DetailContent({
   openSession: (sessionId: string) => void;
   closeDetail: () => void;
   refreshSummary: () => void;
+  loadMoreLogs: () => void;
+  loadingMoreLogs: boolean;
+  logPageError: string | null;
 }) {
   if (route.kind === "session") {
     return (
@@ -1539,6 +1646,9 @@ function DetailContent({
       summary={summary}
       surface={route.surface}
       openItem={(item) => openItem(route.surface, item)}
+      loadMoreLogs={loadMoreLogs}
+      loadingMoreLogs={loadingMoreLogs}
+      logPageError={logPageError}
     />
   );
 }
@@ -1908,18 +2018,11 @@ function ChatMessageRow({
           isUser ? [styles.userMessageBubble, { borderColor: `${accentColor}55` }] : null,
         ]}
       >
-        {!isUser && message.thinking ? (
-          <UnicodeText
-            content={message.thinking}
-            numberOfLines={4}
-            style={styles.messageThinking}
-          />
-        ) : null}
-        {!isUser && message.processActivities?.length ? (
-          <MessageActivityList message={message} />
+        {!isUser &&
+        (message.thinking || message.processActivities?.length || message.toolCalls?.length) ? (
+          <WorkTimeline message={message} />
         ) : null}
         <MessageContent content={message.content || "(empty message)"} />
-        {message.toolCalls?.length ? <ToolCallStrip message={message} /> : null}
         {message.timestamp ? (
           <Text style={[styles.messageTime, isUser && styles.messageTimeUser]}>
             {relativeTimestamp(message.timestamp)}
@@ -1930,37 +2033,44 @@ function ChatMessageRow({
   );
 }
 
-function MessageActivityList({ message }: { message: SessionDetailSummary["messages"][number] }) {
-  return (
-    <View style={styles.messageActivityList}>
-      {message.processActivities?.map((activity) => (
-        <View key={activity.id} style={styles.messageActivityRow}>
-          <Zap
-            color={activity.phase === "error" ? colors.red : colors.textMuted}
-            size={14}
-            strokeWidth={2}
-          />
-          <Text numberOfLines={2} style={styles.messageActivityText}>
-            {activity.toolName ? `${activity.toolName}: ` : ""}
-            <UnicodeInlineText content={activity.text} />
-          </Text>
-        </View>
-      ))}
-    </View>
-  );
+function WorkActivityIcon({ phase, toolName }: { phase: string; toolName?: string }) {
+  if (toolName === "__thought") {
+    return <Sparkles color={colors.blueText} size={13} strokeWidth={2.2} />;
+  }
+  if (phase === "start") {
+    return <Loader2 color={colors.amber} size={13} strokeWidth={2.2} />;
+  }
+  if (phase === "error") {
+    return <AlertTriangle color={colors.red} size={13} strokeWidth={2.2} />;
+  }
+  return <CheckCircle2 color={colors.green} size={13} strokeWidth={2.2} />;
 }
 
-function ToolCallStrip({ message }: { message: SessionDetailSummary["messages"][number] }) {
+function WorkTimeline({ message }: { message: SessionDetailSummary["messages"][number] }) {
+  const timeline = buildMobileWorkTimeline(message);
+  if (timeline.activities.length === 0) return null;
+
   return (
-    <View style={styles.toolCallStrip}>
-      {message.toolCalls?.map((toolCall) => (
-        <View key={toolCall.id} style={styles.toolCallPill}>
-          <Wrench color={colors.textMuted} size={13} strokeWidth={2} />
-          <Text numberOfLines={1} style={styles.toolCallText}>
-            <UnicodeInlineText content={`${toolCall.name} - ${toolCall.status}`} />
-          </Text>
-        </View>
-      ))}
+    <View style={styles.workTimeline}>
+      <Text style={styles.workedForText}>Worked for {timeline.workedDuration}</Text>
+      <View style={styles.messageActivityList}>
+        {timeline.activities.map((activity) => (
+          <View key={activity.id} style={styles.messageActivityRow}>
+            <View style={styles.messageActivityIcon}>
+              <WorkActivityIcon phase={activity.phase} toolName={activity.toolName} />
+            </View>
+            <Text
+              numberOfLines={activity.toolName === "__thought" ? 3 : 2}
+              style={[
+                styles.messageActivityText,
+                activity.toolName === "__thought" && styles.messageThoughtText,
+              ]}
+            >
+              {activity.text}
+            </Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -1975,7 +2085,7 @@ function MessageContent({ content }: { content: string }) {
             <ScrollView horizontal showsHorizontalScrollIndicator>
               <UnicodeText
                 content={part.content}
-                selectable
+                selectable={shouldUseSelectableNativeText(part.content)}
                 style={[
                   styles.codeText,
                   !hasUnicodeTextFallback(part.content) && styles.codeTextMonospace,
@@ -1987,27 +2097,12 @@ function MessageContent({ content }: { content: string }) {
           <UnicodeText
             key={`text-${index}`}
             content={part.content.trim().length > 0 ? part.content : "\n"}
-            selectable
+            selectable={shouldUseSelectableNativeText(part.content)}
             style={styles.messageText}
           />
         )
       )}
     </View>
-  );
-}
-
-function UnicodeInlineText({ content }: { content: string }) {
-  return (
-    <>
-      {splitUnicodeTextRuns(content).map((run, index) => (
-        <Text
-          key={`${run.type}-${index}`}
-          style={run.type === "emoji" ? styles.emojiGlyphText : undefined}
-        >
-          {run.content}
-        </Text>
-      ))}
-    </>
   );
 }
 
@@ -2024,7 +2119,7 @@ function UnicodeText({
 }) {
   return (
     <Text numberOfLines={numberOfLines} selectable={selectable} style={style}>
-      <UnicodeInlineText content={content} />
+      {content}
     </Text>
   );
 }
@@ -2034,24 +2129,42 @@ function SurfaceDetailPanel({
   summary,
   surface,
   openItem,
+  loadMoreLogs,
+  loadingMoreLogs,
+  logPageError,
 }: {
   profile: GatewayProfile;
   summary: FeatureSummary | null;
   surface: MobileSurfaceKey;
   openItem: (item: RemoteItemSummary | ActivitySummary) => void;
+  loadMoreLogs: () => void;
+  loadingMoreLogs: boolean;
+  logPageError: string | null;
 }) {
   const meta = surfaceMeta[surface];
   const rows = surfaceRows(surface, summary);
   const endpoint = meta.endpoint ? summary?.availability[meta.endpoint] : undefined;
+  const isLogsSurface = surface === "logs";
+  const totalLogs = summary?.logsTotal ?? rows.length;
+  const logPageSize = summary?.logsLimit ?? MOBILE_LOGS_CHROME.pageSize;
+  const hasMoreLogs = Boolean(summary?.logsHasMore);
+  const counterLabel = isLogsSurface
+    ? `${rows.length}/${totalLogs}`
+    : endpoint
+      ? endpointStatusLabel(endpoint)
+      : String(rows.length);
 
   return (
     <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
       <View style={styles.subsectionHeader}>
         <Text style={styles.subsectionTitle}>Live records</Text>
-        <Text style={styles.counterText}>
-          {endpoint ? endpointStatusLabel(endpoint) : rows.length}
-        </Text>
+        <Text style={styles.counterText}>{counterLabel}</Text>
       </View>
+      {isLogsSurface && summary ? (
+        <Text style={styles.pageDetailText}>
+          Showing {rows.length} of {totalLogs} gateway log events
+        </Text>
+      ) : null}
       {!summary ? (
         <EmptyState label={`${meta.title} loading`} detail="Refreshing from the gateway." />
       ) : endpoint?.ok === false ? (
@@ -2085,6 +2198,26 @@ function SurfaceDetailPanel({
           );
         })
       )}
+      {isLogsSurface && summary && rows.length > 0 ? (
+        <View style={styles.logPageFooter}>
+          {logPageError ? <Text style={styles.errorText}>{logPageError}</Text> : null}
+          {hasMoreLogs ? (
+            <Pressable
+              accessibilityRole="button"
+              disabled={loadingMoreLogs}
+              onPress={loadMoreLogs}
+              style={[styles.loadMoreButton, loadingMoreLogs && styles.loadMoreButtonDisabled]}
+            >
+              {loadingMoreLogs ? <ActivityIndicator color={colors.blueText} size="small" /> : null}
+              <Text style={styles.loadMoreButtonText}>
+                {loadingMoreLogs ? "Loading logs" : `Load ${logPageSize} more`}
+              </Text>
+            </Pressable>
+          ) : (
+            <Text style={styles.pageDetailText}>All logs loaded</Text>
+          )}
+        </View>
+      ) : null}
     </GlassPanel>
   );
 }
@@ -3623,6 +3756,35 @@ const styles = StyleSheet.create({
     fontSize: typography.label,
     fontWeight: "800",
   },
+  logPageFooter: {
+    alignItems: "center",
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    gap: spacing.sm,
+    paddingTop: spacing.md,
+  },
+  loadMoreButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(70, 143, 182, 0.18)",
+    borderColor: colors.borderStrong,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.sm,
+    justifyContent: "center",
+    minHeight: 44,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    width: "100%",
+  },
+  loadMoreButtonDisabled: {
+    opacity: 0.65,
+  },
+  loadMoreButtonText: {
+    color: colors.blueText,
+    fontSize: typography.body,
+    fontWeight: "900",
+  },
   activityRow: {
     alignItems: "center",
     borderTopColor: colors.border,
@@ -3797,54 +3959,39 @@ const styles = StyleSheet.create({
   codeTextMonospace: {
     fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
   },
-  emojiGlyphText: {
-    fontFamily: Platform.select({
-      ios: "Apple Color Emoji",
-      android: undefined,
-      default: undefined,
-    }),
+  workTimeline: {
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  workedForText: {
+    color: colors.textDim,
+    fontSize: typography.label,
+    paddingHorizontal: 2,
   },
   messageActivityList: {
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
     gap: spacing.xs,
-    marginTop: spacing.xs,
-    padding: spacing.sm,
+    paddingHorizontal: 2,
   },
   messageActivityRow: {
-    alignItems: "center",
+    alignItems: "flex-start",
     flexDirection: "row",
     gap: spacing.xs,
+  },
+  messageActivityIcon: {
+    alignItems: "center",
+    height: 16,
+    justifyContent: "center",
+    marginTop: 1,
+    width: 16,
   },
   messageActivityText: {
     color: colors.textMuted,
     flex: 1,
-    fontSize: typography.tiny,
-    lineHeight: 16,
+    fontSize: typography.label,
+    lineHeight: 18,
   },
-  toolCallStrip: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.xs,
-    marginTop: spacing.xs,
-  },
-  toolCallPill: {
-    alignItems: "center",
-    backgroundColor: "rgba(2, 7, 11, 0.88)",
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: spacing.xs,
-    maxWidth: "100%",
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 5,
-  },
-  toolCallText: {
-    color: colors.textMuted,
-    fontSize: typography.tiny,
-    fontWeight: "700",
+  messageThoughtText: {
+    color: colors.text,
   },
   loadingRow: {
     alignItems: "center",
@@ -4134,6 +4281,11 @@ const styles = StyleSheet.create({
     color: colors.cyan,
     fontSize: typography.heading,
     fontWeight: "900",
+  },
+  pageDetailText: {
+    color: colors.textMuted,
+    fontSize: typography.label,
+    lineHeight: 18,
   },
   listRow: {
     alignItems: "center",

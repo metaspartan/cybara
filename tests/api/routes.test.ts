@@ -107,6 +107,18 @@ function insertRawMetric(type: string, key: string, value: number, metadata?: st
   }
 }
 
+function insertRawSystemLog(id: string, message: string, createdAt: string): void {
+  const dbPath = join(testHome, ".cybara", "data", "platform.db");
+  const db = new Database(dbPath);
+  try {
+    db.query(
+      "INSERT INTO system_logs (id, level, source, message, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(id, "info", "system", message, null, createdAt);
+  } finally {
+    db.close();
+  }
+}
+
 function countMetrics(type: string, key?: string): number {
   const dbPath = join(testHome, ".cybara", "data", "platform.db");
   const db = new Database(dbPath);
@@ -401,6 +413,30 @@ describe("Mobile API", () => {
     const removed = await api("DELETE", `/api/mobile/devices/${created.data.device.id}`);
     expect(removed.status).toBe(200);
     expect(removed.data.success).toBe(true);
+  });
+});
+
+describe("Logs API", () => {
+  test("GET /api/logs/system honors bounded mobile and CLI reads", async () => {
+    const stamp = Date.now();
+    insertRawSystemLog(`bounded-log-old-${stamp}`, "older bounded log", "2026-06-30T08:00:00.000Z");
+    insertRawSystemLog(`bounded-log-new-${stamp}`, "newer bounded log", "2026-06-30T09:00:00.000Z");
+
+    const limited = await api("GET", "/api/logs/system?limit=1");
+
+    expect(limited.status).toBe(200);
+    expect(Array.isArray(limited.data)).toBe(true);
+    expect(limited.data).toHaveLength(1);
+
+    const paged = await api("GET", "/api/logs/system?limit=1&offset=0&includeTotal=1");
+
+    expect(paged.status).toBe(200);
+    expect(Array.isArray(paged.data.logs)).toBe(true);
+    expect(paged.data.logs).toHaveLength(1);
+    expect(paged.data.total).toBeGreaterThanOrEqual(2);
+    expect(paged.data.limit).toBe(1);
+    expect(paged.data.offset).toBe(0);
+    expect(paged.data.hasMore).toBe(true);
   });
 });
 

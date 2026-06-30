@@ -8,6 +8,7 @@ import {
   MOBILE_CHAT_DETAIL_CHROME,
   MOBILE_CHAT_CHROME,
   MOBILE_GATEWAY_PANEL_CHROME,
+  MOBILE_LOGS_CHROME,
   MOBILE_MAIN_TAB_CHROME,
   MOBILE_METRICS_CHROME,
   MOBILE_NAV_CHROME,
@@ -63,6 +64,10 @@ const summary: FeatureSummary = {
   walletPolicy: { enabled: true },
   memory: [{ id: "memory-1", title: "memory.md", detail: "1 entry" }],
   logs: [{ id: "log-1", title: "Started", detail: "system", source: "system" }],
+  logsTotal: 2604,
+  logsLimit: 150,
+  logsOffset: 0,
+  logsHasMore: true,
   config: {},
   availability: {
     health: { ok: true },
@@ -172,6 +177,13 @@ describe("mobile dashboard model", () => {
     );
   });
 
+  test("keeps logs paged while still showing the total count", () => {
+    expect(MOBILE_LOGS_CHROME.showsTotalCount).toBe(true);
+    expect(MOBILE_LOGS_CHROME.lazyLoadsOnScroll).toBe(true);
+    expect(MOBILE_LOGS_CHROME.pageSize).toBe(150);
+    expect(summarizeFeatureCounts(summary).logs).toBe(2604);
+  });
+
   test("tracks the remote management surfaces the mobile app should expose", () => {
     expect(new Set(MOBILE_FEATURE_SECTIONS).size).toBe(MOBILE_FEATURE_SECTIONS.length);
     expect(MOBILE_FEATURE_SECTIONS).toEqual([
@@ -245,7 +257,7 @@ describe("mobile dashboard model", () => {
       channels: 1,
       tasks: 1,
       memory: 1,
-      logs: 1,
+      logs: 2604,
     });
     expect(summarizeFeatureCounts(null).sessions).toBe(0);
   });
@@ -258,7 +270,7 @@ describe("mobile dashboard model", () => {
     });
     expect(buildMobileHeaderCopy("sessions", counts, profile).title).toBe("Chats");
     expect(buildMobileHeaderCopy("metrics", counts, profile).detail).toBe(
-      "1234 chats - 2 tools - 1 event"
+      "1234 chats - 2 tools - 2604 events"
     );
     expect(buildMobileHeaderCopy("settings", counts, profile).title).toBe("Settings");
   });

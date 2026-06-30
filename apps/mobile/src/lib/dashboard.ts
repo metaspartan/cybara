@@ -158,6 +158,12 @@ export const MOBILE_METRICS_CHROME = {
   pullToRefresh: true,
 } as const;
 
+export const MOBILE_LOGS_CHROME = {
+  lazyLoadsOnScroll: true,
+  pageSize: 150,
+  showsTotalCount: true,
+} as const;
+
 export const MOBILE_FEATURE_SECTIONS = [
   "sessions",
   "agents",
@@ -212,7 +218,7 @@ export function summarizeFeatureCounts(summary: FeatureSummary | null): FeatureC
     channels: countArray(summary?.channels),
     tasks: countArray(summary?.tasks),
     memory: countArray(summary?.memory),
-    logs: countArray(summary?.logs),
+    logs: summary?.logsTotal ?? countArray(summary?.logs),
   };
 }
 

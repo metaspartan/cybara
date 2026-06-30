@@ -171,6 +171,7 @@ try {
     title TEXT,
     messages TEXT NOT NULL,
     workspace_dir TEXT,
+    pinned INTEGER NOT NULL DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -436,6 +437,7 @@ db.exec(`
     title TEXT,
     messages TEXT NOT NULL,
     workspace_dir TEXT,
+    pinned INTEGER NOT NULL DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );

@@ -1639,20 +1639,24 @@ async function rawMemory(query?: string): Promise<void> {
 }
 
 interface LogEntry {
-  timestamp: string;
-  level: string;
-  module: string;
-  message: string;
+  timestamp?: string;
+  created_at?: string;
+  level?: string;
+  module?: string;
+  source?: string;
+  logType?: string;
+  message?: string;
 }
 
 async function rawLogs(count = 20): Promise<void> {
-  const data = await fetchAPI<LogEntry[]>("/api/logs/system");
+  const boundedCount = Math.max(1, Math.min(1000, Math.floor(count)));
+  const data = await fetchAPI<LogEntry[]>(`/api/logs/system?limit=${boundedCount}`);
   if (!data) {
     console.error("ERROR: Failed to fetch logs from", API_BASE);
     process.exit(1);
   }
 
-  const logs = (Array.isArray(data) ? data : []).slice(0, count);
+  const logs = (Array.isArray(data) ? data : []).slice(0, boundedCount);
 
   console.log("CYBARA LOGS");
   console.log("===========");
@@ -1665,10 +1669,14 @@ async function rawLogs(count = 20): Promise<void> {
   }
 
   for (const log of logs) {
-    const level = log.level.toUpperCase().padEnd(5);
-    const module = log.module.padEnd(12);
-    const time = new Date(log.timestamp).toLocaleTimeString();
-    console.log(`[${time}] ${level} ${module} ${log.message.slice(0, 60)}`);
+    const level = (log.level || "info").toUpperCase().padEnd(5);
+    const module = (log.module || log.source || log.logType || "log").slice(0, 12).padEnd(12);
+    const timestamp = log.timestamp || log.created_at || "";
+    const parsedTime = Date.parse(timestamp);
+    const time = Number.isFinite(parsedTime)
+      ? new Date(parsedTime).toLocaleTimeString()
+      : "--:--:--";
+    console.log(`[${time}] ${level} ${module} ${(log.message || "").slice(0, 60)}`);
   }
 }
 

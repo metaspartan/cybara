@@ -1,10 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import type { SessionMessageSummary } from "../../apps/mobile/src/lib/api";
 import {
+  MOBILE_CHAT_WORK_TIMELINE,
+  MOBILE_NATIVE_TEXT_RENDERING,
   MOBILE_VISIBLE_CHAT_MESSAGE_LIMIT,
+  buildMobileWorkTimeline,
   chatIsWaitingForAssistant,
+  formatMobileWorkedDuration,
   hasUnicodeTextFallback,
   latestVisibleChatMessages,
+  shouldUseSelectableNativeText,
   splitMessageContent,
   splitUnicodeTextRuns,
   visibleChatMessages,
@@ -77,8 +82,15 @@ describe("mobile chat formatting", () => {
   test("keeps emoji and non-ascii runs intact for native text fallback", () => {
     const grinning = "\u{1F600}";
     const family = "\u{1F468}\u200D\u{1F469}\u200D\u{1F467}\u200D\u{1F466}";
+    expect(MOBILE_NATIVE_TEXT_RENDERING.disablesSelectableForUnicode).toBe(true);
+    expect(MOBILE_NATIVE_TEXT_RENDERING.forceEmojiFontFamily).toBe(false);
+    expect(MOBILE_NATIVE_TEXT_RENDERING.preserveNativeUnicodeFallback).toBe(true);
+    expect(MOBILE_NATIVE_TEXT_RENDERING.monospaceOnlyForAsciiCode).toBe(true);
     expect(hasUnicodeTextFallback("plain ascii")).toBe(false);
     expect(hasUnicodeTextFallback(`Ship ${grinning} cafe\u0301 中文 ${family}`)).toBe(true);
+    expect(shouldUseSelectableNativeText("plain ascii")).toBe(true);
+    expect(shouldUseSelectableNativeText(`Ship ${grinning}`)).toBe(false);
+    expect(shouldUseSelectableNativeText("中文")).toBe(false);
     expect(splitUnicodeTextRuns(`Ship ${grinning} cafe\u0301 中文 ${family}`)).toEqual([
       { type: "text", content: "Ship " },
       { type: "emoji", content: grinning },
@@ -88,6 +100,43 @@ describe("mobile chat formatting", () => {
       { type: "unicode", content: "中文" },
       { type: "text", content: " " },
       { type: "emoji", content: family },
+    ]);
+  });
+
+  test("formats mobile work timeline like the web chat activity text", () => {
+    expect(MOBILE_CHAT_WORK_TIMELINE.showWorkedForLine).toBe(true);
+    expect(MOBILE_CHAT_WORK_TIMELINE.renderToolCallsAsActivityText).toBe(true);
+    expect(MOBILE_CHAT_WORK_TIMELINE.useDesktopToolIntentLabels).toBe(true);
+    expect(formatMobileWorkedDuration(26_000)).toBe("0h 00m 26s");
+
+    const timeline = buildMobileWorkTimeline({
+      id: "assistant-1",
+      role: "assistant",
+      content: "Done",
+      thinking: "I'll check the available tools and execute a concrete mobile app smoke test.",
+      toolCalls: [
+        {
+          id: "tool-search",
+          name: "tool_search",
+          status: "completed",
+          args: { query: "mobile test tools" },
+          startedAt: 1000,
+        },
+        {
+          id: "shell-1",
+          name: "shell",
+          status: "completed",
+          args: { cmd: "ls -la && pwd" },
+          startedAt: 27_000,
+        },
+      ],
+    });
+
+    expect(timeline.workedDuration).toBe("0h 00m 26s");
+    expect(timeline.activities.map((activity) => activity.text)).toEqual([
+      "I'll check the available tools and execute a concrete mobile app smoke test.",
+      'Search complete for "mobile test tools"',
+      "Ran ls -la && pwd",
     ]);
   });
 });

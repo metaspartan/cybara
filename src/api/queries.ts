@@ -72,6 +72,14 @@ export interface CombinedLogEntry {
   logType: string;
 }
 
+export interface CombinedLogPage {
+  logs: CombinedLogEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
 /** Log statistics by category */
 export interface LogStats {
   counts: {
@@ -129,7 +137,9 @@ export function normalizeTimestamp(timestamp: string | undefined): string | unde
  * Get combined logs from all log tables (system, agent, channel)
  * Returns unified format sorted by created_at descending
  */
-export function getCombinedLogs(): CombinedLogEntry[] {
+export function getCombinedLogs(
+  options: { limit?: number; offset?: number } = {}
+): CombinedLogEntry[] {
   const system = (tables.systemLogs.list ? tables.systemLogs.list() : []) as LogEntry[];
   const agent = (tables.agentLogs.list ? tables.agentLogs.list() : []) as AgentLogEntry[];
   const channel = (tables.channelLogs.list ? tables.channelLogs.list() : []) as ChannelLogEntry[];
@@ -164,9 +174,91 @@ export function getCombinedLogs(): CombinedLogEntry[] {
     })),
   ];
 
-  return combined.sort(
+  const sorted = combined.sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
+  const offset = Math.max(0, options.offset ?? 0);
+  if (options.limit === undefined) {
+    return offset > 0 ? sorted.slice(offset) : sorted;
+  }
+  return sorted.slice(offset, offset + Math.max(0, options.limit));
+}
+
+function countRows(table: string): number {
+  const row = db.prepare(`SELECT COUNT(*) as count FROM ${table}`).get() as CountResult | null;
+  return Number(row?.count || 0);
+}
+
+function normalizeCombinedLogRow(row: CombinedLogEntry): CombinedLogEntry {
+  return {
+    ...row,
+    created_at: normalizeTimestamp(row.created_at)!,
+  };
+}
+
+function combinedSystemLogs(limit: number): CombinedLogEntry[] {
+  return (
+    db
+      .prepare(
+        "SELECT id, COALESCE(level, 'info') as level, COALESCE(source, 'system') as source, COALESCE(message, '') as message, metadata, created_at, 'system' as logType FROM system_logs ORDER BY created_at DESC LIMIT ?"
+      )
+      .all(limit) as CombinedLogEntry[]
+  ).map(normalizeCombinedLogRow);
+}
+
+function combinedAgentLogs(limit: number): CombinedLogEntry[] {
+  const rows = db
+    .prepare("SELECT * FROM agent_logs ORDER BY created_at DESC LIMIT ?")
+    .all(limit) as AgentLogEntry[];
+  return rows.map((row) => ({
+    id: row.id,
+    level: "info",
+    source: "agent",
+    message: `Agent ${row.agent_id.slice(0, 8)}... ${row.action}${row.details ? `: ${row.details}` : ""}`,
+    metadata: row.metadata,
+    created_at: normalizeTimestamp(row.created_at)!,
+    logType: "agent",
+  }));
+}
+
+function combinedChannelLogs(limit: number): CombinedLogEntry[] {
+  const rows = db
+    .prepare("SELECT * FROM channel_logs ORDER BY created_at DESC LIMIT ?")
+    .all(limit) as ChannelLogEntry[];
+  return rows.map((row) => ({
+    id: row.id,
+    level: "info",
+    source: "channel",
+    message: `${row.direction} ${row.channel_type}${row.sender_id ? ` from ${row.sender_id}` : ""}: ${row.content?.substring(0, 100)}${(row.content?.length || 0) > 100 ? "..." : ""}`,
+    metadata: row.metadata,
+    created_at: normalizeTimestamp(row.created_at)!,
+    logType: "channel",
+  }));
+}
+
+export function getCombinedLogTotal(): number {
+  return countRows("system_logs") + countRows("agent_logs") + countRows("channel_logs");
+}
+
+export function getCombinedLogsPage(options: { limit: number; offset?: number }): CombinedLogPage {
+  const limit = Math.max(1, Math.min(1000, Math.floor(options.limit)));
+  const offset = Math.max(0, Math.floor(options.offset ?? 0));
+  const windowSize = Math.max(offset + limit, limit);
+  const logs = [
+    ...combinedSystemLogs(windowSize),
+    ...combinedAgentLogs(windowSize),
+    ...combinedChannelLogs(windowSize),
+  ]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(offset, offset + limit);
+  const total = getCombinedLogTotal();
+  return {
+    logs,
+    total,
+    limit,
+    offset,
+    hasMore: offset + logs.length < total,
+  };
 }
 
 /**
