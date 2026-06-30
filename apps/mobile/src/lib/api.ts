@@ -1,4 +1,5 @@
 import type { GatewayProfile } from "./connection";
+import { emptyMetricsAvailability, type MetricsEndpointKey, type MetricsSnapshot } from "./metrics";
 
 export interface HealthResponse {
   status: string;
@@ -612,6 +613,76 @@ export class CybaraMobileApi {
       memory,
       logs,
       config,
+      availability,
+    };
+  }
+
+  async metricsSnapshot(): Promise<MetricsSnapshot> {
+    const availability = emptyMetricsAvailability();
+    const safe = async <T>(
+      key: MetricsEndpointKey,
+      fallback: T,
+      task: () => Promise<T>
+    ): Promise<T> => {
+      try {
+        const result = await task();
+        availability[key] = { ok: true };
+        return result;
+      } catch (error) {
+        availability[key] = {
+          ok: false,
+          status: error instanceof CybaraApiError ? error.status : undefined,
+          error: error instanceof Error ? error.message : String(error),
+        };
+        return fallback;
+      }
+    };
+
+    const [
+      overview,
+      tokens,
+      files,
+      tools,
+      providers,
+      timeSeries,
+      models,
+      insights,
+      tokenAnalysis,
+      storage,
+    ] = await Promise.all([
+      safe("overview", null, () =>
+        this.request<MetricsSnapshot["overview"]>("/api/metrics/overview")
+      ),
+      safe("tokens", null, () => this.request<MetricsSnapshot["tokens"]>("/api/metrics/tokens")),
+      safe("files", null, () => this.request<MetricsSnapshot["files"]>("/api/metrics/files")),
+      safe("tools", null, () => this.request<MetricsSnapshot["tools"]>("/api/metrics/tools")),
+      safe("providers", null, () =>
+        this.request<MetricsSnapshot["providers"]>("/api/metrics/providers")
+      ),
+      safe("timeSeries", null, () =>
+        this.request<MetricsSnapshot["timeSeries"]>("/api/metrics/time-series")
+      ),
+      safe("models", null, () => this.request<MetricsSnapshot["models"]>("/api/metrics/models")),
+      safe("insights", null, () =>
+        this.request<MetricsSnapshot["insights"]>("/api/metrics/insights")
+      ),
+      safe("tokenAnalysis", null, () =>
+        this.request<MetricsSnapshot["tokenAnalysis"]>("/api/metrics/token-analysis")
+      ),
+      safe("storage", null, () => this.request<MetricsSnapshot["storage"]>("/api/metrics/storage")),
+    ]);
+
+    return {
+      overview,
+      tokens,
+      files,
+      tools,
+      providers,
+      timeSeries,
+      models,
+      insights,
+      tokenAnalysis,
+      storage,
       availability,
     };
   }

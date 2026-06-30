@@ -42,6 +42,17 @@ import {
 } from "lucide-react-native";
 import { GlassButton, GlassPanel } from "../components/Glass";
 import {
+  MetricBarChart,
+  MetricBreakdown,
+  MetricEndpointGrid,
+  MetricMicro,
+  MetricSection,
+  MetricShareRows,
+  MetricTokenCloud,
+  TokenHeatmap,
+} from "../components/MetricVisuals";
+import { NewChatPanel } from "../components/NewChatPanel";
+import {
   CybaraMobileApi,
   type ActivitySummary,
   type FeatureEndpointKey,
@@ -72,6 +83,16 @@ import {
   type MobileSurfaceKey,
   type MobileTabKey,
 } from "../lib/dashboard";
+import {
+  formatMetricBytes,
+  formatMetricNumber,
+  metricSuccessRate,
+  storageCategoryEntries,
+  timeSeriesTotals,
+  tokenFlowBars,
+  totalFileOperations,
+  type MetricsSnapshot,
+} from "../lib/metrics";
 import { accentPalette, colors, radius, spacing, typography } from "../theme/liquidGlass";
 import cybaraLogo from "../../assets/cybara.png";
 
@@ -90,6 +111,7 @@ interface ModuleCard {
 type EndpointState = FeatureSummary["availability"][FeatureEndpointKey] | undefined;
 type DetailRoute =
   | { kind: "session"; id: string }
+  | { kind: "newChat" }
   | { kind: "surface"; surface: MobileSurfaceKey }
   | { kind: "item"; surface: MobileSurfaceKey; item: RemoteItemSummary | ActivitySummary };
 
@@ -318,6 +340,9 @@ function routeHeader(
       detail: `${session?.message_count ?? 0} messages - ${route.id}`,
     };
   }
+  if (route.kind === "newChat") {
+    return { title: "New chat", detail: "Start a gateway-backed session" };
+  }
   if (route.kind === "surface") {
     const meta = surfaceMeta[route.surface];
     return { title: meta.title, detail: "Live gateway data" };
@@ -335,10 +360,12 @@ export function DashboardScreen({
 }) {
   const api = useMemo(() => new CybaraMobileApi(profile), [profile]);
   const [summary, setSummary] = useState<FeatureSummary | null>(null);
+  const [metrics, setMetrics] = useState<MetricsSnapshot | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<MobileTabKey>("overview");
   const [detailRoute, setDetailRoute] = useState<DetailRoute | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
 
   const refresh = async (showRefreshing = true) => {
     if (showRefreshing) setRefreshing(true);
@@ -352,14 +379,36 @@ export function DashboardScreen({
     }
   };
 
+  const refreshMetrics = async () => {
+    setMetricsError(null);
+    try {
+      setMetrics(await api.metricsSnapshot());
+    } catch (refreshError) {
+      setMetricsError(refreshError instanceof Error ? refreshError.message : String(refreshError));
+    }
+  };
+
+  const refreshAll = async (showRefreshing = true) => {
+    if (showRefreshing) setRefreshing(true);
+    await Promise.all([refresh(false), refreshMetrics()]);
+    if (showRefreshing) setRefreshing(false);
+  };
+
   useEffect(() => {
-    void refresh();
+    void refreshAll();
   }, [profile.id]);
 
   useEffect(() => {
     const interval = setInterval(() => {
       void refresh(false);
     }, 12000);
+    return () => clearInterval(interval);
+  }, [profile.id]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void refreshMetrics();
+    }, 30000);
     return () => clearInterval(interval);
   }, [profile.id]);
 
@@ -495,11 +544,7 @@ export function DashboardScreen({
             </Pressable>
           ) : (
             <View style={styles.logoMark}>
-              <Image
-                accessibilityIgnoresInvertColors
-                source={cybaraLogo}
-                style={styles.logoImage}
-              />
+              <Image accessibilityIgnoresInvertColors source={cybaraLogo} style={styles.logoImage} />
             </View>
           )}
           <View style={styles.headerText}>
@@ -518,7 +563,7 @@ export function DashboardScreen({
         </View>
         <Pressable
           style={styles.iconButton}
-          onPress={detailRoute ? () => refresh(true) : () => selectTab("settings")}
+          onPress={detailRoute ? () => refreshAll(true) : () => selectTab("settings")}
         >
           {detailRoute ? (
             <RefreshCw color={colors.text} size={22} strokeWidth={2.1} />
@@ -545,7 +590,7 @@ export function DashboardScreen({
             <RefreshControl
               tintColor={accentColor}
               refreshing={refreshing}
-              onRefresh={() => refresh(true)}
+              onRefresh={() => refreshAll(true)}
             />
           }
         >
@@ -565,7 +610,7 @@ export function DashboardScreen({
                     {compactHost(profile.baseUrl)} - {health?.version || "version pending"}
                   </Text>
                 </View>
-                <Pressable style={styles.reconnectButton} onPress={() => refresh(true)}>
+                <Pressable style={styles.reconnectButton} onPress={() => refreshAll(true)}>
                   <RefreshCw color={colors.blueText} size={18} strokeWidth={2.2} />
                   <Text style={styles.reconnectText}>
                     {refreshing ? "Refreshing" : "Reconnect"}
@@ -641,6 +686,7 @@ export function DashboardScreen({
               accentColor={accentColor}
               closeDetail={() => setDetailRoute(null)}
               refreshSummary={() => refresh(false)}
+              openSession={(id) => setDetailRoute({ kind: "session", id })}
             />
           ) : activeTab === "overview" ? (
             <OverviewPanel
@@ -656,6 +702,7 @@ export function DashboardScreen({
               sessions={sessions}
               summary={summary}
               openSession={(id) => setDetailRoute({ kind: "session", id })}
+              createChat={() => setDetailRoute({ kind: "newChat" })}
               accentColor={accentColor}
             />
           ) : null}
@@ -663,8 +710,11 @@ export function DashboardScreen({
             <MetricsPanel
               accentColor={accentColor}
               counts={counts}
+              metrics={metrics}
+              metricsError={metricsError}
               summary={summary}
               openSurface={openSurface}
+              refreshMetrics={refreshMetrics}
             />
           ) : null}
           {!detailRoute && activeTab === "settings" ? (
@@ -922,11 +972,13 @@ function ActivityRow({
 
 function SessionsPanel({
   accentColor,
+  createChat,
   sessions,
   summary,
   openSession,
 }: {
   accentColor: string;
+  createChat: () => void;
   sessions: SessionSummary[];
   summary: FeatureSummary | null;
   openSession: (id: string) => void;
@@ -954,7 +1006,9 @@ function SessionsPanel({
       </View>
       <View style={styles.subsectionHeader}>
         <Text style={styles.subsectionTitle}>Recent chats</Text>
-        <Text style={styles.counterText}>{sessions.length}</Text>
+        <Pressable style={styles.smallButton} onPress={createChat}>
+          <Text style={styles.smallButtonText}>New</Text>
+        </Pressable>
       </View>
       {sessions.slice(0, 20).map((session) => (
         <Pressable key={session.id} style={styles.listRow} onPress={() => openSession(session.id)}>
@@ -991,18 +1045,68 @@ function SessionsPanel({
 function MetricsPanel({
   accentColor,
   counts,
+  metrics,
+  metricsError,
   summary,
   openSurface,
+  refreshMetrics,
 }: {
   accentColor: string;
   counts: FeatureCounts;
+  metrics: MetricsSnapshot | null;
+  metricsError: string | null;
   summary: FeatureSummary | null;
   openSurface: (surface: MobileSurfaceKey) => void;
+  refreshMetrics: () => void;
 }) {
   const health = summary?.health;
   const healthy = health?.status === "healthy";
   const checks = Object.entries(health?.checks || {});
   const recentLogs = summary?.logs.slice(0, 3) ?? [];
+  const overview = metrics?.overview ?? null;
+  const insights = metrics?.insights ?? null;
+  const tokenAnalysis = metrics?.tokenAnalysis ?? null;
+  const availableMetrics = metrics
+    ? Object.values(metrics.availability).filter((endpoint) => endpoint.ok).length
+    : 0;
+  const activitySeries = timeSeriesTotals(metrics?.timeSeries ?? null, [
+    "token_usage",
+    "tool_call",
+    "api_call",
+    "file_operation",
+    "activity",
+    "messages",
+  ]);
+  const tokenBars = tokenFlowBars(overview);
+  const providerRows =
+    insights?.providerEfficiency.slice(0, 6).map((provider) => ({
+      label: provider.provider,
+      value: `${formatMetricNumber(provider.tokensPerCall)} tok/call`,
+      detail: `${formatMetricNumber(provider.calls)} calls - ${provider.sharePct}% share`,
+      amount: provider.tokens,
+    })) ??
+    metrics?.providers?.providers.slice(0, 6).map((provider) => ({
+      label: provider.provider,
+      value: formatMetricNumber(provider.tokens),
+      detail: `${formatMetricNumber(provider.hits)} hits`,
+      amount: provider.tokens,
+    })) ??
+    [];
+  const modelRows =
+    insights?.modelInsights.slice(0, 6).map((model) => ({
+      label: model.model,
+      value: `${formatMetricNumber(model.totalTokens)} tokens`,
+      detail: `${model.provider} - ${model.avgTps} tok/s - ${model.avgLatencyMs}ms`,
+      amount: model.totalTokens,
+    })) ??
+    metrics?.models?.models.slice(0, 6).map((model) => ({
+      label: model.model,
+      value: `${formatMetricNumber(model.totalTokens)} tokens`,
+      detail: `${model.provider} - ${model.avgTps} tok/s`,
+      amount: model.totalTokens,
+    })) ??
+    [];
+  const storageRows = storageCategoryEntries(metrics?.storage ?? null).slice(0, 8);
 
   return (
     <GlassPanel elevated style={styles.detailPanel}>
@@ -1015,44 +1119,184 @@ function MetricsPanel({
           tone={healthy ? colors.green : colors.amber}
         />
         <SummaryTile
-          Icon={Clock}
-          label="Uptime"
-          value={formatUptime(health?.uptime)}
-          detail={health?.version || "version pending"}
+          Icon={Cpu}
+          label="Tokens"
+          value={formatMetricNumber(overview?.tokenUsage.total)}
+          detail={`${formatMetricNumber(overview?.agentActivity.totalMessages)} messages`}
           tone={accentColor}
         />
         <SummaryTile
-          Icon={MessageCircle}
-          label="Chats"
-          value={String(counts.sessions)}
-          detail="stored chats"
+          Icon={Zap}
+          label="API"
+          value={metricSuccessRate(overview)}
+          detail={`${formatMetricNumber(overview?.apiCalls.totalCalls)} calls`}
           tone={colors.blueText}
         />
         <SummaryTile
-          Icon={Wrench}
-          label="Tools"
-          value={String(counts.tools)}
-          detail={`${counts.approvals} approvals`}
+          Icon={Database}
+          label="Storage"
+          value={formatMetricBytes(metrics?.storage?.totalBytes)}
+          detail={`${availableMetrics}/10 feeds`}
           tone={colors.green}
         />
       </View>
 
-      <View style={styles.metricTrendPanel}>
-        <View style={styles.metricTrendText}>
-          <Text style={styles.subsectionTitle}>Gateway activity</Text>
-          <Text style={styles.listDetail}>
-            {counts.logs} events - {counts.tasks} tasks - {counts.memory} memory files
-          </Text>
-        </View>
-        <View style={styles.metricTrendBars}>
-          {sparkBars.map((height, index) => (
-            <View
-              key={`${height}-${index}`}
-              style={[styles.metricTrendBar, { height, backgroundColor: accentColor }]}
-            />
-          ))}
-        </View>
+      {metricsError ? <EmptyState label="Metrics unavailable" detail={metricsError} /> : null}
+
+      <View style={styles.subsectionHeader}>
+        <Text style={styles.subsectionTitle}>Token flow</Text>
+        <Pressable style={styles.smallButton} onPress={refreshMetrics}>
+          <Text style={styles.smallButtonText}>Refresh</Text>
+        </Pressable>
       </View>
+      <MetricBreakdown data={tokenBars} tone={accentColor} />
+
+      <MetricSection
+        title="Activity trend"
+        detail="Last 14 days across tokens, tools, API, files, and messages"
+      >
+        <MetricBarChart data={activitySeries} tone={accentColor} />
+      </MetricSection>
+
+      <MetricSection
+        title="Token heatmap"
+        detail={
+          tokenAnalysis?.tokenHeatmap?.hottestHour
+            ? `${tokenAnalysis.tokenHeatmap.hottestHour.dayLabel} ${String(tokenAnalysis.tokenHeatmap.hottestHour.hour).padStart(2, "0")}:00 hottest`
+            : "7-day hourly usage"
+        }
+      >
+        <TokenHeatmap tokenAnalysis={tokenAnalysis} tone={accentColor} />
+      </MetricSection>
+
+      <MetricSection title="Prompt vs output" detail="Ratio, median, and response balance">
+        <View style={styles.metricMicroGrid}>
+          <MetricMicro
+            label="Input:Output"
+            value={
+              tokenAnalysis?.summary?.inputToOutputRatio === null ||
+              tokenAnalysis?.summary?.inputToOutputRatio === undefined
+                ? "n/a"
+                : `${tokenAnalysis.summary.inputToOutputRatio}:1`
+            }
+          />
+          <MetricMicro
+            label="Avg/call"
+            value={formatMetricNumber(tokenAnalysis?.summary?.averageTokensPerCall)}
+          />
+          <MetricMicro
+            label="Median"
+            value={formatMetricNumber(tokenAnalysis?.summary?.medianTokensPerCall)}
+          />
+        </View>
+        <MetricShareRows
+          rows={(tokenAnalysis?.promptOutputDistribution?.bands || []).map((band) => ({
+            label: band.band.replace(/_/g, " "),
+            value: `${band.sharePct}%`,
+            amount: band.sharePct,
+          }))}
+          tone={colors.green}
+        />
+      </MetricSection>
+
+      <MetricSection
+        title="Token insights"
+        detail={`${insights?.tokenTrend24h.changePct ?? 0}% 24h trend - ${insights?.cacheEfficiency.cacheSharePct ?? 0}% cache`}
+      >
+        <View style={styles.metricMicroGrid}>
+          <MetricMicro label="Top model share" value={`${insights?.topModel?.sharePct ?? 0}%`} />
+          <MetricMicro
+            label="Tool success"
+            value={`${insights?.toolReliability.successRatePct ?? 100}%`}
+          />
+          <MetricMicro
+            label="Context warnings"
+            value={String(
+              insights?.contextHealth24h.warnings ?? overview?.contextHealth?.warnings ?? 0
+            )}
+          />
+        </View>
+      </MetricSection>
+
+      <MetricSection title="Provider efficiency" detail="Tokens per provider call">
+        <MetricShareRows rows={providerRows} tone={colors.blueText} />
+      </MetricSection>
+
+      <MetricSection title="Models" detail="Throughput, latency, and token share">
+        <MetricShareRows rows={modelRows} tone={colors.amber} />
+      </MetricSection>
+
+      <MetricSection
+        title="Tools"
+        detail={`${formatMetricNumber(overview?.toolCalls.totalCalls)} calls - ${formatMetricNumber(insights?.toolReliability.totalErrors)} errors`}
+      >
+        <MetricShareRows
+          rows={(metrics?.tools?.mostUsed || []).slice(0, 7).map((tool) => ({
+            label: tool.tool,
+            value: `${formatMetricNumber(tool.calls)} calls`,
+            amount: tool.calls,
+          }))}
+          tone={colors.green}
+        />
+        {metrics?.tools?.mostErrors?.length ? (
+          <MetricShareRows
+            rows={metrics.tools.mostErrors.slice(0, 4).map((tool) => ({
+              label: tool.tool,
+              value: `${formatMetricNumber(tool.errors)} errors`,
+              amount: tool.errors,
+            }))}
+            tone={colors.red}
+          />
+        ) : null}
+      </MetricSection>
+
+      <MetricSection
+        title="Files"
+        detail={`${formatMetricNumber(totalFileOperations(overview))} read/write/edit operations`}
+      >
+        <MetricShareRows
+          rows={(metrics?.files?.mostRead || []).slice(0, 4).map((file) => ({
+            label: file.path.split("/").pop() || file.path,
+            value: `${formatMetricNumber(file.count)} reads`,
+            amount: file.count,
+          }))}
+          tone={colors.cyan}
+        />
+        <MetricShareRows
+          rows={[
+            ...(metrics?.files?.mostWritten || []).slice(0, 2).map((file) => ({
+              label: file.path.split("/").pop() || file.path,
+              value: `${formatMetricNumber(file.count)} writes`,
+              amount: file.count,
+            })),
+            ...(metrics?.files?.mostEdited || []).slice(0, 2).map((file) => ({
+              label: file.path.split("/").pop() || file.path,
+              value: `${formatMetricNumber(file.count)} edits`,
+              amount: file.count,
+            })),
+          ]}
+          tone={colors.amber}
+        />
+      </MetricSection>
+
+      <MetricSection title="Storage" detail={formatMetricBytes(metrics?.storage?.totalBytes)}>
+        <MetricShareRows
+          rows={storageRows.map((entry) => ({
+            label: entry.label,
+            value: formatMetricBytes(entry.bytes),
+            detail: compactWorkspace(entry.path),
+            amount: entry.bytes,
+          }))}
+          tone={colors.cyan}
+        />
+      </MetricSection>
+
+      <MetricSection
+        title="Token cloud"
+        detail="Models, providers, tools, and recurring output terms"
+      >
+        <MetricTokenCloud entries={tokenAnalysis?.tokenCloud} />
+      </MetricSection>
 
       <View style={styles.subsectionHeader}>
         <Text style={styles.subsectionTitle}>Runtime checks</Text>
@@ -1125,6 +1369,10 @@ function MetricsPanel({
           detail="Gateway logs have not reported activity yet."
         />
       )}
+
+      <MetricSection title="Metric feeds" detail={`${availableMetrics}/10 endpoints online`}>
+        <MetricEndpointGrid availability={metrics?.availability} />
+      </MetricSection>
     </GlassPanel>
   );
 }
@@ -1136,6 +1384,7 @@ function DetailContent({
   route,
   summary,
   openItem,
+  openSession,
   closeDetail,
   refreshSummary,
 }: {
@@ -1145,6 +1394,7 @@ function DetailContent({
   route: DetailRoute;
   summary: FeatureSummary | null;
   openItem: (surface: MobileSurfaceKey, item: RemoteItemSummary | ActivitySummary) => void;
+  openSession: (sessionId: string) => void;
   closeDetail: () => void;
   refreshSummary: () => void;
 }) {
@@ -1156,6 +1406,19 @@ function DetailContent({
         closeDetail={closeDetail}
         refreshSummary={refreshSummary}
         sessionId={route.id}
+      />
+    );
+  }
+  if (route.kind === "newChat") {
+    return (
+      <NewChatPanel
+        accentColor={accentColor}
+        api={api}
+        agents={summary?.agents ?? []}
+        onCreated={(sessionId) => {
+          refreshSummary();
+          openSession(sessionId);
+        }}
       />
     );
   }
@@ -1803,6 +2066,10 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     width: 50,
   },
+  logoImage: {
+    height: 40,
+    width: 40,
+  },
   backButton: {
     alignItems: "center",
     backgroundColor: "rgba(255,255,255,0.07)",
@@ -1812,10 +2079,6 @@ const styles = StyleSheet.create({
     height: 50,
     justifyContent: "center",
     width: 50,
-  },
-  logoImage: {
-    height: 40,
-    width: 40,
   },
   headerText: {
     flex: 1,
@@ -2136,31 +2399,10 @@ const styles = StyleSheet.create({
   detailPanel: {
     gap: spacing.md,
   },
-  metricTrendPanel: {
-    alignItems: "center",
-    backgroundColor: "rgba(3, 7, 11, 0.62)",
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    borderWidth: 1,
+  metricMicroGrid: {
     flexDirection: "row",
-    gap: spacing.md,
-    minHeight: 82,
-    padding: spacing.md,
-  },
-  metricTrendText: {
-    flex: 1,
-    gap: 3,
-  },
-  metricTrendBars: {
-    alignItems: "flex-end",
-    flexDirection: "row",
-    gap: 3,
-    height: 36,
-  },
-  metricTrendBar: {
-    borderRadius: 3,
-    opacity: 0.85,
-    width: 5,
+    flexWrap: "wrap",
+    gap: spacing.sm,
   },
   itemHero: {
     alignItems: "center",

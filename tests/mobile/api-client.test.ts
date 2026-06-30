@@ -170,6 +170,142 @@ describe("mobile API client", () => {
     }
   });
 
+  test("creates a new gateway chat without a preexisting session id", async () => {
+    const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      const method = init?.method || "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      calls.push({ method, path: parsedUrl.pathname, body });
+
+      if (parsedUrl.pathname === "/api/chat" && method === "POST") {
+        return Response.json({
+          sessionId: "new-session",
+          message: {
+            id: "assistant-1",
+            role: "assistant",
+            content: "Created",
+          },
+        });
+      }
+
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const sent = await new CybaraMobileApi(profile).sendChat({
+        agentId: "agent-1",
+        message: "start new work",
+        workspaceDir: "/repo",
+      });
+
+      expect(sent.sessionId).toBe("new-session");
+      expect(calls).toEqual([
+        {
+          method: "POST",
+          path: "/api/chat",
+          body: {
+            agentId: "agent-1",
+            message: "start new work",
+            workspaceDir: "/repo",
+          },
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("loads every web metrics feed into a mobile metrics snapshot", async () => {
+    const paths: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url) => {
+      const path = new URL(String(url)).pathname;
+      paths.push(path);
+      if (path === "/api/metrics/overview") {
+        return Response.json({
+          tokenUsage: { total: 10, input: 4, output: 6, cache: 0 },
+          fileOperations: { filesRead: 1, filesWritten: 2, filesEdited: 3 },
+          toolCalls: { totalCalls: 5 },
+          apiCalls: { totalCalls: 5, successfulCalls: 4, failedCalls: 1 },
+          agentActivity: { totalExecutions: 2, totalMessages: 3 },
+        });
+      }
+      if (path === "/api/metrics/tokens") {
+        return Response.json({ topModels: [], topProviders: [], recentUsage: [], totalTokens: 10 });
+      }
+      if (path === "/api/metrics/files") {
+        return Response.json({
+          mostRead: [],
+          mostWritten: [],
+          mostEdited: [],
+          recentOperations: [],
+        });
+      }
+      if (path === "/api/metrics/tools") {
+        return Response.json({ mostUsed: [], mostErrors: [], recentCalls: [] });
+      }
+      if (path === "/api/metrics/providers") return Response.json({ providers: [] });
+      if (path === "/api/metrics/time-series") return Response.json({ days: [] });
+      if (path === "/api/metrics/models") return Response.json({ models: [] });
+      if (path === "/api/metrics/insights") {
+        return Response.json({
+          tokenBreakdown: {
+            total: 10,
+            input: 4,
+            output: 6,
+            cache: 0,
+            inputPct: 40,
+            outputPct: 60,
+            cachePct: 0,
+          },
+          tokenTrend24h: { current: 10, previous: 5, changePct: 100, direction: "up" },
+          cacheEfficiency: { cacheTokens: 0, cacheSharePct: 0 },
+          topModel: null,
+          providerEfficiency: [],
+          modelInsights: [],
+          toolReliability: { totalCalls: 5, totalErrors: 0, successRatePct: 100 },
+          toolUsage24h: [],
+          contextHealth24h: { warnings: 0, criticalWarnings: 0 },
+        });
+      }
+      if (path === "/api/metrics/token-analysis")
+        return Response.json({ summary: { totalTokens: 10 } });
+      if (path === "/api/metrics/storage") {
+        return Response.json({
+          totalBytes: 2048,
+          directories: { cybaraDir: "/tmp" },
+          components: {},
+        });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const snapshot = await new CybaraMobileApi(profile).metricsSnapshot();
+      expect(snapshot.overview?.tokenUsage.total).toBe(10);
+      expect(snapshot.storage?.totalBytes).toBe(2048);
+      expect(Object.values(snapshot.availability).every((endpoint) => endpoint.ok)).toBe(true);
+      expect(paths.sort()).toEqual(
+        [
+          "/api/metrics/files",
+          "/api/metrics/insights",
+          "/api/metrics/models",
+          "/api/metrics/overview",
+          "/api/metrics/providers",
+          "/api/metrics/storage",
+          "/api/metrics/time-series",
+          "/api/metrics/token-analysis",
+          "/api/metrics/tokens",
+          "/api/metrics/tools",
+        ].sort()
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("normalizes wrapped gateway response shapes for mobile lists", () => {
     expect(
       normalizeRemoteItems(
