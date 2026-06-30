@@ -253,6 +253,42 @@ export const channels = {
       },
     ],
   },
+  mattermost: {
+    name: "Mattermost",
+    icon: "🟦",
+    description: "Connect to a Mattermost server",
+    color: "#1E325C",
+    fields: [
+      { name: "base_url", label: "Server URL", type: "string", required: true },
+      { name: "token", label: "Bot/Personal Access Token", type: "password", required: true },
+    ],
+  },
+  irc: {
+    name: "IRC",
+    icon: "💻",
+    description: "Connect to an IRC network",
+    color: "#888888",
+    fields: [
+      { name: "server", label: "Server Host", type: "string", required: true },
+      { name: "port", label: "Port", type: "number", required: false, default: 6697 },
+      { name: "tls", label: "Use TLS", type: "boolean", required: false, default: true },
+      { name: "nick", label: "Nickname", type: "string", required: true },
+      { name: "channels", label: "Channels (comma-separated)", type: "string", required: false },
+      { name: "password", label: "Server Password", type: "password", required: false },
+      { name: "nickserv_password", label: "NickServ Password", type: "password", required: false },
+    ],
+  },
+  ntfy: {
+    name: "ntfy",
+    icon: "🔔",
+    description: "Pub/sub messaging via ntfy.sh or self-hosted",
+    color: "#2DA1A4",
+    fields: [
+      { name: "topic", label: "Topic", type: "string", required: true },
+      { name: "server", label: "Server URL", type: "string", required: false, default: "https://ntfy.sh" },
+      { name: "token", label: "Access Token", type: "password", required: false },
+    ],
+  },
   web: {
     name: "Web UI",
     icon: "🌐",

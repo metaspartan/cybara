@@ -11,6 +11,9 @@ import { webhookAdapter } from "./adapters/webhook";
 import { smsAdapter } from "./adapters/sms";
 import { emailAdapter } from "./adapters/email";
 import { matrixAdapter } from "./adapters/matrix";
+import { mattermostAdapter } from "./adapters/mattermost";
+import { ircAdapter } from "./adapters/irc";
+import { ntfyAdapter } from "./adapters/ntfy";
 import {
   formatToolCallsForTelegram,
   formatToolCallsForDiscord,
@@ -66,6 +69,9 @@ export class ChannelManager {
     this.registerAdapter("sms", smsAdapter);
     this.registerAdapter("email", emailAdapter);
     this.registerAdapter("matrix", matrixAdapter);
+    this.registerAdapter("mattermost", mattermostAdapter);
+    this.registerAdapter("irc", ircAdapter);
+    this.registerAdapter("ntfy", ntfyAdapter);
   }
 
   registerAdapter(type: ChannelType, adapter: ChannelAdapter) {

@@ -26,6 +26,9 @@ import {
   whatsappAdapter,
   imessageAdapter,
   matrixAdapter,
+  mattermostAdapter,
+  ircAdapter,
+  ntfyAdapter,
   type MessageHandlerFileInfo,
 } from "./core/channels";
 import { handleSessionsSpawn } from "./core/tools/handlers/channel";
@@ -681,6 +684,9 @@ signalAdapter.setMessageHandler(createChannelChatHandler("signal"));
 whatsappAdapter.setMessageHandler(createChannelChatHandler("whatsapp"));
 imessageAdapter.setMessageHandler(createChannelChatHandler("imessage"));
 matrixAdapter.setMessageHandler(createChannelChatHandler("matrix"));
+mattermostAdapter.setMessageHandler(createChannelChatHandler("mattermost"));
+ircAdapter.setMessageHandler(createChannelChatHandler("irc"));
+ntfyAdapter.setMessageHandler(createChannelChatHandler("ntfy"));
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;

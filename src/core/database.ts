@@ -1068,7 +1068,10 @@ export interface Channel {
     | "webhook"
     | "sms"
     | "email"
-    | "matrix";
+    | "matrix"
+    | "mattermost"
+    | "irc"
+    | "ntfy";
   name: string;
   config: Record<string, unknown>;
   enabled: boolean;
