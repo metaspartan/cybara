@@ -5,8 +5,14 @@
     "version": "1.0.330",
     "orientation": "portrait",
     "scheme": "cybara",
+    "icon": "./assets/cybara.png",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/cybara.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#03070b"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "dev.cybara.mobile"
@@ -14,6 +20,7 @@
     "android": {
       "package": "dev.cybara.mobile",
       "adaptiveIcon": {
+        "foregroundImage": "./assets/cybara.png",
         "backgroundColor": "#071016"
       }
     },

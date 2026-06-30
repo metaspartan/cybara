@@ -15,9 +15,12 @@ Cybara Mobile is the React Native companion app for iOS and Android. It does not
 bun run mobile:dev
 bun run mobile:ios
 bun run mobile:android
+bun run mobile:expo-check
 bun run mobile:typecheck
 bun run test:mobile
 ```
+
+`mobile:expo-check` is part of `bun run check:ci`. Keep the React Native, React, and native Expo modules on the versions Expo reports as compatible; using newer registry versions before the matching Expo runtime is available can produce a red screen with a React Native JavaScript/native version mismatch.
 
 ## Connect A Device
 
@@ -41,3 +44,7 @@ cybara mobile remove <device-id>
 ```
 
 For LAN devices, make sure the gateway is reachable from the phone. Localhost only works from the same machine; use the host LAN IP or a trusted tunnel for remote access.
+
+## Release CI
+
+The GitHub release workflow builds mobile Expo update bundles for both iOS and Android on the self-hosted Linux runner and attaches them to the release as `cybara-mobile-expo-<tag>.tar.gz`. Store-signed IPA/APK production builds still require the normal Apple/Google signing credentials, so those remain a separate distribution step.

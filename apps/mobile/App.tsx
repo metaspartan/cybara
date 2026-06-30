@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { SafeAreaView, StatusBar, StyleSheet, View } from "react-native";
+import { StatusBar, StyleSheet, View } from "react-native";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { ConnectScreen } from "./src/screens/ConnectScreen";
 import { DashboardScreen } from "./src/screens/DashboardScreen";
 import type { GatewayProfile } from "./src/lib/connection";
@@ -28,18 +29,20 @@ export default function App() {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="light-content" />
-      <View style={styles.background}>
-        <View style={styles.content}>
-          {ready && profile ? (
-            <DashboardScreen profile={profile} onDisconnect={disconnect} />
-          ) : (
-            <ConnectScreen onConnect={connect} />
-          )}
+    <SafeAreaProvider>
+      <SafeAreaView style={styles.safe}>
+        <StatusBar barStyle="light-content" />
+        <View style={styles.background}>
+          <View style={styles.content}>
+            {ready && profile ? (
+              <DashboardScreen profile={profile} onDisconnect={disconnect} />
+            ) : (
+              <ConnectScreen onConnect={connect} />
+            )}
+          </View>
         </View>
-      </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 

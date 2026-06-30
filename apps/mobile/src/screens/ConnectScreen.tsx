@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
-import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Image, StyleSheet, Text, TextInput, View } from "react-native";
 import { GlassButton, GlassPanel } from "../components/Glass";
 import {
   buildMobileConnectPayload,
@@ -9,6 +9,7 @@ import {
   type GatewayProfile,
 } from "../lib/connection";
 import { colors, radius, spacing, typography } from "../theme/liquidGlass";
+import cybaraLogo from "../../assets/cybara.png";
 
 export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfile) => void }) {
   const [name, setName] = useState("Mac Studio Gateway");
@@ -74,8 +75,15 @@ export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfi
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.title}>Cybara</Text>
-      <Text style={styles.subtitle}>Connect this phone to a running Cybara gateway.</Text>
+      <View style={styles.brand}>
+        <View style={styles.logoMark}>
+          <Image accessibilityIgnoresInvertColors source={cybaraLogo} style={styles.logoImage} />
+        </View>
+        <View style={styles.brandText}>
+          <Text style={styles.title}>Cybara</Text>
+          <Text style={styles.subtitle}>Connect this phone to a running Cybara gateway.</Text>
+        </View>
+      </View>
       <GlassPanel elevated style={styles.card}>
         <Text style={styles.cardTitle}>Quick connect</Text>
         <Text style={styles.help}>Scan the gateway QR or paste the pairing payload.</Text>
@@ -154,11 +162,36 @@ export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfi
 
 const styles = StyleSheet.create({
   wrap: {
-    gap: spacing.lg,
+    gap: spacing.md,
+  },
+  brand: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.md,
+    paddingBottom: spacing.xs,
+  },
+  logoMark: {
+    alignItems: "center",
+    backgroundColor: "rgba(85, 216, 255, 0.10)",
+    borderColor: "rgba(85, 216, 255, 0.48)",
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    height: 58,
+    justifyContent: "center",
+    overflow: "hidden",
+    width: 58,
+  },
+  logoImage: {
+    height: 45,
+    width: 45,
+  },
+  brandText: {
+    flex: 1,
+    gap: 3,
   },
   title: {
     color: colors.text,
-    fontSize: 36,
+    fontSize: 35,
     fontWeight: "900",
   },
   subtitle: {

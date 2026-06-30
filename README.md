@@ -118,6 +118,7 @@ Cybara Mobile is a dark Liquid Glass-inspired React Native app for iOS and Andro
 bun run mobile:dev
 bun run mobile:ios
 bun run mobile:android
+bun run mobile:expo-check
 
 # on the device running Cybara
 cybara mobile connect --url http://192.168.1.20:4269 --device "Carsen iPhone"
@@ -272,7 +273,7 @@ bun run test:smoke   # Runtime + API + E2E smoke
 RUN_BROWSER_E2E=1 bun test tests/e2e/ide-web-ui-browser-smoke.test.ts  # Real browser IDE smoke
 bun run check        # Typecheck + lint + format check
 bun run check:loc    # Enforce max TS/TSX file size
-bun run check:ci     # CI gate (typecheck + lint + loc + smoke + deadcode report)
+bun run check:ci     # CI gate (typecheck + lint + loc + Expo mobile check + smoke + deadcode report)
 
 bun run tauri:dev    # Desktop dev mode
 bun run tauri:build  # Desktop production build

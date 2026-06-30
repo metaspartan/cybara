@@ -5,9 +5,10 @@ import { colors, radius, shadows, spacing, typography } from "../theme/liquidGla
 
 export function GlassPanel({
   children,
+  contentStyle,
   style,
   elevated = false,
-}: PropsWithChildren<{ style?: StyleProp<ViewStyle>; elevated?: boolean }>) {
+}: PropsWithChildren<{ contentStyle?: StyleProp<ViewStyle>; style?: StyleProp<ViewStyle>; elevated?: boolean }>) {
   return (
     <BlurView
       blurMethod="dimezisBlurViewSdk31Plus"
@@ -15,7 +16,7 @@ export function GlassPanel({
       tint="systemUltraThinMaterialDark"
       style={[styles.panel, elevated && styles.elevated, elevated && shadows.glass, style]}
     >
-      <View style={styles.panelFill}>{children}</View>
+      <View style={[styles.panelFill, contentStyle]}>{children}</View>
     </BlurView>
   );
 }

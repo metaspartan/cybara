@@ -57,6 +57,7 @@ bun run native:macos:package
 bun run mobile:dev
 bun run mobile:ios
 bun run mobile:android
+bun run mobile:expo-check
 ```
 
 See [Desktop Guide](./desktop.md) for platform-specific build info.
@@ -78,6 +79,7 @@ See [Desktop Guide](./desktop.md) for platform-specific build info.
 | `bun run tauri:build` | Tauri desktop production build |
 | `bun run native:macos:package` | Package the native SwiftUI macOS app bundle |
 | `bun run mobile:dev` | Start the React Native mobile companion with Expo |
+| `bun run mobile:expo-check` | Verify React Native/Expo dependency compatibility |
 | `bun run mobile:typecheck` | Type-check the mobile companion |
 | `bun run package` | Build release binaries |
 

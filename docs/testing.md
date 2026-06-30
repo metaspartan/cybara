@@ -63,6 +63,7 @@ bun test tests/ui
 
 # React Native mobile companion helpers
 bun run test:mobile
+bun run mobile:expo-check
 bun run mobile:typecheck
 
 # Build script/platform mapping

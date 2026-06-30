@@ -267,10 +267,57 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
 
+  # ── React Native mobile app (Expo update bundles) ──────────────────────────
+  build-mobile:
+    name: Mobile Expo bundles
+    needs: quality
+    runs-on: [self-hosted, Linux, X64]
+    env:
+      EXPO_NO_TELEMETRY: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Install dependencies
+        run: bun install --ignore-scripts
+      - name: Run postinstall
+        run: bun run scripts/postinstall.ts
+      - name: Sync version metadata
+        run: bun run version:sync
+      - name: Check Expo dependency compatibility
+        run: bun run mobile:expo-check
+      - name: Type check mobile app
+        run: bun run mobile:typecheck
+      - name: Export iOS and Android bundles
+        run: |
+          set -euo pipefail
+          rm -rf release/mobile/expo
+          mkdir -p release/mobile/expo
+          cd apps/mobile
+          bunx expo export --platform ios --output-dir ../../release/mobile/expo/ios
+          bunx expo export --platform android --output-dir ../../release/mobile/expo/android
+      - name: Package mobile release artifact
+        run: |
+          set -euo pipefail
+          MOBILE_REF="${GITHUB_REF_NAME:-${GITHUB_SHA}}"
+          MOBILE_REF="${MOBILE_REF//\//-}"
+          cp apps/mobile/app.json release/mobile/expo/app.json
+          cp apps/mobile/package.json release/mobile/expo/package.json
+          tar -czf "release/mobile/cybara-mobile-expo-${MOBILE_REF}.tar.gz" -C release/mobile expo
+      - name: Upload mobile artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cybara-mobile-expo
+          path: release/mobile/*.tar.gz
+          retention-days: 30
+
   # ── Create GitHub Release with CLI binaries + checksums ─────────────────────
   release:
     name: Create Release
-    needs: [build-cli]
+    needs: [build-cli, build-mobile]
     runs-on: [self-hosted, Linux, X64]
     steps:
       - name: Checkout
@@ -285,7 +332,7 @@ jobs:
             TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
             echo "name=$TAG" >> "$GITHUB_OUTPUT"
           fi
-      - name: Download CLI artifacts
+      - name: Download release artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts

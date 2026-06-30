@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ComponentType } from "react";
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import {
   Activity,
   Bot,
@@ -7,7 +7,6 @@ import {
   Brain,
   CalendarCheck,
   ChevronRight,
-  CircuitBoard,
   Clock,
   Copy,
   Cpu,
@@ -31,6 +30,7 @@ import { GlassButton, GlassPanel } from "../components/Glass";
 import { CybaraMobileApi, type FeatureSummary, type SessionSummary } from "../lib/api";
 import type { GatewayProfile } from "../lib/connection";
 import { colors, radius, spacing, typography } from "../theme/liquidGlass";
+import cybaraLogo from "../../assets/cybara.png";
 
 type IconGlyph = ComponentType<{ color?: string; size?: number; strokeWidth?: number }>;
 type TabKey = "overview" | "sessions" | "tools" | "settings";
@@ -50,6 +50,21 @@ const tabItems: Array<{ key: TabKey; label: string; Icon: IconGlyph }> = [
   { key: "tools", label: "Tools", Icon: Wrench },
   { key: "settings", label: "Settings", Icon: Settings },
 ];
+
+const tabHeadings: Record<Exclude<TabKey, "overview">, { title: string; detail: string }> = {
+  sessions: {
+    title: "Sessions",
+    detail: "Monitor active chats and recent agent handoffs.",
+  },
+  tools: {
+    title: "Tools",
+    detail: "Review providers, approvals, channels, tasks, memory, and runtime surfaces.",
+  },
+  settings: {
+    title: "Settings",
+    detail: "Manage this mobile pairing and gateway safety policies.",
+  },
+};
 
 const sparkBars = [8, 10, 7, 12, 9, 14, 20, 12, 8, 13, 11, 16, 9, 13, 18, 12, 25];
 
@@ -209,6 +224,7 @@ export function DashboardScreen({ profile, onDisconnect }: { profile: GatewayPro
       tab: "tools",
     },
   ];
+  const activeHeading = activeTab === "overview" ? null : tabHeadings[activeTab];
 
   return (
     <View style={styles.screen}>
@@ -220,7 +236,7 @@ export function DashboardScreen({ profile, onDisconnect }: { profile: GatewayPro
         <View style={styles.header}>
           <View style={styles.brandWrap}>
             <View style={styles.logoMark}>
-              <CircuitBoard color={colors.cyan} size={30} strokeWidth={2.5} />
+              <Image accessibilityIgnoresInvertColors source={cybaraLogo} style={styles.logoImage} />
             </View>
             <Text style={styles.title}>Cybara</Text>
           </View>
@@ -229,55 +245,64 @@ export function DashboardScreen({ profile, onDisconnect }: { profile: GatewayPro
           </Pressable>
         </View>
 
-        <GlassPanel elevated style={styles.gatewayPanel}>
-          <View style={styles.connectionRow}>
-            <View style={[styles.liveDot, { backgroundColor: statusColor }]} />
-            <Text style={[styles.connectionText, { color: statusColor }]}>
-              {healthy ? "Gateway connected" : error ? "Gateway degraded" : "Checking gateway"}
-            </Text>
+        {activeHeading ? (
+          <View style={styles.tabHeading}>
+            <Text style={styles.tabHeadingTitle}>{activeHeading.title}</Text>
+            <Text style={styles.tabHeadingDetail}>{activeHeading.detail}</Text>
           </View>
+        ) : null}
 
-          <View style={styles.gatewayTop}>
-            <View style={styles.gatewayIdentity}>
-              <Text style={styles.gatewayName}>{profile.name}</Text>
-              <Text style={styles.gatewayMeta}>
-                {compactHost(profile.baseUrl)} - {health?.version || "version pending"}
+        {activeTab === "overview" ? (
+          <GlassPanel elevated style={styles.gatewayPanel}>
+            <View style={styles.connectionRow}>
+              <View style={[styles.liveDot, { backgroundColor: statusColor }]} />
+              <Text style={[styles.connectionText, { color: statusColor }]}>
+                {healthy ? "Gateway connected" : error ? "Gateway degraded" : "Checking gateway"}
               </Text>
             </View>
-            <Pressable style={styles.reconnectButton} onPress={refresh}>
-              <RefreshCw color={colors.blueText} size={18} strokeWidth={2.2} />
-              <Text style={styles.reconnectText}>{refreshing ? "Refreshing" : "Reconnect"}</Text>
-            </Pressable>
-          </View>
 
-          <View style={styles.metricStrip}>
-            <StatusMetric Icon={HeartPulse} label="Health" value={healthy ? "Healthy" : "Check"} tone={statusColor} />
-            <StatusMetric Icon={Wifi} label="API" value={health ? "Online" : "Waiting"} tone={colors.cyan} />
-            <StatusMetric Icon={UsersRound} label="Sessions" value={`${sessionCount} active`} tone={colors.blueText} />
-            <StatusMetric Icon={Box} label="Providers" value={`${providerCount} enabled`} tone={colors.textMuted} />
-          </View>
+            <View style={styles.gatewayTop}>
+              <View style={styles.gatewayIdentity}>
+                <Text style={styles.gatewayName}>{profile.name}</Text>
+                <Text style={styles.gatewayMeta}>
+                  {compactHost(profile.baseUrl)} - {health?.version || "version pending"}
+                </Text>
+              </View>
+              <Pressable style={styles.reconnectButton} onPress={refresh}>
+                <RefreshCw color={colors.blueText} size={18} strokeWidth={2.2} />
+                <Text style={styles.reconnectText}>{refreshing ? "Refreshing" : "Reconnect"}</Text>
+              </Pressable>
+            </View>
 
-          <View style={styles.detailTable}>
-            <DetailRow label="Gateway URL" value={profile.baseUrl} onPress={() => showValue("Gateway URL", profile.baseUrl)} />
-            <DetailRow label="API Base" value="/api/v1" onPress={() => showValue("API Base", "/api/v1")} />
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Uptime</Text>
-              <Text style={styles.detailValue}>{formatUptime(health?.uptime)}</Text>
-              <View style={styles.sparkline}>
-                {sparkBars.map((height, index) => (
-                  <View key={`${height}-${index}`} style={[styles.sparkBar, { height }]} />
-                ))}
+            <View style={styles.metricStrip}>
+              <StatusMetric Icon={HeartPulse} label="Health" value={healthy ? "Healthy" : "Check"} tone={statusColor} />
+              <StatusMetric Icon={Wifi} label="API" value={health ? "Online" : "Waiting"} tone={colors.cyan} />
+              <StatusMetric Icon={UsersRound} label="Sessions" value={`${sessionCount} active`} tone={colors.blueText} />
+              <StatusMetric Icon={Box} label="Providers" value={`${providerCount} enabled`} tone={colors.textMuted} />
+            </View>
+
+            <View style={styles.detailTable}>
+              <DetailRow label="Gateway URL" value={profile.baseUrl} onPress={() => showValue("Gateway URL", profile.baseUrl)} />
+              <DetailRow label="API Base" value="/api/v1" onPress={() => showValue("API Base", "/api/v1")} />
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Uptime</Text>
+                <Text style={styles.detailValue}>{formatUptime(health?.uptime)}</Text>
+                <View style={styles.sparkline}>
+                  {sparkBars.map((height, index) => (
+                    <View key={`${height}-${index}`} style={[styles.sparkBar, { height }]} />
+                  ))}
+                </View>
               </View>
             </View>
-          </View>
 
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-          <Pressable style={styles.disclosureRow} onPress={() => setActiveTab("settings")}>
-            <Text style={styles.disclosureText}>View connection details</Text>
-            <ChevronRight color={colors.text} size={22} strokeWidth={2.1} />
-          </Pressable>
-        </GlassPanel>
+            <Pressable style={styles.disclosureRow} onPress={() => setActiveTab("settings")}>
+              <Text style={styles.disclosureText}>View connection details</Text>
+              <ChevronRight color={colors.text} size={22} strokeWidth={2.1} />
+            </Pressable>
+          </GlassPanel>
+        ) : null}
 
         {activeTab === "overview" ? (
           <OverviewPanel modules={modules} sessions={sessions} selectTab={setActiveTab} />
@@ -300,7 +325,7 @@ export function DashboardScreen({ profile, onDisconnect }: { profile: GatewayPro
         ) : null}
       </ScrollView>
 
-      <GlassPanel elevated style={styles.tabBar}>
+      <GlassPanel elevated contentStyle={styles.tabBarPanel} style={styles.tabBar}>
         <View style={styles.tabBarFill}>
           {tabItems.map(({ key, label, Icon }) => {
             const selected = activeTab === key;
@@ -312,8 +337,14 @@ export function DashboardScreen({ profile, onDisconnect }: { profile: GatewayPro
                 onPress={() => setActiveTab(key)}
                 style={[styles.tabItem, selected && styles.tabItemActive]}
               >
-                <Icon color={selected ? colors.cyan : colors.textMuted} size={24} strokeWidth={2.2} />
-                <Text style={[styles.tabLabel, selected && styles.tabLabelActive]}>{label}</Text>
+                <Icon color={selected ? colors.cyan : colors.textMuted} size={21} strokeWidth={2.2} />
+                <Text
+                  maxFontSizeMultiplier={1.05}
+                  numberOfLines={1}
+                  style={[styles.tabLabel, selected && styles.tabLabelActive]}
+                >
+                  {label}
+                </Text>
               </Pressable>
             );
           })}
@@ -610,8 +641,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    gap: spacing.lg,
-    paddingBottom: 124,
+    gap: spacing.md,
+    paddingBottom: 92,
   },
   header: {
     alignItems: "center",
@@ -625,16 +656,22 @@ const styles = StyleSheet.create({
   },
   logoMark: {
     alignItems: "center",
+    backgroundColor: "rgba(85, 216, 255, 0.10)",
     borderColor: "rgba(85, 216, 255, 0.48)",
     borderRadius: radius.md,
     borderWidth: 1,
-    height: 54,
+    height: 50,
     justifyContent: "center",
-    width: 54,
+    overflow: "hidden",
+    width: 50,
+  },
+  logoImage: {
+    height: 40,
+    width: 40,
   },
   title: {
     color: colors.text,
-    fontSize: 34,
+    fontSize: 32,
     fontWeight: "900",
   },
   iconButton: {
@@ -643,12 +680,26 @@ const styles = StyleSheet.create({
     borderColor: colors.borderStrong,
     borderRadius: 28,
     borderWidth: 1,
-    height: 56,
+    height: 48,
     justifyContent: "center",
-    width: 56,
+    width: 48,
+  },
+  tabHeading: {
+    gap: 3,
+    paddingBottom: spacing.xs,
+  },
+  tabHeadingTitle: {
+    color: colors.text,
+    fontSize: 28,
+    fontWeight: "900",
+  },
+  tabHeadingDetail: {
+    color: colors.textMuted,
+    fontSize: typography.label,
+    lineHeight: 17,
   },
   gatewayPanel: {
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   connectionRow: {
     alignItems: "center",
@@ -679,7 +730,7 @@ const styles = StyleSheet.create({
   },
   gatewayName: {
     color: colors.text,
-    fontSize: 25,
+    fontSize: 24,
     fontWeight: "900",
   },
   gatewayMeta: {
@@ -694,7 +745,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: "row",
     gap: spacing.sm,
-    minHeight: 50,
+    minHeight: 44,
     paddingHorizontal: spacing.md,
   },
   reconnectText: {
@@ -717,14 +768,14 @@ const styles = StyleSheet.create({
     flexBasis: "48%",
     flexDirection: "row",
     gap: spacing.sm,
-    minHeight: 48,
+    minHeight: 44,
   },
   metricIcon: {
     alignItems: "center",
     borderRadius: 22,
-    height: 44,
+    height: 40,
     justifyContent: "center",
-    width: 44,
+    width: 40,
   },
   metricText: {
     flex: 1,
@@ -749,7 +800,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     flexDirection: "row",
     gap: spacing.md,
-    minHeight: 56,
+    minHeight: 50,
     paddingHorizontal: spacing.md,
   },
   detailLabel: {
@@ -769,9 +820,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.sm,
     borderWidth: 1,
-    height: 38,
+    height: 34,
     justifyContent: "center",
-    width: 44,
+    width: 40,
   },
   sparkline: {
     alignItems: "flex-end",
@@ -800,7 +851,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: "row",
     justifyContent: "space-between",
-    minHeight: 58,
+    minHeight: 52,
     paddingHorizontal: spacing.md,
   },
   disclosureText: {
@@ -810,7 +861,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: colors.text,
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "800",
   },
   moduleGrid: {
@@ -826,7 +877,7 @@ const styles = StyleSheet.create({
     flexBasis: "48%",
     flexGrow: 1,
     gap: spacing.sm,
-    minHeight: 128,
+    minHeight: 108,
     padding: spacing.md,
   },
   moduleIcon: {
@@ -843,7 +894,7 @@ const styles = StyleSheet.create({
   },
   moduleTitle: {
     color: colors.text,
-    fontSize: 17,
+    fontSize: typography.body,
     fontWeight: "800",
   },
   moduleDetail: {
@@ -855,7 +906,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexBasis: "100%",
     flexDirection: "row",
-    minHeight: 84,
+    minHeight: 72,
   },
   monitorText: {
     flex: 1,
@@ -897,7 +948,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     flexDirection: "row",
     gap: spacing.sm,
-    minHeight: 68,
+    minHeight: 62,
   },
   activityDot: {
     borderRadius: 6,
@@ -992,22 +1043,33 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   tabBar: {
-    bottom: 6,
-    left: 0,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    bottom: 0,
+    height: 82,
+    left: -spacing.lg,
     position: "absolute",
-    right: 0,
+    right: -spacing.lg,
+  },
+  tabBarPanel: {
+    flex: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 5,
   },
   tabBarFill: {
+    alignItems: "center",
+    flex: 1,
     flexDirection: "row",
-    gap: spacing.sm,
-    padding: spacing.sm,
+    gap: spacing.xs,
   },
   tabItem: {
     alignItems: "center",
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     flex: 1,
-    gap: 4,
-    minHeight: 64,
+    gap: 2,
+    height: 52,
     justifyContent: "center",
   },
   tabItemActive: {
@@ -1017,7 +1079,7 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     color: colors.textMuted,
-    fontSize: typography.label,
+    fontSize: typography.tiny,
     fontWeight: "700",
   },
   tabLabelActive: {
