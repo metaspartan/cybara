@@ -97,7 +97,7 @@ jobs:
         include:
           # macOS arm64 — native build on a GitHub-hosted Apple Silicon runner
           - platform: macos
-            runner: macos-14
+            runner: macos-15
             args: "--target aarch64-apple-darwin"
             rust_target: aarch64-apple-darwin
             bun_target: bun-darwin-arm64
@@ -200,7 +200,7 @@ jobs:
       matrix:
         include:
           - arch: arm64
-            runner: macos-14
+            runner: macos-15
     runs-on: ${{ matrix.runner }}
     env:
       # Mapped from secrets so steps can gate on presence. Leave the secrets
@@ -226,11 +226,12 @@ jobs:
         run: bun run version:sync
       - name: Run native-app unit tests
         run: |
-          DEV_DIR=$(xcode-select -p 2>/dev/null || echo "")
-          if echo "$DEV_DIR" | grep -qi "Xcode.app"; then
+          # Detect full Xcode via xctest availability rather than matching the
+          # app name (hosted runners use versioned paths like Xcode_16.4.app).
+          if xcrun --find xctest >/dev/null 2>&1; then
             swift test --package-path apps/macos/Cybara
           else
-            echo "::warning::Full Xcode not selected ($DEV_DIR); XCTest unavailable, skipping native unit tests"
+            echo "::warning::Full Xcode not selected ($(xcode-select -p 2>/dev/null)); XCTest unavailable, skipping native unit tests"
           fi
       - name: Import signing certificate
         if: env.MACOS_CERTIFICATE != ''
@@ -436,7 +437,7 @@ jobs:
     needs: quality
     continue-on-error: true
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: macos-14
+    runs-on: macos-15
     env:
       CYBARA_RELEASE_VERSION: ${{ github.ref_name }}
       EXPO_NO_TELEMETRY: "1"
@@ -457,6 +458,11 @@ jobs:
         run: bun run version:sync
       - name: Prebuild iOS project
         run: cd apps/mobile && bunx expo prebuild --platform ios --no-install
+      # expo prebuild --no-install skips CocoaPods, so the .xcworkspace that
+      # xcodebuild needs (and the native pods, e.g. expo-glass-effect) won't
+      # exist. Install pods explicitly against the generated project.
+      - name: Install CocoaPods
+        run: cd apps/mobile/ios && pod install --repo-update
       # Signed App Store archive → TestFlight when Apple signing secrets are
       # present; otherwise an unsigned archive packaged as a .ipa for inspection.
       - name: Build iOS artifact
