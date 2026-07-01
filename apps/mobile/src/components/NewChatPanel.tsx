@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -8,8 +8,14 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Send } from "lucide-react-native";
 import { GlassPanel } from "./Glass";
 import { CybaraMobileApi, type AgentSummary } from "../lib/api";
+import {
+  MOBILE_CHAT_COMPOSER,
+  boundedMobileComposerHeight,
+  mobileComposerHeightForDraft,
+} from "../lib/dashboard";
 import { colors, radius, spacing, typography } from "../theme/liquidGlass";
 
 export function NewChatPanel({
@@ -29,6 +35,8 @@ export function NewChatPanel({
     () => defaultAgentId !== undefined
   );
   const [message, setMessage] = useState("");
+  const messageRef = useRef(message);
+  const [messageHeight, setMessageHeight] = useState<number>(MOBILE_CHAT_COMPOSER.minHeight);
   const [workspaceDir, setWorkspaceDir] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -60,6 +68,12 @@ export function NewChatPanel({
     } finally {
       setCreating(false);
     }
+  };
+
+  const setMessageDraft = (value: string) => {
+    messageRef.current = value;
+    setMessage(value);
+    setMessageHeight(mobileComposerHeightForDraft(value));
   };
 
   return (
@@ -130,12 +144,43 @@ export function NewChatPanel({
         <TextInput
           editable={!creating}
           multiline
-          onChangeText={setMessage}
+          onChangeText={setMessageDraft}
+          onContentSizeChange={(event) => {
+            setMessageHeight(
+              mobileComposerHeightForDraft(
+                messageRef.current,
+                boundedMobileComposerHeight(event.nativeEvent.contentSize.height)
+              )
+            );
+          }}
           placeholder="Ask Cybara to start working..."
           placeholderTextColor={colors.textDim}
-          style={styles.composerInput}
+          returnKeyType="default"
+          scrollEnabled={messageHeight >= MOBILE_CHAT_COMPOSER.maxHeight}
+          style={[styles.composerInput, styles.messageInput, { height: messageHeight }]}
+          submitBehavior="newline"
+          textAlignVertical="top"
           value={message}
         />
+        <Pressable
+          accessibilityLabel="Create chat"
+          accessibilityRole="button"
+          disabled={!message.trim() || creating}
+          onPress={createChat}
+          style={[
+            styles.sendButton,
+            {
+              backgroundColor: message.trim() ? accentColor : "rgba(255,255,255,0.08)",
+              opacity: message.trim() || creating ? 1 : 0.55,
+            },
+          ]}
+        >
+          {creating ? (
+            <ActivityIndicator color={colors.text} size="small" />
+          ) : (
+            <Send color={colors.text} size={19} strokeWidth={2.4} />
+          )}
+        </Pressable>
       </View>
       {createError ? (
         <View style={styles.errorBox}>
@@ -143,20 +188,6 @@ export function NewChatPanel({
           <Text style={styles.errorDetail}>{createError}</Text>
         </View>
       ) : null}
-      <Pressable
-        disabled={!message.trim() || creating}
-        onPress={createChat}
-        style={[
-          styles.primaryAction,
-          { backgroundColor: message.trim() ? accentColor : "rgba(255,255,255,0.08)" },
-        ]}
-      >
-        {creating ? (
-          <ActivityIndicator color={colors.text} size="small" />
-        ) : (
-          <Text style={styles.primaryActionText}>Create chat</Text>
-        )}
-      </Pressable>
     </GlassPanel>
   );
 }
@@ -217,16 +248,30 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
   },
   messageComposer: {
-    minHeight: 150,
+    minHeight: MOBILE_CHAT_COMPOSER.minHeight + spacing.sm * 2,
   },
   composerInput: {
     color: colors.text,
     flex: 1,
     fontSize: typography.body,
-    maxHeight: 130,
-    minHeight: 44,
+    includeFontPadding: false,
+    minHeight: MOBILE_CHAT_COMPOSER.minHeight,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
+  },
+  messageInput: {
+    lineHeight: MOBILE_CHAT_COMPOSER.lineHeight,
+    maxHeight: MOBILE_CHAT_COMPOSER.maxHeight,
+    minHeight: MOBILE_CHAT_COMPOSER.minHeight,
+    paddingTop: 10,
+    paddingBottom: 8,
+  },
+  sendButton: {
+    alignItems: "center",
+    borderRadius: radius.md,
+    height: MOBILE_CHAT_COMPOSER.minHeight,
+    justifyContent: "center",
+    width: MOBILE_CHAT_COMPOSER.minHeight,
   },
   errorBox: {
     alignItems: "center",
@@ -245,17 +290,5 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: typography.label,
     textAlign: "center",
-  },
-  primaryAction: {
-    alignItems: "center",
-    borderRadius: radius.md,
-    minHeight: 52,
-    justifyContent: "center",
-    paddingHorizontal: spacing.lg,
-  },
-  primaryActionText: {
-    color: colors.text,
-    fontSize: typography.body,
-    fontWeight: "900",
   },
 });

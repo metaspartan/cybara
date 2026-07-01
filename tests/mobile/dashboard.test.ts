@@ -13,6 +13,7 @@ import {
   MOBILE_MAIN_TAB_CHROME,
   MOBILE_METRICS_CHROME,
   MOBILE_NAV_CHROME,
+  MOBILE_NEW_CHAT_CHROME,
   MOBILE_RECENT_ACTIVITY_CHROME,
   MOBILE_SETTINGS_DETAIL_CHROME,
   MOBILE_SETTINGS_ROOT_CHROME,
@@ -202,6 +203,9 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_CHAT_CHROME.hidesSystemMessages).toBe(true);
     expect(MOBILE_CHAT_CHROME.newChatButtonProminent).toBe(true);
     expect(MOBILE_CHAT_CHROME.newChatButtonUsesIcon).toBe(true);
+    expect(MOBILE_NEW_CHAT_CHROME.composerStartsSingleLine).toBe(true);
+    expect(MOBILE_NEW_CHAT_CHROME.composerMatchesChatComposer).toBe(true);
+    expect(MOBILE_NEW_CHAT_CHROME.sendButtonMode).toBe("icon");
     expect(MOBILE_MAIN_TAB_CHROME.edgeToEdge).toBe(true);
     expect(MOBILE_MAIN_TAB_CHROME.outerHorizontalPadding).toBe(0);
     expect(MOBILE_MAIN_TAB_CHROME.panelRadius).toBe(0);
@@ -335,6 +339,10 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_SETTINGS_ROOT_CHROME.dangerousToolPolicyToggle).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.sandboxRuntimeControls).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.systemPromptFeatureToggles).toBe(true);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.settingsEdgeToEdgeContent).toBe(true);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.nativeGroupedSections).toBe(true);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.nativeSegmentedControls).toBe(true);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.nativeSwitchControls).toBe(true);
     expect(MOBILE_PLATFORM_SETTING_KEYS).toEqual([
       "terminal_enabled",
       "tool_approval_mode",

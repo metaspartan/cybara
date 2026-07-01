@@ -5,6 +5,7 @@ import {
   useState,
   type ComponentType,
   type Dispatch,
+  type ReactNode,
   type SetStateAction,
 } from "react";
 import {
@@ -17,6 +18,7 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -43,7 +45,6 @@ import {
   ListTodo,
   Loader2,
   MessageCircle,
-  Palette,
   Plus,
   Play,
   RefreshCw,
@@ -2386,6 +2387,7 @@ function SettingSelector({
   options,
   selected,
   tone = colors.cyan,
+  variant = "chips",
   onSelect,
 }: {
   disabled?: boolean;
@@ -2393,13 +2395,15 @@ function SettingSelector({
   options: Array<{ label: string; value: string }>;
   selected: string;
   tone?: string;
+  variant?: "chips" | "segmented";
   onSelect: (value: string) => void;
 }) {
   if (options.length === 0) return null;
+  const segmented = variant === "segmented";
   return (
-    <View style={styles.settingsField}>
+    <View style={[styles.settingsField, segmented && styles.settingsSegmentField]}>
       <Text style={styles.settingsFieldLabel}>{label}</Text>
-      <View style={styles.settingsChipRow}>
+      <View style={[styles.settingsChipRow, segmented && styles.settingsSegmentedControl]}>
         {options.map((option) => {
           const isSelected = selected === option.value;
           return (
@@ -2411,16 +2415,23 @@ function SettingSelector({
               onPress={() => onSelect(option.value)}
               style={[
                 styles.settingsChip,
+                segmented && styles.settingsSegment,
                 isSelected && [
                   styles.settingsChipActive,
                   { backgroundColor: `${tone}16`, borderColor: `${tone}88` },
                 ],
+                isSelected && segmented && { backgroundColor: tone, borderColor: tone },
                 disabled && styles.settingsActionButtonDisabled,
               ]}
             >
               <Text
                 numberOfLines={1}
-                style={[styles.settingsChipText, isSelected && styles.settingsChipTextActive]}
+                style={[
+                  styles.settingsChipText,
+                  segmented && styles.settingsSegmentText,
+                  isSelected && styles.settingsChipTextActive,
+                  isSelected && segmented && { color: colors.background },
+                ]}
               >
                 {option.label}
               </Text>
@@ -2501,24 +2512,43 @@ function SettingToggle({
       {busy ? (
         <ActivityIndicator color={value ? tone : colors.textMuted} size="small" />
       ) : (
-        <View
-          style={[
-            styles.toggleSwitch,
-            value && [
-              styles.toggleSwitchActive,
-              { backgroundColor: `${tone}22`, borderColor: `${tone}88` },
-            ],
-          ]}
-        >
-          <View
-            style={[
-              styles.toggleThumb,
-              value && [styles.toggleThumbActive, { backgroundColor: tone }],
-            ]}
+        <View pointerEvents="none" style={styles.nativeSwitchWrap}>
+          <Switch
+            disabled={inactive}
+            ios_backgroundColor="rgba(120, 132, 143, 0.28)"
+            onValueChange={onPress}
+            thumbColor={Platform.OS === "android" ? colors.text : undefined}
+            trackColor={{
+              false: "rgba(120, 132, 143, 0.28)",
+              true: `${tone}92`,
+            }}
+            value={value}
           />
         </View>
       )}
     </Pressable>
+  );
+}
+
+function SettingsSection({
+  accessory,
+  children,
+  title,
+}: {
+  accessory?: ReactNode;
+  children: ReactNode;
+  title?: string;
+}) {
+  return (
+    <View style={styles.settingsSection}>
+      {title ? (
+        <View style={styles.settingsSectionHeader}>
+          <Text style={styles.settingsSectionTitle}>{title}</Text>
+          {accessory}
+        </View>
+      ) : null}
+      <View style={styles.settingsGroup}>{children}</View>
+    </View>
   );
 }
 
@@ -3957,341 +3987,365 @@ function SettingsPanel({
   };
 
   return (
-    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
-      {MOBILE_SETTINGS_ROOT_CHROME.gatewayConnectionDetails ? (
-        <View style={styles.settingsGatewayCard}>
-          <View style={styles.connectionRow}>
-            <View style={[styles.liveDot, { backgroundColor: gatewayStatusColor }]} />
-            <Text style={[styles.connectionText, { color: gatewayStatusColor }]}>
-              {gatewayStatusLabel}
-            </Text>
-          </View>
-          <View style={styles.gatewayTop}>
-            <View style={styles.gatewayIdentity}>
-              <Text style={styles.gatewayName}>{profile.name}</Text>
-              <Text style={styles.gatewayMeta}>{compactHost(profile.baseUrl)}</Text>
+    <GlassPanel
+      elevated
+      contentStyle={
+        MOBILE_SETTINGS_ROOT_CHROME.settingsEdgeToEdgeContent
+          ? styles.settingsRootContent
+          : undefined
+      }
+      style={[styles.detailPanel, styles.mainTabPanel]}
+    >
+      <View style={styles.settingsNativePage}>
+        {MOBILE_SETTINGS_ROOT_CHROME.gatewayConnectionDetails ? (
+          <View style={styles.settingsSection}>
+            <View style={styles.settingsGatewayCard}>
+              <View style={styles.connectionRow}>
+                <View style={[styles.liveDot, { backgroundColor: gatewayStatusColor }]} />
+                <Text style={[styles.connectionText, { color: gatewayStatusColor }]}>
+                  {gatewayStatusLabel}
+                </Text>
+              </View>
+              <View style={styles.gatewayTop}>
+                <View style={styles.gatewayIdentity}>
+                  <Text style={styles.gatewayName}>{profile.name}</Text>
+                  <Text style={styles.gatewayMeta}>{compactHost(profile.baseUrl)}</Text>
+                </View>
+              </View>
+              <View style={styles.gatewayDetailGrid}>
+                <GatewayDetailPill label="Uptime" value={gatewayUptime} />
+                <GatewayDetailPill label="Version" value={gatewayVersion} />
+                <GatewayDetailPill label="Endpoint" value={profile.baseUrl} />
+                <GatewayDetailPill
+                  label="Device"
+                  value={profile.deviceId ? "Paired" : "Manual API key"}
+                />
+              </View>
+              {connectionError ? <Text style={styles.errorText}>{connectionError}</Text> : null}
             </View>
           </View>
-          <View style={styles.gatewayDetailGrid}>
-            <GatewayDetailPill label="Uptime" value={gatewayUptime} />
-            <GatewayDetailPill label="Version" value={gatewayVersion} />
-            <GatewayDetailPill label="Endpoint" value={profile.baseUrl} />
-            <GatewayDetailPill
-              label="Device"
-              value={profile.deviceId ? "Paired" : "Manual API key"}
-            />
-          </View>
-          {connectionError ? <Text style={styles.errorText}>{connectionError}</Text> : null}
-        </View>
-      ) : null}
-      <View style={styles.themePanel}>
-        <View style={styles.subsectionHeader}>
-          <View style={styles.subsectionHeaderTitle}>
-            <Palette color={accentColor} size={18} strokeWidth={2.2} />
-            <Text style={styles.subsectionTitle}>Highlight color</Text>
-          </View>
-          {savingAccent ? <ActivityIndicator color={accentColor} size="small" /> : null}
-        </View>
-        <View style={styles.accentGrid}>
-          {MOBILE_ACCENT_KEYS.map((key) => {
-            const themeKey = key as AccentKey;
-            const tone = accentPalette[themeKey];
-            const selected = accentKey === themeKey;
-            return (
-              <Pressable
-                key={key}
-                accessibilityRole="button"
-                accessibilityState={{ selected, disabled: Boolean(savingAccent) }}
-                disabled={Boolean(savingAccent)}
-                onPress={() => {
-                  void updateThemeAccent(themeKey);
-                }}
-                style={[
-                  styles.accentSwatch,
-                  selected && {
-                    borderColor: tone,
-                    backgroundColor: `${tone}16`,
-                  },
-                ]}
-              >
-                <View
+        ) : null}
+        <SettingsSection
+          accessory={savingAccent ? <ActivityIndicator color={accentColor} size="small" /> : null}
+          title="Highlight color"
+        >
+          <View style={styles.accentGrid}>
+            {MOBILE_ACCENT_KEYS.map((key) => {
+              const themeKey = key as AccentKey;
+              const tone = accentPalette[themeKey];
+              const selected = accentKey === themeKey;
+              return (
+                <Pressable
+                  key={key}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected, disabled: Boolean(savingAccent) }}
+                  disabled={Boolean(savingAccent)}
+                  onPress={() => {
+                    void updateThemeAccent(themeKey);
+                  }}
                   style={[
-                    styles.accentSwatchDot,
-                    {
-                      backgroundColor: tone,
-                      shadowColor: tone,
+                    styles.accentSwatch,
+                    selected && {
+                      borderColor: tone,
+                      backgroundColor: `${tone}16`,
                     },
-                    selected && styles.accentSwatchDotActive,
                   ]}
-                />
-                <Text
-                  numberOfLines={1}
-                  style={[styles.accentSwatchLabel, selected && { color: colors.text }]}
                 >
-                  {key}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
-      <Text style={styles.subsectionTitle}>Platform controls</Text>
-      {configAvailable ? (
-        <View style={styles.settingsForm}>
-          {MOBILE_SETTINGS_ROOT_CHROME.terminalToggle ? (
-            <SettingToggle
-              busy={savingConfigKey === "terminal_enabled"}
-              detail="Enable browser-based terminal access on the gateway."
-              disabled={savingConfigKey !== null}
-              label="Web terminal"
-              onPress={() => {
-                void saveConfigPatch(
-                  "terminal_enabled",
-                  { terminal_enabled: !terminalEnabled },
-                  "Terminal setting failed"
-                );
-              }}
-              tone={accentColor}
-              value={terminalEnabled}
-            />
-          ) : null}
-          {MOBILE_SETTINGS_ROOT_CHROME.toolApprovalModeSelector ? (
-            <SettingSelector
-              disabled={savingConfigKey !== null}
-              label="Tool approvals"
-              onSelect={(value) => {
-                void saveConfigPatch(
-                  "tool_approval_mode",
-                  { tool_approval_mode: value === "ask" ? "ask" : "always_allow" },
-                  "Tool approval setting failed"
-                );
-              }}
-              options={[
-                { label: "Always Allow", value: "always_allow" },
-                { label: "Ask Me", value: "ask" },
-              ]}
-              selected={toolApprovalMode}
-              tone={accentColor}
-            />
-          ) : null}
-          {MOBILE_SETTINGS_ROOT_CHROME.dangerousToolPolicyToggle ? (
-            <>
-              <SettingToggle
-                busy={savingConfigKey === "dangerous_tool_policy"}
-                detail="Guardrails for shell, wallet, and other high-impact tools."
-                disabled={savingConfigKey !== null}
-                label="Dangerous tool policy"
-                onPress={() => {
-                  void saveConfigPatch(
-                    "dangerous_tool_policy",
-                    {
-                      dangerous_tool_policy: {
-                        enabled: !dangerousPolicy.enabled,
-                        mode: dangerousPolicy.mode,
+                  <View
+                    style={[
+                      styles.accentSwatchDot,
+                      {
+                        backgroundColor: tone,
+                        shadowColor: tone,
                       },
-                    },
-                    "Dangerous tool policy failed"
-                  );
-                }}
-                tone={accentColor}
-                value={dangerousPolicy.enabled}
-              />
-              {dangerousPolicy.enabled ? (
+                      selected && styles.accentSwatchDotActive,
+                    ]}
+                  />
+                  <Text
+                    numberOfLines={1}
+                    style={[styles.accentSwatchLabel, selected && { color: colors.text }]}
+                  >
+                    {key}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </SettingsSection>
+        <SettingsSection title="Platform controls">
+          {configAvailable ? (
+            <>
+              {MOBILE_SETTINGS_ROOT_CHROME.terminalToggle ? (
+                <SettingToggle
+                  busy={savingConfigKey === "terminal_enabled"}
+                  detail="Enable browser-based terminal access on the gateway."
+                  disabled={savingConfigKey !== null}
+                  label="Web terminal"
+                  onPress={() => {
+                    void saveConfigPatch(
+                      "terminal_enabled",
+                      { terminal_enabled: !terminalEnabled },
+                      "Terminal setting failed"
+                    );
+                  }}
+                  tone={accentColor}
+                  value={terminalEnabled}
+                />
+              ) : null}
+              {MOBILE_SETTINGS_ROOT_CHROME.toolApprovalModeSelector ? (
                 <SettingSelector
                   disabled={savingConfigKey !== null}
-                  label="Dangerous policy mode"
+                  label="Tool approvals"
                   onSelect={(value) => {
                     void saveConfigPatch(
-                      "dangerous_tool_policy",
-                      {
-                        dangerous_tool_policy: {
-                          enabled: true,
-                          mode: value === "block" ? "block" : "audit",
-                        },
-                      },
-                      "Dangerous tool policy failed"
+                      "tool_approval_mode",
+                      { tool_approval_mode: value === "ask" ? "ask" : "always_allow" },
+                      "Tool approval setting failed"
                     );
                   }}
                   options={[
-                    { label: "Audit", value: "audit" },
-                    { label: "Block", value: "block" },
+                    { label: "Always Allow", value: "always_allow" },
+                    { label: "Ask Me", value: "ask" },
                   ]}
-                  selected={dangerousPolicy.mode}
+                  selected={toolApprovalMode}
                   tone={accentColor}
+                  variant="segmented"
+                />
+              ) : null}
+              {MOBILE_SETTINGS_ROOT_CHROME.dangerousToolPolicyToggle ? (
+                <>
+                  <SettingToggle
+                    busy={savingConfigKey === "dangerous_tool_policy"}
+                    detail="Guardrails for shell, wallet, and other high-impact tools."
+                    disabled={savingConfigKey !== null}
+                    label="Dangerous tool policy"
+                    onPress={() => {
+                      void saveConfigPatch(
+                        "dangerous_tool_policy",
+                        {
+                          dangerous_tool_policy: {
+                            enabled: !dangerousPolicy.enabled,
+                            mode: dangerousPolicy.mode,
+                          },
+                        },
+                        "Dangerous tool policy failed"
+                      );
+                    }}
+                    tone={accentColor}
+                    value={dangerousPolicy.enabled}
+                  />
+                  {dangerousPolicy.enabled ? (
+                    <SettingSelector
+                      disabled={savingConfigKey !== null}
+                      label="Dangerous policy mode"
+                      onSelect={(value) => {
+                        void saveConfigPatch(
+                          "dangerous_tool_policy",
+                          {
+                            dangerous_tool_policy: {
+                              enabled: true,
+                              mode: value === "block" ? "block" : "audit",
+                            },
+                          },
+                          "Dangerous tool policy failed"
+                        );
+                      }}
+                      options={[
+                        { label: "Audit", value: "audit" },
+                        { label: "Block", value: "block" },
+                      ]}
+                      selected={dangerousPolicy.mode}
+                      tone={accentColor}
+                      variant="segmented"
+                    />
+                  ) : null}
+                </>
+              ) : null}
+              {MOBILE_SETTINGS_ROOT_CHROME.sandboxRuntimeControls ? (
+                <>
+                  <SettingToggle
+                    busy={savingConfigKey === "sandbox_runtime"}
+                    detail="Run supported command tools in an isolated runtime."
+                    disabled={savingConfigKey !== null}
+                    label="Command sandbox"
+                    onPress={() => {
+                      void saveConfigPatch(
+                        "sandbox_runtime",
+                        {
+                          sandbox_runtime: {
+                            ...sandboxRuntime,
+                            enabled: !sandboxRuntime.enabled,
+                          },
+                        },
+                        "Sandbox setting failed"
+                      );
+                    }}
+                    tone={accentColor}
+                    value={sandboxRuntime.enabled}
+                  />
+                  {sandboxRuntime.enabled ? (
+                    <>
+                      <SettingSelector
+                        disabled={savingConfigKey !== null}
+                        label="Sandbox provider"
+                        onSelect={(value) => {
+                          const provider =
+                            value === "apple_sandbox" || value === "podman" || value === "docker"
+                              ? value
+                              : "auto";
+                          void saveConfigPatch(
+                            "sandbox_runtime",
+                            {
+                              sandbox_runtime: {
+                                ...sandboxRuntime,
+                                provider,
+                              },
+                            },
+                            "Sandbox setting failed"
+                          );
+                        }}
+                        options={[
+                          { label: "Auto", value: "auto" },
+                          { label: "Apple", value: "apple_sandbox" },
+                          { label: "Podman", value: "podman" },
+                          { label: "Docker", value: "docker" },
+                        ]}
+                        selected={sandboxRuntime.provider}
+                        tone={accentColor}
+                        variant="segmented"
+                      />
+                      <SettingSelector
+                        disabled={savingConfigKey !== null}
+                        label="Sandbox network"
+                        onSelect={(value) => {
+                          void saveConfigPatch(
+                            "sandbox_runtime",
+                            {
+                              sandbox_runtime: {
+                                ...sandboxRuntime,
+                                network: value === "allow" ? "allow" : "deny",
+                              },
+                            },
+                            "Sandbox setting failed"
+                          );
+                        }}
+                        options={[
+                          { label: "Deny", value: "deny" },
+                          { label: "Allow", value: "allow" },
+                        ]}
+                        selected={sandboxRuntime.network}
+                        tone={accentColor}
+                        variant="segmented"
+                      />
+                    </>
+                  ) : null}
+                </>
+              ) : null}
+              {MOBILE_SETTINGS_ROOT_CHROME.walletAccessShortcut ? (
+                <SettingToggle
+                  busy={savingAgentAccess}
+                  detail="Master switch for agent-initiated wallet actions."
+                  disabled={!walletStatusAvailable || savingAgentAccess}
+                  label="Agent wallet access"
+                  onPress={() => {
+                    void toggleAgentAccess();
+                  }}
+                  tone={accentColor}
+                  value={agentAccessEnabled}
                 />
               ) : null}
             </>
-          ) : null}
-          {MOBILE_SETTINGS_ROOT_CHROME.sandboxRuntimeControls ? (
+          ) : (
+            <EmptyState
+              label="Config unavailable"
+              detail={endpointErrorDetail(
+                summary?.availability.config,
+                "The gateway did not return editable settings."
+              )}
+            />
+          )}
+        </SettingsSection>
+        <SettingsSection title="Agent prompt features">
+          {systemPromptAvailable && summary?.systemPrompt ? (
             <>
-              <SettingToggle
-                busy={savingConfigKey === "sandbox_runtime"}
-                detail="Run supported command tools in an isolated runtime."
-                disabled={savingConfigKey !== null}
-                label="Command sandbox"
-                onPress={() => {
-                  void saveConfigPatch(
-                    "sandbox_runtime",
-                    {
-                      sandbox_runtime: {
-                        ...sandboxRuntime,
-                        enabled: !sandboxRuntime.enabled,
-                      },
-                    },
-                    "Sandbox setting failed"
-                  );
-                }}
-                tone={accentColor}
-                value={sandboxRuntime.enabled}
-              />
-              {sandboxRuntime.enabled ? (
-                <>
-                  <SettingSelector
-                    disabled={savingConfigKey !== null}
-                    label="Sandbox provider"
-                    onSelect={(value) => {
-                      const provider =
-                        value === "apple_sandbox" || value === "podman" || value === "docker"
-                          ? value
-                          : "auto";
-                      void saveConfigPatch(
-                        "sandbox_runtime",
-                        {
-                          sandbox_runtime: {
-                            ...sandboxRuntime,
-                            provider,
-                          },
-                        },
-                        "Sandbox setting failed"
-                      );
-                    }}
-                    options={[
-                      { label: "Auto", value: "auto" },
-                      { label: "Apple", value: "apple_sandbox" },
-                      { label: "Podman", value: "podman" },
-                      { label: "Docker", value: "docker" },
-                    ]}
-                    selected={sandboxRuntime.provider}
-                    tone={accentColor}
-                  />
-                  <SettingSelector
-                    disabled={savingConfigKey !== null}
-                    label="Sandbox network"
-                    onSelect={(value) => {
-                      void saveConfigPatch(
-                        "sandbox_runtime",
-                        {
-                          sandbox_runtime: {
-                            ...sandboxRuntime,
-                            network: value === "allow" ? "allow" : "deny",
-                          },
-                        },
-                        "Sandbox setting failed"
-                      );
-                    }}
-                    options={[
-                      { label: "Deny", value: "deny" },
-                      { label: "Allow", value: "allow" },
-                    ]}
-                    selected={sandboxRuntime.network}
-                    tone={accentColor}
-                  />
-                </>
-              ) : null}
+              {systemPromptFeatureRows.map((row) => (
+                <SettingToggle
+                  busy={savingPromptKey === row.key}
+                  detail={row.detail}
+                  disabled={savingPromptKey !== null}
+                  key={row.key}
+                  label={row.label}
+                  onPress={() => {
+                    void toggleSystemPromptFeature(row.key);
+                  }}
+                  tone={accentColor}
+                  value={summary.systemPrompt?.features[row.key] === true}
+                />
+              ))}
             </>
-          ) : null}
-          {MOBILE_SETTINGS_ROOT_CHROME.walletAccessShortcut ? (
-            <SettingToggle
-              busy={savingAgentAccess}
-              detail="Master switch for agent-initiated wallet actions."
-              disabled={!walletStatusAvailable || savingAgentAccess}
-              label="Agent wallet access"
-              onPress={() => {
-                void toggleAgentAccess();
-              }}
-              tone={accentColor}
-              value={agentAccessEnabled}
+          ) : (
+            <EmptyState
+              label="Prompt settings unavailable"
+              detail={endpointErrorDetail(
+                summary?.availability.systemPrompt,
+                "The gateway did not return system prompt settings."
+              )}
             />
-          ) : null}
-        </View>
-      ) : (
-        <EmptyState
-          label="Config unavailable"
-          detail={endpointErrorDetail(
-            summary?.availability.config,
-            "The gateway did not return editable settings."
           )}
-        />
-      )}
-      <Text style={styles.subsectionTitle}>Agent prompt features</Text>
-      {systemPromptAvailable && summary?.systemPrompt ? (
-        <View style={styles.settingsForm}>
-          {systemPromptFeatureRows.map((row) => (
-            <SettingToggle
-              busy={savingPromptKey === row.key}
-              detail={row.detail}
-              disabled={savingPromptKey !== null}
-              key={row.key}
-              label={row.label}
-              onPress={() => {
-                void toggleSystemPromptFeature(row.key);
-              }}
-              tone={accentColor}
-              value={summary.systemPrompt?.features[row.key] === true}
-            />
-          ))}
-        </View>
-      ) : (
-        <EmptyState
-          label="Prompt settings unavailable"
-          detail={endpointErrorDetail(
-            summary?.availability.systemPrompt,
-            "The gateway did not return system prompt settings."
-          )}
-        />
-      )}
-      <Text style={styles.subsectionTitle}>Gateway APIs</Text>
-      <SettingsRow
-        Icon={Database}
-        label="Config API"
-        value={endpointStatusLabel(summary?.availability.config)}
-      />
-      <Text style={styles.subsectionTitle}>Gateway management</Text>
-      {MOBILE_SETTINGS_SURFACES.map((surface) => {
-        const meta = surfaceMeta[surface];
-        const Icon = meta.Icon;
-        const rows = surfaceRows(surface, summary);
-        return (
-          <Pressable key={surface} style={styles.listRow} onPress={() => openSurface(surface)}>
-            <View style={[styles.listIcon, { backgroundColor: `${meta.tone}18` }]}>
-              <Icon color={meta.tone} size={20} strokeWidth={2.1} />
+        </SettingsSection>
+        <SettingsSection title="Gateway APIs">
+          <SettingsRow
+            Icon={Database}
+            label="Config API"
+            value={endpointStatusLabel(summary?.availability.config)}
+          />
+        </SettingsSection>
+        <SettingsSection title="Gateway management">
+          {MOBILE_SETTINGS_SURFACES.map((surface) => {
+            const meta = surfaceMeta[surface];
+            const Icon = meta.Icon;
+            const rows = surfaceRows(surface, summary);
+            return (
+              <Pressable
+                key={surface}
+                style={styles.settingsNavigationRow}
+                onPress={() => openSurface(surface)}
+              >
+                <View
+                  style={[styles.settingsNavigationIcon, { backgroundColor: `${meta.tone}18` }]}
+                >
+                  <Icon color={meta.tone} size={20} strokeWidth={2.1} />
+                </View>
+                <View style={styles.listText}>
+                  <Text style={styles.listTitle}>{meta.title}</Text>
+                  <Text style={styles.listDetail} numberOfLines={1}>
+                    {surfaceMenuDetail(surface, summary, counts, rows.length)}
+                  </Text>
+                </View>
+                <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+              </Pressable>
+            );
+          })}
+        </SettingsSection>
+        <View style={styles.settingsSection}>
+          <Pressable
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.disconnectButton,
+              pressed && styles.disconnectButtonPressed,
+            ]}
+            onPress={onDisconnect}
+          >
+            <View style={styles.disconnectIcon}>
+              <Trash2 color={colors.red} size={18} strokeWidth={2.4} />
             </View>
-            <View style={styles.listText}>
-              <Text style={styles.listTitle}>{meta.title}</Text>
-              <Text style={styles.listDetail} numberOfLines={1}>
-                {surfaceMenuDetail(surface, summary, counts, rows.length)}
-              </Text>
+            <View style={styles.disconnectTextWrap}>
+              <Text style={styles.disconnectTitle}>Disconnect Gateway</Text>
+              <Text style={styles.disconnectDetail}>Remove this mobile pairing profile</Text>
             </View>
-            <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
           </Pressable>
-        );
-      })}
-      <Pressable
-        accessibilityRole="button"
-        style={({ pressed }) => [
-          styles.disconnectButton,
-          pressed && styles.disconnectButtonPressed,
-        ]}
-        onPress={onDisconnect}
-      >
-        <View style={styles.disconnectIcon}>
-          <Trash2 color={colors.red} size={18} strokeWidth={2.4} />
         </View>
-        <View style={styles.disconnectTextWrap}>
-          <Text style={styles.disconnectTitle}>Disconnect Gateway</Text>
-          <Text style={styles.disconnectDetail}>Remove this mobile pairing profile</Text>
-        </View>
-      </Pressable>
+      </View>
     </GlassPanel>
   );
 }
@@ -4338,8 +4392,8 @@ function GatewayDetailPill({ label, value }: { label: string; value: string }) {
 
 function SettingsRow({ Icon, label, value }: { Icon: IconGlyph; label: string; value: string }) {
   return (
-    <View style={styles.listRow}>
-      <View style={styles.listIcon}>
+    <View style={styles.settingsNavigationRow}>
+      <View style={styles.settingsNavigationIcon}>
         <Icon color={colors.cyan} size={20} strokeWidth={2.1} />
       </View>
       <View style={styles.listText}>
@@ -4478,10 +4532,10 @@ const styles = StyleSheet.create({
     fontSize: typography.label,
   },
   settingsGatewayCard: {
-    backgroundColor: "rgba(7, 7, 9, 0.94)",
-    borderColor: colors.borderStrong,
-    borderRadius: radius.lg,
-    borderWidth: 1,
+    backgroundColor: "rgba(16, 16, 18, 0.78)",
+    borderColor: "rgba(235, 239, 244, 0.13)",
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
     gap: spacing.md,
     padding: spacing.md,
   },
@@ -4491,10 +4545,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   gatewayDetailPill: {
-    backgroundColor: "rgba(18, 18, 20, 0.72)",
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    borderWidth: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.045)",
+    borderRadius: radius.sm,
     flexBasis: "48%",
     flexGrow: 1,
     gap: 3,
@@ -4711,6 +4763,56 @@ const styles = StyleSheet.create({
     borderRadius: MOBILE_MAIN_TAB_CHROME.panelRadius,
     borderRightWidth: 0,
   },
+  settingsRootContent: {
+    gap: 0,
+    paddingHorizontal: 0,
+  },
+  settingsNativePage: {
+    gap: spacing.lg,
+  },
+  settingsSection: {
+    gap: spacing.xs,
+    paddingHorizontal: spacing.lg,
+  },
+  settingsSectionHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 24,
+    paddingHorizontal: spacing.sm,
+  },
+  settingsSectionTitle: {
+    color: colors.textDim,
+    fontSize: typography.tiny,
+    fontWeight: "800",
+    letterSpacing: 0,
+    textTransform: "uppercase",
+  },
+  settingsGroup: {
+    backgroundColor: "rgba(16, 16, 18, 0.76)",
+    borderColor: "rgba(235, 239, 244, 0.12)",
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: "hidden",
+  },
+  settingsNavigationRow: {
+    alignItems: "center",
+    borderBottomColor: colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    gap: spacing.md,
+    minHeight: 58,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  settingsNavigationIcon: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.07)",
+    borderRadius: radius.sm,
+    height: 34,
+    justifyContent: "center",
+    width: 34,
+  },
   metricMicroGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -4924,25 +5026,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: MOBILE_CHAT_COMPOSER.minHeight,
   },
-  themePanel: {
-    backgroundColor: "rgba(9, 9, 11, 0.88)",
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    gap: spacing.md,
-    padding: spacing.md,
-  },
   accentGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.sm,
+    padding: spacing.md,
   },
   accentSwatch: {
     alignItems: "center",
-    backgroundColor: "rgba(14, 14, 16, 0.76)",
-    borderColor: colors.border,
+    backgroundColor: "rgba(255, 255, 255, 0.035)",
+    borderColor: "rgba(235, 239, 244, 0.1)",
     borderRadius: radius.sm,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     flexBasis: "30%",
     flexDirection: "row",
     flexGrow: 1,
@@ -4975,6 +5070,13 @@ const styles = StyleSheet.create({
   settingsField: {
     gap: spacing.xs,
   },
+  settingsSegmentField: {
+    borderBottomColor: colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
   settingsFieldLabel: {
     color: colors.textMuted,
     fontSize: typography.tiny,
@@ -5006,6 +5108,15 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: spacing.sm,
   },
+  settingsSegmentedControl: {
+    backgroundColor: "rgba(255, 255, 255, 0.065)",
+    borderColor: "rgba(235, 239, 244, 0.11)",
+    borderRadius: radius.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexWrap: "nowrap",
+    gap: 2,
+    padding: 2,
+  },
   settingsChip: {
     alignItems: "center",
     backgroundColor: "rgba(14, 14, 16, 0.76)",
@@ -5016,6 +5127,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 8,
   },
+  settingsSegment: {
+    borderRadius: 8,
+    borderWidth: 0,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 34,
+    minWidth: 0,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 7,
+  },
   settingsChipActive: {
     backgroundColor: `${colors.cyan}16`,
     borderColor: `${colors.cyan}88`,
@@ -5024,6 +5145,11 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: typography.label,
     fontWeight: "800",
+  },
+  settingsSegmentText: {
+    fontSize: typography.tiny,
+    fontWeight: "900",
+    textAlign: "center",
   },
   settingsChipTextActive: {
     color: colors.text,
@@ -5052,14 +5178,14 @@ const styles = StyleSheet.create({
   },
   settingToggleRow: {
     alignItems: "center",
-    backgroundColor: "rgba(12, 12, 14, 0.76)",
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    borderWidth: 1,
+    backgroundColor: "transparent",
+    borderBottomColor: colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
     gap: spacing.md,
-    minHeight: 58,
-    padding: spacing.md,
+    minHeight: 60,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   settingToggleRowDisabled: {
     opacity: 0.72,
@@ -5071,36 +5197,17 @@ const styles = StyleSheet.create({
   toggleTitle: {
     color: colors.text,
     fontSize: typography.body,
-    fontWeight: "800",
+    fontWeight: "700",
   },
   toggleDetail: {
     color: colors.textMuted,
     fontSize: typography.tiny,
     lineHeight: 16,
   },
-  toggleSwitch: {
-    backgroundColor: "rgba(148, 163, 184, 0.18)",
-    borderColor: colors.border,
-    borderRadius: 15,
-    borderWidth: 1,
-    height: 30,
+  nativeSwitchWrap: {
+    alignItems: "flex-end",
     justifyContent: "center",
-    paddingHorizontal: 3,
-    width: 52,
-  },
-  toggleSwitchActive: {
-    backgroundColor: `${colors.cyan}22`,
-    borderColor: `${colors.cyan}88`,
-  },
-  toggleThumb: {
-    backgroundColor: colors.textMuted,
-    borderRadius: 11,
-    height: 22,
-    width: 22,
-  },
-  toggleThumbActive: {
-    alignSelf: "flex-end",
-    backgroundColor: colors.cyan,
+    minWidth: 52,
   },
   monitorUsageRow: {
     backgroundColor: "rgba(12, 12, 14, 0.76)",
@@ -5128,25 +5235,25 @@ const styles = StyleSheet.create({
   },
   disconnectButton: {
     alignItems: "center",
-    backgroundColor: "rgba(255, 123, 139, 0.1)",
-    borderColor: "rgba(255, 123, 139, 0.34)",
+    backgroundColor: "rgba(16, 16, 18, 0.76)",
+    borderColor: "rgba(255, 123, 139, 0.28)",
     borderRadius: radius.md,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
     gap: spacing.md,
-    minHeight: 62,
+    minHeight: 58,
     padding: spacing.md,
   },
   disconnectButtonPressed: {
-    backgroundColor: "rgba(255, 123, 139, 0.18)",
+    backgroundColor: "rgba(255, 123, 139, 0.12)",
   },
   disconnectIcon: {
     alignItems: "center",
-    backgroundColor: "rgba(255, 123, 139, 0.14)",
-    borderRadius: 18,
-    height: 36,
+    backgroundColor: "rgba(255, 123, 139, 0.1)",
+    borderRadius: radius.sm,
+    height: 34,
     justifyContent: "center",
-    width: 36,
+    width: 34,
   },
   disconnectTextWrap: {
     flex: 1,

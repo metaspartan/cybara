@@ -102,6 +102,10 @@ export const MOBILE_SETTINGS_ROOT_CHROME = {
   destructiveDisconnectButton: true,
   gatewayConnectionDetails: true,
   gatewayRefreshButton: false,
+  nativeGroupedSections: true,
+  nativeSegmentedControls: true,
+  nativeSwitchControls: true,
+  settingsEdgeToEdgeContent: true,
   sandboxRuntimeControls: true,
   systemPromptFeatureToggles: true,
   terminalToggle: true,
@@ -172,6 +176,12 @@ export const MOBILE_CHAT_COMPOSER = {
   newlineExpandsInput: true,
   preserveDraftOnFailure: true,
   resetAfterSend: true,
+  sendButtonMode: "icon" as const,
+} as const;
+
+export const MOBILE_NEW_CHAT_CHROME = {
+  composerMatchesChatComposer: true,
+  composerStartsSingleLine: true,
   sendButtonMode: "icon" as const,
 } as const;
 
