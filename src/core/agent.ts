@@ -1213,10 +1213,14 @@ class AgentManager {
       ? providerCatalog[defaultProvider.provider as ProviderType]
       : undefined;
 
+    const configuredDefaultModel = config.get<string>("default_model");
     return this.create({
       name: "Mini",
       type: "research",
-      model: providerInfo?.models?.[0]?.id || "MiniMax-M2.5",
+      model:
+        (typeof configuredDefaultModel === "string" && configuredDefaultModel.trim()) ||
+        providerInfo?.models?.[0]?.id ||
+        "MiniMax-M2.5",
       provider_id: defaultProvider?.id,
       system_prompt: AGENT_TYPE_PROMPTS.research,
       tools: getBuiltinTools(),

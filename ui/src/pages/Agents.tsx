@@ -38,6 +38,7 @@ import {
   useAgentState,
 } from "@/hooks/useApi";
 import { useUIStore } from "@/stores/uiStore";
+import { settingsApi } from "@/lib/api";
 import type { Agent, AgentMessage } from "@/types";
 
 const agentTypes = [
@@ -104,6 +105,41 @@ export function Agents() {
   const stopAgent = useStopAgent();
   const sendMessage = useAgentMessage();
   const clearHistory = useClearAgentHistory();
+
+  const [defaultModel, setDefaultModel] = useState("");
+  const [savingDefaultModel, setSavingDefaultModel] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    void settingsApi.getConfig().then((res) => {
+      if (mounted && res.success && typeof res.data?.default_model === "string") {
+        setDefaultModel(res.data.default_model as string);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const availableModels = Array.from(
+    new Set((providers ?? []).flatMap((p) => (Array.isArray(p.models) ? p.models : [])))
+  ).sort();
+
+  const saveDefaultModel = async (next: string) => {
+    const previous = defaultModel;
+    setDefaultModel(next);
+    setSavingDefaultModel(true);
+    try {
+      const res = await settingsApi.updateConfig({ default_model: next });
+      if (!res.success || !res.data?.success) throw new Error("save failed");
+      addToast("success", next ? `Default model set to ${next}` : "Default model set to auto");
+    } catch {
+      setDefaultModel(previous);
+      addToast("error", "Failed to set default model");
+    } finally {
+      setSavingDefaultModel(false);
+    }
+  };
 
   const filteredAgents = agents?.filter(
     (agent) =>
@@ -260,7 +296,23 @@ export function Agents() {
           onChange={(e) => setSearchQuery(e.target.value)}
           className="max-w-xs"
         />
-        <Button onClick={() => setIsCreateModalOpen(true)}>Create Agent</Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {availableModels.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400 whitespace-nowrap">Default model</span>
+              <Select
+                value={defaultModel}
+                onChange={(val) => void saveDefaultModel(val)}
+                disabled={savingDefaultModel}
+                options={[
+                  { value: "", label: "Auto (provider default)" },
+                  ...availableModels.map((m) => ({ value: m, label: m })),
+                ]}
+              />
+            </div>
+          )}
+          <Button onClick={() => setIsCreateModalOpen(true)}>Create Agent</Button>
+        </div>
       </div>
 
       {isLoading ? (
