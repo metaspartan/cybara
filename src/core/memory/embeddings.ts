@@ -1198,6 +1198,48 @@ async function tryCreateProvider(
     };
 }
 
+/**
+ * Embed a large set of texts by splitting into fixed-size sub-batches run with
+ * bounded concurrency, preserving input order. Keeps big re-indexes under
+ * per-request input/token limits without serializing every batch.
+ */
+export async function embedInSubBatches(
+    texts: string[],
+    embedBatch: (batch: string[]) => Promise<number[][]>,
+    options: { batchSize?: number; concurrency?: number } = {}
+): Promise<number[][]> {
+    const batchSize = Math.max(1, options.batchSize ?? 96);
+    const concurrency = Math.max(1, options.concurrency ?? 4);
+    if (texts.length <= batchSize) {
+        return embedBatch(texts);
+    }
+
+    const batches: string[][] = [];
+    for (let index = 0; index < texts.length; index += batchSize) {
+        batches.push(texts.slice(index, index + batchSize));
+    }
+
+    const results: number[][] = new Array(texts.length);
+    let cursor = 0;
+    const worker = async (): Promise<void> => {
+        while (true) {
+            const batchIndex = cursor;
+            cursor += 1;
+            if (batchIndex >= batches.length) return;
+            const embeddings = await embedBatch(batches[batchIndex]);
+            const offset = batchIndex * batchSize;
+            for (let position = 0; position < embeddings.length; position += 1) {
+                results[offset + position] = embeddings[position];
+            }
+        }
+    };
+
+    await Promise.all(
+        Array.from({ length: Math.min(concurrency, batches.length) }, () => worker())
+    );
+    return results;
+}
+
 export async function createEmbeddingProvider(selection?: EmbeddingSelection): Promise<EmbeddingProviderResult> {
     const normalized = normalizeSelection(selection);
     if (normalized.provider !== "auto") {

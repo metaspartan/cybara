@@ -4,6 +4,7 @@ import { homedir } from "os";
 import { join } from "path";
 import {
     createEmbeddingProvider,
+    embedInSubBatches,
     findTopKSimilar,
     getTransformersRuntimeStatus,
     loadEmbeddingRuntime,
@@ -346,7 +347,12 @@ export class VectorStore {
         const textChunks = chunkMarkdown(content);
         if (textChunks.length === 0) return 0;
 
-        const embeddings = await this.provider.embedBatch(textChunks.map((chunk) => chunk.text));
+        const provider = this.provider;
+        const embeddings = await embedInSubBatches(
+            textChunks.map((chunk) => chunk.text),
+            (batch) => provider.embedBatch(batch),
+            { batchSize: 96, concurrency: 4 }
+        );
         const now = Date.now();
         const stmt = this.db.prepare(
             "INSERT OR REPLACE INTO chunks (id, path, start_line, end_line, content, embedding, source, created_at, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
