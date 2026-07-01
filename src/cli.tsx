@@ -2466,33 +2466,35 @@ async function rawRouter(args: string[]): Promise<void> {
     return;
   }
 
-  if (subCmd === "enable") {
+  if (subCmd === "enable" || subCmd === "disable") {
+    const current =
+      (await fetchAPI<Record<string, unknown>>("/api/router/config")) ||
+      ({ strategy: "weighted", fallbackToAny: true, routes: {} } as Record<string, unknown>);
     const resp = await fetch(`${API_BASE}/api/router/config`, {
       method: "PUT",
       headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({
-        enabled: true,
-        strategy: "weighted",
-        fallbackToAny: true,
-        routes: {},
-      }),
+      body: JSON.stringify({ ...current, enabled: subCmd === "enable" }),
     });
-    console.log(resp.ok ? "✓ Router enabled" : `ERROR: ${resp.status}`);
+    console.log(resp.ok ? `✓ Router ${subCmd}d` : `ERROR: ${resp.status}`);
     return;
   }
 
-  if (subCmd === "disable") {
+  if (subCmd === "strategy") {
+    const valid = ["weighted", "round_robin", "lowest_cost", "priority"];
+    const next = args[1];
+    if (!next || !valid.includes(next)) {
+      console.error(`ERROR: usage: cybara router strategy <${valid.join("|")}>`);
+      process.exit(1);
+    }
+    const current =
+      (await fetchAPI<Record<string, unknown>>("/api/router/config")) ||
+      ({ enabled: false, fallbackToAny: true, routes: {} } as Record<string, unknown>);
     const resp = await fetch(`${API_BASE}/api/router/config`, {
       method: "PUT",
       headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({
-        enabled: false,
-        strategy: "weighted",
-        fallbackToAny: true,
-        routes: {},
-      }),
+      body: JSON.stringify({ ...current, strategy: next }),
     });
-    console.log(resp.ok ? "✓ Router disabled" : `ERROR: ${resp.status}`);
+    console.log(resp.ok ? `✓ Router strategy set to ${next}` : `ERROR: ${resp.status}`);
     return;
   }
 
@@ -2555,6 +2557,9 @@ async function rawRouter(args: string[]): Promise<void> {
   console.log("  cybara router status              Show router status + route availability");
   console.log("  cybara router enable              Enable the router");
   console.log("  cybara router disable             Disable the router");
+  console.log(
+    "  cybara router strategy <name>     Set strategy (weighted|round_robin|lowest_cost|priority)"
+  );
   console.log("  cybara router set <id> <flags>    Configure a route");
   console.log("    Flags: weight=70 limit5h=100 limitWeekly=500 spendDaily=5 spendWeekly=20");
   console.log("           priceIn=10 priceOut=30 enabled=true");

@@ -28,7 +28,7 @@ interface RouterStatus {
 
 interface RouterConfig {
   enabled: boolean;
-  strategy: 'weighted' | 'round_robin' | 'lowest_cost';
+  strategy: 'weighted' | 'round_robin' | 'lowest_cost' | 'priority';
   globalSpendLimitDaily?: number;
   fallbackToAny: boolean;
   routes: Record<string, Record<string, unknown>>;
@@ -134,6 +134,7 @@ export function RouterSettings() {
             <option value="weighted">Weighted (default)</option>
             <option value="round_robin">Round Robin</option>
             <option value="lowest_cost">Lowest Cost</option>
+            <option value="priority">Priority</option>
           </select>
         </div>
         <div className="flex items-center gap-2">
