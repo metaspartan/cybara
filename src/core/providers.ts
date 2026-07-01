@@ -1196,6 +1196,14 @@ export const providers = {
     apiKeyHeader: "api-key",
     models: [],
   },
+  anthropic_vertex: {
+    name: "Anthropic (Vertex AI)",
+    baseUrl:
+      "https://us-east5-aiplatform.googleapis.com/v1/projects/YOUR_PROJECT/locations/us-east5/publishers/anthropic/models",
+    api: "anthropic-vertex",
+    authType: "api_key",
+    models: [],
+  },
   litellm: {
     name: "LiteLLM",
     baseUrl: "http://127.0.0.1:4000/v1",

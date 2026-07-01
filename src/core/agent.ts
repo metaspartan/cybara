@@ -34,6 +34,11 @@ import {
   googleThinkingBudget,
 } from "./llm/reasoning";
 import { applyProviderApiKey } from "./llm/auth-headers";
+import {
+  anthropicEndpointPath,
+  anthropicRequestBase,
+  anthropicRequestHeaders,
+} from "./llm/anthropic-vertex";
 import { selectProvider, recordUsage, recordRateLimit as recordRouterRateLimit } from "./router";
 import { executeTool, hasTool } from "./tools/handlers/index";
 import {
@@ -2287,7 +2292,7 @@ class AgentManager {
       modelId
     );
 
-    if (apiFamily === "anthropic-messages") {
+    if (apiFamily === "anthropic-messages" || apiFamily === "anthropic-vertex") {
       return this.callAnthropicAPI(
         baseUrl,
         resolvedAuth,
@@ -2298,7 +2303,8 @@ class AgentManager {
         modelMaxOutputTokens,
         toolContext,
         modelParams,
-        providerInfo.id
+        providerInfo.id,
+        apiFamily === "anthropic-vertex"
       );
     }
 
@@ -4387,7 +4393,8 @@ class AgentManager {
     maxOutputTokens: number,
     toolContext?: ToolContext,
     modelParams?: Record<string, unknown>,
-    providerId?: string
+    providerId?: string,
+    vertex: boolean = false
   ): Promise<{
     content: string;
     thinking?: string;
@@ -4411,11 +4418,14 @@ class AgentManager {
         return { role, content: m.content };
       });
 
-    const requestBody: Record<string, unknown> = {
-      model: modelId,
-      messages: chatMessages,
-      max_tokens: maxOutputTokens,
-    };
+    const anthropicEndpoint = anthropicEndpointPath(modelId, vertex);
+
+    const requestBody: Record<string, unknown> = anthropicRequestBase(
+      modelId,
+      chatMessages,
+      maxOutputTokens,
+      vertex
+    );
 
     if (systemMessage) {
       requestBody.system = systemMessage.content;
@@ -4439,13 +4449,9 @@ class AgentManager {
       requestBody.tool_choice = { type: "auto" };
     }
 
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      "x-api-key": auth,
-      "anthropic-version": "2023-06-01",
-    };
+    const headers: Record<string, string> = anthropicRequestHeaders(auth, vertex);
 
-    if (modelParams?.context1m === true) {
+    if (!vertex && modelParams?.context1m === true) {
       headers["anthropic-beta"] = this.mergeHeaderToken(
         headers["anthropic-beta"],
         ANTHROPIC_CONTEXT_1M_BETA
@@ -4477,12 +4483,16 @@ class AgentManager {
     const poolName = "anthropic";
     // Prefer a pooled credential when available; fall back to the provided auth.
     let activeCredential: PooledCredential | null =
-      poolSize(poolName) > 0 ? acquireCredential(poolName) : null;
+      !vertex && poolSize(poolName) > 0 ? acquireCredential(poolName) : null;
     let currentApiKey = activeCredential?.value ?? auth;
 
     for (let attempt = 0; attempt <= INITIAL_MAX_RETRIES; attempt++) {
-      headers["x-api-key"] = currentApiKey;
-      response = await fetch(`${baseUrl}/messages`, {
+      if (vertex) {
+        headers.Authorization = `Bearer ${currentApiKey}`;
+      } else {
+        headers["x-api-key"] = currentApiKey;
+      }
+      response = await fetch(`${baseUrl}${anthropicEndpoint}`, {
         method: "POST",
         headers,
         body: JSON.stringify(requestBody),
@@ -4506,7 +4516,7 @@ class AgentManager {
           const retryAfter = parseInt(response.headers.get("retry-after") || "60", 10) * 1000;
           try { recordRouterRateLimit("anthropic", retryAfter || 60_000); } catch { /* best-effort */ }
         }
-        const rotated = poolSize(poolName) > 0 ? acquireCredential(poolName) : null;
+        const rotated = !vertex && poolSize(poolName) > 0 ? acquireCredential(poolName) : null;
         if (rotated) {
           activeCredential = rotated;
           currentApiKey = rotated.value;
@@ -4709,11 +4719,12 @@ class AgentManager {
 
       this.compactAnthropicLoopMessagesForContext(currentMessages, contextGuard.contextBudgetChars);
 
-      const loopRequestBody: Record<string, unknown> = {
-        model: modelId,
-        messages: currentMessages,
-        max_tokens: maxOutputTokens,
-      };
+      const loopRequestBody: Record<string, unknown> = anthropicRequestBase(
+        modelId,
+        currentMessages,
+        maxOutputTokens,
+        vertex
+      );
 
       if (systemMessage) {
         loopRequestBody.system = systemMessage.content;
@@ -4735,7 +4746,7 @@ class AgentManager {
 
       try {
         for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-          loopResponse = await fetch(`${baseUrl}/messages`, {
+          loopResponse = await fetch(`${baseUrl}${anthropicEndpoint}`, {
             method: "POST",
             headers,
             body: JSON.stringify(loopRequestBody),
@@ -4756,7 +4767,7 @@ class AgentManager {
               ...loopRequestBody,
               messages: currentMessages,
             };
-            const retryResponse = await fetch(`${baseUrl}/messages`, {
+            const retryResponse = await fetch(`${baseUrl}${anthropicEndpoint}`, {
               method: "POST",
               headers,
               body: JSON.stringify(retryBody),
