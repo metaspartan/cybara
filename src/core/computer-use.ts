@@ -72,6 +72,14 @@ function isAvailable(): boolean {
   return true;
 }
 
+function driverUnavailableMessage(): string {
+  const base =
+    "cua-driver is not available. Install it from https://github.com/trycua/cua and ensure it is on PATH.";
+  return process.platform === "darwin"
+    ? `${base} Then grant macOS Accessibility + Screen Recording permissions (run \`cua-driver permissions grant\`).`
+    : base;
+}
+
 /** Ensure the cua-driver MCP server process is running. */
 async function ensureDriver(): Promise<void> {
   if (driverProcess && driverProcess.exitCode === null) return;
@@ -126,11 +134,7 @@ async function ensureDriver(): Promise<void> {
     for (const [id, entry] of pending) {
       clearTimeout(entry.timer);
       pending.delete(id);
-      entry.reject(
-        new Error(
-          "cua-driver is not available. Install cua-driver and grant macOS TCC permissions."
-        )
-      );
+      entry.reject(new Error(driverUnavailableMessage()));
     }
     driverProcess = null;
   });
@@ -160,9 +164,7 @@ async function initializeSession(): Promise<void> {
 function sendRaw(method: string, params: Record<string, unknown>): Promise<unknown> {
   return new Promise((resolve, reject) => {
     if (!driverProcess?.stdin?.writable) {
-      reject(
-        new Error("cua-driver is not running. Install cua-driver and grant macOS TCC permissions.")
-      );
+      reject(new Error(driverUnavailableMessage()));
       return;
     }
     const id = nextRequestId++;
