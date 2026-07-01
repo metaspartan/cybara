@@ -8,6 +8,7 @@ import {
   MOBILE_CHAT_DETAIL_CHROME,
   MOBILE_CHAT_CHROME,
   MOBILE_GATEWAY_PANEL_CHROME,
+  MOBILE_HOME_CHROME,
   MOBILE_LOGS_CHROME,
   MOBILE_MAIN_TAB_CHROME,
   MOBILE_METRICS_CHROME,
@@ -158,7 +159,7 @@ const summary: FeatureSummary = {
 };
 
 describe("mobile dashboard model", () => {
-  test("keeps the gateway control panel on the home tab only", () => {
+  test("keeps recent activity first and moves gateway connection details to settings", () => {
     expect(MOBILE_TABS.map((tab) => tab.key)).toEqual([
       "overview",
       "sessions",
@@ -166,9 +167,10 @@ describe("mobile dashboard model", () => {
       "settings",
     ]);
     expect(MOBILE_TABS.find((tab) => tab.key === "sessions")?.label).toBe("Chats");
-    expect(MOBILE_TABS.filter((tab) => tab.showsGatewayPanel).map((tab) => tab.key)).toEqual([
-      "overview",
-    ]);
+    expect(MOBILE_TABS.filter((tab) => tab.showsGatewayPanel).map((tab) => tab.key)).toEqual([]);
+    expect(MOBILE_HOME_CHROME.firstSection).toBe("recent_activity");
+    expect(MOBILE_HOME_CHROME.showsGatewayConnectionPanel).toBe(false);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.gatewayConnectionDetails).toBe(true);
     expect(MOBILE_GATEWAY_PANEL_CHROME.showUptime).toBe(true);
     expect(MOBILE_GATEWAY_PANEL_CHROME.showApiStatusTile).toBe(false);
     expect(MOBILE_GATEWAY_PANEL_CHROME.showGatewayUrlRow).toBe(false);
@@ -384,7 +386,7 @@ describe("mobile dashboard model", () => {
     const counts = summarizeFeatureCounts(summary);
     expect(buildMobileHeaderCopy("overview", counts, profile)).toEqual({
       title: "Cybara",
-      detail: "Studio Gateway - 127.0.0.1:4269",
+      detail: "Recent activity and controls",
     });
     expect(buildMobileHeaderCopy("sessions", counts, profile).title).toBe("Chats");
     expect(buildMobileHeaderCopy("metrics", counts, profile).detail).toBe(

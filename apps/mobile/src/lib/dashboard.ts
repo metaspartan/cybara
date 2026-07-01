@@ -38,11 +38,16 @@ export interface MobileHeaderCopy {
 }
 
 export const MOBILE_TABS: MobileTabDefinition[] = [
-  { key: "overview", label: "Home", showsGatewayPanel: true },
+  { key: "overview", label: "Home", showsGatewayPanel: false },
   { key: "sessions", label: "Chats", showsGatewayPanel: false },
   { key: "metrics", label: "Metrics", showsGatewayPanel: false },
   { key: "settings", label: "Settings", showsGatewayPanel: false },
 ];
+
+export const MOBILE_HOME_CHROME = {
+  firstSection: "recent_activity" as const,
+  showsGatewayConnectionPanel: false,
+} as const;
 
 export const MOBILE_NAV_CHROME = {
   height: 78,
@@ -89,6 +94,7 @@ export const MOBILE_SETTINGS_DETAIL_CHROME = {
 
 export const MOBILE_SETTINGS_ROOT_CHROME = {
   dangerousToolPolicyToggle: true,
+  gatewayConnectionDetails: true,
   sandboxRuntimeControls: true,
   systemPromptFeatureToggles: true,
   terminalToggle: true,
@@ -350,7 +356,7 @@ export function buildMobileHeaderCopy(
     case "overview":
       return {
         title: "Cybara",
-        detail: `${profile.name} - ${compactHost(profile.baseUrl)}`,
+        detail: "Recent activity and controls",
       };
     case "sessions":
       return {

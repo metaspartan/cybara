@@ -16,8 +16,8 @@ export function GlassPanel({
   return (
     <BlurView
       blurMethod="dimezisBlurViewSdk31Plus"
-      intensity={elevated ? 58 : 38}
-      tint="systemUltraThinMaterialDark"
+      intensity={elevated ? 46 : 32}
+      tint="dark"
       style={[styles.panel, elevated && styles.elevated, elevated && shadows.glass, style]}
     >
       <View pointerEvents="none" style={styles.liquidWash} />
@@ -72,10 +72,10 @@ const styles = StyleSheet.create({
   },
   liquidWash: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(0, 0, 0, 0.08)",
+    backgroundColor: "rgba(0, 0, 0, 0.22)",
   },
   liquidHighlight: {
-    backgroundColor: "rgba(255, 255, 255, 0.11)",
+    backgroundColor: "rgba(255, 255, 255, 0.13)",
     borderRadius: 999,
     height: 1,
     left: 14,
@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: "rgba(3, 8, 13, 0.9)",
+    backgroundColor: "rgba(8, 8, 10, 0.9)",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     justifyContent: "center",
@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: "rgba(2, 6, 10, 0.78)",
+    backgroundColor: "rgba(8, 8, 10, 0.78)",
     padding: spacing.md,
   },
   metricValue: {

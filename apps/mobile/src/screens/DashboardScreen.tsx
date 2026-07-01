@@ -103,7 +103,6 @@ import {
   MOBILE_CHAT_CHROME,
   MOBILE_RECENT_ACTIVITY_CHROME,
   MOBILE_ACCENT_KEYS,
-  MOBILE_GATEWAY_PANEL_CHROME,
   MOBILE_LOGS_CHROME,
   MOBILE_MAIN_TAB_CHROME,
   MOBILE_METRICS_CHROME,
@@ -113,7 +112,6 @@ import {
   MOBILE_SYSTEM_PROMPT_FEATURE_KEYS,
   MOBILE_TABS,
   boundedMobileComposerHeight,
-  buildGatewayPanelMeta,
   buildMobileChatSettingsLines,
   buildMobileHeaderCopy,
   compactHost,
@@ -761,10 +759,6 @@ export function DashboardScreen({
     return () => clearInterval(interval);
   }, [profile.id, activeTab, detailRoute]);
 
-  const health = summary?.health;
-  const healthy = health?.status === "healthy";
-  const statusColor = healthy ? colors.green : error ? colors.red : colors.amber;
-  const gatewayMeta = buildGatewayPanelMeta(health);
   const sessions = summary?.sessions ?? [];
   const orderedSessions = useMemo(() => sortSessionSummaries(sessions), [sessions]);
   const counts = summarizeFeatureCounts(summary);
@@ -989,66 +983,6 @@ export function DashboardScreen({
             />
           }
         >
-          {!detailRoute && activeTab === "overview" ? (
-            <GlassPanel elevated style={[styles.gatewayPanel, styles.mainTabPanel]}>
-              <View style={styles.connectionRow}>
-                <View style={[styles.liveDot, { backgroundColor: statusColor }]} />
-                <Text style={[styles.connectionText, { color: statusColor }]}>
-                  {healthy ? "Gateway connected" : error ? "Gateway degraded" : "Checking gateway"}
-                </Text>
-              </View>
-
-              <View style={styles.gatewayTop}>
-                <View style={styles.gatewayIdentity}>
-                  <Text style={styles.gatewayName}>{profile.name}</Text>
-                  <Text style={styles.gatewayMeta}>{gatewayMeta}</Text>
-                </View>
-                <Pressable style={styles.reconnectButton} onPress={() => refreshAll(true)}>
-                  <RefreshCw color={colors.blueText} size={18} strokeWidth={2.2} />
-                  <Text style={styles.reconnectText}>
-                    {refreshing ? "Refreshing" : "Reconnect"}
-                  </Text>
-                </Pressable>
-              </View>
-
-              <View style={styles.metricStrip}>
-                <StatusMetric
-                  Icon={HeartPulse}
-                  label="Health"
-                  value={healthy ? "Healthy" : "Check"}
-                  tone={statusColor}
-                />
-                {MOBILE_GATEWAY_PANEL_CHROME.showApiStatusTile ? (
-                  <StatusMetric
-                    Icon={Wifi}
-                    label="API"
-                    value={health ? "Online" : "Waiting"}
-                    tone={colors.cyan}
-                  />
-                ) : null}
-                <StatusMetric
-                  Icon={UsersRound}
-                  label="Chats"
-                  value={`${counts.sessions} chats`}
-                  tone={colors.blueText}
-                />
-                <StatusMetric
-                  Icon={Box}
-                  label="Providers"
-                  value={`${counts.providers} enabled`}
-                  tone={colors.textMuted}
-                />
-              </View>
-
-              {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-              <Pressable style={styles.disclosureRow} onPress={() => selectTab("settings")}>
-                <Text style={styles.disclosureText}>View connection details</Text>
-                <ChevronRight color={colors.text} size={22} strokeWidth={2.1} />
-              </Pressable>
-            </GlassPanel>
-          ) : null}
-
           {detailRoute ? (
             <DetailContent
               api={api}
@@ -1066,6 +1000,7 @@ export function DashboardScreen({
             />
           ) : activeTab === "overview" ? (
             <OverviewPanel
+              accentColor={accentColor}
               modules={modules}
               sessions={orderedSessions}
               logs={summary?.logs ?? []}
@@ -1099,6 +1034,7 @@ export function DashboardScreen({
               accentColor={accentColor}
               accentKey={accentKey}
               api={api}
+              connectionError={error}
               profile={profile}
               refreshSummary={() => refresh(false)}
               summary={summary}
@@ -1153,33 +1089,8 @@ export function DashboardScreen({
   );
 }
 
-function StatusMetric({
-  Icon,
-  label,
-  value,
-  tone,
-}: {
-  Icon: IconGlyph;
-  label: string;
-  value: string;
-  tone: string;
-}) {
-  return (
-    <View style={styles.metricCell}>
-      <View style={[styles.metricIcon, { backgroundColor: `${tone}20` }]}>
-        <Icon color={tone} size={20} strokeWidth={2.3} />
-      </View>
-      <View style={styles.metricText}>
-        <Text style={styles.metricLabel}>{label}</Text>
-        <Text style={[styles.metricValue, { color: tone }]} numberOfLines={1}>
-          {value}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
 function OverviewPanel({
+  accentColor,
   modules,
   sessions,
   logs,
@@ -1188,6 +1099,7 @@ function OverviewPanel({
   openSurface,
   openSession,
 }: {
+  accentColor: string;
   modules: ModuleCard[];
   sessions: SessionSummary[];
   logs: ActivitySummary[];
@@ -1206,7 +1118,7 @@ function OverviewPanel({
             title: session.title || session.id.slice(0, 8),
             detail: `${session.agent_id || "agent"} - ${lastUpdatedLabel(session)}`,
             state,
-            tone: state === "Working" ? colors.amber : colors.blueText,
+            tone: state === "Working" ? colors.amber : accentColor,
             onPress: () => openSession(session.id),
           };
         })
@@ -1216,12 +1128,53 @@ function OverviewPanel({
           title: log.title,
           detail: `${log.source} - ${log.createdAt ? relativeTimestamp(log.createdAt) : "recent"}`,
           state: "Recent",
-          tone: colors.blueText,
+          tone: accentColor,
           onPress: undefined,
         }));
 
   return (
     <>
+      <GlassPanel elevated style={styles.activityPanel}>
+        <View style={styles.panelHeader}>
+          <View style={styles.panelHeaderTitle}>
+            <Clock color={colors.textMuted} size={21} strokeWidth={2} />
+            <Text style={styles.panelTitle}>Recent activity</Text>
+          </View>
+          <Pressable style={styles.smallButton} onPress={() => selectTab("sessions")}>
+            <Text style={[styles.smallButtonText, { color: accentColor }]}>View all</Text>
+          </Pressable>
+        </View>
+        {activityRows.map((row) => (
+          <ActivityRow
+            key={row.id}
+            Icon={row.Icon}
+            title={row.title}
+            detail={row.detail}
+            state={row.state}
+            tone={row.tone}
+            onPress={row.onPress}
+          />
+        ))}
+        {activityRows.length === 0 ? (
+          <>
+            <ActivityRow
+              Icon={MessageCircle}
+              title="No chats"
+              detail="Start a chat from the gateway"
+              state="Idle"
+              tone={accentColor}
+            />
+            <ActivityRow
+              Icon={Bot}
+              title="Agents ready"
+              detail="Remote orchestration available"
+              state="Ready"
+              tone={colors.green}
+            />
+          </>
+        ) : null}
+      </GlassPanel>
+
       <View style={styles.overviewInset}>
         <Text style={styles.sectionTitle}>Remote management</Text>
         <View style={styles.moduleGrid}>
@@ -1247,47 +1200,6 @@ function OverviewPanel({
           </Pressable>
         </View>
       </View>
-
-      <GlassPanel elevated style={styles.activityPanel}>
-        <View style={styles.panelHeader}>
-          <View style={styles.panelHeaderTitle}>
-            <Clock color={colors.textMuted} size={21} strokeWidth={2} />
-            <Text style={styles.panelTitle}>Recent activity</Text>
-          </View>
-          <Pressable style={styles.smallButton} onPress={() => selectTab("sessions")}>
-            <Text style={styles.smallButtonText}>View all</Text>
-          </Pressable>
-        </View>
-        {activityRows.map((row) => (
-          <ActivityRow
-            key={row.id}
-            Icon={row.Icon}
-            title={row.title}
-            detail={row.detail}
-            state={row.state}
-            tone={row.tone}
-            onPress={row.onPress}
-          />
-        ))}
-        {activityRows.length === 0 ? (
-          <>
-            <ActivityRow
-              Icon={MessageCircle}
-              title="No chats"
-              detail="Start a chat from the gateway"
-              state="Idle"
-              tone={colors.amber}
-            />
-            <ActivityRow
-              Icon={Bot}
-              title="Agents ready"
-              detail="Remote orchestration available"
-              state="Ready"
-              tone={colors.green}
-            />
-          </>
-        ) : null}
-      </GlassPanel>
     </>
   );
 }
@@ -2459,12 +2371,14 @@ function SettingSelector({
   label,
   options,
   selected,
+  tone = colors.cyan,
   onSelect,
 }: {
   disabled?: boolean;
   label: string;
   options: Array<{ label: string; value: string }>;
   selected: string;
+  tone?: string;
   onSelect: (value: string) => void;
 }) {
   if (options.length === 0) return null;
@@ -2483,7 +2397,10 @@ function SettingSelector({
               onPress={() => onSelect(option.value)}
               style={[
                 styles.settingsChip,
-                isSelected && styles.settingsChipActive,
+                isSelected && [
+                  styles.settingsChipActive,
+                  { backgroundColor: `${tone}16`, borderColor: `${tone}88` },
+                ],
                 disabled && styles.settingsActionButtonDisabled,
               ]}
             >
@@ -2543,6 +2460,7 @@ function SettingToggle({
   disabled,
   label,
   onPress,
+  tone = colors.cyan,
   value,
 }: {
   busy?: boolean;
@@ -2550,6 +2468,7 @@ function SettingToggle({
   disabled?: boolean;
   label: string;
   onPress: () => void;
+  tone?: string;
   value: boolean;
 }) {
   const inactive = disabled || busy;
@@ -2566,10 +2485,23 @@ function SettingToggle({
         {detail ? <Text style={styles.toggleDetail}>{detail}</Text> : null}
       </View>
       {busy ? (
-        <ActivityIndicator color={value ? colors.cyan : colors.textMuted} size="small" />
+        <ActivityIndicator color={value ? tone : colors.textMuted} size="small" />
       ) : (
-        <View style={[styles.toggleSwitch, value && styles.toggleSwitchActive]}>
-          <View style={[styles.toggleThumb, value && styles.toggleThumbActive]} />
+        <View
+          style={[
+            styles.toggleSwitch,
+            value && [
+              styles.toggleSwitchActive,
+              { backgroundColor: `${tone}22`, borderColor: `${tone}88` },
+            ],
+          ]}
+        >
+          <View
+            style={[
+              styles.toggleThumb,
+              value && [styles.toggleThumbActive, { backgroundColor: tone }],
+            ]}
+          />
         </View>
       )}
     </Pressable>
@@ -3878,6 +3810,7 @@ function SettingsPanel({
   accentColor,
   accentKey,
   api,
+  connectionError,
   profile,
   refreshSummary,
   summary,
@@ -3888,6 +3821,7 @@ function SettingsPanel({
   accentColor: string;
   accentKey: AccentKey;
   api: CybaraMobileApi;
+  connectionError: string | null;
   profile: GatewayProfile;
   refreshSummary: () => void;
   summary: FeatureSummary | null;
@@ -3900,9 +3834,23 @@ function SettingsPanel({
   const [savingConfigKey, setSavingConfigKey] = useState<string | null>(null);
   const [savingPromptKey, setSavingPromptKey] = useState<SystemPromptFeatureKey | null>(null);
   const [savingAgentAccess, setSavingAgentAccess] = useState(false);
+  const [refreshingGateway, setRefreshingGateway] = useState(false);
   const configAvailable = summary?.availability.config.ok === true;
   const systemPromptAvailable =
     summary?.availability.systemPrompt.ok === true && Boolean(summary.systemPrompt);
+  const health = summary?.health;
+  const healthy = health?.status === "healthy";
+  const healthUnavailable = Boolean(connectionError) || summary?.availability.health.ok === false;
+  const gatewayStatusColor = healthy ? colors.green : healthUnavailable ? colors.red : colors.amber;
+  const gatewayStatusLabel = healthy
+    ? "Gateway connected"
+    : healthUnavailable
+      ? "Gateway degraded"
+      : "Checking gateway";
+  const gatewayVersion = health?.version
+    ? `v${String(health.version).replace(/^v/i, "")}`
+    : "pending";
+  const gatewayUptime = formatUptime(health?.uptime);
   const terminalEnabled = summary?.config.terminal_enabled === true;
   const toolApprovalMode = readMobileToolApprovalMode(summary?.config);
   const dangerousPolicy = readMobileDangerousToolPolicy(summary?.config);
@@ -3910,6 +3858,16 @@ function SettingsPanel({
   const walletStatus = objectRecord(summary?.walletStatus);
   const walletStatusAvailable = Boolean(walletStatus);
   const agentAccessEnabled = booleanSetting(walletStatus, "agentAccessEnabled");
+
+  const refreshGateway = async () => {
+    if (refreshingGateway) return;
+    setRefreshingGateway(true);
+    try {
+      await refreshSummary();
+    } finally {
+      setRefreshingGateway(false);
+    }
+  };
 
   const saveConfigPatch = async (
     key: string,
@@ -3997,22 +3955,47 @@ function SettingsPanel({
 
   return (
     <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
-      <View style={styles.summaryGrid}>
-        <SummaryTile
-          Icon={Wifi}
-          label="Gateway"
-          value={compactHost(profile.baseUrl)}
-          detail="active endpoint"
-          tone={colors.cyan}
-        />
-        <SummaryTile
-          Icon={ShieldCheck}
-          label="Device"
-          value={profile.deviceId ? "Paired" : "Manual"}
-          detail={profile.deviceId || "API key profile"}
-          tone={colors.green}
-        />
-      </View>
+      {MOBILE_SETTINGS_ROOT_CHROME.gatewayConnectionDetails ? (
+        <View style={styles.settingsGatewayCard}>
+          <View style={styles.connectionRow}>
+            <View style={[styles.liveDot, { backgroundColor: gatewayStatusColor }]} />
+            <Text style={[styles.connectionText, { color: gatewayStatusColor }]}>
+              {gatewayStatusLabel}
+            </Text>
+          </View>
+          <View style={styles.gatewayTop}>
+            <View style={styles.gatewayIdentity}>
+              <Text style={styles.gatewayName}>{profile.name}</Text>
+              <Text style={styles.gatewayMeta}>{compactHost(profile.baseUrl)}</Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              disabled={refreshingGateway}
+              style={[styles.reconnectButton, refreshingGateway && styles.iconButtonDisabled]}
+              onPress={() => {
+                void refreshGateway();
+              }}
+            >
+              {refreshingGateway ? (
+                <ActivityIndicator color={accentColor} size="small" />
+              ) : (
+                <RefreshCw color={accentColor} size={18} strokeWidth={2.2} />
+              )}
+              <Text style={styles.reconnectText}>Refresh</Text>
+            </Pressable>
+          </View>
+          <View style={styles.gatewayDetailGrid}>
+            <GatewayDetailPill label="Uptime" value={gatewayUptime} />
+            <GatewayDetailPill label="Version" value={gatewayVersion} />
+            <GatewayDetailPill label="Endpoint" value={profile.baseUrl} />
+            <GatewayDetailPill
+              label="Device"
+              value={profile.deviceId ? "Paired" : "Manual API key"}
+            />
+          </View>
+          {connectionError ? <Text style={styles.errorText}>{connectionError}</Text> : null}
+        </View>
+      ) : null}
       <View style={styles.themePanel}>
         <View style={styles.subsectionHeader}>
           <View style={styles.subsectionHeaderTitle}>
@@ -4080,6 +4063,7 @@ function SettingsPanel({
                   "Terminal setting failed"
                 );
               }}
+              tone={accentColor}
               value={terminalEnabled}
             />
           ) : null}
@@ -4099,6 +4083,7 @@ function SettingsPanel({
                 { label: "Ask Me", value: "ask" },
               ]}
               selected={toolApprovalMode}
+              tone={accentColor}
             />
           ) : null}
           {MOBILE_SETTINGS_ROOT_CHROME.dangerousToolPolicyToggle ? (
@@ -4120,6 +4105,7 @@ function SettingsPanel({
                     "Dangerous tool policy failed"
                   );
                 }}
+                tone={accentColor}
                 value={dangerousPolicy.enabled}
               />
               {dangerousPolicy.enabled ? (
@@ -4143,6 +4129,7 @@ function SettingsPanel({
                     { label: "Block", value: "block" },
                   ]}
                   selected={dangerousPolicy.mode}
+                  tone={accentColor}
                 />
               ) : null}
             </>
@@ -4166,6 +4153,7 @@ function SettingsPanel({
                     "Sandbox setting failed"
                   );
                 }}
+                tone={accentColor}
                 value={sandboxRuntime.enabled}
               />
               {sandboxRuntime.enabled ? (
@@ -4196,6 +4184,7 @@ function SettingsPanel({
                       { label: "Docker", value: "docker" },
                     ]}
                     selected={sandboxRuntime.provider}
+                    tone={accentColor}
                   />
                   <SettingSelector
                     disabled={savingConfigKey !== null}
@@ -4217,6 +4206,7 @@ function SettingsPanel({
                       { label: "Allow", value: "allow" },
                     ]}
                     selected={sandboxRuntime.network}
+                    tone={accentColor}
                   />
                 </>
               ) : null}
@@ -4231,6 +4221,7 @@ function SettingsPanel({
               onPress={() => {
                 void toggleAgentAccess();
               }}
+              tone={accentColor}
               value={agentAccessEnabled}
             />
           ) : null}
@@ -4257,6 +4248,7 @@ function SettingsPanel({
               onPress={() => {
                 void toggleSystemPromptFeature(row.key);
               }}
+              tone={accentColor}
               value={summary.systemPrompt?.features[row.key] === true}
             />
           ))}
@@ -4270,20 +4262,7 @@ function SettingsPanel({
           )}
         />
       )}
-      <Text style={styles.subsectionTitle}>Connection</Text>
-      <SettingsRow Icon={Wifi} label="Gateway" value={profile.baseUrl} />
-      <SettingsRow
-        Icon={ShieldCheck}
-        label="Device token"
-        value={profile.deviceId || "manual key"}
-      />
-      <SettingsRow
-        Icon={HeartPulse}
-        label="Health API"
-        value={endpointStatusLabel(summary?.availability.health)}
-      />
-      <Text style={styles.subsectionTitle}>Runtime</Text>
-      <SettingsRow Icon={Cpu} label="Runtime" value={summary?.health?.version || "pending"} />
+      <Text style={styles.subsectionTitle}>Gateway APIs</Text>
       <SettingsRow
         Icon={Database}
         label="Config API"
@@ -4342,6 +4321,17 @@ function SummaryTile({
       </Text>
       <Text numberOfLines={1} style={styles.summaryDetail}>
         {detail}
+      </Text>
+    </View>
+  );
+}
+
+function GatewayDetailPill({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.gatewayDetailPill}>
+      <Text style={styles.gatewayDetailLabel}>{label}</Text>
+      <Text ellipsizeMode="tail" numberOfLines={1} style={styles.gatewayDetailValue}>
+        {value}
       </Text>
     </View>
   );
@@ -4413,7 +4403,7 @@ const styles = StyleSheet.create({
   },
   backButton: {
     alignItems: "center",
-    backgroundColor: "rgba(2, 7, 11, 0.9)",
+    backgroundColor: "rgba(9, 9, 11, 0.9)",
     borderColor: colors.borderStrong,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -4441,7 +4431,7 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     alignItems: "center",
-    backgroundColor: "rgba(2, 7, 11, 0.9)",
+    backgroundColor: "rgba(9, 9, 11, 0.9)",
     borderColor: colors.borderStrong,
     borderRadius: 28,
     borderWidth: 1,
@@ -4451,9 +4441,6 @@ const styles = StyleSheet.create({
   },
   iconButtonDisabled: {
     opacity: 0.55,
-  },
-  gatewayPanel: {
-    gap: spacing.sm,
   },
   connectionRow: {
     alignItems: "center",
@@ -4493,8 +4480,8 @@ const styles = StyleSheet.create({
   },
   reconnectButton: {
     alignItems: "center",
-    backgroundColor: "rgba(5, 17, 25, 0.9)",
-    borderColor: "rgba(183, 230, 255, 0.42)",
+    backgroundColor: "rgba(16, 16, 18, 0.88)",
+    borderColor: colors.borderStrong,
     borderRadius: radius.lg,
     borderWidth: 1,
     flexDirection: "row",
@@ -4507,63 +4494,47 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
     fontWeight: "700",
   },
-  metricStrip: {
-    backgroundColor: "rgba(0, 0, 0, 0.28)",
-    borderColor: colors.border,
+  settingsGatewayCard: {
+    backgroundColor: "rgba(7, 7, 9, 0.94)",
+    borderColor: colors.borderStrong,
     borderRadius: radius.lg,
     borderWidth: 1,
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  gatewayDetailGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.sm,
-    padding: spacing.sm,
   },
-  metricCell: {
-    alignItems: "center",
-    flexBasis: "30%",
-    flexDirection: "row",
+  gatewayDetailPill: {
+    backgroundColor: "rgba(18, 18, 20, 0.72)",
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flexBasis: "48%",
     flexGrow: 1,
-    gap: spacing.sm,
-    minHeight: 44,
-    minWidth: 104,
+    gap: 3,
+    minHeight: 58,
+    minWidth: 132,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  metricIcon: {
-    alignItems: "center",
-    borderRadius: 22,
-    height: 40,
-    justifyContent: "center",
-    width: 40,
+  gatewayDetailLabel: {
+    color: colors.textDim,
+    fontSize: typography.tiny,
+    fontWeight: "900",
+    textTransform: "uppercase",
   },
-  metricText: {
-    flex: 1,
-  },
-  metricLabel: {
-    color: colors.textMuted,
+  gatewayDetailValue: {
+    color: colors.text,
     fontSize: typography.label,
-  },
-  metricValue: {
-    fontSize: typography.body,
     fontWeight: "800",
   },
   errorText: {
     color: colors.red,
     fontSize: typography.label,
     lineHeight: 18,
-  },
-  disclosureRow: {
-    alignItems: "center",
-    backgroundColor: "rgba(2, 7, 11, 0.86)",
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    minHeight: 52,
-    paddingHorizontal: spacing.md,
-  },
-  disclosureText: {
-    color: colors.cyan,
-    fontSize: typography.body,
-    fontWeight: "700",
   },
   sectionTitle: {
     color: colors.text,
@@ -4580,7 +4551,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   moduleTile: {
-    backgroundColor: "rgba(4, 9, 14, 0.94)",
+    backgroundColor: "rgba(9, 9, 11, 0.94)",
     borderColor: colors.borderStrong,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -4592,7 +4563,7 @@ const styles = StyleSheet.create({
   },
   moduleIcon: {
     alignItems: "center",
-    backgroundColor: "rgba(2, 8, 13, 0.92)",
+    backgroundColor: "rgba(18, 18, 20, 0.86)",
     borderRadius: radius.md,
     height: 38,
     justifyContent: "center",
@@ -4622,6 +4593,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   activityPanel: {
+    backgroundColor: "rgba(7, 7, 9, 0.94)",
+    borderColor: colors.borderStrong,
     gap: spacing.sm,
   },
   panelHeader: {
@@ -4640,7 +4613,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   smallButton: {
-    backgroundColor: "rgba(70, 143, 182, 0.22)",
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
     borderColor: colors.border,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -4648,7 +4621,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   smallButtonText: {
-    color: colors.blueText,
     fontSize: typography.label,
     fontWeight: "800",
   },
@@ -4661,7 +4633,7 @@ const styles = StyleSheet.create({
   },
   loadMoreButton: {
     alignItems: "center",
-    backgroundColor: "rgba(70, 143, 182, 0.18)",
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
     borderColor: colors.borderStrong,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -4696,7 +4668,7 @@ const styles = StyleSheet.create({
   },
   activityIcon: {
     alignItems: "center",
-    backgroundColor: "rgba(2, 8, 13, 0.9)",
+    backgroundColor: "rgba(18, 18, 20, 0.88)",
     borderRadius: 22,
     height: 44,
     justifyContent: "center",
@@ -4740,7 +4712,7 @@ const styles = StyleSheet.create({
   },
   itemHero: {
     alignItems: "center",
-    backgroundColor: "rgba(2, 7, 11, 0.88)",
+    backgroundColor: "rgba(9, 9, 11, 0.88)",
     borderColor: colors.border,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -4793,7 +4765,7 @@ const styles = StyleSheet.create({
     width: 32,
   },
   messageBubble: {
-    backgroundColor: "rgba(3, 7, 11, 0.72)",
+    backgroundColor: "rgba(10, 10, 12, 0.72)",
     borderColor: colors.border,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -4806,7 +4778,7 @@ const styles = StyleSheet.create({
     maxWidth: "92%",
   },
   userMessageBubble: {
-    backgroundColor: "rgba(4, 12, 18, 0.9)",
+    backgroundColor: "rgba(18, 18, 20, 0.9)",
   },
   messageThinking: {
     color: colors.textMuted,
@@ -4838,7 +4810,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   codeHeader: {
-    backgroundColor: "rgba(2, 8, 13, 0.92)",
+    backgroundColor: "rgba(18, 18, 20, 0.92)",
     color: colors.textMuted,
     fontSize: typography.tiny,
     fontWeight: "900",
@@ -4905,7 +4877,7 @@ const styles = StyleSheet.create({
   },
   composer: {
     alignItems: "flex-end",
-    backgroundColor: "rgba(2, 6, 10, 0.94)",
+    backgroundColor: "rgba(10, 10, 12, 0.94)",
     borderColor: colors.border,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -4916,7 +4888,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   chatComposerBar: {
-    backgroundColor: "rgba(3, 7, 11, 0.98)",
+    backgroundColor: "rgba(7, 7, 9, 0.98)",
     borderTopColor: colors.borderStrong,
     borderTopWidth: 1,
     bottom: MOBILE_CHAT_CHROME.composerReservedBottom + MOBILE_CHAT_CHROME.composerGapToNav,
@@ -4947,7 +4919,7 @@ const styles = StyleSheet.create({
     width: MOBILE_CHAT_COMPOSER.minHeight,
   },
   themePanel: {
-    backgroundColor: "rgba(2, 7, 11, 0.88)",
+    backgroundColor: "rgba(9, 9, 11, 0.88)",
     borderColor: colors.border,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -4961,7 +4933,7 @@ const styles = StyleSheet.create({
   },
   accentSwatch: {
     alignItems: "center",
-    backgroundColor: "rgba(1, 5, 8, 0.76)",
+    backgroundColor: "rgba(14, 14, 16, 0.76)",
     borderColor: colors.border,
     borderRadius: radius.sm,
     borderWidth: 1,
@@ -5004,7 +4976,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   settingsInput: {
-    backgroundColor: "rgba(1, 5, 8, 0.82)",
+    backgroundColor: "rgba(12, 12, 14, 0.82)",
     borderColor: colors.border,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -5030,7 +5002,7 @@ const styles = StyleSheet.create({
   },
   settingsChip: {
     alignItems: "center",
-    backgroundColor: "rgba(1, 5, 8, 0.76)",
+    backgroundColor: "rgba(14, 14, 16, 0.76)",
     borderColor: colors.border,
     borderRadius: radius.sm,
     borderWidth: 1,
@@ -5074,7 +5046,7 @@ const styles = StyleSheet.create({
   },
   settingToggleRow: {
     alignItems: "center",
-    backgroundColor: "rgba(1, 5, 8, 0.76)",
+    backgroundColor: "rgba(12, 12, 14, 0.76)",
     borderColor: colors.border,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -5125,7 +5097,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.cyan,
   },
   monitorUsageRow: {
-    backgroundColor: "rgba(1, 5, 8, 0.76)",
+    backgroundColor: "rgba(12, 12, 14, 0.76)",
     borderColor: colors.border,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -5154,7 +5126,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   summaryTile: {
-    backgroundColor: "rgba(3, 8, 13, 0.92)",
+    backgroundColor: "rgba(11, 11, 13, 0.92)",
     borderColor: colors.border,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -5221,7 +5193,7 @@ const styles = StyleSheet.create({
   },
   listIcon: {
     alignItems: "center",
-    backgroundColor: "rgba(2, 8, 13, 0.9)",
+    backgroundColor: "rgba(18, 18, 20, 0.88)",
     borderRadius: radius.md,
     height: 42,
     justifyContent: "center",
@@ -5294,7 +5266,7 @@ const styles = StyleSheet.create({
   },
   tabBarPanel: {
     flex: 1,
-    backgroundColor: "rgba(1, 4, 7, 0.98)",
+    backgroundColor: "rgba(6, 6, 8, 0.98)",
     paddingHorizontal: spacing.md,
     paddingVertical: 5,
   },
