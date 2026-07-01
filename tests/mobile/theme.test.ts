@@ -64,7 +64,7 @@ describe("mobile theming", () => {
 
   test("LiquidGlass prefers native expo-glass-effect and falls back to BlurView", () => {
     const src = read("components/LiquidGlass.tsx");
-    expect(src).toContain('from "expo-glass-effect"');
+    expect(src).toContain('import("expo-glass-effect")');
     expect(src).toContain("isLiquidGlassAvailable");
     expect(src).toContain("GlassView");
     expect(src).toContain('from "expo-blur"');
