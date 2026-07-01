@@ -493,8 +493,10 @@ function ComputerUseSettings() {
       <CardHeader>
         <CardTitle>Computer Use</CardTitle>
         <CardDescription>
-          Background desktop control via the cua-driver engine. Install it and grant macOS
-          permissions to let agents see and control the screen.
+          Background desktop control via the cua-driver engine.{" "}
+          {status?.platform === "darwin"
+            ? "Install it and grant macOS Accessibility + Screen Recording permissions to let agents see and control the screen."
+            : "Install the cua-driver engine to let agents see and control the screen."}
         </CardDescription>
       </CardHeader>
       <CardContent>
