@@ -1096,6 +1096,8 @@ export interface Channel {
     | "googlechat"
     | "msteams"
     | "feishu"
+    | "dingtalk"
+    | "zulip"
     | "synology"
     | "nextcloud"
     | "zalo";

@@ -19,6 +19,8 @@ import { lineAdapter } from "./adapters/line";
 import { googleChatAdapter } from "./adapters/googlechat";
 import { msTeamsAdapter } from "./adapters/msteams";
 import { feishuAdapter } from "./adapters/feishu";
+import { dingtalkAdapter } from "./adapters/dingtalk";
+import { zulipAdapter } from "./adapters/zulip";
 import { synologyAdapter } from "./adapters/synology";
 import { nextcloudAdapter } from "./adapters/nextcloud";
 import { zaloAdapter } from "./adapters/zalo";
@@ -85,6 +87,8 @@ export class ChannelManager {
     this.registerAdapter("googlechat", googleChatAdapter);
     this.registerAdapter("msteams", msTeamsAdapter);
     this.registerAdapter("feishu", feishuAdapter);
+    this.registerAdapter("dingtalk", dingtalkAdapter);
+    this.registerAdapter("zulip", zulipAdapter);
     this.registerAdapter("synology", synologyAdapter);
     this.registerAdapter("nextcloud", nextcloudAdapter);
     this.registerAdapter("zalo", zaloAdapter);

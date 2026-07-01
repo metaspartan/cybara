@@ -320,6 +320,27 @@ export const channels = {
       { name: "verify_token", label: "Inbound Verify Token", type: "password", required: false },
     ],
   },
+  dingtalk: {
+    name: "DingTalk",
+    icon: "📐",
+    description: "Connect to DingTalk via an enterprise robot outgoing webhook (HMAC)",
+    color: "#0089FF",
+    fields: [
+      { name: "app_secret", label: "Robot App Secret", type: "password", required: true },
+    ],
+  },
+  zulip: {
+    name: "Zulip",
+    icon: "🇿",
+    description: "Connect to Zulip via an outgoing webhook bot (synchronous reply)",
+    color: "#52C2AF",
+    fields: [
+      { name: "token", label: "Outgoing Webhook Token", type: "password", required: true },
+      { name: "site", label: "Site URL (for proactive sends)", type: "text", required: false },
+      { name: "bot_email", label: "Bot Email", type: "text", required: false },
+      { name: "api_key", label: "Bot API Key", type: "password", required: false },
+    ],
+  },
   feishu: {
     name: "Feishu / Lark",
     icon: "🐦",

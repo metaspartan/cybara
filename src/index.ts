@@ -34,6 +34,8 @@ import {
   googleChatAdapter,
   msTeamsAdapter,
   feishuAdapter,
+  dingtalkAdapter,
+  zulipAdapter,
   synologyAdapter,
   nextcloudAdapter,
   zaloAdapter,
@@ -712,6 +714,8 @@ lineAdapter.setMessageHandler(createChannelChatHandler("line"));
 googleChatAdapter.setMessageHandler(createChannelChatHandler("googlechat"));
 msTeamsAdapter.setMessageHandler(createChannelChatHandler("msteams"));
 feishuAdapter.setMessageHandler(createChannelChatHandler("feishu"));
+dingtalkAdapter.setMessageHandler(createChannelChatHandler("dingtalk"));
+zulipAdapter.setMessageHandler(createChannelChatHandler("zulip"));
 synologyAdapter.setMessageHandler(createChannelChatHandler("synology"));
 nextcloudAdapter.setMessageHandler(createChannelChatHandler("nextcloud"));
 zaloAdapter.setMessageHandler(createChannelChatHandler("zalo"));
