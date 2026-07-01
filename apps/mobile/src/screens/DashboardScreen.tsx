@@ -196,6 +196,7 @@ const tabIcons: Record<MobileTabKey, IconGlyph> = {
   overview: House,
   sessions: UsersRound,
   metrics: Cpu,
+  tasks: CalendarCheck,
   settings: Settings,
 };
 
@@ -834,15 +835,9 @@ export function DashboardScreen({
     }
   };
 
+  // Chats and Tasks are omitted here — both are primary bottom-tab
+  // destinations, so the Home grid stays focused on management surfaces.
   const modules: ModuleCard[] = [
-    {
-      key: "sessions",
-      label: "Chats",
-      detail: surfaceCount(summary, "sessions", counts.sessions, "chats", "No chats", "chat"),
-      value: String(counts.sessions),
-      Icon: MessageCircle,
-      tab: "sessions",
-    },
     {
       key: "agents",
       label: "Agents",
@@ -891,15 +886,6 @@ export function DashboardScreen({
       Icon: Link2,
       tab: "settings",
       surface: "channels",
-    },
-    {
-      key: "tasks",
-      label: "Tasks",
-      detail: surfaceCount(summary, "tasks", counts.tasks, "scheduled", "No tasks"),
-      value: String(counts.tasks),
-      Icon: CalendarCheck,
-      tab: "settings",
-      surface: "tasks",
     },
     {
       key: "memory",
@@ -966,8 +952,13 @@ export function DashboardScreen({
               <Settings color={colors.text} size={22} strokeWidth={2.1} />
             )}
           </Pressable>
-        ) : !detailRoute && activeTab !== "metrics" ? (
-          <Pressable style={styles.iconButton} onPress={() => selectTab("settings")}>
+        ) : !detailRoute && activeTab !== "metrics" && activeTab !== "settings" ? (
+          <Pressable
+            accessibilityLabel="Open settings"
+            accessibilityRole="button"
+            style={styles.iconButton}
+            onPress={() => selectTab("settings")}
+          >
             <Settings color={colors.text} size={22} strokeWidth={2.1} />
           </Pressable>
         ) : null}
@@ -1053,6 +1044,20 @@ export function DashboardScreen({
               metricsError={metricsError}
               summary={summary}
               openSurface={openSurface}
+            />
+          ) : null}
+          {!detailRoute && activeTab === "tasks" ? (
+            <SurfaceDetailPanel
+              api={api}
+              accentColor={accentColor}
+              profile={profile}
+              summary={summary}
+              surface="tasks"
+              openItem={(item) => openItem("tasks", item)}
+              loadMoreLogs={loadMoreLogs}
+              loadingMoreLogs={loadingMoreLogs}
+              logPageError={logPageError}
+              refreshSummary={() => refresh(false)}
             />
           ) : null}
           {!detailRoute && activeTab === "settings" ? (

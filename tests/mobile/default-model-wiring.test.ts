@@ -39,6 +39,27 @@ describe("mobile: memory method toggle", () => {
   });
 });
 
+describe("mobile: primary navigation", () => {
+  const screen = read("screens/DashboardScreen.tsx");
+
+  test("Tasks is a bottom tab and settings opens from the header gear", () => {
+    expect(screen).toContain("tasks: CalendarCheck");
+    expect(screen).toContain('activeTab === "tasks"');
+    expect(screen).toContain('surface="tasks"');
+    // Header gear still routes to the settings surface.
+    expect(screen).toContain('onPress={() => selectTab("settings")}');
+  });
+
+  test("Home grid no longer duplicates Chats or Tasks (both are tabs)", () => {
+    const modulesBlock = screen.slice(
+      screen.indexOf("const modules: ModuleCard[]"),
+      screen.indexOf("const modules: ModuleCard[]") + 2000
+    );
+    expect(modulesBlock).not.toContain('label: "Chats"');
+    expect(modulesBlock).not.toContain('label: "Tasks"');
+  });
+});
+
 describe("mobile: assistant identity + custom instructions (web parity)", () => {
   const screen = read("screens/DashboardScreen.tsx");
 

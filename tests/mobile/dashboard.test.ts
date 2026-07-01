@@ -169,9 +169,11 @@ describe("mobile dashboard model", () => {
       "overview",
       "sessions",
       "metrics",
-      "settings",
+      "tasks",
     ]);
     expect(MOBILE_TABS.find((tab) => tab.key === "sessions")?.label).toBe("Chats");
+    // Settings is reached from the header gear, not a bottom tab.
+    expect(MOBILE_TABS.some((tab) => tab.key === "settings")).toBe(false);
     expect(MOBILE_TABS.filter((tab) => tab.showsGatewayPanel).map((tab) => tab.key)).toEqual([]);
     expect(MOBILE_HOME_CHROME.firstSection).toBe("recent_activity");
     expect(MOBILE_HOME_CHROME.firstManagementSurface).toBe("monitor");

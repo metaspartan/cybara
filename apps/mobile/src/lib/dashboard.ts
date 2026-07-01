@@ -1,7 +1,7 @@
 import type { FeatureSummary, HealthResponse, SessionSummary } from "./api";
 import type { GatewayProfile } from "./connection";
 
-export type MobileTabKey = "overview" | "sessions" | "metrics" | "settings";
+export type MobileTabKey = "overview" | "sessions" | "metrics" | "tasks" | "settings";
 export type MobileSurfaceKey =
   | "agents"
   | "providers"
@@ -37,11 +37,14 @@ export interface MobileHeaderCopy {
   detail: string;
 }
 
+// Settings is intentionally not a bottom tab; it is reached from the header
+// gear (top-right). The bottom bar carries the four most frequent
+// destinations, matching the primary nav in the web/desktop UI.
 export const MOBILE_TABS: MobileTabDefinition[] = [
   { key: "overview", label: "Home", showsGatewayPanel: false },
   { key: "sessions", label: "Chats", showsGatewayPanel: false },
   { key: "metrics", label: "Metrics", showsGatewayPanel: false },
-  { key: "settings", label: "Settings", showsGatewayPanel: false },
+  { key: "tasks", label: "Tasks", showsGatewayPanel: false },
 ];
 
 export const MOBILE_HOME_CHROME = {
@@ -412,6 +415,11 @@ export function buildMobileHeaderCopy(
         detail: `${sessionLabel} - ${counts.tools} tools - ${eventLabel}`,
       };
     }
+    case "tasks":
+      return {
+        title: "Tasks",
+        detail: counts.tasks === 1 ? "1 scheduled task" : `${counts.tasks} scheduled tasks`,
+      };
     case "settings":
       return {
         title: "Settings",
