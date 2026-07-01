@@ -116,6 +116,28 @@ export function chunkMarkdown(
     return chunks.filter((chunk) => chunk.text.trim().length > 10);
 }
 
+/**
+ * Reciprocal Rank Fusion: combine ranked result lists by rank rather than by
+ * raw score, so incomparable score scales (cosine similarity vs BM25) fuse
+ * robustly. Each list contributes weight / (k + rank); scores are normalized
+ * to [0,1] for display. This is the standard hybrid-search fusion.
+ */
+export function reciprocalRankFusion(
+    lists: Array<{ ids: string[]; weight: number }>,
+    k = 60
+): Array<{ id: string; score: number }> {
+    const accumulated = new Map<string, number>();
+    for (const { ids, weight } of lists) {
+        ids.forEach((id, index) => {
+            accumulated.set(id, (accumulated.get(id) ?? 0) + weight * (1 / (k + index + 1)));
+        });
+    }
+    const max = Math.max(...Array.from(accumulated.values()), Number.EPSILON);
+    return Array.from(accumulated.entries())
+        .map(([id, score]) => ({ id, score: score / max }))
+        .sort((left, right) => right.score - left.score);
+}
+
 export class VectorStore {
     private db: Database;
     private provider: EmbeddingProvider | null = null;
@@ -501,27 +523,22 @@ export class VectorStore {
         vectorWeight: number,
         keywordWeight: number
     ): VectorSearchResult[] {
-        const byId = new Map<string, { vector: number; keyword: number; result: VectorSearchResult }>();
+        const fused = reciprocalRankFusion([
+            { ids: vectorResults.map((result) => result.id), weight: vectorWeight },
+            { ids: keywordResults.map((result) => result.id), weight: keywordWeight },
+        ]);
 
-        for (const result of vectorResults) {
-            byId.set(result.id, { vector: result.score, keyword: 0, result });
+        const byId = new Map<string, VectorSearchResult>();
+        for (const result of [...vectorResults, ...keywordResults]) {
+            if (!byId.has(result.id)) byId.set(result.id, result);
         }
 
-        for (const result of keywordResults) {
-            const existing = byId.get(result.id);
-            if (existing) {
-                existing.keyword = result.score;
-            } else {
-                byId.set(result.id, { vector: 0, keyword: result.score, result });
-            }
+        const merged: VectorSearchResult[] = [];
+        for (const { id, score } of fused) {
+            const result = byId.get(id);
+            if (result) merged.push({ ...result, score });
         }
-
-        return Array.from(byId.values())
-            .map(({ vector, keyword, result }) => ({
-                ...result,
-                score: vector * vectorWeight + keyword * keywordWeight,
-            }))
-            .sort((left, right) => right.score - left.score);
+        return merged;
     }
 
     removeFile(path: string): number {
