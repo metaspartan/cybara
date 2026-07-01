@@ -27,6 +27,7 @@ import {
   type StyleProp,
   type TextStyle,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -639,6 +640,7 @@ export function DashboardScreen({
   onDisconnect: () => void;
 }) {
   const api = useMemo(() => new CybaraMobileApi(profile), [profile]);
+  const insets = useSafeAreaInsets();
   const [summary, setSummary] = useState<FeatureSummary | null>(null);
   const [metrics, setMetrics] = useState<MetricsSnapshot | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -980,7 +982,7 @@ export function DashboardScreen({
       ) : (
         <ScrollView
           style={styles.scrollArea}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { paddingBottom: MOBILE_NAV_CHROME.height + spacing.lg + insets.bottom }]}
           showsVerticalScrollIndicator={false}
           onScroll={handleMainScroll}
           scrollEventThrottle={250}
@@ -1055,7 +1057,11 @@ export function DashboardScreen({
         </ScrollView>
       )}
 
-      <GlassPanel elevated contentStyle={styles.tabBarPanel} style={styles.tabBar}>
+      <GlassPanel
+        elevated
+        contentStyle={[styles.tabBarPanel, { paddingBottom: 5 + insets.bottom }]}
+        style={[styles.tabBar, { height: MOBILE_NAV_CHROME.height + insets.bottom }]}
+      >
         <View style={styles.tabBarFill}>
           {MOBILE_TABS.map(({ key, label }) => {
             const Icon = tabIcons[key];
@@ -3893,6 +3899,14 @@ function SettingsPanel({
   const [savingConfigKey, setSavingConfigKey] = useState<string | null>(null);
   const [savingPromptKey, setSavingPromptKey] = useState<SystemPromptFeatureKey | null>(null);
   const [savingAgentAccess, setSavingAgentAccess] = useState(false);
+  const [identityDraft, setIdentityDraft] = useState({
+    name: "",
+    emoji: "",
+    creature: "",
+    vibe: "",
+  });
+  const [customPromptDraft, setCustomPromptDraft] = useState("");
+  const [savingSystemPrompt, setSavingSystemPrompt] = useState(false);
   const [routerConfig, setRouterConfig] = useState<RouterConfig | null>(null);
   const [routerStatus, setRouterStatus] = useState<RouterStatus | null>(null);
   const [routerError, setRouterError] = useState<string | null>(null);
@@ -4044,6 +4058,54 @@ function SettingsPanel({
       );
     } finally {
       setSavingPromptKey(null);
+    }
+  };
+
+  // Sync identity + custom-instruction drafts only when the server values
+  // actually change, so a periodic refresh never clobbers in-progress typing.
+  const systemPromptSyncKey = summary?.systemPrompt
+    ? `${JSON.stringify(summary.systemPrompt.identity)}|${summary.systemPrompt.customPrompt}`
+    : "";
+  useEffect(() => {
+    const sp = summary?.systemPrompt;
+    if (!sp) return;
+    setIdentityDraft({
+      name: sp.identity?.name || "",
+      emoji: sp.identity?.emoji || "",
+      creature: sp.identity?.creature || "",
+      vibe: sp.identity?.vibe || "",
+    });
+    setCustomPromptDraft(sp.customPrompt || "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [systemPromptSyncKey]);
+
+  const saveSystemPromptConfig = async () => {
+    const sp = summary?.systemPrompt;
+    if (!sp || savingSystemPrompt) return;
+    const nextIdentity = { ...sp.identity, ...identityDraft };
+    const identityChanged =
+      nextIdentity.name !== (sp.identity?.name || "") ||
+      nextIdentity.emoji !== (sp.identity?.emoji || "") ||
+      nextIdentity.creature !== (sp.identity?.creature || "") ||
+      nextIdentity.vibe !== (sp.identity?.vibe || "");
+    const promptChanged = customPromptDraft !== (sp.customPrompt || "");
+    if (!identityChanged && !promptChanged) return;
+    setSavingSystemPrompt(true);
+    try {
+      const result = await api.updateSystemPrompt({
+        ...sp,
+        identity: nextIdentity,
+        customPrompt: customPromptDraft,
+      });
+      if (result.success === false) throw new Error("System prompt update failed");
+      await refreshSummary();
+    } catch (error) {
+      Alert.alert(
+        "Identity update failed",
+        error instanceof Error ? error.message : String(error)
+      );
+    } finally {
+      setSavingSystemPrompt(false);
     }
   };
 
@@ -4580,6 +4642,55 @@ function SettingsPanel({
             />
           )}
         </SettingsSection>
+        {systemPromptAvailable && summary?.systemPrompt ? (
+          <SettingsSection title="Assistant identity">
+            <SettingsTextField
+              autoCapitalize="words"
+              help="Shown as “You are …” in the system prompt. Leave blank to default to Cybara."
+              label="Name"
+              onBlur={() => void saveSystemPromptConfig()}
+              onChangeText={(name) => setIdentityDraft((prev) => ({ ...prev, name }))}
+              onSubmitEditing={() => void saveSystemPromptConfig()}
+              placeholder="Cybara"
+              returnKeyType="done"
+              value={identityDraft.name}
+            />
+            <SettingsTextField
+              autoCapitalize="none"
+              label="Emoji"
+              onBlur={() => void saveSystemPromptConfig()}
+              onChangeText={(emoji) => setIdentityDraft((prev) => ({ ...prev, emoji }))}
+              placeholder="🐹"
+              value={identityDraft.emoji}
+            />
+            <SettingsTextField
+              autoCapitalize="none"
+              label="Creature / role"
+              onBlur={() => void saveSystemPromptConfig()}
+              onChangeText={(creature) => setIdentityDraft((prev) => ({ ...prev, creature }))}
+              placeholder="AI assistant"
+              value={identityDraft.creature}
+            />
+            <SettingsTextField
+              autoCapitalize="sentences"
+              label="Vibe"
+              onBlur={() => void saveSystemPromptConfig()}
+              onChangeText={(vibe) => setIdentityDraft((prev) => ({ ...prev, vibe }))}
+              placeholder="concise and friendly"
+              value={identityDraft.vibe}
+            />
+            <SettingsTextField
+              autoCapitalize="sentences"
+              help="Appended to every agent's system prompt."
+              label="Custom instructions"
+              multiline
+              onBlur={() => void saveSystemPromptConfig()}
+              onChangeText={setCustomPromptDraft}
+              placeholder="e.g. Always answer in metric units."
+              value={customPromptDraft}
+            />
+          </SettingsSection>
+        ) : null}
         <SettingsSection title="Gateway APIs">
           <SettingsRow
             Icon={Database}
@@ -5329,7 +5440,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexGrow: 1,
     gap: spacing.xs,
-    minHeight: 38,
+    minHeight: 44,
     minWidth: 86,
     paddingHorizontal: spacing.sm,
   },
@@ -5432,19 +5543,19 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.sm,
     borderWidth: 1,
-    minHeight: 38,
+    minHeight: 44,
     paddingHorizontal: spacing.md,
-    paddingVertical: 8,
+    paddingVertical: 10,
   },
   settingsSegment: {
     borderRadius: 8,
     borderWidth: 0,
     flex: 1,
     justifyContent: "center",
-    minHeight: 34,
+    minHeight: 44,
     minWidth: 0,
     paddingHorizontal: spacing.xs,
-    paddingVertical: 7,
+    paddingVertical: 10,
   },
   settingsChipActive: {
     backgroundColor: `${colors.cyan}16`,
@@ -5474,9 +5585,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: "row",
     gap: spacing.xs,
-    minHeight: 42,
+    minHeight: 44,
     paddingHorizontal: spacing.md,
-    paddingVertical: 9,
+    paddingVertical: 10,
   },
   settingsActionButtonDisabled: {
     opacity: 0.65,

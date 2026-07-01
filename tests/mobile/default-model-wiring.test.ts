@@ -39,3 +39,26 @@ describe("mobile: memory method toggle", () => {
     }
   });
 });
+
+describe("mobile: assistant identity + custom instructions (web parity)", () => {
+  const screen = read("screens/DashboardScreen.tsx");
+
+  test("exposes identity fields and custom instructions that persist via updateSystemPrompt", () => {
+    expect(screen).toContain('title="Assistant identity"');
+    expect(screen).toContain('label="Name"');
+    expect(screen).toContain('label="Custom instructions"');
+    expect(screen).toContain("saveSystemPromptConfig");
+    expect(screen).toContain("api.updateSystemPrompt");
+    expect(screen).toContain("customPrompt: customPromptDraft");
+  });
+});
+
+describe("mobile HIG: safe-area inset on the tab bar", () => {
+  const screen = read("screens/DashboardScreen.tsx");
+
+  test("uses safe-area insets so the tab bar clears the home indicator", () => {
+    expect(screen).toContain("useSafeAreaInsets");
+    expect(screen).toContain("insets.bottom");
+    expect(screen).toContain("MOBILE_NAV_CHROME.height + insets.bottom");
+  });
+});
