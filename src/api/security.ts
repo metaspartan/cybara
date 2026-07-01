@@ -451,7 +451,7 @@ export function securityCheck(
   }
 
   const isInboundWebhook =
-    method === "POST" &&
+    (method === "POST" || method === "GET") &&
     (path.startsWith("/api/webhooks/") ||
       (path.startsWith("/api/channels/") && path.endsWith("/webhook")));
   if (isInboundWebhook) {

@@ -320,6 +320,19 @@ export const channels = {
       { name: "verify_token", label: "Inbound Verify Token", type: "password", required: false },
     ],
   },
+  wecom: {
+    name: "WeCom (Work Weixin)",
+    icon: "🏢",
+    description: "Connect to WeCom / Enterprise WeChat via a self-built app callback",
+    color: "#2F90EA",
+    fields: [
+      { name: "token", label: "Callback Token", type: "password", required: true },
+      { name: "encoding_aes_key", label: "EncodingAESKey", type: "password", required: true },
+      { name: "corp_id", label: "Corp ID", type: "password", required: true },
+      { name: "corp_secret", label: "App Secret", type: "password", required: true },
+      { name: "agent_id", label: "Agent ID", type: "text", required: true },
+    ],
+  },
   dingtalk: {
     name: "DingTalk",
     icon: "📐",
@@ -618,6 +631,8 @@ export interface WebhookPayload {
 export interface WebhookResult {
   status?: number;
   body?: unknown;
+  rawBody?: string;
+  contentType?: string;
 }
 
 /** Rich embed definition (Discord embeds, Telegram HTML). */

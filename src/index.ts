@@ -35,6 +35,7 @@ import {
   msTeamsAdapter,
   feishuAdapter,
   dingtalkAdapter,
+  wecomAdapter,
   zulipAdapter,
   synologyAdapter,
   nextcloudAdapter,
@@ -406,10 +407,17 @@ Bun.serve<WsData>({
         rawBody,
         ip: clientIp,
       });
-      return new Response(JSON.stringify(response.body), {
-        status: response.status,
-        headers: { "Content-Type": "application/json", ...commonSecurityHeaders, ...response.headers },
-      });
+      return new Response(
+        response.raw ? String(response.body ?? "") : JSON.stringify(response.body),
+        {
+          status: response.status,
+          headers: {
+            "Content-Type": "application/json",
+            ...commonSecurityHeaders,
+            ...response.headers,
+          },
+        }
+      );
     }
 
     const fileLikePath = isFileLikePath(pathname);
@@ -715,6 +723,7 @@ googleChatAdapter.setMessageHandler(createChannelChatHandler("googlechat"));
 msTeamsAdapter.setMessageHandler(createChannelChatHandler("msteams"));
 feishuAdapter.setMessageHandler(createChannelChatHandler("feishu"));
 dingtalkAdapter.setMessageHandler(createChannelChatHandler("dingtalk"));
+wecomAdapter.setMessageHandler(createChannelChatHandler("wecom"));
 zulipAdapter.setMessageHandler(createChannelChatHandler("zulip"));
 synologyAdapter.setMessageHandler(createChannelChatHandler("synology"));
 nextcloudAdapter.setMessageHandler(createChannelChatHandler("nextcloud"));

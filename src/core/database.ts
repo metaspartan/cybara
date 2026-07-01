@@ -1097,6 +1097,7 @@ export interface Channel {
     | "msteams"
     | "feishu"
     | "dingtalk"
+    | "wecom"
     | "zulip"
     | "synology"
     | "nextcloud"

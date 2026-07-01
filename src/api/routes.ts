@@ -3176,21 +3176,10 @@ const routes: Record<string, RouteHandler> = {
   },
 
   "POST /api/channels/:channelId/webhook": async (body, params, ctx) => {
-    const { channelId, ...query } = params || {};
-    if (!channelId) return { status: 400, body: { error: "channelId required" } };
-    const channel = channelManager.get(channelId);
-    if (!channel) return { status: 404, body: { error: "channel not found" } };
-    const adapter = channelManager.getAdapter(channel.type);
-    if (!adapter?.handleWebhook) {
-      return { status: 400, body: { error: `channel ${channel.type} does not accept webhooks` } };
-    }
-    const result = await adapter.handleWebhook(channelId, {
-      body,
-      rawBody: ctx?.rawBody ?? (body !== undefined ? JSON.stringify(body) : ""),
-      headers: ctx?.headers ?? {},
-      query: query as Record<string, string>,
-    });
-    return result?.body !== undefined ? result.body : { ok: true };
+    return dispatchChannelWebhook(body, params, ctx);
+  },
+  "GET /api/channels/:channelId/webhook": async (body, params, ctx) => {
+    return dispatchChannelWebhook(body, params, ctx);
   },
 
   "GET /api/computer-use/status": async () => {
@@ -4893,6 +4882,52 @@ function getCircuitBreakersStatus(): Record<string, { state: string; failureCoun
   return breakers;
 }
 
+const RAW_HTTP_RESPONSE = Symbol.for("cybara.rawHttpResponse");
+
+interface RawHttpResponse {
+  [RAW_HTTP_RESPONSE]: true;
+  status: number;
+  contentType: string;
+  body: string;
+}
+
+function makeRawHttpResponse(body: string, contentType: string, status = 200): RawHttpResponse {
+  return { [RAW_HTTP_RESPONSE]: true, status, contentType, body };
+}
+
+function isRawHttpResponse(value: unknown): value is RawHttpResponse {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as Record<symbol, unknown>)[RAW_HTTP_RESPONSE] === true
+  );
+}
+
+async function dispatchChannelWebhook(
+  body: unknown,
+  params: Record<string, string> | undefined,
+  ctx?: { headers?: Record<string, string>; rawBody?: string }
+): Promise<unknown> {
+  const { channelId, ...query } = params || {};
+  if (!channelId) return { status: 400, body: { error: "channelId required" } };
+  const channel = channelManager.get(channelId);
+  if (!channel) return { status: 404, body: { error: "channel not found" } };
+  const adapter = channelManager.getAdapter(channel.type);
+  if (!adapter?.handleWebhook) {
+    return { status: 400, body: { error: `channel ${channel.type} does not accept webhooks` } };
+  }
+  const result = await adapter.handleWebhook(channelId, {
+    body,
+    rawBody: ctx?.rawBody ?? (body !== undefined ? JSON.stringify(body) : ""),
+    headers: ctx?.headers ?? {},
+    query: query as Record<string, string>,
+  });
+  if (result?.rawBody !== undefined) {
+    return makeRawHttpResponse(result.rawBody, result.contentType || "text/plain", result.status || 200);
+  }
+  return result?.body !== undefined ? result.body : { ok: true };
+}
+
 export async function handleRequest(req: {
   method: string;
   url: string;
@@ -4904,6 +4939,7 @@ export async function handleRequest(req: {
   status: number;
   headers: Record<string, string>;
   body?: unknown;
+  raw?: boolean;
 }> {
   const startTime = Date.now();
   const url = new URL(req.url, `http://${req.headers.host || "localhost:4269"}`);
@@ -4984,6 +5020,29 @@ export async function handleRequest(req: {
       rawBody: req.rawBody,
     });
     const duration = Date.now() - startTime;
+
+    if (isRawHttpResponse(result)) {
+      recordApiMetrics(method, path, result.status, duration);
+      logRequest({
+        timestamp: new Date().toISOString(),
+        method,
+        path,
+        status: result.status,
+        durationMs: duration,
+      });
+      return {
+        status: result.status,
+        headers: {
+          "Content-Type": result.contentType,
+          ...corsHeaders,
+          ...securityHeaders,
+          ...security.headers,
+        },
+        body: result.body,
+        raw: true,
+      };
+    }
+
     recordApiMetrics(method, path, 200, duration);
     logRequest({
       timestamp: new Date().toISOString(),
