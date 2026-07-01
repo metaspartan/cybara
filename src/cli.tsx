@@ -5102,6 +5102,9 @@ async function main() {
     case "router":
       await rawRouter(args.slice(1));
       break;
+    case "acp":
+      await (await import("./cli-acp")).runAcpCommand(args.slice(1));
+      break;
     case "sessions":
       await rawSessions();
       break;

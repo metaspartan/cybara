@@ -13,6 +13,9 @@ const DYNAMIC_IMPORT_ALLOWLIST = new Set([
   "src/core/tools/handlers/wallet.ts",
   "src/api/routes.ts",
   "src/api/routes/wallet.ts",
+  // The `acp` command lazy-loads the in-process agent stack only when running
+  // the ACP server, so one-shot HTTP CLI commands stay lightweight.
+  "src/cli.tsx",
   // Lazy-loads optional/native ML runtimes (onnxruntime-node,
   // @huggingface/transformers) and runtime-resolved model paths. Eagerly
   // importing these would break the server-only runtime and pull native deps.

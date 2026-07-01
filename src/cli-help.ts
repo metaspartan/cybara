@@ -37,6 +37,8 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("    provider delete <id>  Delete provider");
   console.log("    provider models <id>  List provider models");
   console.log("    provider discover     Discover Ollama models");
+  console.log("  acp         Run an ACP (Agent Client Protocol) server over stdio for editors");
+  console.log("    acp [--agent <id>]    Serve the default (or given) agent to an ACP client");
   console.log("  tasks       List scheduled tasks");
   console.log("  skills      List installed skills");
   console.log("  plugin      Plugin management commands");
