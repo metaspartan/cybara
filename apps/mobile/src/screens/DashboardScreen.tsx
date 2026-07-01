@@ -78,6 +78,7 @@ import {
   TokenHeatmap,
 } from "../components/MetricVisuals";
 import { NewChatPanel } from "../components/NewChatPanel";
+import { NewTaskPanel } from "../components/NewTaskPanel";
 import {
   CybaraMobileApi,
   sortSessionSummaries,
@@ -184,6 +185,7 @@ type EndpointState = FeatureSummary["availability"][FeatureEndpointKey] | undefi
 type DetailRoute =
   | { kind: "session"; id: string }
   | { kind: "newChat" }
+  | { kind: "newTask" }
   | { kind: "surface"; surface: MobileSurfaceKey }
   | { kind: "item"; surface: MobileSurfaceKey; item: RemoteItemSummary | ActivitySummary };
 
@@ -630,6 +632,9 @@ function routeHeader(
   if (route.kind === "newChat") {
     return { title: "New chat", detail: "Start a gateway-backed session" };
   }
+  if (route.kind === "newTask") {
+    return { title: "New task", detail: "Schedule an agent to run automatically" };
+  }
   if (route.kind === "surface") {
     const meta = surfaceMeta[route.surface];
     return { title: meta.title, detail: "Live gateway data" };
@@ -848,6 +853,15 @@ export function DashboardScreen({
       surface: "agents",
     },
     {
+      key: "wallet",
+      label: "Wallet Policy",
+      detail: summary?.walletPolicy ? "Limits & rules" : "Unavailable",
+      value: summary?.walletPolicy ? "On" : "-",
+      Icon: ShieldCheck,
+      tab: "settings",
+      surface: "wallet",
+    },
+    {
       key: "providers",
       label: "Providers",
       detail: surfaceCount(summary, "providers", counts.providers, "enabled", "None enabled"),
@@ -868,15 +882,6 @@ export function DashboardScreen({
       Icon: Wrench,
       tab: "settings",
       surface: "tools",
-    },
-    {
-      key: "wallet",
-      label: "Wallet Policy",
-      detail: summary?.walletPolicy ? "Limits & rules" : "Unavailable",
-      value: summary?.walletPolicy ? "On" : "-",
-      Icon: ShieldCheck,
-      tab: "settings",
-      surface: "wallet",
     },
     {
       key: "channels",
@@ -1052,17 +1057,11 @@ export function DashboardScreen({
             />
           ) : null}
           {!detailRoute && activeTab === "tasks" ? (
-            <SurfaceDetailPanel
-              api={api}
-              accentColor={accentColor}
-              profile={profile}
+            <TasksPanel
               summary={summary}
-              surface="tasks"
-              openItem={(item) => openItem("tasks", item)}
-              loadMoreLogs={loadMoreLogs}
-              loadingMoreLogs={loadingMoreLogs}
-              logPageError={logPageError}
-              refreshSummary={() => refresh(false)}
+              accentColor={accentColor}
+              openTask={(item) => openItem("tasks", item)}
+              createTask={() => setDetailRoute({ kind: "newTask" })}
             />
           ) : null}
           {!detailRoute && activeTab === "settings" ? (
@@ -1790,6 +1789,19 @@ function DetailContent({
       />
     );
   }
+  if (route.kind === "newTask") {
+    return (
+      <NewTaskPanel
+        accentColor={accentColor}
+        api={api}
+        agents={summary?.agents ?? []}
+        onCreated={() => {
+          refreshSummary();
+          closeDetail();
+        }}
+      />
+    );
+  }
   if (route.kind === "item") {
     return (
       <ItemDetailPanel
@@ -2295,6 +2307,96 @@ function UnicodeText({
     <Text numberOfLines={numberOfLines} selectable={selectable} style={style}>
       {content}
     </Text>
+  );
+}
+
+function TasksPanel({
+  summary,
+  accentColor,
+  openTask,
+  createTask,
+}: {
+  summary: FeatureSummary | null;
+  accentColor: string;
+  openTask: (item: RemoteItemSummary | ActivitySummary) => void;
+  createTask: () => void;
+}) {
+  const rows = surfaceRows("tasks", summary);
+  const endpoint = summary?.availability.tasks;
+  const unavailable = endpoint?.ok === false;
+
+  return (
+    <>
+      <View style={styles.tasksHeader}>
+        <View style={styles.tasksHeaderText}>
+          <Text style={styles.tasksTitle}>Scheduled tasks</Text>
+          <Text style={styles.tasksSubtitle}>
+            {rows.length > 0
+              ? rows.length === 1
+                ? "1 automation"
+                : `${rows.length} automations`
+              : "Run an agent on a schedule"}
+          </Text>
+        </View>
+        <Pressable
+          accessibilityLabel="New task"
+          accessibilityRole="button"
+          onPress={createTask}
+          style={[styles.tasksNewButton, { borderColor: accentColor }]}
+        >
+          <Plus color={accentColor} size={18} strokeWidth={2.6} />
+          <Text style={[styles.tasksNewText, { color: accentColor }]}>New</Text>
+        </Pressable>
+      </View>
+
+      <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+        {!summary ? (
+          <EmptyState label="Tasks loading" detail="Refreshing from the gateway." />
+        ) : unavailable ? (
+          <EmptyState
+            label="Tasks unavailable"
+            detail={endpointErrorDetail(endpoint, "The gateway did not return tasks.")}
+          />
+        ) : rows.length === 0 ? (
+          <View style={styles.tasksEmpty}>
+            <View
+              style={[styles.listIcon, styles.tasksEmptyIcon, { backgroundColor: `${accentColor}18` }]}
+            >
+              <CalendarCheck color={accentColor} size={22} strokeWidth={2.1} />
+            </View>
+            <Text style={styles.tasksEmptyTitle}>No tasks yet</Text>
+            <Text style={styles.tasksEmptyDetail}>
+              Schedule an agent to run automatically — reports, checks, or recurring jobs.
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={createTask}
+              style={[styles.tasksEmptyCta, { backgroundColor: accentColor }]}
+            >
+              <Plus color={colors.text} size={17} strokeWidth={2.5} />
+              <Text style={styles.tasksEmptyCtaText}>Create your first task</Text>
+            </Pressable>
+          </View>
+        ) : (
+          rows.map((row) => (
+            <Pressable key={row.id} style={styles.listRow} onPress={() => openTask(row)}>
+              <View style={[styles.listIcon, { backgroundColor: `${accentColor}18` }]}>
+                <CalendarCheck color={accentColor} size={20} strokeWidth={2.1} />
+              </View>
+              <View style={styles.listText}>
+                <Text numberOfLines={1} style={styles.listTitle}>
+                  {row.title}
+                </Text>
+                <Text numberOfLines={1} style={styles.listDetail}>
+                  {row.detail}
+                </Text>
+              </View>
+              <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+            </Pressable>
+          ))
+        )}
+      </GlassPanel>
+    </>
   );
 }
 
@@ -5904,6 +6006,75 @@ const makeStyles = () => StyleSheet.create({
   listDetail: {
     color: colors.textMuted,
     fontSize: typography.label,
+  },
+  tasksHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.xs,
+  },
+  tasksHeaderText: {
+    flex: 1,
+    gap: 2,
+  },
+  tasksTitle: {
+    color: colors.text,
+    fontSize: typography.heading,
+    fontWeight: "800",
+  },
+  tasksSubtitle: {
+    color: colors.textMuted,
+    fontSize: typography.label,
+  },
+  tasksNewButton: {
+    alignItems: "center",
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.xs,
+    minHeight: 40,
+    paddingHorizontal: spacing.md,
+  },
+  tasksNewText: {
+    fontSize: typography.body,
+    fontWeight: "800",
+  },
+  tasksEmpty: {
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+  },
+  tasksEmptyIcon: {
+    borderRadius: radius.lg,
+    height: 52,
+    width: 52,
+  },
+  tasksEmptyTitle: {
+    color: colors.text,
+    fontSize: typography.heading,
+    fontWeight: "800",
+  },
+  tasksEmptyDetail: {
+    color: colors.textMuted,
+    fontSize: typography.label,
+    paddingHorizontal: spacing.md,
+    textAlign: "center",
+  },
+  tasksEmptyCta: {
+    alignItems: "center",
+    borderRadius: radius.md,
+    flexDirection: "row",
+    gap: spacing.sm,
+    justifyContent: "center",
+    marginTop: spacing.xs,
+    minHeight: 48,
+    paddingHorizontal: spacing.lg,
+  },
+  tasksEmptyCtaText: {
+    color: colors.text,
+    fontSize: typography.body,
+    fontWeight: "800",
   },
   emptyState: {
     alignItems: "center",

@@ -157,6 +157,7 @@ export const MOBILE_SYSTEM_PROMPT_FEATURE_KEYS = [
 export type MobileDetailBackInput =
   | { kind: "session" }
   | { kind: "newChat" }
+  | { kind: "newTask" }
   | { kind: "surface"; surface: MobileSurfaceKey }
   | { kind: "item"; surface: MobileSurfaceKey };
 

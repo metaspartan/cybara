@@ -1157,6 +1157,20 @@ export class CybaraMobileApi {
     });
   }
 
+  createTask(payload: {
+    name: string;
+    description?: string;
+    action: string;
+    agent_id?: string;
+    schedule?: string;
+    enabled?: boolean;
+  }): Promise<{ id?: string; success?: boolean }> {
+    return this.request<{ id?: string; success?: boolean }>(`/api/tasks`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
   startTask(id: string): Promise<{ success: boolean }> {
     return this.request<{ success: boolean }>(`/api/tasks/${encodeURIComponent(id)}/start`, {
       method: "POST",

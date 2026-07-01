@@ -45,7 +45,7 @@ describe("mobile: primary navigation", () => {
   test("Tasks is a bottom tab and settings opens from the header gear", () => {
     expect(screen).toContain("tasks: CalendarCheck");
     expect(screen).toContain('activeTab === "tasks"');
-    expect(screen).toContain('surface="tasks"');
+    expect(screen).toContain("<TasksPanel");
     // Header gear still routes to the settings surface.
     expect(screen).toContain('onPress={() => selectTab("settings")}');
   });
