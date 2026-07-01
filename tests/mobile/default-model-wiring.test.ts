@@ -47,9 +47,8 @@ describe("mobile: assistant identity + custom instructions (web parity)", () => 
 describe("mobile HIG: safe-area inset on the tab bar", () => {
   const screen = read("screens/DashboardScreen.tsx");
 
-  test("uses safe-area insets so the tab bar clears the home indicator", () => {
+  test("floats the tab bar above the home indicator using safe-area insets", () => {
     expect(screen).toContain("useSafeAreaInsets");
-    expect(screen).toContain("insets.bottom");
-    expect(screen).toContain("MOBILE_NAV_CHROME.height + insets.bottom");
+    expect(screen).toContain("insets.bottom + MOBILE_NAV_CHROME.floatingMargin");
   });
 });

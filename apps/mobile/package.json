@@ -11,11 +11,13 @@
     "typecheck": "bunx tsc --noEmit"
   },
   "dependencies": {
-    "@expo/metro-runtime": "^56.0.15",
+    "@expo/metro-runtime": "~56.0.16",
     "@react-native-async-storage/async-storage": "2.2.0",
-    "expo": "^56.0.12",
+    "@react-native-segmented-control/segmented-control": "2.5.7",
+    "expo": "~56.0.13",
     "expo-blur": "^56.0.3",
     "expo-camera": "^56.0.8",
+    "expo-haptics": "~56.0.3",
     "lucide-react-native": "^1.22.0",
     "react": "19.2.3",
     "react-native": "0.85.3",

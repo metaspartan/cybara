@@ -195,9 +195,10 @@ describe("mobile dashboard model", () => {
     ).toBe("v1.0.330 - uptime 9m");
   });
 
-  test("keeps the pinned bottom nav squared to the viewport", () => {
+  test("floats the bottom nav with rounded corners above the home indicator", () => {
     expect(MOBILE_NAV_CHROME.pinnedToViewport).toBe(true);
-    expect(MOBILE_NAV_CHROME.outerRadius).toBe(0);
+    expect(MOBILE_NAV_CHROME.outerRadius).toBeGreaterThan(0);
+    expect(MOBILE_NAV_CHROME.floatingMargin).toBeGreaterThan(0);
     expect(MOBILE_NAV_CHROME.height).toBeLessThanOrEqual(82);
     expect(MOBILE_CHAT_CHROME.composerPinnedAboveNav).toBe(true);
     expect(MOBILE_CHAT_CHROME.composerGapToNav).toBe(0);
@@ -210,9 +211,9 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_NEW_CHAT_CHROME.composerStartsSingleLine).toBe(true);
     expect(MOBILE_NEW_CHAT_CHROME.composerMatchesChatComposer).toBe(true);
     expect(MOBILE_NEW_CHAT_CHROME.sendButtonMode).toBe("icon");
-    expect(MOBILE_MAIN_TAB_CHROME.edgeToEdge).toBe(true);
-    expect(MOBILE_MAIN_TAB_CHROME.outerHorizontalPadding).toBe(0);
-    expect(MOBILE_MAIN_TAB_CHROME.panelRadius).toBe(0);
+    expect(MOBILE_MAIN_TAB_CHROME.edgeToEdge).toBe(false);
+    expect(MOBILE_MAIN_TAB_CHROME.outerHorizontalPadding).toBeGreaterThan(0);
+    expect(MOBILE_MAIN_TAB_CHROME.panelRadius).toBeGreaterThan(0);
   });
 
   test("keeps the chat composer compact, dynamic, and icon driven", () => {

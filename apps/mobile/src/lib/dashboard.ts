@@ -53,8 +53,9 @@ export const MOBILE_HOME_CHROME = {
 } as const;
 
 export const MOBILE_NAV_CHROME = {
-  height: 78,
-  outerRadius: 0,
+  height: 66,
+  outerRadius: 26,
+  floatingMargin: 12,
   pinnedToViewport: true,
 } as const;
 
@@ -209,9 +210,9 @@ export const MOBILE_NEW_CHAT_CHROME = {
 } as const;
 
 export const MOBILE_MAIN_TAB_CHROME = {
-  edgeToEdge: true,
-  outerHorizontalPadding: 0,
-  panelRadius: 0,
+  edgeToEdge: false,
+  outerHorizontalPadding: 16,
+  panelRadius: 26,
 } as const;
 
 export const MOBILE_GATEWAY_PANEL_CHROME = {

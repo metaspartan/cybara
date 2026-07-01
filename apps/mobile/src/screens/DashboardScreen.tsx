@@ -28,6 +28,8 @@ import {
   type TextStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import SegmentedControl from "@react-native-segmented-control/segmented-control";
+import { haptics } from "../lib/haptics";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -800,6 +802,7 @@ export function DashboardScreen({
   }, [accentOverride, gatewayAccentKey]);
 
   const selectTab = (tab: MobileTabKey) => {
+    if (tab !== activeTab) haptics.select();
     setChatHeaderAction(null);
     setDetailRoute(null);
     setActiveTab(tab);
@@ -982,7 +985,16 @@ export function DashboardScreen({
       ) : (
         <ScrollView
           style={styles.scrollArea}
-          contentContainerStyle={[styles.content, { paddingBottom: MOBILE_NAV_CHROME.height + spacing.lg + insets.bottom }]}
+          contentContainerStyle={[
+            styles.content,
+            {
+              paddingBottom:
+                MOBILE_NAV_CHROME.height +
+                MOBILE_NAV_CHROME.floatingMargin +
+                spacing.lg +
+                insets.bottom,
+            },
+          ]}
           showsVerticalScrollIndicator={false}
           onScroll={handleMainScroll}
           scrollEventThrottle={250}
@@ -1059,8 +1071,11 @@ export function DashboardScreen({
 
       <GlassPanel
         elevated
-        contentStyle={[styles.tabBarPanel, { paddingBottom: 5 + insets.bottom }]}
-        style={[styles.tabBar, { height: MOBILE_NAV_CHROME.height + insets.bottom }]}
+        contentStyle={styles.tabBarPanel}
+        style={[
+          styles.tabBar,
+          { bottom: insets.bottom + MOBILE_NAV_CHROME.floatingMargin },
+        ]}
       >
         <View style={styles.tabBarFill}>
           {MOBILE_TABS.map(({ key, label }) => {
@@ -2421,27 +2436,59 @@ function SettingSelector({
 }) {
   if (options.length === 0) return null;
   const segmented = variant === "segmented";
+
+  if (segmented) {
+    const selectedIndex = Math.max(
+      0,
+      options.findIndex((option) => option.value === selected)
+    );
+    return (
+      <View style={[styles.settingsField, styles.settingsSegmentField]}>
+        <Text style={styles.settingsFieldLabel}>{label}</Text>
+        <SegmentedControl
+          appearance="dark"
+          enabled={!disabled}
+          values={options.map((option) => option.label)}
+          selectedIndex={selectedIndex}
+          onChange={(event) => {
+            const index = event.nativeEvent.selectedSegmentIndex;
+            const option = options[index];
+            if (!option) return;
+            haptics.select();
+            onSelect(option.value);
+          }}
+          tintColor={tone}
+          backgroundColor="rgba(255,255,255,0.06)"
+          fontStyle={{ color: colors.textMuted }}
+          activeFontStyle={{ color: colors.background, fontWeight: "600" }}
+        />
+      </View>
+    );
+  }
+
   return (
-    <View style={[styles.settingsField, segmented && styles.settingsSegmentField]}>
+    <View style={styles.settingsField}>
       <Text style={styles.settingsFieldLabel}>{label}</Text>
-      <View style={[styles.settingsChipRow, segmented && styles.settingsSegmentedControl]}>
+      <View style={styles.settingsChipRow}>
         {options.map((option) => {
           const isSelected = selected === option.value;
           return (
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel={`${label}: ${option.label}`}
               accessibilityState={{ disabled, selected: isSelected }}
               disabled={disabled}
               key={option.value}
-              onPress={() => onSelect(option.value)}
+              onPress={() => {
+                haptics.select();
+                onSelect(option.value);
+              }}
               style={[
                 styles.settingsChip,
-                segmented && styles.settingsSegment,
                 isSelected && [
                   styles.settingsChipActive,
                   { backgroundColor: `${tone}16`, borderColor: `${tone}88` },
                 ],
-                isSelected && segmented && { backgroundColor: tone, borderColor: tone },
                 disabled && styles.settingsActionButtonDisabled,
               ]}
             >
@@ -2449,9 +2496,7 @@ function SettingSelector({
                 numberOfLines={1}
                 style={[
                   styles.settingsChipText,
-                  segmented && styles.settingsSegmentText,
                   isSelected && styles.settingsChipTextActive,
-                  isSelected && segmented && { color: colors.background },
                 ]}
               >
                 {option.label}
@@ -2518,12 +2563,17 @@ function SettingToggle({
   value: boolean;
 }) {
   const inactive = disabled || busy;
+  const handleToggle = () => {
+    haptics.light();
+    onPress();
+  };
   return (
     <Pressable
       accessibilityRole="switch"
+      accessibilityLabel={label}
       accessibilityState={{ checked: value, disabled: inactive }}
       disabled={inactive}
-      onPress={onPress}
+      onPress={handleToggle}
       style={[styles.settingToggleRow, inactive && styles.settingToggleRowDisabled]}
     >
       <View style={styles.toggleTextWrap}>
@@ -2537,7 +2587,7 @@ function SettingToggle({
           <Switch
             disabled={inactive}
             ios_backgroundColor="rgba(120, 132, 143, 0.28)"
-            onValueChange={onPress}
+            onValueChange={handleToggle}
             thumbColor={Platform.OS === "android" ? colors.text : undefined}
             trackColor={{
               false: "rgba(120, 132, 143, 0.28)",
@@ -5771,20 +5821,19 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   tabBar: {
-    borderBottomWidth: 0,
-    borderLeftWidth: 0,
+    borderColor: colors.borderStrong,
     borderRadius: MOBILE_NAV_CHROME.outerRadius,
-    borderRightWidth: 0,
-    borderTopColor: colors.borderStrong,
-    bottom: 0,
+    borderWidth: 1,
     height: MOBILE_NAV_CHROME.height,
     left: MOBILE_MAIN_TAB_CHROME.outerHorizontalPadding,
+    overflow: "hidden",
     position: "absolute",
     right: MOBILE_MAIN_TAB_CHROME.outerHorizontalPadding,
   },
   tabBarPanel: {
     flex: 1,
-    backgroundColor: "rgba(6, 6, 8, 0.98)",
+    backgroundColor: "rgba(6, 6, 8, 0.9)",
+    borderRadius: MOBILE_NAV_CHROME.outerRadius,
     paddingHorizontal: spacing.md,
     paddingVertical: 5,
   },
