@@ -3,7 +3,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { chromium } from "playwright";
+import { getChromium } from "./playwright-loader";
 
 const CDP_PORT_RANGE_START = 18800;
 const CDP_PORT_RANGE_END = 18900; // 100 profiles max
@@ -183,7 +183,7 @@ async function findChromeExecutable(): Promise<string | null> {
   }
 
   try {
-    const playwrightPath = chromium.executablePath();
+    const playwrightPath = (await getChromium()).executablePath();
     console.log(`[Browser] Using Playwright Chromium: ${playwrightPath}`);
     return playwrightPath;
   } catch {

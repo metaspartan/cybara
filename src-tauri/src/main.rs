@@ -99,7 +99,10 @@ fn main() {
 
             // Spawn the Cybara backend sidecar (for production builds)
             println!("[Cybara] Starting sidecar...");
-            let sidecar = app.shell().sidecar("cybara").unwrap();
+            let mut sidecar = app.shell().sidecar("cybara").unwrap();
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                sidecar = sidecar.env("CYBARA_RESOURCE_DIR", resource_dir.to_string_lossy().to_string());
+            }
             let (mut rx, child) = sidecar
                 .env("CYBARA_HOST", "127.0.0.1")
                 // Enable terminal APIs for desktop-sidecar runs without passing flags to cargo.

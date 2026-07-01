@@ -1,4 +1,39 @@
-import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
+import type { Browser, BrowserContext, Page, LaunchOptions } from "playwright";
+import { getChromium } from "./playwright-loader";
+
+async function launchWithFallback(
+  chromium: Awaited<ReturnType<typeof getChromium>>,
+  headless: boolean,
+  args: string[]
+): Promise<Browser> {
+  let bundledAvailable = false;
+  try {
+    bundledAvailable = Boolean(chromium.executablePath());
+  } catch {
+    bundledAvailable = false;
+  }
+
+  const attempts: Array<{ label: string; options: LaunchOptions }> = [];
+  if (bundledAvailable) {
+    attempts.push({ label: "bundled-chromium", options: { headless, args } });
+  }
+  for (const channel of ["chrome", "msedge"]) {
+    attempts.push({ label: `channel:${channel}`, options: { headless, args, channel } });
+  }
+  if (!bundledAvailable) {
+    attempts.push({ label: "bundled-chromium", options: { headless, args } });
+  }
+
+  const failures: string[] = [];
+  for (const attempt of attempts) {
+    try {
+      return await chromium.launch(attempt.options);
+    } catch (error) {
+      failures.push(`${attempt.label}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  throw new Error(`Unable to launch a browser (${failures.join(" | ")})`);
+}
 import {
   type BrowserProfile,
   type BrowserProfileConfig,
@@ -47,6 +82,7 @@ export interface BrowserStatus {
 async function getLegacyBrowser(): Promise<Browser> {
   if (legacyBrowser) return legacyBrowser;
 
+  const chromium = await getChromium();
   try {
     try {
       legacyBrowser = await chromium.connectOverCDP("http://localhost:9222");
@@ -56,17 +92,16 @@ async function getLegacyBrowser(): Promise<Browser> {
       void 0;
     }
 
-    legacyBrowser = await chromium.launch({
-      headless: process.env.BROWSER_HEADLESS !== "false",
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-accelerated-2d-canvas",
-        "--disable-gpu",
-        "--window-size=1920,1080",
-      ],
-    });
+    const launchArgs = [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-accelerated-2d-canvas",
+      "--disable-gpu",
+      "--window-size=1920,1080",
+    ];
+    const headless = process.env.BROWSER_HEADLESS !== "false";
+    legacyBrowser = await launchWithFallback(chromium, headless, launchArgs);
 
     console.log("[Browser] Launched new browser instance");
     return legacyBrowser;
@@ -672,7 +707,7 @@ export async function closeAll(): Promise<void> {
 
 export async function getStatus(): Promise<BrowserStatus> {
   try {
-    const executablePath = chromium.executablePath();
+    const executablePath = (await getChromium()).executablePath();
     const browsersMap = getBrowsersMap();
 
     return {

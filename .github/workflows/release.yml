@@ -160,8 +160,9 @@ jobs:
       - name: Build UI
         run: bun run ui:build
       - name: Build Sidecar binary
-        run: |
-          bun build src/index.ts --compile --target=${{ matrix.bun_target }} --outfile ${{ matrix.sidecar }} --external electron --external @aws-sdk/client-s3 --external onnxruntime-node --external onnxruntime-web --external @huggingface/transformers
+        env:
+          CYBARA_SIDECAR_BUN_TARGET: ${{ matrix.bun_target }}
+        run: bun run scripts/build-sidecar.ts
       - name: Prepare updater config
         env:
           CYBARA_TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}

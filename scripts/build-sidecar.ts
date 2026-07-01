@@ -35,13 +35,32 @@ export function getHostTarget(): Target {
   return getHostTargetFor(platform(), arch());
 }
 
+const BUN_TARGET_MAP: Record<string, Target> = {
+  "bun-darwin-arm64": { bunTarget: "bun-darwin-arm64", tauriSuffix: "aarch64-apple-darwin" },
+  "bun-darwin-x64": { bunTarget: "bun-darwin-x64", tauriSuffix: "x86_64-apple-darwin" },
+  "bun-linux-x64": { bunTarget: "bun-linux-x64", tauriSuffix: "x86_64-unknown-linux-gnu" },
+  "bun-linux-arm64": { bunTarget: "bun-linux-arm64", tauriSuffix: "aarch64-unknown-linux-gnu" },
+  "bun-windows-x64": { bunTarget: "bun-windows-x64", tauriSuffix: "x86_64-pc-windows-msvc" },
+  "bun-windows-arm64": { bunTarget: "bun-windows-arm64", tauriSuffix: "aarch64-pc-windows-msvc" },
+};
+
+export function resolveTarget(): Target {
+  const explicit = process.env.CYBARA_SIDECAR_BUN_TARGET?.trim();
+  if (explicit) {
+    const target = BUN_TARGET_MAP[explicit];
+    if (!target) throw new Error(`Unknown CYBARA_SIDECAR_BUN_TARGET: ${explicit}`);
+    return target;
+  }
+  return getHostTarget();
+}
+
 export async function copyFilePortable(sourcePath: string, targetPath: string): Promise<void> {
   await Bun.write(targetPath, Bun.file(sourcePath));
 }
 
 export async function buildSidecar(): Promise<void> {
-  const target = getHostTarget();
-  const isWindows = platform() === "win32";
+  const target = resolveTarget();
+  const isWindows = target.tauriSuffix.includes("windows");
   const ext = isWindows ? ".exe" : "";
   const sidecarName = `cybara-${target.tauriSuffix}${ext}`;
   const releasePath = join(RELEASE_DIR, `cybara${ext}`);
@@ -204,7 +223,7 @@ exports.initOrt = initOrt;
   }
 
   try {
-    await $`bun build src/index.ts --compile --target=${target.bunTarget} --outfile ${releasePath} --external electron --external @aws-sdk/client-s3 --external onnxruntime-node --external onnxruntime-web --external @huggingface/transformers`;
+    await $`bun build src/index.ts --compile --target=${target.bunTarget} --outfile ${releasePath} --external electron --external @aws-sdk/client-s3 --external onnxruntime-node --external onnxruntime-web --external @huggingface/transformers --external playwright --external playwright-core`;
   } finally {
     // Restore original wasm_loader.js
     if (originalWasmLoader) {
@@ -244,6 +263,25 @@ exports.initOrt = initOrt;
   } else {
     console.warn(`  ⚠️ onnxruntime native binaries not found — local Transformers embeddings may be unavailable`);
   }
+
+  // Ship the Playwright runtime beside the sidecar so browser tools resolve it
+  // at runtime (the sidecar imports it lazily via node_modules search roots).
+  const playwrightPackages = ["playwright", "playwright-core"];
+  const nodeModulesRoot = join(import.meta.dirname, "..", "node_modules");
+  for (const pkg of playwrightPackages) {
+    const source = join(nodeModulesRoot, pkg);
+    if (!existsSync(source)) {
+      console.warn(`  ⚠️ ${pkg} not found in node_modules — browser tools may be unavailable`);
+      continue;
+    }
+    for (const dir of [TAURI_BIN_DIR, tauriDebugDir]) {
+      const targetDir = join(dir, "node_modules", pkg);
+      if (existsSync(targetDir)) rmSync(targetDir, { recursive: true, force: true });
+      mkdirSync(join(dir, "node_modules"), { recursive: true });
+      cpSync(source, targetDir, { recursive: true });
+    }
+  }
+  console.log(`  📦 Copied Playwright runtime to sidecar directories`);
 
   // Ensure the sidecar can serve the packaged UI in tauri:dev.
   if (existsSync(uiDistPath)) {

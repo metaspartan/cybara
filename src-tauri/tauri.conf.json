@@ -49,6 +49,9 @@
     "externalBin": [
       "bin/cybara"
     ],
+    "resources": {
+      "bin/node_modules": "node_modules"
+    },
     "category": "DeveloperTool",
     "shortDescription": "AI Agent Platform",
     "longDescription": "Cybara - A powerful AI agent platform with beautiful web UI",

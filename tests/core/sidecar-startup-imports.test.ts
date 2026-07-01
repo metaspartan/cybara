@@ -33,6 +33,21 @@ describe("compiled sidecar startup: native/heavy externals must load lazily", ()
     expect(offenders).toEqual([]);
   });
 
+  test("no source file statically value-imports playwright (type-only is fine)", async () => {
+    const glob = new Glob("**/*.ts");
+    const offenders: string[] = [];
+    for await (const rel of glob.scan({ cwd: srcDir })) {
+      const source = readFileSync(`${srcDir}/${rel}`, "utf8");
+      for (const line of source.split("\n")) {
+        const trimmed = line.trim();
+        if (!/from\s+["']playwright["']/.test(trimmed)) continue;
+        if (trimmed.startsWith("import type")) continue;
+        offenders.push(`${rel}: ${trimmed}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
   test("the orphaned transformers-runtime wrapper is gone", () => {
     expect(existsSync(`${srcDir}/core/memory/transformers-runtime.ts`)).toBe(false);
   });
