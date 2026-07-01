@@ -465,6 +465,7 @@ describe("mobile API client", () => {
           requiresCredentials: true,
           hasCredentials: true,
           authType: "api_key",
+          models: [],
         },
       ]);
     } finally {

@@ -102,6 +102,7 @@ export interface ProviderSummary {
   requiresCredentials?: boolean;
   hasCredentials?: boolean;
   authType?: string;
+  models?: string[];
 }
 
 export interface AgentUpdatePayload {
@@ -850,12 +851,27 @@ function normalizeProviders(value: unknown): ProviderSummary[] {
       record?.refresh_token ||
       record?.refreshToken
     );
+    const rawModels = (Array.isArray(record?.models)
+      ? record.models
+      : Array.isArray(info?.models)
+        ? info.models
+        : []) as unknown[];
+    const models = rawModels
+      .map((entry) =>
+        typeof entry === "string"
+          ? entry
+          : typeof (entry as Record<string, unknown>)?.id === "string"
+            ? ((entry as Record<string, unknown>).id as string)
+            : ""
+      )
+      .filter((entry): entry is string => entry.length > 0);
     return {
       id,
       name: readString(record, ["name", "label", "provider"]) || id,
       provider: readString(record, ["provider", "type"]) || "provider",
       base_url: readString(record, ["base_url", "baseUrl"]),
       is_default: Boolean(record?.is_default || record?.isDefault),
+      models,
       configured:
         typeof record?.configured === "boolean" ? record.configured : hasCredentials || undefined,
       requiresCredentials:

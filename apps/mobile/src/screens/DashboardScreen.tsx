@@ -2354,8 +2354,11 @@ function SettingsTextField({
   help,
   label,
   multiline,
+  onBlur,
   onChangeText,
+  onSubmitEditing,
   placeholder,
+  returnKeyType,
   secureTextEntry,
   value,
 }: {
@@ -2363,8 +2366,11 @@ function SettingsTextField({
   help?: string;
   label: string;
   multiline?: boolean;
+  onBlur?: () => void;
   onChangeText: (value: string) => void;
+  onSubmitEditing?: () => void;
   placeholder?: string;
+  returnKeyType?: "done" | "next" | "go" | "send";
   secureTextEntry?: boolean;
   value: string;
 }) {
@@ -2374,9 +2380,12 @@ function SettingsTextField({
       <TextInput
         autoCapitalize={autoCapitalize}
         multiline={multiline}
+        onBlur={onBlur}
         onChangeText={onChangeText}
+        onSubmitEditing={onSubmitEditing}
         placeholder={placeholder}
         placeholderTextColor={colors.textDim}
+        returnKeyType={returnKeyType}
         secureTextEntry={secureTextEntry}
         style={[styles.settingsInput, multiline && styles.settingsTextArea]}
         textAlignVertical={multiline ? "top" : "center"}
@@ -3888,6 +3897,7 @@ function SettingsPanel({
   const [routerStatus, setRouterStatus] = useState<RouterStatus | null>(null);
   const [routerError, setRouterError] = useState<string | null>(null);
   const [routerDailyLimitDraft, setRouterDailyLimitDraft] = useState("");
+  const [defaultModelDraft, setDefaultModelDraft] = useState("");
   const [savingRouterConfig, setSavingRouterConfig] = useState(false);
   const configAvailable = summary?.availability.config.ok === true;
   const systemPromptAvailable =
@@ -3908,6 +3918,24 @@ function SettingsPanel({
   const terminalEnabled = summary?.config.terminal_enabled === true;
   const toolApprovalMode = readMobileToolApprovalMode(summary?.config);
   const reasoningEffort = readMobileReasoningEffort(summary?.config);
+  const configRecord = (summary?.config ?? {}) as Record<string, unknown>;
+  const defaultModel =
+    typeof configRecord.default_model === "string" ? (configRecord.default_model as string) : "";
+  const modelOptions = Array.from(
+    new Set(
+      (summary?.providers ?? []).flatMap((provider) =>
+        Array.isArray(provider.models) ? provider.models : []
+      )
+    )
+  );
+  useEffect(() => {
+    setDefaultModelDraft(defaultModel);
+  }, [defaultModel]);
+  const saveDefaultModel = () => {
+    const next = defaultModelDraft.trim();
+    if (next === defaultModel) return;
+    void saveConfigPatch("default_model", { default_model: next }, "Default model setting failed");
+  };
   const dangerousPolicy = readMobileDangerousToolPolicy(summary?.config);
   const sandboxRuntime = readMobileSandboxRuntime(summary?.config);
   const routerStrategy = readMobileRouterStrategy(routerConfig?.strategy);
@@ -4213,6 +4241,38 @@ function SettingsPanel({
                   selected={reasoningEffort}
                   tone={accentColor}
                   variant="segmented"
+                />
+              ) : null}
+              <SettingsTextField
+                autoCapitalize="none"
+                help="Model used for new agents. Leave blank to auto-select."
+                label="Default model"
+                onBlur={saveDefaultModel}
+                onChangeText={setDefaultModelDraft}
+                onSubmitEditing={saveDefaultModel}
+                placeholder="e.g. gpt-5.5 or a provider model id"
+                returnKeyType="done"
+                value={defaultModelDraft}
+              />
+              {modelOptions.length > 0 ? (
+                <SettingSelector
+                  disabled={savingConfigKey !== null}
+                  label="Quick pick"
+                  onSelect={(value) => {
+                    setDefaultModelDraft(value);
+                    void saveConfigPatch(
+                      "default_model",
+                      { default_model: value },
+                      "Default model setting failed"
+                    );
+                  }}
+                  options={[
+                    { label: "Auto", value: "" },
+                    ...modelOptions.map((model) => ({ label: model, value: model })),
+                  ]}
+                  selected={defaultModel}
+                  tone={accentColor}
+                  variant="chips"
                 />
               ) : null}
               {MOBILE_SETTINGS_ROOT_CHROME.dangerousToolPolicyToggle ? (
