@@ -57,7 +57,13 @@ function readCommitOffset(): number {
 function resolveVersion(): string {
   const explicitVersion = process.env.CYBARA_RELEASE_VERSION?.trim();
   if (explicitVersion) {
-    return explicitVersion;
+    // Accept a git tag ref like "v1.0.476" as well as a bare semver. Anything
+    // that is not a semver (e.g. a branch name from workflow_dispatch) falls
+    // through to the commit-count computation below.
+    const cleaned = explicitVersion.replace(/^v/i, "");
+    if (/^\d+\.\d+\.\d+/.test(cleaned)) {
+      return cleaned;
+    }
   }
   const packageJson = JSON.parse(readText(PACKAGE_JSON_PATH)) as { version?: string };
   return computeReleaseVersion(

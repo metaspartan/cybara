@@ -131,6 +131,13 @@ function loadWasmBinary() {
     if (existsSync(metaPath)) return readFileSync(metaPath);
   } catch {}
 
+  // Fallback: packaged desktop resource dir (Tauri bundles it there).
+  const resourceDir = process.env.CYBARA_RESOURCE_DIR;
+  if (resourceDir) {
+    const resPath = join(resourceDir, "secp256k1.wasm");
+    if (existsSync(resPath)) return readFileSync(resPath);
+  }
+
   // Fallback: look next to the executable (bun --compile sidecar)
   const exeDir = dirname(process.execPath);
   const exePath = join(exeDir, "secp256k1.wasm");
