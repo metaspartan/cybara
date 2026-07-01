@@ -267,7 +267,6 @@ try {
   );
 
   -- Create indexes for performance
-  CREATE INDEX IF NOT EXISTS idx_chat_sessions_pinned_updated ON chat_sessions(pinned DESC, updated_at DESC);
   CREATE INDEX IF NOT EXISTS idx_session_messages_session ON session_messages(session_id);
   CREATE INDEX IF NOT EXISTS idx_session_messages_session_created ON session_messages(session_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_session_messages_created ON session_messages(created_at);
@@ -322,6 +321,14 @@ try {
     console.log("[Database] Migration: Added url column to mcp_servers");
   } catch {
     // Column already exists, ignore
+  }
+
+  try {
+    db.exec(
+      "CREATE INDEX IF NOT EXISTS idx_chat_sessions_pinned_updated ON chat_sessions(pinned DESC, updated_at DESC)"
+    );
+  } catch (error) {
+    console.error("[Database] Index creation error (pinned):", error);
   }
 } catch (error) {
   console.error("[Database] Schema creation error:", error);
