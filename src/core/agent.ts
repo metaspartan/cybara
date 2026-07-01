@@ -2346,7 +2346,7 @@ class AgentManager {
       );
     }
 
-    if (apiFamily === "google-generative-ai") {
+    if (apiFamily === "google-generative-ai" || apiFamily === "google-vertex") {
       return this.callGoogleGenerativeAI(
         baseUrl,
         resolvedAuth,
@@ -2356,7 +2356,8 @@ class AgentManager {
         tools,
         providerConfig,
         modelMaxOutputTokens,
-        toolContext
+        toolContext,
+        apiFamily === "google-vertex"
       );
     }
 
@@ -3957,7 +3958,8 @@ class AgentManager {
     tools: ToolDefinition[],
     providerConfig: string,
     maxOutputTokens: number,
-    toolContext?: ToolContext
+    toolContext?: ToolContext,
+    vertex: boolean = false
   ): Promise<{
     content: string;
     thinking?: string;
@@ -3980,7 +3982,9 @@ class AgentManager {
       return { role, parts: [{ text: message.content }] };
     });
 
-    const headers = parseGoogleAuthHeaders(auth, providerAuthType).headers;
+    const headers = vertex
+      ? { "Content-Type": "application/json", Authorization: `Bearer ${auth.trim()}` }
+      : parseGoogleAuthHeaders(auth, providerAuthType).headers;
     const normalizedModelId = normalizeGoogleModelId(modelId);
 
     const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");

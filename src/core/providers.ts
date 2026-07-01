@@ -1204,6 +1204,14 @@ export const providers = {
     authType: "api_key",
     models: [],
   },
+  google_vertex: {
+    name: "Google Gemini (Vertex AI)",
+    baseUrl:
+      "https://us-central1-aiplatform.googleapis.com/v1/projects/YOUR_PROJECT/locations/us-central1/publishers/google",
+    api: "google-vertex",
+    authType: "api_key",
+    models: [],
+  },
   litellm: {
     name: "LiteLLM",
     baseUrl: "http://127.0.0.1:4000/v1",

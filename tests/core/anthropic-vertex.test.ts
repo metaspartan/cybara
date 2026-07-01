@@ -41,12 +41,20 @@ describe("anthropic vertex request shaping", () => {
   });
 });
 
-describe("anthropic_vertex provider entry", () => {
-  test("uses the anthropic-vertex api family with token auth", () => {
+describe("vertex provider entries", () => {
+  test("anthropic_vertex uses the anthropic-vertex api family", () => {
     const p = providers.anthropic_vertex as { api?: string; authType?: string; baseUrl?: string };
     expect(p.api).toBe("anthropic-vertex");
     expect(p.authType).toBe("api_key");
     expect(p.baseUrl).toContain("aiplatform.googleapis.com");
     expect(p.baseUrl).toContain("publishers/anthropic/models");
+  });
+
+  test("google_vertex uses the google-vertex api family with a publishers/google base", () => {
+    const p = providers.google_vertex as { api?: string; authType?: string; baseUrl?: string };
+    expect(p.api).toBe("google-vertex");
+    expect(p.authType).toBe("api_key");
+    expect(p.baseUrl).toContain("aiplatform.googleapis.com");
+    expect(p.baseUrl).toContain("publishers/google");
   });
 });
