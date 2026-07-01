@@ -22,12 +22,15 @@ describe("mobile: model config lives in agent details, not global settings", () 
 describe("mobile: memory method toggle", () => {
   const screen = read("screens/DashboardScreen.tsx");
 
-  test("renders a memory method selector persisting to workspace_indexer", () => {
-    expect(screen).toContain('label="Memory method"');
+  test("renders a memory recall-method selector under its own Memory section", () => {
+    expect(screen).toContain('<SettingsSection title="Memory">');
+    expect(screen).toContain('label="Recall method"');
     expect(screen).toMatch(/workspace_indexer:\s*\{\s*embeddingProvider:/);
     for (const provider of ["auto", "transformers_js", "openai", "gemini", "ollama"]) {
       expect(screen).toContain(`value: "${provider}"`);
     }
+    // No longer buried in the general platform-controls grab-bag.
+    expect(screen).not.toContain('label="Memory method"');
   });
 });
 

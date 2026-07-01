@@ -1818,6 +1818,9 @@ function SessionDetailPanel({
   sessionId: string;
   setHeaderAction?: Dispatch<SetStateAction<ChatHeaderAction | null>>;
 }) {
+  const insets = useSafeAreaInsets();
+  const navFootprint =
+    insets.bottom + MOBILE_NAV_CHROME.floatingMargin + MOBILE_NAV_CHROME.height;
   const [detail, setDetail] = useState<SessionDetailSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -2039,12 +2042,15 @@ function SessionDetailPanel({
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={MOBILE_NAV_CHROME.height}
+      keyboardVerticalOffset={navFootprint}
       style={styles.chatShell}
     >
       <ScrollView
         ref={scrollRef}
-        contentContainerStyle={styles.chatContent}
+        contentContainerStyle={[
+          styles.chatContent,
+          { paddingBottom: navFootprint + MOBILE_CHAT_COMPOSER.maxHeight + spacing.md },
+        ]}
         keyboardShouldPersistTaps="handled"
         onContentSizeChange={() => {
           scrollRef.current?.scrollToEnd({ animated: false });
@@ -2081,7 +2087,7 @@ function SessionDetailPanel({
         ) : null}
       </ScrollView>
 
-      <View style={styles.chatComposerBar}>
+      <View style={[styles.chatComposerBar, { bottom: navFootprint + spacing.xs }]}>
         <View style={styles.composer}>
           <TextInput
             blurOnSubmit={false}
@@ -4342,28 +4348,6 @@ function SettingsPanel({
                   variant="segmented"
                 />
               ) : null}
-              <SettingSelector
-                disabled={savingConfigKey !== null}
-                label="Memory method"
-                onSelect={(value) => {
-                  void saveConfigPatch(
-                    "embeddingProvider",
-                    { workspace_indexer: { embeddingProvider: value } },
-                    "Memory method setting failed"
-                  );
-                }}
-                options={[
-                  { label: "Auto", value: "auto" },
-                  { label: "Local", value: "transformers_js" },
-                  { label: "OpenAI", value: "openai" },
-                  { label: "Voyage", value: "voyage" },
-                  { label: "Gemini", value: "gemini" },
-                  { label: "Ollama", value: "ollama" },
-                ]}
-                selected={memoryMethod}
-                tone={accentColor}
-                variant="chips"
-              />
               {MOBILE_SETTINGS_ROOT_CHROME.dangerousToolPolicyToggle ? (
                 <>
                   <SettingToggle
@@ -4513,6 +4497,40 @@ function SettingsPanel({
               detail={endpointErrorDetail(
                 summary?.availability.config,
                 "The gateway did not return editable settings."
+              )}
+            />
+          )}
+        </SettingsSection>
+        <SettingsSection title="Memory">
+          {configAvailable ? (
+            <SettingSelector
+              disabled={savingConfigKey !== null}
+              label="Recall method"
+              onSelect={(value) => {
+                void saveConfigPatch(
+                  "embeddingProvider",
+                  { workspace_indexer: { embeddingProvider: value } },
+                  "Memory method setting failed"
+                );
+              }}
+              options={[
+                { label: "Auto", value: "auto" },
+                { label: "Local", value: "transformers_js" },
+                { label: "OpenAI", value: "openai" },
+                { label: "Voyage", value: "voyage" },
+                { label: "Gemini", value: "gemini" },
+                { label: "Ollama", value: "ollama" },
+              ]}
+              selected={memoryMethod}
+              tone={accentColor}
+              variant="chips"
+            />
+          ) : (
+            <EmptyState
+              label="Memory settings unavailable"
+              detail={endpointErrorDetail(
+                summary?.availability.config,
+                "The gateway did not return config settings."
               )}
             />
           )}
