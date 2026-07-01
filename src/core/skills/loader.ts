@@ -4,6 +4,7 @@ import { existsSync } from "fs";
 import { join, resolve, dirname } from "path";
 import { homedir } from "os";
 import { getPluginRoots, listInstalledPlugins } from "../plugins";
+import { getBuiltinSkillPacks } from "./builtin-packs";
 import type {
     Skill,
     SkillEntry,
@@ -235,6 +236,14 @@ export async function loadAllSkills(options: {
     const dirs = getSkillDirectories(options.workspaceDir);
     const skillsByName = new Map<string, SkillEntry>();
     const plugins = listInstalledPlugins({ workspaceDir: options.workspaceDir });
+
+    // Curated built-in packs ship compiled into the binary (lowest priority, so
+    // user/workspace skills of the same name override them).
+    for (const pack of getBuiltinSkillPacks()) {
+        const allowlist = options.config?.allowBundled;
+        if (allowlist && !allowlist.includes(pack.skill.name)) continue;
+        skillsByName.set(pack.skill.name, pack);
+    }
 
     for (const dir of options.extraDirs ?? options.config?.load?.extraDirs ?? []) {
         const resolved = dir.startsWith("~") ? join(homedir(), dir.slice(1)) : dir;
