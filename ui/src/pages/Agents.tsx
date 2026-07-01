@@ -28,6 +28,7 @@ import {
   useProviders,
   useProviderModels,
   useCreateAgent,
+  useCreateDefaultAgent,
   useUpdateAgent,
   useDeleteAgent,
   useStartAgent,
@@ -96,6 +97,7 @@ export function Agents() {
   const { addToast } = useUIStore();
 
   const createAgent = useCreateAgent();
+  const createDefaultAgent = useCreateDefaultAgent();
   const updateAgent = useUpdateAgent();
   const deleteAgent = useDeleteAgent();
   const startAgent = useStartAgent();
@@ -168,6 +170,15 @@ export function Agents() {
       setIsCreateModalOpen(false);
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Failed to create agent");
+    }
+  };
+
+  const handleCreateDefault = async () => {
+    try {
+      await createDefaultAgent.mutateAsync();
+      addToast("success", 'Default agent "Mini" created and started');
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Failed to create default agent");
     }
   };
 
@@ -272,9 +283,21 @@ export function Agents() {
         <Card>
           <CardContent className="py-12 text-center">
             <Bot className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-white mb-2">No agents found</h3>
-            <p className="text-gray-400 mb-4">Create your first agent to get started</p>
-            <Button onClick={() => setIsCreateModalOpen(true)}>Create Agent</Button>
+            <h3 className="text-lg font-medium text-white mb-2">No agents yet</h3>
+            <p className="text-gray-400 mb-4">
+              Start with a ready-to-go default agent, or build a custom one.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2 justify-center">
+              <Button
+                onClick={handleCreateDefault}
+                isLoading={createDefaultAgent.isPending}
+              >
+                Create default agent
+              </Button>
+              <Button variant="ghost" onClick={() => setIsCreateModalOpen(true)}>
+                Custom agent
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : (

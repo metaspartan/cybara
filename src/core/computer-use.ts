@@ -626,7 +626,7 @@ export async function computerUseDoctor(): Promise<ComputerUseDoctorResult> {
   }
 
   const macReady = platform !== "darwin" || (accessibility === true && screenRecording === true);
-  const ready = !!version && !!macReady && !!healthRes.ok;
+  const ready = !!macReady && !!healthRes.ok;
 
   let message: string;
   if (!healthRes.ok) {
@@ -639,7 +639,7 @@ export async function computerUseDoctor(): Promise<ComputerUseDoctorResult> {
   }
 
   return {
-    available: !!version,
+    available: true,
     command: CUA_DRIVER_CMD,
     platform,
     version,

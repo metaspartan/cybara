@@ -557,10 +557,15 @@ const routes: Record<string, RouteHandler> = {
     complete: config.isSetupComplete(),
     currentStep: config.getSetupStep(),
   }),
-  "POST /api/setup/complete": () => {
+  "POST /api/setup/complete": async () => {
     config.completeSetup();
     if (!agentManager.hasDefaultAgent()) {
-      agentManager.createDefault();
+      const agent = agentManager.createDefault();
+      try {
+        await agentManager.start(agent.id);
+      } catch {
+        /* keep the created agent even if start fails */
+      }
     }
     return { success: true };
   },
@@ -614,11 +619,17 @@ const routes: Record<string, RouteHandler> = {
     const data = body as Parameters<typeof agentManager.create>[0];
     return agentManager.create(data);
   },
-  "POST /api/agents/default": () => {
+  "POST /api/agents/default": async () => {
     if (agentManager.hasDefaultAgent()) {
       return { error: "Default agent already exists" };
     }
-    return agentManager.createDefault();
+    const agent = agentManager.createDefault();
+    try {
+      await agentManager.start(agent.id);
+    } catch {
+      /* keep the created agent even if start fails */
+    }
+    return agentManager.get(agent.id) ?? agent;
   },
   "GET /api/agents/:id": (_body, params) => agentManager.get(params!.id),
   "PUT /api/agents/:id": (body, params) =>
