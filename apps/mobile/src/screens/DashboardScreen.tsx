@@ -66,6 +66,7 @@ import {
   Zap,
 } from "lucide-react-native";
 import { GlassPanel } from "../components/Glass";
+import { LiquidGlass } from "../components/LiquidGlass";
 import {
   MetricBarChart,
   MetricBreakdown,
@@ -1071,8 +1072,8 @@ export function DashboardScreen({
         </ScrollView>
       )}
 
-      <GlassPanel
-        elevated
+      <LiquidGlass
+        intensity={64}
         contentStyle={styles.tabBarPanel}
         style={[
           styles.tabBar,
@@ -1116,7 +1117,7 @@ export function DashboardScreen({
             );
           })}
         </View>
-      </GlassPanel>
+      </LiquidGlass>
     </View>
   );
 }
@@ -2089,7 +2090,11 @@ function SessionDetailPanel({
         ) : null}
       </ScrollView>
 
-      <View style={[styles.chatComposerBar, { bottom: navFootprint + spacing.xs }]}>
+      <LiquidGlass
+        intensity={64}
+        contentStyle={styles.chatComposerContent}
+        style={[styles.chatComposerBar, { bottom: navFootprint + spacing.xs }]}
+      >
         <View style={styles.composer}>
           <TextInput
             blurOnSubmit={false}
@@ -2133,7 +2138,7 @@ function SessionDetailPanel({
             )}
           </Pressable>
         </View>
-      </View>
+      </LiquidGlass>
     </KeyboardAvoidingView>
   );
 }
@@ -5422,27 +5427,27 @@ const makeStyles = () => StyleSheet.create({
   },
   composer: {
     alignItems: "flex-end",
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceLift,
     borderColor: colors.border,
-    borderRadius: radius.md,
-    borderWidth: 1,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
     gap: spacing.sm,
-    minHeight: 58,
+    minHeight: 50,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
   chatComposerBar: {
-    backgroundColor: colors.surface,
-    borderTopColor: colors.borderStrong,
-    borderTopWidth: 1,
     bottom: MOBILE_CHAT_CHROME.composerReservedBottom + MOBILE_CHAT_CHROME.composerGapToNav,
     left: 0,
     minHeight: MOBILE_CHAT_CHROME.composerHeight,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
     position: "absolute",
     right: 0,
+  },
+  chatComposerContent: {
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   composerInput: {
     color: colors.text,
@@ -5871,7 +5876,6 @@ const makeStyles = () => StyleSheet.create({
   },
   tabBarPanel: {
     flex: 1,
-    backgroundColor: colors.surface,
     borderRadius: MOBILE_NAV_CHROME.outerRadius,
     paddingHorizontal: spacing.md,
     paddingVertical: 5,

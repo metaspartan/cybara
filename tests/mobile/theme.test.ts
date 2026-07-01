@@ -47,6 +47,39 @@ describe("mobile theming", () => {
     expect(ctx).toContain("setActiveScheme(scheme)");
   });
 
+  test("dark palette follows Apple elevation (near-black base, gray card ladder, white label)", () => {
+    const dark = theme.slice(theme.indexOf("darkColors"), theme.indexOf("lightColors"));
+    expect(dark).toMatch(/background:\s*"#000000"/);
+    expect(dark).toMatch(/text:\s*"#ffffff"/);
+    expect(dark).toContain('surface: "#1c1c1e"');
+    expect(dark).toContain('surfaceLift: "#2c2c2e"');
+  });
+
+  test("both palettes expose a translucent chrome token for floating glass", () => {
+    const dark = theme.slice(theme.indexOf("darkColors"), theme.indexOf("lightColors"));
+    const light = theme.slice(theme.indexOf("lightColors"));
+    expect(dark).toMatch(/chrome:\s*"rgba\([^)]*0\.5\)"/);
+    expect(light).toContain("chrome:");
+  });
+
+  test("LiquidGlass prefers native expo-glass-effect and falls back to BlurView", () => {
+    const src = read("components/LiquidGlass.tsx");
+    expect(src).toContain('from "expo-glass-effect"');
+    expect(src).toContain("isLiquidGlassAvailable");
+    expect(src).toContain("GlassView");
+    expect(src).toContain('from "expo-blur"');
+    expect(src).toContain("BlurView");
+  });
+
+  test("tab bar and chat composer use the LiquidGlass surface (no opaque fill)", () => {
+    const screen = read("screens/DashboardScreen.tsx");
+    expect(screen).toContain('import { LiquidGlass }');
+    expect(screen).toContain("<LiquidGlass");
+    // the composer bar must be full-bleed glass, not an opaque surface bar
+    const barStyle = screen.slice(screen.indexOf("chatComposerBar: {"));
+    expect(barStyle.slice(0, 200)).not.toContain("backgroundColor");
+  });
+
   test("every styled surface rebuilds its StyleSheet when the scheme changes", () => {
     const styledFiles = [
       "screens/DashboardScreen.tsx",
