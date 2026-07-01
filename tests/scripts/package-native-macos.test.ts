@@ -15,10 +15,10 @@ describe("native macOS packaging helpers", () => {
 
   test("builds stable native macOS artifact names", () => {
     expect(getNativeMacOSArtifactBaseName("1.2.3", "arm64")).toBe(
-      "Cybara-native-macos-arm64-1.2.3"
+      "Cybara-v1.2.3-Swift-Native-Desktop-arm64"
     );
     expect(getNativeMacOSArtifactBaseName("1.2.3", "x86_64")).toBe(
-      "Cybara-native-macos-x86_64-1.2.3"
+      "Cybara-v1.2.3-Swift-Native-Desktop-x86_64"
     );
   });
 

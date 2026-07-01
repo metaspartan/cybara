@@ -349,11 +349,19 @@ jobs:
         with:
           path: artifacts
       - name: Flatten artifacts and generate checksums
+        env:
+          TAG: ${{ steps.tag.outputs.name }}
         run: |
           set -euo pipefail
           mkdir -p release-assets
           find artifacts -type f -exec cp {} release-assets/ \;
           cd release-assets
+          # Label CLI binaries clearly: cybara-v<version>-<target>-cli[.exe]
+          VERSION="${TAG#v}"
+          for f in cybara-linux-x64 cybara-linux-arm64 cybara-darwin-x64 cybara-darwin-arm64; do
+            [ -f "$f" ] && mv "$f" "cybara-v${VERSION}-${f#cybara-}-cli"
+          done
+          [ -f cybara-windows-x64.exe ] && mv cybara-windows-x64.exe "cybara-v${VERSION}-windows-x64-cli.exe"
           echo "Bundled assets:"
           ls -1
           : > checksums.txt

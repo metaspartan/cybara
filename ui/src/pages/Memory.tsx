@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Brain,
   Trash2,
@@ -20,7 +20,7 @@ import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Textarea } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { PageLayout } from '@/components/layout';
-import { memoryApi } from '@/lib/api';
+import { memoryApi, settingsApi } from '@/lib/api';
 import {
   useMemory,
   useSearchMemory,
@@ -57,22 +57,37 @@ export function Memory() {
     model?: string;
     chunks?: number;
   } | null>(null);
+  const [embeddingMethod, setEmbeddingMethod] = useState('auto');
+  const [savingMethod, setSavingMethod] = useState(false);
+
+  const refreshStatus = useCallback(async () => {
+    const res = await memoryApi.status();
+    if (res?.success && res.data?.success) {
+      setMemStatus({
+        provider: res.data.provider,
+        model: res.data.model,
+        chunks: res.data.chunks,
+      });
+    }
+  }, []);
 
   useEffect(() => {
     let mounted = true;
-    void memoryApi.status().then((res) => {
-      if (mounted && res?.success && res.data?.success) {
-        setMemStatus({
-          provider: res.data.provider,
-          model: res.data.model,
-          chunks: res.data.chunks,
-        });
+    void refreshStatus();
+    void settingsApi.getConfig().then((res) => {
+      if (!mounted || !res.success) return;
+      const indexer = (res.data as Record<string, unknown> | undefined)?.workspace_indexer as
+        | { embeddingProvider?: string }
+        | undefined;
+      if (typeof indexer?.embeddingProvider === 'string') {
+        setEmbeddingMethod(indexer.embeddingProvider);
       }
     });
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [refreshStatus]);
+
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [editingEntry, setEditingEntry] = useState<{ file: string; entry: MemoryEntry } | null>(null);
   const [deletingEntry, setDeletingEntry] = useState<{ file: string; index: number } | null>(null);
@@ -81,6 +96,28 @@ export function Memory() {
   const { data: memoryData, isLoading, refetch: refetchMemory } = useMemory();
   const { data: searchResults } = useSearchMemory(searchQuery);
   const { addToast } = useUIStore();
+
+  const handleChangeMethod = useCallback(
+    async (method: string) => {
+      setEmbeddingMethod(method);
+      setSavingMethod(true);
+      try {
+        const res = await settingsApi.updateConfig({
+          workspace_indexer: { embeddingProvider: method },
+        });
+        if (!res.success || !res.data?.success) {
+          throw new Error(res.error || 'Failed to update memory method');
+        }
+        addToast('success', `Memory method set to ${method}`);
+        await refreshStatus();
+      } catch (error) {
+        addToast('error', error instanceof Error ? error.message : 'Failed to update memory method');
+      } finally {
+        setSavingMethod(false);
+      }
+    },
+    [addToast, refreshStatus]
+  );
 
   const deleteMemory = useDeleteMemory();
   const updateMemory = useUpdateMemory();
@@ -210,13 +247,30 @@ export function Memory() {
             className="pl-10"
           />
         </div>
-        {memStatus && (
-          <div className="flex items-center text-xs text-gray-500 whitespace-nowrap">
-            {memStatus.provider === 'none' || !memStatus.model
-              ? 'Embeddings: keyword only'
-              : `Embeddings: ${memStatus.provider}/${memStatus.model} · ${memStatus.chunks ?? 0} chunks`}
-          </div>
-        )}
+        <div className="flex items-center gap-3 ml-auto">
+          <label className="flex items-center gap-2 text-xs text-gray-400 whitespace-nowrap">
+            Method
+            <select
+              value={embeddingMethod}
+              disabled={savingMethod}
+              onChange={(e) => void handleChangeMethod(e.target.value)}
+              className="bg-white/5 border border-white/10 rounded-md px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-indigo-500/50 disabled:opacity-50"
+            >
+              <option value="auto">Auto</option>
+              <option value="transformers_js">Local (Transformers)</option>
+              <option value="openai">OpenAI</option>
+              <option value="gemini">Gemini</option>
+              <option value="ollama">Ollama</option>
+            </select>
+          </label>
+          {memStatus && (
+            <div className="flex items-center text-xs text-gray-500 whitespace-nowrap">
+              {memStatus.provider === 'none' || !memStatus.model
+                ? 'keyword only'
+                : `${memStatus.provider}/${memStatus.model} · ${memStatus.chunks ?? 0} chunks`}
+            </div>
+          )}
+        </div>
       </div>
 
       {searchQuery && searchResults && searchResults.length > 0 && (

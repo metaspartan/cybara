@@ -40,7 +40,7 @@ export function getNativeMacOSArtifactBaseName(
   version: string,
   arch: NativeMacOSArch
 ): string {
-  return `Cybara-native-macos-${arch}-${version}`;
+  return `Cybara-v${version}-Swift-Native-Desktop-${arch}`;
 }
 
 export function createNativeMacOSInfoPlist(version: string): string {
