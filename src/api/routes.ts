@@ -123,6 +123,11 @@ import {
 import { getRouterStatus, selectProvider, getAllPricing, type RouterConfig } from "../core/router";
 import { getSystemMonitorSnapshot } from "../core/system-monitor";
 import * as pwManager from "../core/browser/pw-manager";
+import {
+  getSandboxBrowserStatus,
+  startSandboxBrowser,
+  stopSandboxBrowser,
+} from "../core/browser/sandbox-browser";
 import { homedir } from "os";
 import { dirname, isAbsolute, resolve } from "path";
 import { createHash, randomBytes } from "crypto";
@@ -3943,6 +3948,18 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/browser/status": async () => {
     const getStatus = pwManager.getStatus;
     return await getStatus();
+  },
+  "GET /api/browser/sandbox/status": () => getSandboxBrowserStatus(),
+  "POST /api/browser/sandbox/start": async () => {
+    try {
+      return { success: true, status: await startSandboxBrowser() };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  },
+  "POST /api/browser/sandbox/stop": async () => {
+    await stopSandboxBrowser();
+    return { success: true, status: getSandboxBrowserStatus() };
   },
   "GET /api/browser/tabs": async () => {
     const getAllPages = pwManager.getAllPages;
