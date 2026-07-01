@@ -450,6 +450,18 @@ export function securityCheck(
     return { passed: true };
   }
 
+  // Onboarding-safe, read-only catalog/status endpoints: needed by the first-run
+  // setup wizard before any API key exists, and expose only the static provider/
+  // channel catalog (no secrets, same data as the open-source registry).
+  const onboardingPublicPaths = [
+    "/api/providers/available",
+    "/api/channels/available",
+    "/api/setup/status",
+  ];
+  if (method === "GET" && onboardingPublicPaths.some((p) => path === p)) {
+    return { passed: true };
+  }
+
   const isInboundWebhook =
     (method === "POST" || method === "GET") &&
     (path.startsWith("/api/webhooks/") ||

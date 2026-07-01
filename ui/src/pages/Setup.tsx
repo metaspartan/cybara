@@ -28,7 +28,7 @@ export function Setup() {
 
     const { data: providers, isLoading: providersLoading } = useProviders();
     const { data: agents, isLoading: agentsLoading } = useAgents();
-    const { data: availableProviders, isLoading: availableLoading } = useAvailableProviders();
+    const { data: availableProviders, isLoading: availableLoading, error: availableError, refetch: refetchAvailable } = useAvailableProviders();
     const createProvider = useCreateProvider();
     const createDefaultAgent = useCreateDefaultAgent();
     const progressSteps: WizardStep[] = ['welcome', 'provider', 'apikey', 'permissions', 'agent', 'complete'];
@@ -246,11 +246,32 @@ export function Setup() {
                                         })}
                                         {filteredProviders.length === 0 && (
                                             <div className="col-span-2 text-center py-8 text-sm text-gray-500">
-                                                No providers match your search.
+                                                {availableError ? (
+                                                    <div className="space-y-2">
+                                                        <p className="text-red-400">Couldn't load the provider list.</p>
+                                                        <Button variant="ghost" size="sm" onClick={() => void refetchAvailable()}>
+                                                            Retry
+                                                        </Button>
+                                                    </div>
+                                                ) : (availableProviders?.length ?? 0) === 0 ? (
+                                                    'No providers available yet.'
+                                                ) : (
+                                                    <>No providers match &ldquo;{providerSearch}&rdquo;.</>
+                                                )}
                                             </div>
                                         )}
                                     </div>
                                 )}
+                                <div className="flex items-center justify-between pt-2">
+                                    <span className="text-xs text-gray-500">
+                                        {availableProviders?.length
+                                            ? `${filteredProviders.length} of ${availableProviders.length} providers`
+                                            : ''}
+                                    </span>
+                                    <Button variant="ghost" size="sm" onClick={() => setStep('permissions')}>
+                                        Skip for now
+                                    </Button>
+                                </div>
                             </div>
                         )}
 
@@ -290,6 +311,13 @@ export function Setup() {
                                             Continue
                                         </Button>
                                     </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setStep('permissions')}
+                                        className="w-full text-center text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                                    >
+                                        Skip for now
+                                    </button>
                                 </div>
                             </div>
                         )}
@@ -384,6 +412,13 @@ export function Setup() {
                                         Continue
                                     </Button>
                                 </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setStep('agent')}
+                                    className="w-full text-center text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                                >
+                                    Skip for now
+                                </button>
                             </div>
                         )}
 
