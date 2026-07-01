@@ -13,6 +13,15 @@ const PACKAGE_JSON_PATH = join(ROOT, "package.json");
 const UI_PACKAGE_JSON_PATH = join(ROOT, "ui", "package.json");
 const CARGO_TOML_PATH = join(ROOT, "src-tauri", "Cargo.toml");
 const TAURI_CONFIG_PATH = join(ROOT, "src-tauri", "tauri.conf.json");
+const MOBILE_APP_JSON_PATH = join(ROOT, "apps", "mobile", "app.json");
+
+function replaceExpoVersion(jsonText: string, version: string): string {
+  const parsed = JSON.parse(jsonText) as { expo?: Record<string, unknown> };
+  if (parsed.expo) {
+    parsed.expo.version = version;
+  }
+  return `${JSON.stringify(parsed, null, 2)}\n`;
+}
 
 function readText(path: string): string {
   return readFileSync(path, "utf-8");
@@ -91,6 +100,11 @@ function syncVersion(version: string): string[] {
     writeIfChanged(TAURI_CONFIG_PATH, replaceJsonVersion(readText(TAURI_CONFIG_PATH), version))
   ) {
     changed.push("src-tauri/tauri.conf.json");
+  }
+  if (
+    writeIfChanged(MOBILE_APP_JSON_PATH, replaceExpoVersion(readText(MOBILE_APP_JSON_PATH), version))
+  ) {
+    changed.push("apps/mobile/app.json");
   }
   return changed;
 }

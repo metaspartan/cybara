@@ -27,3 +27,15 @@ describe("mobile: default model setting", () => {
     expect(screen).toContain("if (next === defaultModel) return;");
   });
 });
+
+describe("mobile: memory method toggle", () => {
+  const screen = read("screens/DashboardScreen.tsx");
+
+  test("renders a memory method selector persisting to workspace_indexer", () => {
+    expect(screen).toContain('label="Memory method"');
+    expect(screen).toMatch(/workspace_indexer:\s*\{\s*embeddingProvider:/);
+    for (const provider of ["auto", "transformers_js", "openai", "gemini", "ollama"]) {
+      expect(screen).toContain(`value: "${provider}"`);
+    }
+  });
+});

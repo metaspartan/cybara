@@ -3921,6 +3921,11 @@ function SettingsPanel({
   const configRecord = (summary?.config ?? {}) as Record<string, unknown>;
   const defaultModel =
     typeof configRecord.default_model === "string" ? (configRecord.default_model as string) : "";
+  const workspaceIndexer = (configRecord.workspace_indexer ?? {}) as Record<string, unknown>;
+  const memoryMethod =
+    typeof workspaceIndexer.embeddingProvider === "string"
+      ? (workspaceIndexer.embeddingProvider as string)
+      : "auto";
   const modelOptions = Array.from(
     new Set(
       (summary?.providers ?? []).flatMap((provider) =>
@@ -4243,6 +4248,27 @@ function SettingsPanel({
                   variant="segmented"
                 />
               ) : null}
+              <SettingSelector
+                disabled={savingConfigKey !== null}
+                label="Memory method"
+                onSelect={(value) => {
+                  void saveConfigPatch(
+                    "embeddingProvider",
+                    { workspace_indexer: { embeddingProvider: value } },
+                    "Memory method setting failed"
+                  );
+                }}
+                options={[
+                  { label: "Auto", value: "auto" },
+                  { label: "Local", value: "transformers_js" },
+                  { label: "OpenAI", value: "openai" },
+                  { label: "Gemini", value: "gemini" },
+                  { label: "Ollama", value: "ollama" },
+                ]}
+                selected={memoryMethod}
+                tone={accentColor}
+                variant="chips"
+              />
               <SettingsTextField
                 autoCapitalize="none"
                 help="Model used for new agents. Leave blank to auto-select."

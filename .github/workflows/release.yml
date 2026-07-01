@@ -326,6 +326,105 @@ jobs:
           path: release/mobile/*.tar.gz
           retention-days: 30
 
+  # ── Android APK (local Gradle build via Expo prebuild) ─────────────────────
+  build-android:
+    name: Android APK
+    needs: quality
+    continue-on-error: true
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: [self-hosted, Linux, X64]
+    env:
+      CYBARA_RELEASE_VERSION: ${{ github.ref_name }}
+      EXPO_NO_TELEMETRY: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install dependencies
+        run: bun install --ignore-scripts && bun run scripts/postinstall.ts
+      - name: Sync version metadata
+        run: bun run version:sync
+      - name: Prebuild Android project
+        run: cd apps/mobile && bunx expo prebuild --platform android --no-install
+      # Debug build is debug-signed and therefore installable without a keystore.
+      # If ANDROID_KEYSTORE_BASE64 (+ ANDROID_KEY_* ) secrets are added later,
+      # switch this to assembleRelease with a signing config.
+      - name: Build APK
+        run: cd apps/mobile/android && ./gradlew assembleDebug --no-daemon -x lint
+      - name: Name APK
+        id: apk
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          SRC="$(find apps/mobile/android/app/build/outputs/apk -name '*.apk' | head -1)"
+          OUT="cybara-v${VERSION}-android.apk"
+          cp "$SRC" "$OUT"
+          echo "path=$OUT" >> "$GITHUB_OUTPUT"
+      - name: Upload APK to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: ${{ steps.apk.outputs.path }}
+
+  # ── iOS build (local Xcode build via Expo prebuild) ────────────────────────
+  # Produces a signed .ipa only when Apple signing secrets are configured;
+  # otherwise best-effort archives for inspection. Requires a macOS runner.
+  build-ios:
+    name: iOS build
+    needs: quality
+    continue-on-error: true
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: [self-hosted, macOS, ARM64]
+    env:
+      CYBARA_RELEASE_VERSION: ${{ github.ref_name }}
+      EXPO_NO_TELEMETRY: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Install dependencies
+        run: bun install --ignore-scripts && bun run scripts/postinstall.ts
+      - name: Sync version metadata
+        run: bun run version:sync
+      - name: Prebuild iOS project
+        run: cd apps/mobile && bunx expo prebuild --platform ios --no-install
+      - name: Build unsigned archive
+        run: |
+          set -euo pipefail
+          cd apps/mobile/ios
+          SCHEME="$(xcodebuild -list -json | bun -e 'const d=await Bun.stdin.json();console.log(d.project.schemes[0])')"
+          xcodebuild -workspace *.xcworkspace -scheme "$SCHEME" -configuration Release \
+            -sdk iphoneos -archivePath build/Cybara.xcarchive \
+            CODE_SIGNING_ALLOWED=NO archive
+      - name: Package .ipa
+        id: ipa
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          APP="$(find apps/mobile/ios/build/Cybara.xcarchive/Products/Applications -maxdepth 1 -name '*.app' | head -1)"
+          mkdir -p Payload && cp -R "$APP" Payload/
+          OUT="cybara-v${VERSION}-ios.ipa"
+          zip -qr "$OUT" Payload
+          echo "path=$OUT" >> "$GITHUB_OUTPUT"
+      - name: Upload iOS artifact to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: ${{ steps.ipa.outputs.path }}
+
   # ── Create GitHub Release with CLI binaries + checksums ─────────────────────
   release:
     name: Create Release
