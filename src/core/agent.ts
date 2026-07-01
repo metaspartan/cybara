@@ -33,6 +33,7 @@ import {
   anthropicThinkingBudget,
   googleThinkingBudget,
 } from "./llm/reasoning";
+import { applyProviderApiKey } from "./llm/auth-headers";
 import { selectProvider, recordUsage, recordRateLimit as recordRouterRateLimit } from "./router";
 import { executeTool, hasTool } from "./tools/handlers/index";
 import {
@@ -3080,7 +3081,10 @@ class AgentManager {
       ...customHeaders, // Merge custom headers (e.g., User-Agent for Kimi Code)
     };
     if (auth) {
-      headers.Authorization = `Bearer ${auth}`;
+      const apiKeyHeader = (
+        providerCatalog[providerConfig as ProviderType] as { apiKeyHeader?: string } | undefined
+      )?.apiKeyHeader;
+      applyProviderApiKey(headers, auth, apiKeyHeader);
     }
 
     console.log(`[Agent] Sending request with headers:`, JSON.stringify(Object.keys(headers)));

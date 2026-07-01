@@ -1180,6 +1180,22 @@ export const providers = {
     authType: "none",
     models: [],
   },
+  azure: {
+    name: "Azure OpenAI",
+    baseUrl: "https://YOUR-RESOURCE.openai.azure.com/openai/v1",
+    api: "openai-completions",
+    authType: "api_key",
+    apiKeyHeader: "api-key",
+    models: [],
+  },
+  azure_foundry: {
+    name: "Azure AI Foundry",
+    baseUrl: "https://YOUR-RESOURCE.services.ai.azure.com/models",
+    api: "openai-completions",
+    authType: "api_key",
+    apiKeyHeader: "api-key",
+    models: [],
+  },
   litellm: {
     name: "LiteLLM",
     baseUrl: "http://127.0.0.1:4000/v1",
