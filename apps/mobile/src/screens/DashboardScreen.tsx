@@ -30,6 +30,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import SegmentedControl from "@react-native-segmented-control/segmented-control";
 import { haptics } from "../lib/haptics";
+import { useThemeControls } from "../theme/ThemeContext";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -3951,6 +3952,7 @@ function SettingsPanel({
   openSurface: (surface: MobileSurfaceKey) => void;
 }) {
   const counts = summarizeFeatureCounts(summary);
+  const { mode: appearanceMode, setMode: setAppearanceMode } = useThemeControls();
   const [savingAccent, setSavingAccent] = useState<AccentKey | null>(null);
   const [savingConfigKey, setSavingConfigKey] = useState<string | null>(null);
   const [savingPromptKey, setSavingPromptKey] = useState<SystemPromptFeatureKey | null>(null);
@@ -4241,6 +4243,24 @@ function SettingsPanel({
             </View>
           </View>
         ) : null}
+        <SettingsSection title="Appearance">
+          <SettingSelector
+            label="Theme"
+            onSelect={(value) => {
+              if (value === "system" || value === "light" || value === "dark") {
+                setAppearanceMode(value);
+              }
+            }}
+            options={[
+              { label: "System", value: "system" },
+              { label: "Light", value: "light" },
+              { label: "Dark", value: "dark" },
+            ]}
+            selected={appearanceMode}
+            tone={accentColor}
+            variant="segmented"
+          />
+        </SettingsSection>
         <SettingsSection
           accessory={savingAccent ? <ActivityIndicator color={accentColor} size="small" /> : null}
           title="Highlight color"

@@ -1,6 +1,6 @@
 import { Platform, StyleSheet } from "react-native";
 
-export const colors = {
+export const darkColors = {
   background: "#020407",
   backgroundLift: "#060607",
   text: "#f3f8fb",
@@ -17,6 +17,36 @@ export const colors = {
   glassElevated: "rgba(9, 9, 11, 0.94)",
   glassPressed: "rgba(20, 20, 22, 0.92)",
 };
+
+export const lightColors: typeof darkColors = {
+  background: "#f2f4f7",
+  backgroundLift: "#ffffff",
+  text: "#131a22",
+  textMuted: "#5a6570",
+  textDim: "#8a94a0",
+  cyan: "#0e8fb8",
+  blueText: "#2563eb",
+  green: "#0f9d63",
+  amber: "#b45309",
+  red: "#dc2626",
+  border: "rgba(17, 24, 32, 0.10)",
+  borderStrong: "rgba(17, 24, 32, 0.16)",
+  glass: "rgba(255, 255, 255, 0.72)",
+  glassElevated: "rgba(255, 255, 255, 0.86)",
+  glassPressed: "rgba(17, 24, 32, 0.05)",
+};
+
+export type Palette = typeof darkColors;
+export type ColorScheme = "light" | "dark";
+
+export const palettes: Record<ColorScheme, Palette> = {
+  dark: darkColors,
+  light: lightColors,
+};
+
+// Default palette for module-level constants that cannot use the theme hook.
+// Components should prefer useTheme() so they follow the active scheme.
+export const colors = darkColors;
 
 export const accentPalette = {
   indigo: "#6366f1",

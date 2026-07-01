@@ -1,15 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { StatusBar, StyleSheet, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { ConnectScreen } from "./src/screens/ConnectScreen";
 import { DashboardScreen } from "./src/screens/DashboardScreen";
 import type { GatewayProfile } from "./src/lib/connection";
 import { clearActiveProfile, getActiveProfile, saveProfile } from "./src/lib/storage";
-import { colors, spacing } from "./src/theme/liquidGlass";
+import { spacing, type Palette } from "./src/theme/liquidGlass";
+import { ThemeProvider, useTheme, useThemeControls } from "./src/theme/ThemeContext";
 
-export default function App() {
+function AppShell() {
+  const colors = useTheme();
+  const { scheme } = useThemeControls();
   const [profile, setProfile] = useState<GatewayProfile | null>(null);
   const [ready, setReady] = useState(false);
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   useEffect(() => {
     getActiveProfile()
@@ -29,34 +33,43 @@ export default function App() {
   };
 
   return (
-    <SafeAreaProvider>
-      <SafeAreaView edges={["top", "left", "right"]} style={styles.safe}>
-        <StatusBar barStyle="light-content" />
-        <View style={styles.background}>
-          <View style={styles.content}>
-            {ready && profile ? (
-              <DashboardScreen profile={profile} onDisconnect={disconnect} />
-            ) : (
-              <ConnectScreen onConnect={connect} />
-            )}
-          </View>
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.safe}>
+      <StatusBar barStyle={scheme === "light" ? "dark-content" : "light-content"} />
+      <View style={styles.background}>
+        <View style={styles.content}>
+          {ready && profile ? (
+            <DashboardScreen profile={profile} onDisconnect={disconnect} />
+          ) : (
+            <ConnectScreen onConnect={connect} />
+          )}
         </View>
-      </SafeAreaView>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <AppShell />
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  background: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    flex: 1,
-    paddingTop: spacing.lg,
-  },
-});
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    safe: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    background: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    content: {
+      flex: 1,
+      paddingTop: spacing.lg,
+    },
+  });
