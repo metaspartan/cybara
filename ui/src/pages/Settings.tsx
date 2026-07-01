@@ -15,7 +15,13 @@ import {
   type HealthData,
   type InfoData,
 } from "@/hooks/useApi";
-import { settingsApi, computerUseApi, type ComputerUseStatus } from "@/lib/api";
+import {
+  settingsApi,
+  computerUseApi,
+  sandboxBrowserApi,
+  type ComputerUseStatus,
+  type SandboxBrowserStatus,
+} from "@/lib/api";
 import { openExternal } from "@/utils/openExternal";
 import {
   checkForDesktopUpdate,
@@ -549,6 +555,110 @@ function ComputerUseSettings() {
           </div>
         ) : (
           <p className="text-sm text-red-400">Could not load computer-use status.</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function SandboxBrowserSettings() {
+  const [status, setStatus] = useState<SandboxBrowserStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const res = await sandboxBrowserApi.getStatus();
+    if (res.success && res.data) setStatus(res.data);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const start = useCallback(async () => {
+    setBusy(true);
+    setNote("Starting sandbox (first run builds the image, this can take a few minutes)…");
+    const res = await sandboxBrowserApi.start();
+    if (res.success && res.data) {
+      if (!res.data.success) setNote(res.data.error || "Failed to start sandbox browser");
+      else setNote(null);
+    }
+    setBusy(false);
+    await load();
+  }, [load]);
+
+  const stop = useCallback(async () => {
+    setBusy(true);
+    await sandboxBrowserApi.stop();
+    setBusy(false);
+    setNote(null);
+    await load();
+  }, [load]);
+
+  return (
+    <Card variant="liquid">
+      <CardHeader>
+        <CardTitle>Sandbox Browser (cross-platform)</CardTitle>
+        <CardDescription>
+          Runs Chromium inside an isolated Linux container (viewable in your browser via noVNC)
+          and drives it over the DevTools Protocol. Works the same on macOS, Windows, and Linux.
+          Requires Docker.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <p className="text-sm text-gray-400">Checking status…</p>
+        ) : status ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+              <span className="flex items-center gap-2">
+                Docker{" "}
+                {status.dockerAvailable ? (
+                  <Badge variant="success">Yes</Badge>
+                ) : (
+                  <Badge variant="error">No</Badge>
+                )}
+              </span>
+              <span className="flex items-center gap-2">
+                Image {status.imageBuilt ? <Badge variant="success">Built</Badge> : <Badge variant="default">Not built</Badge>}
+              </span>
+              <span className="flex items-center gap-2">
+                Running{" "}
+                {status.running ? (
+                  <Badge variant="success">Yes</Badge>
+                ) : (
+                  <Badge variant="default">No</Badge>
+                )}
+              </span>
+            </div>
+            {status.reason && <p className="text-sm text-amber-300">{status.reason}</p>}
+            {note && <p className="text-sm text-indigo-300">{note}</p>}
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={() => void load()} disabled={busy}>
+                Recheck
+              </Button>
+              {status.dockerAvailable && !status.running && (
+                <Button variant="primary" onClick={() => void start()} isLoading={busy}>
+                  Start sandbox
+                </Button>
+              )}
+              {status.running && (
+                <>
+                  <Button variant="secondary" onClick={() => openExternal(status.novncUrl)}>
+                    Open viewer
+                  </Button>
+                  <Button variant="ghost" onClick={() => void stop()} disabled={busy}>
+                    Stop
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-red-400">Could not load sandbox browser status.</p>
         )}
       </CardContent>
     </Card>
@@ -1155,6 +1265,7 @@ export function Settings() {
         <FeatureSettings />
 
         <ComputerUseSettings />
+        <SandboxBrowserSettings />
 
         <DesktopUpdateSettings
           currentVersion={String(infoData.version || "unknown")}

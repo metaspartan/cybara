@@ -1045,6 +1045,30 @@ export const computerUseApi = {
     }),
 };
 
+export interface SandboxBrowserStatus {
+  dockerAvailable: boolean;
+  imageBuilt: boolean;
+  running: boolean;
+  cdpPort: number;
+  novncPort: number;
+  cdpUrl: string;
+  novncUrl: string;
+  reason?: string;
+}
+
+export const sandboxBrowserApi = {
+  getStatus: () => fetchApi<SandboxBrowserStatus>("/browser/sandbox/status"),
+  start: () =>
+    fetchApi<{ success: boolean; status?: SandboxBrowserStatus; error?: string }>(
+      "/browser/sandbox/start",
+      { method: "POST" }
+    ),
+  stop: () =>
+    fetchApi<{ success: boolean; status?: SandboxBrowserStatus }>("/browser/sandbox/stop", {
+      method: "POST",
+    }),
+};
+
 export const logsApi = {
   getSystem: () =>
     fetchApi<{ id: string; level: string; source: string; message: string; created_at: string }[]>(
