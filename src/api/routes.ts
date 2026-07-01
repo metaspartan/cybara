@@ -3899,21 +3899,19 @@ const routes: Record<string, RouteHandler> = {
   },
   "GET /api/system-prompt/preview": async () => {
     const homeDir = process.env.HOME || homedir();
+    const agents = agentManager.list();
+    const agent = agents.find((a) => a.type !== "subagent" && a.type !== "worker") || agents[0];
+    const rawTools = (agent?.tools ?? []) as Array<string | { name?: string }>;
+    const tools = rawTools
+      .map((t) => (typeof t === "string" ? t : t?.name))
+      .filter((n): n is string => typeof n === "string" && n.length > 0);
     const preview = buildSystemPrompt({
-      modelDisplay: "MiniMax-M2.1",
-      tools: [
-        "read",
-        "write",
-        "artifacts",
-        "exec",
-        "browser",
-        "wallet",
-        "memory_search",
-        "memory_get",
-        "message",
-        "sessions_spawn",
-      ],
+      modelDisplay: agent?.model || "unknown",
+      tools: tools.length
+        ? tools
+        : ["read", "write", "exec", "browser", "memory_search", "message"],
       workspaceDir: homeDir,
+      agentData: agent ? { name: agent.name } : undefined,
     });
     return { preview };
   },
