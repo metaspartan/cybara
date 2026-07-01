@@ -1589,6 +1589,39 @@ ACTIONS:
     },
     permissions: [],
   },
+  home_assistant: {
+    name: "home_assistant",
+    description:
+      "Control and query a Home Assistant instance: list entity states, get a single entity's state, or call a service (e.g. light.turn_on). Requires HOME_ASSISTANT_URL and HOME_ASSISTANT_TOKEN.",
+    category: "skill",
+    input_schema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: ["list_states", "get_state", "call_service"],
+          description: "Operation to perform (default list_states)",
+        },
+        entity_id: {
+          type: "string",
+          description: "Entity id, e.g. light.kitchen (for get_state or as call_service target)",
+        },
+        service: {
+          type: "string",
+          description: "Service as 'domain.service', e.g. light.turn_on (call_service only)",
+        },
+        data: {
+          type: "object",
+          description: "Extra service data, e.g. { brightness_pct: 50 } (call_service only)",
+        },
+        filter: {
+          type: "string",
+          description: "Substring to filter entity ids (list_states only)",
+        },
+      },
+    },
+    permissions: [],
+  },
   video_frames: {
     name: "video_frames",
     description: "Extract frames from video files",

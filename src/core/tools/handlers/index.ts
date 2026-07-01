@@ -32,6 +32,7 @@ import {
   handleGateway,
 } from "./channel";
 import { handleSummarization, handleVideoFrames, handleWeather } from "./skill";
+import { handleHomeAssistant } from "./home-assistant";
 import { handleTodo } from "./todo";
 import { handleClarify } from "./clarify";
 import { handleToolSearch, handleToolDescribe, handleToolCall } from "./tool-discovery";
@@ -216,6 +217,7 @@ const toolHandlers: Record<
   summarization: handleSummarization,
   video_frames: handleVideoFrames,
   weather: handleWeather,
+  home_assistant: handleHomeAssistant,
 
   todo: handleTodo,
   clarify: handleClarify,
