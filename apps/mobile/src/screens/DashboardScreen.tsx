@@ -4262,6 +4262,7 @@ function SettingsPanel({
                   { label: "Auto", value: "auto" },
                   { label: "Local", value: "transformers_js" },
                   { label: "OpenAI", value: "openai" },
+                  { label: "Voyage", value: "voyage" },
                   { label: "Gemini", value: "gemini" },
                   { label: "Ollama", value: "ollama" },
                 ]}

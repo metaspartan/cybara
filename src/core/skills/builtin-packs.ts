@@ -156,6 +156,58 @@ For each finding: state the concrete attack (input → impact), rate severity, a
 6. Turn the root cause into concrete follow-ups (a test, an alert, a guardrail) so it can't recur silently.`,
   },
   {
+    name: "testing",
+    description:
+      "Write tests that catch real regressions — meaningful cases, clear assertions, no flakiness.",
+    instructions: `# Testing
+
+- Test behavior and contracts, not implementation details — a good test survives a refactor.
+- Cover the boundaries: empty, one, many, max; nulls; error paths; and the specific bug you're fixing.
+- One reason to fail per test; assert the actual value, not just "no error".
+- Make tests deterministic: no real clock, network, or random unless injected/seeded; isolate shared state.
+- Prefer a few high-signal tests over many shallow ones. A test that can't fail is noise.
+- For a bug fix, write the failing test first, then make it pass.`,
+  },
+  {
+    name: "devops",
+    description:
+      "Containerize, build in CI, and deploy a service reliably and reproducibly.",
+    instructions: `# DevOps
+
+- Make builds reproducible: pin base images and dependency versions; build once, promote the same artifact across environments.
+- Keep containers lean: multi-stage builds, no secrets in layers, run as non-root, minimal base.
+- CI should fail fast and mean something: lint → typecheck → test → build, in order.
+- Config via environment, secrets via a secret store — never baked into the image or committed.
+- Deploys should be reversible: health checks, and a rollback path (previous image/tag) that's one command.
+- Observe what you ship: logs, a health endpoint, and one alert on the thing that actually breaks.`,
+  },
+  {
+    name: "git-workflow",
+    description:
+      "Use Git cleanly: focused commits, understandable history, safe branching and rebasing.",
+    instructions: `# Git workflow
+
+- One logical change per commit; a message that says what changed and why (not "fixes").
+- Branch off the latest main; keep branches short-lived and rebased on main to avoid drift.
+- Never rewrite history that others have pulled; rebase only your own unpushed work.
+- Review your own diff before committing — no stray debug code, secrets, or unrelated churn.
+- Resolve conflicts by understanding both sides, not by blindly picking one; re-run tests after.
+- Keep generated artifacts and secrets out of the tree via .gitignore.`,
+  },
+  {
+    name: "accessibility",
+    description:
+      "Make a web UI usable by keyboard and screen readers, meeting WCAG basics.",
+    instructions: `# Accessibility
+
+- Every interactive element must be reachable and operable by keyboard, with a visible focus state.
+- Use semantic HTML first (button, a, nav, label); reach for ARIA only to fill gaps, never to replace semantics.
+- Give images meaningful alt text (or empty alt if decorative); label every form control.
+- Maintain color contrast (4.5:1 for text) and never encode meaning by color alone.
+- Respect prefers-reduced-motion; don't trap focus except in intentional modals (which must trap and restore it).
+- Test the flow with the keyboard only and with a screen reader before calling it done.`,
+  },
+  {
     name: "sql",
     description:
       "Write correct, efficient SQL and reason about query performance.",

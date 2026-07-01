@@ -259,6 +259,7 @@ export function Memory() {
               <option value="auto">Auto</option>
               <option value="transformers_js">Local (Transformers)</option>
               <option value="openai">OpenAI</option>
+              <option value="voyage">Voyage AI</option>
               <option value="gemini">Gemini</option>
               <option value="ollama">Ollama</option>
             </select>

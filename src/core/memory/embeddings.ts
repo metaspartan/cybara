@@ -6,12 +6,14 @@ import { pathToFileURL } from "url";
 export type EmbeddingProviderPreference =
     | "auto"
     | "openai"
+    | "voyage"
     | "gemini"
     | "ollama"
     | "transformers_js";
 
 export type EmbeddingProviderId =
     | "openai"
+    | "voyage"
     | "gemini"
     | "ollama"
     | "transformers_js"
@@ -92,6 +94,17 @@ const OPENAI_MODELS: Record<string, number> = {
     "text-embedding-3-large": 3072,
 };
 
+const VOYAGE_EMBEDDING_ENDPOINT = "https://api.voyageai.com/v1/embeddings";
+const VOYAGE_DEFAULT_MODEL = "voyage-3";
+const VOYAGE_MODELS: Record<string, number> = {
+    "voyage-3": 1024,
+    "voyage-3-large": 1024,
+    "voyage-3-lite": 512,
+    "voyage-3.5": 1024,
+    "voyage-3.5-lite": 1024,
+    "voyage-code-3": 1024,
+};
+
 const GEMINI_EMBEDDING_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 const GEMINI_DEFAULT_MODEL = "text-embedding-004";
 const GEMINI_MODELS: Record<string, number> = {
@@ -134,6 +147,7 @@ function normalizeProvider(provider: unknown): EmbeddingProviderPreference {
     if (
         normalized === "auto" ||
         normalized === "openai" ||
+        normalized === "voyage" ||
         normalized === "gemini" ||
         normalized === "ollama" ||
         normalized === "transformers_js"
@@ -688,6 +702,84 @@ function createOpenAIProvider(apiKey: string, modelInput?: string): EmbeddingPro
     };
 }
 
+async function createVoyageEmbeddingBatch(
+    texts: string[],
+    apiKey: string,
+    model: string,
+    inputType: "query" | "document"
+): Promise<number[][]> {
+    const response = await fetch(VOYAGE_EMBEDDING_ENDPOINT, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+            model,
+            input: texts.map((text) => sanitizeText(text, 16000)),
+            input_type: inputType,
+        }),
+    });
+
+    if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Voyage embedding error: ${response.status} ${error}`);
+    }
+
+    const data = (await response.json()) as {
+        data?: Array<{ embedding?: number[]; index: number }>;
+    };
+    if (!data.data || !Array.isArray(data.data)) {
+        throw new Error("Invalid Voyage embedding response");
+    }
+    const sorted = data.data.slice().sort((a, b) => a.index - b.index);
+    return sorted.map((item) => item.embedding || []);
+}
+
+function createVoyageProvider(apiKey: string, modelInput?: string): EmbeddingProvider {
+    const model = VOYAGE_MODELS[modelInput || ""] ? (modelInput as string) : VOYAGE_DEFAULT_MODEL;
+    const dimensions = VOYAGE_MODELS[model] || VOYAGE_MODELS[VOYAGE_DEFAULT_MODEL];
+    return {
+        id: "voyage",
+        model,
+        dimensions,
+        embedQuery: async (text: string) => {
+            const cacheKey = getCacheKey("voyage", model, text);
+            const cached = getFromCache(cacheKey);
+            if (cached) return cached;
+            const [embedding] = await createVoyageEmbeddingBatch([text], apiKey, model, "query");
+            if (!embedding) throw new Error("Invalid Voyage embedding response");
+            setCache(cacheKey, embedding);
+            return embedding;
+        },
+        embedBatch: async (texts: string[]) => {
+            const results: (number[] | null)[] = texts.map((text) =>
+                getFromCache(getCacheKey("voyage", model, text))
+            );
+            const uncachedIndices = results
+                .map((item, index) => (item === null ? index : -1))
+                .filter((index) => index >= 0);
+            if (uncachedIndices.length > 0) {
+                const uncachedTexts = uncachedIndices.map((index) => texts[index]);
+                const embeddings = await createVoyageEmbeddingBatch(
+                    uncachedTexts,
+                    apiKey,
+                    model,
+                    "document"
+                );
+                uncachedIndices.forEach((originalIndex, newIndex) => {
+                    const embedding = embeddings[newIndex];
+                    if (embedding) {
+                        setCache(getCacheKey("voyage", model, texts[originalIndex]), embedding);
+                        results[originalIndex] = embedding;
+                    }
+                });
+            }
+            return results.map((item) => item || []);
+        },
+    };
+}
+
 async function createGeminiEmbedding(text: string, apiKey: string, model: string): Promise<number[]> {
     const endpoint = `${GEMINI_EMBEDDING_ENDPOINT}/${model}:embedContent?key=${apiKey}`;
     const response = await fetch(endpoint, {
@@ -1035,6 +1127,20 @@ async function tryCreateProvider(
         return { provider: embeddingProvider, source: "openai" };
     }
 
+    if (provider === "voyage") {
+        const apiKey = process.env.VOYAGE_API_KEY?.trim();
+        if (!apiKey) {
+            return {
+                provider: createNullProvider(),
+                source: "none",
+                fallbackReason: "VOYAGE_API_KEY is not set",
+            };
+        }
+        const embeddingProvider = createVoyageProvider(apiKey, model);
+        await embeddingProvider.embedQuery("health check");
+        return { provider: embeddingProvider, source: "voyage" };
+    }
+
     if (provider === "gemini") {
         const apiKey = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim();
         if (!apiKey) {
@@ -1108,6 +1214,7 @@ export async function createEmbeddingProvider(selection?: EmbeddingSelection): P
 
     const candidates: Array<{ provider: EmbeddingProviderPreference; model: string }> = [
         { provider: "openai", model: normalized.model || OPENAI_DEFAULT_MODEL },
+        { provider: "voyage", model: normalized.model || VOYAGE_DEFAULT_MODEL },
         { provider: "gemini", model: normalized.model || GEMINI_DEFAULT_MODEL },
         { provider: "ollama", model: normalized.model || OLLAMA_DEFAULT_MODEL },
         { provider: "transformers_js", model: normalized.model || TRANSFORMERS_DEFAULT_MODEL },
@@ -1141,6 +1248,7 @@ export async function createEmbeddingProvider(selection?: EmbeddingSelection): P
 export async function getEmbeddingProviderCatalog(selection?: EmbeddingSelection): Promise<EmbeddingProviderCatalog> {
     const normalized = normalizeSelection(selection);
     const openaiAvailable = Boolean(process.env.OPENAI_API_KEY?.trim());
+    const voyageAvailable = Boolean(process.env.VOYAGE_API_KEY?.trim());
     const geminiAvailable = Boolean(process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim());
     const ollamaModels = await listOllamaModels();
     const ollamaAvailable = ollamaModels.length > 0;
@@ -1171,6 +1279,15 @@ export async function getEmbeddingProviderCatalog(selection?: EmbeddingSelection
                 reason: openaiAvailable ? undefined : "OPENAI_API_KEY is not set",
                 defaultModel: OPENAI_DEFAULT_MODEL,
                 models: Object.keys(OPENAI_MODELS),
+            },
+            {
+                id: "voyage",
+                label: "Voyage AI",
+                local: false,
+                available: voyageAvailable,
+                reason: voyageAvailable ? undefined : "VOYAGE_API_KEY is not set",
+                defaultModel: VOYAGE_DEFAULT_MODEL,
+                models: Object.keys(VOYAGE_MODELS),
             },
             {
                 id: "gemini",
