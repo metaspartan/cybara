@@ -74,11 +74,11 @@ export async function maybeRunBackgroundReview(
   lastAssistantText: string,
   options: BackgroundReviewOptions = {}
 ): Promise<void> {
-  // DISABLED by default for production safety. The background review spawns a
-  // subagent that makes its own LLM call — if that call fails (expired token,
-  // 401, network, etc.), the error can surface to the user's chat.
-  // Enable explicitly via CYBARA_ENABLE_BACKGROUND_REVIEW=1.
-  if (process.env.CYBARA_ENABLE_BACKGROUND_REVIEW !== "1") return;
+  // Enabled by default: the reviewer runs as a silent, fire-and-forget subagent
+  // (silent: true + swallowed errors below), throttled per session, so a failed
+  // LLM call never surfaces to the user's chat. Disable via
+  // CYBARA_DISABLE_BACKGROUND_REVIEW=1.
+  if (process.env.CYBARA_DISABLE_BACKGROUND_REVIEW === "1") return;
   if (options.disabled) return;
   if (!context?.sessionId) return;
   if (!looksReviewable(lastAssistantText)) return;

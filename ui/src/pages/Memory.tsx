@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Brain,
   Trash2,
@@ -52,6 +52,27 @@ function formatMemoryDate(entry: MemoryEntry): string {
 
 export function Memory() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [memStatus, setMemStatus] = useState<{
+    provider?: string;
+    model?: string;
+    chunks?: number;
+  } | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    void memoryApi.status().then((res) => {
+      if (mounted && res?.success && res.data?.success) {
+        setMemStatus({
+          provider: res.data.provider,
+          model: res.data.model,
+          chunks: res.data.chunks,
+        });
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [editingEntry, setEditingEntry] = useState<{ file: string; entry: MemoryEntry } | null>(null);
   const [deletingEntry, setDeletingEntry] = useState<{ file: string; index: number } | null>(null);
@@ -183,12 +204,19 @@ export function Memory() {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
           <Input
-            placeholder="Search memory..."
+            placeholder="Search memory (semantic)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
           />
         </div>
+        {memStatus && (
+          <div className="flex items-center text-xs text-gray-500 whitespace-nowrap">
+            {memStatus.provider === 'none' || !memStatus.model
+              ? 'Embeddings: keyword only'
+              : `Embeddings: ${memStatus.provider}/${memStatus.model} · ${memStatus.chunks ?? 0} chunks`}
+          </div>
+        )}
       </div>
 
       {searchQuery && searchResults && searchResults.length > 0 && (

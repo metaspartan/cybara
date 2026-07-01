@@ -781,6 +781,15 @@ export const memoryApi = {
       body: JSON.stringify({ file, content }),
     }),
   get: (id: string) => fetchApi<Memory>(`/memory/${id}`),
+  status: () =>
+    fetchApi<{
+      success: boolean;
+      chunks?: number;
+      files?: number;
+      provider?: string;
+      model?: string;
+      error?: string;
+    }>("/memory/status"),
   create: (memory: Omit<Memory, "id" | "createdAt" | "updatedAt">) =>
     fetchApi<Memory>("/memory", { method: "POST", body: JSON.stringify(memory) }),
   update: (id: string, memory: Partial<Memory>) =>

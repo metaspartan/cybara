@@ -102,6 +102,7 @@ import {
   handleMemoryEdit,
   handleMemoryCreate,
 } from "../api/memory/memory-api";
+import { getVectorStore } from "../core/memory/vector-store";
 import {
   searchAllLogs,
   getRecentActivity,
@@ -3290,6 +3291,13 @@ const routes: Record<string, RouteHandler> = {
   },
   "GET /api/memory/search": async (_body, params) => {
     return await handleMemorySearch(params!.query || "");
+  },
+  "GET /api/memory/status": () => {
+    try {
+      return { success: true, ...getVectorStore().stats() };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "unavailable" };
+    }
   },
   "DELETE /api/memory/:file": async (body, params) => {
     const data = (body || {}) as { index?: number };

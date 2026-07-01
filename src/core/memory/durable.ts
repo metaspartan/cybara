@@ -3,6 +3,7 @@ import { readFileSync, existsSync, writeFileSync, appendFileSync } from "fs";
 import { join } from "path";
 import { memoryDir } from "../paths";
 import { getVectorStore } from "./vector-store";
+import { sanitizeMemoryContent } from "./sanitize";
 
 const MEMORY_FILE = "MEMORY.md";
 const MEMORY_PATH = join(memoryDir, MEMORY_FILE);
@@ -67,7 +68,8 @@ export async function saveDurableMemory(entry: Omit<DurableMemoryEntry, "timesta
     const timestamp = new Date().toISOString().replace("T", " ").split(".")[0];
     const sourceStr = entry.source ? ` from ${entry.source}` : "";
 
-    const entryText = `\n## ${entry.category} [${timestamp}]${sourceStr}\n\n${entry.content.trim()}\n`;
+    const safeContent = sanitizeMemoryContent(entry.content).trim();
+    const entryText = `\n## ${entry.category} [${timestamp}]${sourceStr}\n\n${safeContent}\n`;
 
     appendFileSync(MEMORY_PATH, entryText);
 
