@@ -72,7 +72,7 @@ jobs:
         run: bun run build
       - name: Cross-compile CLI binary
         run: |
-          bun build src/index.ts --compile --target=bun-${{ matrix.target }} --outfile=${{ matrix.artifact }} --external electron
+          bun build src/index.ts --compile --target=bun-${{ matrix.target }} --outfile=${{ matrix.artifact }} --external electron --external @aws-sdk/client-s3 --external onnxruntime-node --external onnxruntime-web --external @huggingface/transformers
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v4
         with:
@@ -161,7 +161,7 @@ jobs:
         run: bun run ui:build
       - name: Build Sidecar binary
         run: |
-          bun build src/index.ts --compile --target=${{ matrix.bun_target }} --outfile ${{ matrix.sidecar }} --external electron
+          bun build src/index.ts --compile --target=${{ matrix.bun_target }} --outfile ${{ matrix.sidecar }} --external electron --external @aws-sdk/client-s3 --external onnxruntime-node --external onnxruntime-web --external @huggingface/transformers
       - name: Prepare updater config
         env:
           CYBARA_TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
@@ -217,7 +217,13 @@ jobs:
       - name: Sync version metadata
         run: bun run version:sync
       - name: Run native-app unit tests
-        run: swift test --package-path apps/macos/Cybara
+        run: |
+          DEV_DIR=$(xcode-select -p 2>/dev/null || echo "")
+          if echo "$DEV_DIR" | grep -qi "Xcode.app"; then
+            swift test --package-path apps/macos/Cybara
+          else
+            echo "::warning::Full Xcode not selected ($DEV_DIR); XCTest unavailable, skipping native unit tests"
+          fi
       - name: Import signing certificate
         if: env.MACOS_CERTIFICATE != ''
         run: |
