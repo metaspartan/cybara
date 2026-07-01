@@ -4,7 +4,7 @@
  * Anthropic's prompt caching lets you mark cacheable content with a
  * `cache_control: { type: "ephemeral" }` breakpoint. Up to 4 breakpoints are
  * honored per request. Marking the stable system prompt + the most recent turn
- * ("system_and_last" / hermes-style "system_and_3") yields ~75% input-token
+ * ("system_and_last" / "system_and_3") yields ~75% input-token
  * savings on multi-turn sessions because the prefix up to the last breakpoint
  * is reused.
  *
@@ -84,7 +84,7 @@ function ensureBlockForm(message: AnthropicMessage): AnthropicMessage {
  * Strategy:
  * - "system_and_last": breakpoint on the last system block + the last message.
  * - "system_and_3": breakpoint on the last system block + the last 3 messages
- *   (capped so total breakpoints <= maxBreakpoints). This is the hermes default.
+ *   (capped so total breakpoints <= maxBreakpoints). This is the default.
  */
 export function applyAnthropicCacheControl(
   request: AnthropicCacheRequest,

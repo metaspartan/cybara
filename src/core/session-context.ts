@@ -330,7 +330,7 @@ export async function compactContext(
 }
 
 /**
- * Structured summary prompt mirroring openclaw's compaction quality contract.
+ * Structured summary prompt with a compaction quality contract.
  * Forces explicit sections + literal identifier preservation so the summary is
  * genuinely useful for continuing work, not a vague paragraph.
  */
@@ -375,7 +375,7 @@ async function generateContextSummary(
   }
 
   // If the older history is large, chunk it by token share, summarize each chunk,
-  // then merge the chunk summaries in a final pass (mirrors openclaw summarizeInStages).
+  // then merge the chunk summaries in a final pass (summarize-in-stages).
   // ~2k tokens per chunk keeps each summary call well within the aux model's window.
   const totalTokens = estimateMessagesTokens(messages);
   const chunkCount = totalTokens > 8000 ? Math.min(4, Math.ceil(totalTokens / 4000)) : 1;

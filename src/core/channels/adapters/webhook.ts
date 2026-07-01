@@ -6,9 +6,6 @@
  * HMAC-SHA256 signature (x-cybara-signature header, shared secret) and then
  * routed to the channel's bound agent as a message. Outbound sendMessage is a
  * no-op (webhook is inbound-only — replies go via other channels).
- *
- * Ports the generic-webhook pattern from openclaw `extensions/webhooks/` and
- * hermes `gateway/platforms/webhook.py`.
  */
 import type { ChannelAdapter, ToolCallInfo } from "../types";
 import { formatToolCallsPlain } from "../formatting";

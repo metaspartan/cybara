@@ -1,8 +1,7 @@
 /**
  * `todo` tool — a session-scoped task list with status discipline.
  *
- * Ports the consensus pattern from openclaw (`update_plan`) and hermes
- * (`todo`): a structured list of tasks, each pending/in_progress/completed,
+ * A structured list of tasks, each pending/in_progress/completed,
  * with a "max one in_progress at a time" rule. Surfacing a plan to the model
  * measurably improves multi-step task quality and reduces drift.
  *

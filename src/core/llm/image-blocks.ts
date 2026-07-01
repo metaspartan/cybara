@@ -8,7 +8,7 @@
  *   - OpenAI chat/completions:{ type: "image_url", image_url: { url } }
  *   - Google generative-ai:   { inlineData: { mimeType, data } }
  *
- * Patterns mirror the OpenClaw/Hermes adapters; kept pure for unit testing.
+ * Kept pure for unit testing.
  */
 
 export interface AgentImage {

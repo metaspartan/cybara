@@ -9,8 +9,8 @@
  *   - tool_describe  : fetch the full input schema for one tool (cheap to call before tool_call)
  *   - tool_call      : invoke a discovered tool by name
  *
- * This ports openclaw's tool-search pattern. The inventory combines cybara's
- * built-in tools, registered MCP server tools, and skill-exposed tools.
+ * A tool-search pattern whose inventory combines cybara's built-in tools,
+ * registered MCP server tools, and skill-exposed tools.
  */
 import { executeTool, toolSchemas } from "./index";
 import { getToolSchemasForLLM, type ToolContext } from "../index";

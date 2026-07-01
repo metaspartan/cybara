@@ -4,7 +4,7 @@
  * Extends cybara's in-process TS hook system (src/core/agent-hooks.ts) so users
  * can register shell scripts that run on lifecycle events (tool_before/after,
  * llm_request, message:sent). Configured via the cybara config file under
- * `hooks.shell`. This ports hermes's `shell_hooks.py`.
+ * `hooks.shell`.
  *
  * Contract: the script receives a JSON event on stdin and may return a decision
  * object on stdout. For `tool_before`, returning {"block": true, "reason": "..."}

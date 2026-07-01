@@ -7,7 +7,7 @@
  * user preferences and facts without polluting the main conversation loop or
  * its prompt cache.
  *
- * Ports hermes's `background_review`. Key properties:
+ * Key properties:
  *  - Non-blocking: failures are swallowed; never affects the main turn.
  *  - Throttled: at most once per `minIntervalMs` per session.
  *  - Isolated: uses sessions_spawn with a restricted toolset and a short prompt.

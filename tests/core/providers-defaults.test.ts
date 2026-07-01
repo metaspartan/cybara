@@ -9,7 +9,7 @@ import {
 } from "../../src/core/providers";
 
 describe("Provider model defaults and API-family parity", () => {
-  test("uses updated defaults for OpenClaw-parity providers", () => {
+  test("uses updated defaults for newly added providers", () => {
     expect(getDefaultModel("openai")).toBe("gpt-5.5");
     expect(getDefaultModel("anthropic")).toBe("claude-opus-4-8");
     expect(getDefaultModel("minimax")).toBe("MiniMax-M3");
@@ -37,7 +37,7 @@ describe("Provider model defaults and API-family parity", () => {
     expect(getDefaultModel("ollama-cloud")).toBe("glm-5.2:cloud");
   });
 
-  test("normalizes OpenClaw-style provider aliases", () => {
+  test("normalizes provider aliases", () => {
     expect(resolveProviderType("github-copilot")).toBe("github_copilot");
     expect(resolveProviderType("google-antigravity")).toBe("antigravity");
     expect(resolveProviderType("gemini-cli")).toBe("google-gemini-cli");
@@ -81,7 +81,7 @@ describe("Provider model defaults and API-family parity", () => {
     );
   });
 
-  test("includes newly added provider catalogs from OpenClaw parity set", () => {
+  test("includes newly added provider catalogs", () => {
     expect(providers["minimax-portal"].models.some((model) => model.id === "MiniMax-M2.5")).toBe(
       true
     );
@@ -96,7 +96,7 @@ describe("Provider model defaults and API-family parity", () => {
     ).toBe(true);
   });
 
-  test("configures google-gemini-cli for redirect OAuth like OpenClaw", () => {
+  test("configures google-gemini-cli for redirect OAuth", () => {
     expect(providers["google-gemini-cli"].authType).toBe("oauth");
     expect(providers["google-gemini-cli"].oauthFlow).toBe("redirect");
     expect(providers["google-gemini-cli"].oauthConfig).toBeDefined();
@@ -110,7 +110,7 @@ describe("Provider model defaults and API-family parity", () => {
     expect(providers["google-gemini-cli"].oauthConfig?.callbackPath).toBe("/oauth2callback");
   });
 
-  test("configures openai-codex for ChatGPT OAuth like OpenClaw", () => {
+  test("configures openai-codex for ChatGPT OAuth", () => {
     expect(providers["openai-codex"].authType).toBe("oauth");
     expect(providers["openai-codex"].oauthFlow).toBe("redirect");
     expect(providers["openai-codex"].oauthConfig).toBeDefined();

@@ -2,9 +2,9 @@
  * Email channel adapter (SMTP send + IMAP poll receive).
  *
  * Sends outbound email via raw SMTP (socket-level, no nodemailer dependency) and
- * polls an IMAP inbox for inbound mail. Ports hermes `plugins/platforms/email/`
- * (IMAP poll + allowed-senders) + openclaw pattern. This adapter handles SMTP
- * send directly; IMAP receive is polled by the manager via fetchInbox().
+ * polls an IMAP inbox for inbound mail (IMAP poll + allowed-senders). This
+ * adapter handles SMTP send directly; IMAP receive is polled by the manager
+ * via fetchInbox().
  */
 import { Socket } from "net";
 import type { ChannelAdapter, ToolCallInfo } from "../types";

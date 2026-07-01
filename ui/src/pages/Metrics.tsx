@@ -698,7 +698,7 @@ export function Metrics() {
               <Cpu className="w-5 h-5 text-indigo-400" />
               Cybara Signal
             </CardTitle>
-            <CardDescription>Autonomy and model behavior telemetry unique to Cybara</CardDescription>
+            <CardDescription>Autonomy and model behavior telemetry</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-3">

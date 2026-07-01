@@ -375,7 +375,7 @@ export class ClawdHubRegistry implements SkillRegistry {
             }));
             
             if (items.length === 0 && (!cursor || cursor === "")) {
-                const searchFallback = await this.search("openclaw", { limit });
+                const searchFallback = await this.search("agent", { limit });
                 return { items: searchFallback, nextCursor: null };
             }
 
@@ -564,7 +564,7 @@ export class SkillsShRegistry implements SkillRegistry {
             const res = await fetch(url);
             if (!res.ok) {
                 // If api/skills returns 404, we use the working search API as a fallback to list popular skills
-                return await this.search("openclaw", { limit });
+                return await this.search("agent", { limit });
             }
             const data = await res.json() as {
                 skills?: Array<{

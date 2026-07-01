@@ -26,7 +26,7 @@ describe("Chat markdown rendering behavior", () => {
     expect(source).toContain("return <DiffCodeBlock code={rawCode} />;");
   });
 
-  test("runs OpenClaw-style markdown preprocessing before render", () => {
+  test("runs markdown preprocessing before render", () => {
     const source = readChatSource();
 
     expect(source).toContain("preprocessChatMarkdown");

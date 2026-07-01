@@ -809,7 +809,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
       const tokensBefore = estimateMessagesTokens(session.messages);
 
       // Surface an explicit "compacting" lifecycle state so the UI shows an
-      // indicator instead of an apparent silent reset (mirrors hermes).
+      // indicator instead of an apparent silent reset.
       broadcastStatus({
         status: "compacting",
         sessionId: session.id,

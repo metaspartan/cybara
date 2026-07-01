@@ -1,13 +1,13 @@
 /**
  * computer_use — background desktop control via the external cua-driver.
  *
- * Ports hermes's computer_use: the agent can capture screenshots, click, type,
- * scroll, drag, and manage apps WITHOUT stealing the user's cursor (background
- * mode is a property of the cua-driver backend). The heavy platform work
- * (SkyLight SPIs on macOS, UIA on Windows, X11 on Linux) lives in the external
- * `cua-driver` binary; this module is a thin MCP-stdio client to it.
+ * The agent can capture screenshots, click, type, scroll, drag, and manage
+ * apps WITHOUT stealing the user's cursor (background mode is a property of the
+ * cua-driver backend). The heavy platform work (SkyLight SPIs on macOS, UIA on
+ * Windows, X11 on Linux) lives in the external `cua-driver` binary; this module
+ * is a thin MCP-stdio client to it.
  *
- * Safety hardening (mirrors hermes tools/computer_use/tool.py):
+ * Safety hardening:
  *  - Un-overridable hard-blocked key combos (logout/lock) and type patterns
  *    (curl|bash, sudo rm -rf, fork bombs) — see BLOCKED_KEY_COMBOS / BLOCKED_TYPE_PATTERNS.
  *  - Action validation before dispatch (rejects unknown actions).
@@ -23,8 +23,7 @@ import { mkdirSync, existsSync, readFileSync, statSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
-const CUA_DRIVER_CMD =
-  process.env.CYBARA_CUA_DRIVER_CMD || process.env.HERMES_CUA_DRIVER_CMD || "cua-driver";
+const CUA_DRIVER_CMD = process.env.CYBARA_CUA_DRIVER_CMD || "cua-driver";
 const REQUEST_TIMEOUT_MS = 30_000;
 
 let driverProcess: ChildProcess | null = null;
@@ -35,7 +34,7 @@ const pending = new Map<
 >();
 let initBuffer = "";
 
-// --- Safety: un-overridable hard blocks (mirror hermes tool.py:90-125) ---
+// --- Safety: un-overridable hard blocks ---
 
 /** Key combos that would log out / lock / shut down — never forwarded to the driver. */
 const BLOCKED_KEY_COMBOS: readonly RegExp[] = [
@@ -297,7 +296,7 @@ export function assertActionAllowed(action: ComputerUseAction, args: ComputerUse
 
 /**
  * Send a request to cua-driver, reconnecting once if the session died
- * (mirror hermes cua_backend.py:803-816 — exactly one retry, never loops).
+ * (exactly one retry, never loops).
  */
 async function sendWithReconnect(method: string, params: Record<string, unknown>): Promise<unknown> {
   try {

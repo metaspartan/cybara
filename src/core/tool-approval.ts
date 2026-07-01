@@ -7,8 +7,8 @@
  *  2. Suspends the tool call until the user responds (once/session/always/deny).
  *  3. Caches per-session allowlist so approved tools don't re-prompt.
  *
- * Ports the core of hermes's tools/approval.py (session state + allowlist) but
- * keeps it minimal: no LLM auto-approve (that's a follow-up).
+ * Session state + allowlist, kept minimal: no LLM auto-approve (that's a
+ * follow-up).
  */
 import { broadcastStatus } from "./status";
 import { config } from "./config";

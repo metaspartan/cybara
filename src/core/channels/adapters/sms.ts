@@ -3,8 +3,7 @@
  *
  * Sends outbound SMS via the Twilio REST API and accepts inbound SMS via Twilio
  * webhooks (POST /api/channels/:id/webhook with `From`/`Body`). Uses fetch only
- * — no Twilio SDK dependency. Ports hermes `plugins/platforms/sms/adapter.py`
- * and openclaw `extensions/sms/`.
+ * — no Twilio SDK dependency.
  */
 import type { ChannelAdapter, ToolCallInfo } from "../types";
 import { formatToolCallsPlain } from "../formatting";

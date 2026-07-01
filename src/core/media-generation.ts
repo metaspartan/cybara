@@ -1,7 +1,7 @@
 /**
  * Media-generation provider registry (image / video / music).
  *
- * A single swappable-provider pattern (ported from openclaw) for all three
+ * A single swappable-provider pattern for all three
  * media domains. Providers implement a small interface and register themselves;
  * the runtime dispatch resolves config/fallbacks and calls the provider. This
  * keeps the model-facing tools (`image_generate`, `video_generate`,

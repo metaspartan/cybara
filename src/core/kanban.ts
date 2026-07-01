@@ -7,8 +7,8 @@
  * `done`, then claims + spawns a worker agent for each ready task. Workers
  * self-report completion via the kanban_* tools.
  *
- * Ports the core kernel of hermes's kanban system (kanban_db.py +
- * recompute_ready + dispatch_once). The LLM-driven decompose/specify/swarm
+ * Core kanban kernel (recompute_ready + dispatch_once). The LLM-driven
+ * decompose/specify/swarm
  * helpers are intentionally omitted here (they're pure DB writes on top and
  * can be layered later) — this is the durable foundation.
  *

@@ -4,7 +4,7 @@
  * Transparently snapshots the workspace directory before file-mutating turns.
  * If the agent makes a bad edit, the user can roll back to the pre-turn state.
  * Uses a shadow-git store (separate from the user's own repo) with git-object
- * dedup. Ports the core of hermes's tools/checkpoint_manager.py.
+ * dedup.
  *
  * Snapshots are created in <workspace>/.cybara/checkpoints/ as git objects;
  * the workspace itself is never modified by this module (only read for diffs).

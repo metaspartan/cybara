@@ -5,7 +5,7 @@
  * Cybara ships a static models array per provider (providers.ts), but with 50
  * providers this drifts. This module queries the provider's /v1/models endpoint
  * (where supported) and merges new models, keeping the catalog current without
- * code changes. Ports the core idea of openclaw's model-catalog runtime refresh.
+ * code changes via a model-catalog runtime refresh.
  */
 import { providerManager } from "./providers";
 import { tables, type ProviderModel } from "./database";

@@ -101,7 +101,6 @@ export function RouterSettings() {
         </h2>
         <p className="text-sm text-gray-400 mt-1">
           Route requests across multiple providers with weighted selection, rate limits, and spend budgets.
-          A feature unique to Cybara — neither OpenClaw nor Hermes has this.
         </p>
       </div>
 

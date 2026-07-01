@@ -6,7 +6,7 @@
  *
  * Each provider reads its own env keys for `isConfigured` and implements a
  * single `generate(req)` method. Auth/env plumbing is intentionally separate
- * from the capability, matching the openclaw split.
+ * from the capability.
  */
 import {
   registerImageProvider,

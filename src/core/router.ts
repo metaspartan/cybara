@@ -1,10 +1,10 @@
 /**
  * Weighted model/provider router with budget + rate limiting + health checking.
  *
- * A cybara-exclusive feature. Routes requests across multiple providers with:
+ * Routes requests across multiple providers with:
  *  - Weighted / round-robin / lowest-cost / priority-tier selection
  *  - Rate limits (5h window, weekly) + spend limits (daily, weekly, global)
- *  - Built-in pricing data sourced from hermes usage_pricing.py (stamped)
+ *  - Built-in pricing data (stamped)
  *  - Circuit-breaker integration (auto-disable providers after N failures)
  *  - Rate-limit cooldown (temporarily skip providers that just 429'd)
  *  - Priority tiers (primary > secondary > fallback ordering)
@@ -12,8 +12,7 @@
  *  - DB-persisted usage records (survives restarts)
  *  - Input validation (rejects negative weights/prices/limits)
  *
- * Pricing data is cross-referenced from hermes's _OFFICIAL_DOCS_PRICING table
- * (agent/usage_pricing.py:86-545, stamped *-2026-05) and mid-2026 estimates.
+ * Pricing data stamped *-2026-05 with mid-2026 estimates.
  */
 
 import { config } from "./config";
@@ -21,7 +20,7 @@ import { providerManager } from "./providers";
 import { tables } from "./database";
 
 // ─── Built-in pricing data ($USD per 1M tokens) ─────────────────────────────
-// Sourced from hermes agent/usage_pricing.py (stamped) + estimates.
+// Stamped pricing data + estimates.
 // Format: [providerId, modelId, inputPerM, outputPerM, cacheReadPerM?, cacheWritePerM?]
 
 type PricingEntry = [provider: string, model: string, inputPerM: number, outputPerM: number, cacheReadPerM?: number, cacheWritePerM?: number];
@@ -37,7 +36,7 @@ const PROVIDER_PRICING: readonly PricingEntry[] = [
   ["openai", "gpt-5.2", 1.5, 6.0, 0.38],
   ["openai", "gpt-5.1", 2.0, 8.0, 0.5],
 
-  // Anthropic (hermes-stamped anthropic-pricing-2026-05)
+  // Anthropic (anthropic-pricing-2026-05)
   ["anthropic", "claude-opus-4-8", 5.0, 25.0, 0.5, 6.25],
   ["anthropic", "claude-opus-4-7", 5.0, 25.0, 0.5, 6.25],
   ["anthropic", "claude-opus-4-6", 5.0, 25.0, 0.5, 6.25],
@@ -57,7 +56,7 @@ const PROVIDER_PRICING: readonly PricingEntry[] = [
   ["xai", "grok-4", 3.0, 15.0],
   ["xai", "grok-4-fast", 0.2, 1.5],
 
-  // DeepSeek (hermes-stamped deepseek-pricing-2026-05)
+  // DeepSeek (deepseek-pricing-2026-05)
   ["deepseek", "deepseek-v4-pro", 1.74, 3.48, 0.0145],
   ["deepseek", "deepseek-v4-flash", 0.3, 0.6],
   ["deepseek", "deepseek-chat", 0.14, 0.28],
@@ -69,7 +68,7 @@ const PROVIDER_PRICING: readonly PricingEntry[] = [
   ["z.ai", "glm-5", 0.6, 0.6],
   ["z.ai", "glm-4.7", 0.6, 0.6],
 
-  // MiniMax (hermes-stamped minimax-pricing-2026-04 + est.)
+  // MiniMax (minimax-pricing-2026-04 + est.)
   ["minimax", "MiniMax-M3", 0.5, 2.0],
   ["minimax", "MiniMax-M2.7", 0.3, 1.2],
 

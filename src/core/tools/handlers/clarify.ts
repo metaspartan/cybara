@@ -1,7 +1,7 @@
 /**
  * `clarify` tool — ask the user a structured clarifying question.
  *
- * Ports hermes's `clarify` tool: the model can pause and request a decision
+ * The model can pause and request a decision
  * when a task is ambiguous, presenting up to 4 multiple-choice options OR an
  * open-ended question. This surfaces a clean prompt in the conversation rather
  * than the model guessing and proceeding on a wrong assumption.

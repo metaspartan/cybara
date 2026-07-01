@@ -745,7 +745,7 @@ describe("Providers API", () => {
     expect(String(badFormat.data.error)).toContain("Google API key format is invalid");
   });
 
-  test("POST /api/providers accepts OpenClaw-style provider aliases", async () => {
+  test("POST /api/providers accepts aliased provider ids", async () => {
     const created = await api("POST", "/api/providers", {
       provider: "opencode",
       name: `alias-opencode-${Date.now()}`,
