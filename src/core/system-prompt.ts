@@ -171,9 +171,11 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
 
   const lines: string[] = [];
 
-  // Identity section - use custom identity or agent name
+  // Identity section - use the configured identity, else the product brand.
+  // The agent's name is an internal config label, not the assistant's persona,
+  // so it is not used as the identity unless set as a custom identity name.
   const identity = systemPromptConfig?.identity as Record<string, string> | undefined;
-  const agentName = identity?.name || agentData?.name || "Agent";
+  const agentName = identity?.name || "Cybara";
   const emoji = identity?.emoji || "";
   const creature = identity?.creature || "AI assistant";
   const vibe = identity?.vibe || "";

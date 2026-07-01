@@ -3913,7 +3913,22 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/system-prompt/preview": async () => {
     const homeDir = process.env.HOME || homedir();
     const agents = agentManager.list();
-    const agent = agents.find((a) => a.type !== "subagent" && a.type !== "worker") || agents[0];
+    const candidates = agents.filter((a) => a.type !== "subagent" && a.type !== "worker");
+    const isAutostart = (a: (typeof candidates)[number]): boolean => {
+      try {
+        const cfg = typeof a.config === "string" ? JSON.parse(a.config) : a.config;
+        return Boolean((cfg as { autostart?: boolean } | null)?.autostart);
+      } catch {
+        return false;
+      }
+    };
+    // Preview the agent the user actually runs: the active (running) one, else
+    // the one set to auto-start, else the first configured agent.
+    const agent =
+      candidates.find((a) => (a as { status?: string }).status === "running") ||
+      candidates.find(isAutostart) ||
+      candidates[0] ||
+      agents[0];
     let rawTools: unknown = agent?.tools;
     if (typeof rawTools === "string") {
       try {
