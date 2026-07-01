@@ -22,14 +22,19 @@ describe("mobile: model config lives in agent details, not global settings", () 
 describe("mobile: memory method toggle", () => {
   const screen = read("screens/DashboardScreen.tsx");
 
-  test("renders a memory recall-method selector under its own Memory section", () => {
-    expect(screen).toContain('<SettingsSection title="Memory">');
+  test("recall-method selector lives on the Memory sub-page, not the settings tab", () => {
+    // Recall now belongs to the Memory detail page (MemoryRecallCard),
+    // rendered when the memory surface opens.
+    expect(screen).toContain("function MemoryRecallCard(");
     expect(screen).toContain('label="Recall method"');
+    expect(screen).toContain('surface === "memory" ? (');
+    expect(screen).toContain("<MemoryRecallCard");
     expect(screen).toMatch(/workspace_indexer:\s*\{\s*embeddingProvider:/);
     for (const provider of ["auto", "transformers_js", "openai", "gemini", "ollama"]) {
       expect(screen).toContain(`value: "${provider}"`);
     }
-    // No longer buried in the general platform-controls grab-bag.
+    // It is no longer a section on the settings tab.
+    expect(screen).not.toContain('<SettingsSection title="Memory">');
     expect(screen).not.toContain('label="Memory method"');
   });
 });

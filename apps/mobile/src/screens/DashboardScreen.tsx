@@ -1793,6 +1793,8 @@ function DetailContent({
   }
   return (
     <SurfaceDetailPanel
+      api={api}
+      accentColor={accentColor}
       profile={profile}
       summary={summary}
       surface={route.surface}
@@ -1800,6 +1802,7 @@ function DetailContent({
       loadMoreLogs={loadMoreLogs}
       loadingMoreLogs={loadingMoreLogs}
       logPageError={logPageError}
+      refreshSummary={refreshSummary}
     />
   );
 }
@@ -2285,7 +2288,80 @@ function UnicodeText({
   );
 }
 
+function MemoryRecallCard({
+  api,
+  summary,
+  accentColor,
+  refreshSummary,
+}: {
+  api: CybaraMobileApi;
+  summary: FeatureSummary | null;
+  accentColor: string;
+  refreshSummary: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const configAvailable = summary?.availability.config.ok === true;
+  const configRecord = (summary?.config ?? {}) as Record<string, unknown>;
+  const workspaceIndexer = (configRecord.workspace_indexer ?? {}) as Record<string, unknown>;
+  const memoryMethod =
+    typeof workspaceIndexer.embeddingProvider === "string"
+      ? (workspaceIndexer.embeddingProvider as string)
+      : "auto";
+
+  const save = async (value: string) => {
+    if (!configAvailable || saving) return;
+    setSaving(true);
+    try {
+      const result = await api.updateConfig({ workspace_indexer: { embeddingProvider: value } });
+      if (result.success === false) {
+        throw new Error("Config update failed");
+      }
+      await refreshSummary();
+    } catch (error) {
+      Alert.alert("Memory method setting failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+      <View style={styles.subsectionHeader}>
+        <Text style={styles.subsectionTitle}>Recall</Text>
+      </View>
+      {configAvailable ? (
+        <SettingSelector
+          disabled={saving}
+          label="Recall method"
+          onSelect={save}
+          options={[
+            { label: "Auto", value: "auto" },
+            { label: "Local", value: "transformers_js" },
+            { label: "OpenAI", value: "openai" },
+            { label: "Voyage", value: "voyage" },
+            { label: "Gemini", value: "gemini" },
+            { label: "Ollama", value: "ollama" },
+          ]}
+          selected={memoryMethod}
+          tone={accentColor}
+          variant="chips"
+        />
+      ) : (
+        <EmptyState
+          label="Memory settings unavailable"
+          detail={endpointErrorDetail(
+            summary?.availability.config,
+            "The gateway did not return config settings."
+          )}
+        />
+      )}
+    </GlassPanel>
+  );
+}
+
 function SurfaceDetailPanel({
+  api,
+  accentColor,
   profile,
   summary,
   surface,
@@ -2293,7 +2369,10 @@ function SurfaceDetailPanel({
   loadMoreLogs,
   loadingMoreLogs,
   logPageError,
+  refreshSummary,
 }: {
+  api: CybaraMobileApi;
+  accentColor: string;
   profile: GatewayProfile;
   summary: FeatureSummary | null;
   surface: MobileSurfaceKey;
@@ -2301,6 +2380,7 @@ function SurfaceDetailPanel({
   loadMoreLogs: () => void;
   loadingMoreLogs: boolean;
   logPageError: string | null;
+  refreshSummary: () => void;
 }) {
   const meta = surfaceMeta[surface];
   const rows = surfaceRows(surface, summary);
@@ -2316,7 +2396,16 @@ function SurfaceDetailPanel({
       : String(rows.length);
 
   return (
-    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+    <>
+      {surface === "memory" ? (
+        <MemoryRecallCard
+          api={api}
+          summary={summary}
+          accentColor={accentColor}
+          refreshSummary={refreshSummary}
+        />
+      ) : null}
+      <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
       <View style={styles.subsectionHeader}>
         <Text style={styles.subsectionTitle}>Live records</Text>
         <Text style={styles.counterText}>{counterLabel}</Text>
@@ -2379,7 +2468,8 @@ function SurfaceDetailPanel({
           )}
         </View>
       ) : null}
-    </GlassPanel>
+      </GlassPanel>
+    </>
   );
 }
 
@@ -3995,12 +4085,6 @@ function SettingsPanel({
   const terminalEnabled = summary?.config.terminal_enabled === true;
   const toolApprovalMode = readMobileToolApprovalMode(summary?.config);
   const reasoningEffort = readMobileReasoningEffort(summary?.config);
-  const configRecord = (summary?.config ?? {}) as Record<string, unknown>;
-  const workspaceIndexer = (configRecord.workspace_indexer ?? {}) as Record<string, unknown>;
-  const memoryMethod =
-    typeof workspaceIndexer.embeddingProvider === "string"
-      ? (workspaceIndexer.embeddingProvider as string)
-      : "auto";
   const dangerousPolicy = readMobileDangerousToolPolicy(summary?.config);
   const sandboxRuntime = readMobileSandboxRuntime(summary?.config);
   const routerStrategy = readMobileRouterStrategy(routerConfig?.strategy);
@@ -4523,40 +4607,6 @@ function SettingsPanel({
               detail={endpointErrorDetail(
                 summary?.availability.config,
                 "The gateway did not return editable settings."
-              )}
-            />
-          )}
-        </SettingsSection>
-        <SettingsSection title="Memory">
-          {configAvailable ? (
-            <SettingSelector
-              disabled={savingConfigKey !== null}
-              label="Recall method"
-              onSelect={(value) => {
-                void saveConfigPatch(
-                  "embeddingProvider",
-                  { workspace_indexer: { embeddingProvider: value } },
-                  "Memory method setting failed"
-                );
-              }}
-              options={[
-                { label: "Auto", value: "auto" },
-                { label: "Local", value: "transformers_js" },
-                { label: "OpenAI", value: "openai" },
-                { label: "Voyage", value: "voyage" },
-                { label: "Gemini", value: "gemini" },
-                { label: "Ollama", value: "ollama" },
-              ]}
-              selected={memoryMethod}
-              tone={accentColor}
-              variant="chips"
-            />
-          ) : (
-            <EmptyState
-              label="Memory settings unavailable"
-              detail={endpointErrorDetail(
-                summary?.availability.config,
-                "The gateway did not return config settings."
               )}
             />
           )}
@@ -5286,7 +5336,6 @@ const makeStyles = () => StyleSheet.create({
   },
   chatShell: {
     flex: 1,
-    marginHorizontal: MOBILE_MAIN_TAB_CHROME.outerHorizontalPadding,
     position: "relative",
   },
   chatScroll: {
@@ -5446,7 +5495,7 @@ const makeStyles = () => StyleSheet.create({
   },
   chatComposerContent: {
     justifyContent: "center",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
   },
   composerInput: {
