@@ -82,6 +82,8 @@ import {
   type FeatureSummary,
   type ProviderSummary,
   type RemoteItemSummary,
+  type RouterConfig,
+  type RouterStatus,
   type SessionDetailSummary,
   type SessionSummary,
   type SystemPromptFeatureKey,
@@ -109,6 +111,8 @@ import {
   MOBILE_LOGS_CHROME,
   MOBILE_MAIN_TAB_CHROME,
   MOBILE_METRICS_CHROME,
+  MOBILE_REASONING_EFFORT_OPTIONS,
+  MOBILE_ROUTER_STRATEGY_OPTIONS,
   MOBILE_SETTINGS_DETAIL_CHROME,
   MOBILE_SETTINGS_ROOT_CHROME,
   MOBILE_SETTINGS_SURFACES,
@@ -127,6 +131,8 @@ import {
   mobileThemeConfigPayload,
   recentSessionStateLabel,
   readMobileDangerousToolPolicy,
+  readMobileReasoningEffort,
+  readMobileRouterStrategy,
   readMobileSandboxRuntime,
   readMobileAccent,
   readMobileToolApprovalMode,
@@ -3878,6 +3884,11 @@ function SettingsPanel({
   const [savingConfigKey, setSavingConfigKey] = useState<string | null>(null);
   const [savingPromptKey, setSavingPromptKey] = useState<SystemPromptFeatureKey | null>(null);
   const [savingAgentAccess, setSavingAgentAccess] = useState(false);
+  const [routerConfig, setRouterConfig] = useState<RouterConfig | null>(null);
+  const [routerStatus, setRouterStatus] = useState<RouterStatus | null>(null);
+  const [routerError, setRouterError] = useState<string | null>(null);
+  const [routerDailyLimitDraft, setRouterDailyLimitDraft] = useState("");
+  const [savingRouterConfig, setSavingRouterConfig] = useState(false);
   const configAvailable = summary?.availability.config.ok === true;
   const systemPromptAvailable =
     summary?.availability.systemPrompt.ok === true && Boolean(summary.systemPrompt);
@@ -3896,11 +3907,47 @@ function SettingsPanel({
   const gatewayUptime = formatUptime(health?.uptime);
   const terminalEnabled = summary?.config.terminal_enabled === true;
   const toolApprovalMode = readMobileToolApprovalMode(summary?.config);
+  const reasoningEffort = readMobileReasoningEffort(summary?.config);
   const dangerousPolicy = readMobileDangerousToolPolicy(summary?.config);
   const sandboxRuntime = readMobileSandboxRuntime(summary?.config);
+  const routerStrategy = readMobileRouterStrategy(routerConfig?.strategy);
+  const routerRouteCount =
+    routerStatus?.routes.length ?? Object.keys(routerConfig?.routes ?? {}).length;
+  const routerAvailableCount = routerStatus?.routes.filter((route) => route.available).length;
+  const routerSpendToday =
+    typeof routerStatus?.globalSpendToday === "number" ? routerStatus.globalSpendToday : null;
   const walletStatus = objectRecord(summary?.walletStatus);
   const walletStatusAvailable = Boolean(walletStatus);
   const agentAccessEnabled = booleanSetting(walletStatus, "agentAccessEnabled");
+
+  useEffect(() => {
+    let mounted = true;
+    const loadRouterConfig = async () => {
+      try {
+        const [nextConfig, nextStatus] = await Promise.all([
+          api.routerConfig(),
+          api.routerStatus().catch(() => null),
+        ]);
+        if (!mounted) return;
+        setRouterConfig(nextConfig);
+        setRouterStatus(nextStatus);
+        setRouterDailyLimitDraft(
+          nextConfig.globalSpendLimitDaily && nextConfig.globalSpendLimitDaily > 0
+            ? String(nextConfig.globalSpendLimitDaily)
+            : ""
+        );
+        setRouterError(null);
+      } catch (error) {
+        if (mounted) {
+          setRouterError(error instanceof Error ? error.message : String(error));
+        }
+      }
+    };
+    void loadRouterConfig();
+    return () => {
+      mounted = false;
+    };
+  }, [api]);
 
   const saveConfigPatch = async (
     key: string,
@@ -3965,6 +4012,42 @@ function SettingsPanel({
     } finally {
       setSavingPromptKey(null);
     }
+  };
+
+  const saveRouterConfigPatch = async (patch: Partial<RouterConfig>) => {
+    if (!routerConfig || savingRouterConfig) return;
+    const previous = routerConfig;
+    const next = { ...routerConfig, ...patch };
+    setRouterConfig(next);
+    setSavingRouterConfig(true);
+    setRouterError(null);
+    try {
+      const result = await api.updateRouterConfig(next);
+      if (result.success === false) {
+        throw new Error("Router config update failed");
+      }
+      const nextStatus = await api.routerStatus().catch(() => null);
+      setRouterStatus(nextStatus);
+    } catch (error) {
+      setRouterConfig(previous);
+      setRouterError(error instanceof Error ? error.message : String(error));
+      Alert.alert("Router update failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setSavingRouterConfig(false);
+    }
+  };
+
+  const saveRouterDailyLimit = () => {
+    if (!routerConfig) return;
+    const trimmed = routerDailyLimitDraft.trim();
+    const numeric = trimmed.length > 0 ? Number(trimmed) : 0;
+    const nextLimit = Number.isFinite(numeric) && numeric > 0 ? numeric : undefined;
+    const currentLimit =
+      routerConfig.globalSpendLimitDaily && routerConfig.globalSpendLimitDaily > 0
+        ? routerConfig.globalSpendLimitDaily
+        : undefined;
+    if (nextLimit === currentLimit) return;
+    void saveRouterConfigPatch({ globalSpendLimitDaily: nextLimit });
   };
 
   const updateThemeAccent = async (next: AccentKey) => {
@@ -4108,6 +4191,26 @@ function SettingsPanel({
                     { label: "Ask Me", value: "ask" },
                   ]}
                   selected={toolApprovalMode}
+                  tone={accentColor}
+                  variant="segmented"
+                />
+              ) : null}
+              {MOBILE_SETTINGS_ROOT_CHROME.reasoningEffortSelector ? (
+                <SettingSelector
+                  disabled={savingConfigKey !== null}
+                  label="Reasoning effort"
+                  onSelect={(value) => {
+                    void saveConfigPatch(
+                      "reasoning_effort",
+                      { reasoning_effort: value },
+                      "Reasoning effort setting failed"
+                    );
+                  }}
+                  options={MOBILE_REASONING_EFFORT_OPTIONS.map((option) => ({
+                    label: option.label,
+                    value: option.value,
+                  }))}
+                  selected={reasoningEffort}
                   tone={accentColor}
                   variant="segmented"
                 />
@@ -4265,6 +4368,103 @@ function SettingsPanel({
             />
           )}
         </SettingsSection>
+        {MOBILE_SETTINGS_ROOT_CHROME.modelRouterControls ? (
+          <SettingsSection title="Model router">
+            {routerConfig ? (
+              <>
+                <SettingToggle
+                  busy={savingRouterConfig}
+                  detail="Route chats across configured model providers with fallback rules."
+                  disabled={savingRouterConfig}
+                  label="Model router"
+                  onPress={() => {
+                    void saveRouterConfigPatch({ enabled: !routerConfig.enabled });
+                  }}
+                  tone={accentColor}
+                  value={routerConfig.enabled}
+                />
+                <SettingSelector
+                  disabled={savingRouterConfig}
+                  label="Selection strategy"
+                  onSelect={(value) => {
+                    void saveRouterConfigPatch({ strategy: readMobileRouterStrategy(value) });
+                  }}
+                  options={MOBILE_ROUTER_STRATEGY_OPTIONS.map((option) => ({
+                    label: option.label,
+                    value: option.value,
+                  }))}
+                  selected={routerStrategy}
+                  tone={accentColor}
+                  variant="segmented"
+                />
+                <SettingToggle
+                  busy={savingRouterConfig}
+                  detail="Use any healthy provider when configured routes are unavailable."
+                  disabled={savingRouterConfig}
+                  label="Fallback providers"
+                  onPress={() => {
+                    void saveRouterConfigPatch({ fallbackToAny: !routerConfig.fallbackToAny });
+                  }}
+                  tone={accentColor}
+                  value={routerConfig.fallbackToAny}
+                />
+                <View style={styles.settingsSegmentField}>
+                  <Text style={styles.settingsFieldLabel}>Daily spend cap</Text>
+                  <TextInput
+                    editable={!savingRouterConfig}
+                    keyboardType="decimal-pad"
+                    onBlur={saveRouterDailyLimit}
+                    onChangeText={setRouterDailyLimitDraft}
+                    placeholder="No cap"
+                    placeholderTextColor={colors.textDim}
+                    returnKeyType="done"
+                    style={styles.settingsInput}
+                    value={routerDailyLimitDraft}
+                  />
+                  <Text style={styles.settingsFieldHelp}>USD per day. Leave blank for no cap.</Text>
+                </View>
+                <View style={styles.routerSummaryBox}>
+                  <View style={styles.routerSummaryRow}>
+                    <Text style={styles.routerSummaryLabel}>Providers in rotation</Text>
+                    <Text style={styles.routerSummaryValue}>{routerRouteCount}</Text>
+                  </View>
+                  <View style={styles.routerSummaryRow}>
+                    <Text style={styles.routerSummaryLabel}>Available now</Text>
+                    <Text style={styles.routerSummaryValue}>
+                      {routerAvailableCount === undefined ? "Unknown" : routerAvailableCount}
+                    </Text>
+                  </View>
+                  <View style={styles.routerSummaryRow}>
+                    <Text style={styles.routerSummaryLabel}>Strategy</Text>
+                    <Text style={styles.routerSummaryValue}>
+                      {routerStrategy.replace(/_/g, " ")}
+                    </Text>
+                  </View>
+                  <View style={styles.routerSummaryRow}>
+                    <Text style={styles.routerSummaryLabel}>Spent today</Text>
+                    <Text style={styles.routerSummaryValue}>
+                      {routerSpendToday === null ? "Unknown" : `$${routerSpendToday.toFixed(4)}`}
+                    </Text>
+                  </View>
+                  <View style={styles.routerSummaryRow}>
+                    <Text style={styles.routerSummaryLabel}>Daily cap</Text>
+                    <Text style={styles.routerSummaryValue}>
+                      {routerConfig.globalSpendLimitDaily && routerConfig.globalSpendLimitDaily > 0
+                        ? `$${routerConfig.globalSpendLimitDaily}`
+                        : "None"}
+                    </Text>
+                  </View>
+                </View>
+                {routerError ? <Text style={styles.errorText}>{routerError}</Text> : null}
+              </>
+            ) : (
+              <EmptyState
+                label="Router unavailable"
+                detail={routerError || "The gateway did not return model router settings."}
+              />
+            )}
+          </SettingsSection>
+        ) : null}
         <SettingsSection title="Agent prompt features">
           {systemPromptAvailable && summary?.systemPrompt ? (
             <>
@@ -5102,6 +5302,28 @@ const styles = StyleSheet.create({
     color: colors.textDim,
     fontSize: typography.tiny,
     lineHeight: 16,
+  },
+  routerSummaryBox: {
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  routerSummaryRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  routerSummaryLabel: {
+    color: colors.textMuted,
+    flex: 1,
+    fontSize: typography.label,
+  },
+  routerSummaryValue: {
+    color: colors.text,
+    fontSize: typography.label,
+    fontWeight: "800",
+    textTransform: "capitalize",
   },
   settingsChipRow: {
     flexDirection: "row",

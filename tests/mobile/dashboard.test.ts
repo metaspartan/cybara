@@ -15,6 +15,8 @@ import {
   MOBILE_NAV_CHROME,
   MOBILE_NEW_CHAT_CHROME,
   MOBILE_RECENT_ACTIVITY_CHROME,
+  MOBILE_REASONING_EFFORT_OPTIONS,
+  MOBILE_ROUTER_STRATEGY_OPTIONS,
   MOBILE_SETTINGS_DETAIL_CHROME,
   MOBILE_SETTINGS_ROOT_CHROME,
   MOBILE_SETTINGS_SURFACES,
@@ -35,6 +37,8 @@ import {
   mobileThemeConfigPayload,
   recentSessionStateLabel,
   readMobileDangerousToolPolicy,
+  readMobileReasoningEffort,
+  readMobileRouterStrategy,
   readMobileSandboxRuntime,
   readMobileAccent,
   readMobileToolApprovalMode,
@@ -336,6 +340,8 @@ describe("mobile dashboard model", () => {
   test("exposes root settings toggles that mirror web and Tauri settings", () => {
     expect(MOBILE_SETTINGS_ROOT_CHROME.terminalToggle).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.toolApprovalModeSelector).toBe(true);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.reasoningEffortSelector).toBe(true);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.modelRouterControls).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.dangerousToolPolicyToggle).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.sandboxRuntimeControls).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.systemPromptFeatureToggles).toBe(true);
@@ -346,8 +352,24 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_PLATFORM_SETTING_KEYS).toEqual([
       "terminal_enabled",
       "tool_approval_mode",
+      "reasoning_effort",
       "dangerous_tool_policy",
       "sandbox_runtime",
+      "router",
+    ]);
+    expect(MOBILE_REASONING_EFFORT_OPTIONS.map((option) => option.value)).toEqual([
+      "",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
+    expect(MOBILE_ROUTER_STRATEGY_OPTIONS.map((option) => option.value)).toEqual([
+      "weighted",
+      "round_robin",
+      "lowest_cost",
+      "priority",
     ]);
     expect(MOBILE_SYSTEM_PROMPT_FEATURE_KEYS).toEqual([
       "memoryEnabled",
@@ -367,6 +389,10 @@ describe("mobile dashboard model", () => {
     ).toEqual({ enabled: true, provider: "podman", network: "allow" });
     expect(readMobileToolApprovalMode({ tool_approval_mode: "ask" })).toBe("ask");
     expect(readMobileToolApprovalMode({ tool_approval_mode: "always_allow" })).toBe("always_allow");
+    expect(readMobileReasoningEffort({ reasoning_effort: "high" })).toBe("high");
+    expect(readMobileReasoningEffort({ reasoning_effort: "invalid" })).toBe("");
+    expect(readMobileRouterStrategy("lowest_cost")).toBe("lowest_cost");
+    expect(readMobileRouterStrategy("unknown")).toBe("weighted");
   });
 
   test("keeps recent activity chat rows tappable and honest about state", () => {

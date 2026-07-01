@@ -103,6 +103,96 @@ describe("mobile API client", () => {
     }
   });
 
+  test("loads and updates model router settings through gateway routes", async () => {
+    const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      const method = init?.method || "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      calls.push({ method, path: parsedUrl.pathname, body });
+
+      if (parsedUrl.pathname === "/api/router/config" && method === "GET") {
+        return Response.json({
+          enabled: true,
+          strategy: "lowest_cost",
+          fallbackToAny: false,
+          globalSpendLimitDaily: 25,
+          routes: {
+            openai: { weight: 80, enabled: true, model: "gpt-5.4" },
+          },
+        });
+      }
+      if (parsedUrl.pathname === "/api/router/status" && method === "GET") {
+        return Response.json({
+          enabled: true,
+          strategy: "lowest_cost",
+          globalSpendToday: 1.25,
+          routes: [
+            {
+              providerId: "openai",
+              weight: 80,
+              enabled: true,
+              available: true,
+              requestsIn5hWindow: 3,
+              requestsInWeekWindow: 12,
+              spendToday: 1.25,
+              spendThisWeek: 6.5,
+            },
+          ],
+        });
+      }
+      if (parsedUrl.pathname === "/api/router/config" && method === "PUT") {
+        return Response.json({ success: true });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const api = new CybaraMobileApi(profile);
+      await expect(api.routerConfig()).resolves.toEqual({
+        enabled: true,
+        strategy: "lowest_cost",
+        fallbackToAny: false,
+        globalSpendLimitDaily: 25,
+        routes: {
+          openai: { weight: 80, enabled: true, model: "gpt-5.4" },
+        },
+      });
+      await expect(api.routerStatus()).resolves.toMatchObject({
+        enabled: true,
+        strategy: "lowest_cost",
+        globalSpendToday: 1.25,
+        routes: [{ providerId: "openai", available: true, spendToday: 1.25 }],
+      });
+      await expect(
+        api.updateRouterConfig({
+          enabled: false,
+          strategy: "weighted",
+          fallbackToAny: true,
+          routes: {},
+        })
+      ).resolves.toEqual({ success: true });
+
+      expect(calls).toEqual([
+        { method: "GET", path: "/api/router/config", body: undefined },
+        { method: "GET", path: "/api/router/status", body: undefined },
+        {
+          method: "PUT",
+          path: "/api/router/config",
+          body: {
+            enabled: false,
+            strategy: "weighted",
+            fallbackToAny: true,
+            routes: {},
+          },
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("loads and updates system prompt settings through gateway routes", async () => {
     const calls: Array<{ method: string; path: string; body?: unknown }> = [];
     const originalFetch = globalThis.fetch;

@@ -161,6 +161,54 @@ export interface SystemPromptConfig {
 
 export type ToolApprovalDecision = "approve_once" | "approve_session" | "approve_always" | "deny";
 
+export type RouterStrategy = "weighted" | "round_robin" | "lowest_cost" | "priority";
+
+export interface RouterRouteConfig {
+  weight: number;
+  priority?: number;
+  limit5h?: number;
+  limitWeekly?: number;
+  spendLimitDaily?: number;
+  spendLimitWeekly?: number;
+  priceInputPerM?: number;
+  priceOutputPerM?: number;
+  enabled?: boolean;
+  model?: string;
+}
+
+export interface RouterConfig {
+  enabled: boolean;
+  strategy: RouterStrategy;
+  globalSpendLimitDaily?: number;
+  fallbackToAny: boolean;
+  routes: Record<string, RouterRouteConfig>;
+}
+
+export interface RouterRouteStatus {
+  providerId: string;
+  weight: number;
+  priority?: number;
+  enabled: boolean;
+  available: boolean;
+  reason?: string;
+  requestsIn5hWindow: number;
+  requestsInWeekWindow: number;
+  spendToday: number;
+  spendThisWeek: number;
+  inputPerM?: number;
+  outputPerM?: number;
+  circuitOpen?: boolean;
+  inCooldown?: boolean;
+}
+
+export interface RouterStatus {
+  enabled: boolean;
+  strategy: RouterStrategy | string;
+  globalSpendToday?: number;
+  globalSpendLimitDaily?: number;
+  routes: RouterRouteStatus[];
+}
+
 export type FeatureEndpointKey =
   | "health"
   | "sessions"
@@ -847,6 +895,63 @@ function normalizeProviderHealth(value: unknown): Map<string, Partial<ProviderSu
   return health;
 }
 
+function normalizeRouterStrategy(value: unknown): RouterStrategy {
+  return value === "round_robin" ||
+    value === "lowest_cost" ||
+    value === "priority" ||
+    value === "weighted"
+    ? value
+    : "weighted";
+}
+
+function normalizeRouterConfig(value: unknown): RouterConfig {
+  const record = asRecord(value);
+  return {
+    enabled: record?.enabled === true,
+    strategy: normalizeRouterStrategy(record?.strategy),
+    globalSpendLimitDaily: readNumber(record, [
+      "globalSpendLimitDaily",
+      "global_spend_limit_daily",
+    ]),
+    fallbackToAny: record?.fallbackToAny !== false && record?.fallback_to_any !== false,
+    routes: (asRecord(record?.routes) as Record<string, RouterRouteConfig> | null) ?? {},
+  };
+}
+
+function normalizeRouterStatus(value: unknown): RouterStatus {
+  const record = asRecord(value);
+  return {
+    enabled: record?.enabled === true,
+    strategy: normalizeRouterStrategy(record?.strategy),
+    globalSpendToday: readNumber(record, ["globalSpendToday", "global_spend_today"]),
+    globalSpendLimitDaily: readNumber(record, [
+      "globalSpendLimitDaily",
+      "global_spend_limit_daily",
+    ]),
+    routes: normalizeArrayResponse(record?.routes, ["routes", "items"]).map((route, index) => {
+      const routeRecord = asRecord(route);
+      const providerId =
+        readString(routeRecord, ["providerId", "provider_id", "id"]) || `route-${index + 1}`;
+      return {
+        providerId,
+        weight: readNumber(routeRecord, ["weight"]) ?? 0,
+        priority: readNumber(routeRecord, ["priority"]),
+        enabled: routeRecord?.enabled !== false,
+        available: routeRecord?.available === true,
+        reason: readString(routeRecord, ["reason"]),
+        requestsIn5hWindow: readNumber(routeRecord, ["requestsIn5hWindow"]) ?? 0,
+        requestsInWeekWindow: readNumber(routeRecord, ["requestsInWeekWindow"]) ?? 0,
+        spendToday: readNumber(routeRecord, ["spendToday"]) ?? 0,
+        spendThisWeek: readNumber(routeRecord, ["spendThisWeek"]) ?? 0,
+        inputPerM: readNumber(routeRecord, ["inputPerM", "priceInputPerM"]),
+        outputPerM: readNumber(routeRecord, ["outputPerM", "priceOutputPerM"]),
+        circuitOpen: routeRecord?.circuitOpen === true,
+        inCooldown: routeRecord?.inCooldown === true,
+      };
+    }),
+  };
+}
+
 export class CybaraMobileApi {
   private profile: GatewayProfile;
 
@@ -1113,6 +1218,21 @@ export class CybaraMobileApi {
       method: "PUT",
       body: JSON.stringify(data),
     });
+  }
+
+  async routerConfig(): Promise<RouterConfig> {
+    return normalizeRouterConfig(await this.request<unknown>("/api/router/config"));
+  }
+
+  updateRouterConfig(data: RouterConfig): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>("/api/router/config", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async routerStatus(): Promise<RouterStatus> {
+    return normalizeRouterStatus(await this.request<unknown>("/api/router/status"));
   }
 
   systemPrompt(): Promise<SystemPromptConfig> {

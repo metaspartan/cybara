@@ -102,9 +102,11 @@ export const MOBILE_SETTINGS_ROOT_CHROME = {
   destructiveDisconnectButton: true,
   gatewayConnectionDetails: true,
   gatewayRefreshButton: false,
+  modelRouterControls: true,
   nativeGroupedSections: true,
   nativeSegmentedControls: true,
   nativeSwitchControls: true,
+  reasoningEffortSelector: true,
   settingsEdgeToEdgeContent: true,
   sandboxRuntimeControls: true,
   systemPromptFeatureToggles: true,
@@ -116,9 +118,30 @@ export const MOBILE_SETTINGS_ROOT_CHROME = {
 export const MOBILE_PLATFORM_SETTING_KEYS = [
   "terminal_enabled",
   "tool_approval_mode",
+  "reasoning_effort",
   "dangerous_tool_policy",
   "sandbox_runtime",
+  "router",
 ] as const;
+
+export const MOBILE_REASONING_EFFORT_OPTIONS = [
+  { label: "Default", value: "" },
+  { label: "Minimal", value: "minimal" },
+  { label: "Low", value: "low" },
+  { label: "Medium", value: "medium" },
+  { label: "High", value: "high" },
+  { label: "Max", value: "xhigh" },
+] as const;
+
+export const MOBILE_ROUTER_STRATEGY_OPTIONS = [
+  { label: "Weighted", value: "weighted" },
+  { label: "Round Robin", value: "round_robin" },
+  { label: "Lowest Cost", value: "lowest_cost" },
+  { label: "Priority", value: "priority" },
+] as const;
+
+export type MobileReasoningEffort = (typeof MOBILE_REASONING_EFFORT_OPTIONS)[number]["value"];
+export type MobileRouterStrategy = (typeof MOBILE_ROUTER_STRATEGY_OPTIONS)[number]["value"];
 
 export const MOBILE_SYSTEM_PROMPT_FEATURE_KEYS = [
   "memoryEnabled",
@@ -419,6 +442,28 @@ function asObjectRecord(value: unknown): Record<string, unknown> | null {
 
 export function readMobileToolApprovalMode(config: Record<string, unknown> | undefined): string {
   return config?.tool_approval_mode === "ask" ? "ask" : "always_allow";
+}
+
+export function readMobileReasoningEffort(
+  config: Record<string, unknown> | undefined
+): MobileReasoningEffort {
+  const value = config?.reasoning_effort;
+  return value === "minimal" ||
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "xhigh"
+    ? value
+    : "";
+}
+
+export function readMobileRouterStrategy(value: unknown): MobileRouterStrategy {
+  return value === "round_robin" ||
+    value === "lowest_cost" ||
+    value === "priority" ||
+    value === "weighted"
+    ? value
+    : "weighted";
 }
 
 export function readMobileDangerousToolPolicy(config: Record<string, unknown> | undefined): {
