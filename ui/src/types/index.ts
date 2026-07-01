@@ -187,6 +187,7 @@ export interface AvailableChannel {
   description: string;
   icon?: string;
   fields?: ChannelField[];
+  webhook?: boolean;
 }
 
 export interface Session {

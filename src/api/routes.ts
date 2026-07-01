@@ -2907,6 +2907,7 @@ const routes: Record<string, RouteHandler> = {
       id: key,
       ...value,
       fields: value.fields,
+      webhook: !!channelManager.getAdapter(key as keyof typeof channels)?.handleWebhook,
     })),
   "POST /api/channels/telegram/setup": async (body) => {
     const data = body as { botToken?: string; webhookUrl?: string };

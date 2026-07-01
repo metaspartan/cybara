@@ -16,6 +16,7 @@ import {
   Key,
   QrCode,
   RefreshCw,
+  Copy,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -171,6 +172,16 @@ export function Channels() {
       channel.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       channel.type.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const webhookChannelTypes = new Set(
+    (availableChannels ?? []).filter((c) => c.webhook).map((c) => c.id)
+  );
+
+  const copyWebhookUrl = (channelId: string) => {
+    const url = `${window.location.origin}/api/channels/${channelId}/webhook`;
+    void navigator.clipboard?.writeText(url);
+    addToast("success", "Webhook URL copied");
+  };
 
   const handleCreate = async (formData: FormData) => {
     try {
@@ -366,6 +377,17 @@ export function Channels() {
                           </Badge>
                         </div>
                         <p className="text-sm text-gray-400 capitalize">{channel.type}</p>
+                        {webhookChannelTypes.has(channel.type) && (
+                          <button
+                            type="button"
+                            onClick={() => copyWebhookUrl(channel.id)}
+                            title="Copy inbound webhook URL to configure on the provider"
+                            className="mt-1 flex items-center gap-1 text-[11px] text-indigo-400 hover:text-indigo-300 font-mono truncate max-w-full"
+                          >
+                            <Copy className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">/api/channels/{channel.id}/webhook</span>
+                          </button>
+                        )}
                       </div>
                     </div>
 
