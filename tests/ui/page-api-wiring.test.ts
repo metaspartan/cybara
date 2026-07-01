@@ -53,7 +53,7 @@ describe("UI page API wiring", () => {
   test("Settings feature toggle uses settingsApi and restores state on update failure", () => {
     const source = readPage("Settings.tsx");
 
-    expect(source).toContain("import { settingsApi } from '@/lib/api';");
+    expect(source).toMatch(/import\s*\{[^}]*\bsettingsApi\b[^}]*\}\s*from\s*['"]@\/lib\/api['"]/);
     expect(source).toContain("settingsApi.getConfig()");
     expect(source).toContain("settingsApi.updateConfig({ terminal_enabled: enabled })");
     expect(source).toContain("settingsApi.updateConfig({ dangerous_tool_policy: next })");

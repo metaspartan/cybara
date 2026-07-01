@@ -36,6 +36,7 @@ import {
 import { applyProviderApiKey } from "./llm/auth-headers";
 import { recallRelevantMemory } from "./memory/recall";
 import { canRunToolsInParallel } from "./llm/parallel-tools";
+import { coalesceSystemMessages } from "./llm/system-messages";
 import {
   anthropicEndpointPath,
   anthropicRequestBase,
@@ -1385,7 +1386,7 @@ class AgentManager {
       return { response: this.generateFallbackResponse(messages) };
     }
 
-    const fullMessages = messages;
+    const fullMessages = await this.injectMemoryRecall(messages, agent);
 
     const supportsTools = true;
 
@@ -1486,6 +1487,21 @@ class AgentManager {
   hasDefaultAgent(): boolean {
     const all = this.list();
     return all.some((a) => a.type !== "subagent" && a.type !== "worker");
+  }
+
+  async autostartConfiguredAgents(): Promise<void> {
+    for (const agent of this.list()) {
+      if (agent.type === "subagent" || agent.type === "worker") continue;
+      const cfg = parseAgentConfig(agent.config, agent.id);
+      if (cfg.autostart === true && agent.status !== "running") {
+        try {
+          await this.start(agent.id);
+          console.log(`[Agents] Auto-started "${agent.name}" on boot`);
+        } catch (error) {
+          console.error(`[Agents] Auto-start failed for "${agent.name}":`, error);
+        }
+      }
+    }
   }
 
   async execute(
@@ -2232,6 +2248,7 @@ class AgentManager {
     thinking?: string;
     tool_calls?: AgentToolCallResult[];
   }> {
+    messages = coalesceSystemMessages(messages);
     const providerName =
       provider && typeof provider === "object" && "provider" in provider
         ? String((provider as { provider?: unknown }).provider || "")

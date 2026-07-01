@@ -1,0 +1,49 @@
+import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+const uiSrc = fileURLToPath(new URL("../../ui/src", import.meta.url));
+const read = (rel: string) => readFileSync(`${uiSrc}/${rel}`, "utf8");
+
+describe("onboarding boot: no shell flash + full-screen spinner", () => {
+  const app = read("App.tsx");
+
+  test("Sidebar renders inside SetupGuard (not before it), so the shell doesn't flash", () => {
+    // The wildcard route must wrap Sidebar within SetupGuard.
+    const guardBlock = app.slice(app.indexOf("<SetupGuard>"), app.indexOf("</SetupGuard>"));
+    expect(guardBlock).toContain("<Sidebar />");
+    // Sidebar must NOT be rendered as a sibling before SetupGuard in the route element.
+    expect(app).not.toMatch(/<Sidebar \/>\s*<SetupGuard>/);
+  });
+
+  test("the setup loading state is a full-screen centered spinner", () => {
+    expect(app).toContain("fixed inset-0");
+    expect(app).toContain("animate-spin");
+  });
+});
+
+describe("Agents: auto-start on boot + default model", () => {
+  const agents = read("pages/Agents.tsx");
+
+  test("auto-start toggle is wired end to end", () => {
+    expect(agents).toContain("onToggleAutostart");
+    expect(agents).toContain("handleToggleAutostart");
+    expect(agents).toContain("autostart: !current");
+    expect(agents).toContain("Auto-start on boot");
+  });
+
+  test("default model selector persists via config", () => {
+    expect(agents).toContain("settingsApi.updateConfig({ default_model:");
+    expect(agents).toContain("Default model");
+  });
+});
+
+describe("Settings: system prompt preview wiring", () => {
+  const settings = read("pages/Settings.tsx");
+
+  test("renders the preview from the API and has a graceful fallback", () => {
+    expect(settings).toContain("useSystemPromptPreview");
+    expect(settings).toContain("preview?.preview");
+    expect(settings).toContain("No preview available");
+  });
+});

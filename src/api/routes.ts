@@ -3909,9 +3909,16 @@ const routes: Record<string, RouteHandler> = {
     const homeDir = process.env.HOME || homedir();
     const agents = agentManager.list();
     const agent = agents.find((a) => a.type !== "subagent" && a.type !== "worker") || agents[0];
-    const rawTools = (agent?.tools ?? []) as Array<string | { name?: string }>;
-    const tools = rawTools
-      .map((t) => (typeof t === "string" ? t : t?.name))
+    let rawTools: unknown = agent?.tools;
+    if (typeof rawTools === "string") {
+      try {
+        rawTools = JSON.parse(rawTools);
+      } catch {
+        rawTools = [];
+      }
+    }
+    const tools = (Array.isArray(rawTools) ? rawTools : [])
+      .map((t) => (typeof t === "string" ? t : (t as { name?: string })?.name))
       .filter((n): n is string => typeof n === "string" && n.length > 0);
     const preview = buildSystemPrompt({
       modelDisplay: agent?.model || "unknown",

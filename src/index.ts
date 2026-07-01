@@ -762,3 +762,7 @@ async function initializeChannels() {
 initializeChannels().catch((error) => {
   console.error("[Channels] Failed to initialize:", error);
 });
+
+agentManager.autostartConfiguredAgents().catch((error) => {
+  console.error("[Agents] Auto-start pass failed:", error);
+});

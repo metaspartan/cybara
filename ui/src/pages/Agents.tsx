@@ -218,6 +218,34 @@ export function Agents() {
     }
   };
 
+  const handleToggleAutostart = async (agent: Agent) => {
+    const rawConfig =
+      typeof agent.config === "string"
+        ? (() => {
+            try {
+              return JSON.parse(agent.config as unknown as string) as Record<string, unknown>;
+            } catch {
+              return {};
+            }
+          })()
+        : agent.config || {};
+    const current = Boolean((rawConfig as { autostart?: boolean }).autostart);
+    try {
+      await updateAgent.mutateAsync({
+        id: agent.id,
+        data: { config: { ...rawConfig, autostart: !current } },
+      });
+      addToast(
+        "success",
+        !current
+          ? `"${agent.name}" will auto-start when Cybara boots`
+          : `Auto-start disabled for "${agent.name}"`
+      );
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Failed to update auto-start");
+    }
+  };
+
   const handleUpdate = async (formData: FormData) => {
     if (!editingAgent) return;
     try {
@@ -362,6 +390,7 @@ export function Agents() {
               onEdit={() => setEditingAgent(agent)}
               onDelete={() => setDeletingAgent(agent)}
               onChat={() => handleOpenChat(agent)}
+              onToggleAutostart={() => handleToggleAutostart(agent)}
             />
           ))}
         </div>
@@ -419,15 +448,28 @@ function AgentCard({
   onEdit,
   onDelete,
   onChat,
+  onToggleAutostart,
 }: {
   agent: Agent;
   onToggleStatus: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onChat: () => void;
+  onToggleAutostart: () => void;
 }) {
   const { data: state } = useAgentState(agent.status === "running" ? agent.id : null);
   const isRunning = agent.status === "running";
+  const rawConfig =
+    typeof agent.config === "string"
+      ? (() => {
+          try {
+            return JSON.parse(agent.config as unknown as string) as Record<string, unknown>;
+          } catch {
+            return {};
+          }
+        })()
+      : agent.config || {};
+  const autostart = Boolean((rawConfig as { autostart?: boolean }).autostart);
 
   return (
     <Card hover>
@@ -469,6 +511,21 @@ function AgentCard({
           <div className="flex justify-between">
             <span className="text-gray-500">Model</span>
             <span className="text-gray-300">{agent.model}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-gray-500">Auto-start on boot</span>
+            <button
+              type="button"
+              onClick={onToggleAutostart}
+              title="Start this agent automatically when Cybara boots"
+              className={`text-xs px-2 py-0.5 rounded transition-colors ${
+                autostart
+                  ? "bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30"
+                  : "bg-white/5 text-gray-400 hover:bg-white/10"
+              }`}
+            >
+              {autostart ? "On" : "Off"}
+            </button>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500">Created</span>

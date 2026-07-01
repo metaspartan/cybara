@@ -43,7 +43,7 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
 
   if (providersLoading || agentsLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-[#0a0a0f]">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0a0a0f]">
         <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
       </div>
     );
@@ -140,14 +140,12 @@ function App() {
           <Route path="/setup" element={<Setup />} />
 
           <Route path="*" element={
-            <>
+            <SetupGuard>
               <Sidebar />
-              <SetupGuard>
-                <MainContent>
-                  <AppRoutes />
-                </MainContent>
-              </SetupGuard>
-            </>
+              <MainContent>
+                <AppRoutes />
+              </MainContent>
+            </SetupGuard>
           } />
         </Routes>
         <ToastContainer />
