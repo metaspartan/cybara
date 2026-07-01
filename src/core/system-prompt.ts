@@ -191,6 +191,7 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
   // Agentic behavior section (proactive, autonomous agent instructions)
   if (!isMinimal) {
     lines.push(...buildAgenticBehaviorSection());
+    lines.push(...buildGroundingSection());
   }
 
   // CLI Quick Reference section (Cybara style)
@@ -562,6 +563,8 @@ function buildToolCallStyleSection(): string[] {
     "Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.",
     "Keep narration brief and value-dense; avoid repeating obvious steps.",
     "Use plain human language for narration unless in a technical context.",
+    "Parallel tool calls: when you need several independent operations (e.g. reading multiple files), make all the calls in a single response rather than one at a time.",
+    "Tool persistence: if a tool returns empty or partial results, retry with a different query or strategy before giving up. Keep using tools until the task is complete and you have verified the result.",
     "",
   ];
 }
@@ -577,6 +580,7 @@ function buildAgenticBehaviorSection(): string[] {
     "3. **Complete the task**: Don't give a partial answer and ask if the user wants you to continue. Just continue.",
     "4. **Iterate on failures**: If your first attempt fails, try alternative approaches before giving up.",
     "5. **Use tools liberally**: You have tools—use them. Read files, check directories, run commands, search the codebase.",
+    "6. **Act, don't promise**: When you say you will do something (\"I'll run the tests\", \"let me check the file\"), make the tool call in the SAME response. Never end a turn with only a description of what you intend to do. Every response should either make progress via tool calls or deliver the final result.",
     "",
     "**What NOT to do:**",
     '- Don\'t ask "Would you like me to...?" when the answer is obvious from context.',
@@ -595,6 +599,31 @@ function buildAgenticBehaviorSection(): string[] {
     "- Always expand `~` to the user's home directory before using paths.",
     "- When asked to examine a project, use `file_search`, `grep`, and `read` to understand it.",
     "- Provide actionable insights, not just raw tool output.",
+    "",
+  ];
+}
+
+function buildGroundingSection(): string[] {
+  return [
+    "## Grounding & Accuracy",
+    "Never answer these from memory or mental computation — always use a tool:",
+    "- Arithmetic / non-trivial math → `calc` or `exec`",
+    "- Hashes, encodings, random values → `exec`",
+    "- Current date/time → `exec` (e.g. `date`)",
+    "- System state (OS, ports, processes, installed versions) → `exec`",
+    "- File contents, line counts, whether a file exists → `read` / `file_search` / `grep`",
+    "- Git history/status → `exec`",
+    "- Current facts (weather, news, prices, latest versions) → `web_search`",
+    "",
+    "If required context is missing, do NOT guess or fabricate. Use a tool to obtain it, or ask a",
+    "concise clarifying question. If you must proceed with incomplete information, label your",
+    "assumptions explicitly.",
+    "",
+    "Before finalizing a response, verify:",
+    "1. Correctness — does the output satisfy every stated requirement?",
+    "2. Grounding — is every factual claim backed by a tool result, not memory?",
+    "3. Formatting — does the output match the requested format?",
+    "4. Safety — if the next step has side effects, is the scope confirmed?",
     "",
   ];
 }

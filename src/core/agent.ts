@@ -1864,7 +1864,7 @@ class AgentManager {
     }
 
     const maxIterationsRaw = modelParamIterations ?? configIterations ?? envIterations;
-    const maxIterations = maxIterationsRaw ? clampIterations(maxIterationsRaw) : undefined;
+    const maxIterations = maxIterationsRaw ? clampIterations(maxIterationsRaw) : 50;
 
     const maxRuntimeMsRaw =
       modelRuntimeMs ??
@@ -1879,7 +1879,7 @@ class AgentManager {
     return {
       maxIterations,
       maxRuntimeMs,
-      loopDetectionEnabled: loopDetectionEnabled ?? false,
+      loopDetectionEnabled: loopDetectionEnabled ?? true,
       warningThreshold,
       criticalThreshold,
       globalCircuitBreakerThreshold,

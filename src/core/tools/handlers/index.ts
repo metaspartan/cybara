@@ -83,6 +83,7 @@ import {
   getToolRequiredPermissions,
   isDangerousTool,
   handleTelegramMedia,
+  toolSchemas as toolSchemaRegistry,
   type ToolContext,
 } from "../index";
 import { createLogger } from "../../logger";
@@ -419,6 +420,21 @@ export async function executeTool(
 
   if (!handler) {
     throw new Error(`Unknown tool: ${name}`);
+  }
+
+  const schema = toolSchemaRegistry[name]?.input_schema as
+    | { required?: string[] }
+    | undefined;
+  if (Array.isArray(schema?.required) && schema.required.length > 0) {
+    const missing = schema.required.filter((key) => {
+      const value = (args as Record<string, unknown>)?.[key];
+      return value === undefined || value === null || (typeof value === "string" && value.trim() === "");
+    });
+    if (missing.length > 0) {
+      throw new Error(
+        `Validation error: Missing required argument${missing.length > 1 ? "s" : ""} for tool '${name}': ${missing.join(", ")}. Re-call with ${missing.length > 1 ? "these arguments" : "this argument"}.`
+      );
+    }
   }
 
   const requiredPermissions = getToolRequiredPermissions(name);
