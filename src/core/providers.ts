@@ -189,6 +189,14 @@ export const providers = {
     authType: "api_key",
     models: [
       {
+        id: "claude-sonnet-5",
+        name: "Claude Sonnet 5",
+        context: 1000000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
+      },
+      {
         id: "claude-fable-5",
         name: "Claude Fable 5",
         context: 1000000,
@@ -1521,6 +1529,14 @@ export const providers = {
         id: "anthropic/claude-opus-4-8",
         name: "Claude Opus 4.8",
         context: 1048576,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
+      },
+      {
+        id: "anthropic/claude-sonnet-5",
+        name: "Claude Sonnet 5",
+        context: 1000000,
         maxTokens: 128000,
         reasoning: true,
         input: ["text", "image"],
