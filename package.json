@@ -1,6 +1,6 @@
 {
   "name": "cybara",
-  "version": "1.0.516",
+  "version": "1.0.525",
   "description": "Open-source multi-agent AI platform — CLI, web UI, and desktop apps with 75 tools, 60 LLM providers, 26 channels, MCP host/client, media generation, and multi-agent orchestration.",
   "type": "module",
   "bin": {
