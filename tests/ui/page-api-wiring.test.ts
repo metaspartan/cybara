@@ -150,7 +150,7 @@ describe("UI page API wiring", () => {
   test("Memory page creates files through memoryApi helper", () => {
     const source = readPage("Memory.tsx");
 
-    expect(source).toContain("import { memoryApi } from '@/lib/api';");
+    expect(source).toMatch(/import\s*\{[^}]*\bmemoryApi\b[^}]*\}\s*from\s*['"]@\/lib\/api['"]/);
     expect(source).toContain("memoryApi.createFile(file, content)");
     expect(source).not.toContain("apiFetch('/api/memory'");
   });
