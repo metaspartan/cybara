@@ -20,6 +20,10 @@ const DYNAMIC_IMPORT_ALLOWLIST = new Set([
   // @huggingface/transformers) and runtime-resolved model paths. Eagerly
   // importing these would break the server-only runtime and pull native deps.
   "src/core/memory/embeddings.ts",
+  // Lazy-loads the optional Playwright runtime resolved from packaged resource
+  // dirs at runtime; static importing bundles a build-time path that breaks the
+  // compiled sidecar at startup.
+  "src/core/browser/playwright-loader.ts",
   // Lazy-load the Tauri/desktop bridge modules, which only exist when running
   // inside the desktop app (not the server/CLI runtime).
   "ui/src/lib/desktopHost.ts",

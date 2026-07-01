@@ -1,5 +1,22 @@
 import type { Browser, BrowserContext, Page, LaunchOptions } from "playwright";
 import { getChromium } from "./playwright-loader";
+import {
+  type BrowserProfile,
+  type BrowserProfileConfig,
+  createProfile,
+  getProfile,
+  listProfiles,
+  deleteProfile,
+  startBrowser,
+  stopBrowser,
+  createPage as createProfilePage,
+  getProfilePages,
+  closePage as closeProfilePage,
+  shutdownAll,
+  getPagesMap,
+  getBrowsersMap,
+} from "./profiles";
+import { randomUUID } from "crypto";
 
 async function launchWithFallback(
   chromium: Awaited<ReturnType<typeof getChromium>>,
@@ -34,23 +51,6 @@ async function launchWithFallback(
   }
   throw new Error(`Unable to launch a browser (${failures.join(" | ")})`);
 }
-import {
-  type BrowserProfile,
-  type BrowserProfileConfig,
-  createProfile,
-  getProfile,
-  listProfiles,
-  deleteProfile,
-  startBrowser,
-  stopBrowser,
-  createPage as createProfilePage,
-  getProfilePages,
-  closePage as closeProfilePage,
-  shutdownAll,
-  getPagesMap,
-  getBrowsersMap,
-} from "./profiles";
-import { randomUUID } from "crypto";
 
 interface AXNode {
   role?: string;
