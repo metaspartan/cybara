@@ -36,6 +36,7 @@ import {
   feishuAdapter,
   dingtalkAdapter,
   wecomAdapter,
+  homeAssistantAdapter,
   zulipAdapter,
   synologyAdapter,
   nextcloudAdapter,
@@ -724,6 +725,7 @@ msTeamsAdapter.setMessageHandler(createChannelChatHandler("msteams"));
 feishuAdapter.setMessageHandler(createChannelChatHandler("feishu"));
 dingtalkAdapter.setMessageHandler(createChannelChatHandler("dingtalk"));
 wecomAdapter.setMessageHandler(createChannelChatHandler("wecom"));
+homeAssistantAdapter.setMessageHandler(createChannelChatHandler("homeassistant"));
 zulipAdapter.setMessageHandler(createChannelChatHandler("zulip"));
 synologyAdapter.setMessageHandler(createChannelChatHandler("synology"));
 nextcloudAdapter.setMessageHandler(createChannelChatHandler("nextcloud"));

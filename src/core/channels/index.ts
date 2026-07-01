@@ -58,6 +58,7 @@ export { msTeamsAdapter, MsTeamsAdapter } from "./adapters/msteams";
 export { feishuAdapter, FeishuAdapter } from "./adapters/feishu";
 export { dingtalkAdapter, DingTalkAdapter } from "./adapters/dingtalk";
 export { wecomAdapter, WeComAdapter } from "./adapters/wecom";
+export { homeAssistantAdapter, HomeAssistantAdapter } from "./adapters/homeassistant";
 export { zulipAdapter, ZulipAdapter } from "./adapters/zulip";
 export { synologyAdapter, SynologyAdapter } from "./adapters/synology";
 export { nextcloudAdapter, NextcloudAdapter } from "./adapters/nextcloud";

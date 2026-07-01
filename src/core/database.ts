@@ -1098,6 +1098,7 @@ export interface Channel {
     | "feishu"
     | "dingtalk"
     | "wecom"
+    | "homeassistant"
     | "zulip"
     | "synology"
     | "nextcloud"

@@ -320,6 +320,18 @@ export const channels = {
       { name: "verify_token", label: "Inbound Verify Token", type: "password", required: false },
     ],
   },
+  homeassistant: {
+    name: "Home Assistant",
+    icon: "🏠",
+    description: "Trigger the agent from Home Assistant automations (webhook) and reply via a notify service",
+    color: "#41BDF5",
+    fields: [
+      { name: "verify_token", label: "Inbound Verify Token", type: "password", required: false },
+      { name: "ha_url", label: "Home Assistant URL (for replies)", type: "text", required: false },
+      { name: "ha_token", label: "Long-Lived Access Token", type: "password", required: false },
+      { name: "notify_service", label: "Notify Service (e.g. notify.mobile_app_x)", type: "text", required: false },
+    ],
+  },
   wecom: {
     name: "WeCom (Work Weixin)",
     icon: "🏢",
