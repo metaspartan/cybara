@@ -208,6 +208,58 @@ For each finding: state the concrete attack (input → impact), rate severity, a
 - Test the flow with the keyboard only and with a screen reader before calling it done.`,
   },
   {
+    name: "github",
+    description:
+      "Work effectively on GitHub: pull requests, issues, reviews, and releases via the gh CLI.",
+    instructions: `# GitHub workflow
+
+- Open PRs from a topic branch against the default branch; title says what changes, body says why + how to test.
+- Keep PRs small and single-purpose; a reviewer should hold the whole change in their head.
+- Link the issue the PR closes; use "Closes #123" so it auto-closes on merge.
+- For reviews: read the diff in context, run it if you can, and leave specific, actionable comments — approve, request changes, or comment, not vague praise.
+- Use the gh CLI for automation (gh pr create/view/checks, gh issue list, gh release create); never paste tokens into commands.
+- Before requesting review, ensure CI is green and the branch is up to date with main.`,
+  },
+  {
+    name: "prompt-engineering",
+    description:
+      "Write clear, reliable prompts for LLMs — structure, examples, and constraints that reduce failure.",
+    instructions: `# Prompt engineering
+
+- State the role, the task, and the exact output format up front; ambiguity is the main cause of bad output.
+- Give the constraints explicitly (length, tone, what to avoid) rather than hoping they're inferred.
+- Show 1-3 concrete examples of input→desired output when the format matters (few-shot beats description).
+- Put the most important instruction last or first, not buried in the middle.
+- Ask for reasoning before the answer when correctness matters; ask for the answer only when brevity matters.
+- Iterate on real failures: capture a bad output, identify which instruction it violated, and tighten that.`,
+  },
+  {
+    name: "note-taking",
+    description:
+      "Capture and organize knowledge so it's findable and reusable later.",
+    instructions: `# Note-taking
+
+- Write the note for your future self who has forgotten the context — include the why, not just the what.
+- One idea per note; give it a descriptive title you'd actually search for.
+- Link related notes explicitly so knowledge forms a graph, not a pile.
+- Prefer durable, evergreen phrasing over dated status updates.
+- Capture the source (URL, person, date) so a claim can be traced later.
+- Review and prune periodically — a note you never revisit and can't find is wasted effort.`,
+  },
+  {
+    name: "regex",
+    description:
+      "Write, read, and debug regular expressions safely — including avoiding catastrophic backtracking.",
+    instructions: `# Regular expressions
+
+- Anchor when you mean it (^ $ \\b); an unanchored pattern matches anywhere and causes surprises.
+- Prefer specific character classes over . ; escape regex metacharacters in literal text.
+- Beware catastrophic backtracking: nested quantifiers on overlapping classes ((a+)+, (.*)*) can hang on adversarial input — rewrite to be linear or bound the input.
+- Use non-capturing groups (?:...) unless you need the capture; name captures when there are several.
+- Test against the tricky cases: empty string, unicode, newlines (dotall vs multiline), and the input that should NOT match.
+- For anything structural (HTML, nested syntax), use a real parser, not a regex.`,
+  },
+  {
     name: "sql",
     description:
       "Write correct, efficient SQL and reason about query performance.",

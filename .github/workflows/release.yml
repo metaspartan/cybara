@@ -449,24 +449,71 @@ jobs:
         run: bun run version:sync
       - name: Prebuild iOS project
         run: cd apps/mobile && bunx expo prebuild --platform ios --no-install
-      - name: Build unsigned archive
-        run: |
-          set -euo pipefail
-          cd apps/mobile/ios
-          SCHEME="$(xcodebuild -list -json | bun -e 'const d=await Bun.stdin.json();console.log(d.project.schemes[0])')"
-          xcodebuild -workspace *.xcworkspace -scheme "$SCHEME" -configuration Release \
-            -sdk iphoneos -archivePath build/Cybara.xcarchive \
-            CODE_SIGNING_ALLOWED=NO archive
-      - name: Package .ipa
+      # Signed App Store archive → TestFlight when Apple signing secrets are
+      # present; otherwise an unsigned archive packaged as a .ipa for inspection.
+      - name: Build iOS artifact
         id: ipa
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
-          APP="$(find apps/mobile/ios/build/Cybara.xcarchive/Products/Applications -maxdepth 1 -name '*.app' | head -1)"
-          mkdir -p Payload && cp -R "$APP" Payload/
-          OUT="cybara-v${VERSION}-ios.ipa"
-          zip -qr "$OUT" Payload
+          cd apps/mobile/ios
+          SCHEME="$(xcodebuild -list -json | bun -e 'const d=await Bun.stdin.json();console.log(d.project.schemes[0])')"
+          if [ -n "${APPLE_CERTIFICATE_BASE64:-}" ] && [ -n "${APPLE_PROVISIONING_PROFILE_BASE64:-}" ]; then
+            KEYCHAIN="$RUNNER_TEMP/cybara.keychain-db"
+            KPW="$(openssl rand -hex 16)"
+            security create-keychain -p "$KPW" "$KEYCHAIN"
+            security set-keychain-settings -lut 3600 "$KEYCHAIN"
+            security unlock-keychain -p "$KPW" "$KEYCHAIN"
+            echo "$APPLE_CERTIFICATE_BASE64" | base64 -d > cert.p12
+            security import cert.p12 -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+            security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+            security set-key-partition-list -S apple-tool:,apple: -k "$KPW" "$KEYCHAIN" >/dev/null
+            mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+            echo "$APPLE_PROVISIONING_PROFILE_BASE64" | base64 -d > "$HOME/Library/MobileDevice/Provisioning Profiles/cybara.mobileprovision"
+            {
+              echo '<?xml version="1.0" encoding="UTF-8"?>'
+              echo '<plist version="1.0"><dict>'
+              echo '<key>method</key><string>app-store</string>'
+              echo "<key>teamID</key><string>${APPLE_TEAM_ID}</string>"
+              echo '<key>signingStyle</key><string>manual</string>'
+              echo '</dict></plist>'
+            } > exportOptions.plist
+            xcodebuild -workspace *.xcworkspace -scheme "$SCHEME" -configuration Release \
+              -sdk iphoneos -archivePath build/Cybara.xcarchive \
+              DEVELOPMENT_TEAM="$APPLE_TEAM_ID" archive
+            xcodebuild -exportArchive -archivePath build/Cybara.xcarchive \
+              -exportOptionsPlist exportOptions.plist -exportPath build/export
+            IPA="$(find build/export -name '*.ipa' | head -1)"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            xcodebuild -workspace *.xcworkspace -scheme "$SCHEME" -configuration Release \
+              -sdk iphoneos -archivePath build/Cybara.xcarchive CODE_SIGNING_ALLOWED=NO archive
+            APP="$(find build/Cybara.xcarchive/Products/Applications -maxdepth 1 -name '*.app' | head -1)"
+            mkdir -p Payload && cp -R "$APP" Payload/
+            IPA="unsigned.ipa"; zip -qr "$IPA" Payload
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+          OUT="$GITHUB_WORKSPACE/cybara-v${VERSION}-ios.ipa"
+          cp "$IPA" "$OUT"
           echo "path=$OUT" >> "$GITHUB_OUTPUT"
+      # Upload to TestFlight when an App Store Connect API key is configured.
+      - name: Upload to TestFlight
+        if: steps.ipa.outputs.signed == 'true' && env.ASC_KEY != ''
+        env:
+          ASC_KEY: ${{ secrets.ASC_API_KEY_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          echo "$ASC_KEY" | base64 -d > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          xcrun altool --upload-app -f "${{ steps.ipa.outputs.path }}" -t ios \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
       - name: Upload iOS artifact to release
         uses: softprops/action-gh-release@v2
         with:
