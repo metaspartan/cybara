@@ -33,6 +33,7 @@ import {
 } from "./channel";
 import { handleSummarization, handleVideoFrames, handleWeather } from "./skill";
 import { handleHomeAssistant } from "./home-assistant";
+import { handleMixtureOfAgents } from "./mixture-of-agents";
 import { handleTodo } from "./todo";
 import { handleClarify } from "./clarify";
 import { handleToolSearch, handleToolDescribe, handleToolCall } from "./tool-discovery";
@@ -218,6 +219,7 @@ const toolHandlers: Record<
   video_frames: handleVideoFrames,
   weather: handleWeather,
   home_assistant: handleHomeAssistant,
+  mixture_of_agents: handleMixtureOfAgents,
 
   todo: handleTodo,
   clarify: handleClarify,

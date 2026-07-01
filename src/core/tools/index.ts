@@ -1622,6 +1622,33 @@ ACTIONS:
     },
     permissions: [],
   },
+  mixture_of_agents: {
+    name: "mixture_of_agents",
+    description:
+      "Run a prompt through several configured agents in parallel, then synthesize their responses into one best answer (mixture-of-agents). Useful for hard questions where combining multiple models improves quality.",
+    category: "skill",
+    input_schema: {
+      type: "object",
+      properties: {
+        prompt: { type: "string", description: "The question or task to send to all agents" },
+        agent_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "Agent ids to use as proposers (default: first few configured agents)",
+        },
+        aggregator_agent_id: {
+          type: "string",
+          description: "Agent id to synthesize the final answer (default: first proposer)",
+        },
+        max_agents: {
+          type: "number",
+          description: "Max proposer agents when agent_ids is not given (default 4)",
+        },
+      },
+      required: ["prompt"],
+    },
+    permissions: [],
+  },
   video_frames: {
     name: "video_frames",
     description: "Extract frames from video files",
