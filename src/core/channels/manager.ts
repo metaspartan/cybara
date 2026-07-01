@@ -18,6 +18,7 @@ import { twitchAdapter } from "./adapters/twitch";
 import { lineAdapter } from "./adapters/line";
 import { googleChatAdapter } from "./adapters/googlechat";
 import { msTeamsAdapter } from "./adapters/msteams";
+import { feishuAdapter } from "./adapters/feishu";
 import { synologyAdapter } from "./adapters/synology";
 import { nextcloudAdapter } from "./adapters/nextcloud";
 import { zaloAdapter } from "./adapters/zalo";
@@ -83,6 +84,7 @@ export class ChannelManager {
     this.registerAdapter("line", lineAdapter);
     this.registerAdapter("googlechat", googleChatAdapter);
     this.registerAdapter("msteams", msTeamsAdapter);
+    this.registerAdapter("feishu", feishuAdapter);
     this.registerAdapter("synology", synologyAdapter);
     this.registerAdapter("nextcloud", nextcloudAdapter);
     this.registerAdapter("zalo", zaloAdapter);

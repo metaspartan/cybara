@@ -55,6 +55,7 @@ export { twitchAdapter, TwitchAdapter } from "./adapters/twitch";
 export { lineAdapter, LineAdapter } from "./adapters/line";
 export { googleChatAdapter, GoogleChatAdapter } from "./adapters/googlechat";
 export { msTeamsAdapter, MsTeamsAdapter } from "./adapters/msteams";
+export { feishuAdapter, FeishuAdapter } from "./adapters/feishu";
 export { synologyAdapter, SynologyAdapter } from "./adapters/synology";
 export { nextcloudAdapter, NextcloudAdapter } from "./adapters/nextcloud";
 export { zaloAdapter, ZaloAdapter } from "./adapters/zalo";

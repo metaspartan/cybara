@@ -33,6 +33,7 @@ import {
   lineAdapter,
   googleChatAdapter,
   msTeamsAdapter,
+  feishuAdapter,
   synologyAdapter,
   nextcloudAdapter,
   zaloAdapter,
@@ -710,6 +711,7 @@ twitchAdapter.setMessageHandler(createChannelChatHandler("twitch"));
 lineAdapter.setMessageHandler(createChannelChatHandler("line"));
 googleChatAdapter.setMessageHandler(createChannelChatHandler("googlechat"));
 msTeamsAdapter.setMessageHandler(createChannelChatHandler("msteams"));
+feishuAdapter.setMessageHandler(createChannelChatHandler("feishu"));
 synologyAdapter.setMessageHandler(createChannelChatHandler("synology"));
 nextcloudAdapter.setMessageHandler(createChannelChatHandler("nextcloud"));
 zaloAdapter.setMessageHandler(createChannelChatHandler("zalo"));

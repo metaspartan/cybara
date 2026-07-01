@@ -320,6 +320,19 @@ export const channels = {
       { name: "verify_token", label: "Inbound Verify Token", type: "password", required: false },
     ],
   },
+  feishu: {
+    name: "Feishu / Lark",
+    icon: "🐦",
+    description: "Connect to Feishu / Lark via event subscriptions (bot app)",
+    color: "#00D6B9",
+    fields: [
+      { name: "app_id", label: "App ID", type: "password", required: true },
+      { name: "app_secret", label: "App Secret", type: "password", required: true },
+      { name: "encrypt_key", label: "Encrypt Key", type: "password", required: false },
+      { name: "verification_token", label: "Verification Token", type: "password", required: false },
+      { name: "domain", label: "Domain (open.feishu.cn or open.larksuite.com)", type: "text", required: false },
+    ],
+  },
   msteams: {
     name: "Microsoft Teams",
     icon: "🟦",
