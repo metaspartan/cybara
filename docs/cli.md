@@ -225,6 +225,31 @@ cybara lsp uninstall <lang> # Uninstall language server
 
 Supported languages: `rust`, `go`, `python`, `cpp`, `java`, `csharp`, `ruby`, `php`, `lua`, `zig`, `kotlin`, `swift`
 
+### Model Router
+
+```bash
+cybara router status                 # Show router status + per-route availability
+cybara router enable                 # Enable the router
+cybara router disable                # Disable the router
+cybara router strategy <name>        # weighted | round_robin | lowest_cost | priority
+cybara router set <id> <flags>       # Configure a route
+                                     #   weight=70 limit5h=100 limitWeekly=500
+                                     #   spendDaily=5 spendWeekly=20 priceIn=10 priceOut=30 enabled=true
+```
+
+### ACP (Agent Client Protocol)
+
+```bash
+cybara acp                 # Serve the default agent to an ACP client (Zed, etc.) over stdio
+cybara acp --agent <id>    # Serve a specific agent
+```
+
+### Reasoning Effort
+
+```bash
+cybara config set reasoning_effort <minimal|low|medium|high|xhigh>   # default reasoning effort
+```
+
 ### Configuration
 
 ```bash

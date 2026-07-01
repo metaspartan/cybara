@@ -126,13 +126,13 @@ Modular capabilities loaded from SKILL.md files with eligibility gating (OS, env
 71 functions the agent can invoke: file I/O, browser, exec, web search, memory, artifacts, data processing, LSP, scheduling, media generation, planning, dynamic tool discovery, wallet operations, and more.
 
 ### Channels
-Communication interfaces: Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Web, Webhook, SMS, and Email.
+Communication interfaces across 26 platforms: Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Matrix, Mattermost, Microsoft Teams, Feishu/Lark, DingTalk, WeCom, Zulip, LINE, Google Chat, IRC, ntfy, Twitch, Nextcloud, Synology, Zalo, Home Assistant, Web, Webhook, SMS, and Email.
 
 ### Memory
 Vector store with hybrid BM25 search, durable MEMORY.md, and daily logs.
 
 ### Providers
-50 built-in provider integrations with dynamic model discovery, covering frontier APIs, OAuth-backed coding providers, local runtimes, gateway/proxy providers, and AWS Bedrock.
+60 built-in provider integrations with dynamic model discovery, covering frontier APIs, OAuth-backed coding providers, local runtimes, gateway/proxy providers, and AWS Bedrock.
 
 ### Security
 API key authentication, rate limiting, SSRF protection, path sandboxing. See [Security](./security.md).

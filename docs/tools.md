@@ -607,3 +607,19 @@ Add a parent→child dependency edge. The child becomes `ready` only after the p
 {"name": "kanban_link", "args": { "parentId": "task_a", "childId": "task_b" }}
 ```
 
+## Home Automation
+
+### home_assistant
+List entity states, read one entity, or call a service on a Home Assistant instance. Requires `HOME_ASSISTANT_URL` and `HOME_ASSISTANT_TOKEN` (a long-lived access token).
+```json
+{"name": "home_assistant", "args": { "action": "call_service", "service": "light.turn_on", "entity_id": "light.kitchen", "data": { "brightness_pct": 60 } }}
+```
+
+## Multi-Model
+
+### mixture_of_agents
+Run a prompt through several configured agents in parallel, then synthesize their candidate responses into one best answer via an aggregator agent.
+```json
+{"name": "mixture_of_agents", "args": { "prompt": "Design a rate limiter", "max_agents": 3 }}
+```
+

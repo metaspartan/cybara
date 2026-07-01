@@ -1,6 +1,6 @@
 # Cybara AI Providers
 
-Cybara currently ships with **50 provider integrations** (see `src/core/providers.ts`), with the
+Cybara currently ships with **60 provider integrations** (see `src/core/providers.ts`), with the
 newest frontier models: GPT-5.5, Claude Opus 4.8, Gemini 3.5 Flash, GLM-5.2, MiniMax M3, DeepSeek
 V4, Kimi K2.6, Grok 4.3, Nemotron 3, Qwen 3.7 Max, and MiMo V2.5 Pro.
 
@@ -84,6 +84,10 @@ curl -X POST http://localhost:4269/api/providers \
 | `cloudflare-ai-gateway` | Cloudflare AI Gateway | API key |
 | `github_copilot` | GitHub Copilot | Token |
 | `bedrock` | AWS Bedrock | AWS credentials |
+| `azure` | Azure OpenAI (v1 API) | API key (`api-key` header) |
+| `azure_foundry` | Azure AI Foundry | API key (`api-key` header) |
+| `anthropic_vertex` | Anthropic on Vertex AI | GCP OAuth token |
+| `google_vertex` | Google Gemini on Vertex AI | GCP OAuth token |
 | `groq` | Groq | API key |
 | `openrouter` | OpenRouter | API key |
 | `opencode_zen` | OpenCode Zen | API key |

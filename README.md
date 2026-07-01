@@ -10,7 +10,7 @@
 
 <p align="center">
   Cybara is a production-ready agent operating system that combines a powerful multi-agent runtime with a clean web UI, production-ready CLI, encrypted local wallet controls,
-  and a comprehensive tool layer. Deploy autonomous agents that can code, execute browser automation, manage communications across 7 channels, and handle crypto operations—with full operator control.
+  and a comprehensive tool layer. Deploy autonomous agents that can code, execute browser automation, manage communications across 26 channels, and handle crypto operations—with full operator control.
 </p>
 
 <p align="center">
@@ -20,9 +20,9 @@
   <img src="https://img.shields.io/badge/runtime-Bun-f9f1e1?logo=bun" alt="Bun" />
   <img src="https://img.shields.io/badge/language-TypeScript-blue?logo=typescript" alt="TypeScript" />
   <img src="https://img.shields.io/badge/ui-React_19-61dafb?logo=react" alt="React" />
-  <img src="https://img.shields.io/badge/tools-71-green" alt="71 Tools" />
-  <img src="https://img.shields.io/badge/providers-50-purple" alt="50 Providers" />
-  <img src="https://img.shields.io/badge/channels-10-orange" alt="10 Channels" />
+  <img src="https://img.shields.io/badge/tools-75-green" alt="75 Tools" />
+  <img src="https://img.shields.io/badge/providers-60-purple" alt="60 Providers" />
+  <img src="https://img.shields.io/badge/channels-26-orange" alt="26 Channels" />
   <img src="https://img.shields.io/badge/skills-60+-teal" alt="60+ Skills" />
   <img src="https://img.shields.io/badge/desktop-Tauri-orange?logo=tauri" alt="Tauri Desktop" />
   <img src="https://img.shields.io/badge/mobile-React_Native-61dafb?logo=react" alt="React Native Mobile" />
@@ -37,7 +37,7 @@ Cybara is an agent operating system for developers and operators who want one st
 - AI chat and multi-agent orchestration
 - local and remote tool execution
 - browser and API automation
-- secure messaging channels (Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Web, plus Webhook, SMS, and Email)
+- secure messaging channels across 26 platforms (Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Matrix, Mattermost, Microsoft Teams, Feishu/Lark, DingTalk, WeCom, Zulip, LINE, Google Chat, IRC, ntfy, Twitch, Nextcloud, Synology, Zalo, Home Assistant, Web, Webhook, SMS, and Email)
 - encrypted wallet operations across ETH/BTC/SOL with policy controls
 
 If you need an agent platform that can plan, execute, verify, and report with strong operator control, Cybara is built for that.
@@ -46,9 +46,11 @@ If you need an agent platform that can plan, execute, verify, and report with st
 
 ## Capability Snapshot
 
-- 71 built-in tools (`src/core/tools/index.ts`)
-- 50 built-in provider integrations with dynamic model discovery (`src/core/providers.ts`)
-- 10 channel adapters (`src/core/channels/adapters`)
+- 75 built-in tools (`src/core/tools/index.ts`)
+- 60 built-in provider integrations with dynamic model discovery (`src/core/providers.ts`), including Azure OpenAI, Azure AI Foundry, Anthropic on Vertex AI, and Google Gemini on Vertex AI
+- 26 channel adapters (`src/core/channels/adapters`)
+- Model provider router with weighted / round-robin / lowest-cost / priority strategies, rate limits, and spend caps
+- ACP (Agent Client Protocol) server so editors like Zed can drive an agent (`cybara acp`)
 - 21 production UI page components (`ui/src/pages/*.tsx`)
 - 60+ bundled skills (`skills/`)
 - Anthropic prompt caching, multi-key credential pools + rate-limit rotation, and a centralized LLM error taxonomy
@@ -153,7 +155,7 @@ Then open `http://localhost:4269`.
 - Session-aware execution with persistence and recovery
 - Agent tool allowlist and permission enforcement support
 
-### Tooling Layer (71 Tools)
+### Tooling Layer (75 Tools)
 
 Tool categories currently shipped:
 
@@ -225,7 +227,7 @@ DM policy modes:
 - Tauri desktop app with sidecar server wiring and in-app signed update checks via GitHub Releases
 - Native SwiftUI macOS app in `apps/macos/Cybara` that reuses the same local Cybara sidecar contract and can be packaged into a release-ready `.app` bundle
 
-### Provider Layer (50 Built-In Integrations)
+### Provider Layer (60 Built-In Integrations)
 
 Includes the newest frontier models: **GPT-5.5 / GPT-5.4 / GPT-5.3 Codex**, **Claude Opus 4.8 / Fable 5 / Sonnet 4.6**, **Gemini 3.5 Flash / 3.1 Pro**, **GLM-5.2 / GLM-5.1**, **MiniMax M3**, **DeepSeek V4 Pro/Flash**, **Kimi K2.6 / K2.7**, **Grok 4.3 / 4.20**, **Nemotron 3 Ultra**, **Qwen 3.7 Max**, and **MiMo V2.5 Pro**.
 
@@ -240,7 +242,7 @@ See provider details: [docs/providers.md](docs/providers.md)
 Cybara both **consumes** external MCP servers (extending agent capabilities) and **exposes itself** as an MCP server so other clients can call cybara's tools:
 
 - **Consume** (client): register servers in Settings → MCP or via the CLI; tools are automatically exposed to agents
-- **Host** (server): run `cybara mcp serve` to expose all 71 built-in tools over stdio JSON-RPC (compatible with Claude Desktop, IDEs, and other agents)
+- **Host** (server): run `cybara mcp serve` to expose all 75 built-in tools over stdio JSON-RPC (compatible with Claude Desktop, IDEs, and other agents)
 
 MCP server management and registry integration:
 

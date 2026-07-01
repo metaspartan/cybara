@@ -12,6 +12,22 @@ Connect agents to multiple messaging platforms.
 | WhatsApp | ✅ | `whatsapp-web.js` multi-device, QR auth, self-message mode |
 | Signal | ✅ | via signal-cli |
 | iMessage | ✅ | via BlueBubbles |
+| Matrix | ✅ | Decentralized/federated messaging |
+| Mattermost | ✅ | Self-hosted team chat |
+| Microsoft Teams | ✅ | Outgoing webhook (HMAC) + synchronous replies |
+| Feishu / Lark | ✅ | Event subscriptions, AES event decryption, tenant-token replies |
+| DingTalk | ✅ | Enterprise robot webhook (HMAC), session-webhook replies |
+| WeCom (Work Weixin) | ✅ | Self-built app callback (WXBizMsgCrypt AES), message-send replies |
+| Zulip | ✅ | Outgoing webhook bot, synchronous replies |
+| LINE | ✅ | Messaging API (signature-verified) |
+| Google Chat | ✅ | Incoming webhook + app events |
+| IRC | ✅ | Classic IRC networks |
+| ntfy | ✅ | Push notifications |
+| Twitch | ✅ | Chat integration |
+| Nextcloud | ✅ | Nextcloud Talk |
+| Synology | ✅ | Synology Chat outgoing webhook |
+| Zalo | ✅ | Zalo Official Account |
+| Home Assistant | ✅ | Automation webhook trigger + notify-service replies |
 | Web | ✅ | Built-in chat UI |
 | Webhook | ✅ | Inbound signed triggers (HMAC-SHA256) from CI, monitoring, forms |
 | SMS | ✅ | Twilio REST — send + receive text messages |

@@ -10,9 +10,9 @@ Cybara is a Bun + TypeScript agent platform with:
 
 Current platform shape in this repo:
 
-- 50 provider integrations with dynamic model discovery (`src/core/providers.ts`)
-- 71 built-in tool schemas (`src/core/tools/index.ts`)
-- 10 channel adapters (`src/core/channels/adapters/`)
+- 60 provider integrations with dynamic model discovery (`src/core/providers.ts`)
+- 75 built-in tool schemas (`src/core/tools/index.ts`)
+- 26 channel adapters (`src/core/channels/adapters/`)
 - 25 tool handler modules (`src/core/tools/handlers/`)
 
 ## Runtime Topology
