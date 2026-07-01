@@ -320,6 +320,16 @@ export const channels = {
       { name: "verify_token", label: "Inbound Verify Token", type: "password", required: false },
     ],
   },
+  msteams: {
+    name: "Microsoft Teams",
+    icon: "🟦",
+    description: "Connect to Microsoft Teams via outgoing webhook (HMAC) + optional incoming webhook",
+    color: "#4B53BC",
+    fields: [
+      { name: "security_token", label: "Outgoing Webhook Security Token", type: "password", required: true },
+      { name: "incoming_webhook_url", label: "Incoming Webhook URL", type: "password", required: false },
+    ],
+  },
   synology: {
     name: "Synology Chat",
     icon: "🗄️",

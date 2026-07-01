@@ -1094,6 +1094,7 @@ export interface Channel {
     | "twitch"
     | "line"
     | "googlechat"
+    | "msteams"
     | "synology"
     | "nextcloud"
     | "zalo";

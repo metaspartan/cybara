@@ -17,6 +17,7 @@ import { ntfyAdapter } from "./adapters/ntfy";
 import { twitchAdapter } from "./adapters/twitch";
 import { lineAdapter } from "./adapters/line";
 import { googleChatAdapter } from "./adapters/googlechat";
+import { msTeamsAdapter } from "./adapters/msteams";
 import { synologyAdapter } from "./adapters/synology";
 import { nextcloudAdapter } from "./adapters/nextcloud";
 import { zaloAdapter } from "./adapters/zalo";
@@ -81,6 +82,7 @@ export class ChannelManager {
     this.registerAdapter("twitch", twitchAdapter);
     this.registerAdapter("line", lineAdapter);
     this.registerAdapter("googlechat", googleChatAdapter);
+    this.registerAdapter("msteams", msTeamsAdapter);
     this.registerAdapter("synology", synologyAdapter);
     this.registerAdapter("nextcloud", nextcloudAdapter);
     this.registerAdapter("zalo", zaloAdapter);
