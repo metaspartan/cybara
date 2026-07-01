@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { formatMetricNumber, type MetricsAvailability, type MetricsSnapshot } from "../lib/metrics";
-import { colors, radius, spacing, typography } from "../theme/liquidGlass";
+import { colors, radius, spacing, subscribeColors, typography } from "../theme/liquidGlass";
 
 export function MetricSection({
   children,
@@ -227,7 +227,7 @@ export function MetricEndpointGrid({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   section: {
     backgroundColor: "rgba(2, 6, 10, 0.78)",
     borderColor: colors.border,
@@ -426,4 +426,9 @@ const styles = StyleSheet.create({
     fontSize: typography.tiny,
     fontWeight: "800",
   },
+});
+
+let styles = makeStyles();
+subscribeColors(() => {
+  styles = makeStyles();
 });

@@ -161,6 +161,7 @@ import {
   colors,
   radius,
   spacing,
+  subscribeColors,
   typography,
   type AccentKey,
 } from "../theme/liquidGlass";
@@ -4851,7 +4852,7 @@ function EmptyState({ label, detail }: { label: string; detail: string }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   screen: {
     flex: 1,
   },
@@ -5902,4 +5903,9 @@ const styles = StyleSheet.create({
   tabLabelActive: {
     color: colors.cyan,
   },
+});
+
+let styles = makeStyles();
+subscribeColors(() => {
+  styles = makeStyles();
 });

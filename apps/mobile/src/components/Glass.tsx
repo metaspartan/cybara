@@ -1,7 +1,7 @@
 import type { PropsWithChildren } from "react";
 import { BlurView } from "expo-blur";
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
-import { colors, radius, shadows, spacing, typography } from "../theme/liquidGlass";
+import { colors, radius, shadows, spacing, subscribeColors, typography } from "../theme/liquidGlass";
 
 export function GlassPanel({
   children,
@@ -62,7 +62,7 @@ export function MetricPill({ label, value }: { label: string; value: string | nu
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   panel: {
     backgroundColor: colors.glass,
     borderRadius: radius.lg,
@@ -138,4 +138,9 @@ const styles = StyleSheet.create({
     fontSize: typography.tiny,
     textTransform: "uppercase",
   },
+});
+
+let styles = makeStyles();
+subscribeColors(() => {
+  styles = makeStyles();
 });

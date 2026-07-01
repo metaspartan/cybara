@@ -16,7 +16,7 @@ import {
   boundedMobileComposerHeight,
   mobileComposerHeightForDraft,
 } from "../lib/dashboard";
-import { colors, radius, spacing, typography } from "../theme/liquidGlass";
+import { colors, radius, spacing, subscribeColors, typography } from "../theme/liquidGlass";
 
 export function NewChatPanel({
   accentColor,
@@ -192,7 +192,7 @@ export function NewChatPanel({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   panel: {
     gap: spacing.md,
   },
@@ -291,4 +291,9 @@ const styles = StyleSheet.create({
     fontSize: typography.label,
     textAlign: "center",
   },
+});
+
+let styles = makeStyles();
+subscribeColors(() => {
+  styles = makeStyles();
 });

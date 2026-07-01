@@ -38,4 +38,29 @@ describe("mobile theming", () => {
     expect(screen).toContain("setAppearanceMode");
     expect(screen).toContain('{ label: "System", value: "system" }');
   });
+
+  test("colors is a live binding the scheme swaps at runtime", () => {
+    expect(theme).toContain("export let colors");
+    expect(theme).toContain("export function setActiveScheme");
+    expect(theme).toContain("export function subscribeColors");
+    const ctx = read("theme/ThemeContext.tsx");
+    expect(ctx).toContain("setActiveScheme(scheme)");
+  });
+
+  test("every styled surface rebuilds its StyleSheet when the scheme changes", () => {
+    const styledFiles = [
+      "screens/DashboardScreen.tsx",
+      "screens/ConnectScreen.tsx",
+      "components/Glass.tsx",
+      "components/NewChatPanel.tsx",
+      "components/MetricVisuals.tsx",
+    ];
+    for (const rel of styledFiles) {
+      const src = read(rel);
+      expect(src).toContain("const makeStyles = () => StyleSheet.create(");
+      expect(src).toContain("subscribeColors(() => {");
+      // no un-rebuilt static stylesheet left behind
+      expect(src).not.toContain("const styles = StyleSheet.create(");
+    }
+  });
 });

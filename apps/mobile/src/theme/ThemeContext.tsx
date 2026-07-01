@@ -3,12 +3,13 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { useColorScheme } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { palettes, type ColorScheme, type Palette } from "./liquidGlass";
+import { palettes, setActiveScheme, type ColorScheme, type Palette } from "./liquidGlass";
 
 export type ThemeMode = "system" | "light" | "dark";
 
@@ -53,6 +54,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const scheme: ColorScheme =
     mode === "system" ? (systemScheme === "light" ? "light" : "dark") : mode;
+
+  // Swap the live `colors` binding + rebuild StyleSheets synchronously before
+  // children render, so there is no flash of the previous theme.
+  const appliedScheme = useRef<ColorScheme | null>(null);
+  if (appliedScheme.current !== scheme) {
+    setActiveScheme(scheme);
+    appliedScheme.current = scheme;
+  }
 
   const value = useMemo<ThemeContextValue>(
     () => ({ scheme, colors: palettes[scheme], mode, setMode }),

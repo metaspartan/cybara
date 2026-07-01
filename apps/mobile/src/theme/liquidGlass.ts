@@ -44,9 +44,28 @@ export const palettes: Record<ColorScheme, Palette> = {
   light: lightColors,
 };
 
-// Default palette for module-level constants that cannot use the theme hook.
-// Components should prefer useTheme() so they follow the active scheme.
-export const colors = darkColors;
+// `colors` is a live binding that swaps between the light/dark palette when the
+// active scheme changes. StyleSheets built from it are rebuilt via
+// subscribeColors(); inline `colors.x` reads (evaluated at render) update on the
+// next render. This lets the whole app follow the system theme without threading
+// a palette through every component.
+export let colors: Palette = darkColors;
+
+const colorListeners = new Set<() => void>();
+
+export function setActiveScheme(scheme: ColorScheme): void {
+  const next = palettes[scheme];
+  if (next === colors) return;
+  colors = next;
+  for (const listener of colorListeners) listener();
+}
+
+export function subscribeColors(listener: () => void): () => void {
+  colorListeners.add(listener);
+  return () => {
+    colorListeners.delete(listener);
+  };
+}
 
 export const accentPalette = {
   indigo: "#6366f1",

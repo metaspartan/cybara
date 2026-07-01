@@ -8,7 +8,7 @@ import {
   profileFromPayload,
   type GatewayProfile,
 } from "../lib/connection";
-import { colors, radius, spacing, typography } from "../theme/liquidGlass";
+import { colors, radius, spacing, subscribeColors, typography } from "../theme/liquidGlass";
 import cybaraLogo from "../../assets/cybara.png";
 
 export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfile) => void }) {
@@ -160,7 +160,7 @@ export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfi
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   wrap: {
     gap: spacing.md,
     paddingHorizontal: spacing.lg,
@@ -259,4 +259,9 @@ const styles = StyleSheet.create({
     borderColor: colors.cyan,
     backgroundColor: "rgba(0, 0, 0, 0.08)",
   },
+});
+
+let styles = makeStyles();
+subscribeColors(() => {
+  styles = makeStyles();
 });
