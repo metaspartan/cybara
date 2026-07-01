@@ -173,8 +173,8 @@ const makeStyles = () => StyleSheet.create({
   },
   logoMark: {
     alignItems: "center",
-    backgroundColor: "rgba(85, 216, 255, 0.10)",
-    borderColor: "rgba(85, 216, 255, 0.48)",
+    backgroundColor: colors.softCyan,
+    borderColor: colors.softCyanBorder,
     borderRadius: radius.lg,
     borderWidth: 1,
     height: 58,
@@ -218,7 +218,7 @@ const makeStyles = () => StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: "rgba(0, 0, 0, 0.26)",
+    backgroundColor: colors.surface,
     color: colors.text,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -257,7 +257,7 @@ const makeStyles = () => StyleSheet.create({
     borderRadius: radius.lg,
     borderWidth: 2,
     borderColor: colors.cyan,
-    backgroundColor: "rgba(0, 0, 0, 0.08)",
+    backgroundColor: colors.inset,
   },
 });
 

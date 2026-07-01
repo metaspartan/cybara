@@ -16,6 +16,16 @@ export const darkColors = {
   glass: "rgba(5, 5, 6, 0.9)",
   glassElevated: "rgba(9, 9, 11, 0.94)",
   glassPressed: "rgba(20, 20, 22, 0.92)",
+  surface: "rgba(13, 13, 15, 0.85)",
+  surfaceLift: "rgba(18, 18, 20, 0.9)",
+  inset: "rgba(255, 255, 255, 0.06)",
+  insetStrong: "rgba(255, 255, 255, 0.1)",
+  scrim: "rgba(0, 0, 0, 0.45)",
+  wash: "rgba(0, 0, 0, 0.22)",
+  softCyan: "rgba(85, 216, 255, 0.12)",
+  softCyanBorder: "rgba(85, 216, 255, 0.45)",
+  softRed: "rgba(255, 123, 139, 0.12)",
+  softRedBorder: "rgba(255, 123, 139, 0.3)",
 };
 
 export const lightColors: typeof darkColors = {
@@ -34,6 +44,16 @@ export const lightColors: typeof darkColors = {
   glass: "rgba(255, 255, 255, 0.72)",
   glassElevated: "rgba(255, 255, 255, 0.86)",
   glassPressed: "rgba(17, 24, 32, 0.05)",
+  surface: "rgba(255, 255, 255, 0.82)",
+  surfaceLift: "rgba(255, 255, 255, 0.96)",
+  inset: "rgba(17, 24, 32, 0.05)",
+  insetStrong: "rgba(17, 24, 32, 0.08)",
+  scrim: "rgba(17, 24, 32, 0.32)",
+  wash: "rgba(255, 255, 255, 0.4)",
+  softCyan: "rgba(14, 143, 184, 0.1)",
+  softCyanBorder: "rgba(14, 143, 184, 0.42)",
+  softRed: "rgba(220, 38, 38, 0.1)",
+  softRedBorder: "rgba(220, 38, 38, 0.34)",
 };
 
 export type Palette = typeof darkColors;

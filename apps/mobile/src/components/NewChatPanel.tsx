@@ -170,7 +170,7 @@ export function NewChatPanel({
           style={[
             styles.sendButton,
             {
-              backgroundColor: message.trim() ? accentColor : "rgba(255,255,255,0.08)",
+              backgroundColor: message.trim() ? accentColor : colors.inset,
               opacity: message.trim() || creating ? 1 : 0.55,
             },
           ]}
@@ -215,7 +215,7 @@ const makeStyles = () => StyleSheet.create({
     marginHorizontal: -spacing.xs,
   },
   agentChip: {
-    backgroundColor: "rgba(3, 7, 11, 0.62)",
+    backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -226,7 +226,7 @@ const makeStyles = () => StyleSheet.create({
     width: 172,
   },
   agentChipActive: {
-    backgroundColor: "rgba(85, 216, 255, 0.10)",
+    backgroundColor: colors.softCyan,
   },
   agentChipTitle: {
     color: colors.text,
@@ -239,7 +239,7 @@ const makeStyles = () => StyleSheet.create({
   },
   composer: {
     alignItems: "flex-end",
-    backgroundColor: "rgba(3, 7, 11, 0.9)",
+    backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: radius.lg,
     borderWidth: 1,

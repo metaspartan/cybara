@@ -202,24 +202,24 @@ const surfaceMeta: Record<
   MobileSurfaceKey,
   { title: string; Icon: IconGlyph; tone: string; endpoint?: FeatureEndpointKey }
 > = {
-  agents: { title: "Agents", Icon: Bot, tone: colors.cyan, endpoint: "agents" },
-  providers: { title: "Providers", Icon: Database, tone: colors.blueText, endpoint: "providers" },
-  tools: { title: "Tools", Icon: Wrench, tone: colors.green, endpoint: "tools" },
-  approvals: { title: "Approvals", Icon: ShieldCheck, tone: colors.amber, endpoint: "approvals" },
+  agents: { title: "Agents", Icon: Bot, get tone() { return colors.cyan; }, endpoint: "agents" },
+  providers: { title: "Providers", Icon: Database, get tone() { return colors.blueText; }, endpoint: "providers" },
+  tools: { title: "Tools", Icon: Wrench, get tone() { return colors.green; }, endpoint: "tools" },
+  approvals: { title: "Approvals", Icon: ShieldCheck, get tone() { return colors.amber; }, endpoint: "approvals" },
   wallet: {
     title: "Wallet Policy",
     Icon: ShieldCheck,
-    tone: colors.green,
+    get tone() { return colors.green; },
     endpoint: "walletPolicy",
   },
-  channels: { title: "Channels", Icon: Link2, tone: colors.cyan, endpoint: "channels" },
-  tasks: { title: "Tasks", Icon: CalendarCheck, tone: colors.blueText, endpoint: "tasks" },
-  memory: { title: "Memory", Icon: Brain, tone: colors.green, endpoint: "memory" },
-  logs: { title: "Logs", Icon: ListTodo, tone: colors.textMuted, endpoint: "logs" },
+  channels: { title: "Channels", Icon: Link2, get tone() { return colors.cyan; }, endpoint: "channels" },
+  tasks: { title: "Tasks", Icon: CalendarCheck, get tone() { return colors.blueText; }, endpoint: "tasks" },
+  memory: { title: "Memory", Icon: Brain, get tone() { return colors.green; }, endpoint: "memory" },
+  logs: { title: "Logs", Icon: ListTodo, get tone() { return colors.textMuted; }, endpoint: "logs" },
   monitor: {
     title: "System Monitor",
     Icon: Cpu,
-    tone: colors.blueText,
+    get tone() { return colors.blueText; },
     endpoint: "systemMonitor",
   },
 };
@@ -2121,7 +2121,7 @@ function SessionDetailPanel({
             style={[
               styles.sendButton,
               {
-                backgroundColor: draft.trim() ? accentColor : "rgba(255,255,255,0.08)",
+                backgroundColor: draft.trim() ? accentColor : colors.inset,
                 opacity: draft.trim() || sending ? 1 : 0.55,
               },
             ]}
@@ -2466,7 +2466,7 @@ function SettingSelector({
             onSelect(option.value);
           }}
           tintColor={tone}
-          backgroundColor="rgba(255,255,255,0.06)"
+          backgroundColor={colors.inset}
           fontStyle={{ color: colors.textMuted }}
           activeFontStyle={{ color: colors.background, fontWeight: "600" }}
         />
@@ -4878,8 +4878,8 @@ const makeStyles = () => StyleSheet.create({
   },
   logoMark: {
     alignItems: "center",
-    backgroundColor: "rgba(85, 216, 255, 0.10)",
-    borderColor: "rgba(85, 216, 255, 0.48)",
+    backgroundColor: colors.softCyan,
+    borderColor: colors.softCyanBorder,
     borderRadius: radius.md,
     borderWidth: 1,
     height: 50,
@@ -4893,7 +4893,7 @@ const makeStyles = () => StyleSheet.create({
   },
   backButton: {
     alignItems: "center",
-    backgroundColor: "rgba(9, 9, 11, 0.9)",
+    backgroundColor: colors.surface,
     borderColor: colors.borderStrong,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -4921,7 +4921,7 @@ const makeStyles = () => StyleSheet.create({
   },
   iconButton: {
     alignItems: "center",
-    backgroundColor: "rgba(9, 9, 11, 0.9)",
+    backgroundColor: colors.surface,
     borderColor: colors.borderStrong,
     borderRadius: 28,
     borderWidth: 1,
@@ -4969,8 +4969,8 @@ const makeStyles = () => StyleSheet.create({
     fontSize: typography.label,
   },
   settingsGatewayCard: {
-    backgroundColor: "rgba(16, 16, 18, 0.78)",
-    borderColor: "rgba(235, 239, 244, 0.13)",
+    backgroundColor: colors.surfaceLift,
+    borderColor: colors.border,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     gap: spacing.md,
@@ -4982,7 +4982,7 @@ const makeStyles = () => StyleSheet.create({
     gap: spacing.sm,
   },
   gatewayDetailPill: {
-    backgroundColor: "rgba(255, 255, 255, 0.045)",
+    backgroundColor: colors.inset,
     borderRadius: radius.sm,
     flexBasis: "48%",
     flexGrow: 1,
@@ -5018,7 +5018,7 @@ const makeStyles = () => StyleSheet.create({
     gap: spacing.sm,
   },
   moduleTile: {
-    backgroundColor: "rgba(9, 9, 11, 0.94)",
+    backgroundColor: colors.surface,
     borderColor: colors.borderStrong,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -5030,7 +5030,7 @@ const makeStyles = () => StyleSheet.create({
   },
   moduleIcon: {
     alignItems: "center",
-    backgroundColor: "rgba(18, 18, 20, 0.86)",
+    backgroundColor: colors.surfaceLift,
     borderRadius: radius.md,
     height: 38,
     justifyContent: "center",
@@ -5057,14 +5057,14 @@ const makeStyles = () => StyleSheet.create({
     minHeight: 72,
   },
   monitorTilePrimary: {
-    backgroundColor: "rgba(12, 12, 14, 0.96)",
+    backgroundColor: colors.surface,
     minHeight: 78,
   },
   monitorText: {
     flex: 1,
   },
   activityPanel: {
-    backgroundColor: "rgba(7, 7, 9, 0.94)",
+    backgroundColor: colors.surface,
     borderColor: colors.borderStrong,
     gap: spacing.sm,
   },
@@ -5084,7 +5084,7 @@ const makeStyles = () => StyleSheet.create({
     fontWeight: "800",
   },
   smallButton: {
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    backgroundColor: colors.inset,
     borderColor: colors.border,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -5106,7 +5106,7 @@ const makeStyles = () => StyleSheet.create({
     paddingVertical: 8,
   },
   newChatButtonPressed: {
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    backgroundColor: colors.insetStrong,
   },
   newChatIcon: {
     alignItems: "center",
@@ -5128,7 +5128,7 @@ const makeStyles = () => StyleSheet.create({
   },
   loadMoreButton: {
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    backgroundColor: colors.inset,
     borderColor: colors.borderStrong,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -5163,7 +5163,7 @@ const makeStyles = () => StyleSheet.create({
   },
   activityIcon: {
     alignItems: "center",
-    backgroundColor: "rgba(18, 18, 20, 0.88)",
+    backgroundColor: colors.surfaceLift,
     borderRadius: 22,
     height: 44,
     justifyContent: "center",
@@ -5226,8 +5226,8 @@ const makeStyles = () => StyleSheet.create({
     textTransform: "uppercase",
   },
   settingsGroup: {
-    backgroundColor: "rgba(16, 16, 18, 0.76)",
-    borderColor: "rgba(235, 239, 244, 0.12)",
+    backgroundColor: colors.surfaceLift,
+    borderColor: colors.border,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: "hidden",
@@ -5244,7 +5244,7 @@ const makeStyles = () => StyleSheet.create({
   },
   settingsNavigationIcon: {
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.07)",
+    backgroundColor: colors.inset,
     borderRadius: radius.sm,
     height: 34,
     justifyContent: "center",
@@ -5257,7 +5257,7 @@ const makeStyles = () => StyleSheet.create({
   },
   itemHero: {
     alignItems: "center",
-    backgroundColor: "rgba(9, 9, 11, 0.88)",
+    backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -5310,7 +5310,7 @@ const makeStyles = () => StyleSheet.create({
     width: 32,
   },
   messageBubble: {
-    backgroundColor: "rgba(10, 10, 12, 0.72)",
+    backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -5323,7 +5323,7 @@ const makeStyles = () => StyleSheet.create({
     maxWidth: "92%",
   },
   userMessageBubble: {
-    backgroundColor: "rgba(18, 18, 20, 0.9)",
+    backgroundColor: colors.surfaceLift,
   },
   messageThinking: {
     color: colors.textMuted,
@@ -5348,14 +5348,14 @@ const makeStyles = () => StyleSheet.create({
     gap: spacing.sm,
   },
   codeBlock: {
-    backgroundColor: "rgba(0, 0, 0, 0.34)",
+    backgroundColor: colors.scrim,
     borderColor: colors.border,
     borderRadius: radius.sm,
     borderWidth: 1,
     overflow: "hidden",
   },
   codeHeader: {
-    backgroundColor: "rgba(18, 18, 20, 0.92)",
+    backgroundColor: colors.surfaceLift,
     color: colors.textMuted,
     fontSize: typography.tiny,
     fontWeight: "900",
@@ -5422,7 +5422,7 @@ const makeStyles = () => StyleSheet.create({
   },
   composer: {
     alignItems: "flex-end",
-    backgroundColor: "rgba(10, 10, 12, 0.94)",
+    backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -5433,7 +5433,7 @@ const makeStyles = () => StyleSheet.create({
     paddingVertical: 8,
   },
   chatComposerBar: {
-    backgroundColor: "rgba(7, 7, 9, 0.98)",
+    backgroundColor: colors.surface,
     borderTopColor: colors.borderStrong,
     borderTopWidth: 1,
     bottom: MOBILE_CHAT_CHROME.composerReservedBottom + MOBILE_CHAT_CHROME.composerGapToNav,
@@ -5471,8 +5471,8 @@ const makeStyles = () => StyleSheet.create({
   },
   accentSwatch: {
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.035)",
-    borderColor: "rgba(235, 239, 244, 0.1)",
+    backgroundColor: colors.inset,
+    borderColor: colors.border,
     borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
     flexBasis: "30%",
@@ -5521,7 +5521,7 @@ const makeStyles = () => StyleSheet.create({
     textTransform: "uppercase",
   },
   settingsInput: {
-    backgroundColor: "rgba(12, 12, 14, 0.82)",
+    backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -5568,8 +5568,8 @@ const makeStyles = () => StyleSheet.create({
     gap: spacing.sm,
   },
   settingsSegmentedControl: {
-    backgroundColor: "rgba(255, 255, 255, 0.065)",
-    borderColor: "rgba(235, 239, 244, 0.11)",
+    backgroundColor: colors.inset,
+    borderColor: colors.border,
     borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
     flexWrap: "nowrap",
@@ -5578,7 +5578,7 @@ const makeStyles = () => StyleSheet.create({
   },
   settingsChip: {
     alignItems: "center",
-    backgroundColor: "rgba(14, 14, 16, 0.76)",
+    backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: radius.sm,
     borderWidth: 1,
@@ -5669,7 +5669,7 @@ const makeStyles = () => StyleSheet.create({
     minWidth: 52,
   },
   monitorUsageRow: {
-    backgroundColor: "rgba(12, 12, 14, 0.76)",
+    backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -5682,7 +5682,7 @@ const makeStyles = () => StyleSheet.create({
     justifyContent: "space-between",
   },
   monitorUsageTrack: {
-    backgroundColor: "rgba(148, 163, 184, 0.14)",
+    backgroundColor: colors.inset,
     borderRadius: 5,
     height: 10,
     overflow: "hidden",
@@ -5694,8 +5694,8 @@ const makeStyles = () => StyleSheet.create({
   },
   disconnectButton: {
     alignItems: "center",
-    backgroundColor: "rgba(16, 16, 18, 0.76)",
-    borderColor: "rgba(255, 123, 139, 0.28)",
+    backgroundColor: colors.surfaceLift,
+    borderColor: colors.softRedBorder,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
@@ -5704,11 +5704,11 @@ const makeStyles = () => StyleSheet.create({
     padding: spacing.md,
   },
   disconnectButtonPressed: {
-    backgroundColor: "rgba(255, 123, 139, 0.12)",
+    backgroundColor: colors.softRed,
   },
   disconnectIcon: {
     alignItems: "center",
-    backgroundColor: "rgba(255, 123, 139, 0.1)",
+    backgroundColor: colors.softRed,
     borderRadius: radius.sm,
     height: 34,
     justifyContent: "center",
@@ -5733,7 +5733,7 @@ const makeStyles = () => StyleSheet.create({
     gap: spacing.sm,
   },
   summaryTile: {
-    backgroundColor: "rgba(11, 11, 13, 0.92)",
+    backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -5800,7 +5800,7 @@ const makeStyles = () => StyleSheet.create({
   },
   listIcon: {
     alignItems: "center",
-    backgroundColor: "rgba(18, 18, 20, 0.88)",
+    backgroundColor: colors.surfaceLift,
     borderRadius: radius.md,
     height: 42,
     justifyContent: "center",
@@ -5871,7 +5871,7 @@ const makeStyles = () => StyleSheet.create({
   },
   tabBarPanel: {
     flex: 1,
-    backgroundColor: "rgba(6, 6, 8, 0.9)",
+    backgroundColor: colors.surface,
     borderRadius: MOBILE_NAV_CHROME.outerRadius,
     paddingHorizontal: spacing.md,
     paddingVertical: 5,
@@ -5891,8 +5891,8 @@ const makeStyles = () => StyleSheet.create({
     justifyContent: "center",
   },
   tabItemActive: {
-    backgroundColor: "rgba(85, 216, 255, 0.12)",
-    borderColor: "rgba(190, 232, 255, 0.28)",
+    backgroundColor: colors.softCyan,
+    borderColor: colors.softCyanBorder,
     borderWidth: 1,
   },
   tabLabel: {

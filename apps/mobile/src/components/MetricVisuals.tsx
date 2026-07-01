@@ -229,7 +229,7 @@ export function MetricEndpointGrid({
 
 const makeStyles = () => StyleSheet.create({
   section: {
-    backgroundColor: "rgba(2, 6, 10, 0.78)",
+    backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -258,7 +258,7 @@ const makeStyles = () => StyleSheet.create({
     fontWeight: "900",
   },
   micro: {
-    backgroundColor: "rgba(2, 7, 11, 0.86)",
+    backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: radius.sm,
     borderWidth: 1,
@@ -291,13 +291,13 @@ const makeStyles = () => StyleSheet.create({
     justifyContent: "space-between",
   },
   track: {
-    backgroundColor: "rgba(0,0,0,0.34)",
+    backgroundColor: colors.inset,
     borderRadius: 999,
     height: 9,
     overflow: "hidden",
   },
   trackSmall: {
-    backgroundColor: "rgba(0,0,0,0.34)",
+    backgroundColor: colors.inset,
     borderRadius: 999,
     height: 5,
     overflow: "hidden",
@@ -382,7 +382,7 @@ const makeStyles = () => StyleSheet.create({
     gap: spacing.xs,
   },
   cloudPill: {
-    backgroundColor: "rgba(2, 7, 11, 0.86)",
+    backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: radius.sm,
     borderWidth: 1,
@@ -407,7 +407,7 @@ const makeStyles = () => StyleSheet.create({
   },
   endpointPill: {
     alignItems: "center",
-    backgroundColor: "rgba(2, 7, 11, 0.86)",
+    backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: radius.sm,
     borderWidth: 1,

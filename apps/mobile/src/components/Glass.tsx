@@ -2,6 +2,7 @@ import type { PropsWithChildren } from "react";
 import { BlurView } from "expo-blur";
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { colors, radius, shadows, spacing, subscribeColors, typography } from "../theme/liquidGlass";
+import { useThemeControls } from "../theme/ThemeContext";
 
 export function GlassPanel({
   children,
@@ -13,11 +14,12 @@ export function GlassPanel({
   style?: StyleProp<ViewStyle>;
   elevated?: boolean;
 }>) {
+  const { scheme } = useThemeControls();
   return (
     <BlurView
       blurMethod="dimezisBlurViewSdk31Plus"
       intensity={elevated ? 46 : 32}
-      tint="dark"
+      tint={scheme === "light" ? "light" : "dark"}
       style={[styles.panel, elevated && styles.elevated, elevated && shadows.glass, style]}
     >
       <View pointerEvents="none" style={styles.liquidWash} />
@@ -72,7 +74,7 @@ const makeStyles = () => StyleSheet.create({
   },
   liquidWash: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(0, 0, 0, 0.22)",
+    backgroundColor: colors.wash,
   },
   liquidHighlight: {
     backgroundColor: "rgba(255, 255, 255, 0.13)",
@@ -97,14 +99,14 @@ const makeStyles = () => StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: "rgba(8, 8, 10, 0.9)",
+    backgroundColor: colors.surface,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     justifyContent: "center",
   },
   selected: {
     borderColor: colors.cyan,
-    backgroundColor: "rgba(12, 50, 64, 0.36)",
+    backgroundColor: colors.softCyan,
   },
   pressed: {
     backgroundColor: colors.glassPressed,
@@ -124,7 +126,7 @@ const makeStyles = () => StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: "rgba(8, 8, 10, 0.78)",
+    backgroundColor: colors.surface,
     padding: spacing.md,
   },
   metricValue: {
