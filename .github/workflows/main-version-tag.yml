@@ -17,7 +17,7 @@ env:
 jobs:
   sync_version_and_tag:
     if: github.actor != 'github-actions[bot]'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout

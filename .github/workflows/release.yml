@@ -22,7 +22,7 @@ jobs:
   # ── Quality gate ────────────────────────────────────────────────────────────
   quality:
     name: CI Quality Gate
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,11 +39,11 @@ jobs:
       - name: Security audit
         run: bun audit || true
 
-  # ── CLI binaries (cross-compiled from self-hosted) ──────────────────────────
+  # ── CLI binaries (cross-compiled on a Linux runner) ─────────────────────────
   build-cli:
     name: CLI ${{ matrix.target }}
     needs: quality
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -95,30 +95,30 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macOS arm64 — native build on the self-hosted Apple Silicon mac (Meta-Mini)
+          # macOS arm64 — native build on a GitHub-hosted Apple Silicon runner
           - platform: macos
-            runner: [self-hosted, macOS, ARM64]
+            runner: macos-14
             args: "--target aarch64-apple-darwin"
             rust_target: aarch64-apple-darwin
             bun_target: bun-darwin-arm64
             sidecar: "src-tauri/bin/cybara-aarch64-apple-darwin"
-          # macOS x64 — cross-compiled on the same Apple Silicon mac
+          # macOS x64 — native build on a GitHub-hosted Intel runner
           - platform: macos
-            runner: [self-hosted, macOS, ARM64]
+            runner: macos-13
             args: "--target x86_64-apple-darwin"
             rust_target: x86_64-apple-darwin
             bun_target: bun-darwin-x64
             sidecar: "src-tauri/bin/cybara-x86_64-apple-darwin"
-          # Windows x64 — self-hosted Windows runner (AI370)
+          # Windows x64 — GitHub-hosted Windows runner
           - platform: windows
-            runner: [self-hosted, Windows, X64]
+            runner: windows-latest
             args: ""
             rust_target: x86_64-pc-windows-msvc
             bun_target: bun-windows-x64
             sidecar: "src-tauri/bin/cybara-x86_64-pc-windows-msvc.exe"
-          # Linux x64 — self-hosted Linux runner (get32)
-          - platform: self-hosted
-            runner: [self-hosted, Linux, X64]
+          # Linux x64 — GitHub-hosted Linux runner
+          - platform: linux
+            runner: ubuntu-latest
             args: ""
             rust_target: x86_64-unknown-linux-gnu
             bun_target: bun-linux-x64
@@ -149,10 +149,10 @@ jobs:
           rustup default stable
           rustup target add ${{ matrix.rust_target }}
       - name: Install Linux dependencies
-        if: startsWith(matrix.platform, 'ubuntu')
+        if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf build-essential libssl-dev
       # Split into two steps (no '&&') so it runs under each OS's native shell
       # — bash on Linux/macOS, PowerShell on the self-hosted Windows runner —
       # without relying on a 'bash' shell that resolves to WSL on Windows.
@@ -198,7 +198,7 @@ jobs:
       matrix:
         include:
           - arch: arm64
-            runner: [self-hosted, macOS, ARM64]
+            runner: macos-14
     runs-on: ${{ matrix.runner }}
     env:
       # Mapped from secrets so steps can gate on presence. Leave the secrets
@@ -283,7 +283,7 @@ jobs:
   build-mobile:
     name: Mobile Expo bundles
     needs: quality
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     env:
       EXPO_NO_TELEMETRY: "1"
     steps:
@@ -293,6 +293,12 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
+      # Expo / React Native CLI shell out to `node` for autolinking and export;
+      # a real Node runtime must be on PATH.
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       - name: Install dependencies
         run: bun install --ignore-scripts
       - name: Run postinstall
@@ -332,7 +338,7 @@ jobs:
     needs: quality
     continue-on-error: true
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     env:
       CYBARA_RELEASE_VERSION: ${{ github.ref_name }}
       EXPO_NO_TELEMETRY: "1"
@@ -428,7 +434,7 @@ jobs:
     needs: quality
     continue-on-error: true
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: macos-14
     env:
       CYBARA_RELEASE_VERSION: ${{ github.ref_name }}
       EXPO_NO_TELEMETRY: "1"
@@ -524,7 +530,7 @@ jobs:
   release:
     name: Create Release
     needs: [build-cli, build-mobile]
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
