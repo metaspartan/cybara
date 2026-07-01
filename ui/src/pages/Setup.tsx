@@ -148,15 +148,15 @@ export function Setup() {
     return (
         <div className="min-h-screen w-full bg-[#0a0a0f] flex items-center justify-center">
             <div className="w-full max-w-xl mx-auto px-4">
-                <div className="flex items-center justify-center gap-2 mb-8">
+                <div className="flex items-center justify-center mb-8">
                     {progressSteps.map((s, i) => (
                         <div key={s} className="flex items-center">
-                            <div className={`w-3 h-3 rounded-full transition-colors ${step === s || (step === 'oauth' && s === 'apikey') ? 'bg-indigo-500' :
+                            <div className={`w-2.5 h-2.5 rounded-full shrink-0 transition-colors ${step === s || (step === 'oauth' && s === 'apikey') ? 'bg-indigo-500' :
                                     progressSteps.indexOf(step) > i ||
                                         (step === 'oauth' && i < 2) ? 'bg-emerald-500' :
                                         'bg-white/20'
                                 }`} />
-                            {i < progressSteps.length - 1 && <div className={`w-8 h-0.5 ${progressSteps.indexOf(step) > i ||
+                            {i < progressSteps.length - 1 && <div className={`w-8 h-0.5 mx-1.5 shrink-0 transition-colors ${progressSteps.indexOf(step) > i ||
                                     (step === 'oauth' && i < 2) ? 'bg-emerald-500' : 'bg-white/20'
                                 }`} />}
                         </div>

@@ -299,6 +299,10 @@ type OnnxRuntimeModuleShape = {
 let onnxRuntimePrimeError: string | null = null;
 let onnxRuntimePrimed = false;
 
+async function importOptionalModule(specifier: string): Promise<Record<string, unknown>> {
+    return (await import(specifier)) as Record<string, unknown>;
+}
+
 function resolveOnnxRuntimeModule(mod: Record<string, unknown>): OnnxRuntimeModuleShape | null {
     const candidates: unknown[] = [mod];
     if (mod.default && typeof mod.default === "object") {
@@ -339,7 +343,7 @@ async function primeOnnxRuntimeGlobal(): Promise<string | null> {
     }> = [
         {
             label: "onnxruntime-node",
-            loader: async () => (await import("onnxruntime-node")) as Record<string, unknown>,
+            loader: async () => await importOptionalModule("onnxruntime-node"),
         },
         {
             label: "onnxruntime-web-dist",
@@ -549,10 +553,6 @@ async function importTransformersNodeFallback(): Promise<Record<string, unknown>
     throw new Error("Transformers.js node runtime not found in known node_modules paths");
 }
 
-async function importTransformersLocalRuntimeWrapper(): Promise<Record<string, unknown>> {
-    return (await import("./transformers-runtime")) as Record<string, unknown>;
-}
-
 async function importTransformersModule(): Promise<TransformersModuleShape> {
     const failures: string[] = [];
     const onnxPrimeFailure = await primeOnnxRuntimeGlobal();
@@ -564,11 +564,10 @@ async function importTransformersModule(): Promise<TransformersModuleShape> {
         label: string;
         loader: () => Promise<Record<string, unknown>>;
     }> = [
-        { label: "local-wrapper", loader: importTransformersLocalRuntimeWrapper },
         { label: "node-dist", loader: importTransformersNodeFallback },
         {
             label: "package-import",
-            loader: async () => (await import("@huggingface/transformers")) as Record<string, unknown>,
+            loader: async () => await importOptionalModule("@huggingface/transformers"),
         },
         { label: "web-fallback", loader: importTransformersWebFallback },
     ];
