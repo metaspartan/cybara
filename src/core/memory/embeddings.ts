@@ -829,12 +829,21 @@ async function getTransformersExtractor(modelInput?: string): Promise<unknown> {
         const transformersModule = await importTransformersModule();
         if (transformersModule.env && typeof transformersModule.env === "object") {
             try {
-                transformersModule.env.allowLocalModels = true;
-                transformersModule.env.allowRemoteModels = true;
                 if (!existsSync(TRANSFORMERS_CACHE_DIR)) {
                     mkdirSync(TRANSFORMERS_CACHE_DIR, { recursive: true });
                 }
+                const cachedModel = existsSync(join(TRANSFORMERS_CACHE_DIR, model));
+                transformersModule.env.allowRemoteModels = true;
+                transformersModule.env.allowLocalModels = cachedModel;
                 transformersModule.env.cacheDir = TRANSFORMERS_CACHE_DIR;
+                transformersModule.env.localModelPath = TRANSFORMERS_CACHE_DIR;
+                if (transformersModule.env.backends && typeof transformersModule.env.backends === "object") {
+                    const backends = transformersModule.env.backends as Record<string, unknown>;
+                    const onnx = backends.onnx as Record<string, unknown> | undefined;
+                    if (onnx && typeof onnx === "object") {
+                        onnx.numThreads = 1;
+                    }
+                }
             } catch {
                 void 0;
             }
