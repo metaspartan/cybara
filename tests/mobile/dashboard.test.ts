@@ -169,8 +169,13 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_TABS.find((tab) => tab.key === "sessions")?.label).toBe("Chats");
     expect(MOBILE_TABS.filter((tab) => tab.showsGatewayPanel).map((tab) => tab.key)).toEqual([]);
     expect(MOBILE_HOME_CHROME.firstSection).toBe("recent_activity");
+    expect(MOBILE_HOME_CHROME.firstManagementSurface).toBe("monitor");
+    expect(MOBILE_HOME_CHROME.managementGridEdgeToEdge).toBe(true);
     expect(MOBILE_HOME_CHROME.showsGatewayConnectionPanel).toBe(false);
+    expect(MOBILE_HOME_CHROME.showsRemoteManagementTitle).toBe(false);
     expect(MOBILE_SETTINGS_ROOT_CHROME.gatewayConnectionDetails).toBe(true);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.gatewayRefreshButton).toBe(false);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.destructiveDisconnectButton).toBe(true);
     expect(MOBILE_GATEWAY_PANEL_CHROME.showUptime).toBe(true);
     expect(MOBILE_GATEWAY_PANEL_CHROME.showApiStatusTile).toBe(false);
     expect(MOBILE_GATEWAY_PANEL_CHROME.showGatewayUrlRow).toBe(false);
@@ -195,6 +200,8 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_CHAT_CHROME.composerReservedBottom).toBe(MOBILE_NAV_CHROME.height);
     expect(MOBILE_CHAT_CHROME.autoScrollToLatestMessage).toBe(true);
     expect(MOBILE_CHAT_CHROME.hidesSystemMessages).toBe(true);
+    expect(MOBILE_CHAT_CHROME.newChatButtonProminent).toBe(true);
+    expect(MOBILE_CHAT_CHROME.newChatButtonUsesIcon).toBe(true);
     expect(MOBILE_MAIN_TAB_CHROME.edgeToEdge).toBe(true);
     expect(MOBILE_MAIN_TAB_CHROME.outerHorizontalPadding).toBe(0);
     expect(MOBILE_MAIN_TAB_CHROME.panelRadius).toBe(0);

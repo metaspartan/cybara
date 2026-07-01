@@ -46,7 +46,10 @@ export const MOBILE_TABS: MobileTabDefinition[] = [
 
 export const MOBILE_HOME_CHROME = {
   firstSection: "recent_activity" as const,
+  firstManagementSurface: "monitor" as const,
+  managementGridEdgeToEdge: true,
   showsGatewayConnectionPanel: false,
+  showsRemoteManagementTitle: false,
 } as const;
 
 export const MOBILE_NAV_CHROME = {
@@ -62,6 +65,8 @@ export const MOBILE_CHAT_CHROME = {
   composerPinnedAboveNav: true,
   composerReservedBottom: MOBILE_NAV_CHROME.height,
   hidesSystemMessages: true,
+  newChatButtonProminent: true,
+  newChatButtonUsesIcon: true,
 } as const;
 
 export const MOBILE_CHAT_DETAIL_CHROME = {
@@ -94,7 +99,9 @@ export const MOBILE_SETTINGS_DETAIL_CHROME = {
 
 export const MOBILE_SETTINGS_ROOT_CHROME = {
   dangerousToolPolicyToggle: true,
+  destructiveDisconnectButton: true,
   gatewayConnectionDetails: true,
+  gatewayRefreshButton: false,
   sandboxRuntimeControls: true,
   systemPromptFeatureToggles: true,
   terminalToggle: true,

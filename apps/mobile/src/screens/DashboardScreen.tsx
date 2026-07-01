@@ -44,6 +44,7 @@ import {
   Loader2,
   MessageCircle,
   Palette,
+  Plus,
   Play,
   RefreshCw,
   Save,
@@ -59,7 +60,7 @@ import {
   Wrench,
   Zap,
 } from "lucide-react-native";
-import { GlassButton, GlassPanel } from "../components/Glass";
+import { GlassPanel } from "../components/Glass";
 import {
   MetricBarChart,
   MetricBreakdown,
@@ -101,6 +102,7 @@ import {
   MOBILE_CHAT_COMPOSER,
   MOBILE_CHAT_DETAIL_CHROME,
   MOBILE_CHAT_CHROME,
+  MOBILE_HOME_CHROME,
   MOBILE_RECENT_ACTIVITY_CHROME,
   MOBILE_ACCENT_KEYS,
   MOBILE_LOGS_CHROME,
@@ -1176,8 +1178,22 @@ function OverviewPanel({
       </GlassPanel>
 
       <View style={styles.overviewInset}>
-        <Text style={styles.sectionTitle}>Remote management</Text>
         <View style={styles.moduleGrid}>
+          {MOBILE_HOME_CHROME.firstManagementSurface === "monitor" ? (
+            <Pressable
+              style={[styles.moduleTile, styles.monitorTile, styles.monitorTilePrimary]}
+              onPress={() => openSurface("monitor")}
+            >
+              <View style={styles.moduleIcon}>
+                <Cpu color={colors.text} size={23} strokeWidth={2.1} />
+              </View>
+              <View style={styles.monitorText}>
+                <Text style={styles.moduleTitle}>System Monitor</Text>
+                <Text style={styles.moduleDetail}>{monitorOverviewLabel(systemMonitor)}</Text>
+              </View>
+              <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+            </Pressable>
+          ) : null}
           {modules.slice(0, 9).map((module) => (
             <ModuleTile
               key={module.key}
@@ -1185,19 +1201,6 @@ function OverviewPanel({
               onPress={() => (module.surface ? openSurface(module.surface) : selectTab(module.tab))}
             />
           ))}
-          <Pressable
-            style={[styles.moduleTile, styles.monitorTile]}
-            onPress={() => openSurface("monitor")}
-          >
-            <View style={styles.moduleIcon}>
-              <Cpu color={colors.text} size={23} strokeWidth={2.1} />
-            </View>
-            <View style={styles.monitorText}>
-              <Text style={styles.moduleTitle}>System Monitor</Text>
-              <Text style={styles.moduleDetail}>{monitorOverviewLabel(systemMonitor)}</Text>
-            </View>
-            <ChevronRight color={colors.text} size={22} strokeWidth={2.1} />
-          </Pressable>
         </View>
       </View>
     </>
@@ -1302,8 +1305,19 @@ function SessionsPanel({
       </View>
       <View style={styles.subsectionHeader}>
         <Text style={styles.subsectionTitle}>Recent chats</Text>
-        <Pressable style={styles.smallButton} onPress={createChat}>
-          <Text style={styles.smallButtonText}>New</Text>
+        <Pressable
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            styles.newChatButton,
+            { borderColor: `${accentColor}70`, backgroundColor: `${accentColor}18` },
+            pressed && styles.newChatButtonPressed,
+          ]}
+          onPress={createChat}
+        >
+          <View style={[styles.newChatIcon, { backgroundColor: accentColor }]}>
+            <Plus color={colors.background} size={15} strokeWidth={3} />
+          </View>
+          <Text style={[styles.newChatButtonText, { color: accentColor }]}>New Chat</Text>
         </Pressable>
       </View>
       {sessions.slice(0, visibleSessionCount).map((session) => (
@@ -3834,7 +3848,6 @@ function SettingsPanel({
   const [savingConfigKey, setSavingConfigKey] = useState<string | null>(null);
   const [savingPromptKey, setSavingPromptKey] = useState<SystemPromptFeatureKey | null>(null);
   const [savingAgentAccess, setSavingAgentAccess] = useState(false);
-  const [refreshingGateway, setRefreshingGateway] = useState(false);
   const configAvailable = summary?.availability.config.ok === true;
   const systemPromptAvailable =
     summary?.availability.systemPrompt.ok === true && Boolean(summary.systemPrompt);
@@ -3858,16 +3871,6 @@ function SettingsPanel({
   const walletStatus = objectRecord(summary?.walletStatus);
   const walletStatusAvailable = Boolean(walletStatus);
   const agentAccessEnabled = booleanSetting(walletStatus, "agentAccessEnabled");
-
-  const refreshGateway = async () => {
-    if (refreshingGateway) return;
-    setRefreshingGateway(true);
-    try {
-      await refreshSummary();
-    } finally {
-      setRefreshingGateway(false);
-    }
-  };
 
   const saveConfigPatch = async (
     key: string,
@@ -3968,21 +3971,6 @@ function SettingsPanel({
               <Text style={styles.gatewayName}>{profile.name}</Text>
               <Text style={styles.gatewayMeta}>{compactHost(profile.baseUrl)}</Text>
             </View>
-            <Pressable
-              accessibilityRole="button"
-              disabled={refreshingGateway}
-              style={[styles.reconnectButton, refreshingGateway && styles.iconButtonDisabled]}
-              onPress={() => {
-                void refreshGateway();
-              }}
-            >
-              {refreshingGateway ? (
-                <ActivityIndicator color={accentColor} size="small" />
-              ) : (
-                <RefreshCw color={accentColor} size={18} strokeWidth={2.2} />
-              )}
-              <Text style={styles.reconnectText}>Refresh</Text>
-            </Pressable>
           </View>
           <View style={styles.gatewayDetailGrid}>
             <GatewayDetailPill label="Uptime" value={gatewayUptime} />
@@ -4288,11 +4276,22 @@ function SettingsPanel({
           </Pressable>
         );
       })}
-      <GlassButton
-        label="Disconnect gateway"
-        detail="Remove active mobile profile"
+      <Pressable
+        accessibilityRole="button"
+        style={({ pressed }) => [
+          styles.disconnectButton,
+          pressed && styles.disconnectButtonPressed,
+        ]}
         onPress={onDisconnect}
-      />
+      >
+        <View style={styles.disconnectIcon}>
+          <Trash2 color={colors.red} size={18} strokeWidth={2.4} />
+        </View>
+        <View style={styles.disconnectTextWrap}>
+          <Text style={styles.disconnectTitle}>Disconnect Gateway</Text>
+          <Text style={styles.disconnectDetail}>Remove this mobile pairing profile</Text>
+        </View>
+      </Pressable>
     </GlassPanel>
   );
 }
@@ -4478,22 +4477,6 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: typography.label,
   },
-  reconnectButton: {
-    alignItems: "center",
-    backgroundColor: "rgba(16, 16, 18, 0.88)",
-    borderColor: colors.borderStrong,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: spacing.sm,
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
-  },
-  reconnectText: {
-    color: colors.text,
-    fontSize: typography.body,
-    fontWeight: "700",
-  },
   settingsGatewayCard: {
     backgroundColor: "rgba(7, 7, 9, 0.94)",
     borderColor: colors.borderStrong,
@@ -4536,14 +4519,9 @@ const styles = StyleSheet.create({
     fontSize: typography.label,
     lineHeight: 18,
   },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: "800",
-  },
   overviewInset: {
     gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: MOBILE_HOME_CHROME.managementGridEdgeToEdge ? 0 : spacing.lg,
   },
   moduleGrid: {
     flexDirection: "row",
@@ -4589,6 +4567,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     minHeight: 72,
   },
+  monitorTilePrimary: {
+    backgroundColor: "rgba(12, 12, 14, 0.96)",
+    minHeight: 78,
+  },
   monitorText: {
     flex: 1,
   },
@@ -4623,6 +4605,30 @@ const styles = StyleSheet.create({
   smallButtonText: {
     fontSize: typography.label,
     fontWeight: "800",
+  },
+  newChatButton: {
+    alignItems: "center",
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.sm,
+    minHeight: 42,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+  },
+  newChatButtonPressed: {
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+  },
+  newChatIcon: {
+    alignItems: "center",
+    borderRadius: 11,
+    height: 22,
+    justifyContent: "center",
+    width: 22,
+  },
+  newChatButtonText: {
+    fontSize: typography.label,
+    fontWeight: "900",
   },
   logPageFooter: {
     alignItems: "center",
@@ -5119,6 +5125,41 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     height: "100%",
     minWidth: 2,
+  },
+  disconnectButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 123, 139, 0.1)",
+    borderColor: "rgba(255, 123, 139, 0.34)",
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.md,
+    minHeight: 62,
+    padding: spacing.md,
+  },
+  disconnectButtonPressed: {
+    backgroundColor: "rgba(255, 123, 139, 0.18)",
+  },
+  disconnectIcon: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 123, 139, 0.14)",
+    borderRadius: 18,
+    height: 36,
+    justifyContent: "center",
+    width: 36,
+  },
+  disconnectTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  disconnectTitle: {
+    color: colors.red,
+    fontSize: typography.body,
+    fontWeight: "900",
+  },
+  disconnectDetail: {
+    color: colors.textMuted,
+    fontSize: typography.tiny,
   },
   summaryGrid: {
     flexDirection: "row",
