@@ -1864,7 +1864,7 @@ class AgentManager {
     }
 
     const maxIterationsRaw = modelParamIterations ?? configIterations ?? envIterations;
-    const maxIterations = maxIterationsRaw ? clampIterations(maxIterationsRaw) : 50;
+    const maxIterations = maxIterationsRaw ? clampIterations(maxIterationsRaw) : undefined;
 
     const maxRuntimeMsRaw =
       modelRuntimeMs ??
