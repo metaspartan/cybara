@@ -1,4 +1,5 @@
 import { tables } from "./database";
+import { normalizeReasoningEffort } from "./llm/reasoning";
 
 interface PlatformConfig {
   name: string;
@@ -317,6 +318,16 @@ class ConfigManager {
       config[key] = parseJsonValue(value);
     }
     return config;
+  }
+
+  getDefaultReasoningEffort(): string {
+    return normalizeReasoningEffort(this.get<unknown>("reasoning_effort")) || "";
+  }
+
+  setDefaultReasoningEffort(value: unknown): string {
+    const normalized = normalizeReasoningEffort(value) || "";
+    this.set("reasoning_effort", normalized);
+    return normalized;
   }
 
   getDangerousToolPolicy(): DangerousToolPolicyConfig {

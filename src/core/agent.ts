@@ -1,4 +1,5 @@
 import { tables, type Agent, type ToolDefinition } from "./database";
+import { config } from "./config";
 import {
   providerManager,
   getProviderBaseUrl,
@@ -1673,7 +1674,12 @@ class AgentManager {
     if (!agent) return {};
 
     const parsedConfig = parseAgentConfig(agent.config, agent.id);
-    return parseModelParams(parsedConfig.model_params ?? parsedConfig.modelParams);
+    const params = parseModelParams(parsedConfig.model_params ?? parsedConfig.modelParams);
+    if (params.reasoning_effort === undefined && params.reasoningEffort === undefined) {
+      const globalDefault = config.getDefaultReasoningEffort();
+      if (globalDefault) params.reasoning_effort = globalDefault;
+    }
+    return params;
   }
 
   private parsePositiveInt(value: unknown): number | undefined {

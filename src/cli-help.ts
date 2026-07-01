@@ -26,6 +26,9 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("    config            Show all config");
   console.log("    config get <key>  Get config value");
   console.log("    config set <k> <v> Set config value (for example: theme emerald)");
+  console.log(
+    "    config set reasoning_effort <minimal|low|medium|high|xhigh>  Default reasoning effort"
+  );
   console.log("  provider    Provider management commands");
   console.log("    provider list         List configured providers");
   console.log("    provider available    Show available types");

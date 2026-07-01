@@ -14,6 +14,7 @@ export interface Agent {
   maxTokens?: number;
   max_tokens?: number;
   tools?: string[];
+  config?: Record<string, unknown>;
   createdAt?: string;
   created_at?: string;
   updatedAt?: string;

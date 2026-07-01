@@ -573,6 +573,7 @@ const routes: Record<string, RouteHandler> = {
     web_tool_url_policy: config.getWebToolUrlPolicy(),
     sandbox_runtime: config.getSandboxRuntime(),
     workspace_indexer: config.getWorkspaceIndexerSettings(),
+    reasoning_effort: config.getDefaultReasoningEffort(),
   }),
   "GET /api/sandbox/status": () => getSandboxRuntimeStatus(),
   "PUT /api/config": (body) => {
@@ -597,6 +598,10 @@ const routes: Record<string, RouteHandler> = {
       }
       if (key === "workspace_indexer") {
         workspaceIndexer.updateSettings(value);
+        continue;
+      }
+      if (key === "reasoning_effort") {
+        config.setDefaultReasoningEffort(value);
         continue;
       }
       config.set(key, value);

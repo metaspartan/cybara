@@ -48,6 +48,37 @@ const agentTypes = [
   { value: "worker", label: "Worker" },
 ];
 
+const reasoningEffortOptions = [
+  { value: "", label: "Default (provider setting)" },
+  { value: "minimal", label: "Minimal" },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "xhigh", label: "Max" },
+];
+
+function buildConfig(
+  formData: FormData,
+  existing?: Record<string, unknown>
+): Record<string, unknown> {
+  const config: Record<string, unknown> = { ...(existing || {}) };
+  const modelParams: Record<string, unknown> = {
+    ...((config.model_params as Record<string, unknown>) || {}),
+  };
+  const effort = (formData.get("reasoning_effort") as string) || "";
+  if (effort) {
+    modelParams.reasoning_effort = effort;
+  } else {
+    delete modelParams.reasoning_effort;
+  }
+  if (Object.keys(modelParams).length > 0) {
+    config.model_params = modelParams;
+  } else {
+    delete config.model_params;
+  }
+  return config;
+}
+
 export function Agents() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -131,6 +162,7 @@ export function Agents() {
         model: formData.get("model") as string,
         provider_id: formData.get("provider_id") as string,
         system_prompt: formData.get("system_prompt") as string,
+        config: buildConfig(formData),
       });
       addToast("success", "Agent created successfully");
       setIsCreateModalOpen(false);
@@ -150,6 +182,7 @@ export function Agents() {
           model: formData.get("model") as string,
           provider_id: formData.get("provider_id") as string,
           system_prompt: formData.get("system_prompt") as string,
+          config: buildConfig(formData, editingAgent.config),
         },
       });
       addToast("success", "Agent updated successfully");
@@ -684,6 +717,16 @@ function AgentModal({
           </div>
 
           <input type="hidden" name="model" value={useCustomModel ? customModel : selectedModel} />
+
+          <Select
+            label="Reasoning Effort"
+            name="reasoning_effort"
+            defaultValue={
+              ((initialData?.config as { model_params?: { reasoning_effort?: string } })?.model_params
+                ?.reasoning_effort as string) || ""
+            }
+            options={reasoningEffortOptions}
+          />
 
           <Textarea
             label="System Prompt"

@@ -564,6 +564,8 @@ function FeatureSettings() {
   const [sandboxProvider, setSandboxProvider] = useState<SandboxProviderOption>("auto");
   const [sandboxNetwork, setSandboxNetwork] = useState<"allow" | "deny">("deny");
   const [savingToolApprovalMode, setSavingToolApprovalMode] = useState(false);
+  const [reasoningEffort, setReasoningEffort] = useState("");
+  const [savingReasoningEffort, setSavingReasoningEffort] = useState(false);
   const [savingDangerousPolicy, setSavingDangerousPolicy] = useState(false);
   const [savingSandboxRuntime, setSavingSandboxRuntime] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -636,6 +638,9 @@ function FeatureSettings() {
             : "auto"
         );
         setSandboxNetwork(sandboxRaw?.network === "allow" ? "allow" : "deny");
+        setReasoningEffort(
+          typeof data?.reasoning_effort === "string" ? data.reasoning_effort : ""
+        );
         if (sandboxResult.success && sandboxResult.data) {
           setSandboxStatus(sandboxResult.data as SandboxStatusView);
         }
@@ -711,6 +716,24 @@ function FeatureSettings() {
       addToast("error", "Failed to update tool approval mode");
     } finally {
       setSavingToolApprovalMode(false);
+    }
+  };
+
+  const updateReasoningEffort = async (next: string) => {
+    const previous = reasoningEffort;
+    setReasoningEffort(next);
+    setSavingReasoningEffort(true);
+    try {
+      const result = await settingsApi.updateConfig({ reasoning_effort: next });
+      if (!result.success || !result.data?.success) {
+        throw new Error(result.error || "Config update failed");
+      }
+      addToast("success", next ? `Reasoning effort set to ${next}` : "Reasoning effort set to default");
+    } catch {
+      setReasoningEffort(previous);
+      addToast("error", "Failed to update reasoning effort");
+    } finally {
+      setSavingReasoningEffort(false);
     }
   };
 
@@ -863,6 +886,29 @@ function FeatureSettings() {
             Channel shortcut: <code className="text-indigo-400">/permissions ask</code> or{" "}
             <code className="text-indigo-400">/permissions allow</code>
           </p>
+        </div>
+
+        <div className="py-3 border-b border-white/10">
+          <p className="text-sm text-white font-medium">Reasoning Effort</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Default thinking depth for reasoning-capable models. Applied when an agent does not set
+            its own reasoning effort. Ignored by models without reasoning support.
+          </p>
+          <div className="mt-3 max-w-xs">
+            <Select
+              value={reasoningEffort}
+              onChange={(value) => void updateReasoningEffort(value)}
+              options={[
+                { value: "", label: "Default (provider setting)" },
+                { value: "minimal", label: "Minimal" },
+                { value: "low", label: "Low" },
+                { value: "medium", label: "Medium" },
+                { value: "high", label: "High" },
+                { value: "xhigh", label: "Max" },
+              ]}
+              disabled={loading || savingReasoningEffort}
+            />
+          </div>
         </div>
 
         <div className="py-3">
