@@ -80,6 +80,9 @@ function discoverUiPath(): string {
 
   const candidates = new Set<string>([firstCandidate]);
   const bases = [dirname(process.execPath), process.cwd(), __dirname];
+  if (process.env.CYBARA_RESOURCE_DIR) {
+    bases.unshift(process.env.CYBARA_RESOURCE_DIR);
+  }
 
   for (const base of bases) {
     let current = base;

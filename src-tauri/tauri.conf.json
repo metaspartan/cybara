@@ -36,7 +36,8 @@
       "icons/icon.png"
     ],
     "resources": {
-      "bin/node_modules": "node_modules"
+      "bin/node_modules": "node_modules",
+      "bin/ui/dist": "ui/dist"
     },
     "targets": [
       "dmg",
