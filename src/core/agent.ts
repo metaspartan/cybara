@@ -34,6 +34,8 @@ import {
   googleThinkingBudget,
 } from "./llm/reasoning";
 import { applyProviderApiKey } from "./llm/auth-headers";
+import { recallRelevantMemory } from "./memory/recall";
+import { canRunToolsInParallel } from "./llm/parallel-tools";
 import {
   anthropicEndpointPath,
   anthropicRequestBase,
@@ -1516,9 +1518,9 @@ class AgentManager {
           },
           ...messages,
         ];
-    const workspaceAwareMessages = this.injectWorkspaceSystemMessage(
-      fullMessages,
-      options?.workspaceDir
+    const workspaceAwareMessages = await this.injectMemoryRecall(
+      this.injectWorkspaceSystemMessage(fullMessages, options?.workspaceDir),
+      agent
     );
 
     const supportsTools = true;
@@ -1645,6 +1647,28 @@ class AgentManager {
           ? options.requiredToolName.trim()
           : undefined,
     };
+  }
+
+  private async injectMemoryRecall(
+    messages: AgentMessage[],
+    agent: Agent
+  ): Promise<AgentMessage[]> {
+    if (!agent.memory_enabled) return messages;
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    const query = typeof lastUser?.content === "string" ? lastUser.content.trim() : "";
+    if (!query) return messages;
+    let recall = "";
+    try {
+      recall = await recallRelevantMemory(query);
+    } catch {
+      return messages;
+    }
+    if (!recall) return messages;
+    const recallMessage = { role: "system" as const, content: recall };
+    if (messages[0]?.role === "system") {
+      return [messages[0], recallMessage, ...messages.slice(1)];
+    }
+    return [recallMessage, ...messages];
   }
 
   private injectWorkspaceSystemMessage(
@@ -4623,6 +4647,20 @@ class AgentManager {
       const expectedToolUseIds = new Set<string>();
       const iterationToolCalls: AgentToolCallResult[] = [];
 
+      const preStarted = new Map<string, ReturnType<typeof this.executeToolWithHooks>>();
+      if (canRunToolsInParallel(toolUseBlocks.map((b) => (typeof b.name === "string" ? b.name : "")))) {
+        for (const toolUse of toolUseBlocks) {
+          const id = typeof toolUse.id === "string" ? toolUse.id : "";
+          const name = typeof toolUse.name === "string" ? toolUse.name : "";
+          if (id && name) {
+            preStarted.set(
+              id,
+              this.executeToolWithHooks(name, toolUse.input || {}, allowedToolNames, toolContext, hookContext)
+            );
+          }
+        }
+      }
+
       for (const toolUse of toolUseBlocks) {
         const toolName = typeof toolUse.name === "string" ? toolUse.name : "";
         const toolUseId = typeof toolUse.id === "string" ? toolUse.id : "";
@@ -4651,13 +4689,8 @@ class AgentManager {
           continue;
         }
 
-        const executed = await this.executeToolWithHooks(
-          toolName,
-          args,
-          allowedToolNames,
-          toolContext,
-          hookContext
-        );
+        const executed = await (preStarted.get(toolUseId) ??
+          this.executeToolWithHooks(toolName, args, allowedToolNames, toolContext, hookContext));
         const resultPayload =
           executed.skipped || executed.result === undefined
             ? { error: `Tool execution skipped for ${toolName}` }
