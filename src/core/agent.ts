@@ -38,6 +38,12 @@ import { recallRelevantMemory } from "./memory/recall";
 import { canRunToolsInParallel } from "./llm/parallel-tools";
 import { coalesceSystemMessages } from "./llm/system-messages";
 import {
+  buildCompactedConversation,
+  conversationNeedsCompaction,
+  estimateConversationChars,
+  planCompactionCut,
+} from "./conversation-window";
+import {
   anthropicEndpointPath,
   anthropicRequestBase,
   anthropicRequestHeaders,
@@ -223,6 +229,16 @@ const HARD_MAX_TOOL_RESULT_CHARS = 400_000;
 const MIN_TOOL_RESULT_CHARS = 2_000;
 const CONTEXT_LIMIT_TRUNCATION_NOTICE = "[truncated: output exceeded context limit]";
 const CONTEXT_LIMIT_COMPACTION_NOTICE = "[compacted: tool output removed to free context]";
+
+// Conversation windowing: a long-running chat replays its whole history on
+// every turn, so token cost grows quadratically. When the stored history
+// crosses these bounds we condense the oldest turns into a single summary
+// message and keep the most recent turns verbatim, so per-turn cost stays flat.
+const CONVERSATION_KEEP_RECENT_MESSAGES = 16;
+const CONVERSATION_MAX_MESSAGES = 60;
+const CONVERSATION_COMPACT_TRIGGER_RATIO = 0.55;
+const CONVERSATION_SUMMARY_MAX_CHARS = 4_000;
+const CONVERSATION_SUMMARY_PREFIX = "[Earlier conversation summary — prior turns condensed to save context]";
 const MAX_AGENTIC_CONFIGURED_ITERATIONS = 10000;
 const MAX_AGENTIC_MAX_RUNTIME_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_TOOL_LOOP_WARNING_THRESHOLD = 10;
@@ -1369,11 +1385,125 @@ class AgentManager {
 
     state.messages.push({ role: "user", content });
 
+    await this.maybeCompactConversation(state);
+
     const result = await this.executeWithState(state);
 
     state.messages.push({ role: "assistant", content: result.response });
 
     return result;
+  }
+
+  /**
+   * Condense the oldest stored turns into a single summary message once the
+   * conversation grows past its window, keeping recent turns verbatim. This
+   * bounds the per-turn token cost of a long chat instead of letting the full
+   * history replay every turn. Best-effort: any failure leaves history intact.
+   */
+  private async maybeCompactConversation(state: RunningAgentState): Promise<void> {
+    try {
+      const messages = state.messages;
+      const systemCount = messages[0]?.role === "system" ? 1 : 0;
+      const convo = messages.slice(systemCount);
+      if (convo.length <= CONVERSATION_KEEP_RECENT_MESSAGES + 2) return;
+
+      const provider = this.resolveProviderForAgent(state.agent, true);
+      if (!provider) return;
+      const resolved = this.resolveProviderModelForExecution(provider, state.agent.model);
+      const activeProvider = resolved.provider;
+      const activeModel = resolved.model;
+      const providerConfig = String((activeProvider as { provider?: unknown }).provider || "");
+      const providerId = (activeProvider as { id?: string }).id;
+      const contextWindowTokens = this.resolveModelContextWindowTokens(
+        providerConfig,
+        providerId,
+        activeModel || ""
+      );
+      const { contextBudgetChars } = this.resolveContextGuardBudgets(contextWindowTokens);
+      const threshold = Math.floor(contextBudgetChars * CONVERSATION_COMPACT_TRIGGER_RATIO);
+      const convoChars = estimateConversationChars(convo);
+      if (
+        !conversationNeedsCompaction({
+          convoLength: convo.length,
+          convoChars,
+          threshold,
+          maxMessages: CONVERSATION_MAX_MESSAGES,
+          keepRecent: CONVERSATION_KEEP_RECENT_MESSAGES,
+        })
+      ) {
+        return;
+      }
+
+      const cut = planCompactionCut(convo, CONVERSATION_KEEP_RECENT_MESSAGES);
+      if (cut <= 0) return;
+
+      const older = convo.slice(0, cut);
+      const recent = convo.slice(cut);
+      if (older.length === 0) return;
+
+      const summaryText = await this.summarizeConversation(older, activeProvider, activeModel);
+      if (!summaryText) return;
+
+      const system = messages.slice(0, systemCount);
+      state.messages = buildCompactedConversation(
+        system,
+        recent,
+        summaryText,
+        CONVERSATION_SUMMARY_PREFIX
+      );
+      console.log(
+        `[Agent] Compacted conversation for "${state.agent.name}": ${older.length} turns -> summary, ${recent.length} kept`
+      );
+    } catch (error) {
+      console.error("[Agent] Conversation compaction skipped:", error);
+    }
+  }
+
+  private async summarizeConversation(
+    older: AgentMessage[],
+    provider: ReturnType<typeof providerManager.get>,
+    model: string | undefined
+  ): Promise<string | null> {
+    const transcript = older
+      .filter((message) => message.role === "user" || message.role === "assistant")
+      .map((message) => {
+        const speaker = message.role === "user" ? "User" : "Assistant";
+        const text = typeof message.content === "string" ? message.content : "";
+        return `${speaker}: ${text}`;
+      })
+      .join("\n\n");
+    if (!transcript.trim()) return null;
+
+    const instruction =
+      "You are compacting an ongoing conversation to preserve context within a limited window. " +
+      "Summarize the exchange below into durable notes the assistant needs to keep helping: the " +
+      "user's goals and constraints, decisions made, facts established, open questions, and any " +
+      "task state. Preserve concrete identifiers (names, paths, values). Omit pleasantries. " +
+      `Write terse bullet points, at most ${CONVERSATION_SUMMARY_MAX_CHARS} characters.`;
+
+    try {
+      const result = await this.callLLM(
+        provider,
+        model,
+        [
+          { role: "system", content: instruction },
+          { role: "user", content: transcript },
+        ],
+        []
+      );
+      const summary = typeof result.content === "string" ? result.content.trim() : "";
+      if (summary) {
+        return summary.length > CONVERSATION_SUMMARY_MAX_CHARS
+          ? summary.slice(0, CONVERSATION_SUMMARY_MAX_CHARS)
+          : summary;
+      }
+    } catch (error) {
+      console.error("[Agent] Conversation summary generation failed:", error);
+    }
+
+    // Heuristic fallback: keep the head and tail of the transcript so we still
+    // shrink history even when the summary model is unavailable.
+    return this.truncateTextWithHeadAndTail(transcript, CONVERSATION_SUMMARY_MAX_CHARS);
   }
 
   private async executeWithState(
@@ -4795,6 +4925,19 @@ class AgentManager {
           input_schema: t.input_schema || { type: "object", properties: {} },
         }));
       }
+
+      // Re-anchor the cache each iteration so the stable prefix (system + prior
+      // turns) stays cached and only the newest tool results are re-billed;
+      // otherwise every loop iteration pays full price for the whole prefix.
+      const loopCached = applyAnthropicCacheControl(
+        {
+          system: loopRequestBody.system as string | undefined,
+          messages: loopRequestBody.messages as AnthropicCacheRequest["messages"],
+        },
+        { strategy: "system_and_3", ttl: "1h" }
+      );
+      if (loopCached.system !== undefined) loopRequestBody.system = loopCached.system;
+      loopRequestBody.messages = loopCached.messages;
 
       const TRANSIENT_STATUS_CODES = new Set([500, 502, 503, 520, 529]);
       const MAX_RETRIES = 3;
