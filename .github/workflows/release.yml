@@ -200,7 +200,11 @@ jobs:
       matrix:
         include:
           - arch: arm64
-            runner: macos-15
+            # macOS 26 (Xcode 26) SDK is required: the app references the
+            # Liquid Glass `glassEffect` API and relies on macOS 26 SDK Sendable
+            # annotations. `if #available` only gates runtime, not the compile
+            # SDK, so an older SDK (macos-15 → Xcode 16) can't build it at all.
+            runner: macos-26
     runs-on: ${{ matrix.runner }}
     env:
       # Mapped from secrets so steps can gate on presence. Leave the secrets
@@ -437,7 +441,9 @@ jobs:
     needs: quality
     continue-on-error: true
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: macos-15
+    # macOS 26 (Xcode 26) provides the iOS 26 SDK that expo-glass-effect's native
+    # Liquid Glass views compile against.
+    runs-on: macos-26
     env:
       CYBARA_RELEASE_VERSION: ${{ github.ref_name }}
       EXPO_NO_TELEMETRY: "1"
