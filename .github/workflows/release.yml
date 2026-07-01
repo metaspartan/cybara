@@ -343,6 +343,12 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
+      # React Native / Expo Gradle scripts shell out to `node` for autolinking;
+      # Bun alone is not enough, so a real Node runtime must be on PATH.
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -356,25 +362,63 @@ jobs:
         run: bun run version:sync
       - name: Prebuild Android project
         run: cd apps/mobile && bunx expo prebuild --platform android --no-install
-      # Debug build is debug-signed and therefore installable without a keystore.
-      # If ANDROID_KEYSTORE_BASE64 (+ ANDROID_KEY_* ) secrets are added later,
-      # switch this to assembleRelease with a signing config.
-      - name: Build APK
-        run: cd apps/mobile/android && ./gradlew assembleDebug --no-daemon -x lint
-      - name: Name APK
-        id: apk
+      # Signed release AAB (for Google Play) + APK when a keystore is configured;
+      # otherwise a debug-signed APK that is installable for sideloading.
+      - name: Build Android artifacts
+        id: build
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
-          SRC="$(find apps/mobile/android/app/build/outputs/apk -name '*.apk' | head -1)"
-          OUT="cybara-v${VERSION}-android.apk"
-          cp "$SRC" "$OUT"
-          echo "path=$OUT" >> "$GITHUB_OUTPUT"
-      - name: Upload APK to release
+          cd apps/mobile/android
+          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > upload.keystore
+            KS="$(pwd)/upload.keystore"
+            ./gradlew bundleRelease assembleRelease --no-daemon -x lint \
+              -Pandroid.injected.signing.store.file="$KS" \
+              -Pandroid.injected.signing.store.password="$ANDROID_KEYSTORE_PASSWORD" \
+              -Pandroid.injected.signing.key.alias="$ANDROID_KEY_ALIAS" \
+              -Pandroid.injected.signing.key.password="$ANDROID_KEY_PASSWORD"
+            rm -f upload.keystore
+            AAB="$(find app/build/outputs/bundle -name '*.aab' | head -1)"
+            APK="$(find app/build/outputs/apk/release -name '*.apk' | head -1)"
+          else
+            ./gradlew assembleDebug --no-daemon -x lint
+            AAB=""
+            APK="$(find app/build/outputs/apk -name '*.apk' | head -1)"
+          fi
+          cd "$GITHUB_WORKSPACE"
+          OUT_APK="cybara-v${VERSION}-android.apk"
+          [ -n "$APK" ] && cp "apps/mobile/android/$APK" "$OUT_APK" && echo "apk=$OUT_APK" >> "$GITHUB_OUTPUT"
+          if [ -n "$AAB" ]; then
+            OUT_AAB="cybara-v${VERSION}-android.aab"
+            cp "apps/mobile/android/$AAB" "$OUT_AAB"
+            echo "aab=$OUT_AAB" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Upload Android artifacts to release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          files: ${{ steps.apk.outputs.path }}
+          files: |
+            ${{ steps.build.outputs.apk }}
+            ${{ steps.build.outputs.aab }}
+      # Publishes the signed AAB to the Play Console internal track when a
+      # service-account key is configured. No-op otherwise.
+      - name: Publish to Google Play
+        if: steps.build.outputs.aab != '' && env.PLAY_SA != ''
+        env:
+          PLAY_SA: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: dev.cybara.mobile
+          releaseFiles: ${{ steps.build.outputs.aab }}
+          track: internal
+          status: completed
 
   # ── iOS build (local Xcode build via Expo prebuild) ────────────────────────
   # Produces a signed .ipa only when Apple signing secrets are configured;
@@ -395,6 +439,10 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       - name: Install dependencies
         run: bun install --ignore-scripts && bun run scripts/postinstall.ts
       - name: Sync version metadata
