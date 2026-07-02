@@ -4,8 +4,8 @@ import { Alert, Image, StyleSheet, Text, TextInput, View } from "react-native";
 import { GlassButton, GlassPanel } from "../components/Glass";
 import {
   buildMobileConnectPayload,
-  parseMobileConnectPayload,
   profileFromPayload,
+  resolveGatewayProfile,
   type GatewayProfile,
 } from "../lib/connection";
 import { colors, radius, spacing, subscribeColors, typography } from "../theme/liquidGlass";
@@ -31,12 +31,12 @@ export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfi
     }
   };
 
-  const connectPayload = () => {
+  const connectPayload = async () => {
     try {
-      onConnect(profileFromPayload(parseMobileConnectPayload(payload)));
+      onConnect(await resolveGatewayProfile(payload));
     } catch (error) {
       Alert.alert(
-        "Could not parse connection payload",
+        "Could not connect",
         error instanceof Error ? error.message : String(error)
       );
     }
@@ -57,17 +57,17 @@ export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfi
     setScannerOpen(true);
   };
 
-  const connectScannedPayload = (result: BarcodeScanningResult) => {
+  const connectScannedPayload = async (result: BarcodeScanningResult) => {
     if (scanLocked) return;
     setScanLocked(true);
     setPayload(result.data);
     try {
-      onConnect(profileFromPayload(parseMobileConnectPayload(result.data)));
+      onConnect(await resolveGatewayProfile(result.data));
       setScannerOpen(false);
     } catch (error) {
       setScanLocked(false);
       Alert.alert(
-        "Could not parse scanned QR",
+        "Could not connect",
         error instanceof Error ? error.message : String(error)
       );
     }

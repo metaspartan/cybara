@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
   MOBILE_CONNECT_PROTOCOL,
+  MOBILE_PAIRING_PROTOCOL,
   buildMobileConnectPayload,
   encodeMobileConnectPayload,
   normalizeGatewayUrl,
   parseMobileConnectPayload,
   profileFromPayload,
+  resolveGatewayProfile,
 } from "../../apps/mobile/src/lib/connection";
 
 describe("mobile gateway connection payloads", () => {
@@ -50,5 +52,62 @@ describe("mobile gateway connection payloads", () => {
     expect(() =>
       buildMobileConnectPayload({ baseUrl: "http://localhost:4269", apiKey: " " })
     ).toThrow("API key is required");
+  });
+});
+
+describe("pairing-code redemption", () => {
+  const okFetch: typeof fetch = (async (_url: string, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        apiKey: `cybara_mobile_for_${body.code}`,
+        device: { id: "mobile_abc" },
+        payload: { name: "Studio" },
+      }),
+    };
+  }) as unknown as typeof fetch;
+
+  test("resolveGatewayProfile redeems a pairing-code QR into a profile", async () => {
+    const raw = JSON.stringify({
+      protocol: MOBILE_PAIRING_PROTOCOL,
+      name: "Studio",
+      baseUrl: "http://127.0.0.1:4269",
+      code: "ABCD-2345",
+    });
+    const profile = await resolveGatewayProfile(raw, new Date(), okFetch);
+    expect(profile.apiKey).toBe("cybara_mobile_for_ABCD-2345");
+    expect(profile.baseUrl).toBe("http://127.0.0.1:4269");
+    expect(profile.deviceId).toBe("mobile_abc");
+  });
+
+  test("resolveGatewayProfile still handles a legacy direct-token QR", async () => {
+    const raw = JSON.stringify({
+      protocol: MOBILE_CONNECT_PROTOCOL,
+      name: "Studio",
+      baseUrl: "http://127.0.0.1:4269",
+      apiKey: "cybara_direct",
+    });
+    const profile = await resolveGatewayProfile(raw);
+    expect(profile.apiKey).toBe("cybara_direct");
+  });
+
+  test("a failed redemption surfaces the gateway error", async () => {
+    const failFetch: typeof fetch = (async () => ({
+      ok: false,
+      status: 400,
+      json: async () => ({ success: false, error: "Invalid, expired, or already-used pairing code" }),
+    })) as unknown as typeof fetch;
+    const raw = JSON.stringify({
+      protocol: MOBILE_PAIRING_PROTOCOL,
+      name: "Studio",
+      baseUrl: "http://127.0.0.1:4269",
+      code: "DEAD-BEEF",
+    });
+    await expect(resolveGatewayProfile(raw, new Date(), failFetch)).rejects.toThrow(
+      /expired|already-used/
+    );
   });
 });

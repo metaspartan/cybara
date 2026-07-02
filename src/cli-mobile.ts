@@ -54,11 +54,21 @@ async function rawMobileConnect(args: string[], context: MobileCliContext): Prom
     context.getFlagValue(args, "--device") || context.getFlagValue(args, "--device-name");
   const showQr = !context.hasFlag(args, "--no-qr");
   const jsonOnly = context.hasFlag(args, "--json");
+  const useCode = context.hasFlag(args, "--code");
+  const role = context.getFlagValue(args, "--role");
 
   if (!context.apiKey) {
     console.error("ERROR: No API key available for mobile pairing.");
     console.error("Set CYBARA_API_KEY or create ~/.cybara/api_key, then rerun this command.");
     process.exit(1);
+  }
+
+  if (useCode) {
+    await rawMobilePairCode(
+      { baseUrl, gatewayName, deviceName, role, showQr, jsonOnly },
+      context
+    );
+    return;
   }
 
   const pairing = await context.fetchAPI<MobilePairingResponse>("/api/mobile/devices", {
@@ -102,6 +112,66 @@ async function rawMobileConnect(args: string[], context: MobileCliContext): Prom
   console.log("");
   console.log("Deep link:");
   console.log(deepLink);
+}
+
+interface MobilePairCodeResponse {
+  success: boolean;
+  code: string;
+  expiresAt: number;
+  payload: { name: string; baseUrl: string; code: string; role?: string; expiresAt: number };
+  encoded: string;
+}
+
+async function rawMobilePairCode(
+  opts: {
+    baseUrl: string;
+    gatewayName: string;
+    deviceName?: string;
+    role?: string;
+    showQr: boolean;
+    jsonOnly: boolean;
+  },
+  context: MobileCliContext
+): Promise<void> {
+  const result = await context.fetchAPI<MobilePairCodeResponse>("/api/mobile/devices/pair-code", {
+    method: "POST",
+    body: JSON.stringify({
+      baseUrl: opts.baseUrl,
+      gatewayName: opts.gatewayName,
+      deviceName: opts.deviceName,
+      role: opts.role,
+    }),
+  });
+
+  if (!result?.success) {
+    console.error("ERROR: Failed to create a pairing code.");
+    process.exit(1);
+  }
+
+  const encoded = result.encoded || JSON.stringify(result.payload);
+  if (opts.jsonOnly) {
+    console.log(encoded);
+    return;
+  }
+
+  const minutesLeft = Math.max(1, Math.round((result.expiresAt - Date.now()) / 60000));
+  console.log("CYBARA MOBILE PAIRING CODE");
+  console.log("==========================");
+  console.log(`gateway: ${result.payload.name}`);
+  console.log(`url: ${result.payload.baseUrl}`);
+  console.log(`role: ${result.payload.role || "standard"}`);
+  console.log(`code: ${result.code}`);
+  console.log(`expires in: ~${minutesLeft} min (single use)`);
+  console.log("");
+  console.log("Scan this QR with Cybara Mobile (the code is redeemed on scan):");
+  if (opts.showQr) {
+    generateQr(encoded, { small: true });
+  } else {
+    console.log("(QR hidden because --no-qr was passed)");
+  }
+  console.log("");
+  console.log("Payload:");
+  console.log(encoded);
 }
 
 async function rawMobileList(context: MobileCliContext): Promise<void> {

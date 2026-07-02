@@ -24,6 +24,10 @@ const DYNAMIC_IMPORT_ALLOWLIST = new Set([
   // dirs at runtime; static importing bundles a build-time path that breaks the
   // compiled sidecar at startup.
   "src/core/browser/playwright-loader.ts",
+  // Mixture-of-agents routing delegates to the MoA tool handler, which imports
+  // agentManager from agent.ts — a circular dependency, so the handler is loaded
+  // lazily only when the MoA strategy is active.
+  "src/core/agent.ts",
   // Lazy-load the Tauri/desktop bridge modules, which only exist when running
   // inside the desktop app (not the server/CLI runtime).
   "ui/src/lib/desktopHost.ts",
