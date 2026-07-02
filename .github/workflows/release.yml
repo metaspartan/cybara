@@ -95,16 +95,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macOS arm64 — native build on a GitHub-hosted Apple Silicon runner
+          # macOS arm64 — native build on Apple Silicon (macos-26)
           - platform: macos
-            runner: macos-15
+            runner: macos-26
             args: "--target aarch64-apple-darwin"
             rust_target: aarch64-apple-darwin
             bun_target: bun-darwin-arm64
             sidecar: "src-tauri/bin/cybara-aarch64-apple-darwin"
-          # macOS x64 — native build on a GitHub-hosted Intel runner
+          # macOS x64 — cross-compiled on Apple Silicon (macos-26). The Intel
+          # macos-13 runners are deprecated/scarce and can queue for hours; Rust
+          # cross-compiles x86_64 fine with the target added below, and the bun
+          # sidecar cross-compiles via its own --target.
           - platform: macos
-            runner: macos-13
+            runner: macos-26
             args: "--target x86_64-apple-darwin"
             rust_target: x86_64-apple-darwin
             bun_target: bun-darwin-x64
