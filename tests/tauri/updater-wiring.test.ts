@@ -61,6 +61,6 @@ describe("desktop updater wiring", () => {
     expect(workflow).toContain("aarch64-apple-darwin");
     expect(workflow).toContain("x86_64-pc-windows-msvc");
     expect(workflow).toContain("x86_64-unknown-linux-gnu");
-    expect(workflow).toContain("tauri-apps/tauri-action@v0");
+    expect(workflow).toContain("tauri-apps/tauri-action@");
   });
 });

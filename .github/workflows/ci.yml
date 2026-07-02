@@ -7,6 +7,13 @@ on:
       - master
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 # Pin Bun for reproducible CI runs + skip browser downloads.
 env:
   BUN_VERSION: "1.3.14"
@@ -18,10 +25,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
@@ -36,3 +43,16 @@ jobs:
 
       - name: Security audit
         run: bun audit || true
+
+  native-macos:
+    name: Native macOS
+    runs-on: macos-26
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Build SwiftPM package
+        run: swift build --package-path apps/macos/Cybara
+
+      - name: Run SwiftPM tests
+        run: swift test --package-path apps/macos/Cybara

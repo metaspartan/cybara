@@ -224,7 +224,7 @@ describe("channel management commands", () => {
     expect(response).toContain("run-subagent-alias");
   });
 
-  test("shows and updates tool permission mode via /permissions command", async () => {
+  test("shows permission mode but blocks remote permission-mode changes", async () => {
     config.set("tool_approval_mode", "always_allow");
 
     const before = await handleChannelManagementCommand("/permissions", {
@@ -240,15 +240,15 @@ describe("channel management commands", () => {
       chatId: "chat-permissions",
       platform: "discord",
     });
-    expect(askResult).toContain("set to ask");
-    expect(config.get<string>("tool_approval_mode")).toBe("ask");
+    expect(askResult).toBe("Permission mode changes are only available from the local app.");
+    expect(config.get<string>("tool_approval_mode")).toBe("always_allow");
 
     const allowResult = await handleChannelManagementCommand("/permissions allow", {
       channelId: "channel-permissions",
       chatId: "chat-permissions",
       platform: "discord",
     });
-    expect(allowResult).toContain("set to allow");
+    expect(allowResult).toBe("Permission mode changes are only available from the local app.");
     expect(config.get<string>("tool_approval_mode")).toBe("always_allow");
   });
 

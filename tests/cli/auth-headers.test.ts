@@ -184,7 +184,7 @@ describe("CLI auth header forwarding", () => {
   test("config set includes authorization header and fails without key", async () => {
     const setOk = await runCli(["config", "set", "theme", "auth-header-test"]);
     expect(setOk.exitCode).toBe(0);
-    expect(setOk.stdout).toContain("Set theme = auth-header-test");
+    expect(setOk.stdout).toContain('Set theme = "auth-header-test"');
 
     const setNoAuth = await runCli(["config", "set", "theme", "auth-header-test-missing"], {
       CYBARA_API_KEY: "",

@@ -1457,7 +1457,7 @@ describe("CLI Commands", () => {
 
     const setTheme = await runCli(["config", "set", "theme", "teal"]);
     expect(setTheme.exitCode).toBe(0);
-    expect(setTheme.stdout).toContain("Set theme = teal");
+    expect(setTheme.stdout).toContain('Set theme = "teal"');
 
     const getTheme = await runCli(["config", "get", "theme"]);
     expect(getTheme.exitCode).toBe(0);

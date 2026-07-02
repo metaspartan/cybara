@@ -15,7 +15,7 @@ describe("app release surface wiring", () => {
 
     expect(workflow).toContain("build-mobile:");
     expect(workflow).toContain("name: Mobile Expo bundles");
-    expect(workflow).toContain("uses: actions/setup-node@v4");
+    expect(workflow).toContain("uses: actions/setup-node@");
     expect(workflow).toContain("bun run mobile:expo-check");
     expect(workflow).toContain("bun run mobile:typecheck");
     expect(workflow).toContain("bunx expo export --platform ios");
@@ -28,7 +28,7 @@ describe("app release surface wiring", () => {
 
     expect(workflow).toContain("build-android:");
     expect(workflow).toContain("name: Android APK");
-    expect(workflow).toContain("android-actions/setup-android@v3");
+    expect(workflow).toContain("android-actions/setup-android@");
     expect(workflow).toContain("cd apps/mobile && bunx expo prebuild --platform android --no-install");
     expect(workflow).toContain("./gradlew bundleRelease assembleRelease");
     expect(workflow).toContain("./gradlew assembleDebug");

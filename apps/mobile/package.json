@@ -11,26 +11,26 @@
     "typecheck": "bunx tsc --noEmit"
   },
   "dependencies": {
-    "@expo/metro-runtime": "~56.0.16",
+    "@expo/metro-runtime": "56.0.16",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-segmented-control/segmented-control": "2.5.7",
-    "expo": "~56.0.13",
-    "expo-blur": "^56.0.3",
-    "expo-camera": "^56.0.8",
-    "expo-glass-effect": "~56.0.4",
-    "expo-haptics": "~56.0.3",
-    "expo-secure-store": "~56.0.4",
-    "lucide-react-native": "^1.22.0",
+    "expo": "56.0.13",
+    "expo-blur": "56.0.3",
+    "expo-camera": "56.0.8",
+    "expo-glass-effect": "56.0.4",
+    "expo-haptics": "56.0.3",
+    "expo-secure-store": "56.0.4",
+    "lucide-react-native": "1.22.0",
     "react": "19.2.3",
     "react-native": "0.85.3",
-    "react-native-safe-area-context": "~5.7.0",
+    "react-native-safe-area-context": "5.7.0",
     "react-native-svg": "15.15.4"
   },
   "devDependencies": {
-    "@types/react": "^19.2.17",
-    "typescript": "^6.0.3"
+    "@types/react": "19.2.17",
+    "typescript": "6.0.3"
   },
   "overrides": {
-    "uuid": "^11.1.1"
+    "uuid": "11.1.1"
   }
 }
