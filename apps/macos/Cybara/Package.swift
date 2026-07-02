@@ -12,7 +12,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "Cybara",
-            path: "Sources/Cybara"
+            path: "Sources/Cybara",
+            resources: [
+                .process("Resources"),
+            ]
         ),
         .testTarget(
             name: "CybaraTests",

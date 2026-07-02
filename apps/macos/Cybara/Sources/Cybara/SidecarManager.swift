@@ -333,7 +333,18 @@ final class SidecarManager: ObservableObject {
     }
 
     private func buildLaunchEnvironment() -> [String: String] {
-        SidecarCore.launchEnvironment(base: ProcessInfo.processInfo.environment, port: port)
+        let executableDirectory = URL(fileURLWithPath: CommandLine.arguments[0])
+            .deletingLastPathComponent()
+            .path
+        let resourceDirectory = SidecarCore.bundledResourceDirectory(
+            executableDirectory: executableDirectory)
+        let bundledResourcesExist = FileManager.default.fileExists(atPath: resourceDirectory)
+
+        return SidecarCore.launchEnvironment(
+            base: ProcessInfo.processInfo.environment,
+            port: port,
+            resourceDirectory: bundledResourcesExist ? resourceDirectory : nil
+        )
     }
 
     private func resolveLaunchCommand() throws -> LaunchCommand {

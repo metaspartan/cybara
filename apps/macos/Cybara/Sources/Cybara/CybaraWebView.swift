@@ -137,7 +137,9 @@ final class Coordinator: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavig
         reloadObserver = NotificationCenter.default.addObserver(
             forName: .cybaraReloadWebView, object: nil, queue: .main
         ) { [weak self] _ in
-            self?.webView?.reload()
+            Task { @MainActor [weak self] in
+                self?.webView?.reload()
+            }
         }
     }
 

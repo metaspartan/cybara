@@ -95,6 +95,23 @@ final class SidecarCoreTests: XCTestCase {
         XCTAssertEqual(env["PORT"], "4269")
     }
 
+    func testLaunchEnvironmentSetsBundledResourceDirectoryWhenAvailable() {
+        let env = SidecarCore.launchEnvironment(
+            base: ["CYBARA_RESOURCE_DIR": "/old/resources"],
+            port: 4269,
+            resourceDirectory: "/app/Contents/Resources/sidecar"
+        )
+
+        XCTAssertEqual(env["CYBARA_RESOURCE_DIR"], "/app/Contents/Resources/sidecar")
+    }
+
+    func testBundledResourceDirectoryUsesAppBundleResources() {
+        XCTAssertEqual(
+            SidecarCore.bundledResourceDirectory(executableDirectory: "/app/Contents/MacOS"),
+            "/app/Contents/Resources/sidecar"
+        )
+    }
+
     // MARK: - sidecarCandidatePaths
 
     func testSidecarCandidatePathsOrderAndContents() {

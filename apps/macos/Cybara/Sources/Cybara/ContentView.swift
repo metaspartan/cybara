@@ -38,6 +38,7 @@ extension EnvironmentValues {
 enum NativeDestination: String, CaseIterable, Identifiable {
     case dashboard
     case chat
+    case mobile
     case agents
     case providers
     case tasks
@@ -58,6 +59,7 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard: return "Dashboard"
         case .chat: return "Chat"
+        case .mobile: return "Mobile"
         case .agents: return "Agents"
         case .providers: return "Providers"
         case .tasks: return "Tasks"
@@ -78,6 +80,7 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard: return "square.grid.2x2"
         case .chat: return "bubble.left.and.bubble.right"
+        case .mobile: return "iphone.gen3"
         case .agents: return "cpu"
         case .providers: return "shippingbox"
         case .tasks: return "calendar.badge.clock"
@@ -122,17 +125,6 @@ struct ContentView: View {
         }
         .background(
             VisualEffectBackground()
-                .overlay(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.05, green: 0.08, blue: 0.16).opacity(0.72),
-                            Color(red: 0.02, green: 0.05, blue: 0.10).opacity(0.72),
-                            Color(red: 0.02, green: 0.10, blue: 0.18).opacity(0.72),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
                 .ignoresSafeArea()
         )
         .onReceive(NotificationCenter.default.publisher(for: .cybaraRestartSidecar)) { _ in
@@ -169,9 +161,7 @@ struct ContentView: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Image(systemName: "hexagon.fill")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(accent)
+                CybaraLogo(size: 34)
                 VStack(alignment: .leading, spacing: 0) {
                     Text("Cybara")
                         .font(.system(size: 18, weight: .bold, design: .rounded))
@@ -187,7 +177,7 @@ struct ContentView: View {
 
             List(selection: $destination) {
                 Section {
-                    ForEach([NativeDestination.dashboard, .chat, .agents, .providers, .tasks]) { item in
+                    ForEach([NativeDestination.dashboard, .chat, .mobile, .agents, .providers, .tasks]) { item in
                         Label(item.title, systemImage: item.systemImage)
                             .tag(item)
                     }
@@ -206,7 +196,6 @@ struct ContentView: View {
                 }
             }
             .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
         }
     }
 
@@ -222,6 +211,8 @@ struct ContentView: View {
                 DashboardScreen(client: client)
             case .chat:
                 ChatScreen(client: client)
+            case .mobile:
+                MobileScreen(client: client, defaultBaseURL: sidecar.serverURL)
             case .agents:
                 AgentsScreen(client: client)
             case .providers:
@@ -254,6 +245,7 @@ struct ContentView: View {
 
     private var startingView: some View {
         VStack(spacing: 14) {
+            CybaraLogo(size: 72)
             ProgressView()
                 .progressViewStyle(.circular)
                 .controlSize(.large)

@@ -15,6 +15,11 @@ extension Notification.Name {
 final class CybaraAppDelegate: NSObject, NSApplicationDelegate {
     var sidecar: SidecarManager?
 
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
     }

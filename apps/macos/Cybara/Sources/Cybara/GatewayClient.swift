@@ -72,6 +72,50 @@ struct GatewayTask: Decodable, Identifiable, Hashable {
     }
 }
 
+struct GatewayMobileDevice: Decodable, Identifiable, Hashable {
+    let id: String
+    let name: String
+    let baseUrl: String
+    let status: String
+    let scopes: [String]
+    let createdAt: String
+    let lastSeenAt: String?
+    let revokedAt: String?
+    let userAgent: String?
+
+    var isActive: Bool { status.lowercased() == "active" }
+    var scopeSummary: String {
+        scopes.isEmpty ? "No scopes" : scopes.joined(separator: ", ")
+    }
+}
+
+struct GatewayMobileDevicesResponse: Decodable {
+    let devices: [GatewayMobileDevice]
+}
+
+struct GatewayMobilePairingPayload: Decodable, Hashable {
+    let `protocol`: String
+    let name: String
+    let baseUrl: String
+    let code: String
+    let role: String?
+    let expiresAt: Double?
+}
+
+struct GatewayMobilePairingCode: Decodable, Hashable {
+    let success: Bool
+    let code: String
+    let expiresAt: Double?
+    let payload: GatewayMobilePairingPayload
+    let encoded: String
+    let qrDataUrl: String
+
+    var expiresAtDate: Date? {
+        guard let expiresAt else { return nil }
+        return Date(timeIntervalSince1970: expiresAt / 1000)
+    }
+}
+
 struct ChatSendResponse: Decodable {
     struct Message: Decodable {
         let role: String?
@@ -181,6 +225,38 @@ struct GatewayClient: Sendable {
 
     func tasks() async throws -> [GatewayTask] {
         try await getList("api/tasks", keys: ["tasks", "items"])
+    }
+
+    func mobileDevices() async throws -> [GatewayMobileDevice] {
+        try await get("api/mobile/devices", as: GatewayMobileDevicesResponse.self).devices
+    }
+
+    func createMobilePairingCode(
+        baseUrl: String,
+        gatewayName: String,
+        deviceName: String,
+        role: String
+    ) async throws -> GatewayMobilePairingCode {
+        let body = try JSONSerialization.data(
+            withJSONObject: [
+                "baseUrl": baseUrl,
+                "gatewayName": gatewayName,
+                "deviceName": deviceName,
+                "role": role,
+            ]
+        )
+        let data = try await request("api/mobile/devices/pair-code", method: "POST", body: body)
+        return try JSONDecoder().decode(GatewayMobilePairingCode.self, from: data)
+    }
+
+    @discardableResult
+    func revokeMobileDevice(_ id: String) async throws -> Data {
+        try await request("api/mobile/devices/\(id)/revoke", method: "POST")
+    }
+
+    @discardableResult
+    func deleteMobileDevice(_ id: String) async throws -> Data {
+        try await request("api/mobile/devices/\(id)", method: "DELETE")
     }
 
     func sendChat(message: String, sessionId: String?, agentId: String?) async throws -> ChatSendResponse {

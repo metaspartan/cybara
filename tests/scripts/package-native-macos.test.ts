@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  createNativeMacOSSidecarLayout,
   createNativeMacOSInfoPlist,
   getNativeMacOSArtifactBaseName,
   resolveNativeMacOSArch,
@@ -30,5 +31,15 @@ describe("native macOS packaging helpers", () => {
     expect(plist).toContain("<string>AppIcon.icns</string>");
     expect(plist).toContain("<string>1.2.3</string>");
     expect(plist).toContain("<string>14.0</string>");
+  });
+
+  test("keeps sidecar resources outside Contents/MacOS for codesigning", () => {
+    const layout = createNativeMacOSSidecarLayout("/bundle/Cybara.app/Contents");
+
+    expect(layout.executableDir).toBe("/bundle/Cybara.app/Contents/MacOS/sidecar");
+    expect(layout.onnxRuntimeDir).toBe("/bundle/Cybara.app/Contents/MacOS/sidecar/onnxruntime");
+    expect(layout.resourceDir).toBe("/bundle/Cybara.app/Contents/Resources/sidecar");
+    expect(layout.uiDistDir).toBe("/bundle/Cybara.app/Contents/Resources/sidecar/ui/dist");
+    expect(layout.wasmPath).toBe("/bundle/Cybara.app/Contents/Resources/sidecar/secp256k1.wasm");
   });
 });

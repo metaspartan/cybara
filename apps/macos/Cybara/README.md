@@ -34,9 +34,8 @@ This assembles a real `Cybara.app` bundle under `release/native-macos/<arch>/` a
 
 - the SwiftUI shell executable
 - the compiled `cybara` sidecar binary under `Contents/MacOS/sidecar/`
-- `ui/dist`
-- `secp256k1.wasm`
-- `onnxruntime` native libraries
+- `ui/dist` and `secp256k1.wasm` under `Contents/Resources/sidecar/`
+- `onnxruntime` native libraries under `Contents/MacOS/sidecar/onnxruntime/`
 - a generated `AppIcon.icns`
 
 The packaged app uses the same `127.0.0.1:4269` local gateway contract as the Tauri app.

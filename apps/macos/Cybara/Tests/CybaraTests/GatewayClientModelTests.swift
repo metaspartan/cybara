@@ -40,6 +40,60 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(idFallback.displayName, "webhook-1")
     }
 
+    func testMobileDeviceModelsExposeStatusAndScopes() throws {
+        let device = try JSONDecoder().decode(
+            GatewayMobileDevice.self,
+            from: Data(
+                #"""
+                {
+                  "id": "mobile_123",
+                  "name": "Carsen iPhone",
+                  "baseUrl": "http://192.168.1.20:4269",
+                  "status": "active",
+                  "scopes": ["chat", "manage", "read"],
+                  "createdAt": "2026-07-02T18:00:00.000Z"
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertTrue(device.isActive)
+        XCTAssertEqual(device.scopeSummary, "chat, manage, read")
+    }
+
+    func testMobilePairingCodeDecodesExpiryAndPayload() throws {
+        let pairing = try JSONDecoder().decode(
+            GatewayMobilePairingCode.self,
+            from: Data(
+                #"""
+                {
+                  "success": true,
+                  "code": "ABCD-2345",
+                  "expiresAt": 1783015200000,
+                  "encoded": "{\"protocol\":\"cybara-mobile-pair-v1\"}",
+                  "qrDataUrl": "data:image/png;base64,abcd",
+                  "payload": {
+                    "protocol": "cybara-mobile-pair-v1",
+                    "name": "Studio Gateway",
+                    "baseUrl": "http://192.168.1.20:4269",
+                    "code": "ABCD-2345",
+                    "role": "standard",
+                    "expiresAt": 1783015200000
+                  }
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(pairing.payload.protocol, "cybara-mobile-pair-v1")
+        XCTAssertEqual(pairing.payload.role, "standard")
+        XCTAssertEqual(pairing.expiresAtDate?.timeIntervalSince1970, 1783015200)
+    }
+
+    func testCybaraLogoResourceIsBundled() throws {
+        XCTAssertNotNil(CybaraBrand.logoImage)
+    }
+
     private func decodeSession(_ json: String) throws -> GatewaySession {
         try JSONDecoder().decode(GatewaySession.self, from: Data(json.utf8))
     }

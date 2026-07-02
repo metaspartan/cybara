@@ -39,13 +39,26 @@ public enum SidecarCore {
 
     /// Environment for the spawned sidecar: inherits the parent env and pins the
     /// loopback host + native-app markers.
-    public static func launchEnvironment(base: [String: String], port: Int) -> [String: String] {
+    public static func launchEnvironment(
+        base: [String: String], port: Int, resourceDirectory: String? = nil
+    ) -> [String: String] {
         var environment = base
         environment["PORT"] = String(port)
         environment["CYBARA_HOST"] = "127.0.0.1"
         environment["CYBARA_NATIVE_APP"] = "1"
         environment["CYBARA_NATIVE_PORT"] = String(port)
+        if let resourceDirectory, !resourceDirectory.isEmpty {
+            environment["CYBARA_RESOURCE_DIR"] = resourceDirectory
+        }
         return environment
+    }
+
+    public static func bundledResourceDirectory(executableDirectory: String) -> String {
+        URL(fileURLWithPath: executableDirectory)
+            .deletingLastPathComponent()
+            .appendingPathComponent("Resources")
+            .appendingPathComponent("sidecar")
+            .path
     }
 
     /// Ordered sidecar-binary candidate paths (most-specific first). Pure so the

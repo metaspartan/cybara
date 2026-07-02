@@ -36,10 +36,7 @@ export function resolveNativeMacOSArch(archName: string): NativeMacOSArch {
   throw new Error(`Unsupported macOS architecture: ${archName}`);
 }
 
-export function getNativeMacOSArtifactBaseName(
-  version: string,
-  arch: NativeMacOSArch
-): string {
+export function getNativeMacOSArtifactBaseName(version: string, arch: NativeMacOSArch): string {
   return `Cybara-v${version}-Swift-Native-Desktop-${arch}`;
 }
 
@@ -100,6 +97,26 @@ export function createNativeMacOSInfoPlist(version: string): string {
 `;
 }
 
+export interface NativeMacOSSidecarLayout {
+  executableDir: string;
+  resourceDir: string;
+  uiDistDir: string;
+  wasmPath: string;
+  onnxRuntimeDir: string;
+}
+
+export function createNativeMacOSSidecarLayout(contentsPath: string): NativeMacOSSidecarLayout {
+  const executableDir = join(contentsPath, "MacOS", "sidecar");
+  const resourceDir = join(contentsPath, "Resources", "sidecar");
+  return {
+    executableDir,
+    resourceDir,
+    uiDistDir: join(resourceDir, "ui", "dist"),
+    wasmPath: join(resourceDir, "secp256k1.wasm"),
+    onnxRuntimeDir: join(executableDir, "onnxruntime"),
+  };
+}
+
 function readPackageVersion(): string {
   const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as {
     version?: string;
@@ -121,6 +138,17 @@ function copyDirectory(sourcePath: string, targetPath: string): void {
   removeIfExists(targetPath);
   ensureDirectory(dirname(targetPath));
   cpSync(sourcePath, targetPath, { recursive: true });
+}
+
+function copySwiftResourceBundles(swiftBinDir: string, resourcesPath: string): void {
+  const resourceBundles = readdirSync(swiftBinDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .filter((name) => name.endsWith(".bundle") || name.endsWith(".resources"));
+
+  for (const bundleName of resourceBundles) {
+    copyDirectory(join(swiftBinDir, bundleName), join(resourcesPath, bundleName));
+  }
 }
 
 async function createAppIcon(outputPath: string): Promise<void> {
@@ -203,20 +231,20 @@ async function codesignBundle(bundlePath: string, identity: string): Promise<voi
   // capture) to the executables so the Bun sidecar's JS engine can run and the
   // app can request camera/screen/automation permissions when used.
   const ent = ENTITLEMENTS_PATH;
-  const macOSPath = join(bundlePath, "Contents", "MacOS");
+  const contentsPath = join(bundlePath, "Contents");
 
   // 1. Nested libraries/addons (onnxruntime dylib, .node binding, etc.).
-  for (const signable of findNestedSignables(macOSPath)) {
-    await $`codesign --force --timestamp --options runtime --sign ${identity} ${signable}`.quiet();
+  for (const signable of findNestedSignables(contentsPath)) {
+    await $`codesign --force --timestamp --options runtime --sign ${identity} ${signable}`;
   }
 
   // 2. The bundled sidecar executable (Bun-compiled JS engine needs the
   //    JIT/unsigned-memory entitlements).
-  await $`codesign --force --timestamp --options runtime --entitlements ${ent} --sign ${identity} ${join(macOSPath, "sidecar", "cybara")}`.quiet();
+  await $`codesign --force --timestamp --options runtime --entitlements ${ent} --sign ${identity} ${join(contentsPath, "MacOS", "sidecar", "cybara")}`;
   // 3. The main app executable.
-  await $`codesign --force --timestamp --options runtime --entitlements ${ent} --sign ${identity} ${join(macOSPath, APP_NAME)}`.quiet();
+  await $`codesign --force --timestamp --options runtime --entitlements ${ent} --sign ${identity} ${join(contentsPath, "MacOS", APP_NAME)}`;
   // 4. The bundle last, so the seal covers everything inside.
-  await $`codesign --force --timestamp --options runtime --entitlements ${ent} --sign ${identity} ${bundlePath}`.quiet();
+  await $`codesign --force --timestamp --options runtime --entitlements ${ent} --sign ${identity} ${bundlePath}`;
 }
 
 async function createZipArchive(bundlePath: string, zipPath: string): Promise<void> {
@@ -262,7 +290,7 @@ export async function packageNativeMacOSApp(): Promise<NativeMacOSPackageResult>
   const contentsPath = join(bundlePath, "Contents");
   const macOSPath = join(contentsPath, "MacOS");
   const resourcesPath = join(contentsPath, "Resources");
-  const bundledSidecarPath = join(macOSPath, "sidecar");
+  const sidecarLayout = createNativeMacOSSidecarLayout(contentsPath);
 
   console.log(`\n🧊 Packaging native macOS app (${arch})\n`);
 
@@ -293,24 +321,26 @@ export async function packageNativeMacOSApp(): Promise<NativeMacOSPackageResult>
   removeIfExists(bundlePath);
   ensureDirectory(macOSPath);
   ensureDirectory(resourcesPath);
-  ensureDirectory(bundledSidecarPath);
+  ensureDirectory(sidecarLayout.executableDir);
+  ensureDirectory(sidecarLayout.resourceDir);
 
   cpSync(swiftExecutablePath, join(macOSPath, APP_NAME));
   chmodSync(join(macOSPath, APP_NAME), 0o755);
+  copySwiftResourceBundles(swiftBinDir, resourcesPath);
 
-  cpSync(SIDEcar_RELEASE_PATH, join(bundledSidecarPath, "cybara"));
-  chmodSync(join(bundledSidecarPath, "cybara"), 0o755);
+  cpSync(SIDEcar_RELEASE_PATH, join(sidecarLayout.executableDir, "cybara"));
+  chmodSync(join(sidecarLayout.executableDir, "cybara"), 0o755);
 
   if (existsSync(SIDEcar_WASM_PATH)) {
-    cpSync(SIDEcar_WASM_PATH, join(bundledSidecarPath, "secp256k1.wasm"));
+    cpSync(SIDEcar_WASM_PATH, sidecarLayout.wasmPath);
   }
 
   if (existsSync(SIDEcar_ONNX_PATH)) {
-    copyDirectory(SIDEcar_ONNX_PATH, join(bundledSidecarPath, "onnxruntime"));
+    copyDirectory(SIDEcar_ONNX_PATH, sidecarLayout.onnxRuntimeDir);
   }
 
-  ensureDirectory(join(bundledSidecarPath, "ui"));
-  copyDirectory(UI_DIST_PATH, join(bundledSidecarPath, "ui", "dist"));
+  ensureDirectory(dirname(sidecarLayout.uiDistDir));
+  copyDirectory(UI_DIST_PATH, sidecarLayout.uiDistDir);
 
   writeFileSync(join(contentsPath, "Info.plist"), createNativeMacOSInfoPlist(version), "utf8");
   writeFileSync(join(contentsPath, "PkgInfo"), "APPL????", "utf8");
