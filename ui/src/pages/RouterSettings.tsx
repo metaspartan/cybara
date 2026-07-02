@@ -125,16 +125,22 @@ export function RouterSettings() {
     return () => clearInterval(interval);
   }, [fetchStatus, fetchConfig, fetchProviders, fetchAgents]);
 
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const saveConfig = async (cfg: RouterConfig) => {
     setSaving(true);
     try {
-      await apiFetch('/api/router/config', {
+      const res = await apiFetch('/api/router/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(cfg),
       });
+      if (!res.ok) throw new Error(`Save failed (${res.status})`);
       setConfig(cfg);
+      setSaveError(null);
       await fetchStatus();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -175,6 +181,12 @@ export function RouterSettings() {
             Add a provider
           </Link>{' '}
           first, then come back to route between them.
+        </div>
+      )}
+
+      {saveError && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+          {saveError} — your last change may not have been saved.
         </div>
       )}
 
@@ -226,11 +238,14 @@ export function RouterSettings() {
               <input
                 type="number"
                 min={1}
-                value={config.moaMaxAgents ?? ''}
+                defaultValue={config.moaMaxAgents ?? ''}
                 placeholder="4"
-                onChange={(e) => {
+                onBlur={(e) => {
                   const n = Math.floor(Number(e.target.value));
-                  saveConfig({ ...config, moaMaxAgents: Number.isFinite(n) && n > 0 ? n : undefined });
+                  const next = Number.isFinite(n) && n > 0 ? n : undefined;
+                  if (next !== config.moaMaxAgents) {
+                    void saveConfig({ ...config, moaMaxAgents: next });
+                  }
                 }}
                 className="w-full sm:w-auto rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-sm text-white"
               />
@@ -338,7 +353,7 @@ function RouteRow({
   const update = (key: string, value: number | boolean) => {
     const routes = { ...config.routes };
     routes[route.providerId] = { ...routeCfg, [key]: value };
-    void onSave({ ...config, routes, enabled: true });
+    void onSave({ ...config, routes });
   };
 
   const remove = () => {
@@ -473,7 +488,7 @@ function AddRouteForm({
     if (!type) return;
     const routes = { ...config.routes };
     routes[type] = { weight: 50, enabled: true };
-    void onSave({ ...config, routes, enabled: true });
+    void onSave({ ...config, routes });
     setSelected('');
   };
 

@@ -5189,7 +5189,17 @@ function SettingsPanel({
               styles.disconnectButton,
               pressed && styles.disconnectButtonPressed,
             ]}
-            onPress={onDisconnect}
+            onPress={() => {
+              haptics.warning();
+              Alert.alert(
+                "Disconnect gateway?",
+                "This removes the pairing profile from this device. You'll need to pair again to reconnect.",
+                [
+                  { text: "Cancel", style: "cancel" },
+                  { text: "Disconnect", style: "destructive", onPress: onDisconnect },
+                ]
+              );
+            }}
           >
             <View style={styles.disconnectIcon}>
               <Trash2 color={colors.red} size={18} strokeWidth={2.4} />

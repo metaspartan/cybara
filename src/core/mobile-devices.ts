@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
-import { existsSync, readFileSync, statSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, renameSync, statSync, writeFileSync } from "fs";
 import { join } from "path";
 import { secureDir } from "./paths";
 
@@ -172,7 +172,11 @@ function readStore(): MobileDeviceStore {
 
 function saveStore(store: MobileDeviceStore): void {
   cachedStore = store;
-  writeFileSync(storePath, JSON.stringify(store, null, 2), { mode: 0o600 });
+  // Atomic write (tmp + rename) so a crash mid-write can't corrupt the store
+  // and wipe paired devices on the next read.
+  const tmpPath = `${storePath}.tmp`;
+  writeFileSync(tmpPath, JSON.stringify(store, null, 2), { mode: 0o600 });
+  renameSync(tmpPath, storePath);
   try {
     cachedMtimeMs = statSync(storePath).mtimeMs;
   } catch {
@@ -393,7 +397,7 @@ export function removeMobileDevice(id: string): boolean {
   const store = readStore();
   const nextDevices = store.devices.filter((device) => device.id !== id);
   if (nextDevices.length === store.devices.length) return false;
-  saveStore({ version: 1, devices: nextDevices });
+  saveStore({ ...store, devices: nextDevices });
   return true;
 }
 
