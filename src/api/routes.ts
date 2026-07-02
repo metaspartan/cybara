@@ -4127,7 +4127,7 @@ const routes: Record<string, RouteHandler> = {
       totalSessions: metrics.getTotal("session_event", "created") || 0,
       memoryFlushes: metrics.getTotal("memory_flush", "success") || 0,
       memoryFlushFailures: metrics.getTotal("memory_flush", "failure") || 0,
-      compactions: metrics.getTotal("context_compaction", "tokens") || 0,
+      compactions: metrics.getTotal("compaction_reduction", "count") || 0,
     };
     const contextWarnings = (metrics.getByType("context_warning") || []) as MetricsEntry[];
     const contextStats = {

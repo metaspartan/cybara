@@ -211,6 +211,7 @@ export function trackContextCompaction(
       reductionPercent,
     });
 
+    trackMetric("compaction_reduction", "count", 1);
     trackMetric("compaction_reduction", "tokens", reduction);
     trackMetric(
       "compaction_reduction",
@@ -271,7 +272,7 @@ export function getMetricsSummary(): {
         tables.metrics.getTotal("api_call", "error"),
       totalSessions: tables.metrics.getTotal("session_event", "created"),
       memoryFlushes: tables.metrics.getTotal("memory_flush", "success"),
-      compactions: tables.metrics.getTotal("context_compaction", "tokens"),
+      compactions: tables.metrics.getTotal("compaction_reduction", "count"),
     };
 
     return summary;

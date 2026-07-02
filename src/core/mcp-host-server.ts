@@ -173,6 +173,17 @@ async function handleRequest(req: JsonRpcRequest): Promise<JsonRpcResponse | nul
  * to stdout. Returns when stdin closes. Safe to run as `cybara mcp serve`.
  */
 export async function runMcpStdioServer(): Promise<void> {
+  // stdout is the JSON-RPC transport and must carry nothing else. Route every
+  // console.log (including diagnostic output from lazily-loaded modules such as
+  // the database bootstrap) to stderr so it can never corrupt the protocol
+  // stream that MCP clients parse.
+  const toStderr = (...args: unknown[]) => {
+    process.stderr.write(`${args.map((a) => (typeof a === "string" ? a : String(a))).join(" ")}\n`);
+  };
+  console.log = toStderr;
+  console.info = toStderr;
+  console.debug = toStderr;
+
   const rl: Interface = createInterface({ input: process.stdin });
 
   for await (const line of rl) {
