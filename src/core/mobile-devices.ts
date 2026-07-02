@@ -43,7 +43,7 @@ export const MOBILE_ROLES = {
 export type MobileRole = keyof typeof MOBILE_ROLES;
 
 export function scopesForRole(role: unknown): MobileScope[] | null {
-  if (typeof role === "string" && role in MOBILE_ROLES) {
+  if (typeof role === "string" && Object.prototype.hasOwnProperty.call(MOBILE_ROLES, role)) {
     return [...MOBILE_ROLES[role as MobileRole]];
   }
   return null;

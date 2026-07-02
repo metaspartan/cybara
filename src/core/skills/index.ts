@@ -1,12 +1,12 @@
 import { readFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "fs";
 import { join, dirname, basename, extname, resolve } from "path";
 import { fileURLToPath } from "url";
-import { homedir } from "os";
 import { listInstalledPlugins } from "../plugins";
 import { handleCalc, handleConvert } from "./calc";
 import { handlePdf } from "./pdf";
 import { handleOcr, handleImageDescribe } from "./ocr";
 import { parseSkillFile } from "./loader";
+import { cybaraDir } from "../paths";
 
 export type {
   SkillInstallSpec,
@@ -162,7 +162,7 @@ export function getSkills(): Skill[] {
     }
   }
 
-  const localSkillsDir = join(homedir(), ".cybara", "skills");
+  const localSkillsDir = join(cybaraDir, "skills");
   if (existsSync(localSkillsDir)) {
     const entries = readdirSync(localSkillsDir);
     for (const entry of entries) {
@@ -259,7 +259,7 @@ export function createLocalSkill(data: {
   if (!content) return { success: false, error: "Validation error: Skill content is required" };
   if (!slug) return { success: false, error: "Validation error: Invalid skill name" };
 
-  const skillsRoot = join(homedir(), ".cybara", "skills");
+  const skillsRoot = join(cybaraDir, "skills");
   const targetDir = join(skillsRoot, slug);
   const skillPath = join(targetDir, "SKILL.md");
 

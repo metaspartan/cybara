@@ -238,13 +238,13 @@ function getRouterConfig(): RouterConfig {
   const cfg = config.get<RouterConfig>("router");
   if (!cfg) return { enabled: false, strategy: "weighted", fallbackToAny: true, routes: {} };
   return {
-    enabled: cfg.enabled ?? false,
+    enabled: cfg.enabled === true,
     strategy: normalizeRouterStrategy(cfg.strategy),
     globalSpendLimitDaily: Math.max(0, cfg.globalSpendLimitDaily ?? 0),
     fallbackToAny: cfg.fallbackToAny ?? true,
     routes: cfg.routes ?? {},
     moaMaxAgents:
-      typeof cfg.moaMaxAgents === "number" && cfg.moaMaxAgents > 0
+      typeof cfg.moaMaxAgents === "number" && cfg.moaMaxAgents >= 1
         ? Math.floor(cfg.moaMaxAgents)
         : undefined,
     moaAggregatorAgentId:
@@ -258,7 +258,7 @@ function getRouterConfig(): RouterConfig {
  */
 export function isMixtureOfAgentsRoutingActive(): boolean {
   const cfg = getRouterConfig();
-  return cfg.enabled && cfg.strategy === "mixture_of_agents";
+  return cfg.enabled === true && cfg.strategy === "mixture_of_agents";
 }
 
 export function getMixtureOfAgentsRoutingConfig(): {
