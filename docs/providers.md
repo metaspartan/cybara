@@ -1,6 +1,6 @@
 # Cybara AI Providers
 
-Cybara currently ships with **60 provider integrations** (see `src/core/providers.ts`), with the
+Cybara ships with a broad catalog of provider integrations (see `src/core/providers.ts`), with the
 newest frontier models: GPT-5.5, Claude Opus 4.8, Gemini 3.5 Flash, GLM-5.2, MiniMax M3, DeepSeek
 V4, Kimi K2.6, Grok 4.3, Nemotron 3, Qwen 3.7 Max, and MiMo V2.5 Pro.
 

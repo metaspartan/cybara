@@ -132,7 +132,7 @@ Communication interfaces across 26 platforms: Telegram, Discord, Slack, WhatsApp
 Vector store with hybrid BM25 search, durable MEMORY.md, and daily logs.
 
 ### Providers
-60 built-in provider integrations with dynamic model discovery, covering frontier APIs, OAuth-backed coding providers, local runtimes, gateway/proxy providers, and AWS Bedrock.
+Built-in provider integrations with dynamic model discovery, covering frontier APIs, OAuth-backed coding providers, local runtimes, gateway/proxy providers, and AWS Bedrock.
 
 ### Security
 API key authentication, rate limiting, SSRF protection, path sandboxing. See [Security](./security.md).
