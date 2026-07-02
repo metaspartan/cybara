@@ -37,24 +37,38 @@ describe("native macOS shell wiring", () => {
   });
 
   test("gateway model labels trim blank titles before falling back", () => {
-    const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
+    const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
     const modelTests = readFileSync(
       join(ROOT_DIR, "apps", "macos", "Cybara", "Tests", "CybaraTests", "GatewayClientModelTests.swift"),
       "utf8"
     );
 
-    expect(gatewayClient).toContain("func firstNonEmptyGatewayString");
-    expect(gatewayClient).toContain(
+    expect(gatewayModels).toContain("func firstNonEmptyGatewayString");
+    expect(gatewayModels).toContain(
       "var displayTitle: String { firstNonEmptyGatewayString(title) ?? String(id.prefix(8)) }"
     );
-    expect(gatewayClient).toContain(
+    expect(gatewayModels).toContain(
       "var displayName: String { firstNonEmptyGatewayString(name, provider, id) ?? id }"
     );
-    expect(gatewayClient).toContain(
+    expect(gatewayModels).toContain(
       "var displayName: String { firstNonEmptyGatewayString(name, type, id) ?? id }"
     );
     expect(modelTests).toContain("testSessionDisplayTitleFallsBackForBlankOrMissingTitle");
     expect(modelTests).toContain("testProviderDisplayNamePrefersFirstNonEmptyGatewayLabel");
     expect(modelTests).toContain("testChannelDisplayNamePrefersFirstNonEmptyGatewayLabel");
+  });
+
+  test("native chat requests complete tool call payloads for transcripts", () => {
+    const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
+    const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
+    const toolTimeline = readFileSync(join(MACOS_APP_DIR, "NativeToolTimeline.swift"), "utf8");
+    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+
+    expect(gatewayClient).toContain('URLQueryItem(name: "includeFullToolCalls", value: "1")');
+    expect(gatewayModels).toContain("let tool_calls: [GatewayToolCall]?");
+    expect(gatewayModels).toContain("let process_activities: [GatewayProcessActivity]?");
+    expect(toolTimeline).toContain("func nativeOrderedToolCalls");
+    expect(toolTimeline).toContain("func nativeToolActivities");
+    expect(nativeScreens).toContain("NativeToolTimelineView(message: message)");
   });
 });

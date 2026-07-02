@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 // ─── Shared bits ─────────────────────────────────────────────────────────────
@@ -40,25 +41,48 @@ struct LoadFailedView: View {
 }
 
 func relativeTimestamp(_ iso: String?) -> String {
-    guard let iso else { return "" }
-    let fractional = ISO8601DateFormatter()
-    fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    guard let date = fractional.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else {
-        return ""
-    }
+    guard let date = parseGatewayDate(iso) else { return "" }
     let formatter = RelativeDateTimeFormatter()
     formatter.unitsStyle = .abbreviated
     return formatter.localizedString(for: date, relativeTo: Date())
+}
+
+func absoluteTimestamp(_ iso: String?) -> String {
+    guard let date = parseGatewayDate(iso) else { return "" }
+    let formatter = DateFormatter()
+    formatter.dateStyle = .medium
+    formatter.timeStyle = .short
+    return formatter.string(from: date)
+}
+
+func gatewayTimestampNow() -> String {
+    ISO8601DateFormatter().string(from: Date())
+}
+
+private func parseGatewayDate(_ iso: String?) -> Date? {
+    guard let iso else { return nil }
+    let fractional = ISO8601DateFormatter()
+    fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let date = fractional.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) {
+        return date
+    }
+    let sqlite = DateFormatter()
+    sqlite.locale = Locale(identifier: "en_US_POSIX")
+    sqlite.timeZone = TimeZone(secondsFromGMT: 0)
+    sqlite.dateFormat = "yyyy-MM-dd HH:mm:ss"
+    return sqlite.date(from: iso)
 }
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 
 struct DashboardScreen: View {
     let client: GatewayClient
+    let openChat: (GatewaySession) -> Void
     @EnvironmentObject private var sidecar: SidecarManager
 
     @State private var health: GatewayHealth?
     @State private var agents: [GatewayAgent] = []
+    @State private var providers: [GatewayProvider] = []
     @State private var sessions: [GatewaySession] = []
     @State private var error: String?
 
@@ -103,20 +127,31 @@ struct DashboardScreen: View {
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(sessions.prefix(6)) { session in
-                            HStack {
-                                Image(systemName: "bubble.left")
-                                    .foregroundStyle(.secondary)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(session.displayTitle)
-                                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                        .lineLimit(1)
-                                    Text("\(session.message_count ?? 0) messages · \(relativeTimestamp(session.updated_at))")
-                                        .font(.system(size: 11, design: .rounded))
+                            Button {
+                                openChat(session)
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "bubble.left")
                                         .foregroundStyle(.secondary)
+                                        .frame(width: 18)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(session.displayTitle)
+                                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                            .lineLimit(1)
+                                        Text(dashboardSessionDetail(for: session))
+                                            .font(.system(size: 11, design: .rounded))
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(.tertiary)
                                 }
-                                Spacer()
+                                .contentShape(Rectangle())
                             }
-                            .padding(.vertical, 4)
+                            .buttonStyle(.plain)
+                            .padding(.vertical, 5)
                         }
                     }
                 }
@@ -161,13 +196,26 @@ struct DashboardScreen: View {
         .cybaraGlass(cornerRadius: 16)
     }
 
+    private func dashboardSessionDetail(for session: GatewaySession) -> String {
+        let timestamp = relativeTimestamp(session.updated_at ?? session.created_at)
+        var parts = [
+            gatewaySessionRouteSummary(session, agents: agents, providers: providers),
+            session.workspaceLabel.map { "Workspace \($0)" },
+            "\(session.message_count ?? 0) messages",
+        ].compactMap { $0 }
+        if !timestamp.isEmpty { parts.append(timestamp) }
+        return parts.joined(separator: " · ")
+    }
+
     private func load() async {
         do {
             async let h = client.health()
             async let a = client.agents()
+            async let p = client.providers()
             async let s = client.sessions()
             health = try await h
             agents = try await a
+            providers = try await p
             sessions = try await s
             error = nil
         } catch {
@@ -180,17 +228,23 @@ struct DashboardScreen: View {
 
 struct ChatScreen: View {
     let client: GatewayClient
+    @Binding var selectedSessionID: String?
     @Environment(\.cybaraAccent) private var accentTint
 
     @State private var sessions: [GatewaySession] = []
-    @State private var selectedSession: String?
+    @State private var agents: [GatewayAgent] = []
+    @State private var providers: [GatewayProvider] = []
     @State private var messages: [GatewaySessionMessage] = []
+    @State private var searchText = ""
     @State private var draft = ""
     @State private var sending = false
     @State private var error: String?
     @State private var renameTarget: GatewaySession?
     @State private var renameDraft = ""
     @State private var deleteTarget: GatewaySession?
+    @State private var pendingWorkspaceDir = ""
+    @State private var workspaceSaving = false
+    @AppStorage("cybara.chat.lastWorkspaceDir") private var lastWorkspaceDir = ""
     @StateObject private var statusStream = GatewayStatusStream()
 
     var body: some View {
@@ -203,6 +257,13 @@ struct ChatScreen: View {
         .task {
             statusStream.start(baseURL: client.baseURL)
             await loadSessions()
+        }
+        .task(id: selectedSessionID) {
+            guard let selectedSessionID else {
+                messages = []
+                return
+            }
+            await loadMessages(selectedSessionID)
         }
         .onDisappear { statusStream.stop() }
         .alert("Rename chat", isPresented: renameAlertBinding) {
@@ -244,6 +305,23 @@ struct ChatScreen: View {
         )
     }
 
+    private var activeSession: GatewaySession? {
+        guard let selectedSessionID else { return nil }
+        return sessions.first { $0.id == selectedSessionID }
+    }
+
+    private var filteredSessions: [GatewaySession] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return sessions }
+        return sessions.filter { session in
+            session.displayTitle.lowercased().contains(query)
+                || routeSummary(for: session).lowercased().contains(query)
+                || (session.workspace_dir ?? "").lowercased().contains(query)
+                || (session.last_message?.preview ?? "").lowercased().contains(query)
+                || session.id.lowercased().contains(query)
+        }
+    }
+
     private var sessionList: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -251,8 +329,7 @@ struct ChatScreen: View {
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                 Spacer()
                 Button {
-                    selectedSession = nil
-                    messages = []
+                    startNewChat()
                 } label: {
                     Image(systemName: "square.and.pencil")
                 }
@@ -261,8 +338,21 @@ struct ChatScreen: View {
             }
             .padding(14)
 
-            List(selection: $selectedSession) {
-                ForEach(sessions) { session in
+            if !sessions.isEmpty {
+                TextField("Search chats", text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 10)
+            }
+
+            List(selection: $selectedSessionID) {
+                if filteredSessions.isEmpty {
+                    Text("No matching chats")
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 8)
+                }
+                ForEach(filteredSessions) { session in
                     HStack(spacing: 6) {
                         if session.pinned == true {
                             Image(systemName: "pin.fill")
@@ -273,9 +363,10 @@ struct ChatScreen: View {
                             Text(session.displayTitle)
                                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                                 .lineLimit(1)
-                            Text("\(session.message_count ?? 0) messages · \(relativeTimestamp(session.updated_at))")
+                            Text(sessionListDetail(for: session))
                                 .font(.system(size: 11, design: .rounded))
                                 .foregroundStyle(.secondary)
+                                .lineLimit(1)
                         }
                     }
                     .tag(session.id)
@@ -287,6 +378,14 @@ struct ChatScreen: View {
                         Button(session.pinned == true ? "Unpin" : "Pin") {
                             Task { await togglePin(session) }
                         }
+                        Button("Set Workspace…") {
+                            Task { await chooseWorkspace(for: session) }
+                        }
+                        if firstNonEmptyGatewayString(session.workspace_dir) != nil {
+                            Button("Clear Workspace") {
+                                Task { await applyWorkspace(nil, to: session) }
+                            }
+                        }
                         Divider()
                         Button("Delete…", role: .destructive) {
                             deleteTarget = session
@@ -295,22 +394,19 @@ struct ChatScreen: View {
                 }
             }
             .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
-        }
-        .cybaraGlass(cornerRadius: 0)
-        .onChange(of: selectedSession) { _, newValue in
-            guard let newValue else { return }
-            Task { await loadMessages(newValue) }
         }
     }
 
     private var transcript: some View {
         VStack(spacing: 0) {
+            transcriptHeader
+            Divider().opacity(0.35)
+
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
                         if messages.isEmpty {
-                            Text(selectedSession == nil
+                            Text(selectedSessionID == nil
                                 ? "Start a new conversation with your gateway agent."
                                 : "No stored messages in this chat yet.")
                                 .font(.system(size: 13, design: .rounded))
@@ -340,15 +436,127 @@ struct ChatScreen: View {
         }
     }
 
+    private var transcriptHeader: some View {
+        HStack(spacing: 12) {
+            Image(systemName: selectedSessionID == nil ? "bubble.left.and.text.bubble.right" : "bubble.left")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(accentTint)
+                .frame(width: 34, height: 34)
+                .background(Circle().fill(accentTint.opacity(0.14)))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(activeSession?.displayTitle ?? "New chat")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .lineLimit(1)
+                Text(sessionDetailLine)
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer()
+            Button {
+                Task { await chooseWorkspace(for: activeSession) }
+            } label: {
+                if workspaceSaving {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: "folder")
+                }
+            }
+            .buttonStyle(.borderless)
+            .disabled(workspaceSaving)
+            .help(workspaceHelpText)
+
+            Button {
+                Task {
+                    await loadSessions()
+                    if let selectedSessionID {
+                        await loadMessages(selectedSessionID)
+                    }
+                }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .buttonStyle(.borderless)
+            .help("Refresh chat")
+
+            Button {
+                startNewChat()
+            } label: {
+                Image(systemName: "square.and.pencil")
+            }
+            .buttonStyle(.borderless)
+            .help("New chat")
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 13)
+    }
+
+    private var sessionDetailLine: String {
+        guard let activeSession else {
+            if let workspaceLabel = activeWorkspaceLabel {
+                return "New chat · Workspace \(workspaceLabel)"
+            }
+            return "New chat · Local gateway routing decides the provider and model"
+        }
+        let count = activeSession.message_count ?? messages.count
+        let timestamp = relativeTimestamp(activeSession.updated_at)
+        let route = routeSummary(for: activeSession)
+        var parts = [route]
+        if let workspaceLabel = activeWorkspaceLabel {
+            parts.append("Workspace \(workspaceLabel)")
+        }
+        parts.append("\(count) messages")
+        if !timestamp.isEmpty { parts.append(timestamp) }
+        return parts.joined(separator: " · ")
+    }
+
+    private func sessionListDetail(for session: GatewaySession) -> String {
+        let timestamp = relativeTimestamp(session.updated_at)
+        var parts = [
+            routeSummary(for: session),
+            session.workspaceLabel.map { "Workspace \($0)" },
+            "\(session.message_count ?? 0) messages",
+        ].compactMap { $0 }
+        if !timestamp.isEmpty { parts.append(timestamp) }
+        return parts.joined(separator: " · ")
+    }
+
+    private func routeSummary(for session: GatewaySession) -> String {
+        gatewaySessionRouteSummary(session, agents: agents, providers: providers)
+    }
+
     private var visibleMessages: [GatewaySessionMessage] {
         messages.filter { $0.role == "user" || $0.role == "assistant" }
+    }
+
+    private var activeWorkspaceDir: String? {
+        if let activeSession {
+            return firstNonEmptyGatewayString(activeSession.workspace_dir)
+        }
+        if selectedSessionID != nil { return nil }
+        return firstNonEmptyGatewayString(
+            pendingWorkspaceDir,
+            lastWorkspaceDir,
+            FileManager.default.homeDirectoryForCurrentUser.path
+        )
+    }
+
+    private var activeWorkspaceLabel: String? {
+        gatewayWorkspaceLabel(activeWorkspaceDir, maxLength: 42)
+    }
+
+    private var workspaceHelpText: String {
+        if let activeWorkspaceDir {
+            return "Switch workspace: \(activeWorkspaceDir)"
+        }
+        return "Select workspace folder for this chat"
     }
 
     /// Live status while a reply generates, fed by the gateway's SSE stream
     /// ("Thinking…", tool activity), scoped to the active session.
     private var thinkingBubble: some View {
         let event = statusStream.latest
-        let relevant = event?.sessionId == nil || event?.sessionId == selectedSession
+        let relevant = event?.sessionId == nil || event?.sessionId == selectedSessionID
         let detail = (relevant ? event?.detail : nil) ?? "Thinking…"
         return HStack(spacing: 8) {
             ProgressView().controlSize(.small)
@@ -365,15 +573,33 @@ struct ChatScreen: View {
         let isUser = message.role == "user"
         return HStack {
             if isUser { Spacer(minLength: 60) }
-            Text(message.content)
-                .font(.system(size: 13, design: .rounded))
-                .textSelection(.enabled)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(isUser ? accentTint.opacity(0.28) : Color.white.opacity(0.06))
-                )
+            VStack(alignment: .leading, spacing: 7) {
+                if !isUser {
+                    NativeToolTimelineView(message: message)
+                }
+                if !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    NativeMarkdownView(content: message.content, isUser: isUser)
+                }
+                if let timestamp = message.timestamp {
+                    let relative = relativeTimestamp(timestamp)
+                    let absolute = absoluteTimestamp(timestamp)
+                    if !relative.isEmpty {
+                        Text(absolute.isEmpty ? relative : "\(relative) · \(absolute)")
+                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(isUser ? accentTint.opacity(0.28) : Color.white.opacity(0.06))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(isUser ? accentTint.opacity(0.18) : Color.white.opacity(0.08), lineWidth: 1)
+            )
             if !isUser { Spacer(minLength: 60) }
         }
         .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
@@ -419,7 +645,12 @@ struct ChatScreen: View {
 
     private func loadSessions() async {
         do {
-            sessions = try await client.sessions()
+            async let loadedSessions = client.sessions()
+            async let loadedAgents = client.agents()
+            async let loadedProviders = client.providers()
+            sessions = try await loadedSessions
+            agents = try await loadedAgents
+            providers = try await loadedProviders
             error = nil
         } catch {
             self.error = error.localizedDescription
@@ -451,14 +682,81 @@ struct ChatScreen: View {
         deleteTarget = nil
         do {
             try await client.deleteSession(session.id)
-            if selectedSession == session.id {
-                selectedSession = nil
+            if selectedSessionID == session.id {
+                selectedSessionID = nil
                 messages = []
             }
             await loadSessions()
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    private func startNewChat() {
+        selectedSessionID = nil
+        messages = []
+        pendingWorkspaceDir = ""
+        error = nil
+    }
+
+    @MainActor
+    private func chooseWorkspace(for session: GatewaySession?) async {
+        guard !workspaceSaving else { return }
+        let defaultPath = firstNonEmptyGatewayString(
+            session?.workspace_dir,
+            activeWorkspaceDir,
+            lastWorkspaceDir,
+            FileManager.default.homeDirectoryForCurrentUser.path
+        )
+        guard let selectedPath = presentWorkspacePanel(defaultPath: defaultPath) else { return }
+        await applyWorkspace(selectedPath, to: session)
+    }
+
+    @MainActor
+    private func applyWorkspace(_ workspaceDir: String?, to session: GatewaySession?) async {
+        let normalizedWorkspaceDir = firstNonEmptyGatewayString(workspaceDir)
+        guard let session else {
+            pendingWorkspaceDir = normalizedWorkspaceDir ?? ""
+            if let normalizedWorkspaceDir {
+                lastWorkspaceDir = normalizedWorkspaceDir
+            }
+            return
+        }
+
+        workspaceSaving = true
+        do {
+            let response = try await client.updateSessionWorkspace(
+                session.id,
+                workspaceDir: normalizedWorkspaceDir
+            )
+            if response.success == false {
+                throw GatewayClientError.badStatus(200, response.error ?? "Failed to update session workspace")
+            }
+            if let workspaceDir = response.workspaceDir {
+                lastWorkspaceDir = workspaceDir
+            }
+            await loadSessions()
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
+        workspaceSaving = false
+    }
+
+    @MainActor
+    private func presentWorkspacePanel(defaultPath: String?) -> String? {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Select"
+        panel.message = "Choose a workspace folder for this Cybara session."
+        panel.title = "Select Workspace"
+        if let defaultPath = firstNonEmptyGatewayString(defaultPath) {
+            panel.directoryURL = URL(fileURLWithPath: defaultPath)
+        }
+        return panel.runModal() == .OK ? panel.url?.path : nil
     }
 
     private func loadMessages(_ id: String) async {
@@ -476,167 +774,31 @@ struct ChatScreen: View {
         sending = true
         error = nil
         draft = ""
-        messages.append(GatewaySessionMessage(role: "user", content: text, timestamp: nil))
+        messages.append(GatewaySessionMessage(role: "user", content: text, timestamp: gatewayTimestampNow()))
         do {
-            let result = try await client.sendChat(message: text, sessionId: selectedSession, agentId: nil)
-            if let reply = result.response, !reply.isEmpty {
-                messages.append(GatewaySessionMessage(role: "assistant", content: reply, timestamp: nil))
+            let result = try await client.sendChat(
+                message: text,
+                sessionId: selectedSessionID,
+                agentId: nil,
+                workspaceDir: activeWorkspaceDir
+            )
+            if let workspaceDir = result.workspaceDir {
+                lastWorkspaceDir = workspaceDir
+                if selectedSessionID == nil {
+                    pendingWorkspaceDir = workspaceDir
+                }
             }
-            if selectedSession == nil, let newId = result.sessionId {
-                selectedSession = newId
+            if let reply = result.response, !reply.isEmpty {
+                messages.append(GatewaySessionMessage(role: "assistant", content: reply, timestamp: gatewayTimestampNow()))
+            }
+            if selectedSessionID == nil, let newId = result.sessionId {
+                selectedSessionID = newId
                 await loadSessions()
             }
         } catch {
             self.error = error.localizedDescription
         }
         sending = false
-    }
-}
-
-// ─── Agents ──────────────────────────────────────────────────────────────────
-
-struct AgentsScreen: View {
-    let client: GatewayClient
-
-    @State private var agents: [GatewayAgent] = []
-    @State private var busyAgent: String?
-    @State private var error: String?
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                ScreenHeader(title: "Agents", subtitle: "Configured gateway agents")
-
-                if let error {
-                    LoadFailedView(message: error) { Task { await load() } }
-                } else {
-                    ForEach(agents) { agent in
-                        agentRow(agent)
-                    }
-                }
-            }
-            .padding(24)
-        }
-        .task { await load() }
-    }
-
-    private func agentRow(_ agent: GatewayAgent) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: "cpu")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(agent.isRunning ? Color.green : Color.secondary)
-                .frame(width: 36, height: 36)
-                .background(Circle().fill(Color.white.opacity(0.06)))
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(agent.name)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                Text([agent.type, agent.model].compactMap { $0 }.joined(separator: " · "))
-                    .font(.system(size: 12, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer()
-
-            if busyAgent == agent.id {
-                ProgressView().controlSize(.small)
-            } else {
-                Button(agent.isRunning ? "Stop" : "Start") {
-                    Task { await toggle(agent) }
-                }
-                .buttonStyle(.bordered)
-            }
-        }
-        .padding(16)
-        .cybaraGlass(cornerRadius: 16)
-    }
-
-    private func load() async {
-        do {
-            agents = try await client.agents()
-            error = nil
-        } catch {
-            self.error = error.localizedDescription
-        }
-    }
-
-    private func toggle(_ agent: GatewayAgent) async {
-        busyAgent = agent.id
-        do {
-            if agent.isRunning {
-                try await client.stopAgent(agent.id)
-            } else {
-                try await client.startAgent(agent.id)
-            }
-            await load()
-        } catch {
-            self.error = error.localizedDescription
-        }
-        busyAgent = nil
-    }
-}
-
-// ─── Providers ───────────────────────────────────────────────────────────────
-
-struct ProvidersScreen: View {
-    let client: GatewayClient
-    @Environment(\.cybaraAccent) private var accentTint
-
-    @State private var providers: [GatewayProvider] = []
-    @State private var error: String?
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                ScreenHeader(title: "Providers", subtitle: "Model providers configured on the gateway")
-
-                if let error {
-                    LoadFailedView(message: error) { Task { await load() } }
-                } else {
-                    ForEach(providers) { provider in
-                        HStack(spacing: 14) {
-                            Image(systemName: "shippingbox")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(provider.enabled == false ? Color.secondary : accentTint)
-                                .frame(width: 36, height: 36)
-                                .background(Circle().fill(Color.white.opacity(0.06)))
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(provider.displayName)
-                                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                                Text(provider.provider ?? provider.id)
-                                    .font(.system(size: 12, design: .rounded))
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Text(provider.enabled == false ? "Disabled" : "Enabled")
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .background(
-                                    Capsule().fill(
-                                        provider.enabled == false
-                                            ? Color.secondary.opacity(0.15)
-                                            : Color.green.opacity(0.18)
-                                    )
-                                )
-                        }
-                        .padding(16)
-                        .cybaraGlass(cornerRadius: 16)
-                    }
-                }
-            }
-            .padding(24)
-        }
-        .task { await load() }
-    }
-
-    private func load() async {
-        do {
-            providers = try await client.providers()
-            error = nil
-        } catch {
-            self.error = error.localizedDescription
-        }
     }
 }
 

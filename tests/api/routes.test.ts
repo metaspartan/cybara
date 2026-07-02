@@ -818,6 +818,21 @@ describe("Providers API", () => {
     await api("DELETE", `/api/providers/${providerId}`);
   });
 
+  test("POST /api/providers persists validated base URLs", async () => {
+    const created = await api("POST", "/api/providers", {
+      provider: "ollama",
+      name: `create-base-url-${Date.now()}`,
+      base_url: "http://127.0.0.1:11434/v1",
+    });
+    expect(created.status).toBe(200);
+    const providerId = created.data.id as string;
+
+    const row = getRawProviderRecord(providerId);
+    expect(row?.base_url).toBe("http://127.0.0.1:11434/v1");
+
+    await api("DELETE", `/api/providers/${providerId}`);
+  });
+
   test("PUT /api/providers/:id preserves existing credentials when api_key is blank", async () => {
     const provider = await api("POST", "/api/providers", {
       provider: "openai",
@@ -1500,6 +1515,59 @@ describe("Session API", () => {
       deleteRawSession(sessionId);
       deleteRawAgent(agentId);
       deleteRawProvider(providerId);
+    }
+  });
+
+  test("session list and detail fall back to stored assistant model metadata", async () => {
+    const suffix = Date.now();
+    const sessionId = `session-stored-model-${suffix}`;
+    const missingAgentId = `deleted-session-agent-${suffix}`;
+    try {
+      insertRawSession(sessionId, missingAgentId, [
+        {
+          role: "assistant",
+          content: "hello from a previous model",
+          metadata: {
+            provider: "openai",
+            provider_id: `deleted-provider-${suffix}`,
+            provider_name: "OpenAI Snapshot",
+            model: "gpt-4.1",
+            agent_name: "Deleted Agent",
+          },
+        },
+      ]);
+
+      const list = await api("GET", "/api/sessions");
+      expect(list.status).toBe(200);
+      const found = (
+        list.data as Array<{
+          id: string;
+          provider?: string;
+          provider_id?: string;
+          provider_name?: string;
+          model?: string;
+          agent_name?: string;
+        }>
+      ).find((entry) => entry.id === sessionId);
+      expect(found).toMatchObject({
+        provider: "openai",
+        provider_id: `deleted-provider-${suffix}`,
+        provider_name: "OpenAI Snapshot",
+        model: "gpt-4.1",
+        agent_name: "Deleted Agent",
+      });
+
+      const detail = await api("GET", `/api/sessions/${sessionId}`);
+      expect(detail.status).toBe(200);
+      expect(detail.data).toMatchObject({
+        provider: "openai",
+        provider_id: `deleted-provider-${suffix}`,
+        provider_name: "OpenAI Snapshot",
+        model: "gpt-4.1",
+        agent_name: "Deleted Agent",
+      });
+    } finally {
+      deleteRawSession(sessionId);
     }
   });
 

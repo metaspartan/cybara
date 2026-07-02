@@ -1,138 +1,11 @@
 import Foundation
 
-// ─── Models ──────────────────────────────────────────────────────────────────
-
-struct GatewayHealth: Decodable {
-    let status: String?
-    let version: String?
-    let uptime: Double?
-}
-
-struct GatewayAgent: Decodable, Identifiable, Hashable {
-    let id: String
-    let name: String
-    let type: String?
-    let model: String?
-    let status: String?
-    let provider_id: String?
-
-    var isRunning: Bool { status?.lowercased() == "running" }
-}
-
-struct GatewayProvider: Decodable, Identifiable, Hashable {
-    let id: String
-    let name: String?
-    let provider: String?
-    let enabled: Bool?
-
-    var displayName: String { firstNonEmptyGatewayString(name, provider, id) ?? id }
-}
-
-struct GatewaySessionMessage: Decodable, Identifiable, Hashable {
-    let role: String
-    let content: String
-    let timestamp: String?
-    // Stable local identity (excluded from decoding via CodingKeys).
-    var id = UUID()
-
-    private enum CodingKeys: String, CodingKey {
-        case role, content, timestamp
-    }
-}
-
-struct GatewaySession: Decodable, Identifiable, Hashable {
-    let id: String
-    let title: String?
-    let agent_id: String?
-    let message_count: Int?
-    let updated_at: String?
-    let pinned: Bool?
-
-    var displayTitle: String { firstNonEmptyGatewayString(title) ?? String(id.prefix(8)) }
-}
-
-func firstNonEmptyGatewayString(_ values: String?...) -> String? {
-    for value in values {
-        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !trimmed.isEmpty { return trimmed }
-    }
-    return nil
-}
-
-struct GatewayTask: Decodable, Identifiable, Hashable {
-    let id: String
-    let name: String
-    let schedule: String?
-    let status: String?
-    let agent_id: String?
-
-    var isRunning: Bool {
-        let s = status?.lowercased()
-        return s == "running" || s == "pending"
-    }
-}
-
-struct GatewayMobileDevice: Decodable, Identifiable, Hashable {
-    let id: String
-    let name: String
-    let baseUrl: String
-    let status: String
-    let scopes: [String]
-    let createdAt: String
-    let lastSeenAt: String?
-    let revokedAt: String?
-    let userAgent: String?
-
-    var isActive: Bool { status.lowercased() == "active" }
-    var scopeSummary: String {
-        scopes.isEmpty ? "No scopes" : scopes.joined(separator: ", ")
-    }
-}
-
-struct GatewayMobileDevicesResponse: Decodable {
-    let devices: [GatewayMobileDevice]
-}
-
-struct GatewayMobilePairingPayload: Decodable, Hashable {
-    let `protocol`: String
-    let name: String
-    let baseUrl: String
-    let code: String
-    let role: String?
-    let expiresAt: Double?
-}
-
-struct GatewayMobilePairingCode: Decodable, Hashable {
-    let success: Bool
-    let code: String
-    let expiresAt: Double?
-    let payload: GatewayMobilePairingPayload
-    let encoded: String
-    let qrDataUrl: String
-
-    var expiresAtDate: Date? {
-        guard let expiresAt else { return nil }
-        return Date(timeIntervalSince1970: expiresAt / 1000)
-    }
-}
-
-struct ChatSendResponse: Decodable {
-    struct Message: Decodable {
-        let role: String?
-        let content: String?
-    }
-
-    let sessionId: String?
-    let message: Message?
-
-    var response: String? { message?.content }
-}
-
 // ─── Client ──────────────────────────────────────────────────────────────────
 
 enum GatewayClientError: LocalizedError {
     case badStatus(Int, String)
     case invalidResponse
+    case decodingFailed(String, String)
 
     var errorDescription: String? {
         switch self {
@@ -140,6 +13,8 @@ enum GatewayClientError: LocalizedError {
             return "Gateway error \(code): \(body.prefix(200))"
         case .invalidResponse:
             return "The gateway returned an unexpected response."
+        case .decodingFailed(let path, let detail):
+            return "The gateway response for /\(path) could not be decoded: \(detail.prefix(240))"
         }
     }
 }
@@ -158,8 +33,19 @@ struct GatewayClient: Sendable {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    private func request(_ path: String, method: String = "GET", body: Data? = nil) async throws -> Data {
-        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+    func request(
+        _ path: String,
+        method: String = "GET",
+        body: Data? = nil,
+        queryItems: [URLQueryItem] = []
+    ) async throws -> Data {
+        var url = baseURL.appendingPathComponent(path)
+        if !queryItems.isEmpty,
+           var components = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            components.queryItems = (components.queryItems ?? []) + queryItems
+            url = components.url ?? url
+        }
+        var req = URLRequest(url: url)
         req.httpMethod = method
         req.timeoutInterval = 120
         if let key = Self.loadAPIKey() {
@@ -177,25 +63,51 @@ struct GatewayClient: Sendable {
         return data
     }
 
-    private func get<T: Decodable>(_ path: String, as type: T.Type) async throws -> T {
-        try JSONDecoder().decode(T.self, from: try await request(path))
+    private func get<T: Decodable>(
+        _ path: String,
+        as type: T.Type,
+        queryItems: [URLQueryItem] = []
+    ) async throws -> T {
+        let data = try await request(path, queryItems: queryItems)
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            throw GatewayClientError.decodingFailed(path, String(describing: error))
+        }
     }
 
     /// Decode either a bare array or `{ "<key>": [...] }` wrappers, since some
     /// gateway routes wrap their list payloads.
-    private func getList<T: Decodable>(_ path: String, keys: [String]) async throws -> [T] {
-        let data = try await request(path)
+    private func getList<T: Decodable>(
+        _ path: String,
+        keys: [String],
+        queryItems: [URLQueryItem] = []
+    ) async throws -> [T] {
+        let data = try await request(path, queryItems: queryItems)
         let decoder = JSONDecoder()
-        if let direct = try? decoder.decode([T].self, from: data) { return direct }
+        do {
+            return try decoder.decode([T].self, from: data)
+        } catch {
+            if (try? JSONSerialization.jsonObject(with: data)) is [Any] {
+                throw GatewayClientError.decodingFailed(path, String(describing: error))
+            }
+        }
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw GatewayClientError.invalidResponse
         }
+        var nestedDecodeErrors: [String] = []
         for key in keys {
             if let nested = object[key],
-               let nestedData = try? JSONSerialization.data(withJSONObject: nested),
-               let list = try? decoder.decode([T].self, from: nestedData) {
-                return list
+               let nestedData = try? JSONSerialization.data(withJSONObject: nested) {
+                do {
+                    return try decoder.decode([T].self, from: nestedData)
+                } catch {
+                    nestedDecodeErrors.append("\(key): \(String(describing: error))")
+                }
             }
+        }
+        if !nestedDecodeErrors.isEmpty {
+            throw GatewayClientError.decodingFailed(path, nestedDecodeErrors.joined(separator: "; "))
         }
         return []
     }
@@ -214,13 +126,25 @@ struct GatewayClient: Sendable {
         try await getList("api/providers", keys: ["providers", "items"])
     }
 
+    func availableProviders() async throws -> [GatewayAvailableProvider] {
+        try await getList("api/providers/available", keys: ["providers", "items"])
+    }
+
+    func providerModels(_ id: String) async throws -> [GatewayProviderModel] {
+        try await getList("api/providers/\(id)/models", keys: ["models", "items"])
+    }
+
     func sessions() async throws -> [GatewaySession] {
         try await getList("api/sessions", keys: ["sessions", "items"])
     }
 
     func sessionMessages(_ id: String) async throws -> [GatewaySessionMessage] {
         // Session detail carries its transcript under `messagesList`.
-        try await getList("api/sessions/\(id)", keys: ["messagesList", "messages"])
+        try await getList(
+            "api/sessions/\(id)",
+            keys: ["messagesList", "messages"],
+            queryItems: [URLQueryItem(name: "includeFullToolCalls", value: "1")]
+        )
     }
 
     func tasks() async throws -> [GatewayTask] {
@@ -259,10 +183,18 @@ struct GatewayClient: Sendable {
         try await request("api/mobile/devices/\(id)", method: "DELETE")
     }
 
-    func sendChat(message: String, sessionId: String?, agentId: String?) async throws -> ChatSendResponse {
+    func sendChat(
+        message: String,
+        sessionId: String?,
+        agentId: String?,
+        workspaceDir: String? = nil
+    ) async throws -> ChatSendResponse {
         var payload: [String: Any] = ["message": message]
         if let sessionId { payload["sessionId"] = sessionId }
         if let agentId { payload["agentId"] = agentId }
+        if let workspaceDir = firstNonEmptyGatewayString(workspaceDir) {
+            payload["workspaceDir"] = workspaceDir
+        }
         let body = try JSONSerialization.data(withJSONObject: payload)
         let data = try await request("api/chat", method: "POST", body: body)
         return try JSONDecoder().decode(ChatSendResponse.self, from: data)
@@ -350,6 +282,42 @@ struct GatewayClient: Sendable {
         try await get("api/metrics/overview", as: MetricsOverview.self)
     }
 
+    func metricsTokens() async throws -> TokenMetrics {
+        try await get("api/metrics/tokens", as: TokenMetrics.self)
+    }
+
+    func metricsTokenAnalysis() async throws -> TokenAnalysisMetrics {
+        try await get("api/metrics/token-analysis", as: TokenAnalysisMetrics.self)
+    }
+
+    func metricsFiles() async throws -> FileMetrics {
+        try await get("api/metrics/files", as: FileMetrics.self)
+    }
+
+    func metricsTools() async throws -> ToolMetrics {
+        try await get("api/metrics/tools", as: ToolMetrics.self)
+    }
+
+    func metricsTimeSeries() async throws -> TimeSeriesData {
+        try await get("api/metrics/time-series", as: TimeSeriesData.self)
+    }
+
+    func metricsStorage() async throws -> MetricsStorage {
+        try await get("api/metrics/storage", as: MetricsStorage.self)
+    }
+
+    func metricsProviders() async throws -> ProviderMetrics {
+        try await get("api/metrics/providers", as: ProviderMetrics.self)
+    }
+
+    func metricsModels() async throws -> ModelMetrics {
+        try await get("api/metrics/models", as: ModelMetrics.self)
+    }
+
+    func metricsInsights() async throws -> MetricsInsights {
+        try await get("api/metrics/insights", as: MetricsInsights.self)
+    }
+
     // ─── Channels / Logs ─────────────────────────────────────────────────────
 
     func channels() async throws -> [GatewayChannel] {
@@ -413,42 +381,23 @@ struct GatewayClient: Sendable {
         let body = try JSONSerialization.data(withJSONObject: ["pinned": pinned])
         return try await request("api/sessions/\(id)/pin", method: "PUT", body: body)
     }
-}
 
-struct GatewayChannel: Decodable, Identifiable, Hashable {
-    let id: String
-    let type: String?
-    let name: String?
-    let enabled: Int?
+    func updateSessionWorkspace(
+        _ id: String,
+        workspaceDir: String?
+    ) async throws -> GatewaySessionWorkspaceUpdateResponse {
+        let normalizedWorkspaceDir = firstNonEmptyGatewayString(workspaceDir)
+        let payloadValue: Any = normalizedWorkspaceDir ?? NSNull()
+        let body = try JSONSerialization.data(
+            withJSONObject: ["workspaceDir": payloadValue]
+        )
+        let data = try await request("api/sessions/\(id)/workspace", method: "PUT", body: body)
+        return try JSONDecoder().decode(GatewaySessionWorkspaceUpdateResponse.self, from: data)
+    }
 
-    var displayName: String { firstNonEmptyGatewayString(name, type, id) ?? id }
-    var isEnabled: Bool { enabled == 1 }
-}
-
-struct GatewayLogEntry: Decodable, Identifiable, Hashable {
-    let id: String
-    let level: String?
-    let source: String?
-    let message: String?
-    let created_at: String?
-}
-
-struct GatewaySkill: Decodable, Identifiable, Hashable {
-    let name: String
-    let description: String?
-    let category: String?
-    let enabled: Bool?
-
-    var id: String { name }
 }
 
 // ─── Live status (SSE) ───────────────────────────────────────────────────────
-
-struct GatewayStatusEvent: Decodable {
-    let status: String?
-    let detail: String?
-    let sessionId: String?
-}
 
 /// Subscribes to the gateway's status event stream (`/api/sse/status`) and
 /// publishes the latest event, so the chat transcript can show live
@@ -493,34 +442,4 @@ final class GatewayStatusStream: ObservableObject {
     deinit {
         task?.cancel()
     }
-}
-
-struct RouterStatusSummary: Decodable {
-    let enabled: Bool?
-    let strategy: String?
-    let globalSpendToday: Double?
-    let totalRequests: Int?
-}
-
-struct MetricsOverview: Decodable {
-    struct TokenUsage: Decodable {
-        let total: Int?
-        let input: Int?
-        let output: Int?
-        let cache: Int?
-    }
-
-    struct Sessions: Decodable {
-        let totalSessions: Int?
-        let memoryFlushes: Int?
-        let compactions: Int?
-    }
-
-    struct ToolCalls: Decodable {
-        let totalCalls: Int?
-    }
-
-    let tokenUsage: TokenUsage?
-    let sessions: Sessions?
-    let toolCalls: ToolCalls?
 }

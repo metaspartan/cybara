@@ -4,6 +4,19 @@ import SwiftUI
 // Accent palette shared with the web/Tauri and mobile UIs; the key is synced
 // through gateway config so all clients highlight in the same color.
 enum CybaraAccent {
+    static let orderedKeys = [
+        "indigo",
+        "blue",
+        "cyan",
+        "teal",
+        "emerald",
+        "amber",
+        "orange",
+        "rose",
+        "pink",
+        "purple",
+    ]
+
     static let palette: [String: Color] = [
         "indigo": Color(red: 0.388, green: 0.400, blue: 0.945),
         "blue": Color(red: 0.231, green: 0.510, blue: 0.965),
@@ -20,6 +33,12 @@ enum CybaraAccent {
     static func color(for key: String?) -> Color {
         guard let key, let color = palette[key.lowercased()] else { return .accentColor }
         return color
+    }
+
+    static func label(for key: String) -> String {
+        key.split(separator: "-")
+            .map { $0.capitalized }
+            .joined(separator: " ")
     }
 }
 
@@ -51,6 +70,7 @@ enum NativeDestination: String, CaseIterable, Identifiable {
     case skills
     case logs
     case gateway
+    case settings
     case webUI
 
     var id: String { rawValue }
@@ -72,6 +92,7 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .skills: return "Skills"
         case .logs: return "Logs"
         case .gateway: return "Gateway"
+        case .settings: return "Settings"
         case .webUI: return "Web UI"
         }
     }
@@ -93,6 +114,7 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .skills: return "wand.and.stars"
         case .logs: return "list.bullet.rectangle"
         case .gateway: return "server.rack"
+        case .settings: return "gearshape"
         case .webUI: return "globe"
         }
     }
@@ -103,6 +125,7 @@ struct ContentView: View {
     @Environment(\.openURL) private var openURL
     @State private var destination: NativeDestination = .dashboard
     @State private var accent: Color = .accentColor
+    @State private var selectedChatSessionID: String?
 
     private var client: GatewayClient {
         GatewayClient(baseURL: sidecar.serverURL)
@@ -136,6 +159,10 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .cybaraCopyURL)) { _ in
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(sidecar.serverURL.absoluteString, forType: .string)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cybaraThemeAccentChanged)) { notification in
+            guard let key = notification.object as? String else { return }
+            accent = CybaraAccent.color(for: key)
         }
         .onOpenURL { url in
             switch SidecarCore.parseDeepLink(url) {
@@ -189,7 +216,7 @@ struct ContentView: View {
                     }
                 }
                 Section("System") {
-                    ForEach([NativeDestination.logs, .gateway, .webUI]) { item in
+                    ForEach([NativeDestination.logs, .gateway, .settings, .webUI]) { item in
                         Label(item.title, systemImage: item.systemImage)
                             .tag(item)
                     }
@@ -208,9 +235,12 @@ struct ContentView: View {
         } else {
             switch destination {
             case .dashboard:
-                DashboardScreen(client: client)
+                DashboardScreen(client: client) { session in
+                    selectedChatSessionID = session.id
+                    destination = .chat
+                }
             case .chat:
-                ChatScreen(client: client)
+                ChatScreen(client: client, selectedSessionID: $selectedChatSessionID)
             case .mobile:
                 MobileScreen(client: client, defaultBaseURL: sidecar.serverURL)
             case .agents:
@@ -237,6 +267,10 @@ struct ContentView: View {
                 LogsScreen(client: client)
             case .gateway:
                 GatewayScreen()
+            case .settings:
+                NativeSettingsScreen(client: client) { key in
+                    accent = CybaraAccent.color(for: key)
+                }
             case .webUI:
                 webUIDetail
             }
@@ -358,34 +392,6 @@ struct GatewayScreen: View {
             }
             .padding(24)
         }
-    }
-}
-
-struct SettingsView: View {
-    @EnvironmentObject private var sidecar: SidecarManager
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Cybara Settings")
-                .font(.system(size: 22, weight: .bold, design: .rounded))
-
-            Text("Set `CYBARA_NATIVE_SIDECAR_PATH` to point at a compiled Cybara binary or Tauri sidecar. Set `CYBARA_NATIVE_PORT` to override the local server port.")
-                .font(.system(size: 13, weight: .regular, design: .rounded))
-                .foregroundStyle(.secondary)
-
-            GlassCard {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label(sidecar.binaryPath, systemImage: "shippingbox")
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    Label(sidecar.serverURL.absoluteString, systemImage: "network")
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                }
-            }
-
-            Spacer()
-        }
-        .padding(24)
-        .frame(minWidth: 460, minHeight: 300)
     }
 }
 

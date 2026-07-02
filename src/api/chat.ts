@@ -24,6 +24,8 @@ import {
   estimateMessagesTokens,
   getContextWindow,
   normalizeSessionWorkspaceDir,
+  resolveSessionModelMetadata,
+  type SessionModelMetadata,
 } from "../core/session-context";
 import {
   deriveSessionTitleFromMessages,
@@ -138,6 +140,7 @@ interface SessionListEntry {
   workspaceDir: string | null;
   pinned: boolean;
   lastMessage: SessionLastMessagePreview | null;
+  modelMetadata: SessionModelMetadata | null;
 }
 
 type PersistedSessionIndexEntry = SessionListEntry;
@@ -159,10 +162,11 @@ function buildLastMessagePreview(message?: ChatMessage): SessionLastMessagePrevi
 }
 
 function normalizePersistedIndexEntry(
-  entry: Omit<PersistedSessionIndexEntry, "title" | "lastMessage" | "pinned"> & {
+  entry: Omit<PersistedSessionIndexEntry, "title" | "lastMessage" | "pinned" | "modelMetadata"> & {
     title?: string | null;
     pinned?: boolean;
     lastMessage?: SessionLastMessagePreview | null;
+    modelMetadata?: SessionModelMetadata | null;
   }
 ): PersistedSessionIndexEntry {
   return {
@@ -177,14 +181,16 @@ function normalizePersistedIndexEntry(
           content: truncateSessionPreviewContent(entry.lastMessage.content),
         }
       : null,
+    modelMetadata: entry.modelMetadata ?? resolveSessionModelMetadata(entry.agentId),
   };
 }
 
 function upsertPersistedSessionIndex(
-  entry: Omit<PersistedSessionIndexEntry, "title" | "lastMessage" | "pinned"> & {
+  entry: Omit<PersistedSessionIndexEntry, "title" | "lastMessage" | "pinned" | "modelMetadata"> & {
     title?: string | null;
     pinned?: boolean;
     lastMessage?: SessionLastMessagePreview | null;
+    modelMetadata?: SessionModelMetadata | null;
   }
 ): void {
   persistedSessionIndex.set(entry.id, normalizePersistedIndexEntry(entry));
@@ -208,6 +214,7 @@ async function loadPersistedSessions() {
         updatedAt: sessionInfo.updatedAt || sessionInfo.createdAt,
         workspaceDir: sessionInfo.workspaceDir ?? null,
         pinned: sessionInfo.pinned,
+        modelMetadata: sessionInfo.modelMetadata ?? resolveSessionModelMetadata(sessionInfo.agentId),
         lastMessage:
           sessionInfo.lastMessageRole && sessionInfo.lastMessageContent
             ? {
@@ -1177,11 +1184,13 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   if (!session.title || shouldRegenerateSessionTitle(session.title)) {
     session.title = withAgentTitlePrefix(agent?.name, deriveSessionTitleFromTurn(message));
   }
+  const modelMetadata = resolveSessionModelMetadata(agent?.id ?? session.agentId);
 
   await logSessionMessage(session.id, "assistant", assistantMessage.content, {
     agentId: agent?.id,
     metadata: {
       source: "chat_api",
+      ...(modelMetadata ?? {}),
       thinking: finalThinking,
       tool_calls: allToolCalls,
       process_activities: assistantMessage.process_activities,
@@ -1205,6 +1214,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     updatedAt: session.updatedAt,
     workspaceDir: session.workspaceDir ?? null,
     lastMessage: buildLastMessagePreview(assistantMessage),
+    modelMetadata,
   });
 
   await emitAgentHook({
@@ -1369,6 +1379,7 @@ async function buildSessionListIndex(): Promise<SessionListEntry[]> {
     // index when the session has been saved.
     pinned: persistedSessionIndex.get(s.id)?.pinned ?? false,
     lastMessage: buildLastMessagePreview(s.messages[s.messages.length - 1]),
+    modelMetadata: resolveSessionModelMetadata(s.agentId),
   }));
 
   const persistedSessions = await listPersistedSessions();
@@ -1384,6 +1395,7 @@ async function buildSessionListIndex(): Promise<SessionListEntry[]> {
       updatedAt: persisted.updatedAt,
       workspaceDir: persisted.workspaceDir ?? null,
       pinned: persisted.pinned,
+      modelMetadata: persisted.modelMetadata ?? resolveSessionModelMetadata(persisted.agentId),
       lastMessage:
         persisted.lastMessageRole && persisted.lastMessageContent
           ? {
@@ -1412,6 +1424,7 @@ async function buildSessionListIndex(): Promise<SessionListEntry[]> {
       workspaceDir: persisted.workspaceDir,
       pinned: persisted.pinned,
       lastMessage: persisted.lastMessage,
+      modelMetadata: persisted.modelMetadata,
     });
   }
 

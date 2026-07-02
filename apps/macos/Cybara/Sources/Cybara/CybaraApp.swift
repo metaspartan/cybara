@@ -9,6 +9,7 @@ extension Notification.Name {
     static let cybaraOpenInBrowser = Notification.Name("cybara.openInBrowser")
     static let cybaraCopyURL = Notification.Name("cybara.copyURL")
     static let cybaraCheckForUpdates = Notification.Name("cybara.checkForUpdates")
+    static let cybaraThemeAccentChanged = Notification.Name("cybara.themeAccentChanged")
 }
 
 @MainActor
@@ -84,7 +85,7 @@ struct CybaraApp: App {
         Settings {
             SettingsView()
                 .environmentObject(sidecar)
-                .frame(width: 520, height: 320)
+                .frame(width: 720, height: 620)
         }
     }
 }

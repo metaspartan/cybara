@@ -18,6 +18,133 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(missing.displayTitle, "session-")
     }
 
+    func testSessionProviderModelSummaryUsesGatewayMetadata() throws {
+        let session = try decodeSession(
+            #"""
+            {
+              "id": "session-123",
+              "agent_id": "agent-local",
+              "provider": "openai",
+              "provider_name": "OpenAI",
+              "model": "gpt-4.1",
+              "agent_name": "Main Assistant",
+              "last_message": {
+                "role": "assistant",
+                "content": "Latest reply"
+              }
+            }
+            """#
+        )
+
+        XCTAssertEqual(session.providerModelSummary, "OpenAI · gpt-4.1")
+        XCTAssertEqual(session.providerModelAndAgentSummary, "OpenAI · gpt-4.1 · via Main Assistant")
+        XCTAssertEqual(session.last_message?.preview, "Latest reply")
+    }
+
+    func testSessionProviderModelSummaryFallsBackWithoutIds() throws {
+        let routed = try decodeSession(#"{"id":"session-1","agent_id":"agent-123"}"#)
+        let unrouted = try decodeSession(#"{"id":"session-2"}"#)
+
+        XCTAssertEqual(routed.providerModelSummary, "Agent agent-123")
+        XCTAssertEqual(unrouted.providerModelSummary, "Local gateway routing")
+        XCTAssertFalse(routed.providerModelAndAgentSummary.contains("Agent routed"))
+    }
+
+    func testSessionRouteSummaryResolvesAgentProviderAndModel() throws {
+        let session = try decodeSession(#"{"id":"session-1","agent_id":"agent-1"}"#)
+        let agent = try decodeAgent(
+            #"{"id":"agent-1","name":"Research","type":"research","model":"gpt-5-mini","provider_id":"provider-1"}"#
+        )
+        let provider = try decodeProvider(#"{"id":"provider-1","name":"OpenAI","provider":"openai"}"#)
+
+        XCTAssertEqual(
+            gatewaySessionRouteSummary(session, agents: [agent], providers: [provider]),
+            "OpenAI · gpt-5-mini · via Research"
+        )
+    }
+
+    func testSessionDecodesChatEndpointCamelCaseFields() throws {
+        let session = try decodeSession(
+            #"""
+            {
+              "id": "session-1",
+              "agentId": "agent-1",
+              "messageCount": 3,
+              "createdAt": "2026-07-02T18:00:00.000Z",
+              "updatedAt": "2026-07-02T18:03:00.000Z",
+              "workspaceDir": "/Users/carsen/Documents/GitHub/cybara",
+              "lastMessage": {
+                "role": "assistant",
+                "content": "Latest response"
+              }
+            }
+            """#
+        )
+
+        XCTAssertEqual(session.agent_id, "agent-1")
+        XCTAssertEqual(session.message_count, 3)
+        XCTAssertEqual(session.created_at, "2026-07-02T18:00:00.000Z")
+        XCTAssertEqual(session.updated_at, "2026-07-02T18:03:00.000Z")
+        XCTAssertEqual(session.workspace_dir, "/Users/carsen/Documents/GitHub/cybara")
+        XCTAssertEqual(session.last_message?.preview, "Latest response")
+        XCTAssertEqual(session.workspaceLabel, gatewayWorkspaceLabel("/Users/carsen/Documents/GitHub/cybara"))
+    }
+
+    func testWorkspaceLabelTruncatesLongPathsLikeWebUI() {
+        let longPath = "/Users/carsen/Documents/GitHub/cybara/apps/macos/Cybara"
+        let label = gatewayWorkspaceLabel(longPath, maxLength: 32)
+
+        XCTAssertNotNil(label)
+        XCTAssertLessThanOrEqual(label?.count ?? 0, 32)
+        XCTAssertTrue(label?.contains(".../") == true)
+        XCTAssertTrue(label?.hasSuffix("Cybara") == true)
+        XCTAssertEqual(gatewayWorkspaceLabel("/tmp/cybara", maxLength: 32), "/tmp/cybara")
+        XCTAssertNil(gatewayWorkspaceLabel("   "))
+    }
+
+    func testChatSendResponseDecodesWorkspaceDir() throws {
+        let response = try JSONDecoder().decode(
+            ChatSendResponse.self,
+            from: Data(
+                #"""
+                {
+                  "sessionId": "session-1",
+                  "workspaceDir": "/Users/carsen/Documents/GitHub/cybara",
+                  "message": {
+                    "role": "assistant",
+                    "content": "Done."
+                  }
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(response.sessionId, "session-1")
+        XCTAssertEqual(response.workspaceDir, "/Users/carsen/Documents/GitHub/cybara")
+        XCTAssertEqual(response.response, "Done.")
+    }
+
+    func testSessionWorkspaceUpdateResponseDecodesGatewayError() throws {
+        let response = try JSONDecoder().decode(
+            GatewaySessionWorkspaceUpdateResponse.self,
+            from: Data(#"{"success":false,"error":"Cannot update workspace for subagent sessions"}"#.utf8)
+        )
+
+        XCTAssertEqual(response.success, false)
+        XCTAssertEqual(response.error, "Cannot update workspace for subagent sessions")
+    }
+
+    func testSessionProviderModelSummaryFormatsProviderType() throws {
+        let session = try decodeSession(
+            #"{"id":"session-1","provider":"openrouter","model":"anthropic/claude-sonnet-4","agent_type":"main"}"#
+        )
+
+        XCTAssertEqual(
+            session.providerModelAndAgentSummary,
+            "OpenRouter · anthropic/claude-sonnet-4 · via Main"
+        )
+    }
+
     func testProviderDisplayNamePrefersFirstNonEmptyGatewayLabel() throws {
         let named = try decodeProvider(
             #"{"id":"openai","name":"  OpenAI  ","provider":"openai","enabled":true}"#)
@@ -28,6 +155,281 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(named.displayName, "OpenAI")
         XCTAssertEqual(providerFallback.displayName, "Anthropic")
         XCTAssertEqual(idFallback.displayName, "local")
+    }
+
+    func testAgentDecodesEditableConfigFields() throws {
+        let agent = try JSONDecoder().decode(
+            GatewayAgent.self,
+            from: Data(
+                #"""
+                {
+                  "id": "agent-1",
+                  "name": "Research",
+                  "type": "research",
+                  "model": "gpt-4.1",
+                  "status": "running",
+                  "provider_id": "provider-1",
+                  "system_prompt": "Be useful.",
+                  "config": {
+                    "autostart": true,
+                    "model_params": {
+                      "reasoning_effort": "high"
+                    }
+                  }
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertTrue(agent.isRunning)
+        XCTAssertEqual(agent.providerID, "provider-1")
+        XCTAssertTrue(agent.autostart)
+        XCTAssertEqual(agent.reasoningEffort, "high")
+    }
+
+    func testAgentDecodesGatewayListRowWithPersistedJsonConfigString() throws {
+        let agent = try JSONDecoder().decode(
+            GatewayAgent.self,
+            from: Data(
+                #"""
+                {
+                  "id": "agent-sqlite",
+                  "name": "SQLite Agent",
+                  "type": "main",
+                  "model": "gpt-5-mini",
+                  "provider": "provider-1",
+                  "provider_id": "provider-1",
+                  "system_prompt": "Use tools carefully.",
+                  "config": "{\"autostart\":true,\"model_params\":{\"reasoning_effort\":\"medium\"}}",
+                  "status": "stopped",
+                  "memory_enabled": 1,
+                  "created_at": "2026-07-02 18:00:00"
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(agent.id, "agent-sqlite")
+        XCTAssertEqual(agent.providerID, "provider-1")
+        XCTAssertTrue(agent.autostart)
+        XCTAssertEqual(agent.reasoningEffort, "medium")
+    }
+
+    func testProviderModelsDecodeAvailableProviderCatalog() throws {
+        let available = try JSONDecoder().decode(
+            GatewayAvailableProvider.self,
+            from: Data(
+                #"""
+                {
+                  "id": "openai",
+                  "name": "OpenAI",
+                  "description": "Use OpenAI models",
+                  "baseUrl": "https://api.openai.com/v1",
+                  "authType": "api_key",
+                  "models": [
+                    {"id": "gpt-4.1", "name": "GPT-4.1", "context": 1048576, "reasoning": true}
+                  ]
+                }
+                """#.utf8
+            )
+        )
+        let cached = try JSONDecoder().decode(
+            GatewayProviderModel.self,
+            from: Data(#"{"model_id":"gpt-4.1","model_name":"GPT-4.1","context_window":1048576}"#.utf8)
+        )
+
+        XCTAssertEqual(available.models.first?.id, "gpt-4.1")
+        XCTAssertEqual(cached.displayName, "GPT-4.1")
+    }
+
+    func testProviderDecodesGatewayListRowWithSqliteBooleansAndCatalogInfo() throws {
+        let provider = try decodeProvider(
+            #"""
+            {
+              "id": "provider-1",
+              "provider": "openai",
+              "name": "OpenAI",
+              "base_url": "https://api.openai.com/v1",
+              "is_default": 1,
+              "enabled": "true",
+              "info": {
+                "models": [
+                  {"id": "gpt-5-mini", "name": "GPT-5 Mini"},
+                  {"model_id": "gpt-5.1-codex", "model_name": "GPT-5.1 Codex"}
+                ]
+              }
+            }
+            """#
+        )
+
+        XCTAssertEqual(provider.id, "provider-1")
+        XCTAssertEqual(provider.providerType, "openai")
+        XCTAssertEqual(provider.is_default, true)
+        XCTAssertEqual(provider.enabled, true)
+        XCTAssertEqual(provider.models, ["gpt-5-mini", "gpt-5.1-codex"])
+    }
+
+    func testProviderModelDecodesGatewayModelCacheRows() throws {
+        let model = try JSONDecoder().decode(
+            GatewayProviderModel.self,
+            from: Data(
+                #"""
+                {
+                  "id": "model-row-1",
+                  "model_id": "gpt-5-mini",
+                  "model_name": "GPT-5 Mini",
+                  "context_window": 200000,
+                  "max_tokens": 32768,
+                  "reasoning": 0,
+                  "input_types": "[\"text\"]"
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(model.id, "gpt-5-mini")
+        XCTAssertEqual(model.displayName, "GPT-5 Mini")
+        XCTAssertEqual(model.context_window, 200000)
+        XCTAssertEqual(model.reasoning, false)
+    }
+
+    func testGatewayTimestampsFormatSQLiteAndIsoValues() {
+        XCTAssertFalse(relativeTimestamp("2026-07-02 18:00:00").isEmpty)
+        XCTAssertFalse(absoluteTimestamp("2026-07-02T18:00:00Z").isEmpty)
+    }
+
+    func testSessionMessageDecodesToolCallsAndProcessActivities() throws {
+        let message = try decodeSessionMessage(
+            #"""
+            {
+              "role": "assistant",
+              "content": "Done.",
+              "timestamp": "2026-07-02T18:00:00.000Z",
+              "thinking": "Checked the workspace first.",
+              "tool_calls": [
+                {
+                  "id": "tool-read",
+                  "name": "read",
+                  "timeline_index": 2,
+                  "args": {"path": "/tmp/GatewayModels.swift", "offset": 20, "limit": 3},
+                  "status": "completed",
+                  "result": {"sandbox_provider": "host"}
+                },
+                {
+                  "id": "tool-exec",
+                  "name": "exec_command",
+                  "timeline_index": 1,
+                  "arguments": {"cmd": "bun test tests/runtime/native-macos-shell-wiring.test.ts"},
+                  "status": "completed",
+                  "duration": "1500",
+                  "result": {"sandboxProvider": "host"}
+                }
+              ],
+              "process_activities": [
+                {
+                  "id": "activity-1",
+                  "phase": "start",
+                  "text": "Running model checks",
+                  "timestamp": "2026-07-02T18:00:00.500Z",
+                  "tool_name": "exec_command",
+                  "tool_call_id": "tool-exec",
+                  "sandbox_provider": "host"
+                }
+              ],
+              "_tool_calls_total_count": 2,
+              "_tool_calls_hidden_count": 0
+            }
+            """#
+        )
+
+        XCTAssertEqual(message.tool_calls?.count, 2)
+        XCTAssertEqual(message.tool_calls?.first?.args?["path"]?.displayString, "/tmp/GatewayModels.swift")
+        XCTAssertEqual(message.tool_calls?[1].args?["cmd"]?.displayString, "bun test tests/runtime/native-macos-shell-wiring.test.ts")
+        XCTAssertEqual(nativeOrderedToolCalls(message.tool_calls).map(\.id), ["tool-exec", "tool-read"])
+        XCTAssertEqual(message.process_activities?.first?.toolName, "exec_command")
+        XCTAssertEqual(message.process_activities?.first?.toolCallId, "tool-exec")
+        XCTAssertEqual(message.process_activities?.first?.sandboxProvider, "host")
+        XCTAssertGreaterThan(message.process_activities?.first?.timestamp ?? 0, 1_783_000_000_000)
+    }
+
+    func testNativeToolTimelineUsesProcessActivitiesWhenPresent() throws {
+        let message = try decodeSessionMessage(
+            #"""
+            {
+              "role": "assistant",
+              "content": "Done.",
+              "timestamp": "2026-07-02T18:00:00.000Z",
+              "tool_calls": [
+                {
+                  "id": "tool-exec",
+                  "name": "exec_command",
+                  "timeline_index": 1,
+                  "args": {"cmd": "bun test"},
+                  "status": "completed"
+                }
+              ],
+              "process_activities": [
+                {
+                  "id": "activity-1",
+                  "phase": "start",
+                  "text": "Running model checks",
+                  "timestamp": 1783015200500,
+                  "toolName": "exec_command",
+                  "toolCallId": "tool-exec"
+                }
+              ]
+            }
+            """#
+        )
+
+        let activities = nativeToolActivities(for: message)
+
+        XCTAssertEqual(activities.map(\.text), ["Ran model checks"])
+        XCTAssertEqual(activities.first?.phase, .result)
+        XCTAssertEqual(activities.first?.toolCallId, "tool-exec")
+    }
+
+    func testNativeToolTimelineFallsBackToToolCallsInTimelineOrder() throws {
+        let message = try decodeSessionMessage(
+            #"""
+            {
+              "role": "assistant",
+              "content": "Done.",
+              "timestamp": "2026-07-02T18:00:00.000Z",
+              "tool_calls": [
+                {
+                  "id": "tool-read",
+                  "name": "read",
+                  "timeline_index": 2,
+                  "started_at": 2000,
+                  "args": {"path": "/tmp/GatewayModels.swift", "offset": 20, "limit": 3},
+                  "status": "completed"
+                },
+                {
+                  "id": "tool-exec",
+                  "name": "exec_command",
+                  "timeline_index": 1,
+                  "started_at": 1000,
+                  "arguments": {"cmd": "bun test tests/runtime/native-macos-shell-wiring.test.ts"},
+                  "status": "completed",
+                  "duration": 1500,
+                  "result": {"sandboxProvider": "host"}
+                }
+              ]
+            }
+            """#
+        )
+
+        let ordered = nativeOrderedToolCalls(message.tool_calls)
+        let activities = nativeToolActivities(for: message)
+
+        XCTAssertEqual(ordered.map(\.id), ["tool-exec", "tool-read"])
+        XCTAssertEqual(activities.map(\.text), [
+            "Ran bun test tests/runtime/native-macos-shell-wiring.test.ts",
+            "Explored GatewayModels.swift (lines 20-22)",
+        ])
+        XCTAssertEqual(activities.first?.sandboxProvider, "host")
+        XCTAssertEqual(nativeWorkedDurationLabel(for: message), "0h 00m 01s")
     }
 
     func testChannelDisplayNamePrefersFirstNonEmptyGatewayLabel() throws {
@@ -90,6 +492,152 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(pairing.expiresAtDate?.timeIntervalSince1970, 1783015200)
     }
 
+    func testMetricsOverviewDecodesFullGatewayPayload() throws {
+        let overview = try JSONDecoder().decode(
+            MetricsOverview.self,
+            from: Data(
+                #"""
+                {
+                  "tokenUsage": {"total": 1200, "input": 700, "output": 400, "cache": 100},
+                  "fileOperations": {"filesRead": 9, "filesWritten": 3, "filesEdited": 2, "filesSearched": 4},
+                  "toolCalls": {"totalCalls": 18},
+                  "apiCalls": {"totalCalls": 20, "successfulCalls": 18, "failedCalls": 2},
+                  "agentActivity": {"totalExecutions": 8, "totalMessages": 6},
+                  "sessions": {
+                    "totalSessions": 4,
+                    "memoryFlushes": 2,
+                    "memoryFlushFailures": 1,
+                    "compactions": 3
+                  },
+                  "contextHealth": {"warnings": 5, "criticalWarnings": 1}
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(overview.tokenUsage?.total, 1200)
+        XCTAssertEqual(overview.fileOperations?.filesSearched, 4)
+        XCTAssertEqual(overview.apiCalls?.successRate, 90)
+        XCTAssertEqual(overview.sessions?.memoryFlushFailures, 1)
+        XCTAssertEqual(overview.contextHealth?.criticalWarnings, 1)
+    }
+
+    func testMetricsModelsDecodeDynamicSeriesAndStorage() throws {
+        let series = try JSONDecoder().decode(
+            TimeSeriesData.self,
+            from: Data(
+                #"""
+                {
+                  "days": [
+                    {"date": "2026-07-01", "token_usage": 42, "tool_call": 8, "activity": "3"}
+                  ]
+                }
+                """#.utf8
+            )
+        )
+        let storage = try JSONDecoder().decode(
+            MetricsStorage.self,
+            from: Data(
+                #"""
+                {
+                  "totalBytes": 4096,
+                  "accountedBytes": 3072,
+                  "uncategorizedBytes": 1024,
+                  "directories": {"cybaraDir": "/Users/carsen/.cybara"},
+                  "components": {
+                    "database": {"path": "/Users/carsen/.cybara/data/cybara.db", "bytes": 2048},
+                    "logs": {"path": "/Users/carsen/.cybara/logs", "bytes": 1024},
+                    "data": {"path": "/Users/carsen/.cybara/data", "bytes": 2048}
+                  },
+                  "topLevel": [
+                    {"name": "data", "path": "/Users/carsen/.cybara/data", "bytes": 2048, "type": "directory"}
+                  ]
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(series.days.first?.date, "2026-07-01")
+        XCTAssertEqual(series.days.first?.values["token_usage"], 42)
+        XCTAssertEqual(series.days.first?.values["activity"], 3)
+        XCTAssertEqual(series.days.first?.total, 53)
+        XCTAssertEqual(storage.components?.database?.bytes, 2048)
+        XCTAssertEqual(storage.topLevel?.first?.name, "data")
+    }
+
+    func testTokenAnalysisMetricsDecodeNativeChartData() throws {
+        let analysis = try JSONDecoder().decode(
+            TokenAnalysisMetrics.self,
+            from: Data(
+                #"""
+                {
+                  "summary": {
+                    "callCount": 2,
+                    "totalTokens": 900,
+                    "totalInputTokens": 500,
+                    "totalOutputTokens": 400,
+                    "averageTokensPerCall": 450,
+                    "medianTokensPerCall": 450,
+                    "inputToOutputRatio": 1.25,
+                    "outputToInputRatio": 0.8
+                  },
+                  "promptOutputDistribution": {
+                    "sampleCount": 2,
+                    "bands": [{"band": "balanced", "calls": 2, "sharePct": 100}]
+                  },
+                  "tokenHeatmap": {
+                    "timezone": "America/Boise",
+                    "maxBucketTokens": 700,
+                    "hottestHour": {"date": "2026-07-02", "dayLabel": "Thu", "hour": 14, "tokens": 700, "calls": 2},
+                    "days": [
+                      {
+                        "date": "2026-07-02",
+                        "dayLabel": "Thu",
+                        "hours": [{"hour": 14, "tokens": 700, "calls": 2, "intensity": 1}]
+                      }
+                    ]
+                  },
+                  "hourlyVelocity24h": [{"hour": "2026-07-02T14:00:00.000Z", "tokens": 700, "calls": 2}],
+                  "tokenCloud": [{"token": "gpt-5", "category": "model", "weight": 10, "sharePct": 42}],
+                  "modelThoughtProfiles": [
+                    {
+                      "model": "gpt-5",
+                      "provider": "openai",
+                      "totalTokens": 900,
+                      "calls": 2,
+                      "promptSharePct": 55,
+                      "responseSharePct": 45,
+                      "avgTokensPerCall": 450,
+                      "avgLatencyMs": 1200,
+                      "avgTps": 40,
+                      "behavior": "balanced"
+                    }
+                  ],
+                  "topTokenBursts": [
+                    {
+                      "timestamp": "2026-07-02T14:00:00.000Z",
+                      "model": "gpt-5",
+                      "provider": "openai",
+                      "inputTokens": 500,
+                      "outputTokens": 400,
+                      "totalTokens": 900,
+                      "durationMs": 1200,
+                      "tokensPerSecond": 40
+                    }
+                  ],
+                  "windows": {"analyzedDays": 7, "velocityHours": 24, "newestCallAt": "2026-07-02T14:00:00.000Z", "oldestCallAt": null, "recent24hTokens": 900}
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(analysis.summary?.inputToOutputRatio, 1.25)
+        XCTAssertEqual(analysis.tokenHeatmap?.hottestHour?.hour, 14)
+        XCTAssertEqual(analysis.tokenCloud.first?.token, "gpt-5")
+        XCTAssertEqual(analysis.modelThoughtProfiles.first?.behavior, "balanced")
+        XCTAssertEqual(analysis.topTokenBursts.first?.totalTokens, 900)
+    }
+
     func testCybaraLogoResourceIsBundled() throws {
         XCTAssertNotNil(CybaraBrand.logoImage)
     }
@@ -100,6 +648,14 @@ final class GatewayClientModelTests: XCTestCase {
 
     private func decodeProvider(_ json: String) throws -> GatewayProvider {
         try JSONDecoder().decode(GatewayProvider.self, from: Data(json.utf8))
+    }
+
+    private func decodeAgent(_ json: String) throws -> GatewayAgent {
+        try JSONDecoder().decode(GatewayAgent.self, from: Data(json.utf8))
+    }
+
+    private func decodeSessionMessage(_ json: String) throws -> GatewaySessionMessage {
+        try JSONDecoder().decode(GatewaySessionMessage.self, from: Data(json.utf8))
     }
 
     private func decodeChannel(_ json: String) throws -> GatewayChannel {

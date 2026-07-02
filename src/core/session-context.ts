@@ -22,6 +22,16 @@ type SessionMessageMetadata = Partial<
   Pick<ChatMessage, "thinking" | "tool_calls" | "process_activities">
 >;
 
+export interface SessionModelMetadata {
+  provider?: string;
+  provider_id?: string;
+  provider_name?: string;
+  model?: string;
+  agent_id?: string;
+  agent_name?: string;
+  agent_type?: string;
+}
+
 function parseSessionMessageMetadata(metadata?: string): SessionMessageMetadata {
   if (!metadata) return {};
   try {
@@ -32,6 +42,71 @@ function parseSessionMessageMetadata(metadata?: string): SessionMessageMetadata 
   } catch {
     return {};
   }
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function pruneModelMetadata(metadata: SessionModelMetadata): SessionModelMetadata | null {
+  const pruned = Object.fromEntries(
+    Object.entries(metadata).filter(([, value]) => typeof value === "string" && value.trim())
+  ) as SessionModelMetadata;
+  return Object.keys(pruned).length > 0 ? pruned : null;
+}
+
+function parseSessionModelMetadata(metadata?: string | null): SessionModelMetadata | null {
+  if (!metadata) return null;
+  try {
+    const parsed = JSON.parse(metadata);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const record = parsed as Record<string, unknown>;
+    return pruneModelMetadata({
+      provider: nonEmptyString(record.provider) || nonEmptyString(record.providerType),
+      provider_id: nonEmptyString(record.provider_id) || nonEmptyString(record.providerId),
+      provider_name: nonEmptyString(record.provider_name) || nonEmptyString(record.providerName),
+      model: nonEmptyString(record.model) || nonEmptyString(record.model_id),
+      agent_id: nonEmptyString(record.agent_id) || nonEmptyString(record.agentId),
+      agent_name: nonEmptyString(record.agent_name) || nonEmptyString(record.agentName),
+      agent_type: nonEmptyString(record.agent_type) || nonEmptyString(record.agentType),
+    });
+  } catch {
+    return null;
+  }
+}
+
+function mergeSessionModelMetadata(
+  primary?: SessionModelMetadata | null,
+  fallback?: SessionModelMetadata | null
+): SessionModelMetadata | null {
+  const merged: SessionModelMetadata = { ...(fallback ?? {}) };
+  for (const [key, value] of Object.entries(primary ?? {}) as Array<
+    [keyof SessionModelMetadata, string | undefined]
+  >) {
+    const normalized = nonEmptyString(value);
+    if (normalized) merged[key] = normalized;
+  }
+  return pruneModelMetadata(merged);
+}
+
+export function resolveSessionModelMetadata(agentId?: string | null): SessionModelMetadata | null {
+  const normalizedAgentId = nonEmptyString(agentId);
+  if (!normalizedAgentId) return null;
+  const agent = agentManager.get(normalizedAgentId);
+  if (!agent) return null;
+  const providerId = nonEmptyString(agent.provider_id) || nonEmptyString(agent.provider);
+  const provider = providerId ? providerManager.get(providerId) : undefined;
+  return pruneModelMetadata({
+    provider: nonEmptyString(provider?.provider) || providerId,
+    provider_id: providerId,
+    provider_name: nonEmptyString(provider?.name),
+    model: nonEmptyString(agent.model),
+    agent_id: agent.id,
+    agent_name: nonEmptyString(agent.name),
+    agent_type: nonEmptyString(agent.type),
+  });
 }
 
 export function normalizeSessionWorkspaceDir(workspaceDir?: string | null): string | null {
@@ -576,6 +651,7 @@ export async function listPersistedSessions(): Promise<
     pinned: boolean;
     lastMessageRole: string | null;
     lastMessageContent: string | null;
+    modelMetadata: SessionModelMetadata | null;
   }>
 > {
   try {
@@ -608,7 +684,17 @@ export async function listPersistedSessions(): Promise<
           WHERE lm.session_id = cs.id
           ORDER BY lm.created_at DESC, lm.rowid DESC
           LIMIT 1
-        ), json_extract(cs.messages, '$[#-1].content')) as lastMessageContent
+        ), json_extract(cs.messages, '$[#-1].content')) as lastMessageContent,
+        (
+          SELECT lm.metadata
+          FROM session_messages lm
+          WHERE lm.session_id = cs.id
+            AND lm.role = 'assistant'
+            AND lm.metadata IS NOT NULL
+            AND TRIM(lm.metadata) != ''
+          ORDER BY lm.created_at DESC, lm.rowid DESC
+          LIMIT 1
+        ) as lastModelMetadata
       FROM chat_sessions cs
       ORDER BY cs.pinned DESC, cs.updated_at DESC
     `
@@ -624,9 +710,17 @@ export async function listPersistedSessions(): Promise<
       pinned: number;
       lastMessageRole: string | null;
       lastMessageContent: string | null;
+      lastModelMetadata: string | null;
     }>;
 
-    return sessions.map((session) => ({ ...session, pinned: !!session.pinned }));
+    return sessions.map((session) => ({
+      ...session,
+      pinned: !!session.pinned,
+      modelMetadata: mergeSessionModelMetadata(
+        resolveSessionModelMetadata(session.agentId),
+        parseSessionModelMetadata(session.lastModelMetadata)
+      ),
+    }));
   } catch (error) {
     log.exception("Failed to list persisted sessions", error);
     return [];
