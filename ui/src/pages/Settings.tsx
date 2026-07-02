@@ -533,6 +533,12 @@ function ComputerUseSettings() {
               </span>
             </div>
             <p className="text-sm text-gray-400">{status.message}</p>
+            {status.available && (
+              <p className="break-all text-xs text-gray-500">
+                Driver: {status.command}
+                {status.driverSource ? ` (${status.driverSource})` : ""}
+              </p>
+            )}
             {note && <p className="text-sm text-indigo-300">{note}</p>}
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={() => void load()}>

@@ -62,5 +62,9 @@ describe("desktop updater wiring", () => {
     expect(workflow).toContain("x86_64-pc-windows-msvc");
     expect(workflow).toContain("x86_64-unknown-linux-gnu");
     expect(workflow).toContain("tauri-apps/tauri-action@");
+    expect(workflow).toContain("HAS_MACOS_SIGNING");
+    expect(workflow).toContain("Build Tauri App (unsigned/no Apple signing)");
+    expect(workflow).toContain("matrix.platform != 'macos' || env.HAS_MACOS_SIGNING != 'true'");
+    expect(workflow).toContain("Build Tauri App (signed and notarized macOS)");
   });
 });

@@ -1,12 +1,31 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { dirname, join } from "path";
 import {
   assertActionAllowed,
   isBlockedKeyCombo,
   isBlockedTypeText,
+  parseCuaDriverVersion,
+  resolveCuaDriverCommand,
   setComputerUseAutoApprove,
   summarizeAction,
   VALID_ACTIONS,
 } from "../../src/core/computer-use";
+
+function withTempDir<T>(name: string, run: (dir: string) => T): T {
+  const dir = mkdtempSync(join(tmpdir(), `cybara-${name}-`));
+  try {
+    return run(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+function touchExecutable(filePath: string): void {
+  mkdirSync(dirname(filePath), { recursive: true });
+  writeFileSync(filePath, "", "utf8");
+}
 
 describe("computer_use safety: hard-blocked patterns", () => {
   test("blocks logout/lock key combos", () => {
@@ -110,5 +129,92 @@ describe("summarizeAction", () => {
     expect(summarizeAction("type", { action: "type", text: "hello" })).toContain('"hello"');
     expect(summarizeAction("key", { action: "key", keys: "cmd+s" })).toContain('"cmd+s"');
     expect(summarizeAction("scroll", { action: "scroll", direction: "up" })).toContain("up");
+  });
+});
+
+describe("cua-driver resolution", () => {
+  test("uses explicit CYBARA_CUA_DRIVER_CMD before PATH probing", () =>
+    withTempDir("cua-env", (dir) => {
+      const pathBinary = join(dir, "cua-driver.exe");
+      touchExecutable(pathBinary);
+
+      const explicit = "C:\\Tools\\Cua\\cua-driver.exe";
+      const resolved = resolveCuaDriverCommand(
+        { PATH: dir, CYBARA_CUA_DRIVER_CMD: `"${explicit}"` },
+        "win32"
+      );
+
+      expect(resolved).toEqual({
+        command: explicit,
+        source: "env",
+        searchedPaths: [],
+      });
+    }));
+
+  test("finds cua-driver.exe on Windows PATH even when the command has no extension", () =>
+    withTempDir("cua-win-path", (dir) => {
+      const binary = join(dir, "cua-driver.exe");
+      touchExecutable(binary);
+
+      const resolved = resolveCuaDriverCommand({ Path: `${dir};C:\\missing` }, "win32");
+
+      expect(resolved?.command).toBe(binary);
+      expect(resolved?.source).toBe("path");
+    }));
+
+  test("finds the official Windows installer directory when PATH is stale", () =>
+    withTempDir("cua-win-install", (root) => {
+      const localAppData = join(root, "LocalAppData");
+      const userProfile = join(root, "User");
+      const binary = join(localAppData, "Programs", "Cua", "cua-driver", "bin", "cua-driver.exe");
+      touchExecutable(binary);
+
+      const resolved = resolveCuaDriverCommand(
+        { LOCALAPPDATA: localAppData, USERPROFILE: userProfile, PATH: "" },
+        "win32"
+      );
+
+      expect(resolved?.command).toBe(binary);
+      expect(resolved?.source).toBe("known-install-dir");
+    }));
+
+  test("finds the legacy Windows installer directory for older cua-driver installs", () =>
+    withTempDir("cua-win-legacy", (root) => {
+      const localAppData = join(root, "LocalAppData");
+      const binary = join(
+        localAppData,
+        "Programs",
+        "trycua",
+        "cua-driver-rs",
+        "bin",
+        "cua-driver.exe"
+      );
+      touchExecutable(binary);
+
+      const resolved = resolveCuaDriverCommand(
+        { LOCALAPPDATA: localAppData, USERPROFILE: join(root, "User"), PATH: "" },
+        "win32"
+      );
+
+      expect(resolved?.command).toBe(binary);
+      expect(resolved?.source).toBe("known-install-dir");
+    }));
+
+  test("finds the non-Windows default ~/.local/bin install when PATH is stale", () =>
+    withTempDir("cua-unix-install", (home) => {
+      const binary = join(home, ".local", "bin", "cua-driver");
+      touchExecutable(binary);
+
+      const resolved = resolveCuaDriverCommand({ HOME: home, PATH: "" }, "darwin");
+
+      expect(resolved?.command).toBe(binary);
+      expect(resolved?.source).toBe("known-install-dir");
+    }));
+
+  test("parses JSON and plain-text driver versions", () => {
+    expect(parseCuaDriverVersion("", { version: "0.7.0" })).toBe("0.7.0");
+    expect(parseCuaDriverVersion('"0.7.1"', "0.7.1")).toBe("0.7.1");
+    expect(parseCuaDriverVersion("cua-driver 0.7.2\n", null)).toBe("0.7.2");
+    expect(parseCuaDriverVersion("0.7.3\n", null)).toBe("0.7.3");
   });
 });

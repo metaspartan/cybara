@@ -1,6 +1,16 @@
-# Current Tauri 2.11.3 still pulls these Linux WebKit/GTK transitive crates.
-# Re-check and remove these ignores when Tauri/wry move off gtk-rs GTK3 and
-# urlpattern's unic 0.9 stack.
+# Current Tauri 2.11.5 still pulls these Linux WebKit/GTK transitive crates.
+# Re-check and remove these ignores when Tauri/wry move off gtk-rs GTK3,
+# urlpattern's unic 0.9 stack, and plist's quick-xml 0.39 line.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0194"
+ignoreUntil = 2026-08-31
+reason = "Upstream plist 1.9.0 via Tauri constrains quick-xml to ^0.39.2; quick-xml 0.41.0 is currently unsatisfiable without a plist/Tauri release."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0195"
+ignoreUntil = 2026-08-31
+reason = "Upstream plist 1.9.0 via Tauri constrains quick-xml to ^0.39.2; quick-xml 0.41.0 is currently unsatisfiable without a plist/Tauri release."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0411"

@@ -531,9 +531,10 @@ Generate music/audio from a text prompt (fal.ai: minimax-music, ace-step, stable
 ### computer_use
 Control the desktop in the background (capture, click, type, scroll, drag, key, set_value, focus app)
 via the external [cua-driver](https://github.com/trycua/cua) binary over MCP stdio. Does NOT steal
-the user's cursor by default. Requires the `cua-driver` binary on `$PATH` and, on macOS, Accessibility
-+ Screen Recording TCC grants (run the `computerUseDoctor()` check to verify). Prefer `element`
-(1-based SOM index) over pixel `coordinate`; prefer `set_value` over typing into dropdowns.
+the user's cursor by default. Requires the `cua-driver` binary on `$PATH`, in the default platform
+installer location, or at `CYBARA_CUA_DRIVER_CMD`; on macOS it also requires Accessibility + Screen
+Recording TCC grants (run the `computerUseDoctor()` check to verify). Prefer `element` (1-based SOM
+index) over pixel `coordinate`; prefer `set_value` over typing into dropdowns.
 
 **Safety hardening:** `computer_use` is gated as a **dangerous tool** (routed through the ask/block
 approval flow). Dangerous key combos (logout/lock) and shell-injection typed text (`curl … | bash`,
@@ -628,4 +629,3 @@ Run a prompt through several configured agents in parallel, then synthesize thei
 ```json
 {"name": "mixture_of_agents", "args": { "prompt": "Design a rate limiter", "max_agents": 3 }}
 ```
-

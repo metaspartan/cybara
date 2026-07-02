@@ -512,6 +512,7 @@ async function rawDoctor(): Promise<void> {
 interface ComputerUseStatus {
   available: boolean;
   command: string;
+  driverSource?: "env" | "path" | "known-install-dir" | "default";
   platform: string;
   version?: string;
   accessibility?: boolean;
@@ -524,6 +525,7 @@ function printComputerUseStatus(s: ComputerUseStatus): void {
   const yn = (v?: boolean) => (v === undefined ? "n/a" : v ? "yes" : "NO");
   console.log("Computer Use (cua-driver)");
   console.log(`  command:          ${s.command}`);
+  if (s.driverSource) console.log(`  source:           ${s.driverSource}`);
   console.log(`  installed:        ${yn(s.available)}${s.version ? ` (${s.version})` : ""}`);
   console.log(`  platform:         ${s.platform}`);
   if (s.platform === "darwin") {
