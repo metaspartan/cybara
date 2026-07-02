@@ -65,8 +65,15 @@ struct GatewayTask: Decodable, Identifiable, Hashable {
 }
 
 struct ChatSendResponse: Decodable {
+    struct Message: Decodable {
+        let role: String?
+        let content: String?
+    }
+
     let sessionId: String?
-    let response: String?
+    let message: Message?
+
+    var response: String? { message?.content }
 }
 
 // ─── Client ──────────────────────────────────────────────────────────────────
@@ -160,10 +167,8 @@ struct GatewayClient: Sendable {
     }
 
     func sessionMessages(_ id: String) async throws -> [GatewaySessionMessage] {
-        try await getList(
-            "api/sessions/\(id)/messages",
-            keys: ["messages", "items"]
-        )
+        // Session detail carries its transcript under `messagesList`.
+        try await getList("api/sessions/\(id)", keys: ["messagesList", "messages"])
     }
 
     func tasks() async throws -> [GatewayTask] {
