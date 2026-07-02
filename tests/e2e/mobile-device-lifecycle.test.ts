@@ -176,6 +176,12 @@ describe("mobile device lifecycle e2e", () => {
   }, 15000);
 
   test("standard scoped tokens cannot mutate wallet policy or MCP process surfaces", async () => {
+    const mcpRegistryRead = await api("GET", "/api/mcp/registry/popular", {
+      token: standardToken,
+    });
+    expect(mcpRegistryRead.status).toBe(200);
+    expect(Array.isArray(mcpRegistryRead.data)).toBe(true);
+
     const walletAccess = await api("PUT", "/api/wallet/agent-access", {
       body: { enabled: true },
       token: standardToken,
@@ -202,6 +208,73 @@ describe("mobile device lifecycle e2e", () => {
     });
     expect(mcpStart.status).toBe(403);
     expect(String(mcpStart.data.error)).toContain("not authorized for 'mcp'");
+
+    const terminalSessions = await api("GET", "/api/terminal/sessions", {
+      token: standardToken,
+    });
+    expect(terminalSessions.status).toBe(403);
+    expect(String(terminalSessions.data.error)).toContain("not authorized for 'terminal'");
+
+    const ideTerminal = await api("POST", "/api/ide/open-terminal", {
+      body: { cwd: ROOT_DIR },
+      token: standardToken,
+    });
+    expect(ideTerminal.status).toBe(403);
+    expect(String(ideTerminal.data.error)).toContain("not authorized for 'terminal'");
+  }, 15000);
+
+  test("readonly scoped tokens can read redacted management state but cannot mutate it", async () => {
+    const readonlyCode = await mintCode("readonly", "readonly phone");
+    const redeemed = await api("POST", "/api/mobile/pair/redeem", {
+      body: { code: readonlyCode },
+      token: null,
+    });
+    expect(redeemed.status).toBe(200);
+    const readonlyToken = redeemed.data.apiKey as string;
+    const device = redeemed.data.device as { scopes: string[] };
+    expect(device.scopes.sort()).toEqual(["chat", "read"]);
+
+    const configRead = await api("GET", "/api/config", { token: readonlyToken });
+    expect(configRead.status).toBe(200);
+
+    const providerRead = await api("GET", "/api/providers", { token: readonlyToken });
+    expect(providerRead.status).toBe(200);
+    expect(Array.isArray(providerRead.data)).toBe(true);
+
+    const routerRead = await api("GET", "/api/router/config", { token: readonlyToken });
+    expect(routerRead.status).toBe(200);
+
+    const configWrite = await api("PUT", "/api/config", {
+      body: { terminal_enabled: true },
+      token: readonlyToken,
+    });
+    expect(configWrite.status).toBe(403);
+    expect(String(configWrite.data.error)).toContain("not authorized for 'manage'");
+
+    const routerWrite = await api("PUT", "/api/router/config", {
+      body: { enabled: true, strategy: "priority", fallbackToAny: true, routes: {} },
+      token: readonlyToken,
+    });
+    expect(routerWrite.status).toBe(403);
+    expect(String(routerWrite.data.error)).toContain("not authorized for 'manage'");
+
+    const providerCreate = await api("POST", "/api/providers", {
+      body: {
+        provider: "openai",
+        name: `readonly-provider-${Date.now()}`,
+        api_key: `sk-readonly-${Date.now()}`,
+      },
+      token: readonlyToken,
+    });
+    expect(providerCreate.status).toBe(403);
+    expect(String(providerCreate.data.error)).toContain("not authorized for 'manage'");
+
+    const taskCreate = await api("POST", "/api/tasks", {
+      body: { title: "readonly should not create tasks" },
+      token: readonlyToken,
+    });
+    expect(taskCreate.status).toBe(403);
+    expect(String(taskCreate.data.error)).toContain("not authorized for 'manage'");
   }, 15000);
 
   test("revoking the device invalidates its token", async () => {

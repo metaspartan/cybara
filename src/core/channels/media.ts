@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import path from "path";
+import { validateUrl } from "../../api/security";
 import { cybaraDir } from "../paths";
 
 interface SaveInboundMediaBase {
@@ -92,6 +93,11 @@ export function getChannelInboundMediaDir(channel: string): string {
 export async function saveInboundMediaFromUrl(
   input: SaveInboundMediaFromUrlInput
 ): Promise<SavedInboundMedia> {
+  const urlValidation = await validateUrl(input.url);
+  if (!urlValidation.valid) {
+    throw new Error(`Validation error: media download blocked: ${urlValidation.error}`);
+  }
+
   const response = await fetch(input.url, { headers: input.headers });
   if (!response.ok) {
     throw new Error(`Media download failed: HTTP ${response.status}`);

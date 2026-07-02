@@ -43,6 +43,19 @@ describe("app release surface wiring", () => {
     expect(workflow).toContain("xcodebuild -workspace");
   });
 
+  test("release workflow publishes only after the Tauri updater manifest is complete", () => {
+    const workflow = read(".github/workflows/release.yml");
+
+    expect(workflow).toContain("releaseDraft: true");
+    expect(workflow).toContain("draft: true");
+    expect(workflow).toContain("publish-release:");
+    expect(workflow).toContain("needs: [release, build-tauri, build-native-macos, build-android, build-ios]");
+    expect(workflow).toContain("gh release download \"$TAG\"");
+    expect(workflow).toContain("bun run scripts/verify-tauri-updater-manifest.ts release-check/latest.json");
+    expect(workflow).toContain("gh release edit \"$TAG\" --repo \"$GITHUB_REPOSITORY\" --draft=false");
+    expect(workflow).not.toContain("releaseDraft: false");
+  });
+
   test("release workflow runs native macOS unit tests when XCTest is available", () => {
     const workflow = read(".github/workflows/release.yml");
 

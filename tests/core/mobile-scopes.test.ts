@@ -70,8 +70,22 @@ describe("route scope requirements", () => {
 
   test("ordinary routes need no special scope", () => {
     expect(routeRequiredScope("POST", "/api/chat")).toBeNull();
-    expect(routeRequiredScope("PUT", "/api/config")).toBeNull();
     expect(routeRequiredScope("GET", "/api/agents")).toBeNull();
+  });
+
+  test("mutating management surfaces require the manage scope", () => {
+    expect(routeRequiredScope("GET", "/api/config")).toBeNull();
+    expect(routeRequiredScope("PUT", "/api/config")).toBe("manage");
+    expect(routeRequiredScope("GET", "/api/providers")).toBeNull();
+    expect(routeRequiredScope("POST", "/api/providers")).toBe("manage");
+    expect(routeRequiredScope("POST", "/api/providers/provider-1/test")).toBe("manage");
+    expect(routeRequiredScope("GET", "/api/router/config")).toBeNull();
+    expect(routeRequiredScope("PUT", "/api/router/config")).toBe("manage");
+    expect(routeRequiredScope("POST", "/api/agents")).toBe("manage");
+    expect(routeRequiredScope("POST", "/api/tasks")).toBe("manage");
+    expect(routeRequiredScope("POST", "/api/channels")).toBe("manage");
+    expect(routeRequiredScope("POST", "/api/checkpoints")).toBe("manage");
+    expect(routeRequiredScope("POST", "/api/setup/complete")).toBe("manage");
   });
 });
 

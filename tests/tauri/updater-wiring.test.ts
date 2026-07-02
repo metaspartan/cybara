@@ -42,10 +42,13 @@ describe("desktop updater wiring", () => {
     const workflow = readFileSync(workflowPath, "utf8");
 
     expect(workflow).toContain("bun run tauri:prepare-release");
+    expect(workflow).toContain("bun run scripts/verify-tauri-updater-manifest.ts release-check/latest.json");
     expect(workflow).toContain("TAURI_SIGNING_PRIVATE_KEY");
     expect(workflow).toContain("TAURI_SIGNING_PRIVATE_KEY_PASSWORD");
     expect(workflow).toContain("tagName: ${{ github.ref_name }}");
     expect(workflow).toContain("--config src-tauri/tauri.release.conf.json");
+    expect(workflow).toContain("releaseDraft: true");
+    expect(workflow).toContain("publish-release:");
     expect(workflow).not.toContain("universal-apple-darwin");
   });
 

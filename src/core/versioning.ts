@@ -167,6 +167,68 @@ export interface TauriReleaseConfigPatch {
   };
 }
 
+export const TAURI_WINDOWS_X64_MSI_FALLBACK_PLATFORMS = [
+  "windows-x86_64-msi",
+  "windows-x86_64",
+] as const;
+
+export const TAURI_WINDOWS_X64_RELEASE_PLATFORMS = [
+  "windows-x86_64",
+  "windows-x86_64-msi",
+  "windows-x86_64-nsis",
+] as const;
+
+export interface TauriUpdaterPlatformEntry {
+  signature?: unknown;
+  url?: unknown;
+}
+
+export interface TauriUpdaterManifest {
+  version?: unknown;
+  platforms?: unknown;
+}
+
+export interface TauriUpdaterManifestValidation {
+  ok: boolean;
+  missingPlatforms: string[];
+  invalidPlatforms: string[];
+}
+
+export function validateTauriUpdaterManifest(
+  manifest: TauriUpdaterManifest,
+  requiredPlatforms: readonly string[] = TAURI_WINDOWS_X64_RELEASE_PLATFORMS
+): TauriUpdaterManifestValidation {
+  const platforms =
+    manifest && typeof manifest.platforms === "object" && manifest.platforms !== null
+      ? (manifest.platforms as Record<string, TauriUpdaterPlatformEntry>)
+      : {};
+  const missingPlatforms: string[] = [];
+  const invalidPlatforms: string[] = [];
+
+  for (const platform of requiredPlatforms) {
+    const entry = platforms[platform];
+    if (!entry) {
+      missingPlatforms.push(platform);
+      continue;
+    }
+
+    if (
+      typeof entry.signature !== "string" ||
+      entry.signature.trim().length === 0 ||
+      typeof entry.url !== "string" ||
+      entry.url.trim().length === 0
+    ) {
+      invalidPlatforms.push(platform);
+    }
+  }
+
+  return {
+    ok: missingPlatforms.length === 0 && invalidPlatforms.length === 0,
+    missingPlatforms,
+    invalidPlatforms,
+  };
+}
+
 export function buildTauriReleaseConfigPatch(
   repository: string,
   publicKey: string,

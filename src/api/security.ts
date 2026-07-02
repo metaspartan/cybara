@@ -264,9 +264,9 @@ export function authenticateRequest(headers: Record<string, string>, ip: string)
 
 /**
  * The scope a route requires, or null when any authenticated principal may use
- * it. Mutating wallet, terminal, and MCP process-management routes are gated so
- * default paired-device tokens cannot escalate into fund movement or local code
- * execution.
+ * it. Mutating management surfaces require `manage`; wallet, terminal, and MCP
+ * process-management routes keep narrower high-risk scopes so paired-device
+ * tokens cannot escalate into fund movement or local code execution.
  */
 export function routeRequiredScope(method: string, path: string): string | null {
   if (path.startsWith("/api/wallet")) {
@@ -279,6 +279,29 @@ export function routeRequiredScope(method: string, path: string): string | null 
   if (path.startsWith("/api/mcp")) {
     if (method === "GET") return null;
     return "mcp";
+  }
+  if (path === "/api/config") {
+    if (method === "GET") return null;
+    return "manage";
+  }
+  if (path.startsWith("/api/providers")) {
+    if (method === "GET") return null;
+    return "manage";
+  }
+  if (path.startsWith("/api/router")) {
+    if (method === "GET") return null;
+    return "manage";
+  }
+  if (
+    path.startsWith("/api/agents") ||
+    path.startsWith("/api/subagents") ||
+    path.startsWith("/api/tasks") ||
+    path.startsWith("/api/channels") ||
+    path.startsWith("/api/checkpoints") ||
+    path === "/api/setup/complete"
+  ) {
+    if (method === "GET") return null;
+    return "manage";
   }
   return null;
 }

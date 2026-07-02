@@ -283,6 +283,7 @@ function getRawProviderRecord(id: string): {
   name: string;
   api_key: string | null;
   access_token: string | null;
+  base_url: string | null;
   is_default: number;
 } | null {
   const dbPath = join(testHome, ".cybara", "data", "platform.db");
@@ -290,7 +291,7 @@ function getRawProviderRecord(id: string): {
   try {
     return db
       .query(
-        "SELECT id, provider, name, api_key, access_token, is_default FROM providers WHERE id = ?"
+        "SELECT id, provider, name, api_key, access_token, base_url, is_default FROM providers WHERE id = ?"
       )
       .get(id) as {
       id: string;
@@ -298,6 +299,7 @@ function getRawProviderRecord(id: string): {
       name: string;
       api_key: string | null;
       access_token: string | null;
+      base_url: string | null;
       is_default: number;
     } | null;
   } finally {
@@ -840,6 +842,48 @@ describe("Providers API", () => {
     expect(after).not.toBeNull();
     expect(after?.name).toContain("preserve-openai-key-updated-");
     expect(after?.api_key).toBe(before?.api_key);
+
+    await api("DELETE", `/api/providers/${providerId}`);
+  });
+
+  test("PUT /api/providers/:id rejects embedded-credential base URLs", async () => {
+    const provider = await api("POST", "/api/providers", {
+      provider: "openai",
+      name: `bad-base-url-${Date.now()}`,
+      api_key: `sk-base-url-${Date.now()}`,
+    });
+    expect(provider.status).toBe(200);
+    const providerId = provider.data.id as string;
+
+    const update = await api("PUT", `/api/providers/${providerId}`, {
+      base_url: "https://user:pass@example.com/v1",
+    });
+    expect(update.status).toBe(400);
+    expect(update.data.code).toBe("VALIDATION_ERROR");
+    expect(String(update.data.error)).toContain("cannot include embedded credentials");
+
+    const after = getRawProviderRecord(providerId);
+    expect(after?.base_url).not.toBe("https://user:pass@example.com/v1");
+
+    await api("DELETE", `/api/providers/${providerId}`);
+  });
+
+  test("PUT /api/providers/:id accepts localhost base URLs for local model providers", async () => {
+    const provider = await api("POST", "/api/providers", {
+      provider: "ollama",
+      name: `local-base-url-${Date.now()}`,
+    });
+    expect(provider.status).toBe(200);
+    const providerId = provider.data.id as string;
+
+    const update = await api("PUT", `/api/providers/${providerId}`, {
+      base_url: "http://127.0.0.1:11434/v1",
+    });
+    expect(update.status).toBe(200);
+    expect(update.data.success).toBe(true);
+
+    const after = getRawProviderRecord(providerId);
+    expect(after?.base_url).toBe("http://127.0.0.1:11434/v1");
 
     await api("DELETE", `/api/providers/${providerId}`);
   });

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
+  handleBrowser,
   handleWebFetch,
   validateBrowserNavigationUrl,
 } from "../../src/core/tools/handlers/browser";
@@ -64,6 +65,16 @@ describe("Web tool URL allowlist policy", () => {
       "not allowlisted for web_fetch"
     );
     await expect(validateBrowserNavigationUrl("https://allowed.example/path")).resolves.toBeUndefined();
+  });
+
+  test("browser openProfileTab blocks private hosts before opening a profile page", async () => {
+    await expect(
+      handleBrowser({
+        action: "openProfileTab",
+        profile: "qa-profile",
+        url: "http://127.0.0.1:4269/api/config",
+      })
+    ).rejects.toThrow("Navigation blocked");
   });
 
   test("allows web_fetch for allowlisted hosts", async () => {

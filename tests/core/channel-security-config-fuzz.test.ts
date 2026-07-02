@@ -145,7 +145,7 @@ describe("generatePairingCode", () => {
   const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const AMBIGUOUS = new Set(["0", "O", "1", "I"]);
 
-  test("5000 codes: correct length, charset, no ambiguous chars, no collisions", () => {
+  test("5000 codes: correct length, charset, no ambiguous chars, low collision rate", () => {
     const seen = new Set<string>();
     const N = 5000;
     for (let i = 0; i < N; i++) {
@@ -157,7 +157,10 @@ describe("generatePairingCode", () => {
       }
       seen.add(code);
     }
-    expect(seen.size).toBe(N);
+    // 32^6 space is large enough that collisions should be rare, but random
+    // sampling can still produce one. Keep this as an entropy sanity check
+    // instead of a probabilistically flaky uniqueness proof.
+    expect(seen.size).toBeGreaterThanOrEqual(N - 3);
   });
 
   test("charset covers a broad range across many samples (entropy sanity)", () => {

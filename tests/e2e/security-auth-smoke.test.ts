@@ -415,6 +415,34 @@ describe("Security auth e2e", () => {
     }
   });
 
+  test("production mode authenticates terminal routes before reporting terminal-disabled state", async () => {
+    const apiKey = `cybara_e2e_key_${Date.now()}`;
+    const port = await getFreePort();
+    const baseUrl = `http://127.0.0.1:${port}`;
+    let proc: ReturnType<typeof Bun.spawn> | null = null;
+
+    try {
+      proc = startServer(port, {
+        NODE_ENV: "production",
+        CYBARA_API_KEY: apiKey,
+      });
+      await waitForServerReady(baseUrl);
+
+      const missingAuth = await request(baseUrl, "/api/terminal/sessions");
+      expect(missingAuth.status).toBe(401);
+      expect(missingAuth.data.error).toContain("Missing Authorization");
+
+      const rootAuth = await request(baseUrl, "/api/terminal/sessions", {
+        Authorization: `Bearer ${apiKey}`,
+      });
+      expect(rootAuth.status).toBe(403);
+      expect(rootAuth.data.error).toContain("Terminal disabled");
+      expect(rootAuth.headers.get("x-ratelimit-remaining")).not.toBeNull();
+    } finally {
+      await stopServer(proc);
+    }
+  });
+
   test("production mode enforces API key on status SSE endpoint and allows token/api_key query auth", async () => {
     const apiKey = `cybara_e2e_key_${Date.now()}`;
     const port = await getFreePort();

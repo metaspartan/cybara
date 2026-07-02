@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import {
   getMediaProvider,
   isConfigured,
@@ -11,6 +14,7 @@ import {
   type MusicGenerationRequest,
   type VideoGenerationRequest,
 } from "../../src/core/media-generation";
+import { handleImageGenerate } from "../../src/core/tools/handlers/media-generation";
 
 describe("media-generation registry", () => {
   test("ships built-in openai (image) and fal (image/video/music) providers", () => {
@@ -68,5 +72,106 @@ describe("media-generation registry", () => {
       generate: async () => ({ assets: [] }),
     });
     expect(isConfigured(getMediaProvider("image", "test-not-configured"))).toBe(false);
+  });
+
+  test("image generation blocks private asset URLs before fetch", async () => {
+    const providerId = `test-private-asset-${Date.now()}`;
+    registerImageProvider({
+      id: providerId,
+      isConfigured: () => true,
+      generate: async () => ({
+        assets: [
+          {
+            url: "http://127.0.0.1:4269/private.png",
+            mimeType: "image/png",
+            fileName: "private.png",
+          },
+        ],
+      }),
+    });
+
+    const originalFetch = globalThis.fetch;
+    let fetchCalls = 0;
+    globalThis.fetch = (async () => {
+      fetchCalls += 1;
+      return new Response(new Uint8Array([1]), { status: 200 });
+    }) as typeof fetch;
+
+    try {
+      await expect(
+        handleImageGenerate({ provider: providerId, prompt: "asset url" }, { workspaceDir: tmpdir() })
+      ).rejects.toThrow("media asset URL blocked");
+      expect(fetchCalls).toBe(0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("image generation blocks private redirects from public asset URLs", async () => {
+    const providerId = `test-private-redirect-${Date.now()}`;
+    registerImageProvider({
+      id: providerId,
+      isConfigured: () => true,
+      generate: async () => ({
+        assets: [
+          {
+            url: "https://assets.example.test/generated.png",
+            mimeType: "image/png",
+            fileName: "generated.png",
+          },
+        ],
+      }),
+    });
+
+    const originalFetch = globalThis.fetch;
+    const fetched: string[] = [];
+    globalThis.fetch = (async (url) => {
+      fetched.push(String(url));
+      return new Response(null, {
+        status: 302,
+        headers: { location: "http://127.0.0.1:4269/redirected.png" },
+      });
+    }) as typeof fetch;
+
+    try {
+      await expect(
+        handleImageGenerate({ provider: providerId, prompt: "redirect" }, { workspaceDir: tmpdir() })
+      ).rejects.toThrow("media asset URL blocked");
+      expect(fetched).toEqual(["https://assets.example.test/generated.png"]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("image generation sanitizes provider asset filenames before writing", async () => {
+    const providerId = `test-safe-filename-${Date.now()}`;
+    const tempWorkspace = mkdtempSync(join(tmpdir(), "cybara-media-handler-"));
+    registerImageProvider({
+      id: providerId,
+      isConfigured: () => true,
+      generate: async () => ({
+        assets: [
+          {
+            buffer: Buffer.from("image-bytes").toString("base64"),
+            mimeType: "image/png",
+            fileName: "../escape.png",
+          },
+        ],
+      }),
+    });
+
+    try {
+      const result = await handleImageGenerate(
+        { provider: providerId, prompt: "safe filename" },
+        { workspaceDir: tempWorkspace }
+      );
+      const expectedPath = join(tempWorkspace, ".cybara", "media", "escape.png");
+      expect(result.assets[0]?.path).toBe(expectedPath);
+      expect(result.assets[0]?.path).not.toContain("..");
+      expect(existsSync(expectedPath)).toBe(true);
+      expect(readFileSync(expectedPath, "utf8")).toBe("image-bytes");
+    } finally {
+      rmSync(tempWorkspace, { recursive: true, force: true });
+    }
   });
 });

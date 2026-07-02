@@ -216,7 +216,7 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "Cybara ${{ github.ref_name }}"
           releaseBody: "Download the appropriate installer for your platform below."
-          releaseDraft: false
+          releaseDraft: true
           args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
 
   # ── Native macOS app (SwiftUI shell) — signed + notarized ───────────────────
@@ -313,7 +313,7 @@ jobs:
           files: |
             release/native-macos/${{ matrix.arch }}/*.zip
             release/native-macos/${{ matrix.arch }}/*.sha256
-          draft: false
+          draft: true
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
 
   # ── React Native mobile app (Expo update bundles) ──────────────────────────
@@ -449,6 +449,8 @@ jobs:
           files: |
             ${{ steps.build.outputs.apk }}
             ${{ steps.build.outputs.aab }}
+          draft: true
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
       # Publishes the signed AAB to the Play Console internal track when a
       # service-account key is configured. No-op otherwise.
       - name: Publish to Google Play
@@ -569,6 +571,8 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           files: ${{ steps.ipa.outputs.path }}
+          draft: true
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
 
   # ── Create GitHub Release with CLI binaries + checksums ─────────────────────
   release:
@@ -623,5 +627,56 @@ jobs:
           tag_name: ${{ steps.tag.outputs.name }}
           files: release-assets/*
           generate_release_notes: true
-          draft: false
+          draft: true
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+
+  publish-release:
+    name: Publish Release
+    needs: [release, build-tauri, build-native-macos, build-android, build-ios]
+    runs-on: ubuntu-latest
+    if: ${{ always() && needs.release.result == 'success' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Determine tag name
+        id: tag
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            git fetch --tags
+            TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            echo "name=$TAG" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Download updater manifest from draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          set -euo pipefail
+          test -n "$TAG"
+          mkdir -p release-check
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern latest.json \
+            --dir release-check \
+            --clobber
+      - name: Verify updater manifest is complete
+        run: bun run scripts/verify-tauri-updater-manifest.ts release-check/latest.json
+      - name: Publish draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          set -euo pipefail
+          test -n "$TAG"
+          if [[ "$GITHUB_REF" == *alpha* || "$GITHUB_REF" == *beta* || "$GITHUB_REF" == *rc* ]]; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
+          else
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+          fi

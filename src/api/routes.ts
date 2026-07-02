@@ -209,6 +209,23 @@ function validateProviderCredentialShape(
   }
 }
 
+function validateProviderBaseUrlShape(baseUrl: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(baseUrl);
+  } catch {
+    throw new Error("Validation error: Provider base URL must be a valid URL.");
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Validation error: Provider base URL must use http or https.");
+  }
+
+  if (parsed.username || parsed.password) {
+    throw new Error("Validation error: Provider base URL cannot include embedded credentials.");
+  }
+}
+
 function resolveWorkspacePath(filePath?: string): string {
   if (!filePath || typeof filePath !== "string") {
     return process.cwd();
@@ -1086,6 +1103,7 @@ const routes: Record<string, RouteHandler> = {
     if ("base_url" in data) {
       const normalizedBaseUrl = normalizeOptionalString(data.base_url);
       if (normalizedBaseUrl) {
+        validateProviderBaseUrlShape(normalizedBaseUrl);
         updates.base_url = normalizedBaseUrl;
       }
     }

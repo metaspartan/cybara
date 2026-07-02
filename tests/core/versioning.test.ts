@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  TAURI_WINDOWS_X64_MSI_FALLBACK_PLATFORMS,
+  TAURI_WINDOWS_X64_RELEASE_PLATFORMS,
   buildGitHubReleasesPageUrl,
   buildGitHubReleaseApiUrl,
   buildGitHubUpdaterEndpoint,
@@ -12,6 +14,7 @@ import {
   resolveReleaseAssetBasename,
   resolveReleaseBinaryFilename,
   resolveSelfUpdateDestination,
+  validateTauriUpdaterManifest,
 } from "../../src/core/versioning";
 
 describe("versioning helpers", () => {
@@ -77,5 +80,49 @@ describe("versioning helpers", () => {
         },
       },
     });
+  });
+
+  test("validates Windows Tauri updater platform keys before publishing a release", () => {
+    const manifest = {
+      version: "1.0.582",
+      platforms: {
+        "linux-x86_64": {
+          signature: "linux-signature",
+          url: "https://example.com/cybara.deb",
+        },
+        "windows-x86_64-msi": {
+          signature: "msi-signature",
+          url: "https://example.com/cybara.msi",
+        },
+        "windows-x86_64": {
+          signature: "msi-signature",
+          url: "https://example.com/cybara.msi",
+        },
+        "windows-x86_64-nsis": {
+          signature: "nsis-signature",
+          url: "https://example.com/cybara-setup.exe",
+        },
+      },
+    };
+
+    expect(TAURI_WINDOWS_X64_MSI_FALLBACK_PLATFORMS).toEqual([
+      "windows-x86_64-msi",
+      "windows-x86_64",
+    ]);
+    expect(validateTauriUpdaterManifest(manifest).ok).toBe(true);
+
+    delete manifest.platforms["windows-x86_64-msi"];
+    expect(validateTauriUpdaterManifest(manifest).missingPlatforms).toEqual([
+      "windows-x86_64-msi",
+    ]);
+
+    manifest.platforms["windows-x86_64-msi"] = {
+      signature: "",
+      url: "https://example.com/cybara.msi",
+    };
+    expect(
+      validateTauriUpdaterManifest(manifest, TAURI_WINDOWS_X64_RELEASE_PLATFORMS)
+        .invalidPlatforms
+    ).toEqual(["windows-x86_64-msi"]);
   });
 });

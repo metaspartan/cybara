@@ -292,6 +292,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       const name = (args.profile as string) || sessionId;
       const url = args.url as string;
       if (!url) throw new Error("URL required for openProfileTab action");
+      await validateBrowserNavigationUrl(url);
 
       const page = await profileManager.createPage(name, url);
       return {

@@ -301,16 +301,6 @@ Bun.serve<WsData>({
     const clientIp = getClientIp(requestHeaders, directIp);
 
     if (pathname.startsWith("/api/terminal")) {
-      if (!isTerminalEnabled()) {
-        return new Response(
-          JSON.stringify({ error: "Terminal disabled. Start with --enable-terminal" }),
-          {
-            status: 403,
-            headers: { "Content-Type": "application/json", ...commonSecurityHeaders },
-          }
-        );
-      }
-
       const terminalHeaders = withOptionalQueryToken(requestHeaders, url);
       const security = securityCheck(req.method, pathname, terminalHeaders, clientIp);
       if (!security.passed) {
@@ -322,6 +312,20 @@ Bun.serve<WsData>({
             ...security.headers,
           },
         });
+      }
+
+      if (!isTerminalEnabled()) {
+        return new Response(
+          JSON.stringify({ error: "Terminal disabled. Start with --enable-terminal" }),
+          {
+            status: 403,
+            headers: {
+              "Content-Type": "application/json",
+              ...commonSecurityHeaders,
+              ...security.headers,
+            },
+          }
+        );
       }
 
       if (pathname === "/api/terminal/ws") {

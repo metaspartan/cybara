@@ -6,8 +6,9 @@
  * configured provider. Generated assets are saved to the workspace and their
  * paths returned, so the result is actionable for downstream tools.
  */
-import { join } from "path";
+import { basename, join } from "path";
 import { writeFileSync, mkdirSync, existsSync } from "fs";
+import { validateUrl } from "../../../api/security";
 import {
   getMediaProvider,
   resolveDefaultProvider,
@@ -38,6 +39,38 @@ function extFor(mimeType: string): string {
   return "bin";
 }
 
+function safeAssetFileName(fileName: string | undefined, fallback: string): string {
+  if (!fileName) return fallback;
+  const leaf = basename(fileName).trim();
+  return leaf && leaf !== "." && leaf !== ".." ? leaf : fallback;
+}
+
+async function fetchValidatedAssetUrl(url: string, redirects = 0): Promise<ArrayBuffer> {
+  if (redirects > 5) {
+    throw new Error("Media asset download failed: too many redirects");
+  }
+
+  const validation = await validateUrl(url);
+  if (!validation.valid) {
+    throw new Error(`Validation error: media asset URL blocked: ${validation.error}`);
+  }
+
+  const response = await fetch(url, { redirect: "manual" });
+  if (response.status >= 300 && response.status < 400) {
+    const location = response.headers.get("location");
+    if (!location) {
+      throw new Error(`Media asset download failed: HTTP ${response.status}`);
+    }
+    return fetchValidatedAssetUrl(new URL(location, url).toString(), redirects + 1);
+  }
+
+  if (!response.ok) {
+    throw new Error(`Media asset download failed: HTTP ${response.status}`);
+  }
+
+  return response.arrayBuffer();
+}
+
 async function persistAssets(
   assets: Array<{ buffer?: string; url?: string; mimeType: string; fileName?: string }>,
   prefix: string,
@@ -49,17 +82,14 @@ async function persistAssets(
   for (let i = 0; i < assets.length; i += 1) {
     const asset = assets[i];
     const ext = extFor(asset.mimeType);
-    const fileName = asset.fileName || `${prefix}-${slug}-${i + 1}.${ext}`;
+    const fileName = safeAssetFileName(asset.fileName, `${prefix}-${slug}-${i + 1}.${ext}`);
     const filePath = join(dir, fileName);
     if (asset.buffer) {
       writeFileSync(filePath, Buffer.from(asset.buffer, "base64"));
     } else if (asset.url) {
       // Download the URL to disk so the asset is durable/local.
-      const resp = await fetch(asset.url);
-      if (resp.ok) {
-        const buf = Buffer.from(await resp.arrayBuffer());
-        writeFileSync(filePath, buf);
-      }
+      const buf = Buffer.from(await fetchValidatedAssetUrl(asset.url));
+      writeFileSync(filePath, buf);
     }
     out.push({ path: filePath, url: asset.url, mimeType: asset.mimeType });
   }
