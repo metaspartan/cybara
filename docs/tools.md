@@ -332,6 +332,12 @@ Convert between units and formats.
 {"name": "convert", "args": {"value": 100, "from": "celsius", "to": "fahrenheit"}}
 ```
 
+### skill_save
+Codify a verified multi-step procedure as a reusable skill (self-improvement). After an agent finishes a complex task whose approach is likely to recur, it saves a concise SKILL.md-style procedure to `~/.cybara/skills/<slug>/`, which the loader picks up for future sessions.
+```json
+{"name": "skill_save", "args": {"name": "Deploy Cloudflare Worker", "description": "When and how to ship a Worker", "content": "## When to use\n...\n## Steps\n1. ..."}}
+```
+
 ### clipboard
 Read and write the system clipboard.
 ```json

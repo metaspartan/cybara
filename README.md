@@ -20,7 +20,7 @@
   <img src="https://img.shields.io/badge/runtime-Bun-f9f1e1?logo=bun" alt="Bun" />
   <img src="https://img.shields.io/badge/language-TypeScript-blue?logo=typescript" alt="TypeScript" />
   <img src="https://img.shields.io/badge/ui-React_19-61dafb?logo=react" alt="React" />
-  <img src="https://img.shields.io/badge/tools-75-green" alt="75 Tools" />
+  <img src="https://img.shields.io/badge/tools-76-green" alt="76 Tools" />
   <img src="https://img.shields.io/badge/providers-60-purple" alt="60 Providers" />
   <img src="https://img.shields.io/badge/channels-26-orange" alt="26 Channels" />
   <img src="https://img.shields.io/badge/skills-60+-teal" alt="60+ Skills" />
@@ -46,12 +46,14 @@ If you need an agent platform that can plan, execute, verify, and report with st
 
 ## Capability Snapshot
 
-- 75 built-in tools (`src/core/tools/index.ts`)
+- 76 built-in tools (`src/core/tools/index.ts`)
 - 60 built-in provider integrations with dynamic model discovery (`src/core/providers.ts`), including Azure OpenAI, Azure AI Foundry, Anthropic on Vertex AI, and Google Gemini on Vertex AI
 - 26 channel adapters (`src/core/channels/adapters`)
-- Model provider router with weighted / round-robin / lowest-cost / priority strategies, rate limits, and spend caps
+- Model provider router with weighted / round-robin / lowest-cost / priority / mixture-of-agents strategies, circuit breaker, rate limits, and spend caps
+- Mixture of Agents (MoA): fan a turn out to several proposer agents and synthesize one answer — available both as a `mixture_of_agents` tool and as a router strategy
+- Self-improving skills: agents can codify a verified multi-step procedure with `skill_save`, and the loader picks it up for future sessions
 - ACP (Agent Client Protocol) server so editors like Zed can drive an agent (`cybara acp`)
-- 21 production UI page components (`ui/src/pages/*.tsx`)
+- 22 production UI page components (`ui/src/pages/*.tsx`)
 - 60+ bundled skills (`skills/`)
 - Anthropic prompt caching, multi-key credential pools + rate-limit rotation, and a centralized LLM error taxonomy
 - Smart context compaction (token-aware chunking + structured summaries with identifier preservation)
@@ -155,7 +157,7 @@ Then open `http://localhost:4269`.
 - Session-aware execution with persistence and recovery
 - Agent tool allowlist and permission enforcement support
 
-### Tooling Layer (75 Tools)
+### Tooling Layer (76 Tools)
 
 Tool categories currently shipped:
 
@@ -166,12 +168,12 @@ Tool categories currently shipped:
 - `core` (17): sessions/agents/artifacts/wallet/http/env/data/nodes/clipboard/cron/gateway/etc.
 - `lsp` (5): diagnostics/definition/references/hover/languages
 - `media` (4): image/tts + **image_generate** / **video_generate** / **music_generate** via a swappable provider registry (OpenAI, fal.ai)
-- `skill` (7): calc/convert/pdf/ocr/summarization/video_frames/weather
+- `skill` (8): calc/convert/pdf/ocr/summarization/video_frames/weather + **skill_save** (agents codify a successful procedure as a reusable skill for future sessions)
 - `channel` (2): message/telegram_media
 - `planning` (2): **todo** (session task-list with status discipline) + **clarify** (structured multi-choice questions to the user)
 - `discovery` (4): **tool_search** / **tool_describe** / **tool_call** (dynamic discovery over built-in + MCP + skills) + **execute_code** (run code that calls cybara tools programmatically)
 - `media` (1): **computer_use** (background desktop control via cua-driver — capture/click/type/scroll/drag without stealing the cursor)
-- `orchestration` (9): the **kanban** multi-agent tier — show/list/complete/block/heartbeat/comment/create/unblock/link for durable task graphs
+- `orchestration` (10): the **kanban** multi-agent tier — show/list/complete/block/heartbeat/comment/create/unblock/link for durable task graphs — plus **mixture_of_agents** (fan out to N proposer agents, synthesize one answer)
 
 See full reference: [docs/tools.md](docs/tools.md)
 
@@ -201,18 +203,13 @@ See full reference: [docs/tools.md](docs/tools.md)
 
 ### Channels + Pairing Security
 
-Adapters:
+Adapters (26):
 
-- Telegram
-- Discord
-- Slack
-- WhatsApp (`whatsapp-web.js`)
-- Signal (`signal-cli`)
-- iMessage (BlueBubbles)
-- Web chat
-- Webhook (inbound — signed triggers from CI, monitoring, forms; HMAC-SHA256 verified)
-- SMS (Twilio)
-- Email (SMTP send + IMAP poll)
+- Telegram, Discord, Slack, WhatsApp (`whatsapp-web.js`), Signal (`signal-cli`), iMessage (BlueBubbles)
+- Matrix, Mattermost, Microsoft Teams, Feishu/Lark, DingTalk, WeCom, Zulip, LINE, Google Chat, IRC, ntfy, Twitch, Nextcloud, Synology, Zalo, Home Assistant
+- Web chat, Webhook (inbound — signed triggers from CI, monitoring, forms; HMAC-SHA256 verified), SMS (Twilio), Email (SMTP send + IMAP poll)
+
+Inbound webhook adapters verify signatures with constant-time comparison (`crypto.timingSafeEqual`).
 
 DM policy modes:
 
@@ -221,9 +218,16 @@ DM policy modes:
 - `open`
 - `disabled`
 
+### Mobile Pairing Security
+
+- Expiring one-time pairing codes (10-minute default TTL, single-use, rate-limited)
+- Named roles map to capability scopes: `full` / `standard` / `readonly`
+- Per-device scopes gate what a paired device may do: `chat`, `manage`, `read`, `wallet`, `terminal` — so a phone can be granted chat access without wallet or terminal
+- Device tokens are stored hashed (SHA-256) and compared in constant time; any device can be revoked without rotating the root gateway API key
+
 ### UI + Desktop
 
-- Web UI with 21 page components for agents, channels, providers, routing, tools, wallet, logs, metrics, tasks, sessions, IDE, terminal, setup, artifacts, skills, MCP servers, LSP, chat, dashboard, and memory
+- Web UI with 22 page components for agents, channels, providers, routing, tools, wallet, logs, metrics, tasks, sessions, IDE, terminal, setup, artifacts, skills, MCP servers, LSP, chat, dashboard, memory, and mobile pairing
 - Tauri desktop app with sidecar server wiring and in-app signed update checks via GitHub Releases
 - Native SwiftUI macOS app in `apps/macos/Cybara` that reuses the same local Cybara sidecar contract and can be packaged into a release-ready `.app` bundle
 
@@ -242,7 +246,7 @@ See provider details: [docs/providers.md](docs/providers.md)
 Cybara both **consumes** external MCP servers (extending agent capabilities) and **exposes itself** as an MCP server so other clients can call cybara's tools:
 
 - **Consume** (client): register servers in Settings → MCP or via the CLI; tools are automatically exposed to agents
-- **Host** (server): run `cybara mcp serve` to expose all 75 built-in tools over stdio JSON-RPC (compatible with Claude Desktop, IDEs, and other agents)
+- **Host** (server): run `cybara mcp serve` to expose all 76 built-in tools over stdio JSON-RPC (compatible with Claude Desktop, IDEs, and other agents)
 
 MCP server management and registry integration:
 
@@ -353,7 +357,7 @@ src/
   cli.tsx               # CLI/TUI entry
   index.ts              # server entry
 ui/
-  src/pages/            # 20 UI pages
+  src/pages/            # 22 UI pages
 src-tauri/              # Tauri desktop shell
 docs/                   # product and technical docs
 tests/                  # Bun test suites (unit/integration/e2e)

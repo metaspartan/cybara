@@ -231,7 +231,7 @@ Supported languages: `rust`, `go`, `python`, `cpp`, `java`, `csharp`, `ruby`, `p
 cybara router status                 # Show router status + per-route availability
 cybara router enable                 # Enable the router
 cybara router disable                # Disable the router
-cybara router strategy <name>        # weighted | round_robin | lowest_cost | priority
+cybara router strategy <name>        # weighted | round_robin | lowest_cost | priority | mixture_of_agents
 cybara router set <id> <flags>       # Configure a route
                                      #   weight=70 limit5h=100 limitWeekly=500
                                      #   spendDaily=5 spendWeekly=20 priceIn=10 priceOut=30 enabled=true

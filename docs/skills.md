@@ -94,6 +94,19 @@ cybara skill install https://github.com/user/skill.git
 3. Write markdown instructions
 4. Skills auto-reload (no restart needed)
 
+## Self-Improving Skills
+
+Agents can create their own skills at runtime with the `skill_save` tool. After
+finishing a complex multi-step task whose procedure is likely to recur, an agent
+writes a concise SKILL.md-style procedure (when to use it, prerequisites, the
+verified steps) to `~/.cybara/skills/<slug>/SKILL.md`. The loader picks it up so
+future sessions can reuse the procedure — the same discovery, eligibility
+gating, and hot-reloading rules apply as for hand-authored skills.
+
+```json
+{"name": "skill_save", "args": {"name": "Deploy Cloudflare Worker", "description": "When and how to ship a Worker", "content": "## When to use\n...\n## Steps\n1. ..."}}
+```
+
 ### Example: Code Review Skill
 
 ```yaml
