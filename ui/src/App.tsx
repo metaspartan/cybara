@@ -29,29 +29,66 @@ import { useProviders, useAgents } from '@/hooks/useApi';
 import { settingsApi } from '@/lib/api';
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { resolveSetupGate } from '@/lib/setupGate';
 import { useEffect } from 'react';
 import { readThemeAccentFromConfig, useUIStore } from '@/stores/uiStore';
 
+const SETUP_COMPLETE_KEY = 'cybara.setupComplete';
+
+function readSetupComplete(): boolean {
+  try {
+    return localStorage.getItem(SETUP_COMPLETE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeSetupComplete(done: boolean): void {
+  try {
+    if (done) localStorage.setItem(SETUP_COMPLETE_KEY, '1');
+    else localStorage.removeItem(SETUP_COMPLETE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 function SetupGuard({ children }: { children: React.ReactNode }) {
   const location = useLocation();
-  const { data: providers, isLoading: providersLoading } = useProviders();
-  const { data: agents, isLoading: agentsLoading } = useAgents();
+  const providersQuery = useProviders();
+  const agentsQuery = useAgents();
 
-  if (location.pathname === '/setup') {
-    return <>{children}</>;
+  const { data: providers, isSuccess: providersReady } = providersQuery;
+  const { data: agents, isSuccess: agentsReady } = agentsQuery;
+
+  const resolved = providersReady && agentsReady;
+  const hasSetup = resolved
+    ? (providers?.length ?? 0) > 0 && (agents?.length ?? 0) > 0
+    : null;
+
+  useEffect(() => {
+    if (hasSetup === true) writeSetupComplete(true);
+    else if (hasSetup === false) writeSetupComplete(false);
+  }, [hasSetup]);
+
+  const decision = resolveSetupGate({
+    pathname: location.pathname,
+    providersReady,
+    agentsReady,
+    providerCount: providers?.length ?? 0,
+    agentCount: agents?.length ?? 0,
+    setupComplete: readSetupComplete(),
+  });
+
+  if (decision === 'redirect') {
+    return <Navigate to="/setup" replace />;
   }
 
-  if (providersLoading || agentsLoading) {
+  if (decision === 'spinner') {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0a0a0f]">
         <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
       </div>
     );
-  }
-
-  const needsSetup = (!providers || providers.length === 0) || (!agents || agents.length === 0);
-  if (needsSetup) {
-    return <Navigate to="/setup" replace />;
   }
 
   return <>{children}</>;
