@@ -34,6 +34,44 @@ export function normalizeMobileScopes(value: unknown): MobileScope[] {
   return valid.length > 0 ? Array.from(new Set(valid)) : [...DEFAULT_MOBILE_SCOPES];
 }
 
+/** Named scope bundles so pairing UIs can offer simple roles instead of raw scopes. */
+export const MOBILE_ROLES = {
+  full: ["chat", "manage", "read", "wallet", "terminal"],
+  standard: ["chat", "manage", "read"],
+  readonly: ["chat", "read"],
+} as const satisfies Record<string, MobileScope[]>;
+export type MobileRole = keyof typeof MOBILE_ROLES;
+
+export function scopesForRole(role: unknown): MobileScope[] | null {
+  if (typeof role === "string" && role in MOBILE_ROLES) {
+    return [...MOBILE_ROLES[role as MobileRole]];
+  }
+  return null;
+}
+
+export const MOBILE_PAIRING_PROTOCOL = "cybara-mobile-pair-v1";
+export const DEFAULT_PAIRING_CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+export interface MobilePairingCodePayload {
+  protocol: typeof MOBILE_PAIRING_PROTOCOL;
+  name: string;
+  baseUrl: string;
+  code: string;
+  role?: string;
+  expiresAt: number;
+}
+
+interface PendingPairingCode {
+  code: string;
+  scopes: MobileScope[];
+  role?: string;
+  deviceName?: string;
+  gatewayName?: string;
+  baseUrl: string;
+  createdAt: string;
+  expiresAt: number;
+}
+
 interface MobileDeviceRecord {
   id: string;
   name: string;
@@ -61,6 +99,7 @@ export interface MobileDeviceView {
 interface MobileDeviceStore {
   version: 1;
   devices: MobileDeviceRecord[];
+  pairingCodes?: PendingPairingCode[];
 }
 
 const storePath = join(secureDir, "mobile-devices.json");
@@ -117,6 +156,11 @@ function readStore(): MobileDeviceStore {
       devices: Array.isArray(parsed.devices)
         ? parsed.devices.filter((device): device is MobileDeviceRecord =>
             Boolean(device?.id && device?.name && device?.tokenHash && device?.createdAt)
+          )
+        : [],
+      pairingCodes: Array.isArray(parsed.pairingCodes)
+        ? parsed.pairingCodes.filter((c): c is PendingPairingCode =>
+            Boolean(c?.code && c?.baseUrl && typeof c?.expiresAt === "number")
           )
         : [],
     };
@@ -210,6 +254,121 @@ export function createMobileDevice(input: {
     createdAt: now,
   });
   return { device: toView(record), token, payload, encoded: encodeMobileConnectPayload(payload) };
+}
+
+function generatePairingCode(): string {
+  // 8 base32-ish chars (no ambiguous 0/O/1/I), grouped as XXXX-XXXX.
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = randomBytes(8);
+  const chars = Array.from(bytes, (b) => alphabet[b % alphabet.length]);
+  return `${chars.slice(0, 4).join("")}-${chars.slice(4).join("")}`;
+}
+
+function prunePairingCodes(store: MobileDeviceStore, now: number): PendingPairingCode[] {
+  return (store.pairingCodes ?? []).filter((c) => c.expiresAt > now);
+}
+
+/**
+ * Create a short-lived, single-use pairing code (not a token). The QR/link
+ * carries only this code; the device redeems it for a scoped device token. The
+ * code carries the role/scopes and expires, so a leaked QR can't be reused.
+ */
+export function createPairingCode(input: {
+  baseUrl: string;
+  gatewayName?: string;
+  deviceName?: string;
+  role?: string;
+  scopes?: unknown;
+  ttlMs?: number;
+}): { code: string; expiresAt: number; payload: MobilePairingCodePayload; encoded: string } {
+  const now = Date.now();
+  const baseUrl = normalizeMobileGatewayUrl(input.baseUrl);
+  const ttl = input.ttlMs && input.ttlMs > 0 ? input.ttlMs : DEFAULT_PAIRING_CODE_TTL_MS;
+  const roleScopes = scopesForRole(input.role);
+  const scopes =
+    roleScopes ?? (input.scopes === undefined ? [...DEFAULT_MOBILE_SCOPES] : normalizeMobileScopes(input.scopes));
+
+  const store = readStore();
+  const code = generatePairingCode();
+  const expiresAt = now + ttl;
+  const pending: PendingPairingCode = {
+    code,
+    scopes,
+    role: typeof input.role === "string" ? input.role : undefined,
+    deviceName: input.deviceName ? sanitizeName(input.deviceName) : undefined,
+    gatewayName: input.gatewayName,
+    baseUrl,
+    createdAt: new Date(now).toISOString(),
+    expiresAt,
+  };
+  saveStore({ ...store, pairingCodes: [...prunePairingCodes(store, now), pending] });
+
+  const payload: MobilePairingCodePayload = {
+    protocol: MOBILE_PAIRING_PROTOCOL,
+    name: sanitizeName(input.gatewayName || "Cybara Gateway"),
+    baseUrl,
+    code,
+    role: pending.role,
+    expiresAt,
+  };
+  return { code, expiresAt, payload, encoded: JSON.stringify(payload) };
+}
+
+export interface PairingRedemptionResult {
+  device: MobileDeviceView;
+  token: string;
+  payload: MobileConnectPayload;
+  encoded: string;
+}
+
+/**
+ * Redeem a pairing code for a scoped device token. One-time: the code is
+ * consumed on success. Returns null when the code is unknown, expired, or
+ * already used. Case/whitespace-insensitive on the code.
+ */
+export function redeemPairingCode(
+  rawCode: string,
+  metadata: { userAgent?: string } = {}
+): PairingRedemptionResult | null {
+  const now = Date.now();
+  const code = rawCode.trim().toUpperCase();
+  if (!code) return null;
+
+  const store = readStore();
+  const live = prunePairingCodes(store, now);
+  const match = live.find((c) => c.code.toUpperCase() === code);
+  if (!match) {
+    // Persist the pruning of any expired codes even on a miss.
+    if ((store.pairingCodes ?? []).length !== live.length) {
+      saveStore({ ...store, pairingCodes: live });
+    }
+    return null;
+  }
+
+  // Consume the code (one-time) before issuing the token.
+  const remaining = live.filter((c) => c.code !== match.code);
+  saveStore({ ...store, pairingCodes: remaining });
+
+  const created = createMobileDevice({
+    deviceName: match.deviceName,
+    gatewayName: match.gatewayName,
+    baseUrl: match.baseUrl,
+    scopes: match.scopes,
+  });
+  if (metadata.userAgent?.trim()) {
+    const s = readStore();
+    const rec = s.devices.find((d) => d.id === created.device.id);
+    if (rec) {
+      rec.userAgent = metadata.userAgent.trim().slice(0, 160);
+      saveStore(s);
+    }
+  }
+  return {
+    device: created.device,
+    token: created.token,
+    payload: created.payload,
+    encoded: created.encoded,
+  };
 }
 
 export function revokeMobileDevice(id: string): MobileDeviceView | null {

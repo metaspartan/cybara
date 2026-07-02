@@ -1,6 +1,8 @@
 import QRCode from "qrcode";
 import {
   createMobileDevice,
+  createPairingCode,
+  redeemPairingCode,
   listMobileDevices,
   removeMobileDevice,
   revokeMobileDevice,
@@ -27,6 +29,55 @@ export const mobileRoutes: Record<string, MobileRouteHandler> = {
   "GET /api/mobile/devices": () => ({
     devices: listMobileDevices(),
   }),
+
+  // Create a short-lived, single-use pairing code (root-gated via the
+  // /api/mobile/devices path prefix). The QR carries only this code.
+  "POST /api/mobile/devices/pair-code": async (body) => {
+    const data = readBodyObject(body);
+    const baseUrl = readOptionalString(data.baseUrl);
+    if (!baseUrl) {
+      throw new Error("Validation error: baseUrl is required");
+    }
+    const result = createPairingCode({
+      baseUrl,
+      gatewayName: readOptionalString(data.gatewayName) || readOptionalString(data.name),
+      deviceName: readOptionalString(data.deviceName),
+      role: readOptionalString(data.role),
+      scopes: Array.isArray(data.scopes) ? data.scopes : undefined,
+      ttlMs: typeof data.ttlMs === "number" ? data.ttlMs : undefined,
+    });
+    const qrDataUrl = await QRCode.toDataURL(result.encoded, { margin: 1, width: 320 });
+    return {
+      success: true,
+      code: result.code,
+      expiresAt: result.expiresAt,
+      payload: result.payload,
+      encoded: result.encoded,
+      qrDataUrl,
+    };
+  },
+
+  // Redeem a pairing code for a scoped device token. Reachable by an unpaired
+  // device (see the pairing allowance in securityCheck); the code is the secret
+  // and is one-time + expiring, and the endpoint is pairing-rate-limited.
+  "POST /api/mobile/pair/redeem": (body) => {
+    const data = readBodyObject(body);
+    const code = readOptionalString(data.code);
+    if (!code) {
+      throw new Error("Validation error: code is required");
+    }
+    const userAgent = readOptionalString(data.userAgent);
+    const result = redeemPairingCode(code, userAgent ? { userAgent } : {});
+    if (!result) {
+      return { success: false, error: "Invalid, expired, or already-used pairing code" };
+    }
+    return {
+      success: true,
+      apiKey: result.token,
+      device: result.device,
+      payload: result.payload,
+    };
+  },
 
   "POST /api/mobile/devices": async (body) => {
     const data = readBodyObject(body);

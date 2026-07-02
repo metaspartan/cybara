@@ -493,6 +493,22 @@ export function securityCheck(
     return { passed: true };
   }
 
+  // Pairing-code redemption is reachable by an unpaired device (it has no token
+  // yet). The pairing code itself is the secret — one-time and expiring — and
+  // this endpoint is pairing-rate-limited to blunt guessing.
+  if (method === "POST" && path === "/api/mobile/pair/redeem") {
+    const limit = rateLimitEndpoint(path, ip, "pairing");
+    if (!limit.allowed) {
+      return {
+        passed: false,
+        error: "Rate limit exceeded",
+        statusCode: 429,
+        headers: { "Retry-After": String(Math.ceil((limit.retryAfterMs || 60000) / 1000)) },
+      };
+    }
+    return { passed: true };
+  }
+
   const isInboundWebhook =
     (method === "POST" || method === "GET") &&
     (path.startsWith("/api/webhooks/") ||

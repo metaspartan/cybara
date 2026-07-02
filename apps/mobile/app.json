@@ -30,7 +30,8 @@
         {
           "cameraPermission": "Scan a Cybara gateway QR code to connect this device."
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "extra": {
       "gatewayContract": "cybara-mobile-connect-v1"
