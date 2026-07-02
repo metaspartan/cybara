@@ -1057,6 +1057,10 @@ export function DashboardScreen({
               summary={summary}
               openSession={(id) => setDetailRoute({ kind: "session", id })}
               createChat={() => setDetailRoute({ kind: "newChat" })}
+              deleteSession={async (id) => {
+                await api.deleteSession(id);
+                await refresh(false);
+              }}
               accentColor={accentColor}
             />
           ) : null}
@@ -1326,13 +1330,47 @@ function SessionsPanel({
   sessions,
   summary,
   openSession,
+  deleteSession,
 }: {
   accentColor: string;
   createChat: () => void;
   sessions: SessionSummary[];
   summary: FeatureSummary | null;
   openSession: (id: string) => void;
+  deleteSession: (id: string) => Promise<void>;
 }) {
+  const runDelete = async (session: SessionSummary) => {
+    try {
+      haptics.warning();
+      await deleteSession(session.id);
+      haptics.success();
+    } catch (error) {
+      Alert.alert("Could not delete chat", error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const confirmDeleteSession = (session: SessionSummary) => {
+    const title = session.title || session.id.slice(0, 8);
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title,
+          options: ["Delete Chat", "Cancel"],
+          destructiveButtonIndex: 0,
+          cancelButtonIndex: 1,
+        },
+        (index) => {
+          if (index === 0) void runDelete(session);
+        }
+      );
+    } else {
+      Alert.alert(`Delete “${title}”?`, "This removes the chat from the gateway.", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: () => void runDelete(session) },
+      ]);
+    }
+  };
+
   const latest = sessions[0];
   const endpoint = summary?.availability.sessions;
   const totalChats = summary?.sessionTotal ?? sessions.length;
@@ -1376,7 +1414,13 @@ function SessionsPanel({
         </Pressable>
       </View>
       {sessions.slice(0, visibleSessionCount).map((session) => (
-        <Pressable key={session.id} style={styles.listRow} onPress={() => openSession(session.id)}>
+        <Pressable
+          key={session.id}
+          style={styles.listRow}
+          onPress={() => openSession(session.id)}
+          onLongPress={() => confirmDeleteSession(session)}
+          accessibilityHint="Long press to delete"
+        >
           <View style={styles.listIcon}>
             {sessionMayBeInProgress(session) ? (
               <ActivityIndicator color={accentColor} size="small" />
