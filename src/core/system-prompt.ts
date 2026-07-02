@@ -1,5 +1,6 @@
 // System Prompt Builder - Cybara compatible structure
 import { tables } from "./database";
+import { config } from "./config";
 import { homedir } from "os";
 import { getBootstrapContextFiles, isFirstRun } from "./bootstrap-files";
 import type { SkillEntry } from "./skills/types";
@@ -780,12 +781,17 @@ function buildSkillsSection(skills?: SkillEntry[]): string[] {
     "- If none clearly apply: do not read any SKILL.md.",
     "Constraints: never read more than one skill up front; only read after selecting.",
     "",
-    "### Self-improvement",
-    "After successfully completing a complex multi-step task whose procedure is likely to recur",
-    "(and no existing skill covers it), codify it with `skill_save`: a concise markdown procedure",
-    "with when-to-use, prerequisites, and the verified steps. Skip one-off or trivial tasks.",
-    "",
   ];
+
+  if (config.get<boolean>("self_improving_skills_enabled") !== false) {
+    lines.push(
+      "### Self-improvement",
+      "After successfully completing a complex multi-step task whose procedure is likely to recur",
+      "(and no existing skill covers it), codify it with `skill_save`: a concise markdown procedure",
+      "with when-to-use, prerequisites, and the verified steps. Skip one-off or trivial tasks.",
+      ""
+    );
+  }
 
   // Add available skills list if provided
   if (skills && skills.length > 0) {

@@ -4725,6 +4725,7 @@ function SettingsPanel({
     : "pending";
   const gatewayUptime = formatUptime(health?.uptime);
   const terminalEnabled = summary?.config.terminal_enabled === true;
+  const selfImprovingSkillsEnabled = summary?.config.self_improving_skills_enabled !== false;
   const toolApprovalMode = readMobileToolApprovalMode(summary?.config);
   const reasoningEffort = readMobileReasoningEffort(summary?.config);
   const dangerousPolicy = readMobileDangerousToolPolicy(summary?.config);
@@ -4915,6 +4916,21 @@ function SettingsPanel({
                   value={terminalEnabled}
                 />
               ) : null}
+              <SettingToggle
+                busy={savingConfigKey === "self_improving_skills_enabled"}
+                detail="Let agents save reusable skills after complex tasks. When off, skill_save is withheld."
+                disabled={savingConfigKey !== null}
+                label="Self-improving skills"
+                onPress={() => {
+                  void saveConfigPatch(
+                    "self_improving_skills_enabled",
+                    { self_improving_skills_enabled: !selfImprovingSkillsEnabled },
+                    "Self-improving skills setting failed"
+                  );
+                }}
+                tone={accentColor}
+                value={selfImprovingSkillsEnabled}
+              />
               {MOBILE_SETTINGS_ROOT_CHROME.toolApprovalModeSelector ? (
                 <SettingSelector
                   disabled={savingConfigKey !== null}

@@ -233,6 +233,16 @@ struct GatewayClient: Sendable {
         try await get("api/router/status", as: RouterStatusSummary.self)
     }
 
+    // ─── Gateway config ──────────────────────────────────────────────────────
+
+    func appConfig() async throws -> [String: Any] {
+        try await rawObject("api/config")
+    }
+
+    func updateAppConfig(_ body: Data) async throws {
+        try await putJSON("api/config", body: body)
+    }
+
     // ─── System prompt ───────────────────────────────────────────────────────
 
     func systemPrompt() async throws -> [String: Any] {

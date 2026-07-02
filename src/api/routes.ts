@@ -586,6 +586,7 @@ const routes: Record<string, RouteHandler> = {
     sandbox_runtime: config.getSandboxRuntime(),
     workspace_indexer: config.getWorkspaceIndexerSettings(),
     reasoning_effort: config.getDefaultReasoningEffort(),
+    self_improving_skills_enabled: config.get<boolean>("self_improving_skills_enabled") !== false,
   }),
   "GET /api/sandbox/status": () => getSandboxRuntimeStatus(),
   "PUT /api/config": (body) => {

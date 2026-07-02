@@ -2430,7 +2430,19 @@ export function isToolEnabledForAgent(toolName: string): boolean {
   if (toolName === "wallet") {
     return config.get<boolean>("wallet_agent_access_enabled") === true;
   }
+  if (toolName === "skill_save") {
+    return isSelfImprovingSkillsEnabled();
+  }
   return true;
+}
+
+/**
+ * Self-improving skills: whether agents may create reusable skills at runtime
+ * via `skill_save`. Enabled by default; operators can turn it off from any
+ * client. When off, the tool is withheld and the system-prompt nudge is hidden.
+ */
+export function isSelfImprovingSkillsEnabled(): boolean {
+  return config.get<boolean>("self_improving_skills_enabled") !== false;
 }
 
 export function getToolSchemasForLLM(): Omit<Tool, "handler">[] {

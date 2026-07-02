@@ -200,6 +200,7 @@ struct SystemPromptScreen: View {
     @State private var loaded = false
     @State private var saving = false
     @State private var error: String?
+    @State private var selfImprovingSkills = true
 
     private static let featureRows: [(key: String, label: String)] = [
         ("memoryEnabled", "Memory"),
@@ -258,6 +259,13 @@ struct SystemPromptScreen: View {
                                     .toggleStyle(.switch)
                                     .font(.system(size: 13, weight: .medium, design: .rounded))
                             }
+                            Divider().opacity(0.3)
+                            Toggle("Self-improving skills", isOn: selfImprovingBinding)
+                                .toggleStyle(.switch)
+                                .font(.system(size: 13, weight: .medium, design: .rounded))
+                            Text("Let agents save reusable skills with skill_save after complex tasks. When off, the tool is withheld.")
+                                .font(.system(size: 11, design: .rounded))
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -312,6 +320,27 @@ struct SystemPromptScreen: View {
         )
     }
 
+    private var selfImprovingBinding: Binding<Bool> {
+        Binding(
+            get: { selfImprovingSkills },
+            set: { newValue in
+                selfImprovingSkills = newValue
+                guard let body = try? JSONSerialization.data(
+                    withJSONObject: ["self_improving_skills_enabled": newValue]
+                ) else { return }
+                Task {
+                    do {
+                        try await client.updateAppConfig(body)
+                        error = nil
+                    } catch {
+                        self.error = error.localizedDescription
+                        selfImprovingSkills = !newValue
+                    }
+                }
+            }
+        )
+    }
+
     private func saveIdentity() async {
         saving = true
         var next = config
@@ -342,6 +371,9 @@ struct SystemPromptScreen: View {
             creature = identity["creature"] as? String ?? ""
             vibe = identity["vibe"] as? String ?? ""
             customPrompt = config["customPrompt"] as? String ?? ""
+            if let appConfig = try? await client.appConfig() {
+                selfImprovingSkills = (appConfig["self_improving_skills_enabled"] as? Bool) ?? true
+            }
             loaded = true
             error = nil
         } catch {

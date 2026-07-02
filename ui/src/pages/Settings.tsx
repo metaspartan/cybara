@@ -667,6 +667,7 @@ function SandboxBrowserSettings() {
 
 function FeatureSettings() {
   const [terminalEnabled, setTerminalEnabled] = useState(false);
+  const [selfImprovingSkills, setSelfImprovingSkills] = useState(true);
   const [dangerousToolPolicyEnabled, setDangerousToolPolicyEnabled] = useState(false);
   const [dangerousToolPolicyMode, setDangerousToolPolicyMode] = useState<"audit" | "block">(
     "audit"
@@ -733,6 +734,7 @@ function FeatureSettings() {
 
         const data = configResult.success ? configResult.data : undefined;
         setTerminalEnabled(data?.terminal_enabled === true);
+        setSelfImprovingSkills(data?.self_improving_skills_enabled !== false);
         const policy = data?.dangerous_tool_policy as
           { enabled?: boolean; mode?: string } | undefined;
         const modeRaw = typeof data?.tool_approval_mode === "string" ? data.tool_approval_mode : "";
@@ -780,6 +782,20 @@ function FeatureSettings() {
     } catch {
       addToast("error", "Failed to update terminal setting");
       setTerminalEnabled(!enabled);
+    }
+  };
+
+  const toggleSelfImprovingSkills = async (enabled: boolean) => {
+    setSelfImprovingSkills(enabled);
+    try {
+      const result = await settingsApi.updateConfig({ self_improving_skills_enabled: enabled });
+      if (!result.success || !result.data?.success) {
+        throw new Error(result.error || "Config update failed");
+      }
+      addToast("success", `Self-improving skills ${enabled ? "enabled" : "disabled"}`);
+    } catch {
+      addToast("error", "Failed to update self-improving skills setting");
+      setSelfImprovingSkills(!enabled);
     }
   };
 
@@ -919,6 +935,33 @@ function FeatureSettings() {
             <span
               className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
                 terminalEnabled ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between py-3 border-b border-white/10">
+          <div>
+            <p className="text-sm text-white font-medium">Self-Improving Skills</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Let agents save reusable skills with{" "}
+              <code className="text-indigo-400">skill_save</code> after completing complex tasks, so
+              future sessions can reuse the procedure. When off, the tool is withheld.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={selfImprovingSkills}
+            disabled={loading}
+            onClick={() => toggleSelfImprovingSkills(!selfImprovingSkills)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              selfImprovingSkills ? "bg-indigo-500" : "bg-white/10"
+            } ${loading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                selfImprovingSkills ? "translate-x-6" : "translate-x-1"
               }`}
             />
           </button>
