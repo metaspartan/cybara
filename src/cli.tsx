@@ -22,6 +22,7 @@ import { checkForUpdateInBackground, isUpdateCheckDisabled } from "./core/update
 import { runMcpStdioServer } from "./core/mcp-host-server";
 import { runMobileCommand } from "./cli-mobile";
 import { rawHelp } from "./cli-help";
+import { rawComputerUse } from "./cli-computer-use";
 
 const API_BASE = process.env.CYBARA_API || "http://localhost:4269";
 
@@ -507,53 +508,6 @@ async function rawDoctor(): Promise<void> {
   if (failed > 0) {
     process.exitCode = 1;
   }
-}
-
-interface ComputerUseStatus {
-  available: boolean;
-  command: string;
-  driverSource?: "env" | "path" | "known-install-dir" | "default";
-  platform: string;
-  version?: string;
-  accessibility?: boolean;
-  screenRecording?: boolean;
-  ready: boolean;
-  message: string;
-}
-
-function printComputerUseStatus(s: ComputerUseStatus): void {
-  const yn = (v?: boolean) => (v === undefined ? "n/a" : v ? "yes" : "NO");
-  console.log("Computer Use (cua-driver)");
-  console.log(`  command:          ${s.command}`);
-  if (s.driverSource) console.log(`  source:           ${s.driverSource}`);
-  console.log(`  installed:        ${yn(s.available)}${s.version ? ` (${s.version})` : ""}`);
-  console.log(`  platform:         ${s.platform}`);
-  if (s.platform === "darwin") {
-    console.log(`  accessibility:    ${yn(s.accessibility)}`);
-    console.log(`  screen recording: ${yn(s.screenRecording)}`);
-  }
-  console.log(`  ready:            ${s.ready ? "yes" : "NO"}`);
-  console.log(`  ${s.message}`);
-}
-
-async function rawComputerUse(args: string[]): Promise<void> {
-  const sub = (args[1] || "status").toLowerCase();
-
-  if (sub === "setup" || sub === "grant") {
-    const grant = await fetchAPI<{ ok: boolean; message: string }>(
-      "/api/computer-use/permissions/grant",
-      { method: "POST" }
-    );
-    if (grant) console.log(grant.message);
-  }
-
-  const status = await fetchAPI<ComputerUseStatus>("/api/computer-use/status");
-  if (!status) {
-    console.error("ERROR: Failed to query computer-use status from", API_BASE);
-    process.exit(1);
-  }
-  printComputerUseStatus(status);
-  if (!status.ready) process.exitCode = 1;
 }
 
 async function rawMetrics(): Promise<void> {
@@ -4971,7 +4925,7 @@ async function main() {
       break;
     case "computer-use":
     case "computeruse":
-      await rawComputerUse(args);
+      await rawComputerUse(args, fetchAPI, API_BASE);
       break;
     case "update":
       await rawUpdate({
