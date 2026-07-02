@@ -29,10 +29,12 @@ interface RouterStatus {
 
 interface RouterConfig {
   enabled: boolean;
-  strategy: 'weighted' | 'round_robin' | 'lowest_cost' | 'priority';
+  strategy: 'weighted' | 'round_robin' | 'lowest_cost' | 'priority' | 'mixture_of_agents';
   globalSpendLimitDaily?: number;
   fallbackToAny: boolean;
   routes: Record<string, Record<string, unknown>>;
+  moaMaxAgents?: number;
+  moaAggregatorAgentId?: string;
 }
 
 interface ProviderMeta {
@@ -46,6 +48,7 @@ const STRATEGY_HELP: Record<RouterConfig['strategy'], string> = {
   round_robin: 'Rotate through providers evenly, one after another.',
   lowest_cost: 'Always pick the cheapest available provider by token price.',
   priority: 'Use the highest-priority provider first; fall back only when it is unavailable.',
+  mixture_of_agents: 'Fan each turn out to several proposer agents, then synthesize one answer with an aggregator agent.',
 };
 
 export function RouterSettings() {
@@ -194,9 +197,30 @@ export function RouterSettings() {
             <option value="round_robin">Round Robin</option>
             <option value="lowest_cost">Lowest Cost</option>
             <option value="priority">Priority</option>
+            <option value="mixture_of_agents">Mixture of Agents</option>
           </select>
           <p className="text-xs text-gray-500">{STRATEGY_HELP[config.strategy]}</p>
         </div>
+
+        {config.strategy === 'mixture_of_agents' && (
+          <div className="space-y-1">
+            <label className="text-sm text-gray-300">Max proposer agents</label>
+            <input
+              type="number"
+              min={1}
+              value={config.moaMaxAgents ?? ''}
+              placeholder="4"
+              onChange={(e) => {
+                const n = Math.floor(Number(e.target.value));
+                saveConfig({ ...config, moaMaxAgents: Number.isFinite(n) && n > 0 ? n : undefined });
+              }}
+              className="w-full sm:w-auto rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-sm text-white"
+            />
+            <p className="text-xs text-gray-500">
+              How many agents propose before one synthesizes the final answer (default 4).
+            </p>
+          </div>
+        )}
 
         <div className="flex items-center gap-2 flex-wrap">
           <DollarSign className="w-4 h-4 text-gray-500" />
