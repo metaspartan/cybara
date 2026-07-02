@@ -76,6 +76,7 @@ import {
 import {
   handleChat,
   getSession,
+  getSessionPinned,
   getSessionMessages,
   listSessions,
   listSessionPage,
@@ -3642,7 +3643,7 @@ const routes: Record<string, RouteHandler> = {
           ? session.updatedAt
           : messages[messages.length - 1]?.timestamp || session.createdAt
       ),
-      pinned: "pinned" in session && session.pinned === true,
+      pinned: ("pinned" in session && session.pinned === true) || getSessionPinned(session.id),
       workspace_dir:
         "workspaceDir" in session && typeof session.workspaceDir === "string"
           ? session.workspaceDir

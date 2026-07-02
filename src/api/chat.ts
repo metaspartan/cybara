@@ -1467,6 +1467,13 @@ export async function deleteSession(sessionId: string): Promise<boolean> {
  * and keeps the in-memory index in sync so the next listSessions reflects it
  * immediately.
  */
+export function getSessionPinned(sessionId: string): boolean {
+  // Pin state lives in the persisted session index (what the list reads), not
+  // on the in-memory session object — expose it so the session detail route
+  // reports the same value the list does.
+  return persistedSessionIndex.get(sessionId)?.pinned === true;
+}
+
 export async function setSessionPinned(
   sessionId: string,
   pinned: boolean
