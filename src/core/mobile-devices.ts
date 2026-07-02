@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "crypto";
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "fs";
 import { join } from "path";
 import { secureDir } from "./paths";
 
@@ -43,6 +43,10 @@ interface MobileDeviceStore {
 
 const storePath = join(secureDir, "mobile-devices.json");
 let cachedStore: MobileDeviceStore | null = null;
+// mtime of the file when we cached it, so a revoke/remove performed by another
+// process (e.g. `cybara mobile revoke`) is honored by a running gateway instead
+// of being masked by a stale in-memory cache.
+let cachedMtimeMs = 0;
 
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -68,14 +72,24 @@ export function normalizeMobileGatewayUrl(input: string): string {
 }
 
 function readStore(): MobileDeviceStore {
-  if (cachedStore) return cachedStore;
   if (!existsSync(storePath)) {
     cachedStore = { version: 1, devices: [] };
+    cachedMtimeMs = 0;
     return cachedStore;
   }
 
+  // Reuse the cache only while the file on disk hasn't changed under us.
+  let mtimeMs = 0;
+  try {
+    mtimeMs = statSync(storePath).mtimeMs;
+  } catch {
+    mtimeMs = 0;
+  }
+  if (cachedStore && mtimeMs === cachedMtimeMs) return cachedStore;
+
   try {
     const parsed = JSON.parse(readFileSync(storePath, "utf8")) as Partial<MobileDeviceStore>;
+    cachedMtimeMs = mtimeMs;
     cachedStore = {
       version: 1,
       devices: Array.isArray(parsed.devices)
@@ -93,6 +107,11 @@ function readStore(): MobileDeviceStore {
 function saveStore(store: MobileDeviceStore): void {
   cachedStore = store;
   writeFileSync(storePath, JSON.stringify(store, null, 2), { mode: 0o600 });
+  try {
+    cachedMtimeMs = statSync(storePath).mtimeMs;
+  } catch {
+    cachedMtimeMs = 0;
+  }
 }
 
 function toView(device: MobileDeviceRecord): MobileDeviceView {

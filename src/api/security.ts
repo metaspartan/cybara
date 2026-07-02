@@ -1,7 +1,7 @@
 import { createLogger } from "../core/logger";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
-import { randomBytes } from "crypto";
+import { randomBytes, timingSafeEqual } from "crypto";
 import { lookup } from "dns/promises";
 import { isIP } from "net";
 import { cybaraDir } from "../core/paths";
@@ -215,6 +215,14 @@ function isSameOriginRequest(headers: Record<string, string>): boolean {
   }
 }
 
+/** Length-safe constant-time string compare, to avoid token timing leaks. */
+function constantTimeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
+
 export function authenticateRequest(headers: Record<string, string>, ip: string): AuthResult {
   const effectiveApiKey = config.apiKey;
 
@@ -234,7 +242,7 @@ export function authenticateRequest(headers: Record<string, string>, ip: string)
 
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
 
-  if (token !== effectiveApiKey) {
+  if (!constantTimeEqual(token, effectiveApiKey)) {
     const mobileDevice = authenticateMobileDeviceToken(token, {
       userAgent: headers["user-agent"] || headers["User-Agent"],
     });
