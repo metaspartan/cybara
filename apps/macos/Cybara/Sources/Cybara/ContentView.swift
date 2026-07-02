@@ -11,6 +11,8 @@ enum NativeDestination: String, CaseIterable, Identifiable {
     case metrics
     case router
     case systemPrompt
+    case channels
+    case logs
     case gateway
     case webUI
 
@@ -27,6 +29,8 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .metrics: return "Metrics"
         case .router: return "Model Router"
         case .systemPrompt: return "System Prompt"
+        case .channels: return "Channels"
+        case .logs: return "Logs"
         case .gateway: return "Gateway"
         case .webUI: return "Web UI"
         }
@@ -43,6 +47,8 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .metrics: return "chart.bar"
         case .router: return "point.3.connected.trianglepath.dotted"
         case .systemPrompt: return "sparkles"
+        case .channels: return "link"
+        case .logs: return "list.bullet.rectangle"
         case .gateway: return "server.rack"
         case .webUI: return "globe"
         }
@@ -138,13 +144,13 @@ struct ContentView: View {
                     }
                 }
                 Section("Intelligence") {
-                    ForEach([NativeDestination.memory, .metrics, .router, .systemPrompt]) { item in
+                    ForEach([NativeDestination.memory, .metrics, .router, .systemPrompt, .channels]) { item in
                         Label(item.title, systemImage: item.systemImage)
                             .tag(item)
                     }
                 }
                 Section("System") {
-                    ForEach([NativeDestination.gateway, .webUI]) { item in
+                    ForEach([NativeDestination.logs, .gateway, .webUI]) { item in
                         Label(item.title, systemImage: item.systemImage)
                             .tag(item)
                     }
@@ -181,6 +187,10 @@ struct ContentView: View {
                 RouterScreen(client: client)
             case .systemPrompt:
                 SystemPromptScreen(client: client)
+            case .channels:
+                ChannelsScreen(client: client)
+            case .logs:
+                LogsScreen(client: client)
             case .gateway:
                 GatewayScreen()
             case .webUI:

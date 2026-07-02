@@ -255,6 +255,107 @@ struct GatewayClient: Sendable {
     func metricsOverview() async throws -> MetricsOverview {
         try await get("api/metrics/overview", as: MetricsOverview.self)
     }
+
+    // ─── Channels / Logs ─────────────────────────────────────────────────────
+
+    func channels() async throws -> [GatewayChannel] {
+        try await getList("api/channels", keys: ["channels", "items"])
+    }
+
+    func systemLogs(limit: Int = 200) async throws -> [GatewayLogEntry] {
+        let logs: [GatewayLogEntry] = try await getList("api/logs/system", keys: ["logs", "items"])
+        return Array(logs.prefix(limit))
+    }
+
+    // ─── Session mutations ───────────────────────────────────────────────────
+
+    @discardableResult
+    func deleteSession(_ id: String) async throws -> Data {
+        try await request("api/sessions/\(id)", method: "DELETE")
+    }
+
+    @discardableResult
+    func renameSession(_ id: String, title: String) async throws -> Data {
+        let body = try JSONSerialization.data(withJSONObject: ["title": title])
+        return try await request("api/sessions/\(id)/title", method: "PUT", body: body)
+    }
+
+    @discardableResult
+    func pinSession(_ id: String, pinned: Bool) async throws -> Data {
+        let body = try JSONSerialization.data(withJSONObject: ["pinned": pinned])
+        return try await request("api/sessions/\(id)/pin", method: "PUT", body: body)
+    }
+}
+
+struct GatewayChannel: Decodable, Identifiable, Hashable {
+    let id: String
+    let type: String?
+    let name: String?
+    let enabled: Int?
+
+    var displayName: String { name ?? type ?? id }
+    var isEnabled: Bool { enabled == 1 }
+}
+
+struct GatewayLogEntry: Decodable, Identifiable, Hashable {
+    let id: String
+    let level: String?
+    let source: String?
+    let message: String?
+    let created_at: String?
+}
+
+// ─── Live status (SSE) ───────────────────────────────────────────────────────
+
+struct GatewayStatusEvent: Decodable {
+    let status: String?
+    let detail: String?
+    let sessionId: String?
+}
+
+/// Subscribes to the gateway's status event stream (`/api/sse/status`) and
+/// publishes the latest event, so the chat transcript can show live
+/// "Thinking…" / tool activity while a reply is generating.
+@MainActor
+final class GatewayStatusStream: ObservableObject {
+    @Published private(set) var latest: GatewayStatusEvent?
+
+    private var task: Task<Void, Never>?
+
+    func start(baseURL: URL) {
+        stop()
+        task = Task { [weak self] in
+            var request = URLRequest(url: baseURL.appendingPathComponent("api/sse/status"))
+            request.timeoutInterval = 3600
+            if let key = GatewayClient.loadAPIKey() {
+                request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+            }
+            while !Task.isCancelled {
+                do {
+                    let (bytes, _) = try await URLSession.shared.bytes(for: request)
+                    for try await line in bytes.lines {
+                        if Task.isCancelled { return }
+                        guard line.hasPrefix("data: "), let data = line.dropFirst(6).data(using: .utf8),
+                              let event = try? JSONDecoder().decode(GatewayStatusEvent.self, from: data)
+                        else { continue }
+                        self?.latest = event
+                    }
+                } catch {
+                    // Connection dropped (gateway restart etc.) — retry shortly.
+                }
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            }
+        }
+    }
+
+    func stop() {
+        task?.cancel()
+        task = nil
+    }
+
+    deinit {
+        task?.cancel()
+    }
 }
 
 struct RouterStatusSummary: Decodable {

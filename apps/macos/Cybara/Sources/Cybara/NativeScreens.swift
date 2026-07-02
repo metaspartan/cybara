@@ -187,6 +187,10 @@ struct ChatScreen: View {
     @State private var draft = ""
     @State private var sending = false
     @State private var error: String?
+    @State private var renameTarget: GatewaySession?
+    @State private var renameDraft = ""
+    @State private var deleteTarget: GatewaySession?
+    @StateObject private var statusStream = GatewayStatusStream()
 
     var body: some View {
         HSplitView {
@@ -195,7 +199,48 @@ struct ChatScreen: View {
             transcript
                 .frame(minWidth: 380, maxWidth: .infinity)
         }
-        .task { await loadSessions() }
+        .task {
+            statusStream.start(baseURL: client.baseURL)
+            await loadSessions()
+        }
+        .onDisappear { statusStream.stop() }
+        .alert("Rename chat", isPresented: renameAlertBinding) {
+            TextField("Title", text: $renameDraft)
+            Button("Rename") {
+                if let target = renameTarget {
+                    Task { await rename(target, to: renameDraft) }
+                }
+            }
+            Button("Cancel", role: .cancel) { renameTarget = nil }
+        }
+        .confirmationDialog(
+            "Delete “\(deleteTarget?.displayTitle ?? "chat")”?",
+            isPresented: deleteDialogBinding,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Chat", role: .destructive) {
+                if let target = deleteTarget {
+                    Task { await remove(target) }
+                }
+            }
+            Button("Cancel", role: .cancel) { deleteTarget = nil }
+        } message: {
+            Text("This removes the chat from the gateway.")
+        }
+    }
+
+    private var renameAlertBinding: Binding<Bool> {
+        Binding(
+            get: { renameTarget != nil },
+            set: { if !$0 { renameTarget = nil } }
+        )
+    }
+
+    private var deleteDialogBinding: Binding<Bool> {
+        Binding(
+            get: { deleteTarget != nil },
+            set: { if !$0 { deleteTarget = nil } }
+        )
     }
 
     private var sessionList: some View {
@@ -217,15 +262,35 @@ struct ChatScreen: View {
 
             List(selection: $selectedSession) {
                 ForEach(sessions) { session in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(session.displayTitle)
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
-                            .lineLimit(1)
-                        Text("\(session.message_count ?? 0) messages · \(relativeTimestamp(session.updated_at))")
-                            .font(.system(size: 11, design: .rounded))
-                            .foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        if session.pinned == true {
+                            Image(systemName: "pin.fill")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.orange)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(session.displayTitle)
+                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                .lineLimit(1)
+                            Text("\(session.message_count ?? 0) messages · \(relativeTimestamp(session.updated_at))")
+                                .font(.system(size: 11, design: .rounded))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     .tag(session.id)
+                    .contextMenu {
+                        Button("Rename…") {
+                            renameDraft = session.title ?? ""
+                            renameTarget = session
+                        }
+                        Button(session.pinned == true ? "Unpin" : "Pin") {
+                            Task { await togglePin(session) }
+                        }
+                        Divider()
+                        Button("Delete…", role: .destructive) {
+                            deleteTarget = session
+                        }
+                    }
                 }
             }
             .listStyle(.sidebar)
@@ -256,6 +321,10 @@ struct ChatScreen: View {
                             messageBubble(message)
                                 .id(message.id)
                         }
+                        if sending {
+                            thinkingBubble
+                                .id("thinking")
+                        }
                     }
                     .padding(20)
                 }
@@ -272,6 +341,23 @@ struct ChatScreen: View {
 
     private var visibleMessages: [GatewaySessionMessage] {
         messages.filter { $0.role == "user" || $0.role == "assistant" }
+    }
+
+    /// Live status while a reply generates, fed by the gateway's SSE stream
+    /// ("Thinking…", tool activity), scoped to the active session.
+    private var thinkingBubble: some View {
+        let event = statusStream.latest
+        let relevant = event?.sessionId == nil || event?.sessionId == selectedSession
+        let detail = (relevant ? event?.detail : nil) ?? "Thinking…"
+        return HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text(detail)
+                .font(.system(size: 12, design: .rounded))
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 60)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
     }
 
     private func messageBubble(_ message: GatewaySessionMessage) -> some View {
@@ -334,6 +420,41 @@ struct ChatScreen: View {
         do {
             sessions = try await client.sessions()
             error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func rename(_ session: GatewaySession, to title: String) async {
+        renameTarget = nil
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        do {
+            try await client.renameSession(session.id, title: trimmed)
+            await loadSessions()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func togglePin(_ session: GatewaySession) async {
+        do {
+            try await client.pinSession(session.id, pinned: session.pinned != true)
+            await loadSessions()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func remove(_ session: GatewaySession) async {
+        deleteTarget = nil
+        do {
+            try await client.deleteSession(session.id)
+            if selectedSession == session.id {
+                selectedSession = nil
+                messages = []
+            }
+            await loadSessions()
         } catch {
             self.error = error.localizedDescription
         }

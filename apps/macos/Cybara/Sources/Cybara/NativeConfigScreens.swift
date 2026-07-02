@@ -488,3 +488,156 @@ struct MetricsScreen: View {
         loaded = true
     }
 }
+
+// ─── Channels ────────────────────────────────────────────────────────────────
+
+struct ChannelsScreen: View {
+    let client: GatewayClient
+
+    @State private var channels: [GatewayChannel] = []
+    @State private var loaded = false
+    @State private var error: String?
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                ScreenHeader(title: "Channels", subtitle: "Messaging surfaces connected to the gateway")
+
+                if !loaded {
+                    ProgressView().frame(maxWidth: .infinity)
+                } else if let error {
+                    LoadFailedView(message: error) { Task { await load() } }
+                } else if channels.isEmpty {
+                    Text("No channels configured — add one from the web UI.")
+                        .font(.system(size: 13, design: .rounded))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(channels) { channel in
+                        HStack(spacing: 14) {
+                            Image(systemName: "link")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(channel.isEnabled ? Color.accentColor : Color.secondary)
+                                .frame(width: 34, height: 34)
+                                .background(Circle().fill(Color.white.opacity(0.06)))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(channel.displayName)
+                                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                                Text(channel.type ?? "channel")
+                                    .font(.system(size: 12, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text(channel.isEnabled ? "Enabled" : "Disabled")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(
+                                    Capsule().fill(
+                                        channel.isEnabled
+                                            ? Color.green.opacity(0.18)
+                                            : Color.secondary.opacity(0.15)
+                                    )
+                                )
+                        }
+                        .padding(16)
+                        .cybaraGlass(cornerRadius: 16)
+                    }
+                }
+            }
+            .padding(24)
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        do {
+            channels = try await client.channels()
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
+        loaded = true
+    }
+}
+
+// ─── Logs ────────────────────────────────────────────────────────────────────
+
+struct LogsScreen: View {
+    let client: GatewayClient
+
+    @State private var logs: [GatewayLogEntry] = []
+    @State private var loaded = false
+    @State private var error: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                ScreenHeader(title: "Logs", subtitle: "Recent gateway events")
+                Button {
+                    Task { await load() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .help("Refresh")
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 24)
+            .padding(.bottom, 12)
+
+            if !loaded {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error {
+                LoadFailedView(message: error) { Task { await load() } }
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 6) {
+                        ForEach(logs) { entry in
+                            HStack(alignment: .top, spacing: 10) {
+                                Text(entry.level?.uppercased() ?? "INFO")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(levelColor(entry.level))
+                                    .frame(width: 44, alignment: .leading)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(entry.message ?? "")
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .textSelection(.enabled)
+                                    Text("\(entry.source ?? "gateway") · \(relativeTimestamp(entry.created_at))")
+                                        .font(.system(size: 10, design: .rounded))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 12)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 20)
+                }
+                .cybaraGlass(cornerRadius: 18)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
+            }
+        }
+        .task { await load() }
+    }
+
+    private func levelColor(_ level: String?) -> Color {
+        switch level?.lowercased() {
+        case "error": return .red
+        case "warn", "warning": return .orange
+        default: return .secondary
+        }
+    }
+
+    private func load() async {
+        do {
+            logs = try await client.systemLogs()
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
+        loaded = true
+    }
+}
