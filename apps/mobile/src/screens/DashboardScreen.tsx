@@ -2724,6 +2724,37 @@ function SettingSelector({
   );
 }
 
+// iOS-style grouped info section: an uppercase header over an inset card of
+// key-value rows (label left, value right, hairline dividers) — the standard
+// Settings layout, replacing flat stacked "label above value" dumps.
+function DetailInfoSection({
+  title,
+  fields,
+}: {
+  title?: string;
+  fields: Array<{ label: string; value: string }>;
+}) {
+  if (fields.length === 0) return null;
+  return (
+    <View style={styles.infoSection}>
+      {title ? <Text style={styles.infoSectionTitle}>{title}</Text> : null}
+      <View style={styles.infoCard}>
+        {fields.map((field, index) => (
+          <View
+            key={`${field.label}-${index}`}
+            style={[styles.infoRow, index > 0 && styles.infoRowDivider]}
+          >
+            <Text style={styles.infoLabel}>{field.label}</Text>
+            <Text selectable style={styles.infoValue}>
+              {field.value}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 function DetailActionButton({
   Icon,
   busy,
@@ -3474,20 +3505,7 @@ function TaskSettingsPanel({
         />
       </View>
 
-      {fields.length > 0 ? (
-        <View>
-          {fields.map((field, index) => (
-            <View key={`${field.label}-${index}`} style={styles.listRow}>
-              <View style={styles.listText}>
-                <Text style={styles.listTitle}>{field.label}</Text>
-                <Text numberOfLines={1} style={styles.listDetail}>
-                  {field.value}
-                </Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      ) : null}
+      <DetailInfoSection title="Details" fields={fields} />
 
       <View style={styles.settingsActionRow}>
         <DetailActionButton
@@ -3555,20 +3573,7 @@ function ApprovalSettingsPanel({
         </View>
       </View>
 
-      {fields.length > 0 ? (
-        <View>
-          {fields.map((field, index) => (
-            <View key={`${field.label}-${index}`} style={styles.listRow}>
-              <View style={styles.listText}>
-                <Text style={styles.listTitle}>{field.label}</Text>
-                <Text numberOfLines={2} style={styles.listDetail}>
-                  {field.value}
-                </Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      ) : null}
+      <DetailInfoSection title="Details" fields={fields} />
 
       <View style={styles.settingsActionRow}>
         <DetailActionButton
@@ -3763,23 +3768,7 @@ function WalletPolicyPanel({
         />
       )}
 
-      {statusFields.length > 0 ? (
-        <>
-          <Text style={styles.subsectionTitle}>Wallet status</Text>
-          <View>
-            {statusFields.map((field) => (
-              <View key={field.label} style={styles.listRow}>
-                <View style={styles.listText}>
-                  <Text style={styles.listTitle}>{field.label}</Text>
-                  <Text numberOfLines={1} style={styles.listDetail}>
-                    {field.value}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        </>
-      ) : null}
+      <DetailInfoSection title="Wallet status" fields={statusFields} />
     </GlassPanel>
   );
 }
@@ -3982,20 +3971,7 @@ function SystemMonitorDetailPanel({
         />
       )}
 
-      {fields.length > 0 ? (
-        <View>
-          {fields.map((field, index) => (
-            <View key={`${field.label}-${index}`} style={styles.listRow}>
-              <View style={styles.listText}>
-                <Text style={styles.listTitle}>{field.label}</Text>
-                <Text numberOfLines={2} style={styles.listDetail}>
-                  {field.value}
-                </Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      ) : null}
+      <DetailInfoSection title="Details" fields={fields} />
 
       <View style={styles.settingsActionRow}>
         <DetailActionButton
@@ -4114,23 +4090,13 @@ function ItemDetailPanel({
           </Text>
         </View>
       </View>
-      <Text style={styles.subsectionTitle}>Details</Text>
       {fields.length === 0 ? (
         <EmptyState
           label="No editable settings"
           detail="This gateway surface does not expose mobile-editable settings yet."
         />
       ) : (
-        fields.map((field, index) => (
-          <View key={`${field.label}-${index}`} style={styles.listRow}>
-            <View style={styles.listText}>
-              <Text style={styles.listTitle}>{field.label}</Text>
-              <Text selectable style={styles.listDetail}>
-                {field.value}
-              </Text>
-            </View>
-          </View>
-        ))
+        <DetailInfoSection title="Details" fields={fields} />
       )}
     </GlassPanel>
   );
@@ -5445,6 +5411,50 @@ const makeStyles = () => StyleSheet.create({
     color: colors.textMuted,
     fontSize: typography.label,
     lineHeight: 18,
+  },
+  infoSection: {
+    gap: spacing.sm,
+  },
+  infoSectionTitle: {
+    color: colors.textMuted,
+    fontSize: typography.label,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    marginLeft: spacing.xs,
+    textTransform: "uppercase",
+  },
+  infoCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: "hidden",
+  },
+  infoRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: spacing.md,
+    justifyContent: "space-between",
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 11,
+  },
+  infoRowDivider: {
+    borderTopColor: colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  infoLabel: {
+    color: colors.textMuted,
+    flexShrink: 0,
+    fontSize: typography.body,
+    maxWidth: "42%",
+  },
+  infoValue: {
+    color: colors.text,
+    flex: 1,
+    fontSize: typography.body,
+    fontWeight: "600",
+    textAlign: "right",
   },
   chatShell: {
     flex: 1,
