@@ -1,14 +1,55 @@
 import AppKit
 import SwiftUI
 
+enum NativeDestination: String, CaseIterable, Identifiable {
+    case dashboard
+    case chat
+    case agents
+    case providers
+    case tasks
+    case gateway
+    case webUI
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .dashboard: return "Dashboard"
+        case .chat: return "Chat"
+        case .agents: return "Agents"
+        case .providers: return "Providers"
+        case .tasks: return "Tasks"
+        case .gateway: return "Gateway"
+        case .webUI: return "Web UI"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .dashboard: return "square.grid.2x2"
+        case .chat: return "bubble.left.and.bubble.right"
+        case .agents: return "cpu"
+        case .providers: return "shippingbox"
+        case .tasks: return "calendar.badge.clock"
+        case .gateway: return "server.rack"
+        case .webUI: return "globe"
+        }
+    }
+}
+
 struct ContentView: View {
     @EnvironmentObject private var sidecar: SidecarManager
     @Environment(\.openURL) private var openURL
+    @State private var destination: NativeDestination = .dashboard
+
+    private var client: GatewayClient {
+        GatewayClient(baseURL: sidecar.serverURL)
+    }
 
     var body: some View {
         NavigationSplitView {
             sidebar
-                .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 380)
+                .navigationSplitViewColumnWidth(min: 210, ideal: 235, max: 280)
         } detail: {
             detail
         }
@@ -56,80 +97,173 @@ struct ContentView: View {
         )
     }
 
+    // ─── Sidebar ─────────────────────────────────────────────────────────────
+
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Cybara")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                Text("SwiftUI shell for the local Cybara sidecar and web runtime.")
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "hexagon.fill")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(Color.accentColor)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Cybara")
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                    Text(sidecar.isReady ? "Gateway online" : "Starting…")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(sidecar.isReady ? Color.green : Color.secondary)
+                }
+                Spacer()
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+            .padding(.bottom, 8)
 
-            GlassCard {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        StatusPill(status: sidecar.status)
-                        Spacer()
-                        Text(sidecar.serverURL.absoluteString)
-                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.secondary)
+            List(selection: $destination) {
+                Section {
+                    ForEach([NativeDestination.dashboard, .chat, .agents, .providers, .tasks]) { item in
+                        Label(item.title, systemImage: item.systemImage)
+                            .tag(item)
                     }
+                }
+                Section("System") {
+                    ForEach([NativeDestination.gateway, .webUI]) { item in
+                        Label(item.title, systemImage: item.systemImage)
+                            .tag(item)
+                    }
+                }
+            }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+        }
+    }
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label(sidecar.binaryPath, systemImage: "shippingbox")
-                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            .lineLimit(2)
-                        Label(sidecar.managesGateway ? "Managed gateway" : "Attached gateway", systemImage: sidecar.managesGateway ? "server.rack" : "link")
+    // ─── Detail ──────────────────────────────────────────────────────────────
+
+    @ViewBuilder
+    private var detail: some View {
+        if !sidecar.isReady && destination != .gateway {
+            startingView
+        } else {
+            switch destination {
+            case .dashboard:
+                DashboardScreen(client: client)
+            case .chat:
+                ChatScreen(client: client)
+            case .agents:
+                AgentsScreen(client: client)
+            case .providers:
+                ProvidersScreen(client: client)
+            case .tasks:
+                TasksScreen(client: client)
+            case .gateway:
+                GatewayScreen()
+            case .webUI:
+                webUIDetail
+            }
+        }
+    }
+
+    private var startingView: some View {
+        VStack(spacing: 14) {
+            ProgressView()
+                .progressViewStyle(.circular)
+                .controlSize(.large)
+            Text(sidecar.statusMessage)
+                .font(.system(size: 15, weight: .medium, design: .rounded))
+            Text("Waiting for the local Cybara gateway to come online.")
+                .font(.system(size: 13, weight: .regular, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
+        .padding(32)
+        .cybaraGlass(cornerRadius: 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var webUIDetail: some View {
+        ZStack {
+            if sidecar.isReady {
+                CybaraWebView(
+                    url: sidecar.serverURL,
+                    gatewayPort: sidecar.port,
+                    managesGateway: sidecar.managesGateway
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .padding(14)
+            } else {
+                startingView
+            }
+        }
+    }
+}
+
+// ─── Gateway (sidecar controls + logs) ───────────────────────────────────────
+
+struct GatewayScreen: View {
+    @EnvironmentObject private var sidecar: SidecarManager
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                ScreenHeader(title: "Gateway", subtitle: "Local Cybara sidecar runtime")
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            StatusPill(status: sidecar.status)
+                            Spacer()
+                            Text(sidecar.serverURL.absoluteString)
+                                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label(sidecar.binaryPath, systemImage: "shippingbox")
+                                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                .lineLimit(2)
+                            Label(
+                                sidecar.managesGateway ? "Managed gateway" : "Attached gateway",
+                                systemImage: sidecar.managesGateway ? "server.rack" : "link"
+                            )
                             .font(.system(size: 12, weight: .medium, design: .rounded))
                             .foregroundStyle(.secondary)
-                        Text(sidecar.statusMessage)
-                            .font(.system(size: 13, weight: .regular, design: .rounded))
-                            .foregroundStyle(.secondary)
+                            Text(sidecar.statusMessage)
+                                .font(.system(size: 13, weight: .regular, design: .rounded))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
-            }
 
-            GlassCard {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Controls")
-                        .font(.system(size: 16, weight: .semibold, design: .rounded))
-
-                    HStack(spacing: 10) {
-                        Button("Restart") {
-                            Task {
-                                await sidecar.restart()
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Controls")
+                            .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        HStack(spacing: 10) {
+                            Button("Restart") {
+                                Task { await sidecar.restart() }
                             }
+                            .buttonStyle(.borderedProminent)
+                            Button("Open Browser") {
+                                openURL(sidecar.serverURL)
+                            }
+                            .buttonStyle(.bordered)
+                            Button("Copy URL") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(
+                                    sidecar.serverURL.absoluteString, forType: .string)
+                            }
+                            .buttonStyle(.bordered)
+                            Button("Reveal Binary") {
+                                sidecar.revealBinary()
+                            }
+                            .buttonStyle(.bordered)
                         }
-                        .buttonStyle(.borderedProminent)
-
-                        Button("Open Browser") {
-                            openURL(sidecar.serverURL)
-                        }
-                        .buttonStyle(.bordered)
-                    }
-
-                    HStack(spacing: 10) {
-                        Button("Copy URL") {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(sidecar.serverURL.absoluteString, forType: .string)
-                        }
-                        .buttonStyle(.bordered)
-
-                        Button("Reveal Binary") {
-                            sidecar.revealBinary()
-                        }
-                        .buttonStyle(.bordered)
                     }
                 }
-            }
 
-            GlassCard {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Sidecar Logs")
-                        .font(.system(size: 16, weight: .semibold, design: .rounded))
-
-                    ScrollView {
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Sidecar Logs")
+                            .font(.system(size: 16, weight: .semibold, design: .rounded))
                         LazyVStack(alignment: .leading, spacing: 8) {
                             ForEach(sidecar.logs.indices, id: \.self) { index in
                                 Text(sidecar.logs[index])
@@ -139,49 +273,10 @@ struct ContentView: View {
                             }
                         }
                     }
-                    .frame(maxHeight: .infinity)
                 }
             }
-
-            Spacer(minLength: 0)
+            .padding(24)
         }
-        .padding(20)
-    }
-
-    private var detail: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.10))
-                )
-                .padding(18)
-
-            if sidecar.isReady {
-                CybaraWebView(
-                    url: sidecar.serverURL,
-                    gatewayPort: sidecar.port,
-                    managesGateway: sidecar.managesGateway
-                )
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                    .padding(28)
-            } else {
-                VStack(spacing: 14) {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .controlSize(.large)
-                    Text(sidecar.statusMessage)
-                        .font(.system(size: 15, weight: .medium, design: .rounded))
-                    Text("The native shell waits for the same local HTTP API that Tauri uses.")
-                        .font(.system(size: 13, weight: .regular, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(32)
-                .cybaraGlass(cornerRadius: 24)
-            }
-        }
-        .padding(12)
     }
 }
 
@@ -197,67 +292,63 @@ struct SettingsView: View {
                 .font(.system(size: 13, weight: .regular, design: .rounded))
                 .foregroundStyle(.secondary)
 
-            Divider()
-
-            LabeledContent("Binary") {
-                Text(sidecar.binaryPath)
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .textSelection(.enabled)
-            }
-
-            LabeledContent("Server") {
-                Text(sidecar.serverURL.absoluteString)
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .textSelection(.enabled)
-            }
-
-            LabeledContent("Gateway Mode") {
-                Text(sidecar.managesGateway ? "Managed by app" : "Attached existing gateway")
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
+            GlassCard {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(sidecar.binaryPath, systemImage: "shippingbox")
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    Label(sidecar.serverURL.absoluteString, systemImage: "network")
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                }
             }
 
             Spacer()
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(
-            LinearGradient(
-                colors: [
-                    Color(red: 0.08, green: 0.10, blue: 0.18),
-                    Color(red: 0.03, green: 0.06, blue: 0.14),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-        )
+        .padding(24)
+        .frame(minWidth: 460, minHeight: 300)
     }
 }
 
-private struct GlassCard<Content: View>: View {
-    @ViewBuilder let content: Content
+struct GlassCard<Content: View>: View {
+    @ViewBuilder var content: Content
 
     var body: some View {
         content
-            .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.10))
-            )
+            .padding(16)
+            .cybaraGlass(cornerRadius: 18)
     }
 }
 
-private struct StatusPill: View {
+struct StatusPill: View {
     let status: SidecarManager.Status
 
     var body: some View {
-        Label(status.title, systemImage: status.systemImage)
+        Label(label, systemImage: symbol)
             .font(.system(size: 12, weight: .semibold, design: .rounded))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(status.color.opacity(0.18), in: Capsule())
-            .foregroundStyle(status.color)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Capsule().fill(tint.opacity(0.2)))
+            .foregroundStyle(tint)
+    }
+
+    private var label: String { status.title }
+
+    private var symbol: String {
+        switch status {
+        case .idle: return "pause.circle"
+        case .starting: return "clock"
+        case .ready: return "checkmark.circle"
+        case .stopped: return "stop.circle"
+        case .failed: return "exclamationmark.triangle"
+        }
+    }
+
+    private var tint: Color {
+        switch status {
+        case .idle, .stopped: return .secondary
+        case .starting: return .orange
+        case .ready: return .green
+        case .failed: return .red
+        }
     }
 }
