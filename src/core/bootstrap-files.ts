@@ -34,7 +34,7 @@ function readTemplate(name: string): string | null {
     return readFileSync(templatePath, "utf-8");
   }
 
-  const projectTemplates = join(__dirname, "..", "..", "..", "templates", name);
+  const projectTemplates = join(__dirname, "..", "..", "templates", name);
   if (existsSync(projectTemplates)) {
     return readFileSync(projectTemplates, "utf-8");
   }
