@@ -1,0 +1,103 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import { getGitBranch, getGitDiff, getGitStatus } from "../../src/api/git-api";
+
+let baseDir = "";
+let repoDir = "";
+let plainDir = "";
+
+function git(args: string[], cwd: string): void {
+  const result = Bun.spawnSync(["git", ...args], { cwd });
+  if (result.exitCode !== 0) {
+    throw new Error(`git ${args.join(" ")} failed: ${result.stderr.toString()}`);
+  }
+}
+
+beforeAll(() => {
+  baseDir = mkdtempSync(join(tmpdir(), "cybara-git-api-"));
+  repoDir = join(baseDir, "repo");
+  plainDir = join(baseDir, "plain");
+  mkdirSync(repoDir, { recursive: true });
+  mkdirSync(plainDir, { recursive: true });
+
+  git(["init", "-q", "-b", "main"], repoDir);
+  git(["config", "user.email", "test@example.com"], repoDir);
+  git(["config", "user.name", "Test"], repoDir);
+  writeFileSync(join(repoDir, "committed.txt"), "first\n");
+  git(["add", "-A"], repoDir);
+  git(["commit", "-q", "-m", "initial"], repoDir);
+
+  writeFileSync(join(repoDir, "committed.txt"), "first\nmodified\n");
+  writeFileSync(join(repoDir, "staged.txt"), "staged content\n");
+  git(["add", "staged.txt"], repoDir);
+  writeFileSync(join(repoDir, "untracked.txt"), "new file\n");
+});
+
+afterAll(() => {
+  rmSync(baseDir, { recursive: true, force: true });
+});
+
+describe("getGitStatus", () => {
+  test("reports repo root, branch, and file buckets", async () => {
+    const status = await getGitStatus(repoDir);
+    expect(status.isRepo).toBe(true);
+    expect(status.root?.endsWith("repo")).toBe(true);
+    expect(status.branch).toBe("main");
+    expect(status.staged).toContain("staged.txt");
+    expect(status.modified).toContain("committed.txt");
+    expect(status.untracked).toContain("untracked.txt");
+  });
+
+  test("non-git directory reports isRepo false without throwing", async () => {
+    const status = await getGitStatus(plainDir);
+    expect(status.isRepo).toBe(false);
+    expect(status.staged).toEqual([]);
+    expect(status.modified).toEqual([]);
+    expect(status.untracked).toEqual([]);
+  });
+
+  test("missing directory degrades cleanly", async () => {
+    const status = await getGitStatus(join(baseDir, "does-not-exist"));
+    expect(status.isRepo).toBe(false);
+  });
+
+  test("lightweight option still identifies the repo (branch omitted for speed)", async () => {
+    const status = await getGitStatus(repoDir, { lightweight: true });
+    expect(status.isRepo).toBe(true);
+    expect(status.branch).toBeUndefined();
+    expect(status.staged).toContain("staged.txt");
+  });
+});
+
+describe("getGitDiff", () => {
+  test("unstaged diff for a modified file contains the new line", async () => {
+    const diff = await getGitDiff(join(repoDir, "committed.txt"), false);
+    expect(diff.success).toBe(true);
+    expect(diff.diff).toContain("+modified");
+  });
+
+  test("staged diff for a staged file contains its content", async () => {
+    const diff = await getGitDiff(join(repoDir, "staged.txt"), true);
+    expect(diff.success).toBe(true);
+    expect(diff.diff).toContain("+staged content");
+  });
+
+  test("file outside any repo returns an error result, not a throw", async () => {
+    writeFileSync(join(plainDir, "loose.txt"), "x\n");
+    const diff = await getGitDiff(join(plainDir, "loose.txt"), false);
+    expect(diff.success).toBe(false);
+    expect(typeof diff.error).toBe("string");
+  });
+});
+
+describe("getGitBranch", () => {
+  test("returns the branch for a repo path", async () => {
+    expect(await getGitBranch(repoDir)).toBe("main");
+  });
+
+  test("returns null outside a repo", async () => {
+    expect(await getGitBranch(plainDir)).toBeNull();
+  });
+});
