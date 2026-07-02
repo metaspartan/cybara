@@ -62,6 +62,22 @@ const LEVEL_LABELS: Record<LogLevel, string> = {
   error: "ERR",
 };
 
+function safeStringify(value: unknown): string {
+  const seen = new WeakSet<object>();
+  try {
+    return JSON.stringify(value, (_key, val) => {
+      if (typeof val === "bigint") return `${val.toString()}n`;
+      if (typeof val === "object" && val !== null) {
+        if (seen.has(val)) return "[Circular]";
+        seen.add(val);
+      }
+      return val;
+    });
+  } catch {
+    return String(value);
+  }
+}
+
 function formatLogEntry(entry: LogEntry): string {
   const color = LEVEL_COLORS[entry.level];
   const label = LEVEL_LABELS[entry.level];
@@ -71,7 +87,7 @@ function formatLogEntry(entry: LogEntry): string {
 
   if (entry.context && Object.keys(entry.context).length > 0) {
     const contextStr = Object.entries(entry.context)
-      .map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`)
+      .map(([k, v]) => `${k}=${typeof v === "string" ? v : safeStringify(v)}`)
       .join(" ");
     line += ` ${COLORS.dim}${contextStr}${COLORS.reset}`;
   }
@@ -110,7 +126,7 @@ function log(
   }
 
   const formattedLine =
-    LOG_FORMAT === "json" ? JSON.stringify(entry) : formatLogEntry(entry);
+    LOG_FORMAT === "json" ? safeStringify(entry) : formatLogEntry(entry);
 
   if (level === "error") {
     console.error(formattedLine);

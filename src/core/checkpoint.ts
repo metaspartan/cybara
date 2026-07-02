@@ -9,9 +9,18 @@
  * Snapshots are created in <workspace>/.cybara/checkpoints/ as git objects;
  * the workspace itself is never modified by this module (only read for diffs).
  */
-import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync, statSync } from "fs";
+import {
+  existsSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  unlinkSync,
+  statSync,
+} from "fs";
 import { join } from "path";
-import { spawn } from "child_process";
+import { spawn, spawnSync } from "child_process";
 
 const CHECKPOINT_DIR = ".cybara";
 const CHECKPOINT_STORE = "checkpoints";
@@ -34,9 +43,13 @@ function checkpointStoreDir(workspaceDir: string): string {
   return dir;
 }
 
-function execGit(args: string[], cwd: string): Promise<string> {
+function execGit(args: string[], cwd: string, env?: Record<string, string>): Promise<string> {
   return new Promise((resolve, reject) => {
-    const proc = spawn("git", args, { cwd, stdio: ["pipe", "pipe", "pipe"] });
+    const proc = spawn("git", args, {
+      cwd,
+      stdio: ["pipe", "pipe", "pipe"],
+      env: env ? { ...process.env, ...env } : process.env,
+    });
     let stdout = "";
     let stderr = "";
     proc.stdout.on("data", (c: Buffer) => (stdout += c.toString()));
@@ -51,8 +64,8 @@ function execGit(args: string[], cwd: string): Promise<string> {
 
 function isGitAvailable(): boolean {
   try {
-    const result = spawn("git", ["--version"], { stdio: ["pipe", "pipe", "pipe"] });
-    return !!result.pid;
+    const result = spawnSync("git", ["--version"], { stdio: ["ignore", "ignore", "ignore"] });
+    return result.status === 0;
   } catch {
     return false;
   }
@@ -82,11 +95,21 @@ export async function createCheckpoint(
       .catch(() => false);
 
     if (isRepo) {
-      // Create a tree object from the current working state.
-      const treeHash = await execGit(["write-tree"], workspaceDir).catch(async () => {
-        // If write-tree fails (e.g. unmerged state), fall back to file copy.
-        return null;
-      });
+      // Snapshot the full working tree (including unstaged edits and untracked
+      // files, respecting .gitignore) via a throwaway index, so the user's real
+      // staging area is never touched.
+      const tmpIndex = join(storeDir, `.idx_${id}`);
+      const treeHash = await execGit(["add", "-A"], workspaceDir, { GIT_INDEX_FILE: tmpIndex })
+        .then(() => execGit(["write-tree"], workspaceDir, { GIT_INDEX_FILE: tmpIndex }))
+        .catch(async () => {
+          // If staging/write-tree fails (e.g. unmerged state), fall back below.
+          return null;
+        });
+      try {
+        if (existsSync(tmpIndex)) unlinkSync(tmpIndex);
+      } catch {
+        /* ignore temp index cleanup failure */
+      }
       if (treeHash) {
         writeFileSync(join(snapshotPath, "tree"), treeHash);
         writeFileSync(
@@ -144,8 +167,7 @@ function pruneOldCheckpoints(storeDir: string): void {
     for (const entry of entries.slice(MAX_CHECKPOINTS)) {
       const dir = join(storeDir, entry.name);
       try {
-        const files = readdirSync(dir);
-        for (const f of files) unlinkSync(join(dir, f));
+        rmSync(dir, { recursive: true, force: true });
       } catch {
         /* ignore */
       }
@@ -194,15 +216,7 @@ export function deleteCheckpoint(workspaceDir: string, checkpointId: string): bo
   const path = join(storeDir, checkpointId);
   if (!existsSync(path)) return false;
   try {
-    const files = readdirSync(path);
-    for (const f of files) unlinkSync(join(path, f));
-    // Remove the now-empty directory too.
-    try {
-      const { rmdirSync } = require("fs");
-      rmdirSync(path);
-    } catch {
-      /* ignore rmdir failure */
-    }
+    rmSync(path, { recursive: true, force: true });
     return true;
   } catch {
     return false;
