@@ -1,6 +1,14 @@
-import { randomBytes } from "crypto";
+import { randomBytes, timingSafeEqual } from "crypto";
 import { createLogger } from "../logger";
 import db from "../database";
+
+function pairingCodeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a.toUpperCase());
+  const bufB = Buffer.from(b.toUpperCase());
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
+
 
 const log = createLogger("Security");
 
@@ -318,7 +326,7 @@ export class ChannelSecurityManager {
     const now = Date.now();
 
     const pairing = channelPairings.find(
-      (p) => p.code.toUpperCase() === code.toUpperCase() && p.status === "pending"
+      (p) => pairingCodeEqual(p.code, code) && p.status === "pending"
     );
 
     if (!pairing) {

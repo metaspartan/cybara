@@ -237,6 +237,9 @@ data/              # SQLite database (gitignored)
 
 These directories contain user data and should never be committed:
 - `memory/` - Personal memory files
-- `skills/` - User's custom skills
 - `data/` - SQLite database
+
+Note: the repo's `skills/` directory contains bundled template skills and IS
+committed; user-authored skills live in `~/.cybara/skills/` and never enter
+the repo.
 - `.env` - Environment variables

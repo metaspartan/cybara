@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "crypto";
+import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import { existsSync, readFileSync, statSync, writeFileSync } from "fs";
 import { join } from "path";
 import { secureDir } from "./paths";
@@ -264,6 +264,13 @@ function generatePairingCode(): string {
   return `${chars.slice(0, 4).join("")}-${chars.slice(4).join("")}`;
 }
 
+function constantTimeCodeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a.toUpperCase());
+  const bufB = Buffer.from(b.toUpperCase());
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
+
 function prunePairingCodes(store: MobileDeviceStore, now: number): PendingPairingCode[] {
   return (store.pairingCodes ?? []).filter((c) => c.expiresAt > now);
 }
@@ -336,7 +343,7 @@ export function redeemPairingCode(
 
   const store = readStore();
   const live = prunePairingCodes(store, now);
-  const match = live.find((c) => c.code.toUpperCase() === code);
+  const match = live.find((c) => constantTimeCodeEqual(c.code, code));
   if (!match) {
     // Persist the pruning of any expired codes even on a miss.
     if ((store.pairingCodes ?? []).length !== live.length) {

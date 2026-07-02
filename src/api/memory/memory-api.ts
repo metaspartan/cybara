@@ -73,8 +73,17 @@ export async function handleMemoryList(): Promise<{ files: string[]; memories: A
   return { files, memories };
 }
 
+/** Resolve a caller-supplied memory file name safely inside memoryDir. */
+function safeMemoryPath(file: string): string {
+  const safe = basename(file.trim()).replace(/[^\w.-]/g, "-");
+  if (!safe || safe === "." || safe === "..") {
+    throw new Error("Invalid memory file name");
+  }
+  return join(memoryDir, safe);
+}
+
 export async function handleMemoryDelete(file: string, index?: number): Promise<{ success: boolean }> {
-  const path = join(memoryDir, file);
+  const path = safeMemoryPath(file);
   if (!existsSync(path)) {
     throw new Error("Memory file not found");
   }
@@ -117,7 +126,7 @@ export async function handleMemorySearch(query: string): Promise<{ results: Arra
 }
 
 export async function handleMemoryEdit(file: string, index: number, newContent: string): Promise<{ success: boolean }> {
-  const path = join(memoryDir, file);
+  const path = safeMemoryPath(file);
   if (!existsSync(path)) {
     throw new Error("Memory file not found");
   }

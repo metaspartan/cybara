@@ -269,6 +269,16 @@ function getClientIp(headers: Record<string, string>, directIp?: string): string
 }
 
 function withOptionalQueryToken(headers: Record<string, string>, url: URL): Record<string, string> {
+  // Query-token auth exists only for browser WebSocket/EventSource clients,
+  // which cannot set an Authorization header. Honor it solely on upgrade/SSE
+  // requests (never overriding a real header) so tokens stay out of ordinary
+  // request URLs, where they would leak into proxy logs and browser history.
+  const connection = (headers.connection || headers.Connection || "").toLowerCase();
+  const accept = headers.accept || headers.Accept || "";
+  const isBrowserStreamClient =
+    connection.includes("upgrade") || accept.includes("text/event-stream");
+  if (!isBrowserStreamClient) return headers;
+
   const token = url.searchParams.get("token") || url.searchParams.get("api_key");
   if (!token) return headers;
 

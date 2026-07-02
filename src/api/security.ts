@@ -350,7 +350,7 @@ export function isPrivateOrBlockedIP(ip: string): boolean {
   if (nums.some((n) => isNaN(n) || n < 0 || n > 255)) return false;
 
   for (const cidr of config.blockedIpRanges) {
-    if (isInCidr(ip, cidr)) {
+    if (isInCidr(normalized, cidr)) {
       return true;
     }
   }

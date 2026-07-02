@@ -5169,6 +5169,13 @@ export async function handleRequest(req: {
       userMessage = "An error occurred while processing your request.";
     }
 
+    // Intentional messages (validation, not-found, conflict) stay user-facing,
+    // but redact any absolute filesystem paths they may carry so internals
+    // never leak to clients outside development.
+    if (process.env.NODE_ENV !== "development") {
+      userMessage = userMessage.replace(/(?:[A-Za-z]:)?[\\/](?:Users|home|private|var|tmp|opt)[\\/][^\s"']*/g, "[path]");
+    }
+
     logRequest({
       timestamp: new Date().toISOString(),
       method,
