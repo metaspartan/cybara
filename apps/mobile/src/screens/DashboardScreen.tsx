@@ -139,6 +139,8 @@ import {
   lastUpdatedLabel,
   mobileComposerHeightForDraft,
   mobileBackRouteForDetail,
+  mobileFirstNonEmptyString,
+  mobileSessionTitle,
   mobileThemeConfigPayload,
   recentSessionStateLabel,
   sessionProviderModelLabel,
@@ -1189,7 +1191,7 @@ function OverviewPanel({
           return {
             id: session.id,
             Icon: MessageCircle,
-            title: session.title || "Untitled chat",
+            title: mobileSessionTitle(session),
             detail: `${sessionProviderModelLabel(session)} - ${lastUpdatedLabel(session)}`,
             state,
             tone: state === "Working" ? colors.amber : accentColor,
@@ -1363,7 +1365,7 @@ function SessionsPanel({
   };
 
   const confirmDeleteSession = (session: SessionSummary) => {
-    const title = session.title || "Untitled chat";
+    const title = mobileSessionTitle(session);
     if (Platform.OS === "ios") {
       ActionSheetIOS.showActionSheetWithOptions(
         {
@@ -1405,7 +1407,7 @@ function SessionsPanel({
           Icon={Clock}
           label="Latest"
           value={latest ? lastUpdatedLabel(latest) : "None"}
-          detail={latest?.title || "No recent chat"}
+          detail={latest ? mobileSessionTitle(latest) : "No recent chat"}
           tone={colors.blueText}
         />
       </View>
@@ -1449,7 +1451,7 @@ function SessionsPanel({
                 </View>
               ) : null}
               <Text numberOfLines={2} style={[styles.listTitle, styles.sessionListTitle]}>
-                {session.title || "Untitled chat"}
+                {mobileSessionTitle(session)}
               </Text>
             </View>
             <Text numberOfLines={1} style={styles.listDetail}>
@@ -2107,12 +2109,18 @@ function SessionDetailPanel({
       detail?.updatedAt ||
       sessionSummary?.updated_at ||
       detail?.messages[detail.messages.length - 1]?.timestamp;
-    const title = detail?.title || sessionSummary?.title || null;
-    const agentId = detail?.agentId || sessionSummary?.agent_id || null;
-    const model = detail?.model || sessionSummary?.model || null;
-    const provider = detail?.provider || sessionSummary?.provider || sessionSummary?.provider_id || null;
-    const providerName = detail?.providerName || sessionSummary?.provider_name || null;
-    const workspaceDir = detail?.workspaceDir || sessionSummary?.workspace_dir || null;
+    const title = mobileSessionTitle({
+      title: mobileFirstNonEmptyString(detail?.title, sessionSummary?.title),
+    });
+    const agentId = mobileFirstNonEmptyString(detail?.agentId, sessionSummary?.agent_id);
+    const model = mobileFirstNonEmptyString(detail?.model, sessionSummary?.model);
+    const provider = mobileFirstNonEmptyString(
+      detail?.provider,
+      sessionSummary?.provider,
+      sessionSummary?.provider_id
+    );
+    const providerName = mobileFirstNonEmptyString(detail?.providerName, sessionSummary?.provider_name);
+    const workspaceDir = mobileFirstNonEmptyString(detail?.workspaceDir, sessionSummary?.workspace_dir);
     Alert.alert(
       "Chat settings",
       buildMobileChatSettingsLines({

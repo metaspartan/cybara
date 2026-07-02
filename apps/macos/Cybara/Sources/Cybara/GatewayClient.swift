@@ -25,7 +25,7 @@ struct GatewayProvider: Decodable, Identifiable, Hashable {
     let provider: String?
     let enabled: Bool?
 
-    var displayName: String { name ?? provider ?? id }
+    var displayName: String { firstNonEmptyGatewayString(name, provider, id) ?? id }
 }
 
 struct GatewaySessionMessage: Decodable, Identifiable, Hashable {
@@ -48,7 +48,15 @@ struct GatewaySession: Decodable, Identifiable, Hashable {
     let updated_at: String?
     let pinned: Bool?
 
-    var displayTitle: String { title?.isEmpty == false ? title! : String(id.prefix(8)) }
+    var displayTitle: String { firstNonEmptyGatewayString(title) ?? String(id.prefix(8)) }
+}
+
+func firstNonEmptyGatewayString(_ values: String?...) -> String? {
+    for value in values {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmed.isEmpty { return trimmed }
+    }
+    return nil
 }
 
 struct GatewayTask: Decodable, Identifiable, Hashable {
@@ -337,7 +345,7 @@ struct GatewayChannel: Decodable, Identifiable, Hashable {
     let name: String?
     let enabled: Int?
 
-    var displayName: String { name ?? type ?? id }
+    var displayName: String { firstNonEmptyGatewayString(name, type, id) ?? id }
     var isEnabled: Bool { enabled == 1 }
 }
 

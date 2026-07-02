@@ -35,6 +35,8 @@ import {
   lastUpdatedLabel,
   mobileComposerHeightForDraft,
   mobileBackRouteForDetail,
+  mobileFirstNonEmptyString,
+  mobileSessionTitle,
   mobileThemeConfigPayload,
   recentSessionStateLabel,
   readMobileDangerousToolPolicy,
@@ -267,12 +269,42 @@ describe("mobile dashboard model", () => {
     expect(
       sessionProviderModelLabel({
         agent_id: "agent-1",
-        provider_name: "OpenAI",
+        provider_name: " OpenAI ",
         provider: "openai",
-        model: "gpt-5-mini",
+        model: " gpt-5-mini ",
       })
     ).toBe("OpenAI - gpt-5-mini");
+    expect(sessionProviderModelLabel({ provider_name: "   ", model: " gpt-5 " })).toBe("gpt-5");
+    expect(
+      sessionProviderModelLabel({
+        provider_name: "   ",
+        provider: " Anthropic ",
+        provider_id: "provider-id-fallback",
+        model: " Claude Sonnet 4 ",
+      })
+    ).toBe("Anthropic - Claude Sonnet 4");
     expect(sessionProviderModelLabel({ agent_id: "agent-1" })).toBe("Model pending");
+  });
+
+  test("normalizes mobile chat titles before rendering or destructive actions", () => {
+    expect(mobileFirstNonEmptyString("  ", "  Build a release  ")).toBe("Build a release");
+    expect(mobileSessionTitle({ title: "  Build a release  " })).toBe("Build a release");
+    expect(mobileSessionTitle({ title: "   " })).toBe("Untitled chat");
+    expect(mobileSessionTitle({ title: null })).toBe("Untitled chat");
+    expect(
+      buildMobileChatSettingsLines({
+        messageCount: 1,
+        sessionId: "session-hidden",
+        title: "   ",
+        updatedLabel: "just now",
+      })
+    ).toEqual([
+      "Title: Untitled chat",
+      "Messages: 1 message",
+      "Updated: just now",
+      "Model: Model pending",
+      "Workspace directory: No workspace",
+    ]);
   });
 
   test("keeps metrics live without an in-page refresh button", () => {

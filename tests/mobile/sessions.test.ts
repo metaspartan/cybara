@@ -21,4 +21,13 @@ describe("mobile: chat management", () => {
     expect(api).toContain("deleteSession(id: string)");
     expect(screen).toContain("await api.deleteSession(id)");
   });
+
+  test("chat rows and delete confirmations use normalized titles instead of raw session ids", () => {
+    expect(screen).toContain("mobileSessionTitle(session)");
+    expect(screen).toContain("const title = mobileSessionTitle(session);");
+    expect(screen).toContain("mobileFirstNonEmptyString(detail?.title, sessionSummary?.title)");
+    expect(screen).toContain("mobileFirstNonEmptyString(detail?.model, sessionSummary?.model)");
+    expect(screen).not.toContain("session.id.slice");
+    expect(screen).not.toContain("Session ID:");
+  });
 });

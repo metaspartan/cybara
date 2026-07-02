@@ -371,9 +371,8 @@ export function buildMobileChatSettingsLines({
   workspaceDir?: string | null;
 }): string[] {
   const safeMessageCount = Math.max(0, messageCount);
-  const fallbackTitle = "Untitled chat";
   const lines = [
-    `Title: ${title || fallbackTitle}`,
+    `Title: ${mobileSessionTitle({ title })}`,
     `Messages: ${safeMessageCount} message${safeMessageCount === 1 ? "" : "s"}`,
     `Updated: ${updatedLabel}`,
   ];
@@ -387,6 +386,23 @@ export function buildMobileChatSettingsLines({
     lines.push(`Session ID: ${sessionId}`);
   }
   return lines;
+}
+
+export function mobileSessionTitle(
+  session: Pick<SessionSummary, "title"> | { title?: string | null } | null | undefined
+): string {
+  const title = mobileFirstNonEmptyString(session?.title);
+  return title || "Untitled chat";
+}
+
+export function mobileFirstNonEmptyString(
+  ...values: Array<string | null | undefined>
+): string | null {
+  for (const value of values) {
+    const trimmed = typeof value === "string" ? value.trim() : "";
+    if (trimmed) return trimmed;
+  }
+  return null;
 }
 
 export function sessionProviderModelLabel(
@@ -410,9 +426,14 @@ export function sessionProviderModelLabel(
     providerName?: string | null;
     model?: string | null;
   };
-  const provider =
-    record.providerName || record.provider_name || record.provider || record.providerId || record.provider_id;
-  const model = record.model;
+  const provider = mobileFirstNonEmptyString(
+    record.providerName,
+    record.provider_name,
+    record.provider,
+    record.providerId,
+    record.provider_id
+  );
+  const model = mobileFirstNonEmptyString(record.model);
   if (provider && model) return `${provider} - ${model}`;
   if (model) return model;
   if (provider) return provider;

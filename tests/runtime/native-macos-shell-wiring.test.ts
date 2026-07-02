@@ -35,4 +35,26 @@ describe("native macOS shell wiring", () => {
     expect(webView).toContain("UNUserNotificationCenter");
     expect(webView).toContain('document.documentElement.dataset.runtime = "cybara-native"');
   });
+
+  test("gateway model labels trim blank titles before falling back", () => {
+    const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
+    const modelTests = readFileSync(
+      join(ROOT_DIR, "apps", "macos", "Cybara", "Tests", "CybaraTests", "GatewayClientModelTests.swift"),
+      "utf8"
+    );
+
+    expect(gatewayClient).toContain("func firstNonEmptyGatewayString");
+    expect(gatewayClient).toContain(
+      "var displayTitle: String { firstNonEmptyGatewayString(title) ?? String(id.prefix(8)) }"
+    );
+    expect(gatewayClient).toContain(
+      "var displayName: String { firstNonEmptyGatewayString(name, provider, id) ?? id }"
+    );
+    expect(gatewayClient).toContain(
+      "var displayName: String { firstNonEmptyGatewayString(name, type, id) ?? id }"
+    );
+    expect(modelTests).toContain("testSessionDisplayTitleFallsBackForBlankOrMissingTitle");
+    expect(modelTests).toContain("testProviderDisplayNamePrefersFirstNonEmptyGatewayLabel");
+    expect(modelTests).toContain("testChannelDisplayNamePrefersFirstNonEmptyGatewayLabel");
+  });
 });
