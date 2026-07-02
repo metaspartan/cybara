@@ -1,4 +1,5 @@
 import { agentManager } from "../../agent";
+import { getMixtureOfAgentsRoutingConfig } from "../../router";
 
 export interface MoaProposal {
   agent: string;
@@ -43,27 +44,48 @@ export function buildMoaSynthesisPrompt(userPrompt: string, proposals: MoaPropos
 
 let moaActive = false;
 
-export async function handleMixtureOfAgents(
-  args: Record<string, unknown>
-): Promise<Record<string, unknown>> {
-  const prompt = typeof args.prompt === "string" ? args.prompt.trim() : "";
-  if (!prompt) return { error: "mixture_of_agents requires a 'prompt'" };
+/** True while a mixture-of-agents run is in flight, so proposer/aggregator */
+/* agent messages don't recursively re-enter MoA routing. */
+export function isMixtureOfAgentsActive(): boolean {
+  return moaActive;
+}
 
+export interface MoaRunResult {
+  final?: string;
+  proposals: MoaProposal[];
+  aggregator: string | null;
+  note?: string;
+  error?: string;
+  details?: unknown;
+}
+
+/**
+ * Core mixture-of-agents orchestration: fan out the prompt to several proposer
+ * agents, then synthesize their responses with an aggregator agent. Shared by
+ * the `mixture_of_agents` tool and the router's mixture-of-agents strategy.
+ */
+export async function runMixtureOfAgents(opts: {
+  prompt: string;
+  requestedIds?: string[];
+  maxAgents?: number;
+  aggregatorAgentId?: string;
+}): Promise<MoaRunResult> {
+  const prompt = opts.prompt.trim();
+  if (!prompt) return { proposals: [], aggregator: null, error: "a prompt is required" };
   if (moaActive) {
-    return { error: "mixture_of_agents cannot be nested inside another mixture_of_agents run" };
+    return { proposals: [], aggregator: null, error: "mixture_of_agents cannot be nested" };
   }
 
-  const requestedIds = Array.isArray(args.agent_ids)
-    ? (args.agent_ids.filter((v) => typeof v === "string") as string[])
-    : undefined;
-  const maxAgents =
-    typeof args.max_agents === "number" && args.max_agents > 0 ? Math.floor(args.max_agents) : 4;
-
+  const maxAgents = opts.maxAgents && opts.maxAgents > 0 ? Math.floor(opts.maxAgents) : 4;
   const all = agentManager.list();
-  if (all.length === 0) return { error: "No agents are configured for mixture_of_agents" };
+  if (all.length === 0) {
+    return { proposals: [], aggregator: null, error: "No agents are configured" };
+  }
 
-  const proposers = selectMoaAgents(all, requestedIds, maxAgents);
-  if (proposers.length === 0) return { error: "No matching proposer agents were found" };
+  const proposers = selectMoaAgents(all, opts.requestedIds, maxAgents);
+  if (proposers.length === 0) {
+    return { proposals: [], aggregator: null, error: "No matching proposer agents were found" };
+  }
 
   moaActive = true;
   try {
@@ -88,31 +110,52 @@ export async function handleMixtureOfAgents(
       .map((r) => ({ agent: r.agent, text: r.text }));
 
     if (proposals.length === 0) {
-      return { error: "All proposer agents failed to produce a response", details: results };
+      return {
+        proposals: [],
+        aggregator: null,
+        error: "All proposer agents failed to produce a response",
+        details: results,
+      };
     }
 
     if (proposals.length === 1) {
       return { final: proposals[0].text, proposals, aggregator: null, note: "single proposal" };
     }
 
-    const requestedAgg =
-      typeof args.aggregator_agent_id === "string" ? args.aggregator_agent_id : "";
+    const requestedAgg = opts.aggregatorAgentId || "";
     const aggregatorId =
-      requestedAgg && all.some((a) => a.id === requestedAgg)
-        ? requestedAgg
-        : proposers[0].id;
+      requestedAgg && all.some((a) => a.id === requestedAgg) ? requestedAgg : proposers[0].id;
 
     const synthesis = await agentManager.message(
       aggregatorId,
       buildMoaSynthesisPrompt(prompt, proposals)
     );
 
-    return {
-      final: (synthesis.response || "").trim(),
-      proposals,
-      aggregator: aggregatorId,
-    };
+    return { final: (synthesis.response || "").trim(), proposals, aggregator: aggregatorId };
   } finally {
     moaActive = false;
   }
+}
+
+export async function handleMixtureOfAgents(
+  args: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const prompt = typeof args.prompt === "string" ? args.prompt.trim() : "";
+  if (!prompt) return { error: "mixture_of_agents requires a 'prompt'" };
+
+  const routingDefaults = getMixtureOfAgentsRoutingConfig();
+  const requestedIds = Array.isArray(args.agent_ids)
+    ? (args.agent_ids.filter((v) => typeof v === "string") as string[])
+    : undefined;
+  const maxAgents =
+    typeof args.max_agents === "number" && args.max_agents > 0
+      ? Math.floor(args.max_agents)
+      : routingDefaults.maxAgents;
+  const aggregatorAgentId =
+    typeof args.aggregator_agent_id === "string" && args.aggregator_agent_id
+      ? args.aggregator_agent_id
+      : routingDefaults.aggregatorAgentId;
+
+  const result = await runMixtureOfAgents({ prompt, requestedIds, maxAgents, aggregatorAgentId });
+  return { ...result };
 }

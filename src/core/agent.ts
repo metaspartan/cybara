@@ -48,7 +48,13 @@ import {
   anthropicRequestBase,
   anthropicRequestHeaders,
 } from "./llm/anthropic-vertex";
-import { selectProvider, recordUsage, recordRateLimit as recordRouterRateLimit } from "./router";
+import {
+  selectProvider,
+  recordUsage,
+  recordRateLimit as recordRouterRateLimit,
+  isMixtureOfAgentsRoutingActive,
+  getMixtureOfAgentsRoutingConfig,
+} from "./router";
 import { executeTool, hasTool } from "./tools/handlers/index";
 import {
   buildSystemPrompt,
@@ -1382,6 +1388,25 @@ class AgentManager {
     }
 
     state.lastActive = new Date();
+
+    // Mixture-of-agents routing: when the router runs the MoA strategy, fan the
+    // turn out to several proposer agents and synthesize one answer. Guarded so
+    // the proposer/aggregator sub-messages (which re-enter message()) run
+    // normally instead of recursively re-triggering MoA.
+    if (isMixtureOfAgentsRoutingActive()) {
+      const moa = await import("./tools/handlers/mixture-of-agents");
+      if (!moa.isMixtureOfAgentsActive()) {
+        state.messages.push({ role: "user", content });
+        const { maxAgents, aggregatorAgentId } = getMixtureOfAgentsRoutingConfig();
+        const run = await moa.runMixtureOfAgents({ prompt: content, maxAgents, aggregatorAgentId });
+        const response =
+          (run.final || "").trim() ||
+          run.error ||
+          "Mixture of agents could not produce a response.";
+        state.messages.push({ role: "assistant", content: response });
+        return { response };
+      }
+    }
 
     state.messages.push({ role: "user", content });
 

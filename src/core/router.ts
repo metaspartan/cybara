@@ -152,12 +152,37 @@ export interface ProviderRouteConfig {
   model?: string;
 }
 
+export type RouterStrategy =
+  | "weighted"
+  | "round_robin"
+  | "lowest_cost"
+  | "priority"
+  | "mixture_of_agents";
+
 export interface RouterConfig {
   enabled: boolean;
-  strategy: "weighted" | "round_robin" | "lowest_cost" | "priority";
+  strategy: RouterStrategy;
   globalSpendLimitDaily?: number;
   fallbackToAny: boolean;
   routes: Record<string, ProviderRouteConfig>;
+  /** Mixture-of-agents: how many proposer agents to fan out to (default 4). */
+  moaMaxAgents?: number;
+  /** Mixture-of-agents: agent id used to synthesize the final answer. */
+  moaAggregatorAgentId?: string;
+}
+
+const ROUTER_STRATEGIES: readonly RouterStrategy[] = [
+  "weighted",
+  "round_robin",
+  "lowest_cost",
+  "priority",
+  "mixture_of_agents",
+];
+
+export function normalizeRouterStrategy(value: unknown): RouterStrategy {
+  return typeof value === "string" && (ROUTER_STRATEGIES as readonly string[]).includes(value)
+    ? (value as RouterStrategy)
+    : "weighted";
 }
 
 export interface RouterUsageRecord {
@@ -214,11 +239,34 @@ function getRouterConfig(): RouterConfig {
   if (!cfg) return { enabled: false, strategy: "weighted", fallbackToAny: true, routes: {} };
   return {
     enabled: cfg.enabled ?? false,
-    strategy: cfg.strategy ?? "weighted",
+    strategy: normalizeRouterStrategy(cfg.strategy),
     globalSpendLimitDaily: Math.max(0, cfg.globalSpendLimitDaily ?? 0),
     fallbackToAny: cfg.fallbackToAny ?? true,
     routes: cfg.routes ?? {},
+    moaMaxAgents:
+      typeof cfg.moaMaxAgents === "number" && cfg.moaMaxAgents > 0
+        ? Math.floor(cfg.moaMaxAgents)
+        : undefined,
+    moaAggregatorAgentId:
+      typeof cfg.moaAggregatorAgentId === "string" ? cfg.moaAggregatorAgentId : undefined,
   };
+}
+
+/**
+ * True when the router is enabled and configured to run the mixture-of-agents
+ * strategy, so the chat path should fan out to proposer agents and synthesize.
+ */
+export function isMixtureOfAgentsRoutingActive(): boolean {
+  const cfg = getRouterConfig();
+  return cfg.enabled && cfg.strategy === "mixture_of_agents";
+}
+
+export function getMixtureOfAgentsRoutingConfig(): {
+  maxAgents?: number;
+  aggregatorAgentId?: string;
+} {
+  const cfg = getRouterConfig();
+  return { maxAgents: cfg.moaMaxAgents, aggregatorAgentId: cfg.moaAggregatorAgentId };
 }
 
 function normalizeRoute(route: ProviderRouteConfig): ProviderRouteConfig {

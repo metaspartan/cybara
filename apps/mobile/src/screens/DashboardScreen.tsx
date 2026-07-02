@@ -1884,7 +1884,7 @@ function DetailContent({
     );
   }
   if (route.kind === "modelRouter") {
-    return <ModelRouterPanel accentColor={accentColor} api={api} />;
+    return <ModelRouterPanel accentColor={accentColor} api={api} summary={summary} />;
   }
   if (route.kind === "item") {
     return (
@@ -4153,14 +4153,17 @@ function SystemMonitorDetailPanel({
 function ModelRouterPanel({
   api,
   accentColor,
+  summary,
 }: {
   api: CybaraMobileApi;
   accentColor: string;
+  summary: FeatureSummary | null;
 }) {
   const [routerConfig, setRouterConfig] = useState<RouterConfig | null>(null);
   const [routerStatus, setRouterStatus] = useState<RouterStatus | null>(null);
   const [routerError, setRouterError] = useState<string | null>(null);
   const [routerDailyLimitDraft, setRouterDailyLimitDraft] = useState("");
+  const [moaMaxAgentsDraft, setMoaMaxAgentsDraft] = useState("");
   const [savingRouterConfig, setSavingRouterConfig] = useState(false);
 
   const routerStrategy = readMobileRouterStrategy(routerConfig?.strategy);
@@ -4186,6 +4189,7 @@ function ModelRouterPanel({
             ? String(nextConfig.globalSpendLimitDaily)
             : ""
         );
+        setMoaMaxAgentsDraft(nextConfig.moaMaxAgents ? String(nextConfig.moaMaxAgents) : "");
         setRouterError(null);
       } catch (error) {
         if (mounted) setRouterError(error instanceof Error ? error.message : String(error));
@@ -4273,6 +4277,52 @@ function ModelRouterPanel({
               selected={routerStrategy}
               tone={accentColor}
             />
+            {routerStrategy === "mixture_of_agents" ? (
+              <>
+                <View style={styles.settingsSegmentField}>
+                  <Text style={styles.settingsFieldLabel}>Max proposer agents</Text>
+                  <TextInput
+                    editable={!savingRouterConfig}
+                    keyboardType="number-pad"
+                    onBlur={() => {
+                      const n = Math.floor(Number(moaMaxAgentsDraft.trim()));
+                      const next = Number.isFinite(n) && n > 0 ? n : undefined;
+                      if (next !== routerConfig.moaMaxAgents) {
+                        void saveRouterConfigPatch({ moaMaxAgents: next });
+                      }
+                    }}
+                    onChangeText={setMoaMaxAgentsDraft}
+                    placeholder="4"
+                    placeholderTextColor={colors.textDim}
+                    returnKeyType="done"
+                    style={styles.settingsInput}
+                    value={moaMaxAgentsDraft}
+                  />
+                  <Text style={styles.settingsFieldHelp}>
+                    How many agents propose before one synthesizes the answer.
+                  </Text>
+                </View>
+                <SettingSelector
+                  disabled={savingRouterConfig}
+                  label="Aggregator agent"
+                  variant="menu"
+                  onSelect={(value) => {
+                    void saveRouterConfigPatch({
+                      moaAggregatorAgentId: value === "auto" ? undefined : value,
+                    });
+                  }}
+                  options={[
+                    { label: "Auto (first proposer)", value: "auto" },
+                    ...(summary?.agents ?? []).map((agent) => ({
+                      label: agent.name || agent.id,
+                      value: agent.id,
+                    })),
+                  ]}
+                  selected={routerConfig.moaAggregatorAgentId || "auto"}
+                  tone={accentColor}
+                />
+              </>
+            ) : null}
             <SettingToggle
               busy={savingRouterConfig}
               detail="Use any healthy provider when configured routes are unavailable."

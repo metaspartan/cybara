@@ -4,6 +4,9 @@ import {
   getProviderAvailability,
   getPricing,
   getRouterStatus,
+  getMixtureOfAgentsRoutingConfig,
+  isMixtureOfAgentsRoutingActive,
+  normalizeRouterStrategy,
   recordProviderFailure,
   recordProviderSuccess,
   recordRateLimit,
@@ -16,6 +19,32 @@ import {
 afterEach(() => {
   resetRouterForTests();
   config.set("router", null);
+});
+
+describe("mixture-of-agents strategy", () => {
+  test("normalizeRouterStrategy accepts mixture_of_agents and rejects junk", () => {
+    expect(normalizeRouterStrategy("mixture_of_agents")).toBe("mixture_of_agents");
+    expect(normalizeRouterStrategy("priority")).toBe("priority");
+    expect(normalizeRouterStrategy("nonsense")).toBe("weighted");
+    expect(normalizeRouterStrategy(undefined)).toBe("weighted");
+  });
+
+  test("MoA routing is active only when router is enabled with that strategy", () => {
+    config.set("router", { enabled: false, strategy: "mixture_of_agents", fallbackToAny: true, routes: {} });
+    expect(isMixtureOfAgentsRoutingActive()).toBe(false);
+    config.set("router", {
+      enabled: true,
+      strategy: "mixture_of_agents",
+      fallbackToAny: true,
+      routes: {},
+      moaMaxAgents: 3,
+      moaAggregatorAgentId: "agent-x",
+    });
+    expect(isMixtureOfAgentsRoutingActive()).toBe(true);
+    expect(getMixtureOfAgentsRoutingConfig()).toEqual({ maxAgents: 3, aggregatorAgentId: "agent-x" });
+    config.set("router", { enabled: true, strategy: "weighted", fallbackToAny: true, routes: {} });
+    expect(isMixtureOfAgentsRoutingActive()).toBe(false);
+  });
 });
 
 function setRouterConfig(cfg: Partial<RouterConfig>): void {

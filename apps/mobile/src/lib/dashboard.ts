@@ -142,6 +142,7 @@ export const MOBILE_ROUTER_STRATEGY_OPTIONS = [
   { label: "Round Robin", value: "round_robin" },
   { label: "Lowest Cost", value: "lowest_cost" },
   { label: "Priority", value: "priority" },
+  { label: "Mixture of Agents", value: "mixture_of_agents" },
 ] as const;
 
 export type MobileReasoningEffort = (typeof MOBILE_REASONING_EFFORT_OPTIONS)[number]["value"];
@@ -473,6 +474,7 @@ export function readMobileRouterStrategy(value: unknown): MobileRouterStrategy {
   return value === "round_robin" ||
     value === "lowest_cost" ||
     value === "priority" ||
+    value === "mixture_of_agents" ||
     value === "weighted"
     ? value
     : "weighted";

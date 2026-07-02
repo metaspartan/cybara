@@ -162,7 +162,12 @@ export interface SystemPromptConfig {
 
 export type ToolApprovalDecision = "approve_once" | "approve_session" | "approve_always" | "deny";
 
-export type RouterStrategy = "weighted" | "round_robin" | "lowest_cost" | "priority";
+export type RouterStrategy =
+  | "weighted"
+  | "round_robin"
+  | "lowest_cost"
+  | "priority"
+  | "mixture_of_agents";
 
 export interface RouterRouteConfig {
   weight: number;
@@ -183,6 +188,8 @@ export interface RouterConfig {
   globalSpendLimitDaily?: number;
   fallbackToAny: boolean;
   routes: Record<string, RouterRouteConfig>;
+  moaMaxAgents?: number;
+  moaAggregatorAgentId?: string;
 }
 
 export interface RouterRouteStatus {
@@ -915,6 +922,7 @@ function normalizeRouterStrategy(value: unknown): RouterStrategy {
   return value === "round_robin" ||
     value === "lowest_cost" ||
     value === "priority" ||
+    value === "mixture_of_agents" ||
     value === "weighted"
     ? value
     : "weighted";
@@ -922,6 +930,8 @@ function normalizeRouterStrategy(value: unknown): RouterStrategy {
 
 function normalizeRouterConfig(value: unknown): RouterConfig {
   const record = asRecord(value);
+  const moaMaxAgents = readNumber(record, ["moaMaxAgents", "moa_max_agents"]);
+  const moaAggregatorAgentId = readString(record, ["moaAggregatorAgentId", "moa_aggregator_agent_id"]);
   return {
     enabled: record?.enabled === true,
     strategy: normalizeRouterStrategy(record?.strategy),
@@ -931,6 +941,8 @@ function normalizeRouterConfig(value: unknown): RouterConfig {
     ]),
     fallbackToAny: record?.fallbackToAny !== false && record?.fallback_to_any !== false,
     routes: (asRecord(record?.routes) as Record<string, RouterRouteConfig> | null) ?? {},
+    moaMaxAgents: moaMaxAgents && moaMaxAgents > 0 ? moaMaxAgents : undefined,
+    moaAggregatorAgentId: moaAggregatorAgentId || undefined,
   };
 }
 

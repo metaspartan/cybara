@@ -373,6 +373,7 @@ describe("mobile dashboard model", () => {
       "round_robin",
       "lowest_cost",
       "priority",
+      "mixture_of_agents",
     ]);
     expect(MOBILE_SYSTEM_PROMPT_FEATURE_KEYS).toEqual([
       "memoryEnabled",
