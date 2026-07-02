@@ -7,6 +7,10 @@ enum NativeDestination: String, CaseIterable, Identifiable {
     case agents
     case providers
     case tasks
+    case memory
+    case metrics
+    case router
+    case systemPrompt
     case gateway
     case webUI
 
@@ -19,6 +23,10 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .agents: return "Agents"
         case .providers: return "Providers"
         case .tasks: return "Tasks"
+        case .memory: return "Memory"
+        case .metrics: return "Metrics"
+        case .router: return "Model Router"
+        case .systemPrompt: return "System Prompt"
         case .gateway: return "Gateway"
         case .webUI: return "Web UI"
         }
@@ -31,6 +39,10 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .agents: return "cpu"
         case .providers: return "shippingbox"
         case .tasks: return "calendar.badge.clock"
+        case .memory: return "brain"
+        case .metrics: return "chart.bar"
+        case .router: return "point.3.connected.trianglepath.dotted"
+        case .systemPrompt: return "sparkles"
         case .gateway: return "server.rack"
         case .webUI: return "globe"
         }
@@ -125,6 +137,12 @@ struct ContentView: View {
                             .tag(item)
                     }
                 }
+                Section("Intelligence") {
+                    ForEach([NativeDestination.memory, .metrics, .router, .systemPrompt]) { item in
+                        Label(item.title, systemImage: item.systemImage)
+                            .tag(item)
+                    }
+                }
                 Section("System") {
                     ForEach([NativeDestination.gateway, .webUI]) { item in
                         Label(item.title, systemImage: item.systemImage)
@@ -155,6 +173,14 @@ struct ContentView: View {
                 ProvidersScreen(client: client)
             case .tasks:
                 TasksScreen(client: client)
+            case .memory:
+                MemoryScreen(client: client)
+            case .metrics:
+                MetricsScreen(client: client)
+            case .router:
+                RouterScreen(client: client)
+            case .systemPrompt:
+                SystemPromptScreen(client: client)
             case .gateway:
                 GatewayScreen()
             case .webUI:

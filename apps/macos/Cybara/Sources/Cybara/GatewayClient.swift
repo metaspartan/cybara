@@ -198,4 +198,91 @@ struct GatewayClient: Sendable {
     func runTask(_ id: String) async throws -> Data {
         try await request("api/tasks/\(id)/run", method: "POST")
     }
+
+    // ─── Raw-object config round-trips ───────────────────────────────────────
+    // Config PUT routes store the body verbatim, so screens read the full JSON
+    // object, mutate only the keys they own, and PUT the whole object back —
+    // preserving fields the native UI doesn't model yet (e.g. router routes).
+
+    func rawObject(_ path: String) async throws -> [String: Any] {
+        let data = try await request(path)
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw GatewayClientError.invalidResponse
+        }
+        return object
+    }
+
+    // Callers serialize on their own actor first ([String: Any] is not
+    // Sendable under Swift 6 strict concurrency; Data is).
+    @discardableResult
+    func putJSON(_ path: String, body: Data) async throws -> Data {
+        try await request(path, method: "PUT", body: body)
+    }
+
+    // ─── Router ──────────────────────────────────────────────────────────────
+
+    func routerConfig() async throws -> [String: Any] {
+        try await rawObject("api/router/config")
+    }
+
+    func updateRouterConfig(_ body: Data) async throws {
+        try await putJSON("api/router/config", body: body)
+    }
+
+    func routerStatus() async throws -> RouterStatusSummary {
+        try await get("api/router/status", as: RouterStatusSummary.self)
+    }
+
+    // ─── System prompt ───────────────────────────────────────────────────────
+
+    func systemPrompt() async throws -> [String: Any] {
+        try await rawObject("api/system-prompt")
+    }
+
+    func updateSystemPrompt(_ body: Data) async throws {
+        try await putJSON("api/system-prompt", body: body)
+    }
+
+    // ─── Memory ──────────────────────────────────────────────────────────────
+
+    func memoryFiles() async throws -> [String] {
+        let object = try await rawObject("api/memory")
+        return (object["files"] as? [String]) ?? []
+    }
+
+    // ─── Metrics ─────────────────────────────────────────────────────────────
+
+    func metricsOverview() async throws -> MetricsOverview {
+        try await get("api/metrics/overview", as: MetricsOverview.self)
+    }
+}
+
+struct RouterStatusSummary: Decodable {
+    let enabled: Bool?
+    let strategy: String?
+    let globalSpendToday: Double?
+    let totalRequests: Int?
+}
+
+struct MetricsOverview: Decodable {
+    struct TokenUsage: Decodable {
+        let total: Int?
+        let input: Int?
+        let output: Int?
+        let cache: Int?
+    }
+
+    struct Sessions: Decodable {
+        let totalSessions: Int?
+        let memoryFlushes: Int?
+        let compactions: Int?
+    }
+
+    struct ToolCalls: Decodable {
+        let totalCalls: Int?
+    }
+
+    let tokenUsage: TokenUsage?
+    let sessions: Sessions?
+    let toolCalls: ToolCalls?
 }
