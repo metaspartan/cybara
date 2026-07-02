@@ -4595,7 +4595,7 @@ function SettingsPanel({
                   ]}
                   selected={toolApprovalMode}
                   tone={accentColor}
-                  variant="segmented"
+                  variant="menu"
                 />
               ) : null}
               {MOBILE_SETTINGS_ROOT_CHROME.reasoningEffortSelector ? (
@@ -4615,7 +4615,7 @@ function SettingsPanel({
                   }))}
                   selected={reasoningEffort}
                   tone={accentColor}
-                  variant="segmented"
+                  variant="menu"
                 />
               ) : null}
               {MOBILE_SETTINGS_ROOT_CHROME.dangerousToolPolicyToggle ? (

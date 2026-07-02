@@ -21,6 +21,15 @@ describe("mobile: native dropdown selector", () => {
     // No multi-option picker is left rendering as a wall of chips
     expect(screen).not.toContain('variant="chips"');
   });
+
+  test("in-card settings choices are menu rows, not boxed segmented controls", () => {
+    // Tool approvals + Reasoning effort sat inside the Platform controls card as
+    // segmented strips (the boxed look); they are dropdown rows now.
+    const toolApprovals = screen.slice(screen.indexOf('label="Tool approvals"'));
+    expect(toolApprovals.slice(0, 900)).toContain('variant="menu"');
+    const reasoning = screen.slice(screen.indexOf('label="Reasoning effort"'));
+    expect(reasoning.slice(0, 900)).toContain('variant="menu"');
+  });
 });
 
 describe("mobile: settings gear", () => {
