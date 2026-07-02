@@ -92,6 +92,7 @@ import {
   getToolSchemasForLLM,
   getDangerousToolNames,
   getCircuitState,
+  isToolEnabledForAgent,
   type ToolContext,
 } from "../core/tools/index";
 import { executeTool, hasTool } from "../core/tools/handlers/index";
@@ -756,6 +757,9 @@ const routes: Record<string, RouteHandler> = {
 
     if (!hasTool(data.name)) {
       throw new Error(`Invalid tool: ${data.name}`);
+    }
+    if (!isToolEnabledForAgent(data.name)) {
+      throw new Error(`Validation error: Tool '${data.name}' is disabled by configuration`);
     }
 
     const contextPermissions = Array.isArray(data.context?.permissions)
