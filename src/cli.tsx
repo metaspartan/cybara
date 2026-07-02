@@ -2381,12 +2381,7 @@ async function rawConfig(subCmd?: string, key?: string, value?: string): Promise
     const val = (data as Record<string, unknown>)[key];
     console.log(val !== undefined ? `${key} = ${JSON.stringify(val)}` : `Key '${key}' not found`);
   } else if (subCmd === "set" && key && value !== undefined) {
-    // Coerce obvious booleans/numbers so `config set flag false` stores a real
-    // boolean, not the string "false" (which would read as truthy).
-    let coerced: unknown = value;
-    if (value === "true") coerced = true;
-    else if (value === "false") coerced = false;
-    else if (/^-?\d+(\.\d+)?$/.test(value)) coerced = Number(value);
+    const coerced: unknown = value === "true" ? true : value === "false" ? false : /^-?\d+(\.\d+)?$/.test(value) ? Number(value) : value; // boolean/number coercion
     const resp = await fetch(`${API_BASE}/api/config`, {
       method: "PUT",
       headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
