@@ -53,6 +53,7 @@ import {
   ListTodo,
   Loader2,
   MessageCircle,
+  Network,
   Plus,
   Play,
   RefreshCw,
@@ -191,6 +192,7 @@ type DetailRoute =
   | { kind: "newChat" }
   | { kind: "newTask" }
   | { kind: "systemPrompt" }
+  | { kind: "modelRouter" }
   | { kind: "surface"; surface: MobileSurfaceKey }
   | { kind: "item"; surface: MobileSurfaceKey; item: RemoteItemSummary | ActivitySummary };
 
@@ -643,6 +645,9 @@ function routeHeader(
   if (route.kind === "systemPrompt") {
     return { title: "System Prompt", detail: "Assistant identity and behavior" };
   }
+  if (route.kind === "modelRouter") {
+    return { title: "Model Router", detail: "Provider routing and fallback" };
+  }
   if (route.kind === "surface") {
     const meta = surfaceMeta[route.surface];
     return { title: meta.title, detail: "Live gateway data" };
@@ -838,6 +843,12 @@ export function DashboardScreen({
     setChatHeaderAction(null);
     setActiveTab("settings");
     setDetailRoute({ kind: "systemPrompt" });
+  };
+
+  const openModelRouter = () => {
+    setChatHeaderAction(null);
+    setActiveTab("settings");
+    setDetailRoute({ kind: "modelRouter" });
   };
 
   const openItem = (surface: MobileSurfaceKey, item: RemoteItemSummary | ActivitySummary) => {
@@ -1095,6 +1106,7 @@ export function DashboardScreen({
               onDisconnect={onDisconnect}
               openSurface={openSurface}
               openSystemPrompt={openSystemPrompt}
+              openModelRouter={openModelRouter}
             />
           ) : null}
         </ScrollView>
@@ -1870,6 +1882,9 @@ function DetailContent({
         refreshSummary={refreshSummary}
       />
     );
+  }
+  if (route.kind === "modelRouter") {
+    return <ModelRouterPanel accentColor={accentColor} api={api} />;
   }
   if (route.kind === "item") {
     return (
@@ -4135,6 +4150,191 @@ function SystemMonitorDetailPanel({
   );
 }
 
+function ModelRouterPanel({
+  api,
+  accentColor,
+}: {
+  api: CybaraMobileApi;
+  accentColor: string;
+}) {
+  const [routerConfig, setRouterConfig] = useState<RouterConfig | null>(null);
+  const [routerStatus, setRouterStatus] = useState<RouterStatus | null>(null);
+  const [routerError, setRouterError] = useState<string | null>(null);
+  const [routerDailyLimitDraft, setRouterDailyLimitDraft] = useState("");
+  const [savingRouterConfig, setSavingRouterConfig] = useState(false);
+
+  const routerStrategy = readMobileRouterStrategy(routerConfig?.strategy);
+  const routerRouteCount =
+    routerStatus?.routes.length ?? Object.keys(routerConfig?.routes ?? {}).length;
+  const routerAvailableCount = routerStatus?.routes.filter((route) => route.available).length;
+  const routerSpendToday =
+    typeof routerStatus?.globalSpendToday === "number" ? routerStatus.globalSpendToday : null;
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      try {
+        const [nextConfig, nextStatus] = await Promise.all([
+          api.routerConfig(),
+          api.routerStatus().catch(() => null),
+        ]);
+        if (!mounted) return;
+        setRouterConfig(nextConfig);
+        setRouterStatus(nextStatus);
+        setRouterDailyLimitDraft(
+          nextConfig.globalSpendLimitDaily && nextConfig.globalSpendLimitDaily > 0
+            ? String(nextConfig.globalSpendLimitDaily)
+            : ""
+        );
+        setRouterError(null);
+      } catch (error) {
+        if (mounted) setRouterError(error instanceof Error ? error.message : String(error));
+      }
+    };
+    void load();
+    return () => {
+      mounted = false;
+    };
+  }, [api]);
+
+  const saveRouterConfigPatch = async (patch: Partial<RouterConfig>) => {
+    if (!routerConfig || savingRouterConfig) return;
+    const previous = routerConfig;
+    const next = { ...routerConfig, ...patch };
+    setRouterConfig(next);
+    setSavingRouterConfig(true);
+    setRouterError(null);
+    try {
+      const result = await api.updateRouterConfig(next);
+      if (result.success === false) throw new Error("Router config update failed");
+      const nextStatus = await api.routerStatus().catch(() => null);
+      setRouterStatus(nextStatus);
+    } catch (error) {
+      setRouterConfig(previous);
+      setRouterError(error instanceof Error ? error.message : String(error));
+      Alert.alert("Router update failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setSavingRouterConfig(false);
+    }
+  };
+
+  const saveRouterDailyLimit = () => {
+    if (!routerConfig) return;
+    const trimmed = routerDailyLimitDraft.trim();
+    const numeric = trimmed.length > 0 ? Number(trimmed) : 0;
+    const nextLimit = Number.isFinite(numeric) && numeric > 0 ? numeric : undefined;
+    const currentLimit =
+      routerConfig.globalSpendLimitDaily && routerConfig.globalSpendLimitDaily > 0
+        ? routerConfig.globalSpendLimitDaily
+        : undefined;
+    if (nextLimit === currentLimit) return;
+    void saveRouterConfigPatch({ globalSpendLimitDaily: nextLimit });
+  };
+
+  return (
+    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+      <View style={styles.itemHero}>
+        <View style={[styles.summaryIcon, { backgroundColor: `${accentColor}18` }]}>
+          <Network color={accentColor} size={21} strokeWidth={2.2} />
+        </View>
+        <View style={styles.itemHeroText}>
+          <Text style={styles.itemTitle}>Model Router</Text>
+          <Text style={styles.itemDetail}>
+            Route chats across providers with fallback and selection strategies
+          </Text>
+        </View>
+      </View>
+
+      {routerConfig ? (
+        <>
+          <View style={styles.settingsGroup}>
+            <SettingToggle
+              busy={savingRouterConfig}
+              detail="Route chats across configured model providers with fallback rules."
+              disabled={savingRouterConfig}
+              label="Model router"
+              onPress={() => {
+                void saveRouterConfigPatch({ enabled: !routerConfig.enabled });
+              }}
+              tone={accentColor}
+              value={routerConfig.enabled}
+            />
+            <SettingSelector
+              disabled={savingRouterConfig}
+              label="Selection strategy"
+              variant="menu"
+              onSelect={(value) => {
+                void saveRouterConfigPatch({ strategy: readMobileRouterStrategy(value) });
+              }}
+              options={MOBILE_ROUTER_STRATEGY_OPTIONS.map((option) => ({
+                label: option.label,
+                value: option.value,
+              }))}
+              selected={routerStrategy}
+              tone={accentColor}
+            />
+            <SettingToggle
+              busy={savingRouterConfig}
+              detail="Use any healthy provider when configured routes are unavailable."
+              disabled={savingRouterConfig}
+              label="Fallback providers"
+              onPress={() => {
+                void saveRouterConfigPatch({ fallbackToAny: !routerConfig.fallbackToAny });
+              }}
+              tone={accentColor}
+              value={routerConfig.fallbackToAny}
+            />
+            <View style={styles.settingsSegmentField}>
+              <Text style={styles.settingsFieldLabel}>Daily spend cap</Text>
+              <TextInput
+                editable={!savingRouterConfig}
+                keyboardType="decimal-pad"
+                onBlur={saveRouterDailyLimit}
+                onChangeText={setRouterDailyLimitDraft}
+                placeholder="No cap"
+                placeholderTextColor={colors.textDim}
+                returnKeyType="done"
+                style={styles.settingsInput}
+                value={routerDailyLimitDraft}
+              />
+              <Text style={styles.settingsFieldHelp}>USD per day. Leave blank for no cap.</Text>
+            </View>
+          </View>
+
+          <DetailInfoSection
+            title="Status"
+            fields={[
+              { label: "Providers in rotation", value: String(routerRouteCount) },
+              {
+                label: "Available now",
+                value: routerAvailableCount === undefined ? "Unknown" : String(routerAvailableCount),
+              },
+              { label: "Strategy", value: routerStrategy.replace(/_/g, " ") },
+              {
+                label: "Spent today",
+                value: routerSpendToday === null ? "Unknown" : `$${routerSpendToday.toFixed(4)}`,
+              },
+              {
+                label: "Daily cap",
+                value:
+                  routerConfig.globalSpendLimitDaily && routerConfig.globalSpendLimitDaily > 0
+                    ? `$${routerConfig.globalSpendLimitDaily}`
+                    : "None",
+              },
+            ]}
+          />
+          {routerError ? <Text style={styles.errorText}>{routerError}</Text> : null}
+        </>
+      ) : (
+        <EmptyState
+          label="Router unavailable"
+          detail={routerError || "The gateway did not return model router settings."}
+        />
+      )}
+    </GlassPanel>
+  );
+}
+
 function SystemPromptPanel({
   api,
   summary,
@@ -4438,6 +4638,7 @@ function SettingsPanel({
   onDisconnect,
   openSurface,
   openSystemPrompt,
+  openModelRouter,
 }: {
   accentColor: string;
   accentKey: AccentKey;
@@ -4450,17 +4651,13 @@ function SettingsPanel({
   onDisconnect: () => void;
   openSurface: (surface: MobileSurfaceKey) => void;
   openSystemPrompt: () => void;
+  openModelRouter: () => void;
 }) {
   const counts = summarizeFeatureCounts(summary);
   const { mode: appearanceMode, setMode: setAppearanceMode } = useThemeControls();
   const [savingAccent, setSavingAccent] = useState<AccentKey | null>(null);
   const [savingConfigKey, setSavingConfigKey] = useState<string | null>(null);
   const [savingAgentAccess, setSavingAgentAccess] = useState(false);
-  const [routerConfig, setRouterConfig] = useState<RouterConfig | null>(null);
-  const [routerStatus, setRouterStatus] = useState<RouterStatus | null>(null);
-  const [routerError, setRouterError] = useState<string | null>(null);
-  const [routerDailyLimitDraft, setRouterDailyLimitDraft] = useState("");
-  const [savingRouterConfig, setSavingRouterConfig] = useState(false);
   const configAvailable = summary?.availability.config.ok === true;
   const systemPromptAvailable =
     summary?.availability.systemPrompt.ok === true && Boolean(summary.systemPrompt);
@@ -4482,44 +4679,9 @@ function SettingsPanel({
   const reasoningEffort = readMobileReasoningEffort(summary?.config);
   const dangerousPolicy = readMobileDangerousToolPolicy(summary?.config);
   const sandboxRuntime = readMobileSandboxRuntime(summary?.config);
-  const routerStrategy = readMobileRouterStrategy(routerConfig?.strategy);
-  const routerRouteCount =
-    routerStatus?.routes.length ?? Object.keys(routerConfig?.routes ?? {}).length;
-  const routerAvailableCount = routerStatus?.routes.filter((route) => route.available).length;
-  const routerSpendToday =
-    typeof routerStatus?.globalSpendToday === "number" ? routerStatus.globalSpendToday : null;
   const walletStatus = objectRecord(summary?.walletStatus);
   const walletStatusAvailable = Boolean(walletStatus);
   const agentAccessEnabled = booleanSetting(walletStatus, "agentAccessEnabled");
-
-  useEffect(() => {
-    let mounted = true;
-    const loadRouterConfig = async () => {
-      try {
-        const [nextConfig, nextStatus] = await Promise.all([
-          api.routerConfig(),
-          api.routerStatus().catch(() => null),
-        ]);
-        if (!mounted) return;
-        setRouterConfig(nextConfig);
-        setRouterStatus(nextStatus);
-        setRouterDailyLimitDraft(
-          nextConfig.globalSpendLimitDaily && nextConfig.globalSpendLimitDaily > 0
-            ? String(nextConfig.globalSpendLimitDaily)
-            : ""
-        );
-        setRouterError(null);
-      } catch (error) {
-        if (mounted) {
-          setRouterError(error instanceof Error ? error.message : String(error));
-        }
-      }
-    };
-    void loadRouterConfig();
-    return () => {
-      mounted = false;
-    };
-  }, [api]);
 
   const saveConfigPatch = async (
     key: string,
@@ -4558,42 +4720,6 @@ function SettingsPanel({
     } finally {
       setSavingAgentAccess(false);
     }
-  };
-
-  const saveRouterConfigPatch = async (patch: Partial<RouterConfig>) => {
-    if (!routerConfig || savingRouterConfig) return;
-    const previous = routerConfig;
-    const next = { ...routerConfig, ...patch };
-    setRouterConfig(next);
-    setSavingRouterConfig(true);
-    setRouterError(null);
-    try {
-      const result = await api.updateRouterConfig(next);
-      if (result.success === false) {
-        throw new Error("Router config update failed");
-      }
-      const nextStatus = await api.routerStatus().catch(() => null);
-      setRouterStatus(nextStatus);
-    } catch (error) {
-      setRouterConfig(previous);
-      setRouterError(error instanceof Error ? error.message : String(error));
-      Alert.alert("Router update failed", error instanceof Error ? error.message : String(error));
-    } finally {
-      setSavingRouterConfig(false);
-    }
-  };
-
-  const saveRouterDailyLimit = () => {
-    if (!routerConfig) return;
-    const trimmed = routerDailyLimitDraft.trim();
-    const numeric = trimmed.length > 0 ? Number(trimmed) : 0;
-    const nextLimit = Number.isFinite(numeric) && numeric > 0 ? numeric : undefined;
-    const currentLimit =
-      routerConfig.globalSpendLimitDaily && routerConfig.globalSpendLimitDaily > 0
-        ? routerConfig.globalSpendLimitDaily
-        : undefined;
-    if (nextLimit === currentLimit) return;
-    void saveRouterConfigPatch({ globalSpendLimitDaily: nextLimit });
   };
 
   const updateThemeAccent = async (next: AccentKey) => {
@@ -4932,103 +5058,6 @@ function SettingsPanel({
             />
           )}
         </SettingsSection>
-        {MOBILE_SETTINGS_ROOT_CHROME.modelRouterControls ? (
-          <SettingsSection title="Model router">
-            {routerConfig ? (
-              <>
-                <SettingToggle
-                  busy={savingRouterConfig}
-                  detail="Route chats across configured model providers with fallback rules."
-                  disabled={savingRouterConfig}
-                  label="Model router"
-                  onPress={() => {
-                    void saveRouterConfigPatch({ enabled: !routerConfig.enabled });
-                  }}
-                  tone={accentColor}
-                  value={routerConfig.enabled}
-                />
-                <SettingSelector
-                  disabled={savingRouterConfig}
-                  label="Selection strategy"
-                  onSelect={(value) => {
-                    void saveRouterConfigPatch({ strategy: readMobileRouterStrategy(value) });
-                  }}
-                  options={MOBILE_ROUTER_STRATEGY_OPTIONS.map((option) => ({
-                    label: option.label,
-                    value: option.value,
-                  }))}
-                  selected={routerStrategy}
-                  tone={accentColor}
-                  variant="segmented"
-                />
-                <SettingToggle
-                  busy={savingRouterConfig}
-                  detail="Use any healthy provider when configured routes are unavailable."
-                  disabled={savingRouterConfig}
-                  label="Fallback providers"
-                  onPress={() => {
-                    void saveRouterConfigPatch({ fallbackToAny: !routerConfig.fallbackToAny });
-                  }}
-                  tone={accentColor}
-                  value={routerConfig.fallbackToAny}
-                />
-                <View style={styles.settingsSegmentField}>
-                  <Text style={styles.settingsFieldLabel}>Daily spend cap</Text>
-                  <TextInput
-                    editable={!savingRouterConfig}
-                    keyboardType="decimal-pad"
-                    onBlur={saveRouterDailyLimit}
-                    onChangeText={setRouterDailyLimitDraft}
-                    placeholder="No cap"
-                    placeholderTextColor={colors.textDim}
-                    returnKeyType="done"
-                    style={styles.settingsInput}
-                    value={routerDailyLimitDraft}
-                  />
-                  <Text style={styles.settingsFieldHelp}>USD per day. Leave blank for no cap.</Text>
-                </View>
-                <View style={styles.routerSummaryBox}>
-                  <View style={styles.routerSummaryRow}>
-                    <Text style={styles.routerSummaryLabel}>Providers in rotation</Text>
-                    <Text style={styles.routerSummaryValue}>{routerRouteCount}</Text>
-                  </View>
-                  <View style={styles.routerSummaryRow}>
-                    <Text style={styles.routerSummaryLabel}>Available now</Text>
-                    <Text style={styles.routerSummaryValue}>
-                      {routerAvailableCount === undefined ? "Unknown" : routerAvailableCount}
-                    </Text>
-                  </View>
-                  <View style={styles.routerSummaryRow}>
-                    <Text style={styles.routerSummaryLabel}>Strategy</Text>
-                    <Text style={styles.routerSummaryValue}>
-                      {routerStrategy.replace(/_/g, " ")}
-                    </Text>
-                  </View>
-                  <View style={styles.routerSummaryRow}>
-                    <Text style={styles.routerSummaryLabel}>Spent today</Text>
-                    <Text style={styles.routerSummaryValue}>
-                      {routerSpendToday === null ? "Unknown" : `$${routerSpendToday.toFixed(4)}`}
-                    </Text>
-                  </View>
-                  <View style={styles.routerSummaryRow}>
-                    <Text style={styles.routerSummaryLabel}>Daily cap</Text>
-                    <Text style={styles.routerSummaryValue}>
-                      {routerConfig.globalSpendLimitDaily && routerConfig.globalSpendLimitDaily > 0
-                        ? `$${routerConfig.globalSpendLimitDaily}`
-                        : "None"}
-                    </Text>
-                  </View>
-                </View>
-                {routerError ? <Text style={styles.errorText}>{routerError}</Text> : null}
-              </>
-            ) : (
-              <EmptyState
-                label="Router unavailable"
-                detail={routerError || "The gateway did not return model router settings."}
-              />
-            )}
-          </SettingsSection>
-        ) : null}
         <SettingsSection title="Assistant">
           <Pressable
             accessibilityRole="button"
@@ -5050,6 +5079,24 @@ function SettingsPanel({
             </View>
             <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
           </Pressable>
+          {MOBILE_SETTINGS_ROOT_CHROME.modelRouterControls ? (
+            <Pressable
+              accessibilityRole="button"
+              style={styles.settingsNavigationRow}
+              onPress={openModelRouter}
+            >
+              <View style={[styles.settingsNavigationIcon, { backgroundColor: `${accentColor}18` }]}>
+                <Network color={accentColor} size={20} strokeWidth={2.1} />
+              </View>
+              <View style={styles.listText}>
+                <Text style={styles.listTitle}>Model Router</Text>
+                <Text style={styles.listDetail} numberOfLines={1}>
+                  Provider routing, fallback, and spend caps
+                </Text>
+              </View>
+              <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+            </Pressable>
+          ) : null}
         </SettingsSection>
         <SettingsSection title="Gateway APIs">
           <SettingsRow

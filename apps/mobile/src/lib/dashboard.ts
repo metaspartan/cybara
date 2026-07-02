@@ -159,6 +159,7 @@ export type MobileDetailBackInput =
   | { kind: "newChat" }
   | { kind: "newTask" }
   | { kind: "systemPrompt" }
+  | { kind: "modelRouter" }
   | { kind: "surface"; surface: MobileSurfaceKey }
   | { kind: "item"; surface: MobileSurfaceKey };
 

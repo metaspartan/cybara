@@ -84,6 +84,27 @@ describe("mobile: system prompt sub-page (web parity)", () => {
   });
 });
 
+describe("mobile: model router sub-page", () => {
+  const screen = read("screens/DashboardScreen.tsx");
+
+  test("router config lives on its own Model Router page reached from settings", () => {
+    expect(screen).toContain("function ModelRouterPanel(");
+    expect(screen).toContain("<ModelRouterPanel");
+    expect(screen).toContain('kind: "modelRouter"');
+    expect(screen).toContain("openModelRouter");
+    expect(screen).toContain('<Text style={styles.listTitle}>Model Router</Text>');
+    // no longer an inline section on the settings tab
+    expect(screen).not.toContain('title="Model router"');
+  });
+
+  test("the router page keeps strategy, fallback, and spend controls", () => {
+    const panel = screen.slice(screen.indexOf("function ModelRouterPanel("));
+    expect(panel.slice(0, 6000)).toContain('label="Selection strategy"');
+    expect(panel.slice(0, 6000)).toContain('label="Fallback providers"');
+    expect(panel.slice(0, 6000)).toContain("api.updateRouterConfig");
+  });
+});
+
 describe("mobile HIG: safe-area inset on the tab bar", () => {
   const screen = read("screens/DashboardScreen.tsx");
 
