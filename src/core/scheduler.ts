@@ -2,6 +2,7 @@ import { tables, type Task } from "./database";
 import { agentManager } from "./agent";
 import { handleChat } from "../api/chat";
 import { broadcastTaskEvent } from "./status";
+import { parseCronExpression } from "./cron/cron-expr";
 
 function parseTaskConfig(config: unknown, taskId?: string): Record<string, unknown> {
   if (typeof config === "string") {
@@ -58,6 +59,22 @@ class TaskScheduler {
     config?: Record<string, unknown>;
     enabled?: boolean;
   }): Task {
+    if (typeof data?.name !== "string" || !data.name.trim()) {
+      throw new Error("Validation error: Task name is required");
+    }
+    if (data.schedule !== undefined && data.schedule !== "") {
+      if (typeof data.schedule !== "string") {
+        throw new Error("Validation error: schedule must be a cron string");
+      }
+      try {
+        parseCronExpression(data.schedule);
+      } catch (error) {
+        throw new Error(
+          `Validation error: Invalid cron schedule: ${(error as Error).message}`
+        );
+      }
+    }
+
     const id = crypto.randomUUID();
     const next_run = this.calculateNextRun(data.schedule);
 

@@ -396,22 +396,33 @@ Bun.serve<WsData>({
     if (pathname.startsWith("/api/")) {
       let body: unknown;
       let rawBody: string | undefined;
+      let malformedBody = false;
       if (req.method !== "GET" && req.method !== "HEAD") {
         const needsRaw = pathname.endsWith("/webhook") || pathname.includes("/webhooks/");
-        if (needsRaw) {
+        let text = "";
+        try {
+          text = await req.text();
+        } catch {
+          text = "";
+        }
+        if (needsRaw) rawBody = text;
+        if (text) {
           try {
-            rawBody = await req.text();
-            body = rawBody ? JSON.parse(rawBody) : undefined;
+            body = JSON.parse(text);
           } catch {
             body = undefined;
-          }
-        } else {
-          try {
-            body = await req.json();
-          } catch {
-            body = undefined;
+            malformedBody = !needsRaw;
           }
         }
+      }
+      if (malformedBody) {
+        return new Response(
+          JSON.stringify({ error: "Invalid JSON body", code: "VALIDATION_ERROR", path: pathname }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json", ...commonSecurityHeaders },
+          }
+        );
       }
       const response = await handleRequest({
         method: req.method,

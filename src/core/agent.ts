@@ -1193,6 +1193,9 @@ class AgentManager {
   }
 
   create(definition: AgentDefinition): Agent {
+    if (typeof definition?.name !== "string" || !definition.name.trim()) {
+      throw new Error("Validation error: Agent name is required");
+    }
     const id = crypto.randomUUID();
 
     const typeConfig = definition.type ? AGENT_TYPES[definition.type] : undefined;
