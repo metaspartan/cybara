@@ -6,10 +6,11 @@ This is the native SwiftUI macOS app for Cybara. It launches the same local serv
 
 - resolves a Cybara sidecar binary from:
   - `CYBARA_NATIVE_SIDECAR_PATH`
-  - `cybara` on `PATH`
 - `src-tauri/bin/cybara-aarch64-apple-darwin`
 - `src-tauri/bin/cybara-x86_64-apple-darwin`
 - `release/cybara`
+- bundled sidecar paths inside `Cybara.app`
+- `cybara` on `PATH` as a last resort, excluding app-bundle executable aliases
 - attaches to an existing local Cybara gateway on `http://127.0.0.1:4269` when one is already running
 - otherwise starts `cybara start --enable-terminal` with `PORT=4269` and `CYBARA_HOST=127.0.0.1`
 - waits for `http://127.0.0.1:4269/api/health`

@@ -61,6 +61,22 @@ public enum SidecarCore {
             .path
     }
 
+    /// `PATH` can include an app bundle's `Contents/MacOS` directory after a
+    /// native launch. Treat a lowercase `cybara` binary there as an app-bundle
+    /// executable alias, not as the external Bun sidecar, to avoid recursion.
+    public static func isAppBundleExecutableAlias(_ path: String, executableDirectory: String)
+        -> Bool
+    {
+        let candidateURL = URL(fileURLWithPath: (path as NSString).standardizingPath)
+        let candidateDirectory = (candidateURL.deletingLastPathComponent().path as NSString)
+            .standardizingPath
+        let executableDirectory = (executableDirectory as NSString).standardizingPath
+        guard candidateDirectory == executableDirectory else {
+            return false
+        }
+        return candidateURL.lastPathComponent.lowercased() == "cybara"
+    }
+
     /// Ordered sidecar-binary candidate paths (most-specific first). Pure so the
     /// resolution order is testable without a filesystem.
     public static func sidecarCandidatePaths(currentDirectory: String, executableDirectory: String)

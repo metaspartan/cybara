@@ -225,7 +225,10 @@ final class GatewayClientModelTests: XCTestCase {
                   "name": "OpenAI",
                   "description": "Use OpenAI models",
                   "baseUrl": "https://api.openai.com/v1",
-                  "authType": "api_key",
+                  "authType": "oauth",
+                  "oauthFlow": "redirect",
+                  "hasOAuthConfig": true,
+                  "oauthLoginUrl": "https://chatgpt.com/",
                   "models": [
                     {"id": "gpt-4.1", "name": "GPT-4.1", "context": 1048576, "reasoning": true}
                   ]
@@ -239,6 +242,10 @@ final class GatewayClientModelTests: XCTestCase {
         )
 
         XCTAssertEqual(available.models.first?.id, "gpt-4.1")
+        XCTAssertEqual(available.authType, "oauth")
+        XCTAssertEqual(available.oauthFlow, "redirect")
+        XCTAssertEqual(available.hasOAuthConfig, true)
+        XCTAssertEqual(available.oauthLoginUrl, "https://chatgpt.com/")
         XCTAssertEqual(cached.displayName, "GPT-4.1")
     }
 
@@ -253,6 +260,10 @@ final class GatewayClientModelTests: XCTestCase {
               "is_default": 1,
               "enabled": "true",
               "info": {
+                "authType": "oauth",
+                "oauthFlow": "redirect",
+                "oauthConfig": {"callbackPort": 1455},
+                "oauthLoginUrl": "https://chatgpt.com/",
                 "models": [
                   {"id": "gpt-5-mini", "name": "GPT-5 Mini"},
                   {"model_id": "gpt-5.1-codex", "model_name": "GPT-5.1 Codex"}
@@ -267,6 +278,10 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(provider.is_default, true)
         XCTAssertEqual(provider.enabled, true)
         XCTAssertEqual(provider.models, ["gpt-5-mini", "gpt-5.1-codex"])
+        XCTAssertEqual(provider.authType, "oauth")
+        XCTAssertEqual(provider.oauthFlow, "redirect")
+        XCTAssertEqual(provider.hasOAuthConfig, true)
+        XCTAssertEqual(provider.oauthLoginUrl, "https://chatgpt.com/")
     }
 
     func testProviderModelDecodesGatewayModelCacheRows() throws {

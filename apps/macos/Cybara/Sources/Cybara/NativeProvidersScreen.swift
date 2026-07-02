@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ProvidersScreen: View {
@@ -45,7 +46,7 @@ struct ProvidersScreen: View {
         }
         .task { await load() }
         .sheet(isPresented: $showingCreate) {
-            ProviderEditorSheet(availableProviders: availableProviders) { draft in
+            ProviderEditorSheet(client: client, availableProviders: availableProviders) { draft in
                 try await client.createProvider(
                     provider: draft.providerType,
                     name: draft.name,
@@ -59,7 +60,7 @@ struct ProvidersScreen: View {
             }
         }
         .sheet(item: $editingProvider) { provider in
-            ProviderEditorSheet(provider: provider, availableProviders: availableProviders) { draft in
+            ProviderEditorSheet(client: client, provider: provider, availableProviders: availableProviders) { draft in
                 try await client.updateProvider(
                     provider.id,
                     name: draft.name,
@@ -160,7 +161,11 @@ struct ProvidersScreen: View {
                             .foregroundStyle(Color.yellow)
                     }
                 }
-                Text([provider.providerType, provider.base_url].compactMap { $0 }.joined(separator: " · "))
+                Text([
+                    provider.providerType,
+                    providerAuthLabel(provider),
+                    provider.base_url,
+                ].compactMap { $0 }.joined(separator: " · "))
                     .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -265,6 +270,17 @@ struct ProvidersScreen: View {
             self.error = error.localizedDescription
         }
     }
+
+    private func providerAuthLabel(_ provider: GatewayProvider) -> String? {
+        switch firstNonEmptyGatewayString(provider.authType) {
+        case "api_key": return "API key"
+        case "oauth": return provider.oauthFlow == "device_code" ? "OAuth device code" : "OAuth"
+        case "aws-sdk": return "AWS SDK"
+        case "none": return "No auth"
+        case let value?: return value
+        case nil: return nil
+        }
+    }
 }
 
 struct ProviderEditorDraft {
@@ -277,6 +293,7 @@ struct ProviderEditorDraft {
 }
 
 private struct ProviderEditorSheet: View {
+    let client: GatewayClient
     let provider: GatewayProvider?
     let availableProviders: [GatewayAvailableProvider]
     let onSave: (ProviderEditorDraft) async throws -> Void
@@ -290,23 +307,53 @@ private struct ProviderEditorSheet: View {
     @State private var isDefault: Bool
     @State private var saving = false
     @State private var error: String?
+    @State private var oauthState: ProviderOAuthState = .idle
+    @State private var oauthDeviceCode: GatewayOAuthDeviceCodeResponse?
+    @State private var oauthToken = ""
+    @State private var oauthError: String?
 
     init(
+        client: GatewayClient,
         provider: GatewayProvider? = nil,
         availableProviders: [GatewayAvailableProvider],
         onSave: @escaping (ProviderEditorDraft) async throws -> Void
     ) {
+        self.client = client
         self.provider = provider
         self.availableProviders = availableProviders
         self.onSave = onSave
         _providerType = State(initialValue: provider?.providerType ?? availableProviders.first?.id ?? "openai")
-        _name = State(initialValue: provider?.displayName ?? "")
-        _baseURL = State(initialValue: provider?.base_url ?? "")
+        _name = State(initialValue: provider?.displayName ?? availableProviders.first.map { "My \($0.name)" } ?? "")
+        _baseURL = State(initialValue: provider?.base_url ?? availableProviders.first?.baseUrl ?? "")
         _isDefault = State(initialValue: provider?.is_default ?? false)
     }
 
     private var selectedProvider: GatewayAvailableProvider? {
         availableProviders.first { $0.id == providerType }
+    }
+
+    private var selectedAuthType: String {
+        firstNonEmptyGatewayString(selectedProvider?.authType, provider?.authType) ?? "api_key"
+    }
+
+    private var selectedOAuthFlow: String? {
+        firstNonEmptyGatewayString(selectedProvider?.oauthFlow, provider?.oauthFlow)
+    }
+
+    private var selectedHasOAuthConfig: Bool {
+        selectedProvider?.hasOAuthConfig ?? provider?.hasOAuthConfig ?? false
+    }
+
+    private var selectedOAuthLoginUrl: String? {
+        firstNonEmptyGatewayString(selectedProvider?.oauthLoginUrl, provider?.oauthLoginUrl)
+    }
+
+    private var selectedProviderName: String {
+        selectedProvider?.name ?? provider?.displayName ?? "Provider"
+    }
+
+    private var saveDisabled: Bool {
+        saving || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
@@ -323,16 +370,20 @@ private struct ProviderEditorSheet: View {
                 .disabled(provider != nil)
                 TextField("Display name", text: $name)
                 TextField("Base URL", text: $baseURL)
-                SecureField("API key", text: $apiKey)
-                SecureField("Access token", text: $accessToken)
+                credentialSection
                 Toggle("Use as default provider", isOn: $isDefault)
             }
             .formStyle(.grouped)
 
             if let selectedProvider {
-                Text(selectedProvider.description ?? "\(selectedProvider.name) provider")
-                    .font(.system(size: 12, design: .rounded))
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(selectedProvider.description ?? "\(selectedProvider.name) provider")
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(.secondary)
+                    Text("\(authDescription) · \(selectedProvider.models.count) models")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(.tertiary)
+                }
             }
 
             if let error {
@@ -348,13 +399,14 @@ private struct ProviderEditorSheet: View {
                     Task { await save() }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(saving || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(saveDisabled)
             }
         }
         .padding(24)
         .frame(width: 560)
         .frame(minHeight: 430)
         .onChange(of: providerType) { _, next in
+            resetOAuth()
             if provider == nil, name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                let selected = availableProviders.first(where: { $0.id == next }) {
                 name = "My \(selected.name)"
@@ -363,7 +415,269 @@ private struct ProviderEditorSheet: View {
                let selected = availableProviders.first(where: { $0.id == next }),
                let selectedBaseURL = selected.baseUrl {
                 baseURL = selectedBaseURL
+            } else if provider == nil,
+                      let selected = availableProviders.first(where: { $0.id == next }),
+                      let selectedBaseURL = selected.baseUrl,
+                      availableProviders.compactMap(\.baseUrl).contains(baseURL) {
+                baseURL = selectedBaseURL
             }
+        }
+    }
+
+    @ViewBuilder
+    private var credentialSection: some View {
+        switch selectedAuthType {
+        case "api_key":
+            SecureField("API key", text: $apiKey)
+            Text("Paste the provider API key. Leave blank while editing to keep the saved key.")
+                .font(.system(size: 11, design: .rounded))
+                .foregroundStyle(.secondary)
+        case "oauth":
+            oauthSection
+        case "aws-sdk":
+            credentialInfo(
+                title: "AWS SDK authentication",
+                detail: "Use AWS environment variables, AWS CLI profiles, or your instance role. No API key is saved here.",
+                systemImage: "key.radiowaves.forward"
+            )
+        case "none":
+            credentialInfo(
+                title: "No authentication required",
+                detail: "This provider connects without saved credentials, usually to a local runtime.",
+                systemImage: "link"
+            )
+        default:
+            SecureField("Access token", text: $accessToken)
+            Text("Paste a bearer token for this provider. Leave blank while editing to keep the saved token.")
+                .font(.system(size: 11, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var oauthSection: some View {
+        if selectedHasOAuthConfig {
+            VStack(alignment: .leading, spacing: 10) {
+                credentialInfo(
+                    title: "\(selectedProviderName) uses OAuth",
+                    detail: "Sign in through the gateway. Cybara stores the returned access token; no API key is required.",
+                    systemImage: "person.badge.key"
+                )
+
+                switch oauthState {
+                case .idle:
+                    Button {
+                        Task { await startOAuth() }
+                    } label: {
+                        Label(
+                            selectedOAuthFlow == "device_code" ? "Connect via OAuth" : "Sign in with \(selectedProviderName)",
+                            systemImage: "arrow.up.forward.app"
+                        )
+                    }
+                    .buttonStyle(.borderedProminent)
+                case .connecting:
+                    Label("Starting OAuth...", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                case .polling:
+                    oauthPollingView
+                case .success:
+                    credentialInfo(
+                        title: "Connected",
+                        detail: "Save this provider to store the OAuth token.",
+                        systemImage: "checkmark.seal"
+                    )
+                case .error:
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(oauthError ?? "OAuth sign-in failed.")
+                            .font(.system(size: 12, design: .rounded))
+                            .foregroundStyle(.red)
+                        Button("Try Again") {
+                            Task { await startOAuth() }
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                credentialInfo(
+                    title: "\(selectedProviderName) uses OAuth",
+                    detail: selectedOAuthLoginUrl == nil
+                        ? "Paste an access token for this provider. Leave blank while editing to keep the saved token."
+                        : "Open the provider page, create or copy a token, then paste it below.",
+                    systemImage: "person.badge.key"
+                )
+                if let loginUrl = selectedOAuthLoginUrl, let url = URL(string: loginUrl) {
+                    Button {
+                        NSWorkspace.shared.open(url)
+                    } label: {
+                        Label("Open Provider Page", systemImage: "safari")
+                    }
+                    .buttonStyle(.bordered)
+                }
+                SecureField("Access token", text: $accessToken)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var oauthPollingView: some View {
+        if let oauthDeviceCode {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Enter this code in the browser")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                HStack {
+                    Text(oauthDeviceCode.userCode)
+                        .font(.system(size: 22, weight: .bold, design: .monospaced))
+                        .textSelection(.enabled)
+                    Spacer()
+                    Button("Copy") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(oauthDeviceCode.userCode, forType: .string)
+                    }
+                }
+                Text(oauthDeviceCode.verificationUri)
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                ProgressView("Waiting for authorization...")
+                    .controlSize(.small)
+            }
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.white.opacity(0.055))
+            )
+        } else {
+            ProgressView("Waiting for sign-in...")
+                .controlSize(.small)
+        }
+    }
+
+    private func credentialInfo(title: String, detail: String, systemImage: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 24, height: 24)
+                .background(Circle().fill(Color.white.opacity(0.07)))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                Text(detail)
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white.opacity(0.055))
+        )
+    }
+
+    private var authDescription: String {
+        switch selectedAuthType {
+        case "api_key": return "API key"
+        case "oauth": return selectedOAuthFlow == "device_code" ? "OAuth device code" : "OAuth redirect"
+        case "aws-sdk": return "AWS SDK"
+        case "none": return "No auth"
+        default: return selectedAuthType
+        }
+    }
+
+    @MainActor
+    private func resetOAuth() {
+        oauthState = .idle
+        oauthDeviceCode = nil
+        oauthToken = ""
+        oauthError = nil
+    }
+
+    @MainActor
+    private func startOAuth() async {
+        resetOAuth()
+        oauthState = .connecting
+        do {
+            if selectedOAuthFlow == "device_code" {
+                try await startDeviceCodeOAuth()
+            } else {
+                try await startRedirectOAuth()
+            }
+        } catch {
+            oauthError = error.localizedDescription
+            oauthState = .error
+        }
+    }
+
+    @MainActor
+    private func startRedirectOAuth() async throws {
+        let response = try await client.startProviderOAuth(providerType: providerType)
+        guard let url = URL(string: response.authUrl), !response.state.isEmpty else {
+            throw GatewayClientError.invalidResponse
+        }
+        NSWorkspace.shared.open(url)
+        oauthState = .polling
+
+        let deadline = Date().addingTimeInterval(600)
+        while Date() < deadline, oauthState == .polling {
+            try await Task.sleep(nanoseconds: 3_000_000_000)
+            let status = try await client.providerOAuthCallbackStatus(state: response.state)
+            if status.status == "success", let token = status.accessToken {
+                oauthToken = token
+                accessToken = token
+                oauthState = .success
+                return
+            }
+            if status.status == "error" {
+                oauthError = status.error ?? "Authorization failed."
+                oauthState = .error
+                return
+            }
+        }
+        if oauthState == .polling {
+            oauthError = "Authorization timed out. Please try again."
+            oauthState = .error
+        }
+    }
+
+    @MainActor
+    private func startDeviceCodeOAuth() async throws {
+        let response = try await client.startProviderDeviceCodeOAuth(providerType: providerType)
+        oauthDeviceCode = response
+        if let url = URL(string: response.verificationUri) {
+            NSWorkspace.shared.open(url)
+        }
+        oauthState = .polling
+
+        let interval = max(5, response.interval)
+        let deadline = Date().addingTimeInterval(TimeInterval(max(60, response.expiresIn)))
+        while Date() < deadline, oauthState == .polling {
+            try await Task.sleep(nanoseconds: UInt64(interval) * 1_000_000_000)
+            let status = try await client.pollProviderDeviceCodeOAuth(
+                providerType: providerType,
+                deviceCode: response.deviceCode
+            )
+            if status.status == "success", let token = status.accessToken {
+                oauthToken = token
+                accessToken = token
+                oauthState = .success
+                return
+            }
+            if status.status == "expired" || status.status == "denied" || status.status == "error" {
+                oauthError = status.error ?? (status.status == "denied"
+                    ? "Authorization was denied."
+                    : "Authorization expired. Please try again.")
+                oauthState = .error
+                return
+            }
+        }
+        if oauthState == .polling {
+            oauthError = "Authorization timed out. Please try again."
+            oauthState = .error
         }
     }
 
@@ -371,12 +685,13 @@ private struct ProviderEditorSheet: View {
         saving = true
         defer { saving = false }
         do {
+            let resolvedAccessToken = firstNonEmptyGatewayString(oauthToken, accessToken)
             try await onSave(ProviderEditorDraft(
                 providerType: providerType,
                 name: name,
                 baseURL: firstNonEmptyGatewayString(baseURL),
                 apiKey: firstNonEmptyGatewayString(apiKey),
-                accessToken: firstNonEmptyGatewayString(accessToken),
+                accessToken: resolvedAccessToken,
                 isDefault: isDefault
             ))
             dismiss()
@@ -384,4 +699,12 @@ private struct ProviderEditorSheet: View {
             self.error = error.localizedDescription
         }
     }
+}
+
+private enum ProviderOAuthState {
+    case idle
+    case connecting
+    case polling
+    case success
+    case error
 }

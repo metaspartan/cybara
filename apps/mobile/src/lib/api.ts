@@ -106,6 +106,9 @@ export interface ProviderSummary {
   requiresCredentials?: boolean;
   hasCredentials?: boolean;
   authType?: string;
+  oauthFlow?: string | null;
+  hasOAuthConfig?: boolean;
+  oauthLoginUrl?: string | null;
   models?: string[];
 }
 
@@ -123,6 +126,26 @@ export interface ProviderUpdatePayload {
   api_key?: string;
   access_token?: string;
   is_default?: boolean;
+}
+
+export interface ProviderOAuthStartResponse {
+  auth_url: string;
+  state: string;
+  callback_port?: number;
+}
+
+export interface ProviderOAuthDeviceCodeResponse {
+  device_code: string;
+  user_code: string;
+  verification_uri: string;
+  expires_in: number;
+  interval: number;
+}
+
+export interface ProviderOAuthPollResponse {
+  status?: string;
+  access_token?: string;
+  error?: string;
 }
 
 export interface ProviderTestResult {
@@ -905,6 +928,18 @@ function normalizeProviders(value: unknown): ProviderSummary[] {
             : undefined,
       hasCredentials,
       authType: readString(record, ["authType", "auth_type"]) || readString(info, ["authType"]),
+      oauthFlow:
+        readString(record, ["oauthFlow", "oauth_flow"]) || readString(info, ["oauthFlow"]) || null,
+      hasOAuthConfig:
+        typeof record?.hasOAuthConfig === "boolean"
+          ? record.hasOAuthConfig
+          : typeof record?.has_oauth_config === "boolean"
+            ? record.has_oauth_config
+            : Boolean(info?.oauthConfig),
+      oauthLoginUrl:
+        readString(record, ["oauthLoginUrl", "oauth_login_url"]) ||
+        readString(info, ["oauthLoginUrl"]) ||
+        null,
     };
   });
 }
@@ -1147,6 +1182,44 @@ export class CybaraMobileApi {
     return this.request<{ success: boolean }>(`/api/providers/${encodeURIComponent(id)}`, {
       method: "PUT",
       body: JSON.stringify(data),
+    });
+  }
+
+  startProviderOAuth(providerType: string): Promise<ProviderOAuthStartResponse> {
+    return this.request<ProviderOAuthStartResponse>("/api/providers/oauth/start", {
+      method: "POST",
+      body: JSON.stringify({ providerType }),
+    });
+  }
+
+  providerOAuthCallbackStatus(state: string): Promise<ProviderOAuthPollResponse> {
+    return this.request<ProviderOAuthPollResponse>("/api/providers/oauth/callback-status", {
+      method: "POST",
+      body: JSON.stringify({ state }),
+    });
+  }
+
+  startProviderDeviceCodeOAuth(providerType: string): Promise<ProviderOAuthDeviceCodeResponse> {
+    return this.request<ProviderOAuthDeviceCodeResponse>("/api/providers/oauth/device-code", {
+      method: "POST",
+      body: JSON.stringify({ providerType }),
+    });
+  }
+
+  pollProviderDeviceCodeOAuth(
+    providerType: string,
+    deviceCode: string
+  ): Promise<ProviderOAuthPollResponse> {
+    return this.request<ProviderOAuthPollResponse>("/api/providers/oauth/poll", {
+      method: "POST",
+      body: JSON.stringify({ providerType, deviceCode }),
+    });
+  }
+
+  openUrlOnGateway(url: string): Promise<{ ok?: boolean }> {
+    return this.request<{ ok?: boolean }>("/api/open-url", {
+      method: "POST",
+      body: JSON.stringify({ url }),
     });
   }
 

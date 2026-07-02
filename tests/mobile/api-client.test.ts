@@ -465,7 +465,107 @@ describe("mobile API client", () => {
           requiresCredentials: true,
           hasCredentials: true,
           authType: "api_key",
+          oauthFlow: null,
+          hasOAuthConfig: false,
+          oauthLoginUrl: null,
           models: [],
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("normalizes OAuth provider metadata from gateway provider info", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url) => {
+      const parsedUrl = new URL(String(url));
+      if (parsedUrl.pathname === "/api/providers") {
+        return Response.json([
+          {
+            id: "provider-codex",
+            name: "OpenAI Codex",
+            provider: "openai-codex",
+            info: {
+              authType: "oauth",
+              oauthFlow: "redirect",
+              oauthConfig: { callbackPort: 1455 },
+              oauthLoginUrl: "https://chatgpt.com/",
+            },
+          },
+        ]);
+      }
+      if (parsedUrl.pathname === "/api/providers/health") {
+        return Response.json({ providers: [] });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      await expect(new CybaraMobileApi(profile).providers()).resolves.toEqual([
+        expect.objectContaining({
+          id: "provider-codex",
+          provider: "openai-codex",
+          authType: "oauth",
+          oauthFlow: "redirect",
+          hasOAuthConfig: true,
+          oauthLoginUrl: "https://chatgpt.com/",
+        }),
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("starts and polls provider OAuth through gateway routes", async () => {
+    const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      const method = init?.method || "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      calls.push({ method, path: parsedUrl.pathname, body });
+
+      if (parsedUrl.pathname === "/api/providers/oauth/start") {
+        return Response.json({ auth_url: "https://auth.example/start", state: "oauth-state" });
+      }
+      if (parsedUrl.pathname === "/api/providers/oauth/callback-status") {
+        return Response.json({ status: "success", access_token: "oauth-token" });
+      }
+      if (parsedUrl.pathname === "/api/open-url") {
+        return Response.json({ ok: true });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const api = new CybaraMobileApi(profile);
+      await expect(api.startProviderOAuth("openai-codex")).resolves.toEqual({
+        auth_url: "https://auth.example/start",
+        state: "oauth-state",
+      });
+      await expect(api.providerOAuthCallbackStatus("oauth-state")).resolves.toEqual({
+        status: "success",
+        access_token: "oauth-token",
+      });
+      await expect(api.openUrlOnGateway("https://auth.example/start")).resolves.toEqual({
+        ok: true,
+      });
+      expect(calls).toEqual([
+        {
+          method: "POST",
+          path: "/api/providers/oauth/start",
+          body: { providerType: "openai-codex" },
+        },
+        {
+          method: "POST",
+          path: "/api/providers/oauth/callback-status",
+          body: { state: "oauth-state" },
+        },
+        {
+          method: "POST",
+          path: "/api/open-url",
+          body: { url: "https://auth.example/start" },
         },
       ]);
     } finally {

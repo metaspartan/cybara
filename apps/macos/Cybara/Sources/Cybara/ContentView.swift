@@ -69,7 +69,6 @@ enum NativeDestination: String, CaseIterable, Identifiable {
     case wallet
     case skills
     case logs
-    case gateway
     case settings
     case webUI
 
@@ -91,7 +90,6 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .wallet: return "Wallet"
         case .skills: return "Skills"
         case .logs: return "Logs"
-        case .gateway: return "Gateway"
         case .settings: return "Settings"
         case .webUI: return "Web UI"
         }
@@ -113,7 +111,6 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .wallet: return "creditcard"
         case .skills: return "wand.and.stars"
         case .logs: return "list.bullet.rectangle"
-        case .gateway: return "server.rack"
         case .settings: return "gearshape"
         case .webUI: return "globe"
         }
@@ -216,7 +213,7 @@ struct ContentView: View {
                     }
                 }
                 Section("System") {
-                    ForEach([NativeDestination.logs, .gateway, .settings, .webUI]) { item in
+                    ForEach([NativeDestination.logs, .settings, .webUI]) { item in
                         Label(item.title, systemImage: item.systemImage)
                             .tag(item)
                     }
@@ -230,7 +227,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private var detail: some View {
-        if !sidecar.isReady && destination != .gateway {
+        if !sidecar.isReady && destination != .settings {
             startingView
         } else {
             switch destination {
@@ -265,8 +262,6 @@ struct ContentView: View {
                 SkillsScreen(client: client)
             case .logs:
                 LogsScreen(client: client)
-            case .gateway:
-                GatewayScreen()
             case .settings:
                 NativeSettingsScreen(client: client) { key in
                     accent = CybaraAccent.color(for: key)
@@ -307,90 +302,6 @@ struct ContentView: View {
             } else {
                 startingView
             }
-        }
-    }
-}
-
-// ─── Gateway (sidecar controls + logs) ───────────────────────────────────────
-
-struct GatewayScreen: View {
-    @EnvironmentObject private var sidecar: SidecarManager
-    @Environment(\.openURL) private var openURL
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                ScreenHeader(title: "Gateway", subtitle: "Local Cybara sidecar runtime")
-
-                GlassCard {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            StatusPill(status: sidecar.status)
-                            Spacer()
-                            Text(sidecar.serverURL.absoluteString)
-                                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                        }
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label(sidecar.binaryPath, systemImage: "shippingbox")
-                                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                .lineLimit(2)
-                            Label(
-                                sidecar.managesGateway ? "Managed gateway" : "Attached gateway",
-                                systemImage: sidecar.managesGateway ? "server.rack" : "link"
-                            )
-                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .foregroundStyle(.secondary)
-                            Text(sidecar.statusMessage)
-                                .font(.system(size: 13, weight: .regular, design: .rounded))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                GlassCard {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Controls")
-                            .font(.system(size: 16, weight: .semibold, design: .rounded))
-                        HStack(spacing: 10) {
-                            Button("Restart") {
-                                Task { await sidecar.restart() }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            Button("Open Browser") {
-                                openURL(sidecar.serverURL)
-                            }
-                            .buttonStyle(.bordered)
-                            Button("Copy URL") {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(
-                                    sidecar.serverURL.absoluteString, forType: .string)
-                            }
-                            .buttonStyle(.bordered)
-                            Button("Reveal Binary") {
-                                sidecar.revealBinary()
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
-                }
-
-                GlassCard {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Sidecar Logs")
-                            .font(.system(size: 16, weight: .semibold, design: .rounded))
-                        LazyVStack(alignment: .leading, spacing: 8) {
-                            ForEach(sidecar.logs.indices, id: \.self) { index in
-                                Text(sidecar.logs[index])
-                                    .font(.system(size: 11, weight: .regular, design: .monospaced))
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        }
-                    }
-                }
-            }
-            .padding(24)
         }
     }
 }

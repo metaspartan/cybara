@@ -85,7 +85,7 @@ struct CybaraApp: App {
         Settings {
             SettingsView()
                 .environmentObject(sidecar)
-                .frame(width: 720, height: 620)
+                .frame(width: 760, height: 680)
         }
     }
 }

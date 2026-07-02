@@ -125,6 +125,38 @@ extension GatewayClient {
         try await request("api/providers/discover/ollama", method: "POST")
     }
 
+    func startProviderOAuth(providerType: String) async throws -> GatewayOAuthStartResponse {
+        let body = try JSONSerialization.data(withJSONObject: ["providerType": providerType])
+        let data = try await request("api/providers/oauth/start", method: "POST", body: body)
+        return try JSONDecoder().decode(GatewayOAuthStartResponse.self, from: data)
+    }
+
+    func providerOAuthCallbackStatus(state: String) async throws -> GatewayOAuthPollResponse {
+        let body = try JSONSerialization.data(withJSONObject: ["state": state])
+        let data = try await request("api/providers/oauth/callback-status", method: "POST", body: body)
+        return try JSONDecoder().decode(GatewayOAuthPollResponse.self, from: data)
+    }
+
+    func startProviderDeviceCodeOAuth(providerType: String) async throws -> GatewayOAuthDeviceCodeResponse {
+        let body = try JSONSerialization.data(withJSONObject: ["providerType": providerType])
+        let data = try await request("api/providers/oauth/device-code", method: "POST", body: body)
+        return try JSONDecoder().decode(GatewayOAuthDeviceCodeResponse.self, from: data)
+    }
+
+    func pollProviderDeviceCodeOAuth(
+        providerType: String,
+        deviceCode: String
+    ) async throws -> GatewayOAuthPollResponse {
+        let body = try JSONSerialization.data(
+            withJSONObject: [
+                "providerType": providerType,
+                "deviceCode": deviceCode,
+            ]
+        )
+        let data = try await request("api/providers/oauth/poll", method: "POST", body: body)
+        return try JSONDecoder().decode(GatewayOAuthPollResponse.self, from: data)
+    }
+
     private func agentPayload(
         name: String,
         type: String,

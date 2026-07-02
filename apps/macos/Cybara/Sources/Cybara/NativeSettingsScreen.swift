@@ -37,6 +37,7 @@ struct NativeSettingsScreen: View {
 
             TabView(selection: $selectedTab) {
                 generalTab.tabItem { Label("General", systemImage: "switch.2") }.tag(SettingsTab.general)
+                gatewayTab.tabItem { Label("Gateway", systemImage: "server.rack") }.tag(SettingsTab.gateway)
                 appearanceTab.tabItem { Label("Appearance", systemImage: "paintpalette") }.tag(SettingsTab.appearance)
                 modelTab.tabItem { Label("Model", systemImage: "brain") }.tag(SettingsTab.model)
                 featuresTab.tabItem { Label("Features", systemImage: "slider.horizontal.3") }.tag(SettingsTab.features)
@@ -50,7 +51,7 @@ struct NativeSettingsScreen: View {
             }
         }
         .padding(24)
-        .task { await load() }
+        .task(id: sidecar.isReady) { await load() }
     }
 
     private var generalTab: some View {
@@ -79,34 +80,133 @@ struct NativeSettingsScreen: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Desktop")
                             .font(.system(size: 15, weight: .bold, design: .rounded))
-                        settingRow("Gateway version", health?.version.map { "v\($0)" } ?? "Unavailable")
-                        settingRow("Gateway uptime", uptimeLabel)
-                        settingRow("Launch mode", sidecar.managesGateway ? "Managed sidecar" : "Attached gateway")
+                        settingRow("Gateway status", sidecar.status.title)
+                        settingRow("Gateway URL", sidecar.serverURL.absoluteString)
                         HStack(spacing: 10) {
                             Button {
                                 NotificationCenter.default.post(name: .cybaraCheckForUpdates, object: nil)
                             } label: {
-                                Label("Check Updates", systemImage: "arrow.down.circle")
+                                Label("Check for Updates", systemImage: "arrow.down.circle")
                             }
                             .buttonStyle(.borderedProminent)
-                            Button {
-                                openURL(sidecar.serverURL)
-                            } label: {
-                                Label("Open Web UI", systemImage: "globe")
-                            }
-                            .buttonStyle(.bordered)
-                            Button {
-                                copyServerURL()
-                            } label: {
-                                Label(copiedURL ? "Copied" : "Copy URL", systemImage: copiedURL ? "checkmark" : "doc.on.doc")
-                            }
-                            .buttonStyle(.bordered)
                         }
                     }
                 }
             }
             .padding(.vertical, 12)
         }
+    }
+
+    private var gatewayTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack(alignment: .top, spacing: 14) {
+                            Image(systemName: sidecar.managesGateway ? "server.rack" : "link")
+                                .font(.system(size: 22, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 42, height: 42)
+                                .background(Circle().fill(Color.primary.opacity(0.07)))
+
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(sidecar.managesGateway ? "Managed Gateway" : "Attached Gateway")
+                                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                                Text(sidecar.statusMessage)
+                                    .font(.system(size: 12, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
+                            Spacer()
+                            StatusPill(status: sidecar.status)
+                        }
+
+                        Divider().opacity(0.45)
+
+                        settingRow("Server URL", sidecar.serverURL.absoluteString)
+                        settingRow("Version", health?.version.map { "v\($0)" } ?? "Unavailable")
+                        settingRow("Uptime", uptimeLabel)
+                        settingRow("Launch mode", sidecar.managesGateway ? "Managed sidecar" : "Attached gateway")
+                        settingRow("Binary", sidecar.binaryPath)
+                    }
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Runtime Controls")
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 10) { gatewayControlButtons }
+                            VStack(alignment: .leading, spacing: 10) { gatewayControlButtons }
+                        }
+                    }
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("Sidecar Logs")
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                            Spacer()
+                            Text("\(sidecar.logs.count) entries")
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if sidecar.logs.isEmpty {
+                            Label("No sidecar log entries yet.", systemImage: "text.page")
+                                .font(.system(size: 12, design: .rounded))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, 8)
+                        } else {
+                            LazyVStack(alignment: .leading, spacing: 8) {
+                                ForEach(Array(sidecar.logs.suffix(80).enumerated()), id: \.offset) { _, line in
+                                    Text(line)
+                                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                        .textSelection(.enabled)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.vertical, 12)
+        }
+    }
+
+    @ViewBuilder
+    private var gatewayControlButtons: some View {
+        Button {
+            Task { await sidecar.restart() }
+        } label: {
+            Label("Restart Gateway", systemImage: "arrow.clockwise")
+        }
+        .buttonStyle(.borderedProminent)
+
+        Button {
+            openURL(sidecar.serverURL)
+        } label: {
+            Label("Open Web UI", systemImage: "globe")
+        }
+        .buttonStyle(.bordered)
+
+        Button {
+            copyServerURL()
+        } label: {
+            Label(copiedURL ? "Copied" : "Copy URL", systemImage: copiedURL ? "checkmark" : "doc.on.doc")
+        }
+        .buttonStyle(.bordered)
+
+        Button {
+            sidecar.revealBinary()
+        } label: {
+            Label("Reveal Binary", systemImage: "shippingbox")
+        }
+        .buttonStyle(.bordered)
     }
 
     private var appearanceTab: some View {
@@ -365,6 +465,14 @@ struct NativeSettingsScreen: View {
     }
 
     private func load() async {
+        guard sidecar.isReady else {
+            health = nil
+            config = [:]
+            providers = []
+            error = nil
+            return
+        }
+
         do {
             async let h = client.health()
             async let cfg = client.appConfig()
@@ -408,6 +516,7 @@ struct NativeSettingsScreen: View {
 
     private enum SettingsTab {
         case general
+        case gateway
         case appearance
         case model
         case features
@@ -420,6 +529,6 @@ struct SettingsView: View {
     var body: some View {
         NativeSettingsScreen(client: GatewayClient(baseURL: sidecar.serverURL))
             .environmentObject(sidecar)
-            .frame(width: 720, height: 620)
+            .frame(width: 760, height: 680)
     }
 }

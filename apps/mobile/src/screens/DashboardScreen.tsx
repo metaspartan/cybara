@@ -14,6 +14,7 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -3268,6 +3269,15 @@ function ProviderSettingsPanel({
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [oauthBusy, setOauthBusy] = useState(false);
+  const [oauthStatus, setOauthStatus] = useState("");
+  const [oauthDeviceCode, setOauthDeviceCode] = useState("");
+  const authType = provider.authType || "api_key";
+  const usesApiKey = authType === "api_key";
+  const usesOAuth = authType === "oauth";
+  const usesAccessToken = authType === "bearer" || authType === "token";
+  const usesAwsSdk = authType === "aws-sdk";
+  const usesNoAuth = authType === "none";
 
   useEffect(() => {
     setName(provider.name);
@@ -3275,6 +3285,9 @@ function ProviderSettingsPanel({
     setApiKey("");
     setAccessToken("");
     setIsDefault(Boolean(provider.is_default));
+    setOauthBusy(false);
+    setOauthStatus("");
+    setOauthDeviceCode("");
   }, [provider.base_url, provider.id, provider.is_default, provider.name]);
 
   const saveProvider = async () => {
@@ -3288,8 +3301,8 @@ function ProviderSettingsPanel({
       const result = await api.updateProvider(provider.id, {
         name: trimmedName,
         base_url: baseUrl.trim() || undefined,
-        api_key: apiKey.trim() || undefined,
-        access_token: accessToken.trim() || undefined,
+        api_key: usesApiKey ? apiKey.trim() || undefined : undefined,
+        access_token: usesOAuth || usesAccessToken ? accessToken.trim() || undefined : undefined,
         is_default: isDefault,
       });
       if (result.success === false) throw new Error("The gateway did not save this provider.");
@@ -3301,6 +3314,86 @@ function ProviderSettingsPanel({
       Alert.alert("Provider save failed", error instanceof Error ? error.message : String(error));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const openGatewayOrLocalUrl = async (url: string) => {
+    try {
+      await api.openUrlOnGateway(url);
+      return;
+    } catch {
+      await Linking.openURL(url);
+    }
+  };
+
+  const pollOAuthCallback = async (state: string) => {
+    const expiresAt = Date.now() + 600_000;
+    while (Date.now() < expiresAt) {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      const status = await api.providerOAuthCallbackStatus(state);
+      if (status.status === "success" && status.access_token) {
+        setAccessToken(status.access_token);
+        setOauthStatus("Connected. Save this provider to store the token.");
+        return;
+      }
+      if (status.status === "error") {
+        throw new Error(status.error || "Authorization failed.");
+      }
+    }
+    throw new Error("Authorization timed out. Please try again.");
+  };
+
+  const pollOAuthDeviceCode = async (deviceCode: string, intervalSeconds: number, expiresIn: number) => {
+    const intervalMs = Math.max(5, intervalSeconds || 5) * 1000;
+    const expiresAt = Date.now() + Math.max(60, expiresIn || 900) * 1000;
+    while (Date.now() < expiresAt) {
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      const status = await api.pollProviderDeviceCodeOAuth(provider.provider, deviceCode);
+      if (status.status === "success" && status.access_token) {
+        setAccessToken(status.access_token);
+        setOauthStatus("Connected. Save this provider to store the token.");
+        return;
+      }
+      if (status.status === "expired" || status.status === "denied" || status.status === "error") {
+        throw new Error(
+          status.error ||
+            (status.status === "denied"
+              ? "Authorization was denied."
+              : "Authorization expired. Please try again.")
+        );
+      }
+    }
+    throw new Error("Authorization timed out. Please try again.");
+  };
+
+  const startOAuth = async () => {
+    if (!provider.hasOAuthConfig) {
+      if (provider.oauthLoginUrl) {
+        await Linking.openURL(provider.oauthLoginUrl);
+      }
+      return;
+    }
+    setOauthBusy(true);
+    setOauthStatus("Starting sign-in...");
+    setOauthDeviceCode("");
+    try {
+      if (provider.oauthFlow === "device_code") {
+        const response = await api.startProviderDeviceCodeOAuth(provider.provider);
+        setOauthDeviceCode(response.user_code);
+        setOauthStatus("Enter the code in the browser window, then keep this screen open.");
+        await openGatewayOrLocalUrl(response.verification_uri);
+        await pollOAuthDeviceCode(response.device_code, response.interval, response.expires_in);
+      } else {
+        const response = await api.startProviderOAuth(provider.provider);
+        setOauthStatus("Complete sign-in in the browser window, then keep this screen open.");
+        await openGatewayOrLocalUrl(response.auth_url);
+        await pollOAuthCallback(response.state);
+      }
+    } catch (error) {
+      Alert.alert("OAuth failed", error instanceof Error ? error.message : String(error));
+      setOauthStatus("Sign-in failed. Try again.");
+    } finally {
+      setOauthBusy(false);
     }
   };
 
@@ -3383,26 +3476,77 @@ function ProviderSettingsPanel({
           placeholder="Provider default"
           value={baseUrl}
         />
-        <SettingsTextField
-          help={
-            MOBILE_SETTINGS_DETAIL_CHROME.providerCredentialUpdateMode === "blank-keeps-existing"
-              ? "Leave blank to keep the saved API key."
-              : undefined
-          }
-          label="API key"
-          onChangeText={setApiKey}
-          placeholder={provider.hasCredentials ? "Saved credential" : "Paste API key"}
-          secureTextEntry
-          value={apiKey}
-        />
-        <SettingsTextField
-          help="Leave blank to keep the saved access token."
-          label="Access token"
-          onChangeText={setAccessToken}
-          placeholder={provider.hasCredentials ? "Saved credential" : "Paste access token"}
-          secureTextEntry
-          value={accessToken}
-        />
+        {usesApiKey ? (
+          <SettingsTextField
+            help={
+              MOBILE_SETTINGS_DETAIL_CHROME.providerCredentialUpdateMode === "blank-keeps-existing"
+                ? "Leave blank to keep the saved API key."
+                : undefined
+            }
+            label="API key"
+            onChangeText={setApiKey}
+            placeholder={provider.hasCredentials ? "Saved credential" : "Paste API key"}
+            secureTextEntry
+            value={apiKey}
+          />
+        ) : null}
+        {usesOAuth ? (
+          <View style={styles.settingsInfoBox}>
+            <Text style={styles.settingsInfoTitle}>OAuth provider</Text>
+            <Text style={styles.settingsInfoText}>
+              {provider.hasOAuthConfig
+                ? "Sign in through the gateway. No API key is required."
+                : "Paste an access token for this OAuth provider."}
+            </Text>
+            {provider.hasOAuthConfig || provider.oauthLoginUrl ? (
+              <DetailActionButton
+                Icon={Link2}
+                busy={oauthBusy}
+                label={provider.hasOAuthConfig ? "Sign in" : "Open provider"}
+                onPress={startOAuth}
+                tone={colors.blueText}
+              />
+            ) : null}
+            {oauthDeviceCode ? (
+              <Text selectable style={styles.settingsInfoCode}>
+                {oauthDeviceCode}
+              </Text>
+            ) : null}
+            {oauthStatus ? <Text style={styles.settingsInfoText}>{oauthStatus}</Text> : null}
+            {!provider.hasOAuthConfig ? (
+              <SettingsTextField
+                help="Leave blank to keep the saved access token."
+                label="Access token"
+                onChangeText={setAccessToken}
+                placeholder={provider.hasCredentials ? "Saved credential" : "Paste access token"}
+                secureTextEntry
+                value={accessToken}
+              />
+            ) : null}
+          </View>
+        ) : null}
+        {usesAccessToken ? (
+          <SettingsTextField
+            help="Leave blank to keep the saved token."
+            label="Access token"
+            onChangeText={setAccessToken}
+            placeholder={provider.hasCredentials ? "Saved credential" : "Paste access token"}
+            secureTextEntry
+            value={accessToken}
+          />
+        ) : null}
+        {usesAwsSdk || usesNoAuth ? (
+          <View style={styles.settingsInfoBox}>
+            <Text style={styles.settingsInfoTitle}>
+              {usesAwsSdk ? "AWS SDK authentication" : "No authentication required"}
+            </Text>
+            <Text style={styles.settingsInfoText}>
+              {usesAwsSdk
+                ? "Use AWS environment variables, CLI profiles, or instance credentials on the gateway."
+                : "This provider connects without saved credentials."}
+            </Text>
+          </View>
+        ) : null}
         <SettingToggle
           detail="New chats use this provider when no agent-specific provider is selected."
           label="Default provider"
@@ -6102,6 +6246,32 @@ const makeStyles = () => StyleSheet.create({
     color: colors.textDim,
     fontSize: typography.tiny,
     lineHeight: 16,
+  },
+  settingsInfoBox: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  settingsInfoTitle: {
+    color: colors.text,
+    fontSize: typography.label,
+    fontWeight: "900",
+  },
+  settingsInfoText: {
+    color: colors.textMuted,
+    fontSize: typography.label,
+    lineHeight: 18,
+  },
+  settingsInfoCode: {
+    color: colors.text,
+    fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }),
+    fontSize: typography.title,
+    fontWeight: "900",
+    letterSpacing: 2,
   },
   routerSummaryBox: {
     gap: spacing.xs,

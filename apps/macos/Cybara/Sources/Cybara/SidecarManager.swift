@@ -359,14 +359,6 @@ final class SidecarManager: ObservableObject {
             )
         }
 
-        if let pathBinary = resolveBinaryOnPath(named: "cybara") {
-            return LaunchCommand(
-                executableURL: URL(fileURLWithPath: "/usr/bin/env"),
-                arguments: ["cybara"] + arguments,
-                displayPath: pathBinary
-            )
-        }
-
         let executableDirectory = URL(fileURLWithPath: CommandLine.arguments[0])
             .deletingLastPathComponent()
         let candidates = SidecarCore.sidecarCandidatePaths(
@@ -379,6 +371,18 @@ final class SidecarManager: ObservableObject {
                 executableURL: URL(fileURLWithPath: match),
                 arguments: arguments,
                 displayPath: match
+            )
+        }
+
+        if let pathBinary = resolveBinaryOnPath(named: "cybara"),
+           !SidecarCore.isAppBundleExecutableAlias(
+               pathBinary,
+               executableDirectory: executableDirectory.path
+           ) {
+            return LaunchCommand(
+                executableURL: URL(fileURLWithPath: "/usr/bin/env"),
+                arguments: ["cybara"] + arguments,
+                displayPath: pathBinary
             )
         }
 

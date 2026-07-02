@@ -112,6 +112,33 @@ final class SidecarCoreTests: XCTestCase {
         )
     }
 
+    func testAppBundleExecutableAliasDetection() {
+        XCTAssertTrue(
+            SidecarCore.isAppBundleExecutableAlias(
+                "/app/Contents/MacOS/cybara",
+                executableDirectory: "/app/Contents/MacOS"
+            )
+        )
+        XCTAssertTrue(
+            SidecarCore.isAppBundleExecutableAlias(
+                "/app/Contents/MacOS/./cybara",
+                executableDirectory: "/app/Contents/MacOS"
+            )
+        )
+        XCTAssertFalse(
+            SidecarCore.isAppBundleExecutableAlias(
+                "/app/Contents/MacOS/sidecar/cybara",
+                executableDirectory: "/app/Contents/MacOS"
+            )
+        )
+        XCTAssertFalse(
+            SidecarCore.isAppBundleExecutableAlias(
+                "/usr/local/bin/cybara",
+                executableDirectory: "/app/Contents/MacOS"
+            )
+        )
+    }
+
     // MARK: - sidecarCandidatePaths
 
     func testSidecarCandidatePathsOrderAndContents() {

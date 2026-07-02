@@ -63,14 +63,24 @@ struct GatewayProvider: Decodable, Identifiable, Hashable {
     let is_default: Bool?
     let created_at: String?
     let models: [String]?
+    let authType: String?
+    let oauthFlow: String?
+    let hasOAuthConfig: Bool?
+    let oauthLoginUrl: String?
 
     private enum CodingKeys: String, CodingKey {
         case id, name, label, provider, type, base_url, baseUrl, enabled, is_default, isDefault
-        case created_at, createdAt, models, info
+        case created_at, createdAt, models, info, authType, auth_type, oauthFlow, oauth_flow
+        case hasOAuthConfig, has_oauth_config, oauthLoginUrl, oauth_login_url
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        let info = try? container.decodeIfPresent(JSONValue.self, forKey: .info)
+        let infoObject: [String: JSONValue]? = {
+            if case .object(let object)? = info { return object }
+            return nil
+        }()
         id = try container.decodeFlexibleString(forKeys: [.id, .provider, .name]) ?? UUID().uuidString
         name = try container.decodeFlexibleString(forKeys: [.name, .label, .provider])
         provider = try container.decodeFlexibleString(forKeys: [.provider, .type])
@@ -78,11 +88,19 @@ struct GatewayProvider: Decodable, Identifiable, Hashable {
         enabled = try container.decodeFlexibleBool(forKeys: [.enabled])
         is_default = try container.decodeFlexibleBool(forKeys: [.is_default, .isDefault])
         created_at = try container.decodeFlexibleString(forKeys: [.created_at, .createdAt])
+        authType = try container.decodeFlexibleString(forKeys: [.authType, .auth_type])
+            ?? GatewayProvider.stringValue(infoObject?["authType"])
+        oauthFlow = try container.decodeFlexibleString(forKeys: [.oauthFlow, .oauth_flow])
+            ?? GatewayProvider.stringValue(infoObject?["oauthFlow"])
+        hasOAuthConfig = try container.decodeFlexibleBool(forKeys: [.hasOAuthConfig, .has_oauth_config])
+            ?? GatewayProvider.boolValue(infoObject?["oauthConfig"])
+        oauthLoginUrl = try container.decodeFlexibleString(forKeys: [.oauthLoginUrl, .oauth_login_url])
+            ?? GatewayProvider.stringValue(infoObject?["oauthLoginUrl"])
 
         if let modelIDs = try container.decodeFlexibleStringArray(forKey: .models) {
             models = modelIDs
-        } else if case .object(let info)? = try? container.decodeIfPresent(JSONValue.self, forKey: .info) {
-            models = GatewayProvider.modelIDs(from: info["models"])
+        } else if let infoObject {
+            models = GatewayProvider.modelIDs(from: infoObject["models"])
         } else {
             models = nil
         }
@@ -105,6 +123,23 @@ struct GatewayProvider: Decodable, Identifiable, Hashable {
         return ids.isEmpty ? nil : ids
     }
 
+    private static func stringValue(_ value: JSONValue?) -> String? {
+        if case .string(let text)? = value { return firstNonEmptyGatewayString(text) }
+        return nil
+    }
+
+    private static func boolValue(_ value: JSONValue?) -> Bool? {
+        guard let value else { return nil }
+        switch value {
+        case .bool(let bool):
+            return bool
+        case .object:
+            return true
+        default:
+            return nil
+        }
+    }
+
     var displayName: String { firstNonEmptyGatewayString(name, provider, id) ?? id }
     var providerType: String { firstNonEmptyGatewayString(provider) ?? id }
 }
@@ -115,6 +150,9 @@ struct GatewayAvailableProvider: Decodable, Identifiable, Hashable {
     let description: String?
     let baseUrl: String?
     let authType: String?
+    let oauthFlow: String?
+    let hasOAuthConfig: Bool?
+    let oauthLoginUrl: String?
     let models: [GatewayAvailableProviderModel]
 }
 
@@ -705,6 +743,62 @@ struct GatewayMobilePairingCode: Decodable, Hashable {
     var expiresAtDate: Date? {
         guard let expiresAt else { return nil }
         return Date(timeIntervalSince1970: expiresAt / 1000)
+    }
+}
+
+struct GatewayOAuthDeviceCodeResponse: Decodable, Hashable {
+    let deviceCode: String
+    let userCode: String
+    let verificationUri: String
+    let expiresIn: Int
+    let interval: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case device_code, deviceCode, user_code, userCode, verification_uri, verificationUri
+        case expires_in, expiresIn, interval
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        deviceCode = try container.decodeFlexibleString(forKeys: [.device_code, .deviceCode]) ?? ""
+        userCode = try container.decodeFlexibleString(forKeys: [.user_code, .userCode]) ?? ""
+        verificationUri = try container.decodeFlexibleString(forKeys: [.verification_uri, .verificationUri]) ?? ""
+        expiresIn = try container.decodeFlexibleInt(forKeys: [.expires_in, .expiresIn]) ?? 900
+        interval = try container.decodeFlexibleInt(forKeys: [.interval]) ?? 5
+    }
+}
+
+struct GatewayOAuthPollResponse: Decodable, Hashable {
+    let status: String?
+    let accessToken: String?
+    let error: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case status, access_token, accessToken, error
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = try container.decodeFlexibleString(forKeys: [.status])
+        accessToken = try container.decodeFlexibleString(forKeys: [.access_token, .accessToken])
+        error = try container.decodeFlexibleString(forKeys: [.error])
+    }
+}
+
+struct GatewayOAuthStartResponse: Decodable, Hashable {
+    let authUrl: String
+    let state: String
+    let callbackPort: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case auth_url, authUrl, state, callback_port, callbackPort
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        authUrl = try container.decodeFlexibleString(forKeys: [.auth_url, .authUrl]) ?? ""
+        state = try container.decodeFlexibleString(forKeys: [.state]) ?? ""
+        callbackPort = try container.decodeFlexibleInt(forKeys: [.callback_port, .callbackPort])
     }
 }
 
