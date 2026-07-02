@@ -29,6 +29,24 @@ Download the latest release from [GitHub Releases](https://github.com/metasparta
 | Linux (arm64) | `cybara_x.x.x_arm64.deb` / `.rpm` / `.AppImage` |
 | Windows (x64) | `Cybara_x.x.x_x64-setup.exe` |
 
+### macOS: "Cybara.app is damaged and can't be opened"
+
+macOS shows this when a downloaded app is not notarized by Apple: the OS attaches
+a quarantine flag to the download, and on Apple Silicon an app that isn't signed
+and notarized is refused with the "damaged" message (there is no right-click →
+Open bypass for that specific dialog).
+
+If the release you downloaded is not yet notarized, remove the quarantine flag
+after moving the app into `Applications`:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Cybara.app
+```
+
+For the native SwiftUI bundle, unzip it first, move `Cybara.app` to
+`/Applications`, then run the same command. This is only needed until the maintainer
+publishes notarized builds (see [Signing & Notarization (maintainers)](#signing--notarization-maintainers)).
+
 ## Desktop Auto Updates
 
 Official release builds include a signed updater channel backed by GitHub Releases:
@@ -69,6 +87,29 @@ bun run tauri:build:release
 # Build a native SwiftUI macOS app bundle + zip
 bun run native:macos:package
 ```
+
+## Signing & Notarization (maintainers)
+
+To ship macOS builds that open without the "damaged" / Gatekeeper prompt, the
+apps must be **code-signed with a Developer ID Application certificate and
+notarized by Apple** (requires a paid Apple Developer account). Both the Tauri
+build and the native SwiftUI build in the release workflow read the same repo
+secrets, so you configure them once:
+
+| Secret | Purpose |
+|--------|---------|
+| `MACOS_CERTIFICATE` | base64 of the Developer ID Application `.p12` |
+| `MACOS_CERTIFICATE_PASSWORD` | password for that `.p12` |
+| `MACOS_SIGN_IDENTITY` | e.g. `Developer ID Application: Your Name (TEAMID)` |
+| `MACOS_NOTARY_API_KEY` | base64 of the App Store Connect API key `.p8` |
+| `MACOS_NOTARY_API_KEY_ID` | the API key ID |
+| `MACOS_NOTARY_API_ISSUER_ID` | the API key issuer ID |
+
+When these are set, the release workflow signs and notarizes automatically. When
+they are absent, it produces unsigned builds (which require the `xattr` step
+above). The Tauri bundle ships `src-tauri/entitlements.plist` granting the
+bundled Bun sidecar the JIT / library-validation exceptions the hardened runtime
+requires, so notarization passes.
 
 ### CLI Bootstrap
 

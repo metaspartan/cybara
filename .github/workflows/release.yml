@@ -178,12 +178,39 @@ jobs:
           CYBARA_TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
           CYBARA_RELEASE_REPOSITORY: ${{ github.repository }}
         run: bun run tauri:prepare-release
+      # Stage the App Store Connect API key (.p8) so tauri-action can notarize the
+      # macOS bundle. Without notarization, a downloaded arm64 .dmg is quarantined
+      # by Gatekeeper and shows "Cybara.app is damaged and can't be opened".
+      - name: Prepare Apple notary key (macOS)
+        if: matrix.platform == 'macos'
+        shell: bash
+        env:
+          MACOS_NOTARY_API_KEY: ${{ secrets.MACOS_NOTARY_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -n "${MACOS_NOTARY_API_KEY:-}" ]; then
+            echo "$MACOS_NOTARY_API_KEY" | base64 --decode > "$RUNNER_TEMP/notary_key.p8"
+            echo "Apple notary key staged for notarization."
+          else
+            echo "No MACOS_NOTARY_API_KEY secret set — macOS build will be unsigned/unnotarized."
+          fi
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Apple Developer ID code signing (reuses the native job's secrets).
+          # When these are empty, tauri-action produces an unsigned build exactly
+          # as before — so this stays fully backward compatible until the secrets
+          # are configured in the repo.
+          APPLE_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          # Notarization via App Store Connect API key (staged above).
+          APPLE_API_ISSUER: ${{ secrets.MACOS_NOTARY_API_ISSUER_ID }}
+          APPLE_API_KEY: ${{ secrets.MACOS_NOTARY_API_KEY_ID }}
+          APPLE_API_KEY_PATH: ${{ secrets.MACOS_NOTARY_API_KEY != '' && format('{0}/notary_key.p8', runner.temp) || '' }}
           NO_STRIP: "true"
         with:
           tagName: ${{ github.ref_name }}

@@ -56,6 +56,7 @@
     "longDescription": "Cybara - A powerful AI agent platform with beautiful web UI",
     "macOS": {
       "minimumSystemVersion": "10.15",
+      "entitlements": "entitlements.plist",
       "dmg": {
         "windowPosition": {
           "x": 200,
