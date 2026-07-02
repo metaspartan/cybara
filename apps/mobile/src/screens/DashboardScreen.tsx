@@ -9,10 +9,12 @@ import {
   type SetStateAction,
 } from "react";
 import {
+  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -38,7 +40,9 @@ import {
   Box,
   Brain,
   CalendarCheck,
+  Check,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   Clock,
   Cpu,
@@ -962,7 +966,7 @@ export function DashboardScreen({
               <Settings color={colors.text} size={22} strokeWidth={2.1} />
             )}
           </Pressable>
-        ) : !detailRoute && activeTab !== "metrics" && activeTab !== "settings" ? (
+        ) : !detailRoute && activeTab !== "settings" ? (
           <Pressable
             accessibilityLabel="Open settings"
             accessibilityRole="button"
@@ -2456,7 +2460,7 @@ function MemoryRecallCard({
           ]}
           selected={memoryMethod}
           tone={accentColor}
-          variant="chips"
+          variant="menu"
         />
       ) : (
         <EmptyState
@@ -2646,11 +2650,87 @@ function SettingSelector({
   options: Array<{ label: string; value: string }>;
   selected: string;
   tone?: string;
-  variant?: "chips" | "segmented";
+  variant?: "chips" | "segmented" | "menu";
   onSelect: (value: string) => void;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
   if (options.length === 0) return null;
   const segmented = variant === "segmented";
+
+  if (variant === "menu") {
+    const current = options.find((option) => option.value === selected);
+    const openMenu = () => {
+      if (disabled) return;
+      haptics.select();
+      if (Platform.OS === "ios") {
+        const labels = options.map((option) => option.label);
+        ActionSheetIOS.showActionSheetWithOptions(
+          { title: label, options: [...labels, "Cancel"], cancelButtonIndex: labels.length },
+          (index) => {
+            const option = options[index];
+            if (option) onSelect(option.value);
+          }
+        );
+      } else {
+        setMenuOpen(true);
+      }
+    };
+    return (
+      <>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${label}: ${current?.label ?? "Select"}`}
+          accessibilityState={{ disabled }}
+          disabled={disabled}
+          onPress={openMenu}
+          style={[styles.settingsMenuRow, disabled && styles.settingsActionButtonDisabled]}
+        >
+          <Text style={styles.settingsMenuLabel}>{label}</Text>
+          <View style={styles.settingsMenuValueWrap}>
+            <Text numberOfLines={1} style={styles.settingsMenuValue}>
+              {current?.label ?? "Select"}
+            </Text>
+            <ChevronDown color={colors.textDim} size={16} strokeWidth={2.2} />
+          </View>
+        </Pressable>
+        {Platform.OS !== "ios" ? (
+          <Modal
+            transparent
+            visible={menuOpen}
+            animationType="fade"
+            onRequestClose={() => setMenuOpen(false)}
+          >
+            <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)}>
+              <View style={styles.menuSheet}>
+                <Text style={styles.menuSheetTitle}>{label}</Text>
+                {options.map((option) => {
+                  const isSelected = option.value === selected;
+                  return (
+                    <Pressable
+                      key={option.value}
+                      style={styles.menuSheetRow}
+                      onPress={() => {
+                        haptics.select();
+                        onSelect(option.value);
+                        setMenuOpen(false);
+                      }}
+                    >
+                      <Text
+                        style={[styles.menuSheetRowText, isSelected && { color: tone, fontWeight: "700" }]}
+                      >
+                        {option.label}
+                      </Text>
+                      {isSelected ? <Check color={tone} size={18} strokeWidth={2.4} /> : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </Pressable>
+          </Modal>
+        ) : null}
+      </>
+    );
+  }
 
   if (segmented) {
     const selectedIndex = Math.max(
@@ -3012,12 +3092,14 @@ function AgentSettingsPanel({
         />
         <SettingSelector
           label="Type"
+          variant="menu"
           options={agentTypeOptions.map((value) => ({ label: displayFieldLabel(value), value }))}
           selected={type}
           onSelect={setType}
         />
         <SettingSelector
           label="Provider"
+          variant="menu"
           options={providerOptions.map((provider) => ({
             label: provider.name,
             value: provider.id,
@@ -5689,6 +5771,66 @@ const makeStyles = () => StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
+  },
+  settingsMenuRow: {
+    alignItems: "center",
+    borderBottomColor: colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    gap: spacing.md,
+    justifyContent: "space-between",
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  settingsMenuLabel: {
+    color: colors.text,
+    fontSize: typography.body,
+    fontWeight: "600",
+  },
+  settingsMenuValueWrap: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexShrink: 1,
+    gap: spacing.xs,
+  },
+  settingsMenuValue: {
+    color: colors.textMuted,
+    flexShrink: 1,
+    fontSize: typography.body,
+  },
+  menuBackdrop: {
+    backgroundColor: colors.scrim,
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  menuSheet: {
+    backgroundColor: colors.backgroundLift,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    gap: spacing.xs,
+    paddingBottom: spacing.xl,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.lg,
+  },
+  menuSheetTitle: {
+    color: colors.textMuted,
+    fontSize: typography.label,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    marginBottom: spacing.xs,
+    textTransform: "uppercase",
+  },
+  menuSheetRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 48,
+    paddingHorizontal: spacing.sm,
+  },
+  menuSheetRowText: {
+    color: colors.text,
+    fontSize: typography.body,
   },
   settingsFieldLabel: {
     color: colors.textMuted,
