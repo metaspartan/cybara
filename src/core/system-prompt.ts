@@ -780,6 +780,11 @@ function buildSkillsSection(skills?: SkillEntry[]): string[] {
     "- If none clearly apply: do not read any SKILL.md.",
     "Constraints: never read more than one skill up front; only read after selecting.",
     "",
+    "### Self-improvement",
+    "After successfully completing a complex multi-step task whose procedure is likely to recur",
+    "(and no existing skill covers it), codify it with `skill_save`: a concise markdown procedure",
+    "with when-to-use, prerequisites, and the verified steps. Skip one-off or trivial tasks.",
+    "",
   ];
 
   // Add available skills list if provided

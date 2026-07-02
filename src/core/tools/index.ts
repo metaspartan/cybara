@@ -1841,6 +1841,33 @@ ACTIONS:
     permissions: ["phone:use"],
   },
 
+  skill_save: {
+    name: "skill_save",
+    description:
+      "Save a reusable skill learned from completing a task so future sessions can reuse the procedure. Use after successfully finishing a complex multi-step task whose approach is likely to recur. Content should be a concise SKILL.md-style procedure: when to use it, prerequisites, and the steps that worked.",
+    category: "skill",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Short human-readable skill name (e.g. 'Deploy Cloudflare Worker')",
+        },
+        description: {
+          type: "string",
+          description: "One-line summary of what the skill does and when to use it",
+        },
+        content: {
+          type: "string",
+          description:
+            "The skill body in markdown: when to use, prerequisites, and the verified step-by-step procedure",
+        },
+      },
+      required: ["name", "content"],
+    },
+    permissions: [],
+  },
+
   calc: {
     name: "calc",
     description: "Safely evaluate mathematical expressions",
