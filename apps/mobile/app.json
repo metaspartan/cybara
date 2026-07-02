@@ -15,10 +15,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "dev.cybara.mobile"
+      "bundleIdentifier": "com.ck.cybara"
     },
     "android": {
-      "package": "dev.cybara.mobile",
+      "package": "com.ck.cybara",
       "adaptiveIcon": {
         "foregroundImage": "./assets/cybara.png",
         "backgroundColor": "#071016"
