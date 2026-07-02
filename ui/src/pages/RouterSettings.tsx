@@ -55,6 +55,7 @@ export function RouterSettings() {
   const [status, setStatus] = useState<RouterStatus | null>(null);
   const [config, setConfig] = useState<RouterConfig | null>(null);
   const [providers, setProviders] = useState<ProviderMeta[]>([]);
+  const [agents, setAgents] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -100,13 +101,29 @@ export function RouterSettings() {
     }
   }, []);
 
+  const fetchAgents = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/agents');
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : Array.isArray(data?.agents) ? data.agents : [];
+      setAgents(
+        list
+          .filter((a: { id?: unknown }) => typeof a?.id === 'string')
+          .map((a: { id: string; name?: string }) => ({ id: a.id, name: a.name || a.id }))
+      );
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   useEffect(() => {
     void fetchConfig();
     void fetchStatus();
     void fetchProviders();
+    void fetchAgents();
     const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
-  }, [fetchStatus, fetchConfig, fetchProviders]);
+  }, [fetchStatus, fetchConfig, fetchProviders, fetchAgents]);
 
   const saveConfig = async (cfg: RouterConfig) => {
     setSaving(true);
@@ -203,23 +220,45 @@ export function RouterSettings() {
         </div>
 
         {config.strategy === 'mixture_of_agents' && (
-          <div className="space-y-1">
-            <label className="text-sm text-gray-300">Max proposer agents</label>
-            <input
-              type="number"
-              min={1}
-              value={config.moaMaxAgents ?? ''}
-              placeholder="4"
-              onChange={(e) => {
-                const n = Math.floor(Number(e.target.value));
-                saveConfig({ ...config, moaMaxAgents: Number.isFinite(n) && n > 0 ? n : undefined });
-              }}
-              className="w-full sm:w-auto rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-sm text-white"
-            />
-            <p className="text-xs text-gray-500">
-              How many agents propose before one synthesizes the final answer (default 4).
-            </p>
-          </div>
+          <>
+            <div className="space-y-1">
+              <label className="text-sm text-gray-300">Max proposer agents</label>
+              <input
+                type="number"
+                min={1}
+                value={config.moaMaxAgents ?? ''}
+                placeholder="4"
+                onChange={(e) => {
+                  const n = Math.floor(Number(e.target.value));
+                  saveConfig({ ...config, moaMaxAgents: Number.isFinite(n) && n > 0 ? n : undefined });
+                }}
+                className="w-full sm:w-auto rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-sm text-white"
+              />
+              <p className="text-xs text-gray-500">
+                How many agents propose before one synthesizes the final answer (default 4).
+              </p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm text-gray-300">Aggregator agent</label>
+              <select
+                value={config.moaAggregatorAgentId ?? ''}
+                onChange={(e) =>
+                  saveConfig({ ...config, moaAggregatorAgentId: e.target.value || undefined })
+                }
+                className="w-full sm:w-auto rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-sm text-white"
+              >
+                <option value="">Auto (first proposer)</option>
+                {agents.map((agent) => (
+                  <option key={agent.id} value={agent.id}>
+                    {agent.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500">
+                The agent that synthesizes the proposals into the final answer.
+              </p>
+            </div>
+          </>
         )}
 
         <div className="flex items-center gap-2 flex-wrap">

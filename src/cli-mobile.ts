@@ -234,6 +234,9 @@ export function printMobileHelp(prefix = ""): void {
   console.log(
     `${prefix}mobile connect [--url URL] [--name GATEWAY] [--device NAME] [--json] [--no-qr]`
   );
+  console.log(
+    `${prefix}mobile connect --code [--role standard|readonly|full]   expiring one-time pairing code`
+  );
   console.log(`${prefix}mobile list`);
   console.log(`${prefix}mobile revoke <device-id>`);
   console.log(`${prefix}mobile remove <device-id>`);
