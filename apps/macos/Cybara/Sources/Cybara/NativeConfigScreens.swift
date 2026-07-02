@@ -641,3 +641,247 @@ struct LogsScreen: View {
         loaded = true
     }
 }
+
+// ─── Wallet ──────────────────────────────────────────────────────────────────
+
+struct WalletScreen: View {
+    let client: GatewayClient
+
+    @State private var status: [String: Any] = [:]
+    @State private var policy: [String: Any] = [:]
+    @State private var loaded = false
+    @State private var savingAccess = false
+    @State private var error: String?
+
+    private static let policyRows: [(key: String, label: String)] = [
+        ("allowNativeSend", "Native sends"),
+        ("allowTokenSend", "Token sends"),
+        ("allowEthContractWrite", "ETH contract writes"),
+        ("allowSolProgramInstruction", "SOL program instructions"),
+        ("allowEthSwaps", "ETH swaps"),
+        ("allowDappInteraction", "dApp interaction"),
+        ("allowX402Payments", "x402 payments"),
+    ]
+
+    private var agentAccessEnabled: Bool { status["agentAccessEnabled"] as? Bool ?? false }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                ScreenHeader(title: "Wallet", subtitle: "Agent wallet status and spending policy")
+
+                if !loaded {
+                    ProgressView().frame(maxWidth: .infinity)
+                } else if let error {
+                    LoadFailedView(message: error) { Task { await load() } }
+                } else {
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text("Status")
+                                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                                Spacer()
+                                Text(status["exists"] as? Bool == true
+                                    ? (status["unlocked"] as? Bool == true ? "Unlocked" : "Locked")
+                                    : "No wallet")
+                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(Capsule().fill(
+                                        status["unlocked"] as? Bool == true
+                                            ? Color.green.opacity(0.18)
+                                            : Color.secondary.opacity(0.15)
+                                    ))
+                            }
+                            ForEach(addressRows, id: \.chain) { row in
+                                HStack {
+                                    Text(row.chain.uppercased())
+                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 34, alignment: .leading)
+                                    Text(row.address)
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .textSelection(.enabled)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                    Spacer()
+                                }
+                            }
+                        }
+                    }
+
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Toggle(isOn: Binding(
+                                get: { agentAccessEnabled },
+                                set: { newValue in
+                                    savingAccess = true
+                                    Task {
+                                        do {
+                                            try await client.setWalletAgentAccess(newValue)
+                                            await load()
+                                        } catch {
+                                            self.error = error.localizedDescription
+                                        }
+                                        savingAccess = false
+                                    }
+                                }
+                            )) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Agent wallet access")
+                                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                    Text("Master switch for agent-initiated wallet actions.")
+                                        .font(.system(size: 11, design: .rounded))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .toggleStyle(.switch)
+                            .disabled(savingAccess)
+                        }
+                    }
+
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Agent policy")
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                            ForEach(Self.policyRows, id: \.key) { row in
+                                Toggle(row.label, isOn: policyBinding(row.key))
+                                    .toggleStyle(.switch)
+                                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(24)
+        }
+        .task { await load() }
+    }
+
+    private var addressRows: [(chain: String, address: String)] {
+        let addresses = status["primaryAddresses"] as? [String: Any] ?? [:]
+        return addresses.keys.sorted().compactMap { chain in
+            guard let address = addresses[chain] as? String else { return nil }
+            return (chain, address)
+        }
+    }
+
+    private func policyBinding(_ key: String) -> Binding<Bool> {
+        Binding(
+            get: { policy[key] as? Bool ?? false },
+            set: { newValue in
+                var next = policy
+                next[key] = newValue
+                policy = next
+                guard let body = try? JSONSerialization.data(withJSONObject: next) else { return }
+                Task {
+                    do {
+                        try await client.updateWalletPolicy(body)
+                        error = nil
+                    } catch {
+                        self.error = error.localizedDescription
+                    }
+                }
+            }
+        )
+    }
+
+    private func load() async {
+        do {
+            status = try await client.walletStatus()
+            policy = try await client.walletPolicy()
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
+        loaded = true
+    }
+}
+
+// ─── Skills ──────────────────────────────────────────────────────────────────
+
+struct SkillsScreen: View {
+    let client: GatewayClient
+
+    @State private var skills: [GatewaySkill] = []
+    @State private var search = ""
+    @State private var loaded = false
+    @State private var error: String?
+
+    private var filtered: [GatewaySkill] {
+        let query = search.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !query.isEmpty else { return skills }
+        return skills.filter {
+            $0.name.lowercased().contains(query)
+                || ($0.description?.lowercased().contains(query) ?? false)
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                ScreenHeader(title: "Skills", subtitle: "\(skills.count) skills available to agents")
+                TextField("Search skills…", text: $search)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 220)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 24)
+            .padding(.bottom, 12)
+
+            if !loaded {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error {
+                LoadFailedView(message: error) { Task { await load() } }
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        ForEach(filtered) { skill in
+                            HStack(alignment: .top, spacing: 12) {
+                                Image(systemName: "wand.and.stars")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(skill.enabled == false ? Color.secondary : Color.accentColor)
+                                    .frame(width: 32, height: 32)
+                                    .background(Circle().fill(Color.white.opacity(0.06)))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 8) {
+                                        Text(skill.name)
+                                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                                        if let category = skill.category {
+                                            Text(category)
+                                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                                .padding(.horizontal, 7)
+                                                .padding(.vertical, 2)
+                                                .background(Capsule().fill(Color.white.opacity(0.08)))
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    Text(skill.description ?? "")
+                                        .font(.system(size: 12, design: .rounded))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(2)
+                                }
+                                Spacer()
+                            }
+                            .padding(14)
+                            .cybaraGlass(cornerRadius: 14)
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 24)
+                }
+            }
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        do {
+            skills = try await client.skills()
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
+        loaded = true
+    }
+}

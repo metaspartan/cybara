@@ -12,6 +12,8 @@ enum NativeDestination: String, CaseIterable, Identifiable {
     case router
     case systemPrompt
     case channels
+    case wallet
+    case skills
     case logs
     case gateway
     case webUI
@@ -30,6 +32,8 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .router: return "Model Router"
         case .systemPrompt: return "System Prompt"
         case .channels: return "Channels"
+        case .wallet: return "Wallet"
+        case .skills: return "Skills"
         case .logs: return "Logs"
         case .gateway: return "Gateway"
         case .webUI: return "Web UI"
@@ -48,6 +52,8 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .router: return "point.3.connected.trianglepath.dotted"
         case .systemPrompt: return "sparkles"
         case .channels: return "link"
+        case .wallet: return "creditcard"
+        case .skills: return "wand.and.stars"
         case .logs: return "list.bullet.rectangle"
         case .gateway: return "server.rack"
         case .webUI: return "globe"
@@ -144,7 +150,7 @@ struct ContentView: View {
                     }
                 }
                 Section("Intelligence") {
-                    ForEach([NativeDestination.memory, .metrics, .router, .systemPrompt, .channels]) { item in
+                    ForEach([NativeDestination.memory, .metrics, .router, .systemPrompt, .channels, .wallet, .skills]) { item in
                         Label(item.title, systemImage: item.systemImage)
                             .tag(item)
                     }
@@ -189,6 +195,10 @@ struct ContentView: View {
                 SystemPromptScreen(client: client)
             case .channels:
                 ChannelsScreen(client: client)
+            case .wallet:
+                WalletScreen(client: client)
+            case .skills:
+                SkillsScreen(client: client)
             case .logs:
                 LogsScreen(client: client)
             case .gateway:

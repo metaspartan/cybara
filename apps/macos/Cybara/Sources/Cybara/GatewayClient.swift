@@ -267,6 +267,29 @@ struct GatewayClient: Sendable {
         return Array(logs.prefix(limit))
     }
 
+    // ─── Wallet / Skills ─────────────────────────────────────────────────────
+
+    func walletStatus() async throws -> [String: Any] {
+        try await rawObject("api/wallet/status")
+    }
+
+    func walletPolicy() async throws -> [String: Any] {
+        try await rawObject("api/wallet/agent-policy")
+    }
+
+    func updateWalletPolicy(_ body: Data) async throws {
+        try await putJSON("api/wallet/agent-policy", body: body)
+    }
+
+    func setWalletAgentAccess(_ enabled: Bool) async throws {
+        let body = try JSONSerialization.data(withJSONObject: ["enabled": enabled])
+        try await putJSON("api/wallet/agent-access", body: body)
+    }
+
+    func skills() async throws -> [GatewaySkill] {
+        try await getList("api/skills", keys: ["skills", "items"])
+    }
+
     // ─── Session mutations ───────────────────────────────────────────────────
 
     @discardableResult
@@ -303,6 +326,15 @@ struct GatewayLogEntry: Decodable, Identifiable, Hashable {
     let source: String?
     let message: String?
     let created_at: String?
+}
+
+struct GatewaySkill: Decodable, Identifiable, Hashable {
+    let name: String
+    let description: String?
+    let category: String?
+    let enabled: Bool?
+
+    var id: String { name }
 }
 
 // ─── Live status (SSE) ───────────────────────────────────────────────────────
