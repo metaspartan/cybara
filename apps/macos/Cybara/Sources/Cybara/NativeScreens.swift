@@ -180,6 +180,7 @@ struct DashboardScreen: View {
 
 struct ChatScreen: View {
     let client: GatewayClient
+    @Environment(\.cybaraAccent) private var accentTint
 
     @State private var sessions: [GatewaySession] = []
     @State private var selectedSession: String?
@@ -371,7 +372,7 @@ struct ChatScreen: View {
                 .padding(.vertical, 10)
                 .background(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(isUser ? Color.accentColor.opacity(0.28) : Color.white.opacity(0.06))
+                        .fill(isUser ? accentTint.opacity(0.28) : Color.white.opacity(0.06))
                 )
             if !isUser { Spacer(minLength: 60) }
         }
@@ -579,6 +580,7 @@ struct AgentsScreen: View {
 
 struct ProvidersScreen: View {
     let client: GatewayClient
+    @Environment(\.cybaraAccent) private var accentTint
 
     @State private var providers: [GatewayProvider] = []
     @State private var error: String?
@@ -595,7 +597,7 @@ struct ProvidersScreen: View {
                         HStack(spacing: 14) {
                             Image(systemName: "shippingbox")
                                 .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(provider.enabled == false ? Color.secondary : Color.accentColor)
+                                .foregroundStyle(provider.enabled == false ? Color.secondary : accentTint)
                                 .frame(width: 36, height: 36)
                                 .background(Circle().fill(Color.white.opacity(0.06)))
                             VStack(alignment: .leading, spacing: 3) {

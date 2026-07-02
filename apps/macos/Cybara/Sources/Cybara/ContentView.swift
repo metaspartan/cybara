@@ -1,6 +1,40 @@
 import AppKit
 import SwiftUI
 
+// Accent palette shared with the web/Tauri and mobile UIs; the key is synced
+// through gateway config so all clients highlight in the same color.
+enum CybaraAccent {
+    static let palette: [String: Color] = [
+        "indigo": Color(red: 0.388, green: 0.400, blue: 0.945),
+        "blue": Color(red: 0.231, green: 0.510, blue: 0.965),
+        "cyan": Color(red: 0.024, green: 0.714, blue: 0.831),
+        "teal": Color(red: 0.078, green: 0.722, blue: 0.651),
+        "emerald": Color(red: 0.063, green: 0.725, blue: 0.506),
+        "amber": Color(red: 0.961, green: 0.620, blue: 0.043),
+        "orange": Color(red: 0.976, green: 0.451, blue: 0.086),
+        "rose": Color(red: 0.957, green: 0.247, blue: 0.369),
+        "pink": Color(red: 0.925, green: 0.282, blue: 0.600),
+        "purple": Color(red: 0.659, green: 0.333, blue: 0.969),
+    ]
+
+    static func color(for key: String?) -> Color {
+        guard let key, let color = palette[key.lowercased()] else { return .accentColor }
+        return color
+    }
+}
+
+private struct CybaraAccentKey: EnvironmentKey {
+    static let defaultValue: Color = .accentColor
+}
+
+extension EnvironmentValues {
+    /// The gateway-synced highlight color, matching web/Tauri and mobile.
+    var cybaraAccent: Color {
+        get { self[CybaraAccentKey.self] }
+        set { self[CybaraAccentKey.self] = newValue }
+    }
+}
+
 enum NativeDestination: String, CaseIterable, Identifiable {
     case dashboard
     case chat
@@ -65,6 +99,7 @@ struct ContentView: View {
     @EnvironmentObject private var sidecar: SidecarManager
     @Environment(\.openURL) private var openURL
     @State private var destination: NativeDestination = .dashboard
+    @State private var accent: Color = .accentColor
 
     private var client: GatewayClient {
         GatewayClient(baseURL: sidecar.serverURL)
@@ -76,6 +111,14 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 210, ideal: 235, max: 280)
         } detail: {
             detail
+        }
+        .tint(accent)
+        .environment(\.cybaraAccent, accent)
+        .task(id: sidecar.isReady) {
+            guard sidecar.isReady else { return }
+            if let key = try? await client.themeAccent() {
+                accent = CybaraAccent.color(for: key)
+            }
         }
         .background(
             VisualEffectBackground()
@@ -128,7 +171,7 @@ struct ContentView: View {
             HStack(spacing: 10) {
                 Image(systemName: "hexagon.fill")
                     .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(accent)
                 VStack(alignment: .leading, spacing: 0) {
                     Text("Cybara")
                         .font(.system(size: 18, weight: .bold, design: .rounded))

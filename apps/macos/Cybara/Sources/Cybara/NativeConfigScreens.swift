@@ -355,6 +355,7 @@ struct SystemPromptScreen: View {
 
 struct MemoryScreen: View {
     let client: GatewayClient
+    @Environment(\.cybaraAccent) private var accentTint
 
     @State private var files: [String] = []
     @State private var loaded = false
@@ -378,7 +379,7 @@ struct MemoryScreen: View {
                         HStack(spacing: 12) {
                             Image(systemName: "brain")
                                 .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color.accentColor)
+                                .foregroundStyle(accentTint)
                                 .frame(width: 34, height: 34)
                                 .background(Circle().fill(Color.white.opacity(0.06)))
                             Text(file)
@@ -493,6 +494,7 @@ struct MetricsScreen: View {
 
 struct ChannelsScreen: View {
     let client: GatewayClient
+    @Environment(\.cybaraAccent) private var accentTint
 
     @State private var channels: [GatewayChannel] = []
     @State private var loaded = false
@@ -516,7 +518,7 @@ struct ChannelsScreen: View {
                         HStack(spacing: 14) {
                             Image(systemName: "link")
                                 .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(channel.isEnabled ? Color.accentColor : Color.secondary)
+                                .foregroundStyle(channel.isEnabled ? accentTint : Color.secondary)
                                 .frame(width: 34, height: 34)
                                 .background(Circle().fill(Color.white.opacity(0.06)))
                             VStack(alignment: .leading, spacing: 2) {
@@ -802,6 +804,7 @@ struct WalletScreen: View {
 
 struct SkillsScreen: View {
     let client: GatewayClient
+    @Environment(\.cybaraAccent) private var accentTint
 
     @State private var skills: [GatewaySkill] = []
     @State private var search = ""
@@ -840,7 +843,7 @@ struct SkillsScreen: View {
                             HStack(alignment: .top, spacing: 12) {
                                 Image(systemName: "wand.and.stars")
                                     .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(skill.enabled == false ? Color.secondary : Color.accentColor)
+                                    .foregroundStyle(skill.enabled == false ? Color.secondary : accentTint)
                                     .frame(width: 32, height: 32)
                                     .background(Circle().fill(Color.white.opacity(0.06)))
                                 VStack(alignment: .leading, spacing: 2) {
