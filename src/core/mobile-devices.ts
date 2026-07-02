@@ -14,12 +14,33 @@ export interface MobileConnectPayload {
   createdAt: string;
 }
 
+/**
+ * Capability scopes a paired device may hold. A device only gets the scopes it
+ * was granted, so a stolen token can't reach capabilities the owner didn't opt
+ * into (notably fund-moving wallet ops and terminal execution).
+ */
+export const MOBILE_SCOPES = ["chat", "manage", "read", "wallet", "terminal"] as const;
+export type MobileScope = (typeof MOBILE_SCOPES)[number];
+
+/** Default scopes for a new pairing: everything the mobile app needs, minus */
+/* the dangerous wallet (transfers/signing) and terminal capabilities. */
+export const DEFAULT_MOBILE_SCOPES: MobileScope[] = ["chat", "manage", "read"];
+
+export function normalizeMobileScopes(value: unknown): MobileScope[] {
+  if (!Array.isArray(value)) return [...DEFAULT_MOBILE_SCOPES];
+  const valid = value.filter(
+    (s): s is MobileScope => typeof s === "string" && (MOBILE_SCOPES as readonly string[]).includes(s)
+  );
+  return valid.length > 0 ? Array.from(new Set(valid)) : [...DEFAULT_MOBILE_SCOPES];
+}
+
 interface MobileDeviceRecord {
   id: string;
   name: string;
   tokenHash: string;
   baseUrl: string;
   createdAt: string;
+  scopes?: MobileScope[];
   lastSeenAt?: string;
   revokedAt?: string;
   userAgent?: string;
@@ -30,6 +51,7 @@ export interface MobileDeviceView {
   name: string;
   baseUrl: string;
   status: "active" | "revoked";
+  scopes: MobileScope[];
   createdAt: string;
   lastSeenAt?: string;
   revokedAt?: string;
@@ -120,6 +142,7 @@ function toView(device: MobileDeviceRecord): MobileDeviceView {
     name: device.name,
     baseUrl: device.baseUrl,
     status: device.revokedAt ? "revoked" : "active",
+    scopes: normalizeMobileScopes(device.scopes),
     createdAt: device.createdAt,
     lastSeenAt: device.lastSeenAt,
     revokedAt: device.revokedAt,
@@ -160,6 +183,7 @@ export function createMobileDevice(input: {
   deviceName?: string;
   gatewayName?: string;
   baseUrl: string;
+  scopes?: unknown;
 }): { device: MobileDeviceView; token: string; payload: MobileConnectPayload; encoded: string } {
   const now = new Date().toISOString();
   const id = `mobile_${randomBytes(9).toString("hex")}`;
@@ -172,6 +196,7 @@ export function createMobileDevice(input: {
     tokenHash: hashToken(token),
     baseUrl,
     createdAt: now,
+    scopes: input.scopes === undefined ? [...DEFAULT_MOBILE_SCOPES] : normalizeMobileScopes(input.scopes),
   };
 
   store.devices.unshift(record);

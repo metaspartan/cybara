@@ -174,6 +174,11 @@ export function rateLimitEndpoint(
 export interface AuthResult {
   authenticated: boolean;
   reason?: string;
+  /**
+   * Capability scopes for a scoped principal (a paired mobile device). Undefined
+   * means full access (root API key / trusted localhost) — no scope gating.
+   */
+  scopes?: string[];
 }
 
 function isLocalhostIP(ip: string): boolean {
@@ -247,7 +252,7 @@ export function authenticateRequest(headers: Record<string, string>, ip: string)
       userAgent: headers["user-agent"] || headers["User-Agent"],
     });
     if (mobileDevice) {
-      return { authenticated: true };
+      return { authenticated: true, scopes: mobileDevice.scopes };
     }
 
     log.warn("Invalid API key attempt", { ip });
@@ -255,6 +260,24 @@ export function authenticateRequest(headers: Record<string, string>, ip: string)
   }
 
   return { authenticated: true };
+}
+
+/**
+ * The scope a route requires, or null when any authenticated principal may use
+ * it. Only the genuinely dangerous capabilities are gated: fund-moving wallet
+ * operations and terminal execution. Wallet reads and policy/access management
+ * (what the mobile app actually uses) stay under the default scopes.
+ */
+export function routeRequiredScope(method: string, path: string): string | null {
+  if (path.startsWith("/api/wallet")) {
+    if (method === "GET") return null;
+    if (path === "/api/wallet/agent-policy" || path === "/api/wallet/agent-access") return null;
+    return "wallet";
+  }
+  if (path === "/api/ide/open-terminal" || path.startsWith("/api/terminal")) {
+    return "terminal";
+  }
+  return null;
 }
 
 function getBearerToken(headers: Record<string, string>): string | null {
@@ -521,6 +544,20 @@ export function securityCheck(
       return {
         passed: false,
         error: "Root API key required for mobile device management",
+        statusCode: 403,
+      };
+    }
+  }
+
+  // Scope enforcement: a scoped principal (paired device) may only reach a
+  // gated capability if it holds the required scope. Full-access principals
+  // (root key / trusted localhost) have `auth.scopes` undefined and skip this.
+  if (auth.scopes) {
+    const required = routeRequiredScope(method, path);
+    if (required && !auth.scopes.includes(required)) {
+      return {
+        passed: false,
+        error: `This device is not authorized for '${required}' operations`,
         statusCode: 403,
       };
     }

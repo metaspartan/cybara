@@ -39,6 +39,7 @@ export const mobileRoutes: Record<string, MobileRouteHandler> = {
       deviceName: readOptionalString(data.deviceName),
       gatewayName: readOptionalString(data.gatewayName) || readOptionalString(data.name),
       baseUrl,
+      scopes: Array.isArray(data.scopes) ? data.scopes : undefined,
     });
     const qrDataUrl = await QRCode.toDataURL(result.encoded, { margin: 1, width: 320 });
 
