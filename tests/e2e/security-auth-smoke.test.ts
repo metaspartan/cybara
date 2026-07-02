@@ -434,7 +434,8 @@ describe("Security auth e2e", () => {
       expect(missingAuth.headers.get("www-authenticate")).toContain("Bearer");
 
       const sse = await readFirstSseChunk(
-        `${baseUrl}/api/sse/status?token=${encodeURIComponent(apiKey)}`
+        `${baseUrl}/api/sse/status?token=${encodeURIComponent(apiKey)}`,
+        { accept: "text/event-stream" }
       );
       expect(sse.status).toBe(200);
       expect(sse.headers.get("content-type")).toContain("text/event-stream");
@@ -442,7 +443,8 @@ describe("Security auth e2e", () => {
       expect(sse.headers.get("x-ratelimit-remaining")).not.toBeNull();
 
       const sseApiKeyParam = await readFirstSseChunk(
-        `${baseUrl}/api/sse/status?api_key=${encodeURIComponent(apiKey)}`
+        `${baseUrl}/api/sse/status?api_key=${encodeURIComponent(apiKey)}`,
+        { accept: "text/event-stream" }
       );
       expect(sseApiKeyParam.status).toBe(200);
       expect(sseApiKeyParam.headers.get("content-type")).toContain("text/event-stream");
