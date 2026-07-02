@@ -190,6 +190,7 @@ type DetailRoute =
   | { kind: "session"; id: string }
   | { kind: "newChat" }
   | { kind: "newTask" }
+  | { kind: "systemPrompt" }
   | { kind: "surface"; surface: MobileSurfaceKey }
   | { kind: "item"; surface: MobileSurfaceKey; item: RemoteItemSummary | ActivitySummary };
 
@@ -639,6 +640,9 @@ function routeHeader(
   if (route.kind === "newTask") {
     return { title: "New task", detail: "Schedule an agent to run automatically" };
   }
+  if (route.kind === "systemPrompt") {
+    return { title: "System Prompt", detail: "Assistant identity and behavior" };
+  }
   if (route.kind === "surface") {
     const meta = surfaceMeta[route.surface];
     return { title: meta.title, detail: "Live gateway data" };
@@ -828,6 +832,12 @@ export function DashboardScreen({
     setChatHeaderAction(null);
     setActiveTab("settings");
     setDetailRoute({ kind: "surface", surface });
+  };
+
+  const openSystemPrompt = () => {
+    setChatHeaderAction(null);
+    setActiveTab("settings");
+    setDetailRoute({ kind: "systemPrompt" });
   };
 
   const openItem = (surface: MobileSurfaceKey, item: RemoteItemSummary | ActivitySummary) => {
@@ -1080,6 +1090,7 @@ export function DashboardScreen({
               onThemeAccentChange={setAccentOverride}
               onDisconnect={onDisconnect}
               openSurface={openSurface}
+              openSystemPrompt={openSystemPrompt}
             />
           ) : null}
         </ScrollView>
@@ -1803,6 +1814,16 @@ function DetailContent({
           refreshSummary();
           closeDetail();
         }}
+      />
+    );
+  }
+  if (route.kind === "systemPrompt") {
+    return (
+      <SystemPromptPanel
+        accentColor={accentColor}
+        api={api}
+        summary={summary}
+        refreshSummary={refreshSummary}
       />
     );
   }
@@ -4070,6 +4091,183 @@ function SystemMonitorDetailPanel({
   );
 }
 
+function SystemPromptPanel({
+  api,
+  summary,
+  accentColor,
+  refreshSummary,
+}: {
+  api: CybaraMobileApi;
+  summary: FeatureSummary | null;
+  accentColor: string;
+  refreshSummary: () => void;
+}) {
+  const [savingPromptKey, setSavingPromptKey] = useState<SystemPromptFeatureKey | null>(null);
+  const [identityDraft, setIdentityDraft] = useState({ name: "", emoji: "", creature: "", vibe: "" });
+  const [customPromptDraft, setCustomPromptDraft] = useState("");
+  const [savingSystemPrompt, setSavingSystemPrompt] = useState(false);
+
+  const available =
+    summary?.availability.systemPrompt.ok === true && Boolean(summary.systemPrompt);
+  const syncKey = summary?.systemPrompt
+    ? `${JSON.stringify(summary.systemPrompt.identity)}|${summary.systemPrompt.customPrompt}`
+    : "";
+
+  useEffect(() => {
+    const sp = summary?.systemPrompt;
+    if (!sp) return;
+    setIdentityDraft({
+      name: sp.identity?.name || "",
+      emoji: sp.identity?.emoji || "",
+      creature: sp.identity?.creature || "",
+      vibe: sp.identity?.vibe || "",
+    });
+    setCustomPromptDraft(sp.customPrompt || "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncKey]);
+
+  const saveSystemPromptConfig = async () => {
+    const sp = summary?.systemPrompt;
+    if (!sp || savingSystemPrompt) return;
+    const nextIdentity = { ...sp.identity, ...identityDraft };
+    const identityChanged =
+      nextIdentity.name !== (sp.identity?.name || "") ||
+      nextIdentity.emoji !== (sp.identity?.emoji || "") ||
+      nextIdentity.creature !== (sp.identity?.creature || "") ||
+      nextIdentity.vibe !== (sp.identity?.vibe || "");
+    const promptChanged = customPromptDraft !== (sp.customPrompt || "");
+    if (!identityChanged && !promptChanged) return;
+    setSavingSystemPrompt(true);
+    try {
+      const result = await api.updateSystemPrompt({
+        ...sp,
+        identity: nextIdentity,
+        customPrompt: customPromptDraft,
+      });
+      if (result.success === false) throw new Error("System prompt update failed");
+      await refreshSummary();
+    } catch (error) {
+      Alert.alert("Identity update failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setSavingSystemPrompt(false);
+    }
+  };
+
+  const toggleSystemPromptFeature = async (key: SystemPromptFeatureKey) => {
+    if (!summary?.systemPrompt || savingPromptKey) return;
+    setSavingPromptKey(key);
+    try {
+      const nextFeatures = {
+        ...summary.systemPrompt.features,
+        [key]: summary.systemPrompt.features[key] !== true,
+      };
+      const result = await api.updateSystemPrompt({ ...summary.systemPrompt, features: nextFeatures });
+      if (result.success === false) throw new Error("System prompt update failed");
+      await refreshSummary();
+    } catch (error) {
+      Alert.alert(
+        "Prompt feature update failed",
+        error instanceof Error ? error.message : String(error)
+      );
+    } finally {
+      setSavingPromptKey(null);
+    }
+  };
+
+  return (
+    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+      <View style={styles.itemHero}>
+        <View style={[styles.summaryIcon, { backgroundColor: `${accentColor}18` }]}>
+          <Sparkles color={accentColor} size={21} strokeWidth={2.2} />
+        </View>
+        <View style={styles.itemHeroText}>
+          <Text style={styles.itemTitle}>System Prompt</Text>
+          <Text style={styles.itemDetail}>Identity and instructions applied to every agent</Text>
+        </View>
+      </View>
+
+      {available && summary?.systemPrompt ? (
+        <>
+          <Text style={styles.subsectionTitle}>Identity</Text>
+          <View style={styles.settingsGroup}>
+            <SettingsTextField
+              autoCapitalize="words"
+              help="Shown as “You are …” in the system prompt. Leave blank to default to Cybara."
+              label="Name"
+              onBlur={() => void saveSystemPromptConfig()}
+              onChangeText={(name) => setIdentityDraft((prev) => ({ ...prev, name }))}
+              onSubmitEditing={() => void saveSystemPromptConfig()}
+              placeholder="Cybara"
+              returnKeyType="done"
+              value={identityDraft.name}
+            />
+            <SettingsTextField
+              autoCapitalize="none"
+              label="Emoji"
+              onBlur={() => void saveSystemPromptConfig()}
+              onChangeText={(emoji) => setIdentityDraft((prev) => ({ ...prev, emoji }))}
+              placeholder="🐹"
+              value={identityDraft.emoji}
+            />
+            <SettingsTextField
+              autoCapitalize="none"
+              label="Creature / role"
+              onBlur={() => void saveSystemPromptConfig()}
+              onChangeText={(creature) => setIdentityDraft((prev) => ({ ...prev, creature }))}
+              placeholder="AI assistant"
+              value={identityDraft.creature}
+            />
+            <SettingsTextField
+              autoCapitalize="sentences"
+              label="Vibe"
+              onBlur={() => void saveSystemPromptConfig()}
+              onChangeText={(vibe) => setIdentityDraft((prev) => ({ ...prev, vibe }))}
+              placeholder="concise and friendly"
+              value={identityDraft.vibe}
+            />
+            <SettingsTextField
+              autoCapitalize="sentences"
+              help="Appended to every agent's system prompt."
+              label="Custom instructions"
+              multiline
+              onBlur={() => void saveSystemPromptConfig()}
+              onChangeText={setCustomPromptDraft}
+              placeholder="e.g. Always answer in metric units."
+              value={customPromptDraft}
+            />
+          </View>
+
+          <Text style={styles.subsectionTitle}>Behavior</Text>
+          <View style={styles.settingsGroup}>
+            {systemPromptFeatureRows.map((row) => (
+              <SettingToggle
+                busy={savingPromptKey === row.key}
+                detail={row.detail}
+                disabled={savingPromptKey !== null}
+                key={row.key}
+                label={row.label}
+                onPress={() => {
+                  void toggleSystemPromptFeature(row.key);
+                }}
+                tone={accentColor}
+                value={summary.systemPrompt?.features[row.key] === true}
+              />
+            ))}
+          </View>
+        </>
+      ) : (
+        <EmptyState
+          label="Prompt settings unavailable"
+          detail={endpointErrorDetail(
+            summary?.availability.systemPrompt,
+            "The gateway did not return system prompt settings."
+          )}
+        />
+      )}
+    </GlassPanel>
+  );
+}
+
 function ItemDetailPanel({
   api,
   closeDetail,
@@ -4195,6 +4393,7 @@ function SettingsPanel({
   onThemeAccentChange,
   onDisconnect,
   openSurface,
+  openSystemPrompt,
 }: {
   accentColor: string;
   accentKey: AccentKey;
@@ -4206,21 +4405,13 @@ function SettingsPanel({
   onThemeAccentChange: (accent: AccentKey) => void;
   onDisconnect: () => void;
   openSurface: (surface: MobileSurfaceKey) => void;
+  openSystemPrompt: () => void;
 }) {
   const counts = summarizeFeatureCounts(summary);
   const { mode: appearanceMode, setMode: setAppearanceMode } = useThemeControls();
   const [savingAccent, setSavingAccent] = useState<AccentKey | null>(null);
   const [savingConfigKey, setSavingConfigKey] = useState<string | null>(null);
-  const [savingPromptKey, setSavingPromptKey] = useState<SystemPromptFeatureKey | null>(null);
   const [savingAgentAccess, setSavingAgentAccess] = useState(false);
-  const [identityDraft, setIdentityDraft] = useState({
-    name: "",
-    emoji: "",
-    creature: "",
-    vibe: "",
-  });
-  const [customPromptDraft, setCustomPromptDraft] = useState("");
-  const [savingSystemPrompt, setSavingSystemPrompt] = useState(false);
   const [routerConfig, setRouterConfig] = useState<RouterConfig | null>(null);
   const [routerStatus, setRouterStatus] = useState<RouterStatus | null>(null);
   const [routerError, setRouterError] = useState<string | null>(null);
@@ -4322,80 +4513,6 @@ function SettingsPanel({
       );
     } finally {
       setSavingAgentAccess(false);
-    }
-  };
-
-  const toggleSystemPromptFeature = async (key: SystemPromptFeatureKey) => {
-    if (!summary?.systemPrompt || savingPromptKey) return;
-    setSavingPromptKey(key);
-    try {
-      const nextFeatures = {
-        ...summary.systemPrompt.features,
-        [key]: summary.systemPrompt.features[key] !== true,
-      };
-      const result = await api.updateSystemPrompt({
-        ...summary.systemPrompt,
-        features: nextFeatures,
-      });
-      if (result.success === false) {
-        throw new Error("System prompt update failed");
-      }
-      await refreshSummary();
-    } catch (error) {
-      Alert.alert(
-        "Prompt feature update failed",
-        error instanceof Error ? error.message : String(error)
-      );
-    } finally {
-      setSavingPromptKey(null);
-    }
-  };
-
-  // Sync identity + custom-instruction drafts only when the server values
-  // actually change, so a periodic refresh never clobbers in-progress typing.
-  const systemPromptSyncKey = summary?.systemPrompt
-    ? `${JSON.stringify(summary.systemPrompt.identity)}|${summary.systemPrompt.customPrompt}`
-    : "";
-  useEffect(() => {
-    const sp = summary?.systemPrompt;
-    if (!sp) return;
-    setIdentityDraft({
-      name: sp.identity?.name || "",
-      emoji: sp.identity?.emoji || "",
-      creature: sp.identity?.creature || "",
-      vibe: sp.identity?.vibe || "",
-    });
-    setCustomPromptDraft(sp.customPrompt || "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [systemPromptSyncKey]);
-
-  const saveSystemPromptConfig = async () => {
-    const sp = summary?.systemPrompt;
-    if (!sp || savingSystemPrompt) return;
-    const nextIdentity = { ...sp.identity, ...identityDraft };
-    const identityChanged =
-      nextIdentity.name !== (sp.identity?.name || "") ||
-      nextIdentity.emoji !== (sp.identity?.emoji || "") ||
-      nextIdentity.creature !== (sp.identity?.creature || "") ||
-      nextIdentity.vibe !== (sp.identity?.vibe || "");
-    const promptChanged = customPromptDraft !== (sp.customPrompt || "");
-    if (!identityChanged && !promptChanged) return;
-    setSavingSystemPrompt(true);
-    try {
-      const result = await api.updateSystemPrompt({
-        ...sp,
-        identity: nextIdentity,
-        customPrompt: customPromptDraft,
-      });
-      if (result.success === false) throw new Error("System prompt update failed");
-      await refreshSummary();
-    } catch (error) {
-      Alert.alert(
-        "Identity update failed",
-        error instanceof Error ? error.message : String(error)
-      );
-    } finally {
-      setSavingSystemPrompt(false);
     }
   };
 
@@ -4868,83 +4985,28 @@ function SettingsPanel({
             )}
           </SettingsSection>
         ) : null}
-        <SettingsSection title="Agent prompt features">
-          {systemPromptAvailable && summary?.systemPrompt ? (
-            <>
-              {systemPromptFeatureRows.map((row) => (
-                <SettingToggle
-                  busy={savingPromptKey === row.key}
-                  detail={row.detail}
-                  disabled={savingPromptKey !== null}
-                  key={row.key}
-                  label={row.label}
-                  onPress={() => {
-                    void toggleSystemPromptFeature(row.key);
-                  }}
-                  tone={accentColor}
-                  value={summary.systemPrompt?.features[row.key] === true}
-                />
-              ))}
-            </>
-          ) : (
-            <EmptyState
-              label="Prompt settings unavailable"
-              detail={endpointErrorDetail(
-                summary?.availability.systemPrompt,
-                "The gateway did not return system prompt settings."
-              )}
-            />
-          )}
+        <SettingsSection title="Assistant">
+          <Pressable
+            accessibilityRole="button"
+            style={styles.settingsNavigationRow}
+            onPress={openSystemPrompt}
+          >
+            <View style={[styles.settingsNavigationIcon, { backgroundColor: `${accentColor}18` }]}>
+              <Sparkles color={accentColor} size={20} strokeWidth={2.1} />
+            </View>
+            <View style={styles.listText}>
+              <Text style={styles.listTitle}>System Prompt</Text>
+              <Text style={styles.listDetail} numberOfLines={1}>
+                {systemPromptAvailable
+                  ? summary?.systemPrompt?.identity?.name
+                    ? `Identity: ${summary.systemPrompt.identity.name}`
+                    : "Identity, instructions, and behavior"
+                  : endpointStatusLabel(summary?.availability.systemPrompt)}
+              </Text>
+            </View>
+            <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+          </Pressable>
         </SettingsSection>
-        {systemPromptAvailable && summary?.systemPrompt ? (
-          <SettingsSection title="Assistant identity">
-            <SettingsTextField
-              autoCapitalize="words"
-              help="Shown as “You are …” in the system prompt. Leave blank to default to Cybara."
-              label="Name"
-              onBlur={() => void saveSystemPromptConfig()}
-              onChangeText={(name) => setIdentityDraft((prev) => ({ ...prev, name }))}
-              onSubmitEditing={() => void saveSystemPromptConfig()}
-              placeholder="Cybara"
-              returnKeyType="done"
-              value={identityDraft.name}
-            />
-            <SettingsTextField
-              autoCapitalize="none"
-              label="Emoji"
-              onBlur={() => void saveSystemPromptConfig()}
-              onChangeText={(emoji) => setIdentityDraft((prev) => ({ ...prev, emoji }))}
-              placeholder="🐹"
-              value={identityDraft.emoji}
-            />
-            <SettingsTextField
-              autoCapitalize="none"
-              label="Creature / role"
-              onBlur={() => void saveSystemPromptConfig()}
-              onChangeText={(creature) => setIdentityDraft((prev) => ({ ...prev, creature }))}
-              placeholder="AI assistant"
-              value={identityDraft.creature}
-            />
-            <SettingsTextField
-              autoCapitalize="sentences"
-              label="Vibe"
-              onBlur={() => void saveSystemPromptConfig()}
-              onChangeText={(vibe) => setIdentityDraft((prev) => ({ ...prev, vibe }))}
-              placeholder="concise and friendly"
-              value={identityDraft.vibe}
-            />
-            <SettingsTextField
-              autoCapitalize="sentences"
-              help="Appended to every agent's system prompt."
-              label="Custom instructions"
-              multiline
-              onBlur={() => void saveSystemPromptConfig()}
-              onChangeText={setCustomPromptDraft}
-              placeholder="e.g. Always answer in metric units."
-              value={customPromptDraft}
-            />
-          </SettingsSection>
-        ) : null}
         <SettingsSection title="Gateway APIs">
           <SettingsRow
             Icon={Database}

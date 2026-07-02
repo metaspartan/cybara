@@ -60,11 +60,22 @@ describe("mobile: primary navigation", () => {
   });
 });
 
-describe("mobile: assistant identity + custom instructions (web parity)", () => {
+describe("mobile: system prompt sub-page (web parity)", () => {
   const screen = read("screens/DashboardScreen.tsx");
 
-  test("exposes identity fields and custom instructions that persist via updateSystemPrompt", () => {
-    expect(screen).toContain('title="Assistant identity"');
+  test("identity + instructions live on a dedicated System Prompt page reached from settings", () => {
+    // Dedicated sub-page component + settings nav row + route
+    expect(screen).toContain("function SystemPromptPanel(");
+    expect(screen).toContain("<SystemPromptPanel");
+    expect(screen).toContain('kind: "systemPrompt"');
+    expect(screen).toContain("openSystemPrompt");
+    expect(screen).toContain('<Text style={styles.listTitle}>System Prompt</Text>');
+    // and it is no longer a section on the settings tab
+    expect(screen).not.toContain('title="Assistant identity"');
+    expect(screen).not.toContain('title="Agent prompt features"');
+  });
+
+  test("the sub-page persists identity + instructions via updateSystemPrompt", () => {
     expect(screen).toContain('label="Name"');
     expect(screen).toContain('label="Custom instructions"');
     expect(screen).toContain("saveSystemPromptConfig");

@@ -158,6 +158,7 @@ export type MobileDetailBackInput =
   | { kind: "session" }
   | { kind: "newChat" }
   | { kind: "newTask" }
+  | { kind: "systemPrompt" }
   | { kind: "surface"; surface: MobileSurfaceKey }
   | { kind: "item"; surface: MobileSurfaceKey };
 
