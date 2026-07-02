@@ -177,6 +177,18 @@ describe("Browser route contracts (mocked manager)", () => {
     ]);
   });
 
+  test("POST /api/browser/tabs/:id/navigate blocks private hosts before manager call", async () => {
+    const res = await api("POST", "/api/browser/tabs/tab-9/navigate", {
+      url: "http://127.0.0.1:4269/api/config",
+      waitUntil: "domcontentloaded",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(String((res.body as { error?: string }).error)).toContain("Navigation blocked");
+    expect(browserMockState.navigateCalls).toEqual([]);
+  });
+
   test("GET /api/browser/tabs/:id/snapshot forwards id", async () => {
     const res = await api("GET", "/api/browser/tabs/tab-2/snapshot");
     expect(res.status).toBe(200);

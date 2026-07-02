@@ -39,6 +39,9 @@ interface WorkerReport {
   fetchCalls: number;
   installKnown: { success: boolean; hasId: boolean; error?: string };
   installCustom: { success: boolean; hasId: boolean; error?: string };
+  installMalicious: { success: boolean; hasId: boolean; error?: string };
+  installValidCustoms: Array<{ name: string; success: boolean; hasId: boolean; error?: string }>;
+  installInvalidCustoms: Array<{ name: string; success: boolean; hasId: boolean; error?: string }>;
 }
 
 // mcp-registry imports mcpManager, which opens the SQLite database under
@@ -76,6 +79,39 @@ const searchNpmFetchDown = ids(await mcpRegistry.search("filesystem"));
 
 const installKnown = await mcpRegistry.installByPackage("@modelcontextprotocol/server-github");
 const installCustom = await mcpRegistry.installByPackage("some-custom-mcp-pkg");
+const installMalicious = await mcpRegistry.installByPackage("safe-name;touch /tmp/cyb-pwned");
+const validCustomNames = ["@scope/pkg.name", "pkg_name", "pkg.name-1"];
+const invalidCustomNames = [
+  "safe && whoami",
+  "@scope/pkg;rm",
+  "$(touch pwned)",
+  "../pkg",
+  "pkg name",
+  "https://evil.example/pkg",
+  "@/missing",
+  "@scope/",
+  "scope/pkg",
+];
+const installValidCustoms = [];
+for (const name of validCustomNames) {
+  const result = await mcpRegistry.installByPackage(name);
+  installValidCustoms.push({
+    name,
+    success: result.success,
+    hasId: typeof result.id === "string" && result.id.length > 0,
+    error: result.error,
+  });
+}
+const installInvalidCustoms = [];
+for (const name of invalidCustomNames) {
+  const result = await mcpRegistry.installByPackage(name);
+  installInvalidCustoms.push({
+    name,
+    success: result.success,
+    hasId: typeof result.id === "string" && result.id.length > 0,
+    error: result.error,
+  });
+}
 
 console.log(
   "@@REPORT@@" +
@@ -107,6 +143,13 @@ console.log(
         hasId: typeof installCustom.id === "string" && installCustom.id.length > 0,
         error: installCustom.error,
       },
+      installMalicious: {
+        success: installMalicious.success,
+        hasId: typeof installMalicious.id === "string" && installMalicious.id.length > 0,
+        error: installMalicious.error,
+      },
+      installValidCustoms,
+      installInvalidCustoms,
     })
 );
 `;
@@ -240,5 +283,27 @@ describe("mcpRegistry install", () => {
   test("installByPackage synthesizes an entry for unknown packages", () => {
     expect(report.installCustom.success).toBe(true);
     expect(report.installCustom.hasId).toBe(true);
+  });
+
+  test("installByPackage rejects custom package names with shell metacharacters", () => {
+    expect(report.installMalicious.success).toBe(false);
+    expect(report.installMalicious.hasId).toBe(false);
+    expect(report.installMalicious.error).toContain("Invalid MCP package name");
+  });
+
+  test("installByPackage accepts npm-shaped custom names and rejects command-shaped names", () => {
+    expect(report.installValidCustoms).toHaveLength(3);
+    for (const result of report.installValidCustoms) {
+      expect(result.success).toBe(true);
+      expect(result.hasId).toBe(true);
+      expect(result.error).toBeUndefined();
+    }
+
+    expect(report.installInvalidCustoms).toHaveLength(9);
+    for (const result of report.installInvalidCustoms) {
+      expect(result.success).toBe(false);
+      expect(result.hasId).toBe(false);
+      expect(result.error).toContain("Invalid MCP package name");
+    }
   });
 });

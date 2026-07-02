@@ -141,6 +141,7 @@ import {
   mobileBackRouteForDetail,
   mobileThemeConfigPayload,
   recentSessionStateLabel,
+  sessionProviderModelLabel,
   readMobileDangerousToolPolicy,
   readMobileReasoningEffort,
   readMobileRouterStrategy,
@@ -1188,8 +1189,8 @@ function OverviewPanel({
           return {
             id: session.id,
             Icon: MessageCircle,
-            title: session.title || session.id.slice(0, 8),
-            detail: `${session.agent_id || "agent"} - ${lastUpdatedLabel(session)}`,
+            title: session.title || "Untitled chat",
+            detail: `${sessionProviderModelLabel(session)} - ${lastUpdatedLabel(session)}`,
             state,
             tone: state === "Working" ? colors.amber : accentColor,
             onPress: () => openSession(session.id),
@@ -1362,7 +1363,7 @@ function SessionsPanel({
   };
 
   const confirmDeleteSession = (session: SessionSummary) => {
-    const title = session.title || session.id.slice(0, 8);
+    const title = session.title || "Untitled chat";
     if (Platform.OS === "ios") {
       ActionSheetIOS.showActionSheetWithOptions(
         {
@@ -1448,11 +1449,12 @@ function SessionsPanel({
                 </View>
               ) : null}
               <Text numberOfLines={2} style={[styles.listTitle, styles.sessionListTitle]}>
-                {session.title || session.id.slice(0, 8)}
+                {session.title || "Untitled chat"}
               </Text>
             </View>
             <Text numberOfLines={1} style={styles.listDetail}>
-              {session.message_count} messages - {lastUpdatedLabel(session)}
+              {sessionProviderModelLabel(session)} - {session.message_count} messages -{" "}
+              {lastUpdatedLabel(session)}
             </Text>
             {session.last_message?.content ? (
               <Text numberOfLines={1} style={styles.sessionPreview}>
@@ -2107,12 +2109,18 @@ function SessionDetailPanel({
       detail?.messages[detail.messages.length - 1]?.timestamp;
     const title = detail?.title || sessionSummary?.title || null;
     const agentId = detail?.agentId || sessionSummary?.agent_id || null;
+    const model = detail?.model || sessionSummary?.model || null;
+    const provider = detail?.provider || sessionSummary?.provider || sessionSummary?.provider_id || null;
+    const providerName = detail?.providerName || sessionSummary?.provider_name || null;
     const workspaceDir = detail?.workspaceDir || sessionSummary?.workspace_dir || null;
     Alert.alert(
       "Chat settings",
       buildMobileChatSettingsLines({
         agentId,
+        model,
         messageCount,
+        provider,
+        providerName,
         sessionId,
         title,
         updatedLabel: absoluteTimestampLabel(updatedAt),

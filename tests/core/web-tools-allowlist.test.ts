@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { handleWebFetch } from "../../src/core/tools/handlers/browser";
+import {
+  handleWebFetch,
+  validateBrowserNavigationUrl,
+} from "../../src/core/tools/handlers/browser";
 import { handleWebSearch } from "../../src/core/tools/handlers/web-search";
 import { config } from "../../src/core/config";
 
@@ -31,6 +34,36 @@ describe("Web tool URL allowlist policy", () => {
     await expect(handleWebFetch({ url: "https://blocked.example/path" })).rejects.toThrow(
       "not allowlisted for web_fetch"
     );
+  });
+
+  test("blocks web_fetch before fetch for private hosts", async () => {
+    let called = false;
+    globalThis.fetch = (async () => {
+      called = true;
+      return new Response("unexpected");
+    }) as typeof fetch;
+
+    await expect(handleWebFetch({ url: "http://127.0.0.1:4269/api/config" })).rejects.toThrow(
+      "Request blocked"
+    );
+    expect(called).toBe(false);
+  });
+
+  test("browser navigation uses the same private-host and allowlist policy", async () => {
+    await expect(
+      validateBrowserNavigationUrl("http://localhost:4269/api/config")
+    ).rejects.toThrow("Navigation blocked");
+
+    config.setWebToolUrlPolicy({
+      enabled: true,
+      fetch_allowlist: ["allowed.example"],
+      search_result_allowlist: [],
+    });
+
+    await expect(validateBrowserNavigationUrl("https://blocked.example/path")).rejects.toThrow(
+      "not allowlisted for web_fetch"
+    );
+    await expect(validateBrowserNavigationUrl("https://allowed.example/path")).resolves.toBeUndefined();
   });
 
   test("allows web_fetch for allowlisted hosts", async () => {

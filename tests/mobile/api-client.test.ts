@@ -792,6 +792,10 @@ describe("mobile API client", () => {
             id: "s1",
             title: "Build mobile",
             agentId: "agent-1",
+            providerName: "OpenAI",
+            provider: "openai",
+            providerId: "provider-openai",
+            model: "gpt-5-mini",
             messageCount: 2,
             updatedAt: "2026-06-30T08:00:00.000Z",
           },
@@ -803,6 +807,10 @@ describe("mobile API client", () => {
           id: "s1",
           title: "Build mobile",
           agent_id: "agent-1",
+          provider_name: "OpenAI",
+          provider: "openai",
+          provider_id: "provider-openai",
+          model: "gpt-5-mini",
           workspace_dir: "/repo",
           messagesList: [
             {
@@ -861,7 +869,17 @@ describe("mobile API client", () => {
       expect(sessions[0]).toMatchObject({
         id: "s1",
         agent_id: "agent-1",
+        provider_name: "OpenAI",
+        provider: "openai",
+        provider_id: "provider-openai",
+        model: "gpt-5-mini",
         message_count: 2,
+      });
+      expect(detail).toMatchObject({
+        providerName: "OpenAI",
+        provider: "openai",
+        providerId: "provider-openai",
+        model: "gpt-5-mini",
       });
       expect(detail.messages[0].toolCalls?.[0].name).toBe("read_file");
       expect(detail.messages[0].processActivities?.[0].text).toBe("Read DashboardScreen");

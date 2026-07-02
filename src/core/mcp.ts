@@ -183,7 +183,6 @@ class MCPServerManager extends EventEmitter {
       const proc = spawn(cmd, cmdArgs, {
         env,
         stdio: ["pipe", "pipe", "pipe"],
-        shell: true,
       });
 
       instance.process = proc;

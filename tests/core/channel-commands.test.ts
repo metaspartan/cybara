@@ -170,20 +170,29 @@ describe("permissions command (config-backed, read + restore)", () => {
     expect(b).toContain("Tool permission mode:");
   });
 
+  test("remote channels cannot change the global permission mode", async () => {
+    const before = await handleChannelManagementCommand("/permissions show", baseContext());
+    const out = await handleChannelManagementCommand("/permissions allow", baseContext());
+    expect(out).toBe("Permission mode changes are only available from the local app.");
+    const after = await handleChannelManagementCommand("/permissions show", baseContext());
+    expect(after).toBe(before);
+  });
+
   test("round-trip: setting ask then restoring the original mode", async () => {
-    const original = await handleChannelManagementCommand("/permissions show", baseContext());
+    const localContext = baseContext({ allowSecuritySettings: true });
+    const original = await handleChannelManagementCommand("/permissions show", localContext);
     const wasAsk = original!.includes("ask (dangerous");
 
-    const setAsk = await handleChannelManagementCommand("/permissions ask", baseContext());
+    const setAsk = await handleChannelManagementCommand("/permissions ask", localContext);
     expect(setAsk).toContain("set to ask");
-    const askShow = await handleChannelManagementCommand("/permissions show", baseContext());
+    const askShow = await handleChannelManagementCommand("/permissions show", localContext);
     expect(askShow).toContain("ask (dangerous");
 
     if (!wasAsk) {
-      const setAllow = await handleChannelManagementCommand("/permissions allow", baseContext());
+      const setAllow = await handleChannelManagementCommand("/permissions allow", localContext);
       expect(setAllow).toContain("set to allow");
     }
-    const restored = await handleChannelManagementCommand("/permissions show", baseContext());
+    const restored = await handleChannelManagementCommand("/permissions show", localContext);
     expect(restored).toBe(original);
   });
 });

@@ -173,11 +173,67 @@ function insertRawTask(id: string, name: string, config: string, status: string)
   }
 }
 
-function insertRawAgent(id: string, name: string, config: string): void {
+function insertRawAgent(
+  id: string,
+  name: string,
+  config: string,
+  options: { model?: string; providerId?: string } = {}
+): void {
   const dbPath = join(testHome, ".cybara", "data", "platform.db");
   const db = new Database(dbPath);
   try {
-    db.query("INSERT INTO agents (id, name, config) VALUES (?, ?, ?)").run(id, name, config);
+    db.query("INSERT INTO agents (id, name, model, provider_id, config) VALUES (?, ?, ?, ?, ?)").run(
+      id,
+      name,
+      options.model ?? null,
+      options.providerId ?? null,
+      config
+    );
+  } finally {
+    db.close();
+  }
+}
+
+function insertRawProvider(id: string, provider: string, name: string): void {
+  const dbPath = join(testHome, ".cybara", "data", "platform.db");
+  const db = new Database(dbPath);
+  try {
+    db.query("INSERT INTO providers (id, provider, name) VALUES (?, ?, ?)").run(
+      id,
+      provider,
+      name
+    );
+  } finally {
+    db.close();
+  }
+}
+
+function deleteRawAgent(id: string): void {
+  const dbPath = join(testHome, ".cybara", "data", "platform.db");
+  const db = new Database(dbPath);
+  try {
+    db.query("DELETE FROM agents WHERE id = ?").run(id);
+  } finally {
+    db.close();
+  }
+}
+
+function deleteRawProvider(id: string): void {
+  const dbPath = join(testHome, ".cybara", "data", "platform.db");
+  const db = new Database(dbPath);
+  try {
+    db.query("DELETE FROM providers WHERE id = ?").run(id);
+  } finally {
+    db.close();
+  }
+}
+
+function deleteRawSession(sessionId: string): void {
+  const dbPath = join(testHome, ".cybara", "data", "platform.db");
+  const db = new Database(dbPath);
+  try {
+    db.query("DELETE FROM session_messages WHERE session_id = ?").run(sessionId);
+    db.query("DELETE FROM chat_sessions WHERE id = ?").run(sessionId);
   } finally {
     db.close();
   }
@@ -1357,40 +1413,96 @@ describe("Session API", () => {
     expect(Array.isArray(data)).toBe(true);
   });
 
+  test("session list and detail include provider/model metadata for the chat agent", async () => {
+    const suffix = Date.now();
+    const providerId = `session-provider-${suffix}`;
+    const agentId = `session-agent-${suffix}`;
+    const sessionId = `session-metadata-${suffix}`;
+    try {
+      insertRawProvider(providerId, "openai", "OpenAI Test");
+      insertRawAgent(agentId, "Session Metadata Agent", "{}", {
+        model: "gpt-5-mini",
+        providerId,
+      });
+      insertRawSession(sessionId, agentId, [{ role: "assistant", content: "hello" }]);
+
+      const list = await api("GET", "/api/sessions");
+      expect(list.status).toBe(200);
+      const found = (
+        list.data as Array<{
+          id: string;
+          provider?: string;
+          provider_id?: string;
+          provider_name?: string;
+          model?: string;
+        }>
+      ).find((entry) => entry.id === sessionId);
+      expect(found).toMatchObject({
+        provider: "openai",
+        provider_id: providerId,
+        provider_name: "OpenAI Test",
+        model: "gpt-5-mini",
+      });
+
+      const detail = await api("GET", `/api/sessions/${sessionId}`);
+      expect(detail.status).toBe(200);
+      expect(detail.data).toMatchObject({
+        provider: "openai",
+        provider_id: providerId,
+        provider_name: "OpenAI Test",
+        model: "gpt-5-mini",
+      });
+    } finally {
+      deleteRawSession(sessionId);
+      deleteRawAgent(agentId);
+      deleteRawProvider(providerId);
+    }
+  });
+
   test("session workspace can be set and loaded via session routes", async () => {
     const initialWorkspace = process.cwd();
+    const agentId = `workspace-session-agent-${Date.now()}`;
+    insertRawAgent(agentId, "Workspace Session Agent", "{}");
     const create = await api("POST", "/api/chat", {
       message: `workspace-session-${Date.now()}`,
+      agentId,
       workspaceDir: initialWorkspace,
     });
-    expect(create.status).toBe(200);
-    const sessionId = create.data.sessionId as string;
-    expect(typeof sessionId).toBe("string");
+    try {
+      expect(create.status).toBe(200);
+      const sessionId = create.data.sessionId as string;
+      expect(typeof sessionId).toBe("string");
 
-    const detailBefore = await api("GET", `/api/sessions/${sessionId}`);
-    expect(detailBefore.status).toBe(200);
-    expect(detailBefore.data.workspace_dir).toBe(initialWorkspace);
+      const detailBefore = await api("GET", `/api/sessions/${sessionId}`);
+      expect(detailBefore.status).toBe(200);
+      expect(detailBefore.data.workspace_dir).toBe(initialWorkspace);
 
-    const nextWorkspace = process.env.HOME || initialWorkspace;
-    const update = await api("PUT", `/api/sessions/${sessionId}/workspace`, {
-      workspaceDir: nextWorkspace,
-    });
-    expect(update.status).toBe(200);
-    expect(update.data.success).toBe(true);
-    expect(update.data.sessionId).toBe(sessionId);
-    expect(update.data.workspaceDir).toBe(nextWorkspace);
+      const nextWorkspace = process.env.HOME || initialWorkspace;
+      const update = await api("PUT", `/api/sessions/${sessionId}/workspace`, {
+        workspaceDir: nextWorkspace,
+      });
+      expect(update.status).toBe(200);
+      expect(update.data.success).toBe(true);
+      expect(update.data.sessionId).toBe(sessionId);
+      expect(update.data.workspaceDir).toBe(nextWorkspace);
 
-    const detailAfter = await api("GET", `/api/sessions/${sessionId}`);
-    expect(detailAfter.status).toBe(200);
-    expect(detailAfter.data.workspace_dir).toBe(nextWorkspace);
+      const detailAfter = await api("GET", `/api/sessions/${sessionId}`);
+      expect(detailAfter.status).toBe(200);
+      expect(detailAfter.data.workspace_dir).toBe(nextWorkspace);
 
-    const sessions = await api("GET", "/api/sessions");
-    expect(sessions.status).toBe(200);
-    const found = (sessions.data as Array<{ id: string; workspace_dir?: string | null }>).find(
-      (entry) => entry.id === sessionId
-    );
-    expect(found).toBeDefined();
-    expect(found?.workspace_dir).toBe(nextWorkspace);
+      const sessions = await api("GET", "/api/sessions");
+      expect(sessions.status).toBe(200);
+      const found = (sessions.data as Array<{ id: string; workspace_dir?: string | null }>).find(
+        (entry) => entry.id === sessionId
+      );
+      expect(found).toBeDefined();
+      expect(found?.workspace_dir).toBe(nextWorkspace);
+    } finally {
+      if (typeof create.data?.sessionId === "string") {
+        deleteRawSession(create.data.sessionId);
+      }
+      deleteRawAgent(agentId);
+    }
   });
 
   test("GET /api/sessions/:sessionId keeps artifact tool calls visible when tool list exceeds preview limit", async () => {
@@ -1566,65 +1678,75 @@ describe("Session API", () => {
   });
 
   test("POST /api/sessions/:sessionId/revert truncates later conversation history", async () => {
+    const agentId = `revert-session-agent-${Date.now()}`;
+    insertRawAgent(agentId, "Revert Session Agent", "{}");
     const first = await api("POST", "/api/chat", {
+      agentId,
       message: `revert-first-${Date.now()}`,
     });
-    expect(first.status).toBe(200);
-    const sessionId = first.data.sessionId as string;
-    expect(typeof sessionId).toBe("string");
+    try {
+      expect(first.status).toBe(200);
+      const sessionId = first.data.sessionId as string;
+      expect(typeof sessionId).toBe("string");
 
-    const second = await api("POST", "/api/chat", {
-      sessionId,
-      message: `revert-second-${Date.now()}`,
-    });
-    expect(second.status).toBe(200);
+      const second = await api("POST", "/api/chat", {
+        sessionId,
+        message: `revert-second-${Date.now()}`,
+      });
+      expect(second.status).toBe(200);
 
-    const third = await api("POST", "/api/chat", {
-      sessionId,
-      message: `revert-third-${Date.now()}`,
-    });
-    expect(third.status).toBe(200);
+      const third = await api("POST", "/api/chat", {
+        sessionId,
+        message: `revert-third-${Date.now()}`,
+      });
+      expect(third.status).toBe(200);
 
-    const before = await api("GET", `/api/sessions/${sessionId}`);
-    expect(before.status).toBe(200);
-    expect(before.data.messagesList.length).toBeGreaterThanOrEqual(4);
-    const userIndexes = (before.data.messagesList as Array<{ role?: string }>).reduce<number[]>(
-      (indexes, message, index) => {
-        if (message.role === "user") indexes.push(index);
-        return indexes;
-      },
-      []
-    );
-    expect(userIndexes.length).toBeGreaterThanOrEqual(2);
-    const revertIndex = userIndexes[1] ?? userIndexes[0] ?? 0;
-    const expectedKeptCount = revertIndex;
-    const expectedRemovedCount = before.data.messagesList.length - expectedKeptCount;
-    const revertMessage = before.data.messagesList[revertIndex];
-    const shiftedIndex =
-      revertIndex + 1 < before.data.messagesList.length ? revertIndex + 1 : revertIndex;
+      const before = await api("GET", `/api/sessions/${sessionId}`);
+      expect(before.status).toBe(200);
+      expect(before.data.messagesList.length).toBeGreaterThanOrEqual(4);
+      const userIndexes = (before.data.messagesList as Array<{ role?: string }>).reduce<number[]>(
+        (indexes, message, index) => {
+          if (message.role === "user") indexes.push(index);
+          return indexes;
+        },
+        []
+      );
+      expect(userIndexes.length).toBeGreaterThanOrEqual(2);
+      const revertIndex = userIndexes[1] ?? userIndexes[0] ?? 0;
+      const expectedKeptCount = revertIndex;
+      const expectedRemovedCount = before.data.messagesList.length - expectedKeptCount;
+      const revertMessage = before.data.messagesList[revertIndex];
+      const shiftedIndex =
+        revertIndex + 1 < before.data.messagesList.length ? revertIndex + 1 : revertIndex;
 
-    const reverted = await api("POST", `/api/sessions/${sessionId}/revert`, {
-      messageIndex: shiftedIndex,
-      messageRole: "user",
-      messageContent: revertMessage.content,
-      messageTimestamp: revertMessage.timestamp,
-    });
-    expect(reverted.status).toBe(200);
-    expect(reverted.data.success).toBe(true);
-    expect(reverted.data.sessionId).toBe(sessionId);
-    expect(reverted.data.keptCount).toBe(expectedKeptCount);
-    expect(reverted.data.removedCount).toBe(expectedRemovedCount);
-    expect(reverted.data.removedFromIndex).toBe(revertIndex);
-    expect(reverted.data.messagesList).toHaveLength(expectedKeptCount);
-    if (expectedKeptCount > 0) {
-      expect(reverted.data.messagesList[expectedKeptCount - 1].role).not.toBeUndefined();
-    }
+      const reverted = await api("POST", `/api/sessions/${sessionId}/revert`, {
+        messageIndex: shiftedIndex,
+        messageRole: "user",
+        messageContent: revertMessage.content,
+        messageTimestamp: revertMessage.timestamp,
+      });
+      expect(reverted.status).toBe(200);
+      expect(reverted.data.success).toBe(true);
+      expect(reverted.data.sessionId).toBe(sessionId);
+      expect(reverted.data.keptCount).toBe(expectedKeptCount);
+      expect(reverted.data.removedCount).toBe(expectedRemovedCount);
+      expect(reverted.data.removedFromIndex).toBe(revertIndex);
+      expect(reverted.data.messagesList).toHaveLength(expectedKeptCount);
+      if (expectedKeptCount > 0) {
+        expect(reverted.data.messagesList[expectedKeptCount - 1].role).not.toBeUndefined();
+      }
 
-    const after = await api("GET", `/api/sessions/${sessionId}`);
-    expect(after.status).toBe(200);
-    expect(after.data.messagesList).toHaveLength(expectedKeptCount);
-    if (expectedKeptCount > 0) {
-      expect(after.data.messagesList[expectedKeptCount - 1].role).not.toBeUndefined();
+      const after = await api("GET", `/api/sessions/${sessionId}`);
+      expect(after.status).toBe(200);
+      expect(after.data.messagesList).toHaveLength(expectedKeptCount);
+      if (expectedKeptCount > 0) {
+        expect(after.data.messagesList[expectedKeptCount - 1].role).not.toBeUndefined();
+      }
+    } finally {
+      if (typeof first.data?.sessionId === "string") {
+        deleteRawSession(first.data.sessionId);
+      }
+      deleteRawAgent(agentId);
     }
   });
 
@@ -1881,42 +2003,53 @@ describe("Tasks API", () => {
   });
 
   test("task lifecycle routes create/get/start/stop/trigger/runs/delete", async () => {
+    const agentId = `task-lifecycle-agent-${Date.now()}`;
+    insertRawAgent(agentId, "Task Lifecycle Agent", "{}");
     const createRes = await api("POST", "/api/tasks", {
       name: `routes-task-${Date.now()}`,
       description: "integration task lifecycle",
       action: "Say hello from tasks integration test",
+      agent_id: agentId,
       schedule: "0 * * * *",
       enabled: false,
     });
+    let taskId = "";
+    try {
+      expect(createRes.status).toBe(200);
+      expect(typeof createRes.data.id).toBe("string");
+      taskId = createRes.data.id as string;
 
-    expect(createRes.status).toBe(200);
-    expect(typeof createRes.data.id).toBe("string");
-    const taskId = createRes.data.id as string;
+      const getRes = await api("GET", `/api/tasks/${taskId}`);
+      expect(getRes.status).toBe(200);
+      expect(getRes.data.id).toBe(taskId);
 
-    const getRes = await api("GET", `/api/tasks/${taskId}`);
-    expect(getRes.status).toBe(200);
-    expect(getRes.data.id).toBe(taskId);
+      const startRes = await api("POST", `/api/tasks/${taskId}/start`);
+      expect(startRes.status).toBe(200);
+      expect(startRes.data.success).toBe(true);
 
-    const startRes = await api("POST", `/api/tasks/${taskId}/start`);
-    expect(startRes.status).toBe(200);
-    expect(startRes.data.success).toBe(true);
+      const stopRes = await api("POST", `/api/tasks/${taskId}/stop`);
+      expect(stopRes.status).toBe(200);
+      expect(stopRes.data.success).toBe(true);
 
-    const stopRes = await api("POST", `/api/tasks/${taskId}/stop`);
-    expect(stopRes.status).toBe(200);
-    expect(stopRes.data.success).toBe(true);
+      const triggerRes = await api("POST", `/api/tasks/${taskId}/trigger`);
+      expect(triggerRes.status).toBe(200);
+      expect(triggerRes.data.success).toBe(true);
 
-    const triggerRes = await api("POST", `/api/tasks/${taskId}/trigger`);
-    expect(triggerRes.status).toBe(200);
-    expect(triggerRes.data.success).toBe(true);
+      const runsRes = await api("GET", `/api/tasks/${taskId}/runs`);
+      expect(runsRes.status).toBe(200);
+      expect(Array.isArray(runsRes.data)).toBe(true);
+      expect(runsRes.data.length).toBeGreaterThan(0);
 
-    const runsRes = await api("GET", `/api/tasks/${taskId}/runs`);
-    expect(runsRes.status).toBe(200);
-    expect(Array.isArray(runsRes.data)).toBe(true);
-    expect(runsRes.data.length).toBeGreaterThan(0);
-
-    const deleteRes = await api("DELETE", `/api/tasks/${taskId}`);
-    expect(deleteRes.status).toBe(200);
-    expect(deleteRes.data.success).toBe(true);
+      const deleteRes = await api("DELETE", `/api/tasks/${taskId}`);
+      expect(deleteRes.status).toBe(200);
+      expect(deleteRes.data.success).toBe(true);
+      taskId = "";
+    } finally {
+      if (taskId) {
+        await api("DELETE", `/api/tasks/${taskId}`);
+      }
+      deleteRawAgent(agentId);
+    }
   });
 });
 

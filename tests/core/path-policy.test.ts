@@ -3,8 +3,11 @@ import {
   assertWritablePath,
   checkWritePath,
   describeDenial,
+  assertReadablePath,
 } from "../../src/core/tools/path-policy";
-import { homedir } from "os";
+import { homedir, tmpdir } from "os";
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "fs";
+import { join } from "path";
 
 describe("checkWritePath", () => {
   test("allows a normal project file", () => {
@@ -68,6 +71,116 @@ describe("checkWritePath", () => {
     expect(checkWritePath("/etc/passwd", { confineToWorkspace: true, workspaceRoot: root }).reason).toBe(
       "outside-workspace"
     );
+  });
+
+  test("workspace confinement follows symlink targets before allowing a path", () => {
+    const root = mkdtempSync(join(tmpdir(), "cybara-policy-root-"));
+    const outside = mkdtempSync(join(tmpdir(), "cybara-policy-outside-"));
+    try {
+      const outsideFile = join(outside, "notes.txt");
+      const insideTarget = join(root, "safe.txt");
+      const outsideLink = join(root, "outside-link.txt");
+      const insideLink = join(root, "inside-link.txt");
+      writeFileSync(outsideFile, "outside", "utf8");
+      writeFileSync(insideTarget, "inside", "utf8");
+      symlinkSync(outsideFile, outsideLink);
+      symlinkSync(insideTarget, insideLink);
+
+      const outsideDecision = checkWritePath(outsideLink, {
+        confineToWorkspace: true,
+        workspaceRoot: root,
+      });
+      expect(outsideDecision.allowed).toBe(false);
+      expect(outsideDecision.reason).toBe("outside-workspace");
+
+      expect(
+        checkWritePath(insideLink, { confineToWorkspace: true, workspaceRoot: root }).allowed
+      ).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  test("sensitive real targets are denied through innocuous symlink names", () => {
+    const root = mkdtempSync(join(tmpdir(), "cybara-policy-sensitive-"));
+    const outside = mkdtempSync(join(tmpdir(), "cybara-policy-secret-"));
+    try {
+      const secret = join(outside, ".env");
+      const link = join(root, "safe-name.txt");
+      writeFileSync(secret, "TOKEN=secret", "utf8");
+      symlinkSync(secret, link);
+
+      const decision = checkWritePath(link);
+      expect(decision.allowed).toBe(false);
+      expect(decision.reason).toBe("sensitive-path");
+      expect(() => assertReadablePath(link)).toThrow("reading this path is blocked");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  test("workspace confinement follows symlinked parents for files that do not exist yet", () => {
+    const root = mkdtempSync(join(tmpdir(), "cybara-policy-newfile-root-"));
+    const outside = mkdtempSync(join(tmpdir(), "cybara-policy-newfile-outside-"));
+    try {
+      const link = join(root, "generated");
+      symlinkSync(outside, link, "dir");
+
+      const decision = checkWritePath(join(link, "new-file.txt"), {
+        confineToWorkspace: true,
+        workspaceRoot: root,
+      });
+      expect(decision.allowed).toBe(false);
+      expect(decision.reason).toBe("outside-workspace");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  test("extra deny prefixes are enforced against real symlink targets", () => {
+    const root = mkdtempSync(join(tmpdir(), "cybara-policy-deny-root-"));
+    const denied = mkdtempSync(join(tmpdir(), "cybara-policy-deny-target-"));
+    try {
+      const link = join(root, "notes");
+      symlinkSync(denied, link, "dir");
+
+      const decision = checkWritePath(join(link, "daily.md"), {
+        extraDenyPrefixes: [denied],
+      });
+      expect(decision.allowed).toBe(false);
+      expect(decision.reason).toBe("sensitive-path");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(denied, { recursive: true, force: true });
+    }
+  });
+
+  test("fuzzes sensitive basename variants regardless of surrounding directories", () => {
+    const root = mkdtempSync(join(tmpdir(), "cybara-policy-basename-"));
+    try {
+      const names = [
+        ".env",
+        ".env.local",
+        "id_ed25519",
+        "known_hosts",
+        ".npmrc",
+        "oauth_token.json",
+        "service-account-prod.json",
+      ];
+      for (const name of names) {
+        for (const prefix of ["", "nested", "Nested/Deep"]) {
+          const candidate = prefix ? join(root, prefix, name) : join(root, name);
+          const decision = checkWritePath(candidate);
+          expect(decision.allowed).toBe(false);
+          expect(decision.reason).toBe("sensitive-path");
+        }
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test("disabled option allows everything (escape hatch)", () => {

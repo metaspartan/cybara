@@ -175,6 +175,35 @@ describe("mobile device lifecycle e2e", () => {
     expect(anonymousList.status).toBe(401);
   }, 15000);
 
+  test("standard scoped tokens cannot mutate wallet policy or MCP process surfaces", async () => {
+    const walletAccess = await api("PUT", "/api/wallet/agent-access", {
+      body: { enabled: true },
+      token: standardToken,
+    });
+    expect(walletAccess.status).toBe(403);
+    expect(String(walletAccess.data.error)).toContain("not authorized for 'wallet'");
+
+    const walletPolicy = await api("PUT", "/api/wallet/agent-policy", {
+      body: { allowNativeSend: true, allowTokenSend: true },
+      token: standardToken,
+    });
+    expect(walletPolicy.status).toBe(403);
+    expect(String(walletPolicy.data.error)).toContain("not authorized for 'wallet'");
+
+    const mcpInstall = await api("POST", "/api/mcp/registry/install", {
+      body: { package: "@modelcontextprotocol/server-memory" },
+      token: standardToken,
+    });
+    expect(mcpInstall.status).toBe(403);
+    expect(String(mcpInstall.data.error)).toContain("not authorized for 'mcp'");
+
+    const mcpStart = await api("POST", "/api/mcp/any-server/start", {
+      token: standardToken,
+    });
+    expect(mcpStart.status).toBe(403);
+    expect(String(mcpStart.data.error)).toContain("not authorized for 'mcp'");
+  }, 15000);
+
   test("revoking the device invalidates its token", async () => {
     const revoked = await api("POST", `/api/mobile/devices/${standardDeviceId}/revoke`);
     expect(revoked.status).toBe(200);
@@ -200,7 +229,7 @@ describe("mobile device lifecycle e2e", () => {
     expect(redeemed.status).toBe(200);
     expect(redeemed.data.success).toBe(true);
     const device = redeemed.data.device as { scopes: string[] };
-    expect(device.scopes.sort()).toEqual(["chat", "manage", "read", "terminal", "wallet"]);
+    expect(device.scopes.sort()).toEqual(["chat", "manage", "mcp", "read", "terminal", "wallet"]);
     const fullToken = redeemed.data.apiKey as string;
 
     const send = await api("POST", "/api/wallet/send", {

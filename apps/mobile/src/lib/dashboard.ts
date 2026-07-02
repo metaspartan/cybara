@@ -75,7 +75,8 @@ export const MOBILE_CHAT_CHROME = {
 
 export const MOBILE_CHAT_DETAIL_CHROME = {
   settingsInHeader: true,
-  detailsMenuIncludesSessionId: true,
+  detailsMenuIncludesSessionId: false,
+  detailsMenuIncludesProviderModel: true,
   detailsMenuIncludesWorkspaceDirectory: true,
   timelineMetadataBar: false,
 } as const;
@@ -350,6 +351,9 @@ export function buildGatewayPanelMeta(health: HealthResponse | null | undefined)
 
 export function buildMobileChatSettingsLines({
   agentId,
+  model,
+  provider,
+  providerName,
   messageCount,
   sessionId,
   title,
@@ -357,6 +361,9 @@ export function buildMobileChatSettingsLines({
   workspaceDir,
 }: {
   agentId?: string | null;
+  model?: string | null;
+  provider?: string | null;
+  providerName?: string | null;
   messageCount: number;
   sessionId: string;
   title?: string | null;
@@ -364,13 +371,15 @@ export function buildMobileChatSettingsLines({
   workspaceDir?: string | null;
 }): string[] {
   const safeMessageCount = Math.max(0, messageCount);
-  const fallbackTitle = sessionId ? `Session ${sessionId.slice(0, 8)}` : "Chat";
+  const fallbackTitle = "Untitled chat";
   const lines = [
     `Title: ${title || fallbackTitle}`,
     `Messages: ${safeMessageCount} message${safeMessageCount === 1 ? "" : "s"}`,
     `Updated: ${updatedLabel}`,
-    `Agent: ${agentId || "unknown"}`,
   ];
+  if (MOBILE_CHAT_DETAIL_CHROME.detailsMenuIncludesProviderModel) {
+    lines.push(`Model: ${sessionProviderModelLabel({ agentId, model, provider, providerName })}`);
+  }
   if (MOBILE_CHAT_DETAIL_CHROME.detailsMenuIncludesWorkspaceDirectory) {
     lines.push(`Workspace directory: ${workspaceDir || "No workspace"}`);
   }
@@ -378,6 +387,36 @@ export function buildMobileChatSettingsLines({
     lines.push(`Session ID: ${sessionId}`);
   }
   return lines;
+}
+
+export function sessionProviderModelLabel(
+  session:
+    | Pick<SessionSummary, "agent_id" | "provider" | "provider_id" | "provider_name" | "model">
+    | {
+        agentId?: string | null;
+        provider?: string | null;
+        providerId?: string | null;
+        providerName?: string | null;
+        model?: string | null;
+      }
+): string {
+  const record = session as {
+    agent_id?: string | null;
+    agentId?: string | null;
+    provider?: string | null;
+    provider_id?: string | null;
+    providerId?: string | null;
+    provider_name?: string | null;
+    providerName?: string | null;
+    model?: string | null;
+  };
+  const provider =
+    record.providerName || record.provider_name || record.provider || record.providerId || record.provider_id;
+  const model = record.model;
+  if (provider && model) return `${provider} - ${model}`;
+  if (model) return model;
+  if (provider) return provider;
+  return "Model pending";
 }
 
 export function recentSessionStateLabel(session: SessionSummary): "Working" | "Recent" {

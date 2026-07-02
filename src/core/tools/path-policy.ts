@@ -10,8 +10,9 @@
  * legitimate agent workflows intentionally edit files outside the CWD (dotfiles,
  * notes, config).
  */
+import { existsSync, realpathSync } from "fs";
 import { homedir } from "os";
-import { resolve, isAbsolute } from "path";
+import { resolve, isAbsolute, dirname, join } from "path";
 
 /** Reason a path was rejected. */
 export type PathPolicyDenialReason = "sensitive-path" | "outside-workspace" | "empty-path";
@@ -73,6 +74,41 @@ function normalize(p: string): string {
   return resolve(p).replace(/\\/g, "/").toLowerCase();
 }
 
+function realPolicyPath(p: string): string | undefined {
+  const absolute = resolve(p);
+  try {
+    if (existsSync(absolute)) {
+      return realpathSync.native(absolute);
+    }
+  } catch {
+    return undefined;
+  }
+
+  let parent = dirname(absolute);
+  while (parent && parent !== dirname(parent) && !existsSync(parent)) {
+    parent = dirname(parent);
+  }
+  if (!existsSync(parent)) return undefined;
+
+  try {
+    const realParent = realpathSync.native(parent);
+    const suffix = absolute.slice(parent.length).replace(/^[\\/]+/, "");
+    return suffix ? join(realParent, suffix) : realParent;
+  } catch {
+    return undefined;
+  }
+}
+
+function policyPaths(rawPath: string): string[] {
+  const paths = [normalize(rawPath)];
+  const real = realPolicyPath(rawPath);
+  if (real) {
+    const normalizedReal = normalize(real);
+    if (!paths.includes(normalizedReal)) paths.push(normalizedReal);
+  }
+  return paths;
+}
+
 function matchesDenyPattern(resolvedPath: string): boolean {
   const lower = resolvedPath.toLowerCase();
   const basename = lower.split("/").pop() ?? "";
@@ -115,27 +151,44 @@ export function checkWritePath(
     return { allowed: true, resolvedPath: resolved };
   }
 
-  if (matchesDenyPattern(resolved)) {
-    return { allowed: false, reason: "sensitive-path", resolvedPath: resolved };
-  }
+  const candidates = policyPaths(rawPath);
 
-  for (const segment of DENY_PATH_SEGMENTS) {
-    if (isUnderHomeSubdir(resolved, segment)) {
+  for (const candidate of candidates) {
+    if (matchesDenyPattern(candidate)) {
       return { allowed: false, reason: "sensitive-path", resolvedPath: resolved };
     }
-  }
 
-  for (const prefix of options.extraDenyPrefixes ?? []) {
-    const normalizedPrefix = normalize(prefix);
-    if (resolved === normalizedPrefix || resolved.startsWith(`${normalizedPrefix}/`)) {
-      return { allowed: false, reason: "sensitive-path", resolvedPath: resolved };
+    for (const segment of DENY_PATH_SEGMENTS) {
+      if (isUnderHomeSubdir(candidate, segment)) {
+        return { allowed: false, reason: "sensitive-path", resolvedPath: resolved };
+      }
+    }
+
+    for (const prefix of options.extraDenyPrefixes ?? []) {
+      const prefixCandidates = policyPaths(prefix);
+      if (
+        prefixCandidates.some(
+          (normalizedPrefix) =>
+            candidate === normalizedPrefix || candidate.startsWith(`${normalizedPrefix}/`)
+        )
+      ) {
+        return { allowed: false, reason: "sensitive-path", resolvedPath: resolved };
+      }
     }
   }
 
   if (options.confineToWorkspace && options.workspaceRoot) {
-    const root = normalize(options.workspaceRoot).replace(/\/$/, "");
-    if (!isAbsolute(root) || (resolved !== root && !resolved.startsWith(`${root}/`))) {
+    const roots = policyPaths(options.workspaceRoot).map((root) => root.replace(/\/$/, ""));
+    if (roots.some((root) => !isAbsolute(root))) {
       return { allowed: false, reason: "outside-workspace", resolvedPath: resolved };
+    }
+    for (const candidate of candidates) {
+      const underWorkspace = roots.some(
+        (root) => candidate === root || candidate.startsWith(`${root}/`)
+      );
+      if (!underWorkspace) {
+        return { allowed: false, reason: "outside-workspace", resolvedPath: resolved };
+      }
     }
   }
 

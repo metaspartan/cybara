@@ -16,6 +16,7 @@ import { writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { enforceWebFetchAllowlist } from "./web-policy";
+import { validateUrl } from "../../../api/security";
 
 const SCREENSHOTS_DIR = join(
   process.env.HOME || process.env.USERPROFILE || homedir(),
@@ -69,6 +70,24 @@ async function getVisualPage(
   return await profileManager.getActivePage(profileName);
 }
 
+export async function validateBrowserNavigationUrl(
+  url: string,
+  action: "Navigation" | "Request" = "Navigation"
+): Promise<void> {
+  try {
+    new URL(url);
+  } catch {
+    throw new Error(`Invalid URL: ${url}`);
+  }
+
+  const urlValidation = await validateUrl(url);
+  if (!urlValidation.valid) {
+    throw new Error(`Validation error: ${action} blocked: ${urlValidation.error}`);
+  }
+
+  enforceWebFetchAllowlist(url);
+}
+
 export async function handleBrowser(args: Record<string, unknown>): Promise<unknown> {
   const action = args.action as string;
   const sessionId = (args.sessionId as string) || "default";
@@ -105,6 +124,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         const pageId = await getOrCreatePage(sessionId);
 
         if (url) {
+          await validateBrowserNavigationUrl(url);
           await pwManager.navigate(pageId, url, { waitUntil: "domcontentloaded" });
         }
 
@@ -122,6 +142,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       const profile = profileManager.getProfile(profileName);
 
       if (url) {
+        await validateBrowserNavigationUrl(url);
         await profileManager.createPage(profileName, url);
         console.log(`[Browser] Started browser and navigated to ${url}`);
         return {
@@ -309,6 +330,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
     case "open": {
       const url = args.url as string;
       if (!url) throw new Error("URL required for open action");
+      await validateBrowserNavigationUrl(url);
 
       const useHeadless = args.headless === true || args.headless === "true";
 
@@ -351,6 +373,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
     case "openVisual": {
       const url = args.url as string;
       if (!url) throw new Error("URL required for openVisual action");
+      await validateBrowserNavigationUrl(url);
 
       const profileName = (args.profile as string) || sessionId;
       console.log(`[Browser] openVisual: Opening ${url} (profile: ${profileName})`);
@@ -392,6 +415,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
     case "navigate": {
       const url = args.url as string;
       if (!url) throw new Error("URL required for navigate action");
+      await validateBrowserNavigationUrl(url);
 
       const useHeadless = args.headless === true || args.headless === "true";
       const profileName = (args.profile as string) || sessionId;
@@ -1240,14 +1264,8 @@ export async function handleWebFetch(
   }
 
   try {
-    new URL(url);
-  } catch {
-    throw new Error(`Invalid URL: ${url}`);
-  }
+    await validateBrowserNavigationUrl(url, "Request");
 
-  enforceWebFetchAllowlist(url);
-
-  try {
     const response = await fetch(url, {
       headers: {
         "User-Agent":
@@ -1329,6 +1347,7 @@ export async function handleOpenUrl(args: Record<string, unknown>): Promise<unkn
   if (!url) {
     throw new Error("url is required for open_url");
   }
+  await validateBrowserNavigationUrl(url);
 
   const profileName = (args.profile as string) || "default";
 

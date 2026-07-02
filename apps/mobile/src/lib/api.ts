@@ -65,6 +65,10 @@ export interface SessionSummary {
   id: string;
   title: string | null;
   agent_id?: string;
+  provider?: string;
+  provider_id?: string;
+  provider_name?: string;
+  model?: string;
   message_count: number;
   created_at?: string;
   updated_at: string;
@@ -305,6 +309,10 @@ export interface SessionDetailSummary {
   id: string;
   title: string | null;
   agentId?: string;
+  provider?: string;
+  providerId?: string;
+  providerName?: string;
+  model?: string;
   workspaceDir?: string | null;
   createdAt?: string;
   updatedAt?: string;
@@ -684,6 +692,10 @@ function normalizeSessions(value: unknown): SessionSummary[] {
         id,
         title: readString(record, ["title", "name"]) || null,
         agent_id: readString(record, ["agent_id", "agentId"]),
+        provider: readString(record, ["provider"]),
+        provider_id: readString(record, ["provider_id", "providerId"]),
+        provider_name: readString(record, ["provider_name", "providerName"]),
+        model: readString(record, ["model"]),
         message_count: readNumber(record, ["message_count", "messageCount"]) ?? 0,
         created_at: createdAt,
         updated_at: updatedAt,
@@ -762,6 +774,10 @@ function normalizeSessionDetail(value: unknown, fallbackId: string): SessionDeta
     id: readString(record, ["id", "session_id"]) || fallbackId,
     title: readString(record, ["title", "name"]) || null,
     agentId: readString(record, ["agent_id", "agentId"]),
+    provider: readString(record, ["provider"]),
+    providerId: readString(record, ["provider_id", "providerId"]),
+    providerName: readString(record, ["provider_name", "providerName"]),
+    model: readString(record, ["model"]),
     workspaceDir: readString(record, ["workspace_dir", "workspaceDir"]) || null,
     createdAt: readString(record, ["created_at", "createdAt"]),
     updatedAt: readString(record, ["updated_at", "updatedAt", "created_at", "createdAt"]),

@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { handleFileSearch, handleRead } from "../../src/core/tools/handlers/file";
+import { handleFileSearch, handleGrep, handleRead } from "../../src/core/tools/handlers/file";
 import { handleExec } from "../../src/core/tools/handlers/process";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { homedir, tmpdir } from "os";
+import { join } from "path";
 
 describe("Tool input validation", () => {
   test("exec returns structured validation output when command is missing", async () => {
@@ -19,5 +22,35 @@ describe("Tool input validation", () => {
 
   test("read returns explicit validation error when path is missing", async () => {
     await expect(handleRead({})).rejects.toThrow("Validation error: path is required");
+  });
+
+  test("file_search blocks sensitive search roots and filters sensitive matches", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cybara-file-search-"));
+    try {
+      writeFileSync(join(dir, ".env"), "SECRET_TOKEN=abc", "utf8");
+      writeFileSync(join(dir, "notes.txt"), "hello", "utf8");
+
+      await expect(handleFileSearch({ pattern: "*", cwd: `${homedir()}/.ssh` })).rejects.toThrow(
+        "reading this path is blocked"
+      );
+
+      const result = await handleFileSearch({ pattern: ".env", cwd: dir });
+      expect(result.files).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("grep does not return matches from sensitive files", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cybara-grep-"));
+    try {
+      writeFileSync(join(dir, ".env"), "SECRET_TOKEN=abc", "utf8");
+      writeFileSync(join(dir, "notes.txt"), "ordinary content", "utf8");
+
+      const result = await handleGrep({ pattern: "SECRET_TOKEN", path: dir, recursive: false });
+      expect(result.results).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -228,14 +228,11 @@ describe("in-process logger API", () => {
   });
 
   test("string context values are passed through without JSON quoting", () => {
-    const lines: string[] = [];
-    const originalError = console.error;
-    console.error = (line: string) => void lines.push(String(line));
-    try {
-      createLogger("Str").error("msg", { path: "/tmp/x y" });
-    } finally {
-      console.error = originalError;
-    }
+    const report = runLoggerWorker(
+      { LOG_LEVEL: "debug", LOG_FORMAT: "pretty" },
+      `createLogger("Str").error("msg", { path: "/tmp/x y" });`
+    );
+    const lines = report.errors;
     expect(lines[0]).toContain("path=/tmp/x y");
     expect(lines[0]).not.toContain('path="/tmp/x y"');
   });

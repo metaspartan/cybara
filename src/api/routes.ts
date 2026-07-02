@@ -130,6 +130,7 @@ import {
   startSandboxBrowser,
   stopSandboxBrowser,
 } from "../core/browser/sandbox-browser";
+import { validateBrowserNavigationUrl } from "../core/tools/handlers/browser";
 import { homedir } from "os";
 import { dirname, isAbsolute, resolve } from "path";
 import { createHash, randomBytes } from "crypto";
@@ -489,6 +490,26 @@ type RouteHandler = (
   params?: Record<string, string>,
   ctx?: RouteContext
 ) => Promise<unknown> | unknown;
+
+function sessionModelMetadata(agentId?: string | null): {
+  provider?: string;
+  provider_id?: string;
+  provider_name?: string;
+  model?: string;
+} {
+  if (!agentId) return {};
+  const agent = agentManager.get(agentId);
+  if (!agent) return {};
+  const providerId = agent.provider_id || agent.provider;
+  const provider = providerId ? providerManager.get(providerId) : undefined;
+  return {
+    provider: provider?.provider || providerId,
+    provider_id: providerId,
+    provider_name: provider?.name,
+    model: agent.model,
+  };
+}
+
 const routes: Record<string, RouteHandler> = {
   ...walletRoutes,
   ...mobileRoutes,
@@ -3574,9 +3595,11 @@ const routes: Record<string, RouteHandler> = {
     const toApiSession = (session: Awaited<ReturnType<typeof listSessions>>[number]) => {
       const updatedAt = session.updatedAt || session.createdAt;
       const lastMessage = session.lastMessage;
+      const modelMetadata = sessionModelMetadata(session.agentId);
       return {
         id: session.id,
         agent_id: session.agentId,
+        ...modelMetadata,
         title: typeof session.title === "string" && session.title.trim() ? session.title : null,
         created_at: normalizeTimestamp(session.createdAt),
         updated_at: normalizeTimestamp(updatedAt),
@@ -3638,6 +3661,7 @@ const routes: Record<string, RouteHandler> = {
     return {
       id: session.id,
       agent_id: session.agentId,
+      ...sessionModelMetadata(session.agentId),
       title:
         "title" in session && typeof session.title === "string" && session.title.trim()
           ? session.title
@@ -4004,6 +4028,7 @@ const routes: Record<string, RouteHandler> = {
       waitUntil?: "load" | "domcontentloaded" | "networkidle";
     };
     if (!url) return { error: "URL is required" };
+    await validateBrowserNavigationUrl(url);
     const result = await navigate(params!.id, url, { waitUntil });
     return { success: true, data: result };
   },

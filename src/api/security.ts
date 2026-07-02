@@ -264,18 +264,21 @@ export function authenticateRequest(headers: Record<string, string>, ip: string)
 
 /**
  * The scope a route requires, or null when any authenticated principal may use
- * it. Only the genuinely dangerous capabilities are gated: fund-moving wallet
- * operations and terminal execution. Wallet reads and policy/access management
- * (what the mobile app actually uses) stay under the default scopes.
+ * it. Mutating wallet, terminal, and MCP process-management routes are gated so
+ * default paired-device tokens cannot escalate into fund movement or local code
+ * execution.
  */
 export function routeRequiredScope(method: string, path: string): string | null {
   if (path.startsWith("/api/wallet")) {
     if (method === "GET") return null;
-    if (path === "/api/wallet/agent-policy" || path === "/api/wallet/agent-access") return null;
     return "wallet";
   }
   if (path === "/api/ide/open-terminal" || path.startsWith("/api/terminal")) {
     return "terminal";
+  }
+  if (path.startsWith("/api/mcp")) {
+    if (method === "GET") return null;
+    return "mcp";
   }
   return null;
 }

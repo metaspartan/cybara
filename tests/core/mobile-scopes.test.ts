@@ -24,6 +24,7 @@ describe("mobile device scopes", () => {
     expect(view?.scopes.sort()).toEqual([...DEFAULT_MOBILE_SCOPES].sort());
     expect(view?.scopes).not.toContain("wallet");
     expect(view?.scopes).not.toContain("terminal");
+    expect(view?.scopes).not.toContain("mcp");
   });
 
   test("an admin can grant extra scopes at pairing time", () => {
@@ -49,14 +50,22 @@ describe("route scope requirements", () => {
     expect(routeRequiredScope("POST", "/api/wallet/swap")).toBe("wallet");
   });
 
-  test("wallet reads and policy/access management are not gated", () => {
+  test("wallet reads are not gated, but policy/access mutations require wallet scope", () => {
     expect(routeRequiredScope("GET", "/api/wallet/status")).toBeNull();
-    expect(routeRequiredScope("PUT", "/api/wallet/agent-policy")).toBeNull();
-    expect(routeRequiredScope("PUT", "/api/wallet/agent-access")).toBeNull();
+    expect(routeRequiredScope("PUT", "/api/wallet/agent-policy")).toBe("wallet");
+    expect(routeRequiredScope("PUT", "/api/wallet/agent-access")).toBe("wallet");
   });
 
   test("terminal execution requires the terminal scope", () => {
     expect(routeRequiredScope("POST", "/api/ide/open-terminal")).toBe("terminal");
+  });
+
+  test("MCP install, mutation, start, and tool calls require the mcp scope", () => {
+    expect(routeRequiredScope("GET", "/api/mcp/registry/search")).toBeNull();
+    expect(routeRequiredScope("POST", "/api/mcp/registry/install")).toBe("mcp");
+    expect(routeRequiredScope("POST", "/api/mcp/abc/start")).toBe("mcp");
+    expect(routeRequiredScope("POST", "/api/mcp/abc/call")).toBe("mcp");
+    expect(routeRequiredScope("DELETE", "/api/mcp/abc")).toBe("mcp");
   });
 
   test("ordinary routes need no special scope", () => {
@@ -68,7 +77,7 @@ describe("route scope requirements", () => {
 
 describe("roles", () => {
   test("map to scope bundles; unknown roles return null", () => {
-    expect(scopesForRole("full")).toEqual(["chat", "manage", "read", "wallet", "terminal"]);
+    expect(scopesForRole("full")).toEqual(["chat", "manage", "read", "wallet", "terminal", "mcp"]);
     expect(scopesForRole("standard")).toEqual(["chat", "manage", "read"]);
     expect(scopesForRole("readonly")).toEqual(["chat", "read"]);
     expect(scopesForRole("bogus")).toBeNull();

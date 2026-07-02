@@ -28,6 +28,7 @@ import {
   buildGatewayPanelMeta,
   buildMobileChatSettingsLines,
   buildMobileHeaderCopy,
+  sessionProviderModelLabel,
   formatMobileValue,
   formatUptime,
   isMobileSettingsDetailFieldVisible,
@@ -59,6 +60,9 @@ const summary: FeatureSummary = {
     {
       id: "session-1",
       title: "Build mobile app",
+      provider: "openai",
+      provider_name: "OpenAI",
+      model: "gpt-5-mini",
       message_count: 4,
       updated_at: "2026-06-30T08:00:00.000Z",
     },
@@ -239,11 +243,14 @@ describe("mobile dashboard model", () => {
   test("keeps chat settings in the persistent header with heavy metadata in the menu", () => {
     expect(MOBILE_CHAT_DETAIL_CHROME.settingsInHeader).toBe(true);
     expect(MOBILE_CHAT_DETAIL_CHROME.timelineMetadataBar).toBe(false);
-    expect(MOBILE_CHAT_DETAIL_CHROME.detailsMenuIncludesSessionId).toBe(true);
+    expect(MOBILE_CHAT_DETAIL_CHROME.detailsMenuIncludesSessionId).toBe(false);
+    expect(MOBILE_CHAT_DETAIL_CHROME.detailsMenuIncludesProviderModel).toBe(true);
     expect(MOBILE_CHAT_DETAIL_CHROME.detailsMenuIncludesWorkspaceDirectory).toBe(true);
     expect(
       buildMobileChatSettingsLines({
         agentId: "minimax-m3-mini",
+        provider: "minimax",
+        model: "MiniMax-M1",
         messageCount: 2,
         sessionId: "session-abc123",
         title: "Mobile chat polish",
@@ -254,10 +261,18 @@ describe("mobile dashboard model", () => {
       "Title: Mobile chat polish",
       "Messages: 2 messages",
       "Updated: 6/30/2026, 12:30:00 PM",
-      "Agent: minimax-m3-mini",
+      "Model: minimax - MiniMax-M1",
       "Workspace directory: /Users/carsen/Documents/GitHub/cybara",
-      "Session ID: session-abc123",
     ]);
+    expect(
+      sessionProviderModelLabel({
+        agent_id: "agent-1",
+        provider_name: "OpenAI",
+        provider: "openai",
+        model: "gpt-5-mini",
+      })
+    ).toBe("OpenAI - gpt-5-mini");
+    expect(sessionProviderModelLabel({ agent_id: "agent-1" })).toBe("Model pending");
   });
 
   test("keeps metrics live without an in-page refresh button", () => {

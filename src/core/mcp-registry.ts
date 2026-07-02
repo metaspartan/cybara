@@ -22,6 +22,13 @@ interface RegistryConfig {
   baseUrl?: string;
 }
 
+const SAFE_NPM_PACKAGE_NAME = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
+
+function isSafeNpmPackageName(value: string): boolean {
+  const trimmed = value.trim();
+  return trimmed.length > 0 && trimmed.length <= 214 && SAFE_NPM_PACKAGE_NAME.test(trimmed);
+}
+
 const POPULAR_SERVERS: MCPRegistryServer[] = [
   {
     id: "mcp-filesystem",
@@ -370,22 +377,35 @@ class MCPRegistryManager {
   async installByPackage(
     packageName: string
   ): Promise<{ success: boolean; id?: string; error?: string }> {
+    if (typeof packageName !== "string") {
+      return {
+        success: false,
+        error: "Invalid MCP package name. Use a plain npm package name, for example @scope/name.",
+      };
+    }
+    const requestedPackage = packageName.trim();
     let server = POPULAR_SERVERS.find(
       (s) =>
-        s.package === packageName ||
-        s.id === packageName ||
-        s.name.toLowerCase() === packageName.toLowerCase()
+        s.package === requestedPackage ||
+        s.id === requestedPackage ||
+        s.name.toLowerCase() === requestedPackage.toLowerCase()
     );
 
     if (!server) {
+      if (!isSafeNpmPackageName(requestedPackage)) {
+        return {
+          success: false,
+          error: "Invalid MCP package name. Use a plain npm package name, for example @scope/name.",
+        };
+      }
       server = {
-        id: `custom-${packageName}`,
-        name: packageName.replace(/@.*\//, "").replace(/-/g, " "),
-        description: `MCP server: ${packageName}`,
+        id: `custom-${requestedPackage}`,
+        name: requestedPackage.replace(/@.*\//, "").replace(/-/g, " "),
+        description: `MCP server: ${requestedPackage}`,
         registry: "npm",
-        package: packageName,
+        package: requestedPackage,
         command: "bunx",
-        args: `--bun ${packageName}`,
+        args: `--bun ${requestedPackage}`,
         installType: "bunx",
       };
     }

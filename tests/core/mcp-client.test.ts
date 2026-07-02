@@ -1,5 +1,5 @@
 import { beforeAll, afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
@@ -231,6 +231,11 @@ afterAll(() => {
 });
 
 describe("MCPServerManager server-config lifecycle (DB-isolated worker)", () => {
+  test("stdio MCP servers are spawned without shell execution", () => {
+    const source = readFileSync(join(ROOT_DIR, "src", "core", "mcp.ts"), "utf8");
+    expect(source).not.toContain("shell: true");
+  });
+
   test("starts with an empty server list in a fresh CYBARA_HOME", () => {
     expect(outcome.emptyList).toEqual([]);
   });

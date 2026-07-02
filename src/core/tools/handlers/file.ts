@@ -1,5 +1,5 @@
 import { readFileSync, existsSync, writeFileSync, mkdirSync, promises as fs } from "fs";
-import { join, dirname } from "path";
+import { join, dirname, isAbsolute } from "path";
 import { glob } from "tinyglobby";
 import { homeDir } from "../../paths";
 import { trackMetric } from "../../metrics";
@@ -24,6 +24,19 @@ function expandTilde(path: string | undefined): string | undefined {
     return path.replace(/^~/, homeDir);
   }
   return path;
+}
+
+function resolveSearchResultPath(searchDir: string, resultPath: string): string {
+  return isAbsolute(resultPath) ? resultPath : join(searchDir, resultPath);
+}
+
+function isReadableSearchResult(searchDir: string, resultPath: string): boolean {
+  try {
+    assertReadablePath(resolveSearchResultPath(searchDir, resultPath));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function splitLines(content: string): string[] {
@@ -316,35 +329,37 @@ export async function handleFileSearch(
   }
 
   const searchDir = cwd || workspace;
+  const safeSearchDir = assertReadablePath(searchDir);
 
   if (!pattern) {
     return {
       files: [],
       pattern: "",
-      cwd: searchDir,
+      cwd: safeSearchDir,
       error:
         'pattern is required. Provide a glob pattern (for example: "**/*.ts" or "src/**/*.md").',
     };
   }
 
-  if (!existsSync(searchDir)) {
+  if (!existsSync(safeSearchDir)) {
     return {
       files: [],
       pattern,
-      cwd: searchDir,
-      error: `Directory does not exist: ${searchDir}`,
+      cwd: safeSearchDir,
+      error: `Directory does not exist: ${safeSearchDir}`,
     };
   }
 
   try {
     const files = await glob(pattern, {
-      cwd: searchDir,
+      cwd: safeSearchDir,
       ignore: ["**/node_modules/**", "**/.git/**", "**/dist/**", "**/build/**"],
       onlyFiles: true,
     });
 
     const MAX_RESULTS = 1000;
-    const limitedFiles = files.slice(0, MAX_RESULTS);
+    const readableFiles = files.filter((file) => isReadableSearchResult(safeSearchDir, file));
+    const limitedFiles = readableFiles.slice(0, MAX_RESULTS);
 
     trackMetric("file_operation", "search", 1, { pattern, resultCount: limitedFiles.length });
     trackMetric("tool_call", "file_search", 1, { pattern, resultCount: limitedFiles.length });
@@ -352,16 +367,16 @@ export async function handleFileSearch(
     return {
       files: limitedFiles,
       pattern,
-      cwd: searchDir,
-      ...(files.length > MAX_RESULTS
-        ? { error: `Results limited to ${MAX_RESULTS} (found ${files.length} total)` }
+      cwd: safeSearchDir,
+      ...(readableFiles.length > MAX_RESULTS
+        ? { error: `Results limited to ${MAX_RESULTS} (found ${readableFiles.length} total)` }
         : {}),
     };
   } catch (err) {
     return {
       files: [],
       pattern,
-      cwd: searchDir,
+      cwd: safeSearchDir,
       error: `Glob search failed: ${(err as Error).message}`,
     };
   }
@@ -381,7 +396,7 @@ export async function handleGrep(args: Record<string, unknown>): Promise<{
   const caseSensitive = args.caseSensitive as boolean | undefined;
   const shouldRecursive = args.recursive !== false;
 
-  const searchDir = path || workspace;
+  const searchDir = assertReadablePath(expandTilde(path) || workspace);
   const extensions = fileType ? fileType.split(",").map((t) => t.trim()) : null;
 
   const results: Array<{ path: string; line: number; content: string }> = [];
@@ -445,24 +460,24 @@ async function searchWithRipgrep(
   maxResults: number
 ): Promise<void> {
   try {
-    let cmd = `rg --json --max-count=${maxResults} --context=${context}`;
+    const args = ["--json", `--max-count=${maxResults}`, `--context=${context}`];
 
     if (!caseSensitive) {
-      cmd += " --ignore-case";
+      args.push("--ignore-case");
     }
 
     if (!recursive) {
-      cmd += " --max-depth=1";
+      args.push("--max-depth=1");
     }
 
     if (extensions && extensions.length > 0) {
       const extPattern = extensions.map((e) => e.replace(/^\./, "")).join("|");
-      cmd += ` -g "*.{${extPattern}}"`;
+      args.push("-g", `*.{${extPattern}}`);
     }
 
-    cmd += ` ${JSON.stringify(pattern)} ${JSON.stringify(dir)}`;
+    args.push(pattern, dir);
 
-    const result = Bun.spawnSync(["sh", "-c", cmd], {
+    const result = Bun.spawnSync(["rg", ...args], {
       timeout: 30000,
     });
 
@@ -474,8 +489,10 @@ async function searchWithRipgrep(
       try {
         const match = JSON.parse(line);
         if (match.type === "match") {
+          const matchedPath = match.data.path?.text || match.data.path;
+          if (!matchedPath || !isReadableSearchResult(dir, matchedPath)) continue;
           results.push({
-            path: match.data.path?.text || match.data.path,
+            path: matchedPath,
             line: match.data.line_number || 1,
             content: match.data.lines?.text || "",
           });
@@ -526,6 +543,11 @@ async function searchDirectory(
           );
         }
       } else if (entry.isFile()) {
+        try {
+          assertReadablePath(fullPath);
+        } catch {
+          continue;
+        }
         if (extensions) {
           const ext = "." + entry.name.split(".").pop();
           if (

@@ -35,6 +35,7 @@ export interface ChannelCommandContext {
   sessionId?: string;
   createSessionId?: () => string;
   setSessionId?: (sessionId: string) => void;
+  allowSecuritySettings?: boolean;
 }
 
 export interface ChannelSubagentSpawnResult {
@@ -513,6 +514,10 @@ export async function handleChannelManagementCommand(
 
     if (!nextMode) {
       return "Unknown permissions mode. Use /permissions ask or /permissions allow.";
+    }
+
+    if (!context.allowSecuritySettings) {
+      return "Permission mode changes are only available from the local app.";
     }
 
     config.setToolApprovalMode(nextMode);
