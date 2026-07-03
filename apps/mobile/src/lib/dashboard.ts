@@ -1,4 +1,10 @@
-import type { FeatureSummary, HealthResponse, ProviderSummary, SessionSummary } from "./api";
+import type {
+  FeatureEndpointKey,
+  FeatureSummary,
+  HealthResponse,
+  ProviderSummary,
+  SessionSummary,
+} from "./api";
 import type { GatewayProfile } from "./connection";
 
 export type MobileTabKey = "overview" | "sessions" | "metrics" | "tasks" | "settings";
@@ -231,6 +237,38 @@ export const MOBILE_GATEWAY_PANEL_CHROME = {
   showGatewayUrlRow: false,
   showUptime: true,
 } as const;
+
+export type MobileGatewayAuthStatus = "checking" | "connected" | "needs_pairing" | "unreachable";
+
+const MOBILE_AUTH_HEALTH_ENDPOINTS: FeatureEndpointKey[] = [
+  "sessions",
+  "agents",
+  "providers",
+  "channels",
+  "tasks",
+  "tools",
+  "memory",
+  "logs",
+  "systemMonitor",
+  "systemPrompt",
+  "config",
+];
+
+export function mobileGatewayAuthStatus(
+  summary: Pick<FeatureSummary, "availability"> | null,
+  connectionError?: string | null
+): MobileGatewayAuthStatus {
+  if (!summary) return "checking";
+  if (connectionError || summary.availability.health.ok === false) return "unreachable";
+
+  const denied = MOBILE_AUTH_HEALTH_ENDPOINTS.filter((key) => {
+    const endpoint = summary.availability[key];
+    return endpoint.status === 401;
+  });
+  if (summary.availability.health.ok === true && denied.length >= 3) return "needs_pairing";
+
+  return "connected";
+}
 
 export function boundedMobileComposerHeight(height: number): number {
   return Math.min(

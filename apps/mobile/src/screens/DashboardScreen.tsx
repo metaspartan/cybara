@@ -527,7 +527,6 @@ function sessionMayBeInProgress(session: SessionSummary): boolean {
   return session.last_message?.role === "user";
 }
 
-
 function mergeActivityLogs(
   existing: ActivitySummary[],
   incoming: ActivitySummary[]
@@ -563,7 +562,6 @@ function cleanSettingsFields(
     .filter((field) => isMobileSettingsDetailFieldVisible(field.label))
     .map((field) => ({ ...field, label: displayFieldLabel(field.label) }));
 }
-
 
 function itemFromRecord(
   id: string,
@@ -2380,7 +2378,6 @@ function compactWorkspace(value?: string | null): string {
   return `.../${parts.slice(-2).join("/")}`;
 }
 
-
 function TasksPanel({
   summary,
   accentColor,
@@ -2665,7 +2662,6 @@ function SurfaceDetailPanel({
     </>
   );
 }
-
 
 function AgentSettingsPanel({
   api,

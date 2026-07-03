@@ -4,11 +4,13 @@ import {
   createPairingCode,
   redeemPairingCode,
   authenticateMobileDeviceToken,
+  getMobileDeviceStorePath,
   scopesForRole,
   DEFAULT_MOBILE_SCOPES,
   normalizeMobileScopes,
   resetMobileDeviceStoreForTests,
 } from "../../src/core/mobile-devices";
+import { secureDir } from "../../src/core/paths";
 import { routeRequiredScope } from "../../src/api/security";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -18,6 +20,12 @@ afterEach(() => {
 });
 
 describe("mobile device scopes", () => {
+  test("test runs isolate the mobile device store from the real gateway pairing file", () => {
+    const storePath = getMobileDeviceStorePath();
+    expect(storePath).toContain("cybara-mobile-device-test-stores");
+    expect(storePath.startsWith(secureDir)).toBe(false);
+  });
+
   test("new pairings default to limited scopes (no wallet/terminal)", () => {
     const { token } = createMobileDevice({ baseUrl: "http://127.0.0.1:4269" });
     const view = authenticateMobileDeviceToken(token);

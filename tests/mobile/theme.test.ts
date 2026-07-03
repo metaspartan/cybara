@@ -123,6 +123,13 @@ describe("mobile theming", () => {
     }
   });
 
+  test("GlassButton exposes native button semantics for pairing and automation", () => {
+    const src = read("components/Glass.tsx");
+    expect(src).toContain('accessibilityRole="button"');
+    expect(src).toContain("accessibilityLabel={detail ? `${label}, ${detail}` : label}");
+    expect(src).toContain("accessibilityState={{ selected: selected === true }}");
+  });
+
   test("tab bar and chat composer use the LiquidGlass surface (no opaque fill)", () => {
     const screen = read("screens/DashboardScreen.tsx");
     expect(screen).toContain("import { LiquidGlass }");

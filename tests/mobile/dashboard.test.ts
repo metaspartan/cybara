@@ -37,6 +37,7 @@ import {
   mobileComposerHeightForDraft,
   mobileBackRouteForDetail,
   mobileFirstNonEmptyString,
+  mobileGatewayAuthStatus,
   mobileProviderAuthMode,
   mobileSessionTitle,
   mobileThemeConfigPayload,
@@ -500,6 +501,28 @@ describe("mobile dashboard model", () => {
         last_message: { role: "user", content: "continue" },
       })
     ).toBe("Working");
+  });
+
+  test("classifies stale mobile pairings as a pairing refresh instead of empty data", () => {
+    const invalidSummary: FeatureSummary = {
+      ...summary,
+      sessions: [],
+      sessionTotal: 0,
+      availability: {
+        ...summary.availability,
+        health: { ok: true },
+        sessions: { ok: false, status: 401 },
+        agents: { ok: false, status: 401 },
+        providers: { ok: false, status: 401 },
+        config: { ok: false, status: 401 },
+      },
+    };
+
+    expect(mobileGatewayAuthStatus(summary)).toBe("connected");
+    expect(mobileGatewayAuthStatus(invalidSummary)).toBe("needs_pairing");
+    expect(mobileGatewayAuthStatus(invalidSummary, "Network error")).toBe("unreachable");
+    expect(dashboardScreenSource).toContain("Pairing needs refresh");
+    expect(dashboardScreenSource).toContain("This mobile pairing is no longer authorized");
   });
 
   test("summarizes feature counts without requiring every optional endpoint", () => {

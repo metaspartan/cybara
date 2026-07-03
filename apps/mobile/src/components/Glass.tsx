@@ -69,6 +69,9 @@ export function GlassButton({
 }) {
   return (
     <Pressable
+      accessibilityLabel={detail ? `${label}, ${detail}` : label}
+      accessibilityRole="button"
+      accessibilityState={{ selected: selected === true }}
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,

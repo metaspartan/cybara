@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
-import { existsSync, readFileSync, renameSync, statSync, writeFileSync } from "fs";
-import { join } from "path";
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { dirname, join, resolve } from "path";
 import { secureDir } from "./paths";
 
 export const MOBILE_CONNECT_PROTOCOL = "cybara-mobile-connect-v1";
@@ -103,8 +104,8 @@ interface MobileDeviceStore {
   pairingCodes?: PendingPairingCode[];
 }
 
-const storePath = join(secureDir, "mobile-devices.json");
 let cachedStore: MobileDeviceStore | null = null;
+let cachedStorePath = "";
 // mtime of the file when we cached it, so a revoke/remove performed by another
 // process (e.g. `cybara mobile revoke`) is honored by a running gateway instead
 // of being masked by a stale in-memory cache.
@@ -112,6 +113,27 @@ let cachedMtimeMs = 0;
 
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
+}
+
+const testStoreName = createHash("sha256")
+  .update(`${process.cwd()}:${process.pid}`)
+  .digest("hex")
+  .slice(0, 16);
+
+export function getMobileDeviceStorePath(): string {
+  const override = process.env.CYBARA_MOBILE_DEVICES_STORE?.trim();
+  if (override) return resolve(override);
+  if (process.env.NODE_ENV === "test") {
+    return join(tmpdir(), "cybara-mobile-device-test-stores", `${testStoreName}.json`);
+  }
+  return join(secureDir, "mobile-devices.json");
+}
+
+function ensureCacheForPath(path: string): void {
+  if (cachedStorePath === path) return;
+  cachedStorePath = path;
+  cachedStore = null;
+  cachedMtimeMs = 0;
 }
 
 function sanitizeName(value: unknown): string {
@@ -134,6 +156,8 @@ export function normalizeMobileGatewayUrl(input: string): string {
 }
 
 function readStore(): MobileDeviceStore {
+  const storePath = getMobileDeviceStorePath();
+  ensureCacheForPath(storePath);
   if (!existsSync(storePath)) {
     cachedStore = { version: 1, devices: [] };
     cachedMtimeMs = 0;
@@ -167,14 +191,18 @@ function readStore(): MobileDeviceStore {
     };
   } catch {
     cachedStore = { version: 1, devices: [] };
+    cachedMtimeMs = mtimeMs;
   }
   return cachedStore;
 }
 
 function saveStore(store: MobileDeviceStore): void {
+  const storePath = getMobileDeviceStorePath();
+  ensureCacheForPath(storePath);
   cachedStore = store;
   // Atomic write (tmp + rename) so a crash mid-write can't corrupt the store
   // and wipe paired devices on the next read.
+  mkdirSync(dirname(storePath), { recursive: true });
   const tmpPath = `${storePath}.tmp`;
   writeFileSync(tmpPath, JSON.stringify(store, null, 2), { mode: 0o600 });
   renameSync(tmpPath, storePath);
@@ -428,6 +456,11 @@ export function authenticateMobileDeviceToken(
 }
 
 export function resetMobileDeviceStoreForTests(): void {
+  if (process.env.NODE_ENV !== "test") {
+    cachedStore = null;
+    cachedMtimeMs = 0;
+    return;
+  }
   cachedStore = { version: 1, devices: [] };
   saveStore(cachedStore);
 }
