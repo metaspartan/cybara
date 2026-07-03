@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const src = readFileSync(
-  fileURLToPath(new URL("../../ui/src/pages/IDE.tsx", import.meta.url)),
-  "utf8"
-);
+// The FileTree/virtualization logic was extracted into ide/FileTree.tsx.
+const src =
+  readFileSync(fileURLToPath(new URL("../../ui/src/pages/IDE.tsx", import.meta.url)), "utf8") +
+  readFileSync(fileURLToPath(new URL("../../ui/src/pages/ide/FileTree.tsx", import.meta.url)), "utf8");
 
 describe("IDE explorer virtualization correctness", () => {
   test("virtualization is disabled once a directory is expanded", () => {

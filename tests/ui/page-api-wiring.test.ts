@@ -136,7 +136,8 @@ describe("UI page API wiring", () => {
   });
 
   test("IDE page routes file and git operations through encoded API paths", () => {
-    const ideSource = readPage("IDE.tsx");
+    // The file-tree browse fetch was extracted into ide/FileTree.tsx.
+    const ideSource = readPage("IDE.tsx") + readPage("ide/FileTree.tsx");
     const codeViewerSource = readPage("ide/CodeViewer.tsx");
     const createDialogSource = readPage("ide/CreateDialog.tsx");
     const gitStatusSource = readPage("ide/GitStatus.tsx");
