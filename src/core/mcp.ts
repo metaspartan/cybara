@@ -28,6 +28,21 @@ interface MCPServerInstance {
   lastError?: string;
   startedAt?: Date;
   httpSessionId?: string;
+  /** Accumulates partial stdout so newline-delimited JSON-RPC messages that
+   *  span multiple `data` chunks (responses > ~64KB) are reassembled. */
+  stdoutBuffer?: string;
+}
+
+/**
+ * Split a stdout accumulator into complete newline-delimited lines, returning
+ * any trailing partial line to carry into the next chunk. Without this, a
+ * JSON-RPC message larger than one pipe chunk is split across `data` events,
+ * never parses, and the tool call hangs until its timeout.
+ */
+export function drainNdjsonLines(buffer: string): { lines: string[]; rest: string } {
+  const parts = buffer.split("\n");
+  const rest = parts.pop() ?? "";
+  return { lines: parts.filter((line) => line.trim().length > 0), rest };
 }
 
 type MCPToolListResponse = {
@@ -198,11 +213,17 @@ class MCPServerManager extends EventEmitter {
 
       instance.process = proc;
       instance.startedAt = new Date();
+      instance.stdoutBuffer = "";
 
-      // Handle process events
+      // Handle process events. Buffer stdout and process only COMPLETE lines so
+      // multi-chunk JSON-RPC responses reassemble instead of being dropped.
       proc.stdout?.on("data", (data: Buffer) => {
-        const message = data.toString();
-        this.handleServerMessage(id, message);
+        instance.stdoutBuffer = (instance.stdoutBuffer ?? "") + data.toString();
+        const { lines, rest } = drainNdjsonLines(instance.stdoutBuffer);
+        instance.stdoutBuffer = rest;
+        for (const line of lines) {
+          this.handleServerMessage(id, line);
+        }
       });
 
       proc.stderr?.on("data", (data: Buffer) => {
@@ -446,10 +467,14 @@ class MCPServerManager extends EventEmitter {
         reject(new Error("MCP tool call timeout"));
       }, 30000);
 
+      let callBuffer = "";
       const responseHandler = (data: Buffer) => {
         try {
-          const message = data.toString();
-          const lines = message.split("\n").filter(Boolean);
+          callBuffer += data.toString();
+          // Buffer partial lines so a large tool result spanning multiple chunks
+          // reassembles instead of failing to parse and timing out.
+          const { lines, rest } = drainNdjsonLines(callBuffer);
+          callBuffer = rest;
 
           for (const line of lines) {
             try {

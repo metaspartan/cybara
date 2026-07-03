@@ -4,6 +4,7 @@ import { tmpdir } from "os";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { parseMcpHttpResponse, isHttpMcpUrl } from "../../src/core/mcp-http";
+import { nextMcpRequestId, drainNdjsonLines } from "../../src/core/mcp";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -288,8 +289,7 @@ describe("MCPServerManager error and namespacing paths", () => {
 });
 
 describe("nextMcpRequestId", () => {
-  test("returns strictly increasing, collision-free ids (fixes Date.now() collisions)", async () => {
-    const { nextMcpRequestId } = await import("../../src/core/mcp");
+  test("returns strictly increasing, collision-free ids (fixes Date.now() collisions)", () => {
     const ids: number[] = [];
     for (let i = 0; i < 1000; i++) ids.push(nextMcpRequestId());
     // All unique.
@@ -298,5 +298,38 @@ describe("nextMcpRequestId", () => {
     for (let i = 1; i < ids.length; i++) {
       expect(ids[i]).toBeGreaterThan(ids[i - 1]);
     }
+  });
+});
+
+describe("drainNdjsonLines (stdout reassembly)", () => {
+  test("returns complete lines and carries the trailing partial forward", () => {
+    const first = drainNdjsonLines('{"id":1}\n{"id":2}\n{"par');
+    expect(first.lines).toEqual(['{"id":1}', '{"id":2}']);
+    expect(first.rest).toBe('{"par');
+
+    // Next chunk completes the partial message.
+    const second = drainNdjsonLines(first.rest + 'tial":true}\n');
+    expect(second.lines).toEqual(['{"partial":true}']);
+    expect(second.rest).toBe("");
+  });
+
+  test("a large message split across chunks reassembles into one line", () => {
+    const bigMessage = JSON.stringify({ id: 7, result: "x".repeat(200000) });
+    const chunkA = bigMessage.slice(0, 64000);
+    const chunkB = bigMessage.slice(64000) + "\n";
+
+    let buffer = "";
+    buffer += chunkA;
+    let out = drainNdjsonLines(buffer);
+    expect(out.lines).toEqual([]); // no newline yet → nothing complete
+    buffer = out.rest + chunkB;
+    out = drainNdjsonLines(buffer);
+    expect(out.lines).toHaveLength(1);
+    expect(JSON.parse(out.lines[0]).id).toBe(7);
+    expect(out.rest).toBe("");
+  });
+
+  test("ignores blank/whitespace-only lines", () => {
+    expect(drainNdjsonLines("\n  \n{\"id\":1}\n").lines).toEqual(['{"id":1}']);
   });
 });
