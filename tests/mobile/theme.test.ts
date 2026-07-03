@@ -82,7 +82,8 @@ describe("mobile theming", () => {
 
   test("every styled surface rebuilds its StyleSheet when the scheme changes", () => {
     const styledFiles = [
-      "screens/DashboardScreen.tsx",
+      // Dashboard styles were extracted from the screen into their own module.
+      "screens/dashboardStyles.ts",
       "screens/ConnectScreen.tsx",
       "components/Glass.tsx",
       "components/NewChatPanel.tsx",

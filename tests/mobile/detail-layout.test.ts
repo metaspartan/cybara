@@ -7,20 +7,22 @@ const read = (rel: string) => readFileSync(`${root}/${rel}`, "utf8");
 
 describe("mobile: iOS-style detail layout", () => {
   const screen = read("screens/DashboardScreen.tsx");
+  // Styles were extracted out of the god component into a dedicated module.
+  const styleSrc = read("screens/dashboardStyles.ts");
 
   test("detail info renders through a grouped DetailInfoSection", () => {
     expect(screen).toContain("function DetailInfoSection(");
     expect(screen).toContain("<DetailInfoSection");
     // grouped inset card with key-value rows
-    expect(screen).toContain("infoCard:");
-    expect(screen).toContain("infoRow:");
-    expect(screen).toContain("infoRowDivider:");
-    expect(screen).toContain("infoLabel:");
-    expect(screen).toContain("infoValue:");
+    expect(styleSrc).toContain("infoCard:");
+    expect(styleSrc).toContain("infoRow:");
+    expect(styleSrc).toContain("infoRowDivider:");
+    expect(styleSrc).toContain("infoLabel:");
+    expect(styleSrc).toContain("infoValue:");
   });
 
   test("value column is right-aligned like the iOS Settings app", () => {
-    const infoValue = screen.slice(screen.indexOf("infoValue: {"));
+    const infoValue = styleSrc.slice(styleSrc.indexOf("infoValue: {"));
     expect(infoValue.slice(0, 160)).toContain('textAlign: "right"');
   });
 
