@@ -41,6 +41,22 @@ mock.module("../../src/core/providers", () => ({
         },
       ],
     },
+    elevenlabs: {
+      name: "ElevenLabs",
+      baseUrl: "https://api.elevenlabs.io/v1",
+      api: "elevenlabs-speech",
+      authType: "api_key",
+      models: [
+        {
+          id: "eleven_multilingual_v2",
+          name: "Eleven Multilingual v2",
+          context: 5000,
+          maxTokens: 5000,
+          reasoning: false,
+          input: ["text"],
+        },
+      ],
+    },
   },
   resolveProviderType: (value: string) => value,
   getProviderBaseUrl: (providerType: string) =>
@@ -213,5 +229,36 @@ describe("Provider test route contracts (mocked providers)", () => {
       "Stored Google API key appears invalid"
     );
     expect(fetchCalled).toBe(false);
+  });
+
+  test("POST /api/providers/:id/test validates ElevenLabs providers against voices endpoint", async () => {
+    const fetchCalls: Array<{ url: string; headers: HeadersInit }> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      fetchCalls.push({ url: String(input), headers: init?.headers || {} });
+      return new Response(JSON.stringify({ voices: [{ voice_id: "voice-1" }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    providerState.byId.set("eleven-provider-1", {
+      id: "eleven-provider-1",
+      provider: "elevenlabs",
+      name: "ElevenLabs",
+      base_url: "https://api.elevenlabs.io/v1",
+      api_key: "eleven-test-key",
+      access_token: null,
+      refresh_token: null,
+    });
+
+    const res = await api("POST", "/api/providers/eleven-provider-1/test");
+    expect(res.status).toBe(200);
+    expect((res.body as { success?: boolean }).success).toBe(true);
+    expect((res.body as { message?: string }).message).toContain("ElevenLabs credentials verified");
+    expect(fetchCalls).toHaveLength(1);
+    expect(fetchCalls[0]?.url).toBe("https://api.elevenlabs.io/v1/voices");
+
+    const headers = new Headers(fetchCalls[0]?.headers);
+    expect(headers.get("xi-api-key")).toBe("eleven-test-key");
   });
 });

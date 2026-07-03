@@ -613,13 +613,14 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
   transcribe: {
     name: "transcribe",
     description:
-      "Transcribe an audio file to text (speech-to-text) via Whisper. Accepts a local audioPath or a url. Requires GROQ_API_KEY or OPENAI_API_KEY.",
+      "Transcribe an audio file to text (speech-to-text) via the configured OpenAI/OpenAI Codex speech provider, with GROQ_API_KEY or OPENAI_API_KEY fallback.",
     category: "media",
     input_schema: {
       type: "object",
       properties: {
         audioPath: { type: "string", description: "Local path to an audio file (<=25MB)" },
         url: { type: "string", description: "URL of an audio file (alternative to audioPath)" },
+        providerId: { type: "string", description: "Optional configured OpenAI/OpenAI Codex provider id" },
         language: { type: "string", description: "Optional ISO-639-1 language hint (e.g. en)" },
         prompt: { type: "string", description: "Optional context prompt to guide transcription" },
         model: { type: "string", description: "Optional model override" },
@@ -1441,19 +1442,31 @@ Use for tasks that may take longer or require separate context.`,
   tts: {
     name: "tts",
     description:
-      "Convert text to speech using the macOS 'say' synthesizer; returns the path to a generated audio file. macOS only.",
+      "Convert text to speech using the configured speech provider (ElevenLabs/OpenAI) with macOS system voice fallback; returns the path to a generated audio file.",
     category: "media",
     input_schema: {
       type: "object",
       properties: {
         text: { type: "string", description: "Text to convert to speech" },
-        voice: { type: "string", description: "Optional macOS voice name (e.g. Samantha, Alex)" },
-        rate: { type: "number", description: "Optional words-per-minute (80-500)" },
+        provider: {
+          type: "string",
+          enum: ["auto", "system", "elevenlabs", "openai"],
+          description: "Optional TTS provider override",
+        },
+        providerId: { type: "string", description: "Optional configured provider id override" },
+        model: { type: "string", description: "Optional TTS model override" },
+        voice: { type: "string", description: "Optional voice name or ElevenLabs voice id" },
+        speed: { type: "number", description: "Optional speech speed multiplier" },
+        rate: { type: "number", description: "Backward-compatible macOS words-per-minute hint" },
+        stability: { type: "number", description: "Optional ElevenLabs stability (0-1)" },
+        similarity: { type: "number", description: "Optional ElevenLabs similarity boost (0-1)" },
+        style: { type: "number", description: "Optional ElevenLabs style exaggeration (0-1)" },
         format: {
           type: "string",
-          enum: ["aiff", "m4a", "wav"],
-          description: "Output audio format (default aiff)",
+          enum: ["mp3", "m4a", "wav", "aiff", "opus", "aac"],
+          description: "Output audio format (default follows speech settings)",
         },
+        fallbackToSystem: { type: "boolean", description: "Allow macOS system TTS fallback" },
       },
       required: ["text"],
     },

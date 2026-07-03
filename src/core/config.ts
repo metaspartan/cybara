@@ -17,6 +17,8 @@ export type ToolApprovalMode = "always_allow" | "ask";
 export type SandboxProvider = "auto" | "apple_sandbox" | "podman" | "docker";
 export type SandboxNetworkMode = "allow" | "deny";
 export type EmbeddingProviderPreference = "auto" | "openai" | "gemini" | "ollama" | "transformers_js";
+export type SpeechTtsProviderPreference = "auto" | "system" | "elevenlabs" | "openai";
+export type SpeechSttProviderPreference = "auto" | "openai";
 
 export interface DangerousToolPolicyConfig {
   enabled: boolean;
@@ -48,6 +50,29 @@ export interface WorkspaceIndexerSettings {
   embeddingModel: string;
   ignoreDirs: string[];
   includeExtensions: string[];
+}
+
+export interface SpeechTtsSettings {
+  provider: SpeechTtsProviderPreference;
+  providerId: string;
+  model: string;
+  voice: string;
+  outputFormat: "mp3" | "m4a" | "wav" | "aiff" | "opus" | "aac";
+  speed: number;
+  maxTextLength: number;
+  fallbackToSystem: boolean;
+}
+
+export interface SpeechSttSettings {
+  provider: SpeechSttProviderPreference;
+  providerId: string;
+  model: string;
+  language: string;
+}
+
+export interface SpeechSettings {
+  tts: SpeechTtsSettings;
+  stt: SpeechSttSettings;
 }
 
 export const DEFAULT_DANGEROUS_TOOL_POLICY: DangerousToolPolicyConfig = {
@@ -95,6 +120,25 @@ export const DEFAULT_WORKSPACE_INDEXER_SETTINGS: WorkspaceIndexerSettings = {
     "venv",
   ],
   includeExtensions: [],
+};
+
+export const DEFAULT_SPEECH_SETTINGS: SpeechSettings = {
+  tts: {
+    provider: "auto",
+    providerId: "",
+    model: "",
+    voice: "",
+    outputFormat: "mp3",
+    speed: 1,
+    maxTextLength: 8000,
+    fallbackToSystem: true,
+  },
+  stt: {
+    provider: "auto",
+    providerId: "",
+    model: "",
+    language: "",
+  },
 };
 
 function parseJsonValue(raw: string): unknown {
@@ -228,6 +272,91 @@ function normalizeEmbeddingModel(value: unknown): string {
   return trimmed.slice(0, 160);
 }
 
+function normalizeSpeechTtsProvider(value: unknown): SpeechTtsProviderPreference {
+  if (typeof value !== "string") return DEFAULT_SPEECH_SETTINGS.tts.provider;
+  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (normalized === "system" || normalized === "macos" || normalized === "local") {
+    return "system";
+  }
+  if (normalized === "elevenlabs" || normalized === "eleven_labs") return "elevenlabs";
+  if (normalized === "openai" || normalized === "openai_codex" || normalized === "codex") {
+    return "openai";
+  }
+  return "auto";
+}
+
+function normalizeSpeechSttProvider(value: unknown): SpeechSttProviderPreference {
+  if (typeof value !== "string") return DEFAULT_SPEECH_SETTINGS.stt.provider;
+  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return normalized === "openai" || normalized === "openai_codex" || normalized === "codex"
+    ? "openai"
+    : "auto";
+}
+
+function normalizeShortText(value: unknown, maxLength = 200): string {
+  if (typeof value !== "string") return "";
+  return value.trim().slice(0, maxLength);
+}
+
+function normalizeSpeechOutputFormat(value: unknown): SpeechTtsSettings["outputFormat"] {
+  if (typeof value !== "string") return DEFAULT_SPEECH_SETTINGS.tts.outputFormat;
+  const normalized = value.trim().toLowerCase();
+  if (
+    normalized === "mp3" ||
+    normalized === "m4a" ||
+    normalized === "wav" ||
+    normalized === "aiff" ||
+    normalized === "opus" ||
+    normalized === "aac"
+  ) {
+    return normalized;
+  }
+  return DEFAULT_SPEECH_SETTINGS.tts.outputFormat;
+}
+
+function normalizeSpeechSpeed(value: unknown): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim().length > 0
+        ? Number(value)
+        : Number.NaN;
+  if (!Number.isFinite(parsed)) return DEFAULT_SPEECH_SETTINGS.tts.speed;
+  return Math.min(2, Math.max(0.5, Number(parsed.toFixed(2))));
+}
+
+function normalizeSpeechSettings(value: unknown): SpeechSettings {
+  const parsed = asObject(value);
+  const tts = asObject(parsed?.tts);
+  const stt = asObject(parsed?.stt);
+  return {
+    tts: {
+      provider: normalizeSpeechTtsProvider(tts?.provider),
+      providerId: normalizeShortText(tts?.providerId),
+      model: normalizeShortText(tts?.model),
+      voice: normalizeShortText(tts?.voice),
+      outputFormat: normalizeSpeechOutputFormat(tts?.outputFormat),
+      speed: normalizeSpeechSpeed(tts?.speed),
+      maxTextLength: normalizePositiveInteger(
+        tts?.maxTextLength,
+        DEFAULT_SPEECH_SETTINGS.tts.maxTextLength,
+        1,
+        50_000
+      ),
+      fallbackToSystem:
+        typeof tts?.fallbackToSystem === "boolean"
+          ? tts.fallbackToSystem
+          : DEFAULT_SPEECH_SETTINGS.tts.fallbackToSystem,
+    },
+    stt: {
+      provider: normalizeSpeechSttProvider(stt?.provider),
+      providerId: normalizeShortText(stt?.providerId),
+      model: normalizeShortText(stt?.model),
+      language: normalizeShortText(stt?.language, 20).toLowerCase(),
+    },
+  };
+}
+
 function normalizeWorkspaceIndexerSettings(value: unknown): WorkspaceIndexerSettings {
   const parsed = asObject(value);
   const rawSemanticMinScore =
@@ -309,6 +438,7 @@ class ConfigManager {
       web_tool_url_policy: { ...DEFAULT_WEB_TOOL_URL_POLICY },
       sandbox_runtime: { ...DEFAULT_SANDBOX_RUNTIME },
       workspace_indexer: { ...DEFAULT_WORKSPACE_INDEXER_SETTINGS },
+      speech: { ...DEFAULT_SPEECH_SETTINGS },
     };
 
     const all = tables.config.all();
@@ -382,6 +512,17 @@ class ConfigManager {
   setWorkspaceIndexerSettings(settings: unknown): WorkspaceIndexerSettings {
     const normalized = normalizeWorkspaceIndexerSettings(settings);
     this.set("workspace_indexer", normalized);
+    return normalized;
+  }
+
+  getSpeechSettings(): SpeechSettings {
+    const stored = this.get<unknown>("speech");
+    return normalizeSpeechSettings(stored);
+  }
+
+  setSpeechSettings(settings: unknown): SpeechSettings {
+    const normalized = normalizeSpeechSettings(settings);
+    this.set("speech", normalized);
     return normalized;
   }
 

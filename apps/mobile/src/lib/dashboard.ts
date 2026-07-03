@@ -115,6 +115,7 @@ export const MOBILE_SETTINGS_ROOT_CHROME = {
   settingsEdgeToEdgeContent: true,
   sandboxRuntimeControls: true,
   systemPromptFeatureToggles: true,
+  speechControls: true,
   terminalToggle: true,
   toolApprovalModeSelector: true,
   walletAccessShortcut: true,
@@ -127,6 +128,7 @@ export const MOBILE_PLATFORM_SETTING_KEYS = [
   "dangerous_tool_policy",
   "sandbox_runtime",
   "router",
+  "speech",
 ] as const;
 
 export const MOBILE_REASONING_EFFORT_OPTIONS = [

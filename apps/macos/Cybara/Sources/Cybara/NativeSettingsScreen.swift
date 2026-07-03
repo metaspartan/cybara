@@ -24,12 +24,33 @@ struct NativeSettingsScreen: View {
     @State private var sandboxEnabled = false
     @State private var sandboxProvider = "auto"
     @State private var sandboxNetwork = "deny"
+    @State private var speechTTSProvider = "auto"
+    @State private var speechTTSProviderId = ""
+    @State private var speechTTSModel = ""
+    @State private var speechTTSVoice = ""
+    @State private var speechTTSFormat = "mp3"
+    @State private var speechTTSFallback = true
+    @State private var speechSTTProviderId = ""
+    @State private var speechSTTModel = ""
+    @State private var speechSTTLanguage = ""
     @State private var savingKey: String?
     @State private var copiedURL = false
     @State private var error: String?
 
     private var availableModels: [String] {
         Array(Set(providers.flatMap { $0.models ?? [] })).sorted()
+    }
+
+    private var ttsProviderAccounts: [GatewayProvider] {
+        providers.filter { provider in
+            ["elevenlabs", "openai", "openai-codex"].contains(provider.providerType)
+        }
+    }
+
+    private var sttProviderAccounts: [GatewayProvider] {
+        providers.filter { provider in
+            ["openai", "openai-codex"].contains(provider.providerType)
+        }
     }
 
     var body: some View {
@@ -41,6 +62,7 @@ struct NativeSettingsScreen: View {
                 gatewayTab.tabItem { Label("Gateway", systemImage: "server.rack") }.tag(SettingsTab.gateway)
                 appearanceTab.tabItem { Label("Appearance", systemImage: "paintpalette") }.tag(SettingsTab.appearance)
                 modelTab.tabItem { Label("Model", systemImage: "brain") }.tag(SettingsTab.model)
+                speechTab.tabItem { Label("Speech", systemImage: "waveform") }.tag(SettingsTab.speech)
                 featuresTab.tabItem { Label("Features", systemImage: "slider.horizontal.3") }.tag(SettingsTab.features)
                 advancedTab.tabItem { Label("Advanced", systemImage: "square.grid.3x3") }.tag(SettingsTab.advanced)
             }
@@ -279,6 +301,107 @@ struct NativeSettingsScreen: View {
         }
     }
 
+    private var speechTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "speaker.wave.2")
+                                .foregroundStyle(.secondary)
+                            Text("Text to Speech")
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                            Spacer()
+                            progressLabel(for: "speech", fallback: speechTTSProviderLabel)
+                        }
+                        Picker("Provider", selection: $speechTTSProvider) {
+                            Text("Auto").tag("auto")
+                            Text("ElevenLabs").tag("elevenlabs")
+                            Text("OpenAI").tag("openai")
+                            Text("System").tag("system")
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: speechTTSProvider) { _, _ in saveSpeechSettings() }
+
+                        Picker("Provider account", selection: $speechTTSProviderId) {
+                            Text("Auto").tag("")
+                            ForEach(ttsProviderAccounts) { provider in
+                                Text("\(provider.displayName) (\(provider.providerType))").tag(provider.id)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .onChange(of: speechTTSProviderId) { _, _ in saveSpeechSettings() }
+
+                        HStack(spacing: 12) {
+                            TextField("Model", text: $speechTTSModel)
+                                .textFieldStyle(.roundedBorder)
+                                .onSubmit { saveSpeechSettings() }
+                            TextField("Voice ID or name", text: $speechTTSVoice)
+                                .textFieldStyle(.roundedBorder)
+                                .onSubmit { saveSpeechSettings() }
+                        }
+
+                        Picker("Format", selection: $speechTTSFormat) {
+                            Text("MP3").tag("mp3")
+                            Text("M4A").tag("m4a")
+                            Text("WAV").tag("wav")
+                            Text("Opus").tag("opus")
+                            Text("AAC").tag("aac")
+                            Text("AIFF").tag("aiff")
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: speechTTSFormat) { _, _ in saveSpeechSettings() }
+
+                        Toggle("Fallback to macOS system voice", isOn: $speechTTSFallback)
+                            .onChange(of: speechTTSFallback) { _, _ in saveSpeechSettings() }
+                    }
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "mic")
+                                .foregroundStyle(.secondary)
+                            Text("Speech to Text")
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                            Spacer()
+                        }
+                        Picker("Provider account", selection: $speechSTTProviderId) {
+                            Text("Auto").tag("")
+                            ForEach(sttProviderAccounts) { provider in
+                                Text("\(provider.displayName) (\(provider.providerType))").tag(provider.id)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .onChange(of: speechSTTProviderId) { _, _ in saveSpeechSettings() }
+
+                        HStack(spacing: 12) {
+                            TextField("Model", text: $speechSTTModel)
+                                .textFieldStyle(.roundedBorder)
+                                .onSubmit { saveSpeechSettings() }
+                            TextField("Language", text: $speechSTTLanguage)
+                                .textFieldStyle(.roundedBorder)
+                                .onSubmit { saveSpeechSettings() }
+                                .frame(width: 140)
+                        }
+                    }
+                }
+
+                HStack {
+                    Spacer()
+                    Button {
+                        saveSpeechSettings()
+                    } label: {
+                        Label("Save Speech", systemImage: "checkmark.circle")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(savingKey == "speech")
+                }
+            }
+            .padding(.vertical, 12)
+        }
+    }
+
     private var featuresTab: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -388,6 +511,15 @@ struct NativeSettingsScreen: View {
         return "\(minutes / 60)h \(minutes % 60)m"
     }
 
+    private var speechTTSProviderLabel: String {
+        switch speechTTSProvider {
+        case "elevenlabs": return "ElevenLabs"
+        case "openai": return "OpenAI"
+        case "system": return "System"
+        default: return "Auto"
+        }
+    }
+
     private func settingRow(_ label: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(label).font(.system(size: 12, design: .rounded)).foregroundStyle(.secondary)
@@ -475,6 +607,30 @@ struct NativeSettingsScreen: View {
         )
     }
 
+    private func saveSpeechSettings() {
+        saveConfigPatch(
+            [
+                "speech": [
+                    "tts": [
+                        "provider": speechTTSProvider,
+                        "providerId": speechTTSProviderId,
+                        "model": speechTTSModel,
+                        "voice": speechTTSVoice,
+                        "outputFormat": speechTTSFormat,
+                        "fallbackToSystem": speechTTSFallback,
+                    ],
+                    "stt": [
+                        "provider": "auto",
+                        "providerId": speechSTTProviderId,
+                        "model": speechSTTModel,
+                        "language": speechSTTLanguage,
+                    ],
+                ],
+            ],
+            key: "speech"
+        )
+    }
+
     private func saveConfigPatch(
         _ patch: [String: Any],
         key: String,
@@ -543,6 +699,19 @@ struct NativeSettingsScreen: View {
         sandboxEnabled = sandbox["enabled"] as? Bool ?? false
         sandboxProvider = sandbox["provider"] as? String ?? "auto"
         sandboxNetwork = sandbox["network"] as? String == "allow" ? "allow" : "deny"
+        let speech = config["speech"] as? [String: Any] ?? [:]
+        let tts = speech["tts"] as? [String: Any] ?? [:]
+        let stt = speech["stt"] as? [String: Any] ?? [:]
+        let provider = tts["provider"] as? String ?? "auto"
+        speechTTSProvider = ["auto", "system", "elevenlabs", "openai"].contains(provider) ? provider : "auto"
+        speechTTSProviderId = tts["providerId"] as? String ?? ""
+        speechTTSModel = tts["model"] as? String ?? ""
+        speechTTSVoice = tts["voice"] as? String ?? ""
+        speechTTSFormat = tts["outputFormat"] as? String ?? "mp3"
+        speechTTSFallback = tts["fallbackToSystem"] as? Bool ?? true
+        speechSTTProviderId = stt["providerId"] as? String ?? ""
+        speechSTTModel = stt["model"] as? String ?? ""
+        speechSTTLanguage = stt["language"] as? String ?? ""
     }
 
     private func readAccentKey(from config: [String: Any]) -> String? {
@@ -560,6 +729,7 @@ struct NativeSettingsScreen: View {
         case gateway
         case appearance
         case model
+        case speech
         case features
         case advanced
     }

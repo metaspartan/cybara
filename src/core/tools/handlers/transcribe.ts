@@ -7,12 +7,14 @@ import { existsSync, statSync } from "fs";
 import { basename } from "path";
 import { assertReadablePath } from "../path-policy";
 import { validateUrl } from "../../../api/security";
+import { config } from "../../config";
+import { providerManager, providers, resolveProviderType } from "../../providers";
 
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/audio/transcriptions";
 const OPENAI_ENDPOINT = "https://api.openai.com/v1/audio/transcriptions";
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // 25MB (Whisper API limit)
 
-export type TranscribeBackend = "groq" | "openai";
+export type TranscribeBackend = "groq" | "openai" | "openai-codex";
 
 export interface TranscribeResponse {
   text: string;
@@ -26,6 +28,7 @@ interface BackendConfig {
   endpoint: string;
   apiKey: string;
   model: string;
+  providerId?: string;
 }
 
 /**
@@ -40,11 +43,48 @@ export function selectTranscribeBackend(
   return null;
 }
 
-function resolveBackend(modelOverride?: string): BackendConfig {
+function resolveConfiguredProviderBackend(args: Record<string, unknown>, modelOverride?: string): BackendConfig | null {
+  const speech = config.getSpeechSettings();
+  const providerId =
+    typeof args.providerId === "string" && args.providerId.trim()
+      ? args.providerId.trim()
+      : speech.stt.providerId;
+  if (!providerId) return null;
+
+  const provider = providerManager.getWithCredentials(providerId);
+  if (!provider) {
+    throw new Error("Requested transcription provider ID is invalid");
+  }
+  const providerType = resolveProviderType(provider.provider);
+  if (providerType !== "openai" && providerType !== "openai-codex") {
+    throw new Error("Requested transcription provider must be OpenAI or OpenAI Codex");
+  }
+  const apiKey = provider.api_key || provider.access_token;
+  if (!apiKey) {
+    throw new Error("Requested transcription provider has no API credentials");
+  }
+  const providerInfo = providers[providerType];
+  const baseUrl = (provider.base_url || providerInfo?.baseUrl || "https://api.openai.com/v1").replace(
+    /\/+$/,
+    ""
+  );
+  return {
+    backend: providerType,
+    endpoint: `${baseUrl}/audio/transcriptions`,
+    apiKey,
+    model: modelOverride || speech.stt.model || "gpt-4o-mini-transcribe",
+    providerId: provider.id,
+  };
+}
+
+function resolveBackend(args: Record<string, unknown>, modelOverride?: string): BackendConfig {
+  const configured = resolveConfiguredProviderBackend(args, modelOverride);
+  if (configured) return configured;
+
   const selected = selectTranscribeBackend(process.env);
   if (!selected) {
     throw new Error(
-      "Transcription requires GROQ_API_KEY (whisper-large-v3) or OPENAI_API_KEY (whisper-1)."
+      "Transcription requires a saved OpenAI/OpenAI Codex speech provider, GROQ_API_KEY, or OPENAI_API_KEY."
     );
   }
   const model = modelOverride || selected.model;
@@ -84,7 +124,7 @@ async function loadAudio(args: Record<string, unknown>): Promise<{ blob: Blob; f
 }
 
 export async function handleTranscribe(args: Record<string, unknown>): Promise<TranscribeResponse> {
-  const config = resolveBackend(typeof args.model === "string" ? args.model : undefined);
+  const config = resolveBackend(args, typeof args.model === "string" ? args.model : undefined);
   const { blob, filename } = await loadAudio(args);
 
   const form = new FormData();

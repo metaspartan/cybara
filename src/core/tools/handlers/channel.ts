@@ -17,6 +17,7 @@ import type { Channel } from "../../database";
 import * as subagentRegistry from "../../subagent-registry";
 import type { SubagentRunRecord } from "../../subagent-registry";
 import { getInboundMediaRootDir, saveInboundMediaFromUrl } from "../../channels/media";
+import { synthesizeSpeech, type SpeechSynthesisResult } from "../../speech";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -1124,7 +1125,34 @@ $stream.Dispose()
   };
 }
 
-export async function handleTTS(
+export async function handleTTS(args: Record<string, unknown>): Promise<SpeechSynthesisResult> {
+  const provider =
+    typeof args.provider === "string" &&
+    ["auto", "system", "elevenlabs", "openai", "openai-codex"].includes(args.provider)
+      ? (args.provider as "auto" | "system" | "elevenlabs" | "openai" | "openai-codex")
+      : undefined;
+  return await synthesizeSpeech({
+    text: typeof args.text === "string" ? args.text : "",
+    provider,
+    providerId: typeof args.providerId === "string" ? args.providerId : undefined,
+    model: typeof args.model === "string" ? args.model : undefined,
+    voice: typeof args.voice === "string" ? args.voice : undefined,
+    format: typeof args.format === "string" ? args.format : undefined,
+    speed:
+      typeof args.speed === "number"
+        ? args.speed
+        : typeof args.rate === "number" && Number.isFinite(args.rate)
+          ? Math.max(0.5, Math.min(2, args.rate / 175))
+          : undefined,
+    stability: typeof args.stability === "number" ? args.stability : undefined,
+    similarity: typeof args.similarity === "number" ? args.similarity : undefined,
+    style: typeof args.style === "number" ? args.style : undefined,
+    fallbackToSystem:
+      typeof args.fallbackToSystem === "boolean" ? args.fallbackToSystem : undefined,
+  });
+}
+
+export async function handleSystemTTS(
   args: Record<string, unknown>
 ): Promise<{ audioPath: string; text: string; voice?: string; format: string }> {
   const text = typeof args.text === "string" ? args.text.trim() : "";

@@ -182,6 +182,46 @@ export const providers = {
       },
     ],
   },
+  elevenlabs: {
+    name: "ElevenLabs",
+    baseUrl: "https://api.elevenlabs.io/v1",
+    api: "elevenlabs-speech",
+    authType: "api_key",
+    models: [
+      {
+        id: "eleven_multilingual_v2",
+        name: "Eleven Multilingual v2",
+        context: 5000,
+        maxTokens: 5000,
+        reasoning: false,
+        input: ["text"],
+      },
+      {
+        id: "eleven_flash_v2_5",
+        name: "Eleven Flash v2.5",
+        context: 5000,
+        maxTokens: 5000,
+        reasoning: false,
+        input: ["text"],
+      },
+      {
+        id: "eleven_turbo_v2_5",
+        name: "Eleven Turbo v2.5",
+        context: 5000,
+        maxTokens: 5000,
+        reasoning: false,
+        input: ["text"],
+      },
+      {
+        id: "eleven_v3",
+        name: "Eleven v3",
+        context: 5000,
+        maxTokens: 5000,
+        reasoning: false,
+        input: ["text"],
+      },
+    ],
+  },
   anthropic: {
     name: "Anthropic",
     baseUrl: "https://api.anthropic.com/v1",
@@ -3450,6 +3490,7 @@ export function getProviderBaseUrl(providerType: string): string {
 export function getDefaultModel(providerType: string): string {
   const defaults: Record<string, string> = {
     openai: "gpt-5.5",
+    elevenlabs: "eleven_multilingual_v2",
     anthropic: "claude-opus-4-8",
     minimax: "MiniMax-M3",
     "minimax-portal": "MiniMax-M3",

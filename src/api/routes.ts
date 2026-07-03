@@ -685,8 +685,14 @@ const routes: Record<string, RouteHandler> = {
     web_tool_url_policy: config.getWebToolUrlPolicy(),
     sandbox_runtime: config.getSandboxRuntime(),
     workspace_indexer: config.getWorkspaceIndexerSettings(),
+    speech: config.getSpeechSettings(),
     reasoning_effort: config.getDefaultReasoningEffort(),
     self_improving_skills_enabled: config.get<boolean>("self_improving_skills_enabled") !== false,
+  }),
+  "GET /api/speech/settings": () => config.getSpeechSettings(),
+  "PUT /api/speech/settings": (body) => ({
+    success: true,
+    speech: config.setSpeechSettings(body),
   }),
   "GET /api/sandbox/status": () => getSandboxRuntimeStatus(),
   "PUT /api/config": (body) => {
@@ -711,6 +717,10 @@ const routes: Record<string, RouteHandler> = {
       }
       if (key === "workspace_indexer") {
         workspaceIndexer.updateSettings(value);
+        continue;
+      }
+      if (key === "speech") {
+        config.setSpeechSettings(value);
         continue;
       }
       if (key === "reasoning_effort") {
@@ -1040,6 +1050,51 @@ const routes: Record<string, RouteHandler> = {
           success: false,
           provider: provider.provider,
           message: `OpenAI test failed: ${(error as Error).message}`,
+        };
+      }
+    }
+
+    if (provider.provider === "elevenlabs") {
+      const apiKey = provider.api_key || provider.access_token;
+      const baseUrl = (provider.base_url || providerInfo.baseUrl || "https://api.elevenlabs.io/v1").replace(
+        /\/+$/,
+        ""
+      );
+      if (!apiKey) {
+        return {
+          success: false,
+          provider: provider.provider,
+          message: "ElevenLabs API key is missing",
+        };
+      }
+
+      try {
+        const response = await fetch(`${baseUrl}/voices`, {
+          headers: {
+            "xi-api-key": apiKey,
+          },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!response.ok) {
+          const text = await response.text();
+          const safeText = text.slice(0, 300);
+          return {
+            success: false,
+            provider: provider.provider,
+            message: `ElevenLabs voice check failed: HTTP ${response.status}${safeText ? ` - ${safeText}` : ""}`,
+          };
+        }
+
+        return {
+          success: true,
+          provider: provider.provider,
+          message: "ElevenLabs credentials verified",
+        };
+      } catch (error) {
+        return {
+          success: false,
+          provider: provider.provider,
+          message: `ElevenLabs test failed: ${(error as Error).message}`,
         };
       }
     }
@@ -3356,9 +3411,12 @@ const routes: Record<string, RouteHandler> = {
         ? data.mimeType.trim()
         : "audio/webm";
     const decoded = decodeDictationAudioBase64(data.audioBase64, fallbackMimeType);
+    const speechSettings = config.getSpeechSettings();
     const provider = pickDictationProvider(
       typeof data.providerId === "string" && data.providerId.trim()
         ? data.providerId.trim()
+        : speechSettings.stt.providerId
+          ? speechSettings.stt.providerId
         : undefined
     );
     const result = await transcribeWithOpenAICompatibleProvider({
@@ -3369,7 +3427,10 @@ const routes: Record<string, RouteHandler> = {
         typeof data.fileName === "string" && data.fileName.trim()
           ? data.fileName.trim()
           : "dictation.webm",
-      model: typeof data.model === "string" ? data.model.trim() : undefined,
+      model:
+        typeof data.model === "string" && data.model.trim()
+          ? data.model.trim()
+          : speechSettings.stt.model || undefined,
     });
 
     return {

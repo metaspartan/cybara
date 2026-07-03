@@ -987,6 +987,58 @@ describe("Providers OAuth API", () => {
 });
 
 describe("Speech API", () => {
+  test("GET /api/providers/available should include ElevenLabs speech provider", async () => {
+    const { status, data } = await api("GET", "/api/providers/available");
+    expect(status).toBe(200);
+    expect(Array.isArray(data)).toBe(true);
+    const elevenlabs = data.find((provider: { id?: string }) => provider.id === "elevenlabs");
+    expect(elevenlabs).toBeDefined();
+    expect(elevenlabs.authType).toBe("api_key");
+    expect(elevenlabs.models.map((model: { id: string }) => model.id)).toContain(
+      "eleven_multilingual_v2"
+    );
+  });
+
+  test("GET and PUT /api/speech/settings should normalize shared speech config", async () => {
+    const put = await api("PUT", "/api/speech/settings", {
+      tts: {
+        provider: "Eleven Labs",
+        providerId: "  provider-1  ",
+        model: " eleven_flash_v2_5 ",
+        voice: " voice-abc ",
+        outputFormat: "wav",
+        speed: 9,
+        maxTextLength: 100000,
+        fallbackToSystem: false,
+      },
+      stt: {
+        provider: "openai-codex",
+        providerId: " provider-2 ",
+        model: " whisper-1 ",
+        language: " EN ",
+      },
+    });
+    expect(put.status).toBe(200);
+    expect(put.data.success).toBe(true);
+    expect(put.data.speech.tts.provider).toBe("elevenlabs");
+    expect(put.data.speech.tts.providerId).toBe("provider-1");
+    expect(put.data.speech.tts.outputFormat).toBe("wav");
+    expect(put.data.speech.tts.speed).toBe(2);
+    expect(put.data.speech.tts.maxTextLength).toBe(50000);
+    expect(put.data.speech.stt.provider).toBe("openai");
+    expect(put.data.speech.stt.language).toBe("en");
+
+    const get = await api("GET", "/api/speech/settings");
+    expect(get.status).toBe(200);
+    expect(get.data.tts.provider).toBe("elevenlabs");
+    expect(get.data.tts.providerId).toBe("provider-1");
+    expect(get.data.stt.providerId).toBe("provider-2");
+
+    const configResponse = await api("GET", "/api/config");
+    expect(configResponse.status).toBe(200);
+    expect(configResponse.data.speech.tts.model).toBe("eleven_flash_v2_5");
+  });
+
   test("POST /api/speech/dictate should reject missing audio payload", async () => {
     const { status, data } = await api("POST", "/api/speech/dictate", {});
     expect(status).toBe(400);
