@@ -3,6 +3,7 @@ import { Terminal as XTerminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { SquareTerminal, Plus, Trash2, AlertTriangle } from "lucide-react";
+import { buildXtermTheme } from "./ide/xtermTheme";
 import { appendApiTokenParam, apiFetch } from "@/lib/auth";
 
 interface TermSession {
@@ -59,29 +60,7 @@ export function TerminalPage() {
       cursorBlink: true,
       fontSize: 14,
       fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
-      theme: {
-        background: "#0a0a0f",
-        foreground: "#e4e4e7",
-        cursor: "#818cf8",
-        cursorAccent: "#0a0a0f",
-        selectionBackground: "rgba(99, 102, 241, 0.3)",
-        black: "#18181b",
-        red: "#ef4444",
-        green: "#22c55e",
-        yellow: "#eab308",
-        blue: "#3b82f6",
-        magenta: "#a855f7",
-        cyan: "#06b6d4",
-        white: "#e4e4e7",
-        brightBlack: "#52525b",
-        brightRed: "#f87171",
-        brightGreen: "#4ade80",
-        brightYellow: "#facc15",
-        brightBlue: "#60a5fa",
-        brightMagenta: "#c084fc",
-        brightCyan: "#22d3ee",
-        brightWhite: "#fafafa",
-      },
+      theme: buildXtermTheme("#0a0a0f"),
     });
 
     const fitAddon = new FitAddon();

@@ -3,6 +3,7 @@ import { AlertTriangle, Loader2, Plus, SquareTerminal, Trash2 } from "lucide-rea
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal as XTerminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
+import { buildXtermTheme } from "../../pages/ide/xtermTheme";
 import { Button } from "@/components/ui/Button";
 import { appendApiTokenParam, apiFetch } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -118,29 +119,7 @@ export function EmbeddedTerminalPanel({
       fontWeight: "400",
       fontFamily:
         "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', 'Liberation Mono', monospace",
-      theme: {
-        background: "#050508",
-        foreground: "#e4e4e7",
-        cursor: "#818cf8",
-        cursorAccent: "#050508",
-        selectionBackground: "rgba(99, 102, 241, 0.30)",
-        black: "#18181b",
-        red: "#ef4444",
-        green: "#22c55e",
-        yellow: "#eab308",
-        blue: "#3b82f6",
-        magenta: "#a855f7",
-        cyan: "#06b6d4",
-        white: "#e4e4e7",
-        brightBlack: "#52525b",
-        brightRed: "#f87171",
-        brightGreen: "#4ade80",
-        brightYellow: "#facc15",
-        brightBlue: "#60a5fa",
-        brightMagenta: "#c084fc",
-        brightCyan: "#22d3ee",
-        brightWhite: "#fafafa",
-      },
+      theme: buildXtermTheme("#050508"),
     });
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
