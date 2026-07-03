@@ -37,6 +37,44 @@ describe("text-form tool call parsing", () => {
     expect(calls).toEqual([]);
   });
 
+  test("keeps OpenClaw-style exact-name filtering for MiniMax-marked calls", () => {
+    const raw = [
+      "Let me search.",
+      ']<]minimax[>[<tool_call> ]<]minimax[>[<invoke name="websearch"><query>metaspartan cybara</query></invoke></tool_call>',
+      "Visible answer.",
+    ].join("\n");
+
+    expect(extractTextToolCalls(raw, new Set(["web_search"]))).toEqual([]);
+
+    const cleaned = stripTextToolCallMarkup(raw);
+    expect(cleaned).toContain("Let me search.");
+    expect(cleaned).toContain("Visible answer.");
+    expect(cleaned).not.toContain("minimax");
+    expect(cleaned).not.toContain("tool_call");
+    expect(cleaned).not.toContain("invoke");
+  });
+
+  test("extracts MiniMax-marked calls only when the tool name is exact", () => {
+    const calls = extractTextToolCalls(
+      ']<]minimax[>[<tool_call><invoke name="web_search"><query>metaspartan cybara</query></invoke></tool_call>',
+      new Set(["web_search"])
+    );
+
+    expect(calls).toEqual([{ name: "web_search", args: { query: "metaspartan cybara" } }]);
+  });
+
+  test("extracts OpenClaw plain text tool request formats", () => {
+    expect(extractTextToolCalls("[calc]\n{\"expression\":\"2 + 2\"}\n[END_TOOL_REQUEST]", new Set(["calc"]))).toEqual([
+      { name: "calc", args: { expression: "2 + 2" } },
+    ]);
+    expect(
+      extractTextToolCalls(
+        "<function=calc>\n<parameter=expression>2 + 2</parameter>\n</function>",
+        new Set(["calc"])
+      )
+    ).toEqual([{ name: "calc", args: { expression: "2 + 2" } }]);
+  });
+
   test("strips malformed tool-call markup from visible assistant text", () => {
     const cleaned = stripTextToolCallMarkup(
       'Opening it now.\n<function_calls><invoke name="browser"><parameter name="action">open</parameter></invoke></function_calls>'

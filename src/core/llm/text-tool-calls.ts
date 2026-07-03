@@ -41,12 +41,38 @@ export interface NormalizedAnthropicToolUse {
   source: "native" | "text";
 }
 
-const FUNCTION_CALLS_BLOCK_PATTERN = /<function_calls\b[^>]*>([\s\S]*?)<\/function_calls>/gi;
-const TOOL_CALL_BLOCK_PATTERN = /<tool_call\b[^>]*>([\s\S]*?)<\/tool_call>/gi;
+const MODEL_SPECIAL_TOKEN_PATTERN = /<[|\uFF5C][^|\uFF5C]*[|\uFF5C]>/g;
+const MINIMAX_TEXT_SEGMENT_MARKER_PATTERN = /\]?<\]minimax\[\>\[?/gi;
+const MINIMAX_TEXT_SEGMENT_MARKER_QUICK_PATTERN = /\]?<\]minimax\[\>\[?/i;
+const TOOL_CALL_CONTAINER_PATTERN =
+  /<(function_calls|function_call|tool_calls|tool_call)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+const TOOL_CALL_RESULT_BLOCK_PATTERN =
+  /<(?:function_response|tool_result)\b[^>]*>[\s\S]*?<\/(?:function_response|tool_result)>/gi;
+const FUNCTION_XML_BLOCK_PATTERN = /<function\b([^>]*)>([\s\S]*?)<\/function>/gi;
+const FUNCTION_EQUALS_BLOCK_PATTERN =
+  /<function=([A-Za-z_][A-Za-z0-9_.:-]{0,119})>([\s\S]*?)<\/function>/gi;
 const INVOKE_BLOCK_PATTERN = /<invoke\b([^>]*)>([\s\S]*?)<\/invoke>/gi;
 const NAMED_PARAMETER_PATTERN =
   /<(?:parameter|param)\b[^>]*\bname=(["'])([^"']+)\1[^>]*>([\s\S]*?)<\/(?:parameter|param)>/gi;
+const EQUALS_PARAMETER_PATTERN =
+  /<(?:parameter|param)=([A-Za-z_][A-Za-z0-9_.:-]{0,119})>([\s\S]*?)<\/(?:parameter|param)>/gi;
 const SIMPLE_XML_FIELD_PATTERN = /<([A-Za-z_][\w.-]*)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+const LEGACY_BRACKET_TOOL_CALL_PATTERN =
+  /\[\s*TOOL_CALL\s*\]([\s\S]*?)(?:\[\s*\/\s*TOOL_CALL\s*\]|$)/gi;
+const LEGACY_BRACKET_TOOL_RESULT_PATTERN =
+  /\[\s*TOOL_RESULT\s*\][\s\S]*?(?:\[\s*\/\s*TOOL_RESULT\s*\]|$)/gi;
+const OPENCLAW_NAMED_REQUEST_PATTERN =
+  /(?:^|\n)\s*\[([A-Za-z_][A-Za-z0-9_.:-]{0,119})\]\s*\r?\n([\s\S]*?)\[\s*END_TOOL_REQUEST\s*\]/gi;
+const OPENCLAW_TOOL_JSON_PATTERN =
+  /(?:^|\n)\s*\[\s*tool\s*:\s*([A-Za-z_][A-Za-z0-9_.:-]{0,119})\s*\]\s*([\s\S]*?)(?=\r?\n|$)/gi;
+const HARMONY_TOOL_CALL_PATTERN =
+  /(?:<[\uFF5C|]channel[\uFF5C|]>)?\s*commentary\s+to=([A-Za-z_][A-Za-z0-9_.:-]{0,119})\s+code(?:<[\uFF5C|]message[\uFF5C|]>)?\s*([\s\S]*?)(?:<[\uFF5C|]call[\uFF5C|]>|$)/gi;
+const DSML_TOOL_BLOCK_PATTERN =
+  /<[\uFF5C|]DSML[\uFF5C|](?:tool_calls|tool_call|function_calls|tool_use_error)>[\s\S]*?<\/[\uFF5C|]DSML[\uFF5C|](?:tool_calls|tool_call|function_calls|tool_use_error)>/gi;
+const TOOL_CALL_TAG_PATTERN =
+  /<\/?(?:function_calls?|tool_calls?|tool_result|function_response|function|invoke|parameter|param)\b[^>]*>/gi;
+const DANGLING_TOOL_CALL_LINE_PATTERN =
+  /<(?:function_call|tool_call)\b[^>]*>\s*(?:[{[]|<invoke\b|["']?(?:name|tool_name|function)["']?\s*[:=])[^\r\n]*(?=\r?\n|$)/gi;
 
 function decodeMarkupEntities(value: string): string {
   return value
@@ -57,6 +83,12 @@ function decodeMarkupEntities(value: string): string {
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&amp;/g, "&");
+}
+
+function normalizeProviderTextMarkers(value: string): string {
+  return value
+    .replace(MINIMAX_TEXT_SEGMENT_MARKER_PATTERN, "")
+    .replace(MODEL_SPECIAL_TOKEN_PATTERN, "");
 }
 
 function parseArgs(raw: unknown): Record<string, unknown> {
@@ -112,6 +144,32 @@ function getInvokeName(attrs: string, body: string): string | undefined {
   return getXmlField(body, "tool_name") || getXmlField(body, "name");
 }
 
+function parseXmlFields(body: string): Record<string, unknown> {
+  const args: Record<string, unknown> = {};
+  SIMPLE_XML_FIELD_PATTERN.lastIndex = 0;
+
+  for (const fieldMatch of body.matchAll(SIMPLE_XML_FIELD_PATTERN)) {
+    const rawKey = fieldMatch[1]?.trim();
+    if (!rawKey) continue;
+    const key = rawKey.toLowerCase();
+    if (
+      key === "invoke" ||
+      key === "function" ||
+      key === "parameter" ||
+      key === "param" ||
+      key === "parameters" ||
+      key === "arguments" ||
+      key === "name" ||
+      key === "tool_name"
+    ) {
+      continue;
+    }
+    args[rawKey] = coerceXmlValue(fieldMatch[2] || "");
+  }
+
+  return args;
+}
+
 function parseJsonToolCalls(raw: string): TextToolCall[] {
   const trimmed = decodeMarkupEntities(raw).trim();
   if (!trimmed) return [];
@@ -133,7 +191,7 @@ function parseJsonToolCalls(raw: string): TextToolCall[] {
       record.function && typeof record.function === "object" && !Array.isArray(record.function)
         ? (record.function as Record<string, unknown>)
         : undefined;
-    const rawName = record.tool_name ?? record.name ?? functionRecord?.name;
+    const rawName = record.tool_name ?? record.name ?? record.tool ?? functionRecord?.name;
     const name = typeof rawName === "string" ? rawName.trim() : "";
     if (!name) continue;
 
@@ -144,6 +202,61 @@ function parseJsonToolCalls(raw: string): TextToolCall[] {
       record.input ??
       functionRecord?.arguments;
     calls.push({ name, args: parseArgs(args) });
+  }
+
+  return calls;
+}
+
+function parseFunctionXmlToolCalls(raw: string): TextToolCall[] {
+  const calls: TextToolCall[] = [];
+  FUNCTION_XML_BLOCK_PATTERN.lastIndex = 0;
+
+  for (const match of raw.matchAll(FUNCTION_XML_BLOCK_PATTERN)) {
+    const attrs = match[1] || "";
+    const body = match[2] || "";
+    const name = getInvokeName(attrs, body);
+    if (!name) continue;
+
+    const args: Record<string, unknown> = {};
+    NAMED_PARAMETER_PATTERN.lastIndex = 0;
+    for (const paramMatch of body.matchAll(NAMED_PARAMETER_PATTERN)) {
+      const key = paramMatch[2]?.trim();
+      if (!key) continue;
+      args[key] = coerceXmlValue(paramMatch[3] || "");
+    }
+
+    Object.assign(args, parseXmlFields(body));
+    calls.push({ name, args });
+  }
+
+  return calls;
+}
+
+function parseFunctionEqualsToolCalls(raw: string): TextToolCall[] {
+  const calls: TextToolCall[] = [];
+  FUNCTION_EQUALS_BLOCK_PATTERN.lastIndex = 0;
+
+  for (const match of raw.matchAll(FUNCTION_EQUALS_BLOCK_PATTERN)) {
+    const name = match[1]?.trim();
+    const body = match[2] || "";
+    if (!name) continue;
+
+    const args: Record<string, unknown> = {};
+    EQUALS_PARAMETER_PATTERN.lastIndex = 0;
+    for (const paramMatch of body.matchAll(EQUALS_PARAMETER_PATTERN)) {
+      const key = paramMatch[1]?.trim();
+      if (!key) continue;
+      args[key] = coerceXmlValue(paramMatch[2] || "");
+    }
+
+    NAMED_PARAMETER_PATTERN.lastIndex = 0;
+    for (const paramMatch of body.matchAll(NAMED_PARAMETER_PATTERN)) {
+      const key = paramMatch[2]?.trim();
+      if (!key) continue;
+      args[key] = coerceXmlValue(paramMatch[3] || "");
+    }
+
+    calls.push({ name, args });
   }
 
   return calls;
@@ -176,6 +289,7 @@ function parseXmlInvokeToolCalls(raw: string): TextToolCall[] {
         args[key] = coerceXmlValue(fieldMatch[2] || "");
       }
     }
+    Object.assign(args, parseXmlFields(body));
 
     calls.push({ name, args });
   }
@@ -183,16 +297,163 @@ function parseXmlInvokeToolCalls(raw: string): TextToolCall[] {
   return calls;
 }
 
+function findBalancedJsonEnd(text: string, start: number): number | undefined {
+  const opening = text[start];
+  const closing = opening === "{" ? "}" : opening === "[" ? "]" : undefined;
+  if (!closing) return undefined;
+
+  const stack: string[] = [closing];
+  let inString = false;
+  let escaped = false;
+  for (let index = start + 1; index < text.length; index++) {
+    const char = text[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === "{" || char === "[") {
+      stack.push(char === "{" ? "}" : "]");
+      continue;
+    }
+    if (char === "}" || char === "]") {
+      if (stack.at(-1) !== char) return undefined;
+      stack.pop();
+      if (stack.length === 0) return index + 1;
+    }
+  }
+
+  return undefined;
+}
+
+function parseJsonishAfterLabel(payload: string, label: string): unknown {
+  const match = new RegExp(`\\b${label}\\s*=>\\s*`, "i").exec(payload);
+  if (!match) return undefined;
+  let cursor = (match.index || 0) + match[0].length;
+  while (cursor < payload.length && /\s/.test(payload[cursor])) cursor++;
+  const startChar = payload[cursor];
+  if (startChar === "{" || startChar === "[") {
+    const end = findBalancedJsonEnd(payload, cursor);
+    if (end !== undefined) return payload.slice(cursor, end);
+  }
+  if (startChar === '"' || startChar === "'") {
+    const quote = startChar;
+    let escaped = false;
+    for (let index = cursor + 1; index < payload.length; index++) {
+      const char = payload[index];
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === quote) {
+        return payload.slice(cursor + 1, index);
+      }
+    }
+  }
+  const end = payload.slice(cursor).search(/(?:,\s*\w+\s*=>|\r?\n|$)/);
+  return payload.slice(cursor, end < 0 ? payload.length : cursor + end).trim();
+}
+
+function parseLegacyBracketToolCalls(raw: string): TextToolCall[] {
+  const calls: TextToolCall[] = [];
+  LEGACY_BRACKET_TOOL_CALL_PATTERN.lastIndex = 0;
+
+  for (const match of raw.matchAll(LEGACY_BRACKET_TOOL_CALL_PATTERN)) {
+    const payload = match[1] || "";
+    calls.push(...parseJsonToolCalls(payload));
+
+    const toolName =
+      /\btool\s*=>\s*["']([A-Za-z_][A-Za-z0-9_.:-]{0,119})["']/i.exec(payload)?.[1] ||
+      /\bname\s*=>\s*["']([A-Za-z_][A-Za-z0-9_.:-]{0,119})["']/i.exec(payload)?.[1];
+    if (!toolName) continue;
+
+    const argsPayload = parseJsonishAfterLabel(payload, "args");
+    calls.push({ name: toolName, args: parseArgs(argsPayload) });
+  }
+
+  return calls;
+}
+
+function parseOpenClawPlainTextToolCalls(raw: string): TextToolCall[] {
+  const calls: TextToolCall[] = [];
+
+  OPENCLAW_NAMED_REQUEST_PATTERN.lastIndex = 0;
+  for (const match of raw.matchAll(OPENCLAW_NAMED_REQUEST_PATTERN)) {
+    const name = match[1]?.trim();
+    if (!name) continue;
+    calls.push({ name, args: parseArgs(match[2]?.trim() || "") });
+  }
+
+  OPENCLAW_TOOL_JSON_PATTERN.lastIndex = 0;
+  for (const match of raw.matchAll(OPENCLAW_TOOL_JSON_PATTERN)) {
+    const name = match[1]?.trim();
+    if (!name) continue;
+    calls.push({ name, args: parseArgs(match[2]?.trim() || "") });
+  }
+
+  HARMONY_TOOL_CALL_PATTERN.lastIndex = 0;
+  for (const match of raw.matchAll(HARMONY_TOOL_CALL_PATTERN)) {
+    const name = match[1]?.trim();
+    if (!name) continue;
+    calls.push({ name, args: parseArgs(match[2]?.trim() || "") });
+  }
+
+  return calls;
+}
+
+function parseWrappedToolCallContainers(raw: string, depth = 0): TextToolCall[] {
+  if (depth > 2) return [];
+  const calls: TextToolCall[] = [];
+  const containerPattern = new RegExp(TOOL_CALL_CONTAINER_PATTERN.source, "gi");
+
+  for (const match of raw.matchAll(containerPattern)) {
+    const body = match[2] || "";
+    calls.push(
+      ...parseJsonToolCalls(body),
+      ...parseXmlInvokeToolCalls(body),
+      ...parseFunctionXmlToolCalls(body),
+      ...parseFunctionEqualsToolCalls(body),
+      ...parseWrappedToolCallContainers(body, depth + 1)
+    );
+  }
+
+  return calls;
+}
+
+function resolveAllowedToolName(rawName: string, allowedToolNames: Set<string>): string | undefined {
+  const trimmed = rawName.trim();
+  if (!trimmed) return undefined;
+  if (allowedToolNames.size === 0 || allowedToolNames.has(trimmed)) return trimmed;
+  return undefined;
+}
+
 function filterAllowedToolCalls(
   calls: TextToolCall[],
   allowedToolNames: Set<string>
 ): TextToolCall[] {
-  return calls.filter((call) => {
-    const normalized = call.name.trim();
-    if (!normalized) return false;
-    if (allowedToolNames.size === 0) return true;
-    return allowedToolNames.has(normalized);
-  });
+  const filtered: TextToolCall[] = [];
+  const seen = new Set<string>();
+
+  for (const call of calls) {
+    const name = resolveAllowedToolName(call.name, allowedToolNames);
+    if (!name) continue;
+    const args = call.args || {};
+    const key = `${name}:${JSON.stringify(args)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    filtered.push({ name, args });
+  }
+
+  return filtered;
 }
 
 export function extractTextToolCalls(
@@ -200,33 +461,36 @@ export function extractTextToolCalls(
   allowedToolNames: Set<string> = new Set()
 ): TextToolCall[] {
   if (!content) return [];
+  const normalizedContent = normalizeProviderTextMarkers(content);
   const calls: TextToolCall[] = [];
-
-  FUNCTION_CALLS_BLOCK_PATTERN.lastIndex = 0;
-  for (const match of content.matchAll(FUNCTION_CALLS_BLOCK_PATTERN)) {
-    const body = match[1] || "";
-    calls.push(...parseJsonToolCalls(body), ...parseXmlInvokeToolCalls(body));
-  }
-
-  TOOL_CALL_BLOCK_PATTERN.lastIndex = 0;
-  for (const match of content.matchAll(TOOL_CALL_BLOCK_PATTERN)) {
-    calls.push(...parseJsonToolCalls(match[1] || ""));
-  }
-
-  if (calls.length === 0) {
-    calls.push(...parseXmlInvokeToolCalls(content));
-  }
+  calls.push(
+    ...parseWrappedToolCallContainers(normalizedContent),
+    ...parseXmlInvokeToolCalls(normalizedContent),
+    ...parseFunctionXmlToolCalls(normalizedContent),
+    ...parseFunctionEqualsToolCalls(normalizedContent),
+    ...parseLegacyBracketToolCalls(normalizedContent),
+    ...parseOpenClawPlainTextToolCalls(normalizedContent)
+  );
 
   return filterAllowedToolCalls(calls, allowedToolNames);
 }
 
 export function stripTextToolCallMarkup(content: string): string {
-  return content
-    .replace(FUNCTION_CALLS_BLOCK_PATTERN, "")
-    .replace(TOOL_CALL_BLOCK_PATTERN, "")
+  return normalizeProviderTextMarkers(content)
+    .replace(DSML_TOOL_BLOCK_PATTERN, "")
+    .replace(TOOL_CALL_RESULT_BLOCK_PATTERN, "")
+    .replace(TOOL_CALL_CONTAINER_PATTERN, "")
+    .replace(LEGACY_BRACKET_TOOL_CALL_PATTERN, "")
+    .replace(LEGACY_BRACKET_TOOL_RESULT_PATTERN, "")
+    .replace(FUNCTION_EQUALS_BLOCK_PATTERN, "")
+    .replace(FUNCTION_XML_BLOCK_PATTERN, "")
     .replace(INVOKE_BLOCK_PATTERN, "")
-    .replace(/<\/?function_calls\b[^>]*>/gi, "")
-    .replace(/<\/?tool_call\b[^>]*>/gi, "")
+    .replace(OPENCLAW_NAMED_REQUEST_PATTERN, "")
+    .replace(OPENCLAW_TOOL_JSON_PATTERN, "")
+    .replace(HARMONY_TOOL_CALL_PATTERN, "")
+    .replace(DANGLING_TOOL_CALL_LINE_PATTERN, "")
+    .replace(TOOL_CALL_TAG_PATTERN, "")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
@@ -234,8 +498,13 @@ export function hasTextToolCallMarkup(content: string | null | undefined): boole
   if (!content) return false;
   return (
     /<function_calls\b/i.test(content) ||
+    /<function_call\b/i.test(content) ||
+    /<tool_calls\b/i.test(content) ||
     /<tool_call\b/i.test(content) ||
-    /<invoke\b/i.test(content)
+    /<invoke\b/i.test(content) ||
+    /\[\s*TOOL_CALL\s*\]/i.test(content) ||
+    /<[\uFF5C|]DSML[\uFF5C|](?:tool_calls|tool_call|function_calls)/i.test(content) ||
+    MINIMAX_TEXT_SEGMENT_MARKER_QUICK_PATTERN.test(content)
   );
 }
 

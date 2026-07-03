@@ -26,6 +26,20 @@ describe("chat response formatting", () => {
     expect(result.thinking).toBe("I should inspect the code\nand then run tests");
   });
 
+  test("strips MiniMax and Hermes reasoning tags from visible content", () => {
+    const result = stripThinkingTags("<mm:think>Search before answering.</mm:think>\nVisible answer.</think>");
+
+    expect(result.content).toBe("Visible answer.");
+    expect(result.thinking).toBe("Search before answering.");
+  });
+
+  test("treats unclosed scratchpad tags as non-visible reasoning", () => {
+    const result = stripThinkingTags("<REASONING_SCRATCHPAD>Plan privately first.");
+
+    expect(result.content).toBe("");
+    expect(result.thinking).toBe("Plan privately first.");
+  });
+
   test("removes leaked text-form tool calls from visible content", () => {
     const result = stripThinkingTags(
       [

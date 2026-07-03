@@ -4321,8 +4321,7 @@ const routes: Record<string, RouteHandler> = {
       filesEdited: metrics.getTotal("file_operation", "edit") || 0,
       filesSearched: metrics.getTotal("file_operation", "search") || 0,
     };
-    const toolCallEntries = (metrics.getByType("tool_call") || []) as MetricsEntry[];
-    const totalToolCalls = toolCallEntries.reduce((sum, entry) => sum + (entry.value || 0), 0);
+    const totalToolCalls = metrics.getTotalByType("tool_call");
     const apiStats = {
       totalCalls:
         (metrics.getTotal("api_call", "success") || 0) +
@@ -4342,17 +4341,9 @@ const routes: Record<string, RouteHandler> = {
       memoryFlushFailures: metrics.getTotal("memory_flush", "failure") || 0,
       compactions: metrics.getTotal("compaction_reduction", "count") || 0,
     };
-    const contextWarnings = (metrics.getByType("context_warning") || []) as MetricsEntry[];
     const contextStats = {
-      warnings: contextWarnings.length,
-      criticalWarnings: contextWarnings.filter((w) => {
-        try {
-          const meta = w.metadata ? (JSON.parse(w.metadata) as { level?: string }) : undefined;
-          return meta?.level === "critical";
-        } catch {
-          return false;
-        }
-      }).length,
+      warnings: metrics.countByType("context_warning"),
+      criticalWarnings: metrics.countByTypeMetadataLike("context_warning", '%"level":"critical"%'),
     };
     return {
       tokenUsage: tokenTotals,
@@ -4372,7 +4363,7 @@ const routes: Record<string, RouteHandler> = {
 
     const topModels = metrics.getTopKeys("token_usage_by_model") as MetricTopKey[];
     const topProviders = metrics.getTopKeys("token_usage_by_provider") as MetricTopKey[];
-    const recentTokens = metrics.getByType("token_usage") as MetricsEntry[];
+    const recentTokens = metrics.getByTypeRecent("token_usage", 50) as MetricsEntry[];
 
     const inputTokens = metrics.getTotal("token_usage", "input") || 0;
     const outputTokens = metrics.getTotal("token_usage", "output") || 0;
@@ -4403,7 +4394,7 @@ const routes: Record<string, RouteHandler> = {
     const topRead = metrics.getTopKeys("file_read") as MetricTopKey[];
     const topWritten = metrics.getTopKeys("file_write") as MetricTopKey[];
     const topEdited = metrics.getTopKeys("file_edit") as MetricTopKey[];
-    const recentOperations = metrics.getByType("file_operation") as MetricsEntry[];
+    const recentOperations = metrics.getByTypeRecent("file_operation", 50) as MetricsEntry[];
 
     return {
       mostRead: topRead.map((f) => ({
@@ -4432,7 +4423,7 @@ const routes: Record<string, RouteHandler> = {
 
     const topTools = metrics.getTopKeys("tool_call") as MetricTopKey[];
     const toolErrors = metrics.getTopKeys("tool_error") as MetricTopKey[];
-    const recentCalls = metrics.getByType("tool_call") as MetricsEntry[];
+    const recentCalls = metrics.getByTypeRecent("tool_call", 50) as MetricsEntry[];
 
     return {
       mostUsed: topTools.map((t) => ({
@@ -4454,47 +4445,38 @@ const routes: Record<string, RouteHandler> = {
 
   "GET /api/metrics/providers": () => {
     const metrics = tables.metrics;
-
-    const providerTokenEntries = metrics.getByType("token_usage_by_provider") as MetricsEntry[];
+    // Aggregate in SQL: these two types hold millions of rows, so grouping per
+    // key (with the newest row's metadata for the URL) must not happen in JS.
+    const metadataUrl = (metadata: string | null): string => {
+      const parsed = parseMetricMetadata(metadata ?? undefined);
+      return typeof parsed?.url === "string" ? parsed.url : "unknown";
+    };
 
     const providerMap = new Map<string, ProviderMetricSummary>();
-
-    for (const entry of providerTokenEntries) {
-      if (entry.key === "all" || entry.key === "input" || entry.key === "output") continue;
-
-      const metadata = parseMetricMetadata(entry.metadata);
-      const url = typeof metadata?.url === "string" ? metadata.url : "unknown";
-
-      providerMap.set(entry.key, {
-        provider: entry.key,
+    for (const row of metrics.getKeyTotalsWithLatestMetadata("token_usage_by_provider")) {
+      if (row.key === "all" || row.key === "input" || row.key === "output") continue;
+      providerMap.set(row.key, {
+        provider: row.key,
         hits: 0,
-        tokens: entry.value || 0,
-        url,
+        tokens: row.total || 0,
+        url: metadataUrl(row.metadata),
       });
     }
 
-    const apiCalls = metrics.getByType("api_call") as MetricsEntry[];
-    for (const entry of apiCalls) {
-      if (entry.key === "all" || entry.key === "success" || entry.key === "error") continue;
-
-      const metadata = parseMetricMetadata(entry.metadata);
-      const url = typeof metadata?.url === "string" ? metadata.url : "unknown";
-
-      if (!providerMap.has(entry.key)) {
-        providerMap.set(entry.key, {
-          provider: entry.key,
-          hits: entry.value || 0,
+    for (const row of metrics.getKeyTotalsWithLatestMetadata("api_call")) {
+      if (row.key === "all" || row.key === "success" || row.key === "error") continue;
+      const url = metadataUrl(row.metadata);
+      const existing = providerMap.get(row.key);
+      if (!existing) {
+        providerMap.set(row.key, {
+          provider: row.key,
+          hits: row.total || 0,
           tokens: 0,
           url,
         });
       } else {
-        const summary = providerMap.get(entry.key);
-        if (!summary) continue;
-
-        if (url !== "unknown") {
-          summary.url = url;
-        }
-        summary.hits += entry.value || 0;
+        existing.hits += row.total || 0;
+        if (url !== "unknown") existing.url = url;
       }
     }
 
@@ -4536,15 +4518,25 @@ const routes: Record<string, RouteHandler> = {
       datesWithStoredTotals.add(total.date);
     }
 
-    const rawDailyTotals = tables.metrics.getDailyTotalsFromRawRange(
-      `${startDate} 00:00:00`,
-      `${endDateExclusive} 00:00:00`
-    );
-    for (const total of rawDailyTotals) {
-      if (datesWithStoredTotals.has(total.date)) continue;
-      const dayData = daysByDate.get(total.date);
-      if (!dayData) continue;
-      dayData[total.type] = total.total;
+    // Only scan raw metrics rows for dates the precomputed daily rollup misses;
+    // a full 30-day raw scan over the metrics table is what made this slow.
+    const missingDates = dateKeys.filter((date) => !datesWithStoredTotals.has(date));
+    if (missingDates.length > 0) {
+      const rawStart = missingDates[0];
+      const rawEndExclusive =
+        missingDates[missingDates.length - 1] === dateKeys[dateKeys.length - 1]
+          ? endDateExclusive
+          : dateKeys[dateKeys.indexOf(missingDates[missingDates.length - 1]) + 1];
+      const rawDailyTotals = tables.metrics.getDailyTotalsFromRawRange(
+        `${rawStart} 00:00:00`,
+        `${rawEndExclusive} 00:00:00`
+      );
+      for (const total of rawDailyTotals) {
+        if (datesWithStoredTotals.has(total.date)) continue;
+        const dayData = daysByDate.get(total.date);
+        if (!dayData) continue;
+        dayData[total.type] = total.total;
+      }
     }
 
     for (const dateStr of dateKeys) {

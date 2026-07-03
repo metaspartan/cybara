@@ -31,6 +31,9 @@ struct NativeAssistantMarkupResult: Equatable {
 }
 
 enum NativeMarkdown {
+    private static let reasoningTagNamePattern =
+        #"REASONING_SCRATCHPAD|antthinking|(?:antml:|mm:)?(?:thinking|think|thought)|reasoning"#
+
     static func preprocess(_ raw: String, stripAssistantMarkup: Bool = true) -> String {
         let visibleContent = stripAssistantMarkup ? stripAssistantMarkupTags(raw).content : raw
         return collapseBlankLines(stripInboundContextBlocks(stripPrefixedTimestamps(visibleContent)))
@@ -166,14 +169,15 @@ enum NativeMarkdown {
         var working = raw
         var thinking: [String] = []
 
-        for pattern in [
-            #"<thinking\b[^>]*>([\s\S]*?)</thinking>"#,
-            #"<think\b[^>]*>([\s\S]*?)</think>"#,
-            #"\[thinking\]([\s\S]*?)\[/thinking\]"#,
+        for (pattern, captureIndex) in [
+            (#"<(\#(reasoningTagNamePattern))\b[^>]*>([\s\S]*?)</\1>"#, 2),
+            (#"\[(?:thinking|reasoning)\]([\s\S]*?)\[/(?:thinking|reasoning)\]"#, 1),
         ] {
             let matches = regexMatches(pattern, in: working)
             for match in matches {
-                let captured = match.count > 1 ? match[1].trimmingCharacters(in: .whitespacesAndNewlines) : ""
+                let captured = match.count > captureIndex
+                    ? match[captureIndex].trimmingCharacters(in: .whitespacesAndNewlines)
+                    : ""
                 if !captured.isEmpty {
                     thinking.append(captured)
                 }
@@ -285,26 +289,55 @@ enum NativeMarkdown {
     }
 
     private static func stripDanglingAssistantMarkup(_ raw: String) -> String {
-        raw.replacingOccurrences(
-            of: #"<(?:thinking|think)\b[^>]*>[\s\S]*$"#,
+        stripTextToolCallMarkup(raw)
+            .replacingOccurrences(
+            of: "<(?:" + reasoningTagNamePattern + #")\b[^>]*>[\s\S]*$"#,
             with: "",
             options: [.regularExpression, .caseInsensitive]
         )
         .replacingOccurrences(
-            of: #"\[thinking\][\s\S]*$"#,
+            of: #"\[(?:thinking|reasoning)\][\s\S]*$"#,
             with: "",
             options: [.regularExpression, .caseInsensitive]
         )
         .replacingOccurrences(
-            of: #"</?(?:thinking|think|final)\b[^>]*>"#,
+            of: "</?(?:" + reasoningTagNamePattern + #"|final)\b[^>]*>"#,
             with: "",
             options: [.regularExpression, .caseInsensitive]
         )
         .replacingOccurrences(
-            of: #"\[/?thinking\]"#,
+            of: #"\[/?(?:thinking|reasoning)\]"#,
             with: "",
             options: [.regularExpression, .caseInsensitive]
         )
+    }
+
+    private static func stripTextToolCallMarkup(_ raw: String) -> String {
+        var working = raw
+        let patterns = [
+            #"\]?<\]minimax\[\>\[?"#,
+            "<[|\\x{FF5C}][^|\\x{FF5C}]*[|\\x{FF5C}]>",
+            "<[|\\x{FF5C}]DSML[|\\x{FF5C}](?:tool_calls|tool_call|function_calls|tool_use_error)>[\\s\\S]*?</[|\\x{FF5C}]DSML[|\\x{FF5C}](?:tool_calls|tool_call|function_calls|tool_use_error)>",
+            #"<(?:function_response|tool_result)\b[^>]*>[\s\S]*?</(?:function_response|tool_result)>"#,
+            #"<(?:function_calls|function_call|tool_calls|tool_call)\b[^>]*>[\s\S]*?</(?:function_calls|function_call|tool_calls|tool_call)>"#,
+            #"\[\s*TOOL_CALL\s*\][\s\S]*?(?:\[\s*/\s*TOOL_CALL\s*\]|$)"#,
+            #"\[\s*TOOL_RESULT\s*\][\s\S]*?(?:\[\s*/\s*TOOL_RESULT\s*\]|$)"#,
+            #"<function=[A-Za-z_][A-Za-z0-9_.:-]{0,119}>[\s\S]*?</function>"#,
+            #"<function\b[^>]*>[\s\S]*?</function>"#,
+            #"<invoke\b[^>]*>[\s\S]*?</invoke>"#,
+            #"<(?:function_call|tool_call)\b[^>]*>\s*(?:[\{\[]|<invoke\b|["']?(?:name|tool_name|function)["']?\s*[:=])[^\r\n]*(?=\r?\n|$)"#,
+            #"</?(?:function_calls?|tool_calls?|tool_result|function_response|function|invoke|parameter|param)\b[^>]*>"#,
+        ]
+
+        for pattern in patterns {
+            working = working.replacingOccurrences(
+                of: pattern,
+                with: "",
+                options: [.regularExpression, .caseInsensitive]
+            )
+        }
+
+        return collapseBlankLines(working)
     }
 
     private static func regexMatches(_ pattern: String, in raw: String) -> [[String]] {

@@ -282,6 +282,7 @@ try {
   -- filters by type/key and orders by created_at. Without these it was a full
   -- multi-million-row scan per query (the slow Metrics page).
   CREATE INDEX IF NOT EXISTS idx_metrics_type_key ON metrics(type, key);
+  CREATE INDEX IF NOT EXISTS idx_metrics_type_key_value ON metrics(type, key, value);
   CREATE INDEX IF NOT EXISTS idx_metrics_type_created ON metrics(type, created_at);
   CREATE INDEX IF NOT EXISTS idx_metrics_created ON metrics(created_at);
   CREATE INDEX IF NOT EXISTS idx_metrics_daily_date ON metrics_daily(date);
@@ -661,7 +662,18 @@ const stmts = {
   metrics: {
     add: prepare("INSERT INTO metrics (id, type, key, value, metadata) VALUES (?, ?, ?, ?, ?)"),
     getByType: prepare("SELECT * FROM metrics WHERE type = ? ORDER BY created_at DESC"),
+    getByTypeRecent: prepare(
+      "SELECT * FROM metrics WHERE type = ? ORDER BY created_at DESC LIMIT ?"
+    ),
     getTotal: prepare("SELECT SUM(value) as total FROM metrics WHERE type = ? AND key = ?"),
+    getTotalByType: prepare("SELECT SUM(value) as total FROM metrics WHERE type = ?"),
+    countByType: prepare("SELECT COUNT(*) as count FROM metrics WHERE type = ?"),
+    countByTypeMetadataLike: prepare(
+      "SELECT COUNT(*) as count FROM metrics WHERE type = ? AND metadata LIKE ?"
+    ),
+    getKeyTotalsWithLatestMetadata: prepare(
+      "SELECT key, SUM(value) as total, metadata, MAX(created_at) as created_at FROM metrics WHERE type = ? GROUP BY key"
+    ),
     getTopKeys: prepare(
       "SELECT key, SUM(value) as total FROM metrics WHERE type = ? GROUP BY key ORDER BY total DESC LIMIT 20"
     ),
@@ -1017,8 +1029,25 @@ export const tables = {
     add: (m: { id: string; type: string; key: string; value: number; metadata?: string }) =>
       stmts.metrics?.add.run(m.id, m.type, m.key, m.value, m.metadata || null),
     getByType: (type: string) => stmts.metrics?.getByType.all(type) || [],
+    getByTypeRecent: (type: string, limit = 50) =>
+      stmts.metrics?.getByTypeRecent.all(type, limit) || [],
     getTotal: (type: string, key: string) =>
       (stmts.metrics?.getTotal.get(type, key) as { total?: number } | null)?.total || 0,
+    getTotalByType: (type: string) =>
+      (stmts.metrics?.getTotalByType.get(type) as { total?: number } | null)?.total || 0,
+    countByType: (type: string) =>
+      (stmts.metrics?.countByType.get(type) as { count?: number } | null)?.count || 0,
+    countByTypeMetadataLike: (type: string, pattern: string) =>
+      (stmts.metrics?.countByTypeMetadataLike.get(type, pattern) as { count?: number } | null)
+        ?.count || 0,
+    getKeyTotalsWithLatestMetadata: (
+      type: string
+    ): Array<{ key: string; total: number; metadata: string | null }> =>
+      (stmts.metrics?.getKeyTotalsWithLatestMetadata.all(type) || []) as Array<{
+        key: string;
+        total: number;
+        metadata: string | null;
+      }>,
     getTopKeys: (type: string) => stmts.metrics?.getTopKeys.all(type) || [],
     getByDate: (type: string, date: string) => stmts.metrics?.getByDate.all(type, date) || [],
     getDailyTotalsFromRaw: (date: string): Array<{ type: string; total: number }> =>

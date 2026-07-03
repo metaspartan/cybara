@@ -128,6 +128,25 @@ tables.metrics.add({ id: id("m"), type: "token_usage_by_model", key: "gpt", valu
 
 results.metrics = getModelMetrics();
 
+// Fast metric aggregation helpers (the Metrics page must never pull whole
+// types into JS: these do the work in SQL).
+tables.metrics.add({ id: id("m"), type: "tool_call", key: "bash", value: 3 });
+tables.metrics.add({ id: id("m"), type: "tool_call", key: "read", value: 2 });
+tables.metrics.add({ id: id("m"), type: "context_warning", key: "w", value: 1, metadata: JSON.stringify({ level: "critical" }) });
+tables.metrics.add({ id: id("m"), type: "context_warning", key: "w", value: 1, metadata: JSON.stringify({ level: "notice" }) });
+tables.metrics.add({ id: id("m"), type: "token_usage_by_provider", key: "openai", value: 100, metadata: JSON.stringify({ url: "https://old.example" }) });
+tables.metrics.add({ id: id("m"), type: "token_usage_by_provider", key: "openai", value: 50, metadata: JSON.stringify({ url: "https://api.openai.com" }) });
+results.totalByType = tables.metrics.getTotalByType("tool_call");
+results.countByType = tables.metrics.countByType("context_warning");
+results.countCritical = tables.metrics.countByTypeMetadataLike(
+  "context_warning",
+  '%"level":"critical"%'
+);
+results.recentLimited = tables.metrics.getByTypeRecent("tool_call", 1).length;
+results.keyTotals = tables.metrics
+  .getKeyTotalsWithLatestMetadata("token_usage_by_provider")
+  .map((r) => ({ key: r.key, total: r.total, metadata: r.metadata }));
+
 // CLI log file parsing: JSON lines, "[ISO] message" daemon lines, and plain
 // stdout lines that inherit the timestamp of the line above them.
 writeFileSync(
@@ -270,6 +289,29 @@ describe("getCliLogs", () => {
     });
     expect(totals.combined).toBe(r("totalWithCli"));
     expect(totals.system + totals.agent + totals.channel + totals.cli).toBe(totals.combined);
+  });
+});
+
+describe("metrics aggregation helpers (SQL-side, no full-type scans)", () => {
+  test("getTotalByType sums every row of a type", () => {
+    expect(r("totalByType")).toBe(5);
+  });
+
+  test("countByType and countByTypeMetadataLike count in SQL", () => {
+    expect(r("countByType")).toBe(2);
+    expect(r("countCritical")).toBe(1);
+  });
+
+  test("getByTypeRecent respects its limit", () => {
+    expect(r("recentLimited")).toBe(1);
+  });
+
+  test("getKeyTotalsWithLatestMetadata groups per key with summed totals", () => {
+    const rows = r<Array<{ key: string; total: number; metadata: string | null }>>("keyTotals");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].key).toBe("openai");
+    expect(rows[0].total).toBe(150);
+    expect(rows[0].metadata).toContain('"url"');
   });
 });
 

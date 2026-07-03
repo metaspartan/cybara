@@ -5,11 +5,29 @@ export interface StripThinkingTagsResult {
   thinking: string;
 }
 
-const THINKING_BLOCK_PATTERNS = [
-  /<thinking\b[^>]*>([\s\S]*?)<\/thinking>/gi,
-  /<think\b[^>]*>([\s\S]*?)<\/think>/gi,
-  /\[thinking\]([\s\S]*?)\[\/thinking\]/gi,
-];
+const REASONING_TAG_NAME_PATTERN =
+  "REASONING_SCRATCHPAD|antthinking|(?:antml:|mm:)?(?:thinking|think|thought)|reasoning";
+const REASONING_BLOCK_PATTERN = new RegExp(
+  `<(${REASONING_TAG_NAME_PATTERN})\\b[^>]*>([\\s\\S]*?)<\\/\\1>`,
+  "gi"
+);
+const BRACKET_REASONING_BLOCK_PATTERN = /\[(?:thinking|reasoning)\]([\s\S]*?)\[\/(?:thinking|reasoning)\]/gi;
+const DANGLING_REASONING_PATTERN = new RegExp(
+  `<(?:${REASONING_TAG_NAME_PATTERN})\\b[^>]*>([\\s\\S]*)$`,
+  "i"
+);
+const REASONING_TAG_PATTERN = new RegExp(
+  `<\\/?(?:${REASONING_TAG_NAME_PATTERN}|final)\\b[^>]*>`,
+  "gi"
+);
+const REASONING_OPEN_LINE_PATTERN = new RegExp(
+  `^<(?:${REASONING_TAG_NAME_PATTERN})\\b[^>]*>`,
+  "i"
+);
+const REASONING_CLOSE_LINE_PATTERN = new RegExp(
+  `^<\\/(?:${REASONING_TAG_NAME_PATTERN})>`,
+  "i"
+);
 
 const FINAL_BLOCK_PATTERN = /<final\b[^>]*>([\s\S]*?)<\/final>/gi;
 
@@ -17,16 +35,26 @@ export function stripThinkingTags(content: string): StripThinkingTagsResult {
   const thinkingMatches: string[] = [];
   let cleanContent = content;
 
-  for (const pattern of THINKING_BLOCK_PATTERNS) {
-    pattern.lastIndex = 0;
-    cleanContent = cleanContent.replace(pattern, (_match, captured: string) => {
+  REASONING_BLOCK_PATTERN.lastIndex = 0;
+  cleanContent = cleanContent.replace(
+    REASONING_BLOCK_PATTERN,
+    (_match, _tagName: string, captured: string) => {
       const thinking = captured.trim();
       if (thinking) {
         thinkingMatches.push(thinking);
       }
       return "";
-    });
-  }
+    }
+  );
+
+  BRACKET_REASONING_BLOCK_PATTERN.lastIndex = 0;
+  cleanContent = cleanContent.replace(BRACKET_REASONING_BLOCK_PATTERN, (_match, captured: string) => {
+    const thinking = captured.trim();
+    if (thinking) {
+      thinkingMatches.push(thinking);
+    }
+    return "";
+  });
 
   const finalMatches: string[] = [];
   FINAL_BLOCK_PATTERN.lastIndex = 0;
@@ -39,11 +67,11 @@ export function stripThinkingTags(content: string): StripThinkingTagsResult {
   });
 
   if (thinkingMatches.length === 0) {
-    const danglingThinking = cleanContent.match(/<(?:thinking|think)\b[^>]*>([\s\S]*)$/i);
+    const danglingThinking = cleanContent.match(DANGLING_REASONING_PATTERN);
     if (danglingThinking?.[1]) {
       const thinking = danglingThinking[1]
         .replace(FINAL_BLOCK_PATTERN, "")
-        .replace(/<\/?(?:final|thinking|think)\b[^>]*>/gi, "")
+        .replace(REASONING_TAG_PATTERN, "")
         .trim();
       if (thinking) {
         thinkingMatches.push(thinking);
@@ -63,11 +91,12 @@ export function stripThinkingTags(content: string): StripThinkingTagsResult {
     let inThinkingBlock = false;
 
     for (const line of lines) {
-      if (line.trim().startsWith("<thinking>") || line.trim().startsWith("<think>")) {
+      const trimmedLine = line.trim();
+      if (REASONING_OPEN_LINE_PATTERN.test(trimmedLine)) {
         inThinkingBlock = true;
         continue;
       }
-      if (line.trim().startsWith("</thinking>") || line.trim().startsWith("</think>")) {
+      if (REASONING_CLOSE_LINE_PATTERN.test(trimmedLine)) {
         inThinkingBlock = false;
         continue;
       }
@@ -95,8 +124,8 @@ export function stripThinkingTags(content: string): StripThinkingTagsResult {
 
 function stripDanglingAssistantMarkup(content: string): string {
   return stripTextToolCallMarkup(content)
-    .replace(/<(?:thinking|think)\b[^>]*>[\s\S]*$/i, "")
-    .replace(/\[thinking\][\s\S]*$/i, "")
-    .replace(/<\/?(?:thinking|think|final)\b[^>]*>/gi, "")
-    .replace(/\[\/?thinking\]/gi, "");
+    .replace(new RegExp(`<(?:${REASONING_TAG_NAME_PATTERN})\\b[^>]*>[\\s\\S]*$`, "i"), "")
+    .replace(/\[(?:thinking|reasoning)\][\s\S]*$/i, "")
+    .replace(REASONING_TAG_PATTERN, "")
+    .replace(/\[\/?(?:thinking|reasoning)\]/gi, "");
 }

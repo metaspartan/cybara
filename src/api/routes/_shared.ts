@@ -304,7 +304,36 @@ export function collectTopLevelStorageEntries(rootDir: string): StorageTopLevelE
   }
 }
 
+// The storage walk stats every file under ~/.cybara (browser profiles, caches)
+// synchronously, which took seconds and blocked the event loop for every other
+// request. Disk usage changes slowly: serve the cached snapshot and refresh it
+// off the request path when it goes stale (only the very first call computes
+// inline).
+const STORAGE_METRICS_TTL_MS = 5 * 60_000;
+let storageMetricsCache: { at: number; value: ReturnType<typeof computeStorageMetrics> } | null =
+  null;
+let storageMetricsRefreshing = false;
+
 export function buildStorageMetrics() {
+  const now = Date.now();
+  if (!storageMetricsCache) {
+    storageMetricsCache = { at: now, value: computeStorageMetrics() };
+    return storageMetricsCache.value;
+  }
+  if (now - storageMetricsCache.at >= STORAGE_METRICS_TTL_MS && !storageMetricsRefreshing) {
+    storageMetricsRefreshing = true;
+    setTimeout(() => {
+      try {
+        storageMetricsCache = { at: Date.now(), value: computeStorageMetrics() };
+      } finally {
+        storageMetricsRefreshing = false;
+      }
+    }, 0);
+  }
+  return storageMetricsCache.value;
+}
+
+function computeStorageMetrics() {
   const dbMainPath = join(dataDir, "platform.db");
   const dbWalPath = join(dataDir, "platform.db-wal");
   const dbShmPath = join(dataDir, "platform.db-shm");

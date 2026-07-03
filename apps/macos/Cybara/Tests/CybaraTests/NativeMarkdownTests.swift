@@ -63,6 +63,25 @@ final class NativeMarkdownTests: XCTestCase {
         XCTAssertEqual(NativeMarkdown.preprocess(raw), "Visible answer.")
     }
 
+    func testPreprocessStripsMiniMaxReasoningAndOrphanCloseTags() {
+        let raw = """
+        <mm:think>Hidden MiniMax reasoning.</mm:think>
+        Visible answer.</think>
+        """
+
+        XCTAssertEqual(NativeMarkdown.preprocess(raw), "Visible answer.")
+    }
+
+    func testPreprocessStripsMiniMaxTextToolCallMarkup() {
+        let raw = """
+        Let me search.
+        ]<]minimax[>[<tool_call> ]<]minimax[>[<invoke name="websearch"><query>metaspartan cybara</query></invoke></tool_call>
+        Visible answer.
+        """
+
+        XCTAssertEqual(NativeMarkdown.preprocess(raw), "Let me search.\n\nVisible answer.")
+    }
+
     func testParseCanPreserveUserTypedReasoningTags() {
         let blocks = NativeMarkdown.parse("What does </think> mean?", stripAssistantMarkup: false)
 
