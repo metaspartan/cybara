@@ -4,8 +4,6 @@ import { mobileRoutes } from "./mobile";
 import {
   parseJsonObject,
   parseMetricMetadata,
-  metricTimestampToMs,
-  sumMetricValues,
   buildMetricTrend,
   localDateKeyFromMs,
   buildStorageMetrics,

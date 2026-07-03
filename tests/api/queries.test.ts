@@ -143,6 +143,25 @@ results.countCritical = tables.metrics.countByTypeMetadataLike(
   '%"level":"critical"%'
 );
 results.recentLimited = tables.metrics.getByTypeRecent("tool_call", 1).length;
+const hourAgoSql = new Date(Date.now() - 3600_000).toISOString().slice(0, 19).replace("T", " ");
+const hourAheadSql = new Date(Date.now() + 3600_000).toISOString().slice(0, 19).replace("T", " ");
+results.totalSinceWindow = tables.metrics.getTotalSince("tool_call", "bash", hourAgoSql, hourAheadSql);
+results.totalSincePast = tables.metrics.getTotalSince("tool_call", "bash", hourAgoSql, hourAgoSql);
+results.keyAggregates = tables.metrics
+  .getKeyAggregates("tool_call")
+  .sort((a, b) => a.key.localeCompare(b.key));
+results.keyTotalsSince = tables.metrics
+  .getKeyTotalsSince("tool_call", hourAgoSql)
+  .sort((a, b) => a.key.localeCompare(b.key));
+results.countSince = tables.metrics.countByTypeSince("context_warning", hourAgoSql);
+results.countCriticalSince = tables.metrics.countByTypeMetadataLikeSince(
+  "context_warning",
+  '%"level":"critical"%',
+  hourAgoSql
+);
+tables.metrics.add({ id: id("m"), type: "system_status", key: "last_activity", value: 12345 });
+results.latestValue = tables.metrics.getLatestValue("system_status", "last_activity");
+results.latestValueMissing = tables.metrics.getLatestValue("system_status", "nope");
 results.keyTotals = tables.metrics
   .getKeyTotalsWithLatestMetadata("token_usage_by_provider")
   .map((r) => ({ key: r.key, total: r.total, metadata: r.metadata }));
@@ -304,6 +323,35 @@ describe("metrics aggregation helpers (SQL-side, no full-type scans)", () => {
 
   test("getByTypeRecent respects its limit", () => {
     expect(r("recentLimited")).toBe(1);
+  });
+
+  test("getTotalSince windows by SQLite-format timestamps", () => {
+    expect(r("totalSinceWindow")).toBe(3);
+    expect(r("totalSincePast")).toBe(0);
+  });
+
+  test("getKeyAggregates returns per-key sums and row counts", () => {
+    expect(r("keyAggregates")).toEqual([
+      { key: "bash", total: 3, count: 1 },
+      { key: "read", total: 2, count: 1 },
+    ]);
+  });
+
+  test("getKeyTotalsSince groups only rows in the window", () => {
+    expect(r("keyTotalsSince")).toEqual([
+      { key: "bash", total: 3 },
+      { key: "read", total: 2 },
+    ]);
+  });
+
+  test("windowed counts match their unwindowed equivalents for fresh rows", () => {
+    expect(r("countSince")).toBe(2);
+    expect(r("countCriticalSince")).toBe(1);
+  });
+
+  test("getLatestValue returns the newest value or null", () => {
+    expect(r("latestValue")).toBe(12345);
+    expect(r("latestValueMissing")).toBeNull();
   });
 
   test("getKeyTotalsWithLatestMetadata groups per key with summed totals", () => {
