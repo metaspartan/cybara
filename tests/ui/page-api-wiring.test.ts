@@ -150,7 +150,7 @@ describe("UI page API wiring", () => {
       "apiFetch(`/api/lsp/diagnostics/file?path=${encodeURIComponent(path)}`)"
     );
     expect(gitStatusSource).toContain(
-      "apiFetch(`/api/git/status?path=${encodeURIComponent(path)}`)"
+      "apiFetch(`/api/git/status?path=${encodeURIComponent(path)}`,"
     );
   });
 

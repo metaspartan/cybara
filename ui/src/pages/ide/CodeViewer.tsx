@@ -1988,11 +1988,15 @@ export function CodeViewer({
     async (
       endpoint: "definition" | "declaration" | "type-definition" | "implementation" | "references"
     ): Promise<Array<{ path: string; line: number; character: number }>> => {
-      if (!path || !editorContextMenu) return;
+      if (!path) return [];
+      // Prefer the right-click context-menu position, but fall back to the live
+      // cursor so keyboard shortcuts (F12 etc.) work without opening a menu.
+      const targetLine = editorContextMenu ? editorContextMenu.line : cursorLine;
+      const targetColumn = editorContextMenu ? editorContextMenu.column : cursorColumn;
       const params = new URLSearchParams({
         path,
-        line: String(Math.max(editorContextMenu.line - 1, 0)),
-        character: String(Math.max(editorContextMenu.column - 1, 0)),
+        line: String(Math.max(targetLine - 1, 0)),
+        character: String(Math.max(targetColumn - 1, 0)),
       });
       const response = await apiFetch(`/api/lsp/${endpoint}?${params.toString()}`);
       const data = (await response.json()) as {
@@ -2018,7 +2022,7 @@ export function CodeViewer({
           character: Number.isFinite(location.character) ? location.character : 0,
         }));
     },
-    [editorContextMenu, path]
+    [editorContextMenu, cursorLine, cursorColumn, path]
   );
 
   const openFirstLspLocation = useCallback(
@@ -2026,7 +2030,7 @@ export function CodeViewer({
       endpoint: "definition" | "declaration" | "type-definition" | "implementation",
       notFoundMessage: string
     ) => {
-      if (!path || !editorContextMenu) return;
+      if (!path) return;
       setDefinitionLoading(true);
       setSaveError(null);
       try {
@@ -2055,7 +2059,7 @@ export function CodeViewer({
         closeEditorContextMenu();
       }
     },
-    [closeEditorContextMenu, editorContextMenu, onOpenLocation, path, resolveLspLocations]
+    [closeEditorContextMenu, onOpenLocation, path, resolveLspLocations]
   );
 
   const handleGoToDefinition = useCallback(async () => {
@@ -2078,7 +2082,7 @@ export function CodeViewer({
   }, [openFirstLspLocation]);
 
   const handleFindAllReferences = useCallback(async () => {
-    if (!path || !editorContextMenu) return;
+    if (!path) return;
     setDefinitionLoading(true);
     setSaveError(null);
     try {
@@ -2097,7 +2101,7 @@ export function CodeViewer({
       setDefinitionLoading(false);
       closeEditorContextMenu();
     }
-  }, [closeEditorContextMenu, editorContextMenu, onOpenLocation, path, resolveLspLocations]);
+  }, [closeEditorContextMenu, onOpenLocation, path, resolveLspLocations]);
 
   const handleRenameSymbol = useCallback(() => {
     const editor = editorRef.current;
@@ -2639,7 +2643,9 @@ export function CodeViewer({
     }
   };
 
-  const scheduleHover = (line: number, character: number) => {
+  // `displayLine` is 1-based (matches the render comparison `hoverInfo.line === i + 1`).
+  // LSP positions are 0-based, so convert only for the request.
+  const scheduleHover = (displayLine: number, character: number) => {
     clearHoverTimer();
     hoverTimerRef.current = setTimeout(async () => {
       hoverTimerRef.current = null;
@@ -2647,17 +2653,17 @@ export function CodeViewer({
       hoverAbortRef.current?.abort();
       const controller = new AbortController();
       hoverAbortRef.current = controller;
-      setHoverInfo({ line, text: null, loading: true });
+      setHoverInfo({ line: displayLine, text: null, loading: true });
       try {
         const params = new URLSearchParams({
           path: path,
-          line: String(line),
+          line: String(Math.max(displayLine - 1, 0)),
           character: String(character),
         });
         const res = await apiFetch(`/api/lsp/hover?${params}`, { signal: controller.signal });
         const data = await res.json();
         if (controller.signal.aborted) return;
-        setHoverInfo({ line, text: data.text || null, loading: false });
+        setHoverInfo({ line: displayLine, text: data.text || null, loading: false });
       } catch {
         if (!controller.signal.aborted) {
           setHoverInfo(null);
@@ -3079,7 +3085,7 @@ export function CodeViewer({
                                   <div
                                     key={i}
                                     data-line-number={i + 1}
-                                    onMouseEnter={() => scheduleHover(i, 0)}
+                                    onMouseEnter={() => scheduleHover(i + 1, 0)}
                                     onMouseLeave={scheduleHideHover}
                                     style={{
                                       height: `${normalizedLineHeight}px`,

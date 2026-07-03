@@ -18,6 +18,29 @@ export function TerminalPage() {
   const [terminalEnabled, setTerminalEnabled] = useState<boolean | null>(null);
   const termRef = useRef<HTMLDivElement>(null);
   const activeTermRef = useRef<{ term: XTerminal; fitAddon: FitAddon } | null>(null);
+  // Mirror of `sessions` so the unmount cleanup can reach the latest set without
+  // re-subscribing (a []-dep cleanup would otherwise capture an empty array).
+  const sessionsRef = useRef<TermSession[]>([]);
+
+  useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
+
+  // Close every socket and dispose every terminal when leaving the page.
+  // Without this, navigating away from /terminal leaked one open WebSocket and
+  // one undisposed xterm instance per session for the life of the tab.
+  useEffect(() => {
+    return () => {
+      for (const session of sessionsRef.current) {
+        try {
+          session.ws?.close();
+        } catch {}
+        try {
+          session.term?.dispose();
+        } catch {}
+      }
+    };
+  }, []);
 
   useEffect(() => {
     apiFetch("/api/terminal/sessions")
