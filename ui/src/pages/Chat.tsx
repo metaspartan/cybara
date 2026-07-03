@@ -4159,7 +4159,6 @@ export function Chat() {
         if (status === "idle") {
           setLiveStatus("idle");
           setLiveCurrentStep(null);
-          setStreamingContent(null);
           const pendingCapture = pendingProcessCaptureRef.current;
           const hasPendingCaptureForVisibleSession =
             !!pendingCapture &&
@@ -4167,6 +4166,7 @@ export function Chat() {
               !pendingCapture.sessionId ||
               pendingCapture.sessionId === payloadSessionId);
           if (!loadingRef.current && !hasPendingCaptureForVisibleSession) {
+            setStreamingContent(null);
             setLiveActivities([]);
             runActivityBufferRef.current = [];
           }
@@ -4261,6 +4261,14 @@ export function Chat() {
       syncSessionAgentSelection(resolvedAgentId);
     }
   };
+
+  useEffect(() => {
+    if (!streamingContent || isLoading) return;
+    const latestMessage = typedMessages[typedMessages.length - 1];
+    if (latestMessage?.role === "assistant") {
+      setStreamingContent(null);
+    }
+  }, [isLoading, streamingContent, typedMessages]);
 
   const handleStopActive = useCallback(async () => {
     const activeAgentId = selectedAgentId || sessionAgentId;

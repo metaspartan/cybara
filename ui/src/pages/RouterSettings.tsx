@@ -61,6 +61,44 @@ const STRATEGY_HELP: Record<RouterConfig["strategy"], string> = {
     "Fan each turn out to several proposer agents, then synthesize one answer with an aggregator agent.",
 };
 
+const STRATEGY_OPTIONS: Array<{
+  value: RouterConfig["strategy"];
+  label: string;
+  costHint: string;
+}> = [
+  { value: "weighted", label: "Weighted", costHint: "Best when you want a blended plan." },
+  { value: "round_robin", label: "Round robin", costHint: "Useful for even provider testing." },
+  { value: "lowest_cost", label: "Lowest cost", costHint: "Uses your $/M token prices." },
+  { value: "priority", label: "Priority", costHint: "Best for a primary subscription plan." },
+  {
+    value: "mixture_of_agents",
+    label: "Mixture of agents",
+    costHint: "Most powerful, highest spend risk.",
+  },
+];
+
+const SELECT_CONTROL_CLASS =
+  "rounded-lg bg-[#10121a] border border-white/10 px-3 py-2 text-sm text-white shadow-inner shadow-black/20 [color-scheme:dark] focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400/60";
+
+function formatMoney(value: number | undefined, precision = 2): string {
+  const num = Number.isFinite(value) ? Number(value) : 0;
+  return `$${num.toFixed(precision)}`;
+}
+
+function formatTokenPrice(input?: number, output?: number): string {
+  const hasInput = Number.isFinite(input) && Number(input) > 0;
+  const hasOutput = Number.isFinite(output) && Number(output) > 0;
+  if (!hasInput && !hasOutput) return "Pricing not set";
+  return `${hasInput ? formatMoney(Number(input), 2) : "n/a"} in / ${
+    hasOutput ? formatMoney(Number(output), 2) : "n/a"
+  } out per 1M`;
+}
+
+function normalizedSpendLimit(value: string): number | undefined {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 export function RouterSettings() {
   const [status, setStatus] = useState<RouterStatus | null>(null);
   const [config, setConfig] = useState<RouterConfig | null>(null);
@@ -169,19 +207,47 @@ export function RouterSettings() {
 
   const routedTypes = Object.keys(config.routes);
   const unroutedProviders = providers.filter((p) => !routedTypes.includes(p.type));
+  const activeRoutes = status?.routes.filter((route) => route.enabled && route.available) || [];
+  const dailyLimit = config.globalSpendLimitDaily ?? 0;
+  const monthlyEquivalent = dailyLimit > 0 ? dailyLimit * 30 : 0;
+  const spendToday = status?.globalSpendToday ?? 0;
+  const budgetUsedPct = dailyLimit > 0 ? Math.min(100, (spendToday / dailyLimit) * 100) : 0;
+  const pricedRoutes = status?.routes.filter(
+    (route) => Number(route.priceInputPerM || 0) > 0 || Number(route.priceOutputPerM || 0) > 0
+  );
+  const configuredPricingCount = pricedRoutes?.length || 0;
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-          <Settings2 className="w-5 h-5 text-indigo-400" />
-          Model Provider Router
-        </h2>
-        <p className="text-sm text-gray-400 mt-1">
-          Send traffic across several providers with automatic failover, weighting, rate limits, and
-          spend caps. Add the providers you want to use, choose how to pick between them, and turn
-          it on.
-        </p>
+    <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="max-w-2xl">
+          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+            <Settings2 className="w-5 h-5 text-indigo-400" />
+            Model Provider Router
+          </h2>
+          <p className="text-sm text-gray-400 mt-1">
+            Route chats across subscriptions and pay-per-token providers with automatic failover,
+            selection strategies, provider limits, and cash spend caps.
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-2 text-center">
+          <div className="rounded-lg bg-black/25 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wide text-gray-500">Active</p>
+            <p className="text-sm font-semibold text-white">
+              {activeRoutes.length}/{status?.routes.length || 0}
+            </p>
+          </div>
+          <div className="rounded-lg bg-black/25 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wide text-gray-500">Today</p>
+            <p className="text-sm font-semibold text-emerald-300">{formatMoney(spendToday, 4)}</p>
+          </div>
+          <div className="rounded-lg bg-black/25 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wide text-gray-500">Prices</p>
+            <p className="text-sm font-semibold text-cyan-300">
+              {configuredPricingCount}/{status?.routes.length || 0}
+            </p>
+          </div>
+        </div>
       </div>
 
       {providers.length === 0 && (
@@ -200,114 +266,207 @@ export function RouterSettings() {
         </div>
       )}
 
-      {/* Enable / Strategy */}
-      <div className="rounded-lg border border-white/10 bg-black/20 p-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="text-sm font-medium text-gray-200">Router Enabled</span>
-            <p className="text-xs text-gray-500">
-              {config.enabled
-                ? "Requests are being routed across your configured providers."
-                : "Turn on to start routing. Off means each agent uses only its own provider."}
-            </p>
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.15fr),minmax(320px,0.85fr)] gap-4">
+        <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <span className="text-sm font-medium text-gray-200">Router Enabled</span>
+              <p className="text-xs text-gray-500">
+                {config.enabled
+                  ? "Requests are being routed across your configured providers."
+                  : "Turn on to start routing. Off means each agent uses only its own provider."}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => saveConfig({ ...config, enabled: !config.enabled })}
+              className="p-1"
+              aria-label={config.enabled ? "Disable router" : "Enable router"}
+            >
+              {config.enabled ? (
+                <ToggleRight className="w-8 h-8 text-emerald-400" />
+              ) : (
+                <ToggleLeft className="w-8 h-8 text-gray-600" />
+              )}
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => saveConfig({ ...config, enabled: !config.enabled })}
-            className="p-1"
-            aria-label={config.enabled ? "Disable router" : "Enable router"}
-          >
-            {config.enabled ? (
-              <ToggleRight className="w-8 h-8 text-emerald-400" />
-            ) : (
-              <ToggleLeft className="w-8 h-8 text-gray-600" />
-            )}
-          </button>
+
+          <div className="space-y-2">
+            <label className="text-sm text-gray-300">Selection strategy</label>
+            <select
+              value={config.strategy}
+              onChange={(e) =>
+                saveConfig({ ...config, strategy: e.target.value as RouterConfig["strategy"] })
+              }
+              className={`${SELECT_CONTROL_CLASS} w-full`}
+            >
+              {STRATEGY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500">{STRATEGY_HELP[config.strategy]}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+              {STRATEGY_OPTIONS.map((option) => (
+                <button
+                  type="button"
+                  key={option.value}
+                  onClick={() => saveConfig({ ...config, strategy: option.value })}
+                  className={cn(
+                    "rounded-lg border px-3 py-2 text-left transition-colors",
+                    option.value === config.strategy
+                      ? "border-indigo-400/50 bg-indigo-500/15"
+                      : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
+                  )}
+                >
+                  <span className="block text-xs font-semibold text-white">{option.label}</span>
+                  <span className="mt-0.5 block text-[11px] text-gray-500">{option.costHint}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {config.strategy === "mixture_of_agents" && (
+            <>
+              <div className="space-y-1">
+                <label className="text-sm text-gray-300">Max proposer agents</label>
+                <input
+                  type="number"
+                  min={1}
+                  defaultValue={config.moaMaxAgents ?? ""}
+                  placeholder="4"
+                  onBlur={(e) => {
+                    const n = Math.floor(Number(e.target.value));
+                    const next = Number.isFinite(n) && n > 0 ? n : undefined;
+                    if (next !== config.moaMaxAgents) {
+                      void saveConfig({ ...config, moaMaxAgents: next });
+                    }
+                  }}
+                  className={`${SELECT_CONTROL_CLASS} w-full sm:w-40`}
+                />
+                <p className="text-xs text-gray-500">
+                  How many agents propose before one synthesizes the final answer (default 4).
+                </p>
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm text-gray-300">Aggregator agent</label>
+                <select
+                  value={config.moaAggregatorAgentId ?? ""}
+                  onChange={(e) =>
+                    saveConfig({ ...config, moaAggregatorAgentId: e.target.value || undefined })
+                  }
+                  className={`${SELECT_CONTROL_CLASS} w-full`}
+                >
+                  <option value="">Auto (first proposer)</option>
+                  {agents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500">
+                  The agent that synthesizes the proposals into the final answer.
+                </p>
+              </div>
+            </>
+          )}
         </div>
 
-        <div className="space-y-1">
-          <label className="text-sm text-gray-300">Selection strategy</label>
-          <select
-            value={config.strategy}
-            onChange={(e) =>
-              saveConfig({ ...config, strategy: e.target.value as RouterConfig["strategy"] })
-            }
-            className="w-full sm:w-auto rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-sm text-white"
-          >
-            <option value="weighted">Weighted (default)</option>
-            <option value="round_robin">Round Robin</option>
-            <option value="lowest_cost">Lowest Cost</option>
-            <option value="priority">Priority</option>
-            <option value="mixture_of_agents">Mixture of Agents</option>
-          </select>
-          <p className="text-xs text-gray-500">{STRATEGY_HELP[config.strategy]}</p>
-        </div>
+        <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 rounded-lg bg-emerald-500/15 p-2">
+              <DollarSign className="w-4 h-4 text-emerald-300" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-white">Cash budget guardrail</h3>
+              <p className="text-xs text-gray-500">
+                Use monthly budget for flat coding plans, or per-token pricing for metered APIs.
+                Both save into the gateway daily cap and provider token prices.
+              </p>
+            </div>
+          </div>
 
-        {config.strategy === "mixture_of_agents" && (
-          <>
-            <div className="space-y-1">
-              <label className="text-sm text-gray-300">Max proposer agents</label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="space-y-1">
+              <span className="text-xs text-gray-400">Daily cap</span>
               <input
                 type="number"
-                min={1}
-                defaultValue={config.moaMaxAgents ?? ""}
-                placeholder="4"
-                onBlur={(e) => {
-                  const n = Math.floor(Number(e.target.value));
-                  const next = Number.isFinite(n) && n > 0 ? n : undefined;
-                  if (next !== config.moaMaxAgents) {
-                    void saveConfig({ ...config, moaMaxAgents: next });
-                  }
-                }}
-                className="w-full sm:w-auto rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-sm text-white"
-              />
-              <p className="text-xs text-gray-500">
-                How many agents propose before one synthesizes the final answer (default 4).
-              </p>
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm text-gray-300">Aggregator agent</label>
-              <select
-                value={config.moaAggregatorAgentId ?? ""}
+                min={0}
+                step={0.25}
+                value={dailyLimit || ""}
+                placeholder="No cap"
                 onChange={(e) =>
-                  saveConfig({ ...config, moaAggregatorAgentId: e.target.value || undefined })
+                  setConfig({
+                    ...config,
+                    globalSpendLimitDaily: normalizedSpendLimit(e.target.value),
+                  })
                 }
-                className="w-full sm:w-auto rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-sm text-white"
-              >
-                <option value="">Auto (first proposer)</option>
-                {agents.map((agent) => (
-                  <option key={agent.id} value={agent.id}>
-                    {agent.name}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-gray-500">
-                The agent that synthesizes the proposals into the final answer.
-              </p>
-            </div>
-          </>
-        )}
+                onBlur={(e) =>
+                  saveConfig({
+                    ...config,
+                    globalSpendLimitDaily: normalizedSpendLimit(e.target.value),
+                  })
+                }
+                className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-gray-600"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs text-gray-400">Monthly budget</span>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={monthlyEquivalent ? Number(monthlyEquivalent.toFixed(2)) : ""}
+                placeholder="$20 plan"
+                onChange={(e) => {
+                  const monthly = normalizedSpendLimit(e.target.value);
+                  setConfig({
+                    ...config,
+                    globalSpendLimitDaily: monthly ? monthly / 30 : undefined,
+                  });
+                }}
+                onBlur={(e) => {
+                  const monthly = normalizedSpendLimit(e.target.value);
+                  saveConfig({
+                    ...config,
+                    globalSpendLimitDaily: monthly ? monthly / 30 : undefined,
+                  });
+                }}
+                className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-gray-600"
+              />
+            </label>
+          </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <DollarSign className="w-4 h-4 text-gray-500" />
-          <label className="text-sm text-gray-300">Global daily spend limit ($)</label>
-          <input
-            type="number"
-            min={0}
-            step={1}
-            value={config.globalSpendLimitDaily ?? 0}
-            onChange={(e) =>
-              setConfig({ ...config, globalSpendLimitDaily: Number(e.target.value) || undefined })
-            }
-            onBlur={() => saveConfig(config)}
-            className="w-24 rounded-lg bg-white/5 border border-white/10 px-2 py-1 text-sm text-white"
-          />
-          <span className="text-xs text-gray-500">0 = no cap</span>
-          {status && (
-            <span className="text-xs text-gray-500 ml-2">
-              Spent today: ${status.globalSpendToday.toFixed(4)}
-            </span>
-          )}
+          <div>
+            <div className="mb-1 flex items-center justify-between text-xs">
+              <span className="text-gray-500">
+                Spent today {formatMoney(spendToday, 4)}
+                {dailyLimit > 0 ? ` of ${formatMoney(dailyLimit, 2)}` : " (uncapped)"}
+              </span>
+              <span className="text-gray-500">
+                {dailyLimit > 0 ? `${budgetUsedPct.toFixed(1)}%` : "No cap"}
+              </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-white/10">
+              <div
+                className={cn(
+                  "h-full rounded-full transition-all",
+                  budgetUsedPct >= 90
+                    ? "bg-red-400"
+                    : budgetUsedPct >= 70
+                      ? "bg-amber-400"
+                      : "bg-emerald-400"
+                )}
+                style={{ width: `${dailyLimit > 0 ? Math.max(2, budgetUsedPct) : 0}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-cyan-400/15 bg-cyan-400/10 p-3 text-xs text-cyan-100/90">
+            For a $20/month coding plan, enter 20 as the monthly budget. For metered providers, set
+            $/M input and output tokens per provider below, then use Lowest Cost.
+          </div>
         </div>
       </div>
 
@@ -375,8 +534,8 @@ function RouteRow({
   };
 
   return (
-    <div className="rounded-lg border border-white/10 bg-black/20 p-4 space-y-2">
-      <div className="flex items-center justify-between">
+    <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
+      <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-sm font-medium text-white truncate">{displayName}</span>
           <span
@@ -393,7 +552,7 @@ function RouteRow({
           </span>
           {route.reason && <span className="text-[10px] text-red-400">{route.reason}</span>}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <button type="button" onClick={() => update("enabled", !routeCfg.enabled)}>
             {routeCfg.enabled !== false ? (
               <ToggleRight className="w-6 h-6 text-emerald-400" />
@@ -411,21 +570,40 @@ function RouteRow({
         </div>
       </div>
 
+      <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-500 sm:grid-cols-4">
+        <div className="rounded-lg bg-white/[0.035] px-2.5 py-2">
+          <p className="text-gray-600">Weight</p>
+          <p className="font-semibold text-gray-200">{Number(routeCfg.weight ?? 50)}</p>
+        </div>
+        <div className="rounded-lg bg-white/[0.035] px-2.5 py-2">
+          <p className="text-gray-600">Requests</p>
+          <p className="font-semibold text-gray-200">
+            {route.requestsIn5hWindow} / {route.requestsInWeekWindow}
+          </p>
+        </div>
+        <div className="rounded-lg bg-white/[0.035] px-2.5 py-2">
+          <p className="text-gray-600">Spend today</p>
+          <p className="font-semibold text-emerald-300">{formatMoney(route.spendToday, 4)}</p>
+        </div>
+        <div className="rounded-lg bg-white/[0.035] px-2.5 py-2">
+          <p className="text-gray-600">Token price</p>
+          <p className="font-semibold text-cyan-300">
+            {formatTokenPrice(route.priceInputPerM, route.priceOutputPerM)}
+          </p>
+        </div>
+      </div>
+
       {models.length > 0 && (
-        <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
+        <div className="flex items-center gap-1.5 rounded-lg bg-white/[0.025] px-2.5 py-2 text-[11px] text-gray-500">
           <Cpu className="w-3 h-3" />
           <span className="truncate">
-            {models.slice(0, 3).join(", ")}
-            {models.length > 3 ? ` +${models.length - 3} more` : ""}
+            {models.slice(0, 5).join(", ")}
+            {models.length > 5 ? ` +${models.length - 5} more` : ""}
           </span>
         </div>
       )}
 
       <div className="flex items-center gap-3 text-[11px] text-gray-500">
-        <span>Weight {Number(routeCfg.weight ?? 50)}</span>
-        <span>5h: {route.requestsIn5hWindow}</span>
-        <span>Week: {route.requestsInWeekWindow}</span>
-        <span>Today: ${route.spendToday.toFixed(4)}</span>
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -544,7 +722,7 @@ function AddRouteForm({
         <select
           value={selected}
           onChange={(e) => setSelected(e.target.value)}
-          className="flex-1 rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-sm text-white"
+          className={`${SELECT_CONTROL_CLASS} min-w-0 flex-1`}
         >
           <option value="">Select a provider…</option>
           {options.map((p) => (

@@ -1246,12 +1246,14 @@ struct MetricTimelinePoint: Decodable, Identifiable, Hashable, Sendable {
     let timestamp: String?
     let type: String?
     let tool: String?
+    let hour: String?
     let value: Int?
     let tokens: Int?
+    let calls: Int?
     let duration: Double?
     let metadata: JSONValue?
 
-    var id: String { [timestamp, type, tool].compactMap { $0 }.joined(separator: "-") }
+    var id: String { [timestamp, type, tool, hour].compactMap { $0 }.joined(separator: "-") }
 }
 
 struct TokenMetrics: Decodable, Hashable, Sendable {

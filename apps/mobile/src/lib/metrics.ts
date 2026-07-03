@@ -348,3 +348,63 @@ export function tokenFlowBars(
     { label: "Cache", value: overview?.tokenUsage.cache || 0 },
   ];
 }
+
+export function tokenVelocityAreaRows(
+  tokenAnalysis: TokenAnalysisMetrics | null
+): Array<{ label: string; value: number; detail?: string }> {
+  const rows =
+    tokenAnalysis?.tokenVelocity?.hours ??
+    ((
+      tokenAnalysis as {
+        hourlyVelocity24h?: Array<{ hour: string; tokens: number; calls: number }>;
+      }
+    )?.hourlyVelocity24h ||
+      []);
+  return rows.slice(-24).map((entry) => ({
+    label: entry.hour,
+    value: entry.tokens,
+    detail: `${formatMetricNumber(entry.calls)} calls`,
+  }));
+}
+
+export function providerTokenShareRows(
+  snapshot: MetricsSnapshot | null
+): Array<{ label: string; value: string; detail?: string; amount: number }> {
+  const insightRows = snapshot?.insights?.providerEfficiency || [];
+  if (insightRows.length > 0) {
+    return insightRows.slice(0, 6).map((provider) => ({
+      label: provider.provider,
+      value: `${formatMetricNumber(provider.tokens)} tokens`,
+      detail: `${formatMetricNumber(provider.tokensPerCall)} tok/call - ${provider.sharePct}% share`,
+      amount: provider.tokens,
+    }));
+  }
+
+  return (snapshot?.providers?.providers || []).slice(0, 6).map((provider) => ({
+    label: provider.provider,
+    value: formatMetricNumber(provider.tokens),
+    detail: `${formatMetricNumber(provider.hits)} hits`,
+    amount: provider.tokens,
+  }));
+}
+
+export function modelTokenShareRows(
+  snapshot: MetricsSnapshot | null
+): Array<{ label: string; value: string; detail?: string; amount: number }> {
+  const profileRows = snapshot?.tokenAnalysis?.modelThoughtProfiles || [];
+  if (profileRows.length > 0) {
+    return profileRows.slice(0, 6).map((model) => ({
+      label: model.model,
+      value: `${formatMetricNumber(model.totalTokens)} tokens`,
+      detail: `${model.provider} - ${model.behavior}`,
+      amount: model.totalTokens,
+    }));
+  }
+
+  return (snapshot?.models?.models || []).slice(0, 6).map((model) => ({
+    label: model.model,
+    value: `${formatMetricNumber(model.totalTokens)} tokens`,
+    detail: `${model.provider} - ${model.avgTps} tok/s`,
+    amount: model.totalTokens,
+  }));
+}

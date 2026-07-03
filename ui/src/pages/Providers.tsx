@@ -256,7 +256,9 @@ export function Providers() {
                   <h4 className="font-medium text-white mb-1">{provider.name}</h4>
                   <p className="text-sm text-gray-400">{provider.description}</p>
                   <p className="text-xs text-gray-500 mt-2">
-                    {provider.models.length} models available
+                    {provider.models.length > 0
+                      ? `${provider.models.length} model${provider.models.length === 1 ? "" : "s"} available`
+                      : "No bundled models listed"}
                   </p>
                 </div>
               ))}
@@ -772,7 +774,13 @@ function ProviderModal({
 
         {selectedProviderInfo && (
           <div className="text-xs text-gray-500 flex items-center gap-4">
-            <span>{selectedProviderInfo.models.length} models available</span>
+            <span>
+              {selectedProviderInfo.models.length > 0
+                ? `${selectedProviderInfo.models.length} model${
+                    selectedProviderInfo.models.length === 1 ? "" : "s"
+                  } available`
+                : "No bundled models listed"}
+            </span>
           </div>
         )}
 

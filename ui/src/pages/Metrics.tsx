@@ -239,6 +239,69 @@ export function Metrics() {
     }));
   }, [timeSeries?.days]);
 
+  const tokenVelocityRows = useMemo(
+    () =>
+      (tokenAnalysisData?.hourlyVelocity24h || []).slice(-24).map((entry) => ({
+        label: entry.hour,
+        value: entry.tokens,
+        detail: `${formatNumber(entry.calls)} calls`,
+      })),
+    [tokenAnalysisData?.hourlyVelocity24h]
+  );
+
+  const tokenFlowShareRows = useMemo(
+    () => [
+      {
+        label: "Input",
+        value: overview?.tokenUsage.input || 0,
+        color: "bg-blue-400",
+      },
+      {
+        label: "Output",
+        value: overview?.tokenUsage.output || 0,
+        color: "bg-emerald-400",
+      },
+      {
+        label: "Cache",
+        value: overview?.tokenUsage.cache || 0,
+        color: "bg-violet-400",
+      },
+    ],
+    [overview?.tokenUsage.cache, overview?.tokenUsage.input, overview?.tokenUsage.output]
+  );
+
+  const providerTokenRows = useMemo(() => {
+    const providerEfficiency = insightsData?.providerEfficiency || [];
+    if (providerEfficiency.length > 0) {
+      return providerEfficiency.slice(0, 8).map((entry) => ({
+        label: entry.provider,
+        value: entry.tokens,
+        detail: `${formatNumber(entry.tokensPerCall)} tok/call · ${formatNumber(entry.calls)} calls`,
+      }));
+    }
+
+    return (tokens?.topProviders || []).slice(0, 8).map((entry) => ({
+      label: entry.provider,
+      value: entry.tokens,
+      detail: `${formatNumber(entry.tokens)} tokens`,
+    }));
+  }, [insightsData?.providerEfficiency, tokens?.topProviders]);
+
+  const modelTokenRows = useMemo(
+    () =>
+      (tokenAnalysisData?.modelThoughtProfiles || modelMetrics?.models || [])
+        .slice(0, 8)
+        .map((entry) => {
+          const value = "totalTokens" in entry ? entry.totalTokens : 0;
+          const detail =
+            "behavior" in entry
+              ? `${entry.provider} · ${entry.behavior}`
+              : `${entry.provider} · ${entry.avgTps} tok/s`;
+          return { label: entry.model, value, detail };
+        }),
+    [modelMetrics?.models, tokenAnalysisData?.modelThoughtProfiles]
+  );
+
   if (isLoading) {
     return (
       <PageLayout title="Metrics" subtitle="Loading metrics...">
@@ -294,6 +357,41 @@ export function Metrics() {
           color="text-cyan-300"
           bgColor="bg-cyan-500/20"
         />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
+        <Card className="xl:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-cyan-400" />
+              Token Velocity
+            </CardTitle>
+            <CardDescription>24-hour area trend for recent input/output workloads</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <MetricAreaChart
+              rows={tokenVelocityRows}
+              strokeColor="#22d3ee"
+              fillColor="#22d3ee"
+              emptyLabel="No token velocity data yet"
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Gauge className="w-5 h-5 text-emerald-400" />
+              Token Mix
+            </CardTitle>
+            <CardDescription>
+              Input, output, and cache share for current research usage
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <MetricShareStack rows={tokenFlowShareRows} total={overview?.tokenUsage.total || 0} />
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
@@ -396,6 +494,36 @@ export function Metrics() {
                 </p>
               </div>
             </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Zap className="w-5 h-5 text-blue-400" />
+              Provider Token Share
+            </CardTitle>
+            <CardDescription>
+              Where token volume and spend pressure are concentrated
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <MetricRankedRows rows={providerTokenRows} accentClass="bg-blue-400" />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Cpu className="w-5 h-5 text-amber-400" />
+              Model Token Share
+            </CardTitle>
+            <CardDescription>Top models by tracked token volume and behavior</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <MetricRankedRows rows={modelTokenRows} accentClass="bg-amber-400" />
           </CardContent>
         </Card>
       </div>
@@ -1157,6 +1285,156 @@ export function Metrics() {
         </CardContent>
       </Card>
     </PageLayout>
+  );
+}
+
+function MetricAreaChart({
+  rows,
+  strokeColor,
+  fillColor,
+  emptyLabel,
+}: {
+  rows: Array<{ label: string; value: number; detail?: string }>;
+  strokeColor: string;
+  fillColor: string;
+  emptyLabel: string;
+}) {
+  const width = 640;
+  const height = 180;
+  const maxValue = Math.max(1, ...rows.map((row) => row.value));
+  const points = rows.map((row, index) => {
+    const x = rows.length <= 1 ? width : (index / (rows.length - 1)) * width;
+    const y = height - (row.value / maxValue) * (height - 12) - 6;
+    return { x, y, row };
+  });
+  const linePath = points
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+    .join(" ");
+  const areaPath =
+    points.length > 0
+      ? `M 0 ${height} ${linePath} L ${width} ${height} Z`
+      : `M 0 ${height} L ${width} ${height}`;
+
+  if (rows.length === 0) {
+    return (
+      <div className="flex h-48 items-center justify-center rounded-lg border border-white/10 bg-white/[0.02] text-sm text-gray-500">
+        {emptyLabel}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-48 w-full overflow-visible">
+        <path d={areaPath} fill={fillColor} opacity={0.16} />
+        <path
+          d={linePath}
+          fill="none"
+          stroke={strokeColor}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={3}
+        />
+        {points.map((point, index) => (
+          <circle
+            key={`${point.row.label}:${index}`}
+            cx={point.x}
+            cy={point.y}
+            r={2.8}
+            fill={strokeColor}
+          >
+            <title>
+              {point.row.label}: {formatNumber(point.row.value)}
+              {point.row.detail ? ` (${point.row.detail})` : ""}
+            </title>
+          </circle>
+        ))}
+      </svg>
+      <div className="mt-2 flex justify-between text-xs text-gray-500">
+        <span>{rows[0]?.label}</span>
+        <span>{rows[rows.length - 1]?.label}</span>
+      </div>
+    </div>
+  );
+}
+
+function MetricShareStack({
+  rows,
+  total,
+}: {
+  rows: Array<{ label: string; value: number; color: string }>;
+  total: number;
+}) {
+  const safeTotal =
+    total > 0 ? total : rows.reduce((sum, row) => sum + Math.max(0, row.value), 0) || 1;
+  return (
+    <div className="space-y-4">
+      <div className="flex h-4 overflow-hidden rounded-full bg-white/10">
+        {rows.map((row) => (
+          <div
+            key={row.label}
+            className={row.color}
+            style={{ width: `${Math.max(row.value > 0 ? 2 : 0, (row.value / safeTotal) * 100)}%` }}
+            title={`${row.label}: ${formatNumber(row.value)}`}
+          />
+        ))}
+      </div>
+      <div className="space-y-2">
+        {rows.map((row) => {
+          const pct = safeTotal > 0 ? (row.value / safeTotal) * 100 : 0;
+          return (
+            <div key={row.label} className="flex items-center justify-between gap-3 text-sm">
+              <div className="flex items-center gap-2">
+                <span className={`h-2.5 w-2.5 rounded-full ${row.color}`} />
+                <span className="text-gray-300">{row.label}</span>
+              </div>
+              <span className="text-gray-500">
+                {formatNumber(row.value)} · {pct.toFixed(1)}%
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MetricRankedRows({
+  rows,
+  accentClass,
+}: {
+  rows: Array<{ label: string; value: number; detail?: string }>;
+  accentClass: string;
+}) {
+  const maxValue = Math.max(1, ...rows.map((row) => row.value));
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-lg border border-white/10 bg-white/[0.02] p-6 text-center text-sm text-gray-500">
+        No ranked token data yet
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {rows.map((row) => (
+        <div key={`${row.label}:${row.detail || ""}`} className="space-y-1.5">
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <div className="min-w-0">
+              <p className="truncate text-gray-200">{row.label}</p>
+              {row.detail && <p className="truncate text-xs text-gray-500">{row.detail}</p>}
+            </div>
+            <span className="shrink-0 text-gray-400">{formatNumber(row.value)}</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-white/10">
+            <div
+              className={`h-full rounded-full ${accentClass}`}
+              style={{ width: `${Math.max(3, (row.value / maxValue) * 100)}%` }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

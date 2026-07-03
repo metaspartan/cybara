@@ -104,6 +104,47 @@ export function MetricBarChart({
   );
 }
 
+export function MetricAreaChart({
+  data,
+  tone,
+}: {
+  data: Array<{ label: string; value: number; detail?: string }>;
+  tone: string;
+}) {
+  const max = Math.max(1, ...data.map((entry) => entry.value));
+  if (data.length === 0) {
+    return <Text style={styles.detail}>No trend data yet</Text>;
+  }
+  return (
+    <View style={styles.areaChart}>
+      <View style={styles.areaColumns}>
+        {data.map((entry, index) => (
+          <View key={`${entry.label}-${index}`} style={styles.areaSlot}>
+            <View
+              style={[
+                styles.areaColumn,
+                {
+                  backgroundColor: tone,
+                  height: Math.max(5, (entry.value / max) * 82),
+                  opacity: 0.16 + Math.min(0.68, (entry.value / max) * 0.68),
+                },
+              ]}
+            />
+          </View>
+        ))}
+      </View>
+      <View style={styles.areaLabels}>
+        <Text numberOfLines={1} style={styles.barLabel}>
+          {data[0]?.label}
+        </Text>
+        <Text numberOfLines={1} style={styles.barLabel}>
+          {data[data.length - 1]?.label}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 export function TokenHeatmap({
   tokenAnalysis,
   tone,
@@ -331,6 +372,38 @@ const makeStyles = () =>
       color: colors.textDim,
       fontSize: 9,
       maxWidth: 38,
+    },
+    areaChart: {
+      gap: spacing.xs,
+      minHeight: 112,
+    },
+    areaColumns: {
+      alignItems: "flex-end",
+      backgroundColor: colors.inset,
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: 2,
+      minHeight: 92,
+      overflow: "hidden",
+      paddingHorizontal: 6,
+      paddingTop: 8,
+    },
+    areaSlot: {
+      alignItems: "stretch",
+      flex: 1,
+      justifyContent: "flex-end",
+      minWidth: 4,
+    },
+    areaColumn: {
+      borderTopLeftRadius: 5,
+      borderTopRightRadius: 5,
+      minHeight: 5,
+    },
+    areaLabels: {
+      flexDirection: "row",
+      justifyContent: "space-between",
     },
     heatmap: {
       gap: spacing.xs,

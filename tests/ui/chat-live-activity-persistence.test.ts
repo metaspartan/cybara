@@ -83,6 +83,15 @@ describe("Chat live activity persistence", () => {
     );
   });
 
+  test("keeps streamed assistant text visible until the final assistant message is attached", () => {
+    const source = readFileSync(chatSourcePath, "utf8");
+    expect(source).toContain("if (!streamingContent || isLoading) return;");
+    expect(source).toContain('if (latestMessage?.role === "assistant") {');
+    expect(source).toMatch(
+      /if \(!loadingRef\.current && !hasPendingCaptureForVisibleSession\) \{\s*setStreamingContent\(null\);/
+    );
+  });
+
   test("persists message process map across reloads", () => {
     const source = readFileSync(chatSourcePath, "utf8");
     expect(source).toContain('const MESSAGE_PROCESS_MAP_STORAGE_KEY = "cybara:messageProcessMap"');

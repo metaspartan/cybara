@@ -76,6 +76,7 @@ import { GlassPanel } from "../components/Glass";
 import { LiquidGlass } from "../components/LiquidGlass";
 import {
   MetricBarChart,
+  MetricAreaChart,
   MetricBreakdown,
   MetricEndpointGrid,
   MetricMicro,
@@ -165,9 +166,12 @@ import {
   formatMetricNumber,
   formatStorageBytes,
   metricSuccessRate,
+  modelTokenShareRows,
+  providerTokenShareRows,
   storageCategoryEntries,
   timeSeriesTotals,
   tokenFlowBars,
+  tokenVelocityAreaRows,
   totalFileOperations,
   type MetricsSnapshot,
 } from "../lib/metrics";
@@ -1668,34 +1672,9 @@ function MetricsPanel({
     "messages",
   ]);
   const tokenBars = tokenFlowBars(overview);
-  const providerRows =
-    insights?.providerEfficiency.slice(0, 6).map((provider) => ({
-      label: provider.provider,
-      value: `${formatMetricNumber(provider.tokensPerCall)} tok/call`,
-      detail: `${formatMetricNumber(provider.calls)} calls - ${provider.sharePct}% share`,
-      amount: provider.tokens,
-    })) ??
-    metrics?.providers?.providers.slice(0, 6).map((provider) => ({
-      label: provider.provider,
-      value: formatMetricNumber(provider.tokens),
-      detail: `${formatMetricNumber(provider.hits)} hits`,
-      amount: provider.tokens,
-    })) ??
-    [];
-  const modelRows =
-    insights?.modelInsights.slice(0, 6).map((model) => ({
-      label: model.model,
-      value: `${formatMetricNumber(model.totalTokens)} tokens`,
-      detail: `${model.provider} - ${model.avgTps} tok/s - ${model.avgLatencyMs}ms`,
-      amount: model.totalTokens,
-    })) ??
-    metrics?.models?.models.slice(0, 6).map((model) => ({
-      label: model.model,
-      value: `${formatMetricNumber(model.totalTokens)} tokens`,
-      detail: `${model.provider} - ${model.avgTps} tok/s`,
-      amount: model.totalTokens,
-    })) ??
-    [];
+  const velocityRows = tokenVelocityAreaRows(tokenAnalysis);
+  const providerRows = providerTokenShareRows(metrics);
+  const modelRows = modelTokenShareRows(metrics);
   const storageRows = storageCategoryEntries(metrics?.storage ?? null).slice(0, 8);
 
   return (
@@ -1744,6 +1723,10 @@ function MetricsPanel({
         detail="Last 14 days across tokens, tools, API, files, and messages"
       >
         <MetricBarChart data={activitySeries} tone={accentColor} />
+      </MetricSection>
+
+      <MetricSection title="Token velocity" detail="Last 24 hours by token volume and calls">
+        <MetricAreaChart data={velocityRows} tone={accentColor} />
       </MetricSection>
 
       <MetricSection

@@ -98,6 +98,14 @@ struct MetricsScreen: View {
             }
 
             MetricsPanel(
+                title: "Token Velocity",
+                subtitle: "24-hour area trend for recent model usage",
+                systemImage: "chart.line.uptrend.xyaxis"
+            ) {
+                MetricsTokenVelocityArea(points: snapshot.tokenAnalysis?.hourlyVelocity24h ?? [], tint: .cyan)
+            }
+
+            MetricsPanel(
                 title: "Token Heatmap",
                 subtitle: "Recent intensity by day and hour",
                 systemImage: "square.grid.3x3"
@@ -683,6 +691,90 @@ private struct MetricsActivityChart: View {
                 }
                 .font(.system(size: 10, design: .rounded))
                 .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private struct MetricsTokenVelocityArea: View {
+    let points: [MetricTimelinePoint]
+    let tint: Color
+
+    private var values: [(label: String, value: Int, calls: Int)] {
+        points.suffix(24).map {
+            (
+                label: $0.hour ?? $0.timestamp ?? "",
+                value: $0.tokens ?? $0.value ?? 0,
+                calls: $0.calls ?? 0
+            )
+        }
+    }
+
+    var body: some View {
+        if values.isEmpty {
+            MetricsEmptyState("No token velocity data yet")
+                .frame(height: 178)
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                GeometryReader { proxy in
+                    let maxValue = max(values.map { $0.value }.max() ?? 0, 1)
+                    let width = max(proxy.size.width, 1)
+                    let height = max(proxy.size.height, 1)
+                    let denominator = max(values.count - 1, 1)
+
+                    ZStack(alignment: .bottomLeading) {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.white.opacity(0.035))
+
+                        Path { path in
+                            path.move(to: CGPoint(x: 0, y: height))
+                            for index in values.indices {
+                                let x = width * CGFloat(index) / CGFloat(denominator)
+                                let y = height - (height - 10) * CGFloat(values[index].value) / CGFloat(maxValue)
+                                path.addLine(to: CGPoint(x: x, y: y))
+                            }
+                            path.addLine(to: CGPoint(x: width, y: height))
+                            path.closeSubpath()
+                        }
+                        .fill(
+                            LinearGradient(
+                                colors: [tint.opacity(0.34), tint.opacity(0.05)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+
+                        Path { path in
+                            for index in values.indices {
+                                let x = width * CGFloat(index) / CGFloat(denominator)
+                                let y = height - (height - 10) * CGFloat(values[index].value) / CGFloat(maxValue)
+                                if index == values.startIndex {
+                                    path.move(to: CGPoint(x: x, y: y))
+                                } else {
+                                    path.addLine(to: CGPoint(x: x, y: y))
+                                }
+                            }
+                        }
+                        .stroke(tint.opacity(0.9), style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                    }
+                }
+                .frame(height: 150)
+
+                HStack {
+                    Text(values.first?.label ?? "")
+                    Spacer()
+                    Text(values.last?.label ?? "")
+                }
+                .font(.system(size: 10, design: .rounded))
+                .foregroundStyle(.secondary)
+
+                if let peak = values.max(by: { $0.value < $1.value }) {
+                    MetricsCallout(
+                        title: "Peak hour",
+                        value: "\(peak.label) / \(metricsFormatCount(peak.value)) tokens",
+                        detail: "\(metricsFormatCount(peak.calls)) calls recorded"
+                    )
+                }
             }
         }
     }

@@ -11,9 +11,10 @@ describe("useChat session race guards", () => {
     expect(source).toContain("prev.sessionId !== requestSessionId");
   });
 
-  test("aborts the active request when loading another session", () => {
+  test("keeps in-flight requests alive when loading another session", () => {
     const source = readFileSync(hookPath, "utf8");
-    expect(source).toContain("activeRequestAbortRef.current?.abort();");
-    expect(source).toContain("activeRequestAbortRef.current = null;");
+    const loadSessionBlock = source.slice(source.indexOf("const loadSession = useCallback"));
+    expect(loadSessionBlock).toContain("setState({");
+    expect(loadSessionBlock).not.toContain("activeRequestAbortRef.current?.abort();");
   });
 });

@@ -883,7 +883,7 @@ final class GatewayClientModelTests: XCTestCase {
                       }
                     ]
                   },
-                  "hourlyVelocity24h": [{"hour": "2026-07-02T14:00:00.000Z", "tokens": 700, "calls": 2}],
+                  "hourlyVelocity24h": [{"hour": "14:00", "tokens": 700, "calls": 2}],
                   "tokenCloud": [{"token": "gpt-5", "category": "model", "weight": 10, "sharePct": 42}],
                   "modelThoughtProfiles": [
                     {
@@ -919,6 +919,8 @@ final class GatewayClientModelTests: XCTestCase {
 
         XCTAssertEqual(analysis.summary?.inputToOutputRatio, 1.25)
         XCTAssertEqual(analysis.tokenHeatmap?.hottestHour?.hour, 14)
+        XCTAssertEqual(analysis.hourlyVelocity24h.first?.hour, "14:00")
+        XCTAssertEqual(analysis.hourlyVelocity24h.first?.calls, 2)
         XCTAssertEqual(analysis.tokenCloud.first?.token, "gpt-5")
         XCTAssertEqual(analysis.modelThoughtProfiles.first?.behavior, "balanced")
         XCTAssertEqual(analysis.topTokenBursts.first?.totalTokens, 900)

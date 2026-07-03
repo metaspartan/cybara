@@ -4,10 +4,14 @@ import {
   formatMetricNumber,
   formatStorageBytes,
   metricSuccessRate,
+  modelTokenShareRows,
+  providerTokenShareRows,
   storageCategoryEntries,
   timeSeriesTotals,
   tokenFlowBars,
+  tokenVelocityAreaRows,
   totalFileOperations,
+  type MetricsSnapshot,
   type MetricsOverview,
   type MetricsStorage,
 } from "../../apps/mobile/src/lib/metrics";
@@ -62,5 +66,78 @@ describe("mobile metrics helpers", () => {
       { label: "06-29", value: 7 },
       { label: "06-30", value: 11 },
     ]);
+  });
+
+  test("builds velocity and provider/model token share rows from metrics snapshot", () => {
+    const snapshot = {
+      overview,
+      tokens: null,
+      files: null,
+      tools: null,
+      providers: {
+        providers: [{ provider: "openai", url: "https://api.openai.com", hits: 3, tokens: 700 }],
+      },
+      timeSeries: null,
+      models: {
+        models: [
+          {
+            model: "gpt-5",
+            provider: "openai",
+            avgTps: 30,
+            maxTps: 40,
+            minTps: 20,
+            avgLatencyMs: 800,
+            totalTokens: 700,
+            callCount: 3,
+          },
+        ],
+      },
+      insights: null,
+      tokenAnalysis: {
+        tokenVelocity: { hours: [{ hour: "14:00", tokens: 700, calls: 3 }] },
+        modelThoughtProfiles: [
+          {
+            model: "gpt-5",
+            provider: "openai",
+            behavior: "balanced",
+            inputTokens: 400,
+            outputTokens: 300,
+            totalTokens: 700,
+            promptSharePct: 57,
+            responseSharePct: 43,
+            avgTps: 30,
+            avgLatencyMs: 800,
+          },
+        ],
+      },
+      storage: null,
+      availability: {
+        overview: { ok: true },
+        tokens: { ok: false },
+        files: { ok: false },
+        tools: { ok: false },
+        providers: { ok: true },
+        timeSeries: { ok: false },
+        models: { ok: true },
+        insights: { ok: false },
+        tokenAnalysis: { ok: true },
+        storage: { ok: false },
+      },
+    } satisfies MetricsSnapshot;
+
+    expect(tokenVelocityAreaRows(snapshot.tokenAnalysis)).toEqual([
+      { label: "14:00", value: 700, detail: "3 calls" },
+    ]);
+    expect(providerTokenShareRows(snapshot)[0]).toMatchObject({
+      label: "openai",
+      value: "700",
+      amount: 700,
+    });
+    expect(modelTokenShareRows(snapshot)[0]).toMatchObject({
+      label: "gpt-5",
+      value: "700 tokens",
+      detail: "openai - balanced",
+      amount: 700,
+    });
   });
 });
