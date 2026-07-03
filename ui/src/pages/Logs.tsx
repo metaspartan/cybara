@@ -36,14 +36,17 @@ interface LogEntry {
   created_at: string;
 }
 
+interface LogCategoryCounts {
+  system: number;
+  messages: number;
+  agent: number;
+  channel: number;
+  cli: number;
+}
+
 interface LogStats {
-  counts: {
-    system: number;
-    messages: number;
-    agent: number;
-    channel: number;
-    cli: number;
-  };
+  counts: LogCategoryCounts;
+  totals: LogCategoryCounts & { combined: number };
   hours: number;
 }
 
@@ -93,6 +96,37 @@ const sourceIcons: Record<string, React.ReactNode> = {
   subagent: <Bot className="w-4 h-4" />,
   cli: <Terminal className="w-4 h-4" />,
 };
+
+function LogStatCard({
+  icon,
+  label,
+  total,
+  inWindow,
+  hours,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  total: number;
+  inWindow: number;
+  hours: number;
+}) {
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-center gap-3">
+          {icon}
+          <div className="min-w-0">
+            <p className="text-sm text-gray-400 truncate">{label}</p>
+            <p className="text-2xl font-bold text-white">{total.toLocaleString()}</p>
+            <p className="text-[11px] text-gray-500">
+              +{inWindow.toLocaleString()} in {hours}h
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export function Logs() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -293,61 +327,41 @@ export function Logs() {
       <div className="space-y-6">
         {stats && (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <LogsIcon className="w-8 h-8 text-blue-400" />
-                  <div>
-                    <p className="text-sm text-gray-400">System Logs</p>
-                    <p className="text-2xl font-bold text-white">{stats.counts.system}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <MessageSquare className="w-8 h-8 text-emerald-400" />
-                  <div>
-                    <p className="text-sm text-gray-400">Messages</p>
-                    <p className="text-2xl font-bold text-white">{stats.counts.messages}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <Bot className="w-8 h-8 text-violet-400" />
-                  <div>
-                    <p className="text-sm text-gray-400">Agent Logs</p>
-                    <p className="text-2xl font-bold text-white">{stats.counts.agent}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <Radio className="w-8 h-8 text-amber-400" />
-                  <div>
-                    <p className="text-sm text-gray-400">Channel Logs</p>
-                    <p className="text-2xl font-bold text-white">{stats.counts.channel}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <Terminal className="w-8 h-8 text-cyan-400" />
-                  <div>
-                    <p className="text-sm text-gray-400">CLI Logs</p>
-                    <p className="text-2xl font-bold text-white">{stats.counts.cli ?? 0}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <LogStatCard
+              icon={<LogsIcon className="w-8 h-8 text-blue-400" />}
+              label="System Logs"
+              total={stats.totals?.system ?? stats.counts.system}
+              inWindow={stats.counts.system}
+              hours={stats.hours}
+            />
+            <LogStatCard
+              icon={<MessageSquare className="w-8 h-8 text-emerald-400" />}
+              label="Messages"
+              total={stats.totals?.messages ?? stats.counts.messages}
+              inWindow={stats.counts.messages}
+              hours={stats.hours}
+            />
+            <LogStatCard
+              icon={<Bot className="w-8 h-8 text-violet-400" />}
+              label="Agent Logs"
+              total={stats.totals?.agent ?? stats.counts.agent}
+              inWindow={stats.counts.agent}
+              hours={stats.hours}
+            />
+            <LogStatCard
+              icon={<Radio className="w-8 h-8 text-amber-400" />}
+              label="Channel Logs"
+              total={stats.totals?.channel ?? stats.counts.channel}
+              inWindow={stats.counts.channel}
+              hours={stats.hours}
+            />
+            <LogStatCard
+              icon={<Terminal className="w-8 h-8 text-cyan-400" />}
+              label="CLI Logs"
+              total={stats.totals?.cli ?? stats.counts.cli ?? 0}
+              inWindow={stats.counts.cli ?? 0}
+              hours={stats.hours}
+            />
           </div>
         )}
 
@@ -399,11 +413,13 @@ export function Logs() {
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <span>Log Entries</span>
-              <Badge variant="default">
-                {filterLevel || filterSource || isSearchResults || totalLogs === null
-                  ? `${filteredLogs.length} entries`
-                  : `${logs.length} of ${totalLogs} entries`}
-              </Badge>
+              <span title="Combined system, agent, channel, and CLI logs. Session messages are tracked separately.">
+                <Badge variant="default">
+                  {filterLevel || filterSource || isSearchResults || totalLogs === null
+                    ? `${filteredLogs.length} entries`
+                    : `${logs.length.toLocaleString()} of ${totalLogs.toLocaleString()} entries`}
+                </Badge>
+              </span>
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">

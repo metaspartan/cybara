@@ -149,6 +149,7 @@ results.cliSources = [...new Set(cliEntries.map((l) => l.source))];
 results.cliTimestamps = cliEntries.map((l) => l.created_at);
 results.cliMetadata = cliEntries.find((l) => l.metadata)?.metadata ?? null;
 results.statsWithCli = getLogStats(24).counts.cli;
+results.statsTotals = getLogStats(24).totals;
 results.totalWithCli = getCombinedLogTotal();
 results.combinedIncludesCli = getCombinedLogs().some((l) => l.logType === "cli");
 
@@ -255,6 +256,20 @@ describe("getCliLogs", () => {
     expect(r("totalWithCli")).toBe(11);
     // Fixture timestamps are far outside the 24h stats window.
     expect(r("statsWithCli")).toBe(0);
+  });
+
+  test("stats totals are all-time and their combined sum matches the log-entries total", () => {
+    const totals = r<Record<string, number>>("statsTotals");
+    expect(totals).toEqual({
+      system: 3,
+      messages: 0,
+      agent: 2,
+      channel: 2,
+      cli: 4,
+      combined: 11,
+    });
+    expect(totals.combined).toBe(r("totalWithCli"));
+    expect(totals.system + totals.agent + totals.channel + totals.cli).toBe(totals.combined);
   });
 });
 

@@ -1127,6 +1127,14 @@ export const logsApi = {
         channel: number;
         cli: number;
       };
+      totals: {
+        system: number;
+        messages: number;
+        agent: number;
+        channel: number;
+        cli: number;
+        combined: number;
+      };
       hours: number;
     }>("/logs/stats?hours=" + (hours || 24)),
 };

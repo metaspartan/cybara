@@ -84,14 +84,23 @@ export interface CombinedLogPage {
 }
 
 /** Log statistics by category */
+export interface LogCategoryCounts {
+  system: number;
+  messages: number;
+  agent: number;
+  channel: number;
+  cli: number;
+}
+
 export interface LogStats {
-  counts: {
-    system: number;
-    messages: number;
-    agent: number;
-    channel: number;
-    cli: number;
-  };
+  /** Entries within the trailing window (`hours`). */
+  counts: LogCategoryCounts;
+  /**
+   * All-time entries per category. system + agent + channel + cli equals the
+   * combined Log Entries total; messages live in their own table and are not
+   * part of the combined list.
+   */
+  totals: LogCategoryCounts & { combined: number };
   hours: number;
 }
 
@@ -377,10 +386,19 @@ export function getLogStats(hours: number = 24): LogStats {
   };
 
   const sinceMs = Date.parse(sinceIso);
-  const cli = getCliLogs().filter((entry) => {
+  const cliEntries = getCliLogs();
+  const cliInWindow = cliEntries.filter((entry) => {
     const at = Date.parse(entry.created_at);
     return Number.isFinite(at) && at > sinceMs;
   }).length;
+
+  const totals = {
+    system: countRows("system_logs"),
+    messages: countRows("session_messages"),
+    agent: countRows("agent_logs"),
+    channel: countRows("channel_logs"),
+    cli: cliEntries.length,
+  };
 
   return {
     counts: {
@@ -388,7 +406,11 @@ export function getLogStats(hours: number = 24): LogStats {
       messages: countSince("session_messages"),
       agent: countSince("agent_logs"),
       channel: countSince("channel_logs"),
-      cli,
+      cli: cliInWindow,
+    },
+    totals: {
+      ...totals,
+      combined: totals.system + totals.agent + totals.channel + totals.cli,
     },
     hours,
   };
