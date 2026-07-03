@@ -458,6 +458,15 @@ export type MobileStatusStreamEvent =
   | MobileStatusStreamTokenEvent
   | MobileStatusStreamTaskEvent;
 
+export interface MobileSessionStatusResponse {
+  activeSessions: MobileStatusSessionSnapshot[];
+  activeSessionIds: string[];
+  count: number;
+  session?: MobileStatusSessionSnapshot | null;
+  active?: boolean;
+  sessionId?: string;
+}
+
 export interface MobileStatusStreamHandlers {
   onEvent: (event: MobileStatusStreamEvent) => void;
   onOpen?: () => void;
@@ -1133,6 +1142,29 @@ export function normalizeMobileStatusStreamEvent(value: unknown): MobileStatusSt
   };
 }
 
+export function normalizeMobileSessionStatusResponse(value: unknown): MobileSessionStatusResponse {
+  const record = asRecord(value);
+  const activeSessions = normalizeArrayResponse(record?.activeSessions, [
+    "activeSessions",
+    "active_sessions",
+    "sessions",
+  ]).map(normalizeStatusSnapshot);
+  const sessionRecord = record?.session;
+  return {
+    activeSessions,
+    activeSessionIds: normalizeArrayResponse(record?.activeSessionIds, [
+      "activeSessionIds",
+      "active_session_ids",
+    ])
+      .map((entry) => (typeof entry === "string" ? entry : ""))
+      .filter(Boolean),
+    count: readNumber(record, ["count"]) ?? activeSessions.length,
+    session: sessionRecord ? normalizeStatusSnapshot(sessionRecord, 0) : null,
+    active: record?.active === true ? true : record?.active === false ? false : undefined,
+    sessionId: readString(record, ["sessionId", "session_id"]),
+  };
+}
+
 export function buildMobileStatusStreamUrl(profile: GatewayProfile): string {
   const url = new URL(profile.baseUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
@@ -1438,6 +1470,13 @@ export class CybaraMobileApi {
     return normalizeSessionDetail(
       await this.request<unknown>(`/api/sessions/${encodeURIComponent(id)}?includeFullToolCalls=1`),
       id
+    );
+  }
+
+  async sessionStatus(id?: string): Promise<MobileSessionStatusResponse> {
+    const query = id ? `?sessionId=${encodeURIComponent(id)}` : "";
+    return normalizeMobileSessionStatusResponse(
+      await this.request<unknown>(`/api/status/sessions${query}`)
     );
   }
 

@@ -1,10 +1,70 @@
 import type {
+  MobileStatusSessionSnapshot,
   MobileStatusStreamEvent,
   SessionDetailSummary,
   SessionProcessActivitySummary,
 } from "../lib/api";
 
 type StatusEvent = Extract<MobileStatusStreamEvent, { type: "status" }>;
+
+interface CachedMobileLiveAssistant {
+  message: SessionDetailSummary["messages"][number];
+  nowMs: number;
+  updatedAt: number;
+}
+
+const MOBILE_LIVE_ASSISTANT_STALE_MS = 15 * 60 * 1000;
+const mobileLiveAssistantCache = new Map<string, CachedMobileLiveAssistant>();
+
+function normalizeLiveSessionId(sessionId?: string | null): string | null {
+  const trimmed = typeof sessionId === "string" ? sessionId.trim() : "";
+  return trimmed || null;
+}
+
+export function readCachedMobileLiveAssistant(
+  sessionId?: string | null
+): CachedMobileLiveAssistant | null {
+  const key = normalizeLiveSessionId(sessionId);
+  if (!key) return null;
+  const cached = mobileLiveAssistantCache.get(key);
+  if (!cached) return null;
+  if (Date.now() - cached.updatedAt > MOBILE_LIVE_ASSISTANT_STALE_MS) {
+    mobileLiveAssistantCache.delete(key);
+    return null;
+  }
+  return {
+    message: {
+      ...cached.message,
+      processActivities: cached.message.processActivities?.map((activity) => ({ ...activity })),
+      toolCalls: cached.message.toolCalls?.map((toolCall) => ({ ...toolCall })),
+    },
+    nowMs: cached.nowMs,
+    updatedAt: cached.updatedAt,
+  };
+}
+
+export function writeCachedMobileLiveAssistant(
+  sessionId: string | null | undefined,
+  message: SessionDetailSummary["messages"][number],
+  nowMs = Date.now()
+): void {
+  const key = normalizeLiveSessionId(sessionId);
+  if (!key) return;
+  mobileLiveAssistantCache.set(key, {
+    message: {
+      ...message,
+      processActivities: message.processActivities?.map((activity) => ({ ...activity })),
+      toolCalls: message.toolCalls?.map((toolCall) => ({ ...toolCall })),
+    },
+    nowMs,
+    updatedAt: Date.now(),
+  });
+}
+
+export function clearCachedMobileLiveAssistant(sessionId?: string | null): void {
+  const key = normalizeLiveSessionId(sessionId);
+  if (key) mobileLiveAssistantCache.delete(key);
+}
 
 export function liveStatusPhase(event: StatusEvent): SessionProcessActivitySummary["phase"] | null {
   if (event.toolPhase) return event.toolPhase;
@@ -104,4 +164,20 @@ export function liveAssistantMessage(
       ],
     }
   );
+}
+
+export function liveAssistantFromStatusSnapshot(
+  sessionId: string,
+  current: SessionDetailSummary["messages"][number] | null,
+  snapshot: MobileStatusSessionSnapshot
+): SessionDetailSummary["messages"][number] {
+  const timestamp = typeof snapshot.timestamp === "number" ? snapshot.timestamp : Date.now();
+  const base = liveAssistantMessage(sessionId, current, timestamp);
+  return {
+    ...base,
+    processActivities:
+      snapshot.activities.length > 0
+        ? snapshot.activities.map((activity) => ({ ...activity }))
+        : base.processActivities,
+  };
 }

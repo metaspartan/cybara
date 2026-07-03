@@ -222,7 +222,7 @@ function createStatusStream(): ReadableStream<Uint8Array> {
     start(controller) {
       controllerRef = controller;
 
-      const initMsg = `data: ${JSON.stringify({ status: "idle", timestamp: Date.now() })}\n\n`;
+      const initMsg = `data: ${JSON.stringify(createStatusSnapshotEvent())}\n\n`;
       controller.enqueue(encoder.encode(initMsg));
 
       addSSEClient(controller);

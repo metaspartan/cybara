@@ -160,6 +160,13 @@ struct GatewayClient: Sendable {
         )
     }
 
+    func sessionStatus(_ id: String? = nil) async throws -> GatewayStatusEvent {
+        let queryItems = firstNonEmptyGatewayString(id).map {
+            [URLQueryItem(name: "sessionId", value: $0)]
+        } ?? []
+        return try await get("api/status/sessions", as: GatewayStatusEvent.self, queryItems: queryItems)
+    }
+
     func tasks() async throws -> [GatewayTask] {
         try await getList("api/tasks", keys: ["tasks", "items"])
     }

@@ -76,6 +76,11 @@ import {
 } from "@/lib/chatActivities";
 import { preprocessChatMarkdown } from "@/lib/chatMarkdownPreprocessor";
 import {
+  clearCachedLiveSessionState,
+  readCachedLiveSessionState,
+  writeCachedLiveSessionState,
+} from "./chat/liveSessionState";
+import {
   getToolCallsInTimelineOrder,
   DIFF_PANEL_MIN_WIDTH,
   PENDING_CAPTURE_TIMEOUT_MS,
@@ -2329,11 +2334,20 @@ export function Chat() {
   }, []);
 
   useEffect(() => {
-    setLiveStatus("idle");
-    setLiveActivities([]);
-    setStreamingContent(null);
-    setLiveCurrentStep(null);
-    runActivityBufferRef.current = [];
+    const cached = readCachedLiveSessionState(sessionId);
+    if (cached) {
+      setLiveStatus(cached.status);
+      setLiveActivities(cached.activities);
+      setStreamingContent(cached.streamingContent);
+      setLiveCurrentStep(cached.currentStep);
+      runActivityBufferRef.current = cached.activities.map((activity) => ({ ...activity }));
+    } else {
+      setLiveStatus("idle");
+      setLiveActivities([]);
+      setStreamingContent(null);
+      setLiveCurrentStep(null);
+      runActivityBufferRef.current = [];
+    }
     acceptEventsUntilRef.current = 0;
     if (!sessionId) {
       return;
@@ -2342,6 +2356,26 @@ export function Chat() {
     void hydrateSessionStatus(sessionId);
     return;
   }, [hydrateSessionStatus, sessionId]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    const hasLiveState =
+      liveStatus !== "idle" ||
+      liveActivities.length > 0 ||
+      !!liveCurrentStep ||
+      !!streamingContent ||
+      activeSessionIds.includes(sessionId);
+    if (!hasLiveState) {
+      clearCachedLiveSessionState(sessionId);
+      return;
+    }
+    writeCachedLiveSessionState(sessionId, {
+      status: liveStatus,
+      activities: liveActivities,
+      currentStep: liveCurrentStep,
+      streamingContent,
+    });
+  }, [activeSessionIds, liveActivities, liveCurrentStep, liveStatus, sessionId, streamingContent]);
 
   useEffect(() => {
     const disconnect = connectStatusStream({
@@ -2472,6 +2506,7 @@ export function Chat() {
             setStreamingContent(null);
             setLiveActivities([]);
             runActivityBufferRef.current = [];
+            clearCachedLiveSessionState(payloadSessionId || activeSession);
           }
           return;
         }
@@ -2585,6 +2620,7 @@ export function Chat() {
     }
     if (sessionId) {
       setActiveSessionIds((previous) => previous.filter((id) => id !== sessionId));
+      clearCachedLiveSessionState(sessionId);
     }
     setLiveStatus("idle");
     setLiveCurrentStep(null);

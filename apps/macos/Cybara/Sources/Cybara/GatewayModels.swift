@@ -1116,12 +1116,15 @@ struct GatewayStatusEvent: Decodable, Hashable {
     let delta: String?
     let activeSessions: [GatewaySessionStatusSnapshot]
     let activeSessionIds: [String]
+    let session: GatewaySessionStatusSnapshot?
+    let active: Bool?
 
     private enum CodingKeys: String, CodingKey {
         case type, status, detail, timestamp, sessionId, session_id, agentId, agent_id
         case toolName, tool_name, toolCallId, tool_call_id, sandboxProvider, sandbox_provider
         case toolPhase, tool_phase, durationMs, duration_ms, delta
         case activeSessions, active_sessions, activeSessionIds, active_session_ids
+        case session, active
     }
 
     init(from decoder: Decoder) throws {
@@ -1142,6 +1145,8 @@ struct GatewayStatusEvent: Decodable, Hashable {
             ?? ((try? container.decodeIfPresent([GatewaySessionStatusSnapshot].self, forKey: .active_sessions)) ?? [])
         activeSessionIds = (try? container.decodeIfPresent([String].self, forKey: .activeSessionIds))
             ?? ((try? container.decodeIfPresent([String].self, forKey: .active_session_ids)) ?? [])
+        session = try? container.decodeIfPresent(GatewaySessionStatusSnapshot.self, forKey: .session)
+        active = try? container.decodeIfPresent(Bool.self, forKey: .active)
     }
 }
 

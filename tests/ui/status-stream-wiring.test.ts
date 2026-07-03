@@ -9,6 +9,7 @@ const sidebarPath = fileURLToPath(
 const notificationsPath = fileURLToPath(
   new URL("../../ui/src/hooks/useNotifications.ts", import.meta.url)
 );
+const gatewayIndexPath = fileURLToPath(new URL("../../src/index.ts", import.meta.url));
 
 function readSource(path: string): string {
   return readFileSync(path, "utf8");
@@ -31,5 +32,11 @@ describe("status stream websocket wiring", () => {
     const source = readSource(notificationsPath);
     expect(source).toContain("connectStatusStream");
     expect(source).not.toContain("new EventSource(");
+  });
+
+  test("sse status stream sends an initial active-session snapshot", () => {
+    const source = readSource(gatewayIndexPath);
+    expect(source).toContain("JSON.stringify(createStatusSnapshotEvent())");
+    expect(source).not.toContain('JSON.stringify({ status: "idle", timestamp: Date.now() })');
   });
 });

@@ -3,6 +3,7 @@ import {
   buildMobileStatusStreamUrl,
   CybaraMobileApi,
   type SystemPromptConfig,
+  normalizeMobileSessionStatusResponse,
   normalizeMobileStatusStreamEvent,
   normalizeActivityLogs,
   normalizeMemoryItems,
@@ -75,6 +76,37 @@ describe("mobile API client", () => {
           activities: [{ text: "Exploring package.json", toolCallId: "read-1" }],
         },
       ],
+    });
+  });
+
+  test("normalizes scoped session status snapshots for chat hydration", () => {
+    const status = normalizeMobileSessionStatusResponse({
+      sessionId: "s1",
+      active: true,
+      activeSessionIds: ["s1"],
+      session: {
+        sessionId: "s1",
+        status: "tool_executing",
+        timestamp: 1783015200500,
+        detail: "Running bun test",
+        activities: [
+          {
+            id: "activity-1",
+            phase: "start",
+            text: "Running bun test",
+            timestamp: 1783015200400,
+            toolName: "exec_command",
+            toolCallId: "tool-1",
+          },
+        ],
+      },
+    });
+
+    expect(status.active).toBe(true);
+    expect(status.session?.sessionId).toBe("s1");
+    expect(status.session?.activities[0]).toMatchObject({
+      text: "Running bun test",
+      toolCallId: "tool-1",
     });
   });
 

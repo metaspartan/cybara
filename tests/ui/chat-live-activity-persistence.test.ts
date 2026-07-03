@@ -84,6 +84,14 @@ describe("Chat live activity persistence", () => {
     );
   });
 
+  test("restores cached live state when a chat route remounts", () => {
+    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    expect(source).toContain("readCachedLiveSessionState(sessionId)");
+    expect(source).toContain("writeCachedLiveSessionState(sessionId");
+    expect(source).toContain("clearCachedLiveSessionState(sessionId)");
+    expect(source).toContain("setStreamingContent(cached.streamingContent)");
+  });
+
   test("keeps streamed assistant text visible until the final assistant message is attached", () => {
     const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
     expect(source).toContain("if (!streamingContent || isLoading) return;");

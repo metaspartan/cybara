@@ -684,6 +684,39 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(nativeLiveActivities(from: snapshot.activeSessions[0]).first?.phase, .start)
     }
 
+    func testNativeStatusEventsDecodeScopedSessionStatusResponse() throws {
+        let status = try decodeStatusEvent(
+            #"""
+            {
+              "sessionId": "session-1",
+              "active": true,
+              "activeSessionIds": ["session-1"],
+              "session": {
+                "sessionId": "session-1",
+                "status": "tool_executing",
+                "timestamp": 1783015200600,
+                "detail": "Running bun test",
+                "activities": [
+                  {
+                    "id": "activity-1",
+                    "phase": "start",
+                    "text": "Running bun test",
+                    "timestamp": 1783015200500,
+                    "toolName": "exec_command",
+                    "toolCallId": "tool-1"
+                  }
+                ]
+              }
+            }
+            """#
+        )
+
+        XCTAssertEqual(status.sessionId, "session-1")
+        XCTAssertEqual(status.active, true)
+        XCTAssertEqual(status.session?.sessionId, "session-1")
+        XCTAssertEqual(status.session?.activities.first?.text, "Running bun test")
+    }
+
     func testChannelDisplayNamePrefersFirstNonEmptyGatewayLabel() throws {
         let named = try decodeChannel(#"{"id":"telegram-1","name":"  Telegram Ops  ","type":"telegram"}"#)
         let typeFallback = try decodeChannel(#"{"id":"slack-1","name":" ","type":" Slack "}"#)

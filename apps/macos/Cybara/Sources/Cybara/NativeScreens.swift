@@ -270,6 +270,7 @@ struct ChatScreen: View {
                 return
             }
             await loadMessages(selectedSessionID)
+            await hydrateStatus(selectedSessionID)
         }
         .onReceive(statusStream.$latest.compactMap { $0 }) { event in
             handleStatusEvent(event)
@@ -794,6 +795,19 @@ struct ChatScreen: View {
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    private func hydrateStatus(_ id: String) async {
+        do {
+            let status = try await client.sessionStatus(id)
+            guard selectedSessionID == id else { return }
+            let snapshot = status.session ?? status.activeSessions.first { $0.sessionId == id }
+            if let snapshot {
+                applyStatusSnapshot(snapshot)
+            } else if status.active == false, !sending {
+                resetLiveTimeline(clearStartedAt: true)
+            }
+        } catch {}
     }
 
     private func send() async {

@@ -20,6 +20,7 @@ import {
 } from "./dashboardSettingsPanels";
 import {
   useEffect,
+  useCallback,
   useMemo,
   useRef,
   useState,
@@ -220,9 +221,13 @@ import {
 } from "./dashboardHelpers";
 import { ChatMessageRow } from "./dashboardChat";
 import {
+  clearCachedMobileLiveAssistant,
   liveActivityFromStatusEvent,
+  liveAssistantFromStatusSnapshot,
   liveAssistantMessage,
   mergeLiveActivity,
+  readCachedMobileLiveAssistant,
+  writeCachedMobileLiveAssistant,
 } from "./dashboardLiveChat";
 import {
   EmptyState,
@@ -1861,10 +1866,32 @@ function SessionDetailPanel({
   const headerActionRef = useRef<() => void>(() => {});
   const sessionRefreshInFlight = useRef(false);
   const sendingRef = useRef(false);
+  const cachedLiveAssistant = readCachedMobileLiveAssistant(sessionId);
   const [liveAssistant, setLiveAssistant] = useState<
     SessionDetailSummary["messages"][number] | null
-  >(null);
-  const [liveNowMs, setLiveNowMs] = useState(Date.now());
+  >(() => cachedLiveAssistant?.message ?? null);
+  const [liveNowMs, setLiveNowMs] = useState(() => cachedLiveAssistant?.nowMs ?? Date.now());
+
+  const commitLiveAssistant = useCallback(
+    (
+      updater: (
+        current: SessionDetailSummary["messages"][number] | null
+      ) => SessionDetailSummary["messages"][number] | null,
+      nowMs = Date.now()
+    ) => {
+      setLiveNowMs(nowMs);
+      setLiveAssistant((current) => {
+        const next = updater(current);
+        if (next) {
+          writeCachedMobileLiveAssistant(sessionId, next, nowMs);
+        } else {
+          clearCachedMobileLiveAssistant(sessionId);
+        }
+        return next;
+      });
+    },
+    [sessionId]
+  );
 
   const loadSession = async (showLoading = false) => {
     if (sessionRefreshInFlight.current) return;
@@ -1885,6 +1912,39 @@ function SessionDetailPanel({
     }
   };
 
+  const hydrateLiveAssistant = useCallback(async () => {
+    try {
+      const status = await api.sessionStatus(sessionId);
+      const snapshot =
+        status.session || status.activeSessions.find((entry) => entry.sessionId === sessionId);
+      const snapshotAgeMs =
+        snapshot && typeof snapshot.timestamp === "number"
+          ? Date.now() - snapshot.timestamp
+          : Infinity;
+      const snapshotFresh = snapshotAgeMs <= 15 * 60 * 1000;
+      const snapshotStatus = String(snapshot?.status || "").toLowerCase();
+      const active =
+        !!snapshot &&
+        snapshotFresh &&
+        (status.active === true ||
+          status.activeSessionIds.includes(sessionId) ||
+          snapshotStatus === "thinking" ||
+          snapshotStatus === "generating" ||
+          snapshotStatus === "tool_executing" ||
+          snapshotStatus === "tool_completed");
+      if (!active || !snapshot) {
+        if (!sendingRef.current) {
+          commitLiveAssistant(() => null);
+        }
+        return;
+      }
+      commitLiveAssistant(
+        (current) => liveAssistantFromStatusSnapshot(sessionId, current, snapshot),
+        snapshot.timestamp
+      );
+    } catch {}
+  }, [api, commitLiveAssistant, sessionId]);
+
   useEffect(() => {
     if (typeof sessionSummary?.pinned === "boolean") {
       setPinned(sessionSummary.pinned);
@@ -1896,8 +1956,11 @@ function SessionDetailPanel({
   }, [sending]);
 
   useEffect(() => {
-    setLiveAssistant(null);
-  }, [sessionId]);
+    const cached = readCachedMobileLiveAssistant(sessionId);
+    setLiveAssistant(cached?.message ?? null);
+    setLiveNowMs(cached?.nowMs ?? Date.now());
+    void hydrateLiveAssistant();
+  }, [hydrateLiveAssistant, sessionId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1929,52 +1992,46 @@ function SessionDetailPanel({
       onEvent: (event) => {
         if (event.type === "assistant_token") {
           if (event.sessionId !== sessionId) return;
-          setLiveNowMs(event.timestamp);
-          setLiveAssistant((current) => {
+          commitLiveAssistant((current) => {
             const base = liveAssistantMessage(sessionId, current, event.timestamp);
             return {
               ...base,
               content: `${base.content || ""}${event.delta}`,
             };
-          });
+          }, event.timestamp);
           return;
         }
 
         if (event.type === "snapshot") {
           const snapshot = event.activeSessions.find((entry) => entry.sessionId === sessionId);
           if (!snapshot) return;
-          setLiveNowMs(snapshot.timestamp);
-          setLiveAssistant((current) => ({
-            ...liveAssistantMessage(sessionId, current, snapshot.timestamp),
-            processActivities:
-              snapshot.activities.length > 0
-                ? snapshot.activities
-                : liveAssistantMessage(sessionId, current, snapshot.timestamp).processActivities,
-          }));
+          commitLiveAssistant(
+            (current) => liveAssistantFromStatusSnapshot(sessionId, current, snapshot),
+            snapshot.timestamp
+          );
           return;
         }
 
         if (event.type !== "status" || event.sessionId !== sessionId) return;
-        setLiveNowMs(event.timestamp);
         if (event.status === "idle") {
           if (!sendingRef.current) {
-            setLiveAssistant(null);
+            commitLiveAssistant(() => null, event.timestamp);
           }
           return;
         }
         const activity = liveActivityFromStatusEvent(event);
         if (!activity) return;
-        setLiveAssistant((current) => {
+        commitLiveAssistant((current) => {
           const base = liveAssistantMessage(sessionId, current, event.timestamp);
           return {
             ...base,
             processActivities: mergeLiveActivity(base.processActivities || [], activity),
           };
-        });
+        }, event.timestamp);
       },
     });
     return disconnect;
-  }, [api, sessionId]);
+  }, [api, commitLiveAssistant, sessionId]);
 
   useEffect(() => {
     const interval = setInterval(
@@ -2021,8 +2078,7 @@ function SessionDetailPanel({
     resetComposerDraft();
     setSending(true);
     const liveStartedAt = Date.now();
-    setLiveNowMs(liveStartedAt);
-    setLiveAssistant(liveAssistantMessage(sessionId, null, liveStartedAt));
+    commitLiveAssistant(() => liveAssistantMessage(sessionId, null, liveStartedAt), liveStartedAt);
     const optimistic = {
       id: `local-${Date.now()}`,
       role: "user",
@@ -2057,14 +2113,13 @@ function SessionDetailPanel({
           : current
       );
       await loadSession(false);
-      setLiveAssistant(null);
+      commitLiveAssistant(() => null);
     } catch (error) {
       const messageText = error instanceof Error ? error.message : String(error);
       setComposerDraft(message);
       setLoadError(messageText);
       const failedAt = Date.now();
-      setLiveNowMs(failedAt);
-      setLiveAssistant((current) => {
+      commitLiveAssistant((current) => {
         const base = liveAssistantMessage(sessionId, current, failedAt);
         return {
           ...base,
@@ -2075,7 +2130,7 @@ function SessionDetailPanel({
             timestamp: failedAt,
           }),
         };
-      });
+      }, failedAt);
     } finally {
       setSending(false);
     }
