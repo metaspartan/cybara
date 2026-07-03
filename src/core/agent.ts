@@ -284,6 +284,14 @@ const CONVERSATION_SUMMARY_PREFIX =
   "[Earlier conversation summary — prior turns condensed to save context]";
 const MAX_AGENTIC_CONFIGURED_ITERATIONS = 10000;
 const MAX_AGENTIC_MAX_RUNTIME_MS = 24 * 60 * 60 * 1000;
+// Default bounds applied when nothing is explicitly configured. Without these
+// the agentic tool loop is unbounded — a model that keeps making distinct tool
+// calls (so the no-progress breaker never trips) runs until it voluntarily
+// stops, risking runaway spend and hung requests. Chosen generous enough not to
+// cut off legitimate multi-step turns; both are overridable via model params /
+// agent config / env up to the MAX_* ceilings above.
+const DEFAULT_AGENTIC_MAX_ITERATIONS = 300;
+const DEFAULT_AGENTIC_MAX_RUNTIME_MS = 30 * 60 * 1000;
 const DEFAULT_TOOL_LOOP_WARNING_THRESHOLD = 10;
 const DEFAULT_TOOL_LOOP_CRITICAL_THRESHOLD = 20;
 const DEFAULT_TOOL_LOOP_GLOBAL_CIRCUIT_BREAKER_THRESHOLD = 30;
@@ -2104,7 +2112,8 @@ class AgentManager {
     }
 
     const maxIterationsRaw = modelParamIterations ?? configIterations ?? envIterations;
-    const maxIterations = maxIterationsRaw ? clampIterations(maxIterationsRaw) : undefined;
+    // Fall back to a generous default cap instead of leaving the loop unbounded.
+    const maxIterations = clampIterations(maxIterationsRaw ?? DEFAULT_AGENTIC_MAX_ITERATIONS);
 
     const maxRuntimeMsRaw =
       modelRuntimeMs ??
@@ -2113,8 +2122,7 @@ class AgentManager {
       (configRuntimeSeconds ? configRuntimeSeconds * 1000 : undefined) ??
       envRuntimeMs ??
       (envRuntimeSeconds ? envRuntimeSeconds * 1000 : undefined);
-    const maxRuntimeMs =
-      typeof maxRuntimeMsRaw === "number" ? clampRuntimeMs(maxRuntimeMsRaw) : undefined;
+    const maxRuntimeMs = clampRuntimeMs(maxRuntimeMsRaw ?? DEFAULT_AGENTIC_MAX_RUNTIME_MS);
 
     return {
       maxIterations,
