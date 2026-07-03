@@ -3,6 +3,17 @@ import { spawn, ChildProcess } from "child_process";
 import { parseMcpHttpResponse, isHttpMcpUrl } from "./mcp-http";
 import { EventEmitter } from "events";
 
+/**
+ * Monotonic JSON-RPC request id. Using Date.now() (as before) collided when two
+ * calls landed in the same millisecond, cross-wiring one caller's handler onto
+ * another's response.
+ */
+let mcpRequestSeq = 0;
+export function nextMcpRequestId(): number {
+  mcpRequestSeq = (mcpRequestSeq + 1) % Number.MAX_SAFE_INTEGER;
+  return mcpRequestSeq;
+}
+
 interface MCPTool {
   name: string;
   description: string;
@@ -249,12 +260,17 @@ class MCPServerManager extends EventEmitter {
     if (!instance) return false;
 
     if (instance.process) {
-      instance.process.kill("SIGTERM");
+      // Capture the handle: `instance.process` is nulled synchronously below, so
+      // the escalation timer must hold its own reference or the SIGKILL guard
+      // (`instance.process && ...`) is always false and a SIGTERM-ignoring
+      // server is never force-killed.
+      const proc = instance.process;
+      proc.kill("SIGTERM");
 
       // Force kill after timeout
       setTimeout(() => {
-        if (instance.process && !instance.process.killed) {
-          instance.process.kill("SIGKILL");
+        if (!proc.killed) {
+          proc.kill("SIGKILL");
         }
       }, 5000);
     }
@@ -390,7 +406,7 @@ class MCPServerManager extends EventEmitter {
 
     const request = {
       jsonrpc: "2.0",
-      id: Date.now(),
+      id: nextMcpRequestId(),
       method: "tools/list",
       params: {},
     };
@@ -420,8 +436,13 @@ class MCPServerManager extends EventEmitter {
     }
 
     return new Promise((resolve, reject) => {
-      const requestId = Date.now();
+      const requestId = nextMcpRequestId();
+      const stdout = instance.process?.stdout;
       const timeout = setTimeout(() => {
+        // Remove the listener on timeout — otherwise every timed-out call leaks a
+        // handler that keeps parsing all future stdout traffic for the life of
+        // the server (unbounded memory + MaxListeners warnings).
+        stdout?.off("data", responseHandler);
         reject(new Error("MCP tool call timeout"));
       }, 30000);
 
@@ -435,7 +456,7 @@ class MCPServerManager extends EventEmitter {
               const msg = JSON.parse(line);
               if (msg.id === requestId) {
                 clearTimeout(timeout);
-                instance.process?.stdout?.off("data", responseHandler);
+                stdout?.off("data", responseHandler);
 
                 if (msg.error) {
                   reject(new Error(msg.error.message || "MCP tool error"));
@@ -453,7 +474,7 @@ class MCPServerManager extends EventEmitter {
         }
       };
 
-      instance.process?.stdout?.on("data", responseHandler);
+      stdout?.on("data", responseHandler);
 
       const request = {
         jsonrpc: "2.0",

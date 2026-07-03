@@ -286,3 +286,17 @@ describe("MCPServerManager error and namespacing paths", () => {
     expect(outcome.namespacedToolName).toMatch(/^mcp_[0-9a-f]{8}_sample_tool$/);
   });
 });
+
+describe("nextMcpRequestId", () => {
+  test("returns strictly increasing, collision-free ids (fixes Date.now() collisions)", async () => {
+    const { nextMcpRequestId } = await import("../../src/core/mcp");
+    const ids: number[] = [];
+    for (let i = 0; i < 1000; i++) ids.push(nextMcpRequestId());
+    // All unique.
+    expect(new Set(ids).size).toBe(ids.length);
+    // Monotonic within the run.
+    for (let i = 1; i < ids.length; i++) {
+      expect(ids[i]).toBeGreaterThan(ids[i - 1]);
+    }
+  });
+});
