@@ -8,12 +8,75 @@ interface PostinstallDeps {
   warn: (message: string) => void;
 }
 
+export interface RetryInstallOptions {
+  attempts?: number;
+  label?: string;
+  cleanup?: (attempt: number) => Promise<void>;
+  sleep?: (ms: number) => Promise<void>;
+  warn?: (message: string) => void;
+}
+
+/**
+ * Run an install step with retries, mirroring scripts/ci-install.sh: package
+ * registries occasionally serve a corrupted tarball ("Fail extracting
+ * tarball" / "IntegrityCheckFailed"), which a cache purge and retry rides
+ * out. One flaky download must not fail a release job or a fresh clone.
+ */
+export async function retryInstall(
+  run: () => Promise<void>,
+  options: RetryInstallOptions = {}
+): Promise<void> {
+  const attempts = Math.max(1, options.attempts ?? 3);
+  const label = options.label ?? "install";
+  const sleep =
+    options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const warn = options.warn ?? ((message: string) => console.warn(message));
+
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await run();
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= attempts) break;
+      warn(
+        `[postinstall] ${label} failed (attempt ${attempt}/${attempts}); clearing cache and retrying`
+      );
+      try {
+        await options.cleanup?.(attempt);
+      } catch {
+        // Best-effort cleanup; the retry itself decides success.
+      }
+      await sleep(attempt * 5000);
+    }
+  }
+  throw lastError;
+}
+
+function bunInstallDirCleanup(dir: string): (attempt: number) => Promise<void> {
+  return async () => {
+    await $`rm -rf ${dir}/node_modules`.nothrow();
+    await $`bun pm cache rm`.nothrow();
+  };
+}
+
 const defaultDeps: PostinstallDeps = {
   installUi: async () => {
-    await $`cd ui && bun install`;
+    await retryInstall(
+      async () => {
+        await $`cd ui && bun install`;
+      },
+      { label: "ui bun install", cleanup: bunInstallDirCleanup("ui") }
+    );
   },
   installMobile: async () => {
-    await $`cd apps/mobile && bun install`;
+    await retryInstall(
+      async () => {
+        await $`cd apps/mobile && bun install`;
+      },
+      { label: "mobile bun install", cleanup: bunInstallDirCleanup("apps/mobile") }
+    );
   },
   installPlaywright: async () => {
     await $`bunx playwright install`;
