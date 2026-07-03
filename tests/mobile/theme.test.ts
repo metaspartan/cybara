@@ -68,6 +68,18 @@ describe("mobile theming", () => {
     expect(src).toContain("isLiquidGlassAvailable");
     expect(src).toContain("GlassView");
     expect(src).toContain("useNativeGlassView");
+    // Also loads GlassContainer for Apple's recommended adjacent-glass grouping.
+    expect(src).toContain("GlassContainer");
+    expect(src).toContain("useNativeGlassContainer");
+  });
+
+  test("GlassGroup wraps clusters in a native GlassContainer with a plain-View fallback", () => {
+    const src = read("components/LiquidGlass.tsx");
+    expect(src).toContain("export function GlassGroup");
+    expect(src).toContain("useNativeGlassContainer");
+    expect(src).toContain("spacing");
+    // Falls back to a plain View when Liquid Glass isn't available.
+    expect(src).toMatch(/return <View style=\{style\}>\{children\}<\/View>/);
   });
 
   test("LiquidGlass and GlassPanel both use the native glass surface with a BlurView fallback", () => {

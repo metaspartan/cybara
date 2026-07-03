@@ -3,7 +3,29 @@ import { BlurView } from "expo-blur";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { colors, subscribeColors } from "../theme/liquidGlass";
 import { useThemeControls } from "../theme/ThemeContext";
-import { useNativeGlassView } from "./glassSupport";
+import { useNativeGlassContainer, useNativeGlassView } from "./glassSupport";
+
+/**
+ * Groups adjacent glass surfaces so they merge correctly on iOS 26 (Apple's
+ * recommended pattern). On the native path it renders a GlassContainer whose
+ * `spacing` controls when neighboring glass elements start blending; elsewhere
+ * it's a plain View, so callers can always wrap a cluster of panels/tiles.
+ */
+export function GlassGroup({
+  children,
+  style,
+  spacing = 12,
+}: PropsWithChildren<{ style?: StyleProp<ViewStyle>; spacing?: number }>) {
+  const GlassContainer = useNativeGlassContainer();
+  if (GlassContainer) {
+    return (
+      <GlassContainer spacing={spacing} style={style}>
+        {children}
+      </GlassContainer>
+    );
+  }
+  return <View style={style}>{children}</View>;
+}
 
 export function LiquidGlass({
   children,
