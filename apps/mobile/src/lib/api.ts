@@ -1394,9 +1394,7 @@ export class CybaraMobileApi {
           const payload = JSON.parse(String(event.data));
           const normalized = normalizeMobileStatusStreamEvent(payload);
           if (normalized) handlers.onEvent(normalized);
-        } catch {
-          // Ignore malformed frames from stale gateway builds or proxies.
-        }
+        } catch {}
       };
 
       socket.onclose = () => {
@@ -1410,9 +1408,7 @@ export class CybaraMobileApi {
         handlers.onError?.();
         try {
           socket?.close();
-        } catch {
-          // ignore
-        }
+        } catch {}
       };
     };
 
@@ -1423,9 +1419,7 @@ export class CybaraMobileApi {
       clearReconnect();
       try {
         socket?.close();
-      } catch {
-        // ignore
-      }
+      } catch {}
       socket = null;
     };
   }

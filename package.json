@@ -33,7 +33,7 @@
     "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.ts\" \"ui/src/**/*.{ts,tsx}\" \"apps/mobile/App.tsx\" \"apps/mobile/src/**/*.{ts,tsx}\"",
     "lint": "bun eslint --no-error-on-unmatched-pattern \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.ts\" \"apps/mobile/App.tsx\" \"apps/mobile/src/**/*.{ts,tsx}\"",
     "typecheck": "bunx tsc --noEmit",
-    "check:loc": "bun run scripts/check-ts-max-loc.ts --max 5500",
+    "check:loc": "bun run scripts/check-ts-max-loc.ts --max 5000",
     "deadcode:report": "bunx ts-prune src ui/src || true",
     "audit:root": "bun audit --audit-level=moderate",
     "audit:ui": "cd ui && bun audit --audit-level=moderate",

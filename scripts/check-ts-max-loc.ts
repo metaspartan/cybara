@@ -37,8 +37,8 @@ function countLines(path: string): number {
   return contents.split(/\r?\n/).length;
 }
 
-const maxLines = parseMaxArg(5500);
-const roots = ["src", "ui/src", "tests"];
+const maxLines = parseMaxArg(5000);
+const roots = ["src", "ui/src", "tests", "apps/mobile", "scripts"];
 const existingRoots = roots.filter((root) => {
   try {
     return statSync(root).isDirectory();
@@ -47,10 +47,6 @@ const existingRoots = roots.filter((root) => {
   }
 });
 
-// Legacy large modules that previously exceeded the LOC guard. Both have now
-// been decomposed under the 5500-line limit (IDE.tsx split into ui/src/pages/ide/*,
-// routes.ts split into src/api/routes/_shared.ts), so the exception list is empty.
-// Kept as a mechanism so future intentional exceptions can be documented here.
 const LOC_EXCEPTIONS: ReadonlySet<string> = new Set<string>([]);
 
 const files = existingRoots.flatMap((root) => collectTsFiles(root));
@@ -65,7 +61,7 @@ console.log(`Checked ${stats.length} TypeScript files (max ${maxLines} LOC per f
 console.log("Top 10 largest files:");
 for (const item of largest) {
   const flagged = item.lines > maxLines && !LOC_EXCEPTIONS.has(item.path) ? "  <-- OVER" : "";
-  const exempt = LOC_EXCEPTIONS.has(item.path) ? "  (exempt: legacy monolith)" : "";
+  const exempt = LOC_EXCEPTIONS.has(item.path) ? "  (exempt)" : "";
   console.log(`  ${item.lines.toString().padStart(5)}  ${item.path}${flagged}${exempt}`);
 }
 
