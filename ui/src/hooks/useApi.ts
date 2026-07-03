@@ -618,7 +618,7 @@ export function useSearchMemory(query: string) {
       const response = await fetchApi<{ results: Array<{ file: string; entry: MemoryEntry }> }>(
         `/memory/search?query=${encodeURIComponent(query)}`
       );
-      return response.results.map((r) => r.entry);
+      return response.results;
     },
     enabled: query.length > 0,
   });
@@ -628,7 +628,7 @@ export function useDeleteMemory() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ file, index }: { file: string; index?: number }) =>
-      fetchApi<void>(`/memory/${file}`, {
+      fetchApi<void>(`/memory/${encodeURIComponent(file)}`, {
         method: "DELETE",
         body: index !== undefined ? JSON.stringify({ index }) : undefined,
       }),
@@ -640,7 +640,7 @@ export function useUpdateMemory() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ file, index, content }: { file: string; index: number; content: string }) =>
-      fetchApi<void>(`/memory/${file}`, {
+      fetchApi<void>(`/memory/${encodeURIComponent(file)}`, {
         method: "PUT",
         body: JSON.stringify({ index, content }),
       }),

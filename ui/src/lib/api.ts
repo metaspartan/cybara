@@ -776,11 +776,11 @@ export const memoryApi = {
     return fetchApi<Memory[]>(`/memory?${query.toString()}`);
   },
   createFile: (file: string, content: string) =>
-    fetchApi<{ success: boolean; file: string }>("/memory", {
+    fetchApi<{ success: boolean; file: string; appended?: boolean }>("/memory", {
       method: "POST",
       body: JSON.stringify({ file, content }),
     }),
-  get: (id: string) => fetchApi<Memory>(`/memory/${id}`),
+  get: (id: string) => fetchApi<Memory>(`/memory/${encodeURIComponent(id)}`),
   status: () =>
     fetchApi<{
       success: boolean;
@@ -793,8 +793,8 @@ export const memoryApi = {
   create: (memory: Omit<Memory, "id" | "createdAt" | "updatedAt">) =>
     fetchApi<Memory>("/memory", { method: "POST", body: JSON.stringify(memory) }),
   update: (id: string, memory: Partial<Memory>) =>
-    fetchApi<Memory>(`/memory/${id}`, { method: "PUT", body: JSON.stringify(memory) }),
-  delete: (id: string) => fetchApi<void>(`/memory/${id}`, { method: "DELETE" }),
+    fetchApi<Memory>(`/memory/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(memory) }),
+  delete: (id: string) => fetchApi<void>(`/memory/${encodeURIComponent(id)}`, { method: "DELETE" }),
   search: (query: string, limit?: number) =>
     fetchApi<Memory[] | { results: Memory[] }>(
       `/memory/search?query=${encodeURIComponent(query)}${limit ? `&limit=${limit}` : ""}`

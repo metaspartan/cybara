@@ -3283,6 +3283,10 @@ const routes: Record<string, RouteHandler> = {
   },
   "POST /api/tasks": (body) =>
     taskScheduler.create(body as Parameters<typeof taskScheduler.create>[0]),
+  "PUT /api/tasks/:id": (body, params) => {
+    const task = taskScheduler.update(params!.id, body as Parameters<typeof taskScheduler.update>[1]);
+    return task || { error: "Task not found" };
+  },
   "POST /api/tasks/:id/start": async (_body, params) => ({
     success: await taskScheduler.start(params!.id),
   }),
@@ -4422,30 +4426,49 @@ const routes: Record<string, RouteHandler> = {
   },
 
   "GET /api/metrics/time-series": () => {
-    const days: Array<Record<string, string | number>> = [];
     const today = new Date();
+    const dateKeys: string[] = [];
 
     for (let i = 29; i >= 0; i--) {
       const date = new Date(today);
       date.setDate(date.getDate() - i);
-      const dateStr = date.toISOString().split("T")[0];
+      dateKeys.push(date.toISOString().split("T")[0]);
+    }
 
-      let dailyTotals = tables.metrics.getDailyTotals(dateStr) as Array<{
-        type: string;
-        total: number;
-      }>;
+    const startDate = dateKeys[0];
+    const endDate = new Date(today);
+    endDate.setDate(endDate.getDate() + 1);
+    const endDateExclusive = endDate.toISOString().split("T")[0];
+    const daysByDate = new Map<string, Record<string, string | number>>();
+    for (const date of dateKeys) {
+      daysByDate.set(date, { date });
+    }
 
-      if (dailyTotals.length === 0) {
-        dailyTotals = tables.metrics.getDailyTotalsFromRaw(dateStr);
-      }
+    const storedDailyTotals = tables.metrics.getDailyTotalsRange(startDate, endDateExclusive);
+    const datesWithStoredTotals = new Set<string>();
+    for (const total of storedDailyTotals) {
+      const dayData = daysByDate.get(total.date);
+      if (!dayData) continue;
+      dayData[total.type] = total.total;
+      datesWithStoredTotals.add(total.date);
+    }
 
-      const dayData: Record<string, string | number> = { date: dateStr };
-      for (const total of dailyTotals) {
-        dayData[total.type] = total.total;
-      }
+    const rawDailyTotals = tables.metrics.getDailyTotalsFromRawRange(
+      `${startDate} 00:00:00`,
+      `${endDateExclusive} 00:00:00`
+    );
+    for (const total of rawDailyTotals) {
+      if (datesWithStoredTotals.has(total.date)) continue;
+      const dayData = daysByDate.get(total.date);
+      if (!dayData) continue;
+      dayData[total.type] = total.total;
+    }
 
-      const hasMetricData = Object.keys(dayData).some((k) => k !== "date");
-      if (!hasMetricData) {
+    for (const dateStr of dateKeys) {
+      const dayData = daysByDate.get(dateStr);
+      if (!dayData) continue;
+
+      if (!Object.keys(dayData).some((key) => key !== "date")) {
         try {
           const logCounts = getDailyLogCounts(dateStr);
           const totalActivity =
@@ -4460,11 +4483,9 @@ const routes: Record<string, RouteHandler> = {
           // Tables might not exist, ignore
         }
       }
-
-      days.push(dayData);
     }
 
-    return { days };
+    return { days: dateKeys.map((date) => daysByDate.get(date) || { date }) };
   },
 
   "GET /api/metrics/models": () => ({ models: getModelMetrics() }),

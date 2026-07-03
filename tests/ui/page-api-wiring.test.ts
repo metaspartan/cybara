@@ -151,7 +151,13 @@ describe("UI page API wiring", () => {
     const source = readPage("Memory.tsx");
 
     expect(source).toMatch(/import\s*\{[^}]*\bmemoryApi\b[^}]*\}\s*from\s*['"]@\/lib\/api['"]/);
+    expect(source).toContain("useUpdateMemory");
+    expect(source).toContain("useDeleteMemory");
     expect(source).toContain("memoryApi.createFile(file, content)");
+    expect(source).toContain("updateMemory.mutateAsync({ file, index, content })");
+    expect(source).toContain("deleteMemory.mutateAsync({");
+    expect(source).toContain("file: deletingEntry.file");
+    expect(source).toContain("index: deletingEntry.index");
     expect(source).not.toContain("apiFetch('/api/memory'");
   });
 

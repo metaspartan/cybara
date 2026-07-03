@@ -71,4 +71,39 @@ describe("native macOS shell wiring", () => {
     expect(toolTimeline).toContain("func nativeToolActivities");
     expect(nativeScreens).toContain("NativeToolTimelineView(message: message)");
   });
+
+  test("native memory screen uses gateway CRUD/search routes with encoded filenames", () => {
+    const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
+    const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
+    const configScreens = readFileSync(join(MACOS_APP_DIR, "NativeConfigScreens.swift"), "utf8");
+    const modelTests = readFileSync(
+      join(ROOT_DIR, "apps", "macos", "Cybara", "Tests", "CybaraTests", "GatewayClientModelTests.swift"),
+      "utf8"
+    );
+
+    expect(gatewayClient).toContain("private func pathSegment");
+    expect(gatewayClient).toContain('allowed.remove(charactersIn: "/")');
+    expect(gatewayClient).toContain('try await get("api/memory", as: GatewayMemoryList.self)');
+    expect(gatewayClient).toContain('"api/memory/search"');
+    expect(gatewayClient).toContain("GatewayMemorySearchResponse.self");
+    expect(gatewayClient).toContain('"api/memory/\\(pathSegment(file))"');
+    expect(gatewayClient).toContain('method: "PUT"');
+    expect(gatewayClient).toContain('method: "DELETE"');
+
+    expect(gatewayModels).toContain("struct GatewayMemoryEntry");
+    expect(gatewayModels).toContain("struct GatewayMemoryList");
+    expect(gatewayModels).toContain("struct GatewayMemorySearchResponse");
+    expect(gatewayModels).toContain("struct GatewayMemoryCreateResponse");
+
+    expect(configScreens).toContain("TextField(\"Search memory\"");
+    expect(configScreens).toContain("Button(saving ? \"Saving...\" : \"Add Entry\")");
+    expect(configScreens).toContain("editingEntry = MemoryEditDraft");
+    expect(configScreens).toContain("client.updateMemory(file: draft.file, index: draft.index");
+    expect(configScreens).toContain("client.deleteMemory(file: file, index: index)");
+    expect(configScreens).toContain("MemoryEditSheet");
+
+    expect(modelTests).toContain("testMemoryListDecodesFilesAndEntries");
+    expect(modelTests).toContain("testMemorySearchResponseDecodesGatewayResults");
+    expect(modelTests).toContain("testMemoryCreateResponseDecodesGatewaySuccessShape");
+  });
 });

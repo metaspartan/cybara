@@ -16,6 +16,8 @@ interface RevertMessageInput {
   timestamp?: string;
 }
 
+const CHAT_SESSION_LIST_LIMIT = 150;
+
 export function useChat(agentId?: string) {
   const activeRequestAbortRef = useRef<AbortController | null>(null);
   const queryClient = useQueryClient();
@@ -188,11 +190,12 @@ export function useChat(agentId?: string) {
   };
 }
 
-export function useSessions() {
+export function useSessions(options?: { limit?: number }) {
+  const limit = options?.limit ?? CHAT_SESSION_LIST_LIMIT;
   return useQuery({
-    queryKey: ['sessions'],
+    queryKey: ['sessions', { limit }],
     queryFn: async () => {
-      const response = await chatApi.getSessions();
+      const response = await chatApi.getSessions({ limit });
       if (response.success && response.data) {
         return response.data;
       }

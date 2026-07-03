@@ -10,12 +10,19 @@ describe("Tauri wiring", () => {
     const confPath = join(ROOT_DIR, "src-tauri", "tauri.conf.json");
     const conf = JSON.parse(readFileSync(confPath, "utf8")) as {
       build?: { frontendDist?: string; beforeDevCommand?: string };
-      bundle?: { resources?: string[]; externalBin?: string[] };
+      bundle?: { resources?: string[] | Record<string, string>; externalBin?: string[] };
     };
 
     expect(conf.build?.frontendDist).toBe("../ui/dist");
     expect(conf.build?.beforeDevCommand).toContain("bun run dev");
-    expect(conf.bundle?.resources).toContain("../ui/dist/**/*");
+    if (Array.isArray(conf.bundle?.resources)) {
+      expect(conf.bundle?.resources).toContain("../ui/dist/**/*");
+    } else {
+      expect(conf.bundle?.resources).toMatchObject({
+        "bin/ui/dist": "ui/dist",
+        "bin/node_modules": "node_modules",
+      });
+    }
     expect(conf.bundle?.externalBin).toContain("bin/cybara");
   });
 
@@ -29,6 +36,19 @@ describe("Tauri wiring", () => {
     expect(mainRs).toContain("window.navigate(CYBARA_SERVER_URL.parse().unwrap())");
     expect(mainRs).toContain('.env("CYBARA_HOST", "127.0.0.1")');
     expect(mainRs).toContain("child.kill()");
+  });
+
+  test("main.rs exposes a narrow desktop API key reader command", () => {
+    const mainRsPath = join(ROOT_DIR, "src-tauri", "src", "main.rs");
+    const mainRs = readFileSync(mainRsPath, "utf8");
+
+    expect(mainRs).toContain("#[tauri::command]");
+    expect(mainRs).toContain("fn read_cybara_api_key()");
+    expect(mainRs).toContain("tauri::generate_handler![read_cybara_api_key]");
+    expect(mainRs).toContain('std::env::var("CYBARA_API_KEY")');
+    expect(mainRs).toContain('std::env::var_os("CYBARA_HOME")');
+    expect(mainRs).toContain('std::env::var_os("USERPROFILE")');
+    expect(mainRs).toContain('home.join("api_key")');
   });
 
   test("main.rs preserves sidecar lifecycle and verifies existing server identity", () => {

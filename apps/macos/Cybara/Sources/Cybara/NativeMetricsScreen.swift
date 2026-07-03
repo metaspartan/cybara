@@ -12,9 +12,6 @@ struct MetricsScreen: View {
     private let summaryColumns = [
         GridItem(.adaptive(minimum: 172, maximum: 260), spacing: 12, alignment: .top),
     ]
-    private let panelColumns = [
-        GridItem(.adaptive(minimum: 340), spacing: 16, alignment: .top),
-    ]
 
     var body: some View {
         ScrollView {
@@ -91,7 +88,7 @@ struct MetricsScreen: View {
             )
         }
 
-        LazyVGrid(columns: panelColumns, spacing: 16) {
+        MetricsResponsiveColumns {
             MetricsPanel(
                 title: "30-Day Activity",
                 subtitle: "Daily metric volume across the gateway",
@@ -237,7 +234,7 @@ struct MetricsScreen: View {
                 MetricsPathList(title: "Most Written", rows: Array(snapshot.files?.mostWritten.prefix(5) ?? []), tint: .orange)
                 MetricsPathList(title: "Most Edited", rows: Array(snapshot.files?.mostEdited.prefix(5) ?? []), tint: .purple)
             }
-
+        } right: {
             MetricsPanel(
                 title: "Providers",
                 subtitle: "Tokens, hits, and provider balance",
@@ -466,6 +463,37 @@ private struct NativeStorageCategoryEntry: Identifiable, Hashable {
         self.label = label
         bytes = component?.bytes ?? 0
         path = component?.path ?? ""
+    }
+}
+
+private struct MetricsResponsiveColumns<Left: View, Right: View>: View {
+    let left: Left
+    let right: Right
+
+    init(@ViewBuilder left: () -> Left, @ViewBuilder right: () -> Right) {
+        self.left = left()
+        self.right = right()
+    }
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 16) {
+                    left
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                VStack(alignment: .leading, spacing: 16) {
+                    right
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+
+            VStack(alignment: .leading, spacing: 16) {
+                left
+                right
+            }
+        }
     }
 }
 

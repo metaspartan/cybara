@@ -9,6 +9,7 @@ struct NativeSettingsScreen: View {
     @Environment(\.openURL) private var openURL
 
     @State private var selectedTab: SettingsTab = .general
+    @State private var advancedSelection: SettingsAdvancedSection = .router
     @State private var health: GatewayHealth?
     @State private var config: [String: Any] = [:]
     @State private var providers: [GatewayProvider] = []
@@ -41,6 +42,7 @@ struct NativeSettingsScreen: View {
                 appearanceTab.tabItem { Label("Appearance", systemImage: "paintpalette") }.tag(SettingsTab.appearance)
                 modelTab.tabItem { Label("Model", systemImage: "brain") }.tag(SettingsTab.model)
                 featuresTab.tabItem { Label("Features", systemImage: "slider.horizontal.3") }.tag(SettingsTab.features)
+                advancedTab.tabItem { Label("Advanced", systemImage: "square.grid.3x3") }.tag(SettingsTab.advanced)
             }
 
             if let error {
@@ -340,6 +342,45 @@ struct NativeSettingsScreen: View {
         }
     }
 
+    private var advancedTab: some View {
+        HStack(spacing: 0) {
+            List(selection: $advancedSelection) {
+                ForEach(SettingsAdvancedSection.allCases) { section in
+                    Label(section.title, systemImage: section.systemImage)
+                        .tag(section)
+                }
+            }
+            .listStyle(.sidebar)
+            .frame(width: 190)
+
+            Divider().opacity(0.35)
+
+            advancedContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding(.vertical, 12)
+    }
+
+    @ViewBuilder
+    private var advancedContent: some View {
+        switch advancedSelection {
+        case .router:
+            RouterScreen(client: client)
+        case .systemPrompt:
+            SystemPromptScreen(client: client)
+        case .memory:
+            MemoryScreen(client: client)
+        case .channels:
+            ChannelsScreen(client: client)
+        case .wallet:
+            WalletScreen(client: client)
+        case .skills:
+            SkillsScreen(client: client)
+        case .logs:
+            LogsScreen(client: client)
+        }
+    }
+
     private var uptimeLabel: String {
         guard let uptime = health?.uptime, uptime > 0 else { return "Starting" }
         let minutes = Int(uptime) / 60
@@ -520,6 +561,43 @@ struct NativeSettingsScreen: View {
         case appearance
         case model
         case features
+        case advanced
+    }
+
+    private enum SettingsAdvancedSection: String, CaseIterable, Identifiable {
+        case router
+        case systemPrompt
+        case memory
+        case channels
+        case wallet
+        case skills
+        case logs
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .router: return "Model Router"
+            case .systemPrompt: return "System Prompt"
+            case .memory: return "Memory"
+            case .channels: return "Channels"
+            case .wallet: return "Wallet"
+            case .skills: return "Skills"
+            case .logs: return "Logs"
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .router: return "point.3.connected.trianglepath.dotted"
+            case .systemPrompt: return "sparkles"
+            case .memory: return "brain"
+            case .channels: return "link"
+            case .wallet: return "creditcard"
+            case .skills: return "wand.and.stars"
+            case .logs: return "list.bullet.rectangle"
+            }
+        }
     }
 }
 

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import type { FeatureSummary } from "../../apps/mobile/src/lib/api";
 import type { GatewayProfile } from "../../apps/mobile/src/lib/connection";
 import {
@@ -47,6 +48,11 @@ import {
   readMobileToolApprovalMode,
   summarizeFeatureCounts,
 } from "../../apps/mobile/src/lib/dashboard";
+
+const dashboardScreenSource = readFileSync(
+  new URL("../../apps/mobile/src/screens/DashboardScreen.tsx", import.meta.url),
+  "utf8"
+);
 
 const profile: GatewayProfile = {
   id: "local",
@@ -309,9 +315,22 @@ describe("mobile dashboard model", () => {
 
   test("keeps metrics live without an in-page refresh button", () => {
     expect(MOBILE_METRICS_CHROME.headerRefreshButton).toBe(false);
+    expect(MOBILE_METRICS_CHROME.lazyLoadUntilOpened).toBe(true);
     expect(MOBILE_METRICS_CHROME.pullToRefresh).toBe(true);
     expect(MOBILE_METRICS_CHROME.liveRefreshMs).toBeLessThan(
       MOBILE_METRICS_CHROME.backgroundRefreshMs
+    );
+  });
+
+  test("does not fetch all metrics on initial dashboard load before metrics opens", () => {
+    expect(dashboardScreenSource).toContain("const hasLoadedMetrics = metrics !== null;");
+    expect(dashboardScreenSource).toContain("const shouldRefreshMetrics =");
+    expect(dashboardScreenSource).toContain('activeTab === "metrics" || hasLoadedMetrics');
+    expect(dashboardScreenSource).toContain(
+      "shouldRefreshMetrics ? refreshMetrics({ force: true }) : Promise.resolve()"
+    );
+    expect(dashboardScreenSource).toContain(
+      'activeTab !== "metrics" && !hasLoadedMetrics'
     );
   });
 

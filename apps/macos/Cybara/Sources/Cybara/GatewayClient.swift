@@ -39,7 +39,8 @@ struct GatewayClient: Sendable {
         body: Data? = nil,
         queryItems: [URLQueryItem] = []
     ) async throws -> Data {
-        var url = baseURL.appendingPathComponent(path)
+        var url = URL(string: path, relativeTo: baseURL)?.absoluteURL
+            ?? baseURL.appendingPathComponent(path)
         if !queryItems.isEmpty,
            var components = URLComponents(url: url, resolvingAgainstBaseURL: false) {
             components.queryItems = (components.queryItems ?? []) + queryItems
@@ -61,6 +62,12 @@ struct GatewayClient: Sendable {
             throw GatewayClientError.badStatus(http.statusCode, String(data: data, encoding: .utf8) ?? "")
         }
         return data
+    }
+
+    private func pathSegment(_ value: String) -> String {
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "/")
+        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
 
     private func get<T: Decodable>(
@@ -134,8 +141,14 @@ struct GatewayClient: Sendable {
         try await getList("api/providers/\(id)/models", keys: ["models", "items"])
     }
 
-    func sessions() async throws -> [GatewaySession] {
-        try await getList("api/sessions", keys: ["sessions", "items"])
+    func sessions(limit: Int? = 150) async throws -> [GatewaySession] {
+        let queryItems: [URLQueryItem]
+        if let limit {
+            queryItems = [URLQueryItem(name: "limit", value: "\(max(1, limit))")]
+        } else {
+            queryItems = []
+        }
+        return try await getList("api/sessions", keys: ["sessions", "items"], queryItems: queryItems)
     }
 
     func sessionMessages(_ id: String) async throws -> [GatewaySessionMessage] {
@@ -149,6 +162,10 @@ struct GatewayClient: Sendable {
 
     func tasks() async throws -> [GatewayTask] {
         try await getList("api/tasks", keys: ["tasks", "items"])
+    }
+
+    func taskRuns(_ id: String) async throws -> [GatewayTaskRun] {
+        try await getList("api/tasks/\(id)/runs", keys: ["runs", "items"])
     }
 
     func mobileDevices() async throws -> [GatewayMobileDevice] {
@@ -211,8 +228,96 @@ struct GatewayClient: Sendable {
     }
 
     @discardableResult
+    func createTask(
+        name: String,
+        description: String,
+        agentID: String?,
+        action: String,
+        schedule: String,
+        enabled: Bool
+    ) async throws -> Data {
+        let body = try JSONSerialization.data(
+            withJSONObject: taskPayload(
+                name: name,
+                description: description,
+                agentID: agentID,
+                action: action,
+                schedule: schedule,
+                enabled: enabled
+            )
+        )
+        return try await request("api/tasks", method: "POST", body: body)
+    }
+
+    @discardableResult
+    func updateTask(
+        _ id: String,
+        name: String,
+        description: String,
+        agentID: String?,
+        action: String,
+        schedule: String,
+        enabled: Bool
+    ) async throws -> Data {
+        let body = try JSONSerialization.data(
+            withJSONObject: taskPayload(
+                name: name,
+                description: description,
+                agentID: agentID,
+                action: action,
+                schedule: schedule,
+                enabled: enabled
+            )
+        )
+        return try await request("api/tasks/\(id)", method: "PUT", body: body)
+    }
+
+    @discardableResult
+    func deleteTask(_ id: String) async throws -> Data {
+        try await request("api/tasks/\(id)", method: "DELETE")
+    }
+
+    @discardableResult
+    func startTask(_ id: String) async throws -> Data {
+        try await request("api/tasks/\(id)/start", method: "POST")
+    }
+
+    @discardableResult
+    func stopTask(_ id: String) async throws -> Data {
+        try await request("api/tasks/\(id)/stop", method: "POST")
+    }
+
+    @discardableResult
+    func triggerTask(_ id: String) async throws -> Data {
+        try await request("api/tasks/\(id)/trigger", method: "POST")
+    }
+
+    @discardableResult
     func runTask(_ id: String) async throws -> Data {
         try await request("api/tasks/\(id)/run", method: "POST")
+    }
+
+    private func taskPayload(
+        name: String,
+        description: String,
+        agentID: String?,
+        action: String,
+        schedule: String,
+        enabled: Bool
+    ) -> [String: Any] {
+        var payload: [String: Any] = [
+            "name": name.trimmingCharacters(in: .whitespacesAndNewlines),
+            "description": description.trimmingCharacters(in: .whitespacesAndNewlines),
+            "action": action.trimmingCharacters(in: .whitespacesAndNewlines),
+            "schedule": schedule.trimmingCharacters(in: .whitespacesAndNewlines),
+            "enabled": enabled,
+        ]
+        if let agentID = firstNonEmptyGatewayString(agentID) {
+            payload["agent_id"] = agentID
+        } else {
+            payload["agent_id"] = NSNull()
+        }
+        return payload
     }
 
     // ─── Raw-object config round-trips ───────────────────────────────────────
@@ -271,9 +376,56 @@ struct GatewayClient: Sendable {
 
     // ─── Memory ──────────────────────────────────────────────────────────────
 
+    func memoryList() async throws -> GatewayMemoryList {
+        try await get("api/memory", as: GatewayMemoryList.self)
+    }
+
     func memoryFiles() async throws -> [String] {
-        let object = try await rawObject("api/memory")
-        return (object["files"] as? [String]) ?? []
+        (try await memoryList()).files
+    }
+
+    func searchMemory(_ query: String) async throws -> [GatewayMemorySearchResult] {
+        try await get(
+            "api/memory/search",
+            as: GatewayMemorySearchResponse.self,
+            queryItems: [URLQueryItem(name: "query", value: query)]
+        ).results
+    }
+
+    func createMemory(file: String, content: String) async throws -> GatewayMemoryCreateResponse {
+        let body = try JSONSerialization.data(
+            withJSONObject: [
+                "file": file.trimmingCharacters(in: .whitespacesAndNewlines),
+                "content": content,
+            ]
+        )
+        let data = try await request("api/memory", method: "POST", body: body)
+        return try JSONDecoder().decode(GatewayMemoryCreateResponse.self, from: data)
+    }
+
+    func updateMemory(file: String, index: Int, content: String) async throws -> GatewaySuccessResponse {
+        let body = try JSONSerialization.data(withJSONObject: ["index": index, "content": content])
+        let data = try await request(
+            "api/memory/\(pathSegment(file))",
+            method: "PUT",
+            body: body
+        )
+        return try JSONDecoder().decode(GatewaySuccessResponse.self, from: data)
+    }
+
+    func deleteMemory(file: String, index: Int? = nil) async throws -> GatewaySuccessResponse {
+        let body: Data?
+        if let index {
+            body = try JSONSerialization.data(withJSONObject: ["index": index])
+        } else {
+            body = nil
+        }
+        let data = try await request(
+            "api/memory/\(pathSegment(file))",
+            method: "DELETE",
+            body: body
+        )
+        return try JSONDecoder().decode(GatewaySuccessResponse.self, from: data)
     }
 
     // ─── Metrics ─────────────────────────────────────────────────────────────

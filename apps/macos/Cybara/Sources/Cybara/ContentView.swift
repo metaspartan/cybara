@@ -61,14 +61,7 @@ enum NativeDestination: String, CaseIterable, Identifiable {
     case agents
     case providers
     case tasks
-    case memory
     case metrics
-    case router
-    case systemPrompt
-    case channels
-    case wallet
-    case skills
-    case logs
     case settings
     case webUI
 
@@ -82,14 +75,7 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .agents: return "Agents"
         case .providers: return "Providers"
         case .tasks: return "Tasks"
-        case .memory: return "Memory"
         case .metrics: return "Metrics"
-        case .router: return "Model Router"
-        case .systemPrompt: return "System Prompt"
-        case .channels: return "Channels"
-        case .wallet: return "Wallet"
-        case .skills: return "Skills"
-        case .logs: return "Logs"
         case .settings: return "Settings"
         case .webUI: return "Web UI"
         }
@@ -103,14 +89,7 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .agents: return "cpu"
         case .providers: return "shippingbox"
         case .tasks: return "calendar.badge.clock"
-        case .memory: return "brain"
         case .metrics: return "chart.bar"
-        case .router: return "point.3.connected.trianglepath.dotted"
-        case .systemPrompt: return "sparkles"
-        case .channels: return "link"
-        case .wallet: return "creditcard"
-        case .skills: return "wand.and.stars"
-        case .logs: return "list.bullet.rectangle"
         case .settings: return "gearshape"
         case .webUI: return "globe"
         }
@@ -201,19 +180,13 @@ struct ContentView: View {
 
             List(selection: $destination) {
                 Section {
-                    ForEach([NativeDestination.dashboard, .chat, .mobile, .agents, .providers, .tasks]) { item in
-                        Label(item.title, systemImage: item.systemImage)
-                            .tag(item)
-                    }
-                }
-                Section("Intelligence") {
-                    ForEach([NativeDestination.memory, .metrics, .router, .systemPrompt, .channels, .wallet, .skills]) { item in
+                    ForEach([NativeDestination.dashboard, .chat, .agents, .providers, .tasks, .metrics, .mobile]) { item in
                         Label(item.title, systemImage: item.systemImage)
                             .tag(item)
                     }
                 }
                 Section("System") {
-                    ForEach([NativeDestination.logs, .settings, .webUI]) { item in
+                    ForEach([NativeDestination.settings, .webUI]) { item in
                         Label(item.title, systemImage: item.systemImage)
                             .tag(item)
                     }
@@ -245,23 +218,12 @@ struct ContentView: View {
             case .providers:
                 ProvidersScreen(client: client)
             case .tasks:
-                TasksScreen(client: client)
-            case .memory:
-                MemoryScreen(client: client)
+                TasksScreen(client: client) { sessionID in
+                    selectedChatSessionID = sessionID
+                    destination = .chat
+                }
             case .metrics:
                 MetricsScreen(client: client)
-            case .router:
-                RouterScreen(client: client)
-            case .systemPrompt:
-                SystemPromptScreen(client: client)
-            case .channels:
-                ChannelsScreen(client: client)
-            case .wallet:
-                WalletScreen(client: client)
-            case .skills:
-                SkillsScreen(client: client)
-            case .logs:
-                LogsScreen(client: client)
             case .settings:
                 NativeSettingsScreen(client: client) { key in
                     accent = CybaraAccent.color(for: key)

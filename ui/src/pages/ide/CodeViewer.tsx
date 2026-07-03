@@ -2905,62 +2905,76 @@ export function CodeViewer({
                               "var(--font-zed-mono), var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', 'Liberation Mono', monospace",
                           }}
                         >
-                          {sourceLines.map((line, i) => {
-                            const lineNum = i;
-                            const lineDiags = lineDiagnostics.get(lineNum) || [];
-                            const hasError = lineDiags.some((d) => d.severity === "error");
-                            const hasWarning = lineDiags.some((d) => d.severity === "warning");
-                            const isActiveLine = activeLine === i + 1;
-                            const pendingLineState = pendingLineDecorations.lineStates.get(i + 1);
-                            const pendingDeletedSummary = summarizePendingDeletedBlocks(
-                              pendingDeletedBlocksByLine.get(i + 1)
-                            );
-                            return (
-                              <div
-                                key={i}
-                                data-line-number={i + 1}
-                                onMouseEnter={() => scheduleHover(i, 0)}
-                                onMouseLeave={scheduleHideHover}
-                                style={{
-                                  height: `${normalizedLineHeight}px`,
-                                  lineHeight: `${normalizedLineHeight}px`,
-                                  ...getPendingLineDecorationStyle(pendingLineState, isActiveLine),
-                                }}
-                                className={cn(
-                                  "w-max min-w-full flex items-center relative",
-                                  hasError && "bg-red-500/10",
-                                  hasWarning && !hasError && "bg-yellow-500/10",
-                                  !pendingLineState && isActiveLine && "bg-indigo-500/20",
-                                  getPendingLineContainerClass(
-                                    pendingLineState,
-                                    hasError,
-                                    hasWarning
-                                  )
-                                )}
-                              >
-                                <span className="flex-shrink-0">{line.length > 0 ? line : "\u00a0"}</span>
-                                {pendingDeletedSummary && (
-                                  <span className="ml-4 inline-flex max-w-[40vw] min-w-0 flex-shrink items-center rounded border border-red-500/25 bg-red-500/10 px-1.5 py-0.5 text-[10px] text-red-200/90">
-                                    <span className="truncate font-mono line-through">
-                                      {pendingDeletedSummary.preview}
-                                    </span>
-                                    {pendingDeletedSummary.extraLines > 0 && (
-                                      <span className="ml-1 flex-shrink-0 text-red-100/85 no-underline">
-                                        +{pendingDeletedSummary.extraLines}
+                          <div
+                            className="relative min-w-full"
+                            style={{
+                              height: `${renderedEditorRowCount * lineHeightPx}px`,
+                              minWidth: `${Math.max(scrollMetrics.scrollWidth, scrollMetrics.width)}px`,
+                            }}
+                          >
+                            <div
+                              className="absolute left-0 right-0"
+                              style={{ transform: `translateY(${gutterStartLine * lineHeightPx}px)` }}
+                            >
+                              {visibleLineIndices.map((i) => {
+                                const line = sourceLines[i] || "";
+                                const lineNum = i;
+                                const lineDiags = lineDiagnostics.get(lineNum) || [];
+                                const hasError = lineDiags.some((d) => d.severity === "error");
+                                const hasWarning = lineDiags.some((d) => d.severity === "warning");
+                                const isActiveLine = activeLine === i + 1;
+                                const pendingLineState = pendingLineDecorations.lineStates.get(i + 1);
+                                const pendingDeletedSummary = summarizePendingDeletedBlocks(
+                                  pendingDeletedBlocksByLine.get(i + 1)
+                                );
+                                return (
+                                  <div
+                                    key={i}
+                                    data-line-number={i + 1}
+                                    onMouseEnter={() => scheduleHover(i, 0)}
+                                    onMouseLeave={scheduleHideHover}
+                                    style={{
+                                      height: `${normalizedLineHeight}px`,
+                                      lineHeight: `${normalizedLineHeight}px`,
+                                      ...getPendingLineDecorationStyle(pendingLineState, isActiveLine),
+                                    }}
+                                    className={cn(
+                                      "w-max min-w-full flex items-center relative",
+                                      hasError && "bg-red-500/10",
+                                      hasWarning && !hasError && "bg-yellow-500/10",
+                                      !pendingLineState && isActiveLine && "bg-indigo-500/20",
+                                      getPendingLineContainerClass(
+                                        pendingLineState,
+                                        hasError,
+                                        hasWarning
+                                      )
+                                    )}
+                                  >
+                                    <span className="flex-shrink-0">{line.length > 0 ? line : "\u00a0"}</span>
+                                    {pendingDeletedSummary && (
+                                      <span className="ml-4 inline-flex max-w-[40vw] min-w-0 flex-shrink items-center rounded border border-red-500/25 bg-red-500/10 px-1.5 py-0.5 text-[10px] text-red-200/90">
+                                        <span className="truncate font-mono line-through">
+                                          {pendingDeletedSummary.preview}
+                                        </span>
+                                        {pendingDeletedSummary.extraLines > 0 && (
+                                          <span className="ml-1 flex-shrink-0 text-red-100/85 no-underline">
+                                            +{pendingDeletedSummary.extraLines}
+                                          </span>
+                                        )}
                                       </span>
                                     )}
-                                  </span>
-                                )}
-                                {hoverInfo?.line === i + 1 && hoverInfo.text && (
-                                  <div className="absolute z-30 left-0 top-full mt-1 max-w-[500px] rounded-md border border-white/15 bg-[#0b0f19] shadow-[0_10px_30px_rgba(0,0,0,0.5)] px-3 py-2 text-xs text-gray-300 whitespace-pre-wrap break-words pointer-events-none">
-                                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={ideMarkdownComponents}>
-                                      {hoverInfo.text}
-                                    </ReactMarkdown>
+                                    {hoverInfo?.line === i + 1 && hoverInfo.text && (
+                                      <div className="absolute z-30 left-0 top-full mt-1 max-w-[500px] rounded-md border border-white/15 bg-[#0b0f19] shadow-[0_10px_30px_rgba(0,0,0,0.5)] px-3 py-2 text-xs text-gray-300 whitespace-pre-wrap break-words pointer-events-none">
+                                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={ideMarkdownComponents}>
+                                          {hoverInfo.text}
+                                        </ReactMarkdown>
+                                      </div>
+                                    )}
                                   </div>
-                                )}
-                              </div>
-                            );
-                          })}
+                                );
+                              })}
+                            </div>
+                          </div>
                         </pre>
                       ) : (
                         <Highlight

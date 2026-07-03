@@ -53,6 +53,32 @@ function severityToString(severity?: number): string {
   }
 }
 
+function requireFilePosition(args: Record<string, unknown>): {
+  filePath: string;
+  line: number;
+  column: number;
+} {
+  const filePath = typeof args.file === "string" ? args.file : "";
+  const rawLine = args.line;
+  const rawColumn = args.column;
+
+  if (
+    !filePath ||
+    typeof rawLine !== "number" ||
+    typeof rawColumn !== "number" ||
+    !Number.isInteger(rawLine) ||
+    !Number.isInteger(rawColumn)
+  ) {
+    throw new Error("Required parameters: file, line, column");
+  }
+
+  if (rawLine < 1 || rawColumn < 1) {
+    throw new Error("line and column must be 1-based positive numbers");
+  }
+
+  return { filePath, line: rawLine - 1, column: rawColumn - 1 };
+}
+
 export async function handleLSPDiagnostics(args: Record<string, unknown>): Promise<{
   diagnostics: Array<{
     file: string;
@@ -155,13 +181,7 @@ export async function handleLSPDefinition(args: Record<string, unknown>): Promis
   }>;
   found: boolean;
 }> {
-  const filePath = args.file as string;
-  const line = (args.line as number) - 1; // Convert to 0-indexed
-  const column = (args.column as number) - 1;
-
-  if (!filePath || line === undefined || column === undefined) {
-    throw new Error("Required parameters: file, line, column");
-  }
+  const { filePath, line, column } = requireFilePosition(args);
 
   const resolvedPath = resolve(filePath);
   if (!existsSync(resolvedPath)) {
@@ -200,13 +220,7 @@ export async function handleLSPReferences(args: Record<string, unknown>): Promis
   references: Array<{ file: string; line: number; column: number }>;
   count: number;
 }> {
-  const filePath = args.file as string;
-  const line = (args.line as number) - 1;
-  const column = (args.column as number) - 1;
-
-  if (!filePath || line === undefined || column === undefined) {
-    throw new Error("Required parameters: file, line, column");
-  }
+  const { filePath, line, column } = requireFilePosition(args);
 
   const resolvedPath = resolve(filePath);
   if (!existsSync(resolvedPath)) {
@@ -241,13 +255,7 @@ export async function handleLSPHover(args: Record<string, unknown>): Promise<{
   content: string | null;
   found: boolean;
 }> {
-  const filePath = args.file as string;
-  const line = (args.line as number) - 1;
-  const column = (args.column as number) - 1;
-
-  if (!filePath || line === undefined || column === undefined) {
-    throw new Error("Required parameters: file, line, column");
-  }
+  const { filePath, line, column } = requireFilePosition(args);
 
   const resolvedPath = resolve(filePath);
   if (!existsSync(resolvedPath)) {

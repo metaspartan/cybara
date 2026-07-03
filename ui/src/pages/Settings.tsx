@@ -16,6 +16,7 @@ import {
   type InfoData,
 } from "@/hooks/useApi";
 import {
+  extractApiError,
   settingsApi,
   computerUseApi,
   sandboxBrowserApi,
@@ -782,11 +783,12 @@ function FeatureSettings() {
     try {
       const result = await settingsApi.updateConfig({ terminal_enabled: enabled });
       if (!result.success || !result.data?.success) {
-        throw new Error(result.error || "Config update failed");
+        throw new Error(extractApiError(result, "Config update failed"));
       }
       addToast("success", `Web terminal ${enabled ? "enabled" : "disabled"}`);
-    } catch {
-      addToast("error", "Failed to update terminal setting");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to update terminal setting";
+      addToast("error", message);
       setTerminalEnabled(!enabled);
     }
   };

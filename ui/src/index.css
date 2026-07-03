@@ -535,6 +535,16 @@ select:focus {
   }
 }
 
+.deferred-list-row {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 88px;
+}
+
+.deferred-chat-message {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 180px;
+}
+
 /* Print Styles */
 @media print {
   body {

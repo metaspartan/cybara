@@ -146,6 +146,41 @@ export function Metrics() {
     return [...storageData.topLevel].sort((a, b) => b.bytes - a.bytes);
   }, [storageData]);
 
+  const tokenCloudEntries = useMemo(
+    () => (tokenAnalysisData?.tokenCloud || []).slice(0, 60),
+    [tokenAnalysisData?.tokenCloud]
+  );
+
+  const visibleProviders = useMemo(
+    () => (providers?.providers || []).slice(0, 12),
+    [providers?.providers]
+  );
+
+  const modelPerformanceRows = useMemo(() => {
+    const rows = modelMetrics?.models || [];
+    const maxTps = Math.max(...rows.map((model) => model.avgTps), 1);
+    return rows.map((model, index) => ({
+      ...model,
+      key: `${model.provider}:${model.model}:${index}`,
+      tpsPercent: (model.avgTps / maxTps) * 100,
+    }));
+  }, [modelMetrics?.models]);
+
+  const activityDayRows = useMemo(() => {
+    const rows = timeSeries?.days || [];
+    const totals = rows.map((day, index) => {
+      const dayTotal = Object.entries(day)
+        .filter(([key]) => key !== 'date')
+        .reduce((sum, [, value]) => sum + (typeof value === 'number' ? value : 0), 0);
+      return { date: day.date, dayTotal, key: `${day.date}:${index}` };
+    });
+    const maxDayTotal = Math.max(...totals.map((day) => day.dayTotal), 1);
+    return totals.map((day) => ({
+      ...day,
+      height: (day.dayTotal / maxDayTotal) * 100,
+    }));
+  }, [timeSeries?.days]);
+
   if (isLoading) {
     return (
       <PageLayout title="Metrics" subtitle="Loading metrics...">
@@ -307,9 +342,9 @@ export function Metrics() {
             <CardDescription>Most active models, providers, tools, and recurring terms</CardDescription>
           </CardHeader>
           <CardContent>
-            {tokenAnalysisData?.tokenCloud && tokenAnalysisData.tokenCloud.length > 0 ? (
+            {tokenCloudEntries.length > 0 ? (
               <div className="flex flex-wrap gap-2">
-                {tokenAnalysisData.tokenCloud.map((entry) => {
+                {tokenCloudEntries.map((entry) => {
                   const size = Math.min(26, 11 + entry.sharePct * 0.5);
                   const color = entry.category === 'model'
                     ? 'text-cyan-300'
@@ -665,10 +700,10 @@ export function Metrics() {
             <CardDescription>API provider usage and hits</CardDescription>
           </CardHeader>
           <CardContent>
-            {providers && providers.providers && providers.providers.length > 0 ? (
+            {visibleProviders.length > 0 ? (
               <div className="space-y-4">
-                {providers.providers.map((provider, i) => (
-                  <div key={i} className="p-4 rounded-lg bg-white/5 border border-white/10">
+                {visibleProviders.map((provider, i) => (
+                  <div key={`${provider.provider}:${provider.url}:${i}`} className="p-4 rounded-lg bg-white/5 border border-white/10">
                     <div className="flex items-center justify-between mb-2">
                       <div>
                         <p className="text-sm font-medium text-white">{provider.provider}</p>
@@ -753,14 +788,10 @@ export function Metrics() {
           <CardDescription>Tokens per second and latency by model</CardDescription>
         </CardHeader>
         <CardContent>
-          {modelMetrics && modelMetrics.models && modelMetrics.models.length > 0 ? (
+          {modelPerformanceRows.length > 0 ? (
             <div className="space-y-3">
-              {modelMetrics.models.map((model, i) => {
-                const maxTps = Math.max(...modelMetrics.models.map(m => m.avgTps), 1);
-                const tpsPercent = (model.avgTps / maxTps) * 100;
-
-                return (
-                  <div key={i} className="p-4 rounded-lg bg-white/5 border border-white/10">
+              {modelPerformanceRows.map((model) => (
+                  <div key={model.key} className="p-4 rounded-lg bg-white/5 border border-white/10">
                     <div className="flex items-center justify-between mb-2">
                       <div>
                         <p className="text-sm font-medium text-white">{model.model}</p>
@@ -774,7 +805,7 @@ export function Metrics() {
                     <div className="h-2 bg-white/10 rounded-full overflow-hidden mb-3">
                       <div
                         className="h-full bg-emerald-500 rounded-full transition-all"
-                        style={{ width: `${tpsPercent}%` }}
+                        style={{ width: `${model.tpsPercent}%` }}
                       />
                     </div>
 
@@ -791,8 +822,7 @@ export function Metrics() {
                       </div>
                     </div>
                   </div>
-                );
-              })}
+                ))}
             </div>
           ) : (
             <div className="text-center py-8 text-gray-500">
@@ -920,39 +950,21 @@ export function Metrics() {
           <CardDescription>Daily activity over the past month</CardDescription>
         </CardHeader>
         <CardContent>
-          {timeSeries && timeSeries.days && timeSeries.days.length > 0 ? (
+          {activityDayRows.length > 0 ? (
             <>
               <div className="h-48 flex items-end gap-1">
-                {timeSeries.days.map((day, i) => {
-                  const allValues = Object.entries(day)
-                    .filter(([k]) => k !== 'date')
-                    .map(([, v]) => (typeof v === 'number' ? v : 0));
-                  const dayTotal = allValues.reduce((sum, v) => sum + v, 0);
-
-                  const maxDay = Math.max(
-                    ...timeSeries.days.map((d) =>
-                      Object.entries(d)
-                        .filter(([k]) => k !== 'date')
-                        .reduce((sum, [, v]) => sum + (typeof v === 'number' ? v : 0), 0)
-                    ),
-                    1
-                  );
-
-                  const height = (dayTotal / maxDay) * 100;
-
-                  return (
-                    <div
-                      key={i}
-                      className="flex-1 bg-indigo-500/30 hover:bg-indigo-500/50 transition-colors rounded-t cursor-pointer"
-                      style={{ height: `${Math.max(height, 2)}%` }}
-                      title={`${day.date}: ${formatNumber(dayTotal)} total activity`}
-                    />
-                  );
-                })}
+                {activityDayRows.map((day) => (
+                  <div
+                    key={day.key}
+                    className="flex-1 bg-indigo-500/30 hover:bg-indigo-500/50 transition-colors rounded-t cursor-pointer"
+                    style={{ height: `${Math.max(day.height, 2)}%` }}
+                    title={`${day.date}: ${formatNumber(day.dayTotal)} total activity`}
+                  />
+                ))}
               </div>
               <div className="flex justify-between mt-2 text-xs text-gray-500">
-                <span>{timeSeries.days[0]?.date}</span>
-                <span>{timeSeries.days[timeSeries.days.length - 1]?.date}</span>
+                <span>{activityDayRows[0]?.date}</span>
+                <span>{activityDayRows[activityDayRows.length - 1]?.date}</span>
               </div>
             </>
           ) : (

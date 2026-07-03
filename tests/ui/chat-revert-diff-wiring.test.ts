@@ -72,6 +72,16 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain("<Loader2 className=\"w-3 h-3 animate-spin text-amber-400 flex-shrink-0\" />");
   });
 
+  test("shows route metadata beside the message count instead of prefixing chat titles", () => {
+    const source = readChatSource();
+    expect(source).toContain("function sessionRouteLabel");
+    expect(source).toContain("function sessionDisplayTitle");
+    expect(source).toContain("const routeLabel = sessionRouteLabel");
+    expect(source).toContain("<span>{session.message_count || 0} messages</span>");
+    expect(source).toContain("<span className=\"min-w-0 truncate\" title={routeLabel}>");
+    expect(source).toContain("rawTitle.toLowerCase().startsWith(`${agentName.toLowerCase()}:`)");
+  });
+
   test("restores last active session when chat page is reopened", () => {
     const source = readChatSource();
     expect(source).toContain("cybara:lastSessionId");

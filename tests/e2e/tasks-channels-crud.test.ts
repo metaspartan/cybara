@@ -169,6 +169,37 @@ describe("tasks and channels CRUD e2e", () => {
     expect(stoppedTask.schedule).toBe("0 * * * *");
     expect(stoppedTask.next_run).toBeNull();
 
+    const updated = await api("PUT", `/api/tasks/${task.id}`, {
+      body: {
+        name: "crud e2e cron task updated",
+        description: "updated cron crud contract",
+        action: "updated noop",
+        schedule: "*/15 * * * *",
+        enabled: true,
+      },
+    });
+    expect(updated.status).toBe(200);
+    const updatedTask = updated.data as TaskShape & { enabled?: boolean };
+    expect(updatedTask.name).toBe("crud e2e cron task updated");
+    expect(updatedTask.status).toBe("pending");
+    expect(updatedTask.enabled).toBe(true);
+    expect(updatedTask.schedule).toBe("*/15 * * * *");
+    expect(updatedTask.config.action).toBe("updated noop");
+    expect(updatedTask.config.description).toBe("updated cron crud contract");
+    expect(typeof updatedTask.next_run).toBe("string");
+
+    const partiallyUpdated = await api("PUT", `/api/tasks/${task.id}`, {
+      body: { description: "partial cron crud contract" },
+    });
+    expect(partiallyUpdated.status).toBe(200);
+    const partiallyUpdatedTask = partiallyUpdated.data as TaskShape & { enabled?: boolean };
+    expect(partiallyUpdatedTask.status).toBe("pending");
+    expect(partiallyUpdatedTask.enabled).toBe(true);
+    expect(partiallyUpdatedTask.name).toBe("crud e2e cron task updated");
+    expect(partiallyUpdatedTask.schedule).toBe("*/15 * * * *");
+    expect(partiallyUpdatedTask.config.action).toBe("updated noop");
+    expect(partiallyUpdatedTask.config.description).toBe("partial cron crud contract");
+
     const deleted = await api("DELETE", `/api/tasks/${task.id}`);
     expect(deleted.status).toBe(200);
     expect((deleted.data as { success: boolean }).success).toBe(true);

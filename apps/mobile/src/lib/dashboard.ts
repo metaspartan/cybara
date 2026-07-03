@@ -249,9 +249,11 @@ export function mobileComposerHeightForDraft(
 }
 
 export const MOBILE_METRICS_CHROME = {
-  backgroundRefreshMs: 30000,
+  backgroundRefreshMs: 60000,
   headerRefreshButton: false,
-  liveRefreshMs: 5000,
+  lazyLoadUntilOpened: true,
+  liveRefreshMs: 15000,
+  minRefreshMs: 15000,
   pullToRefresh: true,
 } as const;
 

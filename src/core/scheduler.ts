@@ -32,21 +32,40 @@ class TaskScheduler {
   private tasks: Map<string, { task: Task; handler: () => Promise<void> }> = new Map();
   private initialized = false;
 
+  private taskWithEnabled(task: Task): Task {
+    return {
+      ...task,
+      config: parseTaskConfig(task.config, task.id),
+      enabled: task.status === "running" || task.status === "pending",
+    };
+  }
+
+  private validateTaskInput(data: { name?: string; schedule?: string }): void {
+    if (typeof data?.name === "string" && !data.name.trim()) {
+      throw new Error("Validation error: Task name is required");
+    }
+    if (data.schedule !== undefined && data.schedule !== "") {
+      if (typeof data.schedule !== "string") {
+        throw new Error("Validation error: schedule must be a cron string");
+      }
+      try {
+        parseCronExpression(data.schedule);
+      } catch (error) {
+        throw new Error(
+          `Validation error: Invalid cron schedule: ${(error as Error).message}`
+        );
+      }
+    }
+  }
+
   list(): Task[] {
     const rawTasks = tables.tasks.all() as Task[];
-    return rawTasks.map((t) => ({
-      ...t,
-      config: parseTaskConfig(t.config, t.id),
-      enabled: t.status === "running" || t.status === "pending",
-    }));
+    return rawTasks.map((task) => this.taskWithEnabled(task));
   }
 
   get(id: string): Task | undefined {
     const task = tables.tasks.get(id) as Task | undefined;
-    if (task) {
-      task.config = parseTaskConfig(task.config, task.id);
-    }
-    return task;
+    return task ? this.taskWithEnabled(task) : undefined;
   }
 
   create(data: {
@@ -62,18 +81,7 @@ class TaskScheduler {
     if (typeof data?.name !== "string" || !data.name.trim()) {
       throw new Error("Validation error: Task name is required");
     }
-    if (data.schedule !== undefined && data.schedule !== "") {
-      if (typeof data.schedule !== "string") {
-        throw new Error("Validation error: schedule must be a cron string");
-      }
-      try {
-        parseCronExpression(data.schedule);
-      } catch (error) {
-        throw new Error(
-          `Validation error: Invalid cron schedule: ${(error as Error).message}`
-        );
-      }
-    }
+    this.validateTaskInput(data);
 
     const id = crypto.randomUUID();
     const next_run = this.calculateNextRun(data.schedule);
@@ -103,6 +111,83 @@ class TaskScheduler {
 
     console.log(`[Task] Created: ${task.name} (${task.id})`);
     return { ...task, enabled: data.enabled !== false };
+  }
+
+  update(
+    id: string,
+    data: {
+      name?: string;
+      description?: string;
+      action?: string;
+      type?: "scheduled" | "triggered" | "recurring";
+      agent_id?: string | null;
+      agentId?: string | null;
+      schedule?: string | null;
+      config?: Record<string, unknown>;
+      enabled?: boolean;
+      status?: Task["status"];
+    }
+  ): Task | undefined {
+    const current = this.get(id);
+    if (!current) return undefined;
+
+    this.validateTaskInput({
+      name: data.name,
+      schedule: data.schedule === null ? "" : data.schedule,
+    });
+
+    const config = {
+      ...parseTaskConfig(current.config, current.id),
+      ...(data.config || {}),
+    };
+    if (data.action !== undefined) config.action = data.action;
+    if (data.description !== undefined) config.description = data.description;
+
+    const agentId =
+      data.agent_id !== undefined
+        ? data.agent_id
+        : data.agentId !== undefined
+          ? data.agentId
+          : current.agent_id;
+    const schedule =
+      data.schedule !== undefined
+        ? data.schedule === null || data.schedule === ""
+          ? undefined
+          : data.schedule
+        : current.schedule;
+    const requestedStatus =
+      data.enabled !== undefined
+        ? data.enabled
+          ? "pending"
+          : "paused"
+        : data.status;
+    const status = requestedStatus || current.status || "pending";
+    const nextRun =
+      status === "paused"
+        ? undefined
+        : status === "pending" && schedule
+          ? this.calculateNextRun(schedule)
+          : current.next_run;
+
+    const task: Task = {
+      ...current,
+      agent_id: agentId || undefined,
+      name: data.name?.trim() || current.name,
+      type: data.type || current.type || "scheduled",
+      schedule,
+      config,
+      status,
+      next_run: nextRun,
+    };
+
+    tables.tasks.replace(id, task);
+    this.tasks.delete(id);
+    if (task.status === "pending" && task.schedule) {
+      this.scheduleTask(task);
+    }
+
+    console.log(`[Task] Updated: ${task.name} (${task.id})`);
+    return this.taskWithEnabled(task);
   }
 
   async start(id: string): Promise<boolean> {

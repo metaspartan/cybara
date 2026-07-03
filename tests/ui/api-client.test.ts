@@ -201,6 +201,20 @@ describe("UI API client wiring", () => {
     });
   });
 
+  test("memoryApi item helpers encode filename path segments", async () => {
+    await memoryApi.get("project notes.md");
+    await memoryApi.update("folder/nested.md", { content: "updated" });
+    await memoryApi.delete("../workspace.md");
+
+    expect(calls).toHaveLength(3);
+    expect(calls[0].url).toBe("/api/memory/project%20notes.md");
+    expect(calls[1].url).toBe("/api/memory/folder%2Fnested.md");
+    expect(calls[1].init?.method).toBe("PUT");
+    expect(JSON.parse(String(calls[1].init?.body))).toEqual({ content: "updated" });
+    expect(calls[2].url).toBe("/api/memory/..%2Fworkspace.md");
+    expect(calls[2].init?.method).toBe("DELETE");
+  });
+
   test("logsApi.search encodes query", async () => {
     await logsApi.search("agent failed? channel=discord");
 

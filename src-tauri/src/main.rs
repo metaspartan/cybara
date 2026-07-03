@@ -3,6 +3,7 @@
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tauri::Manager;
 use tauri::RunEvent;
@@ -75,6 +76,42 @@ fn stop_sidecar(app: &tauri::AppHandle) {
     }
 }
 
+fn cybara_home_dir() -> Option<PathBuf> {
+    if let Some(home) = std::env::var_os("CYBARA_HOME").filter(|value| !value.is_empty()) {
+        return Some(PathBuf::from(home));
+    }
+    if let Some(home) = std::env::var_os("HOME").filter(|value| !value.is_empty()) {
+        return Some(PathBuf::from(home).join(".cybara"));
+    }
+    if let Some(profile) = std::env::var_os("USERPROFILE").filter(|value| !value.is_empty()) {
+        return Some(PathBuf::from(profile).join(".cybara"));
+    }
+    None
+}
+
+#[tauri::command]
+fn read_cybara_api_key() -> Result<Option<String>, String> {
+    if let Ok(key) = std::env::var("CYBARA_API_KEY") {
+        let trimmed = key.trim();
+        if !trimmed.is_empty() {
+            return Ok(Some(trimmed.to_string()));
+        }
+    }
+
+    let Some(home) = cybara_home_dir() else {
+        return Ok(None);
+    };
+    let path = home.join("api_key");
+    match std::fs::read_to_string(&path) {
+        Ok(value) => {
+            let trimmed = value.trim();
+            Ok((!trimmed.is_empty()).then(|| trimmed.to_string()))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!("failed to read Cybara API key: {error}")),
+    }
+}
+
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -82,6 +119,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![read_cybara_api_key])
         .setup(|app| {
             app.manage(SidecarState(std::sync::Mutex::new(None)));
 

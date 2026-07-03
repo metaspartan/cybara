@@ -85,6 +85,82 @@ struct NativeToolTimelineView: View {
     }
 }
 
+struct NativeLiveToolTimelineView: View {
+    let status: String
+    let activities: [NativeToolActivity]
+    let currentStep: String?
+    let startedAt: Date?
+
+    private var visibleActivities: [NativeToolActivity] {
+        activities.filter { !nativeIsGenericStatusLabel($0.text) }
+    }
+
+    private var activeStep: String? {
+        nativeLatestInFlightStep(visibleActivities)
+    }
+
+    private var displayCurrentStep: String? {
+        if activeStep != nil { return nil }
+        if let currentStep = nativeFirstNonEmpty(currentStep),
+           !nativeIsGenericStatusLabel(currentStep) {
+            return currentStep
+        }
+        switch status.lowercased() {
+        case "generating":
+            return "Generating response..."
+        case "thinking", "tool_executing", "tool_completed":
+            return "Thinking..."
+        default:
+            return visibleActivities.isEmpty ? "Thinking..." : nil
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TimelineView(.periodic(from: startedAt ?? Date(), by: 1)) { context in
+                HStack(spacing: 7) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Text("Working for \(nativeLiveWorkedDurationLabel(startedAt: startedAt, activities: visibleActivities, now: context.date))")
+                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                }
+            }
+
+            if !visibleActivities.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(visibleActivities) { activity in
+                        NativeToolActivityRow(activity: activity)
+                    }
+                }
+            }
+
+            if let displayCurrentStep {
+                HStack(alignment: .top, spacing: 7) {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .frame(width: 13, height: 13)
+                        .padding(.top, 1)
+                    Text(displayCurrentStep)
+                        .font(.system(size: 11.8, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                        .textSelection(.enabled)
+                }
+            } else if visibleActivities.isEmpty {
+                HStack(spacing: 5) {
+                    ProgressView().controlSize(.mini)
+                    Text("Thinking...")
+                        .font(.system(size: 11.8, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+}
+
 private struct NativeToolActivityRow: View {
     let activity: NativeToolActivity
 
@@ -335,6 +411,162 @@ func nativeToolActivities(for message: GatewaySessionMessage) -> [NativeToolActi
         }
 }
 
+func nativeLiveActivity(from event: GatewayStatusEvent) -> NativeToolActivity? {
+    guard (event.type ?? "status") == "status" else { return nil }
+    let status = event.status?.lowercased() ?? ""
+    let timestamp = event.timestamp ?? Date().timeIntervalSince1970 * 1000
+
+    if status == "thinking" || status == "generating" {
+        guard nativeFirstNonEmpty(event.toolName) == nil,
+              let detail = nativeFirstNonEmpty(event.detail),
+              nativeIsMeaningfulThoughtLabel(detail)
+        else { return nil }
+        return NativeToolActivity(
+            id: "thought-\(Int(timestamp))-\(detail.prefix(10))",
+            phase: .result,
+            text: detail,
+            timestamp: timestamp,
+            toolName: "__thought",
+            toolCallId: nil,
+            sandboxProvider: nil
+        )
+    }
+
+    guard status == "tool_executing" || status == "tool_completed" || status == "error" else {
+        return nil
+    }
+
+    let phase: NativeToolActivityPhase =
+        status == "tool_executing" ? .start : (status == "tool_completed" ? .result : .error)
+    let toolName = nativeFirstNonEmpty(event.toolName) ?? "tool"
+    let text = nativeNormalizeActivityText(
+        nativeFormatToolIntent(
+            toolName: toolName,
+            args: nil,
+            phase: phase,
+            fallbackDetail: event.detail
+        )
+    )
+    guard !text.isEmpty, !nativeIsGenericStatusLabel(text) else { return nil }
+
+    return NativeToolActivity(
+        id: nativeFirstNonEmpty(event.toolCallId).map { "live-\($0)-\(phase.rawValue)" }
+            ?? "live-\(toolName)-\(Int(timestamp))-\(phase.rawValue)",
+        phase: phase,
+        text: text,
+        timestamp: timestamp,
+        toolName: toolName,
+        toolCallId: nativeFirstNonEmpty(event.toolCallId),
+        sandboxProvider: nativeNormalizeSandboxProvider(event.sandboxProvider)
+    )
+}
+
+func nativeLiveActivities(from snapshot: GatewaySessionStatusSnapshot) -> [NativeToolActivity] {
+    var activities: [NativeToolActivity] = []
+
+    for (index, activity) in snapshot.activities.enumerated() {
+        let text = nativeNormalizeActivityText(activity.text ?? "")
+        if text.isEmpty || nativeIsGenericStatusLabel(text) { continue }
+        let phase = nativeActivityPhase(activity.phase)
+        activities.append(
+            NativeToolActivity(
+                id: activity.id,
+                phase: phase,
+                text: nativeNormalizeVerb(text, phase: phase),
+                timestamp: activity.timestamp ?? ((snapshot.timestamp ?? 0) + Double(index + 1)),
+                toolName: activity.toolName,
+                toolCallId: activity.toolCallId,
+                sandboxProvider: nativeNormalizeSandboxProvider(activity.sandboxProvider)
+            )
+        )
+    }
+
+    if activities.isEmpty,
+       let detail = nativeFirstNonEmpty(snapshot.detail),
+       nativeIsMeaningfulThoughtLabel(detail) {
+        activities.append(
+            NativeToolActivity(
+                id: "snapshot-thought-\(Int(snapshot.timestamp ?? 0))",
+                phase: .result,
+                text: detail,
+                timestamp: snapshot.timestamp ?? Date().timeIntervalSince1970 * 1000,
+                toolName: "__thought",
+                toolCallId: nil,
+                sandboxProvider: nil
+            )
+        )
+    }
+
+    return nativeDeduplicateActivities(activities)
+        .sorted { left, right in
+            if left.timestamp == right.timestamp { return left.id < right.id }
+            return left.timestamp < right.timestamp
+        }
+}
+
+func nativeMergeLiveActivity(
+    _ existing: [NativeToolActivity],
+    incoming: NativeToolActivity
+) -> [NativeToolActivity] {
+    var next = existing
+    if incoming.phase != .start {
+        if let toolCallId = nativeFirstNonEmpty(incoming.toolCallId),
+           let index = next.lastIndex(where: {
+               $0.phase == .start &&
+               nativeFirstNonEmpty($0.toolCallId)?.lowercased() == toolCallId.lowercased() &&
+               incoming.timestamp - $0.timestamp < 60_000
+           }) {
+            next[index] = NativeToolActivity(
+                id: next[index].id,
+                phase: incoming.phase,
+                text: incoming.text,
+                timestamp: incoming.timestamp,
+                toolName: incoming.toolName ?? next[index].toolName,
+                toolCallId: toolCallId,
+                sandboxProvider: incoming.sandboxProvider ?? next[index].sandboxProvider
+            )
+            return nativeSortedDedupedLiveActivities(next)
+        }
+
+        if let toolName = nativeFirstNonEmpty(incoming.toolName),
+           let index = next.lastIndex(where: {
+               $0.phase == .start &&
+               nativeFirstNonEmpty($0.toolName)?.lowercased() == toolName.lowercased() &&
+               incoming.timestamp - $0.timestamp < 60_000
+           }) {
+            next[index] = NativeToolActivity(
+                id: next[index].id,
+                phase: incoming.phase,
+                text: incoming.text,
+                timestamp: incoming.timestamp,
+                toolName: toolName,
+                toolCallId: incoming.toolCallId ?? next[index].toolCallId,
+                sandboxProvider: incoming.sandboxProvider ?? next[index].sandboxProvider
+            )
+            return nativeSortedDedupedLiveActivities(next)
+        }
+    }
+
+    if let previous = next.last,
+       previous.phase == incoming.phase,
+       nativeNormalizeActivityText(previous.text).lowercased() == nativeNormalizeActivityText(incoming.text).lowercased(),
+       incoming.timestamp - previous.timestamp < 750 {
+        return next
+    }
+
+    next.append(incoming)
+    return nativeSortedDedupedLiveActivities(next)
+}
+
+func nativeMergeLiveActivities(
+    _ existing: [NativeToolActivity],
+    incoming: [NativeToolActivity]
+) -> [NativeToolActivity] {
+    incoming.reduce(existing) { partial, activity in
+        nativeMergeLiveActivity(partial, incoming: activity)
+    }
+}
+
 func nativeWorkedDurationLabel(for message: GatewaySessionMessage) -> String {
     let activities = nativeToolActivities(for: message)
     let timestamps = activities.map(\.timestamp).filter { $0 > 0 && $0.isFinite }
@@ -515,6 +747,14 @@ private func nativeDeduplicateActivities(_ activities: [NativeToolActivity]) -> 
         results.append(activity)
     }
     return results
+}
+
+private func nativeSortedDedupedLiveActivities(_ activities: [NativeToolActivity]) -> [NativeToolActivity] {
+    nativeDeduplicateActivities(activities)
+        .sorted { left, right in
+            if left.timestamp == right.timestamp { return left.id < right.id }
+            return left.timestamp < right.timestamp
+        }
 }
 
 private func nativeToolArgumentsString(_ args: [String: JSONValue]?) -> String? {
@@ -709,6 +949,45 @@ private func nativeIsGenericStatusLabel(_ value: String) -> Bool {
         "running",
         "pending",
     ].contains(value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+}
+
+private func nativeIsMeaningfulThoughtLabel(_ value: String) -> Bool {
+    let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    if normalized.isEmpty { return false }
+    return ![
+        "thinking",
+        "thinking...",
+        "generating response",
+        "generating response...",
+        "working",
+        "working...",
+        "idle",
+    ].contains(normalized)
+}
+
+private func nativeLatestInFlightStep(_ activities: [NativeToolActivity]) -> String? {
+    for activity in activities.reversed() where activity.phase == .start {
+        if !nativeIsGenericStatusLabel(activity.text) {
+            return activity.text
+        }
+    }
+    return nil
+}
+
+func nativeLiveWorkedDurationLabel(
+    startedAt: Date?,
+    activities: [NativeToolActivity],
+    now: Date = Date()
+) -> String {
+    if let startedAt {
+        return nativeFormatWorkedDuration(now.timeIntervalSince(startedAt) * 1000)
+    }
+    let firstTimestamp = activities
+        .map(\.timestamp)
+        .filter { $0 > 0 && $0.isFinite }
+        .min()
+    guard let firstTimestamp else { return nativeFormatWorkedDuration(0) }
+    return nativeFormatWorkedDuration(max(0, now.timeIntervalSince1970 * 1000 - firstTimestamp))
 }
 
 private func nativeNormalizeSandboxProvider(_ value: String?) -> String? {

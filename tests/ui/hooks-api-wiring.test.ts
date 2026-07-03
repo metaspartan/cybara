@@ -55,7 +55,7 @@ describe("UI hooks API wiring", () => {
     expect(source).toContain("}>('/memory')");
     expect(source).toContain("fetchApi<{ results: Array<{ file: string; entry: MemoryEntry }> }>");
     expect(source).toContain("`/memory/search?query=${encodeURIComponent(query)}`");
-    expect(source).toContain("fetchApi<void>(`/memory/${file}`");
+    expect(source).toContain("fetchApi<void>(`/memory/${encodeURIComponent(file)}`");
 
     expect(source).toContain("fetchApi<Session[]>('/sessions')");
     expect(source).toContain("fetchApi<void>(`/sessions/${id}`, { method: 'DELETE' })");

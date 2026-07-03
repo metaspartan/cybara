@@ -73,27 +73,42 @@ export async function handleMemoryList(): Promise<{ files: string[]; memories: A
   return { files, memories };
 }
 
+function decodeMemoryFileParam(file: string): string {
+  try {
+    return decodeURIComponent(file);
+  } catch {
+    return file;
+  }
+}
+
 /** Resolve a caller-supplied memory file name safely inside memoryDir. */
 function safeMemoryPath(file: string): string {
-  const safe = basename(file.trim()).replace(/[^\w.-]/g, "-");
+  const decoded = decodeMemoryFileParam(file);
+  const safe = basename(decoded.trim()).replace(/[^\w.-]/g, "-");
   if (!safe || safe === "." || safe === "..") {
     throw new Error("Invalid memory file name");
   }
   return join(memoryDir, safe);
 }
 
+function formatManualMemoryEntry(content: string): string {
+  const timestamp = new Date().toTimeString().slice(0, 8);
+  return `## ${timestamp} - note [manual]\n\n${content.trim()}\n`;
+}
+
 export async function handleMemoryDelete(file: string, index?: number): Promise<{ success: boolean }> {
+  const decodedFile = decodeMemoryFileParam(file);
   const path = safeMemoryPath(file);
   if (!existsSync(path)) {
     throw new Error("Memory file not found");
   }
 
   const content = readFileSync(path, "utf-8");
-  const entries = parseMemoryFile(content, file);
+  const entries = parseMemoryFile(content, decodedFile);
 
   if (index !== undefined && index >= 0 && index < entries.length) {
     entries.splice(index, 1);
-    const newContent = `# ${file.replace(".md", "")}\n\n` +
+    const newContent = `# ${decodedFile.replace(".md", "")}\n\n` +
       entries.map((e) => `## ${e.timestamp} - ${e.type} [${e.tags.join(", ")}]\n\n${e.content.trim()}`).join("\n\n");
     writeFileSync(path, newContent);
   } else {
@@ -126,17 +141,18 @@ export async function handleMemorySearch(query: string): Promise<{ results: Arra
 }
 
 export async function handleMemoryEdit(file: string, index: number, newContent: string): Promise<{ success: boolean }> {
+  const decodedFile = decodeMemoryFileParam(file);
   const path = safeMemoryPath(file);
   if (!existsSync(path)) {
     throw new Error("Memory file not found");
   }
 
   const content = readFileSync(path, "utf-8");
-  const entries = parseMemoryFile(content, file);
+  const entries = parseMemoryFile(content, decodedFile);
 
   if (index >= 0 && index < entries.length) {
     entries[index].content = newContent;
-    const newFileContent = `# ${file.replace(".md", "")}\n\n` +
+    const newFileContent = `# ${decodedFile.replace(".md", "")}\n\n` +
       entries.map((e) => `## ${e.timestamp} - ${e.type} [${e.tags.join(", ")}]\n\n${e.content.trim()}`).join("\n\n");
     writeFileSync(path, newFileContent);
   } else {
@@ -149,7 +165,7 @@ export async function handleMemoryEdit(file: string, index: number, newContent: 
 export async function handleMemoryCreate(
   file: string,
   content: string
-): Promise<{ success: boolean; file: string }> {
+): Promise<{ success: boolean; file: string; appended: boolean }> {
   const trimmedFile = file.trim();
   const trimmedContent = content.trim();
 
@@ -164,17 +180,19 @@ export async function handleMemoryCreate(
   const finalFileName = safeBaseName.endsWith(".md") ? safeBaseName : `${safeBaseName}.md`;
   const path = join(memoryDir, finalFileName);
 
-  if (existsSync(path)) {
-    throw new Error("Memory file already exists");
-  }
-
   mkdirSync(memoryDir, { recursive: true });
 
-  const now = new Date();
-  const timestamp = now.toTimeString().slice(0, 8);
+  const entryContent = formatManualMemoryEntry(trimmedContent);
+
+  if (existsSync(path)) {
+    const existing = readFileSync(path, "utf-8").trimEnd();
+    writeFileSync(path, `${existing}\n\n${entryContent}`, "utf-8");
+    return { success: true, file: finalFileName, appended: true };
+  }
+
   const title = finalFileName.replace(/\.md$/i, "");
-  const fileContent = `# ${title}\n\n## ${timestamp} - note [manual]\n\n${trimmedContent}\n`;
+  const fileContent = `# ${title}\n\n${entryContent}`;
 
   writeFileSync(path, fileContent, "utf-8");
-  return { success: true, file: finalFileName };
+  return { success: true, file: finalFileName, appended: false };
 }

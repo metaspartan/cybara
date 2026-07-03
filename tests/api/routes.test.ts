@@ -2684,6 +2684,92 @@ describe("Memory API", () => {
 
     await api("DELETE", `/api/memory/${file}`);
   });
+
+  test("POST /api/memory appends entries to existing files and supports edit/delete", async () => {
+    const file = `routes-memory-append-${Date.now()}.md`;
+
+    try {
+      const firstCreate = await api("POST", "/api/memory", {
+        file,
+        content: "first memory entry",
+      });
+      expect(firstCreate.status).toBe(200);
+      expect(firstCreate.data.success).toBe(true);
+      expect(firstCreate.data.appended).toBe(false);
+
+      const appendCreate = await api("POST", "/api/memory", {
+        file,
+        content: "second memory entry",
+      });
+      expect(appendCreate.status).toBe(200);
+      expect(appendCreate.data.success).toBe(true);
+      expect(appendCreate.data.appended).toBe(true);
+
+      const listAfterAppend = await api("GET", "/api/memory");
+      const memoryFile = listAfterAppend.data.memories.find((item: { file: string }) => item.file === file);
+      expect(memoryFile.entries).toHaveLength(2);
+      expect(memoryFile.entries[1].content).toContain("second memory entry");
+
+      const searchRes = await api("GET", "/api/memory/search?query=second%20memory");
+      const searchHit = searchRes.data.results.find((item: { file: string }) => item.file === file);
+      expect(searchHit.file).toBe(file);
+      expect(searchHit.entry.index).toBe(1);
+
+      const editRes = await api("PUT", `/api/memory/${file}`, {
+        index: 1,
+        content: "edited second memory entry",
+      });
+      expect(editRes.status).toBe(200);
+      expect(editRes.data.success).toBe(true);
+
+      const deleteEntryRes = await api("DELETE", `/api/memory/${file}`, { index: 0 });
+      expect(deleteEntryRes.status).toBe(200);
+      expect(deleteEntryRes.data.success).toBe(true);
+
+      const listAfterDelete = await api("GET", "/api/memory");
+      const updatedMemoryFile = listAfterDelete.data.memories.find((item: { file: string }) => item.file === file);
+      expect(updatedMemoryFile.entries).toHaveLength(1);
+      expect(updatedMemoryFile.entries[0].content).toContain("edited second memory entry");
+    } finally {
+      await api("DELETE", `/api/memory/${file}`);
+    }
+  });
+
+  test("memory edit and delete decode encoded route filenames before sanitizing", async () => {
+    const rawFile = `routes memory encoded ${Date.now()}.md`;
+    const expectedFile = rawFile.replace(/[^\w.-]/g, "-");
+    const encodedFile = encodeURIComponent(rawFile);
+
+    try {
+      const createRes = await api("POST", "/api/memory", {
+        file: rawFile,
+        content: "encoded memory entry",
+      });
+      expect(createRes.status).toBe(200);
+      expect(createRes.data.file).toBe(expectedFile);
+
+      const editRes = await api("PUT", `/api/memory/${encodedFile}`, {
+        index: 0,
+        content: "encoded memory entry updated",
+      });
+      expect(editRes.status).toBe(200);
+      expect(editRes.data.success).toBe(true);
+
+      const searchRes = await api("GET", "/api/memory/search?query=encoded%20memory%20entry%20updated");
+      expect(searchRes.status).toBe(200);
+      const hit = searchRes.data.results.find((item: { file: string }) => item.file === expectedFile);
+      expect(hit.entry.content).toContain("encoded memory entry updated");
+
+      const deleteRes = await api("DELETE", `/api/memory/${encodedFile}`);
+      expect(deleteRes.status).toBe(200);
+      expect(deleteRes.data.success).toBe(true);
+
+      const listRes = await api("GET", "/api/memory");
+      expect(listRes.data.files).not.toContain(expectedFile);
+    } finally {
+      await api("DELETE", `/api/memory/${encodeURIComponent(expectedFile)}`);
+    }
+  });
 });
 
 describe("IDE & Git API", () => {

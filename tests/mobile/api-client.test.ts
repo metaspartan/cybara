@@ -4,6 +4,8 @@ import {
   type SystemPromptConfig,
   normalizeActivityLogs,
   normalizeMemoryItems,
+  normalizeMemoryList,
+  normalizeMemorySearchResults,
   normalizeRemoteItems,
   sortSessionSummaries,
 } from "../../apps/mobile/src/lib/api";
@@ -238,6 +240,156 @@ describe("mobile API client", () => {
           },
         },
       ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("manages gateway memory files through the mobile API client", async () => {
+    const calls: Array<{ method: string; path: string; search: string; body?: unknown }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      const method = init?.method || "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      calls.push({ method, path: parsedUrl.pathname, search: parsedUrl.search, body });
+
+      if (parsedUrl.pathname === "/api/memory" && method === "GET") {
+        return Response.json({
+          files: ["project notes.md"],
+          memories: [
+            {
+              file: "project notes.md",
+              entries: [
+                {
+                  timestamp: "2026-07-02T18:00:00.000Z",
+                  type: "note",
+                  content: "remember this",
+                },
+              ],
+            },
+          ],
+        });
+      }
+      if (parsedUrl.pathname === "/api/memory/search" && method === "GET") {
+        return Response.json({
+          results: [{ file: "project notes.md", entry: { content: "remember this" } }],
+        });
+      }
+      if (parsedUrl.pathname === "/api/memory" && method === "POST") {
+        return Response.json({ success: true, file: body?.file, appended: false });
+      }
+      if (parsedUrl.pathname === "/api/memory/project%20notes.md" && method === "PUT") {
+        return Response.json({ success: true });
+      }
+      if (parsedUrl.pathname === "/api/memory/project%20notes.md" && method === "DELETE") {
+        return Response.json({ success: true });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const api = new CybaraMobileApi(profile);
+      await expect(api.memoryList()).resolves.toEqual({
+        files: ["project notes.md"],
+        memories: [
+          {
+            file: "project notes.md",
+            entries: [
+              {
+                timestamp: "2026-07-02T18:00:00.000Z",
+                type: "note",
+                content: "remember this",
+              },
+            ],
+          },
+        ],
+      });
+      await expect(api.searchMemory("remember this")).resolves.toEqual([
+        { file: "project notes.md", entry: { content: "remember this" } },
+      ]);
+      await expect(api.createMemory("project notes.md", "new memory")).resolves.toEqual({
+        success: true,
+        file: "project notes.md",
+        appended: false,
+      });
+      await expect(api.updateMemory("project notes.md", 0, "updated memory")).resolves.toEqual({
+        success: true,
+      });
+      await expect(api.deleteMemory("project notes.md", 0)).resolves.toEqual({ success: true });
+
+      expect(calls).toEqual([
+        { method: "GET", path: "/api/memory", search: "", body: undefined },
+        {
+          method: "GET",
+          path: "/api/memory/search",
+          search: "?query=remember%20this",
+          body: undefined,
+        },
+        {
+          method: "POST",
+          path: "/api/memory",
+          search: "",
+          body: { file: "project notes.md", content: "new memory" },
+        },
+        {
+          method: "PUT",
+          path: "/api/memory/project%20notes.md",
+          search: "",
+          body: { index: 0, content: "updated memory" },
+        },
+        {
+          method: "DELETE",
+          path: "/api/memory/project%20notes.md",
+          search: "",
+          body: { index: 0 },
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("encodes fuzzed memory filenames before mobile edit and delete requests", async () => {
+    const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      calls.push({ method: init?.method || "GET", path: parsedUrl.pathname, body });
+      return Response.json({ success: true });
+    }) as typeof fetch;
+
+    const filenames = [
+      "project notes.md",
+      "../workspace.md",
+      "folder/nested.md",
+      "emoji-😀.md",
+      "percent%20literal.md",
+      "windows\\path.md",
+    ];
+
+    try {
+      const api = new CybaraMobileApi(profile);
+      for (const [index, file] of filenames.entries()) {
+        await api.updateMemory(file, index, `updated ${index}`);
+        await api.deleteMemory(file, index);
+      }
+
+      expect(calls).toHaveLength(filenames.length * 2);
+      for (const [index, file] of filenames.entries()) {
+        const encodedPath = `/api/memory/${encodeURIComponent(file)}`;
+        expect(calls[index * 2]).toEqual({
+          method: "PUT",
+          path: encodedPath,
+          body: { index, content: `updated ${index}` },
+        });
+        expect(calls[index * 2 + 1]).toEqual({
+          method: "DELETE",
+          path: encodedPath,
+          body: { index },
+        });
+      }
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -1006,6 +1158,29 @@ describe("mobile API client", () => {
     }
   });
 
+  test("deletes sessions through the canonical gateway sessions route", async () => {
+    const calls: Array<{ method: string; path: string }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      calls.push({ method: init?.method || "GET", path: parsedUrl.pathname });
+      if (parsedUrl.pathname === "/api/sessions/s-delete" && init?.method === "DELETE") {
+        return Response.json({ success: true, message: "Session deleted" });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      await expect(new CybaraMobileApi(profile).deleteSession("s-delete")).resolves.toEqual({
+        success: true,
+        message: "Session deleted",
+      });
+      expect(calls).toEqual([{ method: "DELETE", path: "/api/sessions/s-delete" }]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("keeps the mobile session list bounded while preserving the gateway total", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (url) => {
@@ -1295,6 +1470,32 @@ describe("mobile API client", () => {
         ],
       },
     ]);
+
+    expect(
+      normalizeMemoryList({
+        files: ["project.md"],
+        memories: [
+          {
+            file: "project.md",
+            entries: [{ timestamp: "2026-07-02T18:00:00.000Z", type: "note", content: "one" }],
+          },
+        ],
+      })
+    ).toEqual({
+      files: ["project.md"],
+      memories: [
+        {
+          file: "project.md",
+          entries: [{ timestamp: "2026-07-02T18:00:00.000Z", type: "note", content: "one" }],
+        },
+      ],
+    });
+
+    expect(
+      normalizeMemorySearchResults({
+        results: [{ file: "project.md", entry: { content: "one" } }],
+      })
+    ).toEqual([{ file: "project.md", entry: { content: "one" } }]);
 
     expect(
       normalizeActivityLogs({

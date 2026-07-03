@@ -4,6 +4,7 @@ import {
   useEffect,
   useCallback,
   useMemo,
+  useDeferredValue,
   isValidElement,
   type ComponentPropsWithoutRef,
 } from "react";
@@ -466,6 +467,55 @@ function formatWorkspaceLabel(path: string, maxLength = 44): string {
   if (tail.length + 4 >= maxLength) return `.../${tail.slice(-(maxLength - 4))}`;
   const prefixLength = Math.max(0, maxLength - tail.length - 4);
   return `${normalized.slice(0, prefixLength)}.../${tail}`;
+}
+
+function displayProviderLabel(value?: string | null): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  return value
+    .trim()
+    .split(/[_-]/g)
+    .filter(Boolean)
+    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function sessionRouteLabel(session: Record<string, unknown>): string | null {
+  const providerName =
+    typeof session.provider_name === "string" && session.provider_name.trim()
+      ? session.provider_name.trim()
+      : displayProviderLabel(typeof session.provider === "string" ? session.provider : null);
+  const model = typeof session.model === "string" && session.model.trim() ? session.model.trim() : null;
+  const agentName =
+    typeof session.agent_name === "string" && session.agent_name.trim()
+      ? session.agent_name.trim()
+      : null;
+  const agentId =
+    typeof session.agent_id === "string" && session.agent_id.trim()
+      ? session.agent_id.trim()
+      : null;
+
+  if (providerName && model && agentName) return `${providerName} · ${model} · ${agentName}`;
+  if (providerName && model) return `${providerName} · ${model}`;
+  if (model && agentName) return `${model} · ${agentName}`;
+  if (model) return model;
+  return agentName || (agentId && agentId !== "default" ? `Agent ${agentId}` : null);
+}
+
+function sessionDisplayTitle(session: Record<string, unknown>): string {
+  const id = typeof session.id === "string" ? session.id : "";
+  const rawTitle =
+    typeof session.title === "string" && session.title.trim()
+      ? session.title.trim()
+      : `Session ${id.slice(0, 8)}...`;
+  const agentName =
+    typeof session.agent_name === "string" && session.agent_name.trim()
+      ? session.agent_name.trim()
+      : null;
+  if (agentName && rawTitle.toLowerCase().startsWith(`${agentName.toLowerCase()}:`)) {
+    const stripped = rawTitle.slice(agentName.length + 1).trim();
+    if (stripped) return stripped;
+  }
+  return rawTitle;
 }
 
 function toActivityPath(path: string): string {
@@ -2837,13 +2887,14 @@ function SessionsPanel({
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const sessionsRefreshTimerRef = useRef<number | null>(null);
 
   // Pinned first, then most-recently-updated. Client-side safeguard so order is
   // correct even if the API response arrives unsorted, plus title/preview search.
   const visibleSessions = useMemo(() => {
     const list = Array.isArray(sessions) ? [...sessions] : [];
-    const query = searchQuery.trim().toLowerCase();
+    const query = deferredSearchQuery.trim().toLowerCase();
     const filtered = query
       ? list.filter((session) => {
           const title = typeof session.title === "string" ? session.title.toLowerCase() : "";
@@ -2861,7 +2912,7 @@ function SessionsPanel({
       const bTime = new Date(b.updated_at || b.created_at || 0).getTime();
       return bTime - aTime;
     });
-  }, [sessions, searchQuery]);
+  }, [sessions, deferredSearchQuery]);
 
   const handleTogglePin = useCallback(
     (event: React.MouseEvent, sessionId: string, pinned: boolean) => {
@@ -3032,17 +3083,15 @@ function SessionsPanel({
             </div>
           ) : (
             visibleSessions.map((session) => {
-              const displayTitle =
-                typeof session.title === "string" && session.title.trim()
-                  ? session.title.trim()
-                  : `Session ${session.id.slice(0, 8)}...`;
+              const displayTitle = sessionDisplayTitle(session as Record<string, unknown>);
+              const routeLabel = sessionRouteLabel(session as Record<string, unknown>);
               const isSessionActive =
                 activeSessionIds.includes(session.id) ||
                 (currentSessionLoading && currentSessionId === session.id);
               return (
                 <div
                   key={session.id}
-                  className={`p-2.5 rounded-lg transition-all cursor-pointer group ${
+                  className={`deferred-list-row p-2.5 rounded-lg transition-all cursor-pointer group ${
                     currentSessionId === session.id
                       ? "bg-[rgba(var(--accent-primary),0.12)] border border-[rgba(var(--accent-primary),0.3)]"
                       : "bg-white/[0.03] border border-white/5 hover:border-white/15"
@@ -3116,6 +3165,14 @@ function SessionsPanel({
                       )}
                       <p className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-1.5">
                         <span>{session.message_count || 0} messages</span>
+                        {routeLabel && (
+                          <>
+                            <span className="text-gray-700">·</span>
+                            <span className="min-w-0 truncate" title={routeLabel}>
+                              {routeLabel}
+                            </span>
+                          </>
+                        )}
                         {(session.updated_at || session.created_at) && (
                           <>
                             <span className="text-gray-700">·</span>
@@ -3333,6 +3390,32 @@ export function Chat() {
     revertToMessage,
   } = useChat(selectedAgentId);
   const typedMessages = messages as ChatMessage[];
+  const turnStartedAtMsByIndex = useMemo(() => {
+    const lookup = new Map<number, number | undefined>();
+    let latestUserTimestampMs: number | undefined;
+    for (let index = 0; index < typedMessages.length; index += 1) {
+      const message = typedMessages[index];
+      lookup.set(index, latestUserTimestampMs);
+      if (message?.role === "user") {
+        const timestampMs = parseTimestampMs(message.timestamp);
+        if (typeof timestampMs === "number") {
+          latestUserTimestampMs = timestampMs;
+        }
+      }
+    }
+    return lookup;
+  }, [typedMessages]);
+  const visibleMessageEntries = useMemo(
+    () =>
+      typedMessages
+        .map((message, originalIndex) => ({
+          message,
+          originalIndex,
+          turnStartedAtMs: turnStartedAtMsByIndex.get(originalIndex),
+        }))
+        .filter((entry) => entry.message.role !== "system"),
+    [typedMessages, turnStartedAtMsByIndex]
+  );
   const loadSessionMutation = useLoadSession();
   const [input, setInput] = useState("");
   const [workspaceSaving, setWorkspaceSaving] = useState(false);
@@ -3505,7 +3588,7 @@ export function Chat() {
           continue;
         }
         const messageTimestampMs = parseTimestampMs(message.timestamp);
-        const turnStartedAtMs = findPriorUserTimestampMs(typedMessages, index);
+        const turnStartedAtMs = turnStartedAtMsByIndex.get(index);
         const embedded = normalizeMessageProcessActivities(
           message.process_activities,
           messageTimestampMs ?? turnStartedAtMs
@@ -3516,7 +3599,7 @@ export function Chat() {
       }
       return changed ? next : previous;
     });
-  }, [sessionId, typedMessages]);
+  }, [sessionId, typedMessages, turnStartedAtMsByIndex]);
 
   useEffect(() => {
     if (!sessionFileChanges || sessionFileChanges.files.length === 0) {
@@ -3657,7 +3740,7 @@ export function Chat() {
 
     const processKey = getMessageProcessKey(sessionId, target.message, target.index);
     const legacyProcessKey = getLegacyMessageProcessKey(sessionId, target.message, target.index);
-    const targetTurnStartedAtMs = findPriorUserTimestampMs(typedMessages, target.index);
+    const targetTurnStartedAtMs = turnStartedAtMsByIndex.get(target.index);
     const embeddedActivities = normalizeMessageProcessActivities(
       target.message.process_activities,
       parseTimestampMs(target.message.timestamp) ?? targetTurnStartedAtMs
@@ -3696,7 +3779,7 @@ export function Chat() {
     runActivityBufferRef.current = [];
     setLiveActivities([]);
     setLiveCurrentStep(null);
-  }, [isLoading, liveActivities, sessionId, typedMessages]);
+  }, [isLoading, liveActivities, sessionId, typedMessages, turnStartedAtMsByIndex]);
 
   const appendLiveActivity = useCallback(
     (
@@ -4832,14 +4915,7 @@ export function Chat() {
                     </div>
                   </div>
                 ) : (
-                  typedMessages
-                    .map((message, index) => ({ message, originalIndex: index }))
-                    .filter((entry) => entry.message.role !== "system")
-                    .map(({ message, originalIndex }) => {
-                      const turnStartedAtMs = findPriorUserTimestampMs(
-                        typedMessages,
-                        originalIndex
-                      );
+                  visibleMessageEntries.map(({ message, originalIndex, turnStartedAtMs }) => {
                       const persistedProcessActivities = getMessageProcessActivities(
                         messageProcessMap,
                         sessionId,
@@ -4876,7 +4952,9 @@ export function Chat() {
                       return (
                         <div
                           key={`${message.timestamp || "msg"}-${originalIndex}`}
-                          className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}
+                          className={`deferred-chat-message flex gap-3 ${
+                            message.role === "user" ? "flex-row-reverse" : ""
+                          }`}
                         >
                           <div
                             className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${

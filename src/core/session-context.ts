@@ -639,25 +639,52 @@ export async function loadPersistedSession(sessionId: string): Promise<{
   }
 }
 
-export async function listPersistedSessions(): Promise<
-  Array<{
-    id: string;
-    agentId: string;
-    title: string | null;
-    createdAt: string;
-    updatedAt: string;
-    messageCount: number;
-    workspaceDir: string | null;
-    pinned: boolean;
-    lastMessageRole: string | null;
-    lastMessageContent: string | null;
-    modelMetadata: SessionModelMetadata | null;
-  }>
-> {
-  try {
-    const sessions = db
-      .prepare(
-        `
+export interface PersistedSessionListEntry {
+  id: string;
+  agentId: string;
+  title: string | null;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+  workspaceDir: string | null;
+  pinned: boolean;
+  lastMessageRole: string | null;
+  lastMessageContent: string | null;
+  modelMetadata: SessionModelMetadata | null;
+}
+
+interface PersistedSessionListRow {
+  id: string;
+  agentId: string;
+  title: string | null;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+  workspaceDir: string | null;
+  pinned: number;
+  lastMessageRole: string | null;
+  lastMessageContent: string | null;
+  lastModelMetadata: string | null;
+}
+
+function normalizePersistedSessionListRow(
+  session: PersistedSessionListRow
+): PersistedSessionListEntry {
+  return {
+    ...session,
+    pinned: !!session.pinned,
+    modelMetadata: mergeSessionModelMetadata(
+      resolveSessionModelMetadata(session.agentId),
+      parseSessionModelMetadata(session.lastModelMetadata)
+    ),
+  };
+}
+
+function persistedSessionListSql(limit?: number, offset?: number): {
+  sql: string;
+  params: number[];
+} {
+  const sql = `
       SELECT
         cs.id,
         cs.agent_id as agentId,
@@ -697,34 +724,58 @@ export async function listPersistedSessions(): Promise<
         ) as lastModelMetadata
       FROM chat_sessions cs
       ORDER BY cs.pinned DESC, cs.updated_at DESC
-    `
-      )
-      .all() as Array<{
-      id: string;
-      agentId: string;
-      title: string | null;
-      createdAt: string;
-      updatedAt: string;
-      messageCount: number;
-      workspaceDir: string | null;
-      pinned: number;
-      lastMessageRole: string | null;
-      lastMessageContent: string | null;
-      lastModelMetadata: string | null;
-    }>;
+      ${typeof limit === "number" ? "LIMIT ? OFFSET ?" : ""}
+    `;
+  return typeof limit === "number" ? { sql, params: [limit, offset ?? 0] } : { sql, params: [] };
+}
 
-    return sessions.map((session) => ({
-      ...session,
-      pinned: !!session.pinned,
-      modelMetadata: mergeSessionModelMetadata(
-        resolveSessionModelMetadata(session.agentId),
-        parseSessionModelMetadata(session.lastModelMetadata)
-      ),
-    }));
+export async function countPersistedSessions(): Promise<number> {
+  try {
+    const row = db.prepare("SELECT COUNT(*) as total FROM chat_sessions").get() as {
+      total?: number;
+    } | null;
+    return typeof row?.total === "number" ? row.total : 0;
+  } catch (error) {
+    log.exception("Failed to count persisted sessions", error);
+    return 0;
+  }
+}
+
+export async function listPersistedSessions(options?: {
+  limit?: number;
+  offset?: number;
+}): Promise<PersistedSessionListEntry[]> {
+  try {
+    const normalizedLimit =
+      typeof options?.limit === "number" && Number.isFinite(options.limit)
+        ? Math.max(1, Math.floor(options.limit))
+        : undefined;
+    const normalizedOffset =
+      typeof options?.offset === "number" && Number.isFinite(options.offset)
+        ? Math.max(0, Math.floor(options.offset))
+        : 0;
+    const { sql, params } = persistedSessionListSql(normalizedLimit, normalizedOffset);
+    const sessions = db.prepare(sql).all(...params) as PersistedSessionListRow[];
+
+    return sessions.map(normalizePersistedSessionListRow);
   } catch (error) {
     log.exception("Failed to list persisted sessions", error);
     return [];
   }
+}
+
+export async function listPersistedSessionPage(options?: {
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  sessions: PersistedSessionListEntry[];
+  total: number;
+}> {
+  const [sessions, total] = await Promise.all([
+    listPersistedSessions(options),
+    countPersistedSessions(),
+  ]);
+  return { sessions, total };
 }
 
 export async function getPersistedSessionWorkspace(sessionId: string): Promise<string | null> {

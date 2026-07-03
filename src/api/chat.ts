@@ -14,6 +14,7 @@ import { getSubagentSession } from "../core/tools/handlers/index";
 import { maybeRunBackgroundReview } from "../core/background-review";
 import { logSessionMessage, logAgentActivity } from "../core/logging";
 import {
+  listPersistedSessionPage,
   listPersistedSessions,
   loadPersistedSession,
   setPersistedSessionPinned,
@@ -25,6 +26,7 @@ import {
   getContextWindow,
   normalizeSessionWorkspaceDir,
   resolveSessionModelMetadata,
+  type PersistedSessionListEntry,
   type SessionModelMetadata,
 } from "../core/session-context";
 import {
@@ -200,30 +202,80 @@ function removePersistedSessionIndex(sessionId: string): void {
   persistedSessionIndex.delete(sessionId);
 }
 
+function buildMemorySessionListEntries(): SessionListEntry[] {
+  return Array.from(chatSessions.values()).map((s) => ({
+    id: s.id,
+    agentId: s.agentId,
+    title: shouldRegenerateSessionTitle(s.title)
+      ? deriveSessionTitleFromMessages(s.messages)
+      : normalizeSessionTitle(s.title),
+    messageCount: s.messages.length,
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt || s.createdAt,
+    workspaceDir: s.workspaceDir ?? null,
+    // In-memory sessions don't track pin state; inherit it from the persisted
+    // index when the session has been saved.
+    pinned: persistedSessionIndex.get(s.id)?.pinned ?? false,
+    lastMessage: buildLastMessagePreview(s.messages[s.messages.length - 1]),
+    modelMetadata: resolveSessionModelMetadata(s.agentId),
+  }));
+}
+
+function persistedSessionToIndexEntry(
+  persisted: PersistedSessionListEntry
+): PersistedSessionIndexEntry {
+  return normalizePersistedIndexEntry({
+    id: persisted.id,
+    agentId: persisted.agentId,
+    title: persisted.title,
+    messageCount: persisted.messageCount,
+    createdAt: persisted.createdAt,
+    updatedAt: persisted.updatedAt,
+    workspaceDir: persisted.workspaceDir ?? null,
+    pinned: persisted.pinned,
+    modelMetadata: persisted.modelMetadata ?? resolveSessionModelMetadata(persisted.agentId),
+    lastMessage:
+      persisted.lastMessageRole && persisted.lastMessageContent
+        ? {
+            role: persisted.lastMessageRole as ChatMessage["role"],
+            content: persisted.lastMessageContent,
+          }
+        : null,
+  });
+}
+
+function hydratePersistedSessionIndex(
+  persistedSessions: PersistedSessionListEntry[],
+  pruneMissing: boolean
+): void {
+  const persistedIds = new Set<string>();
+  for (const persisted of persistedSessions) {
+    persistedIds.add(persisted.id);
+    persistedSessionIndex.set(persisted.id, persistedSessionToIndexEntry(persisted));
+  }
+  if (!pruneMissing) return;
+  for (const existingId of persistedSessionIndex.keys()) {
+    if (!persistedIds.has(existingId)) {
+      removePersistedSessionIndex(existingId);
+    }
+  }
+}
+
+function sortSessionListEntries(sessions: SessionListEntry[]): SessionListEntry[] {
+  // Pinned sessions first, then most-recently-updated. Keeps important chats
+  // at the top regardless of activity.
+  return sessions.sort(
+    (a, b) =>
+      (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) ||
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+  );
+}
+
 async function loadPersistedSessions() {
   try {
     const sessions = await listPersistedSessions();
 
-    for (const sessionInfo of sessions) {
-      upsertPersistedSessionIndex({
-        id: sessionInfo.id,
-        agentId: sessionInfo.agentId,
-        title: sessionInfo.title,
-        messageCount: sessionInfo.messageCount,
-        createdAt: sessionInfo.createdAt,
-        updatedAt: sessionInfo.updatedAt || sessionInfo.createdAt,
-        workspaceDir: sessionInfo.workspaceDir ?? null,
-        pinned: sessionInfo.pinned,
-        modelMetadata: sessionInfo.modelMetadata ?? resolveSessionModelMetadata(sessionInfo.agentId),
-        lastMessage:
-          sessionInfo.lastMessageRole && sessionInfo.lastMessageContent
-            ? {
-                role: sessionInfo.lastMessageRole as ChatMessage["role"],
-                content: sessionInfo.lastMessageContent,
-              }
-            : null,
-      });
-    }
+    hydratePersistedSessionIndex(sessions, true);
 
     if (sessions.length > 0) {
       log.info("Restored persisted session index", { count: sessions.length });
@@ -1365,51 +1417,10 @@ function sliceSessionPage(
 }
 
 async function buildSessionListIndex(): Promise<SessionListEntry[]> {
-  const memorySessions = Array.from(chatSessions.values()).map((s) => ({
-    id: s.id,
-    agentId: s.agentId,
-    title: shouldRegenerateSessionTitle(s.title)
-      ? deriveSessionTitleFromMessages(s.messages)
-      : normalizeSessionTitle(s.title),
-    messageCount: s.messages.length,
-    createdAt: s.createdAt,
-    updatedAt: s.updatedAt || s.createdAt,
-    workspaceDir: s.workspaceDir ?? null,
-    // In-memory sessions don't track pin state; inherit it from the persisted
-    // index when the session has been saved.
-    pinned: persistedSessionIndex.get(s.id)?.pinned ?? false,
-    lastMessage: buildLastMessagePreview(s.messages[s.messages.length - 1]),
-    modelMetadata: resolveSessionModelMetadata(s.agentId),
-  }));
+  const memorySessions = buildMemorySessionListEntries();
 
   const persistedSessions = await listPersistedSessions();
-  const persistedIds = new Set<string>();
-  for (const persisted of persistedSessions) {
-    persistedIds.add(persisted.id);
-    upsertPersistedSessionIndex({
-      id: persisted.id,
-      agentId: persisted.agentId,
-      title: persisted.title,
-      messageCount: persisted.messageCount,
-      createdAt: persisted.createdAt,
-      updatedAt: persisted.updatedAt,
-      workspaceDir: persisted.workspaceDir ?? null,
-      pinned: persisted.pinned,
-      modelMetadata: persisted.modelMetadata ?? resolveSessionModelMetadata(persisted.agentId),
-      lastMessage:
-        persisted.lastMessageRole && persisted.lastMessageContent
-          ? {
-              role: persisted.lastMessageRole as ChatMessage["role"],
-              content: persisted.lastMessageContent,
-            }
-          : null,
-    });
-  }
-  for (const existingId of persistedSessionIndex.keys()) {
-    if (!persistedIds.has(existingId)) {
-      removePersistedSessionIndex(existingId);
-    }
-  }
+  hydratePersistedSessionIndex(persistedSessions, true);
 
   const memoryMap = new Map(memorySessions.map((session) => [session.id, session]));
   for (const persisted of persistedSessionIndex.values()) {
@@ -1428,20 +1439,33 @@ async function buildSessionListIndex(): Promise<SessionListEntry[]> {
     });
   }
 
-  // Pinned sessions first, then most-recently-updated. Keeps important chats
-  // at the top regardless of activity.
-  const sortedSessions = memorySessions.sort(
-    (a, b) =>
-      (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) ||
-      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-  );
-  return sortedSessions;
+  return sortSessionListEntries(memorySessions);
+}
+
+async function buildPersistedSessionPage(options: { limit: number; offset: number }): Promise<{
+  sessions: SessionListEntry[];
+  total: number;
+}> {
+  const page = await listPersistedSessionPage(options);
+  hydratePersistedSessionIndex(page.sessions, false);
+  return {
+    sessions: page.sessions.map(persistedSessionToIndexEntry),
+    total: page.total,
+  };
 }
 
 export async function listSessions(options?: {
   limit?: number;
   offset?: number;
 }): Promise<SessionListEntry[]> {
+  const normalizedOptions = normalizeSessionPageOptions(options);
+  if (normalizedOptions.limit && chatSessions.size === 0) {
+    const page = await buildPersistedSessionPage({
+      limit: normalizedOptions.limit,
+      offset: normalizedOptions.offset,
+    });
+    return page.sessions;
+  }
   return sliceSessionPage(await buildSessionListIndex(), options);
 }
 
@@ -1452,8 +1476,19 @@ export async function listSessionPage(options?: { limit?: number; offset?: numbe
   offset: number;
   hasMore: boolean;
 }> {
-  const sortedSessions = await buildSessionListIndex();
   const { limit, offset } = normalizeSessionPageOptions(options);
+  if (limit && chatSessions.size === 0) {
+    const page = await buildPersistedSessionPage({ limit, offset });
+    return {
+      sessions: page.sessions,
+      total: page.total,
+      limit,
+      offset,
+      hasMore: offset + page.sessions.length < page.total,
+    };
+  }
+
+  const sortedSessions = await buildSessionListIndex();
   const sessions = sliceSessionPage(sortedSessions, { limit, offset });
   return {
     sessions,

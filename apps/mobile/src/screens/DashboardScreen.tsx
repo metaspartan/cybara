@@ -692,9 +692,11 @@ export function DashboardScreen({
   const [logPageError, setLogPageError] = useState<string | null>(null);
   const refreshInFlight = useRef(false);
   const metricsRefreshInFlight = useRef(false);
+  const metricsLastLoadedAtRef = useRef(0);
   const logPageInFlight = useRef(false);
   const activeSurface =
     detailRoute?.kind === "surface" || detailRoute?.kind === "item" ? detailRoute.surface : null;
+  const hasLoadedMetrics = metrics !== null;
 
   const closeDetailRoute = () => {
     setChatHeaderAction(null);
@@ -716,14 +718,23 @@ export function DashboardScreen({
     }
   };
 
-  const refreshMetrics = async () => {
+  const refreshMetrics = async (options: { force?: boolean } = {}) => {
     if (metricsRefreshInFlight.current) return;
+    const now = Date.now();
+    if (
+      !options.force &&
+      now - metricsLastLoadedAtRef.current < MOBILE_METRICS_CHROME.minRefreshMs
+    ) {
+      return;
+    }
     metricsRefreshInFlight.current = true;
     setMetricsError(null);
     try {
       setMetrics(await api.metricsSnapshot());
+      metricsLastLoadedAtRef.current = Date.now();
     } catch (refreshError) {
       setMetricsError(refreshError instanceof Error ? refreshError.message : String(refreshError));
+      metricsLastLoadedAtRef.current = Date.now();
     } finally {
       metricsRefreshInFlight.current = false;
     }
@@ -772,7 +783,12 @@ export function DashboardScreen({
 
   const refreshAll = async (showRefreshing = true) => {
     if (showRefreshing) setRefreshing(true);
-    await Promise.all([refresh(false), refreshMetrics()]);
+    const shouldRefreshMetrics =
+      !MOBILE_METRICS_CHROME.lazyLoadUntilOpened || activeTab === "metrics" || hasLoadedMetrics;
+    await Promise.all([
+      refresh(false),
+      shouldRefreshMetrics ? refreshMetrics({ force: true }) : Promise.resolve(),
+    ]);
     if (showRefreshing) setRefreshing(false);
   };
 
@@ -788,6 +804,9 @@ export function DashboardScreen({
   }, [profile.id]);
 
   useEffect(() => {
+    if (MOBILE_METRICS_CHROME.lazyLoadUntilOpened && activeTab !== "metrics" && !hasLoadedMetrics) {
+      return;
+    }
     const refreshMs =
       activeTab === "metrics" && !detailRoute
         ? MOBILE_METRICS_CHROME.liveRefreshMs
@@ -796,7 +815,7 @@ export function DashboardScreen({
       void refreshMetrics();
     }, refreshMs);
     return () => clearInterval(interval);
-  }, [profile.id, activeTab, detailRoute]);
+  }, [profile.id, activeTab, detailRoute, hasLoadedMetrics]);
 
   const sessions = summary?.sessions ?? [];
   const orderedSessions = useMemo(() => sortSessionSummaries(sessions), [sessions]);
@@ -833,7 +852,7 @@ export function DashboardScreen({
     setDetailRoute(null);
     setActiveTab(tab);
     if (tab === "metrics") {
-      void refreshMetrics();
+      void refreshMetrics({ force: metrics === null });
     }
   };
 

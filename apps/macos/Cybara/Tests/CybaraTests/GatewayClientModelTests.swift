@@ -124,6 +124,46 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(response.response, "Done.")
     }
 
+    func testChatSendResponsePreservesAssistantToolTimelineMetadata() throws {
+        let response = try JSONDecoder().decode(
+            ChatSendResponse.self,
+            from: Data(
+                #"""
+                {
+                  "sessionId": "session-1",
+                  "message": {
+                    "role": "assistant",
+                    "content": "Done.",
+                    "timestamp": "2026-07-02T18:00:00.000Z",
+                    "process_activities": [
+                      {
+                        "id": "activity-1",
+                        "phase": "result",
+                        "text": "Ran tests",
+                        "timestamp": 1783015200500,
+                        "toolName": "exec_command",
+                        "toolCallId": "tool-1"
+                      }
+                    ],
+                    "tool_calls": [
+                      {
+                        "id": "tool-1",
+                        "name": "exec_command",
+                        "status": "completed",
+                        "arguments": {"cmd": "bun test tests/api/sessions-pagination.test.ts"}
+                      }
+                    ]
+                  }
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(response.message?.timestamp, "2026-07-02T18:00:00.000Z")
+        XCTAssertEqual(response.message?.process_activities?.first?.text, "Ran tests")
+        XCTAssertEqual(response.message?.tool_calls?.first?.args?["cmd"]?.displayString, "bun test tests/api/sessions-pagination.test.ts")
+    }
+
     func testSessionWorkspaceUpdateResponseDecodesGatewayError() throws {
         let response = try JSONDecoder().decode(
             GatewaySessionWorkspaceUpdateResponse.self,
@@ -132,6 +172,68 @@ final class GatewayClientModelTests: XCTestCase {
 
         XCTAssertEqual(response.success, false)
         XCTAssertEqual(response.error, "Cannot update workspace for subagent sessions")
+    }
+
+    func testMemoryListDecodesFilesAndEntries() throws {
+        let list = try JSONDecoder().decode(
+            GatewayMemoryList.self,
+            from: Data(
+                #"""
+                {
+                  "files": ["project notes.md"],
+                  "memories": [
+                    {
+                      "file": "project notes.md",
+                      "entries": [
+                        {
+                          "timestamp": "2026-07-02T18:00:00.000Z",
+                          "type": "note",
+                          "content": "remember this"
+                        }
+                      ]
+                    }
+                  ]
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(list.files, ["project notes.md"])
+        XCTAssertEqual(list.memories.first?.file, "project notes.md")
+        XCTAssertEqual(list.memories.first?.entries.first?.timestamp, "2026-07-02T18:00:00.000Z")
+        XCTAssertEqual(list.memories.first?.entries.first?.content, "remember this")
+    }
+
+    func testMemorySearchResponseDecodesGatewayResults() throws {
+        let response = try JSONDecoder().decode(
+            GatewayMemorySearchResponse.self,
+            from: Data(
+                #"""
+                {
+                  "results": [
+                    {
+                      "file": "project notes.md",
+                      "entry": {"content": "remember this"}
+                    }
+                  ]
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(response.results.first?.file, "project notes.md")
+        XCTAssertEqual(response.results.first?.entry.content, "remember this")
+    }
+
+    func testMemoryCreateResponseDecodesGatewaySuccessShape() throws {
+        let response = try JSONDecoder().decode(
+            GatewayMemoryCreateResponse.self,
+            from: Data(#"{"success":true,"file":"project notes.md","appended":true}"#.utf8)
+        )
+
+        XCTAssertTrue(response.success)
+        XCTAssertEqual(response.file, "project notes.md")
+        XCTAssertEqual(response.appended, true)
     }
 
     func testSessionProviderModelSummaryFormatsProviderType() throws {
@@ -155,6 +257,60 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(named.displayName, "OpenAI")
         XCTAssertEqual(providerFallback.displayName, "Anthropic")
         XCTAssertEqual(idFallback.displayName, "local")
+    }
+
+    func testTaskDecodesConfigBackedEditableFields() throws {
+        let task = try decodeTask(
+            #"""
+            {
+              "id": "task-1",
+              "name": "Daily summary",
+              "schedule": "0 9 * * 1",
+              "status": "pending",
+              "agentId": "agent-1",
+              "enabled": true,
+              "lastRun": "2026-07-02T12:00:00.000Z",
+              "nextRun": "2026-07-06T09:00:00.000Z",
+              "config": {
+                "action": "Summarize workspace changes",
+                "description": "Weekly release prep"
+              }
+            }
+            """#
+        )
+
+        XCTAssertEqual(task.agent_id, "agent-1")
+        XCTAssertTrue(task.isRunning)
+        XCTAssertEqual(task.statusLabel, "Active")
+        XCTAssertEqual(task.action, "Summarize workspace changes")
+        XCTAssertEqual(task.description, "Weekly release prep")
+        XCTAssertEqual(task.last_run, "2026-07-02T12:00:00.000Z")
+        XCTAssertEqual(task.next_run, "2026-07-06T09:00:00.000Z")
+    }
+
+    func testTaskRunDecodesCamelCaseGatewayPayload() throws {
+        let run = try JSONDecoder().decode(
+            GatewayTaskRun.self,
+            from: Data(
+                #"""
+                {
+                  "id": "run-1",
+                  "taskId": "task-1",
+                  "status": "completed",
+                  "startedAt": "2026-07-02T12:00:00.000Z",
+                  "completedAt": "2026-07-02T12:00:03.000Z",
+                  "sessionId": "task:task-1:1",
+                  "resultPreview": "Done"
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(run.task_id, "task-1")
+        XCTAssertEqual(run.started_at, "2026-07-02T12:00:00.000Z")
+        XCTAssertEqual(run.completed_at, "2026-07-02T12:00:03.000Z")
+        XCTAssertEqual(run.session_id, "task:task-1:1")
+        XCTAssertEqual(run.result_preview, "Done")
     }
 
     func testAgentDecodesEditableConfigFields() throws {
@@ -447,6 +603,62 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(nativeWorkedDurationLabel(for: message), "0h 00m 01s")
     }
 
+    func testNativeStatusEventsDecodeLiveToolActivityAndSnapshots() throws {
+        let status = try decodeStatusEvent(
+            #"""
+            {
+              "type": "status",
+              "status": "tool_executing",
+              "timestamp": 1783015200500,
+              "sessionId": "session-1",
+              "agentId": "agent-1",
+              "detail": "Running bun test",
+              "toolName": "exec_command",
+              "toolCallId": "tool-1",
+              "sandboxProvider": "host"
+            }
+            """#
+        )
+        let snapshot = try decodeStatusEvent(
+            #"""
+            {
+              "type": "snapshot",
+              "timestamp": 1783015200600,
+              "activeSessionIds": ["session-1"],
+              "activeSessions": [
+                {
+                  "sessionId": "session-1",
+                  "status": "tool_executing",
+                  "timestamp": 1783015200600,
+                  "detail": "Running bun test",
+                  "activities": [
+                    {
+                      "id": "activity-1",
+                      "phase": "start",
+                      "text": "Running bun test",
+                      "timestamp": 1783015200500,
+                      "toolName": "exec_command",
+                      "toolCallId": "tool-1",
+                      "sandboxProvider": "host"
+                    }
+                  ]
+                }
+              ]
+            }
+            """#
+        )
+
+        XCTAssertEqual(status.toolName, "exec_command")
+        XCTAssertEqual(status.toolCallId, "tool-1")
+        XCTAssertEqual(status.sandboxProvider, "host")
+        let liveActivity = try XCTUnwrap(nativeLiveActivity(from: status))
+        XCTAssertEqual(liveActivity.phase, .start)
+        XCTAssertEqual(liveActivity.text, "Running bun test")
+        XCTAssertEqual(liveActivity.sandboxProvider, "host")
+        XCTAssertEqual(snapshot.activeSessionIds, ["session-1"])
+        XCTAssertEqual(nativeLiveActivities(from: snapshot.activeSessions[0]).first?.phase, .start)
+    }
+
     func testChannelDisplayNamePrefersFirstNonEmptyGatewayLabel() throws {
         let named = try decodeChannel(#"{"id":"telegram-1","name":"  Telegram Ops  ","type":"telegram"}"#)
         let typeFallback = try decodeChannel(#"{"id":"slack-1","name":" ","type":" Slack "}"#)
@@ -669,11 +881,19 @@ final class GatewayClientModelTests: XCTestCase {
         try JSONDecoder().decode(GatewayAgent.self, from: Data(json.utf8))
     }
 
+    private func decodeTask(_ json: String) throws -> GatewayTask {
+        try JSONDecoder().decode(GatewayTask.self, from: Data(json.utf8))
+    }
+
     private func decodeSessionMessage(_ json: String) throws -> GatewaySessionMessage {
         try JSONDecoder().decode(GatewaySessionMessage.self, from: Data(json.utf8))
     }
 
     private func decodeChannel(_ json: String) throws -> GatewayChannel {
         try JSONDecoder().decode(GatewayChannel.self, from: Data(json.utf8))
+    }
+
+    private func decodeStatusEvent(_ json: String) throws -> GatewayStatusEvent {
+        try JSONDecoder().decode(GatewayStatusEvent.self, from: Data(json.utf8))
     }
 }

@@ -474,6 +474,15 @@ private extension KeyedDecodingContainer {
         }
         return nil
     }
+
+    func decodeFlexibleDouble(forKeys keys: [Key]) throws -> Double? {
+        for key in keys {
+            if let value = try decodeFlexibleDouble(forKey: key) {
+                return value
+            }
+        }
+        return nil
+    }
 }
 
 struct GatewaySessionLastMessage: Decodable, Hashable {
@@ -689,16 +698,195 @@ struct GatewaySessionWorkspaceUpdateResponse: Decodable, Hashable {
     }
 }
 
+struct GatewaySuccessResponse: Decodable, Hashable {
+    let success: Bool
+    let error: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case success, error
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        success = try container.decodeFlexibleBool(forKeys: [.success]) ?? false
+        error = try container.decodeFlexibleString(forKeys: [.error])
+    }
+}
+
+struct GatewayMemoryEntry: Decodable, Identifiable, Hashable {
+    let id: String
+    let timestamp: String?
+    let type: String?
+    let content: String
+
+    private enum CodingKeys: String, CodingKey {
+        case id, timestamp, created_at, createdAt, time, type, kind, content, text, body, message
+    }
+
+    init(from decoder: Decoder) throws {
+        if let value = try? decoder.singleValueContainer().decode(String.self) {
+            id = "entry-\(String(value.prefix(32)))"
+            timestamp = nil
+            type = nil
+            content = value
+            return
+        }
+
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        timestamp = try container.decodeFlexibleString(forKeys: [.timestamp, .created_at, .createdAt, .time])
+        type = try container.decodeFlexibleString(forKeys: [.type, .kind])
+        content = try container.decodeFlexibleString(forKeys: [.content, .text, .body, .message]) ?? ""
+        id = try container.decodeFlexibleString(forKeys: [.id])
+            ?? "\(timestamp ?? type ?? "entry")-\(String(content.prefix(32)))"
+    }
+}
+
+struct GatewayMemoryFile: Decodable, Identifiable, Hashable {
+    let file: String
+    let entries: [GatewayMemoryEntry]
+
+    var id: String { file }
+
+    private enum CodingKeys: String, CodingKey {
+        case file, name, entries
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        file = try container.decodeFlexibleString(forKeys: [.file, .name]) ?? "memory"
+        entries = (try? container.decodeIfPresent([GatewayMemoryEntry].self, forKey: .entries)) ?? []
+    }
+}
+
+struct GatewayMemoryList: Decodable, Hashable {
+    let files: [String]
+    let memories: [GatewayMemoryFile]
+
+    private enum CodingKeys: String, CodingKey {
+        case files, memories
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        memories = (try? container.decodeIfPresent([GatewayMemoryFile].self, forKey: .memories)) ?? []
+        let decodedFiles = try container.decodeFlexibleStringArray(forKey: .files) ?? []
+        files = Array(Set(decodedFiles + memories.map(\.file))).sorted()
+    }
+}
+
+struct GatewayMemorySearchResult: Decodable, Identifiable, Hashable {
+    let file: String
+    let entry: GatewayMemoryEntry
+
+    var id: String { "\(file)-\(entry.id)" }
+}
+
+struct GatewayMemorySearchResponse: Decodable, Hashable {
+    let results: [GatewayMemorySearchResult]
+}
+
+struct GatewayMemoryCreateResponse: Decodable, Hashable {
+    let success: Bool
+    let file: String
+    let appended: Bool?
+    let error: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case success, file, appended, error
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        success = try container.decodeFlexibleBool(forKeys: [.success]) ?? false
+        file = try container.decodeFlexibleString(forKeys: [.file]) ?? ""
+        appended = try container.decodeFlexibleBool(forKeys: [.appended])
+        error = try container.decodeFlexibleString(forKeys: [.error])
+    }
+}
+
 struct GatewayTask: Decodable, Identifiable, Hashable {
     let id: String
     let name: String
+    let type: String?
     let schedule: String?
     let status: String?
     let agent_id: String?
+    let action: String?
+    let description: String?
+    let enabled: Bool?
+    let last_run: String?
+    let next_run: String?
+    let config: [String: JSONValue]?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, type, schedule, status, agent_id, agentId, action, description
+        case enabled, last_run, lastRun, next_run, nextRun, config
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeFlexibleString(forKeys: [.id]) ?? UUID().uuidString
+        name = try container.decodeFlexibleString(forKeys: [.name]) ?? "Untitled Task"
+        type = try container.decodeFlexibleString(forKeys: [.type])
+        schedule = try container.decodeFlexibleString(forKeys: [.schedule])
+        status = try container.decodeFlexibleString(forKeys: [.status])
+        agent_id = try container.decodeFlexibleString(forKeys: [.agent_id, .agentId])
+        config = try container.decodeJSONDictionary(forKey: .config)
+        action = try container.decodeFlexibleString(forKeys: [.action]) ?? GatewayTask.stringValue(config?["action"])
+        description = try container.decodeFlexibleString(forKeys: [.description]) ?? GatewayTask.stringValue(config?["description"])
+        enabled = try container.decodeFlexibleBool(forKeys: [.enabled])
+        last_run = try container.decodeFlexibleString(forKeys: [.last_run, .lastRun])
+        next_run = try container.decodeFlexibleString(forKeys: [.next_run, .nextRun])
+    }
 
     var isRunning: Bool {
-        let s = status?.lowercased()
-        return s == "running" || s == "pending"
+        if let enabled { return enabled }
+        let normalizedStatus = status?.lowercased()
+        return normalizedStatus == "running" || normalizedStatus == "pending"
+    }
+
+    var statusLabel: String {
+        switch status?.lowercased() {
+        case "pending": return "Active"
+        case "running": return "Running"
+        case "paused": return "Paused"
+        case "completed": return "Completed"
+        case "failed": return "Failed"
+        default: return status?.capitalized ?? "Unknown"
+        }
+    }
+
+    private static func stringValue(_ value: JSONValue?) -> String? {
+        guard case .string(let text)? = value else { return nil }
+        return firstNonEmptyGatewayString(text)
+    }
+}
+
+struct GatewayTaskRun: Decodable, Identifiable, Hashable {
+    let id: String
+    let task_id: String?
+    let status: String
+    let started_at: String?
+    let completed_at: String?
+    let session_id: String?
+    let result_preview: String?
+    let error: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, task_id, taskId, status, started_at, startedAt, completed_at, completedAt
+        case session_id, sessionId, result_preview, resultPreview, error
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeFlexibleString(forKeys: [.id]) ?? UUID().uuidString
+        task_id = try container.decodeFlexibleString(forKeys: [.task_id, .taskId])
+        status = try container.decodeFlexibleString(forKeys: [.status]) ?? "unknown"
+        started_at = try container.decodeFlexibleString(forKeys: [.started_at, .startedAt])
+        completed_at = try container.decodeFlexibleString(forKeys: [.completed_at, .completedAt])
+        session_id = try container.decodeFlexibleString(forKeys: [.session_id, .sessionId])
+        result_preview = try container.decodeFlexibleString(forKeys: [.result_preview, .resultPreview])
+        error = try container.decodeFlexibleString(forKeys: [.error])
     }
 }
 
@@ -803,14 +991,9 @@ struct GatewayOAuthStartResponse: Decodable, Hashable {
 }
 
 struct ChatSendResponse: Decodable {
-    struct Message: Decodable {
-        let role: String?
-        let content: String?
-    }
-
     let sessionId: String?
     let workspaceDir: String?
-    let message: Message?
+    let message: GatewaySessionMessage?
 
     private enum CodingKeys: String, CodingKey {
         case sessionId, session_id, workspaceDir, workspace_dir, message
@@ -820,7 +1003,7 @@ struct ChatSendResponse: Decodable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         sessionId = try container.decodeFlexibleString(forKeys: [.sessionId, .session_id])
         workspaceDir = try container.decodeFlexibleString(forKeys: [.workspaceDir, .workspace_dir])
-        message = try container.decodeIfPresent(Message.self, forKey: .message)
+        message = try container.decodeIfPresent(GatewaySessionMessage.self, forKey: .message)
     }
 
     var response: String? { message?.content }
@@ -853,10 +1036,71 @@ struct GatewaySkill: Decodable, Identifiable, Hashable {
     var id: String { name }
 }
 
-struct GatewayStatusEvent: Decodable {
+struct GatewaySessionStatusSnapshot: Decodable, Hashable {
+    let sessionId: String
+    let status: String?
+    let timestamp: Double?
+    let detail: String?
+    let agentId: String?
+    let activities: [GatewayProcessActivity]
+
+    private enum CodingKeys: String, CodingKey {
+        case sessionId, session_id, status, timestamp, detail, agentId, agent_id, activities
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sessionId = try container.decodeFlexibleString(forKeys: [.sessionId, .session_id]) ?? ""
+        status = try container.decodeFlexibleString(forKeys: [.status])
+        timestamp = try container.decodeFlexibleDouble(forKey: .timestamp)
+        detail = try container.decodeFlexibleString(forKeys: [.detail])
+        agentId = try container.decodeFlexibleString(forKeys: [.agentId, .agent_id])
+        activities = (try? container.decodeIfPresent([GatewayProcessActivity].self, forKey: .activities)) ?? []
+    }
+}
+
+struct GatewayStatusEvent: Decodable, Hashable {
+    let type: String?
     let status: String?
     let detail: String?
+    let timestamp: Double?
     let sessionId: String?
+    let agentId: String?
+    let toolName: String?
+    let toolCallId: String?
+    let sandboxProvider: String?
+    let toolPhase: String?
+    let durationMs: Double?
+    let delta: String?
+    let activeSessions: [GatewaySessionStatusSnapshot]
+    let activeSessionIds: [String]
+
+    private enum CodingKeys: String, CodingKey {
+        case type, status, detail, timestamp, sessionId, session_id, agentId, agent_id
+        case toolName, tool_name, toolCallId, tool_call_id, sandboxProvider, sandbox_provider
+        case toolPhase, tool_phase, durationMs, duration_ms, delta
+        case activeSessions, active_sessions, activeSessionIds, active_session_ids
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decodeFlexibleString(forKeys: [.type])
+        status = try container.decodeFlexibleString(forKeys: [.status])
+        detail = try container.decodeFlexibleString(forKeys: [.detail])
+        timestamp = try container.decodeFlexibleDouble(forKey: .timestamp)
+        sessionId = try container.decodeFlexibleString(forKeys: [.sessionId, .session_id])
+        agentId = try container.decodeFlexibleString(forKeys: [.agentId, .agent_id])
+        toolName = try container.decodeFlexibleString(forKeys: [.toolName, .tool_name])
+        toolCallId = try container.decodeFlexibleString(forKeys: [.toolCallId, .tool_call_id])
+        sandboxProvider = try container.decodeFlexibleString(forKeys: [.sandboxProvider, .sandbox_provider])
+        toolPhase = try container.decodeFlexibleString(forKeys: [.toolPhase, .tool_phase])
+        durationMs = try container.decodeFlexibleDouble(forKeys: [.durationMs, .duration_ms])
+        delta = try container.decodeFlexibleString(forKeys: [.delta])
+        activeSessions = (try? container.decodeIfPresent([GatewaySessionStatusSnapshot].self, forKey: .activeSessions))
+            ?? ((try? container.decodeIfPresent([GatewaySessionStatusSnapshot].self, forKey: .active_sessions)) ?? [])
+        activeSessionIds = (try? container.decodeIfPresent([String].self, forKey: .activeSessionIds))
+            ?? ((try? container.decodeIfPresent([String].self, forKey: .active_session_ids)) ?? [])
+    }
 }
 
 struct RouterStatusSummary: Decodable {

@@ -11,6 +11,7 @@ let serverProc: ReturnType<typeof Bun.spawn> | null = null;
 let baseUrl = "";
 let baseWsUrl = "";
 let homeDir = "";
+let apiKey = "";
 const hasPython = Bun.spawnSync(["python3", "--version"]).exitCode === 0;
 
 function sleep(ms: number): Promise<void> {
@@ -51,6 +52,10 @@ async function waitForServerReady(url: string, timeoutMs = 30000): Promise<void>
   throw new Error(`Timed out waiting for server at ${url}`);
 }
 
+function authHeaders(): HeadersInit {
+  return { Authorization: `Bearer ${apiKey}` };
+}
+
 async function waitFor(
   predicate: () => Promise<boolean> | boolean,
   timeoutMs = 15000,
@@ -79,11 +84,13 @@ describe("Terminal e2e smoke", () => {
     const port = await getFreePort();
     baseUrl = `http://127.0.0.1:${port}`;
     baseWsUrl = `ws://127.0.0.1:${port}`;
+    apiKey = `cybara_terminal_e2e_${Date.now()}_root_key`;
 
     serverProc = Bun.spawn([process.execPath, "run", "src/index.ts", "--enable-terminal"], {
       cwd: ROOT_DIR,
       env: {
         ...process.env,
+        CYBARA_API_KEY: apiKey,
         HOME: homeDir,
         USERPROFILE: homeDir,
         PORT: String(port),
@@ -115,7 +122,7 @@ describe("Terminal e2e smoke", () => {
       return;
     }
 
-    const res = await fetch(`${baseUrl}/api/terminal/sessions`);
+    const res = await fetch(`${baseUrl}/api/terminal/sessions`, { headers: authHeaders() });
     expect(res.status).toBe(200);
     const data = (await res.json()) as Array<{ id: string }>;
     expect(Array.isArray(data)).toBe(true);
@@ -133,7 +140,9 @@ describe("Terminal e2e smoke", () => {
     let output = "";
 
     try {
-      ws = new WebSocket(`${baseWsUrl}/api/terminal/ws?session=${encodeURIComponent(sessionId)}`);
+      ws = new WebSocket(
+        `${baseWsUrl}/api/terminal/ws?session=${encodeURIComponent(sessionId)}&api_key=${encodeURIComponent(apiKey)}`
+      );
       await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error("WebSocket open timeout")), 15000);
         ws!.onopen = () => {
@@ -154,7 +163,9 @@ describe("Terminal e2e smoke", () => {
 
       await waitFor(() => output.includes(marker), 20000, 100);
 
-      const sessionsRes = await fetch(`${baseUrl}/api/terminal/sessions`);
+      const sessionsRes = await fetch(`${baseUrl}/api/terminal/sessions`, {
+        headers: authHeaders(),
+      });
       expect(sessionsRes.status).toBe(200);
       const sessions = (await sessionsRes.json()) as Array<{ id: string }>;
       expect(sessions.some((s) => s.id === sessionId)).toBe(true);
@@ -165,7 +176,9 @@ describe("Terminal e2e smoke", () => {
     }
 
     await waitFor(async () => {
-      const sessionsRes = await fetch(`${baseUrl}/api/terminal/sessions`);
+      const sessionsRes = await fetch(`${baseUrl}/api/terminal/sessions`, {
+        headers: authHeaders(),
+      });
       if (!sessionsRes.ok) return false;
       const sessions = (await sessionsRes.json()) as Array<{ id: string }>;
       return !sessions.some((s) => s.id === sessionId);

@@ -163,4 +163,39 @@ describe("UI auth token helpers", () => {
     const headers = new Headers(capturedInit?.headers);
     expect(headers.get("Authorization")).toBeNull();
   });
+
+  test("apiFetch hydrates Tauri desktop API key and retries denied protected requests", async () => {
+    let invokeCalls = 0;
+    const win = createWindow("") as ReturnType<typeof createWindow> & {
+      __TAURI_INTERNALS__: {
+        invoke: (command: string) => Promise<string | null>;
+      };
+    };
+    win.__TAURI_INTERNALS__ = {
+      invoke: async (command: string) => {
+        expect(command).toBe("read_cybara_api_key");
+        invokeCalls += 1;
+        return invokeCalls === 1 ? null : "desktop-token";
+      },
+    };
+    (globalThis as unknown as { window: Window }).window = win as unknown as Window;
+
+    const capturedInits: RequestInit[] = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      capturedInits.push(init || {});
+      return new Response("{}", {
+        status: capturedInits.length === 1 ? 403 : 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    const response = await apiFetch("/api/config", { method: "PUT" });
+
+    expect(response.status).toBe(200);
+    expect(invokeCalls).toBe(2);
+    expect(capturedInits).toHaveLength(2);
+    expect(new Headers(capturedInits[0].headers).get("Authorization")).toBeNull();
+    expect(new Headers(capturedInits[1].headers).get("Authorization")).toBe("Bearer desktop-token");
+    expect(window.localStorage.getItem("cybara_api_key")).toBe("desktop-token");
+  });
 });

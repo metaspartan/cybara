@@ -560,6 +560,9 @@ const stmts = {
       "INSERT INTO tasks (id, agent_id, name, type, schedule, config, status, next_run) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     ),
     update: prepare("UPDATE tasks SET status=?, last_run=?, next_run=? WHERE id=?"),
+    replace: prepare(
+      "UPDATE tasks SET agent_id=?, name=?, type=?, schedule=?, config=?, status=?, next_run=? WHERE id=?"
+    ),
     delete: prepare("DELETE FROM tasks WHERE id = ?"),
   },
   taskRuns: {
@@ -668,6 +671,9 @@ const stmts = {
     getDailyTotalsFromRaw: prepare(
       "SELECT type, SUM(value) as total FROM metrics WHERE date(created_at) = ? GROUP BY type"
     ),
+    getDailyTotalsFromRawRange: prepare(
+      "SELECT date(created_at) as date, type, SUM(value) as total FROM metrics WHERE created_at >= ? AND created_at < ? GROUP BY date(created_at), type"
+    ),
     addDaily: prepare(
       "INSERT OR REPLACE INTO metrics_daily (id, date, type, key, value) VALUES (?, ?, ?, ?, ?)"
     ),
@@ -676,6 +682,9 @@ const stmts = {
     ),
     getDailyTotals: prepare(
       "SELECT type, SUM(value) as total FROM metrics_daily WHERE date = ? GROUP BY type"
+    ),
+    getDailyTotalsRange: prepare(
+      "SELECT date, type, SUM(value) as total FROM metrics_daily WHERE date >= ? AND date < ? GROUP BY date, type"
     ),
     deleteOlderThan: prepare(
       "DELETE FROM metrics WHERE created_at < datetime('now', '-' || ? || ' days')"
@@ -830,6 +839,17 @@ export const tables = {
       ),
     update: (id: string, t: Partial<Task>) =>
       stmts.tasks.update.run(t.status || null, t.last_run || null, t.next_run || null, id),
+    replace: (id: string, t: Task) =>
+      stmts.tasks.replace.run(
+        t.agent_id || null,
+        t.name,
+        t.type || "scheduled",
+        t.schedule || null,
+        t.config ? JSON.stringify(t.config) : null,
+        t.status || "pending",
+        t.next_run || null,
+        id
+      ),
     delete: (id: string) => stmts.tasks.delete.run(id),
   },
   taskRuns: {
@@ -1006,10 +1026,28 @@ export const tables = {
         type: string;
         total: number;
       }>,
+    getDailyTotalsFromRawRange: (
+      start: string,
+      end: string
+    ): Array<{ date: string; type: string; total: number }> =>
+      (stmts.metrics?.getDailyTotalsFromRawRange.all(start, end) || []) as Array<{
+        date: string;
+        type: string;
+        total: number;
+      }>,
     addDaily: (d: { id: string; date: string; type: string; key: string; value: number }) =>
       stmts.metrics?.addDaily.run(d.id, d.date, d.type, d.key, d.value),
     getDaily: (date: string, type: string) => stmts.metrics?.getDaily.all(date, type) || [],
     getDailyTotals: (date: string) => stmts.metrics?.getDailyTotals.all(date) || [],
+    getDailyTotalsRange: (
+      start: string,
+      end: string
+    ): Array<{ date: string; type: string; total: number }> =>
+      (stmts.metrics?.getDailyTotalsRange.all(start, end) || []) as Array<{
+        date: string;
+        type: string;
+        total: number;
+      }>,
     deleteOlderThan: (days: number) => stmts.metrics?.deleteOlderThan.run(days),
     count: () => (stmts.metrics?.count.get() as { count: number } | null)?.count || 0,
   },

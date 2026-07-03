@@ -28,4 +28,26 @@ describe("Skills SKILL.md resolution", () => {
       hint: "Read the skill's SKILL.md for manual instructions",
     });
   });
+
+  test("loads OpenClaw and Hermes inspired bundled skills", () => {
+    const expected = [
+      "code-wiki",
+      "api-debug",
+      "docker-management",
+      "fastmcp",
+      "subagent-driven-development",
+      "domain-intel",
+      "oss-forensics",
+      "authorized-web-pentest",
+      "adversarial-ux-test",
+      "cloudflare-temporary-deploy",
+    ];
+
+    for (const name of expected) {
+      const skill = getSkill(name);
+      expect(skill, name).toBeDefined();
+      expect(skill?.description.length).toBeGreaterThan(20);
+      expect(skill?.location).toMatch(/skills[\\/]+/);
+    }
+  });
 });

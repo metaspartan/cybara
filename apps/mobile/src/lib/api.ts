@@ -155,6 +155,38 @@ export interface ProviderTestResult {
   error?: string;
 }
 
+export interface MemoryEntrySummary {
+  timestamp?: string;
+  type?: string;
+  content: string;
+}
+
+export interface MemoryFileSummary {
+  file: string;
+  entries: MemoryEntrySummary[];
+}
+
+export interface MemoryListResponse {
+  files: string[];
+  memories: MemoryFileSummary[];
+}
+
+export interface MemorySearchResult {
+  file: string;
+  entry: MemoryEntrySummary;
+}
+
+export interface MemoryCreateResponse {
+  success: boolean;
+  file: string;
+  appended?: boolean;
+}
+
+export interface GatewaySuccessResponse {
+  success: boolean;
+  error?: string;
+}
+
 export type WalletAgentPolicyUpdate = Partial<{
   allowNativeSend: boolean;
   allowTokenSend: boolean;
@@ -563,11 +595,9 @@ export function normalizeRemoteItems(
 }
 
 export function normalizeMemoryItems(value: unknown): RemoteItemSummary[] {
-  const record = asRecord(value);
-  if (!record) return normalizeRemoteItems(value, ["memory", "items", "entries"], "memory");
-  const memories = normalizeArrayResponse(record.memories, ["memories"]);
-  if (memories.length === 0) {
-    return normalizeArrayResponse(record.files, ["files"]).map((file, index) => ({
+  const list = normalizeMemoryList(value);
+  if (list.memories.length === 0) {
+    return list.files.map((file, index) => ({
       id: typeof file === "string" ? file : `memory-file-${index + 1}`,
       title: typeof file === "string" ? file : `Memory file ${index + 1}`,
       detail: "Memory file",
@@ -577,10 +607,9 @@ export function normalizeMemoryItems(value: unknown): RemoteItemSummary[] {
       ],
     }));
   }
-  return memories.map((memory, index) => {
-    const memoryRecord = asRecord(memory);
-    const file = readString(memoryRecord, ["file", "name"]) || `memory-${index + 1}`;
-    const entries = normalizeArrayResponse(memoryRecord?.entries, ["entries"]);
+  return list.memories.map((memory, index) => {
+    const file = memory.file || `memory-${index + 1}`;
+    const entries = memory.entries;
     return {
       id: file,
       title: file,
@@ -590,6 +619,59 @@ export function normalizeMemoryItems(value: unknown): RemoteItemSummary[] {
         { label: "file", value: file },
         { label: "entries", value: String(entries.length) },
       ],
+    };
+  });
+}
+
+export function normalizeMemoryEntry(value: unknown): MemoryEntrySummary {
+  if (typeof value === "string") {
+    return { content: value };
+  }
+  const record = asRecord(value);
+  return {
+    timestamp: readString(record, ["timestamp", "created_at", "createdAt", "time"]),
+    type: readString(record, ["type", "kind"]),
+    content: readString(record, ["content", "text", "body", "message"]) || "",
+  };
+}
+
+export function normalizeMemoryList(value: unknown): MemoryListResponse {
+  const record = asRecord(value);
+  if (!record) {
+    const entries = normalizeRemoteItems(value, ["memory", "items", "entries"], "memory");
+    return {
+      files: entries.map((entry) => entry.id),
+      memories: entries.map((entry) => ({ file: entry.id, entries: [] })),
+    };
+  }
+
+  const memories = normalizeArrayResponse(record.memories, ["memories"]).map((memory, index) => {
+    const memoryRecord = asRecord(memory);
+    const file = readString(memoryRecord, ["file", "name"]) || `memory-${index + 1}`;
+    return {
+      file,
+      entries: normalizeArrayResponse(memoryRecord?.entries, ["entries"]).map(normalizeMemoryEntry),
+    };
+  });
+  const files = normalizeArrayResponse(record.files, ["files"])
+    .map((file, index) =>
+      typeof file === "string" ? file : readString(asRecord(file), ["file", "name"]) || `memory-file-${index + 1}`
+    )
+    .filter((file) => file.length > 0);
+
+  return {
+    files: Array.from(new Set([...files, ...memories.map((memory) => memory.file)])),
+    memories,
+  };
+}
+
+export function normalizeMemorySearchResults(value: unknown): MemorySearchResult[] {
+  return normalizeArrayResponse(value, ["results"]).map((result, index) => {
+    const record = asRecord(result);
+    const file = readString(record, ["file", "name"]) || `memory-${index + 1}`;
+    return {
+      file,
+      entry: normalizeMemoryEntry(record?.entry ?? result),
     };
   });
 }
@@ -1132,7 +1214,7 @@ export class CybaraMobileApi {
   }
 
   deleteSession(id: string): Promise<{ success?: boolean }> {
-    return this.request<{ success?: boolean }>(`/api/chat/sessions/${encodeURIComponent(id)}`, {
+    return this.request<{ success?: boolean }>(`/api/sessions/${encodeURIComponent(id)}`, {
       method: "DELETE",
     });
   }
@@ -1374,6 +1456,37 @@ export class CybaraMobileApi {
     return this.request<{ success: boolean }>("/api/system-prompt", {
       method: "PUT",
       body: JSON.stringify(data),
+    });
+  }
+
+  async memoryList(): Promise<MemoryListResponse> {
+    return normalizeMemoryList(await this.request<unknown>("/api/memory"));
+  }
+
+  async searchMemory(query: string): Promise<MemorySearchResult[]> {
+    return normalizeMemorySearchResults(
+      await this.request<unknown>(`/api/memory/search?query=${encodeURIComponent(query)}`)
+    );
+  }
+
+  createMemory(file: string, content: string): Promise<MemoryCreateResponse> {
+    return this.request<MemoryCreateResponse>("/api/memory", {
+      method: "POST",
+      body: JSON.stringify({ file, content }),
+    });
+  }
+
+  updateMemory(file: string, index: number, content: string): Promise<GatewaySuccessResponse> {
+    return this.request<GatewaySuccessResponse>(`/api/memory/${encodeURIComponent(file)}`, {
+      method: "PUT",
+      body: JSON.stringify({ index, content }),
+    });
+  }
+
+  deleteMemory(file: string, index?: number): Promise<GatewaySuccessResponse> {
+    return this.request<GatewaySuccessResponse>(`/api/memory/${encodeURIComponent(file)}`, {
+      method: "DELETE",
+      body: index === undefined ? undefined : JSON.stringify({ index }),
     });
   }
 
