@@ -96,8 +96,10 @@ describe("Chat live activity persistence", () => {
     const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
     expect(source).toContain("if (!streamingContent || isLoading) return;");
     expect(source).toContain('if (latestMessage?.role === "assistant") {');
+    // Clearing now happens via finalizeLiveState AFTER the persisted reply is
+    // fetched (see chat-finish-handoff.test.ts), never inline before it.
     expect(source).toMatch(
-      /if \(!loadingRef\.current && !hasPendingCaptureForVisibleSession\) \{\s*setStreamingContent\(null\);/
+      /const finalizeLiveState = \(\) => \{\s*setStreamingContent\(null\);/
     );
   });
 

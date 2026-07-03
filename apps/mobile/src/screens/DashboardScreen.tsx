@@ -2015,7 +2015,12 @@ function SessionDetailPanel({
         if (event.type !== "status" || event.sessionId !== sessionId) return;
         if (event.status === "idle") {
           if (!sendingRef.current) {
-            commitLiveAssistant(() => null, event.timestamp);
+            // Keep the live working message on screen until the persisted
+            // assistant reply has been fetched — clearing first left the chat
+            // empty for seconds right as a run finished.
+            void loadSession(false).finally(() => {
+              commitLiveAssistant(() => null, event.timestamp);
+            });
           }
           return;
         }

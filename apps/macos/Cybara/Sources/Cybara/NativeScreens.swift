@@ -879,7 +879,14 @@ struct ChatScreen: View {
 
         if status == "idle" {
             if !sending {
-                resetLiveTimeline(clearStartedAt: true)
+                // Fetch the persisted reply before dropping the live timeline
+                // so the chat never goes blank right as a run finishes.
+                Task {
+                    if let id = selectedSessionID {
+                        await loadMessages(id)
+                    }
+                    resetLiveTimeline(clearStartedAt: true)
+                }
             }
             return
         }

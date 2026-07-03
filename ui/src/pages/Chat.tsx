@@ -1726,6 +1726,11 @@ export function Chat() {
     [typedMessages, turnStartedAtMsByIndex]
   );
   const loadSessionMutation = useLoadSession();
+  // Always-fresh callback so the SSE effect can refresh the open session's
+  // persisted messages without re-subscribing on every render.
+  const refreshSessionMessagesRef = useRef<(sid: string) => Promise<void>>(() =>
+    Promise.resolve()
+  );
   const [input, setInput] = useState("");
   const [workspaceSaving, setWorkspaceSaving] = useState(false);
   const [revertTarget, setRevertTarget] = useState<RevertTarget | null>(null);
@@ -2378,6 +2383,23 @@ export function Chat() {
   }, [activeSessionIds, liveActivities, liveCurrentStep, liveStatus, sessionId, streamingContent]);
 
   useEffect(() => {
+    refreshSessionMessagesRef.current = async (sid: string) => {
+      try {
+        const result = await loadSessionMutation.mutateAsync(sid);
+        if (result?.messagesList && activeSessionRef.current === sid) {
+          loadSession(
+            sid,
+            result.messagesList as ChatMessage[],
+            (result as { workspace_dir?: string | null }).workspace_dir || null
+          );
+        }
+      } catch {
+        // Keep whatever is on screen; the next explicit load will recover.
+      }
+    };
+  });
+
+  useEffect(() => {
     const disconnect = connectStatusStream({
       onEvent: (payload) => {
         if (!payload || typeof payload !== "object") return;
@@ -2503,10 +2525,22 @@ export function Chat() {
               !pendingCapture.sessionId ||
               pendingCapture.sessionId === payloadSessionId);
           if (!loadingRef.current && !hasPendingCaptureForVisibleSession) {
-            setStreamingContent(null);
-            setLiveActivities([]);
-            runActivityBufferRef.current = [];
-            clearCachedLiveSessionState(payloadSessionId || activeSession);
+            const sessionToRefresh = payloadSessionId || activeSession;
+            const finalizeLiveState = () => {
+              setStreamingContent(null);
+              setLiveActivities([]);
+              runActivityBufferRef.current = [];
+              clearCachedLiveSessionState(sessionToRefresh);
+            };
+            if (sessionToRefresh && sessionToRefresh === activeSessionRef.current) {
+              // A run this client didn't drive just finished (started on
+              // another client, or we remounted mid-run). Fetch the persisted
+              // reply BEFORE dropping the live timeline/stream so the chat
+              // never goes blank at completion.
+              void refreshSessionMessagesRef.current(sessionToRefresh).finally(finalizeLiveState);
+            } else {
+              finalizeLiveState();
+            }
           }
           return;
         }
