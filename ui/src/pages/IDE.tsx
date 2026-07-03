@@ -412,9 +412,12 @@ const FileTree = memo(function FileTree({
     return entries.filter((entry) => entry.name.toLowerCase().includes(normalizedFilter));
   }, [entries, normalizedFilter]);
 
-  // Virtualization now works even with expanded directories: we flatten the
-  // visible tree (root entries + children of expanded dirs) into a single list
-  // and virtualize that flat list with depth-based indentation.
+  // Fixed-row-height virtualization is only correct when the visible list is
+  // flat: expanded directories render their children NESTED inside the parent
+  // row, adding height the spacer math (visibleStart * rowHeight) can't account
+  // for, which misaligns/duplicates rows. So only virtualize a flat root list
+  // (the common large-directory perf case); once anything is expanded, render
+  // every entry so heights stay correct.
   const hasExpandedDirectoriesAtLevel = useMemo(
     () =>
       filteredEntries.some((entry) => entry.type === "directory" && expandedDirs.has(entry.path)),
@@ -423,7 +426,8 @@ const FileTree = memo(function FileTree({
   const enableVirtualizedRows =
     level === 0 &&
     filteredEntries.length >= EXPLORER_VIRTUALIZATION_MIN_ENTRIES &&
-    rootViewportHeight > 0;
+    rootViewportHeight > 0 &&
+    !hasExpandedDirectoriesAtLevel;
   const virtualWindow = useMemo(() => {
     if (!enableVirtualizedRows) {
       return {
