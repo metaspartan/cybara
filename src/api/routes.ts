@@ -3369,10 +3369,18 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/tasks/:id/runs": (_body, params) => tables.taskRuns.getByTask(params!.id),
   "DELETE /api/tasks/:id": (_body, params) => ({ success: taskScheduler.delete(params!.id) }),
 
-  "POST /api/webhooks/telegram/:channelId": async (body, params) => {
+  "POST /api/webhooks/telegram/:channelId": async (body, params, ctx) => {
     const { channelId } = params!;
-
-    const success = await processTelegramWebhook(channelId, body as Record<string, unknown>);
+    // Telegram sends the secret we registered with setWebhook in this header;
+    // processTelegramWebhook rejects the update when it doesn't match.
+    const headers = ctx?.headers ?? {};
+    const secretToken =
+      headers["x-telegram-bot-api-secret-token"] || headers["X-Telegram-Bot-Api-Secret-Token"];
+    const success = await processTelegramWebhook(
+      channelId,
+      body as Record<string, unknown>,
+      secretToken
+    );
     return { ok: success };
   },
 

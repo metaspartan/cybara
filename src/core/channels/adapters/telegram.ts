@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
+import { randomBytes, timingSafeEqual } from "crypto";
 import path from "path";
 import { tables } from "../../database";
 import { logChannelMessage } from "../../logging";
@@ -203,12 +204,43 @@ async function getTelegramBotInfo(
   }
 }
 
-async function setupTelegramWebhook(botToken: string, webhookUrl: string): Promise<boolean> {
+/** Generate a Telegram webhook secret token (allowed chars: A-Z a-z 0-9 _ -). */
+export function generateTelegramWebhookSecret(): string {
+  return randomBytes(32).toString("hex");
+}
+
+/**
+ * Constant-time check of an inbound webhook's `X-Telegram-Bot-Api-Secret-Token`
+ * against the secret we registered with setWebhook. When a secret is configured
+ * a request must present the matching token; unsigned/forged updates (anyone who
+ * guesses the channel UUID) are rejected. When no secret is stored (legacy
+ * channels registered before this existed) we cannot verify — allow but warn;
+ * the secret is set on the next `start()`.
+ */
+export function verifyTelegramWebhookSecret(
+  expectedSecret: string | undefined,
+  providedToken: string | undefined
+): boolean {
+  if (!expectedSecret) return true;
+  if (!providedToken) return false;
+  const a = Buffer.from(expectedSecret);
+  const b = Buffer.from(providedToken);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+async function setupTelegramWebhook(
+  botToken: string,
+  webhookUrl: string,
+  secretToken?: string
+): Promise<boolean> {
   try {
-    const result = await telegramApi(botToken, "setWebhook", {
+    const params: Record<string, unknown> = {
       url: webhookUrl,
       allowed_updates: ["message", "callback_query", "message_reaction"],
-    });
+    };
+    if (secretToken) params.secret_token = secretToken;
+    const result = await telegramApi(botToken, "setWebhook", params);
     console.log("[Telegram] Webhook set:", result);
     return result.ok === true;
   } catch (error) {
@@ -844,10 +876,26 @@ export class TelegramBotManager implements ChannelAdapter {
       this.startPolling(channelId, botToken);
     } else {
       console.log(`[Telegram] Setting up webhook: ${webhookUrl}`);
+      // Reuse an existing secret when present, otherwise mint one so inbound
+      // updates can be authenticated via X-Telegram-Bot-Api-Secret-Token.
+      const existingSecret =
+        typeof config.webhook_secret === "string" && config.webhook_secret.trim()
+          ? config.webhook_secret.trim()
+          : undefined;
+      const webhookSecret = existingSecret || generateTelegramWebhookSecret();
       await deleteTelegramWebhook(botToken);
-      const success = await setupTelegramWebhook(botToken, webhookUrl);
+      const success = await setupTelegramWebhook(botToken, webhookUrl, webhookSecret);
       if (success) {
         console.log(`[Telegram] Webhook configured: ${webhookUrl}`);
+        if (!existingSecret) {
+          // Persist the secret so it survives restarts and is available to
+          // verify inbound webhooks.
+          const channel = tables.channels.get(channelId) as { config?: unknown } | null;
+          const storedConfig = parseStoredTelegramConfig(channel?.config, channelId);
+          tables.channels.update(channelId, {
+            config: { ...storedConfig, webhook_secret: webhookSecret },
+          });
+        }
         this.bots.set(channelId, { token: botToken, channelId, mode: "webhook" });
       } else {
         throw new Error("Webhook setup failed");
@@ -1740,7 +1788,11 @@ export class TelegramBotManager implements ChannelAdapter {
     }
   }
 
-  async processWebhook(channelId: string, update: Record<string, unknown>): Promise<boolean> {
+  async processWebhook(
+    channelId: string,
+    update: Record<string, unknown>,
+    secretToken?: string
+  ): Promise<boolean> {
     try {
       const channel = tables.channels.get(channelId) as { type?: string; config?: unknown } | null;
       if (!channel || channel.type !== "telegram") {
@@ -1753,6 +1805,23 @@ export class TelegramBotManager implements ChannelAdapter {
       if (!botToken) {
         console.error(`[Telegram Webhook] No bot token for channel ${channelId}`);
         return false;
+      }
+
+      const expectedSecret =
+        typeof config.webhook_secret === "string" && config.webhook_secret.trim()
+          ? config.webhook_secret.trim()
+          : undefined;
+      if (!verifyTelegramWebhookSecret(expectedSecret, secretToken)) {
+        console.error(
+          `[Telegram Webhook] Rejected update for channel ${channelId}: secret token mismatch`
+        );
+        return false;
+      }
+      if (!expectedSecret) {
+        console.warn(
+          `[Telegram Webhook] Channel ${channelId} has no webhook secret configured; ` +
+            `updates cannot be authenticated until the channel is restarted.`
+        );
       }
 
       await this.processTelegramUpdate(update as unknown as TelegramUpdate, channelId, botToken);
@@ -1768,7 +1837,8 @@ export const telegramBot = new TelegramBotManager();
 
 export async function processTelegramWebhook(
   channelId: string,
-  update: Record<string, unknown>
+  update: Record<string, unknown>,
+  secretToken?: string
 ): Promise<boolean> {
-  return telegramBot.processWebhook(channelId, update);
+  return telegramBot.processWebhook(channelId, update, secretToken);
 }

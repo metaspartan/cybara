@@ -6,6 +6,8 @@ import {
   resetTelegramSessionTrackingForTests,
   telegramSessions,
   telegramBot,
+  verifyTelegramWebhookSecret,
+  generateTelegramWebhookSecret,
 } from "../../src/core/channels/adapters/telegram";
 import {
   clearChannelSubagentSpawnHandler,
@@ -890,6 +892,33 @@ describe("Telegram webhook mocked flows", () => {
     expect(payload.reaction).toEqual([{ type: "emoji", emoji: "🔥" }]);
   });
 
+  test("SECURITY: rejects a forged update when the secret token does not match", async () => {
+    let handlerCalls = 0;
+    telegramBot.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should not run";
+    });
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    // Channel registered with a webhook secret (as start() now does).
+    tables.channels.update(channelId, {
+      config: { bot_token: "test-bot-token", webhook_secret: "s3cr3t-token" },
+    });
+
+    // Missing token → rejected, handler never runs, no Telegram calls made.
+    const missing = await processTelegramWebhook(channelId, makeTelegramUpdate("ping"));
+    expect(missing).toBe(false);
+    // Wrong token → rejected.
+    const wrong = await processTelegramWebhook(channelId, makeTelegramUpdate("ping"), "wrong");
+    expect(wrong).toBe(false);
+    expect(handlerCalls).toBe(0);
+    expect(fetchCalls).toHaveLength(0);
+
+    // Correct token → accepted and processed.
+    const ok = await processTelegramWebhook(channelId, makeTelegramUpdate("ping"), "s3cr3t-token");
+    expect(ok).toBe(true);
+    expect(handlerCalls).toBe(1);
+  });
+
   test("removeReaction calls Telegram setMessageReaction with empty reaction list", async () => {
     (
       telegramBot as unknown as {
@@ -922,5 +951,29 @@ describe("Telegram webhook mocked flows", () => {
     expect(payload.chat_id).toBe(880011);
     expect(payload.message_id).toBe(101);
     expect(payload.reaction).toEqual([]);
+  });
+});
+
+describe("Telegram webhook secret verification helpers", () => {
+  test("verifyTelegramWebhookSecret enforces a configured secret", () => {
+    expect(verifyTelegramWebhookSecret("abc", "abc")).toBe(true);
+    expect(verifyTelegramWebhookSecret("abc", "xyz")).toBe(false);
+    expect(verifyTelegramWebhookSecret("abc", undefined)).toBe(false);
+    expect(verifyTelegramWebhookSecret("abc", "ab")).toBe(false); // length mismatch
+  });
+
+  test("verifyTelegramWebhookSecret allows when no secret is configured (legacy)", () => {
+    expect(verifyTelegramWebhookSecret(undefined, undefined)).toBe(true);
+    expect(verifyTelegramWebhookSecret(undefined, "anything")).toBe(true);
+    expect(verifyTelegramWebhookSecret("", "anything")).toBe(true);
+  });
+
+  test("generateTelegramWebhookSecret returns a Telegram-valid token", () => {
+    const secret = generateTelegramWebhookSecret();
+    // 1–256 chars, only A-Z a-z 0-9 _ - per Telegram's setWebhook contract.
+    expect(secret.length).toBeGreaterThanOrEqual(16);
+    expect(secret.length).toBeLessThanOrEqual(256);
+    expect(secret).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(generateTelegramWebhookSecret()).not.toBe(secret);
   });
 });
