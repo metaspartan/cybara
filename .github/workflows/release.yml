@@ -236,6 +236,7 @@ jobs:
           releaseName: "Cybara ${{ github.ref_name }}"
           releaseBody: "Download the appropriate installer for your platform below."
           releaseDraft: true
+          includeUpdaterJson: false
           args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
       - name: Build Tauri App (signed macOS)
         if: matrix.platform == 'macos' && env.HAS_MACOS_SIGNING == 'true' && env.HAS_MACOS_NOTARY != 'true'
@@ -254,6 +255,7 @@ jobs:
           releaseName: "Cybara ${{ github.ref_name }}"
           releaseBody: "Download the appropriate installer for your platform below."
           releaseDraft: true
+          includeUpdaterJson: false
           args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
       - name: Build Tauri App (signed and notarized macOS)
         if: matrix.platform == 'macos' && env.HAS_MACOS_SIGNING == 'true' && env.HAS_MACOS_NOTARY == 'true'
@@ -275,6 +277,7 @@ jobs:
           releaseName: "Cybara ${{ github.ref_name }}"
           releaseBody: "Download the appropriate installer for your platform below."
           releaseDraft: true
+          includeUpdaterJson: false
           args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
       - name: Clean up Tauri sidecar signing keychain
         if: always() && matrix.platform == 'macos' && env.HAS_MACOS_SIGNING == 'true'
@@ -742,6 +745,14 @@ jobs:
             TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
             echo "name=$TAG" >> "$GITHUB_OUTPUT"
           fi
+      - name: Publish canonical updater manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          set -euo pipefail
+          test -n "$TAG"
+          bun run scripts/publish-tauri-updater-manifest.ts "$TAG" release-check/latest.json
       - name: Download updater manifest from draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -756,6 +767,8 @@ jobs:
             --dir release-check \
             --clobber
       - name: Verify updater manifest is complete
+        env:
+          CYBARA_TAURI_REQUIRED_UPDATER_PLATFORMS: darwin-aarch64,darwin-aarch64-app,darwin-x86_64,darwin-x86_64-app,linux-x86_64,linux-x86_64-deb,linux-x86_64-rpm,windows-x86_64,windows-x86_64-msi,windows-x86_64-nsis
         run: bun run scripts/verify-tauri-updater-manifest.ts release-check/latest.json
       - name: Publish draft release
         env:

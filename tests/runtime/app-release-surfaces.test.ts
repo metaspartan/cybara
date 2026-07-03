@@ -57,7 +57,10 @@ describe("app release surface wiring", () => {
     expect(workflow).toContain(
       "needs: [release, build-tauri, build-native-macos, build-android, build-ios]"
     );
+    expect(workflow).toContain("includeUpdaterJson: false");
+    expect(workflow).toContain("bun run scripts/publish-tauri-updater-manifest.ts");
     expect(workflow).toContain('gh release download "$TAG"');
+    expect(workflow).toContain("darwin-aarch64,darwin-aarch64-app,darwin-x86_64");
     expect(workflow).toContain(
       "bun run scripts/verify-tauri-updater-manifest.ts release-check/latest.json"
     );

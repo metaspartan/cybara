@@ -178,6 +178,17 @@ export const TAURI_WINDOWS_X64_RELEASE_PLATFORMS = [
   "windows-x86_64-nsis",
 ] as const;
 
+export const TAURI_DESKTOP_UPDATER_PLATFORMS = [
+  "darwin-aarch64",
+  "darwin-aarch64-app",
+  "darwin-x86_64",
+  "darwin-x86_64-app",
+  "linux-x86_64",
+  "linux-x86_64-deb",
+  "linux-x86_64-rpm",
+  ...TAURI_WINDOWS_X64_RELEASE_PLATFORMS,
+] as const;
+
 export interface TauriUpdaterPlatformEntry {
   signature?: unknown;
   url?: unknown;

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  TAURI_DESKTOP_UPDATER_PLATFORMS,
   TAURI_WINDOWS_X64_MSI_FALLBACK_PLATFORMS,
   TAURI_WINDOWS_X64_RELEASE_PLATFORMS,
   buildGitHubReleasesPageUrl,
@@ -104,6 +105,18 @@ describe("versioning helpers", () => {
     expect(TAURI_WINDOWS_X64_MSI_FALLBACK_PLATFORMS).toEqual([
       "windows-x86_64-msi",
       "windows-x86_64",
+    ]);
+    expect(TAURI_DESKTOP_UPDATER_PLATFORMS).toEqual([
+      "darwin-aarch64",
+      "darwin-aarch64-app",
+      "darwin-x86_64",
+      "darwin-x86_64-app",
+      "linux-x86_64",
+      "linux-x86_64-deb",
+      "linux-x86_64-rpm",
+      "windows-x86_64",
+      "windows-x86_64-msi",
+      "windows-x86_64-nsis",
     ]);
     expect(validateTauriUpdaterManifest(manifest).ok).toBe(true);
 
