@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "fs";
+import { existsSync, readFileSync, readdirSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
@@ -8,6 +8,10 @@ const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 describe("desktop host runtime wiring", () => {
   test("frontend detects both tauri and cybara native desktop hosts", () => {
     const desktopHost = readFileSync(join(ROOT_DIR, "ui", "src", "lib", "desktopHost.ts"), "utf8");
+    const desktopUpdater = readFileSync(
+      join(ROOT_DIR, "ui", "src", "lib", "desktopUpdater.ts"),
+      "utf8"
+    );
     const mainTsx = readFileSync(join(ROOT_DIR, "ui", "src", "main.tsx"), "utf8");
     const settingsTsx = readFileSync(join(ROOT_DIR, "ui", "src", "pages", "Settings.tsx"), "utf8");
     const notifications = readFileSync(
@@ -20,6 +24,11 @@ describe("desktop host runtime wiring", () => {
     expect(desktopHost).toContain("getDesktopHostRuntime");
     expect(desktopHost).toContain("supportsDesktopUpdater");
     expect(desktopHost).toContain("openDesktopDirectoryDialog");
+
+    expect(desktopUpdater).toContain('from "@tauri-apps/plugin-updater"');
+    expect(desktopUpdater).toContain('from "@tauri-apps/plugin-process"');
+    expect(desktopUpdater).not.toContain('import("@tauri-apps/plugin-updater")');
+    expect(desktopUpdater).not.toContain('import("@tauri-apps/plugin-process")');
 
     expect(mainTsx).toContain("getDesktopHostRuntime()");
     expect(mainTsx).toContain("rootElement.dataset.runtime = desktopRuntime || 'web'");
@@ -38,5 +47,29 @@ describe("desktop host runtime wiring", () => {
     expect(chatTsx).toContain("openDesktopDirectoryDialog");
     expect(chatTsx).toContain("isDesktopHostRuntime()");
     expect(chatTsx).not.toContain("tauriOpenDialog");
+  });
+
+  test("desktop updater is bundled with the main UI chunk, not lazy-loaded on click", () => {
+    const distAssetsDir = join(ROOT_DIR, "ui", "dist", "assets");
+    if (!existsSync(distAssetsDir)) return;
+
+    const assetFiles = readdirSync(distAssetsDir).filter((file) => file.endsWith(".js"));
+    const lazyChunks = assetFiles.filter((file) => file.startsWith("dist-js-"));
+    const mainChunks = assetFiles.filter((file) => file.startsWith("index-"));
+
+    const lazyChunkSources = lazyChunks.map((file) =>
+      readFileSync(join(distAssetsDir, file), "utf8")
+    );
+    const mainChunkSource = mainChunks
+      .map((file) => readFileSync(join(distAssetsDir, file), "utf8"))
+      .join("\n");
+
+    for (const source of lazyChunkSources) {
+      expect(source).not.toContain("plugin:updater");
+      expect(source).not.toContain("plugin:process");
+      expect(source).not.toContain("downloadAndInstall");
+    }
+    expect(mainChunkSource).toContain("plugin:updater");
+    expect(mainChunkSource).toContain("plugin:process");
   });
 });

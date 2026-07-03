@@ -1,4 +1,5 @@
-import type { DownloadEvent, Update } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { check, type DownloadEvent, type Update } from "@tauri-apps/plugin-updater";
 import { isTauriDesktopRuntime } from "./desktopHost";
 
 export function describeDesktopUpdaterError(error: unknown): string {
@@ -28,7 +29,6 @@ export async function checkForDesktopUpdate(): Promise<Update | null> {
   if (!isTauriDesktopRuntime()) {
     return null;
   }
-  const { check } = await import("@tauri-apps/plugin-updater");
   return check();
 }
 
@@ -40,6 +40,5 @@ export async function installDesktopUpdate(
 }
 
 export async function relaunchDesktopApp(): Promise<void> {
-  const { relaunch } = await import("@tauri-apps/plugin-process");
   await relaunch();
 }
