@@ -18,12 +18,52 @@ export interface ApprovalRequest {
   sessionId: string;
   agentId?: string;
   toolName: string;
+  /**
+   * The allowlist key this request grants. For command-bearing tools (exec,
+   * process, git, execute_code) it includes a signature of the command/code, so
+   * approving one command does NOT auto-approve a different one. Defaults to the
+   * tool name for tools whose danger does not depend on their arguments.
+   */
+  approvalKey: string;
   argsSummary: string;
   /** Full args for the approval UI to display (redacted). */
   argsPreview?: Record<string, unknown>;
   createdAt: number;
   status: "pending" | "approved_once" | "approved_session" | "approved_always" | "denied";
   resolvedAt?: number;
+}
+
+/**
+ * Tools whose danger is entirely determined by their arguments — approving one
+ * invocation must not blanket-approve every future call. Their approval key
+ * incorporates the salient argument so `exec ls` never green-lights `exec rm`.
+ */
+const COMMAND_BEARING_ARG: Record<string, readonly string[]> = {
+  exec: ["command"],
+  process: ["command", "action"],
+  git: ["command", "args"],
+  execute_code: ["code", "language"],
+  shell: ["command"],
+};
+
+/**
+ * Build the allowlist key for a tool call. For command-bearing tools this binds
+ * the approval to the specific command/arguments; for everything else the key is
+ * just the tool name.
+ */
+export function buildApprovalKey(toolName: string, args?: Record<string, unknown>): string {
+  const SP = String.fromCharCode(32);
+  const fields = COMMAND_BEARING_ARG[toolName];
+  if (!fields || !args) return toolName;
+  const signature = fields
+    .map((f) => {
+      const v = args[f];
+      if (v === undefined || v === null) return "";
+      return typeof v === "string" ? v : JSON.stringify(v);
+    })
+    .join(" ")
+    .trim();
+  return signature ? `${toolName} ${signature}` : toolName;
 }
 
 export type ApprovalDecision = "approve_once" | "approve_session" | "approve_always" | "deny";
@@ -40,35 +80,49 @@ const resolvers = new Map<string, (decision: ApprovalDecision) => void>();
 /** How long to wait for an approval response before timing out (ms). */
 const APPROVAL_TIMEOUT_MS = 120_000;
 
-/** Check if a tool is already approved (session or always). */
-export function isToolApproved(sessionId: string, toolName: string): boolean {
-  if (alwaysAllowlist.has(toolName)) return true;
+/**
+ * Check if a call is already approved (session or always). The `approvalKey`
+ * scopes the grant — pass the key from `buildApprovalKey` so a session approval
+ * of one command does not silently cover a different command of the same tool.
+ */
+export function isToolApproved(sessionId: string, approvalKey: string): boolean {
+  if (alwaysAllowlist.has(approvalKey)) return true;
   const session = sessionAllowlist.get(sessionId);
-  return !!session?.has(toolName);
+  return !!session?.has(approvalKey);
 }
 
-/** Grant session-level approval for a tool in a session. */
-export function approveToolForSession(sessionId: string, toolName: string): void {
+/** Grant session-level approval for a specific approval key in a session. */
+export function approveToolForSession(sessionId: string, approvalKey: string): void {
   let set = sessionAllowlist.get(sessionId);
   if (!set) {
     set = new Set();
     sessionAllowlist.set(sessionId, set);
   }
-  set.add(toolName);
+  set.add(approvalKey);
 }
 
-/** Grant persistent (always) approval for a tool. */
-export function approveToolAlways(toolName: string): void {
-  alwaysAllowlist.add(toolName);
+/** Grant persistent (always) approval for a specific approval key. */
+export function approveToolAlways(approvalKey: string): void {
+  alwaysAllowlist.add(approvalKey);
 }
 
-/** Revoke a tool's approvals. */
+/**
+ * Revoke approvals. Matches both the exact key and any command-scoped keys that
+ * begin with `"<toolName> "`, so revoking a tool clears all of its grants.
+ */
 export function revokeToolApproval(toolName: string, sessionId?: string): void {
-  alwaysAllowlist.delete(toolName);
+  const matches = (key: string) => key === toolName || key.startsWith(`${toolName} `);
+  for (const key of [...alwaysAllowlist]) {
+    if (matches(key)) alwaysAllowlist.delete(key);
+  }
+  const clearFrom = (set: Set<string>) => {
+    for (const key of [...set]) if (matches(key)) set.delete(key);
+  };
   if (sessionId) {
-    sessionAllowlist.get(sessionId)?.delete(toolName);
+    const set = sessionAllowlist.get(sessionId);
+    if (set) clearFrom(set);
   } else {
-    for (const set of sessionAllowlist.values()) set.delete(toolName);
+    for (const set of sessionAllowlist.values()) clearFrom(set);
   }
 }
 
@@ -90,11 +144,11 @@ export function resolveApproval(requestId: string, decision: ApprovalDecision): 
   request.status = statusMap[decision];
   request.resolvedAt = Date.now();
 
-  // Update allowlists based on the decision.
+  // Update allowlists based on the decision, scoped to the specific approval key.
   if (decision === "approve_session") {
-    approveToolForSession(request.sessionId, request.toolName);
+    approveToolForSession(request.sessionId, request.approvalKey);
   } else if (decision === "approve_always") {
-    approveToolAlways(request.toolName);
+    approveToolAlways(request.approvalKey);
   }
 
   // Wake the suspended tool call.
@@ -124,11 +178,14 @@ export async function requestToolApproval(params: {
   toolName: string;
   argsSummary: string;
   argsPreview?: Record<string, unknown>;
+  /** Allowlist key; defaults to a key derived from tool name + args. */
+  approvalKey?: string;
 }): Promise<ApprovalDecision> {
   const { sessionId, agentId, toolName, argsSummary, argsPreview } = params;
+  const approvalKey = params.approvalKey ?? buildApprovalKey(toolName, argsPreview);
 
-  // Fast path: already approved.
-  if (isToolApproved(sessionId, toolName)) {
+  // Fast path: this exact call is already approved.
+  if (isToolApproved(sessionId, approvalKey)) {
     return "approve_session";
   }
 
@@ -145,6 +202,7 @@ export async function requestToolApproval(params: {
     sessionId,
     agentId,
     toolName,
+    approvalKey,
     argsSummary,
     argsPreview,
     createdAt: Date.now(),
@@ -179,6 +237,7 @@ export async function requestToolApproval(params: {
 /** Reset per-session state (for tests). */
 export function resetApprovalStateForTests(): void {
   sessionAllowlist.clear();
+  alwaysAllowlist.clear();
   pendingRequests.clear();
   resolvers.clear();
 }

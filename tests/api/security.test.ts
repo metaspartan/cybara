@@ -101,6 +101,16 @@ describe("API security module", () => {
     }
   });
 
+  test("validateUrl blocks cloud-metadata and decimal-encoded loopback (SSRF)", async () => {
+    // Link-local cloud-metadata endpoint — a prime SSRF target.
+    const metadata = await security.validateUrl("http://169.254.169.254/latest/meta-data/");
+    expect(metadata.valid).toBe(false);
+
+    // Decimal-encoded loopback (2130706433 === 127.0.0.1).
+    const decimalLoopback = await security.validateUrl("http://2130706433/");
+    expect(decimalLoopback.valid).toBe(false);
+  });
+
   test("validateMessageSize and sanitizeString enforce basic input safety", () => {
     const valid = security.validateMessageSize("hello");
     expect(valid.valid).toBe(true);

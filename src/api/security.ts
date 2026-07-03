@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { randomBytes, timingSafeEqual } from "crypto";
 import { lookup } from "dns/promises";
+import type { LookupAddress } from "dns";
 import { isIP } from "net";
 import { cybaraDir } from "../core/paths";
 import { authenticateMobileDeviceToken } from "../core/mobile-devices";
@@ -421,7 +422,7 @@ export async function validateUrl(url: string): Promise<{ valid: boolean; error?
     const ipVersion = isIP(hostname);
     if (ipVersion === 0) {
       try {
-        const addresses = await lookup(hostname, { all: true, verbatim: true });
+        const addresses: LookupAddress[] = await lookup(hostname, { all: true, verbatim: true });
         for (const address of addresses) {
           if (isPrivateOrBlockedIP(address.address)) {
             return {
@@ -431,7 +432,11 @@ export async function validateUrl(url: string): Promise<{ valid: boolean; error?
           }
         }
       } catch {
-        // Keep behavior permissive when DNS lookup fails to avoid false negatives offline.
+        // Keep behavior permissive when DNS lookup fails to avoid false negatives
+        // offline. NOTE: closing the residual DNS-rebinding/TOCTOU gap requires
+        // pinning the resolved IP and dialing it directly (an SSRF-safe agent),
+        // not a fail-closed flip here — a flip would block offline use and any
+        // operator-allowlisted host that does not resolve in the current env.
       }
     }
 

@@ -177,7 +177,12 @@ export function checkWritePath(
     }
   }
 
-  if (options.confineToWorkspace && options.workspaceRoot) {
+  if (options.confineToWorkspace) {
+    // Fail closed: confinement requested without a root is a misconfiguration,
+    // and silently skipping the check would defeat the lock the caller asked for.
+    if (!options.workspaceRoot) {
+      return { allowed: false, reason: "outside-workspace", resolvedPath: resolved };
+    }
     const roots = policyPaths(options.workspaceRoot).map((root) => root.replace(/\/$/, ""));
     if (roots.some((root) => !isAbsolute(root))) {
       return { allowed: false, reason: "outside-workspace", resolvedPath: resolved };

@@ -1,5 +1,13 @@
-import { readFileSync, existsSync, readdirSync, writeFileSync, appendFileSync, statSync } from "fs";
-import { join } from "path";
+import {
+  readFileSync,
+  existsSync,
+  readdirSync,
+  writeFileSync,
+  appendFileSync,
+  statSync,
+  realpathSync,
+} from "fs";
+import { join, resolve, sep, dirname } from "path";
 import {
   getVectorStore,
   saveDurableMemory,
@@ -14,6 +22,43 @@ import {
   type HeartbeatState,
 } from "../../memory";
 import { memoryDir } from "../../paths";
+
+/**
+ * Resolve `candidate` and assert it stays inside `memoryDir`, following symlinks
+ * on whatever portion of the path already exists. Rejects absolute paths that
+ * escape the memory dir, `..` traversal, and symlinked escapes. Confinement to
+ * the memory dir (rather than the general deny-list) is the right control here:
+ * memoryDir lives under ~/.cybara, so the deny-list would reject it, yet
+ * containment already excludes the wallet/keys/session siblings.
+ */
+function assertWithinMemoryDir(candidate: string): void {
+  let root: string;
+  try {
+    root = realpathSync.native(memoryDir);
+  } catch {
+    root = resolve(memoryDir);
+  }
+
+  const absolute = resolve(candidate);
+  let real = absolute;
+  let existing = absolute;
+  while (existing && existing !== dirname(existing) && !existsSync(existing)) {
+    existing = dirname(existing);
+  }
+  try {
+    if (existsSync(existing)) {
+      const realExisting = realpathSync.native(existing);
+      const suffix = absolute.slice(existing.length);
+      real = suffix ? join(realExisting, suffix) : realExisting;
+    }
+  } catch {
+    real = absolute;
+  }
+
+  if (real !== root && !real.startsWith(root + sep)) {
+    throw new Error("Refused: memory_get can only read files inside the memory directory.");
+  }
+}
 
 let vectorStoreInitialized = false;
 
@@ -176,10 +221,16 @@ export async function handleMemoryGet(
     throw new Error("Path is required");
   }
 
-  let filePath = path;
-  if (!path.startsWith("/")) {
-    filePath = join(memoryDir, path);
+  if (path.includes("\0")) {
+    throw new Error("Invalid memory path");
   }
+
+  const filePath = path.startsWith("/") ? path : join(memoryDir, path);
+
+  // Reject anything that escapes the memory directory so `memory_get` can never
+  // be used to read arbitrary host files (e.g. ~/.ssh/id_rsa, /etc/passwd, or the
+  // sibling wallet/keys files under ~/.cybara).
+  assertWithinMemoryDir(filePath);
 
   if (!existsSync(filePath)) {
     throw new Error(`Memory file not found: ${path}`);

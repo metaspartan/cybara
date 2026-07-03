@@ -1,5 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
+import { assertRecipientAllowed, assertAmountWithinCap } from "./wallet-policy";
 import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import {
@@ -1342,6 +1343,7 @@ class WalletManager {
    */
   private assertAgentSendWithinPolicy(to: string, amount: string, policy: WalletAgentPolicy): void {
     const recipient = String(to || "").trim();
+    // A send requires an explicit, allowlisted recipient when an allowlist is set.
     if (policy.allowedSendRecipients.length > 0) {
       const allow = policy.allowedSendRecipients.map((a) => a.trim().toLowerCase());
       if (!recipient || !allow.includes(recipient.toLowerCase())) {
@@ -1350,15 +1352,28 @@ class WalletManager {
         );
       }
     }
-    const cap = Number(policy.maxSendAmount);
-    if (policy.maxSendAmount?.trim() && Number.isFinite(cap) && cap > 0) {
-      const amt = Number(amount);
-      if (!Number.isFinite(amt) || amt > cap) {
-        throw new Error(
-          `Validation error: Send amount (${amount}) exceeds the agent per-transaction cap of ${policy.maxSendAmount} set by wallet policy`
-        );
-      }
-    }
+    assertAmountWithinCap(amount, policy);
+  }
+
+  /** Enforce the per-transaction amount cap (shared by all fund-moving paths). */
+  private assertAgentAmountWithinCap(
+    amount: string | undefined,
+    policy: WalletAgentPolicy
+  ): void {
+    assertAmountWithinCap(amount, policy);
+  }
+
+  /**
+   * Enforce the recipient allowlist for any path that can direct funds to an
+   * external address (swaps with an explicit recipient, contract calls). When no
+   * recipient is given, output goes to the wallet's own address, which is safe;
+   * an explicitly-directed recipient must be allowlisted like a send.
+   */
+  private assertAgentRecipientAllowed(
+    recipient: string | undefined,
+    policy: WalletAgentPolicy
+  ): void {
+    assertRecipientAllowed(recipient, policy);
   }
 
   async sendForAgent(input: WalletSendInput): Promise<WalletSendResult> {
@@ -1401,6 +1416,10 @@ class WalletManager {
     ) {
       throw new Error("Validation error: Contract address is not allowlisted for agent writes");
     }
+    if (!readOnly && input.value !== undefined) {
+      // Native ETH attached to a contract call is a fund movement — cap it.
+      this.assertAgentAmountWithinCap(String(input.value), policy);
+    }
 
     return await this.callEthContract(input);
   }
@@ -1430,6 +1449,8 @@ class WalletManager {
     if (!policy.allowEthSwaps) {
       throw new Error("Validation error: Agent ETH swaps are disabled by wallet policy");
     }
+    this.assertAgentRecipientAllowed(input.recipient, policy);
+    this.assertAgentAmountWithinCap(input.amountEth, policy);
     return await this.swapEthOnUniswap(input);
   }
 
@@ -1651,6 +1672,8 @@ class WalletManager {
       if (!policy.allowEthSwaps) {
         throw new Error("Validation error: Agent swaps are disabled by wallet policy");
       }
+      this.assertAgentRecipientAllowed(input.recipient, policy);
+      this.assertAgentAmountWithinCap(input.amountEth ?? input.amount, policy);
     }
     return await this.swap(input);
   }

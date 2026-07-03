@@ -3,6 +3,7 @@ import { config } from "../../src/core/config";
 import {
   approveToolAlways,
   approveToolForSession,
+  buildApprovalKey,
   getAlwaysAllowlist,
   getPendingApprovals,
   isToolApproved,
@@ -86,5 +87,75 @@ describe("tool-approval request + resolve", () => {
     resolveApproval(req.id, "approve_always");
     await promise;
     expect(getAlwaysAllowlist()).toContain("browser");
+  });
+});
+
+describe("tool-approval per-command scoping (security)", () => {
+  test("buildApprovalKey binds command-bearing tools to their command", () => {
+    expect(buildApprovalKey("exec", { command: "ls -la" })).toBe("exec ls -la");
+    expect(buildApprovalKey("exec", { command: "rm -rf /" })).toBe("exec rm -rf /");
+    expect(buildApprovalKey("execute_code", { code: "print(1)", language: "python" })).toBe(
+      "execute_code print(1) python"
+    );
+    // Non-command tools stay keyed on the tool name.
+    expect(buildApprovalKey("browser", { action: "navigate" })).toBe("browser");
+    expect(buildApprovalKey("exec", undefined)).toBe("exec");
+  });
+
+  test("approving one command does NOT approve a different command of the same tool", () => {
+    const benign = buildApprovalKey("exec", { command: "ls -la" });
+    const dangerous = buildApprovalKey("exec", { command: "rm -rf ~" });
+    approveToolForSession("s1", benign);
+    expect(isToolApproved("s1", benign)).toBe(true);
+    // The core regression: approving `ls` must not green-light `rm -rf ~`.
+    expect(isToolApproved("s1", dangerous)).toBe(false);
+  });
+
+  test("requestToolApproval fast-path is scoped to the exact command", async () => {
+    // Pre-approve `exec ls` for the session.
+    approveToolForSession("s1", buildApprovalKey("exec", { command: "ls" }));
+
+    // Same command → auto-approved without a prompt.
+    const approved = await requestToolApproval({
+      sessionId: "s1",
+      toolName: "exec",
+      argsSummary: "ls",
+      argsPreview: { command: "ls" },
+    });
+    expect(approved).toBe("approve_session");
+
+    // Different command → must create a pending request (not auto-approved).
+    config.set("tool_approval_mode", "ask");
+    const pendingBefore = getPendingApprovals().length;
+    const promise = requestToolApproval({
+      sessionId: "s1",
+      toolName: "exec",
+      argsSummary: "cat /etc/passwd",
+      argsPreview: { command: "cat /etc/passwd" },
+    });
+    expect(getPendingApprovals().length).toBe(pendingBefore + 1);
+    const req = getPendingApprovals().find((r) => r.argsSummary === "cat /etc/passwd")!;
+    resolveApproval(req.id, "deny");
+    expect(await promise).toBe("deny");
+  });
+
+  test("approve_session then re-run same command auto-approves; revoke clears all command grants", async () => {
+    config.set("tool_approval_mode", "ask");
+    const promise = requestToolApproval({
+      sessionId: "s1",
+      toolName: "exec",
+      argsSummary: "git status",
+      argsPreview: { command: "git status" },
+    });
+    const req = getPendingApprovals().find((r) => r.argsSummary === "git status")!;
+    resolveApproval(req.id, "approve_session");
+    expect(await promise).toBe("approve_session");
+
+    // Same command is now remembered for the session.
+    expect(isToolApproved("s1", buildApprovalKey("exec", { command: "git status" }))).toBe(true);
+
+    // Revoking the tool clears every command-scoped grant for it.
+    revokeToolApproval("exec", "s1");
+    expect(isToolApproved("s1", buildApprovalKey("exec", { command: "git status" }))).toBe(false);
   });
 });

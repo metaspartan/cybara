@@ -90,7 +90,18 @@ function toMcpTool(tool: CybaraTool): {
   };
 }
 
-/** Build the workspace tool context. Kept permissive — host tools are trusted. */
+/**
+ * Whether the MCP host server may run dangerous tools (exec/process/etc.)
+ * without the normal approval/policy gate. Off by default: exposing Cybara as an
+ * MCP server must not silently grant any connected client unattended shell
+ * access. Operators who intend this must opt in explicitly.
+ */
+export function hostAllowsDangerousTools(): boolean {
+  const v = process.env.CYBARA_MCP_HOST_ALLOW_DANGEROUS;
+  return v === "1" || v === "true";
+}
+
+/** Build the workspace tool context for a host-exposed tool call. */
 function buildContext(params: Record<string, unknown> | null | undefined): ToolContext {
   const meta =
     params && typeof params === "object" && params._meta && typeof params._meta === "object"
@@ -100,7 +111,7 @@ function buildContext(params: Record<string, unknown> | null | undefined): ToolC
     agentId: "mcp-host",
     sessionId: typeof meta.sessionId === "string" ? meta.sessionId : undefined,
     workspaceDir: typeof meta.workspaceDir === "string" ? meta.workspaceDir : undefined,
-    allowDangerousTools: true,
+    allowDangerousTools: hostAllowsDangerousTools(),
   };
 }
 

@@ -1265,16 +1265,44 @@ export async function handleWebFetch(
   }
 
   try {
-    await validateBrowserNavigationUrl(url, "Request");
+    // Follow redirects manually and re-validate every hop. Auto-follow ("follow",
+    // the default) would let a validated public URL 302 to an internal host
+    // (e.g. 169.254.169.254 cloud metadata) — a classic SSRF-via-redirect.
+    const MAX_REDIRECTS = 5;
+    let currentUrl = url;
+    let response: Response | undefined;
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      await validateBrowserNavigationUrl(currentUrl, "Request");
+      const hopResponse = await fetch(currentUrl, {
+        redirect: "manual",
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+      });
 
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-    });
+      if (hopResponse.status >= 300 && hopResponse.status < 400) {
+        const location = hopResponse.headers.get("location");
+        if (!location) {
+          response = hopResponse;
+          break;
+        }
+        if (hop === MAX_REDIRECTS) {
+          throw new Error("Too many redirects");
+        }
+        currentUrl = new URL(location, currentUrl).toString();
+        continue;
+      }
+
+      response = hopResponse;
+      break;
+    }
+
+    if (!response) {
+      throw new Error("Too many redirects");
+    }
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);

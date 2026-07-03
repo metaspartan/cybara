@@ -17,9 +17,15 @@ export async function handleHttp(args: Record<string, unknown>): Promise<HttpRes
   const headers = (args.headers as Record<string, string>) || {};
   const body = args.body as string | undefined;
   const timeout = (args.timeout as number) || 30000;
+  const redirectHops = typeof args.__redirectHops === "number" ? args.__redirectHops : 0;
+  const MAX_REDIRECTS = 5;
 
   if (!url) {
     throw new Error("URL is required");
+  }
+
+  if (redirectHops > MAX_REDIRECTS) {
+    throw new Error("Too many redirects");
   }
 
   const urlValidation = await validateUrl(url);
@@ -54,7 +60,11 @@ export async function handleHttp(args: Record<string, unknown>): Promise<HttpRes
           log.warn(`SSRF blocked redirect: ${redirectValidation.error}`, { location });
           throw new Error(`Redirect blocked: ${redirectValidation.error}`);
         }
-        return handleHttp({ ...args, url: new URL(location, url).toString() });
+        return handleHttp({
+          ...args,
+          url: new URL(location, url).toString(),
+          __redirectHops: redirectHops + 1,
+        });
       }
     }
 
