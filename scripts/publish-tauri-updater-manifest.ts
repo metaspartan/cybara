@@ -35,6 +35,14 @@ export type CanonicalTauriUpdaterManifest = {
 type BuildManifestOptions = {
   assets: readonly GitHubReleaseAsset[];
   downloadAssetText: (asset: GitHubReleaseAsset) => Promise<string>;
+  /**
+   * Resolves the public download URL for an updater asset. Defaults to the
+   * asset's `browser_download_url`, but the release pipeline MUST override this
+   * with a canonical tag URL: when the manifest is built the release is still a
+   * draft, so GitHub reports an `untagged-<id>` download path that 404s the
+   * moment the release is published. See `canonicalDownloadUrl`.
+   */
+  downloadUrl?: (asset: GitHubReleaseAsset) => string;
   notes: string;
   pubDate: string;
   requiredPlatforms?: readonly string[];
@@ -53,6 +61,20 @@ class GitHubApiError extends Error {
     super(message);
     this.name = "GitHubApiError";
   }
+}
+
+/**
+ * The stable public download URL for a release asset. This is what GitHub serves
+ * once the release is published under its tag, and — unlike the API's
+ * `browser_download_url` — it does not change when a draft release is promoted.
+ */
+export function canonicalDownloadUrl(
+  owner: string,
+  repo: string,
+  tagName: string,
+  assetName: string
+): string {
+  return `https://github.com/${owner}/${repo}/releases/download/${tagName}/${assetName}`;
 }
 
 export function resolveUpdaterPlatformKeys(assetName: string): readonly string[] {
@@ -241,6 +263,7 @@ export async function buildTauriUpdaterManifestFromAssets(
 ): Promise<CanonicalTauriUpdaterManifest> {
   const assetsByName = new Map(options.assets.map((asset) => [asset.name, asset]));
   const platforms: Record<string, TauriUpdaterPlatform> = {};
+  const resolveUrl = options.downloadUrl ?? ((asset) => asset.browser_download_url);
 
   for (const signatureAsset of options.assets.filter((asset) => asset.name.endsWith(".sig"))) {
     const updaterAssetName = signatureAsset.name.slice(0, -".sig".length);
@@ -251,10 +274,11 @@ export async function buildTauriUpdaterManifestFromAssets(
     if (platformKeys.length === 0) continue;
 
     const signature = await options.downloadAssetText(signatureAsset);
+    const url = resolveUrl(updaterAsset);
     for (const platformKey of platformKeys) {
       platforms[platformKey] = {
         signature,
-        url: updaterAsset.browser_download_url,
+        url,
       };
     }
   }
@@ -319,6 +343,11 @@ if (import.meta.main) {
     const manifest = await buildTauriUpdaterManifestFromAssets({
       assets,
       downloadAssetText: (asset) => downloadReleaseAssetText(owner, repo, asset, token),
+      // Build canonical tag URLs, not the draft-release `browser_download_url`.
+      // The manifest is generated while the release is still a draft, so the API
+      // reports an `untagged-<id>` path that 404s once the release is published —
+      // exactly the in-app updater download failure this pipeline had.
+      downloadUrl: (asset) => canonicalDownloadUrl(owner, repo, release.tag_name, asset.name),
       notes: process.env.CYBARA_TAURI_UPDATER_NOTES?.trim() || DEFAULT_NOTES,
       pubDate: new Date().toISOString(),
       version: versionFromTag(release.tag_name),

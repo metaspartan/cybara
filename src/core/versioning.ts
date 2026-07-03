@@ -205,6 +205,16 @@ export interface TauriUpdaterManifestValidation {
   invalidPlatforms: string[];
 }
 
+/**
+ * True for a GitHub *draft* release asset URL. GitHub serves draft assets from a
+ * `/releases/download/untagged-<hex>/` path that stops resolving once the
+ * release is published under its tag, so such a URL in a shipped manifest is a
+ * guaranteed 404 for the in-app updater.
+ */
+export function isDraftReleaseUrl(url: string): boolean {
+  return /\/releases\/download\/untagged-[0-9a-f]+\//i.test(url);
+}
+
 export function validateTauriUpdaterManifest(
   manifest: TauriUpdaterManifest,
   requiredPlatforms: readonly string[] = TAURI_WINDOWS_X64_RELEASE_PLATFORMS
@@ -227,7 +237,12 @@ export function validateTauriUpdaterManifest(
       typeof entry.signature !== "string" ||
       entry.signature.trim().length === 0 ||
       typeof entry.url !== "string" ||
-      entry.url.trim().length === 0
+      entry.url.trim().length === 0 ||
+      // Reject draft-release download paths. When the manifest is generated
+      // before the release is published, GitHub reports an `untagged-<id>` URL
+      // that 404s the moment the release goes live — the in-app updater then
+      // finds an update but fails to download it. Fail the release instead.
+      isDraftReleaseUrl(entry.url)
     ) {
       invalidPlatforms.push(platform);
     }

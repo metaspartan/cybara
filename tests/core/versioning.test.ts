@@ -16,6 +16,7 @@ import {
   resolveReleaseBinaryFilename,
   resolveSelfUpdateDestination,
   validateTauriUpdaterManifest,
+  isDraftReleaseUrl,
 } from "../../src/core/versioning";
 
 describe("versioning helpers", () => {
@@ -130,5 +131,31 @@ describe("versioning helpers", () => {
     expect(
       validateTauriUpdaterManifest(manifest, TAURI_WINDOWS_X64_RELEASE_PLATFORMS).invalidPlatforms
     ).toEqual(["windows-x86_64-msi"]);
+  });
+
+  test("rejects draft `untagged-` download URLs (updater 404 guardrail)", () => {
+    expect(
+      isDraftReleaseUrl(
+        "https://github.com/metaspartan/cybara/releases/download/untagged-c7272da8b1134df24a19/Cybara_1.0.627_x64_en-US.msi"
+      )
+    ).toBe(true);
+    expect(
+      isDraftReleaseUrl(
+        "https://github.com/metaspartan/cybara/releases/download/v1.0.627/Cybara_1.0.627_x64_en-US.msi"
+      )
+    ).toBe(false);
+
+    const manifest = {
+      version: "1.0.627",
+      platforms: {
+        "windows-x86_64": {
+          signature: "sig",
+          url: "https://github.com/metaspartan/cybara/releases/download/untagged-abc123/Cybara_1.0.627_x64_en-US.msi",
+        },
+      },
+    };
+    expect(
+      validateTauriUpdaterManifest(manifest, ["windows-x86_64"]).invalidPlatforms
+    ).toEqual(["windows-x86_64"]);
   });
 });
