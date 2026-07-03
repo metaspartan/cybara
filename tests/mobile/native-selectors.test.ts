@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../../apps/mobile/src", import.meta.url));
 const read = (rel: string) => readFileSync(`${root}/${rel}`, "utf8");
-const screen = read("screens/DashboardScreen.tsx");
+const screen = read("screens/DashboardScreen.tsx") + read("screens/dashboardSettingsPanels.tsx");
 // The shared settings-control components were extracted out of the screen.
 const controls = read("screens/dashboardControls.tsx");
 

@@ -1,5 +1,9 @@
 /** Pure formatting + derivation helpers shared across the dashboard. */
-import { readMobileAccent } from "../lib/dashboard";
+import {
+  formatMobileValue,
+  isMobileSettingsDetailFieldVisible,
+  readMobileAccent,
+} from "../lib/dashboard";
 import type { AccentKey } from "../theme/liquidGlass";
 import type {
   ActivitySummary,
@@ -199,4 +203,28 @@ export function surfaceCount(
 
 export function sessionMayBeInProgress(session: SessionSummary): boolean {
   return session.last_message?.role === "user";
+}
+
+export function displayFields(record: Record<string, unknown>): Array<{ label: string; value: string }> {
+  return Object.entries(record)
+    .filter(([key]) => !/secret|token|api[_-]?key|password|credential|mnemonic/i.test(key))
+    .map(([label, value]) => ({
+      label: label.replace(/_/g, " "),
+      value: formatMobileValue(value),
+    }));
+}
+
+export function displayFieldLabel(label: string): string {
+  return label
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+export function cleanSettingsFields(
+  fields: Array<{ label: string; value: string }> = []
+): Array<{ label: string; value: string }> {
+  return fields
+    .filter((field) => isMobileSettingsDetailFieldVisible(field.label))
+    .map((field) => ({ ...field, label: displayFieldLabel(field.label) }));
 }

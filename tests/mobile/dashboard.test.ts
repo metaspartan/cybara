@@ -51,10 +51,17 @@ import {
   summarizeFeatureCounts,
 } from "../../apps/mobile/src/lib/dashboard";
 
-const dashboardScreenSource = readFileSync(
-  new URL("../../apps/mobile/src/screens/DashboardScreen.tsx", import.meta.url),
-  "utf8"
-);
+// The settings/detail panels were split into their own module; the screen
+// "source" for these structural assertions is the union of both.
+const dashboardScreenSource =
+  readFileSync(
+    new URL("../../apps/mobile/src/screens/DashboardScreen.tsx", import.meta.url),
+    "utf8"
+  ) +
+  readFileSync(
+    new URL("../../apps/mobile/src/screens/dashboardSettingsPanels.tsx", import.meta.url),
+    "utf8"
+  );
 // Pure display/derivation helpers were extracted out of the screen.
 const dashboardHelpersSource = readFileSync(
   new URL("../../apps/mobile/src/screens/dashboardHelpers.ts", import.meta.url),
