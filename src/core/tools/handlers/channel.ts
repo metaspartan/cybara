@@ -1088,6 +1088,7 @@ export async function handleImage(
   const image = args.image as string;
   const prompt =
     (args.prompt as string) || "Describe what you see in this image and extract any visible text.";
+  const shouldExtractText = args.extractText !== false;
 
   if (!image) {
     throw new Error("image path is required");
@@ -1113,31 +1114,33 @@ export async function handleImage(
   }
 
   let extractedText = "";
-  const platform = process.platform; // 'darwin', 'win32', 'linux'
+  if (shouldExtractText) {
+    const platform = process.platform; // 'darwin', 'win32', 'linux'
+    const projectRoot = join(__dirname, "..", "..", "..", "..");
 
-  const projectRoot = join(__dirname, "..", "..", "..", "..");
+    if (platform === "darwin") {
+      const ocrScriptPath = join(projectRoot, "scripts", "ocr.swift");
+      if (existsSync(ocrScriptPath)) {
+        try {
+          const result = Bun.spawnSync(["swift", ocrScriptPath, resolvedImagePath], {
+            stdout: "pipe",
+            stderr: "pipe",
+            timeout: 30000,
+          });
 
-  if (platform === "darwin") {
-    const ocrScriptPath = join(projectRoot, "scripts", "ocr.swift");
-    if (existsSync(ocrScriptPath)) {
-      try {
-        const result = Bun.spawnSync(["swift", ocrScriptPath, resolvedImagePath], {
-          stdout: "pipe",
-          stderr: "pipe",
-          timeout: 30000,
-        });
-
-        if (result.exitCode === 0) {
-          extractedText = result.stdout.toString().trim();
-          console.log(`[Image] OCR extracted ${extractedText.length} characters via Swift Vision`);
+          if (result.exitCode === 0) {
+            extractedText = result.stdout.toString().trim();
+            console.log(
+              `[Image] OCR extracted ${extractedText.length} characters via Swift Vision`
+            );
+          }
+        } catch (err) {
+          console.error("[Image] Swift OCR failed:", err);
         }
-      } catch (err) {
-        console.error("[Image] Swift OCR failed:", err);
       }
-    }
-  } else if (platform === "win32") {
-    try {
-      const psScript = `
+    } else if (platform === "win32") {
+      try {
+        const psScript = `
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
 $null = [Windows.Media.Ocr.OcrEngine,Windows.Media.Ocr,ContentType=WindowsRuntime]
 $null = [Windows.Graphics.Imaging.BitmapDecoder,Windows.Graphics.Imaging,ContentType=WindowsRuntime]
@@ -1151,43 +1154,45 @@ $result = $engine.RecognizeAsync($bitmap).GetAwaiter().GetResult()
 Write-Output $result.Text
 $stream.Dispose()
 `;
-      const result = Bun.spawnSync(["powershell", "-NoProfile", "-Command", psScript], {
-        stdout: "pipe",
-        stderr: "pipe",
-        timeout: 30000,
-      });
+        const result = Bun.spawnSync(["powershell", "-NoProfile", "-Command", psScript], {
+          stdout: "pipe",
+          stderr: "pipe",
+          timeout: 30000,
+        });
 
-      if (result.exitCode === 0) {
-        extractedText = result.stdout.toString().trim();
-        console.log(`[Image] OCR extracted ${extractedText.length} characters via Windows OCR`);
+        if (result.exitCode === 0) {
+          extractedText = result.stdout.toString().trim();
+          console.log(`[Image] OCR extracted ${extractedText.length} characters via Windows OCR`);
+        }
+      } catch (err) {
+        console.error("[Image] Windows OCR failed:", err);
       }
-    } catch (err) {
-      console.error("[Image] Windows OCR failed:", err);
     }
-  }
 
-  if (!extractedText) {
-    try {
-      const result = Bun.spawnSync(["tesseract", resolvedImagePath, "stdout"], {
-        stdout: "pipe",
-        stderr: "pipe",
-      });
+    if (!extractedText) {
+      try {
+        const result = Bun.spawnSync(["tesseract", resolvedImagePath, "stdout"], {
+          stdout: "pipe",
+          stderr: "pipe",
+        });
 
-      if (result.exitCode === 0) {
-        extractedText = result.stdout.toString().trim();
-        console.log(`[Image] OCR extracted ${extractedText.length} characters via tesseract`);
+        if (result.exitCode === 0) {
+          extractedText = result.stdout.toString().trim();
+          console.log(`[Image] OCR extracted ${extractedText.length} characters via tesseract`);
+        }
+      } catch {
+        void 0;
       }
-    } catch {
-      void 0;
     }
   }
 
   return {
     description: prompt,
     image: resolvedImagePath,
-    text:
-      extractedText ||
-      "No text could be extracted. Try using browser({action:'snapshot'}) to read page text directly.",
+    text: shouldExtractText
+      ? extractedText ||
+        "No text could be extracted. Try using browser({action:'snapshot'}) to read page text directly."
+      : undefined,
   };
 }
 

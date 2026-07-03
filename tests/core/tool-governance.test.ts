@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { COMPUTER_USE_ACTION_TOOL_ALIASES } from "../../src/core/computer-use";
 import { PARALLEL_SAFE_TOOLS } from "../../src/core/llm/parallel-tools";
-import { getDangerousToolNames, isDangerousTool, toolSchemas } from "../../src/core/tools/index";
+import {
+  getDangerousToolNames,
+  getToolHandler,
+  isDangerousTool,
+  toolSchemas,
+} from "../../src/core/tools/index";
 
 describe("tool governance invariants", () => {
   const parallelSafePermissions = new Set([
@@ -28,6 +34,15 @@ describe("tool governance invariants", () => {
     for (const name of getDangerousToolNames()) {
       expect(isDangerousTool(name)).toBe(true);
       expect(toolSchemas[name]).toBeDefined();
+    }
+  });
+
+  test("computer-use direct action aliases are advertised, executable, and dangerous", () => {
+    for (const action of COMPUTER_USE_ACTION_TOOL_ALIASES) {
+      expect(toolSchemas[action]?.name).toBe(action);
+      expect(typeof getToolHandler(action)).toBe("function");
+      expect(isDangerousTool(action)).toBe(true);
+      expect("required" in toolSchemas[action].input_schema).toBe(false);
     }
   });
 

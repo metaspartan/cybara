@@ -348,14 +348,46 @@ struct GatewaySessionMessage: Decodable, Identifiable, Hashable {
         _tool_calls_total_count: Int? = nil,
         _tool_calls_hidden_count: Int? = nil
     ) {
+        let normalized = Self.normalizedContentAndThinking(role: role, content: content, thinking: thinking)
         self.role = role
-        self.content = content
+        self.content = normalized.content
         self.timestamp = timestamp
-        self.thinking = thinking
+        self.thinking = normalized.thinking
         self.tool_calls = tool_calls
         self.process_activities = process_activities
         self._tool_calls_total_count = _tool_calls_total_count
         self._tool_calls_hidden_count = _tool_calls_hidden_count
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let role = try container.decodeIfPresent(String.self, forKey: .role) ?? "message"
+        let content = try container.decodeIfPresent(String.self, forKey: .content) ?? ""
+        let thinking = try container.decodeIfPresent(String.self, forKey: .thinking)
+        let normalized = Self.normalizedContentAndThinking(role: role, content: content, thinking: thinking)
+        self.role = role
+        self.content = normalized.content
+        timestamp = try container.decodeIfPresent(String.self, forKey: .timestamp)
+        self.thinking = normalized.thinking
+        tool_calls = try container.decodeIfPresent([GatewayToolCall].self, forKey: .tool_calls)
+        process_activities = try container.decodeIfPresent([GatewayProcessActivity].self, forKey: .process_activities)
+        _tool_calls_total_count = try container.decodeIfPresent(Int.self, forKey: ._tool_calls_total_count)
+        _tool_calls_hidden_count = try container.decodeIfPresent(Int.self, forKey: ._tool_calls_hidden_count)
+    }
+
+    private static func normalizedContentAndThinking(
+        role: String,
+        content: String,
+        thinking: String?
+    ) -> (content: String, thinking: String?) {
+        guard role.lowercased() == "assistant" else {
+            return (content, firstNonEmptyGatewayString(thinking))
+        }
+        let stripped = NativeMarkdown.stripAssistantMarkupTags(content)
+        return (
+            stripped.content,
+            firstNonEmptyGatewayString(thinking, stripped.thinking)
+        )
     }
 }
 

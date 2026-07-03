@@ -52,6 +52,8 @@ import {
   shouldEnforceToolUseForMessage,
   shouldPreferArtifactsForMessage,
 } from "./chat-tool-summary";
+import { stripThinkingTags } from "./chat-formatting";
+export { stripThinkingTags } from "./chat-formatting";
 const log = createLogger("Chat");
 
 export interface ProcessActivityInfo {
@@ -286,65 +288,6 @@ async function loadPersistedSessions() {
 }
 
 setTimeout(loadPersistedSessions, 1000);
-
-export function stripThinkingTags(content: string): { content: string; thinking: string } {
-  const patterns = [
-    /<thinking>([\s\S]*?)<\/thinking>/gi,
-    /<think>([\s\S]*?)<\/think>/gi,
-    /\[thinking\]([\s\S]*?)\[\/thinking\]/gi,
-  ];
-
-  const thinkingMatches: string[] = [];
-  let cleanContent = content;
-
-  for (const pattern of patterns) {
-    let match;
-    pattern.lastIndex = 0;
-
-    while ((match = pattern.exec(content)) !== null) {
-      if (match[1]) {
-        thinkingMatches.push(match[1].trim());
-      }
-    }
-    cleanContent = cleanContent.replace(pattern, "").trim();
-  }
-
-  if (thinkingMatches.length === 0) {
-    const lines = content.split("\n");
-    const thinkingLines: string[] = [];
-    const nonThinkingLines: string[] = [];
-    let inThinkingBlock = false;
-
-    for (const line of lines) {
-      if (line.trim().startsWith("<thinking>")) {
-        inThinkingBlock = true;
-        continue;
-      }
-      if (line.trim().startsWith("</thinking>")) {
-        inThinkingBlock = false;
-        continue;
-      }
-      if (
-        inThinkingBlock ||
-        line.trim().match(/^(The user|Let me|I can|First|Step|So |Answer:)/i)
-      ) {
-        thinkingLines.push(line);
-      } else {
-        nonThinkingLines.push(line);
-      }
-    }
-
-    if (thinkingLines.length > 2 && thinkingLines.length < lines.length * 0.5) {
-      cleanContent = nonThinkingLines.join("\n").trim();
-      thinkingMatches.push(thinkingLines.join("\n"));
-    }
-  }
-
-  return {
-    content: cleanContent,
-    thinking: thinkingMatches.join("\n\n"),
-  };
-}
 
 const chatRateLimitConfig = { windowMs: 60000, maxRequests: 60 }; // 60 requests per minute
 

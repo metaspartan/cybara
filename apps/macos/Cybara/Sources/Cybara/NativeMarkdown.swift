@@ -25,14 +25,20 @@ struct NativeMarkdownBlock: Identifiable, Equatable {
     let kind: Kind
 }
 
+struct NativeAssistantMarkupResult: Equatable {
+    let content: String
+    let thinking: String
+}
+
 enum NativeMarkdown {
-    static func preprocess(_ raw: String) -> String {
-        collapseBlankLines(stripInboundContextBlocks(stripPrefixedTimestamps(raw)))
+    static func preprocess(_ raw: String, stripAssistantMarkup: Bool = true) -> String {
+        let visibleContent = stripAssistantMarkup ? stripAssistantMarkupTags(raw).content : raw
+        return collapseBlankLines(stripInboundContextBlocks(stripPrefixedTimestamps(visibleContent)))
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    static func parse(_ raw: String) -> [NativeMarkdownBlock] {
-        let normalized = preprocess(raw)
+    static func parse(_ raw: String, stripAssistantMarkup: Bool = true) -> [NativeMarkdownBlock] {
+        let normalized = preprocess(raw, stripAssistantMarkup: stripAssistantMarkup)
         guard !normalized.isEmpty else { return [] }
 
         let lines = normalized.components(separatedBy: "\n")
@@ -156,6 +162,40 @@ enum NativeMarkdown {
         return blocks
     }
 
+    static func stripAssistantMarkupTags(_ raw: String) -> NativeAssistantMarkupResult {
+        var working = raw
+        var thinking: [String] = []
+
+        for pattern in [
+            #"<thinking\b[^>]*>([\s\S]*?)</thinking>"#,
+            #"<think\b[^>]*>([\s\S]*?)</think>"#,
+            #"\[thinking\]([\s\S]*?)\[/thinking\]"#,
+        ] {
+            let matches = regexMatches(pattern, in: working)
+            for match in matches {
+                let captured = match.count > 1 ? match[1].trimmingCharacters(in: .whitespacesAndNewlines) : ""
+                if !captured.isEmpty {
+                    thinking.append(captured)
+                }
+            }
+            working = working.replacingOccurrences(of: pattern, with: "", options: [.regularExpression])
+        }
+
+        let finalMatches = regexMatches(#"<final\b[^>]*>([\s\S]*?)</final>"#, in: working)
+            .compactMap { match in
+                match.count > 1 ? match[1].trimmingCharacters(in: .whitespacesAndNewlines) : nil
+            }
+            .filter { !$0.isEmpty }
+
+        var visible = finalMatches.isEmpty ? stripDanglingAssistantMarkup(working) : finalMatches.joined(separator: "\n\n")
+        visible = stripDanglingAssistantMarkup(visible)
+
+        return NativeAssistantMarkupResult(
+            content: visible.trimmingCharacters(in: .whitespacesAndNewlines),
+            thinking: thinking.joined(separator: "\n\n")
+        )
+    }
+
     static func normalizeCodeLanguage(_ rawLanguage: String) -> String {
         let key = rawLanguage.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if key.isEmpty { return "text" }
@@ -238,6 +278,47 @@ enum NativeMarkdown {
     private static func collapseBlankLines(_ raw: String) -> String {
         raw.replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: [.regularExpression])
+    }
+
+    private static func stripDanglingAssistantMarkup(_ raw: String) -> String {
+        raw.replacingOccurrences(
+            of: #"<(?:thinking|think)\b[^>]*>[\s\S]*$"#,
+            with: "",
+            options: [.regularExpression, .caseInsensitive]
+        )
+        .replacingOccurrences(
+            of: #"\[thinking\][\s\S]*$"#,
+            with: "",
+            options: [.regularExpression, .caseInsensitive]
+        )
+        .replacingOccurrences(
+            of: #"</?(?:thinking|think|final)\b[^>]*>"#,
+            with: "",
+            options: [.regularExpression, .caseInsensitive]
+        )
+        .replacingOccurrences(
+            of: #"\[/?thinking\]"#,
+            with: "",
+            options: [.regularExpression, .caseInsensitive]
+        )
+    }
+
+    private static func regexMatches(_ pattern: String, in raw: String) -> [[String]] {
+        guard let regex = try? NSRegularExpression(
+            pattern: pattern,
+            options: [.caseInsensitive]
+        ) else { return [] }
+
+        let nsRange = NSRange(raw.startIndex ..< raw.endIndex, in: raw)
+        return regex.matches(in: raw, range: nsRange).map { result in
+            (0 ..< result.numberOfRanges).compactMap { index in
+                let range = result.range(at: index)
+                guard range.location != NSNotFound, let swiftRange = Range(range, in: raw) else {
+                    return nil
+                }
+                return String(raw[swiftRange])
+            }
+        }
     }
 
     private static func parseHeading(_ line: String) -> (level: Int, text: String)? {

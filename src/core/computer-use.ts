@@ -449,6 +449,22 @@ export const VALID_ACTIONS: ReadonlySet<ComputerUseAction> = new Set<ComputerUse
   "focus_app",
 ]);
 
+export const COMPUTER_USE_ACTION_TOOL_ALIASES: readonly ComputerUseAction[] = [
+  "capture",
+  "click",
+  "double_click",
+  "right_click",
+  "middle_click",
+  "scroll",
+  "drag",
+  "type",
+  "key",
+  "set_value",
+  "wait",
+  "list_apps",
+  "focus_app",
+];
+
 export interface ComputerUseArgs {
   action: ComputerUseAction;
   mode?: "som" | "vision" | "ax";
@@ -467,6 +483,45 @@ export interface ComputerUseArgs {
   seconds?: number;
   raiseWindow?: boolean;
   captureAfter?: boolean;
+}
+
+export function normalizeComputerUseActionArgs(
+  action: ComputerUseAction,
+  args: Record<string, unknown>
+): Record<string, unknown> {
+  const normalized: Record<string, unknown> = { ...args, action };
+
+  if (
+    normalized.coordinate === undefined &&
+    typeof args.x === "number" &&
+    typeof args.y === "number"
+  ) {
+    normalized.coordinate = [args.x, args.y];
+  }
+
+  if (normalized.app === undefined && action === "focus_app") {
+    const app =
+      typeof args.name === "string"
+        ? args.name
+        : typeof args.application === "string"
+          ? args.application
+          : typeof args.bundleId === "string"
+            ? args.bundleId
+            : typeof args.bundle_id === "string"
+              ? args.bundle_id
+              : undefined;
+    if (app) normalized.app = app;
+  }
+
+  if (normalized.element === undefined && typeof args.index === "number") {
+    normalized.element = args.index;
+  }
+
+  if (normalized.text === undefined && action === "type" && typeof args.value === "string") {
+    normalized.text = args.value;
+  }
+
+  return normalized;
 }
 
 /** Per-session auto-approval for destructive actions (set by the host UI). */

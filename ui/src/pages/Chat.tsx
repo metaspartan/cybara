@@ -3092,15 +3092,15 @@ function SessionsPanel({
               return (
                 <div
                   key={session.id}
-                  className={`deferred-list-row p-2.5 rounded-lg transition-all cursor-pointer group ${
+                  className={`deferred-list-row relative p-2.5 rounded-lg transition-all cursor-pointer group ${
                     currentSessionId === session.id
                       ? "bg-[rgba(var(--accent-primary),0.12)] border border-[rgba(var(--accent-primary),0.3)]"
                       : "bg-white/[0.03] border border-white/5 hover:border-white/15"
                   }`}
                   onClick={() => handleLoadSession(session.id)}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
+                  <div className="min-w-0 w-full">
+                    <div className="min-w-0 w-full">
                       {editingSessionId === session.id ? (
                         <div
                           className="flex items-center gap-1.5"
@@ -3150,7 +3150,7 @@ function SessionsPanel({
                           </button>
                         </div>
                       ) : (
-                        <p className="text-[12px] text-white font-medium flex items-center gap-1.5">
+                        <p className="text-[12px] text-white font-medium flex w-full min-w-0 items-center gap-1.5">
                           {isSessionActive ? (
                             <Loader2 className="w-3 h-3 animate-spin text-amber-400 flex-shrink-0" />
                           ) : (
@@ -3161,23 +3161,24 @@ function SessionsPanel({
                           {session.pinned && (
                             <Pin className="w-3 h-3 text-amber-400 flex-shrink-0 fill-amber-400/30" />
                           )}
-                          <span className="truncate">{displayTitle}</span>
+                          <span className="min-w-0 flex-1 truncate">{displayTitle}</span>
                         </p>
                       )}
-                      <p className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-1.5">
-                        <span>{session.message_count || 0} messages</span>
+                      <p className="text-[10px] text-gray-500 mt-0.5 flex w-full min-w-0 items-center gap-1.5 overflow-hidden">
+                        <span className="flex-shrink-0">{session.message_count || 0} messages</span>
                         {routeLabel && (
                           <>
-                            <span className="text-gray-700">·</span>
-                            <span className="min-w-0 truncate" title={routeLabel}>
+                            <span className="flex-shrink-0 text-gray-700">·</span>
+                            <span className="min-w-0 flex-1 truncate" title={routeLabel}>
                               {routeLabel}
                             </span>
                           </>
                         )}
                         {(session.updated_at || session.created_at) && (
                           <>
-                            <span className="text-gray-700">·</span>
+                            <span className="flex-shrink-0 text-gray-700">·</span>
                             <span
+                              className="flex-shrink-0"
                               title={new Date(
                                 session.updated_at || session.created_at
                               ).toLocaleString()}
@@ -3194,17 +3195,18 @@ function SessionsPanel({
                         </p>
                       )}
                       {session.last_message && (
-                        <p className="text-[10px] text-gray-500 mt-0.5 truncate">
-                          {session.last_message.content.slice(0, 40)}
-                          {session.last_message.content.length > 40 ? "…" : ""}
+                        <p className="text-[10px] text-gray-500 mt-0.5 w-full truncate">
+                          {session.last_message.content}
                         </p>
                       )}
                     </div>
                     {editingSessionId !== session.id && (
                       <div
                         className={cn(
-                          "flex items-center gap-1 transition-opacity",
-                          session.pinned ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                          "pointer-events-none absolute right-2 top-2 flex items-center gap-1 rounded-md bg-[#11111a]/90 px-1 py-0.5 shadow-lg shadow-black/30 backdrop-blur transition-opacity",
+                          session.pinned
+                            ? "pointer-events-auto opacity-100"
+                            : "opacity-0 group-hover:pointer-events-auto group-hover:opacity-100"
                         )}
                       >
                         <button

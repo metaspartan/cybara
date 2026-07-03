@@ -46,6 +46,7 @@ describe("image tool path resolution", () => {
     const result = await handleImage({
       image: `<attachment:${originalName}>`,
       prompt: "Resolve inbound media path",
+      extractText: false,
     });
 
     expect(result.image).toBe(storedPath);
@@ -67,6 +68,7 @@ describe("image tool path resolution", () => {
     const result = await handleImage({
       image: "https://example.com/folder/remote-image.png",
       prompt: "Download remote image",
+      extractText: false,
     });
     trackPath(result.image);
 

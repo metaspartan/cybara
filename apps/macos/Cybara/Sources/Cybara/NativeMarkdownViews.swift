@@ -6,7 +6,7 @@ struct NativeMarkdownView: View {
     let isUser: Bool
 
     private var blocks: [NativeMarkdownBlock] {
-        NativeMarkdown.parse(content)
+        NativeMarkdown.parse(content, stripAssistantMarkup: !isUser)
     }
 
     var body: some View {

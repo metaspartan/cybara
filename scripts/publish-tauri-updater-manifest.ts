@@ -44,6 +44,17 @@ type BuildManifestOptions = {
 const DEFAULT_NOTES = "Download the appropriate installer for your platform below.";
 const LATEST_JSON = "latest.json";
 
+class GitHubApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly url: string
+  ) {
+    super(message);
+    this.name = "GitHubApiError";
+  }
+}
+
 export function resolveUpdaterPlatformKeys(assetName: string): readonly string[] {
   if (/\.msi$/i.test(assetName)) {
     return ["windows-x86_64", "windows-x86_64-msi"];
@@ -93,7 +104,11 @@ async function githubJson<T>(url: string, token: string): Promise<T> {
     headers: githubHeaders(token),
   });
   if (!response.ok) {
-    throw new Error(`GitHub API request failed for ${url}: HTTP ${response.status}`);
+    throw new GitHubApiError(
+      `GitHub API request failed for ${url}: HTTP ${response.status}`,
+      response.status,
+      url
+    );
   }
   return (await response.json()) as T;
 }
@@ -108,6 +123,39 @@ async function getReleaseByTag(
     `https://api.github.com/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(tagName)}`,
     token
   );
+}
+
+async function listReleases(owner: string, repo: string, token: string): Promise<GitHubRelease[]> {
+  const releases: GitHubRelease[] = [];
+  for (let page = 1; ; page += 1) {
+    const pageReleases = await githubJson<GitHubRelease[]>(
+      `https://api.github.com/repos/${owner}/${repo}/releases?per_page=100&page=${page}`,
+      token
+    );
+    releases.push(...pageReleases);
+    if (pageReleases.length < 100) break;
+  }
+  return releases;
+}
+
+export async function findReleaseByTag(
+  owner: string,
+  repo: string,
+  tagName: string,
+  token: string
+): Promise<GitHubRelease> {
+  try {
+    return await getReleaseByTag(owner, repo, tagName, token);
+  } catch (error) {
+    if (!(error instanceof GitHubApiError) || error.status !== 404) {
+      throw error;
+    }
+    const release = (await listReleases(owner, repo, token)).find(
+      (candidate) => candidate.tag_name === tagName
+    );
+    if (release) return release;
+    throw error;
+  }
 }
 
 async function listReleaseAssets(
@@ -266,7 +314,7 @@ if (import.meta.main) {
     const repository =
       process.env.GITHUB_REPOSITORY?.trim() || requireEnv("CYBARA_RELEASE_REPOSITORY");
     const { owner, repo } = splitRepository(repository);
-    const release = await getReleaseByTag(owner, repo, tagName, token);
+    const release = await findReleaseByTag(owner, repo, tagName, token);
     const assets = await listReleaseAssets(owner, repo, release.id, token);
     const manifest = await buildTauriUpdaterManifestFromAssets({
       assets,

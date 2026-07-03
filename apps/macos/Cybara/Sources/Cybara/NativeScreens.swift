@@ -568,6 +568,13 @@ struct ChatScreen: View {
             ["thinking", "generating", "tool_executing", "tool_completed"].contains(liveStatus.lowercased())
     }
 
+    private var visibleStreamingContent: String? {
+        guard let streamingContent = firstNonEmptyGatewayString(streamingContent) else { return nil }
+        return firstNonEmptyGatewayString(
+            NativeMarkdown.preprocess(streamingContent, stripAssistantMarkup: true)
+        )
+    }
+
     /// Live status while a reply generates, fed by the gateway's SSE stream
     /// (thoughts, tool activity, streaming text), scoped to the active session.
     private var thinkingBubble: some View {
@@ -579,8 +586,8 @@ struct ChatScreen: View {
                     currentStep: liveCurrentStep,
                     startedAt: liveStartedAt
                 )
-                if let streamingContent = firstNonEmptyGatewayString(streamingContent) {
-                    NativeMarkdownView(content: streamingContent, isUser: false)
+                if let visibleStreamingContent {
+                    NativeMarkdownView(content: visibleStreamingContent, isUser: false)
                 }
             }
             .padding(.horizontal, 14)
@@ -600,14 +607,15 @@ struct ChatScreen: View {
 
     private func messageBubble(_ message: GatewaySessionMessage) -> some View {
         let isUser = message.role == "user"
+        let visibleContent = NativeMarkdown.preprocess(message.content, stripAssistantMarkup: !isUser)
         return HStack {
             if isUser { Spacer(minLength: 60) }
             VStack(alignment: .leading, spacing: 7) {
                 if !isUser {
                     NativeToolTimelineView(message: message)
                 }
-                if !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    NativeMarkdownView(content: message.content, isUser: isUser)
+                if !visibleContent.isEmpty {
+                    NativeMarkdownView(content: visibleContent, isUser: isUser)
                 }
                 if let timestamp = message.timestamp {
                     let relative = relativeTimestamp(timestamp)

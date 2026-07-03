@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   buildTauriUpdaterManifestFromAssets,
+  findReleaseByTag,
   resolveUpdaterPlatformKeys,
   type GitHubReleaseAsset,
 } from "../../scripts/publish-tauri-updater-manifest";
@@ -86,5 +87,42 @@ describe("Tauri updater manifest publisher", () => {
         version: "1.0.619",
       })
     ).rejects.toThrow("darwin-aarch64");
+  });
+
+  test("falls back to release listing when the tag endpoint cannot see a draft release", async () => {
+    const originalFetch = globalThis.fetch;
+    const requestedUrls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requestedUrls.push(url);
+      if (url.includes("/releases/tags/v1.0.625")) {
+        return new Response("not found", { status: 404 });
+      }
+      if (url.includes("/releases?per_page=100&page=1")) {
+        return Response.json([
+          {
+            id: 625,
+            tag_name: "v1.0.625",
+          },
+        ]);
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }) as typeof fetch;
+
+    try {
+      await expect(findReleaseByTag("metaspartan", "cybara", "v1.0.625", "token")).resolves.toEqual(
+        {
+          id: 625,
+          tag_name: "v1.0.625",
+        }
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requestedUrls).toEqual([
+      "https://api.github.com/repos/metaspartan/cybara/releases/tags/v1.0.625",
+      "https://api.github.com/repos/metaspartan/cybara/releases?per_page=100&page=1",
+    ]);
   });
 });

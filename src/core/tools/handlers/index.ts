@@ -39,7 +39,11 @@ import { handleClarify } from "./clarify";
 import { handleToolSearch, handleToolDescribe, handleToolCall } from "./tool-discovery";
 import { handleExecuteCode } from "./execute-code";
 import { handleImageGenerate, handleVideoGenerate, handleMusicGenerate } from "./media-generation";
-import { handleComputerUse } from "../../computer-use";
+import {
+  COMPUTER_USE_ACTION_TOOL_ALIASES,
+  handleComputerUse,
+  normalizeComputerUseActionArgs,
+} from "../../computer-use";
 import {
   handleKanbanShow,
   handleKanbanList,
@@ -269,6 +273,11 @@ const toolHandlers: Record<
   pdf: handlePdf,
   telegram_media: handleTelegramMedia,
 };
+
+for (const action of COMPUTER_USE_ACTION_TOOL_ALIASES) {
+  toolHandlers[action] = async (args: Record<string, unknown>) =>
+    handleComputerUse(normalizeComputerUseActionArgs(action, args));
+}
 
 function getDangerousToolPolicy(): { enabled: boolean; mode: "audit" | "block" } {
   const policy = config.getDangerousToolPolicy();

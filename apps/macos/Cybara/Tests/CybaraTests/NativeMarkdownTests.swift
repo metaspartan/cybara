@@ -33,6 +33,33 @@ final class NativeMarkdownTests: XCTestCase {
         XCTAssertEqual(blocks.first?.kind, .code(language: "patch", code: "@@ -1 +1 @@\n-old\n+new", isDiff: true))
     }
 
+    func testPreprocessStripsAssistantReasoningAndFinalMarkup() {
+        let raw = """
+        <think>Review the current chat renderer.</think>
+        <final>Rendered answer only.</final>
+        """
+
+        XCTAssertEqual(NativeMarkdown.preprocess(raw), "Rendered answer only.")
+        XCTAssertEqual(
+            NativeMarkdown.stripAssistantMarkupTags(raw),
+            NativeAssistantMarkupResult(
+                content: "Rendered answer only.",
+                thinking: "Review the current chat renderer."
+            )
+        )
+    }
+
+    func testPreprocessRemovesDanglingAssistantReasoningTags() {
+        XCTAssertEqual(NativeMarkdown.preprocess("</think>\nVisible answer."), "Visible answer.")
+        XCTAssertEqual(NativeMarkdown.preprocess("<think>Hidden reasoning that never closed."), "")
+    }
+
+    func testParseCanPreserveUserTypedReasoningTags() {
+        let blocks = NativeMarkdown.parse("What does </think> mean?", stripAssistantMarkup: false)
+
+        XCTAssertEqual(blocks.first?.kind, .paragraph("What does </think> mean?"))
+    }
+
     func testParseHeadingsListsAndTables() {
         let blocks = NativeMarkdown.parse(
             """

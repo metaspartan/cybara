@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SIDECAR_SCRIPT = join(ROOT_DIR, "scripts", "build-sidecar.ts");
+const CI_INSTALL_SCRIPT = join(ROOT_DIR, "scripts", "ci-install.sh");
 
 describe("package.json script wiring", () => {
   test("exposes cybara CLI bin and expected build/dev scripts", () => {
@@ -52,5 +53,14 @@ describe("package.json script wiring", () => {
     expect(pkg.scripts?.["tauri:dev"]).toContain("bun run tauri:sidecar");
     expect(pkg.scripts?.["tauri:dev"]).toContain("bunx tauri dev");
     expect(pkg.scripts?.["tauri:dev:prep"]).toContain("bun run package");
+  });
+
+  test("CI install retries clean partial node_modules after tarball extraction failures", () => {
+    const source = readFileSync(CI_INSTALL_SCRIPT, "utf8");
+
+    expect(source).toContain("removing partial install state");
+    expect(source).toContain("rm -rf node_modules");
+    expect(source).toContain('if [ "$i" -ge "$attempts" ]; then');
+    expect(source).toContain("bun pm cache rm || true");
   });
 });

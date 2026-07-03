@@ -4,8 +4,10 @@ import { tmpdir } from "os";
 import { dirname, join } from "path";
 import {
   assertActionAllowed,
+  COMPUTER_USE_ACTION_TOOL_ALIASES,
   isBlockedKeyCombo,
   isBlockedTypeText,
+  normalizeComputerUseActionArgs,
   parseCuaDriverVersion,
   resolveCuaDriverCommand,
   setComputerUseAutoApprove,
@@ -77,6 +79,33 @@ describe("computer_use action validation", () => {
     ]) {
       expect(VALID_ACTIONS.has(a as never)).toBe(true);
     }
+  });
+
+  test("direct action tool aliases cover every advertised computer-use action", () => {
+    expect(new Set(COMPUTER_USE_ACTION_TOOL_ALIASES)).toEqual(VALID_ACTIONS);
+  });
+
+  test("normalizes direct action tool calls into canonical computer_use arguments", () => {
+    expect(normalizeComputerUseActionArgs("capture", { mode: "som" })).toEqual({
+      action: "capture",
+      mode: "som",
+    });
+    expect(normalizeComputerUseActionArgs("click", { x: 12, y: 34 })).toEqual({
+      action: "click",
+      x: 12,
+      y: 34,
+      coordinate: [12, 34],
+    });
+    expect(normalizeComputerUseActionArgs("focus_app", { name: "Notepad" })).toEqual({
+      action: "focus_app",
+      name: "Notepad",
+      app: "Notepad",
+    });
+    expect(normalizeComputerUseActionArgs("type", { value: "hello" })).toEqual({
+      action: "type",
+      value: "hello",
+      text: "hello",
+    });
   });
 
   test("assertActionAllowed throws on blocked key combos even with auto-approve", () => {

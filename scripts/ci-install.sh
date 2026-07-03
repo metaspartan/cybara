@@ -15,7 +15,15 @@ for i in $(seq 1 "$attempts"); do
   if bun install "$@"; then
     exit 0
   fi
-  echo "::warning::bun install failed (attempt ${i}/${attempts}); clearing cache and retrying"
+
+  if [ "$i" -ge "$attempts" ]; then
+    break
+  fi
+
+  echo "::warning::bun install failed (attempt ${i}/${attempts}); removing partial install state, clearing cache, and retrying"
+  if [ -d node_modules ]; then
+    rm -rf node_modules
+  fi
   bun pm cache rm || true
   sleep $((i * 5))
 done

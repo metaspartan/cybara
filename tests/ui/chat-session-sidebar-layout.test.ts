@@ -1,0 +1,21 @@
+import { describe, expect, test } from "bun:test";
+import { readFileSync } from "fs";
+import { join } from "path";
+
+const chatSource = () =>
+  readFileSync(join(process.cwd(), "ui", "src", "pages", "Chat.tsx"), "utf8");
+
+describe("chat session sidebar layout", () => {
+  test("lets session text use the full row width while actions float above it", () => {
+    const source = chatSource();
+
+    expect(source).toContain("deferred-list-row relative p-2.5");
+    expect(source).toContain('className="min-w-0 w-full"');
+    expect(source).toContain('className="text-[12px] text-white font-medium flex w-full min-w-0');
+    expect(source).toContain('className="min-w-0 flex-1 truncate">{displayTitle}</span>');
+    expect(source).toContain("absolute right-2 top-2");
+    expect(source).toContain("pointer-events-none");
+    expect(source).toContain("group-hover:pointer-events-auto");
+    expect(source).not.toContain("session.last_message.content.slice(0, 40)");
+  });
+});

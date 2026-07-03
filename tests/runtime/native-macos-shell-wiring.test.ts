@@ -120,6 +120,23 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain("NativeToolTimelineView(message: message)");
   });
 
+  test("native chat strips assistant reasoning markup without altering user messages", () => {
+    const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
+    const markdown = readFileSync(join(MACOS_APP_DIR, "NativeMarkdown.swift"), "utf8");
+    const markdownViews = readFileSync(join(MACOS_APP_DIR, "NativeMarkdownViews.swift"), "utf8");
+    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+
+    expect(markdown).toContain("stripAssistantMarkupTags");
+    expect(markdown).toContain("NativeAssistantMarkupResult");
+    expect(markdownViews).toContain("NativeMarkdown.parse(content, stripAssistantMarkup: !isUser)");
+    expect(gatewayModels).toContain("normalizedContentAndThinking(role:");
+    expect(gatewayModels).toContain('guard role.lowercased() == "assistant"');
+    expect(nativeScreens).toContain("visibleStreamingContent");
+    expect(nativeScreens).toContain(
+      "NativeMarkdown.preprocess(streamingContent, stripAssistantMarkup: true)"
+    );
+  });
+
   test("native memory screen uses gateway CRUD/search routes with encoded filenames", () => {
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
     const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");

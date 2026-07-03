@@ -1,4 +1,9 @@
 import { telegramBot, channelManager } from "../channels";
+import {
+  COMPUTER_USE_ACTION_TOOL_ALIASES,
+  handleComputerUse,
+  normalizeComputerUseActionArgs,
+} from "../computer-use";
 import { config } from "../config";
 import { getSkillExecutors } from "../skills/index";
 import { handleCanvas } from "./handlers/canvas";
@@ -1437,6 +1442,10 @@ Use for tasks that may take longer or require separate context.`,
         image: { type: "string", description: "Image path or URL" },
         prompt: { type: "string", description: "Analysis prompt" },
         model: { type: "string", description: "Vision model to use" },
+        extractText: {
+          type: "boolean",
+          description: "Set false to resolve or cache the image without running local OCR",
+        },
       },
       required: ["image", "prompt"],
     },
@@ -2443,6 +2452,29 @@ ACTIONS:
   },
 };
 
+function createComputerUseActionAliasSchema(action: string): Omit<Tool, "handler"> {
+  const baseSchema = toolSchemas.computer_use.input_schema as {
+    type?: string;
+    properties?: Record<string, unknown>;
+  };
+  const { action: _action, ...properties } = baseSchema.properties || {};
+  return {
+    name: action,
+    description: `Compatibility alias for computer_use with action='${action}'. Use this when a provider emits '${action}' as a direct computer-use tool name.`,
+    category: "media",
+    input_schema: {
+      type: "object",
+      properties,
+    },
+    permissions: [],
+  };
+}
+
+for (const action of COMPUTER_USE_ACTION_TOOL_ALIASES) {
+  toolSchemas[action] = createComputerUseActionAliasSchema(action);
+  dangerousToolNames.add(action);
+}
+
 export function isToolEnabledForAgent(toolName: string): boolean {
   if (toolName === "wallet") {
     return config.get<boolean>("wallet_agent_access_enabled") === true;
@@ -2525,6 +2557,12 @@ _toolHandlers.set("lsp_references", handleLSPReferences);
 _toolHandlers.set("lsp_hover", handleLSPHover);
 _toolHandlers.set("lsp_languages", handleLSPLanguages);
 _toolHandlers.set("canvas", handleCanvas);
+_toolHandlers.set("computer_use", handleComputerUse);
+for (const action of COMPUTER_USE_ACTION_TOOL_ALIASES) {
+  _toolHandlers.set(action, async (args) =>
+    handleComputerUse(normalizeComputerUseActionArgs(action, args))
+  );
+}
 getSkillExecutors()
   .then((executors) => {
     for (const [name, executor] of Object.entries(executors)) {

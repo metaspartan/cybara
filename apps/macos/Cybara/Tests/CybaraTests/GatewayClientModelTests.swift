@@ -523,6 +523,31 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertGreaterThan(message.process_activities?.first?.timestamp ?? 0, 1_783_000_000_000)
     }
 
+    func testAssistantSessionMessageDecodingStripsReasoningMarkup() throws {
+        let message = try decodeSessionMessage(
+            #"""
+            {
+              "role": "assistant",
+              "content": "<think>Inspect native chat formatting.</think>\n<final>The rendered reply.</final>",
+              "timestamp": "2026-07-02T18:00:00.000Z"
+            }
+            """#
+        )
+        let userMessage = try decodeSessionMessage(
+            #"""
+            {
+              "role": "user",
+              "content": "What does </think> mean?",
+              "timestamp": "2026-07-02T18:01:00.000Z"
+            }
+            """#
+        )
+
+        XCTAssertEqual(message.content, "The rendered reply.")
+        XCTAssertEqual(message.thinking, "Inspect native chat formatting.")
+        XCTAssertEqual(userMessage.content, "What does </think> mean?")
+    }
+
     func testNativeToolTimelineUsesProcessActivitiesWhenPresent() throws {
         let message = try decodeSessionMessage(
             #"""
