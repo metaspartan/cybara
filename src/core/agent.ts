@@ -125,10 +125,13 @@ import {
   type AnthropicResponse,
   type GoogleContent,
   type GooglePart,
-  type OpenAICodexToolCall,
+  type GoogleResponse,
+  type OpenAICodexUsage,
   type OpenAICodexTurnResult,
+  type OpenAIChoice,
   type OpenAIMessage,
   type OpenAIResponse,
+  type OpenAIUsage,
 } from "./agent-internals";
 import { homedir } from "os";
 import { loadAllSkills, createEligibilityContext, filterEligibleSkills } from "./skills";

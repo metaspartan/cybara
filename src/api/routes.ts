@@ -3,14 +3,7 @@ import { cacheMetricsRoutes } from "./route-cache";
 import { mobileRoutes } from "./mobile";
 import {
   parseJsonObject,
-  parseMetricMetadata,
-  buildMetricTrend,
-  localDateKeyFromMs,
-  buildStorageMetrics,
   isSessionStatusActive,
-  buildTokenCallSnapshots,
-  buildAssistantOutputCloud,
-  classifyModelBehavior,
   normalizeOptionalString,
   normalizeSecretString,
   buildGoogleAuthHeaders,
@@ -27,11 +20,9 @@ import {
   type LspSymbolLike,
   type NormalizedLspSymbol,
   type SessionMessageView,
-  type MetricTopKey,
-  type ProviderMetricSummary,
-  type TokenCloudEntry,
 } from "./routes/_shared";
 import { walletRoutes } from "./routes/wallet";
+import { metricsRoutes } from "./routes/metrics";
 import { tables } from "../core/database";
 import { agentManager, getBuiltinTools, type AgentMessage } from "../core/agent";
 import {
@@ -169,9 +160,6 @@ import {
   getCombinedLogs,
   getCombinedLogsPage,
   getLogStats,
-  getDailyLogCounts,
-  getModelMetrics,
-  type MetricsEntry,
 } from "./queries";
 
 const log = createLogger("API");
@@ -589,6 +577,7 @@ function sessionModelMetadataSnapshot(value: unknown): SessionModelMetadata | nu
 const routes: Record<string, RouteHandler> = {
   ...walletRoutes,
   ...mobileRoutes,
+  ...metricsRoutes,
   "GET /api/health": () => {
     const now = new Date();
     const system = getSystemMonitorSnapshot();
