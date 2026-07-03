@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input, Textarea, Select } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
   walletApi,
   type WalletAgentPolicy,
@@ -146,6 +147,7 @@ export function Wallet() {
   const [sendAssetType, setSendAssetType] = useState<"native" | "token">("native");
   const [sendTokenAddress, setSendTokenAddress] = useState("");
   const [sendTokenDecimals, setSendTokenDecimals] = useState("");
+  const [sendConfirmOpen, setSendConfirmOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<WalletTab>("receive");
 
   const [tokenChain, setTokenChain] = useState<WalletTokenChain>("eth");
@@ -690,6 +692,15 @@ export function Wallet() {
       return;
     }
 
+    // Sending is irreversible — require an explicit review/confirm step rather
+    // than moving funds straight from the form.
+    setSendConfirmOpen(true);
+  }
+
+  async function executeSend() {
+    const parsedFeeRate = sendFeeRate.trim() ? Number(sendFeeRate) : undefined;
+    const parsedTokenDecimals = sendTokenDecimals.trim() ? Number(sendTokenDecimals) : undefined;
+
     setBusy(true);
     try {
       const response =
@@ -733,6 +744,7 @@ export function Wallet() {
       addToast("error", error instanceof Error ? error.message : "Failed to send transaction");
     } finally {
       setBusy(false);
+      setSendConfirmOpen(false);
     }
   }
 
@@ -1249,6 +1261,19 @@ export function Wallet() {
                 </CardContent>
               </Card>
             )}
+
+            <ConfirmDialog
+              isOpen={sendConfirmOpen}
+              onClose={() => setSendConfirmOpen(false)}
+              onConfirm={() => void executeSend()}
+              isLoading={busy}
+              variant="warning"
+              confirmText={busy ? "Sending…" : "Send now"}
+              title="Confirm transfer"
+              description={`You are about to send ${sendAmount.trim()} ${
+                sendAssetType === "token" ? "tokens" : sendChain.toUpperCase()
+              } to ${shortenAddress(sendTo.trim())} on ${sendChain.toUpperCase()}. This is an on-chain transaction and cannot be undone.`}
+            />
 
             {activeTab === "history" && status.unlocked && (
               <Card

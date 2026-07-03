@@ -268,6 +268,20 @@ describe("UI page API wiring", () => {
     expect(source).not.toContain("apiFetch(");
   });
 
+  test("Wallet send requires a confirmation step before moving funds", () => {
+    const source = readPage("Wallet.tsx");
+    // handleSend must not call the send APIs directly — it opens a confirm dialog,
+    // and only executeSend (run on confirm) performs the transfer.
+    expect(source).toContain("setSendConfirmOpen(true)");
+    expect(source).toContain("async function executeSend()");
+    expect(source).toContain("onConfirm={() => void executeSend()}");
+    expect(source).toContain("isOpen={sendConfirmOpen}");
+    // The dialog spells out that the transfer is irreversible.
+    expect(source).toContain("cannot be undone");
+    // The Send button opens the flow via handleSend, not executeSend directly.
+    expect(source).toContain("onClick={() => void handleSend()}");
+  });
+
   test("Agents page sends provider_id in create/update payloads", () => {
     const source = readPage("Agents.tsx");
 
