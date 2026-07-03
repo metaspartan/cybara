@@ -146,6 +146,7 @@ import {
   mobileComposerHeightForDraft,
   mobileBackRouteForDetail,
   mobileFirstNonEmptyString,
+  mobileGatewayAuthStatus,
   mobileProviderAuthMode,
   mobileSessionTitle,
   mobileThemeConfigPayload,
@@ -178,7 +179,19 @@ import {
 } from "../lib/metrics";
 import { accentPalette, colors, spacing, type AccentKey } from "../theme/liquidGlass";
 import { styles } from "./dashboardStyles";
-import { absoluteTimestampLabel, relativeTimestamp } from "./dashboardHelpers";
+import {
+  absoluteTimestampLabel,
+  agentIsRunning,
+  agentProviderId,
+  monitorOverviewLabel,
+  monitorPercent,
+  monitorPercentLabel,
+  monitorPlatformLabel,
+  relativeTimestamp,
+  remoteItemEnabled,
+  remoteTaskRunning,
+  resolveAccentKey,
+} from "./dashboardHelpers";
 import { ChatMessageRow } from "./dashboardChat";
 import {
   EmptyState,
@@ -479,6 +492,12 @@ function arraySettingCount(record: Record<string, unknown> | null, key: string):
 
 function endpointErrorDetail(endpoint: EndpointState, fallback: string): string {
   if (!endpoint || endpoint.ok) return fallback;
+  if (endpoint.status === 401) {
+    return "This mobile pairing is no longer authorized. Disconnect and pair again from the gateway.";
+  }
+  if (endpoint.status === 403) {
+    return "This mobile pairing does not have access to this gateway surface.";
+  }
   if (endpoint.status) return `Gateway returned ${endpoint.status}.`;
   return endpoint.error || fallback;
 }
@@ -545,47 +564,6 @@ function cleanSettingsFields(
     .map((field) => ({ ...field, label: displayFieldLabel(field.label) }));
 }
 
-function monitorPercent(value: number | null | undefined): number {
-  return Number.isFinite(value) ? Math.max(0, Math.min(100, Number(value))) : 0;
-}
-
-function monitorPercentLabel(value: number | null | undefined): string {
-  return Number.isFinite(value) ? `${Number(value).toFixed(1)}%` : "n/a";
-}
-
-function monitorOverviewLabel(snapshot: SystemMonitorSnapshot | null | undefined): string {
-  if (!snapshot) return "CPU loading - RAM loading - Disk loading";
-  const disk = snapshot.disk ? monitorPercentLabel(snapshot.disk.usedPct) : "n/a";
-  return `CPU ${monitorPercentLabel(snapshot.cpu.usagePct)} - RAM ${monitorPercentLabel(snapshot.memory.usedPct)} - Disk ${disk}`;
-}
-
-function monitorPlatformLabel(snapshot: SystemMonitorSnapshot | null | undefined): string {
-  if (!snapshot) return "Telemetry unavailable";
-  return `${snapshot.platform.type} ${snapshot.platform.arch} - ${snapshot.cpu.cores} cores`;
-}
-
-function agentProviderId(agent: AgentSummary | null | undefined): string {
-  return agent?.provider_id || agent?.provider || "";
-}
-
-function agentIsRunning(agent: AgentSummary | null | undefined): boolean {
-  return agent?.status === "running" || agent?.status === "active";
-}
-
-function remoteItemEnabled(item: RemoteItemSummary | ActivitySummary): boolean {
-  if ("enabled" in item && typeof item.enabled === "boolean") return item.enabled;
-  if (!("status" in item) || !item.status) return true;
-  return !["disabled", "paused", "stopped", "inactive"].includes(item.status.toLowerCase());
-}
-
-function remoteTaskRunning(item: RemoteItemSummary | ActivitySummary): boolean {
-  if (!("status" in item) || !item.status) return false;
-  return ["running", "pending", "active", "enabled"].includes(item.status.toLowerCase());
-}
-
-function resolveAccentKey(summary: FeatureSummary | null): AccentKey {
-  return readMobileAccent(summary?.config) as AccentKey;
-}
 
 function itemFromRecord(
   id: string,
@@ -4712,10 +4690,18 @@ function SettingsPanel({
     summary?.availability.systemPrompt.ok === true && Boolean(summary.systemPrompt);
   const health = summary?.health;
   const healthy = health?.status === "healthy";
-  const healthUnavailable = Boolean(connectionError) || summary?.availability.health.ok === false;
-  const gatewayStatusColor = healthy ? colors.green : healthUnavailable ? colors.red : colors.amber;
+  const authStatus = mobileGatewayAuthStatus(summary, connectionError);
+  const healthUnavailable = authStatus === "unreachable";
+  const gatewayStatusColor =
+    healthy && authStatus === "connected"
+      ? colors.green
+      : healthUnavailable || authStatus === "needs_pairing"
+        ? colors.red
+        : colors.amber;
   const gatewayStatusLabel = healthy
-    ? "Gateway connected"
+    ? authStatus === "needs_pairing"
+      ? "Pairing needs refresh"
+      : "Gateway connected"
     : healthUnavailable
       ? "Gateway degraded"
       : "Checking gateway";
@@ -4861,6 +4847,12 @@ function SettingsPanel({
                 />
               </View>
               {connectionError ? <Text style={styles.errorText}>{connectionError}</Text> : null}
+              {authStatus === "needs_pairing" ? (
+                <Text style={styles.errorText}>
+                  The gateway is reachable, but this device token was rejected. Disconnect this
+                  profile and pair again from the gateway Mobile page.
+                </Text>
+              ) : null}
             </View>
           </View>
         ) : null}
