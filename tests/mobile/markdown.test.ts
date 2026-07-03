@@ -53,7 +53,9 @@ describe("parseMarkdownBlocks", () => {
   });
 
   test("GFM table with header + rows", () => {
-    const blocks = parseMarkdownBlocks("| Layer | Stack |\n| --- | --- |\n| CLI | TSX |\n| Desktop | Tauri |");
+    const blocks = parseMarkdownBlocks(
+      "| Layer | Stack |\n| --- | --- |\n| CLI | TSX |\n| Desktop | Tauri |"
+    );
     expect(blocks).toHaveLength(1);
     const table = blocks[0] as {
       type: "table";

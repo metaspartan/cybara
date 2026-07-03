@@ -352,8 +352,6 @@ const surfaceMeta: Record<
   },
 };
 
-
-
 function mergeActivityLogs(
   existing: ActivitySummary[],
   incoming: ActivitySummary[]
@@ -365,7 +363,6 @@ function mergeActivityLogs(
     return true;
   });
 }
-
 
 function itemFromRecord(
   id: string,
@@ -1864,9 +1861,9 @@ function SessionDetailPanel({
   const headerActionRef = useRef<() => void>(() => {});
   const sessionRefreshInFlight = useRef(false);
   const sendingRef = useRef(false);
-  const [liveAssistant, setLiveAssistant] = useState<SessionDetailSummary["messages"][number] | null>(
-    null
-  );
+  const [liveAssistant, setLiveAssistant] = useState<
+    SessionDetailSummary["messages"][number] | null
+  >(null);
   const [liveNowMs, setLiveNowMs] = useState(Date.now());
 
   const loadSession = async (showLoading = false) => {
@@ -1999,7 +1996,12 @@ function SessionDetailPanel({
     requestAnimationFrame(() => {
       scrollRef.current?.scrollToEnd({ animated: true });
     });
-  }, [detail?.messages.length, liveAssistant?.content, liveAssistant?.processActivities?.length, sending]);
+  }, [
+    detail?.messages.length,
+    liveAssistant?.content,
+    liveAssistant?.processActivities?.length,
+    sending,
+  ]);
 
   const setComposerDraft = (value: string) => {
     draftRef.current = value;
@@ -2189,7 +2191,10 @@ function SessionDetailPanel({
     if (messages.some((message) => message.id === liveAssistant.id)) return messages;
     return [...messages, liveAssistant];
   }, [detail?.messages, liveAssistant]);
-  const visibleMessages = useMemo(() => latestVisibleChatMessages(renderMessages), [renderMessages]);
+  const visibleMessages = useMemo(
+    () => latestVisibleChatMessages(renderMessages),
+    [renderMessages]
+  );
   const waitingForAssistant = chatIsWaitingForAssistant(renderMessages, sending);
 
   return (
@@ -2591,7 +2596,6 @@ function SurfaceDetailPanel({
   );
 }
 
-
 function ItemDetailPanel({
   api,
   closeDetail,
@@ -2793,7 +2797,6 @@ function SettingsPanel({
       setSavingConfigKey(null);
     }
   };
-
 
   const toggleAgentAccess = async () => {
     if (!walletStatusAvailable || savingAgentAccess) return;
@@ -3220,7 +3223,9 @@ function SettingsPanel({
               style={styles.settingsNavigationRow}
               onPress={openSpeech}
             >
-              <View style={[styles.settingsNavigationIcon, { backgroundColor: `${accentColor}18` }]}>
+              <View
+                style={[styles.settingsNavigationIcon, { backgroundColor: `${accentColor}18` }]}
+              >
                 <Volume2 color={accentColor} size={20} strokeWidth={2.1} />
               </View>
               <View style={styles.listText}>

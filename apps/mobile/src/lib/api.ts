@@ -401,13 +401,7 @@ export interface SessionDetailSummary {
 }
 
 export type MobileAgentStatus =
-  | "idle"
-  | "thinking"
-  | "tool_executing"
-  | "tool_completed"
-  | "generating"
-  | "compacting"
-  | "error";
+  "idle" | "thinking" | "tool_executing" | "tool_completed" | "generating" | "compacting" | "error";
 
 export interface MobileStatusSessionSnapshot {
   sessionId: string;
@@ -1055,9 +1049,13 @@ function normalizeProcessActivities(value: unknown): SessionProcessActivitySumma
   });
 }
 
-function normalizeStatusSnapshot(value: unknown, fallbackIndex: number): MobileStatusSessionSnapshot {
+function normalizeStatusSnapshot(
+  value: unknown,
+  fallbackIndex: number
+): MobileStatusSessionSnapshot {
   const record = asRecord(value);
-  const sessionId = readString(record, ["sessionId", "session_id"]) || `session-${fallbackIndex + 1}`;
+  const sessionId =
+    readString(record, ["sessionId", "session_id"]) || `session-${fallbackIndex + 1}`;
   return {
     sessionId,
     status: readString(record, ["status"]) || "thinking",
@@ -1130,10 +1128,7 @@ export function normalizeMobileStatusStreamEvent(value: unknown): MobileStatusSt
     toolName: readString(record, ["toolName", "tool_name"]),
     toolCallId: readString(record, ["toolCallId", "tool_call_id"]),
     toolPhase: readString(record, ["toolPhase", "tool_phase"]) as
-      | "start"
-      | "result"
-      | "error"
-      | undefined,
+      "start" | "result" | "error" | undefined,
     durationMs: readNumber(record, ["durationMs", "duration_ms"]),
   };
 }
@@ -1359,7 +1354,8 @@ export class CybaraMobileApi {
     let closedByUser = false;
     const reconnectDelayMs = Math.max(250, options?.reconnectDelayMs ?? 2000);
     const WebSocketImpl =
-      options?.WebSocketImpl ?? ((globalThis as { WebSocket?: MobileWebSocketConstructor }).WebSocket);
+      options?.WebSocketImpl ??
+      (globalThis as { WebSocket?: MobileWebSocketConstructor }).WebSocket;
 
     if (!WebSocketImpl) {
       handlers.onError?.();

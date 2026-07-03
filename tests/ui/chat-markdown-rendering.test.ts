@@ -3,7 +3,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const chatPagePath = fileURLToPath(new URL("../../ui/src/pages/Chat.tsx", import.meta.url));
-const messageContentPath = fileURLToPath(new URL("../../ui/src/pages/chat/MessageContent.tsx", import.meta.url));
+const messageContentPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/MessageContent.tsx", import.meta.url)
+);
 
 function readChatSource(): string {
   return readFileSync(chatPagePath, "utf8") + readFileSync(messageContentPath, "utf8");

@@ -1,8 +1,23 @@
 import { useEffect, useState } from "react";
 import { Alert, Linking, Platform, Text, TextInput, View } from "react-native";
 import {
-  Bot, CalendarCheck, Cpu, Database, Link2, Mic, Network, Play, RefreshCw, Save, Send,
-  ShieldCheck, Sparkles, Square, Trash2, Volume2, Zap,
+  Bot,
+  CalendarCheck,
+  Cpu,
+  Database,
+  Link2,
+  Mic,
+  Network,
+  Play,
+  RefreshCw,
+  Save,
+  Send,
+  ShieldCheck,
+  Sparkles,
+  Square,
+  Trash2,
+  Volume2,
+  Zap,
 } from "lucide-react-native";
 import { haptics } from "../lib/haptics";
 import { colors } from "../theme/liquidGlass";
@@ -10,29 +25,59 @@ import { GlassPanel } from "../components/Glass";
 import { styles } from "./dashboardStyles";
 import { EmptyState } from "./dashboardPrimitives";
 import {
-  DetailActionButton, DetailInfoSection, SettingSelector, SettingToggle, SettingsSection, SettingsTextField,
+  DetailActionButton,
+  DetailInfoSection,
+  SettingSelector,
+  SettingToggle,
+  SettingsSection,
+  SettingsTextField,
 } from "./dashboardControls";
 import {
-  absoluteTimestampLabel, agentIsRunning, agentProviderId, arraySettingCount, booleanSetting,
-  cleanSettingsFields, displayFieldLabel, displayFields, endpointErrorDetail,
-  mobileSpeechProviderOptions, monitorPercent, monitorPercentLabel, objectRecord,
-  readMobileSpeechSettings, remoteItemEnabled, remoteTaskRunning, type MobileSpeechSettings,
+  absoluteTimestampLabel,
+  agentIsRunning,
+  agentProviderId,
+  arraySettingCount,
+  booleanSetting,
+  cleanSettingsFields,
+  displayFieldLabel,
+  displayFields,
+  endpointErrorDetail,
+  mobileSpeechProviderOptions,
+  monitorPercent,
+  monitorPercentLabel,
+  objectRecord,
+  readMobileSpeechSettings,
+  remoteItemEnabled,
+  remoteTaskRunning,
+  type MobileSpeechSettings,
 } from "./dashboardHelpers";
 import {
-  MOBILE_ROUTER_STRATEGY_OPTIONS, MOBILE_SETTINGS_DETAIL_CHROME, MOBILE_SYSTEM_PROMPT_FEATURE_KEYS,
-  formatMobileValue, formatUptime,
-  mobileProviderAuthMode, readMobileRouterStrategy,
+  MOBILE_ROUTER_STRATEGY_OPTIONS,
+  MOBILE_SETTINGS_DETAIL_CHROME,
+  MOBILE_SYSTEM_PROMPT_FEATURE_KEYS,
+  formatMobileValue,
+  formatUptime,
+  mobileProviderAuthMode,
+  readMobileRouterStrategy,
 } from "../lib/dashboard";
 import { formatMetricBytes, formatStorageBytes } from "../lib/metrics";
 import {
-  CybaraMobileApi, type ActivitySummary, type AgentSummary, type FeatureSummary,
-  type ProviderSummary, type RemoteItemSummary, type RouterConfig, type RouterStatus,
-  type SystemPromptFeatureKey, type ToolApprovalDecision, type WalletAgentPolicyUpdate,
-  type WalletChain, type WalletTokenChain,
+  CybaraMobileApi,
+  type ActivitySummary,
+  type AgentSummary,
+  type FeatureSummary,
+  type ProviderSummary,
+  type RemoteItemSummary,
+  type RouterConfig,
+  type RouterStatus,
+  type SystemPromptFeatureKey,
+  type ToolApprovalDecision,
+  type WalletAgentPolicyUpdate,
+  type WalletChain,
+  type WalletTokenChain,
 } from "../lib/api";
 
 const agentTypeOptions = ["main", "research", "coder", "planner", "ops", "worker"] as const;
-
 
 const systemPromptFeatureCopy: Record<SystemPromptFeatureKey, { label: string; detail: string }> = {
   memoryEnabled: {

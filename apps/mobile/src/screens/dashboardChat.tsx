@@ -74,7 +74,9 @@ function MarkdownText({ content }: { content: string }) {
             return (
               <Text
                 key={index}
-                style={block.level === 1 ? styles.mdH1 : block.level === 2 ? styles.mdH2 : styles.mdH3}
+                style={
+                  block.level === 1 ? styles.mdH1 : block.level === 2 ? styles.mdH2 : styles.mdH3
+                }
               >
                 <InlineMarkdown tokens={block.inline} />
               </Text>
@@ -170,7 +172,11 @@ export function ChatMessageRow({
         <User color={accentColor} size={16} strokeWidth={2.2} />
       </View>
       <View
-        style={[styles.messageBubble, styles.userMessageBubble, { borderColor: `${accentColor}55` }]}
+        style={[
+          styles.messageBubble,
+          styles.userMessageBubble,
+          { borderColor: `${accentColor}55` },
+        ]}
       >
         <MessageContent content={message.content || "(empty message)"} />
         {message.timestamp ? (

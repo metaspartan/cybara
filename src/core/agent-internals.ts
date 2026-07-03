@@ -336,10 +336,7 @@ export function buildToolIterationFingerprint(toolCalls: AgentToolCallResult[]):
     .join("|");
 }
 
-export function readStringArg(
-  args: Record<string, unknown>,
-  keys: string[]
-): string | undefined {
+export function readStringArg(args: Record<string, unknown>, keys: string[]): string | undefined {
   for (const key of keys) {
     const value = args[key];
     if (typeof value !== "string") continue;
@@ -349,10 +346,7 @@ export function readStringArg(
   return undefined;
 }
 
-export function readNumberArg(
-  args: Record<string, unknown>,
-  keys: string[]
-): number | undefined {
+export function readNumberArg(args: Record<string, unknown>, keys: string[]): number | undefined {
   for (const key of keys) {
     const value = args[key];
     if (typeof value === "number" && Number.isFinite(value)) return value;

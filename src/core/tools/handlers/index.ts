@@ -433,7 +433,9 @@ function hasRequiredToolArgument(
   const keys = [key, ...(REQUIRED_ARG_ALIASES[toolName]?.[key] || [])];
   return keys.some((candidate) => {
     const value = args?.[candidate];
-    return value !== undefined && value !== null && !(typeof value === "string" && value.trim() === "");
+    return (
+      value !== undefined && value !== null && !(typeof value === "string" && value.trim() === "")
+    );
   });
 }
 

@@ -725,7 +725,9 @@ export function normalizeSessionStatus(status: string): "thinking" | "generating
   return "idle";
 }
 
-export function toLiveActivityItems(activities: SessionStatusActivity[] | undefined): LiveActivityItem[] {
+export function toLiveActivityItems(
+  activities: SessionStatusActivity[] | undefined
+): LiveActivityItem[] {
   if (!Array.isArray(activities) || activities.length === 0) return [];
   return activities
     .filter(
@@ -842,7 +844,10 @@ export function dedupeArtifactSummaries(summaries: ArtifactSummaryView[]): Artif
   return deduped;
 }
 
-export function inferArtifactSummaries(tool: ToolCall, sessionId?: string | null): ArtifactSummaryView[] {
+export function inferArtifactSummaries(
+  tool: ToolCall,
+  sessionId?: string | null
+): ArtifactSummaryView[] {
   const parsedResult = tryParseJsonRecord(tool.result);
   const result = isRecord(parsedResult) ? parsedResult : null;
   const summaries: ArtifactSummaryView[] = [];

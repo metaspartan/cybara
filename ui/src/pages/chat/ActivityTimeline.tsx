@@ -1,5 +1,13 @@
 import { useState } from "react";
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Loader2, Sparkles, Zap } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Loader2,
+  Sparkles,
+  Zap,
+} from "lucide-react";
 import { Badge } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import type { Subagent } from "@/hooks/useApi";
@@ -199,7 +207,13 @@ export function ProcessActivityList({ activities }: { activities: LiveActivityIt
   );
 }
 
-export function ActivityStepCard({ activity, isLast }: { activity: LiveActivityItem; isLast: boolean }) {
+export function ActivityStepCard({
+  activity,
+  isLast,
+}: {
+  activity: LiveActivityItem;
+  isLast: boolean;
+}) {
   const phaseStyles = {
     start: "border-amber-500/30 bg-amber-500/10 text-amber-200",
     result: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",

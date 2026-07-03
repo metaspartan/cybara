@@ -701,11 +701,10 @@ describe("Agent provider API-family routing", () => {
     });
     createdAgentIds.push(agent.id);
 
-    const result = await agentManager.execute(
-      agent.id,
-      [{ role: "user", content: "hello zai" }],
-      { useTools: false, sessionId: "zai-route-session" }
-    );
+    const result = await agentManager.execute(agent.id, [{ role: "user", content: "hello zai" }], {
+      useTools: false,
+      sessionId: "zai-route-session",
+    });
 
     expect(result.content).toBe("zai-ok");
     expect(requestUrl).toBe("https://api.z.ai/api/coding/paas/v4/chat/completions");
@@ -1250,7 +1249,9 @@ describe("Agent provider API-family routing", () => {
     const requestBodies: Array<Record<string, unknown>> = [];
 
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
-      const requestBody = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      const requestBody = init?.body
+        ? (JSON.parse(String(init.body)) as Record<string, unknown>)
+        : {};
       requestBodies.push(requestBody);
 
       if (requestBodies.length === 1) {
@@ -1267,11 +1268,7 @@ describe("Agent provider API-family routing", () => {
                   role: "assistant",
                   content: [
                     "I'll calculate it.",
-                    JSON.stringify(
-                      { name: "calc", arguments: { expression: "3 * 3" } },
-                      null,
-                      2
-                    ),
+                    JSON.stringify({ name: "calc", arguments: { expression: "3 * 3" } }, null, 2),
                   ].join("\n"),
                 },
               },
@@ -1354,7 +1351,9 @@ describe("Agent provider API-family routing", () => {
     const requestBodies: Array<Record<string, unknown>> = [];
 
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
-      const requestBody = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      const requestBody = init?.body
+        ? (JSON.parse(String(init.body)) as Record<string, unknown>)
+        : {};
       requestBodies.push(requestBody);
 
       if (requestBodies.length === 1) {

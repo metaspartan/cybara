@@ -242,7 +242,6 @@ import {
 import { IDEChatPanel } from "./ide/IDEChatPanel";
 import { IDEWelcomeScreen } from "./ide/IDEWelcomeScreen";
 
-
 export function IDE() {
   const navigate = useNavigate();
   const location = useLocation();

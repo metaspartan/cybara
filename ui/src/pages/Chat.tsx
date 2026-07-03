@@ -130,8 +130,6 @@ import { LiveActivityTimeline, ProcessActivityList } from "./chat/ActivityTimeli
 import { DiffCodeBlock, MessageContent } from "./chat/MessageContent";
 import { isDesktopHostRuntime, openDesktopDirectoryDialog } from "@/lib/desktopHost";
 
-
-
 function FileChangesCard({ summary }: { summary: FileChangeSummary }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -181,7 +179,6 @@ function FileChangesCard({ summary }: { summary: FileChangeSummary }) {
     </div>
   );
 }
-
 
 function formatWorkedDuration(durationMs: number): string {
   const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
@@ -593,8 +590,6 @@ function AssistantMetaInline({
     </div>
   );
 }
-
-
 
 function ArtifactViewerPanel({
   artifact,

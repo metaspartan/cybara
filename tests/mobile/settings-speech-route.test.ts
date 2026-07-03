@@ -20,7 +20,7 @@ describe("mobile settings: Speech lives on its own screen", () => {
     // The root settings panel opens it via a navigation row, not an inline block.
     expect(screen).toContain("onPress={openSpeech}");
     // The old inline speech form is gone from the root settings panel.
-    expect(screen).not.toContain('void saveSpeechPatch(');
+    expect(screen).not.toContain("void saveSpeechPatch(");
   });
 
   test("the Voice & Speech row is routed through the header + back stack", () => {

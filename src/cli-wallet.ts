@@ -124,7 +124,6 @@ interface CliWalletAgentPolicy {
   x402MaxAmountAtomic: string;
 }
 
-
 function formatWalletTimestamp(value?: string): string {
   if (!value) return "N/A";
   try {
@@ -336,7 +335,11 @@ export async function rawWalletTokenBalances(
   }
 }
 
-export async function rawWalletTransactions(chain: string, index?: string, limit?: string): Promise<void> {
+export async function rawWalletTransactions(
+  chain: string,
+  index?: string,
+  limit?: string
+): Promise<void> {
   if (!chain) {
     console.error("Usage: cybara wallet tx <eth|btc|sol> [--index N] [--limit N]");
     process.exit(1);

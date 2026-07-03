@@ -36,8 +36,7 @@ function buildMetricsOverview() {
   const totalToolCalls = metrics.getTotalByType("tool_call");
   const apiStats = {
     totalCalls:
-      (metrics.getTotal("api_call", "success") || 0) +
-      (metrics.getTotal("api_call", "error") || 0),
+      (metrics.getTotal("api_call", "success") || 0) + (metrics.getTotal("api_call", "error") || 0),
     successfulCalls: metrics.getTotal("api_call", "success") || 0,
     failedCalls: metrics.getTotal("api_call", "error") || 0,
   };
@@ -302,8 +301,7 @@ function buildMetricsInsights() {
 
   for (const row of metrics.getKeyAggregates("token_usage_by_provider")) {
     const provider = row.key;
-    if (!provider || provider === "all" || provider === "input" || provider === "output")
-      continue;
+    if (!provider || provider === "all" || provider === "input" || provider === "output") continue;
     providerMap.set(provider, {
       provider,
       tokens: row.total || 0,
@@ -313,8 +311,7 @@ function buildMetricsInsights() {
 
   for (const row of metrics.getKeyAggregates("api_call")) {
     const provider = row.key;
-    if (!provider || provider === "all" || provider === "success" || provider === "error")
-      continue;
+    if (!provider || provider === "all" || provider === "success" || provider === "error") continue;
     const current = providerMap.get(provider) || { provider, tokens: 0, calls: 0 };
     current.calls += row.total || 0;
     providerMap.set(provider, current);

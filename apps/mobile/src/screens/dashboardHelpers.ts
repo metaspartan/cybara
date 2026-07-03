@@ -205,7 +205,9 @@ export function sessionMayBeInProgress(session: SessionSummary): boolean {
   return session.last_message?.role === "user";
 }
 
-export function displayFields(record: Record<string, unknown>): Array<{ label: string; value: string }> {
+export function displayFields(
+  record: Record<string, unknown>
+): Array<{ label: string; value: string }> {
   return Object.entries(record)
     .filter(([key]) => !/secret|token|api[_-]?key|password|credential|mnemonic/i.test(key))
     .map(([label, value]) => ({

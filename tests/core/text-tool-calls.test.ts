@@ -78,7 +78,7 @@ describe("text-form tool call parsing", () => {
   test("extracts final JSON tool envelopes without leaking them into visible text", () => {
     const raw = [
       "I'll open the repository.",
-      '{',
+      "{",
       '  "name": "browser",',
       '  "arguments": {',
       '    "action": "open",',
@@ -98,9 +98,7 @@ describe("text-form tool call parsing", () => {
 
   test("does not promote text-form tool calls without an explicit allowed set", () => {
     expect(extractTextToolCalls('[calc]\n{"expression":"2 + 2"}\n[END_TOOL_REQUEST]')).toEqual([]);
-    expect(
-      extractTextToolCalls('{"name":"calc","arguments":{"expression":"2 + 2"}}')
-    ).toEqual([]);
+    expect(extractTextToolCalls('{"name":"calc","arguments":{"expression":"2 + 2"}}')).toEqual([]);
   });
 
   test("does not treat non-final JSON examples as tool calls", () => {

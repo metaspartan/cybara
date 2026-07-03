@@ -155,12 +155,7 @@ import { listArtifacts, readArtifact, deleteArtifact, listAllArtifacts } from ".
 import { getSessionStatusSnapshot, listSessionStatusSnapshots } from "../core/status";
 import { getSandboxRuntimeStatus, logSandboxRuntimeStatus } from "../core/sandbox";
 import { workspaceIndexer } from "../core/workspace-indexer";
-import {
-  normalizeTimestamp,
-  getCombinedLogs,
-  getCombinedLogsPage,
-  getLogStats,
-} from "./queries";
+import { normalizeTimestamp, getCombinedLogs, getCombinedLogsPage, getLogStats } from "./queries";
 
 const log = createLogger("API");
 
@@ -4287,7 +4282,6 @@ const routes: Record<string, RouteHandler> = {
   },
 
   "GET /api/system/monitor": () => getSystemMonitorSnapshot(),
-
 };
 
 cacheMetricsRoutes(routes);
