@@ -1356,10 +1356,7 @@ class WalletManager {
   }
 
   /** Enforce the per-transaction amount cap (shared by all fund-moving paths). */
-  private assertAgentAmountWithinCap(
-    amount: string | undefined,
-    policy: WalletAgentPolicy
-  ): void {
+  private assertAgentAmountWithinCap(amount: string | undefined, policy: WalletAgentPolicy): void {
     assertAmountWithinCap(amount, policy);
   }
 

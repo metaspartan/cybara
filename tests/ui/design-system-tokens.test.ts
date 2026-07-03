@@ -2,8 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const read = (rel: string) =>
-  readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
+const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
 
 describe("index.css design-system utilities", () => {
   const css = read("../../ui/src/index.css");
@@ -21,7 +20,9 @@ describe("index.css design-system utilities", () => {
   });
 
   test("keyboard focus uses a visible accent outline, not the old 1px white ring", () => {
-    expect(css).toMatch(/:focus-visible\s*\{\s*outline:\s*2px solid rgb\(var\(--accent-primary\)\)/);
+    expect(css).toMatch(
+      /:focus-visible\s*\{\s*outline:\s*2px solid rgb\(var\(--accent-primary\)\)/
+    );
     // The suppressive `outline: none !important` global rule is gone.
     expect(css).not.toContain("outline: none !important");
   });

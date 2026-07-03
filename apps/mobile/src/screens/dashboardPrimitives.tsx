@@ -45,7 +45,15 @@ export function GatewayDetailPill({ label, value }: { label: string; value: stri
   );
 }
 
-export function SettingsRow({ Icon, label, value }: { Icon: IconGlyph; label: string; value: string }) {
+export function SettingsRow({
+  Icon,
+  label,
+  value,
+}: {
+  Icon: IconGlyph;
+  label: string;
+  value: string;
+}) {
   return (
     <View style={styles.settingsNavigationRow}>
       <View style={styles.settingsNavigationIcon}>

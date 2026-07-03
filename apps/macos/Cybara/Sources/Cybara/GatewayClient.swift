@@ -538,6 +538,22 @@ struct GatewayClient: Sendable {
         try await putJSON("api/wallet/agent-access", body: body)
     }
 
+    func sendWallet(_ body: Data) async throws -> [String: Any] {
+        let data = try await request("api/wallet/send", method: "POST", body: body)
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw GatewayClientError.invalidResponse
+        }
+        return object
+    }
+
+    func sendWalletToken(_ body: Data) async throws -> [String: Any] {
+        let data = try await request("api/wallet/send-token", method: "POST", body: body)
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw GatewayClientError.invalidResponse
+        }
+        return object
+    }
+
     func skills() async throws -> [GatewaySkill] {
         try await getList("api/skills", keys: ["skills", "items"])
     }

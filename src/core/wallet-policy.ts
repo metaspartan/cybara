@@ -32,10 +32,7 @@ export function assertRecipientAllowed(
 }
 
 /** Throw if `amount` exceeds a configured, positive, finite per-transaction cap. */
-export function assertAmountWithinCap(
-  amount: string | undefined,
-  limits: WalletAgentLimits
-): void {
+export function assertAmountWithinCap(amount: string | undefined, limits: WalletAgentLimits): void {
   const cap = Number(limits.maxSendAmount);
   if (limits.maxSendAmount?.trim() && Number.isFinite(cap) && cap > 0) {
     const amt = Number(amount);

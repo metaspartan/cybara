@@ -51,8 +51,7 @@ export function GitStatus({
 
     // Poll so branch/modified counts don't go stale after edits or commits —
     // everything else in the IDE stays live, this used to be a frozen snapshot.
-    const timer =
-      pollMs > 0 ? window.setInterval(() => void fetchGit(), pollMs) : undefined;
+    const timer = pollMs > 0 ? window.setInterval(() => void fetchGit(), pollMs) : undefined;
 
     return () => {
       cancelled = true;

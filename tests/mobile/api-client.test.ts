@@ -395,7 +395,7 @@ describe("mobile API client", () => {
     }
   });
 
-  test("updates wallet agent access and policy through gateway wallet routes", async () => {
+  test("updates wallet settings and sends through gateway wallet routes", async () => {
     const calls: Array<{ method: string; path: string; body?: unknown }> = [];
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (url, init) => {
@@ -413,6 +413,21 @@ describe("mobile API client", () => {
           policy: { allowNativeSend: true, allowTokenSend: false },
         });
       }
+      if (parsedUrl.pathname === "/api/wallet/send" && method === "POST") {
+        return Response.json({
+          chain: body?.chain,
+          txid: "0xnative",
+          explorerUrl: "https://example.test/tx/0xnative",
+        });
+      }
+      if (parsedUrl.pathname === "/api/wallet/send-token" && method === "POST") {
+        return Response.json({
+          chain: body?.chain,
+          txid: "0xtoken",
+          explorerUrl: "https://example.test/tx/0xtoken",
+          tokenAddress: body?.tokenAddress,
+        });
+      }
       return new Response("missing", { status: 404 });
     }) as typeof fetch;
 
@@ -426,6 +441,27 @@ describe("mobile API client", () => {
         success: true,
         policy: { allowNativeSend: true, allowTokenSend: false },
       });
+      await expect(
+        api.sendWallet({ chain: "eth", to: "0xrecipient", amount: "0.01", memo: "mobile" })
+      ).resolves.toEqual({
+        chain: "eth",
+        txid: "0xnative",
+        explorerUrl: "https://example.test/tx/0xnative",
+      });
+      await expect(
+        api.sendWalletToken({
+          chain: "eth",
+          tokenAddress: "0xtoken",
+          to: "0xrecipient",
+          amount: "5",
+          decimals: 6,
+        })
+      ).resolves.toEqual({
+        chain: "eth",
+        txid: "0xtoken",
+        explorerUrl: "https://example.test/tx/0xtoken",
+        tokenAddress: "0xtoken",
+      });
 
       expect(calls).toEqual([
         {
@@ -437,6 +473,22 @@ describe("mobile API client", () => {
           method: "PUT",
           path: "/api/wallet/agent-policy",
           body: { allowNativeSend: true },
+        },
+        {
+          method: "POST",
+          path: "/api/wallet/send",
+          body: { chain: "eth", to: "0xrecipient", amount: "0.01", memo: "mobile" },
+        },
+        {
+          method: "POST",
+          path: "/api/wallet/send-token",
+          body: {
+            chain: "eth",
+            tokenAddress: "0xtoken",
+            to: "0xrecipient",
+            amount: "5",
+            decimals: 6,
+          },
         },
       ]);
     } finally {

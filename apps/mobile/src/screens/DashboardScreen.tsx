@@ -103,6 +103,8 @@ import {
   type SystemMonitorSnapshot,
   type ToolApprovalDecision,
   type WalletAgentPolicyUpdate,
+  type WalletChain,
+  type WalletTokenChain,
 } from "../lib/api";
 import {
   chatIsWaitingForAssistant,
@@ -171,9 +173,14 @@ import {
 } from "../lib/metrics";
 import { accentPalette, colors, spacing, type AccentKey } from "../theme/liquidGlass";
 import { styles } from "./dashboardStyles";
-import { EmptyState, GatewayDetailPill, SettingsRow, SummaryTile, type IconGlyph } from "./dashboardPrimitives";
+import {
+  EmptyState,
+  GatewayDetailPill,
+  SettingsRow,
+  SummaryTile,
+  type IconGlyph,
+} from "./dashboardPrimitives";
 import cybaraLogo from "../../assets/cybara.png";
-
 
 interface ModuleCard {
   key: string;
@@ -2679,7 +2686,9 @@ function MemoryRecallCard({
     if (!configAvailable || saving) return;
     setSaving(true);
     try {
-      const result = await api.updateConfig({ workspace_indexer: { embeddingProvider: value } });
+      const result = await api.updateConfig({
+        workspace_indexer: { ...workspaceIndexer, embeddingProvider: value },
+      });
       if (result.success === false) {
         throw new Error("Config update failed");
       }
@@ -2708,7 +2717,6 @@ function MemoryRecallCard({
             { label: "Auto", value: "auto" },
             { label: "Local", value: "transformers_js" },
             { label: "OpenAI", value: "openai" },
-            { label: "Voyage", value: "voyage" },
             { label: "Gemini", value: "gemini" },
             { label: "Ollama", value: "ollama" },
           ]}
@@ -4115,11 +4123,26 @@ function WalletPolicyPanel({
 }) {
   const [savingPolicyKey, setSavingPolicyKey] = useState<WalletPolicyToggleKey | null>(null);
   const [savingAgentAccess, setSavingAgentAccess] = useState(false);
+  const [sendMode, setSendMode] = useState<"native" | "token">("native");
+  const [sendChain, setSendChain] = useState<WalletChain>("eth");
+  const [tokenChain, setTokenChain] = useState<WalletTokenChain>("eth");
+  const [sendTo, setSendTo] = useState("");
+  const [sendAmount, setSendAmount] = useState("");
+  const [sendMemo, setSendMemo] = useState("");
+  const [tokenAddress, setTokenAddress] = useState("");
+  const [tokenDecimals, setTokenDecimals] = useState("18");
+  const [sendingWallet, setSendingWallet] = useState(false);
   const policy = objectRecord(summary?.walletPolicy);
   const status = objectRecord(summary?.walletStatus);
   const agentAccessEnabled = booleanSetting(status, "agentAccessEnabled");
   const policyAvailable = Boolean(policy);
   const statusAvailable = Boolean(status);
+  const walletUnlocked = status?.unlocked === true;
+  const walletSendReady =
+    walletUnlocked &&
+    sendTo.trim().length > 0 &&
+    sendAmount.trim().length > 0 &&
+    (sendMode === "native" || tokenAddress.trim().length > 0);
 
   const updateAgentAccess = async () => {
     if (!statusAvailable) return;
@@ -4160,6 +4183,70 @@ function WalletPolicyPanel({
     } finally {
       setSavingPolicyKey(null);
     }
+  };
+
+  const submitWalletSend = async () => {
+    if (!walletSendReady || sendingWallet) return;
+    setSendingWallet(true);
+    try {
+      const memo = sendMemo.trim() || undefined;
+      const decimals = tokenDecimals.trim() ? Number(tokenDecimals.trim()) : undefined;
+      if (
+        sendMode === "token" &&
+        decimals !== undefined &&
+        (!Number.isInteger(decimals) || decimals < 0 || decimals > 18)
+      ) {
+        throw new Error("Token decimals must be a whole number from 0 to 18.");
+      }
+      const result =
+        sendMode === "native"
+          ? await api.sendWallet({
+              chain: sendChain,
+              to: sendTo.trim(),
+              amount: sendAmount.trim(),
+              memo,
+            })
+          : await api.sendWalletToken({
+              chain: tokenChain,
+              tokenAddress: tokenAddress.trim(),
+              to: sendTo.trim(),
+              amount: sendAmount.trim(),
+              decimals,
+              memo,
+            });
+
+      if (!result.txid) {
+        throw new Error("The gateway did not return a transaction id.");
+      }
+      setSendTo("");
+      setSendAmount("");
+      setSendMemo("");
+      setTokenAddress("");
+      Alert.alert(
+        "Wallet send submitted",
+        result.explorerUrl ? `${result.txid}\n${result.explorerUrl}` : result.txid
+      );
+      await refreshSummary();
+    } catch (error) {
+      Alert.alert("Wallet send failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setSendingWallet(false);
+    }
+  };
+
+  const confirmWalletSend = () => {
+    if (!walletSendReady || sendingWallet) return;
+    const assetLabel =
+      sendMode === "native" ? sendChain.toUpperCase() : `${tokenChain.toUpperCase()} token`;
+    haptics.warning();
+    Alert.alert(
+      "Confirm wallet send",
+      `Send ${sendAmount.trim()} ${assetLabel} to ${sendTo.trim()}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Send", style: "destructive", onPress: () => void submitWalletSend() },
+      ]
+    );
   };
 
   const policyDetails = [
@@ -4227,6 +4314,111 @@ function WalletPolicyPanel({
             value={booleanSetting(policy, toggle.key)}
           />
         ))}
+      </View>
+
+      <Text style={styles.subsectionTitle}>Send</Text>
+      <View style={styles.settingsForm}>
+        {statusAvailable ? (
+          walletUnlocked ? (
+            <>
+              <SettingSelector
+                disabled={sendingWallet}
+                label="Send type"
+                onSelect={(value) => setSendMode(value === "token" ? "token" : "native")}
+                options={[
+                  { label: "Native asset", value: "native" },
+                  { label: "Token", value: "token" },
+                ]}
+                selected={sendMode}
+                tone={colors.green}
+                variant="segmented"
+              />
+              <SettingSelector
+                disabled={sendingWallet}
+                label={sendMode === "native" ? "Chain" : "Token chain"}
+                onSelect={(value) => {
+                  if (sendMode === "native") {
+                    setSendChain(value as WalletChain);
+                  } else {
+                    setTokenChain(value === "sol" ? "sol" : "eth");
+                  }
+                }}
+                options={
+                  sendMode === "native"
+                    ? [
+                        { label: "ETH", value: "eth" },
+                        { label: "BTC", value: "btc" },
+                        { label: "SOL", value: "sol" },
+                      ]
+                    : [
+                        { label: "ETH", value: "eth" },
+                        { label: "SOL", value: "sol" },
+                      ]
+                }
+                selected={sendMode === "native" ? sendChain : tokenChain}
+                tone={colors.green}
+                variant="menu"
+              />
+              {sendMode === "token" ? (
+                <>
+                  <SettingsTextField
+                    label="Token address"
+                    onChangeText={setTokenAddress}
+                    placeholder={tokenChain === "eth" ? "0x..." : "Mint address"}
+                    value={tokenAddress}
+                  />
+                  <SettingsTextField
+                    label="Token decimals"
+                    onChangeText={setTokenDecimals}
+                    placeholder="18"
+                    value={tokenDecimals}
+                  />
+                </>
+              ) : null}
+              <SettingsTextField
+                label="Recipient"
+                onChangeText={setSendTo}
+                placeholder="Wallet address"
+                value={sendTo}
+              />
+              <SettingsTextField
+                label="Amount"
+                onChangeText={setSendAmount}
+                placeholder="0.01"
+                value={sendAmount}
+              />
+              <SettingsTextField
+                label="Memo"
+                onChangeText={setSendMemo}
+                placeholder="Optional"
+                value={sendMemo}
+              />
+              <View style={styles.settingsActionRow}>
+                <DetailActionButton
+                  Icon={Send}
+                  busy={sendingWallet}
+                  disabled={!walletSendReady}
+                  label="Review Send"
+                  onPress={confirmWalletSend}
+                  tone={colors.green}
+                />
+              </View>
+            </>
+          ) : (
+            <EmptyState
+              label="Wallet locked"
+              detail="Unlock the wallet from the desktop or web wallet screen before sending."
+            />
+          )
+        ) : (
+          <EmptyState
+            label="Wallet status unavailable"
+            detail={endpointErrorDetail(
+              summary?.availability.walletStatus,
+              "The gateway did not return wallet status."
+            )}
+          />
+        )}
       </View>
 
       <Text style={styles.subsectionTitle}>Policy limits</Text>

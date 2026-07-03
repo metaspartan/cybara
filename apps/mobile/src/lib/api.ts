@@ -202,6 +202,34 @@ export type WalletAgentPolicyUpdate = Partial<{
   x402MaxAmountAtomic: string;
 }>;
 
+export type WalletChain = "eth" | "btc" | "sol";
+export type WalletTokenChain = "eth" | "sol";
+
+export interface WalletSendPayload {
+  chain: WalletChain;
+  to: string;
+  amount: string;
+  index?: number;
+  memo?: string;
+}
+
+export interface WalletSendTokenPayload {
+  chain: WalletTokenChain;
+  tokenAddress: string;
+  to: string;
+  amount: string;
+  index?: number;
+  decimals?: number;
+  memo?: string;
+}
+
+export interface WalletSendResult {
+  chain: WalletChain | WalletTokenChain;
+  txid: string;
+  explorerUrl?: string;
+  tokenAddress?: string;
+}
+
 export type SystemPromptFeatureKey =
   "memoryEnabled" | "skillsEnabled" | "messagingEnabled" | "replyTagsEnabled";
 
@@ -1502,6 +1530,20 @@ export class CybaraMobileApi {
     return this.request<{ success: boolean; enabled?: boolean }>("/api/wallet/agent-access", {
       method: "PUT",
       body: JSON.stringify({ enabled }),
+    });
+  }
+
+  sendWallet(payload: WalletSendPayload): Promise<WalletSendResult> {
+    return this.request<WalletSendResult>("/api/wallet/send", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  sendWalletToken(payload: WalletSendTokenPayload): Promise<WalletSendResult> {
+    return this.request<WalletSendResult>("/api/wallet/send-token", {
+      method: "POST",
+      body: JSON.stringify(payload),
     });
   }
 

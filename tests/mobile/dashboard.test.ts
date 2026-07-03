@@ -400,6 +400,15 @@ describe("mobile dashboard model", () => {
     expect(isMobileSettingsDetailFieldVisible("access token")).toBe(false);
   });
 
+  test("wallet detail includes guarded native and token send controls", () => {
+    expect(dashboardScreenSource).toContain("api.sendWallet({");
+    expect(dashboardScreenSource).toContain("api.sendWalletToken({");
+    expect(dashboardScreenSource).toContain('"Confirm wallet send"');
+    expect(dashboardScreenSource).toContain('label="Review Send"');
+    expect(dashboardScreenSource).toContain('label="Token address"');
+    expect(dashboardScreenSource).toContain("walletUnlocked");
+  });
+
   test("keeps provider credential UI native to provider auth type", () => {
     expect(mobileProviderAuthMode({ authType: "oauth" })).toBe("oauth");
     expect(mobileProviderAuthMode({ authType: "bearer" })).toBe("access_token");

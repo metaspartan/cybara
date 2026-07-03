@@ -330,6 +330,6 @@ describe("drainNdjsonLines (stdout reassembly)", () => {
   });
 
   test("ignores blank/whitespace-only lines", () => {
-    expect(drainNdjsonLines("\n  \n{\"id\":1}\n").lines).toEqual(['{"id":1}']);
+    expect(drainNdjsonLines('\n  \n{"id":1}\n').lines).toEqual(['{"id":1}']);
   });
 });

@@ -2,8 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const read = (rel: string) =>
-  readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
+const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
 
 describe("GitStatus refresh + cleanup", () => {
   const src = read("../../ui/src/pages/ide/GitStatus.tsx");
@@ -46,7 +45,9 @@ describe("CodeViewer LSP keyboard + hover fixes", () => {
     expect(src).toContain("editorContextMenu ? editorContextMenu.line : cursorLine");
     expect(src).toContain("editorContextMenu ? editorContextMenu.column : cursorColumn");
     // The LSP resolver itself only guards on `path`, not on the context menu.
-    expect(src).toContain("): Promise<Array<{ path: string; line: number; character: number }>> => {\n      if (!path) return [];");
+    expect(src).toContain(
+      "): Promise<Array<{ path: string; line: number; character: number }>> => {\n      if (!path) return [];"
+    );
   });
 
   test("hover stores a 1-based display line and converts to 0-based for LSP", () => {

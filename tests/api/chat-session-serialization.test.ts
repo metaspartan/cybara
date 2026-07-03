@@ -46,7 +46,11 @@ describe("handleChat per-session serialization", () => {
           object: "chat.completion",
           model: "gpt-serialize",
           choices: [
-            { index: 0, finish_reason: "stop", message: { role: "assistant", content: `reply-${n}` } },
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: `reply-${n}` },
+            },
           ],
           usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6 },
         }),

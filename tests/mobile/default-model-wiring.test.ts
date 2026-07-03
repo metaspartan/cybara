@@ -29,10 +29,13 @@ describe("mobile: memory method toggle", () => {
     expect(screen).toContain('label="Recall method"');
     expect(screen).toContain('surface === "memory" ? (');
     expect(screen).toContain("<MemoryRecallCard");
-    expect(screen).toMatch(/workspace_indexer:\s*\{\s*embeddingProvider:/);
+    expect(screen).toContain(
+      "workspace_indexer: { ...workspaceIndexer, embeddingProvider: value }"
+    );
     for (const provider of ["auto", "transformers_js", "openai", "gemini", "ollama"]) {
       expect(screen).toContain(`value: "${provider}"`);
     }
+    expect(screen).not.toContain('value: "voyage"');
     // It is no longer a section on the settings tab.
     expect(screen).not.toContain('<SettingsSection title="Memory">');
     expect(screen).not.toContain('label="Memory method"');

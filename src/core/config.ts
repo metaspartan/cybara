@@ -53,6 +53,16 @@ export interface WorkspaceIndexerSettings {
   includeExtensions: string[];
 }
 
+export interface MemoryBehaviorSettings {
+  backgroundReviewEnabled: boolean;
+  backgroundReviewMinIntervalMs: number;
+  backgroundReviewTimeoutSeconds: number;
+  memoryFlushEnabled: boolean;
+  memoryFlushSoftThresholdTokens: number;
+  memoryFlushPrompt: string;
+  memoryFlushSystemPrompt: string;
+}
+
 export interface SpeechTtsSettings {
   provider: SpeechTtsProviderPreference;
   providerId: string;
@@ -125,6 +135,24 @@ export const DEFAULT_WORKSPACE_INDEXER_SETTINGS: WorkspaceIndexerSettings = {
     "venv",
   ],
   includeExtensions: [],
+};
+
+export const DEFAULT_MEMORY_BEHAVIOR_SETTINGS: MemoryBehaviorSettings = {
+  backgroundReviewEnabled: true,
+  backgroundReviewMinIntervalMs: 5 * 60 * 1000,
+  backgroundReviewTimeoutSeconds: 90,
+  memoryFlushEnabled: true,
+  memoryFlushSoftThresholdTokens: 4000,
+  memoryFlushPrompt: [
+    "Pre-compaction memory flush.",
+    "Store durable memories now (use memory/YYYY-MM-DD.md via write tool; create memory/ if needed).",
+    "If nothing to store, reply with [SILENT].",
+  ].join(" "),
+  memoryFlushSystemPrompt: [
+    "Pre-compaction memory flush turn.",
+    "The session is near auto-compaction; capture durable memories to disk.",
+    "You may reply, but usually [SILENT] is correct.",
+  ].join(" "),
 };
 
 export const DEFAULT_SPEECH_SETTINGS: SpeechSettings = {
@@ -466,6 +494,71 @@ function normalizeWorkspaceIndexerSettings(value: unknown): WorkspaceIndexerSett
   };
 }
 
+function normalizeMemoryBehaviorSettings(value: unknown): MemoryBehaviorSettings {
+  const parsed = asObject(value);
+  return {
+    backgroundReviewEnabled:
+      typeof parsed?.backgroundReviewEnabled === "boolean"
+        ? parsed.backgroundReviewEnabled
+        : DEFAULT_MEMORY_BEHAVIOR_SETTINGS.backgroundReviewEnabled,
+    backgroundReviewMinIntervalMs: normalizePositiveInteger(
+      parsed?.backgroundReviewMinIntervalMs,
+      DEFAULT_MEMORY_BEHAVIOR_SETTINGS.backgroundReviewMinIntervalMs,
+      10_000,
+      24 * 60 * 60 * 1000
+    ),
+    backgroundReviewTimeoutSeconds: normalizePositiveInteger(
+      parsed?.backgroundReviewTimeoutSeconds,
+      DEFAULT_MEMORY_BEHAVIOR_SETTINGS.backgroundReviewTimeoutSeconds,
+      10,
+      600
+    ),
+    memoryFlushEnabled:
+      typeof parsed?.memoryFlushEnabled === "boolean"
+        ? parsed.memoryFlushEnabled
+        : DEFAULT_MEMORY_BEHAVIOR_SETTINGS.memoryFlushEnabled,
+    memoryFlushSoftThresholdTokens: normalizePositiveInteger(
+      parsed?.memoryFlushSoftThresholdTokens,
+      DEFAULT_MEMORY_BEHAVIOR_SETTINGS.memoryFlushSoftThresholdTokens,
+      500,
+      200_000
+    ),
+    memoryFlushPrompt:
+      typeof parsed?.memoryFlushPrompt === "string" && parsed.memoryFlushPrompt.trim()
+        ? parsed.memoryFlushPrompt.trim().slice(0, 2000)
+        : DEFAULT_MEMORY_BEHAVIOR_SETTINGS.memoryFlushPrompt,
+    memoryFlushSystemPrompt:
+      typeof parsed?.memoryFlushSystemPrompt === "string" && parsed.memoryFlushSystemPrompt.trim()
+        ? parsed.memoryFlushSystemPrompt.trim().slice(0, 2000)
+        : DEFAULT_MEMORY_BEHAVIOR_SETTINGS.memoryFlushSystemPrompt,
+  };
+}
+
+function normalizeLegacyMemoryFlushSettings(value: unknown): Partial<MemoryBehaviorSettings> {
+  const parsed = asObject(value);
+  if (!parsed) return {};
+  return {
+    memoryFlushEnabled: typeof parsed.enabled === "boolean" ? parsed.enabled : undefined,
+    memoryFlushSoftThresholdTokens:
+      parsed.softThresholdTokens === undefined
+        ? undefined
+        : normalizePositiveInteger(
+            parsed.softThresholdTokens,
+            DEFAULT_MEMORY_BEHAVIOR_SETTINGS.memoryFlushSoftThresholdTokens,
+            500,
+            200_000
+          ),
+    memoryFlushPrompt:
+      typeof parsed.prompt === "string" && parsed.prompt.trim()
+        ? parsed.prompt.trim().slice(0, 2000)
+        : undefined,
+    memoryFlushSystemPrompt:
+      typeof parsed.systemPrompt === "string" && parsed.systemPrompt.trim()
+        ? parsed.systemPrompt.trim().slice(0, 2000)
+        : undefined,
+  };
+}
+
 class ConfigManager {
   get<T>(key: string): T | undefined {
     const stored = tables.config.get(key);
@@ -489,6 +582,7 @@ class ConfigManager {
       web_tool_url_policy: { ...DEFAULT_WEB_TOOL_URL_POLICY },
       sandbox_runtime: { ...DEFAULT_SANDBOX_RUNTIME },
       workspace_indexer: { ...DEFAULT_WORKSPACE_INDEXER_SETTINGS },
+      memory: { ...DEFAULT_MEMORY_BEHAVIOR_SETTINGS },
       speech: { ...DEFAULT_SPEECH_SETTINGS },
       computer_use: { ...DEFAULT_COMPUTER_USE_SETTINGS },
     };
@@ -564,6 +658,21 @@ class ConfigManager {
   setWorkspaceIndexerSettings(settings: unknown): WorkspaceIndexerSettings {
     const normalized = normalizeWorkspaceIndexerSettings(settings);
     this.set("workspace_indexer", normalized);
+    return normalized;
+  }
+
+  getMemoryBehaviorSettings(): MemoryBehaviorSettings {
+    const stored = this.get<unknown>("memory");
+    const normalized = normalizeMemoryBehaviorSettings(stored);
+    if (stored !== undefined) return normalized;
+
+    const legacyFlush = normalizeLegacyMemoryFlushSettings(this.get<unknown>("memoryFlush"));
+    return normalizeMemoryBehaviorSettings({ ...normalized, ...legacyFlush });
+  }
+
+  setMemoryBehaviorSettings(settings: unknown): MemoryBehaviorSettings {
+    const normalized = normalizeMemoryBehaviorSettings(settings);
+    this.set("memory", normalized);
     return normalized;
   }
 

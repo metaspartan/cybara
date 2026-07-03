@@ -619,7 +619,6 @@ const routes: Record<string, RouteHandler> = {
     live: true,
     timestamp: new Date().toISOString(),
   }),
-
   "GET /api/metrics": () => ({
     requestCount: requestLogs.length,
     recentRequests: requestLogs.slice(0, 100),
@@ -630,7 +629,6 @@ const routes: Record<string, RouteHandler> = {
     memory: getMemoryUsage(),
     uptime: process.uptime(),
   }),
-
   "GET /api/info": () => ({
     name: "Cybara",
     version: getAppVersion(),
@@ -659,7 +657,6 @@ const routes: Record<string, RouteHandler> = {
     }
     return checkForUpdate();
   },
-
   "GET /api/setup/status": () => ({
     complete: config.isSetupComplete(),
     currentStep: config.getSetupStep(),
@@ -676,7 +673,6 @@ const routes: Record<string, RouteHandler> = {
     }
     return { success: true };
   },
-
   "GET /api/config": () => ({
     ...redactSecretConfig(config.getAll()),
     dangerous_tool_policy: config.getDangerousToolPolicy(),
@@ -684,6 +680,7 @@ const routes: Record<string, RouteHandler> = {
     web_tool_url_policy: config.getWebToolUrlPolicy(),
     sandbox_runtime: config.getSandboxRuntime(),
     workspace_indexer: config.getWorkspaceIndexerSettings(),
+    memory: config.getMemoryBehaviorSettings(),
     speech: config.getSpeechSettings(),
     computer_use: config.getComputerUseSettings(),
     reasoning_effort: config.getDefaultReasoningEffort(),
@@ -717,6 +714,10 @@ const routes: Record<string, RouteHandler> = {
       }
       if (key === "workspace_indexer") {
         workspaceIndexer.updateSettings(value);
+        continue;
+      }
+      if (key === "memory") {
+        config.setMemoryBehaviorSettings(value);
         continue;
       }
       if (key === "speech") {

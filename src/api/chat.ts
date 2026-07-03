@@ -615,9 +615,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   // session id so the whole turn (create → push user → execute → push assistant
   // → persist) runs without interleaving.
   const effectiveSessionId = request.sessionId || crypto.randomUUID();
-  return chatTurnMutex.run(effectiveSessionId, () =>
-    handleChatTurn(request, effectiveSessionId)
-  );
+  return chatTurnMutex.run(effectiveSessionId, () => handleChatTurn(request, effectiveSessionId));
 }
 
 async function handleChatTurn(
@@ -886,13 +884,19 @@ async function handleChatTurn(
       // Opportunistic, non-blocking background memory review. Forks a restricted
       // subagent (memory tools only) to persist durable facts/preferences from
       // this turn. Throttled per-session; failures are swallowed.
+      const memorySettings = config.getMemoryBehaviorSettings();
       void maybeRunBackgroundReview(
         {
           agentId: agent.id,
           sessionId: session.id,
           workspaceDir: session.workspaceDir || undefined,
         },
-        responseContent
+        responseContent,
+        {
+          disabled: !memorySettings.backgroundReviewEnabled,
+          minIntervalMs: memorySettings.backgroundReviewMinIntervalMs,
+          timeoutSeconds: memorySettings.backgroundReviewTimeoutSeconds,
+        }
       ).catch(() => {
         /* best-effort; never affects the main turn */
       });

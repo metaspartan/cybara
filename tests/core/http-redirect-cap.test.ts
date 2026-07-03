@@ -35,8 +35,6 @@ describe("handleHttp redirect handling (SSRF hardening)", () => {
     globalThis.fetch = (async () =>
       redirectResponse("http://169.254.169.254/latest/meta-data/")) as typeof fetch;
 
-    await expect(handleHttp({ url: "https://example.com/start" })).rejects.toThrow(
-      /blocked/i
-    );
+    await expect(handleHttp({ url: "https://example.com/start" })).rejects.toThrow(/blocked/i);
   });
 });

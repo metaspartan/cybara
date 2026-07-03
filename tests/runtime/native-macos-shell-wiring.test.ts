@@ -179,4 +179,19 @@ describe("native macOS shell wiring", () => {
     expect(modelTests).toContain("testMemorySearchResponseDecodesGatewayResults");
     expect(modelTests).toContain("testMemoryCreateResponseDecodesGatewaySuccessShape");
   });
+
+  test("native wallet screen exposes user send routes with confirmation", () => {
+    const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
+    const configScreens = readFileSync(join(MACOS_APP_DIR, "NativeConfigScreens.swift"), "utf8");
+
+    expect(gatewayClient).toContain('request("api/wallet/send", method: "POST"');
+    expect(gatewayClient).toContain('request("api/wallet/send-token", method: "POST"');
+    expect(configScreens).toContain('Text("Send")');
+    expect(configScreens).toContain('TextField("Recipient address"');
+    expect(configScreens).toContain('TextField("Token address or mint"');
+    expect(configScreens).toContain('Button(sendingWallet ? "Sending..." : "Review Send")');
+    expect(configScreens).toContain("confirmationDialog(");
+    expect(configScreens).toContain("client.sendWallet(body)");
+    expect(configScreens).toContain("client.sendWalletToken(body)");
+  });
 });

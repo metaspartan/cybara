@@ -437,6 +437,16 @@ function DesktopUpdateSettings({
 }
 
 type SandboxProviderOption = "auto" | "apple_sandbox" | "podman" | "docker";
+type SettingsSectionId = "general" | "ai-memory" | "voice" | "safety" | "desktop" | "system";
+
+const settingsSections: Array<{ id: SettingsSectionId; label: string }> = [
+  { id: "general", label: "General" },
+  { id: "ai-memory", label: "AI & Memory" },
+  { id: "voice", label: "Voice" },
+  { id: "safety", label: "Safety" },
+  { id: "desktop", label: "Desktop" },
+  { id: "system", label: "System" },
+];
 
 interface SandboxStatusView {
   enabled: boolean;
@@ -796,6 +806,612 @@ function SandboxBrowserSettings() {
         ) : (
           <p className="text-sm text-red-400">Could not load sandbox browser status.</p>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+type MemoryBehaviorSettingsState = {
+  backgroundReviewEnabled: boolean;
+  backgroundReviewMinIntervalMs: number;
+  backgroundReviewTimeoutSeconds: number;
+  memoryFlushEnabled: boolean;
+  memoryFlushSoftThresholdTokens: number;
+  memoryFlushPrompt: string;
+  memoryFlushSystemPrompt: string;
+};
+
+type MemoryRecallProvider = "auto" | "transformers_js" | "openai" | "gemini" | "ollama";
+
+type MemoryRecallSettingsState = {
+  enabled: boolean;
+  semanticEnabled: boolean;
+  includeHidden: boolean;
+  autoReindexOnWorkspaceSet: boolean;
+  maxFiles: number;
+  maxFileSizeMb: number;
+  semanticMaxFiles: number;
+  semanticMinScore: number;
+  embeddingProvider: MemoryRecallProvider;
+  embeddingModel: string;
+};
+
+const defaultMemoryBehaviorSettings: MemoryBehaviorSettingsState = {
+  backgroundReviewEnabled: true,
+  backgroundReviewMinIntervalMs: 300000,
+  backgroundReviewTimeoutSeconds: 90,
+  memoryFlushEnabled: true,
+  memoryFlushSoftThresholdTokens: 4000,
+  memoryFlushPrompt:
+    "Pre-compaction memory flush. Store durable memories now (use memory/YYYY-MM-DD.md via write tool; create memory/ if needed). If nothing to store, reply with [SILENT].",
+  memoryFlushSystemPrompt:
+    "Pre-compaction memory flush turn. The session is near auto-compaction; capture durable memories to disk. You may reply, but usually [SILENT] is correct.",
+};
+
+const defaultMemoryRecallSettings: MemoryRecallSettingsState = {
+  enabled: true,
+  semanticEnabled: true,
+  includeHidden: false,
+  autoReindexOnWorkspaceSet: true,
+  maxFiles: 25000,
+  maxFileSizeMb: 1,
+  semanticMaxFiles: 2000,
+  semanticMinScore: 0.45,
+  embeddingProvider: "auto",
+  embeddingModel: "",
+};
+
+const memoryRecallProviderOptions: Array<{ value: MemoryRecallProvider; label: string }> = [
+  { value: "auto", label: "Auto" },
+  { value: "transformers_js", label: "Local Transformers.js" },
+  { value: "openai", label: "OpenAI" },
+  { value: "gemini", label: "Gemini" },
+  { value: "ollama", label: "Ollama" },
+];
+
+function asSettingsRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function readBooleanSetting(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function readNumberSetting(value: unknown, fallback: number, min: number, max: number): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim().length > 0
+        ? Number(value)
+        : Number.NaN;
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function readIntegerSetting(value: unknown, fallback: number, min: number, max: number): number {
+  return Math.floor(readNumberSetting(value, fallback, min, max));
+}
+
+function readMemoryRecallProvider(value: unknown): MemoryRecallProvider {
+  if (typeof value !== "string") return defaultMemoryRecallSettings.embeddingProvider;
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  if (
+    normalized === "auto" ||
+    normalized === "transformers_js" ||
+    normalized === "openai" ||
+    normalized === "gemini" ||
+    normalized === "ollama"
+  ) {
+    return normalized;
+  }
+  if (normalized === "transformers") return "transformers_js";
+  return defaultMemoryRecallSettings.embeddingProvider;
+}
+
+function readMemoryBehaviorSettings(value: unknown): MemoryBehaviorSettingsState {
+  const record = asSettingsRecord(value);
+  return {
+    backgroundReviewEnabled:
+      typeof record.backgroundReviewEnabled === "boolean"
+        ? record.backgroundReviewEnabled
+        : defaultMemoryBehaviorSettings.backgroundReviewEnabled,
+    backgroundReviewMinIntervalMs:
+      typeof record.backgroundReviewMinIntervalMs === "number" &&
+      Number.isFinite(record.backgroundReviewMinIntervalMs)
+        ? record.backgroundReviewMinIntervalMs
+        : defaultMemoryBehaviorSettings.backgroundReviewMinIntervalMs,
+    backgroundReviewTimeoutSeconds:
+      typeof record.backgroundReviewTimeoutSeconds === "number" &&
+      Number.isFinite(record.backgroundReviewTimeoutSeconds)
+        ? record.backgroundReviewTimeoutSeconds
+        : defaultMemoryBehaviorSettings.backgroundReviewTimeoutSeconds,
+    memoryFlushEnabled:
+      typeof record.memoryFlushEnabled === "boolean"
+        ? record.memoryFlushEnabled
+        : defaultMemoryBehaviorSettings.memoryFlushEnabled,
+    memoryFlushSoftThresholdTokens:
+      typeof record.memoryFlushSoftThresholdTokens === "number" &&
+      Number.isFinite(record.memoryFlushSoftThresholdTokens)
+        ? record.memoryFlushSoftThresholdTokens
+        : defaultMemoryBehaviorSettings.memoryFlushSoftThresholdTokens,
+    memoryFlushPrompt:
+      typeof record.memoryFlushPrompt === "string"
+        ? record.memoryFlushPrompt
+        : defaultMemoryBehaviorSettings.memoryFlushPrompt,
+    memoryFlushSystemPrompt:
+      typeof record.memoryFlushSystemPrompt === "string"
+        ? record.memoryFlushSystemPrompt
+        : defaultMemoryBehaviorSettings.memoryFlushSystemPrompt,
+  };
+}
+
+function readMemoryRecallSettings(value: unknown): MemoryRecallSettingsState {
+  const record = asSettingsRecord(value);
+  const maxFileSizeBytes = readIntegerSetting(
+    record.maxFileSizeBytes,
+    defaultMemoryRecallSettings.maxFileSizeMb * 1024 * 1024,
+    8 * 1024,
+    100 * 1024 * 1024
+  );
+  return {
+    enabled: readBooleanSetting(record.enabled, defaultMemoryRecallSettings.enabled),
+    semanticEnabled: readBooleanSetting(
+      record.semanticEnabled,
+      defaultMemoryRecallSettings.semanticEnabled
+    ),
+    includeHidden: readBooleanSetting(
+      record.includeHidden,
+      defaultMemoryRecallSettings.includeHidden
+    ),
+    autoReindexOnWorkspaceSet: readBooleanSetting(
+      record.autoReindexOnWorkspaceSet,
+      defaultMemoryRecallSettings.autoReindexOnWorkspaceSet
+    ),
+    maxFiles: readIntegerSetting(
+      record.maxFiles,
+      defaultMemoryRecallSettings.maxFiles,
+      100,
+      1_000_000
+    ),
+    maxFileSizeMb: Number((maxFileSizeBytes / (1024 * 1024)).toFixed(2)),
+    semanticMaxFiles: readIntegerSetting(
+      record.semanticMaxFiles,
+      defaultMemoryRecallSettings.semanticMaxFiles,
+      100,
+      50_000
+    ),
+    semanticMinScore: Number(
+      readNumberSetting(
+        record.semanticMinScore,
+        defaultMemoryRecallSettings.semanticMinScore,
+        0.05,
+        0.99
+      ).toFixed(2)
+    ),
+    embeddingProvider: readMemoryRecallProvider(record.embeddingProvider),
+    embeddingModel:
+      typeof record.embeddingModel === "string" ? record.embeddingModel.trim().slice(0, 160) : "",
+  };
+}
+
+function memoryRecallConfigPayload(recall: MemoryRecallSettingsState): Record<string, unknown> {
+  return {
+    enabled: recall.enabled,
+    autoReindexOnWorkspaceSet: recall.autoReindexOnWorkspaceSet,
+    includeHidden: recall.includeHidden,
+    maxFileSizeBytes: Math.round(
+      readNumberSetting(
+        recall.maxFileSizeMb,
+        defaultMemoryRecallSettings.maxFileSizeMb,
+        0.01,
+        100
+      ) *
+        1024 *
+        1024
+    ),
+    maxFiles: readIntegerSetting(
+      recall.maxFiles,
+      defaultMemoryRecallSettings.maxFiles,
+      100,
+      1_000_000
+    ),
+    semanticEnabled: recall.semanticEnabled,
+    semanticMaxFiles: readIntegerSetting(
+      recall.semanticMaxFiles,
+      defaultMemoryRecallSettings.semanticMaxFiles,
+      100,
+      50_000
+    ),
+    semanticMinScore: readNumberSetting(
+      recall.semanticMinScore,
+      defaultMemoryRecallSettings.semanticMinScore,
+      0.05,
+      0.99
+    ),
+    embeddingProvider: recall.embeddingProvider,
+    embeddingModel: recall.embeddingModel.trim().slice(0, 160),
+  };
+}
+
+function MemoryBehaviorSettings() {
+  const { addToast } = useUIStore();
+  const [memory, setMemory] = useState<MemoryBehaviorSettingsState>(defaultMemoryBehaviorSettings);
+  const [recall, setRecall] = useState<MemoryRecallSettingsState>(defaultMemoryRecallSettings);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [savingRecall, setSavingRecall] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      try {
+        const result = await settingsApi.getConfig();
+        if (!mounted || !result.success) return;
+        setMemory(readMemoryBehaviorSettings(result.data?.memory));
+        setRecall(readMemoryRecallSettings(result.data?.workspace_indexer));
+      } catch {
+        // Keep defaults available while the gateway is unavailable.
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+    void load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const updateMemory = (patch: Partial<MemoryBehaviorSettingsState>) => {
+    setMemory((current) => ({ ...current, ...patch }));
+  };
+
+  const updateRecall = (patch: Partial<MemoryRecallSettingsState>) => {
+    setRecall((current) => ({ ...current, ...patch }));
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const result = await settingsApi.updateConfig({ memory });
+      if (!result.success || result.data?.success === false) {
+        throw new Error(result.error || "Memory settings were not saved");
+      }
+      addToast("success", "Memory settings saved");
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Failed to save memory settings");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveRecall = async () => {
+    setSavingRecall(true);
+    try {
+      const result = await settingsApi.updateConfig({
+        workspace_indexer: memoryRecallConfigPayload(recall),
+      });
+      if (!result.success || result.data?.success === false) {
+        throw new Error(result.error || "Recall settings were not saved");
+      }
+      addToast("success", "Recall settings saved");
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Failed to save recall settings");
+    } finally {
+      setSavingRecall(false);
+    }
+  };
+
+  return (
+    <Card variant="liquid">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Brain className="w-5 h-5 text-indigo-400" />
+          Memory Behavior
+        </CardTitle>
+        <CardDescription>
+          Controls when agents learn durable facts and when long chats flush memory before
+          compaction.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-4">
+          <div>
+            <h3 className="text-sm font-semibold text-white">Recall search</h3>
+            <p className="text-xs text-gray-400 mt-1">
+              Controls the semantic index used by memory search, workspace search, and contextual
+              recall.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+              <span className="text-sm text-gray-300">Build recall index</span>
+              <input
+                type="checkbox"
+                checked={recall.enabled}
+                disabled={loading || savingRecall}
+                onChange={(event) => updateRecall({ enabled: event.currentTarget.checked })}
+                className="h-4 w-4 accent-indigo-500"
+              />
+            </label>
+            <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+              <span className="text-sm text-gray-300">Semantic recall</span>
+              <input
+                type="checkbox"
+                checked={recall.semanticEnabled}
+                disabled={loading || savingRecall}
+                onChange={(event) => updateRecall({ semanticEnabled: event.currentTarget.checked })}
+                className="h-4 w-4 accent-indigo-500"
+              />
+            </label>
+            <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+              <span className="text-sm text-gray-300">Include hidden files</span>
+              <input
+                type="checkbox"
+                checked={recall.includeHidden}
+                disabled={loading || savingRecall}
+                onChange={(event) => updateRecall({ includeHidden: event.currentTarget.checked })}
+                className="h-4 w-4 accent-indigo-500"
+              />
+            </label>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+            <Select
+              label="Embedding provider"
+              options={memoryRecallProviderOptions}
+              value={recall.embeddingProvider}
+              disabled={loading || savingRecall}
+              onChange={(value) =>
+                updateRecall({ embeddingProvider: value as MemoryRecallProvider })
+              }
+            />
+            <Input
+              label="Model override"
+              placeholder="Auto"
+              value={recall.embeddingModel}
+              disabled={loading || savingRecall}
+              onChange={(event) => updateRecall({ embeddingModel: event.target.value })}
+            />
+            <Input
+              label="Max files"
+              type="number"
+              min={100}
+              value={recall.maxFiles}
+              disabled={loading || savingRecall}
+              onChange={(event) =>
+                updateRecall({
+                  maxFiles: readIntegerSetting(
+                    event.target.value,
+                    defaultMemoryRecallSettings.maxFiles,
+                    100,
+                    1_000_000
+                  ),
+                })
+              }
+            />
+            <Input
+              label="Max file size (MB)"
+              type="number"
+              min={0.01}
+              max={100}
+              step={0.1}
+              value={recall.maxFileSizeMb}
+              disabled={loading || savingRecall}
+              onChange={(event) =>
+                updateRecall({
+                  maxFileSizeMb: readNumberSetting(
+                    event.target.value,
+                    defaultMemoryRecallSettings.maxFileSizeMb,
+                    0.01,
+                    100
+                  ),
+                })
+              }
+            />
+            <Input
+              label="Semantic files"
+              type="number"
+              min={100}
+              max={50000}
+              value={recall.semanticMaxFiles}
+              disabled={loading || savingRecall}
+              onChange={(event) =>
+                updateRecall({
+                  semanticMaxFiles: readIntegerSetting(
+                    event.target.value,
+                    defaultMemoryRecallSettings.semanticMaxFiles,
+                    100,
+                    50_000
+                  ),
+                })
+              }
+            />
+            <Input
+              label="Semantic min score"
+              type="number"
+              min={0.05}
+              max={0.99}
+              step={0.05}
+              value={recall.semanticMinScore}
+              disabled={loading || savingRecall}
+              onChange={(event) =>
+                updateRecall({
+                  semanticMinScore: Number(
+                    readNumberSetting(
+                      event.target.value,
+                      defaultMemoryRecallSettings.semanticMinScore,
+                      0.05,
+                      0.99
+                    ).toFixed(2)
+                  ),
+                })
+              }
+            />
+            <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 md:col-span-2">
+              <span className="text-sm text-gray-300">Auto reindex when workspace changes</span>
+              <input
+                type="checkbox"
+                checked={recall.autoReindexOnWorkspaceSet}
+                disabled={loading || savingRecall}
+                onChange={(event) =>
+                  updateRecall({ autoReindexOnWorkspaceSet: event.currentTarget.checked })
+                }
+                className="h-4 w-4 accent-indigo-500"
+              />
+            </label>
+          </div>
+          <div className="flex justify-end">
+            <Button
+              leftIcon={
+                savingRecall ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )
+              }
+              onClick={() => void saveRecall()}
+              disabled={loading || savingRecall}
+            >
+              Save Recall Settings
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Learning loop</h3>
+              <p className="text-xs text-gray-400 mt-1">
+                After substantial responses, Cybara can run a silent reviewer that saves durable
+                preferences, corrections, and project facts.
+              </p>
+            </div>
+            <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+              <span className="text-sm text-gray-300">Background memory review</span>
+              <input
+                type="checkbox"
+                checked={memory.backgroundReviewEnabled}
+                disabled={loading || saving}
+                onChange={(event) =>
+                  updateMemory({ backgroundReviewEnabled: event.currentTarget.checked })
+                }
+                className="h-4 w-4 accent-indigo-500"
+              />
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input
+                label="Minimum interval (minutes)"
+                min={1}
+                max={1440}
+                type="number"
+                value={Math.round(memory.backgroundReviewMinIntervalMs / 60000)}
+                disabled={loading || saving}
+                onChange={(event) =>
+                  updateMemory({
+                    backgroundReviewMinIntervalMs:
+                      Math.max(1, Number(event.target.value) || 5) * 60000,
+                  })
+                }
+              />
+              <Input
+                label="Timeout (seconds)"
+                min={10}
+                max={600}
+                type="number"
+                value={memory.backgroundReviewTimeoutSeconds}
+                disabled={loading || saving}
+                onChange={(event) =>
+                  updateMemory({
+                    backgroundReviewTimeoutSeconds: Math.max(10, Number(event.target.value) || 90),
+                  })
+                }
+              />
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Pre-compaction flush</h3>
+              <p className="text-xs text-gray-400 mt-1">
+                Before a long chat compacts, the agent gets one chance to save durable memory so
+                important details are not lost.
+              </p>
+            </div>
+            <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+              <span className="text-sm text-gray-300">Flush before compaction</span>
+              <input
+                type="checkbox"
+                checked={memory.memoryFlushEnabled}
+                disabled={loading || saving}
+                onChange={(event) =>
+                  updateMemory({ memoryFlushEnabled: event.currentTarget.checked })
+                }
+                className="h-4 w-4 accent-indigo-500"
+              />
+            </label>
+            <Input
+              label="Soft threshold reserve (tokens)"
+              min={500}
+              max={200000}
+              type="number"
+              value={memory.memoryFlushSoftThresholdTokens}
+              disabled={loading || saving}
+              onChange={(event) =>
+                updateMemory({
+                  memoryFlushSoftThresholdTokens: Math.max(500, Number(event.target.value) || 4000),
+                })
+              }
+            />
+          </div>
+        </div>
+
+        <details className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+          <summary className="cursor-pointer text-sm font-medium text-gray-200">
+            Advanced memory prompts
+          </summary>
+          <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <Textarea
+              label="Flush prompt"
+              value={memory.memoryFlushPrompt}
+              disabled={loading || saving}
+              rows={5}
+              onChange={(event) => updateMemory({ memoryFlushPrompt: event.target.value })}
+            />
+            <Textarea
+              label="Flush system prompt"
+              value={memory.memoryFlushSystemPrompt}
+              disabled={loading || saving}
+              rows={5}
+              onChange={(event) => updateMemory({ memoryFlushSystemPrompt: event.target.value })}
+            />
+          </div>
+        </details>
+
+        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm text-gray-300">
+          <p className="font-medium text-white">Active memory stack</p>
+          <p className="mt-1 text-xs text-gray-400">
+            Built-in durable memory, daily memory files, session search, semantic recall, and
+            self-improving skills are available today. External memory providers such as Honcho,
+            Mem0, OpenViking, Hindsight, and Supermemory need backend provider adapters before they
+            can be safely selected here.
+          </p>
+        </div>
+
+        <div className="flex justify-end">
+          <Button
+            leftIcon={
+              saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />
+            }
+            onClick={() => void save()}
+            disabled={loading || saving}
+          >
+            Save Memory Settings
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
@@ -1759,6 +2375,7 @@ export function Settings() {
   const { data: health } = useHealth();
   const { data: info } = useInfo();
   const { data: systemMonitor } = useSystemMonitor();
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>("general");
 
   const healthData = (health || {}) as HealthData;
   const infoData = (info || {}) as InfoData;
@@ -1805,190 +2422,227 @@ export function Settings() {
   return (
     <PageLayout title="Settings" subtitle="Platform configuration and system information">
       <div className="space-y-6">
-        <ThemeSettings />
-
-        <FeatureSettings />
-
-        <SpeechSettingsSection />
-
-        <ComputerUseSettings />
-        <SandboxBrowserSettings />
-
-        <DesktopUpdateSettings
-          currentVersion={String(infoData.version || "unknown")}
-          releaseRepositoryUrl={infoData.releaseRepositoryUrl}
-        />
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          {stats.map((stat) => (
-            <Card key={stat.label} variant="liquid">
-              <CardContent>
-                <div className="flex items-center gap-3">
-                  <div
-                    className={cn(
-                      "w-12 h-12 rounded-xl flex items-center justify-center bg-white/5",
-                      stat.color
-                    )}
-                  >
-                    <stat.icon className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-400">{stat.label}</p>
-                    <p className="text-xl font-semibold text-white capitalize">{stat.value}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+        <div className="flex flex-wrap gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-1">
+          {settingsSections.map((section) => (
+            <button
+              key={section.id}
+              type="button"
+              onClick={() => setActiveSection(section.id)}
+              className={cn(
+                "rounded-lg px-3 py-2 text-sm transition-colors",
+                activeSection === section.id
+                  ? "bg-white/10 text-white"
+                  : "text-gray-400 hover:bg-white/5 hover:text-gray-200"
+              )}
+            >
+              {section.label}
+            </button>
           ))}
         </div>
 
-        <Card variant="liquid">
-          <CardHeader>
-            <CardTitle>System Monitor</CardTitle>
-            <CardDescription>Live host resource usage from the Cybara gateway</CardDescription>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="rounded-xl bg-white/5 p-4">
-              <p className="text-sm text-gray-400">CPU</p>
-              <p className="mt-1 text-2xl font-semibold text-white">
-                {formatPct(systemMonitor?.cpu.usagePct)}
-              </p>
-              <p className="mt-1 text-xs text-gray-500">
-                {systemMonitor?.cpu.cores || 0} cores - {systemMonitor?.cpu.model || "Loading CPU"}
-              </p>
-            </div>
-            <div className="rounded-xl bg-white/5 p-4">
-              <p className="text-sm text-gray-400">Memory</p>
-              <p className="mt-1 text-2xl font-semibold text-white">
-                {formatPct(systemMonitor?.memory.usedPct)}
-              </p>
-              <p className="mt-1 text-xs text-gray-500">
-                {formatBytes(systemMonitor?.memory.usedBytes)} /{" "}
-                {formatBytes(systemMonitor?.memory.totalBytes)} used
-              </p>
-            </div>
-            {systemMonitor?.memory.swap ? (
-              <div className="rounded-xl bg-white/5 p-4">
-                <p className="text-sm text-gray-400">Swap</p>
-                <p className="mt-1 text-2xl font-semibold text-white">
-                  {formatPct(systemMonitor.memory.swap.usedPct)}
-                </p>
-                <p className="mt-1 text-xs text-gray-500">
-                  {formatBytes(systemMonitor.memory.swap.usedBytes)} /{" "}
-                  {formatBytes(systemMonitor.memory.swap.totalBytes)} used
-                </p>
-              </div>
-            ) : null}
-            <div className="rounded-xl bg-white/5 p-4">
-              <p className="text-sm text-gray-400">Cybara process</p>
-              <p className="mt-1 text-2xl font-semibold text-white">
-                {formatPct(systemMonitor?.process.cpuUsagePct)}
-              </p>
-              <p className="mt-1 text-xs text-gray-500">
-                {formatBytes(systemMonitor?.process.memory.rssBytes)} RSS - PID{" "}
-                {systemMonitor?.process.pid || "n/a"}
-              </p>
-            </div>
-            <div className="rounded-xl bg-white/5 p-4">
-              <p className="text-sm text-gray-400">Disk</p>
-              <p className="mt-1 text-2xl font-semibold text-white">
-                {formatPct(systemMonitor?.disk?.usedPct)}
-              </p>
-              <p className="mt-1 text-xs text-gray-500">
-                {systemMonitor?.disk
-                  ? `${formatStorageBytes(systemMonitor.disk.freeBytes)} free at ${systemMonitor.disk.path}`
-                  : "Disk telemetry unavailable"}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        {activeSection === "general" && <ThemeSettings />}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card variant="liquid">
-            <CardHeader>
-              <CardTitle>System Information</CardTitle>
-              <CardDescription>Platform details and version info</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex justify-between py-2 border-b border-white/10">
-                <span className="text-gray-400">Platform Name</span>
-                <span className="text-white">{infoData?.name || "Cybara"}</span>
-              </div>
-              <div className="flex justify-between py-2 border-b border-white/10">
-                <span className="text-gray-400">Version</span>
-                <span className="text-white">{infoData?.version || "unknown"}</span>
-              </div>
-              <div className="flex justify-between py-2 border-b border-white/10">
-                <span className="text-gray-400">Setup Complete</span>
-                <Badge variant={infoData?.setupComplete ? "success" : "warning"}>
-                  {infoData?.setupComplete ? "Yes" : "No"}
-                </Badge>
-              </div>
-              <div className="flex justify-between py-2 border-b border-white/10">
-                <span className="text-gray-400">Server Time</span>
-                <span className="text-white">
-                  {healthData?.timestamp ? new Date(healthData.timestamp).toLocaleString() : "N/A"}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
+        {activeSection === "ai-memory" && (
+          <>
+            <MemoryBehaviorSettings />
+            <SystemPromptSection />
+          </>
+        )}
 
-          <Card variant="liquid">
-            <CardHeader>
-              <CardTitle>Health Checks</CardTitle>
-              <CardDescription>Component status overview</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {checks.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <Activity className="w-8 h-8 mx-auto mb-2" />
-                  <p>No health checks available</p>
-                </div>
-              ) : (
-                checks.map(([key, value]) => {
-                  const check = getCheckStatus(value);
-                  const icons: Record<string, React.ReactNode> = {
-                    database: <Database className="w-5 h-5" />,
-                    agents: <Bot className="w-5 h-5" />,
-                    providers: <Cloud className="w-5 h-5" />,
-                    memory: <HardDrive className="w-5 h-5" />,
-                  };
+        {activeSection === "voice" && <SpeechSettingsSection />}
 
-                  return (
-                    <div
-                      key={key}
-                      className="flex items-center justify-between p-3 rounded-xl bg-white/5"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={cn(
-                            "w-10 h-10 rounded-lg flex items-center justify-center",
-                            check.status === "healthy"
-                              ? "bg-emerald-500/20 text-emerald-400"
-                              : "bg-red-500/20 text-red-400"
-                          )}
-                        >
-                          {icons[key] || <Server className="w-5 h-5" />}
-                        </div>
-                        <div>
-                          <span className="text-white capitalize">{key}</span>
-                          {check.details && (
-                            <p className="text-xs text-gray-500">{check.details}</p>
-                          )}
-                        </div>
+        {activeSection === "safety" && (
+          <>
+            <FeatureSettings />
+            <SandboxBrowserSettings />
+          </>
+        )}
+
+        {activeSection === "desktop" && (
+          <>
+            <ComputerUseSettings />
+            <DesktopUpdateSettings
+              currentVersion={String(infoData.version || "unknown")}
+              releaseRepositoryUrl={infoData.releaseRepositoryUrl}
+            />
+          </>
+        )}
+
+        {activeSection === "system" && (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              {stats.map((stat) => (
+                <Card key={stat.label} variant="liquid">
+                  <CardContent>
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={cn(
+                          "w-12 h-12 rounded-xl flex items-center justify-center bg-white/5",
+                          stat.color
+                        )}
+                      >
+                        <stat.icon className="w-6 h-6" />
                       </div>
-                      <Badge variant={check.status === "healthy" ? "success" : "error"}>
-                        {check.status}
-                      </Badge>
+                      <div>
+                        <p className="text-sm text-gray-400">{stat.label}</p>
+                        <p className="text-xl font-semibold text-white capitalize">{stat.value}</p>
+                      </div>
                     </div>
-                  );
-                })
-              )}
-            </CardContent>
-          </Card>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
 
-          <SystemPromptSection />
-        </div>
+            <Card variant="liquid">
+              <CardHeader>
+                <CardTitle>System Monitor</CardTitle>
+                <CardDescription>Live host resource usage from the Cybara gateway</CardDescription>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="rounded-xl bg-white/5 p-4">
+                  <p className="text-sm text-gray-400">CPU</p>
+                  <p className="mt-1 text-2xl font-semibold text-white">
+                    {formatPct(systemMonitor?.cpu.usagePct)}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {systemMonitor?.cpu.cores || 0} cores -{" "}
+                    {systemMonitor?.cpu.model || "Loading CPU"}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-white/5 p-4">
+                  <p className="text-sm text-gray-400">Memory</p>
+                  <p className="mt-1 text-2xl font-semibold text-white">
+                    {formatPct(systemMonitor?.memory.usedPct)}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {formatBytes(systemMonitor?.memory.usedBytes)} /{" "}
+                    {formatBytes(systemMonitor?.memory.totalBytes)} used
+                  </p>
+                </div>
+                {systemMonitor?.memory.swap ? (
+                  <div className="rounded-xl bg-white/5 p-4">
+                    <p className="text-sm text-gray-400">Swap</p>
+                    <p className="mt-1 text-2xl font-semibold text-white">
+                      {formatPct(systemMonitor.memory.swap.usedPct)}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {formatBytes(systemMonitor.memory.swap.usedBytes)} /{" "}
+                      {formatBytes(systemMonitor.memory.swap.totalBytes)} used
+                    </p>
+                  </div>
+                ) : null}
+                <div className="rounded-xl bg-white/5 p-4">
+                  <p className="text-sm text-gray-400">Cybara process</p>
+                  <p className="mt-1 text-2xl font-semibold text-white">
+                    {formatPct(systemMonitor?.process.cpuUsagePct)}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {formatBytes(systemMonitor?.process.memory.rssBytes)} RSS - PID{" "}
+                    {systemMonitor?.process.pid || "n/a"}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-white/5 p-4">
+                  <p className="text-sm text-gray-400">Disk</p>
+                  <p className="mt-1 text-2xl font-semibold text-white">
+                    {formatPct(systemMonitor?.disk?.usedPct)}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {systemMonitor?.disk
+                      ? `${formatStorageBytes(systemMonitor.disk.freeBytes)} free at ${systemMonitor.disk.path}`
+                      : "Disk telemetry unavailable"}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card variant="liquid">
+                <CardHeader>
+                  <CardTitle>System Information</CardTitle>
+                  <CardDescription>Platform details and version info</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex justify-between py-2 border-b border-white/10">
+                    <span className="text-gray-400">Platform Name</span>
+                    <span className="text-white">{infoData?.name || "Cybara"}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-white/10">
+                    <span className="text-gray-400">Version</span>
+                    <span className="text-white">{infoData?.version || "unknown"}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-white/10">
+                    <span className="text-gray-400">Setup Complete</span>
+                    <Badge variant={infoData?.setupComplete ? "success" : "warning"}>
+                      {infoData?.setupComplete ? "Yes" : "No"}
+                    </Badge>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-white/10">
+                    <span className="text-gray-400">Server Time</span>
+                    <span className="text-white">
+                      {healthData?.timestamp
+                        ? new Date(healthData.timestamp).toLocaleString()
+                        : "N/A"}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card variant="liquid">
+                <CardHeader>
+                  <CardTitle>Health Checks</CardTitle>
+                  <CardDescription>Component status overview</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {checks.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <Activity className="w-8 h-8 mx-auto mb-2" />
+                      <p>No health checks available</p>
+                    </div>
+                  ) : (
+                    checks.map(([key, value]) => {
+                      const check = getCheckStatus(value);
+                      const icons: Record<string, React.ReactNode> = {
+                        database: <Database className="w-5 h-5" />,
+                        agents: <Bot className="w-5 h-5" />,
+                        providers: <Cloud className="w-5 h-5" />,
+                        memory: <HardDrive className="w-5 h-5" />,
+                      };
+
+                      return (
+                        <div
+                          key={key}
+                          className="flex items-center justify-between p-3 rounded-xl bg-white/5"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={cn(
+                                "w-10 h-10 rounded-lg flex items-center justify-center",
+                                check.status === "healthy"
+                                  ? "bg-emerald-500/20 text-emerald-400"
+                                  : "bg-red-500/20 text-red-400"
+                              )}
+                            >
+                              {icons[key] || <Server className="w-5 h-5" />}
+                            </div>
+                            <div>
+                              <span className="text-white capitalize">{key}</span>
+                              {check.details && (
+                                <p className="text-xs text-gray-500">{check.details}</p>
+                              )}
+                            </div>
+                          </div>
+                          <Badge variant={check.status === "healthy" ? "success" : "error"}>
+                            {check.status}
+                          </Badge>
+                        </div>
+                      );
+                    })
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </>
+        )}
       </div>
     </PageLayout>
   );

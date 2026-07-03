@@ -154,8 +154,8 @@ describe("versioning helpers", () => {
         },
       },
     };
-    expect(
-      validateTauriUpdaterManifest(manifest, ["windows-x86_64"]).invalidPlatforms
-    ).toEqual(["windows-x86_64"]);
+    expect(validateTauriUpdaterManifest(manifest, ["windows-x86_64"]).invalidPlatforms).toEqual([
+      "windows-x86_64",
+    ]);
   });
 });

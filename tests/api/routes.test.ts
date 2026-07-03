@@ -2538,6 +2538,45 @@ describe("Config API", () => {
     });
     expect(resetRes.status).toBe(200);
   });
+
+  test("PUT /api/config normalizes memory behavior settings", async () => {
+    const putRes = await api("PUT", "/api/config", {
+      memory: {
+        backgroundReviewEnabled: false,
+        backgroundReviewMinIntervalMs: 2500,
+        backgroundReviewTimeoutSeconds: 9999,
+        memoryFlushEnabled: true,
+        memoryFlushSoftThresholdTokens: 10,
+        memoryFlushPrompt: "  capture durable facts only  ",
+        memoryFlushSystemPrompt: "  memory system  ",
+      },
+    });
+    expect(putRes.status).toBe(200);
+    expect(putRes.data.success).toBe(true);
+
+    const getRes = await api("GET", "/api/config");
+    expect(getRes.status).toBe(200);
+    expect(getRes.data.memory).toMatchObject({
+      backgroundReviewEnabled: false,
+      backgroundReviewMinIntervalMs: 10000,
+      backgroundReviewTimeoutSeconds: 600,
+      memoryFlushEnabled: true,
+      memoryFlushSoftThresholdTokens: 500,
+      memoryFlushPrompt: "capture durable facts only",
+      memoryFlushSystemPrompt: "memory system",
+    });
+
+    const resetRes = await api("PUT", "/api/config", {
+      memory: {
+        backgroundReviewEnabled: true,
+        backgroundReviewMinIntervalMs: 300000,
+        backgroundReviewTimeoutSeconds: 90,
+        memoryFlushEnabled: true,
+        memoryFlushSoftThresholdTokens: 4000,
+      },
+    });
+    expect(resetRes.status).toBe(200);
+  });
 });
 
 describe("Browser API", () => {
