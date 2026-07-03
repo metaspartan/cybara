@@ -116,8 +116,8 @@ export function createNativeMacOSSidecarLayout(contentsPath: string): NativeMacO
     resourceDir,
     uiDistDir: join(resourceDir, "ui", "dist"),
     wasmPath: join(resourceDir, "secp256k1.wasm"),
-    onnxRuntimeDir: join(executableDir, "onnxruntime"),
-    nodeModulesDir: join(executableDir, "node_modules"),
+    onnxRuntimeDir: join(resourceDir, "onnxruntime"),
+    nodeModulesDir: join(resourceDir, "node_modules"),
   };
 }
 
@@ -152,6 +152,39 @@ function copySwiftResourceBundles(swiftBinDir: string, resourcesPath: string): v
 
   for (const bundleName of resourceBundles) {
     copyDirectory(join(swiftBinDir, bundleName), join(resourcesPath, bundleName));
+  }
+}
+
+function removeAppleDoubleFiles(path: string): void {
+  if (!existsSync(path)) return;
+  const entry = statSync(path);
+  if (!entry.isDirectory()) return;
+
+  for (const child of readdirSync(path, { withFileTypes: true })) {
+    const childPath = join(path, child.name);
+    if (child.name.startsWith("._")) {
+      rmSync(childPath, { recursive: true, force: true });
+      continue;
+    }
+    if (child.isDirectory()) {
+      removeAppleDoubleFiles(childPath);
+    }
+  }
+}
+
+export function stripAppleMetadata(path: string): void {
+  removeAppleDoubleFiles(path);
+  if (process.platform !== "darwin" || !existsSync(path)) return;
+
+  const result = Bun.spawnSync(["xattr", "-cr", path], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (result.exitCode !== 0) {
+    const message = result.stderr.toString().trim() || result.stdout.toString().trim();
+    if (message) {
+      console.warn(`Unable to strip extended attributes from ${path}: ${message}`);
+    }
   }
 }
 
@@ -261,6 +294,7 @@ async function codesignBundle(bundlePath: string, identity: string): Promise<voi
   // app can request camera/screen/automation permissions when used.
   const ent = ENTITLEMENTS_PATH;
   const contentsPath = join(bundlePath, "Contents");
+  stripAppleMetadata(bundlePath);
 
   // 1. Nested libraries/addons (onnxruntime dylib, .node binding, etc.).
   const nestedSignables = findNestedSignables(contentsPath);

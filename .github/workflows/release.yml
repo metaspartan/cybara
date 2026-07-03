@@ -193,6 +193,33 @@ jobs:
           set -euo pipefail
           echo "$MACOS_NOTARY_API_KEY" | base64 --decode > "$RUNNER_TEMP/notary_key.p8"
           echo "Apple notary key staged for notarization."
+      - name: Import Apple signing certificate for sidecar resources (macOS)
+        if: matrix.platform == 'macos' && env.HAS_MACOS_SIGNING == 'true'
+        shell: bash
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/cybara-tauri-sidecar-signing.keychain-db"
+          KC_PW="${MACOS_KEYCHAIN_PASSWORD:-cybara-ci}"
+          security create-keychain -p "$KC_PW" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KC_PW" "$KEYCHAIN"
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/tauri-sidecar-cert.p12"
+          security import "$RUNNER_TEMP/tauri-sidecar-cert.p12" -k "$KEYCHAIN" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KC_PW" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" \
+            $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/tauri-sidecar-cert.p12"
+      - name: Sign Tauri sidecar runtime resources (macOS)
+        if: matrix.platform == 'macos' && env.HAS_MACOS_SIGNING == 'true'
+        env:
+          CYBARA_MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: bun run scripts/codesign-tauri-sidecar-runtime.ts
       - name: Build Tauri App (unsigned/no Apple signing)
         if: matrix.platform != 'macos' || env.HAS_MACOS_SIGNING != 'true'
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
@@ -247,6 +274,9 @@ jobs:
           releaseBody: "Download the appropriate installer for your platform below."
           releaseDraft: true
           args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
+      - name: Clean up Tauri sidecar signing keychain
+        if: always() && matrix.platform == 'macos' && env.HAS_MACOS_SIGNING == 'true'
+        run: security delete-keychain "$RUNNER_TEMP/cybara-tauri-sidecar-signing.keychain-db" || true
 
   # ── Native macOS app (SwiftUI shell) — signed + notarized ───────────────────
   build-native-macos:

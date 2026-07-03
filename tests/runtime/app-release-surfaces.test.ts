@@ -62,6 +62,8 @@ describe("app release surface wiring", () => {
     expect(workflow).toContain("Build Sidecar binary");
     expect(workflow).toContain("CYBARA_SIDECAR_BUN_TARGET: ${{ matrix.bun_target }}");
     expect(workflow).toContain("run: bun run scripts/build-sidecar.ts");
+    expect(workflow).toContain("Sign Tauri sidecar runtime resources (macOS)");
+    expect(workflow).toContain("run: bun run scripts/codesign-tauri-sidecar-runtime.ts");
     expect(workflow).toContain("bun_target: bun-darwin-arm64");
     expect(workflow).toContain('sidecar: "src-tauri/bin/cybara-aarch64-apple-darwin"');
     expect(workflow).toContain("bun_target: bun-darwin-x64");

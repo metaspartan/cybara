@@ -36,8 +36,8 @@ This assembles a real `Cybara.app` bundle under `release/native-macos/<arch>/` a
 - the SwiftUI shell executable
 - the compiled `cybara` sidecar binary under `Contents/MacOS/sidecar/`
 - `ui/dist` and `secp256k1.wasm` under `Contents/Resources/sidecar/`
-- `onnxruntime` native libraries under `Contents/MacOS/sidecar/onnxruntime/`
-- sidecar `node_modules` under `Contents/MacOS/sidecar/node_modules/`, including `@huggingface/transformers`, `onnxruntime-node`, `onnxruntime-web`, `onnxruntime-common`, and optional `sharp/@img`
+- `onnxruntime` native libraries under `Contents/Resources/sidecar/onnxruntime/`
+- sidecar `node_modules` under `Contents/Resources/sidecar/node_modules/`, including `@huggingface/transformers`, `onnxruntime-node`, `onnxruntime-web`, `onnxruntime-common`, and optional target-architecture `sharp/@img`
 - a generated `AppIcon.icns`
 
 The packaged app uses the same `127.0.0.1:4269` local gateway contract as the Tauri app. The sidecar receives `CYBARA_RESOURCE_DIR` so it can resolve bundled UI and local indexing runtime assets from the app bundle instead of relying on the developer checkout.

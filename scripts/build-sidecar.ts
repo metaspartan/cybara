@@ -190,6 +190,44 @@ function copyOptionalPackage(packageName: string, targetNodeModulesDir: string):
   return true;
 }
 
+export function getSharpRuntimePackageNames(runtimeTarget: RuntimeTarget): string[] {
+  if (runtimeTarget.platform === "win32") {
+    return [`@img/sharp-win32-${runtimeTarget.arch}`];
+  }
+
+  const suffix =
+    runtimeTarget.platform === "darwin"
+      ? `darwin-${runtimeTarget.arch}`
+      : runtimeTarget.platform === "linux"
+        ? `linux-${runtimeTarget.arch}`
+        : null;
+
+  if (suffix === null) return [];
+  return [`@img/sharp-${suffix}`, `@img/sharp-libvips-${suffix}`];
+}
+
+function copySharpRuntime(
+  targetNodeModulesDir: string,
+  runtimeTarget: RuntimeTarget
+): boolean {
+  const runtimePackages = getSharpRuntimePackageNames(runtimeTarget);
+  if (runtimePackages.length === 0) return false;
+
+  const sharpRoot = join(NODE_MODULES_ROOT, "sharp");
+  if (!existsSync(sharpRoot)) return false;
+
+  const availableRuntimePackages = runtimePackages.filter((packageName) =>
+    existsSync(join(NODE_MODULES_ROOT, packageName))
+  );
+  if (availableRuntimePackages.length === 0) return false;
+
+  copyOptionalPackage("sharp", targetNodeModulesDir);
+  for (const packageName of availableRuntimePackages) {
+    copyOptionalPackage(packageName, targetNodeModulesDir);
+  }
+  return true;
+}
+
 function copyTransformersRuntime(targetNodeModulesDir: string, runtimeTarget: RuntimeTarget): string | null {
   copyPackageJson("@huggingface/transformers", targetNodeModulesDir);
   copyPackageDirectory("@huggingface/transformers", "dist", targetNodeModulesDir, {
@@ -206,9 +244,10 @@ function copyTransformersRuntime(targetNodeModulesDir: string, runtimeTarget: Ru
 
   // The node build of Transformers.js statically imports sharp. Copy it when
   // available for the release target; otherwise the runtime falls back to the
-  // bundled ONNX Web/WASM build.
-  copyOptionalPackage("sharp", targetNodeModulesDir);
-  copyOptionalPackage("@img", targetNodeModulesDir);
+  // bundled ONNX Web/WASM build. Copying the whole @img scope would ship
+  // host-architecture native libraries into cross-compiled macOS apps, which
+  // makes notarization fail on unrelated binaries.
+  copySharpRuntime(targetNodeModulesDir, runtimeTarget);
 
   return copyOnnxRuntimeNodeRuntime(targetNodeModulesDir, runtimeTarget);
 }

@@ -7,6 +7,7 @@ import {
   findOnnxRuntimeNativeDir,
   getHostTargetFor,
   getRuntimeTargetFor,
+  getSharpRuntimePackageNames,
   patchedOnnxBindingSource,
 } from "../../scripts/build-sidecar";
 
@@ -106,6 +107,24 @@ describe("build-sidecar host target mapping", () => {
     expect(source).toContain("process.platform");
     expect(source).toContain("process.arch");
     expect(source).not.toContain('path.join("..", "bin", "napi-v3"');
+  });
+
+  test("sharp runtime package selection is scoped to the release target architecture", () => {
+    expect(getSharpRuntimePackageNames({ platform: "darwin", arch: "arm64" })).toEqual([
+      "@img/sharp-darwin-arm64",
+      "@img/sharp-libvips-darwin-arm64",
+    ]);
+    expect(getSharpRuntimePackageNames({ platform: "darwin", arch: "x64" })).toEqual([
+      "@img/sharp-darwin-x64",
+      "@img/sharp-libvips-darwin-x64",
+    ]);
+    expect(getSharpRuntimePackageNames({ platform: "linux", arch: "x64" })).toEqual([
+      "@img/sharp-linux-x64",
+      "@img/sharp-libvips-linux-x64",
+    ]);
+    expect(getSharpRuntimePackageNames({ platform: "win32", arch: "x64" })).toEqual([
+      "@img/sharp-win32-x64",
+    ]);
   });
 
   test("copyFilePortable copies sidecar binary in a cross-platform way", async () => {
