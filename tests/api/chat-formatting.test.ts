@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { stripThinkingTags } from "../../src/api/chat-formatting";
+import { sanitizeSessionMessages } from "../../src/api/routes/_shared";
 
 describe("chat response formatting", () => {
   test("extracts thinking and shows only final content", () => {
@@ -57,5 +58,27 @@ describe("chat response formatting", () => {
 
     expect(result.content).toBe("Let me try the browser.");
     expect(result.thinking).toBe("");
+  });
+
+  test("sanitizes stored assistant text tool-call envelopes on session reads", () => {
+    const [message] = sanitizeSessionMessages([
+      {
+        role: "assistant",
+        content: [
+          "I'll open the repository.",
+          JSON.stringify(
+            {
+              name: "browser",
+              arguments: { action: "open", url: "https://github.com/metaspartan/cybara" },
+            },
+            null,
+            2
+          ),
+        ].join("\n"),
+        timestamp: "2026-07-03T10:08:53.975Z",
+      },
+    ]);
+
+    expect(message.content).toBe("I'll open the repository.");
   });
 });

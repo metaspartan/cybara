@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import { buildSystemPrompt } from "../../src/core/system-prompt";
 import { executeTool } from "../../src/core/tools/handlers/index";
 
@@ -33,5 +36,20 @@ describe("required-argument validation in executeTool", () => {
     await expect(executeTool("read", { path: "   " })).rejects.toThrow(
       /Missing required argument/i
     );
+  });
+
+  test("accepts read file alias before required path validation", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cybara-read-alias-"));
+    try {
+      const file = join(dir, "README.md");
+      writeFileSync(file, "hello from alias", "utf8");
+
+      const result = (await executeTool("read", { file })) as { content: string; path: string };
+
+      expect(result.path).toBe(file);
+      expect(result.content).toBe("hello from alias");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

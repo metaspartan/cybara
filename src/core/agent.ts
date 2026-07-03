@@ -136,15 +136,19 @@ export function resolveAgentToolSelection(
   if (rawTools === undefined || rawTools === null) return { kind: "builtins" };
   if (Array.isArray(rawTools)) return { kind: "explicit", tools: rawTools };
   if (typeof rawTools === "string") {
-    const trimmed = rawTools.trim();
-    if (!trimmed) return { kind: "builtins" };
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(trimmed);
-    } catch {
-      return { kind: "malformed", reason: "unparseable" };
+    let current: unknown = rawTools;
+    for (let depth = 0; depth < 5; depth++) {
+      if (Array.isArray(current)) return { kind: "explicit", tools: current };
+      if (typeof current !== "string") break;
+      const trimmed = current.trim();
+      if (!trimmed) return { kind: "builtins" };
+      try {
+        current = JSON.parse(trimmed);
+      } catch {
+        return { kind: "malformed", reason: "unparseable" };
+      }
     }
-    if (Array.isArray(parsed)) return { kind: "explicit", tools: parsed };
+    if (Array.isArray(current)) return { kind: "explicit", tools: current };
     return { kind: "malformed", reason: "non-array" };
   }
   return { kind: "malformed", reason: "non-array" };
@@ -460,6 +464,11 @@ function trackTokenUsage(
   } catch (e) {
     console.error("[Metrics] Token tracking failed:", e);
   }
+}
+
+function shouldPreferMaxCompletionTokens(providerConfig?: string): boolean {
+  const provider = (providerConfig || "").trim().toLowerCase();
+  return provider === "z.ai" || provider === "zai" || provider === "z.ai-coding";
 }
 
 export function getBuiltinTools(): ToolDefinition[] {
@@ -804,6 +813,25 @@ function extractSandboxProviderFromToolResult(result: unknown): string | undefin
   return normalizeSandboxProvider(result.sandboxProvider ?? result.sandbox_provider);
 }
 
+function formatToolErrorSummary(error: unknown): string | undefined {
+  const raw =
+    typeof error === "string"
+      ? error
+      : isObjectRecord(error) && typeof error.error === "string"
+        ? error.error
+        : isObjectRecord(error) && typeof error.message === "string"
+          ? error.message
+          : undefined;
+  const trimmed = raw?.trim();
+  if (!trimmed) return undefined;
+  return trimmed.length > 180 ? `${trimmed.slice(0, 180)}...` : trimmed;
+}
+
+function appendToolErrorSummary(label: string, error: unknown): string {
+  const summary = formatToolErrorSummary(error);
+  return summary ? `${label}: ${summary}` : label;
+}
+
 function formatToolActivityDetail(
   toolName: string,
   args: Record<string, unknown>,
@@ -825,19 +853,19 @@ function formatToolActivityDetail(
           ? `Exploring ${path} (lines ${startLine}-${endLine})`
           : phase === "result"
             ? `Explored ${path} (lines ${startLine}-${endLine})`
-            : `Read failed for ${path}`;
+            : appendToolErrorSummary(`Read failed for ${path}`, result);
       }
       return phase === "start"
         ? `Exploring ${path}`
         : phase === "result"
           ? `Explored ${path}`
-          : `Read failed for ${path}`;
+          : appendToolErrorSummary(`Read failed for ${path}`, result);
     }
     return phase === "start"
       ? "Exploring files..."
       : phase === "result"
         ? "Exploration complete"
-        : "Read failed";
+        : appendToolErrorSummary("Read failed", result);
   }
 
   if (key === "write" || key === "edit") {
@@ -2412,7 +2440,7 @@ class AgentManager {
       this.broadcastAgentStatus(
         "error",
         toolContext,
-        formatToolActivityDetail(toolName, args, "error"),
+        formatToolActivityDetail(toolName, args, "error", errorMessage),
         {
           toolName,
           toolCallId,
@@ -2569,7 +2597,9 @@ class AgentManager {
       apiFamily === "github-copilot"
     ) {
       const preferMaxCompletionTokens =
-        apiFamily === "openai-responses" || apiFamily === "github-copilot";
+        apiFamily === "openai-responses" ||
+        apiFamily === "github-copilot" ||
+        shouldPreferMaxCompletionTokens(providerConfig);
       return this.callOpenAICompatAPI(
         baseUrl,
         resolvedAuth,

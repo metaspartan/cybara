@@ -6,9 +6,18 @@ export interface TextToolCall {
 export interface OpenAICompatToolCall {
   id?: string;
   type?: string;
+  name?: string;
+  tool_name?: string;
+  arguments?: unknown;
+  args?: unknown;
+  input?: unknown;
+  parameters?: unknown;
   function?: {
     name?: string;
     arguments?: unknown;
+    args?: unknown;
+    input?: unknown;
+    parameters?: unknown;
   };
 }
 
@@ -335,6 +344,31 @@ function findBalancedJsonEnd(text: string, start: number): number | undefined {
   return undefined;
 }
 
+function findTrailingJsonToolCallBlock(
+  raw: string
+): { start: number; end: number; raw: string } | undefined {
+  const text = decodeMarkupEntities(raw).trimEnd();
+  if (!text) return undefined;
+
+  for (let start = text.length - 1; start >= 0; start--) {
+    const char = text[start];
+    if (char !== "{" && char !== "[") continue;
+
+    const lineStart = text.lastIndexOf("\n", start - 1) + 1;
+    if (text.slice(lineStart, start).trim()) continue;
+
+    const end = findBalancedJsonEnd(text, start);
+    if (end !== text.length) continue;
+
+    const block = text.slice(start, end);
+    if (parseJsonToolCalls(block).length === 0) continue;
+
+    return { start, end, raw: block };
+  }
+
+  return undefined;
+}
+
 function parseJsonishAfterLabel(payload: string, label: string): unknown {
   const match = new RegExp(`\\b${label}\\s*=>\\s*`, "i").exec(payload);
   if (!match) return undefined;
@@ -410,6 +444,11 @@ function parseOpenClawPlainTextToolCalls(raw: string): TextToolCall[] {
   return calls;
 }
 
+function parseTrailingJsonToolCalls(raw: string): TextToolCall[] {
+  const block = findTrailingJsonToolCallBlock(raw);
+  return block ? parseJsonToolCalls(block.raw) : [];
+}
+
 function parseWrappedToolCallContainers(raw: string, depth = 0): TextToolCall[] {
   if (depth > 2) return [];
   const calls: TextToolCall[] = [];
@@ -435,7 +474,8 @@ function resolveAllowedToolName(
 ): string | undefined {
   const trimmed = rawName.trim();
   if (!trimmed) return undefined;
-  if (allowedToolNames.size === 0 || allowedToolNames.has(trimmed)) return trimmed;
+  if (allowedToolNames.size === 0) return undefined;
+  if (allowedToolNames.has(trimmed)) return trimmed;
   return undefined;
 }
 
@@ -472,14 +512,20 @@ export function extractTextToolCalls(
     ...parseFunctionXmlToolCalls(normalizedContent),
     ...parseFunctionEqualsToolCalls(normalizedContent),
     ...parseLegacyBracketToolCalls(normalizedContent),
-    ...parseOpenClawPlainTextToolCalls(normalizedContent)
+    ...parseOpenClawPlainTextToolCalls(normalizedContent),
+    ...parseTrailingJsonToolCalls(normalizedContent)
   );
 
   return filterAllowedToolCalls(calls, allowedToolNames);
 }
 
+function stripTrailingJsonToolCallMarkup(content: string): string {
+  const block = findTrailingJsonToolCallBlock(content);
+  return block ? content.slice(0, block.start).trimEnd() : content;
+}
+
 export function stripTextToolCallMarkup(content: string): string {
-  return normalizeProviderTextMarkers(content)
+  const stripped = normalizeProviderTextMarkers(content)
     .replace(DSML_TOOL_BLOCK_PATTERN, "")
     .replace(TOOL_CALL_RESULT_BLOCK_PATTERN, "")
     .replace(TOOL_CALL_CONTAINER_PATTERN, "")
@@ -492,7 +538,9 @@ export function stripTextToolCallMarkup(content: string): string {
     .replace(OPENCLAW_TOOL_JSON_PATTERN, "")
     .replace(HARMONY_TOOL_CALL_PATTERN, "")
     .replace(DANGLING_TOOL_CALL_LINE_PATTERN, "")
-    .replace(TOOL_CALL_TAG_PATTERN, "")
+    .replace(TOOL_CALL_TAG_PATTERN, "");
+
+  return stripTrailingJsonToolCallMarkup(stripped)
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
@@ -507,7 +555,8 @@ export function hasTextToolCallMarkup(content: string | null | undefined): boole
     /<invoke\b/i.test(content) ||
     /\[\s*TOOL_CALL\s*\]/i.test(content) ||
     /<[\uFF5C|]DSML[\uFF5C|](?:tool_calls|tool_call|function_calls)/i.test(content) ||
-    MINIMAX_TEXT_SEGMENT_MARKER_QUICK_PATTERN.test(content)
+    MINIMAX_TEXT_SEGMENT_MARKER_QUICK_PATTERN.test(content) ||
+    findTrailingJsonToolCallBlock(normalizeProviderTextMarkers(content)) !== undefined
   );
 }
 
@@ -542,6 +591,24 @@ function toOpenAISyntheticToolCall(call: NormalizedOpenAIToolCall): Record<strin
   };
 }
 
+function getOpenAICompatToolCallName(toolCall: OpenAICompatToolCall): string {
+  const rawName = toolCall.function?.name ?? toolCall.name ?? toolCall.tool_name;
+  return typeof rawName === "string" ? rawName : "";
+}
+
+function getOpenAICompatToolCallArgs(toolCall: OpenAICompatToolCall): Record<string, unknown> {
+  return parseArgs(
+    toolCall.function?.arguments ??
+      toolCall.function?.args ??
+      toolCall.function?.input ??
+      toolCall.function?.parameters ??
+      toolCall.arguments ??
+      toolCall.args ??
+      toolCall.input ??
+      toolCall.parameters
+  );
+}
+
 export function normalizeOpenAIToolCalls(
   message: OpenAICompatMessage,
   iteration: number,
@@ -553,8 +620,8 @@ export function normalizeOpenAIToolCalls(
         typeof toolCall.id === "string" && toolCall.id.trim().length > 0
           ? toolCall.id
           : `cybara-tool-${iteration}-${index + 1}`,
-      name: typeof toolCall.function?.name === "string" ? toolCall.function.name : "",
-      args: parseArgs(toolCall.function?.arguments),
+      name: getOpenAICompatToolCallName(toolCall),
+      args: getOpenAICompatToolCallArgs(toolCall),
       source: "native" as const,
     }));
   }

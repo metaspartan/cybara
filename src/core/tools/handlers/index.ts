@@ -421,6 +421,22 @@ function applyWorkspaceDefaults(
   return nextArgs || args;
 }
 
+const REQUIRED_ARG_ALIASES: Record<string, Record<string, string[]>> = {
+  read: { path: ["file"] },
+};
+
+function hasRequiredToolArgument(
+  toolName: string,
+  args: Record<string, unknown>,
+  key: string
+): boolean {
+  const keys = [key, ...(REQUIRED_ARG_ALIASES[toolName]?.[key] || [])];
+  return keys.some((candidate) => {
+    const value = args?.[candidate];
+    return value !== undefined && value !== null && !(typeof value === "string" && value.trim() === "");
+  });
+}
+
 export async function executeTool(
   name: string,
   args: Record<string, unknown>,
@@ -434,12 +450,7 @@ export async function executeTool(
 
   const schema = toolSchemaRegistry[name]?.input_schema as { required?: string[] } | undefined;
   if (Array.isArray(schema?.required) && schema.required.length > 0) {
-    const missing = schema.required.filter((key) => {
-      const value = (args as Record<string, unknown>)?.[key];
-      return (
-        value === undefined || value === null || (typeof value === "string" && value.trim() === "")
-      );
-    });
+    const missing = schema.required.filter((key) => !hasRequiredToolArgument(name, args, key));
     if (missing.length > 0) {
       throw new Error(
         `Validation error: Missing required argument${missing.length > 1 ? "s" : ""} for tool '${name}': ${missing.join(", ")}. Re-call with ${missing.length > 1 ? "these arguments" : "this argument"}.`

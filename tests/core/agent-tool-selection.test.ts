@@ -28,6 +28,15 @@ describe("resolveAgentToolSelection", () => {
     });
   });
 
+  test("nested serialized JSON arrays are parsed without widening permissions", () => {
+    const nested = JSON.stringify(JSON.stringify([{ name: "read" }]));
+
+    expect(resolveAgentToolSelection(nested)).toEqual({
+      kind: "explicit",
+      tools: [{ name: "read" }],
+    });
+  });
+
   test("corrupt/non-array config fails closed, never widens to all tools", () => {
     expect(resolveAgentToolSelection("{not json").kind).toBe("malformed");
     expect(resolveAgentToolSelection('{"tools":"read"}').kind).toBe("malformed");

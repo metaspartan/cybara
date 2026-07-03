@@ -75,6 +75,45 @@ describe("text-form tool call parsing", () => {
     ).toEqual([{ name: "calc", args: { expression: "2 + 2" } }]);
   });
 
+  test("extracts final JSON tool envelopes without leaking them into visible text", () => {
+    const raw = [
+      "I'll open the repository.",
+      '{',
+      '  "name": "browser",',
+      '  "arguments": {',
+      '    "action": "open",',
+      '    "url": "https://github.com/metaspartan/cybara"',
+      "  }",
+      "}",
+    ].join("\n");
+
+    expect(extractTextToolCalls(raw, new Set(["browser"]))).toEqual([
+      {
+        name: "browser",
+        args: { action: "open", url: "https://github.com/metaspartan/cybara" },
+      },
+    ]);
+    expect(stripTextToolCallMarkup(raw)).toBe("I'll open the repository.");
+  });
+
+  test("does not promote text-form tool calls without an explicit allowed set", () => {
+    expect(extractTextToolCalls('[calc]\n{"expression":"2 + 2"}\n[END_TOOL_REQUEST]')).toEqual([]);
+    expect(
+      extractTextToolCalls('{"name":"calc","arguments":{"expression":"2 + 2"}}')
+    ).toEqual([]);
+  });
+
+  test("does not treat non-final JSON examples as tool calls", () => {
+    const raw = [
+      "Example shape:",
+      '{"name":"browser","arguments":{"action":"open"}}',
+      "Use that shape only if a tool is available.",
+    ].join("\n");
+
+    expect(extractTextToolCalls(raw, new Set(["browser"]))).toEqual([]);
+    expect(stripTextToolCallMarkup(raw)).toBe(raw);
+  });
+
   test("strips malformed tool-call markup from visible assistant text", () => {
     const cleaned = stripTextToolCallMarkup(
       'Opening it now.\n<function_calls><invoke name="browser"><parameter name="action">open</parameter></invoke></function_calls>'

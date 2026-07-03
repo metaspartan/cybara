@@ -655,6 +655,66 @@ describe("Agent provider API-family routing", () => {
     expect(requestBody.max_completion_tokens).toBe(100000);
   });
 
+  test("routes z.ai coding models with provider-native thinking and completion token params", async () => {
+    let requestUrl = "";
+    let requestBody: Record<string, unknown> = {};
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      requestUrl = String(input);
+      requestBody = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+
+      return new Response(
+        JSON.stringify({
+          id: "resp-zai-1",
+          object: "chat.completion",
+          model: "glm-5.2",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "zai-ok",
+              },
+            },
+          ],
+          usage: { prompt_tokens: 9, completion_tokens: 2, total_tokens: 11 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "z.ai-coding",
+      name: "Zai Coding Routing Provider",
+      api_key: "zai-test-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Zai Coding Routing Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "glm-5.2",
+      tools: [],
+      config: { model_params: { reasoning_effort: "medium" } },
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "hello zai" }],
+      { useTools: false, sessionId: "zai-route-session" }
+    );
+
+    expect(result.content).toBe("zai-ok");
+    expect(requestUrl).toBe("https://api.z.ai/api/coding/paas/v4/chat/completions");
+    expect(requestBody.enable_thinking).toBe(true);
+    expect("reasoning_effort" in requestBody).toBe(false);
+    expect("max_tokens" in requestBody).toBe(false);
+    expect(typeof requestBody.max_completion_tokens).toBe("number");
+  });
+
   test("routes google providers through generateContent with x-goog-api-key and model normalization", async () => {
     let requestUrl = "";
     let requestBody: Record<string, unknown> = {};
@@ -1184,5 +1244,205 @@ describe("Agent provider API-family routing", () => {
     expect(JSON.stringify(assistantReplay)).toContain("cybara-text-tool-1-1");
     expect(toolReplay?.content).toBe('{"result":4,"expression":"2 + 2"}');
     expect(JSON.stringify(secondMessages)).not.toContain("<function_calls>");
+  });
+
+  test("executes trailing JSON text tool envelopes from OpenAI-compatible providers", async () => {
+    const requestBodies: Array<Record<string, unknown>> = [];
+
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const requestBody = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      requestBodies.push(requestBody);
+
+      if (requestBodies.length === 1) {
+        return new Response(
+          JSON.stringify({
+            id: "resp-json-text-tool-1",
+            object: "chat.completion",
+            model: "MiniMax-M3",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: [
+                    "I'll calculate it.",
+                    JSON.stringify(
+                      { name: "calc", arguments: { expression: "3 * 3" } },
+                      null,
+                      2
+                    ),
+                  ].join("\n"),
+                },
+              },
+            ],
+            usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          id: "resp-json-text-tool-2",
+          object: "chat.completion",
+          model: "MiniMax-M3",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "The result is 9.",
+              },
+            },
+          ],
+          usage: { prompt_tokens: 18, completion_tokens: 5, total_tokens: 23 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Trailing JSON Tool Provider",
+      api_key: "json-tool-test-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Trailing JSON Tool Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "MiniMax-M3",
+      tools: [
+        {
+          name: "calc",
+          description: "Safely evaluate mathematical expressions",
+          input_schema: {
+            type: "object",
+            properties: { expression: { type: "string" } },
+            required: ["expression"],
+          },
+        },
+      ],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "What is 3 * 3?" }],
+      { useTools: true, sessionId: "trailing-json-tool-session" }
+    );
+
+    expect(result.content).toBe("The result is 9.");
+    expect(result.tool_calls?.length).toBe(1);
+    expect(result.tool_calls?.[0]?.name).toBe("calc");
+    expect(result.tool_calls?.[0]?.result).toEqual({ result: 9, expression: "3 * 3" });
+
+    expect(requestBodies.length).toBe(2);
+    const secondMessages = (requestBodies[1].messages || []) as Array<Record<string, unknown>>;
+    const assistantReplay = secondMessages.find(
+      (entry) => entry.role === "assistant" && Array.isArray(entry.tool_calls)
+    );
+    expect(assistantReplay?.content).toBe("I'll calculate it.");
+    expect(JSON.stringify(assistantReplay?.tool_calls)).toContain("cybara-text-tool-1-1");
+    expect(JSON.stringify(assistantReplay?.tool_calls)).toContain('"name":"calc"');
+  });
+
+  test("executes OpenAI-compatible native tool calls with top-level name and input args", async () => {
+    const requestBodies: Array<Record<string, unknown>> = [];
+
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const requestBody = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      requestBodies.push(requestBody);
+
+      if (requestBodies.length === 1) {
+        return new Response(
+          JSON.stringify({
+            id: "resp-native-input-tool-1",
+            object: "chat.completion",
+            model: "glm-5.2",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "tool_calls",
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: "call_native_input",
+                      type: "function",
+                      name: "calc",
+                      input: { expression: "4 + 5" },
+                    },
+                  ],
+                },
+              },
+            ],
+            usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          id: "resp-native-input-tool-2",
+          object: "chat.completion",
+          model: "glm-5.2",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "The result is 9.",
+              },
+            },
+          ],
+          usage: { prompt_tokens: 18, completion_tokens: 5, total_tokens: 23 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "z.ai-coding",
+      name: "Native Input Tool Provider",
+      api_key: "native-input-tool-test-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Native Input Tool Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "glm-5.2",
+      tools: [
+        {
+          name: "calc",
+          description: "Safely evaluate mathematical expressions",
+          input_schema: {
+            type: "object",
+            properties: { expression: { type: "string" } },
+            required: ["expression"],
+          },
+        },
+      ],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "What is 4 + 5?" }],
+      { useTools: true, sessionId: "native-input-tool-session" }
+    );
+
+    expect(result.content).toBe("The result is 9.");
+    expect(result.tool_calls?.[0]?.name).toBe("calc");
+    expect(result.tool_calls?.[0]?.args).toEqual({ expression: "4 + 5" });
+    expect(result.tool_calls?.[0]?.result).toEqual({ result: 9, expression: "4 + 5" });
   });
 });

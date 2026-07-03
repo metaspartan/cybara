@@ -10,6 +10,7 @@ import { cybaraDir, dataDir, memoryDir, logsDir, secureDir, userSkillsDir } from
 import { getArtifactsRootDir } from "../../core/artifacts";
 import type { ChatMessage } from "../chat";
 import type { WalletChain, WalletTokenChain } from "../../core/wallet";
+import { sanitizeAssistantContent } from "../../core/llm/text-tool-calls";
 import {
   providerManager,
   providers,
@@ -969,17 +970,22 @@ export function sanitizeSessionMessages(
       : DEFAULT_MAX_TOOL_CALLS;
 
   return messages.map((msg) => {
+    const content =
+      msg?.role === "assistant" && typeof msg.content === "string"
+        ? sanitizeAssistantContent(msg.content)
+        : msg?.content;
     const sanitizedProcessActivities = sanitizeProcessActivities(
       msg.process_activities,
       PROCESS_OPTIONS
     );
 
     if (!msg || !msg.tool_calls || !Array.isArray(msg.tool_calls) || msg.tool_calls.length === 0) {
-      if (!sanitizedProcessActivities) {
+      if (!sanitizedProcessActivities && content === msg.content) {
         return msg;
       }
       return {
         ...msg,
+        content,
         process_activities: sanitizedProcessActivities,
       };
     }
@@ -1085,6 +1091,7 @@ export function sanitizeSessionMessages(
 
     return {
       ...msg,
+      content,
       tool_calls: sanitizedToolCalls,
       process_activities: sanitizedProcessActivities,
       _tool_calls_total_count: msg.tool_calls.length,
