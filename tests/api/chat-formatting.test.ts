@@ -25,4 +25,21 @@ describe("chat response formatting", () => {
     expect(result.content).toBe("");
     expect(result.thinking).toBe("I should inspect the code\nand then run tests");
   });
+
+  test("removes leaked text-form tool calls from visible content", () => {
+    const result = stripThinkingTags(
+      [
+        "Let me try the browser.",
+        "<function_calls>",
+        '<invoke name="browser">',
+        '<parameter name="action">open</parameter>',
+        '<parameter name="url">https://github.com/metaspartan/cybara</parameter>',
+        "</invoke>",
+        "</function_calls>",
+      ].join("\n")
+    );
+
+    expect(result.content).toBe("Let me try the browser.");
+    expect(result.thinking).toBe("");
+  });
 });

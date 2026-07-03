@@ -1,3 +1,5 @@
+import { stripTextToolCallMarkup } from "../core/llm/text-tool-calls";
+
 export interface StripThinkingTagsResult {
   content: string;
   thinking: string;
@@ -86,13 +88,13 @@ export function stripThinkingTags(content: string): StripThinkingTagsResult {
   }
 
   return {
-    content: stripDanglingAssistantMarkup(visibleContent).trim(),
+    content: stripDanglingAssistantMarkup(stripTextToolCallMarkup(visibleContent)).trim(),
     thinking: thinkingMatches.join("\n\n"),
   };
 }
 
 function stripDanglingAssistantMarkup(content: string): string {
-  return content
+  return stripTextToolCallMarkup(content)
     .replace(/<(?:thinking|think)\b[^>]*>[\s\S]*$/i, "")
     .replace(/\[thinking\][\s\S]*$/i, "")
     .replace(/<\/?(?:thinking|think|final)\b[^>]*>/gi, "")

@@ -1075,4 +1075,114 @@ describe("Agent provider API-family routing", () => {
     expect(requestHeaders.get("Authorization")).toBeNull();
     expect(requestBody.max_tokens).toBe(8192);
   });
+
+  test("executes text-form tool calls from OpenAI-compatible providers without leaking markup", async () => {
+    const requestBodies: Array<Record<string, unknown>> = [];
+
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const requestBody = init?.body
+        ? (JSON.parse(String(init.body)) as Record<string, unknown>)
+        : {};
+      requestBodies.push(requestBody);
+
+      if (requestBodies.length === 1) {
+        return new Response(
+          JSON.stringify({
+            id: "resp-text-tool-1",
+            object: "chat.completion",
+            model: "MiniMax-M3",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: [
+                    "Let me calculate that.",
+                    "<function_calls>",
+                    '<invoke name="calc">',
+                    '<parameter name="expression">2 + 2</parameter>',
+                    "</invoke>",
+                    "</function_calls>",
+                  ].join("\n"),
+                },
+              },
+            ],
+            usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          id: "resp-text-tool-2",
+          object: "chat.completion",
+          model: "MiniMax-M3",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "The result is 4.",
+              },
+            },
+          ],
+          usage: { prompt_tokens: 18, completion_tokens: 5, total_tokens: 23 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Text Tool Fallback Provider",
+      api_key: "text-tool-test-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Text Tool Fallback Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "MiniMax-M3",
+      tools: [
+        {
+          name: "calc",
+          description: "Safely evaluate mathematical expressions",
+          input_schema: {
+            type: "object",
+            properties: { expression: { type: "string" } },
+            required: ["expression"],
+          },
+        },
+      ],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "What is 2 + 2?" }],
+      { useTools: true, sessionId: "text-tool-fallback-session" }
+    );
+
+    expect(result.content).toBe("The result is 4.");
+    expect(result.content).not.toContain("<function_calls>");
+    expect(result.tool_calls?.length).toBe(1);
+    expect(result.tool_calls?.[0]?.name).toBe("calc");
+    expect(result.tool_calls?.[0]?.result).toEqual({ result: 4, expression: "2 + 2" });
+
+    expect(requestBodies.length).toBe(2);
+    expect(requestBodies[0].tool_choice).toBe("auto");
+    expect(requestBodies[0].reasoning_split).toBe(true);
+    const secondMessages = (requestBodies[1].messages || []) as Array<Record<string, unknown>>;
+    const assistantReplay = secondMessages.find(
+      (entry) => entry.role === "assistant" && Array.isArray(entry.tool_calls)
+    );
+    const toolReplay = secondMessages.find((entry) => entry.role === "tool");
+    expect(JSON.stringify(assistantReplay)).toContain("cybara-text-tool-1-1");
+    expect(toolReplay?.content).toBe('{"result":4,"expression":"2 + 2"}');
+    expect(JSON.stringify(secondMessages)).not.toContain("<function_calls>");
+  });
 });

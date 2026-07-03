@@ -34,6 +34,15 @@ import {
   googleThinkingBudget,
 } from "./llm/reasoning";
 import { applyProviderApiKey } from "./llm/auth-headers";
+import {
+  hasTextToolCallMarkup,
+  normalizeAnthropicToolUses,
+  normalizeOpenAIToolCalls,
+  sanitizeAssistantContent,
+  shouldUseMiniMaxReasoningSplit,
+  toAnthropicReplayContentWithNormalizedToolUses,
+  toOpenAIReplayMessageWithNormalizedToolCalls,
+} from "./llm/text-tool-calls";
 import { recallRelevantMemory } from "./memory/recall";
 import { canRunToolsInParallel } from "./llm/parallel-tools";
 import { coalesceSystemMessages } from "./llm/system-messages";
@@ -681,26 +690,6 @@ async function* parseServerSentEvents(
   } finally {
     reader.releaseLock();
   }
-}
-
-function toOpenAIReplayAssistantMessage(message: OpenAIMessage): Record<string, unknown> {
-  const replayMessage: Record<string, unknown> = {
-    role: typeof message.role === "string" && message.role.trim() ? message.role : "assistant",
-    content: typeof message.content === "string" ? message.content : "",
-  };
-
-  if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
-    replayMessage.tool_calls = message.tool_calls;
-  }
-
-  for (const [key, value] of Object.entries(message)) {
-    if (key === "role" || key === "content" || key === "tool_calls") continue;
-    if (value !== undefined) {
-      replayMessage[key] = value;
-    }
-  }
-
-  return replayMessage;
 }
 
 function stableSerializeForLoop(value: unknown): string {
@@ -2469,14 +2458,18 @@ class AgentManager {
     const startedAt = performance.now();
     try {
       const result = await this.callLLMInternal(provider, model, messages, tools, toolContext);
+      const sanitizedResult =
+        typeof result.content === "string" && hasTextToolCallMarkup(result.content)
+          ? { ...result, content: sanitizeAssistantContent(result.content) }
+          : result;
       await emitAgentHook({
         type: "llm_response",
         context: hookContext,
-        content: result.content,
-        toolNames: (result.tool_calls || []).map((toolCall) => toolCall.name),
+        content: sanitizedResult.content,
+        toolNames: (sanitizedResult.tool_calls || []).map((toolCall) => toolCall.name),
         durationMs: Math.round(performance.now() - startedAt),
       });
-      return result;
+      return sanitizedResult;
     } catch (error) {
       await emitAgentHook({
         type: "llm_error",
@@ -3307,6 +3300,10 @@ class AgentManager {
       Object.assign(requestBody, openAICompatReasoningParams(providerConfig || "", openaiEffort));
     }
 
+    if (shouldUseMiniMaxReasoningSplit(providerConfig, modelId)) {
+      requestBody.reasoning_split = true;
+    }
+
     if (tools && Array.isArray(tools) && tools.length > 0) {
       requestBody.tools = tools.map((t) => ({
         type: "function",
@@ -3328,6 +3325,8 @@ class AgentManager {
               function: { name: requiredToolName },
             }
           : "required";
+      } else {
+        requestBody.tool_choice = "auto";
       }
     }
 
@@ -3400,7 +3399,8 @@ class AgentManager {
       }
       iterations++;
 
-      if (!message.tool_calls || message.tool_calls.length === 0) {
+      const normalizedToolCalls = normalizeOpenAIToolCalls(message, iterations, allowedToolNames);
+      if (normalizedToolCalls.length === 0) {
         break;
       }
 
@@ -3411,20 +3411,16 @@ class AgentManager {
       }
 
       console.log(
-        `[Agent] Agentic loop iteration ${iterations}: ${message.tool_calls.length} tool calls`
+        `[Agent] Agentic loop iteration ${iterations}: ${normalizedToolCalls.length} tool calls`
       );
 
       const toolResults: Array<{ tool_call_id: string; role: "tool"; content: string }> = [];
       const iterationToolCalls: AgentToolCallResult[] = [];
 
-      for (let toolIndex = 0; toolIndex < message.tool_calls.length; toolIndex += 1) {
-        const toolCall = message.tool_calls[toolIndex];
-        const toolName = typeof toolCall.function?.name === "string" ? toolCall.function.name : "";
-        const toolCallId =
-          typeof toolCall.id === "string" && toolCall.id.trim().length > 0
-            ? toolCall.id
-            : `cybara-tool-${iterations}-${toolIndex + 1}`;
-        const args = parseToolArguments(toolCall.function?.arguments);
+      for (const toolCall of normalizedToolCalls) {
+        const toolName = toolCall.name;
+        const toolCallId = toolCall.id;
+        const args = toolCall.args;
 
         if (!toolName) {
           const missingNamePayload = { error: "Tool call missing tool name" };
@@ -3487,7 +3483,9 @@ class AgentManager {
         break;
       }
 
-      currentMessages.push(toOpenAIReplayAssistantMessage(message));
+      currentMessages.push(
+        toOpenAIReplayMessageWithNormalizedToolCalls(message, normalizedToolCalls)
+      );
       for (const toolResult of toolResults) {
         currentMessages.push(toolResult);
       }
@@ -3503,6 +3501,9 @@ class AgentManager {
         contextWindowTokens
       );
       this.applyOpenAITokenLimit(loopRequestBody, preferMaxCompletionTokens, loopTokenLimit);
+      if (shouldUseMiniMaxReasoningSplit(providerConfig, modelId)) {
+        loopRequestBody.reasoning_split = true;
+      }
 
       if (tools && Array.isArray(tools) && tools.length > 0) {
         loopRequestBody.tools = tools.map((t) => ({
@@ -3513,6 +3514,7 @@ class AgentManager {
             parameters: t.input_schema || { type: "object", properties: {} },
           },
         }));
+        loopRequestBody.tool_choice = "auto";
       }
 
       let loopData: OpenAIResponse;
@@ -3568,7 +3570,7 @@ class AgentManager {
     }
 
     return {
-      content: finalContent.trim(),
+      content: sanitizeAssistantContent(finalContent),
       tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
     };
   }
@@ -4839,13 +4841,11 @@ class AgentManager {
       }
       iterations++;
 
-      const toolUseBlocks =
-        (currentData.content?.filter((c: { type: string }) => c.type === "tool_use") as Array<{
-          type: "tool_use";
-          id?: string;
-          name?: string;
-          input?: Record<string, unknown>;
-        }>) || [];
+      const toolUseBlocks = normalizeAnthropicToolUses(
+        currentData.content,
+        iterations,
+        allowedToolNames
+      );
 
       if (toolUseBlocks.length === 0) {
         break;
@@ -4868,18 +4868,16 @@ class AgentManager {
       const iterationToolCalls: AgentToolCallResult[] = [];
 
       const preStarted = new Map<string, ReturnType<typeof this.executeToolWithHooks>>();
-      if (
-        canRunToolsInParallel(toolUseBlocks.map((b) => (typeof b.name === "string" ? b.name : "")))
-      ) {
+      if (canRunToolsInParallel(toolUseBlocks.map((b) => b.name))) {
         for (const toolUse of toolUseBlocks) {
-          const id = typeof toolUse.id === "string" ? toolUse.id : "";
-          const name = typeof toolUse.name === "string" ? toolUse.name : "";
+          const id = toolUse.id;
+          const name = toolUse.name;
           if (id && name) {
             preStarted.set(
               id,
               this.executeToolWithHooks(
                 name,
-                toolUse.input || {},
+                toolUse.args || {},
                 allowedToolNames,
                 toolContext,
                 hookContext
@@ -4890,14 +4888,14 @@ class AgentManager {
       }
 
       for (const toolUse of toolUseBlocks) {
-        const toolName = typeof toolUse.name === "string" ? toolUse.name : "";
-        const toolUseId = typeof toolUse.id === "string" ? toolUse.id : "";
+        const toolName = toolUse.name;
+        const toolUseId = toolUse.id;
         if (!toolUseId) {
           console.warn("[Agent] Anthropic tool_use missing id; skipping unmatched tool block");
           continue;
         }
         expectedToolUseIds.add(toolUseId);
-        const args = toolUse.input || {};
+        const args = toolUse.args || {};
 
         if (!toolName) {
           const missingNamePayload = { error: "Tool use block missing tool name" };
@@ -4972,9 +4970,10 @@ class AgentManager {
       }
 
       const toolResultIds = new Set(toolResults.map((toolResult) => toolResult.tool_use_id));
-      const assistantLoopContent = (currentData.content || []).filter(
-        (block: { type?: string; id?: string }) =>
-          block.type !== "tool_use" || (typeof block.id === "string" && toolResultIds.has(block.id))
+      const assistantLoopContent = toAnthropicReplayContentWithNormalizedToolUses(
+        currentData.content,
+        toolUseBlocks,
+        toolResultIds
       );
 
       currentMessages.push({
@@ -5124,7 +5123,7 @@ class AgentManager {
     }
 
     return {
-      content: finalContent.trim(),
+      content: sanitizeAssistantContent(finalContent),
       thinking,
       tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
     };
@@ -5223,7 +5222,8 @@ class AgentManager {
       }
       iterations++;
 
-      if (!message.tool_calls || message.tool_calls.length === 0) {
+      const normalizedToolCalls = normalizeOpenAIToolCalls(message, iterations, allowedToolNames);
+      if (normalizedToolCalls.length === 0) {
         break;
       }
 
@@ -5234,20 +5234,16 @@ class AgentManager {
       }
 
       console.log(
-        `[Agent] OpenAI agentic loop iteration ${iterations}: ${message.tool_calls.length} tool calls`
+        `[Agent] OpenAI agentic loop iteration ${iterations}: ${normalizedToolCalls.length} tool calls`
       );
 
       const toolResults: Array<{ tool_call_id: string; role: "tool"; content: string }> = [];
       const iterationToolCalls: AgentToolCallResult[] = [];
 
-      for (let toolIndex = 0; toolIndex < message.tool_calls.length; toolIndex += 1) {
-        const toolCall = message.tool_calls[toolIndex];
-        const toolName = typeof toolCall.function?.name === "string" ? toolCall.function.name : "";
-        const toolCallId =
-          typeof toolCall.id === "string" && toolCall.id.trim().length > 0
-            ? toolCall.id
-            : `cybara-tool-${iterations}-${toolIndex + 1}`;
-        const args = parseToolArguments(toolCall.function?.arguments);
+      for (const toolCall of normalizedToolCalls) {
+        const toolName = toolCall.name;
+        const toolCallId = toolCall.id;
+        const args = toolCall.args;
 
         if (!toolName) {
           const missingNamePayload = { error: "Tool call missing tool name" };
@@ -5310,7 +5306,9 @@ class AgentManager {
         break;
       }
 
-      currentMessages.push(toOpenAIReplayAssistantMessage(message));
+      currentMessages.push(
+        toOpenAIReplayMessageWithNormalizedToolCalls(message, normalizedToolCalls)
+      );
       for (const toolResult of toolResults) {
         currentMessages.push(toolResult);
       }
@@ -5331,6 +5329,7 @@ class AgentManager {
             parameters: t.input_schema || { type: "object", properties: {} },
           },
         }));
+        loopRequestBody.tool_choice = "auto";
       }
 
       let loopData: OpenAIResponse;
@@ -5386,7 +5385,7 @@ class AgentManager {
     }
 
     return {
-      content: finalContent.trim(),
+      content: sanitizeAssistantContent(finalContent),
       tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
     };
   }
