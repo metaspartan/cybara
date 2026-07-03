@@ -20,11 +20,14 @@ import {
   getCombinedLogs,
   getCombinedLogTotal,
   getCombinedLogsPage,
+  getCliLogs,
   getLogStats,
   getDailyLogCounts,
   getModelMetrics,
 } from "${QUERIES_PATH}";
 import { tables } from "${DB_PATH}";
+import { writeFileSync } from "fs";
+import { join } from "path";
 
 let seq = 0;
 function id(prefix) {
@@ -125,6 +128,30 @@ tables.metrics.add({ id: id("m"), type: "token_usage_by_model", key: "gpt", valu
 
 results.metrics = getModelMetrics();
 
+// CLI log file parsing: JSON lines, "[ISO] message" daemon lines, and plain
+// stdout lines that inherit the timestamp of the line above them.
+writeFileSync(
+  join(process.env.CYBARA_HOME, "cybara.log"),
+  [
+    '{"timestamp":"2026-01-02T10:00:00.000Z","level":"error","module":"ChannelManager","message":"adapter crashed","context":{"type":"slack"}}',
+    "[2026-01-02T10:00:01.000Z] Daemon child process starting...",
+    "[API] GET /api/health 200 2ms",
+    "[Discord] Failed to connect",
+    "",
+  ].join("\\n"),
+  "utf-8"
+);
+const cliEntries = getCliLogs();
+results.cliCount = cliEntries.length;
+results.cliMessages = cliEntries.map((l) => l.message);
+results.cliLevels = cliEntries.map((l) => l.level);
+results.cliSources = [...new Set(cliEntries.map((l) => l.source))];
+results.cliTimestamps = cliEntries.map((l) => l.created_at);
+results.cliMetadata = cliEntries.find((l) => l.metadata)?.metadata ?? null;
+results.statsWithCli = getLogStats(24).counts.cli;
+results.totalWithCli = getCombinedLogTotal();
+results.combinedIncludesCli = getCombinedLogs().some((l) => l.logType === "cli");
+
 console.log("###RESULT###" + JSON.stringify(results));
 `;
 
@@ -196,10 +223,45 @@ describe("getCombinedLogs on an empty database", () => {
   });
 });
 
+describe("getCliLogs", () => {
+  test("parses JSON, daemon, and plain lines newest-first with source cli", () => {
+    expect(r("cliCount")).toBe(4);
+    expect(r<string[]>("cliSources")).toEqual(["cli"]);
+    expect(r<string[]>("cliMessages")).toEqual([
+      "[Discord] Failed to connect",
+      "[API] GET /api/health 200 2ms",
+      "Daemon child process starting...",
+      "[ChannelManager] adapter crashed",
+    ]);
+  });
+
+  test("infers levels: JSON level wins, plain lines match error/warn keywords", () => {
+    expect(r<string[]>("cliLevels")).toEqual(["error", "info", "info", "error"]);
+  });
+
+  test("plain lines inherit the timestamp of the preceding stamped line", () => {
+    const timestamps = r<string[]>("cliTimestamps");
+    expect(timestamps[0]).toBe("2026-01-02T10:00:01.000Z");
+    expect(timestamps[1]).toBe("2026-01-02T10:00:01.000Z");
+    expect(timestamps[3]).toBe("2026-01-02T10:00:00.000Z");
+  });
+
+  test("JSON context becomes metadata", () => {
+    expect(r("cliMetadata")).toBe('{"type":"slack"}');
+  });
+
+  test("cli entries join combined logs and totals; stats window still applies", () => {
+    expect(r("combinedIncludesCli")).toBe(true);
+    expect(r("totalWithCli")).toBe(11);
+    // Fixture timestamps are far outside the 24h stats window.
+    expect(r("statsWithCli")).toBe(0);
+  });
+});
+
 describe("getLogStats", () => {
   test("empty database yields zero counts (no divide-by-zero, no NaN)", () => {
     const s = r<{ counts: Record<string, number>; hours: number }>("statsEmpty");
-    expect(s.counts).toEqual({ system: 0, messages: 0, agent: 0, channel: 0 });
+    expect(s.counts).toEqual({ system: 0, messages: 0, agent: 0, channel: 0, cli: 0 });
     expect(s.hours).toBe(24);
     for (const v of Object.values(s.counts)) expect(Number.isNaN(v)).toBe(false);
   });
@@ -207,7 +269,7 @@ describe("getLogStats", () => {
   test("hours=0 window yields zero counts and echoes hours", () => {
     const s = r<{ counts: Record<string, number>; hours: number }>("statsZeroHours");
     expect(s.hours).toBe(0);
-    expect(s.counts).toEqual({ system: 0, messages: 0, agent: 0, channel: 0 });
+    expect(s.counts).toEqual({ system: 0, messages: 0, agent: 0, channel: 0, cli: 0 });
   });
 
   test("counts freshly seeded rows within a 24h window", () => {

@@ -42,9 +42,12 @@ interface LogStats {
     messages: number;
     agent: number;
     channel: number;
+    cli: number;
   };
   hours: number;
 }
+
+const LOGS_PAGE_SIZE = 200;
 
 interface SessionMessageLog {
   id: string;
@@ -88,10 +91,15 @@ const sourceIcons: Record<string, React.ReactNode> = {
   system: <Terminal className="w-4 h-4" />,
   skill: <MessageSquare className="w-4 h-4" />,
   subagent: <Bot className="w-4 h-4" />,
+  cli: <Terminal className="w-4 h-4" />,
 };
 
 export function Logs() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [totalLogs, setTotalLogs] = useState<number | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isSearchResults, setIsSearchResults] = useState(false);
   const [stats, setStats] = useState<LogStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -107,12 +115,15 @@ export function Logs() {
     }
     try {
       const [logsResponse, statsResponse] = await Promise.all([
-        logsApi.getSystem(),
+        logsApi.getPage(LOGS_PAGE_SIZE, 0),
         logsApi.getStats(24),
       ]);
 
-      if (logsResponse.success) {
-        setLogs(logsResponse.data || []);
+      if (logsResponse.success && logsResponse.data) {
+        setLogs(logsResponse.data.logs || []);
+        setTotalLogs(logsResponse.data.total ?? null);
+        setHasMore(Boolean(logsResponse.data.hasMore));
+        setIsSearchResults(false);
       }
       if (statsResponse.success) {
         setStats(statsResponse.data);
@@ -123,6 +134,27 @@ export function Logs() {
       if (!options?.silent) {
         setIsLoading(false);
       }
+    }
+  };
+
+  const loadMore = async () => {
+    if (isLoadingMore) return;
+    setIsLoadingMore(true);
+    try {
+      const response = await logsApi.getPage(LOGS_PAGE_SIZE, logs.length);
+      if (response.success && response.data) {
+        const next = response.data.logs || [];
+        setLogs((current) => {
+          const seen = new Set(current.map((log) => log.id));
+          return [...current, ...next.filter((log) => !seen.has(log.id))];
+        });
+        setTotalLogs(response.data.total ?? null);
+        setHasMore(Boolean(response.data.hasMore));
+      }
+    } catch (error) {
+      console.error("Failed to load more logs:", error);
+    } finally {
+      setIsLoadingMore(false);
     }
   };
 
@@ -199,6 +231,9 @@ export function Logs() {
           })),
         ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         setLogs(allLogs);
+        setTotalLogs(allLogs.length);
+        setHasMore(false);
+        setIsSearchResults(true);
       }
     } catch (error) {
       console.error("Search failed:", error);
@@ -257,7 +292,7 @@ export function Logs() {
     >
       <div className="space-y-6">
         {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
@@ -302,6 +337,17 @@ export function Logs() {
                 </div>
               </CardContent>
             </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <Terminal className="w-8 h-8 text-cyan-400" />
+                  <div>
+                    <p className="text-sm text-gray-400">CLI Logs</p>
+                    <p className="text-2xl font-bold text-white">{stats.counts.cli ?? 0}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
 
@@ -338,6 +384,7 @@ export function Logs() {
                   <option value="">All Sources</option>
                   <option value="agent">Agent</option>
                   <option value="channel">Channel</option>
+                  <option value="cli">CLI</option>
                   <option value="tool">Tool</option>
                   <option value="system">System</option>
                   <option value="skill">Skill</option>
@@ -352,7 +399,11 @@ export function Logs() {
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <span>Log Entries</span>
-              <Badge variant="default">{filteredLogs.length} entries</Badge>
+              <Badge variant="default">
+                {filterLevel || filterSource || isSearchResults || totalLogs === null
+                  ? `${filteredLogs.length} entries`
+                  : `${logs.length} of ${totalLogs} entries`}
+              </Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
@@ -428,6 +479,21 @@ export function Logs() {
                     );
                   })}
                 </div>
+                {hasMore && !isSearchResults && (
+                  <div className="p-3 text-center border-t border-white/10">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => void loadMore()}
+                      disabled={isLoadingMore}
+                      leftIcon={
+                        isLoadingMore ? <RefreshCw className="w-4 h-4 animate-spin" /> : undefined
+                      }
+                    >
+                      {isLoadingMore ? "Loading..." : "Load more"}
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

@@ -269,7 +269,7 @@ const makeStyles = () =>
     },
     sendButton: {
       alignItems: "center",
-      borderRadius: radius.md,
+      borderRadius: 999,
       height: MOBILE_CHAT_COMPOSER.minHeight,
       justifyContent: "center",
       width: MOBILE_CHAT_COMPOSER.minHeight,

@@ -65,7 +65,10 @@ describe("Chat revert and diff wiring", () => {
     expect(desktopHostSource).toMatch(
       /\(["']__TAURI_INTERNALS__["'] in window \|\| ["']__TAURI__["'] in window\)/
     );
-    expect(source).toContain("Workspace: {effectiveWorkspaceDir}");
+    expect(source).toContain("Workspace: ${effectiveWorkspaceDir}");
+    // Workspace chips are clickable-to-change (header + empty state), with no separate clear button.
+    expect(source).toContain("void handleSelectWorkspace()");
+    expect(source).not.toContain('title="Clear session workspace"');
     expect(source).toContain("cybara:lastWorkspaceDir");
     expect(source).toContain(
       "Unable to open native folder picker. Enter workspace folder path manually:"

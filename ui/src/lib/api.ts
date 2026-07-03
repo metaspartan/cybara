@@ -1070,11 +1070,28 @@ export const sandboxBrowserApi = {
     }),
 };
 
+export interface LogPageEntry {
+  id: string;
+  level: string;
+  source: string;
+  message: string;
+  metadata?: string;
+  created_at: string;
+}
+
 export const logsApi = {
   getSystem: () =>
     fetchApi<{ id: string; level: string; source: string; message: string; created_at: string }[]>(
       "/logs/system"
     ),
+  getPage: (limit: number, offset: number) =>
+    fetchApi<{
+      logs: LogPageEntry[];
+      total: number;
+      limit: number;
+      offset: number;
+      hasMore: boolean;
+    }>(`/logs/system?includeTotal=1&limit=${limit}&offset=${offset}`),
   search: (query: string) =>
     fetchApi<{
       system: { id: string; level: string; source: string; message: string; created_at: string }[];
@@ -1103,7 +1120,13 @@ export const logsApi = {
     }>("/logs/activity?minutes=" + (minutes || 60)),
   getStats: (hours?: number) =>
     fetchApi<{
-      counts: { system: number; messages: number; agent: number; channel: number };
+      counts: {
+        system: number;
+        messages: number;
+        agent: number;
+        channel: number;
+        cli: number;
+      };
       hours: number;
     }>("/logs/stats?hours=" + (hours || 24)),
 };

@@ -214,7 +214,8 @@ describe("UI page API wiring", () => {
     const sessionsSource = readPage("Sessions.tsx");
 
     expect(logsSource).toMatch(/import\s*\{\s*logsApi\s*\}\s*from\s*["']@\/lib\/api["'];/);
-    expect(logsSource).toContain("logsApi.getSystem()");
+    expect(logsSource).toContain("logsApi.getPage(LOGS_PAGE_SIZE, 0)");
+    expect(logsSource).toContain("logsApi.getPage(LOGS_PAGE_SIZE, logs.length)");
     expect(logsSource).toContain("logsApi.getStats(24)");
     expect(logsSource).toContain("logsApi.search(searchQuery)");
     expect(logsSource).not.toContain("apiFetch(");

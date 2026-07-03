@@ -739,10 +739,6 @@ const makeStyles = () =>
     },
     composer: {
       alignItems: "flex-end",
-      backgroundColor: colors.surfaceLift,
-      borderColor: colors.border,
-      borderRadius: radius.lg,
-      borderWidth: StyleSheet.hairlineWidth,
       flexDirection: "row",
       gap: spacing.sm,
       minHeight: 50,
@@ -750,16 +746,16 @@ const makeStyles = () =>
       paddingVertical: 6,
     },
     chatComposerBar: {
+      borderRadius: radius.xl,
       bottom: MOBILE_CHAT_CHROME.composerReservedBottom + MOBILE_CHAT_CHROME.composerGapToNav,
-      left: 0,
-      minHeight: MOBILE_CHAT_CHROME.composerHeight,
+      left: spacing.md,
       position: "absolute",
-      right: 0,
+      right: spacing.md,
     },
     chatComposerContent: {
       justifyContent: "center",
-      paddingHorizontal: spacing.sm,
-      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.xs,
+      paddingVertical: spacing.xs,
     },
     composerInput: {
       color: colors.text,
@@ -775,7 +771,7 @@ const makeStyles = () =>
     },
     sendButton: {
       alignItems: "center",
-      borderRadius: radius.md,
+      borderRadius: 999,
       height: MOBILE_CHAT_COMPOSER.minHeight,
       justifyContent: "center",
       width: MOBILE_CHAT_COMPOSER.minHeight,

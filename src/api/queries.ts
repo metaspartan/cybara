@@ -4,6 +4,9 @@
  */
 
 import db, { tables } from "../core/database";
+import { closeSync, existsSync, fstatSync, openSync, readSync } from "fs";
+import { join } from "path";
+import { cybaraDir } from "../core/paths";
 
 // ============================================
 // TYPES
@@ -87,6 +90,7 @@ export interface LogStats {
     messages: number;
     agent: number;
     channel: number;
+    cli: number;
   };
   hours: number;
 }
@@ -172,6 +176,7 @@ export function getCombinedLogs(
       created_at: normalizeTimestamp(l.created_at)!,
       logType: "channel",
     })),
+    ...getCliLogs(),
   ];
 
   const sorted = combined.sort(
@@ -236,22 +241,116 @@ function combinedChannelLogs(limit: number): CombinedLogEntry[] {
   }));
 }
 
+const CLI_LOG_TAIL_BYTES = 256 * 1024;
+const CLI_LOG_LEVELS = new Set(["debug", "info", "warn", "error"]);
+
+/** Reads only the last CLI_LOG_TAIL_BYTES of the file so huge logs stay cheap. */
+function readLogFileTail(path: string): string | null {
+  if (!existsSync(path)) return null;
+  let fd: number | null = null;
+  try {
+    fd = openSync(path, "r");
+    const size = fstatSync(fd).size;
+    if (size === 0) return null;
+    const readSize = Math.min(size, CLI_LOG_TAIL_BYTES);
+    const buffer = Buffer.alloc(readSize);
+    readSync(fd, buffer, 0, readSize, size - readSize);
+    const text = buffer.toString("utf-8");
+    // Drop the first (possibly truncated) line when we didn't read the whole file.
+    return readSize < size ? text.slice(text.indexOf("\n") + 1) : text;
+  } catch {
+    return null;
+  } finally {
+    if (fd !== null) closeSync(fd);
+  }
+}
+
+/**
+ * Parse the CLI/daemon log file (~/.cybara/cybara.log) into combined-log
+ * entries. Lines are structured JSON, "[ISO] message" daemon lines, or plain
+ * stdout; plain lines inherit the most recent timestamp seen above them.
+ */
+export function getCliLogs(limit: number = 1000): CombinedLogEntry[] {
+  const text = readLogFileTail(join(cybaraDir, "cybara.log"));
+  if (!text) return [];
+  const entries: CombinedLogEntry[] = [];
+  let lastTimestamp = new Date().toISOString();
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    let level = "info";
+    let message = line;
+    let created_at: string | null = null;
+    let metadata: string | undefined;
+    if (line.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(line) as {
+          timestamp?: string;
+          level?: string;
+          module?: string;
+          message?: string;
+          context?: unknown;
+        };
+        if (typeof parsed.timestamp === "string") created_at = parsed.timestamp;
+        if (typeof parsed.level === "string" && CLI_LOG_LEVELS.has(parsed.level)) {
+          level = parsed.level;
+        }
+        message = `${parsed.module ? `[${parsed.module}] ` : ""}${parsed.message ?? line}`;
+        if (parsed.context !== undefined) metadata = JSON.stringify(parsed.context);
+      } catch {
+        // Not JSON after all; fall through as plain text.
+      }
+    } else {
+      const stamped = line.match(/^\[(\d{4}-\d{2}-\d{2}T[^\]]+)\]\s*(.*)$/);
+      if (stamped) {
+        created_at = stamped[1];
+        message = stamped[2] || line;
+      }
+      if (/\berror\b|\bfailed\b|\bfatal\b/i.test(message)) level = "error";
+      else if (/\bwarn(ing)?\b/i.test(message)) level = "warn";
+    }
+    if (created_at) lastTimestamp = created_at;
+    entries.push({
+      id: `cli-${i}`,
+      level,
+      source: "cli",
+      message: message.length > 500 ? `${message.slice(0, 500)}...` : message,
+      metadata,
+      created_at: normalizeTimestamp(created_at ?? lastTimestamp)!,
+      logType: "cli",
+    });
+  }
+  return entries.slice(-Math.max(1, limit)).reverse();
+}
+
 export function getCombinedLogTotal(): number {
-  return countRows("system_logs") + countRows("agent_logs") + countRows("channel_logs");
+  return (
+    countRows("system_logs") +
+    countRows("agent_logs") +
+    countRows("channel_logs") +
+    getCliLogs().length
+  );
 }
 
 export function getCombinedLogsPage(options: { limit: number; offset?: number }): CombinedLogPage {
   const limit = Math.max(1, Math.min(1000, Math.floor(options.limit)));
   const offset = Math.max(0, Math.floor(options.offset ?? 0));
   const windowSize = Math.max(offset + limit, limit);
+  const cliLogs = getCliLogs(windowSize);
   const logs = [
     ...combinedSystemLogs(windowSize),
     ...combinedAgentLogs(windowSize),
     ...combinedChannelLogs(windowSize),
+    ...cliLogs,
   ]
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(offset, offset + limit);
-  const total = getCombinedLogTotal();
+  const total =
+    countRows("system_logs") +
+    countRows("agent_logs") +
+    countRows("channel_logs") +
+    (cliLogs.length >= windowSize ? getCliLogs().length : cliLogs.length);
   return {
     logs,
     total,
@@ -266,28 +365,30 @@ export function getCombinedLogsPage(options: { limit: number; offset?: number })
  * @param hours Number of hours to look back (default 24)
  */
 export function getLogStats(hours: number = 24): LogStats {
-  const since = Date.now() - hours * 60 * 60 * 1000;
+  const sinceIso = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+  // datetime() normalizes both SQLite "YYYY-MM-DD HH:MM:SS" rows and ISO input,
+  // so the window compares real instants instead of raw strings. Counting in SQL
+  // also avoids the LIMIT 1000 cap of the list() helpers.
+  const countSince = (table: string): number => {
+    const row = db
+      .prepare(`SELECT COUNT(*) as count FROM ${table} WHERE datetime(created_at) > datetime(?)`)
+      .get(sinceIso) as CountResult | null;
+    return Number(row?.count || 0);
+  };
 
-  // Use the same table helpers for consistency
-  const system = (tables.systemLogs.list ? tables.systemLogs.list() : []) as LogEntry[];
-  const agent = (tables.agentLogs.list ? tables.agentLogs.list() : []) as AgentLogEntry[];
-  const channel = (tables.channelLogs.list ? tables.channelLogs.list() : []) as ChannelLogEntry[];
-
-  const messages = db
-    .prepare("SELECT COUNT(*) as count FROM session_messages WHERE created_at > ?")
-    .get(new Date(since).toISOString()) as CountResult | null;
-
-  // Filter by time window and count
-  const systemCount = system.filter((l) => new Date(l.created_at).getTime() > since).length;
-  const agentCount = agent.filter((l) => new Date(l.created_at).getTime() > since).length;
-  const channelCount = channel.filter((l) => new Date(l.created_at).getTime() > since).length;
+  const sinceMs = Date.parse(sinceIso);
+  const cli = getCliLogs().filter((entry) => {
+    const at = Date.parse(entry.created_at);
+    return Number.isFinite(at) && at > sinceMs;
+  }).length;
 
   return {
     counts: {
-      system: systemCount,
-      messages: messages?.count || 0,
-      agent: agentCount,
-      channel: channelCount,
+      system: countSince("system_logs"),
+      messages: countSince("session_messages"),
+      agent: countSince("agent_logs"),
+      channel: countSince("channel_logs"),
+      cli,
     },
     hours,
   };

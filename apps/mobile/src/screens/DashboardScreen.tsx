@@ -2138,7 +2138,7 @@ function SessionDetailPanel({
         <View
           style={styles.composer}
           onLayout={(event) =>
-            setComposerBarHeight(event.nativeEvent.layout.height + spacing.sm * 2)
+            setComposerBarHeight(event.nativeEvent.layout.height + spacing.xs * 2)
           }
         >
           <TextInput

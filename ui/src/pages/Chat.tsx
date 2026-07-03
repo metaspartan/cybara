@@ -3076,14 +3076,6 @@ export function Chat() {
               </span>
             </div>
           )}
-          {effectiveWorkspaceDir && (
-            <div className="hidden md:flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-500/10 border border-blue-500/30">
-              <Folder className="w-3 h-3 text-blue-300" />
-              <span className="text-[10px] text-blue-300 font-mono">
-                {formatWorkspaceLabel(effectiveWorkspaceDir, 30)}
-              </span>
-            </div>
-          )}
         </div>
         <div className="flex items-center gap-1 sm:gap-2">
           <select
@@ -3101,31 +3093,24 @@ export function Chat() {
           <button
             onClick={() => void handleSelectWorkspace()}
             disabled={workspaceSaving}
-            className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-[12px] text-gray-300 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-            title="Select workspace folder for this session"
+            className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 text-[11px] text-blue-300 hover:text-blue-200 hover:bg-blue-500/15 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            title={
+              effectiveWorkspaceDir
+                ? `Workspace: ${effectiveWorkspaceDir} — click to change`
+                : "Select workspace folder for this session"
+            }
           >
             {workspaceSaving ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : (
               <FolderOpen className="w-3.5 h-3.5" />
             )}
-            <span className="hidden lg:inline">
+            <span className="hidden md:inline font-mono">
               {effectiveWorkspaceDir
-                ? formatWorkspaceLabel(effectiveWorkspaceDir, 40)
+                ? formatWorkspaceLabel(effectiveWorkspaceDir, 36)
                 : "Select Workspace"}
             </span>
           </button>
-          {workspaceDir && (
-            <button
-              type="button"
-              onClick={() => void applySessionWorkspace(null)}
-              disabled={workspaceSaving}
-              className="p-1.5 sm:p-2 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-              title="Clear session workspace"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
           <button
             onClick={() => setShowDiffPanel(!showDiffPanel)}
             className={cn(
@@ -3221,14 +3206,28 @@ export function Chat() {
                       <p className="text-[12px] mt-1 text-gray-600">
                         Ask questions, get help with code, or chat with your agents
                       </p>
-                      {effectiveWorkspaceDir && (
-                        <div className="mt-3 inline-flex items-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-2.5 py-1.5">
+                      <button
+                        type="button"
+                        onClick={() => void handleSelectWorkspace()}
+                        disabled={workspaceSaving}
+                        className="mt-3 inline-flex items-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-2.5 py-1.5 hover:bg-blue-500/15 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                        title={
+                          effectiveWorkspaceDir
+                            ? "Click to change workspace"
+                            : "Select workspace folder for this session"
+                        }
+                      >
+                        {workspaceSaving ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-300" />
+                        ) : (
                           <Folder className="h-3.5 w-3.5 text-blue-300" />
-                          <span className="text-[12px] text-blue-200 font-mono">
-                            Workspace: {effectiveWorkspaceDir}
-                          </span>
-                        </div>
-                      )}
+                        )}
+                        <span className="text-[12px] text-blue-200 font-mono">
+                          {effectiveWorkspaceDir
+                            ? `Workspace: ${effectiveWorkspaceDir}`
+                            : "Select workspace"}
+                        </span>
+                      </button>
                     </div>
                   </div>
                 ) : (

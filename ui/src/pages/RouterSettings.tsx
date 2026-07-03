@@ -9,6 +9,8 @@ import {
   ToggleRight,
   Plus,
   Cpu,
+  CheckCircle2,
+  Circle,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
@@ -207,6 +209,10 @@ export function RouterSettings() {
 
   const routedTypes = Object.keys(config.routes);
   const unroutedProviders = providers.filter((p) => !routedTypes.includes(p.type));
+  // Routing is only meaningful between at least two providers.
+  const hasEnoughProviders = providers.length >= 2;
+  const hasEnoughRoutes = routedTypes.length >= 2;
+  const setupComplete = hasEnoughProviders && hasEnoughRoutes && config.enabled;
   const activeRoutes = status?.routes.filter((route) => route.enabled && route.available) || [];
   const dailyLimit = config.globalSpendLimitDaily ?? 0;
   const monthlyEquivalent = dailyLimit > 0 ? dailyLimit * 30 : 0;
@@ -250,13 +256,48 @@ export function RouterSettings() {
         </div>
       </div>
 
-      {providers.length === 0 && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
-          No providers are configured yet.{" "}
-          <Link to="/providers" className="underline hover:text-amber-100">
-            Add a provider
-          </Link>{" "}
-          first, then come back to route between them.
+      {!setupComplete && (
+        <div className="rounded-xl border border-indigo-400/25 bg-indigo-500/[0.07] p-4">
+          <h3 className="text-sm font-semibold text-white">Get started in three steps</h3>
+          <p className="mt-0.5 text-xs text-gray-400">
+            The router balances chats between providers, so it needs at least two to choose from.
+          </p>
+          <ol className="mt-3 space-y-2 text-sm">
+            <li className="flex items-start gap-2">
+              {hasEnoughProviders ? (
+                <CheckCircle2 className="mt-0.5 w-4 h-4 flex-shrink-0 text-emerald-400" />
+              ) : (
+                <Circle className="mt-0.5 w-4 h-4 flex-shrink-0 text-gray-600" />
+              )}
+              <span className={hasEnoughProviders ? "text-gray-500 line-through" : "text-gray-200"}>
+                Connect at least two providers with models on the{" "}
+                <Link to="/providers" className="text-indigo-300 underline hover:text-indigo-200">
+                  Providers page
+                </Link>{" "}
+                ({providers.length} of 2 connected)
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              {hasEnoughRoutes ? (
+                <CheckCircle2 className="mt-0.5 w-4 h-4 flex-shrink-0 text-emerald-400" />
+              ) : (
+                <Circle className="mt-0.5 w-4 h-4 flex-shrink-0 text-gray-600" />
+              )}
+              <span className={hasEnoughRoutes ? "text-gray-500 line-through" : "text-gray-200"}>
+                Add at least two of them to the rotation below ({routedTypes.length} of 2 added)
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              {config.enabled ? (
+                <CheckCircle2 className="mt-0.5 w-4 h-4 flex-shrink-0 text-emerald-400" />
+              ) : (
+                <Circle className="mt-0.5 w-4 h-4 flex-shrink-0 text-gray-600" />
+              )}
+              <span className={config.enabled ? "text-gray-500 line-through" : "text-gray-200"}>
+                Turn the router on and pick a strategy — Weighted is a good default
+              </span>
+            </li>
+          </ol>
         </div>
       )}
 
@@ -274,13 +315,21 @@ export function RouterSettings() {
               <p className="text-xs text-gray-500">
                 {config.enabled
                   ? "Requests are being routed across your configured providers."
-                  : "Turn on to start routing. Off means each agent uses only its own provider."}
+                  : hasEnoughRoutes
+                    ? "Turn on to start routing. Off means each agent uses only its own provider."
+                    : "Add at least two providers to the rotation below before turning this on."}
               </p>
             </div>
             <button
               type="button"
               onClick={() => saveConfig({ ...config, enabled: !config.enabled })}
-              className="p-1"
+              disabled={!config.enabled && !hasEnoughRoutes}
+              className="p-1 disabled:opacity-40 disabled:cursor-not-allowed"
+              title={
+                !config.enabled && !hasEnoughRoutes
+                  ? "The router needs at least two providers in the rotation"
+                  : undefined
+              }
               aria-label={config.enabled ? "Disable router" : "Enable router"}
             >
               {config.enabled ? (
