@@ -413,6 +413,7 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_SETTINGS_ROOT_CHROME.modelRouterControls).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.dangerousToolPolicyToggle).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.sandboxRuntimeControls).toBe(true);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.speechControls).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.systemPromptFeatureToggles).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.settingsEdgeToEdgeContent).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.nativeGroupedSections).toBe(true);
@@ -425,6 +426,7 @@ describe("mobile dashboard model", () => {
       "dangerous_tool_policy",
       "sandbox_runtime",
       "router",
+      "speech",
     ]);
     expect(MOBILE_REASONING_EFFORT_OPTIONS.map((option) => option.value)).toEqual([
       "",

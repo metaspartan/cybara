@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, writeFileSync } from "fs";
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from "fs";
 import { homedir, platform } from "os";
 import { join } from "path";
 import { config, type SpeechSettings, type SpeechTtsProviderPreference } from "./config";
@@ -16,6 +16,7 @@ export interface SpeechSynthesisArgs {
   voice?: string;
   format?: string;
   speed?: number;
+  rate?: number;
   stability?: number;
   similarity?: number;
   style?: number;
@@ -355,18 +356,75 @@ export async function synthesizeWithSystemVoice(
   args: SpeechSynthesisArgs,
   settings = config.getSpeechSettings()
 ): Promise<SpeechSynthesisResult> {
-  const { handleSystemTTS } = await import("./tools/handlers/channel");
-  const result = await handleSystemTTS({
-    text: args.text,
-    voice: args.voice || settings.tts.voice || undefined,
-    rate:
-      typeof args.speed === "number" && Number.isFinite(args.speed)
-        ? Math.round(args.speed * 175)
-        : undefined,
-    format: resolveOutputFormat(args.format, settings.tts.outputFormat),
-  });
+  const text = typeof args.text === "string" ? args.text.trim() : "";
+  if (!text) throw new Error("text is required");
+
+  if (platform() !== "darwin") {
+    throw new Error(
+      "tts uses the macOS 'say' synthesizer and is only available on macOS. " +
+        "Configure an external TTS provider for other platforms."
+    );
+  }
+
+  const which = Bun.spawnSync(["which", "say"]);
+  if (which.exitCode !== 0) {
+    throw new Error("The macOS 'say' command was not found.");
+  }
+
+  const voice = args.voice?.trim() || settings.tts.voice || undefined;
+  const rate =
+    typeof args.rate === "number" && Number.isFinite(args.rate)
+      ? Math.max(80, Math.min(500, Math.floor(args.rate)))
+      : typeof args.speed === "number" && Number.isFinite(args.speed)
+        ? Math.max(80, Math.min(500, Math.round(args.speed * 175)))
+        : undefined;
+  const outputFormat = resolveOutputFormat(args.format, settings.tts.outputFormat);
+  const requestedFormat =
+    outputFormat === "aiff" || outputFormat === "m4a" || outputFormat === "wav"
+      ? outputFormat
+      : "aiff";
+
+  const stamp = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+  const dir = mediaDir();
+  const aiffPath = join(dir, `tts-${stamp}.aiff`);
+
+  const sayArgs: string[] = [];
+  if (voice) sayArgs.push("-v", voice);
+  if (rate) sayArgs.push("-r", String(rate));
+  sayArgs.push("-o", aiffPath, "--", text);
+
+  const said = Bun.spawnSync(["say", ...sayArgs]);
+  if (said.exitCode !== 0) {
+    throw new Error(said.stderr.toString().trim() || "macOS 'say' synthesis failed.");
+  }
+  try {
+    chmodSync(aiffPath, 0o600);
+  } catch {
+    // Best-effort on platforms and volumes that do not support POSIX permissions.
+  }
+
+  let audioPath = aiffPath;
+  let format = "aiff";
+  if (requestedFormat !== "aiff") {
+    const outPath = join(dir, `tts-${stamp}.${requestedFormat}`);
+    const fmtFlag = requestedFormat === "m4a" ? ["-f", "m4af", "-d", "aac"] : ["-f", "WAVE", "-d", "LEI16"];
+    const converted = Bun.spawnSync(["afconvert", aiffPath, outPath, ...fmtFlag]);
+    if (converted.exitCode === 0 && existsSync(outPath)) {
+      try {
+        chmodSync(outPath, 0o600);
+      } catch {
+        // Best-effort on platforms and volumes that do not support POSIX permissions.
+      }
+      audioPath = outPath;
+      format = requestedFormat;
+    }
+  }
+
   return {
-    ...result,
+    audioPath,
+    text,
+    voice,
+    format,
     provider: "system",
   };
 }

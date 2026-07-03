@@ -1,217 +1,248 @@
-import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { mkdtempSync, rmSync } from "fs";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
-import { join } from "path";
-import { createRequire } from "module";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 
-const require = createRequire(import.meta.url);
+const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-const providerState = {
-  byId: new Map<string, Record<string, unknown>>(),
-};
+interface SpeechWorkerReport {
+  autoResolved: {
+    type?: string;
+    providerId?: string;
+  };
+  badProviderError: string;
+  elevenlabs: {
+    provider?: string;
+    voice?: string;
+    model?: string;
+    audioPath: string;
+    fileMode: number;
+    url: string;
+    apiKey?: string | null;
+    body: Record<string, unknown>;
+  };
+  openai: {
+    provider?: string;
+    voice?: string;
+    format?: string;
+    url: string;
+    authorization?: string | null;
+    body: Record<string, unknown>;
+  };
+}
 
-const configState = {
-  speech: {
-    tts: {
-      provider: "auto",
-      providerId: "",
-      model: "",
-      voice: "",
-      outputFormat: "mp3",
-      speed: 1,
-      maxTextLength: 8000,
-      fallbackToSystem: false,
-    },
-    stt: {
-      provider: "auto",
-      providerId: "",
-      model: "",
-      language: "",
-    },
+const configPath = join(ROOT_DIR, "src", "core", "config.ts").replace(/\\/g, "/");
+const providersPath = join(ROOT_DIR, "src", "core", "providers.ts").replace(/\\/g, "/");
+const speechPath = join(ROOT_DIR, "src", "core", "speech.ts").replace(/\\/g, "/");
+
+const WORKER_SOURCE = `
+import { statSync } from "fs";
+import { config } from "${configPath}";
+import { providerManager } from "${providersPath}";
+import { resolveSpeechTtsProvider, synthesizeSpeech } from "${speechPath}";
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+function parseJsonBody(body) {
+  return typeof body === "string" ? JSON.parse(body) : {};
+}
+
+const openaiProvider = providerManager.create({
+  provider: "openai",
+  name: "OpenAI",
+  api_key: "sk-test",
+  base_url: "https://api.openai.com/v1",
+  is_default: true,
+});
+const elevenProvider = providerManager.create({
+  provider: "elevenlabs",
+  name: "ElevenLabs",
+  api_key: "eleven-test",
+  base_url: "https://api.elevenlabs.io/v1",
+  is_default: false,
+});
+
+const autoResolved = resolveSpeechTtsProvider({});
+assert(autoResolved?.type === "elevenlabs", "auto speech provider should prefer ElevenLabs");
+
+const anthropicProvider = providerManager.create({
+  provider: "anthropic",
+  name: "Anthropic",
+  api_key: "ant-test",
+  is_default: false,
+});
+let badProviderError = "";
+try {
+  resolveSpeechTtsProvider({ providerId: anthropicProvider.id });
+} catch (error) {
+  badProviderError = error instanceof Error ? error.message : String(error);
+}
+assert(badProviderError.includes("ElevenLabs, OpenAI, or OpenAI Codex"), "expected unsupported provider error");
+
+config.setSpeechSettings({
+  tts: {
+    provider: "auto",
+    providerId: "",
+    model: "eleven_flash_v2_5",
+    voice: "voice-abc",
+    outputFormat: "mp3",
+    speed: 1.2,
+    maxTextLength: 8000,
+    fallbackToSystem: false,
   },
-};
-
-mock.module("../../src/core/config", () => ({
-  config: {
-    getSpeechSettings: () => configState.speech,
-  },
-}));
-
-mock.module("../../src/core/providers", () => ({
-  providers: {
-    elevenlabs: {
-      name: "ElevenLabs",
-      baseUrl: "https://api.elevenlabs.io/v1",
-      api: "elevenlabs-speech",
-      authType: "api_key",
-      models: [],
-    },
-    openai: {
-      name: "OpenAI",
-      baseUrl: "https://api.openai.com/v1",
-      api: "openai-responses",
-      authType: "api_key",
-      models: [],
-    },
-  },
-  resolveProviderType: (value?: string) => {
-    if (value === "elevenlabs" || value === "openai" || value === "openai-codex") return value;
-    return undefined;
-  },
-  providerManager: {
-    list: () =>
-      Array.from(providerState.byId.values()).map((provider) => ({
-        ...provider,
-        api_key: undefined,
-        access_token: undefined,
-      })),
-    getWithCredentials: (id: string) => providerState.byId.get(id),
-  },
-}));
-
-const originalFetch = globalThis.fetch;
-const originalHome = process.env.HOME;
-const tempHome = mkdtempSync(join(tmpdir(), "cybara-speech-test-"));
-const speech = require("../../src/core/speech") as typeof import("../../src/core/speech");
-
-beforeEach(() => {
-  providerState.byId.clear();
-  configState.speech.tts = {
+  stt: {
     provider: "auto",
     providerId: "",
     model: "",
-    voice: "",
+    language: "",
+  },
+});
+
+const elevenFetchCalls = [];
+globalThis.fetch = (async (input, init) => {
+  elevenFetchCalls.push({
+    url: String(input),
+    body: typeof init?.body === "string" ? init.body : undefined,
+    headers: init?.headers || {},
+  });
+  return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+});
+
+const elevenResult = await synthesizeSpeech({ text: "Hello Cybara" });
+const elevenCall = elevenFetchCalls[0];
+assert(elevenCall, "expected ElevenLabs fetch call");
+const elevenHeaders = new Headers(elevenCall.headers);
+const elevenStat = statSync(elevenResult.audioPath);
+
+config.setSpeechSettings({
+  tts: {
+    provider: "openai",
+    providerId: "",
+    model: "gpt-4o-mini-tts",
+    voice: "nova",
     outputFormat: "mp3",
     speed: 1,
     maxTextLength: 8000,
     fallbackToSystem: false,
-  };
-  process.env.HOME = tempHome;
+  },
+  stt: {
+    provider: "openai",
+    providerId: openaiProvider.id,
+    model: "whisper-1",
+    language: "en",
+  },
 });
 
-afterEach(() => {
-  globalThis.fetch = originalFetch;
+const openaiFetchCalls = [];
+globalThis.fetch = (async (input, init) => {
+  openaiFetchCalls.push({
+    url: String(input),
+    body: typeof init?.body === "string" ? init.body : undefined,
+    headers: init?.headers || {},
+  });
+  return new Response(new Uint8Array([4, 5, 6]), { status: 200 });
+});
+
+const openaiResult = await synthesizeSpeech({ text: "Hello OpenAI", format: "wav" });
+const openaiCall = openaiFetchCalls[0];
+assert(openaiCall, "expected OpenAI fetch call");
+const openaiHeaders = new Headers(openaiCall.headers);
+
+console.log("@@REPORT@@" + JSON.stringify({
+  autoResolved: {
+    type: autoResolved?.type,
+    providerId: autoResolved?.provider.id,
+  },
+  badProviderError,
+  elevenlabs: {
+    provider: elevenResult.provider,
+    voice: elevenResult.voice,
+    model: elevenResult.model,
+    audioPath: elevenResult.audioPath,
+    fileMode: elevenStat.mode & 0o777,
+    url: elevenCall.url,
+    apiKey: elevenHeaders.get("xi-api-key"),
+    body: parseJsonBody(elevenCall.body),
+  },
+  openai: {
+    provider: openaiResult.provider,
+    voice: openaiResult.voice,
+    format: openaiResult.format,
+    url: openaiCall.url,
+    authorization: openaiHeaders.get("authorization"),
+    body: parseJsonBody(openaiCall.body),
+  },
+}));
+`;
+
+let tempHome = "";
+let report: SpeechWorkerReport;
+
+beforeAll(() => {
+  tempHome = mkdtempSync(join(tmpdir(), "cybara-speech-test-"));
+  const workerPath = join(tempHome, "speech-worker.ts");
+  writeFileSync(workerPath, WORKER_SOURCE, "utf8");
+
+  const result = Bun.spawnSync([process.execPath, "run", workerPath], {
+    cwd: ROOT_DIR,
+    env: {
+      ...process.env,
+      HOME: tempHome,
+      USERPROFILE: tempHome,
+      CYBARA_HOME: join(tempHome, ".cybara"),
+      LOG_LEVEL: "error",
+    },
+  });
+  const stdout = result.stdout.toString();
+  if (result.exitCode !== 0) {
+    throw new Error(`speech worker failed: ${result.stderr.toString()}\n${stdout}`);
+  }
+  const line = stdout.split("\n").find((entry) => entry.startsWith("@@REPORT@@"));
+  if (!line) throw new Error(`no speech report in worker output:\n${stdout}`);
+  report = JSON.parse(line.slice("@@REPORT@@".length)) as SpeechWorkerReport;
 });
 
 afterAll(() => {
-  if (originalHome === undefined) delete process.env.HOME;
-  else process.env.HOME = originalHome;
-  rmSync(tempHome, { recursive: true, force: true });
+  if (tempHome) rmSync(tempHome, { recursive: true, force: true });
 });
 
 describe("speech TTS provider selection", () => {
   test("auto mode prefers configured ElevenLabs before OpenAI", () => {
-    providerState.byId.set("openai-1", {
-      id: "openai-1",
-      provider: "openai",
-      name: "OpenAI",
-      api_key: "sk-test",
-      is_default: true,
-    });
-    providerState.byId.set("eleven-1", {
-      id: "eleven-1",
-      provider: "elevenlabs",
-      name: "ElevenLabs",
-      api_key: "eleven-test",
-      is_default: false,
-    });
-
-    const resolved = speech.resolveSpeechTtsProvider({});
-    expect(resolved?.type).toBe("elevenlabs");
-    expect(resolved?.provider.id).toBe("eleven-1");
+    expect(report.autoResolved.type).toBe("elevenlabs");
+    expect(typeof report.autoResolved.providerId).toBe("string");
   });
 
   test("explicit providerId must point at a speech-capable provider", () => {
-    providerState.byId.set("anthropic-1", {
-      id: "anthropic-1",
-      provider: "anthropic",
-      name: "Anthropic",
-      api_key: "ant-test",
-      is_default: false,
-    });
-
-    expect(() => speech.resolveSpeechTtsProvider({ providerId: "anthropic-1" })).toThrow(
-      /ElevenLabs, OpenAI, or OpenAI Codex/
-    );
+    expect(report.badProviderError).toContain("ElevenLabs, OpenAI, or OpenAI Codex");
   });
 });
 
 describe("speech synthesis requests", () => {
-  test("synthesizeSpeech builds ElevenLabs TTS requests and writes private audio", async () => {
-    providerState.byId.set("eleven-1", {
-      id: "eleven-1",
-      provider: "elevenlabs",
-      name: "ElevenLabs",
-      base_url: "https://api.elevenlabs.io/v1",
-      api_key: "eleven-test",
-      is_default: true,
-    });
-    configState.speech.tts.voice = "voice-abc";
-    configState.speech.tts.model = "eleven_flash_v2_5";
-    configState.speech.tts.speed = 1.2;
-
-    const fetchCalls: Array<{ url: string; body?: string; headers: HeadersInit }> = [];
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      fetchCalls.push({
-        url: String(input),
-        body: typeof init?.body === "string" ? init.body : undefined,
-        headers: init?.headers || {},
-      });
-      return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
-    }) as typeof fetch;
-
-    const result = await speech.synthesizeSpeech({ text: "Hello Cybara" });
-    expect(result.provider).toBe("elevenlabs");
-    expect(result.voice).toBe("voice-abc");
-    expect(result.model).toBe("eleven_flash_v2_5");
-    expect(result.audioPath).toContain(join(tempHome, ".cybara", "media"));
-
-    expect(fetchCalls).toHaveLength(1);
-    expect(fetchCalls[0]?.url).toContain("/text-to-speech/voice-abc");
-    const headers = new Headers(fetchCalls[0]?.headers);
-    expect(headers.get("xi-api-key")).toBe("eleven-test");
-    const body = JSON.parse(fetchCalls[0]?.body || "{}") as Record<string, unknown>;
-    expect(body.text).toBe("Hello Cybara");
-    expect(body.model_id).toBe("eleven_flash_v2_5");
-    expect((body.voice_settings as Record<string, unknown>).speed).toBe(1.2);
+  test("synthesizeSpeech builds ElevenLabs TTS requests and writes private audio", () => {
+    expect(report.elevenlabs.provider).toBe("elevenlabs");
+    expect(report.elevenlabs.voice).toBe("voice-abc");
+    expect(report.elevenlabs.model).toBe("eleven_flash_v2_5");
+    expect(report.elevenlabs.audioPath).toContain(join(tempHome, ".cybara", "media"));
+    expect(report.elevenlabs.fileMode).toBe(0o600);
+    expect(report.elevenlabs.url).toContain("/text-to-speech/voice-abc");
+    expect(report.elevenlabs.apiKey).toBe("eleven-test");
+    expect(report.elevenlabs.body.text).toBe("Hello Cybara");
+    expect(report.elevenlabs.body.model_id).toBe("eleven_flash_v2_5");
+    expect((report.elevenlabs.body.voice_settings as Record<string, unknown>).speed).toBe(1.2);
   });
 
-  test("synthesizeSpeech builds OpenAI audio speech requests", async () => {
-    providerState.byId.set("openai-1", {
-      id: "openai-1",
-      provider: "openai",
-      name: "OpenAI",
-      base_url: "https://api.openai.com/v1",
-      api_key: "sk-test",
-      is_default: true,
-    });
-    configState.speech.tts.provider = "openai";
-    configState.speech.tts.model = "gpt-4o-mini-tts";
-    configState.speech.tts.voice = "nova";
-
-    const fetchCalls: Array<{ url: string; body?: string; headers: HeadersInit }> = [];
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      fetchCalls.push({
-        url: String(input),
-        body: typeof init?.body === "string" ? init.body : undefined,
-        headers: init?.headers || {},
-      });
-      return new Response(new Uint8Array([4, 5, 6]), { status: 200 });
-    }) as typeof fetch;
-
-    const result = await speech.synthesizeSpeech({ text: "Hello OpenAI", format: "wav" });
-    expect(result.provider).toBe("openai");
-    expect(result.voice).toBe("nova");
-    expect(result.format).toBe("wav");
-
-    expect(fetchCalls).toHaveLength(1);
-    expect(fetchCalls[0]?.url).toBe("https://api.openai.com/v1/audio/speech");
-    const headers = new Headers(fetchCalls[0]?.headers);
-    expect(headers.get("Authorization")).toBe("Bearer sk-test");
-    const body = JSON.parse(fetchCalls[0]?.body || "{}") as Record<string, unknown>;
-    expect(body.input).toBe("Hello OpenAI");
-    expect(body.model).toBe("gpt-4o-mini-tts");
-    expect(body.voice).toBe("nova");
-    expect(body.response_format).toBe("wav");
+  test("synthesizeSpeech builds OpenAI audio speech requests", () => {
+    expect(report.openai.provider).toBe("openai");
+    expect(report.openai.voice).toBe("nova");
+    expect(report.openai.format).toBe("wav");
+    expect(report.openai.url).toBe("https://api.openai.com/v1/audio/speech");
+    expect(report.openai.authorization).toBe("Bearer sk-test");
+    expect(report.openai.body.input).toBe("Hello OpenAI");
+    expect(report.openai.body.model).toBe("gpt-4o-mini-tts");
+    expect(report.openai.body.voice).toBe("nova");
+    expect(report.openai.body.response_format).toBe("wav");
   });
 });

@@ -295,9 +295,9 @@ Analyze an image with vision models.
 ```
 
 ### tts
-Text-to-speech generation.
+Text-to-speech generation through the configured speech provider (ElevenLabs/OpenAI) with macOS system voice fallback.
 ```json
-{"name": "tts", "args": {"text": "Hello world", "voice": "nova"}}
+{"name": "tts", "args": {"text": "Hello world", "provider": "elevenlabs", "voice": "VOICE_ID", "format": "mp3"}}
 ```
 
 ## Data & Utility

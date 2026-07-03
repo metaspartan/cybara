@@ -17,7 +17,7 @@ import type { Channel } from "../../database";
 import * as subagentRegistry from "../../subagent-registry";
 import type { SubagentRunRecord } from "../../subagent-registry";
 import { getInboundMediaRootDir, saveInboundMediaFromUrl } from "../../channels/media";
-import { synthesizeSpeech, type SpeechSynthesisResult } from "../../speech";
+import { synthesizeSpeech, synthesizeWithSystemVoice, type SpeechSynthesisResult } from "../../speech";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -1155,60 +1155,18 @@ export async function handleTTS(args: Record<string, unknown>): Promise<SpeechSy
 export async function handleSystemTTS(
   args: Record<string, unknown>
 ): Promise<{ audioPath: string; text: string; voice?: string; format: string }> {
-  const text = typeof args.text === "string" ? args.text.trim() : "";
-  if (!text) {
-    throw new Error("text is required");
-  }
-
-  if (platform() !== "darwin") {
-    throw new Error(
-      "tts uses the macOS 'say' synthesizer and is only available on macOS. " +
-        "Configure an external TTS provider for other platforms."
-    );
-  }
-
-  const which = Bun.spawnSync(["which", "say"]);
-  if (which.exitCode !== 0) {
-    throw new Error("The macOS 'say' command was not found.");
-  }
-
-  const voice = typeof args.voice === "string" && args.voice.trim() ? args.voice.trim() : undefined;
-  const rate =
-    typeof args.rate === "number" && Number.isFinite(args.rate)
-      ? Math.max(80, Math.min(500, Math.floor(args.rate)))
-      : undefined;
-  const requestedFormat =
-    typeof args.format === "string" && ["aiff", "m4a", "wav"].includes(args.format)
-      ? (args.format as "aiff" | "m4a" | "wav")
-      : "aiff";
-
-  const mediaDir = join(homedir(), ".cybara", "media");
-  mkdirSync(mediaDir, { recursive: true });
-  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const aiffPath = join(mediaDir, `tts-${stamp}.aiff`);
-
-  const sayArgs: string[] = [];
-  if (voice) sayArgs.push("-v", voice);
-  if (rate) sayArgs.push("-r", String(rate));
-  sayArgs.push("-o", aiffPath, "--", text); // -- stops flag parsing; text passed as one arg
-
-  const said = Bun.spawnSync(["say", ...sayArgs]);
-  if (said.exitCode !== 0) {
-    throw new Error(said.stderr.toString().trim() || "macOS 'say' synthesis failed.");
-  }
-
-  // Optionally transcode to m4a/wav via afconvert (ships with macOS).
-  if (requestedFormat !== "aiff") {
-    const outPath = join(mediaDir, `tts-${stamp}.${requestedFormat}`);
-    const fmtFlag = requestedFormat === "m4a" ? ["-f", "m4af", "-d", "aac"] : ["-f", "WAVE", "-d", "LEI16"];
-    const conv = Bun.spawnSync(["afconvert", aiffPath, outPath, ...fmtFlag]);
-    if (conv.exitCode === 0 && existsSync(outPath)) {
-      return { audioPath: outPath, text, voice, format: requestedFormat };
-    }
-    // Fall back to the AIFF if conversion isn't available.
-  }
-
-  return { audioPath: aiffPath, text, voice, format: "aiff" };
+  const result = await synthesizeWithSystemVoice({
+    text: typeof args.text === "string" ? args.text : "",
+    voice: typeof args.voice === "string" ? args.voice : undefined,
+    rate: typeof args.rate === "number" ? args.rate : undefined,
+    format: typeof args.format === "string" ? args.format : undefined,
+  });
+  return {
+    audioPath: result.audioPath,
+    text: result.text,
+    voice: result.voice,
+    format: result.format,
+  };
 }
 
 export async function handleCron(args: Record<string, unknown>): Promise<{
