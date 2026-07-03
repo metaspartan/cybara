@@ -186,7 +186,7 @@ struct GatewayProviderModel: Decodable, Identifiable, Hashable {
     }
 }
 
-enum JSONValue: Decodable, Hashable {
+enum JSONValue: Decodable, Hashable, Sendable {
     case string(String)
     case bool(Bool)
     case number(Double)
@@ -1166,7 +1166,7 @@ struct MetricsOverview: Decodable {
     let contextHealth: ContextHealth?
 }
 
-struct MetricModelToken: Decodable, Identifiable, Hashable {
+struct MetricModelToken: Decodable, Identifiable, Hashable, Sendable {
     let model: String
     let tokens: Int
 
@@ -1183,7 +1183,7 @@ struct MetricModelToken: Decodable, Identifiable, Hashable {
     }
 }
 
-struct MetricProviderToken: Decodable, Identifiable, Hashable {
+struct MetricProviderToken: Decodable, Identifiable, Hashable, Sendable {
     let provider: String
     let tokens: Int
 
@@ -1200,7 +1200,7 @@ struct MetricProviderToken: Decodable, Identifiable, Hashable {
     }
 }
 
-struct MetricTimelinePoint: Decodable, Identifiable, Hashable {
+struct MetricTimelinePoint: Decodable, Identifiable, Hashable, Sendable {
     let timestamp: String?
     let type: String?
     let tool: String?
@@ -1212,7 +1212,7 @@ struct MetricTimelinePoint: Decodable, Identifiable, Hashable {
     var id: String { [timestamp, type, tool].compactMap { $0 }.joined(separator: "-") }
 }
 
-struct TokenMetrics: Decodable, Hashable {
+struct TokenMetrics: Decodable, Hashable, Sendable {
     let topModels: [MetricModelToken]
     let topProviders: [MetricProviderToken]
     let recentUsage: [MetricTimelinePoint]
@@ -1220,7 +1220,7 @@ struct TokenMetrics: Decodable, Hashable {
     let estimatedCost: Double?
 }
 
-struct MetricFilePath: Decodable, Identifiable, Hashable {
+struct MetricFilePath: Decodable, Identifiable, Hashable, Sendable {
     let path: String
     let count: Int
 
@@ -1237,14 +1237,14 @@ struct MetricFilePath: Decodable, Identifiable, Hashable {
     }
 }
 
-struct FileMetrics: Decodable, Hashable {
+struct FileMetrics: Decodable, Hashable, Sendable {
     let mostRead: [MetricFilePath]
     let mostWritten: [MetricFilePath]
     let mostEdited: [MetricFilePath]
     let recentOperations: [MetricTimelinePoint]
 }
 
-struct MetricToolUsage: Decodable, Identifiable, Hashable {
+struct MetricToolUsage: Decodable, Identifiable, Hashable, Sendable {
     let tool: String
     let calls: Int
 
@@ -1261,7 +1261,7 @@ struct MetricToolUsage: Decodable, Identifiable, Hashable {
     }
 }
 
-struct MetricToolError: Decodable, Identifiable, Hashable {
+struct MetricToolError: Decodable, Identifiable, Hashable, Sendable {
     let tool: String
     let errors: Int
 
@@ -1278,13 +1278,13 @@ struct MetricToolError: Decodable, Identifiable, Hashable {
     }
 }
 
-struct ToolMetrics: Decodable, Hashable {
+struct ToolMetrics: Decodable, Hashable, Sendable {
     let mostUsed: [MetricToolUsage]
     let mostErrors: [MetricToolError]
     let recentCalls: [MetricTimelinePoint]
 }
 
-struct MetricProviderSummary: Decodable, Identifiable, Hashable {
+struct MetricProviderSummary: Decodable, Identifiable, Hashable, Sendable {
     let provider: String
     let url: String?
     let hits: Int
@@ -1305,11 +1305,11 @@ struct MetricProviderSummary: Decodable, Identifiable, Hashable {
     }
 }
 
-struct ProviderMetrics: Decodable, Hashable {
+struct ProviderMetrics: Decodable, Hashable, Sendable {
     let providers: [MetricProviderSummary]
 }
 
-struct TimeSeriesDay: Decodable, Identifiable, Hashable {
+struct TimeSeriesDay: Decodable, Identifiable, Hashable, Sendable {
     let date: String
     let values: [String: Double]
 
@@ -1336,11 +1336,11 @@ struct TimeSeriesDay: Decodable, Identifiable, Hashable {
     }
 }
 
-struct TimeSeriesData: Decodable, Hashable {
+struct TimeSeriesData: Decodable, Hashable, Sendable {
     let days: [TimeSeriesDay]
 }
 
-struct MetricStorageComponent: Decodable, Hashable {
+struct MetricStorageComponent: Decodable, Hashable, Sendable {
     let path: String?
     let bytes: Int
 
@@ -1355,8 +1355,8 @@ struct MetricStorageComponent: Decodable, Hashable {
     }
 }
 
-struct MetricsStorage: Decodable, Hashable {
-    struct Directories: Decodable, Hashable {
+struct MetricsStorage: Decodable, Hashable, Sendable {
+    struct Directories: Decodable, Hashable, Sendable {
         let cybaraDir: String?
         let dataDir: String?
         let logsDir: String?
@@ -1369,7 +1369,7 @@ struct MetricsStorage: Decodable, Hashable {
         let channelsDir: String?
     }
 
-    struct Components: Decodable, Hashable {
+    struct Components: Decodable, Hashable, Sendable {
         let database: MetricStorageComponent?
         let artifacts: MetricStorageComponent?
         let logs: MetricStorageComponent?
@@ -1383,7 +1383,7 @@ struct MetricsStorage: Decodable, Hashable {
         let data: MetricStorageComponent?
     }
 
-    struct TopLevelEntry: Decodable, Identifiable, Hashable {
+    struct TopLevelEntry: Decodable, Identifiable, Hashable, Sendable {
         let name: String
         let path: String
         let bytes: Int
@@ -1426,7 +1426,7 @@ struct MetricsStorage: Decodable, Hashable {
     }
 }
 
-struct MetricModelPerformance: Decodable, Identifiable, Hashable {
+struct MetricModelPerformance: Decodable, Identifiable, Hashable, Sendable {
     let model: String
     let provider: String
     let avgTps: Double
@@ -1439,12 +1439,12 @@ struct MetricModelPerformance: Decodable, Identifiable, Hashable {
     var id: String { "\(provider)-\(model)" }
 }
 
-struct ModelMetrics: Decodable, Hashable {
+struct ModelMetrics: Decodable, Hashable, Sendable {
     let models: [MetricModelPerformance]
 }
 
-struct MetricsInsights: Decodable, Hashable {
-    struct TokenBreakdown: Decodable, Hashable {
+struct MetricsInsights: Decodable, Hashable, Sendable {
+    struct TokenBreakdown: Decodable, Hashable, Sendable {
         let total: Int?
         let input: Int?
         let output: Int?
@@ -1454,25 +1454,25 @@ struct MetricsInsights: Decodable, Hashable {
         let cachePct: Double?
     }
 
-    struct Trend: Decodable, Hashable {
+    struct Trend: Decodable, Hashable, Sendable {
         let current: Int?
         let previous: Int?
         let changePct: Double?
         let direction: String?
     }
 
-    struct CacheEfficiency: Decodable, Hashable {
+    struct CacheEfficiency: Decodable, Hashable, Sendable {
         let cacheTokens: Int?
         let cacheSharePct: Double?
     }
 
-    struct TopModel: Decodable, Hashable {
+    struct TopModel: Decodable, Hashable, Sendable {
         let model: String
         let tokens: Int
         let sharePct: Double
     }
 
-    struct ProviderEfficiency: Decodable, Identifiable, Hashable {
+    struct ProviderEfficiency: Decodable, Identifiable, Hashable, Sendable {
         let provider: String
         let tokens: Int
         let calls: Int
@@ -1482,7 +1482,7 @@ struct MetricsInsights: Decodable, Hashable {
         var id: String { provider }
     }
 
-    struct ModelInsight: Decodable, Identifiable, Hashable {
+    struct ModelInsight: Decodable, Identifiable, Hashable, Sendable {
         let model: String
         let provider: String
         let avgTps: Double
@@ -1496,20 +1496,20 @@ struct MetricsInsights: Decodable, Hashable {
         var id: String { "\(provider)-\(model)" }
     }
 
-    struct ToolReliability: Decodable, Hashable {
+    struct ToolReliability: Decodable, Hashable, Sendable {
         let totalCalls: Int?
         let totalErrors: Int?
         let successRatePct: Double?
     }
 
-    struct ToolUsage24h: Decodable, Identifiable, Hashable {
+    struct ToolUsage24h: Decodable, Identifiable, Hashable, Sendable {
         let tool: String
         let calls: Int
 
         var id: String { tool }
     }
 
-    struct ContextHealth24h: Decodable, Hashable {
+    struct ContextHealth24h: Decodable, Hashable, Sendable {
         let warnings: Int?
         let criticalWarnings: Int?
     }
@@ -1525,8 +1525,8 @@ struct MetricsInsights: Decodable, Hashable {
     let contextHealth24h: ContextHealth24h?
 }
 
-struct TokenAnalysisMetrics: Decodable, Hashable {
-    struct Summary: Decodable, Hashable {
+struct TokenAnalysisMetrics: Decodable, Hashable, Sendable {
+    struct Summary: Decodable, Hashable, Sendable {
         let callCount: Int?
         let totalTokens: Int?
         let totalInputTokens: Int?
@@ -1537,8 +1537,8 @@ struct TokenAnalysisMetrics: Decodable, Hashable {
         let outputToInputRatio: Double?
     }
 
-    struct PromptOutputDistribution: Decodable, Hashable {
-        struct Band: Decodable, Identifiable, Hashable {
+    struct PromptOutputDistribution: Decodable, Hashable, Sendable {
+        struct Band: Decodable, Identifiable, Hashable, Sendable {
             let band: String
             let calls: Int
             let sharePct: Double
@@ -1550,8 +1550,8 @@ struct TokenAnalysisMetrics: Decodable, Hashable {
         let bands: [Band]
     }
 
-    struct TokenHeatmap: Decodable, Hashable {
-        struct HottestHour: Decodable, Hashable {
+    struct TokenHeatmap: Decodable, Hashable, Sendable {
+        struct HottestHour: Decodable, Hashable, Sendable {
             let date: String?
             let dayLabel: String?
             let hour: Int?
@@ -1559,8 +1559,8 @@ struct TokenAnalysisMetrics: Decodable, Hashable {
             let calls: Int?
         }
 
-        struct Day: Decodable, Identifiable, Hashable {
-            struct Hour: Decodable, Identifiable, Hashable {
+        struct Day: Decodable, Identifiable, Hashable, Sendable {
+            struct Hour: Decodable, Identifiable, Hashable, Sendable {
                 let hour: Int
                 let tokens: Int
                 let calls: Int
@@ -1582,7 +1582,7 @@ struct TokenAnalysisMetrics: Decodable, Hashable {
         let days: [Day]
     }
 
-    struct TokenCloudEntry: Decodable, Identifiable, Hashable {
+    struct TokenCloudEntry: Decodable, Identifiable, Hashable, Sendable {
         let token: String
         let category: String
         let weight: Int
@@ -1591,7 +1591,7 @@ struct TokenAnalysisMetrics: Decodable, Hashable {
         var id: String { "\(category)-\(token)" }
     }
 
-    struct ModelThoughtProfile: Decodable, Identifiable, Hashable {
+    struct ModelThoughtProfile: Decodable, Identifiable, Hashable, Sendable {
         let model: String
         let provider: String
         let totalTokens: Int
@@ -1606,7 +1606,7 @@ struct TokenAnalysisMetrics: Decodable, Hashable {
         var id: String { "\(provider)-\(model)" }
     }
 
-    struct TokenBurst: Decodable, Identifiable, Hashable {
+    struct TokenBurst: Decodable, Identifiable, Hashable, Sendable {
         let timestamp: String
         let model: String
         let provider: String
@@ -1619,7 +1619,7 @@ struct TokenAnalysisMetrics: Decodable, Hashable {
         var id: String { "\(timestamp)-\(provider)-\(model)" }
     }
 
-    struct Windows: Decodable, Hashable {
+    struct Windows: Decodable, Hashable, Sendable {
         let analyzedDays: Int?
         let velocityHours: Int?
         let newestCallAt: String?

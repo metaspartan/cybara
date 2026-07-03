@@ -1,6 +1,22 @@
 import AppKit
 import SwiftUI
 
+private enum NativeSettingsLayout {
+    static let outerPadding = EdgeInsets(top: 20, leading: 22, bottom: 20, trailing: 22)
+    static let contentInset = EdgeInsets(top: 10, leading: 2, bottom: 16, trailing: 2)
+    static let cardSpacing: CGFloat = 12
+    static let maxContentWidth: CGFloat = 860
+}
+
+private extension View {
+    func nativeSettingsContentLayout() -> some View {
+        self
+            .padding(NativeSettingsLayout.contentInset)
+            .frame(maxWidth: NativeSettingsLayout.maxContentWidth, alignment: .topLeading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+}
+
 struct NativeSettingsScreen: View {
     let client: GatewayClient
     var onAccentChanged: (String) -> Void = { _ in }
@@ -54,7 +70,7 @@ struct NativeSettingsScreen: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             ScreenHeader(title: "Settings", subtitle: "Native app preferences synced through the gateway")
 
             TabView(selection: $selectedTab) {
@@ -74,13 +90,14 @@ struct NativeSettingsScreen: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(NativeSettingsLayout.outerPadding)
         .task(id: sidecar.isReady) { await load() }
     }
 
     private var generalTab: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: NativeSettingsLayout.cardSpacing) {
                 GlassCard {
                     HStack(spacing: 14) {
                         CybaraLogo(size: 52)
@@ -117,13 +134,13 @@ struct NativeSettingsScreen: View {
                     }
                 }
             }
-            .padding(.vertical, 12)
+            .nativeSettingsContentLayout()
         }
     }
 
     private var gatewayTab: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: NativeSettingsLayout.cardSpacing) {
                 GlassCard {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack(alignment: .top, spacing: 14) {
@@ -198,7 +215,7 @@ struct NativeSettingsScreen: View {
                     }
                 }
             }
-            .padding(.vertical, 12)
+            .nativeSettingsContentLayout()
         }
     }
 
@@ -250,13 +267,13 @@ struct NativeSettingsScreen: View {
                     }
                 }
             }
-            .padding(.vertical, 12)
+            .nativeSettingsContentLayout()
         }
     }
 
     private var modelTab: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: NativeSettingsLayout.cardSpacing) {
                 GlassCard {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Default Model")
@@ -297,13 +314,13 @@ struct NativeSettingsScreen: View {
                     }
                 }
             }
-            .padding(.vertical, 12)
+            .nativeSettingsContentLayout()
         }
     }
 
     private var speechTab: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: NativeSettingsLayout.cardSpacing) {
                 GlassCard {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
@@ -332,13 +349,9 @@ struct NativeSettingsScreen: View {
                         .pickerStyle(.menu)
                         .onChange(of: speechTTSProviderId) { _, _ in saveSpeechSettings() }
 
-                        HStack(spacing: 12) {
-                            TextField("Model", text: $speechTTSModel)
-                                .textFieldStyle(.roundedBorder)
-                                .onSubmit { saveSpeechSettings() }
-                            TextField("Voice ID or name", text: $speechTTSVoice)
-                                .textFieldStyle(.roundedBorder)
-                                .onSubmit { saveSpeechSettings() }
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 12) { ttsTextFields }
+                            VStack(alignment: .leading, spacing: 10) { ttsTextFields }
                         }
 
                         Picker("Format", selection: $speechTTSFormat) {
@@ -375,14 +388,9 @@ struct NativeSettingsScreen: View {
                         .pickerStyle(.menu)
                         .onChange(of: speechSTTProviderId) { _, _ in saveSpeechSettings() }
 
-                        HStack(spacing: 12) {
-                            TextField("Model", text: $speechSTTModel)
-                                .textFieldStyle(.roundedBorder)
-                                .onSubmit { saveSpeechSettings() }
-                            TextField("Language", text: $speechSTTLanguage)
-                                .textFieldStyle(.roundedBorder)
-                                .onSubmit { saveSpeechSettings() }
-                                .frame(width: 140)
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 12) { sttTextFields }
+                            VStack(alignment: .leading, spacing: 10) { sttTextFields }
                         }
                     }
                 }
@@ -398,13 +406,13 @@ struct NativeSettingsScreen: View {
                     .disabled(savingKey == "speech")
                 }
             }
-            .padding(.vertical, 12)
+            .nativeSettingsContentLayout()
         }
     }
 
     private var featuresTab: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: NativeSettingsLayout.cardSpacing) {
                 GlassCard {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Platform Features")
@@ -461,8 +469,29 @@ struct NativeSettingsScreen: View {
                     }
                 }
             }
-            .padding(.vertical, 12)
+            .nativeSettingsContentLayout()
         }
+    }
+
+    @ViewBuilder
+    private var ttsTextFields: some View {
+        TextField("Model", text: $speechTTSModel)
+            .textFieldStyle(.roundedBorder)
+            .onSubmit { saveSpeechSettings() }
+        TextField("Voice ID or name", text: $speechTTSVoice)
+            .textFieldStyle(.roundedBorder)
+            .onSubmit { saveSpeechSettings() }
+    }
+
+    @ViewBuilder
+    private var sttTextFields: some View {
+        TextField("Model", text: $speechSTTModel)
+            .textFieldStyle(.roundedBorder)
+            .onSubmit { saveSpeechSettings() }
+        TextField("Language", text: $speechSTTLanguage)
+            .textFieldStyle(.roundedBorder)
+            .onSubmit { saveSpeechSettings() }
+            .frame(maxWidth: 160)
     }
 
     private var advancedTab: some View {
@@ -481,7 +510,8 @@ struct NativeSettingsScreen: View {
             advancedContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(.vertical, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 16)
     }
 
     @ViewBuilder
