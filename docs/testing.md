@@ -1,14 +1,16 @@
 # Testing Guide
 
-Cybara uses Bun-native automated tests for core backend, CLI, channel adapters, and key UI/Tauri seams. Core modules have dedicated unit tests covering pure logic (prompt caching, path policy, error classification, rate-limit/credential rotation, retry, kanban orchestration, media-generation registry, planning tools, and versioning helpers).
+Cybara uses Bun-native automated tests for core backend, API routes, CLI, channel adapters, runtime packaging, mobile helpers, and key UI/Tauri seams. Core modules have dedicated unit tests covering pure logic (prompt caching, path policy, error classification, rate-limit/credential rotation, retry, kanban orchestration, media-generation registry, planning tools, workspace indexing, embedding batching, and versioning helpers).
 
 ## Run Everything
 
 ```bash
-bun run test           # all unit/integration tests (core, api, channels, cli, runtime)
+bun run test           # all unit/integration tests (core, api, channels, cli, runtime, mobile, ui)
 bun run test:core      # core unit tests only (fast, no network)
 bun run test:smoke     # CI gate: core + runtime + security + e2e
+bun run test:smoke:full # broader live E2E smoke suite
 bun run check          # typecheck + lint + format check
+bun run check:ci       # release quality gate
 bun run build:all
 ```
 
@@ -68,6 +70,9 @@ bun run mobile:typecheck
 
 # Build script/platform mapping
 bun test tests/scripts
+
+# Sidecar runtime packaging and import guards
+bun test tests/scripts/build-sidecar.test.ts tests/core/sidecar-startup-imports.test.ts
 
 # End-to-end smoke flows (live server + CLI/UI/terminal)
 bun test tests/e2e
@@ -131,6 +136,7 @@ bun test tests/core/tool-schema-import.test.ts tests/core/agent-tool-allowlist.t
 - Live E2E CLI auth: protected command behavior with missing auth, `CYBARA_API_KEY` env auth, `~/.cybara/api_key` fallback, and env-vs-file precedence
 - Opt-in browser E2E: `RUN_BROWSER_E2E=1 bun test tests/e2e/ide-web-ui-browser-smoke.test.ts` builds the UI, starts a live isolated server, completes setup, opens a TypeScript file in `/ide`, switches to another TypeScript file through the explorer, and fails on React hook-order/runtime errors
 - Runtime guards: no hardcoded workspace paths, package script contracts, compiled UI path resolution
+- Sidecar runtime packaging: Tauri sidecar target mapping, dynamic ONNX `napi-v*` binding discovery, packaged `CYBARA_RESOURCE_DIR` runtime lookup, and lazy imports for `@huggingface/transformers` / ONNX Runtime
 - Tauri wiring contracts: sidecar spawn/kill and bundled UI/resources configuration
 - Supply chain checks: Bun audit for root/UI packages, Cargo audit for desktop crates, and OSV source scanning for lockfile advisories
 

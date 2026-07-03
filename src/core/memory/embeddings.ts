@@ -514,6 +514,7 @@ function dedupePaths(paths: string[]): string[] {
 
 function collectSearchRoots(maxDepth = 8): string[] {
     const seeds = [
+        process.env.CYBARA_RESOURCE_DIR,
         process.cwd(),
         dirname(process.execPath),
     ].filter((value): value is string => typeof value === "string" && value.length > 0);

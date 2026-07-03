@@ -9,9 +9,9 @@ This document covers the production desktop release paths for both the Tauri des
 - **Native Performance**: Built with Rust, minimal resource usage
 - **Native Notifications**: OS-level alerts for important events
 - **Web Terminal**: Full PTY terminal accessible from the UI (auto-enabled in dev)
-- **Offline Capable**: Local model support via Ollama
-- **Cross-Platform**: macOS (Apple Silicon & Intel), Linux (x64 & arm64), Windows (x64 and arm64)
-- **Bundled UI**: All assets embedded in the app bundle
+- **Offline Capable**: Local model support via Ollama and packaged local indexing support through Transformers.js/ONNX assets
+- **Cross-Platform**: official Tauri release builds cover macOS Apple Silicon/Intel, Windows x64, and Linux x64; the sidecar builder also maps Linux arm64 and Windows arm64 for custom/source packaging
+- **Bundled UI + Runtime Assets**: UI, sidecar, `secp256k1.wasm`, Playwright runtime, and local embedding runtime assets are embedded in release bundles
 
 ## Installation
 
@@ -24,9 +24,7 @@ Download the latest release from [GitHub Releases](https://github.com/metasparta
 | macOS (Apple Silicon) | `Cybara_x.x.x_aarch64.dmg` |
 | macOS (Intel) | `Cybara_x.x.x_x64.dmg` |
 | macOS native SwiftUI (Apple Silicon) | `Cybara-native-macos-arm64-x.y.z.zip` |
-| macOS native SwiftUI (Intel) | `Cybara-native-macos-x86_64-x.y.z.zip` |
 | Linux (x64) | `cybara_x.x.x_amd64.deb` / `.rpm` / `.AppImage` |
-| Linux (arm64) | `cybara_x.x.x_arm64.deb` / `.rpm` / `.AppImage` |
 | Windows (x64) | `Cybara_x.x.x_x64-setup.exe` |
 
 ### macOS: "Cybara.app is damaged and can't be opened"
@@ -55,7 +53,7 @@ Official release builds include a signed updater channel backed by GitHub Releas
 - click `Check Now`
 - click `Install And Restart` when a newer version is available
 
-The updater consumes the `latest.json` artifact uploaded by the desktop publish workflow and relaunches the app after install.
+The updater consumes the `latest.json` artifact uploaded by the release workflow and relaunches the app after install.
 
 The native SwiftUI macOS bundles do not use the Tauri updater. Update those by downloading the latest bundle zip from GitHub Releases.
 
@@ -71,6 +69,9 @@ bun install
 
 # Build the sidecar (platform-aware)
 bun run tauri:sidecar
+
+# Cross-build a sidecar for a specific Tauri target when needed
+CYBARA_SIDECAR_BUN_TARGET=bun-windows-x64 bun run tauri:sidecar
 
 # Run in development mode (includes --enable-terminal)
 bun run tauri:dev
@@ -127,22 +128,30 @@ curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh 
 
 ## Architecture
 
+Tauri release builds package the same sidecar/runtime contract and bundle resources from `src-tauri/bin` via `src-tauri/tauri.conf.json`:
+
+- `bin/cybara-*` sidecar executable
+- `bin/node_modules` copied into app resources as `node_modules`
+- `bin/ui/dist` copied into app resources as `ui/dist`
+- `bin/secp256k1.wasm`
+- `bin/onnxruntime/<platform>/<arch>` for the target native ONNX binding when available
+
 The native SwiftUI macOS bundle embeds the Cybara sidecar binary and bundles the web UI alongside the shell:
 
-```
-
-Tauri release builds package the same sidecar/runtime contract, but keep the web UI under `Contents/Resources/_up_/ui/dist/` and use the Rust shell executable instead of the SwiftUI shell.
+```text
 Cybara.app/
 ├── Contents/
 │   ├── MacOS/
 │   │   ├── Cybara            # Native SwiftUI shell executable
 │   │   └── sidecar/
 │   │       ├── cybara        # Sidecar binary (Bun-compiled)
-│   │       ├── secp256k1.wasm
 │   │       ├── onnxruntime/
-│   │       └── ui/dist/
+│   │       └── node_modules/
 │   ├── Resources/
-│   │   └── AppIcon.icns
+│   │   ├── AppIcon.icns
+│   │   └── sidecar/
+│   │       ├── secp256k1.wasm
+│   │       └── ui/dist/
 │   └── Info.plist
 ```
 
@@ -163,12 +172,22 @@ bun run tauri:sidecar
 ```
 
 This creates the correctly-named binary that Tauri expects:
+
 - macOS arm64: `cybara-aarch64-apple-darwin`
 - macOS x64: `cybara-x86_64-apple-darwin`
 - Linux x64: `cybara-x86_64-unknown-linux-gnu`
 - Linux arm64: `cybara-aarch64-unknown-linux-gnu`
 - Windows x64: `cybara-x86_64-pc-windows-msvc.exe`
 - Windows arm64: `cybara-aarch64-pc-windows-msvc.exe`
+
+It also copies sidecar runtime assets into `release/`, `src-tauri/bin/`, and the Tauri debug target directory:
+
+- `@huggingface/transformers` dist files
+- `onnxruntime-node` dist files plus the target native `napi-v*` binding when the installed package ships one
+- `onnxruntime-web` dist files for WASM/Web fallback
+- `onnxruntime-common`, `sharp`, `@img`, Playwright packages, and `secp256k1.wasm`
+
+The ONNX binding lookup is N-API-version agnostic and uses `process.platform` / `process.arch`. If the installed `onnxruntime-node` package does not ship a native binding for the target, the sidecar still bundles ONNX Web/WASM fallback assets so local Transformers.js embeddings can degrade gracefully.
 
 ## Development
 
@@ -177,7 +196,7 @@ This creates the correctly-named binary that Tauri expects:
 - [Rust](https://rustup.rs/) (latest stable)
 - [Bun](https://bun.sh/) (v1.0+)
 - Xcode Command Line Tools (macOS)
-- `libwebkit2gtk-4.1-dev`, `libappindicator3-dev` (Linux)
+- `libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `patchelf`, `build-essential`, `libssl-dev` (Linux)
 
 ### Commands
 
@@ -221,9 +240,9 @@ Desktop auto-updates require signing keys in GitHub Actions:
 - `TAURI_SIGNING_PRIVATE_KEY`
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
 
-The desktop publish workflow generates `src-tauri/tauri.release.conf.json`, enables updater artifacts, signs the updater bundle, and uploads `latest.json` to the tagged GitHub release.
+The release workflow generates `src-tauri/tauri.release.conf.json`, enables updater artifacts, signs the updater bundle, and uploads `latest.json` to the tagged GitHub release.
 
-The publish workflow refuses to flip a release from draft to published unless `latest.json` is present on the release. If the signing secrets are missing, `tauri-action` silently skips `latest.json`, so the workflow fails loudly with a maintainer-actionable message instead of shipping a desktop app whose in-app updater 404s forever.
+The final publish job refuses to flip a release from draft to published unless `latest.json` is present and passes `scripts/verify-tauri-updater-manifest.ts`. If the signing secrets are missing, `tauri-action` can skip `latest.json`, so the workflow fails loudly with a maintainer-actionable message instead of shipping a desktop app whose in-app updater 404s forever.
 
 ### CLI updater integrity
 
@@ -233,13 +252,13 @@ The same workflow also packages native SwiftUI macOS `.app` bundles and uploads 
 
 Optional native macOS signing/notary secrets:
 
-- `APPLE_DEVELOPER_ID_CERTIFICATE_P12`
-- `APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD`
-- `APPLE_DEVELOPER_ID_SIGNING_IDENTITY`
-- `APPLE_KEYCHAIN_PASSWORD`
-- `APPLE_ID`
-- `APPLE_APP_SPECIFIC_PASSWORD`
-- `APPLE_TEAM_ID`
+- `MACOS_CERTIFICATE`
+- `MACOS_CERTIFICATE_PASSWORD`
+- `MACOS_SIGN_IDENTITY`
+- `MACOS_KEYCHAIN_PASSWORD`
+- `MACOS_NOTARY_API_KEY`
+- `MACOS_NOTARY_API_KEY_ID`
+- `MACOS_NOTARY_API_ISSUER_ID`
 
 ## Troubleshooting
 

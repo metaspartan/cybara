@@ -33,7 +33,7 @@ Cybara is an agent operating system for developers and operators who want one st
 - AI chat and multi-agent orchestration
 - local and remote tool execution
 - browser and API automation
-- secure messaging channels across platforms including Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Matrix, Mattermost, Microsoft Teams, Feishu/Lark, DingTalk, WeCom, Zulip, LINE, Google Chat, IRC, ntfy, Twitch, Nextcloud, Synology, Zalo, Home Assistant, Web, Webhook, SMS, and Email)
+- secure messaging channels across platforms including Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Matrix, Mattermost, Microsoft Teams, Feishu/Lark, DingTalk, WeCom, Zulip, LINE, Google Chat, IRC, ntfy, Twitch, Nextcloud, Synology, Zalo, Home Assistant, Web, Webhook, SMS, and Email
 - encrypted wallet operations across ETH/BTC/SOL with policy controls
 
 If you need an agent platform that can plan, execute, verify, and report with strong operator control, Cybara is built for that.
@@ -56,6 +56,7 @@ If you need an agent platform that can plan, execute, verify, and report with st
 - Interactive tool approval with per-session/persistent allowlists, filesystem checkpoint/snapshot+rollback, and transform hooks (tool_result/llm_output/terminal_output)
 - Token streaming to the UI (real-time assistant text deltas via WebSocket)
 - MCP host mode (expose cybara's tools to other MCP clients) + MCP client (consume external servers)
+- Local workspace indexing with lexical search plus optional local Transformers.js embeddings; packaged desktop sidecars bundle Transformers.js, ONNX Runtime native binaries when available, and ONNX Web/WASM fallback assets
 - Media generation (image/video/music) via swappable provider registry, dynamic tool discovery, a tool-calling code sandbox, desktop control with safety hardening, and a multi-agent kanban orchestration tier
 - Tauri desktop app + native SwiftUI macOS app + React Native mobile companion + Bun server/CLI runtime
 
@@ -110,6 +111,23 @@ The desktop app now checks the same GitHub release channel from `Settings -> Des
 
 Production deployment guidance: [docs/production.md](docs/production.md)
 
+## Desktop And Native Apps
+
+Cybara ships two desktop shells over the same Bun sidecar/runtime contract:
+
+- Tauri desktop for macOS, Windows, and Linux, including signed updater artifacts through GitHub Releases
+- Native SwiftUI macOS shell in `apps/macos/Cybara`, packaged as a `.app` bundle with the compiled sidecar, web UI, `secp256k1.wasm`, and local indexing runtime assets
+
+```bash
+bun run tauri:dev            # Tauri desktop dev mode
+bun run tauri:build          # Tauri production build
+bun run tauri:build:release  # Tauri build with updater config/signatures
+bun run native:macos:run     # Build UI + sidecar, then run the SwiftUI shell
+bun run native:macos:package # Build native SwiftUI .app + zip
+```
+
+See [docs/desktop.md](docs/desktop.md) and [apps/macos/Cybara/README.md](apps/macos/Cybara/README.md).
+
 ## Mobile Companion
 
 Cybara Mobile is a dark Liquid Glass-inspired React Native app for iOS and Android. It connects to a Cybara gateway already running from CLI, Tauri/Web UI, native macOS, or a hosted deployment, then manages remote sessions and operator settings.
@@ -125,6 +143,8 @@ cybara mobile connect --url http://192.168.1.20:4269 --device "Carsen iPhone"
 ```
 
 The CLI and Web UI/Tauri `Mobile` page create QR pairings with revocable per-device tokens, so a phone can be revoked without rotating the root gateway API key. The initial mobile surface covers gateway health, sessions, agents, providers, tool approvals, wallet policy, channels, tasks, memory, terminal/log entrypoints, and settings summaries. See [apps/mobile/README.md](apps/mobile/README.md).
+
+Release CI exports Expo bundles for iOS and Android and can also build signed Android AAB/APK and iOS IPA/TestFlight artifacts when the relevant store signing secrets are configured.
 
 ---
 
@@ -224,14 +244,14 @@ DM policy modes:
 ### UI + Desktop
 
 - Web UI covering agents, channels, providers, routing, tools, wallet, logs, metrics, tasks, sessions, IDE, terminal, setup, artifacts, skills, MCP servers, LSP, chat, dashboard, memory, and mobile pairing
-- Tauri desktop app with sidecar server wiring and in-app signed update checks via GitHub Releases
-- Native SwiftUI macOS app in `apps/macos/Cybara` that reuses the same local Cybara sidecar contract and can be packaged into a release-ready `.app` bundle
+- Tauri desktop app with sidecar server wiring, bundled runtime resources, and in-app signed update checks via GitHub Releases
+- Native SwiftUI macOS app in `apps/macos/Cybara` that reuses the same local Cybara sidecar contract and can be packaged into a signed/notarized `.app` bundle
 
 ### Provider Layer
 
-Tracks the latest frontier models from OpenAI, Anthropic, Google, xAI, DeepSeek, Moonshot (Kimi), Z.AI, MiniMax, Qwen, and more, with model lists discovered dynamically from each provider rather than hardcoded.
+Tracks frontier models from OpenAI, Anthropic, Google, xAI, DeepSeek, Moonshot (Kimi), Z.AI, MiniMax, Qwen, and more, with model lists discovered dynamically from each provider when supported.
 
-Providers: OpenAI, Anthropic, Google, Antigravity, MiniMax (API + OAuth portal), Moonshot (Kimi), Z.AI + Z.AI Coding, DeepSeek, Alibaba DashScope + Coding Plan, xAI, NVIDIA, Qianfan, Together, Hugging Face, Synthetic, Venice, Xiaomi, Cerebras, Cohere, Mistral, DeepInfra, Fireworks, Novita, StepFun, Tencent, Volcengine, BytePlus, GMI, Kilo Code, OpenCode Go, Ollama Cloud, Ollama, vLLM, LiteLLM, Cloudflare AI Gateway, GitHub Copilot, AWS Bedrock, Groq, OpenRouter, OpenCode Zen, Copilot Proxy, OpenAI Codex (ChatGPT OAuth), Chutes, Vercel AI Gateway, and Google Gemini CLI.
+Provider definitions: OpenAI, ElevenLabs, Anthropic, Google, Antigravity, MiniMax (API + OAuth portal), Moonshot (Kimi), Qwen Portal, Z.AI + Z.AI Coding, DeepSeek, Alibaba DashScope + Coding Plan, xAI, NVIDIA, Qianfan, Together, Hugging Face, Synthetic, Venice, Xiaomi, Perplexity, Arcee, Nous, Cerebras, Cohere, Mistral, DeepInfra, Fireworks, Novita, StepFun, Tencent, Volcengine, BytePlus, GMI, Kilo Code, OpenCode Go, Ollama Cloud, Ollama, vLLM, LiteLLM, LM Studio, SGLang, llama.cpp, Cloudflare AI Gateway, GitHub Copilot, AWS Bedrock, Groq, OpenRouter, OpenCode Zen, Copilot Proxy, OpenAI Codex (ChatGPT OAuth), Chutes, Vercel AI Gateway, and Google Gemini CLI.
 
 Multi-key **credential pools** (`ANTHROPIC_API_KEY`, `_2`, `_3`, …) rotate automatically on rate-limit/auth errors, and **Anthropic prompt caching** (`cache_control`) is applied to every Claude request for ~75% input-token savings on multi-turn sessions.
 
@@ -266,23 +286,28 @@ CLI: `cybara mcp list`, `cybara mcp search <query>`, `cybara mcp install <packag
 bun run dev          # Full dev flow
 bun run build        # Build backend
 bun run build:all    # Build UI + backend + CLI + main
-bun run native:macos:package   # Package the native SwiftUI macOS app bundle
 bun run start        # Run built backend
 bun run start:prod   # Build all then run
+bun run package      # Build local release/cybara + release UI assets
 
 bun test             # Full test suite
 bun run test:smoke   # Runtime + API + E2E smoke
+bun run test:smoke:full  # Broader live E2E smoke suite
 RUN_BROWSER_E2E=1 bun test tests/e2e/ide-web-ui-browser-smoke.test.ts  # Real browser IDE smoke
 bun run check        # Typecheck + lint + format check
 bun run check:loc    # Enforce max TS/TSX file size
 bun run check:ci     # CI gate (typecheck + lint + loc + Expo mobile check + smoke + deadcode report)
 
 bun run tauri:dev    # Desktop dev mode
+bun run tauri:sidecar # Build the platform sidecar and bundled sidecar runtime assets
 bun run tauri:build  # Desktop production build
 bun run tauri:prepare-release   # Generate signed updater config from env
 bun run tauri:build:release     # Build desktop app with updater artifacts
 bun run native:macos:build      # Build the SwiftUI macOS app shell from source
-bun run package      # Release packaging
+bun run native:macos:run        # Build UI + sidecar, then run the SwiftUI shell
+bun run native:macos:package    # Package the native SwiftUI macOS app bundle
+bun run mobile:typecheck        # Type-check React Native companion
+bun run test:mobile             # Mobile helper tests
 ```
 
 ---
@@ -335,7 +360,10 @@ Full CLI reference: [docs/cli.md](docs/cli.md)
 | [CLI](docs/cli.md) | Command reference |
 | [Channels](docs/channels.md) | Channel setup and in-channel commands |
 | [Configuration](docs/configuration.md) | Runtime config and environment |
-| [Desktop](docs/desktop.md) | Tauri desktop app |
+| [Desktop](docs/desktop.md) | Tauri desktop app and native macOS release paths |
+| [Native Shells](docs/native-shells.md) | SwiftUI macOS and mobile-shell strategy |
+| [Mobile App](apps/mobile/README.md) | React Native iOS/Android companion |
+| [Production](docs/production.md) | Release installs, updates, signing, and operator guidance |
 | [Providers](docs/providers.md) | Provider setup and models |
 | [Security](docs/security.md) | Auth, sandboxing, and safeguards |
 | [Skills](docs/skills.md) | Skill authoring and lifecycle |
@@ -355,8 +383,11 @@ src/
 ui/
   src/pages/            # UI pages
 src-tauri/              # Tauri desktop shell
+apps/mobile/            # React Native iOS/Android companion
+apps/macos/Cybara/      # Native SwiftUI macOS shell
 docs/                   # product and technical docs
 tests/                  # Bun test suites (unit/integration/e2e)
+.github/workflows/      # CI, release, security, and platform build workflows
 ```
 
 ---

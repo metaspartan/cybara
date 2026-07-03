@@ -1,4 +1,4 @@
-import type { FeatureSummary, HealthResponse, SessionSummary } from "./api";
+import type { FeatureSummary, HealthResponse, ProviderSummary, SessionSummary } from "./api";
 import type { GatewayProfile } from "./connection";
 
 export type MobileTabKey = "overview" | "sessions" | "metrics" | "tasks" | "settings";
@@ -442,6 +442,19 @@ export function sessionProviderModelLabel(
   if (model) return model;
   if (provider) return provider;
   return "Model pending";
+}
+
+export type MobileProviderAuthMode = "api_key" | "oauth" | "access_token" | "aws_sdk" | "none";
+
+export function mobileProviderAuthMode(
+  provider: Pick<ProviderSummary, "authType"> | null | undefined
+): MobileProviderAuthMode {
+  const authType = provider?.authType || "api_key";
+  if (authType === "oauth") return "oauth";
+  if (authType === "bearer" || authType === "token") return "access_token";
+  if (authType === "aws-sdk") return "aws_sdk";
+  if (authType === "none") return "none";
+  return "api_key";
 }
 
 export function recentSessionStateLabel(session: SessionSummary): "Working" | "Recent" {

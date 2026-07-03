@@ -12,6 +12,9 @@
 | `BRAVE_API_KEY` | - | Web search (optional, falls back to DuckDuckGo) |
 | `LOG_LEVEL` | info | Logging verbosity |
 | `LOG_FORMAT` | pretty | Log output format (`pretty` or `json`) |
+| `CYBARA_RESOURCE_DIR` | - | Sidecar resource root used by packaged Tauri/native apps for bundled UI, `node_modules`, `secp256k1.wasm`, and ONNX runtime assets |
+| `CYBARA_NATIVE_SIDECAR_PATH` | - | Native macOS shell override for the sidecar executable |
+| `CYBARA_NATIVE_PORT` | 4269 | Native macOS shell gateway port |
 
 `CYBARA_HOME` is the root for operator state. When set, Cybara resolves config, database, logs, local plugins, and local skills under that directory instead of `~/.cybara`.
 
@@ -83,7 +86,7 @@ curl -X POST http://localhost:4269/api/providers \
   -d '{"type": "openai", "apiKey": "sk-..."}'
 ```
 
-### Supported Providers (50)
+### Supported Providers (61)
 
 See `/docs/providers.md` for the complete up-to-date provider matrix and the newest models
 (GPT-5.5, Claude Opus 4.8, Gemini 3.5 Flash, GLM-5.2, MiniMax M3, DeepSeek V4, Kimi K2.6, Grok 4.3).
@@ -109,6 +112,19 @@ instead of failing the request. See `.env.example` and `src/core/credential-pool
 
 Anthropic requests automatically get `cache_control` breakpoints on the stable system prompt +
 recent turns, giving ~75% input-token savings on multi-turn sessions. No configuration required.
+
+## Workspace Indexing And Local Embeddings
+
+Workspace indexing supports lexical search by default and can use local Transformers.js embeddings
+when the embedding provider is set to `transformers_js` or selected through `auto`.
+
+Runtime notes:
+
+- `@huggingface/transformers` is pinned in the root package and loaded lazily.
+- Desktop sidecar builds copy Transformers.js, ONNX Runtime Node, ONNX Runtime Web/WASM, and the target native ONNX binding when the installed package ships one.
+- The loader searches `CYBARA_RESOURCE_DIR`, `process.cwd()`, and `dirname(process.execPath)` for packaged `node_modules` runtime assets.
+- Model files are cached under `$HOME/.cybara/memory/transformers` by default.
+- If a native ONNX binding is unavailable for the platform/architecture, the bundled ONNX Web/WASM runtime is used as fallback.
 
 ## Shell Hooks
 

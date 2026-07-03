@@ -1,6 +1,6 @@
 # Cybara Production Guide
 
-This guide covers the production surfaces that are ready today: CLI release installs, the Tauri desktop release flow, runtime data layout, backups, updates, and operator best practices.
+This guide covers the production surfaces that are ready today: CLI release installs, Tauri desktop releases, native macOS bundles, React Native mobile release artifacts, runtime data layout, backups, updates, and operator best practices.
 
 ## Supported production surfaces
 
@@ -8,6 +8,8 @@ This guide covers the production surfaces that are ready today: CLI release inst
 - Web UI served by the Cybara Bun runtime
 - Tauri desktop releases with signed updater artifacts
 - native SwiftUI macOS app bundles from GitHub Releases
+- React Native Expo update bundles from GitHub Releases
+- Android APK/AAB and iOS IPA/TestFlight builds when store signing secrets are configured
 
 ## Install
 
@@ -36,8 +38,17 @@ Useful installer env vars:
 Use GitHub Releases for production desktop installs.
 
 - Tauri desktop builds are the only desktop surface with in-app updater support today.
-- Native SwiftUI macOS bundles use the same `127.0.0.1:4269` local gateway contract and UI surface, but updates are manual through GitHub Releases.
+- Native SwiftUI macOS bundles use the same `127.0.0.1:4269` local gateway contract and UI surface, but updates are manual through GitHub Releases. The current release workflow packages native macOS arm64.
 - The native macOS publish path can codesign and notarize release bundles when the Apple signing/notary secrets are configured in GitHub Actions.
+
+### Mobile
+
+Use the React Native companion from `apps/mobile`.
+
+- Expo update bundles are uploaded to tagged GitHub Releases as `cybara-mobile-expo-<tag>.tar.gz`.
+- Android release builds upload APK artifacts; when Android signing secrets are present, the workflow also builds an AAB and can publish it to the Google Play internal track.
+- iOS release builds upload an IPA; when Apple distribution/profile secrets and App Store Connect API secrets are present, the workflow uploads the signed IPA to TestFlight.
+- The mobile app remains remote-first: it connects to an existing Cybara gateway through QR/token pairing rather than embedding the Bun runtime on-device.
 
 ## Runtime data
 
@@ -118,7 +129,7 @@ Version sync and release metadata are driven by:
 - `bun run version:print`
 - `bun run version:sync`
 - `.github/workflows/main-version-tag.yml`
-- `.github/workflows/publish-desktop.yml`
+- `.github/workflows/release.yml`
 
 The production desktop updater also requires:
 
@@ -128,10 +139,27 @@ The production desktop updater also requires:
 
 The native macOS release path optionally uses:
 
-- `APPLE_DEVELOPER_ID_CERTIFICATE_P12`
-- `APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD`
-- `APPLE_DEVELOPER_ID_SIGNING_IDENTITY`
-- `APPLE_KEYCHAIN_PASSWORD`
-- `APPLE_ID`
-- `APPLE_APP_SPECIFIC_PASSWORD`
+- `MACOS_CERTIFICATE`
+- `MACOS_CERTIFICATE_PASSWORD`
+- `MACOS_SIGN_IDENTITY`
+- `MACOS_KEYCHAIN_PASSWORD`
+- `MACOS_NOTARY_API_KEY`
+- `MACOS_NOTARY_API_KEY_ID`
+- `MACOS_NOTARY_API_ISSUER_ID`
+
+Mobile store builds optionally use:
+
+- `ANDROID_KEYSTORE_BASE64`
+- `ANDROID_KEYSTORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+- `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`
+- `APPLE_CERTIFICATE_BASE64`
+- `APPLE_CERTIFICATE_PASSWORD`
+- `APPLE_PROVISIONING_PROFILE_BASE64`
 - `APPLE_TEAM_ID`
+- `ASC_API_KEY_BASE64`
+- `ASC_API_KEY_ID`
+- `ASC_API_ISSUER_ID`
+
+The final release publish job downloads and validates `latest.json` before publishing the draft release. This keeps Tauri in-app updates from shipping with missing or incomplete updater metadata.

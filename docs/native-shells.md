@@ -16,7 +16,7 @@ Design:
 - waits on `http://127.0.0.1:4269/api/health`
 - injects `window.__CYBARA_NATIVE__` so the React app can distinguish the native macOS host from plain web
 - supports native notification permission / delivery, external-link handling, and workspace folder picking through that bridge
-- can be bundled as a release-ready `Cybara.app` under `release/native-macos/<arch>/`
+- can be bundled as a release-ready `Cybara.app` under `release/native-macos/<arch>/`, including the compiled sidecar, web UI, `secp256k1.wasm`, sidecar `node_modules`, and local Transformers.js/ONNX runtime assets
 - can be optionally codesigned and notarized during packaging when Apple signing credentials are configured
 - auto-restarts the managed sidecar on an unexpected crash (capped exponential backoff, then surfaces a failure)
 - handles `cybara://` deep links — `cybara://` / `cybara://open` (focus), `cybara://restart` (restart gateway), `cybara://browser` (open web UI)
@@ -36,9 +36,9 @@ swift test --package-path apps/macos/Cybara
 ### Release signing (CI)
 
 The `build-native-macos` job in [.github/workflows/release.yml](../.github/workflows/release.yml)
-builds, signs, and notarizes the app on the self-hosted Apple-Silicon runner. It is
-best-effort and gated on these GitHub Actions secrets — if they're absent it still
-produces an unsigned build:
+builds, signs, and notarizes the app on `macos-26`. It is best-effort and gated on
+these GitHub Actions secrets — if they're absent it still produces an unsigned build.
+The current release matrix packages arm64:
 
 | Secret | Purpose |
 | --- | --- |
@@ -67,6 +67,8 @@ Recommended near-term path:
 - manage sessions, agents, providers, tools/approvals, wallet policy, channels, tasks, memory, terminal/log entrypoints, and settings summaries
 - keep API-first parity before attempting any local mobile runtime
 - add platform push notifications and deeper native share-sheet flows after the remote management foundation is stable
+
+Release CI exports Expo bundles for iOS and Android on every release run, and tagged releases also run best-effort native Android/iOS builds. Signed Android AAB/APK, iOS IPA, Google Play internal-track upload, and TestFlight upload are enabled only when the relevant store signing/App Store Connect secrets are configured.
 
 The older Android-only note remains in [apps/android/README.md](../apps/android/README.md), but the active implementation track is React Native so iOS and Android share the same companion surface.
 

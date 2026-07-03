@@ -37,6 +37,7 @@ import {
   mobileComposerHeightForDraft,
   mobileBackRouteForDetail,
   mobileFirstNonEmptyString,
+  mobileProviderAuthMode,
   mobileSessionTitle,
   mobileThemeConfigPayload,
   recentSessionStateLabel,
@@ -404,6 +405,25 @@ describe("mobile dashboard model", () => {
     expect(isMobileSettingsDetailFieldVisible("session id")).toBe(false);
     expect(isMobileSettingsDetailFieldVisible("api_key")).toBe(false);
     expect(isMobileSettingsDetailFieldVisible("access token")).toBe(false);
+  });
+
+  test("keeps provider credential UI native to provider auth type", () => {
+    expect(mobileProviderAuthMode({ authType: "oauth" })).toBe("oauth");
+    expect(mobileProviderAuthMode({ authType: "bearer" })).toBe("access_token");
+    expect(mobileProviderAuthMode({ authType: "token" })).toBe("access_token");
+    expect(mobileProviderAuthMode({ authType: "aws-sdk" })).toBe("aws_sdk");
+    expect(mobileProviderAuthMode({ authType: "none" })).toBe("none");
+    expect(mobileProviderAuthMode({ authType: "api_key" })).toBe("api_key");
+    expect(mobileProviderAuthMode({ authType: undefined })).toBe("api_key");
+    expect(mobileProviderAuthMode(null)).toBe("api_key");
+
+    expect(dashboardScreenSource).toContain("const authMode = mobileProviderAuthMode(provider);");
+    expect(dashboardScreenSource).toContain('const usesApiKey = authMode === "api_key";');
+    expect(dashboardScreenSource).toContain('const usesOAuth = authMode === "oauth";');
+    expect(dashboardScreenSource).toContain('const usesAccessToken = authMode === "access_token";');
+    expect(dashboardScreenSource).toContain('label="API key"');
+    expect(dashboardScreenSource).toContain('label="Access token"');
+    expect(dashboardScreenSource).toContain("No API key is required.");
   });
 
   test("exposes root settings toggles that mirror web and Tauri settings", () => {

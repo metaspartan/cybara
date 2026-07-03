@@ -1,15 +1,21 @@
 #!/usr/bin/env bun
 import { $ } from "bun";
-import { mkdirSync, existsSync, cpSync, rmSync } from "fs";
-import { join } from "path";
+import { mkdirSync, existsSync, cpSync, rmSync, readdirSync, writeFileSync } from "fs";
+import { dirname, join } from "path";
 import { platform, arch } from "os";
 
 const TAURI_BIN_DIR = join(import.meta.dirname, "..", "src-tauri", "bin");
 const RELEASE_DIR = join(import.meta.dirname, "..", "release");
+const NODE_MODULES_ROOT = join(import.meta.dirname, "..", "node_modules");
 
 export interface Target {
   bunTarget: string;
   tauriSuffix: string;
+}
+
+export interface RuntimeTarget {
+  platform: "darwin" | "linux" | "win32";
+  arch: "arm64" | "x64";
 }
 
 export function getHostTargetFor(platformName: string, archName: string): Target {
@@ -29,6 +35,16 @@ export function getHostTargetFor(platformName: string, archName: string): Target
     return { bunTarget: "bun-windows-arm64", tauriSuffix: "aarch64-pc-windows-msvc" };
 
   throw new Error(`Unsupported platform: ${p}/${a}`);
+}
+
+export function getRuntimeTargetFor(target: Target): RuntimeTarget {
+  if (target.tauriSuffix === "aarch64-apple-darwin") return { platform: "darwin", arch: "arm64" };
+  if (target.tauriSuffix === "x86_64-apple-darwin") return { platform: "darwin", arch: "x64" };
+  if (target.tauriSuffix === "x86_64-unknown-linux-gnu") return { platform: "linux", arch: "x64" };
+  if (target.tauriSuffix === "aarch64-unknown-linux-gnu") return { platform: "linux", arch: "arm64" };
+  if (target.tauriSuffix === "x86_64-pc-windows-msvc") return { platform: "win32", arch: "x64" };
+  if (target.tauriSuffix === "aarch64-pc-windows-msvc") return { platform: "win32", arch: "arm64" };
+  throw new Error(`Unsupported sidecar target: ${target.tauriSuffix}`);
 }
 
 export function getHostTarget(): Target {
@@ -58,8 +74,226 @@ export async function copyFilePortable(sourcePath: string, targetPath: string): 
   await Bun.write(targetPath, Bun.file(sourcePath));
 }
 
+function removeAndCopyDirectory(sourcePath: string, targetPath: string): void {
+  if (existsSync(targetPath)) rmSync(targetPath, { recursive: true, force: true });
+  mkdirSync(dirname(targetPath), { recursive: true });
+  cpSync(sourcePath, targetPath, { recursive: true });
+}
+
+function copyDirectoryWithoutMaps(sourcePath: string, targetPath: string): void {
+  if (existsSync(targetPath)) rmSync(targetPath, { recursive: true, force: true });
+  mkdirSync(dirname(targetPath), { recursive: true });
+  cpSync(sourcePath, targetPath, {
+    recursive: true,
+    filter: (source) => !source.endsWith(".map"),
+  });
+}
+
+function copyPackageJson(packageName: string, targetNodeModulesDir: string): void {
+  const source = join(NODE_MODULES_ROOT, packageName, "package.json");
+  if (!existsSync(source)) return;
+  const target = join(targetNodeModulesDir, packageName, "package.json");
+  mkdirSync(dirname(target), { recursive: true });
+  cpSync(source, target);
+}
+
+function copyPackageDirectory(
+  packageName: string,
+  relativePath: string,
+  targetNodeModulesDir: string,
+  options?: { omitSourceMaps?: boolean }
+): boolean {
+  const source = join(NODE_MODULES_ROOT, packageName, relativePath);
+  if (!existsSync(source)) return false;
+  const target = join(targetNodeModulesDir, packageName, relativePath);
+  if (options?.omitSourceMaps) {
+    copyDirectoryWithoutMaps(source, target);
+  } else {
+    removeAndCopyDirectory(source, target);
+  }
+  return true;
+}
+
+function listOnnxNapiDirs(onnxRuntimeNodeRoot: string): string[] {
+  const binDir = join(onnxRuntimeNodeRoot, "bin");
+  if (!existsSync(binDir)) return [];
+  return readdirSync(binDir)
+    .filter((name) => /^napi-v\d+$/.test(name))
+    .sort((a, b) => Number(b.slice("napi-v".length)) - Number(a.slice("napi-v".length)));
+}
+
+export function findOnnxRuntimeNativeDir(
+  onnxRuntimeNodeRoot: string,
+  runtimeTarget: RuntimeTarget
+): string | null {
+  for (const napiDir of listOnnxNapiDirs(onnxRuntimeNodeRoot)) {
+    const candidate = join(
+      onnxRuntimeNodeRoot,
+      "bin",
+      napiDir,
+      runtimeTarget.platform,
+      runtimeTarget.arch
+    );
+    if (existsSync(join(candidate, "onnxruntime_binding.node"))) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function copyOnnxRuntimeNodeRuntime(
+  targetNodeModulesDir: string,
+  runtimeTarget: RuntimeTarget
+): string | null {
+  const packageName = "onnxruntime-node";
+  const sourceRoot = join(NODE_MODULES_ROOT, packageName);
+  if (!existsSync(sourceRoot)) return null;
+
+  copyPackageJson(packageName, targetNodeModulesDir);
+  copyPackageDirectory(packageName, "dist", targetNodeModulesDir);
+
+  const targetBinDir = join(targetNodeModulesDir, packageName, "bin");
+  if (existsSync(targetBinDir)) rmSync(targetBinDir, { recursive: true, force: true });
+
+  const nativeDir = findOnnxRuntimeNativeDir(sourceRoot, runtimeTarget);
+  if (!nativeDir) return null;
+
+  const napiDir = nativeDir.split(/[\\/]/).slice(-3, -2)[0] || "napi-v6";
+  const targetNativeDir = join(
+    targetNodeModulesDir,
+    packageName,
+    "bin",
+    napiDir,
+    runtimeTarget.platform,
+    runtimeTarget.arch
+  );
+  removeAndCopyDirectory(nativeDir, targetNativeDir);
+  return nativeDir;
+}
+
+function copyOnnxRuntimeSidecarFolder(
+  nativeDir: string | null,
+  destinationRoot: string,
+  runtimeTarget: RuntimeTarget
+): void {
+  const onnxRuntimeRoot = join(destinationRoot, "onnxruntime");
+  if (existsSync(onnxRuntimeRoot)) rmSync(onnxRuntimeRoot, { recursive: true, force: true });
+  if (!nativeDir) return;
+  const destination = join(onnxRuntimeRoot, runtimeTarget.platform, runtimeTarget.arch);
+  removeAndCopyDirectory(nativeDir, destination);
+}
+
+function copyOptionalPackage(packageName: string, targetNodeModulesDir: string): boolean {
+  const source = join(NODE_MODULES_ROOT, packageName);
+  if (!existsSync(source)) return false;
+  removeAndCopyDirectory(source, join(targetNodeModulesDir, packageName));
+  return true;
+}
+
+function copyTransformersRuntime(targetNodeModulesDir: string, runtimeTarget: RuntimeTarget): string | null {
+  copyPackageJson("@huggingface/transformers", targetNodeModulesDir);
+  copyPackageDirectory("@huggingface/transformers", "dist", targetNodeModulesDir, {
+    omitSourceMaps: true,
+  });
+
+  copyPackageJson("onnxruntime-common", targetNodeModulesDir);
+  copyPackageDirectory("onnxruntime-common", "dist", targetNodeModulesDir, {
+    omitSourceMaps: true,
+  });
+
+  copyPackageJson("onnxruntime-web", targetNodeModulesDir);
+  copyPackageDirectory("onnxruntime-web", "dist", targetNodeModulesDir, { omitSourceMaps: true });
+
+  // The node build of Transformers.js statically imports sharp. Copy it when
+  // available for the release target; otherwise the runtime falls back to the
+  // bundled ONNX Web/WASM build.
+  copyOptionalPackage("sharp", targetNodeModulesDir);
+  copyOptionalPackage("@img", targetNodeModulesDir);
+
+  return copyOnnxRuntimeNodeRuntime(targetNodeModulesDir, runtimeTarget);
+}
+
+export function patchedOnnxBindingSource(): string {
+  return `
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.initOrt = exports.binding = void 0;
+const fs = require("fs");
+const path = require("path");
+const onnxruntime_common_1 = require("onnxruntime-common");
+
+function collectPackageBindingCandidates() {
+  const candidates = [];
+  const packageBinDir = path.join(__dirname, "..", "bin");
+  if (!fs.existsSync(packageBinDir)) return candidates;
+  for (const napiDir of fs.readdirSync(packageBinDir).filter((name) => /^napi-v\\d+$/.test(name)).sort().reverse()) {
+    candidates.push(path.join(packageBinDir, napiDir, process.platform, process.arch, "onnxruntime_binding.node"));
+  }
+  return candidates;
+}
+
+function resolveOnnxBindingPath() {
+  const resourceDir = process.env.CYBARA_RESOURCE_DIR;
+  const candidates = [
+    ...collectPackageBindingCandidates(),
+    resourceDir && path.join(resourceDir, "onnxruntime", process.platform, process.arch, "onnxruntime_binding.node"),
+    path.join(path.dirname(process.execPath), "onnxruntime", process.platform, process.arch, "onnxruntime_binding.node"),
+    path.join(process.cwd(), "onnxruntime", process.platform, process.arch, "onnxruntime_binding.node"),
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate) && candidate.endsWith(".node")) {
+      return candidate;
+    }
+  }
+
+  throw new Error(\`onnxruntime binding not found; checked: \${candidates.join(", ")}\`);
+}
+
+exports.binding = require(resolveOnnxBindingPath());
+
+let ortInitialized = false;
+const initOrt = () => {
+  if (!ortInitialized) {
+    ortInitialized = true;
+    let logLevel = 2;
+    if (onnxruntime_common_1.env.logLevel) {
+      switch (onnxruntime_common_1.env.logLevel) {
+        case "verbose":
+          logLevel = 0;
+          break;
+        case "info":
+          logLevel = 1;
+          break;
+        case "warning":
+          logLevel = 2;
+          break;
+        case "error":
+          logLevel = 3;
+          break;
+        case "fatal":
+          logLevel = 4;
+          break;
+        default:
+          throw new Error(\`Unsupported log level: \${onnxruntime_common_1.env.logLevel}\`);
+      }
+    }
+    exports.binding.initOrtOnce(logLevel, onnxruntime_common_1.Tensor);
+  }
+};
+exports.initOrt = initOrt;
+`.trim();
+}
+
+function patchCopiedOnnxBinding(targetNodeModulesDir: string): void {
+  const bindingPath = join(targetNodeModulesDir, "onnxruntime-node", "dist", "binding.js");
+  if (!existsSync(bindingPath)) return;
+  writeFileSync(bindingPath, patchedOnnxBindingSource(), "utf8");
+}
+
 export async function buildSidecar(): Promise<void> {
   const target = resolveTarget();
+  const runtimeTarget = getRuntimeTargetFor(target);
   const isWindows = target.tauriSuffix.includes("windows");
   const ext = isWindows ? ".exe" : "";
   const sidecarName = `cybara-${target.tauriSuffix}${ext}`;
@@ -97,26 +331,7 @@ export async function buildSidecar(): Promise<void> {
     "lib",
     "secp256k1.wasm"
   );
-  const onnxBindingPath = join(
-    import.meta.dirname,
-    "..",
-    "node_modules",
-    "onnxruntime-node",
-    "dist",
-    "binding.js"
-  );
-  const onnxSourceDir = join(
-    import.meta.dirname,
-    "..",
-    "node_modules",
-    "onnxruntime-node",
-    "bin",
-    "napi-v3",
-    process.platform,
-    process.arch
-  );
   let originalWasmLoader = "";
-  let originalOnnxBinding = "";
   const patchedWasmLoader = `
 import { readFileSync, existsSync } from "fs";
 import { dirname, join } from "path";
@@ -159,74 +374,11 @@ const mod = new WebAssembly.Module(binary);
 const instance = new WebAssembly.Instance(mod, imports);
 export default instance.exports;
 `.trim();
-  const patchedOnnxBinding = `
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.initOrt = exports.binding = void 0;
-const fs = require("fs");
-const path = require("path");
-const onnxruntime_common_1 = require("onnxruntime-common");
-
-function resolveOnnxBindingPath() {
-  const bundledRelativePath = path.join("..", "bin", "napi-v3", process.platform, process.arch, "onnxruntime_binding.node");
-  const candidates = [
-    path.join(__dirname, bundledRelativePath),
-    path.join(path.dirname(process.execPath), "onnxruntime", process.platform, process.arch, "onnxruntime_binding.node"),
-    path.join(process.cwd(), "onnxruntime", process.platform, process.arch, "onnxruntime_binding.node"),
-  ];
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  throw new Error(\`onnxruntime binding not found; checked: \${candidates.join(", ")}\`);
-}
-
-exports.binding = require(resolveOnnxBindingPath());
-
-let ortInitialized = false;
-const initOrt = () => {
-  if (!ortInitialized) {
-    ortInitialized = true;
-    let logLevel = 2;
-    if (onnxruntime_common_1.env.logLevel) {
-      switch (onnxruntime_common_1.env.logLevel) {
-        case "verbose":
-          logLevel = 0;
-          break;
-        case "info":
-          logLevel = 1;
-          break;
-        case "warning":
-          logLevel = 2;
-          break;
-        case "error":
-          logLevel = 3;
-          break;
-        case "fatal":
-          logLevel = 4;
-          break;
-        default:
-          throw new Error(\`Unsupported log level: \${onnxruntime_common_1.env.logLevel}\`);
-      }
-    }
-    exports.binding.initOrtOnce(logLevel, onnxruntime_common_1.Tensor);
-  }
-};
-exports.initOrt = initOrt;
-`.trim();
 
   if (existsSync(wasmLoaderPath)) {
     originalWasmLoader = await Bun.file(wasmLoaderPath).text();
     await Bun.write(wasmLoaderPath, patchedWasmLoader);
     console.log(`  🔧 Patched tiny-secp256k1 wasm_loader.js for sidecar build`);
-  }
-  if (existsSync(onnxBindingPath)) {
-    originalOnnxBinding = await Bun.file(onnxBindingPath).text();
-    await Bun.write(onnxBindingPath, patchedOnnxBinding);
-    console.log(`  🔧 Patched onnxruntime-node binding.js for sidecar build`);
   }
 
   try {
@@ -236,11 +388,6 @@ exports.initOrt = initOrt;
     if (originalWasmLoader) {
       await Bun.write(wasmLoaderPath, originalWasmLoader);
       console.log(`  🔧 Restored original wasm_loader.js`);
-    }
-    // Restore original onnxruntime binding.js
-    if (originalOnnxBinding) {
-      await Bun.write(onnxBindingPath, originalOnnxBinding);
-      console.log(`  🔧 Restored original onnxruntime-node binding.js`);
     }
   }
 
@@ -257,26 +404,30 @@ exports.initOrt = initOrt;
     console.warn(`  ⚠️ secp256k1.wasm not found — BTC wallet operations may be unavailable`);
   }
 
-  if (existsSync(onnxSourceDir)) {
-    for (const dir of [RELEASE_DIR, TAURI_BIN_DIR, tauriDebugDir]) {
-      const onnxTargetDir = join(dir, "onnxruntime", process.platform, process.arch);
-      if (existsSync(onnxTargetDir)) {
-        rmSync(onnxTargetDir, { recursive: true, force: true });
-      }
-      mkdirSync(onnxTargetDir, { recursive: true });
-      cpSync(onnxSourceDir, onnxTargetDir, { recursive: true });
-    }
-    console.log(`  📦 Copied onnxruntime native binaries to sidecar directories`);
+  let copiedOnnxNativeDir: string | null = null;
+  for (const dir of [RELEASE_DIR, TAURI_BIN_DIR, tauriDebugDir]) {
+    const targetNodeModulesDir = join(dir, "node_modules");
+    const nativeDir = copyTransformersRuntime(targetNodeModulesDir, runtimeTarget);
+    patchCopiedOnnxBinding(targetNodeModulesDir);
+    copyOnnxRuntimeSidecarFolder(nativeDir, dir, runtimeTarget);
+    copiedOnnxNativeDir ||= nativeDir;
+  }
+
+  if (copiedOnnxNativeDir) {
+    console.log(
+      `  📦 Copied Transformers.js runtime and ONNX native binaries for ${runtimeTarget.platform}/${runtimeTarget.arch}`
+    );
   } else {
-    console.warn(`  ⚠️ onnxruntime native binaries not found — local Transformers embeddings may be unavailable`);
+    console.warn(
+      `  ⚠️ ONNX native binaries unavailable for ${runtimeTarget.platform}/${runtimeTarget.arch}; bundled ONNX Web/WASM fallback will be used`
+    );
   }
 
   // Ship the Playwright runtime beside the sidecar so browser tools resolve it
   // at runtime (the sidecar imports it lazily via node_modules search roots).
   const playwrightPackages = ["playwright", "playwright-core"];
-  const nodeModulesRoot = join(import.meta.dirname, "..", "node_modules");
   for (const pkg of playwrightPackages) {
-    const source = join(nodeModulesRoot, pkg);
+    const source = join(NODE_MODULES_ROOT, pkg);
     if (!existsSync(source)) {
       console.warn(`  ⚠️ ${pkg} not found in node_modules — browser tools may be unavailable`);
       continue;

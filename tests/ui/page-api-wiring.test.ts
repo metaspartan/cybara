@@ -84,6 +84,12 @@ describe("UI page API wiring", () => {
   test("Setup page completes onboarding through setupApi helper", () => {
     const source = readPage("Setup.tsx");
 
+    expect(source).toContain("type SetupAuthFlow = 'api_key' | 'oauth' | 'external' | 'none';");
+    expect(source).toContain("if (provider.authType === 'oauth') return 'oauth';");
+    expect(source).toContain("if (provider.authType === 'aws-sdk') return 'external';");
+    expect(source).not.toContain("provider.authType === 'oauth' || provider.authType === 'aws-sdk'");
+    expect(source).toContain("authFlow === 'external'");
+    expect(source).toContain("External");
     expect(source).toContain("import { setupApi, settingsApi } from '@/lib/api';");
     expect(source).toContain("setupApi.complete()");
     expect(source).toContain("settingsApi.updateConfig({ tool_approval_mode: toolApprovalMode })");
@@ -92,7 +98,14 @@ describe("UI page API wiring", () => {
 
   test("Providers page keeps OAuth flows on expected backend routes", () => {
     const source = readPage("Providers.tsx");
+    const typesSource = readFileSync(
+      new URL("../../ui/src/types/index.ts", import.meta.url),
+      "utf8"
+    );
 
+    expect(typesSource).toContain("export type ProviderAuthType");
+    expect(typesSource).toContain('"none" | "api_key" | "bearer" | "token" | "oauth" | "aws-sdk"');
+    expect(typesSource).toContain("authType?: ProviderAuthType;");
     expect(source).toContain("apiFetch('/api/providers/oauth/device-code'");
     expect(source).toContain("apiFetch('/api/providers/oauth/poll'");
     expect(source).toContain("apiFetch('/api/providers/oauth/start'");
@@ -100,6 +113,11 @@ describe("UI page API wiring", () => {
     expect(source).toContain("apiFetch(`/api/providers/${provider.id}/test`");
     expect(source).toContain("openExternal(data.verification_uri)");
     expect(source).toContain("openExternal(data.auth_url)");
+    expect(source).toContain("const authType = selectedProviderInfo?.authType || 'api_key';");
+    expect(source).toContain("authType === 'api_key'");
+    expect(source).toContain("authType === 'oauth'");
+    expect(source).toContain("authType === 'aws-sdk'");
+    expect(source).toContain("authType === 'none'");
   });
 
   test("IDE page routes file and git operations through encoded API paths", () => {

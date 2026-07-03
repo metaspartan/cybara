@@ -47,4 +47,11 @@ For LAN devices, make sure the gateway is reachable from the phone. Localhost on
 
 ## Release CI
 
-The GitHub release workflow builds mobile Expo update bundles for both iOS and Android on the self-hosted Linux runner and attaches them to the release as `cybara-mobile-expo-<tag>.tar.gz`. Store-signed IPA/APK production builds still require the normal Apple/Google signing credentials, so those remain a separate distribution step.
+The GitHub release workflow builds mobile Expo update bundles for both iOS and Android and attaches them to the release as `cybara-mobile-expo-<tag>.tar.gz`.
+
+Tagged releases also run best-effort native store builds:
+
+- Android: `expo prebuild --platform android --no-install`, then Gradle. Without signing secrets it produces an installable debug APK. With `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD`, it also builds a signed AAB/APK. With `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`, the signed AAB is uploaded to the Google Play internal track.
+- iOS: `expo prebuild --platform ios --no-install`, `pod install --repo-update`, then Xcode archive. Without Apple signing secrets it produces an unsigned inspection IPA. With `APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_PROVISIONING_PROFILE_BASE64`, and `APPLE_TEAM_ID`, it builds a signed App Store IPA for bundle id `com.ck.cybara`. With `ASC_API_KEY_BASE64`, `ASC_API_KEY_ID`, and `ASC_API_ISSUER_ID`, it uploads that IPA to TestFlight.
+
+Expo/React Native release jobs use Bun for package scripts, plus a real Node runtime where Expo, CocoaPods, and Gradle tooling require one on `PATH`.

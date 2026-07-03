@@ -26,7 +26,7 @@ bun run --watch src/index.ts
 ### Production
 
 ```bash
-# Build everything (UI + backend + CLI)
+# Build a local release/cybara binary plus release UI assets
 bun run package
 
 # Run as background daemon
@@ -47,8 +47,11 @@ For release installs, updates, backups, and production operator guidance, see [P
 # Development mode (includes terminal support)
 bun run tauri:dev
 
-# Production build (macOS .dmg, Linux .deb/.rpm/.appimage)
+# Production build (Tauri installers/packages for the host platform)
 bun run tauri:build
+
+# Production build with signed updater config
+bun run tauri:build:release
 
 # Native SwiftUI macOS app bundle
 bun run native:macos:package
@@ -74,14 +77,19 @@ See [Desktop Guide](./desktop.md) for platform-specific build info.
 | `bun run ui:dev` | UI dev server (Vite HMR) |
 | `bun run ui:build` | Build UI for production |
 | `bun test` | Run Bun test suite |
+| `bun run test:smoke` | CI smoke suite |
 | `bun run check` | TypeScript + ESLint + Prettier |
+| `bun run check:ci` | Release quality gate |
 | `bun run tauri:dev` | Tauri desktop dev mode |
 | `bun run tauri:build` | Tauri desktop production build |
+| `bun run tauri:build:release` | Tauri build with release updater config |
+| `bun run tauri:sidecar` | Build platform sidecar and bundled sidecar runtime assets |
 | `bun run native:macos:package` | Package the native SwiftUI macOS app bundle |
+| `bun run native:macos:run` | Build UI + sidecar, then run the native SwiftUI macOS shell |
 | `bun run mobile:dev` | Start the React Native mobile companion with Expo |
 | `bun run mobile:expo-check` | Verify React Native/Expo dependency compatibility |
 | `bun run mobile:typecheck` | Type-check the mobile companion |
-| `bun run package` | Build release binaries |
+| `bun run package` | Build local release/cybara binary and release UI assets |
 
 
 ## Documentation
@@ -91,15 +99,15 @@ See [Desktop Guide](./desktop.md) for platform-specific build info.
 | [Architecture](./architecture.md) | Platform design and data flow |
 | [CLI Reference](./cli.md) | Command-line interface |
 | [Plugins](./plugins.md) | Installable plugin runtime and manifests |
-| [Tools Reference](./tools.md) | 71 available tools |
+| [Tools Reference](./tools.md) | 76 built-in tools |
 | [Skills Guide](./skills.md) | Creating and managing skills |
 | [Channels](./channels.md) | Multi-platform messaging |
-| [Providers](./providers.md) | 50 AI provider integrations |
+| [Providers](./providers.md) | 61 provider definitions |
 | [Configuration](./configuration.md) | Settings and environment |
 | [Production](./production.md) | Release installs, updates, backups, and operator guidance |
 | [API Reference](./api.md) | REST API endpoints |
 | [Desktop](./desktop.md) | Tauri + native macOS desktop release paths |
-| [Native Shells](./native-shells.md) | SwiftUI macOS shell and Android strategy |
+| [Native Shells](./native-shells.md) | SwiftUI macOS shell and mobile-shell strategy |
 | [Mobile App](../apps/mobile/README.md) | React Native iOS/Android companion app |
 | [Security](./security.md) | Self-hosting security model |
 | [Testing](./testing.md) | Automated test strategy and commands |
@@ -123,7 +131,7 @@ Conversation contexts with message history, token tracking, and adaptive context
 Modular capabilities loaded from SKILL.md files with eligibility gating (OS, env, binaries).
 
 ### Tools
-71 functions the agent can invoke: file I/O, browser, exec, web search, memory, artifacts, data processing, LSP, scheduling, media generation, planning, dynamic tool discovery, wallet operations, and more.
+76 built-in tools the agent can invoke: file I/O, browser, exec, web search, memory, artifacts, data processing, LSP, scheduling, media generation, planning, dynamic tool discovery, wallet operations, and more.
 
 ### Channels
 Communication interfaces across 26 platforms: Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Matrix, Mattermost, Microsoft Teams, Feishu/Lark, DingTalk, WeCom, Zulip, LINE, Google Chat, IRC, ntfy, Twitch, Nextcloud, Synology, Zalo, Home Assistant, Web, Webhook, SMS, and Email.

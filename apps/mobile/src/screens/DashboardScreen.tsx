@@ -143,6 +143,7 @@ import {
   mobileComposerHeightForDraft,
   mobileBackRouteForDetail,
   mobileFirstNonEmptyString,
+  mobileProviderAuthMode,
   mobileSessionTitle,
   mobileThemeConfigPayload,
   recentSessionStateLabel,
@@ -3365,12 +3366,12 @@ function ProviderSettingsPanel({
   const [oauthBusy, setOauthBusy] = useState(false);
   const [oauthStatus, setOauthStatus] = useState("");
   const [oauthDeviceCode, setOauthDeviceCode] = useState("");
-  const authType = provider.authType || "api_key";
-  const usesApiKey = authType === "api_key";
-  const usesOAuth = authType === "oauth";
-  const usesAccessToken = authType === "bearer" || authType === "token";
-  const usesAwsSdk = authType === "aws-sdk";
-  const usesNoAuth = authType === "none";
+  const authMode = mobileProviderAuthMode(provider);
+  const usesApiKey = authMode === "api_key";
+  const usesOAuth = authMode === "oauth";
+  const usesAccessToken = authMode === "access_token";
+  const usesAwsSdk = authMode === "aws_sdk";
+  const usesNoAuth = authMode === "none";
 
   useEffect(() => {
     setName(provider.name);

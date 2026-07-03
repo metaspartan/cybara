@@ -7,6 +7,7 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const API_KEY = "persist-sse-e2e-key";
 
 let homeDir = "";
 
@@ -43,6 +44,7 @@ function startServer(port: number): ReturnType<typeof Bun.spawn> {
       HOME: homeDir,
       USERPROFILE: homeDir,
       PORT: String(port),
+      CYBARA_API_KEY: API_KEY,
     },
     stdout: "ignore",
     stderr: "ignore",
@@ -72,7 +74,9 @@ async function waitForServerReady(url: string, timeoutMs = 30000): Promise<void>
 }
 
 async function api(baseUrl: string, method: string, path: string, body?: unknown) {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${API_KEY}`,
+  };
   if (body !== undefined) headers["Content-Type"] = "application/json";
 
   const response = await fetch(`${baseUrl}${path}`, {
@@ -261,7 +265,9 @@ describe("Persistence + SSE e2e", () => {
       proc = startServer(port);
       await waitForServerReady(baseUrl);
 
-      const response = await fetch(`${baseUrl}/api/sse/status`);
+      const response = await fetch(`${baseUrl}/api/sse/status`, {
+        headers: { Authorization: `Bearer ${API_KEY}` },
+      });
       expect(response.status).toBe(200);
       expect(response.headers.get("content-type")).toContain("text/event-stream");
 

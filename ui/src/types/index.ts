@@ -32,6 +32,8 @@ export interface AgentMessage {
   tool_call_id?: string;
 }
 
+export type ProviderAuthType = "none" | "api_key" | "bearer" | "token" | "oauth" | "aws-sdk";
+
 export interface Provider {
   id: string;
   name: string;
@@ -48,7 +50,7 @@ export interface Provider {
   isDefault?: boolean;
   is_default?: boolean;
   config?: Record<string, unknown>;
-  authType?: "none" | "bearer" | "token";
+  authType?: ProviderAuthType;
   createdAt?: string;
   created_at?: string;
 }
@@ -175,7 +177,7 @@ export interface AvailableProvider {
   name: string;
   description: string;
   models: string[];
-  authType?: "none" | "api_key" | "bearer" | "token" | "oauth" | "aws-sdk";
+  authType?: ProviderAuthType;
   oauthFlow?: "device_code" | "redirect" | null;
   hasOAuthConfig?: boolean;
   oauthLoginUrl?: string | null;

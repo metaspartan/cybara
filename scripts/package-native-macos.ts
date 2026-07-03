@@ -26,6 +26,7 @@ const RELEASE_ROOT = join(ROOT, "release", "native-macos");
 const SIDEcar_RELEASE_PATH = join(ROOT, "release", "cybara");
 const SIDEcar_WASM_PATH = join(ROOT, "release", "secp256k1.wasm");
 const SIDEcar_ONNX_PATH = join(ROOT, "release", "onnxruntime");
+const SIDEcar_NODE_MODULES_PATH = join(ROOT, "release", "node_modules");
 const UI_DIST_PATH = join(ROOT, "ui", "dist");
 const ICON_SOURCE_PATH = join(ROOT, "cybara.png");
 
@@ -104,6 +105,7 @@ export interface NativeMacOSSidecarLayout {
   uiDistDir: string;
   wasmPath: string;
   onnxRuntimeDir: string;
+  nodeModulesDir: string;
 }
 
 export function createNativeMacOSSidecarLayout(contentsPath: string): NativeMacOSSidecarLayout {
@@ -115,6 +117,7 @@ export function createNativeMacOSSidecarLayout(contentsPath: string): NativeMacO
     uiDistDir: join(resourceDir, "ui", "dist"),
     wasmPath: join(resourceDir, "secp256k1.wasm"),
     onnxRuntimeDir: join(executableDir, "onnxruntime"),
+    nodeModulesDir: join(executableDir, "node_modules"),
   };
 }
 
@@ -493,6 +496,10 @@ export async function packageNativeMacOSApp(): Promise<NativeMacOSPackageResult>
 
   if (existsSync(SIDEcar_ONNX_PATH)) {
     copyDirectory(SIDEcar_ONNX_PATH, sidecarLayout.onnxRuntimeDir);
+  }
+
+  if (existsSync(SIDEcar_NODE_MODULES_PATH)) {
+    copyDirectory(SIDEcar_NODE_MODULES_PATH, sidecarLayout.nodeModulesDir);
   }
 
   ensureDirectory(dirname(sidecarLayout.uiDistDir));

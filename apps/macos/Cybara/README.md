@@ -6,11 +6,11 @@ This is the native SwiftUI macOS app for Cybara. It launches the same local serv
 
 - resolves a Cybara sidecar binary from:
   - `CYBARA_NATIVE_SIDECAR_PATH`
-- `src-tauri/bin/cybara-aarch64-apple-darwin`
-- `src-tauri/bin/cybara-x86_64-apple-darwin`
-- `release/cybara`
-- bundled sidecar paths inside `Cybara.app`
-- `cybara` on `PATH` as a last resort, excluding app-bundle executable aliases
+  - `src-tauri/bin/cybara-aarch64-apple-darwin`
+  - `src-tauri/bin/cybara-x86_64-apple-darwin`
+  - `release/cybara`
+  - bundled sidecar paths inside `Cybara.app`
+  - `cybara` on `PATH` as a last resort, excluding app-bundle executable aliases
 - attaches to an existing local Cybara gateway on `http://127.0.0.1:4269` when one is already running
 - otherwise starts `cybara start --enable-terminal` with `PORT=4269` and `CYBARA_HOST=127.0.0.1`
 - waits for `http://127.0.0.1:4269/api/health`
@@ -37,9 +37,10 @@ This assembles a real `Cybara.app` bundle under `release/native-macos/<arch>/` a
 - the compiled `cybara` sidecar binary under `Contents/MacOS/sidecar/`
 - `ui/dist` and `secp256k1.wasm` under `Contents/Resources/sidecar/`
 - `onnxruntime` native libraries under `Contents/MacOS/sidecar/onnxruntime/`
+- sidecar `node_modules` under `Contents/MacOS/sidecar/node_modules/`, including `@huggingface/transformers`, `onnxruntime-node`, `onnxruntime-web`, `onnxruntime-common`, and optional `sharp/@img`
 - a generated `AppIcon.icns`
 
-The packaged app uses the same `127.0.0.1:4269` local gateway contract as the Tauri app.
+The packaged app uses the same `127.0.0.1:4269` local gateway contract as the Tauri app. The sidecar receives `CYBARA_RESOURCE_DIR` so it can resolve bundled UI and local indexing runtime assets from the app bundle instead of relying on the developer checkout.
 
 ## Run
 
@@ -52,6 +53,7 @@ bun run native:macos:run
 - This app is intentionally thin: the Bun sidecar remains the shared runtime so CLI, Tauri, and SwiftUI stay aligned in production.
 - The target local gateway contract is the same one Tauri uses: `127.0.0.1:4269`.
 - Tagged desktop releases can now publish zipped native macOS app bundles alongside the Tauri installers.
+- Local Transformers.js workspace embeddings use the bundled ONNX native binding when available for the host architecture, with ONNX Web/WASM assets bundled as fallback.
 - If `CYBARA_MACOS_SIGN_IDENTITY` is set, the bundle is codesigned during packaging.
 - If `CYBARA_MACOS_NOTARY_KEYCHAIN_PROFILE` is also set, the package script submits the zip for notarization, staples the `.app`, and then writes the final release zip.
 - If you want to point at a different binary or port:

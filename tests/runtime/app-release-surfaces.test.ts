@@ -56,6 +56,22 @@ describe("app release surface wiring", () => {
     expect(workflow).not.toContain("releaseDraft: false");
   });
 
+  test("Tauri release matrix builds each platform sidecar with an explicit Bun target", () => {
+    const workflow = read(".github/workflows/release.yml");
+
+    expect(workflow).toContain("Build Sidecar binary");
+    expect(workflow).toContain("CYBARA_SIDECAR_BUN_TARGET: ${{ matrix.bun_target }}");
+    expect(workflow).toContain("run: bun run scripts/build-sidecar.ts");
+    expect(workflow).toContain("bun_target: bun-darwin-arm64");
+    expect(workflow).toContain('sidecar: "src-tauri/bin/cybara-aarch64-apple-darwin"');
+    expect(workflow).toContain("bun_target: bun-darwin-x64");
+    expect(workflow).toContain('sidecar: "src-tauri/bin/cybara-x86_64-apple-darwin"');
+    expect(workflow).toContain("bun_target: bun-windows-x64");
+    expect(workflow).toContain('sidecar: "src-tauri/bin/cybara-x86_64-pc-windows-msvc.exe"');
+    expect(workflow).toContain("bun_target: bun-linux-x64");
+    expect(workflow).toContain('sidecar: "src-tauri/bin/cybara-x86_64-unknown-linux-gnu"');
+  });
+
   test("release workflow runs native macOS unit tests when XCTest is available", () => {
     const workflow = read(".github/workflows/release.yml");
 

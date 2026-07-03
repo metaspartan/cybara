@@ -9,10 +9,12 @@ import { setupApi, settingsApi } from '@/lib/api';
 import type { AvailableProvider } from '@/types';
 
 type WizardStep = 'welcome' | 'provider' | 'apikey' | 'oauth' | 'permissions' | 'agent' | 'complete';
+type SetupAuthFlow = 'api_key' | 'oauth' | 'external' | 'none';
 
-function getAuthFlow(provider: AvailableProvider): 'api_key' | 'oauth' | 'none' {
+function getAuthFlow(provider: AvailableProvider): SetupAuthFlow {
     if (!provider.authType || provider.authType === 'none') return 'none';
-    if (provider.authType === 'oauth' || provider.authType === 'aws-sdk') return 'oauth';
+    if (provider.authType === 'oauth') return 'oauth';
+    if (provider.authType === 'aws-sdk') return 'external';
     return 'api_key'; // api_key, bearer, token
 }
 
@@ -239,6 +241,11 @@ export function Setup() {
                                                     {authFlow === 'oauth' && (
                                                         <span className="absolute top-1 right-1 text-[10px] bg-amber-500/20 text-amber-400 px-1 rounded">
                                                             OAuth
+                                                        </span>
+                                                    )}
+                                                    {authFlow === 'external' && (
+                                                        <span className="absolute top-1 right-1 text-[10px] bg-blue-500/20 text-blue-300 px-1 rounded">
+                                                            External
                                                         </span>
                                                     )}
                                                 </button>

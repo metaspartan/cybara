@@ -10,6 +10,7 @@ describe("compiled sidecar startup: native/heavy externals must load lazily", ()
   test("embeddings.ts routes heavy externals through the parameterized loader", () => {
     const source = read("core/memory/embeddings.ts");
     expect(source).toContain("importOptionalModule");
+    expect(source).toContain("process.env.CYBARA_RESOURCE_DIR");
     expect(source).not.toMatch(/import\(\s*["']@huggingface\/transformers["']\s*\)/);
     expect(source).not.toMatch(/import\(\s*["']onnxruntime-node["']\s*\)/);
     expect(source).not.toMatch(/import\(\s*["']onnxruntime-web["']\s*\)/);
