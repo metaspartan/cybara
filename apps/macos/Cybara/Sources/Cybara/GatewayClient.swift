@@ -476,9 +476,36 @@ struct GatewayClient: Sendable {
         try await getList("api/channels", keys: ["channels", "items"])
     }
 
+    func systemLogsPage(limit: Int = 200, offset: Int = 0) async throws -> GatewayLogPage {
+        let boundedLimit = min(max(1, limit), 1000)
+        let boundedOffset = max(0, offset)
+        let queryItems = [
+            URLQueryItem(name: "limit", value: "\(boundedLimit)"),
+            URLQueryItem(name: "offset", value: "\(boundedOffset)"),
+            URLQueryItem(name: "includeTotal", value: "1"),
+        ]
+
+        do {
+            return try await get("api/logs/system", as: GatewayLogPage.self, queryItems: queryItems)
+        } catch GatewayClientError.decodingFailed {
+            let logs: [GatewayLogEntry] = try await getList(
+                "api/logs/system",
+                keys: ["logs", "items"],
+                queryItems: queryItems
+            )
+            return GatewayLogPage(
+                logs: Array(logs.prefix(boundedLimit)),
+                total: nil,
+                limit: boundedLimit,
+                offset: boundedOffset,
+                hasMore: nil
+            )
+        }
+    }
+
     func systemLogs(limit: Int = 200) async throws -> [GatewayLogEntry] {
-        let logs: [GatewayLogEntry] = try await getList("api/logs/system", keys: ["logs", "items"])
-        return Array(logs.prefix(limit))
+        let page = try await systemLogsPage(limit: limit)
+        return page.logs
     }
 
     // ─── Theme ───────────────────────────────────────────────────────────────

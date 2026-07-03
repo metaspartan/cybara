@@ -669,6 +669,40 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(idFallback.displayName, "webhook-1")
     }
 
+    func testGatewayLogPageDecodesBoundedCombinedLogs() throws {
+        let page = try JSONDecoder().decode(
+            GatewayLogPage.self,
+            from: Data(
+                #"""
+                {
+                  "logs": [
+                    {
+                      "id": "log-1",
+                      "level": "info",
+                      "source": "agent",
+                      "message": "Agent completed task",
+                      "metadata": "{\"sessionId\":\"session-1\"}",
+                      "created_at": "2026-07-03T04:12:18Z",
+                      "logType": "agent"
+                    }
+                  ],
+                  "total": 38733,
+                  "limit": 200,
+                  "offset": 0,
+                  "hasMore": true
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(page.logs.first?.id, "log-1")
+        XCTAssertEqual(page.logs.first?.metadata, #"{"sessionId":"session-1"}"#)
+        XCTAssertEqual(page.logs.first?.logType, "agent")
+        XCTAssertEqual(page.total, 38733)
+        XCTAssertEqual(page.limit, 200)
+        XCTAssertTrue(page.hasMore == true)
+    }
+
     func testMobileDeviceModelsExposeStatusAndScopes() throws {
         let device = try JSONDecoder().decode(
             GatewayMobileDevice.self,

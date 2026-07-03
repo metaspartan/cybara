@@ -47,6 +47,35 @@ describe("native macOS shell wiring", () => {
     expect(brand).toContain("logoURLCandidates");
   });
 
+  test("native settings centers its content column and keeps cards left-aligned", () => {
+    const settings = readFileSync(join(MACOS_APP_DIR, "NativeSettingsScreen.swift"), "utf8");
+
+    expect(settings).toContain("static let maxContentWidth: CGFloat = 900");
+    expect(settings).toContain(
+      ".frame(maxWidth: NativeSettingsLayout.maxContentWidth, maxHeight: .infinity, alignment: .topLeading)"
+    );
+    expect(settings).toContain(
+      ".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)"
+    );
+    expect(settings).toContain(".frame(maxWidth: .infinity, alignment: .top)");
+    expect(settings).not.toContain(".frame(maxWidth: .infinity, alignment: .topLeading)");
+  });
+
+  test("native logs use bounded paged gateway reads instead of full log downloads", () => {
+    const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
+    const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
+    const configScreens = readFileSync(join(MACOS_APP_DIR, "NativeConfigScreens.swift"), "utf8");
+
+    expect(gatewayClient).toContain("func systemLogsPage(limit: Int = 200, offset: Int = 0)");
+    expect(gatewayClient).toContain('URLQueryItem(name: "limit"');
+    expect(gatewayClient).toContain('URLQueryItem(name: "offset"');
+    expect(gatewayClient).toContain('URLQueryItem(name: "includeTotal", value: "1")');
+    expect(gatewayModels).toContain("struct GatewayLogPage");
+    expect(configScreens).toContain("private let logLimit = 200");
+    expect(configScreens).toContain("client.systemLogsPage(limit: logLimit)");
+    expect(configScreens).toContain("logSummary");
+  });
+
   test("gateway model labels trim blank titles before falling back", () => {
     const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
     const modelTests = readFileSync(

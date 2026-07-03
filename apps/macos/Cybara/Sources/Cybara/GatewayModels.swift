@@ -1024,7 +1024,17 @@ struct GatewayLogEntry: Decodable, Identifiable, Hashable {
     let level: String?
     let source: String?
     let message: String?
+    let metadata: String?
     let created_at: String?
+    let logType: String?
+}
+
+struct GatewayLogPage: Decodable, Hashable {
+    let logs: [GatewayLogEntry]
+    let total: Int?
+    let limit: Int?
+    let offset: Int?
+    let hasMore: Bool?
 }
 
 struct GatewaySkill: Decodable, Identifiable, Hashable {

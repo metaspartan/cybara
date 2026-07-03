@@ -5,7 +5,7 @@ private enum NativeSettingsLayout {
     static let outerPadding = EdgeInsets(top: 20, leading: 22, bottom: 20, trailing: 22)
     static let contentInset = EdgeInsets(top: 10, leading: 2, bottom: 16, trailing: 2)
     static let cardSpacing: CGFloat = 12
-    static let maxContentWidth: CGFloat = 860
+    static let maxContentWidth: CGFloat = 900
 }
 
 private extension View {
@@ -13,7 +13,7 @@ private extension View {
         self
             .padding(NativeSettingsLayout.contentInset)
             .frame(maxWidth: NativeSettingsLayout.maxContentWidth, alignment: .topLeading)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, alignment: .top)
     }
 }
 
@@ -90,8 +90,9 @@ struct NativeSettingsScreen: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(NativeSettingsLayout.outerPadding)
+        .frame(maxWidth: NativeSettingsLayout.maxContentWidth, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .task(id: sidecar.isReady) { await load() }
     }
 

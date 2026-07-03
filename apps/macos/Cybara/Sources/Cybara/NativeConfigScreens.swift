@@ -808,8 +808,12 @@ struct LogsScreen: View {
     let client: GatewayClient
 
     @State private var logs: [GatewayLogEntry] = []
+    @State private var totalLogs: Int?
+    @State private var hasMore = false
     @State private var loaded = false
     @State private var error: String?
+
+    private let logLimit = 200
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -833,29 +837,46 @@ struct LogsScreen: View {
                 LoadFailedView(message: error) { Task { await load() } }
             } else {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 6) {
-                        ForEach(logs) { entry in
-                            HStack(alignment: .top, spacing: 10) {
-                                Text(entry.level?.uppercased() ?? "INFO")
-                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(levelColor(entry.level))
-                                    .frame(width: 44, alignment: .leading)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(entry.message ?? "")
-                                        .font(.system(size: 11, design: .monospaced))
-                                        .textSelection(.enabled)
-                                    Text("\(entry.source ?? "gateway") · \(relativeTimestamp(entry.created_at))")
-                                        .font(.system(size: 10, design: .rounded))
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer(minLength: 0)
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Label(logSummary, systemImage: "doc.text.magnifyingglass")
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            if hasMore {
+                                Text("Newest first")
+                                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                                    .foregroundStyle(.tertiary)
                             }
-                            .padding(.vertical, 4)
-                            .padding(.horizontal, 12)
+                        }
+
+                        LazyVStack(alignment: .leading, spacing: 6) {
+                            ForEach(logs) { entry in
+                                HStack(alignment: .top, spacing: 10) {
+                                    Text(entry.level?.uppercased() ?? "INFO")
+                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(levelColor(entry.level))
+                                        .frame(width: 44, alignment: .leading)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(entry.message ?? "")
+                                            .font(.system(size: 11, design: .monospaced))
+                                            .textSelection(.enabled)
+                                        Text(logDetail(for: entry))
+                                            .font(.system(size: 10, design: .rounded))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.vertical, 5)
+                                .padding(.horizontal, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(Color.primary.opacity(0.035))
+                                )
+                            }
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 20)
+                    .padding(16)
                 }
                 .cybaraGlass(cornerRadius: 18)
                 .padding(.horizontal, 24)
@@ -863,6 +884,12 @@ struct LogsScreen: View {
             }
         }
         .task { await load() }
+    }
+
+    private var logSummary: String {
+        let visible = logs.count
+        guard let totalLogs else { return "\(visible) recent entries" }
+        return visible == totalLogs ? "\(visible) entries" : "\(visible) of \(totalLogs) entries"
     }
 
     private func levelColor(_ level: String?) -> Color {
@@ -873,9 +900,18 @@ struct LogsScreen: View {
         }
     }
 
+    private func logDetail(for entry: GatewayLogEntry) -> String {
+        let source = entry.source ?? entry.logType ?? "gateway"
+        let timestamp = relativeTimestamp(entry.created_at)
+        return timestamp.isEmpty ? source : "\(source) · \(timestamp)"
+    }
+
     private func load() async {
         do {
-            logs = try await client.systemLogs()
+            let page = try await client.systemLogsPage(limit: logLimit)
+            logs = page.logs
+            totalLogs = page.total
+            hasMore = page.hasMore ?? false
             error = nil
         } catch {
             self.error = error.localizedDescription
