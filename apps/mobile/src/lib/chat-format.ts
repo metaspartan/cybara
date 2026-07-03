@@ -336,7 +336,10 @@ function activityTimestamp(value: unknown, fallback: number): number {
   return fallback;
 }
 
-export function buildMobileWorkTimeline(message: SessionMessageSummary): {
+export function buildMobileWorkTimeline(
+  message: SessionMessageSummary,
+  nowMs = Date.now()
+): {
   workedDuration: string;
   activities: MobileWorkActivity[];
 } {
@@ -401,9 +404,17 @@ export function buildMobileWorkTimeline(message: SessionMessageSummary): {
   const toolDuration = (message.toolCalls || []).reduce((sum, toolCall) => {
     return sum + (toolCall.durationMs ?? parseDurationMs(toolCall.duration) ?? 0);
   }, 0);
+  const hasActiveWork =
+    uniqueActivities.some((activity) => activity.phase === "start") ||
+    (message.toolCalls || []).some((toolCall) => toolPhase(toolCall.status) === "start");
+  const firstTimestamp = timestamps.length > 0 ? Math.min(...timestamps) : undefined;
   const workedMs = Math.max(
     0,
-    timestampDuration && timestampDuration > 0 ? timestampDuration : toolDuration
+    hasActiveWork && firstTimestamp && firstTimestamp > 0
+      ? nowMs - firstTimestamp
+      : timestampDuration && timestampDuration > 0
+        ? timestampDuration
+        : toolDuration
   );
 
   return {

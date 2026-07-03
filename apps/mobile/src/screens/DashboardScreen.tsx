@@ -114,11 +114,13 @@ import {
   type AgentSummary,
   type FeatureEndpointKey,
   type FeatureSummary,
+  type MobileStatusStreamEvent,
   type ProviderSummary,
   type RemoteItemSummary,
   type RouterConfig,
   type RouterStatus,
   type SessionDetailSummary,
+  type SessionProcessActivitySummary,
   type SessionSummary,
   type SystemPromptFeatureKey,
   type SystemMonitorSnapshot,
@@ -1824,6 +1826,108 @@ function DetailContent({
   );
 }
 
+function liveStatusPhase(
+  event: Extract<MobileStatusStreamEvent, { type: "status" }>
+): SessionProcessActivitySummary["phase"] | null {
+  if (event.toolPhase) return event.toolPhase;
+  if (event.status === "tool_executing") return "start";
+  if (event.status === "tool_completed") return "result";
+  if (event.status === "error") return "error";
+  if (
+    event.status === "thinking" ||
+    event.status === "generating" ||
+    event.status === "compacting"
+  ) {
+    return "start";
+  }
+  return null;
+}
+
+function isMeaningfulLiveDetail(value: string | undefined): value is string {
+  const normalized = (value || "").trim().toLowerCase();
+  if (!normalized) return false;
+  return ![
+    "idle",
+    "working",
+    "working...",
+    "generating response",
+    "generating response...",
+  ].includes(normalized);
+}
+
+function liveActivityFromStatusEvent(
+  event: Extract<MobileStatusStreamEvent, { type: "status" }>
+): SessionProcessActivitySummary | null {
+  const phase = liveStatusPhase(event);
+  if (!phase) return null;
+  const timestamp = typeof event.timestamp === "number" ? event.timestamp : Date.now();
+  const toolName =
+    event.toolName ||
+    (event.status === "thinking" || event.status === "generating" || event.status === "compacting"
+      ? "__thought"
+      : undefined);
+  const fallbackText =
+    event.status === "thinking"
+      ? "Thinking..."
+      : event.status === "generating"
+        ? "Generating response..."
+        : event.status === "compacting"
+          ? "Summarizing context..."
+          : event.status === "error"
+            ? "Run failed"
+            : event.toolName
+              ? `${event.toolName} running...`
+              : "Working...";
+  const text = isMeaningfulLiveDetail(event.detail) ? event.detail.trim() : fallbackText;
+  return {
+    id: event.toolCallId || `live-${event.status}-${timestamp}`,
+    phase,
+    text,
+    timestamp,
+    toolName,
+    toolCallId: event.toolCallId,
+  };
+}
+
+function mergeLiveActivity(
+  current: SessionProcessActivitySummary[],
+  incoming: SessionProcessActivitySummary
+): SessionProcessActivitySummary[] {
+  const key = incoming.toolCallId || incoming.id;
+  const next = [...current];
+  const index = next.findIndex((activity) => (activity.toolCallId || activity.id) === key);
+  if (index >= 0) {
+    next[index] = { ...next[index], ...incoming };
+  } else {
+    next.push(incoming);
+  }
+  return next.slice(-12);
+}
+
+function liveAssistantMessage(
+  sessionId: string,
+  current: SessionDetailSummary["messages"][number] | null,
+  timestampMs = Date.now()
+): SessionDetailSummary["messages"][number] {
+  return (
+    current || {
+      id: `live-assistant-${sessionId}`,
+      role: "assistant",
+      content: "",
+      timestamp: new Date(timestampMs).toISOString(),
+      processActivities: [
+        {
+          id: `live-thinking-${timestampMs}`,
+          phase: "start",
+          text: "Thinking...",
+          timestamp: timestampMs,
+          toolName: "__thought",
+        },
+      ],
+    }
+  );
+}
+
 function SessionDetailPanel({
   accentColor,
   api,
@@ -1858,6 +1962,11 @@ function SessionDetailPanel({
   const scrollRef = useRef<ScrollView>(null);
   const headerActionRef = useRef<() => void>(() => {});
   const sessionRefreshInFlight = useRef(false);
+  const sendingRef = useRef(false);
+  const [liveAssistant, setLiveAssistant] = useState<SessionDetailSummary["messages"][number] | null>(
+    null
+  );
+  const [liveNowMs, setLiveNowMs] = useState(Date.now());
 
   const loadSession = async (showLoading = false) => {
     if (sessionRefreshInFlight.current) return;
@@ -1885,6 +1994,14 @@ function SessionDetailPanel({
   }, [sessionId, sessionSummary?.pinned]);
 
   useEffect(() => {
+    sendingRef.current = sending;
+  }, [sending]);
+
+  useEffect(() => {
+    setLiveAssistant(null);
+  }, [sessionId]);
+
+  useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setLoadError(null);
@@ -1910,6 +2027,58 @@ function SessionDetailPanel({
   }, [api, sessionId]);
 
   useEffect(() => {
+    const disconnect = api.connectStatusStream({
+      onEvent: (event) => {
+        if (event.type === "assistant_token") {
+          if (event.sessionId !== sessionId) return;
+          setLiveNowMs(event.timestamp);
+          setLiveAssistant((current) => {
+            const base = liveAssistantMessage(sessionId, current, event.timestamp);
+            return {
+              ...base,
+              content: `${base.content || ""}${event.delta}`,
+            };
+          });
+          return;
+        }
+
+        if (event.type === "snapshot") {
+          const snapshot = event.activeSessions.find((entry) => entry.sessionId === sessionId);
+          if (!snapshot) return;
+          setLiveNowMs(snapshot.timestamp);
+          setLiveAssistant((current) => ({
+            ...liveAssistantMessage(sessionId, current, snapshot.timestamp),
+            processActivities:
+              snapshot.activities.length > 0
+                ? snapshot.activities
+                : liveAssistantMessage(sessionId, current, snapshot.timestamp).processActivities,
+          }));
+          return;
+        }
+
+        if (event.type !== "status" || event.sessionId !== sessionId) return;
+        setLiveNowMs(event.timestamp);
+        if (event.status === "idle") {
+          if (!sendingRef.current) {
+            setLiveAssistant(null);
+          }
+          return;
+        }
+        const activity = liveActivityFromStatusEvent(event);
+        if (!activity) return;
+        setLiveAssistant((current) => {
+          const base = liveAssistantMessage(sessionId, current, event.timestamp);
+          return {
+            ...base,
+            processActivities: mergeLiveActivity(base.processActivities || [], activity),
+          };
+        });
+      },
+    });
+    return disconnect;
+  }, [api, sessionId]);
+
+  useEffect(() => {
     const interval = setInterval(
       () => {
         void loadSession(false);
@@ -1920,10 +2089,16 @@ function SessionDetailPanel({
   }, [api, sessionId, sending]);
 
   useEffect(() => {
+    if (!liveAssistant) return;
+    const interval = setInterval(() => setLiveNowMs(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [liveAssistant]);
+
+  useEffect(() => {
     requestAnimationFrame(() => {
       scrollRef.current?.scrollToEnd({ animated: true });
     });
-  }, [detail?.messages.length, sending]);
+  }, [detail?.messages.length, liveAssistant?.content, liveAssistant?.processActivities?.length, sending]);
 
   const setComposerDraft = (value: string) => {
     draftRef.current = value;
@@ -1942,6 +2117,9 @@ function SessionDetailPanel({
     if (!message || sending) return;
     resetComposerDraft();
     setSending(true);
+    const liveStartedAt = Date.now();
+    setLiveNowMs(liveStartedAt);
+    setLiveAssistant(liveAssistantMessage(sessionId, null, liveStartedAt));
     const optimistic = {
       id: `local-${Date.now()}`,
       role: "user",
@@ -1957,16 +2135,44 @@ function SessionDetailPanel({
         : current
     );
     try {
-      await api.sendChat({
+      const result = await api.sendChat({
         message,
         sessionId,
         agentId: detail?.agentId,
         workspaceDir: detail?.workspaceDir,
       });
+      setDetail((current) =>
+        current
+          ? {
+              ...current,
+              workspaceDir: result.workspaceDir ?? current.workspaceDir,
+              messages: [
+                ...current.messages.filter((entry) => entry.id !== liveAssistant?.id),
+                result.message,
+              ],
+            }
+          : current
+      );
       await loadSession(false);
+      setLiveAssistant(null);
     } catch (error) {
+      const messageText = error instanceof Error ? error.message : String(error);
       setComposerDraft(message);
-      setLoadError(error instanceof Error ? error.message : String(error));
+      setLoadError(messageText);
+      const failedAt = Date.now();
+      setLiveNowMs(failedAt);
+      setLiveAssistant((current) => {
+        const base = liveAssistantMessage(sessionId, current, failedAt);
+        return {
+          ...base,
+          processActivities: mergeLiveActivity(base.processActivities || [], {
+            id: `live-error-${failedAt}`,
+            phase: "error",
+            text: messageText,
+            timestamp: failedAt,
+          }),
+        };
+      });
     } finally {
       setSending(false);
     }
@@ -2076,11 +2282,14 @@ function SessionDetailPanel({
     });
   }, [setHeaderAction, sessionId, pinning]);
 
-  const visibleMessages = useMemo(
-    () => latestVisibleChatMessages(detail?.messages ?? []),
-    [detail?.messages]
-  );
-  const waitingForAssistant = chatIsWaitingForAssistant(detail?.messages ?? [], sending);
+  const renderMessages = useMemo(() => {
+    const messages = detail?.messages ?? [];
+    if (!liveAssistant) return messages;
+    if (messages.some((message) => message.id === liveAssistant.id)) return messages;
+    return [...messages, liveAssistant];
+  }, [detail?.messages, liveAssistant]);
+  const visibleMessages = useMemo(() => latestVisibleChatMessages(renderMessages), [renderMessages]);
+  const waitingForAssistant = chatIsWaitingForAssistant(renderMessages, sending);
 
   return (
     <KeyboardAvoidingView
@@ -2115,6 +2324,7 @@ function SessionDetailPanel({
                 key={`${message.id}-${index}`}
                 accentColor={accentColor}
                 message={message}
+                nowMs={message.id === liveAssistant?.id ? liveNowMs : undefined}
               />
             ))}
             {waitingForAssistant ? (

@@ -372,6 +372,7 @@ export interface SessionProcessActivitySummary {
   text: string;
   timestamp?: number;
   toolName?: string;
+  toolCallId?: string;
 }
 
 export interface SessionMessageSummary {
@@ -397,6 +398,91 @@ export interface SessionDetailSummary {
   updatedAt?: string;
   pinned?: boolean;
   messages: SessionMessageSummary[];
+}
+
+export type MobileAgentStatus =
+  | "idle"
+  | "thinking"
+  | "tool_executing"
+  | "tool_completed"
+  | "generating"
+  | "compacting"
+  | "error";
+
+export interface MobileStatusSessionSnapshot {
+  sessionId: string;
+  status: MobileAgentStatus | string;
+  timestamp: number;
+  detail?: string;
+  agentId?: string;
+  activities: SessionProcessActivitySummary[];
+}
+
+export interface MobileStatusStreamStatusEvent {
+  type: "status";
+  status: MobileAgentStatus | string;
+  timestamp: number;
+  detail?: string;
+  sessionId?: string;
+  agentId?: string;
+  toolName?: string;
+  toolCallId?: string;
+  toolPhase?: "start" | "result" | "error";
+  durationMs?: number;
+}
+
+export interface MobileStatusStreamSnapshotEvent {
+  type: "snapshot";
+  timestamp: number;
+  activeSessions: MobileStatusSessionSnapshot[];
+  activeSessionIds: string[];
+  count: number;
+}
+
+export interface MobileStatusStreamTokenEvent {
+  type: "assistant_token";
+  sessionId: string;
+  agentId?: string;
+  delta: string;
+  timestamp: number;
+}
+
+export interface MobileStatusStreamTaskEvent {
+  type: "task_completed";
+  taskId: string;
+  taskName: string;
+  status: "completed" | "failed";
+  sessionId?: string;
+  resultPreview?: string;
+  error?: string;
+  timestamp?: number;
+}
+
+export type MobileStatusStreamEvent =
+  | MobileStatusStreamStatusEvent
+  | MobileStatusStreamSnapshotEvent
+  | MobileStatusStreamTokenEvent
+  | MobileStatusStreamTaskEvent;
+
+export interface MobileStatusStreamHandlers {
+  onEvent: (event: MobileStatusStreamEvent) => void;
+  onOpen?: () => void;
+  onClose?: () => void;
+  onError?: () => void;
+}
+
+type MobileWebSocket = WebSocket & {
+  onopen: (() => void) | null;
+  onclose: (() => void) | null;
+  onerror: (() => void) | null;
+  onmessage: ((event: { data: unknown }) => void) | null;
+};
+
+type MobileWebSocketConstructor = new (url: string) => MobileWebSocket;
+
+export interface MobileStatusStreamOptions {
+  reconnectDelayMs?: number;
+  WebSocketImpl?: MobileWebSocketConstructor;
 }
 
 export interface FeatureSummary {
@@ -964,8 +1050,103 @@ function normalizeProcessActivities(value: unknown): SessionProcessActivitySumma
       text: readString(record, ["text", "message", "detail"]) || "Working",
       timestamp: readNumber(record, ["timestamp"]),
       toolName: readString(record, ["toolName", "tool_name"]),
+      toolCallId: readString(record, ["toolCallId", "tool_call_id"]),
     };
   });
+}
+
+function normalizeStatusSnapshot(value: unknown, fallbackIndex: number): MobileStatusSessionSnapshot {
+  const record = asRecord(value);
+  const sessionId = readString(record, ["sessionId", "session_id"]) || `session-${fallbackIndex + 1}`;
+  return {
+    sessionId,
+    status: readString(record, ["status"]) || "thinking",
+    timestamp: readNumber(record, ["timestamp"]) ?? Date.now(),
+    detail: readString(record, ["detail", "message", "text"]),
+    agentId: readString(record, ["agentId", "agent_id"]),
+    activities: normalizeProcessActivities(record?.activities) || [],
+  };
+}
+
+export function normalizeMobileStatusStreamEvent(value: unknown): MobileStatusStreamEvent | null {
+  const record = asRecord(value);
+  const type = readString(record, ["type"]);
+  if (!record || !type) return null;
+
+  if (type === "snapshot") {
+    const activeSessions = normalizeArrayResponse(record.activeSessions, [
+      "activeSessions",
+      "active_sessions",
+      "sessions",
+    ]).map(normalizeStatusSnapshot);
+    return {
+      type,
+      timestamp: readNumber(record, ["timestamp"]) ?? Date.now(),
+      activeSessions,
+      activeSessionIds: normalizeArrayResponse(record.activeSessionIds, [
+        "activeSessionIds",
+        "active_session_ids",
+      ])
+        .map((entry) => (typeof entry === "string" ? entry : ""))
+        .filter(Boolean),
+      count: readNumber(record, ["count"]) ?? activeSessions.length,
+    };
+  }
+
+  if (type === "assistant_token") {
+    const sessionId = readString(record, ["sessionId", "session_id"]);
+    const delta = readString(record, ["delta", "text", "content"]);
+    if (!sessionId || !delta) return null;
+    return {
+      type,
+      sessionId,
+      agentId: readString(record, ["agentId", "agent_id"]),
+      delta,
+      timestamp: readNumber(record, ["timestamp"]) ?? Date.now(),
+    };
+  }
+
+  if (type === "task_completed") {
+    return {
+      type,
+      taskId: readString(record, ["taskId", "task_id"]) || "task",
+      taskName: readString(record, ["taskName", "task_name", "name"]) || "Task",
+      status: readString(record, ["status"]) === "failed" ? "failed" : "completed",
+      sessionId: readString(record, ["sessionId", "session_id"]),
+      resultPreview: readString(record, ["resultPreview", "result_preview"]),
+      error: readString(record, ["error"]),
+      timestamp: readNumber(record, ["timestamp"]),
+    };
+  }
+
+  if (type !== "status") return null;
+  return {
+    type,
+    status: readString(record, ["status"]) || "thinking",
+    timestamp: readNumber(record, ["timestamp"]) ?? Date.now(),
+    detail: readString(record, ["detail", "message", "text"]),
+    sessionId: readString(record, ["sessionId", "session_id"]),
+    agentId: readString(record, ["agentId", "agent_id"]),
+    toolName: readString(record, ["toolName", "tool_name"]),
+    toolCallId: readString(record, ["toolCallId", "tool_call_id"]),
+    toolPhase: readString(record, ["toolPhase", "tool_phase"]) as
+      | "start"
+      | "result"
+      | "error"
+      | undefined,
+    durationMs: readNumber(record, ["durationMs", "duration_ms"]),
+  };
+}
+
+export function buildMobileStatusStreamUrl(profile: GatewayProfile): string {
+  const url = new URL(profile.baseUrl);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  const rootPath = url.pathname.replace(/\/+$/, "");
+  url.pathname = `${rootPath}/api/ws/status`;
+  url.search = "";
+  url.searchParams.set("token", profile.apiKey);
+  url.hash = "";
+  return url.toString();
 }
 
 function normalizeAgent(agent: unknown, index = 0): AgentSummary {
@@ -1163,6 +1344,90 @@ export class CybaraMobileApi {
       throw new CybaraApiError(response.status, path);
     }
     return (await response.json()) as T;
+  }
+
+  statusStreamUrl(): string {
+    return buildMobileStatusStreamUrl(this.profile);
+  }
+
+  connectStatusStream(
+    handlers: MobileStatusStreamHandlers,
+    options?: MobileStatusStreamOptions
+  ): () => void {
+    let socket: MobileWebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let closedByUser = false;
+    const reconnectDelayMs = Math.max(250, options?.reconnectDelayMs ?? 2000);
+    const WebSocketImpl =
+      options?.WebSocketImpl ?? ((globalThis as { WebSocket?: MobileWebSocketConstructor }).WebSocket);
+
+    if (!WebSocketImpl) {
+      handlers.onError?.();
+      return () => {};
+    }
+
+    const clearReconnect = () => {
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+    };
+
+    const connect = () => {
+      clearReconnect();
+      try {
+        socket = new WebSocketImpl(this.statusStreamUrl());
+      } catch {
+        handlers.onError?.();
+        if (!closedByUser) {
+          reconnectTimer = setTimeout(connect, reconnectDelayMs);
+        }
+        return;
+      }
+
+      socket.onopen = () => {
+        handlers.onOpen?.();
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(String(event.data));
+          const normalized = normalizeMobileStatusStreamEvent(payload);
+          if (normalized) handlers.onEvent(normalized);
+        } catch {
+          // Ignore malformed frames from stale gateway builds or proxies.
+        }
+      };
+
+      socket.onclose = () => {
+        handlers.onClose?.();
+        if (!closedByUser) {
+          reconnectTimer = setTimeout(connect, reconnectDelayMs);
+        }
+      };
+
+      socket.onerror = () => {
+        handlers.onError?.();
+        try {
+          socket?.close();
+        } catch {
+          // ignore
+        }
+      };
+    };
+
+    connect();
+
+    return () => {
+      closedByUser = true;
+      clearReconnect();
+      try {
+        socket?.close();
+      } catch {
+        // ignore
+      }
+      socket = null;
+    };
   }
 
   health(): Promise<HealthResponse> {

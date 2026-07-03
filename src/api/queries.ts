@@ -153,45 +153,23 @@ export function normalizeTimestamp(timestamp: string | undefined): string | unde
 export function getCombinedLogs(
   options: { limit?: number; offset?: number } = {}
 ): CombinedLogEntry[] {
-  const system = (tables.systemLogs.list ? tables.systemLogs.list() : []) as LogEntry[];
-  const agent = (tables.agentLogs.list ? tables.agentLogs.list() : []) as AgentLogEntry[];
-  const channel = (tables.channelLogs.list ? tables.channelLogs.list() : []) as ChannelLogEntry[];
-
-  const combined: CombinedLogEntry[] = [
-    ...system.map((l) => ({
-      id: l.id,
-      level: l.level || "info",
-      source: l.source || "system",
-      message: l.message || "",
-      metadata: l.metadata,
-      created_at: normalizeTimestamp(l.created_at)!,
-      logType: "system",
-    })),
-    ...agent.map((l) => ({
-      id: l.id,
-      level: "info",
-      source: "agent",
-      message: `Agent ${l.agent_id.slice(0, 8)}... ${l.action}${l.details ? `: ${l.details}` : ""}`,
-      metadata: l.metadata,
-      created_at: normalizeTimestamp(l.created_at)!,
-      logType: "agent",
-    })),
-    ...channel.map((l) => ({
-      id: l.id,
-      level: "info",
-      source: "channel",
-      message: `${l.direction} ${l.channel_type}${l.sender_id ? ` from ${l.sender_id}` : ""}: ${l.content?.substring(0, 100)}${(l.content?.length || 0) > 100 ? "..." : ""}`,
-      metadata: l.metadata,
-      created_at: normalizeTimestamp(l.created_at)!,
-      logType: "channel",
-    })),
-    ...getCliLogs(),
-  ];
-
-  const sorted = combined.sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  );
   const offset = Math.max(0, options.offset ?? 0);
+  // The pre-existing contract capped each source at 1000 rows (the list()
+  // helpers' LIMIT); fetch only the window each table can contribute instead
+  // of materializing and formatting all rows before slicing.
+  const perSourceCap = 1000;
+  const windowSize =
+    options.limit === undefined
+      ? perSourceCap
+      : Math.min(perSourceCap, Math.max(offset + Math.max(0, options.limit), 1));
+
+  const sorted = [
+    ...combinedSystemLogs(windowSize),
+    ...combinedAgentLogs(windowSize),
+    ...combinedChannelLogs(windowSize),
+    ...getCliLogs(windowSize),
+  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
   if (options.limit === undefined) {
     return offset > 0 ? sorted.slice(offset) : sorted;
   }
@@ -421,22 +399,22 @@ export function getLogStats(hours: number = 24): LogStats {
  * @param dateStr Date in YYYY-MM-DD format
  */
 export function getDailyLogCounts(dateStr: string): DailyLogCounts {
-  const systemCount = db
-    .prepare(`SELECT COUNT(*) as count FROM system_logs WHERE date(created_at) = ?`)
-    .get(dateStr) as CountResult | undefined;
-
-  const channelCount = db
-    .prepare(`SELECT COUNT(*) as count FROM channel_logs WHERE date(created_at) = ?`)
-    .get(dateStr) as CountResult | undefined;
-
-  const messageCount = db
-    .prepare(`SELECT COUNT(*) as count FROM session_messages WHERE date(created_at) = ?`)
-    .get(dateStr) as CountResult | undefined;
+  // Range-compare on the raw column instead of date(created_at) so the
+  // created_at indexes are usable; rows are stored as "YYYY-MM-DD HH:MM:SS"
+  // (or ISO "YYYY-MM-DDT..."), and both sort correctly against these bounds.
+  const dayStart = dateStr;
+  const dayEnd = `${dateStr}~`; // "~" sorts after both " " and "T" separators
+  const countDay = (table: string): number => {
+    const row = db
+      .prepare(`SELECT COUNT(*) as count FROM ${table} WHERE created_at >= ? AND created_at < ?`)
+      .get(dayStart, dayEnd) as CountResult | undefined;
+    return row?.count || 0;
+  };
 
   return {
-    systemCount: systemCount?.count || 0,
-    channelCount: channelCount?.count || 0,
-    messageCount: messageCount?.count || 0,
+    systemCount: countDay("system_logs"),
+    channelCount: countDay("channel_logs"),
+    messageCount: countDay("session_messages"),
   };
 }
 

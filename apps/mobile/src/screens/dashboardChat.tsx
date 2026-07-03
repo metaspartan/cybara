@@ -140,18 +140,24 @@ function MarkdownText({ content }: { content: string }) {
 export function ChatMessageRow({
   accentColor,
   message,
+  nowMs,
 }: {
   accentColor: string;
   message: SessionDetailSummary["messages"][number];
+  nowMs?: number;
 }) {
   const isUser = message.role === "user";
   if (!isUser) {
+    const hasWorkTimeline = Boolean(
+      message.thinking || message.processActivities?.length || message.toolCalls?.length
+    );
+    const hasContent = (message.content || "").trim().length > 0;
     return (
       <View style={styles.agentMessageRow}>
-        {message.thinking || message.processActivities?.length || message.toolCalls?.length ? (
-          <WorkTimeline message={message} />
+        {hasWorkTimeline ? <WorkTimeline message={message} nowMs={nowMs} /> : null}
+        {hasContent || !hasWorkTimeline ? (
+          <MessageContent content={hasContent ? message.content : "(empty message)"} />
         ) : null}
-        <MessageContent content={message.content || "(empty message)"} />
         {message.timestamp ? (
           <Text style={styles.messageTime}>{relativeTimestamp(message.timestamp)}</Text>
         ) : null}
@@ -190,8 +196,14 @@ export function WorkActivityIcon({ phase, toolName }: { phase: string; toolName?
   return <CheckCircle2 color={colors.green} size={13} strokeWidth={2.2} />;
 }
 
-export function WorkTimeline({ message }: { message: SessionDetailSummary["messages"][number] }) {
-  const timeline = buildMobileWorkTimeline(message);
+export function WorkTimeline({
+  message,
+  nowMs,
+}: {
+  message: SessionDetailSummary["messages"][number];
+  nowMs?: number;
+}) {
+  const timeline = buildMobileWorkTimeline(message, nowMs);
   if (timeline.activities.length === 0) return null;
 
   return (

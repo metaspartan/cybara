@@ -139,4 +139,30 @@ describe("mobile chat formatting", () => {
       "Ran ls -la && pwd",
     ]);
   });
+
+  test("uses current time for active mobile work duration", () => {
+    const timeline = buildMobileWorkTimeline(
+      {
+        id: "assistant-live",
+        role: "assistant",
+        content: "",
+        processActivities: [
+          {
+            id: "read-live",
+            phase: "start",
+            text: "Exploring package.json",
+            timestamp: 10_000,
+            toolName: "read",
+          },
+        ],
+      },
+      45_000
+    );
+
+    expect(timeline.workedDuration).toBe("0h 00m 35s");
+    expect(timeline.activities[0]).toMatchObject({
+      phase: "start",
+      text: "Exploring package.json",
+    });
+  });
 });

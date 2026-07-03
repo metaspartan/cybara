@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+  buildMobileStatusStreamUrl,
   CybaraMobileApi,
   type SystemPromptConfig,
+  normalizeMobileStatusStreamEvent,
   normalizeActivityLogs,
   normalizeMemoryItems,
   normalizeMemoryList,
@@ -39,6 +41,101 @@ const systemPromptFixture: SystemPromptConfig = {
 };
 
 describe("mobile API client", () => {
+  test("builds and normalizes the authenticated mobile status stream", () => {
+    expect(buildMobileStatusStreamUrl(profile)).toBe(
+      "ws://127.0.0.1:4269/api/ws/status?token=cybara_mobile_test"
+    );
+    expect(
+      normalizeMobileStatusStreamEvent({
+        type: "snapshot",
+        timestamp: 1000,
+        activeSessions: [
+          {
+            sessionId: "s1",
+            status: "tool_executing",
+            timestamp: 999,
+            activities: [
+              {
+                id: "activity-1",
+                phase: "start",
+                text: "Exploring package.json",
+                timestamp: 999,
+                toolName: "read",
+                toolCallId: "read-1",
+              },
+            ],
+          },
+        ],
+      })
+    ).toMatchObject({
+      type: "snapshot",
+      activeSessions: [
+        {
+          sessionId: "s1",
+          activities: [{ text: "Exploring package.json", toolCallId: "read-1" }],
+        },
+      ],
+    });
+  });
+
+  test("dispatches normalized websocket status events", () => {
+    class FakeWebSocket {
+      static instances: FakeWebSocket[] = [];
+      onopen: (() => void) | null = null;
+      onclose: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      onmessage: ((event: { data: unknown }) => void) | null = null;
+
+      constructor(public url: string) {
+        FakeWebSocket.instances.push(this);
+      }
+
+      close() {
+        this.onclose?.();
+      }
+    }
+
+    const events: unknown[] = [];
+    const api = new CybaraMobileApi(profile);
+    const disconnect = api.connectStatusStream(
+      {
+        onEvent: (event) => events.push(event),
+      },
+      { WebSocketImpl: FakeWebSocket as never }
+    );
+
+    expect(FakeWebSocket.instances[0]?.url).toBe(
+      "ws://127.0.0.1:4269/api/ws/status?token=cybara_mobile_test"
+    );
+    FakeWebSocket.instances[0]?.onmessage?.({
+      data: JSON.stringify({
+        type: "status",
+        status: "tool_completed",
+        sessionId: "s1",
+        timestamp: 1200,
+        detail: "Explored package.json",
+        toolName: "read",
+        toolCallId: "read-1",
+      }),
+    });
+    disconnect();
+
+    expect(events).toEqual([
+      {
+        type: "status",
+        status: "tool_completed",
+        sessionId: "s1",
+        timestamp: 1200,
+        detail: "Explored package.json",
+        toolName: "read",
+        toolCallId: "read-1",
+        toolPhase: undefined,
+        agentId: undefined,
+        durationMs: undefined,
+      },
+    ]);
+  });
+
   test("sends bearer auth to gateway requests", async () => {
     const calls: Array<{ url: string; auth: string | null }> = [];
     const originalFetch = globalThis.fetch;

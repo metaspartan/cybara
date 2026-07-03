@@ -162,6 +162,12 @@ results.countCriticalSince = tables.metrics.countByTypeMetadataLikeSince(
 tables.metrics.add({ id: id("m"), type: "system_status", key: "last_activity", value: 12345 });
 results.latestValue = tables.metrics.getLatestValue("system_status", "last_activity");
 results.latestValueMissing = tables.metrics.getLatestValue("system_status", "nope");
+
+// Daily log counts window on the raw created_at column (seeded rows are
+// stamped with CURRENT_TIMESTAMP, i.e. today's UTC date).
+const todayUtc = new Date().toISOString().slice(0, 10);
+results.dailyCountsToday = getDailyLogCounts(todayUtc);
+results.dailyCountsPast = getDailyLogCounts("2001-01-01");
 results.keyTotals = tables.metrics
   .getKeyTotalsWithLatestMetadata("token_usage_by_provider")
   .map((r) => ({ key: r.key, total: r.total, metadata: r.metadata }));
@@ -352,6 +358,11 @@ describe("metrics aggregation helpers (SQL-side, no full-type scans)", () => {
   test("getLatestValue returns the newest value or null", () => {
     expect(r("latestValue")).toBe(12345);
     expect(r("latestValueMissing")).toBeNull();
+  });
+
+  test("getDailyLogCounts windows on the raw created_at column", () => {
+    expect(r("dailyCountsToday")).toEqual({ systemCount: 3, channelCount: 2, messageCount: 0 });
+    expect(r("dailyCountsPast")).toEqual({ systemCount: 0, channelCount: 0, messageCount: 0 });
   });
 
   test("getKeyTotalsWithLatestMetadata groups per key with summed totals", () => {
