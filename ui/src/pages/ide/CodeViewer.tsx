@@ -242,6 +242,10 @@ export function CodeViewer({
   const [pendingPreviewDiff, setPendingPreviewDiff] = useState<string | null>(null);
   const [activeLine, setActiveLine] = useState(1);
   const [blamePopoverLine, setBlamePopoverLine] = useState<number | null>(null);
+  // Zed-style "toggle git blame": when on, show blame on every line, not just
+  // the active one. Reuses the existing per-line inline-blame render so no new
+  // gutter alignment logic is introduced.
+  const [blameAllLines, setBlameAllLines] = useState(false);
   const [copiedCommit, setCopiedCommit] = useState<string | null>(null);
   const [hoverInfo, setHoverInfo] = useState<{
     line: number;
@@ -2690,6 +2694,28 @@ export function CodeViewer({
           Large file mode enabled: syntax highlighting and blame are reduced for responsiveness.
         </div>
       )}
+      {!isBinary && !isLargeFileMode && gitHistoryStatus === "ready" && blameLines.size > 0 && (
+        <div className="px-4 py-1.5 border-b border-white/10 bg-black/20 flex items-center justify-between text-xs">
+          <span className="flex items-center gap-1.5 text-gray-500">
+            <GitBranch className="w-3.5 h-3.5" />
+            Git blame
+          </span>
+          <button
+            type="button"
+            onClick={() => setBlameAllLines((previous) => !previous)}
+            aria-pressed={blameAllLines}
+            className={cn(
+              "px-2 py-0.5 rounded text-[11px] border transition-colors",
+              blameAllLines
+                ? "border-[rgb(var(--accent-primary))] text-[rgb(var(--accent-primary))] bg-[rgba(var(--accent-primary),0.12)]"
+                : "border-white/10 text-gray-400 hover:text-gray-200"
+            )}
+            title="Show git blame on every line (current line always shown)"
+          >
+            {blameAllLines ? "All lines" : "Current line"}
+          </button>
+        </div>
+      )}
 
       {!isBinary && !isMarkdownPreview && showFindBar && (
         <div className="px-4 py-2 border-b border-white/10 bg-black/25 flex items-center gap-2">
@@ -3185,7 +3211,7 @@ export function CodeViewer({
                                   ? `${blameLine.author} · ${blameLine.shortCommit}${blameDate ? ` · ${blameDate}` : ""}${blameSummary ? ` · ${blameSummary}` : ""}`
                                   : "";
                                 const shouldShowLineBlame =
-                                  isActiveLine && showInlineBlame && !!blameLine;
+                                  (isActiveLine || blameAllLines) && showInlineBlame && !!blameLine;
                                 const lineProps = getLineProps({ line });
                                 return (
                                   <div
