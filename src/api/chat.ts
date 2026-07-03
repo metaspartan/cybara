@@ -1,4 +1,5 @@
 import { agentManager, type AgentMessage } from "../core/agent";
+import { KeyedMutex } from "../core/keyed-mutex";
 import { type AgentImage, hasImages, sanitizeAgentImages } from "../core/llm/image-blocks";
 import { providerManager } from "../core/providers";
 import { config } from "../core/config";
@@ -151,6 +152,11 @@ type PersistedSessionIndexEntry = SessionListEntry;
 
 const chatSessions = new Map<string, InMemoryChatSession>();
 const persistedSessionIndex = new Map<string, PersistedSessionIndexEntry>();
+
+// Serialize chat turns per session so two near-simultaneous messages to the same
+// session (e.g. a user retry, or several channel messages) can't interleave
+// their user/assistant pushes or race a mid-turn conversation compaction.
+const chatTurnMutex = new KeyedMutex();
 
 function truncateSessionPreviewContent(content: string): string {
   if (content.length <= SESSION_LAST_MESSAGE_PREVIEW_MAX_CHARS) return content;
@@ -586,23 +592,12 @@ function withAgentTitlePrefix(agentName: string | undefined, title: string | nul
 }
 
 export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
-  const {
-    message,
-    agentId,
-    sessionId,
-    tools = true,
-    channel,
-    userId,
-    source,
-    workspaceDir,
-  } = request;
-  const requestedWorkspaceDir =
-    workspaceDir !== undefined ? normalizeSessionWorkspaceDir(workspaceDir) : undefined;
-
+  // Rate limiting and input validation touch no shared session state, so they
+  // run outside the per-session lock.
   const rateLimit = checkRateLimit("chat", chatRateLimitConfig);
   if (!rateLimit.allowed) {
     return {
-      sessionId: sessionId || crypto.randomUUID(),
+      sessionId: request.sessionId || crypto.randomUUID(),
       message: {
         role: "assistant",
         content: "Rate limit exceeded. Please try again later.",
@@ -611,11 +606,29 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     };
   }
 
-  if (!message.trim()) {
+  if (!request.message.trim()) {
     throw new Error("Message is required");
   }
 
-  let session = sessionId ? chatSessions.get(sessionId) : undefined;
+  // Serialize the turn per session. A provided sessionId is the contended key;
+  // a new session gets a fresh id that is used as both the lock key and the
+  // session id so the whole turn (create → push user → execute → push assistant
+  // → persist) runs without interleaving.
+  const effectiveSessionId = request.sessionId || crypto.randomUUID();
+  return chatTurnMutex.run(effectiveSessionId, () =>
+    handleChatTurn(request, effectiveSessionId)
+  );
+}
+
+async function handleChatTurn(
+  request: ChatRequest,
+  effectiveSessionId: string
+): Promise<ChatResponse> {
+  const { message, agentId, tools = true, channel, userId, source, workspaceDir } = request;
+  const requestedWorkspaceDir =
+    workspaceDir !== undefined ? normalizeSessionWorkspaceDir(workspaceDir) : undefined;
+
+  let session = chatSessions.get(effectiveSessionId);
   const isNewSession = !session;
 
   if (!session) {
@@ -643,7 +656,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
       };
     }
 
-    const newSessionId = sessionId || crypto.randomUUID();
+    const newSessionId = effectiveSessionId;
     const nowIso = new Date().toISOString();
     session = {
       id: newSessionId,
