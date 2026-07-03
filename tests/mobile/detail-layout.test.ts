@@ -11,7 +11,8 @@ describe("mobile: iOS-style detail layout", () => {
   const styleSrc = read("screens/dashboardStyles.ts");
 
   test("detail info renders through a grouped DetailInfoSection", () => {
-    expect(screen).toContain("function DetailInfoSection(");
+    // Definition lives in the extracted controls module; usage stays in the screen.
+    expect(read("screens/dashboardControls.tsx")).toContain("function DetailInfoSection(");
     expect(screen).toContain("<DetailInfoSection");
     // grouped inset card with key-value rows
     expect(styleSrc).toContain("infoCard:");

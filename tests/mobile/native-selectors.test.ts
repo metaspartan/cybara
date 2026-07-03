@@ -5,13 +5,15 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("../../apps/mobile/src", import.meta.url));
 const read = (rel: string) => readFileSync(`${root}/${rel}`, "utf8");
 const screen = read("screens/DashboardScreen.tsx");
+// The shared settings-control components were extracted out of the screen.
+const controls = read("screens/dashboardControls.tsx");
 
 describe("mobile: native dropdown selector", () => {
   test("SettingSelector supports a native menu variant", () => {
-    expect(screen).toContain('variant?: "chips" | "segmented" | "menu"');
+    expect(controls).toContain('variant?: "chips" | "segmented" | "menu"');
     // iOS uses the native action sheet; Android uses a modal sheet.
-    expect(screen).toContain("ActionSheetIOS.showActionSheetWithOptions");
-    expect(screen).toContain("menuSheet");
+    expect(controls).toContain("ActionSheetIOS.showActionSheetWithOptions");
+    expect(controls).toContain("menuSheet");
   });
 
   test("multi-option pickers (Type, Provider, Recall) use the menu variant", () => {
