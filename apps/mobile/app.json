@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "scheme": "cybara",
     "icon": "./assets/cybara.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/cybara.png",

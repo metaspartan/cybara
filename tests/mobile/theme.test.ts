@@ -4,6 +4,35 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../../apps/mobile/src", import.meta.url));
 const read = (rel: string) => readFileSync(`${root}/${rel}`, "utf8");
+const readApp = (rel: string) =>
+  readFileSync(fileURLToPath(new URL(`../../apps/mobile/${rel}`, import.meta.url)), "utf8");
+
+describe("mobile appearance + background", () => {
+  test("system appearance is enabled so light/dark follow the device", () => {
+    const appJson = JSON.parse(readApp("app.json"));
+    // Forcing "dark" made useColorScheme always report dark, so "System" and
+    // light mode never worked. "automatic" lets the OS drive the scheme.
+    expect(appJson.expo.userInterfaceStyle).toBe("automatic");
+  });
+
+  test("App shell paints a single base background (no duplicated layer)", () => {
+    const app = readApp("App.tsx");
+    const matches = app.match(/backgroundColor:\s*colors\.background/g) ?? [];
+    // Previously both `safe` and `background` painted it; now just one base.
+    expect(matches.length).toBe(1);
+    expect(app).not.toContain("styles.background");
+  });
+
+  test("both palettes carry translucent glass tints (fully liquid glass)", () => {
+    const theme = read("theme/liquidGlass.ts");
+    const dark = theme.slice(theme.indexOf("darkColors"), theme.indexOf("lightColors"));
+    const light = theme.slice(theme.indexOf("lightColors"));
+    for (const palette of [dark, light]) {
+      expect(palette).toMatch(/glass:\s*"rgba\(/);
+      expect(palette).toMatch(/glassElevated:\s*"rgba\(/);
+    }
+  });
+});
 
 describe("mobile theming", () => {
   const theme = read("theme/liquidGlass.ts");

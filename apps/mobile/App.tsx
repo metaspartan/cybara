@@ -35,14 +35,12 @@ function AppShell() {
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.safe}>
       <StatusBar barStyle={scheme === "light" ? "dark-content" : "light-content"} />
-      <View style={styles.background}>
-        <View style={styles.content}>
-          {ready && profile ? (
-            <DashboardScreen profile={profile} onDisconnect={disconnect} />
-          ) : (
-            <ConnectScreen onConnect={connect} />
-          )}
-        </View>
+      <View style={styles.content}>
+        {ready && profile ? (
+          <DashboardScreen profile={profile} onDisconnect={disconnect} />
+        ) : (
+          <ConnectScreen onConnect={connect} />
+        )}
       </View>
     </SafeAreaView>
   );
@@ -61,10 +59,6 @@ export default function App() {
 const makeStyles = (colors: Palette) =>
   StyleSheet.create({
     safe: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    background: {
       flex: 1,
       backgroundColor: colors.background,
     },
