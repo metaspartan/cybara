@@ -291,7 +291,9 @@ describe("UI page API wiring", () => {
   });
 
   test("Chat page wires live activity timeline to websocket status events", () => {
-    const source = readPage("Chat.tsx");
+    // Chat page logic is split across the page + its extracted chat/ modules.
+    const source =
+      readPage("Chat.tsx") + readPage("chat/chatModel.ts") + readPage("chat/MessageContent.tsx");
     const statusStreamSource = readLib("status-stream.ts");
 
     expect(source).toContain("connectStatusStream({");
