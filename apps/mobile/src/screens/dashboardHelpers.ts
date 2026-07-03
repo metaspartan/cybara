@@ -4,8 +4,11 @@ import type { AccentKey } from "../theme/liquidGlass";
 import type {
   ActivitySummary,
   AgentSummary,
+  FeatureEndpointKey,
   FeatureSummary,
+  ProviderSummary,
   RemoteItemSummary,
+  SessionSummary,
   SystemMonitorSnapshot,
 } from "../lib/api";
 
@@ -67,4 +70,133 @@ export function remoteTaskRunning(item: RemoteItemSummary | ActivitySummary): bo
 
 export function resolveAccentKey(summary: FeatureSummary | null): AccentKey {
   return readMobileAccent(summary?.config) as AccentKey;
+}
+
+export type EndpointState = FeatureSummary["availability"][FeatureEndpointKey] | undefined;
+
+export function objectRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+export function booleanSetting(record: Record<string, unknown> | null, key: string): boolean {
+  return record?.[key] === true;
+}
+
+export type MobileSpeechSettings = {
+  tts: {
+    provider: "auto" | "system" | "elevenlabs" | "openai";
+    providerId: string;
+    model: string;
+    voice: string;
+    outputFormat: string;
+    speed: number;
+    maxTextLength: number;
+    fallbackToSystem: boolean;
+  };
+  stt: {
+    provider: "auto" | "openai";
+    providerId: string;
+    model: string;
+    language: string;
+  };
+};
+
+export function readMobileSpeechSettings(
+  configRecord: Record<string, unknown> | null | undefined
+): MobileSpeechSettings {
+  const speech = objectRecord(configRecord?.speech);
+  const tts = objectRecord(speech?.tts);
+  const stt = objectRecord(speech?.stt);
+  const ttsProvider =
+    tts?.provider === "system" || tts?.provider === "elevenlabs" || tts?.provider === "openai"
+      ? tts.provider
+      : "auto";
+  const sttProvider = stt?.provider === "openai" ? "openai" : "auto";
+  return {
+    tts: {
+      provider: ttsProvider,
+      providerId: typeof tts?.providerId === "string" ? tts.providerId : "",
+      model: typeof tts?.model === "string" ? tts.model : "",
+      voice: typeof tts?.voice === "string" ? tts.voice : "",
+      outputFormat: typeof tts?.outputFormat === "string" ? tts.outputFormat : "mp3",
+      speed: typeof tts?.speed === "number" && Number.isFinite(tts.speed) ? tts.speed : 1,
+      maxTextLength:
+        typeof tts?.maxTextLength === "number" && Number.isFinite(tts.maxTextLength)
+          ? tts.maxTextLength
+          : 8000,
+      fallbackToSystem: typeof tts?.fallbackToSystem === "boolean" ? tts.fallbackToSystem : true,
+    },
+    stt: {
+      provider: sttProvider,
+      providerId: typeof stt?.providerId === "string" ? stt.providerId : "",
+      model: typeof stt?.model === "string" ? stt.model : "",
+      language: typeof stt?.language === "string" ? stt.language : "",
+    },
+  };
+}
+
+export function mobileSpeechProviderOptions(providers: ProviderSummary[], mode: "tts" | "stt") {
+  return [
+    { label: "Auto", value: "" },
+    ...providers
+      .filter((provider) => {
+        if (mode === "tts") {
+          return (
+            provider.provider === "elevenlabs" ||
+            provider.provider === "openai" ||
+            provider.provider === "openai-codex"
+          );
+        }
+        return provider.provider === "openai" || provider.provider === "openai-codex";
+      })
+      .map((provider) => ({
+        label: provider.name,
+        value: provider.id,
+      })),
+  ];
+}
+
+export function arraySettingCount(record: Record<string, unknown> | null, key: string): string {
+  const value = record?.[key];
+  if (!Array.isArray(value) || value.length === 0) return "None";
+  return value.length === 1 ? "1 entry" : `${value.length} entries`;
+}
+
+export function endpointErrorDetail(endpoint: EndpointState, fallback: string): string {
+  if (!endpoint || endpoint.ok) return fallback;
+  if (endpoint.status === 401) {
+    return "This mobile pairing is no longer authorized. Disconnect and pair again from the gateway.";
+  }
+  if (endpoint.status === 403) {
+    return "This mobile pairing does not have access to this gateway surface.";
+  }
+  if (endpoint.status) return `Gateway returned ${endpoint.status}.`;
+  return endpoint.error || fallback;
+}
+
+export function endpointStatusLabel(endpoint: EndpointState): string {
+  if (!endpoint) return "Loading";
+  if (endpoint.ok) return "Online";
+  return endpoint.status ? `Unavailable (${endpoint.status})` : "Unavailable";
+}
+
+export function surfaceCount(
+  summary: FeatureSummary | null,
+  key: FeatureEndpointKey,
+  count: number,
+  suffix: string,
+  empty: string,
+  singularSuffix = suffix
+): string {
+  if (!summary) return "Loading";
+  const endpoint = summary.availability[key];
+  if (!endpoint.ok) return endpoint.status ? `Unavailable (${endpoint.status})` : "Unavailable";
+  if (count === 0) return empty;
+  return `${count} ${count === 1 ? singularSuffix : suffix}`;
+}
+
+export function sessionMayBeInProgress(session: SessionSummary): boolean {
+  return session.last_message?.role === "user";
 }

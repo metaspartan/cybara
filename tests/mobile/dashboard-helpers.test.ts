@@ -2,8 +2,12 @@ import { describe, expect, test } from "bun:test";
 import {
   absoluteTimestampLabel,
   agentIsRunning,
+  arraySettingCount,
+  booleanSetting,
+  endpointStatusLabel,
   monitorPercent,
   monitorPercentLabel,
+  objectRecord,
   relativeTimestamp,
   remoteItemEnabled,
   remoteTaskRunning,
@@ -76,5 +80,34 @@ describe("agent + remote status helpers", () => {
     expect(remoteTaskRunning({ status: "pending" } as never)).toBe(true);
     expect(remoteTaskRunning({ status: "failed" } as never)).toBe(false);
     expect(remoteTaskRunning({} as never)).toBe(false);
+  });
+});
+
+describe("record + settings helpers", () => {
+  test("objectRecord returns plain objects only", () => {
+    expect(objectRecord({ a: 1 })).toEqual({ a: 1 });
+    expect(objectRecord(null)).toBeNull();
+    expect(objectRecord([1, 2])).toBeNull();
+    expect(objectRecord("x")).toBeNull();
+  });
+
+  test("booleanSetting reads strict true", () => {
+    expect(booleanSetting({ flag: true }, "flag")).toBe(true);
+    expect(booleanSetting({ flag: "true" }, "flag")).toBe(false);
+    expect(booleanSetting(null, "flag")).toBe(false);
+  });
+
+  test("arraySettingCount pluralizes entries", () => {
+    expect(arraySettingCount({ items: [] }, "items")).toBe("None");
+    expect(arraySettingCount({ items: [1] }, "items")).toBe("1 entry");
+    expect(arraySettingCount({ items: [1, 2, 3] }, "items")).toBe("3 entries");
+    expect(arraySettingCount(null, "items")).toBe("None");
+  });
+
+  test("endpointStatusLabel reflects endpoint availability", () => {
+    expect(endpointStatusLabel(undefined)).toBe("Loading");
+    expect(endpointStatusLabel({ ok: true })).toBe("Online");
+    expect(endpointStatusLabel({ ok: false, status: 401 })).toBe("Unavailable (401)");
+    expect(endpointStatusLabel({ ok: false })).toBe("Unavailable");
   });
 });

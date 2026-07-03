@@ -55,6 +55,11 @@ const dashboardScreenSource = readFileSync(
   new URL("../../apps/mobile/src/screens/DashboardScreen.tsx", import.meta.url),
   "utf8"
 );
+// Pure display/derivation helpers were extracted out of the screen.
+const dashboardHelpersSource = readFileSync(
+  new URL("../../apps/mobile/src/screens/dashboardHelpers.ts", import.meta.url),
+  "utf8"
+);
 
 const profile: GatewayProfile = {
   id: "local",
@@ -522,7 +527,7 @@ describe("mobile dashboard model", () => {
     expect(mobileGatewayAuthStatus(invalidSummary)).toBe("needs_pairing");
     expect(mobileGatewayAuthStatus(invalidSummary, "Network error")).toBe("unreachable");
     expect(dashboardScreenSource).toContain("Pairing needs refresh");
-    expect(dashboardScreenSource).toContain("This mobile pairing is no longer authorized");
+    expect(dashboardHelpersSource).toContain("This mobile pairing is no longer authorized");
   });
 
   test("summarizes feature counts without requiring every optional endpoint", () => {
