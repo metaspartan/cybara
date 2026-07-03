@@ -51,6 +51,7 @@ export const MOBILE_TABS: MobileTabDefinition[] = [
   { key: "sessions", label: "Chats", showsGatewayPanel: false },
   { key: "metrics", label: "Metrics", showsGatewayPanel: false },
   { key: "tasks", label: "Tasks", showsGatewayPanel: false },
+  { key: "settings", label: "Settings", showsGatewayPanel: false },
 ];
 
 export const MOBILE_HOME_CHROME = {

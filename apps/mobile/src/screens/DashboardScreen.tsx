@@ -873,12 +873,12 @@ export function DashboardScreen({
     <View style={styles.screen}>
       <View style={styles.header}>
         <View style={styles.brandWrap}>
-          {detailRoute || activeTab === "settings" ? (
+          {detailRoute ? (
             <Pressable
               accessibilityLabel="Back"
               accessibilityRole="button"
               style={styles.backButton}
-              onPress={detailRoute ? closeDetailRoute : () => selectTab("overview")}
+              onPress={closeDetailRoute}
             >
               <ArrowLeft color={colors.text} size={22} strokeWidth={2.2} />
             </Pressable>
@@ -918,15 +918,6 @@ export function DashboardScreen({
             ) : (
               <Settings color={colors.text} size={22} strokeWidth={2.1} />
             )}
-          </Pressable>
-        ) : !detailRoute && activeTab !== "settings" ? (
-          <Pressable
-            accessibilityLabel="Open settings"
-            accessibilityRole="button"
-            style={styles.iconButton}
-            onPress={() => selectTab("settings")}
-          >
-            <Settings color={colors.text} size={22} strokeWidth={2.1} />
           </Pressable>
         ) : null}
       </View>

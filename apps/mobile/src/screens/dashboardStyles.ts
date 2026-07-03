@@ -572,6 +572,122 @@ const makeStyles = () =>
     codeTextMonospace: {
       fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
     },
+    // ── Markdown rendering ──
+    mdBlocks: {
+      gap: spacing.sm,
+    },
+    mdH1: {
+      color: colors.text,
+      fontSize: typography.title,
+      fontWeight: "800",
+      lineHeight: 30,
+      marginTop: spacing.xs,
+    },
+    mdH2: {
+      color: colors.text,
+      fontSize: typography.heading,
+      fontWeight: "800",
+      lineHeight: 26,
+      marginTop: spacing.xs,
+    },
+    mdH3: {
+      color: colors.text,
+      fontSize: typography.body,
+      fontWeight: "800",
+      lineHeight: 22,
+    },
+    mdParagraph: {
+      color: colors.text,
+      fontSize: typography.body,
+      lineHeight: 22,
+    },
+    mdBold: {
+      fontWeight: "800",
+    },
+    mdItalic: {
+      fontStyle: "italic",
+    },
+    mdStrike: {
+      textDecorationLine: "line-through",
+    },
+    mdLink: {
+      color: colors.cyan,
+      textDecorationLine: "underline",
+    },
+    mdInlineCode: {
+      backgroundColor: colors.scrim,
+      color: colors.text,
+      fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+      fontSize: 13,
+    },
+    mdListRow: {
+      alignItems: "flex-start",
+      flexDirection: "row",
+      gap: spacing.xs,
+      paddingLeft: spacing.xs,
+    },
+    mdListMarker: {
+      color: colors.textMuted,
+      fontSize: typography.body,
+      lineHeight: 22,
+      minWidth: 18,
+    },
+    mdListText: {
+      color: colors.text,
+      flex: 1,
+      fontSize: typography.body,
+      lineHeight: 22,
+    },
+    mdQuote: {
+      borderLeftColor: colors.border,
+      borderLeftWidth: 3,
+      paddingLeft: spacing.sm,
+    },
+    mdQuoteText: {
+      color: colors.textMuted,
+      fontSize: typography.body,
+      fontStyle: "italic",
+      lineHeight: 22,
+    },
+    mdRule: {
+      backgroundColor: colors.border,
+      height: StyleSheet.hairlineWidth,
+      marginVertical: spacing.xs,
+    },
+    mdTable: {
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      overflow: "hidden",
+    },
+    mdTableRow: {
+      borderTopColor: colors.border,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      flexDirection: "row",
+    },
+    mdTableHeaderRow: {
+      backgroundColor: colors.surfaceLift,
+      flexDirection: "row",
+    },
+    mdTableCell: {
+      borderLeftColor: colors.border,
+      borderLeftWidth: StyleSheet.hairlineWidth,
+      flex: 1,
+      minWidth: 90,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 6,
+    },
+    mdTableCellText: {
+      color: colors.text,
+      fontSize: 13,
+      lineHeight: 18,
+    },
+    mdTableHeaderText: {
+      color: colors.text,
+      fontSize: 13,
+      fontWeight: "800",
+      lineHeight: 18,
+    },
     workTimeline: {
       gap: spacing.xs,
       marginBottom: spacing.xs,
@@ -706,6 +822,19 @@ const makeStyles = () =>
     },
     settingsField: {
       gap: spacing.xs,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    // Icon + title header row inside a settings group card (padded to align with
+    // the padded rows below it, with a divider so it reads as a group header).
+    settingsGroupHeader: {
+      alignItems: "center",
+      borderBottomColor: colors.border,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      flexDirection: "row",
+      gap: spacing.xs,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
     },
     settingsSegmentField: {
       borderBottomColor: colors.border,

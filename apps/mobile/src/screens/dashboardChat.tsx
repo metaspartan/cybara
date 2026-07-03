@@ -1,4 +1,4 @@
-import { ScrollView, Text, View, type StyleProp, type TextStyle } from "react-native";
+import { Linking, ScrollView, Text, View, type StyleProp, type TextStyle } from "react-native";
 import { AlertTriangle, Bot, CheckCircle2, Loader2, Sparkles, User } from "lucide-react-native";
 import { colors } from "../theme/liquidGlass";
 import { styles } from "./dashboardStyles";
@@ -6,10 +6,136 @@ import { relativeTimestamp } from "./dashboardHelpers";
 import {
   buildMobileWorkTimeline,
   hasUnicodeTextFallback,
+  parseMarkdownBlocks,
   shouldUseSelectableNativeText,
   splitMessageContent,
+  type MarkdownInline,
 } from "../lib/chat-format";
 import type { SessionDetailSummary } from "../lib/api";
+
+/** Render inline markdown spans (bold/italic/code/strike/link) inside a Text. */
+function InlineMarkdown({ tokens }: { tokens: MarkdownInline[] }) {
+  return (
+    <>
+      {tokens.map((token, index) => {
+        switch (token.type) {
+          case "bold":
+            return (
+              <Text key={index} style={styles.mdBold}>
+                {token.text}
+              </Text>
+            );
+          case "italic":
+            return (
+              <Text key={index} style={styles.mdItalic}>
+                {token.text}
+              </Text>
+            );
+          case "strike":
+            return (
+              <Text key={index} style={styles.mdStrike}>
+                {token.text}
+              </Text>
+            );
+          case "code":
+            return (
+              <Text key={index} style={styles.mdInlineCode}>
+                {token.text}
+              </Text>
+            );
+          case "link":
+            return (
+              <Text
+                key={index}
+                style={styles.mdLink}
+                onPress={() => {
+                  void Linking.openURL(token.href).catch(() => {});
+                }}
+              >
+                {token.text}
+              </Text>
+            );
+          default:
+            return <Text key={index}>{token.text}</Text>;
+        }
+      })}
+    </>
+  );
+}
+
+/** Render a text segment as structured markdown, matching the web/Tauri UI. */
+function MarkdownText({ content }: { content: string }) {
+  const blocks = parseMarkdownBlocks(content);
+  return (
+    <View style={styles.mdBlocks}>
+      {blocks.map((block, index) => {
+        switch (block.type) {
+          case "heading":
+            return (
+              <Text
+                key={index}
+                style={block.level === 1 ? styles.mdH1 : block.level === 2 ? styles.mdH2 : styles.mdH3}
+              >
+                <InlineMarkdown tokens={block.inline} />
+              </Text>
+            );
+          case "listItem":
+            return (
+              <View key={index} style={styles.mdListRow}>
+                <Text style={styles.mdListMarker}>{block.marker}</Text>
+                <Text style={styles.mdListText}>
+                  <InlineMarkdown tokens={block.inline} />
+                </Text>
+              </View>
+            );
+          case "quote":
+            return (
+              <View key={index} style={styles.mdQuote}>
+                <Text style={styles.mdQuoteText}>
+                  <InlineMarkdown tokens={block.inline} />
+                </Text>
+              </View>
+            );
+          case "rule":
+            return <View key={index} style={styles.mdRule} />;
+          case "table":
+            return (
+              <ScrollView key={index} horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.mdTable}>
+                  <View style={styles.mdTableHeaderRow}>
+                    {block.header.map((cell, cellIndex) => (
+                      <View key={cellIndex} style={styles.mdTableCell}>
+                        <Text style={styles.mdTableHeaderText}>
+                          <InlineMarkdown tokens={cell} />
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                  {block.rows.map((row, rowIndex) => (
+                    <View key={rowIndex} style={styles.mdTableRow}>
+                      {row.map((cell, cellIndex) => (
+                        <View key={cellIndex} style={styles.mdTableCell}>
+                          <Text style={styles.mdTableCellText}>
+                            <InlineMarkdown tokens={cell} />
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  ))}
+                </View>
+              </ScrollView>
+            );
+          default:
+            return (
+              <Text key={index} selectable style={styles.mdParagraph}>
+                <InlineMarkdown tokens={block.inline} />
+              </Text>
+            );
+        }
+      })}
+    </View>
+  );
+}
 
 export function ChatMessageRow({
   accentColor,
@@ -115,14 +241,9 @@ export function MessageContent({ content }: { content: string }) {
               />
             </ScrollView>
           </View>
-        ) : (
-          <UnicodeText
-            key={`text-${index}`}
-            content={part.content.trim().length > 0 ? part.content : "\n"}
-            selectable={shouldUseSelectableNativeText(part.content)}
-            style={styles.messageText}
-          />
-        )
+        ) : part.content.trim().length > 0 ? (
+          <MarkdownText key={`text-${index}`} content={part.content} />
+        ) : null
       )}
     </View>
   );

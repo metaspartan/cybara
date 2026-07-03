@@ -190,11 +190,17 @@ const summary: FeatureSummary = {
 };
 
 describe("mobile dashboard model", () => {
-  test("keeps recent activity first and moves gateway connection details to settings", () => {
-    expect(MOBILE_TABS.map((tab) => tab.key)).toEqual(["overview", "sessions", "metrics", "tasks"]);
+  test("keeps recent activity first and exposes Settings as the last bottom tab", () => {
+    expect(MOBILE_TABS.map((tab) => tab.key)).toEqual([
+      "overview",
+      "sessions",
+      "metrics",
+      "tasks",
+      "settings",
+    ]);
     expect(MOBILE_TABS.find((tab) => tab.key === "sessions")?.label).toBe("Chats");
-    // Settings is reached from the header gear, not a bottom tab.
-    expect(MOBILE_TABS.some((tab) => tab.key === "settings")).toBe(false);
+    // Settings is now the last bottom tab (no header gear).
+    expect(MOBILE_TABS.at(-1)?.key).toBe("settings");
     expect(MOBILE_TABS.filter((tab) => tab.showsGatewayPanel).map((tab) => tab.key)).toEqual([]);
     expect(MOBILE_HOME_CHROME.firstSection).toBe("recent_activity");
     expect(MOBILE_HOME_CHROME.firstManagementSurface).toBe("monitor");

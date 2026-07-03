@@ -45,12 +45,13 @@ describe("mobile: memory method toggle", () => {
 describe("mobile: primary navigation", () => {
   const screen = read("screens/DashboardScreen.tsx") + read("screens/dashboardSettingsPanels.tsx");
 
-  test("Tasks is a bottom tab and settings opens from the header gear", () => {
+  test("Tasks and Settings are bottom tabs (no header gear)", () => {
     expect(screen).toContain("tasks: CalendarCheck");
     expect(screen).toContain('activeTab === "tasks"');
     expect(screen).toContain("<TasksPanel");
-    // Header gear still routes to the settings surface.
-    expect(screen).toContain('onPress={() => selectTab("settings")}');
+    // Settings is a first-class tab now; the redundant header gear is gone.
+    expect(screen).toContain("settings: Settings");
+    expect(screen).not.toContain('accessibilityLabel="Open settings"');
   });
 
   test("Home grid no longer duplicates Chats or Tasks (both are tabs)", () => {

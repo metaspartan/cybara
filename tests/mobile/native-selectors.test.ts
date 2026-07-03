@@ -34,10 +34,11 @@ describe("mobile: native dropdown selector", () => {
   });
 });
 
-describe("mobile: settings gear", () => {
-  test("gear shows on every tab except the settings page itself", () => {
-    expect(screen).toContain('!detailRoute && activeTab !== "settings" ?');
-    // metrics is no longer excluded
-    expect(screen).not.toContain('activeTab !== "metrics" && activeTab !== "settings"');
+describe("mobile: settings is a bottom tab", () => {
+  test("no redundant header settings gear; settings is a first-class tab", () => {
+    // The old global "open settings" header gear was removed in favor of a tab.
+    expect(screen).not.toContain('accessibilityLabel="Open settings"');
+    expect(screen).not.toContain('!detailRoute && activeTab !== "settings" ?');
+    expect(screen).toContain("settings: Settings");
   });
 });

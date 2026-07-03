@@ -447,3 +447,169 @@ export function chatIsWaitingForAssistant(
 ): boolean {
   return sending || lastVisibleChatMessage(messages)?.role === "user";
 }
+
+// ── Lightweight Markdown (mobile) ────────────────────────────────────────────
+// The RN client has no react-markdown (that renders DOM). This is a small,
+// dependency-free GFM-subset parser so chat messages render with the same
+// structure as the web/Tauri UI: headings, bold/italic, inline code, links,
+// strikethrough, ordered/unordered lists, blockquotes, tables, and rules.
+// Fenced code blocks are handled upstream by splitMessageContent().
+
+export type MarkdownInline =
+  | { type: "text"; text: string }
+  | { type: "bold"; text: string }
+  | { type: "italic"; text: string }
+  | { type: "code"; text: string }
+  | { type: "strike"; text: string }
+  | { type: "link"; text: string; href: string };
+
+export type MarkdownBlock =
+  | { type: "heading"; level: number; inline: MarkdownInline[] }
+  | { type: "paragraph"; inline: MarkdownInline[] }
+  | { type: "listItem"; ordered: boolean; marker: string; inline: MarkdownInline[] }
+  | { type: "quote"; inline: MarkdownInline[] }
+  | { type: "rule" }
+  | { type: "table"; header: MarkdownInline[][]; rows: MarkdownInline[][][] };
+
+/** Tokenize a single line of inline markdown into styled spans. */
+export function parseInlineMarkdown(input: string): MarkdownInline[] {
+  const tokens: MarkdownInline[] = [];
+  let rest = input;
+  // Ordered by precedence; each pattern captures its inner text.
+  const patterns: Array<{ re: RegExp; make: (m: RegExpExecArray) => MarkdownInline }> = [
+    { re: /`([^`]+)`/, make: (m) => ({ type: "code", text: m[1] }) },
+    {
+      re: /\[([^\]]+)\]\(([^)\s]+)[^)]*\)/,
+      make: (m) => ({ type: "link", text: m[1], href: m[2] }),
+    },
+    { re: /\*\*([^*]+)\*\*/, make: (m) => ({ type: "bold", text: m[1] }) },
+    { re: /__([^_]+)__/, make: (m) => ({ type: "bold", text: m[1] }) },
+    { re: /~~([^~]+)~~/, make: (m) => ({ type: "strike", text: m[1] }) },
+    { re: /(?<![*\w])\*([^*\n]+)\*(?![*\w])/, make: (m) => ({ type: "italic", text: m[1] }) },
+    { re: /(?<![_\w])_([^_\n]+)_(?![_\w])/, make: (m) => ({ type: "italic", text: m[1] }) },
+  ];
+
+  let guard = 0;
+  while (rest.length > 0 && guard++ < 5000) {
+    let best: { index: number; length: number; token: MarkdownInline } | null = null;
+    for (const { re, make } of patterns) {
+      const m = re.exec(rest);
+      if (m && (best === null || m.index < best.index)) {
+        best = { index: m.index, length: m[0].length, token: make(m) };
+      }
+    }
+    if (!best) {
+      tokens.push({ type: "text", text: rest });
+      break;
+    }
+    if (best.index > 0) tokens.push({ type: "text", text: rest.slice(0, best.index) });
+    tokens.push(best.token);
+    rest = rest.slice(best.index + best.length);
+  }
+  return tokens.length > 0 ? tokens : [{ type: "text", text: input }];
+}
+
+function splitTableRow(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+const TABLE_SEPARATOR = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+
+/** Parse a text block (no fenced code) into structured markdown blocks. */
+export function parseMarkdownBlocks(input: string): MarkdownBlock[] {
+  const lines = input.replace(/\r\n/g, "\n").split("\n");
+  const blocks: MarkdownBlock[] = [];
+  let paragraph: string[] = [];
+
+  const flushParagraph = () => {
+    if (paragraph.length === 0) return;
+    const text = paragraph.join(" ").trim();
+    if (text) blocks.push({ type: "paragraph", inline: parseInlineMarkdown(text) });
+    paragraph = [];
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      flushParagraph();
+      continue;
+    }
+
+    // Horizontal rule.
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+      flushParagraph();
+      blocks.push({ type: "rule" });
+      continue;
+    }
+
+    // Heading.
+    const heading = /^(#{1,6})\s+(.*)$/.exec(trimmed);
+    if (heading) {
+      flushParagraph();
+      blocks.push({
+        type: "heading",
+        level: heading[1].length,
+        inline: parseInlineMarkdown(heading[2].trim()),
+      });
+      continue;
+    }
+
+    // Table: a `|` row immediately followed by a separator row.
+    if (trimmed.includes("|") && i + 1 < lines.length && TABLE_SEPARATOR.test(lines[i + 1])) {
+      flushParagraph();
+      const header = splitTableRow(trimmed).map((cell) => parseInlineMarkdown(cell));
+      const rows: MarkdownInline[][][] = [];
+      i += 2; // skip header + separator
+      while (i < lines.length && lines[i].trim().includes("|")) {
+        rows.push(splitTableRow(lines[i]).map((cell) => parseInlineMarkdown(cell)));
+        i++;
+      }
+      i--; // step back; outer loop will advance
+      blocks.push({ type: "table", header, rows });
+      continue;
+    }
+
+    // Blockquote.
+    const quote = /^>\s?(.*)$/.exec(trimmed);
+    if (quote) {
+      flushParagraph();
+      blocks.push({ type: "quote", inline: parseInlineMarkdown(quote[1]) });
+      continue;
+    }
+
+    // Ordered / unordered list item.
+    const ordered = /^(\d+)[.)]\s+(.*)$/.exec(trimmed);
+    if (ordered) {
+      flushParagraph();
+      blocks.push({
+        type: "listItem",
+        ordered: true,
+        marker: `${ordered[1]}.`,
+        inline: parseInlineMarkdown(ordered[2]),
+      });
+      continue;
+    }
+    const unordered = /^[-*+]\s+(.*)$/.exec(trimmed);
+    if (unordered) {
+      flushParagraph();
+      blocks.push({
+        type: "listItem",
+        ordered: false,
+        marker: "•",
+        inline: parseInlineMarkdown(unordered[1]),
+      });
+      continue;
+    }
+
+    paragraph.push(trimmed);
+  }
+  flushParagraph();
+  return blocks;
+}

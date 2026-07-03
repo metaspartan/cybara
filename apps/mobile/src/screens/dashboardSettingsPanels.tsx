@@ -1871,7 +1871,7 @@ export function SpeechSettingsPanel({
   return (
     <>
       <SettingsSection title="Text to speech">
-        <View style={styles.settingsInfoHeader}>
+        <View style={styles.settingsGroupHeader}>
           <Volume2 color={accentColor} size={18} strokeWidth={2.1} />
           <Text style={styles.settingsInfoTitle}>Voice output</Text>
         </View>
@@ -1957,7 +1957,7 @@ export function SpeechSettingsPanel({
         />
       </SettingsSection>
       <SettingsSection title="Speech to text">
-        <View style={styles.settingsInfoHeader}>
+        <View style={styles.settingsGroupHeader}>
           <Mic color={accentColor} size={18} strokeWidth={2.1} />
           <Text style={styles.settingsInfoTitle}>Dictation</Text>
         </View>
