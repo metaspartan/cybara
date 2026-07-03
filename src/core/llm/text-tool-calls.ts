@@ -429,7 +429,10 @@ function parseWrappedToolCallContainers(raw: string, depth = 0): TextToolCall[] 
   return calls;
 }
 
-function resolveAllowedToolName(rawName: string, allowedToolNames: Set<string>): string | undefined {
+function resolveAllowedToolName(
+  rawName: string,
+  allowedToolNames: Set<string>
+): string | undefined {
   const trimmed = rawName.trim();
   if (!trimmed) return undefined;
   if (allowedToolNames.size === 0 || allowedToolNames.has(trimmed)) return trimmed;

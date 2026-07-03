@@ -4286,10 +4286,7 @@ const routes: Record<string, RouteHandler> = {
 
   "GET /api/system/status": () => {
     const metrics = tables.metrics;
-    const lastActivity = (metrics.getByType("system_status") as MetricsEntry[]).find(
-      (s) => s.key === "last_activity"
-    );
-    const lastActivityTime = lastActivity?.value ?? 0;
+    const lastActivityTime = metrics.getLatestValue("system_status", "last_activity") ?? 0;
     const now = Date.now();
     const isThinking = lastActivityTime > 0 && now - lastActivityTime < 30000; // 30 second window
     const agentCount = agentManager.list().length;
@@ -4577,22 +4574,21 @@ const routes: Record<string, RouteHandler> = {
     const cacheTokens = metrics.getTotal("token_usage", "cache") || 0;
     const totalTokens = inputTokens + outputTokens + cacheTokens;
 
-    const tokenUsageEntries = metrics.getByType("token_usage") as MetricsEntry[];
-    const tokenAllLast24h = sumMetricValues(
-      tokenUsageEntries,
-      (entry, timestampMs) =>
-        entry.key === "all" &&
-        timestampMs !== null &&
-        timestampMs >= last24hStart &&
-        timestampMs < now
+    // Metrics rows are stamped with SQLite CURRENT_TIMESTAMP ("YYYY-MM-DD
+    // HH:MM:SS", UTC), so bounds in the same format compare correctly and use
+    // the (type, key) index instead of scanning the whole type in JS.
+    const sqlUtc = (ms: number) => new Date(ms).toISOString().slice(0, 19).replace("T", " ");
+    const tokenAllLast24h = metrics.getTotalSince(
+      "token_usage",
+      "all",
+      sqlUtc(last24hStart),
+      sqlUtc(now)
     );
-    const tokenAllPrevious24h = sumMetricValues(
-      tokenUsageEntries,
-      (entry, timestampMs) =>
-        entry.key === "all" &&
-        timestampMs !== null &&
-        timestampMs >= prev24hStart &&
-        timestampMs < last24hStart
+    const tokenAllPrevious24h = metrics.getTotalSince(
+      "token_usage",
+      "all",
+      sqlUtc(prev24hStart),
+      sqlUtc(last24hStart)
     );
 
     const modelTotals = metrics.getTopKeys("token_usage_by_model") as MetricTopKey[];
@@ -4600,26 +4596,25 @@ const routes: Record<string, RouteHandler> = {
     const topModelSharePct =
       topModel && totalTokens > 0 ? Number(((topModel.total / totalTokens) * 100).toFixed(2)) : 0;
 
-    const providerTokenEntries = metrics.getByType("token_usage_by_provider") as MetricsEntry[];
-    const providerApiEntries = metrics.getByType("api_call") as MetricsEntry[];
     const providerMap = new Map<string, { provider: string; tokens: number; calls: number }>();
 
-    for (const entry of providerTokenEntries) {
-      const provider = entry.key;
+    for (const row of metrics.getKeyAggregates("token_usage_by_provider")) {
+      const provider = row.key;
       if (!provider || provider === "all" || provider === "input" || provider === "output")
         continue;
-      const current = providerMap.get(provider) || { provider, tokens: 0, calls: 0 };
-      current.tokens += entry.value || 0;
-      current.calls += 1;
-      providerMap.set(provider, current);
+      providerMap.set(provider, {
+        provider,
+        tokens: row.total || 0,
+        calls: row.count || 0,
+      });
     }
 
-    for (const entry of providerApiEntries) {
-      const provider = entry.key;
+    for (const row of metrics.getKeyAggregates("api_call")) {
+      const provider = row.key;
       if (!provider || provider === "all" || provider === "success" || provider === "error")
         continue;
       const current = providerMap.get(provider) || { provider, tokens: 0, calls: 0 };
-      current.calls += entry.value || 0;
+      current.calls += row.total || 0;
       providerMap.set(provider, current);
     }
 
@@ -4633,25 +4628,20 @@ const routes: Record<string, RouteHandler> = {
       }))
       .sort((a, b) => b.tokens - a.tokens);
 
-    const toolCallEntries = (metrics.getByType("tool_call") as MetricsEntry[]).filter(
-      (entry) => entry.key !== "all"
-    );
-    const toolErrorEntries = metrics.getByType("tool_error") as MetricsEntry[];
-    const totalToolCalls = toolCallEntries.reduce((sum, entry) => sum + (entry.value || 0), 0);
-    const totalToolErrors = toolErrorEntries.reduce((sum, entry) => sum + (entry.value || 0), 0);
+    const totalToolCalls = metrics
+      .getKeyAggregates("tool_call")
+      .filter((row) => row.key !== "all")
+      .reduce((sum, row) => sum + (row.total || 0), 0);
+    const totalToolErrors = metrics.getTotalByType("tool_error");
     const toolSuccessRatePct =
       totalToolCalls > 0
         ? Number((((totalToolCalls - totalToolErrors) / totalToolCalls) * 100).toFixed(2))
         : 100;
 
-    const toolUsage24hMap = new Map<string, number>();
-    for (const entry of toolCallEntries) {
-      const timestampMs = metricTimestampToMs(entry.created_at);
-      if (timestampMs === null || timestampMs < last24hStart) continue;
-      toolUsage24hMap.set(entry.key, (toolUsage24hMap.get(entry.key) || 0) + (entry.value || 0));
-    }
-    const toolUsage24h = Array.from(toolUsage24hMap.entries())
-      .map(([tool, calls]) => ({ tool, calls }))
+    const toolUsage24h = metrics
+      .getKeyTotalsSince("tool_call", sqlUtc(last24hStart))
+      .filter((row) => row.key !== "all")
+      .map((row) => ({ tool: row.key, calls: row.total || 0 }))
       .sort((a, b) => b.calls - a.calls);
 
     const modelInsightMap = new Map<
@@ -4698,18 +4688,12 @@ const routes: Record<string, RouteHandler> = {
       }))
       .sort((a, b) => b.totalTokens - a.totalTokens);
 
-    const contextWarningEntries = metrics.getByType("context_warning") as MetricsEntry[];
-    let contextWarnings24h = 0;
-    let criticalContextWarnings24h = 0;
-    for (const entry of contextWarningEntries) {
-      const timestampMs = metricTimestampToMs(entry.created_at);
-      if (timestampMs === null || timestampMs < last24hStart) continue;
-      contextWarnings24h += 1;
-      const metadata = parseMetricMetadata(entry.metadata);
-      if (metadata?.level === "critical") {
-        criticalContextWarnings24h += 1;
-      }
-    }
+    const contextWarnings24h = metrics.countByTypeSince("context_warning", sqlUtc(last24hStart));
+    const criticalContextWarnings24h = metrics.countByTypeMetadataLikeSince(
+      "context_warning",
+      '%"level":"critical"%',
+      sqlUtc(last24hStart)
+    );
 
     return {
       tokenBreakdown: {

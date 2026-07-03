@@ -11,7 +11,8 @@ const REASONING_BLOCK_PATTERN = new RegExp(
   `<(${REASONING_TAG_NAME_PATTERN})\\b[^>]*>([\\s\\S]*?)<\\/\\1>`,
   "gi"
 );
-const BRACKET_REASONING_BLOCK_PATTERN = /\[(?:thinking|reasoning)\]([\s\S]*?)\[\/(?:thinking|reasoning)\]/gi;
+const BRACKET_REASONING_BLOCK_PATTERN =
+  /\[(?:thinking|reasoning)\]([\s\S]*?)\[\/(?:thinking|reasoning)\]/gi;
 const DANGLING_REASONING_PATTERN = new RegExp(
   `<(?:${REASONING_TAG_NAME_PATTERN})\\b[^>]*>([\\s\\S]*)$`,
   "i"
@@ -20,14 +21,8 @@ const REASONING_TAG_PATTERN = new RegExp(
   `<\\/?(?:${REASONING_TAG_NAME_PATTERN}|final)\\b[^>]*>`,
   "gi"
 );
-const REASONING_OPEN_LINE_PATTERN = new RegExp(
-  `^<(?:${REASONING_TAG_NAME_PATTERN})\\b[^>]*>`,
-  "i"
-);
-const REASONING_CLOSE_LINE_PATTERN = new RegExp(
-  `^<\\/(?:${REASONING_TAG_NAME_PATTERN})>`,
-  "i"
-);
+const REASONING_OPEN_LINE_PATTERN = new RegExp(`^<(?:${REASONING_TAG_NAME_PATTERN})\\b[^>]*>`, "i");
+const REASONING_CLOSE_LINE_PATTERN = new RegExp(`^<\\/(?:${REASONING_TAG_NAME_PATTERN})>`, "i");
 
 const FINAL_BLOCK_PATTERN = /<final\b[^>]*>([\s\S]*?)<\/final>/gi;
 
@@ -48,13 +43,16 @@ export function stripThinkingTags(content: string): StripThinkingTagsResult {
   );
 
   BRACKET_REASONING_BLOCK_PATTERN.lastIndex = 0;
-  cleanContent = cleanContent.replace(BRACKET_REASONING_BLOCK_PATTERN, (_match, captured: string) => {
-    const thinking = captured.trim();
-    if (thinking) {
-      thinkingMatches.push(thinking);
+  cleanContent = cleanContent.replace(
+    BRACKET_REASONING_BLOCK_PATTERN,
+    (_match, captured: string) => {
+      const thinking = captured.trim();
+      if (thinking) {
+        thinkingMatches.push(thinking);
+      }
+      return "";
     }
-    return "";
-  });
+  );
 
   const finalMatches: string[] = [];
   FINAL_BLOCK_PATTERN.lastIndex = 0;

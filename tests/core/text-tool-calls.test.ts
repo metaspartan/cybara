@@ -64,9 +64,9 @@ describe("text-form tool call parsing", () => {
   });
 
   test("extracts OpenClaw plain text tool request formats", () => {
-    expect(extractTextToolCalls("[calc]\n{\"expression\":\"2 + 2\"}\n[END_TOOL_REQUEST]", new Set(["calc"]))).toEqual([
-      { name: "calc", args: { expression: "2 + 2" } },
-    ]);
+    expect(
+      extractTextToolCalls('[calc]\n{"expression":"2 + 2"}\n[END_TOOL_REQUEST]', new Set(["calc"]))
+    ).toEqual([{ name: "calc", args: { expression: "2 + 2" } }]);
     expect(
       extractTextToolCalls(
         "<function=calc>\n<parameter=expression>2 + 2</parameter>\n</function>",

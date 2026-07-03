@@ -671,8 +671,26 @@ const stmts = {
     countByTypeMetadataLike: prepare(
       "SELECT COUNT(*) as count FROM metrics WHERE type = ? AND metadata LIKE ?"
     ),
+    countByTypeSince: prepare(
+      "SELECT COUNT(*) as count FROM metrics WHERE type = ? AND created_at >= ?"
+    ),
+    countByTypeMetadataLikeSince: prepare(
+      "SELECT COUNT(*) as count FROM metrics WHERE type = ? AND metadata LIKE ? AND created_at >= ?"
+    ),
     getKeyTotalsWithLatestMetadata: prepare(
       "SELECT key, SUM(value) as total, metadata, MAX(created_at) as created_at FROM metrics WHERE type = ? GROUP BY key"
+    ),
+    getKeyAggregates: prepare(
+      "SELECT key, SUM(value) as total, COUNT(*) as count FROM metrics WHERE type = ? GROUP BY key"
+    ),
+    getKeyTotalsSince: prepare(
+      "SELECT key, SUM(value) as total FROM metrics WHERE type = ? AND created_at >= ? GROUP BY key"
+    ),
+    getTotalSince: prepare(
+      "SELECT SUM(value) as total FROM metrics WHERE type = ? AND key = ? AND created_at >= ? AND created_at < ?"
+    ),
+    getLatestValue: prepare(
+      "SELECT value FROM metrics WHERE type = ? AND key = ? ORDER BY created_at DESC LIMIT 1"
     ),
     getTopKeys: prepare(
       "SELECT key, SUM(value) as total FROM metrics WHERE type = ? GROUP BY key ORDER BY total DESC LIMIT 20"
@@ -1040,6 +1058,31 @@ export const tables = {
     countByTypeMetadataLike: (type: string, pattern: string) =>
       (stmts.metrics?.countByTypeMetadataLike.get(type, pattern) as { count?: number } | null)
         ?.count || 0,
+    countByTypeSince: (type: string, sinceSql: string) =>
+      (stmts.metrics?.countByTypeSince.get(type, sinceSql) as { count?: number } | null)?.count ||
+      0,
+    countByTypeMetadataLikeSince: (type: string, pattern: string, sinceSql: string) =>
+      (
+        stmts.metrics?.countByTypeMetadataLikeSince.get(type, pattern, sinceSql) as {
+          count?: number;
+        } | null
+      )?.count || 0,
+    getKeyAggregates: (type: string): Array<{ key: string; total: number; count: number }> =>
+      (stmts.metrics?.getKeyAggregates.all(type) || []) as Array<{
+        key: string;
+        total: number;
+        count: number;
+      }>,
+    getKeyTotalsSince: (type: string, sinceSql: string): Array<{ key: string; total: number }> =>
+      (stmts.metrics?.getKeyTotalsSince.all(type, sinceSql) || []) as Array<{
+        key: string;
+        total: number;
+      }>,
+    getTotalSince: (type: string, key: string, startSql: string, endSql: string) =>
+      (stmts.metrics?.getTotalSince.get(type, key, startSql, endSql) as { total?: number } | null)
+        ?.total || 0,
+    getLatestValue: (type: string, key: string) =>
+      (stmts.metrics?.getLatestValue.get(type, key) as { value?: number } | null)?.value ?? null,
     getKeyTotalsWithLatestMetadata: (
       type: string
     ): Array<{ key: string; total: number; metadata: string | null }> =>
