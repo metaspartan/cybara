@@ -1,5 +1,5 @@
 import { Linking, ScrollView, Text, View, type StyleProp, type TextStyle } from "react-native";
-import { AlertTriangle, Bot, CheckCircle2, Loader2, Sparkles, User } from "lucide-react-native";
+import { AlertTriangle, CheckCircle2, Loader2, Sparkles, User } from "lucide-react-native";
 import { colors } from "../theme/liquidGlass";
 import { styles } from "./dashboardStyles";
 import { relativeTimestamp } from "./dashboardHelpers";
@@ -145,34 +145,30 @@ export function ChatMessageRow({
   message: SessionDetailSummary["messages"][number];
 }) {
   const isUser = message.role === "user";
-  return (
-    <View style={[styles.chatMessageRow, isUser && styles.chatMessageRowUser]}>
-      <View
-        style={[
-          styles.chatAvatar,
-          { backgroundColor: isUser ? `${accentColor}22` : `${colors.green}18` },
-        ]}
-      >
-        {isUser ? (
-          <User color={accentColor} size={16} strokeWidth={2.2} />
-        ) : (
-          <Bot color={colors.green} size={16} strokeWidth={2.2} />
-        )}
-      </View>
-      <View
-        style={[
-          styles.messageBubble,
-          !isUser && styles.assistantMessageBubble,
-          isUser ? [styles.userMessageBubble, { borderColor: `${accentColor}55` }] : null,
-        ]}
-      >
-        {!isUser &&
-        (message.thinking || message.processActivities?.length || message.toolCalls?.length) ? (
+  if (!isUser) {
+    return (
+      <View style={styles.agentMessageRow}>
+        {message.thinking || message.processActivities?.length || message.toolCalls?.length ? (
           <WorkTimeline message={message} />
         ) : null}
         <MessageContent content={message.content || "(empty message)"} />
         {message.timestamp ? (
-          <Text style={[styles.messageTime, isUser && styles.messageTimeUser]}>
+          <Text style={styles.messageTime}>{relativeTimestamp(message.timestamp)}</Text>
+        ) : null}
+      </View>
+    );
+  }
+  return (
+    <View style={[styles.chatMessageRow, styles.chatMessageRowUser]}>
+      <View style={[styles.chatAvatar, { backgroundColor: `${accentColor}22` }]}>
+        <User color={accentColor} size={16} strokeWidth={2.2} />
+      </View>
+      <View
+        style={[styles.messageBubble, styles.userMessageBubble, { borderColor: `${accentColor}55` }]}
+      >
+        <MessageContent content={message.content || "(empty message)"} />
+        {message.timestamp ? (
+          <Text style={[styles.messageTime, styles.messageTimeUser]}>
             {relativeTimestamp(message.timestamp)}
           </Text>
         ) : null}

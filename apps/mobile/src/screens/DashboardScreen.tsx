@@ -1848,6 +1848,9 @@ function SessionDetailPanel({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [composerHeight, setComposerHeight] = useState<number>(MOBILE_CHAT_COMPOSER.minHeight);
+  const [composerBarHeight, setComposerBarHeight] = useState<number>(
+    MOBILE_CHAT_CHROME.composerHeight
+  );
   const draftRef = useRef("");
   const [sending, setSending] = useState(false);
   const [pinned, setPinned] = useState(sessionSummary?.pinned ?? false);
@@ -2089,7 +2092,7 @@ function SessionDetailPanel({
         ref={scrollRef}
         contentContainerStyle={[
           styles.chatContent,
-          { paddingBottom: navFootprint + MOBILE_CHAT_COMPOSER.maxHeight + spacing.md },
+          { paddingBottom: navFootprint + spacing.xs + composerBarHeight + spacing.md },
         ]}
         keyboardShouldPersistTaps="handled"
         onContentSizeChange={() => {
@@ -2132,7 +2135,12 @@ function SessionDetailPanel({
         contentStyle={styles.chatComposerContent}
         style={[styles.chatComposerBar, { bottom: navFootprint + spacing.xs }]}
       >
-        <View style={styles.composer}>
+        <View
+          style={styles.composer}
+          onLayout={(event) =>
+            setComposerBarHeight(event.nativeEvent.layout.height + spacing.sm * 2)
+          }
+        >
           <TextInput
             blurOnSubmit={false}
             editable={!sending}

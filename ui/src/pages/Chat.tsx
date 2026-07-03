@@ -11,7 +11,6 @@ import {
 import { useNavigate } from "react-router-dom";
 import {
   Send,
-  Bot,
   User,
   Trash2,
   Wrench,
@@ -3274,28 +3273,24 @@ export function Chat() {
                           message.role === "user" ? "flex-row-reverse" : ""
                         }`}
                       >
-                        <div
-                          className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                            message.role === "user"
-                              ? "bg-[rgba(var(--accent-primary),0.2)]"
-                              : "bg-emerald-500/20"
-                          }`}
-                        >
-                          {message.role === "user" ? (
+                        {message.role === "user" && (
+                          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-[rgba(var(--accent-primary),0.2)]">
                             <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 accent-text" />
-                          ) : (
-                            <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
-                          )}
-                        </div>
+                          </div>
+                        )}
                         <div
-                          className={`max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] ${message.role === "user" ? "text-right" : ""}`}
+                          className={
+                            message.role === "user"
+                              ? "max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] text-right"
+                              : "w-full min-w-0"
+                          }
                         >
                           <div
-                            className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${
+                            className={
                               message.role === "user"
-                                ? "border border-[rgba(var(--accent-primary),0.2)]"
-                                : "border border-white/5"
-                            }`}
+                                ? "rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 border border-[rgba(var(--accent-primary),0.2)]"
+                                : "py-1"
+                            }
                           >
                             {message.role !== "user" && (
                               <AssistantMetaInline
@@ -3353,29 +3348,19 @@ export function Chat() {
                   })
                 )}
                 {showWorkingTimeline && (
-                  <div className="flex gap-3">
-                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                      <Bot className="w-3.5 h-3.5 sm:w-4 h-4 text-emerald-400" />
-                    </div>
-                    <div className="max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] px-0.5 py-0.5">
-                      <LiveActivityTimeline
-                        status={timelineStatus}
-                        activities={timelineActivities}
-                        currentStep={liveCurrentStep}
-                      />
-                    </div>
+                  <div className="w-full min-w-0 py-1">
+                    <LiveActivityTimeline
+                      status={timelineStatus}
+                      activities={timelineActivities}
+                      currentStep={liveCurrentStep}
+                    />
                   </div>
                 )}
                 {streamingContent && (
-                  <div className="flex gap-3">
-                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                      <Bot className="w-3.5 h-3.5 sm:w-4 h-4 text-emerald-400" />
-                    </div>
-                    <div className="max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] rounded-2xl rounded-tl-sm bg-[#1a1e2b] border border-white/10 px-4 py-3">
-                      <div className="text-sm text-gray-200 whitespace-pre-wrap break-words">
-                        {streamingContent}
-                        <span className="inline-block w-2 h-4 ml-0.5 bg-emerald-400/70 animate-pulse align-middle" />
-                      </div>
+                  <div className="w-full min-w-0 py-1">
+                    <div className="text-sm text-gray-200 whitespace-pre-wrap break-words">
+                      {streamingContent}
+                      <span className="inline-block w-2 h-4 ml-0.5 bg-emerald-400/70 animate-pulse align-middle" />
                     </div>
                   </div>
                 )}

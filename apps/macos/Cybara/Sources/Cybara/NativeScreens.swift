@@ -590,17 +590,8 @@ struct ChatScreen: View {
                     NativeMarkdownView(content: visibleStreamingContent, isUser: false)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
-            )
-            Spacer(minLength: 60)
+            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -627,17 +618,17 @@ struct ChatScreen: View {
                     }
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.horizontal, isUser ? 14 : 0)
+            .padding(.vertical, isUser ? 10 : 2)
+            .frame(maxWidth: isUser ? nil : .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(isUser ? accentTint.opacity(0.28) : Color.white.opacity(0.06))
+                    .fill(isUser ? accentTint.opacity(0.28) : Color.clear)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(isUser ? accentTint.opacity(0.18) : Color.white.opacity(0.08), lineWidth: 1)
+                    .stroke(isUser ? accentTint.opacity(0.18) : Color.clear, lineWidth: 1)
             )
-            if !isUser { Spacer(minLength: 60) }
         }
         .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
     }

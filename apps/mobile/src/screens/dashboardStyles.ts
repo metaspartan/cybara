@@ -519,8 +519,9 @@ const makeStyles = () =>
       maxWidth: "86%",
       padding: spacing.md,
     },
-    assistantMessageBubble: {
-      maxWidth: "92%",
+    agentMessageRow: {
+      gap: spacing.xs,
+      width: "100%",
     },
     userMessageBubble: {
       backgroundColor: colors.surfaceLift,
