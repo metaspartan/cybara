@@ -1990,6 +1990,21 @@ export function Chat() {
     setShowScrollToBottomButton(false);
   }, [messages]);
 
+  // Stick to the bottom while a run streams (activities, tool calls, tokens),
+  // but never yank the view if the user scrolled up to read — the floating
+  // "scroll to latest" button covers that case.
+  useEffect(() => {
+    if (artifactViewerTarget) return;
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const nearBottom = container.scrollHeight - (container.scrollTop + container.clientHeight) < 96;
+    if (!nearBottom) return;
+    const rafId = window.requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [liveActivities, streamingContent, liveCurrentStep, artifactViewerTarget]);
+
   useEffect(() => {
     const rafId = window.requestAnimationFrame(() => {
       refreshScrollToBottomVisibility();

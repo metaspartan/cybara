@@ -43,3 +43,32 @@ describe("chat completion handoff (no blank chat when a run finishes)", () => {
     expect(resetIndex).toBeGreaterThan(loadIndex);
   });
 });
+
+// The chat must follow live output (activities, tool calls, streamed tokens)
+// without trapping users who scrolled up to read.
+describe("chat live auto-scroll", () => {
+  test("web: sticks to bottom on live content only when already near the bottom", () => {
+    const source = read("ui/src/pages/Chat.tsx");
+    expect(source).toContain(
+      "const nearBottom = container.scrollHeight - (container.scrollTop + container.clientHeight) < 96;"
+    );
+    expect(source).toContain("if (!nearBottom) return;");
+    expect(source).toMatch(
+      /\}, \[liveActivities, streamingContent, liveCurrentStep, artifactViewerTarget\]\);/
+    );
+  });
+
+  test("macos: scrolls the live thinking bubble into view as it streams", () => {
+    const source = read("apps/macos/Cybara/Sources/Cybara/NativeScreens.swift");
+    expect(source).toContain(".onChange(of: liveActivities.count)");
+    expect(source).toContain(".onChange(of: streamingContent)");
+    expect(source).toContain('proxy.scrollTo("thinking", anchor: .bottom)');
+  });
+
+  test("mobile: scrolls to end as the live assistant message grows", () => {
+    const source = read("apps/mobile/src/screens/DashboardScreen.tsx");
+    expect(source).toContain("scrollRef.current?.scrollToEnd({ animated: true });");
+    expect(source).toContain("liveAssistant?.content,");
+    expect(source).toContain("liveAssistant?.processActivities?.length,");
+  });
+});

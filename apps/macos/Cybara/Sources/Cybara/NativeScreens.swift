@@ -492,6 +492,17 @@ struct ChatScreen: View {
                         withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                     }
                 }
+                // Keep the live run in view as activities/tokens stream in.
+                .onChange(of: liveActivities.count) { _, _ in
+                    if showWorkingTimeline {
+                        proxy.scrollTo("thinking", anchor: .bottom)
+                    }
+                }
+                .onChange(of: streamingContent) { _, _ in
+                    if showWorkingTimeline {
+                        proxy.scrollTo("thinking", anchor: .bottom)
+                    }
+                }
             }
 
             composer
