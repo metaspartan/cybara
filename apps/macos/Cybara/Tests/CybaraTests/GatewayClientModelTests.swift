@@ -869,6 +869,64 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertNotNil(CybaraBrand.logoImage)
     }
 
+    func testCybaraLogoSearchesPackagedAppResourcesBeforeSwiftPMFallback() throws {
+        let appURL = URL(fileURLWithPath: "/Applications/CybaraNative.app", isDirectory: true)
+        let resourceURL = appURL
+            .appendingPathComponent("Contents", isDirectory: true)
+            .appendingPathComponent("Resources", isDirectory: true)
+        let executableURL = appURL
+            .appendingPathComponent("Contents", isDirectory: true)
+            .appendingPathComponent("MacOS", isDirectory: true)
+            .appendingPathComponent("Cybara")
+
+        let candidates = CybaraBrand.logoURLCandidates(
+            bundleURL: appURL,
+            resourceURL: resourceURL,
+            executableURL: executableURL,
+            sourceFileURL: nil
+        ).map(\.path)
+
+        XCTAssertEqual(
+            candidates.first,
+            "/Applications/CybaraNative.app/Contents/Resources/Cybara_Cybara.bundle/cybara.png"
+        )
+        XCTAssertTrue(
+            candidates.contains("/Applications/CybaraNative.app/Cybara_Cybara.bundle/cybara.png")
+        )
+    }
+
+    func testCybaraLogoURLFindsPackagedResourceBundleWithoutBundleModule() throws {
+        let temp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cybara-logo-resource-\(UUID().uuidString)", isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: temp)
+        }
+
+        let appURL = temp.appendingPathComponent("CybaraNative.app", isDirectory: true)
+        let resourceBundleURL = appURL
+            .appendingPathComponent("Contents", isDirectory: true)
+            .appendingPathComponent("Resources", isDirectory: true)
+            .appendingPathComponent("Cybara_Cybara.bundle", isDirectory: true)
+        let logoURL = resourceBundleURL.appendingPathComponent("cybara.png")
+        try FileManager.default.createDirectory(at: resourceBundleURL, withIntermediateDirectories: true)
+        try Data([0x89, 0x50, 0x4E, 0x47]).write(to: logoURL)
+
+        XCTAssertEqual(
+            CybaraBrand.logoURL(
+                bundleURL: appURL,
+                resourceURL: appURL
+                    .appendingPathComponent("Contents", isDirectory: true)
+                    .appendingPathComponent("Resources", isDirectory: true),
+                executableURL: appURL
+                    .appendingPathComponent("Contents", isDirectory: true)
+                    .appendingPathComponent("MacOS", isDirectory: true)
+                    .appendingPathComponent("Cybara"),
+                sourceFileURL: nil
+            )?.path,
+            logoURL.path
+        )
+    }
+
     private func decodeSession(_ json: String) throws -> GatewaySession {
         try JSONDecoder().decode(GatewaySession.self, from: Data(json.utf8))
     }

@@ -38,6 +38,15 @@ describe("native macOS shell wiring", () => {
     expect(webView).toContain('document.documentElement.dataset.runtime = "cybara-native"');
   });
 
+  test("native logo loading does not call SwiftPM Bundle.module at app startup", () => {
+    const brand = readFileSync(join(MACOS_APP_DIR, "CybaraBrand.swift"), "utf8");
+
+    expect(brand).not.toContain("Bundle.module");
+    expect(brand).toContain('appendingPathComponent("Resources"');
+    expect(brand).toContain("Cybara_Cybara.bundle");
+    expect(brand).toContain("logoURLCandidates");
+  });
+
   test("gateway model labels trim blank titles before falling back", () => {
     const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
     const modelTests = readFileSync(
