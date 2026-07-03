@@ -930,11 +930,22 @@ private func nativeSummarizeCommand(_ command: String) -> String {
     return String(compact[..<end]) + "..."
 }
 
+private let nativeReasoningMarkupTokenPattern =
+    "</?(?:REASONING_SCRATCHPAD|antthinking|(?:antml:|mm:)?(?:thinking|think|thought)|reasoning|final)\\b[^>]*>|\\[/?(?:thinking|reasoning)\\]"
+
 private func nativeNormalizeActivityText(_ value: String) -> String {
-    value.trimmingCharacters(in: .whitespacesAndNewlines)
-        .components(separatedBy: .whitespacesAndNewlines)
-        .filter { !$0.isEmpty }
-        .joined(separator: " ")
+    // Bare reasoning tag deltas (e.g. "</think>") must never render as
+    // activity text; also cleans activities persisted before the gateway
+    // stripped them at the source.
+    value.replacingOccurrences(
+        of: nativeReasoningMarkupTokenPattern,
+        with: " ",
+        options: [.regularExpression, .caseInsensitive]
+    )
+    .trimmingCharacters(in: .whitespacesAndNewlines)
+    .components(separatedBy: .whitespacesAndNewlines)
+    .filter { !$0.isEmpty }
+    .joined(separator: " ")
 }
 
 private func nativeIsGenericStatusLabel(_ value: String) -> Bool {

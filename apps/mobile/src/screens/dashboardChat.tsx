@@ -9,6 +9,7 @@ import {
   parseMarkdownBlocks,
   shouldUseSelectableNativeText,
   splitMessageContent,
+  stripStreamingReasoningForDisplay,
   type MarkdownInline,
 } from "../lib/chat-format";
 import type { SessionDetailSummary } from "../lib/api";
@@ -153,12 +154,20 @@ export function ChatMessageRow({
     const hasWorkTimeline = Boolean(
       message.thinking || message.processActivities?.length || message.toolCalls?.length
     );
-    const hasContent = (message.content || "").trim().length > 0;
+    // Live streaming buffers can contain reasoning markup; persisted messages
+    // are already sanitized by the gateway.
+    const isLiveMessage =
+      typeof message.id === "string" && message.id.startsWith("live-assistant-");
+    const rawContent = message.content || "";
+    const displayContent = isLiveMessage
+      ? stripStreamingReasoningForDisplay(rawContent)
+      : rawContent;
+    const hasContent = displayContent.trim().length > 0;
     return (
       <View style={styles.agentMessageRow}>
         {hasWorkTimeline ? <WorkTimeline message={message} nowMs={nowMs} /> : null}
         {hasContent || !hasWorkTimeline ? (
-          <MessageContent content={hasContent ? message.content : "(empty message)"} />
+          <MessageContent content={hasContent ? displayContent : "(empty message)"} />
         ) : null}
         {message.timestamp ? (
           <Text style={styles.messageTime}>{relativeTimestamp(message.timestamp)}</Text>

@@ -1198,3 +1198,40 @@ export function getToolCallsInTimelineOrder(toolCalls?: ToolCall[]): ToolCall[] 
 
   return [...toolCalls];
 }
+
+const STREAM_REASONING_TAG = "(?:REASONING_SCRATCHPAD|antthinking|(?:antml:|mm:)?(?:thinking|think|thought)|reasoning)";
+const STREAM_REASONING_BLOCK_PATTERN = new RegExp(
+  `<${STREAM_REASONING_TAG}\\b[^>]*>[\\s\\S]*?</${STREAM_REASONING_TAG}>`,
+  "gi"
+);
+const STREAM_REASONING_CLOSE_PATTERN = new RegExp(`</${STREAM_REASONING_TAG}\\b[^>]*>`, "gi");
+const STREAM_REASONING_OPEN_PATTERN = new RegExp(`<${STREAM_REASONING_TAG}\\b[^>]*>`, "i");
+
+/**
+ * Reduce a raw streaming buffer to the text that should be shown as the
+ * assistant's answer. Reasoning is hidden while it streams:
+ * - paired <think>...</think> blocks are removed;
+ * - an unpaired closing tag means the opener was implicit (DeepSeek-style),
+ *   so everything up to the last close is reasoning;
+ * - an unclosed opening tag means reasoning is still streaming, so the tail
+ *   is hidden until the block closes.
+ */
+export function stripStreamingReasoningForDisplay(text: string): string {
+  let result = text.replace(STREAM_REASONING_BLOCK_PATTERN, "");
+
+  STREAM_REASONING_CLOSE_PATTERN.lastIndex = 0;
+  let lastCloseEnd = -1;
+  for (const match of result.matchAll(STREAM_REASONING_CLOSE_PATTERN)) {
+    lastCloseEnd = (match.index ?? 0) + match[0].length;
+  }
+  if (lastCloseEnd >= 0) {
+    result = result.slice(lastCloseEnd);
+  }
+
+  const openMatch = result.match(STREAM_REASONING_OPEN_PATTERN);
+  if (openMatch && typeof openMatch.index === "number") {
+    result = result.slice(0, openMatch.index);
+  }
+
+  return result.replace(/^\s+/, "");
+}

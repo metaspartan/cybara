@@ -1,4 +1,5 @@
 import { createLogger } from "./logger";
+import { stripReasoningTagTokens } from "./agent-internals";
 
 export type AgentStatus =
   "idle" | "thinking" | "tool_executing" | "tool_completed" | "generating" | "compacting" | "error";
@@ -97,8 +98,9 @@ function isActiveStatus(status: AgentStatus): boolean {
 
 function sanitizeActivityText(detail?: string): string {
   if (!detail || typeof detail !== "string") return "";
-  const trimmed = detail.trim();
-  return trimmed;
+  // Streamed reasoning deltas can arrive as bare markup (e.g. "</think>");
+  // never let tag tokens become visible activity text.
+  return stripReasoningTagTokens(detail).replace(/\s{2,}/g, " ").trim();
 }
 
 function isMeaningfulThoughtDetail(detail: string): boolean {

@@ -369,13 +369,23 @@ export function summarizeCommand(command: string): string {
   return compact;
 }
 
+const REASONING_MARKUP_TOKEN_PATTERN =
+  /<\/?(?:REASONING_SCRATCHPAD|antthinking|(?:antml:|mm:)?(?:thinking|think|thought)|reasoning|final)\b[^>]*>|\[\/?(?:thinking|reasoning)\]/gi;
+
+/** Remove reasoning tag tokens (e.g. a bare "</think>" delta) from display text. */
+export function stripReasoningTagTokens(value: string): string {
+  return value.replace(REASONING_MARKUP_TOKEN_PATTERN, " ");
+}
+
 export function summarizeProgressThought(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
-  const compact = value
+  const compact = stripReasoningTagTokens(value)
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .join(" ");
+    .join(" ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
   if (!compact) return undefined;
   if (compact.length <= 220) return compact;
   return `${compact.slice(0, 217)}...`;

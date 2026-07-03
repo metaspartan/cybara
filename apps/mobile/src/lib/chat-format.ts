@@ -91,8 +91,16 @@ export function splitMessageContent(content: string): MessageContentPart[] {
   return parts.length > 0 ? parts : [{ type: "text", content }];
 }
 
+const REASONING_MARKUP_TOKEN_PATTERN =
+  /<\/?(?:REASONING_SCRATCHPAD|antthinking|(?:antml:|mm:)?(?:thinking|think|thought)|reasoning|final)\b[^>]*>|\[\/?(?:thinking|reasoning)\]/gi;
+
+/** Bare reasoning tag deltas (e.g. "</think>") must never render as activity text. */
+export function stripReasoningTagTokens(value: string): string {
+  return value.replace(REASONING_MARKUP_TOKEN_PATTERN, " ");
+}
+
 function normalizeActivityText(value: string): string {
-  return value.trim().replace(/\s+/g, " ");
+  return stripReasoningTagTokens(value).trim().replace(/\s+/g, " ");
 }
 
 function readStringArg(
@@ -346,11 +354,12 @@ export function buildMobileWorkTimeline(
   const baseTimestamp = activityTimestamp(message.timestamp, 0);
   const activities: MobileWorkActivity[] = [];
 
-  if (message.thinking?.trim()) {
+  const thinkingText = message.thinking ? normalizeActivityText(message.thinking) : "";
+  if (thinkingText) {
     activities.push({
       id: `${message.id}-thinking`,
       phase: "result",
-      text: message.thinking.trim(),
+      text: thinkingText,
       timestamp: baseTimestamp,
       toolName: "__thought",
     });
@@ -623,4 +632,38 @@ export function parseMarkdownBlocks(input: string): MarkdownBlock[] {
   }
   flushParagraph();
   return blocks;
+}
+
+const STREAM_REASONING_TAG =
+  "(?:REASONING_SCRATCHPAD|antthinking|(?:antml:|mm:)?(?:thinking|think|thought)|reasoning)";
+const STREAM_REASONING_BLOCK_PATTERN = new RegExp(
+  `<${STREAM_REASONING_TAG}\\b[^>]*>[\\s\\S]*?</${STREAM_REASONING_TAG}>`,
+  "gi"
+);
+const STREAM_REASONING_CLOSE_PATTERN = new RegExp(`</${STREAM_REASONING_TAG}\\b[^>]*>`, "gi");
+const STREAM_REASONING_OPEN_PATTERN = new RegExp(`<${STREAM_REASONING_TAG}\\b[^>]*>`, "i");
+
+/**
+ * Hide reasoning inside a live streaming buffer: paired think blocks are
+ * removed, an unpaired closing tag treats everything before it as reasoning
+ * (implicit opener), and an unclosed opening tag hides the streaming tail.
+ */
+export function stripStreamingReasoningForDisplay(text: string): string {
+  let result = text.replace(STREAM_REASONING_BLOCK_PATTERN, "");
+
+  STREAM_REASONING_CLOSE_PATTERN.lastIndex = 0;
+  let lastCloseEnd = -1;
+  for (const match of result.matchAll(STREAM_REASONING_CLOSE_PATTERN)) {
+    lastCloseEnd = (match.index ?? 0) + match[0].length;
+  }
+  if (lastCloseEnd >= 0) {
+    result = result.slice(lastCloseEnd);
+  }
+
+  const openMatch = result.match(STREAM_REASONING_OPEN_PATTERN);
+  if (openMatch && typeof openMatch.index === "number") {
+    result = result.slice(0, openMatch.index);
+  }
+
+  return result.replace(/^\s+/, "");
 }

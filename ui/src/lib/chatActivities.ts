@@ -176,6 +176,21 @@ function toTimestampMs(value: unknown): number | undefined {
   return undefined;
 }
 
+const REASONING_MARKUP_TOKEN_PATTERN =
+  /<\/?(?:REASONING_SCRATCHPAD|antthinking|(?:antml:|mm:)?(?:thinking|think|thought)|reasoning|final)\b[^>]*>|\[\/?(?:thinking|reasoning)\]/gi;
+
+/**
+ * Remove reasoning tag tokens (e.g. a bare "</think>" streamed as a thought
+ * delta) from activity text. Also cleans activities persisted before the
+ * gateway started stripping these at the source.
+ */
+export function stripReasoningTagTokens(text: string): string {
+  return text
+    .replace(REASONING_MARKUP_TOKEN_PATTERN, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 export function normalizeActivityTextForPhase(text: string, phase: ActivityPhase): string {
   return toCanonicalVerb(text, phase);
 }
@@ -233,7 +248,12 @@ export function mergeActivityLists(
   primary: LiveActivityItem[],
   secondary: LiveActivityItem[]
 ): LiveActivityItem[] {
-  const allActivities = [...primary, ...secondary];
+  const allActivities = [...primary, ...secondary]
+    .map((activity) => {
+      const text = stripReasoningTagTokens(activity.text);
+      return text === activity.text ? activity : { ...activity, text };
+    })
+    .filter((activity) => activity.text.length > 0);
   const hasCompletionForStart = (activity: LiveActivityItem): boolean => {
     if (activity.phase !== "start") return false;
     if (activity.toolCallId) {
@@ -272,10 +292,7 @@ export function mergeActivityLists(
     merged.push(activity);
   };
 
-  for (const activity of primary) {
-    pushUnique(activity);
-  }
-  for (const activity of secondary) {
+  for (const activity of allActivities) {
     pushUnique(activity);
   }
 
