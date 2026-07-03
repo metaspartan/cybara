@@ -116,11 +116,27 @@ body::before {
 
 /* ==================== INTERACTION HYGIENE ==================== */
 
-/* Remove default focus outline, replace with custom ring */
+/* Keyboard focus: a clearly visible accent ring. The previous 1px 30%-white
+   ring failed WCAG 2.4.11/1.4.11 (non-text contrast) and was invisible on most
+   surfaces. Use a 2px accent-colored ring with a dark offset halo so it reads on
+   both light and dark glass. Mouse focus stays quiet (:focus-visible only). */
 :focus-visible {
-  outline: none !important;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
+  outline: 2px solid rgb(var(--accent-primary));
+  outline-offset: 2px;
   border-radius: 4px;
+}
+
+/* Respect reduced-motion: disable the decorative animations for users who ask
+   the OS to minimize motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Prevent layout shifts */
@@ -228,6 +244,73 @@ html[data-runtime="tauri"][data-platform="linux"] .shimmer {
 
 .glass-button:active {
   background: rgba(255, 255, 255, 0.06);
+}
+
+/* ---- Utilities referenced by shared primitives ----
+   These were used by components (TextArea, GlassButton, GlassCard, Button) but
+   defined nowhere, so those primitives rendered unstyled. Defined here against
+   the existing glass/accent tokens. */
+
+/* TextArea / text inputs (components/ui/TextArea.tsx) */
+.glass-input {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-border);
+  border-radius: 0.6rem;
+  padding: 0.55rem 0.75rem;
+  color: #e5e7eb;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.glass-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+.glass-input:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.glass-input:focus,
+.glass-input:focus-visible {
+  outline: none;
+  border-color: rgb(var(--accent-primary));
+  box-shadow: 0 0 0 3px rgba(var(--accent-primary), 0.25);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Primary variant of GlassButton (components/ui/GlassButton.tsx) */
+.glass-button-primary {
+  background: rgb(var(--accent-primary));
+  border: 1px solid rgb(var(--accent-primary));
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(var(--accent-primary), 0.3);
+  transition: filter 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+.glass-button-primary:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 6px 20px rgba(var(--accent-primary), 0.4);
+}
+.glass-button-primary:active {
+  filter: brightness(0.95);
+}
+
+/* Hoverable card affordance (components/ui/GlassCard.tsx) */
+.glass-card-hover {
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+.glass-card-hover:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(var(--accent-primary), 0.4);
+}
+
+/* Glow emphasis for Button glow prop (components/ui/Button.tsx) */
+@keyframes glow-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(var(--accent-primary), 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(var(--accent-primary), 0);
+  }
+}
+.glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
 }
 
 /* ==================== ACCENT THEME UTILITIES ==================== */

@@ -232,7 +232,7 @@ export function Sidebar() {
         title={collapsed ? item.label : undefined}
         className={cn(
           "flex items-center gap-3 rounded-xl text-sm font-medium transition-all duration-200",
-          "!outline-none !ring-0 !border-transparent focus:!outline-none focus-visible:!outline-none active:!outline-none",
+          "!ring-0 !border-transparent",
           collapsed ? "px-3 py-2.5 justify-center" : "px-4 py-2.5",
           isActive
             ? "bg-[rgba(var(--accent-primary),0.15)] text-white border border-[rgba(var(--accent-primary),0.3)] shadow-lg"
@@ -257,7 +257,7 @@ export function Sidebar() {
     <>
       <button
         onClick={() => setMobileOpen(!mobileOpen)}
-        className="fixed top-4 right-4 z-50 p-2 rounded-lg glass-button text-white md:hidden !outline-none !ring-0 focus:!outline-none active:!outline-none"
+        className="fixed top-4 right-4 z-50 p-2 rounded-lg glass-button text-white md:hidden !ring-0"
         aria-label="Toggle menu"
       >
         {mobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -323,7 +323,7 @@ export function Sidebar() {
                   <>
                     <button
                       onClick={() => toggleSection(category.id)}
-                      className="w-full flex items-center justify-between px-3 py-2 mt-3 mb-1 text-xs font-semibold text-gray-500 uppercase tracking-wider hover:text-gray-400 transition-colors !outline-none !ring-0 focus:!outline-none active:!outline-none"
+                      className="w-full flex items-center justify-between px-3 py-2 mt-3 mb-1 text-xs font-semibold text-gray-500 uppercase tracking-wider hover:text-gray-400 transition-colors !ring-0"
                     >
                       <span>{category.label}</span>
                       <ChevronDown
@@ -355,7 +355,7 @@ export function Sidebar() {
               title={collapsed ? "Settings" : undefined}
               className={cn(
                 "flex items-center gap-3 rounded-xl text-sm font-medium transition-all duration-200 mb-2",
-                "!outline-none !ring-0 !border-transparent focus:!outline-none focus-visible:!outline-none active:!outline-none",
+                "!ring-0 !border-transparent",
                 collapsed ? "px-3 py-2.5 justify-center" : "px-4 py-2.5",
                 location.pathname === "/settings"
                   ? "bg-[rgba(var(--accent-primary),0.15)] text-white border border-[rgba(var(--accent-primary),0.3)] shadow-lg"
@@ -378,7 +378,7 @@ export function Sidebar() {
 
             <button
               onClick={() => setCollapsed(!collapsed)}
-              className="hidden md:flex w-full items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-500 hover:text-white hover:bg-white/5 transition-colors !outline-none"
+              className="hidden md:flex w-full items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-500 hover:text-white hover:bg-white/5 transition-colors"
               title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
               {collapsed ? (
