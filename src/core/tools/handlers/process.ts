@@ -172,25 +172,40 @@ export async function handleExecAsync(
     stderr: "pipe",
   });
 
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
-  const exitCode = await proc.exited;
+  // Register the live handle so `process` list/status/kill can see and terminate
+  // it while it runs. `await proc.exited` yields the event loop, so a concurrent
+  // `process({action:"kill"})` call can run and actually kill it.
+  const key = String(proc.pid);
+  runningProcesses.set(key, { pid: proc.pid, command, startedAt: new Date(), proc });
+  try {
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+    const exitCode = await proc.exited;
 
-  log.info("Async command completed", {
-    cwd: plan.cwd,
-    sandboxProvider: plan.provider || "host",
-    exitCode,
-  });
+    log.info("Async command completed", {
+      cwd: plan.cwd,
+      sandboxProvider: plan.provider || "host",
+      exitCode,
+    });
 
-  return {
-    pid: proc.pid,
-    output: stdout + (stderr ? "\n" + stderr : ""),
-    exitCode,
-    sandboxProvider: plan.provider || undefined,
-  };
+    return {
+      pid: proc.pid,
+      output: stdout + (stderr ? "\n" + stderr : ""),
+      exitCode,
+      sandboxProvider: plan.provider || undefined,
+    };
+  } finally {
+    runningProcesses.delete(key);
+  }
 }
 
-const runningProcesses = new Map<string, { pid: number; command: string; startedAt: Date }>();
+type RunningProcess = {
+  pid: number;
+  command: string;
+  startedAt: Date;
+  proc: Bun.Subprocess;
+};
+const runningProcesses = new Map<string, RunningProcess>();
 
 export async function handleProcess(args: Record<string, unknown>): Promise<unknown> {
   const action = args.action as string;
@@ -206,14 +221,32 @@ export async function handleProcess(args: Record<string, unknown>): Promise<unkn
     case "kill": {
       const sessionId = args.sessionId as string;
       if (!sessionId) throw new Error("sessionId required for kill action");
+      const entry = runningProcesses.get(sessionId);
+      if (!entry) {
+        return { success: false, error: `No running process with id ${sessionId}` };
+      }
+      // Actually terminate the process — the previous implementation only
+      // removed the map entry, leaving the process running.
+      try {
+        entry.proc.kill();
+      } catch (error) {
+        log.warn("Failed to kill process", { sessionId, error: String(error) });
+      }
       runningProcesses.delete(sessionId);
-      return { success: true };
+      return { success: true, pid: entry.pid };
     }
     case "status": {
       const sessionId = args.sessionId as string;
       if (!sessionId) throw new Error("sessionId required for status action");
-      const proc = runningProcesses.get(sessionId);
-      return proc ? { running: true, ...proc } : { running: false };
+      const entry = runningProcesses.get(sessionId);
+      return entry
+        ? {
+            running: true,
+            pid: entry.pid,
+            command: entry.command,
+            startedAt: entry.startedAt.toISOString(),
+          }
+        : { running: false };
     }
     default:
       throw new Error(`Unknown process action: ${action}`);
