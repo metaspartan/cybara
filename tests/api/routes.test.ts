@@ -2523,6 +2523,28 @@ describe("Config API", () => {
     });
     expect(resetRes.status).toBe(200);
   });
+
+  test("PUT /api/config normalizes computer-use driver command override", async () => {
+    const putRes = await api("PUT", "/api/config", {
+      computer_use: {
+        driverCommand: '"C:\\Users\\carsen\\AppData\\Local\\Programs\\Cua\\cua-driver\\bin\\cua-driver.exe"',
+      },
+    });
+    expect(putRes.status).toBe(200);
+    expect(putRes.data.success).toBe(true);
+
+    const getRes = await api("GET", "/api/config");
+    expect(getRes.status).toBe(200);
+    expect(getRes.data.computer_use).toEqual({
+      driverCommand:
+        "C:\\Users\\carsen\\AppData\\Local\\Programs\\Cua\\cua-driver\\bin\\cua-driver.exe",
+    });
+
+    const resetRes = await api("PUT", "/api/config", {
+      computer_use: { driverCommand: "" },
+    });
+    expect(resetRes.status).toBe(200);
+  });
 });
 
 describe("Browser API", () => {

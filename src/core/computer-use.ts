@@ -20,15 +20,16 @@
  * cua-driver's identity (verified by computerUseDoctor()).
  */
 import { spawn, type ChildProcess } from "child_process";
-import { mkdirSync, existsSync, readFileSync, statSync } from "fs";
+import { mkdirSync, existsSync, readFileSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
+import { config } from "./config";
 
 const DEFAULT_CUA_DRIVER_CMD = "cua-driver";
 const CUA_DRIVER_CMD_ENV = "CYBARA_CUA_DRIVER_CMD";
 const REQUEST_TIMEOUT_MS = 30_000;
 
-export type CuaDriverCommandSource = "env" | "path" | "known-install-dir" | "default";
+export type CuaDriverCommandSource = "env" | "config" | "path" | "known-install-dir" | "default";
 
 export interface CuaDriverResolution {
   command: string;
@@ -172,6 +173,9 @@ function knownDriverInstallDirs(
   const home = defaultHomeForPlatform(env, platform);
   if (platform === "win32") {
     const localAppData = readEnvValue(env, "LOCALAPPDATA", platform);
+    const cuaHome =
+      readEnvValue(env, "CUA_DRIVER_RS_HOME", platform) || (home ? join(home, ".cua-driver") : "");
+    const legacyCuaHome = home ? join(home, ".cua-driver-rs") : "";
     const dirs = [...configured];
     if (localAppData) {
       dirs.push(
@@ -179,10 +183,24 @@ function knownDriverInstallDirs(
         join(localAppData, "Programs", "trycua", "cua-driver-rs", "bin")
       );
     }
+    for (const packageHome of [cuaHome, legacyCuaHome].filter(Boolean)) {
+      const packagesDir = join(packageHome, "packages");
+      const currentDir = join(packagesDir, "current");
+      dirs.push(currentDir, join(currentDir, "bin"));
+      const releasesDir = join(packagesDir, "releases");
+      try {
+        const releaseDirs = readdirSync(releasesDir, { withFileTypes: true })
+          .filter((entry) => entry.isDirectory())
+          .map((entry) => join(releasesDir, entry.name));
+        for (const releaseDir of releaseDirs) {
+          dirs.push(releaseDir, join(releaseDir, "bin"));
+        }
+      } catch {
+        /* missing or inaccessible release cache */
+      }
+    }
     if (home) {
       dirs.push(
-        join(home, ".cua-driver", "packages", "current"),
-        join(home, ".cua-driver-rs", "packages", "current"),
         join(home, ".local", "bin"),
         join(home, ".cargo", "bin"),
         join(home, ".bun", "bin")
@@ -215,15 +233,35 @@ function findDriverInDirs(
   return null;
 }
 
+function shouldUsePersistedComputerUseConfig(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+  configuredCommand: string | undefined
+): boolean {
+  return configuredCommand === undefined && env === process.env && platform === process.platform;
+}
+
 export function resolveCuaDriverCommand(
   env: NodeJS.ProcessEnv = process.env,
-  platform: NodeJS.Platform = process.platform
+  platform: NodeJS.Platform = process.platform,
+  configuredCommand?: string
 ): CuaDriverResolution | null {
   const override = readEnvValue(env, CUA_DRIVER_CMD_ENV, platform);
   if (override?.trim()) {
     return {
       command: stripWrappingQuotes(override),
       source: "env",
+      searchedPaths: [],
+    };
+  }
+
+  const configOverride = shouldUsePersistedComputerUseConfig(env, platform, configuredCommand)
+    ? config.getComputerUseSettings().driverCommand
+    : configuredCommand;
+  if (configOverride?.trim()) {
+    return {
+      command: stripWrappingQuotes(configOverride),
+      source: "config",
       searchedPaths: [],
     };
   }
@@ -797,6 +835,7 @@ export interface ComputerUseDoctorResult {
   available: boolean;
   command: string;
   driverSource?: CuaDriverCommandSource;
+  configuredCommand?: string;
   platform: string;
   /** Resolved version string, if the driver reported one. */
   version?: string;
@@ -815,10 +854,12 @@ export interface ComputerUseDoctorResult {
 export async function computerUseDoctor(): Promise<ComputerUseDoctorResult> {
   const platform = process.platform;
   const resolution = getCuaDriverResolution();
+  const configuredCommand = config.getComputerUseSettings().driverCommand || undefined;
   const base = {
     available: false,
     command: resolution.command,
     driverSource: resolution.source,
+    configuredCommand,
     platform,
     ready: false,
   };
@@ -876,6 +917,7 @@ export async function computerUseDoctor(): Promise<ComputerUseDoctorResult> {
     available: true,
     command: resolution.command,
     driverSource: resolution.source,
+    configuredCommand,
     platform,
     version,
     accessibility,

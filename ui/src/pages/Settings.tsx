@@ -35,6 +35,7 @@ import {
   getDesktopHostRuntime,
   getDesktopRuntimeLabel,
   isDesktopUpdaterSupported,
+  openDesktopFileDialog,
 } from "@/lib/desktopHost";
 import { Input, Textarea, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -467,12 +468,18 @@ function ComputerUseSettings() {
   const [status, setStatus] = useState<ComputerUseStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [granting, setGranting] = useState(false);
+  const [savingDriverPath, setSavingDriverPath] = useState(false);
+  const [driverPathInput, setDriverPathInput] = useState("");
   const [note, setNote] = useState<string | null>(null);
+  const canBrowseForDriver = getDesktopHostRuntime() === "tauri";
 
   const load = useCallback(async () => {
     setLoading(true);
     const res = await computerUseApi.getStatus();
-    if (res.success && res.data) setStatus(res.data);
+    if (res.success && res.data) {
+      setStatus(res.data);
+      setDriverPathInput(res.data.configuredCommand || "");
+    }
     setLoading(false);
   }, []);
 
@@ -489,6 +496,39 @@ function ComputerUseSettings() {
     await load();
   }, [load]);
 
+  const saveDriverPath = useCallback(
+    async (nextPath = driverPathInput) => {
+      setSavingDriverPath(true);
+      setNote(null);
+      const trimmed = nextPath.trim();
+      const res = await settingsApi.updateConfig({
+        computer_use: { driverCommand: trimmed },
+      });
+      if (res.success) {
+        setNote(trimmed ? "Saved cua-driver path override." : "Cleared cua-driver path override.");
+        await load();
+      } else {
+        setNote(`Could not save cua-driver path: ${extractApiError(res, "Config update failed")}`);
+      }
+      setSavingDriverPath(false);
+    },
+    [driverPathInput, load]
+  );
+
+  const browseDriverPath = useCallback(async () => {
+    const selected = await openDesktopFileDialog({
+      defaultPath: driverPathInput || status?.command,
+      title: "Choose cua-driver executable",
+      filters:
+        status?.platform === "win32"
+          ? [{ name: "Windows executables", extensions: ["exe", "cmd", "bat"] }]
+          : undefined,
+    });
+    if (selected) {
+      setDriverPathInput(selected);
+    }
+  }, [driverPathInput, status?.command, status?.platform]);
+
   const yesNo = (v?: boolean) =>
     v === undefined ? (
       <Badge variant="default">n/a</Badge>
@@ -497,6 +537,22 @@ function ComputerUseSettings() {
     ) : (
       <Badge variant="error">No</Badge>
     );
+  const driverSourceLabel = (source?: ComputerUseStatus["driverSource"]) => {
+    switch (source) {
+      case "env":
+        return "Environment";
+      case "config":
+        return "Saved override";
+      case "path":
+        return "PATH";
+      case "known-install-dir":
+        return "Known install directory";
+      case "default":
+        return "Default command";
+      default:
+        return "Unknown";
+    }
+  };
 
   return (
     <Card variant="liquid">
@@ -506,6 +562,8 @@ function ComputerUseSettings() {
           Background desktop control via the cua-driver engine.{" "}
           {status?.platform === "darwin"
             ? "Install it and grant macOS Accessibility + Screen Recording permissions to let agents see and control the screen."
+            : status?.platform === "win32"
+              ? "Windows computer use runs on the active desktop, so keep the target app visible while agents work."
             : "Install the cua-driver engine to let agents see and control the screen."}
         </CardDescription>
       </CardHeader>
@@ -540,8 +598,69 @@ function ComputerUseSettings() {
             {status.available && (
               <p className="break-all text-xs text-gray-500">
                 Driver: {status.command}
-                {status.driverSource ? ` (${status.driverSource})` : ""}
+                {status.driverSource ? ` (${driverSourceLabel(status.driverSource)})` : ""}
               </p>
+            )}
+            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium text-gray-200">Driver path override</p>
+                  <p className="text-xs text-gray-500">
+                    Use this when Windows/Tauri starts before the installer PATH update is visible,
+                    or when cua-driver is installed outside the default Cua folders.
+                  </p>
+                </div>
+                {status.driverSource === "config" && <Badge variant="success">Using override</Badge>}
+              </div>
+              <div className="flex flex-col gap-2 md:flex-row">
+                <Input
+                  value={driverPathInput}
+                  onChange={(event) => setDriverPathInput(event.target.value)}
+                  placeholder={
+                    status.platform === "win32"
+                      ? "C:\\Users\\you\\AppData\\Local\\Programs\\Cua\\cua-driver\\bin\\cua-driver.exe"
+                      : "/Users/you/.local/bin/cua-driver"
+                  }
+                  className="font-mono text-xs"
+                  aria-label="cua-driver executable path"
+                />
+                {canBrowseForDriver && (
+                  <Button variant="secondary" onClick={() => void browseDriverPath()}>
+                    Browse
+                  </Button>
+                )}
+                <Button
+                  variant="primary"
+                  onClick={() => void saveDriverPath()}
+                  disabled={savingDriverPath}
+                >
+                  {savingDriverPath ? "Saving…" : "Save"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setDriverPathInput("");
+                    void saveDriverPath("");
+                  }}
+                  disabled={savingDriverPath || !driverPathInput.trim()}
+                >
+                  Clear
+                </Button>
+              </div>
+              {status.configuredCommand && status.driverSource !== "config" && (
+                <p className="mt-2 text-xs text-amber-300">
+                  A path override is saved, but {driverSourceLabel(status.driverSource)} is taking
+                  precedence.
+                </p>
+              )}
+            </div>
+            {!status.available && status.searchedPaths && status.searchedPaths.length > 0 && (
+              <details className="rounded-lg border border-white/10 bg-black/20 p-3 text-xs text-gray-400">
+                <summary className="cursor-pointer text-gray-300">Checked paths</summary>
+                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap">
+                  {status.searchedPaths.join("\n")}
+                </pre>
+              </details>
             )}
             {note && <p className="text-sm text-indigo-300">{note}</p>}
             <div className="flex flex-wrap gap-2">

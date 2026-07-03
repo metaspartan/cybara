@@ -529,12 +529,16 @@ Generate music/audio from a text prompt (fal.ai: minimax-music, ace-step, stable
 ## Desktop Control
 
 ### computer_use
-Control the desktop in the background (capture, click, type, scroll, drag, key, set_value, focus app)
-via the external [cua-driver](https://github.com/trycua/cua) binary over MCP stdio. Does NOT steal
-the user's cursor by default. Requires the `cua-driver` binary on `$PATH`, in the default platform
-installer location, or at `CYBARA_CUA_DRIVER_CMD`; on macOS it also requires Accessibility + Screen
-Recording TCC grants (run the `computerUseDoctor()` check to verify). Prefer `element` (1-based SOM
-index) over pixel `coordinate`; prefer `set_value` over typing into dropdowns.
+Control the desktop (capture, click, type, scroll, drag, key, set_value, focus app)
+via the external [cua-driver](https://github.com/trycua/cua) binary over MCP stdio. It is
+foreground-safe where the upstream driver supports it. Requires the `cua-driver` binary at
+`CYBARA_CUA_DRIVER_CMD`, in Settings → Computer Use (`computer_use.driverCommand`), on `$PATH`, or in
+the default platform installer location. On Windows, Cybara probes
+`%LOCALAPPDATA%\Programs\Cua\cua-driver\bin\cua-driver.exe` and
+`%USERPROFILE%\.cua-driver\packages\current`; Windows desktop control still requires the target app
+to be visible in the active desktop. On macOS, Accessibility + Screen Recording TCC grants are also
+required (run the `computerUseDoctor()` check to verify). Prefer `element` (1-based SOM index) over
+pixel `coordinate`; prefer `set_value` over typing into dropdowns.
 
 **Safety hardening:** `computer_use` is gated as a **dangerous tool** (routed through the ask/block
 approval flow). Dangerous key combos (logout/lock) and shell-injection typed text (`curl … | bash`,

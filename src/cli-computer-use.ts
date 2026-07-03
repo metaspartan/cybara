@@ -3,7 +3,8 @@ type FetchAPI = <T>(endpoint: string, options?: RequestInit) => Promise<T | null
 interface ComputerUseStatus {
   available: boolean;
   command: string;
-  driverSource?: "env" | "path" | "known-install-dir" | "default";
+  driverSource?: "env" | "config" | "path" | "known-install-dir" | "default";
+  configuredCommand?: string;
   platform: string;
   version?: string;
   accessibility?: boolean;
@@ -17,6 +18,7 @@ function printComputerUseStatus(status: ComputerUseStatus): void {
   console.log("Computer Use (cua-driver)");
   console.log(`  command:          ${status.command}`);
   if (status.driverSource) console.log(`  source:           ${status.driverSource}`);
+  if (status.configuredCommand) console.log(`  configured path:  ${status.configuredCommand}`);
   console.log(`  installed:        ${yn(status.available)}${status.version ? ` (${status.version})` : ""}`);
   console.log(`  platform:         ${status.platform}`);
   if (status.platform === "darwin") {

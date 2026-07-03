@@ -686,6 +686,7 @@ const routes: Record<string, RouteHandler> = {
     sandbox_runtime: config.getSandboxRuntime(),
     workspace_indexer: config.getWorkspaceIndexerSettings(),
     speech: config.getSpeechSettings(),
+    computer_use: config.getComputerUseSettings(),
     reasoning_effort: config.getDefaultReasoningEffort(),
     self_improving_skills_enabled: config.get<boolean>("self_improving_skills_enabled") !== false,
   }),
@@ -695,7 +696,7 @@ const routes: Record<string, RouteHandler> = {
     speech: config.setSpeechSettings(body),
   }),
   "GET /api/sandbox/status": () => getSandboxRuntimeStatus(),
-  "PUT /api/config": (body) => {
+  "PUT /api/config": async (body) => {
     const data = body as Record<string, unknown>;
     for (const [key, value] of Object.entries(data)) {
       if (key === "dangerous_tool_policy") {
@@ -721,6 +722,12 @@ const routes: Record<string, RouteHandler> = {
       }
       if (key === "speech") {
         config.setSpeechSettings(value);
+        continue;
+      }
+      if (key === "computer_use") {
+        config.setComputerUseSettings(value);
+        const { stopComputerUseDriver } = await import("../core/computer-use");
+        stopComputerUseDriver();
         continue;
       }
       if (key === "reasoning_effort") {

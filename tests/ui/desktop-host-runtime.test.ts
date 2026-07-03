@@ -24,6 +24,7 @@ describe("desktop host runtime wiring", () => {
     expect(desktopHost).toContain("getDesktopHostRuntime");
     expect(desktopHost).toContain("supportsDesktopUpdater");
     expect(desktopHost).toContain("openDesktopDirectoryDialog");
+    expect(desktopHost).toContain("openDesktopFileDialog");
 
     expect(desktopUpdater).toContain('from "@tauri-apps/plugin-updater"');
     expect(desktopUpdater).toContain('from "@tauri-apps/plugin-process"');
@@ -36,6 +37,7 @@ describe("desktop host runtime wiring", () => {
     expect(settingsTsx).toContain("getDesktopRuntimeLabel");
     expect(settingsTsx).toContain("isDesktopUpdaterSupported");
     expect(settingsTsx).toContain("Cybara macOS app uses the same local gateway");
+    expect(settingsTsx).toContain("openDesktopFileDialog");
 
     expect(notifications).toContain("sendDesktopNotification");
     expect(notifications).toContain("requestDesktopNotificationPermission");

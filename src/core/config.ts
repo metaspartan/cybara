@@ -75,6 +75,10 @@ export interface SpeechSettings {
   stt: SpeechSttSettings;
 }
 
+export interface ComputerUseSettings {
+  driverCommand: string;
+}
+
 export const DEFAULT_DANGEROUS_TOOL_POLICY: DangerousToolPolicyConfig = {
   enabled: false,
   mode: "audit",
@@ -139,6 +143,10 @@ export const DEFAULT_SPEECH_SETTINGS: SpeechSettings = {
     model: "",
     language: "",
   },
+};
+
+export const DEFAULT_COMPUTER_USE_SETTINGS: ComputerUseSettings = {
+  driverCommand: "",
 };
 
 function parseJsonValue(raw: string): unknown {
@@ -298,6 +306,31 @@ function normalizeShortText(value: unknown, maxLength = 200): string {
   return value.trim().slice(0, maxLength);
 }
 
+function normalizeCommandText(value: unknown, maxLength = 700): string {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim().slice(0, maxLength);
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+function normalizeComputerUseSettings(value: unknown): ComputerUseSettings {
+  const parsed = asObject(value);
+  const raw =
+    parsed?.driverCommand ??
+    parsed?.command ??
+    parsed?.driverPath ??
+    parsed?.driver_command ??
+    (typeof value === "string" ? value : undefined);
+  return {
+    driverCommand: normalizeCommandText(raw),
+  };
+}
+
 function normalizeSpeechOutputFormat(value: unknown): SpeechTtsSettings["outputFormat"] {
   if (typeof value !== "string") return DEFAULT_SPEECH_SETTINGS.tts.outputFormat;
   const normalized = value.trim().toLowerCase();
@@ -439,6 +472,7 @@ class ConfigManager {
       sandbox_runtime: { ...DEFAULT_SANDBOX_RUNTIME },
       workspace_indexer: { ...DEFAULT_WORKSPACE_INDEXER_SETTINGS },
       speech: { ...DEFAULT_SPEECH_SETTINGS },
+      computer_use: { ...DEFAULT_COMPUTER_USE_SETTINGS },
     };
 
     const all = tables.config.all();
@@ -523,6 +557,17 @@ class ConfigManager {
   setSpeechSettings(settings: unknown): SpeechSettings {
     const normalized = normalizeSpeechSettings(settings);
     this.set("speech", normalized);
+    return normalized;
+  }
+
+  getComputerUseSettings(): ComputerUseSettings {
+    const stored = this.get<unknown>("computer_use");
+    return normalizeComputerUseSettings(stored);
+  }
+
+  setComputerUseSettings(settings: unknown): ComputerUseSettings {
+    const normalized = normalizeComputerUseSettings(settings);
+    this.set("computer_use", normalized);
     return normalized;
   }
 

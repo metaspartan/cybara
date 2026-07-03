@@ -15,6 +15,7 @@
 | `CYBARA_RESOURCE_DIR` | - | Sidecar resource root used by packaged Tauri/native apps for bundled UI, `node_modules`, `secp256k1.wasm`, and ONNX runtime assets |
 | `CYBARA_NATIVE_SIDECAR_PATH` | - | Native macOS shell override for the sidecar executable |
 | `CYBARA_NATIVE_PORT` | 4269 | Native macOS shell gateway port |
+| `CYBARA_CUA_DRIVER_CMD` | - | Highest-priority override for the `cua-driver` executable used by the `computer_use` tool |
 
 `CYBARA_HOME` is the root for operator state. When set, Cybara resolves config, database, logs, local plugins, and local skills under that directory instead of `~/.cybara`.
 
@@ -73,6 +74,13 @@ Key-value settings are stored in the `config` table and exposed via `GET/PUT /ap
 - `dangerous_tool_policy`: `{ enabled: boolean, mode: "audit" | "block" }`
 - `web_tool_url_policy`: `{ enabled: boolean, fetch_allowlist: string[], search_result_allowlist: string[] }`
 - `sandbox_runtime`: `{ enabled: boolean, provider: "auto" | "apple_sandbox" | "podman" | "docker", network: "allow" | "deny" }`
+- `computer_use`: `{ driverCommand: string }`
+
+`computer_use.driverCommand` is the persisted Web/Tauri settings override for the Cua Driver
+executable. `CYBARA_CUA_DRIVER_CMD` still takes precedence for scripts and operator-managed
+deployments. If neither is set, Cybara probes PATH and the known Cua installer locations, including
+Windows `%LOCALAPPDATA%\Programs\Cua\cua-driver\bin\cua-driver.exe` and
+`%USERPROFILE%\.cua-driver\packages\current`.
 
 ## Provider Configuration
 

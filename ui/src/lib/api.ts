@@ -1029,7 +1029,8 @@ export const dashboardApi = {
 export interface ComputerUseStatus {
   available: boolean;
   command: string;
-  driverSource?: "env" | "path" | "known-install-dir" | "default";
+  driverSource?: "env" | "config" | "path" | "known-install-dir" | "default";
+  configuredCommand?: string;
   platform: string;
   version?: string;
   accessibility?: boolean;

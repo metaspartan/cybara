@@ -26,6 +26,7 @@ describe("computer-use CLI output", () => {
             available: true,
             command: "C:\\Users\\carsen\\AppData\\Local\\Programs\\Cua\\cua-driver\\bin\\cua-driver.exe",
             driverSource: "known-install-dir",
+            configuredCommand: "C:\\Portable\\Cua\\cua-driver.exe",
             platform: "win32",
             version: "0.7.2",
             ready: true,
@@ -37,6 +38,7 @@ describe("computer-use CLI output", () => {
     });
 
     expect(logs).toContain("  source:           known-install-dir");
+    expect(logs).toContain("  configured path:  C:\\Portable\\Cua\\cua-driver.exe");
     expect(logs).toContain("  installed:        yes (0.7.2)");
     expect(logs).toContain("  platform:         win32");
   });

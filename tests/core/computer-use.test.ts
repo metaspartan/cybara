@@ -151,6 +151,21 @@ describe("cua-driver resolution", () => {
       });
     }));
 
+  test("uses a configured driver command before PATH probing", () =>
+    withTempDir("cua-config", (dir) => {
+      const pathBinary = join(dir, "cua-driver.exe");
+      touchExecutable(pathBinary);
+
+      const explicit = "C:\\Portable\\Cua\\cua-driver.exe";
+      const resolved = resolveCuaDriverCommand({ PATH: dir }, "win32", explicit);
+
+      expect(resolved).toEqual({
+        command: explicit,
+        source: "config",
+        searchedPaths: [],
+      });
+    }));
+
   test("finds cua-driver.exe on Windows PATH even when the command has no extension", () =>
     withTempDir("cua-win-path", (dir) => {
       const binary = join(dir, "cua-driver.exe");
@@ -171,6 +186,50 @@ describe("cua-driver resolution", () => {
 
       const resolved = resolveCuaDriverCommand(
         { LOCALAPPDATA: localAppData, USERPROFILE: userProfile, PATH: "" },
+        "win32"
+      );
+
+      expect(resolved?.command).toBe(binary);
+      expect(resolved?.source).toBe("known-install-dir");
+    }));
+
+  test("finds the Windows package current/bin directory when the visible PATH junction is absent", () =>
+    withTempDir("cua-win-package-current", (root) => {
+      const userProfile = join(root, "User");
+      const binary = join(
+        userProfile,
+        ".cua-driver",
+        "packages",
+        "current",
+        "bin",
+        "cua-driver.exe"
+      );
+      touchExecutable(binary);
+
+      const resolved = resolveCuaDriverCommand(
+        { LOCALAPPDATA: join(root, "LocalAppData"), USERPROFILE: userProfile, PATH: "" },
+        "win32"
+      );
+
+      expect(resolved?.command).toBe(binary);
+      expect(resolved?.source).toBe("known-install-dir");
+    }));
+
+  test("finds a cached Windows release package when current junction probing misses", () =>
+    withTempDir("cua-win-package-release", (root) => {
+      const userProfile = join(root, "User");
+      const binary = join(
+        userProfile,
+        ".cua-driver",
+        "packages",
+        "releases",
+        "0.7.0-x86_64",
+        "cua-driver.exe"
+      );
+      touchExecutable(binary);
+
+      const resolved = resolveCuaDriverCommand(
+        { LOCALAPPDATA: join(root, "LocalAppData"), USERPROFILE: userProfile, PATH: "" },
         "win32"
       );
 

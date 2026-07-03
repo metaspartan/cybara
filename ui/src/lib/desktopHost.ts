@@ -166,3 +166,35 @@ export async function openDesktopDirectoryDialog(options?: {
 
   return null;
 }
+
+export async function openDesktopFileDialog(options?: {
+  defaultPath?: string;
+  title?: string;
+  filters?: Array<{ name: string; extensions: string[] }>;
+}): Promise<string | null> {
+  if (isTauriDesktopRuntime()) {
+    const { open } = await import('@tauri-apps/plugin-dialog');
+    const selected = await open({
+      directory: false,
+      multiple: false,
+      defaultPath: options?.defaultPath,
+      title: options?.title,
+      filters: options?.filters,
+    });
+
+    if (typeof selected === 'string' && selected.trim()) {
+      return selected.trim();
+    }
+
+    if (Array.isArray(selected)) {
+      const first = selected.find(
+        (entry): entry is string => typeof entry === 'string' && entry.trim().length > 0
+      );
+      if (first) {
+        return first.trim();
+      }
+    }
+  }
+
+  return null;
+}

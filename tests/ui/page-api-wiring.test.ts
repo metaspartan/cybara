@@ -60,6 +60,11 @@ describe("UI page API wiring", () => {
     expect(source).toContain("settingsApi.updateConfig({ tool_approval_mode: nextMode })");
     expect(source).toContain("function SpeechSettingsSection()");
     expect(source).toContain("settingsApi.updateConfig({ speech })");
+    expect(source).toContain("settingsApi.updateConfig({");
+    expect(source).toContain("computer_use: { driverCommand: trimmed }");
+    expect(source).toContain("function ComputerUseSettings()");
+    expect(source).toContain("openDesktopFileDialog");
+    expect(source).toContain("Driver path override");
     expect(source).toContain("ElevenLabs");
     expect(source).toContain("gpt-4o-mini-transcribe");
     expect(source).toContain("setTerminalEnabled(enabled);");
