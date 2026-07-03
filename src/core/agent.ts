@@ -110,6 +110,37 @@ export interface AgentDefinition {
   config?: Record<string, unknown>;
 }
 
+/**
+ * Decide how to interpret an agent's stored `tools` value. Pure and exported so
+ * the security-sensitive "empty/corrupt restriction must not widen to ALL tools"
+ * behavior is unit-testable. Returns:
+ *  - `builtins`: no restriction configured → use the full builtin set.
+ *  - `explicit`: an explicit list (INCLUDING an empty one) → use it verbatim.
+ *  - `malformed`: a present-but-unparseable/non-array value → fail closed.
+ */
+export function resolveAgentToolSelection(
+  rawTools: unknown
+):
+  | { kind: "builtins" }
+  | { kind: "explicit"; tools: unknown[] }
+  | { kind: "malformed"; reason: string } {
+  if (rawTools === undefined || rawTools === null) return { kind: "builtins" };
+  if (Array.isArray(rawTools)) return { kind: "explicit", tools: rawTools };
+  if (typeof rawTools === "string") {
+    const trimmed = rawTools.trim();
+    if (!trimmed) return { kind: "builtins" };
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      return { kind: "malformed", reason: "unparseable" };
+    }
+    if (Array.isArray(parsed)) return { kind: "explicit", tools: parsed };
+    return { kind: "malformed", reason: "non-array" };
+  }
+  return { kind: "malformed", reason: "non-array" };
+}
+
 interface OpenAIToolCall {
   id: string;
   type: "function";
@@ -1774,20 +1805,17 @@ class AgentManager {
     const filterEnabledTools = (tools: ToolDefinition[]): ToolDefinition[] =>
       tools.filter((tool) => isToolEnabledForAgent(tool.name));
 
-    if (agent.tools) {
-      if (Array.isArray(agent.tools)) {
-        return filterEnabledTools(agent.tools);
-      }
-      if (typeof agent.tools === "string") {
-        try {
-          const parsed = JSON.parse(agent.tools);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            return filterEnabledTools(parsed as ToolDefinition[]);
-          }
-        } catch {
-          // Ignore parsing errors
-        }
-      }
+    const selection = resolveAgentToolSelection(agent.tools);
+    if (selection.kind === "malformed") {
+      // A malformed/corrupt restriction must NOT silently widen to every tool.
+      console.warn(
+        `[Agent] ${agent.id} has a ${selection.reason} tools config; restricting to no tools`
+      );
+      return [];
+    }
+    if (selection.kind === "explicit") {
+      // An explicit list (including an empty one) is authoritative.
+      return filterEnabledTools(selection.tools as ToolDefinition[]);
     }
     return filterEnabledTools(getBuiltinTools());
   }

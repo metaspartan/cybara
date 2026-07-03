@@ -2,7 +2,7 @@ import { tables, type Task } from "./database";
 import { agentManager } from "./agent";
 import { handleChat } from "../api/chat";
 import { broadcastTaskEvent } from "./status";
-import { parseCronExpression } from "./cron/cron-expr";
+import { parseCronExpression, nextCronRun } from "./cron/cron-expr";
 
 function parseTaskConfig(config: unknown, taskId?: string): Record<string, unknown> {
   if (typeof config === "string") {
@@ -309,70 +309,37 @@ class TaskScheduler {
         error: errorMsg.slice(0, 200),
       });
 
-      tables.tasks.update(task.id, { status: "failed", last_run: new Date().toISOString() });
+      // A transient failure (e.g. a provider hiccup) must NOT permanently kill a
+      // recurring task. Re-arm it for its next scheduled run; only one-shot tasks
+      // stay in the terminal `failed` state.
+      const failedAt = new Date().toISOString();
+      if (task.schedule) {
+        const next_run = this.calculateNextRun(task.schedule);
+        tables.tasks.update(task.id, { status: "pending", last_run: failedAt, next_run });
+        console.log(`[Task] Failed run; recurring task re-armed for ${next_run}`);
+      } else {
+        tables.tasks.update(task.id, { status: "failed", last_run: failedAt });
+      }
     }
   }
 
   private calculateNextRun(schedule?: string): string | undefined {
     if (!schedule) return undefined;
 
-    const now = new Date();
-
-    const parts = schedule.trim().split(/\s+/);
-    if (parts.length >= 5) {
-      const [minutePart, hourPart, , , dowPart] = parts;
-
-      if (minutePart.startsWith("*/")) {
-        const interval = parseInt(minutePart.slice(2));
-        if (!isNaN(interval) && interval > 0) {
-          const next = new Date(now.getTime() + interval * 60 * 1000);
-          return next.toISOString();
-        }
+    // Use the canonical cron parser (the same one validateTaskInput validates
+    // with) rather than a hand-rolled subset. The old subset ignored day-of-
+    // month/month fields and mis-parsed ranges/lists (e.g. `0 9 * * 1-5` ran
+    // only on Mondays because `parseInt("1-5")` === 1).
+    try {
+      const nextMs = nextCronRun(schedule, Date.now());
+      if (Number.isFinite(nextMs) && nextMs > 0) {
+        return new Date(nextMs).toISOString();
       }
-
-      if (minutePart === "0" && hourPart === "*") {
-        const next = new Date(now);
-        next.setMinutes(0, 0, 0);
-        next.setHours(next.getHours() + 1);
-        return next.toISOString();
-      }
-
-      if (minutePart === "0" && hourPart.startsWith("*/")) {
-        const interval = parseInt(hourPart.slice(2));
-        if (!isNaN(interval) && interval > 0) {
-          const next = new Date(now.getTime() + interval * 60 * 60 * 1000);
-          return next.toISOString();
-        }
-      }
-
-      const targetMinute = parseInt(minutePart);
-      const targetHour = parseInt(hourPart);
-      if (!isNaN(targetMinute) && !isNaN(targetHour)) {
-        const next = new Date(now);
-        next.setSeconds(0, 0);
-        next.setMinutes(targetMinute);
-        next.setHours(targetHour);
-
-        if (dowPart !== "*" && dowPart !== "?") {
-          const targetDow = parseInt(dowPart); // 0=Sun, 1=Mon, ..., 6=Sat
-          if (!isNaN(targetDow)) {
-            const currentDow = next.getDay();
-            let daysAhead = targetDow - currentDow;
-            if (daysAhead < 0) daysAhead += 7;
-            if (daysAhead === 0 && next <= now) daysAhead = 7;
-            next.setDate(next.getDate() + daysAhead);
-            return next.toISOString();
-          }
-        }
-
-        if (next <= now) {
-          next.setDate(next.getDate() + 1);
-        }
-        return next.toISOString();
-      }
+    } catch {
+      // Fall through to the safe default below on an unparseable schedule.
     }
 
-    const fallback = new Date(now.getTime() + 60 * 60 * 1000);
+    const fallback = new Date(Date.now() + 60 * 60 * 1000);
     return fallback.toISOString();
   }
 

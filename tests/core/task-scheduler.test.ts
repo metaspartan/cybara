@@ -34,6 +34,8 @@ interface WorkerReport {
   fuzz: Attempt[];
   everyFive: TaskSnapshot;
   daily: TaskSnapshot;
+  weekday: TaskSnapshot;
+  monthly: TaskSnapshot;
   noSchedule: TaskSnapshot;
   emptySchedule: TaskSnapshot;
   disabled: TaskSnapshot;
@@ -122,6 +124,8 @@ const everyFive = taskScheduler.create({
 report.everyFive = everyFive;
 
 report.daily = taskScheduler.create({ name: "daily", schedule: "0 3 * * *", enabled: false });
+report.weekday = taskScheduler.create({ name: "weekday", schedule: "0 9 * * 1-5", enabled: false });
+report.monthly = taskScheduler.create({ name: "monthly", schedule: "0 0 1 * *", enabled: false });
 report.noSchedule = taskScheduler.create({ name: "no-sched" });
 report.emptySchedule = taskScheduler.create({ name: "empty-sched", schedule: "" });
 report.disabled = taskScheduler.create({ name: "disabled", enabled: false });
@@ -268,6 +272,25 @@ describe("calculateNextRun via created tasks", () => {
     expect(next.getUTCMinutes()).toBe(0);
     expect(next.getTime()).toBeGreaterThan(report.nowBefore);
     expect(next.getTime() - report.nowAfter).toBeLessThanOrEqual(24 * 60 * 60 * 1000 + 60 * 1000);
+  });
+
+  test("0 9 * * 1-5 schedules 09:00 on a weekday (range parsing fixed)", () => {
+    // The old hand-rolled parser did parseInt("1-5") === 1, so this ran only on
+    // Mondays. The canonical parser honors the Mon–Fri range.
+    const next = new Date(report.weekday.next_run as string);
+    expect(next.getUTCHours()).toBe(9);
+    expect(next.getUTCMinutes()).toBe(0);
+    const day = next.getUTCDay();
+    expect(day).toBeGreaterThanOrEqual(1);
+    expect(day).toBeLessThanOrEqual(5);
+  });
+
+  test("0 0 1 * * schedules midnight on the 1st (day-of-month honored)", () => {
+    // The old parser ignored the day-of-month field entirely.
+    const next = new Date(report.monthly.next_run as string);
+    expect(next.getUTCDate()).toBe(1);
+    expect(next.getUTCHours()).toBe(0);
+    expect(next.getUTCMinutes()).toBe(0);
   });
 });
 
