@@ -2,10 +2,7 @@ import { existsSync, readdirSync, readFileSync, realpathSync } from "fs";
 import { delimiter, dirname, join } from "path";
 import { homedir } from "os";
 
-const CLIENT_ID_ENV_KEYS = [
-  "CYBARA_GEMINI_OAUTH_CLIENT_ID",
-  "GEMINI_CLI_OAUTH_CLIENT_ID",
-] as const;
+const CLIENT_ID_ENV_KEYS = ["CYBARA_GEMINI_OAUTH_CLIENT_ID", "GEMINI_CLI_OAUTH_CLIENT_ID"] as const;
 
 const CLIENT_SECRET_ENV_KEYS = [
   "CYBARA_GEMINI_OAUTH_CLIENT_SECRET",

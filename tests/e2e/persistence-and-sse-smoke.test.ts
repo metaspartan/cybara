@@ -55,8 +55,7 @@ async function stopServer(proc: ReturnType<typeof Bun.spawn> | null): Promise<vo
   if (!proc) return;
   try {
     proc.kill("SIGTERM");
-  } catch {
-  }
+  } catch {}
   await Promise.race([proc.exited, sleep(5000)]);
 }
 
@@ -66,8 +65,7 @@ async function waitForServerReady(url: string, timeoutMs = 30000): Promise<void>
     try {
       const res = await fetch(`${url}/api/health`);
       if (res.ok) return;
-    } catch {
-    }
+    } catch {}
     await sleep(250);
   }
   throw new Error(`Timed out waiting for server at ${url}`);
@@ -289,8 +287,7 @@ describe("Persistence + SSE e2e", () => {
     } finally {
       try {
         await reader?.cancel();
-      } catch {
-      }
+      } catch {}
       await stopServer(proc);
     }
   });

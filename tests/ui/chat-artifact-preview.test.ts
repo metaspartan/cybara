@@ -22,7 +22,9 @@ describe("Chat artifact preview wiring", () => {
     expect(source).toContain("/api/sessions/${encodeURIComponent(artifact.sessionId)}/artifacts/");
     expect(source).toContain("parseArtifactSummaries(result?.availableArtifacts)");
     expect(source).toContain("tryParseJsonRecord(tool.result)");
-    expect(source).toContain("<ArtifactSummaryCard artifacts={artifactSummary} onOpenArtifact={onOpenArtifact} />");
+    expect(source).toContain(
+      "<ArtifactSummaryCard artifacts={artifactSummary} onOpenArtifact={onOpenArtifact} />"
+    );
     expect(source).not.toContain("View {artifactSummaries[0].fileName}");
     expect(source).not.toContain("Preview");
     expect(source).toContain("Loading artifact...");

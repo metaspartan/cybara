@@ -40,11 +40,7 @@ export class SmsAdapter implements ChannelAdapter {
     return this.running.has(channelId);
   }
 
-  async sendMessage(
-    channelId: string,
-    chatId: string | number,
-    text: string
-  ): Promise<boolean> {
+  async sendMessage(channelId: string, chatId: string | number, text: string): Promise<boolean> {
     const cfg = this.configs.get(channelId);
     if (!cfg?.account_sid || !cfg?.auth_token || !cfg?.from_number) {
       console.warn("[SMS] Missing Twilio credentials; cannot send.");

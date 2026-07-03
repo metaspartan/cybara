@@ -44,7 +44,9 @@ describe("classifyApiError", () => {
 
   test("classifies timeouts and network errors as retryable", () => {
     expect(classifyApiError({ status: 408 }).category).toBe("timeout");
-    expect(classifyApiError({ error: new Error("fetch failed: ECONNRESET") }).category).toBe("network");
+    expect(classifyApiError({ error: new Error("fetch failed: ECONNRESET") }).category).toBe(
+      "network"
+    );
     expect(classifyApiError({ error: new Error("Operation timed out") }).retryable).toBe(true);
   });
 

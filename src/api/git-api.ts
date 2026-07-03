@@ -138,8 +138,9 @@ export async function getGitStatus(path: string, options?: GitStatusOptions): Pr
     const ignored: string[] = [];
 
     const normalizeStatusPath = (rawPath: string): string => {
-      const withoutRename =
-        rawPath.includes(" -> ") ? rawPath.slice(rawPath.lastIndexOf(" -> ") + 4) : rawPath;
+      const withoutRename = rawPath.includes(" -> ")
+        ? rawPath.slice(rawPath.lastIndexOf(" -> ") + 4)
+        : rawPath;
       const unquoted =
         withoutRename.startsWith('"') && withoutRename.endsWith('"')
           ? withoutRename.slice(1, -1)

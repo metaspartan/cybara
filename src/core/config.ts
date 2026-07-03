@@ -16,7 +16,8 @@ export type DangerousToolPolicyMode = "audit" | "block";
 export type ToolApprovalMode = "always_allow" | "ask";
 export type SandboxProvider = "auto" | "apple_sandbox" | "podman" | "docker";
 export type SandboxNetworkMode = "allow" | "deny";
-export type EmbeddingProviderPreference = "auto" | "openai" | "gemini" | "ollama" | "transformers_js";
+export type EmbeddingProviderPreference =
+  "auto" | "openai" | "gemini" | "ollama" | "transformers_js";
 export type SpeechTtsProviderPreference = "auto" | "system" | "elevenlabs" | "openai";
 export type SpeechSttProviderPreference = "auto" | "openai";
 
@@ -212,7 +213,10 @@ function normalizeWebToolUrlPolicy(value: unknown): WebToolUrlPolicyConfig {
 
 function normalizeSandboxProvider(value: unknown): SandboxProvider {
   if (typeof value !== "string") return "auto";
-  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   if (normalized === "apple_sandbox" || normalized === "apple") return "apple_sandbox";
   if (normalized === "podman") return "podman";
   if (normalized === "docker") return "docker";
@@ -234,7 +238,12 @@ function normalizeSandboxRuntime(value: unknown): SandboxRuntimeConfig {
   };
 }
 
-function normalizePositiveInteger(value: unknown, fallback: number, minimum = 1, maximum = 1_000_000): number {
+function normalizePositiveInteger(
+  value: unknown,
+  fallback: number,
+  minimum = 1,
+  maximum = 1_000_000
+): number {
   const parsed =
     typeof value === "number"
       ? value
@@ -257,7 +266,10 @@ function normalizeExtensions(value: unknown): string[] {
 
 function normalizeEmbeddingProvider(value: unknown): EmbeddingProviderPreference {
   if (typeof value !== "string") return DEFAULT_WORKSPACE_INDEXER_SETTINGS.embeddingProvider;
-  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   if (
     normalized === "auto" ||
     normalized === "openai" ||
@@ -282,7 +294,10 @@ function normalizeEmbeddingModel(value: unknown): string {
 
 function normalizeSpeechTtsProvider(value: unknown): SpeechTtsProviderPreference {
   if (typeof value !== "string") return DEFAULT_SPEECH_SETTINGS.tts.provider;
-  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   if (normalized === "system" || normalized === "macos" || normalized === "local") {
     return "system";
   }
@@ -295,7 +310,10 @@ function normalizeSpeechTtsProvider(value: unknown): SpeechTtsProviderPreference
 
 function normalizeSpeechSttProvider(value: unknown): SpeechSttProviderPreference {
   if (typeof value !== "string") return DEFAULT_SPEECH_SETTINGS.stt.provider;
-  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   return normalized === "openai" || normalized === "openai_codex" || normalized === "codex"
     ? "openai"
     : "auto";

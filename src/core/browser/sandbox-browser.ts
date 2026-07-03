@@ -91,10 +91,10 @@ function imageBuilt(image: string): boolean {
 }
 
 function containerRunning(container: string): boolean {
-  const result = Bun.spawnSync(
-    [DOCKER_CMD, "inspect", "-f", "{{.State.Running}}", container],
-    { stdout: "pipe", stderr: "pipe" }
-  );
+  const result = Bun.spawnSync([DOCKER_CMD, "inspect", "-f", "{{.State.Running}}", container], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
   return result.exitCode === 0 && result.stdout.toString().trim() === "true";
 }
 
@@ -158,7 +158,9 @@ export function getSandboxBrowserStatus(opts?: SandboxBrowserOptions): SandboxBr
   };
 }
 
-export async function startSandboxBrowser(opts?: SandboxBrowserOptions): Promise<SandboxBrowserStatus> {
+export async function startSandboxBrowser(
+  opts?: SandboxBrowserOptions
+): Promise<SandboxBrowserStatus> {
   const params = resolved(opts);
   if (!dockerAvailable()) {
     throw new Error("Docker is not available. Install Docker to use the sandbox browser.");

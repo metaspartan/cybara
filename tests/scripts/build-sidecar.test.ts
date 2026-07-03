@@ -90,9 +90,7 @@ describe("build-sidecar host target mapping", () => {
       writeFileSync(join(oldDir, "onnxruntime_binding.node"), "old");
       writeFileSync(join(currentDir, "onnxruntime_binding.node"), "current");
 
-      expect(findOnnxRuntimeNativeDir(root, { platform: "linux", arch: "x64" })).toBe(
-        currentDir
-      );
+      expect(findOnnxRuntimeNativeDir(root, { platform: "linux", arch: "x64" })).toBe(currentDir);
       expect(findOnnxRuntimeNativeDir(root, { platform: "darwin", arch: "x64" })).toBeNull();
     } finally {
       rmSync(dir, { recursive: true, force: true });

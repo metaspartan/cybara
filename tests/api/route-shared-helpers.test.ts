@@ -25,7 +25,7 @@ describe("route _shared pure helpers", () => {
       expect(parseJsonObject([1, 2])).toBeNull();
       expect(parseJsonObject("not json")).toBeNull();
       expect(parseJsonObject(42)).toBeNull();
-      expect(parseJsonObject('[1,2]')).toBeNull();
+      expect(parseJsonObject("[1,2]")).toBeNull();
     });
   });
 
@@ -103,7 +103,10 @@ describe("route _shared pure helpers", () => {
         { value: 2, created_at: "2026-06-25T00:00:00Z" },
       ] as never;
       // Predicate selects only June-24 entries.
-      const result = sumMetricValues(entries, (_e, ts) => ts !== null && ts < Date.parse("2026-06-25T00:00:00Z"));
+      const result = sumMetricValues(
+        entries,
+        (_e, ts) => ts !== null && ts < Date.parse("2026-06-25T00:00:00Z")
+      );
       expect(result).toBe(8);
     });
     test("returns 0 when nothing matches", () => {

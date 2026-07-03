@@ -99,7 +99,10 @@ describe("media-generation registry", () => {
 
     try {
       await expect(
-        handleImageGenerate({ provider: providerId, prompt: "asset url" }, { workspaceDir: tmpdir() })
+        handleImageGenerate(
+          { provider: providerId, prompt: "asset url" },
+          { workspaceDir: tmpdir() }
+        )
       ).rejects.toThrow("media asset URL blocked");
       expect(fetchCalls).toBe(0);
     } finally {
@@ -135,7 +138,10 @@ describe("media-generation registry", () => {
 
     try {
       await expect(
-        handleImageGenerate({ provider: providerId, prompt: "redirect" }, { workspaceDir: tmpdir() })
+        handleImageGenerate(
+          { provider: providerId, prompt: "redirect" },
+          { workspaceDir: tmpdir() }
+        )
       ).rejects.toThrow("media asset URL blocked");
       expect(fetched).toEqual(["https://assets.example.test/generated.png"]);
     } finally {

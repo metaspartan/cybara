@@ -229,7 +229,9 @@ export function isIdeToolCallLike(value: unknown): value is ToolCallLike {
   return isPlainRecord(value) && typeof value.name === "string" && value.name.trim().length > 0;
 }
 
-export function getIdeToolCallsInTimelineOrder(toolCalls: ToolCallLike[] | undefined): ToolCallLike[] {
+export function getIdeToolCallsInTimelineOrder(
+  toolCalls: ToolCallLike[] | undefined
+): ToolCallLike[] {
   if (!Array.isArray(toolCalls) || toolCalls.length <= 1) {
     return toolCalls ? [...toolCalls] : [];
   }
@@ -441,7 +443,10 @@ export function summarizeIdeMessageFileChanges(
   return summarizeIdeFileChanges(collectedChanges);
 }
 
-export function reverseUnifiedDiff(diff: string, changeType: IdeFileChangeItem["type"]): string | null {
+export function reverseUnifiedDiff(
+  diff: string,
+  changeType: IdeFileChangeItem["type"]
+): string | null {
   if (!diff.trim() || diff.includes("[diff truncated")) return null;
   const lines = diff.split(/\r?\n/);
   if (lines.length === 0) return null;

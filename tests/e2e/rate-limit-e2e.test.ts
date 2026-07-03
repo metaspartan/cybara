@@ -57,8 +57,7 @@ async function stopServer(target: ReturnType<typeof Bun.spawn> | null): Promise<
   if (!target) return;
   try {
     target.kill("SIGTERM");
-  } catch {
-  }
+  } catch {}
   await Promise.race([target.exited, sleep(5000)]);
 }
 
@@ -68,8 +67,7 @@ async function waitForServerReady(url: string, timeoutMs = 30000): Promise<void>
     try {
       const response = await fetch(`${url}/api/health`);
       if (response.ok) return;
-    } catch {
-    }
+    } catch {}
     await sleep(250);
   }
   throw new Error(`Timed out waiting for server at ${url}`);

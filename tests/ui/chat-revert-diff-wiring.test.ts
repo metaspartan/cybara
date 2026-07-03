@@ -30,8 +30,8 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain("files changed");
     expect(source).toContain("<DiffCodeBlock code={file.diff} />");
     expect(source).toContain("Worked for");
-    expect(source).toContain("section=\"work\"");
-    expect(source).toContain("section=\"summary\"");
+    expect(source).toContain('section="work"');
+    expect(source).toContain('section="summary"');
     expect(source).toContain("function SessionDiffPanel");
     expect(source).toContain("No file diffs in this session yet");
     expect(source).toContain("showDiffPanel");
@@ -54,10 +54,14 @@ describe("Chat revert and diff wiring", () => {
   test("shows effective workspace in empty state and uses robust tauri runtime detection", () => {
     const source = readChatSource();
     const desktopHostSource = readDesktopHostSource();
-    expect(desktopHostSource).toContain("('__TAURI_INTERNALS__' in window || '__TAURI__' in window)");
+    expect(desktopHostSource).toMatch(
+      /\(["']__TAURI_INTERNALS__["'] in window \|\| ["']__TAURI__["'] in window\)/
+    );
     expect(source).toContain("Workspace: {effectiveWorkspaceDir}");
     expect(source).toContain("cybara:lastWorkspaceDir");
-    expect(source).toContain("Unable to open native folder picker. Enter workspace folder path manually:");
+    expect(source).toContain(
+      "Unable to open native folder picker. Enter workspace folder path manually:"
+    );
     expect(source).toContain("workspaceDir: effectiveWorkspaceDir || undefined");
   });
 
@@ -68,8 +72,10 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain("setActiveSessionIds");
     expect(source).toContain("chatApi.getSessionStatus(");
     expect(source).toContain("hydrateSessionStatus");
-    expect(source).toContain("status === \"idle\" || status === \"error\"");
-    expect(source).toContain("<Loader2 className=\"w-3 h-3 animate-spin text-amber-400 flex-shrink-0\" />");
+    expect(source).toContain('status === "idle" || status === "error"');
+    expect(source).toContain(
+      '<Loader2 className="w-3 h-3 animate-spin text-amber-400 flex-shrink-0" />'
+    );
   });
 
   test("shows route metadata beside the message count instead of prefixing chat titles", () => {
@@ -78,7 +84,7 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain("function sessionDisplayTitle");
     expect(source).toContain("const routeLabel = sessionRouteLabel");
     expect(source).toContain("<span>{session.message_count || 0} messages</span>");
-    expect(source).toContain("<span className=\"min-w-0 truncate\" title={routeLabel}>");
+    expect(source).toContain('<span className="min-w-0 truncate" title={routeLabel}>');
     expect(source).toContain("rawTitle.toLowerCase().startsWith(`${agentName.toLowerCase()}:`)");
   });
 

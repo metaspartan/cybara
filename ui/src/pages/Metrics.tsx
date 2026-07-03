@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo } from "react";
 import {
   BarChart3,
   FileText,
@@ -12,9 +12,9 @@ import {
   MessageSquare,
   Gauge,
   Clock,
-} from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
-import { PageLayout } from '@/components/layout';
+} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
+import { PageLayout } from "@/components/layout";
 import {
   useMetricsOverview,
   useMetricsTokens,
@@ -36,11 +36,11 @@ import {
   type ModelMetrics,
   type MetricsInsights,
   type MetricsStorage,
-} from '@/hooks/useApi';
+} from "@/hooks/useApi";
 
 function formatNumber(num: number): string {
-  if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M';
-  if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+  if (num >= 1000000) return (num / 1000000).toFixed(2) + "M";
+  if (num >= 1000) return (num / 1000).toFixed(1) + "K";
   return num.toString();
 }
 
@@ -63,7 +63,17 @@ export function Metrics() {
   const { data: tokenAnalysis, isLoading: loadingTokenAnalysis } = useMetricsTokenAnalysis();
   const { data: storage, isLoading: loadingStorage } = useMetricsStorage();
 
-  const isLoading = loadingOverview || loadingTokens || loadingFiles || loadingTools || loadingTimeSeries || loadingProviders || loadingModels || loadingInsights || loadingTokenAnalysis || loadingStorage;
+  const isLoading =
+    loadingOverview ||
+    loadingTokens ||
+    loadingFiles ||
+    loadingTools ||
+    loadingTimeSeries ||
+    loadingProviders ||
+    loadingModels ||
+    loadingInsights ||
+    loadingTokenAnalysis ||
+    loadingStorage;
   const insightsData = insights as MetricsInsights | undefined;
   const tokenAnalysisData = tokenAnalysis as TokenAnalysisMetrics | undefined;
   const storageData = storage as MetricsStorage | undefined;
@@ -72,11 +82,13 @@ export function Metrics() {
     if (!overview) return null;
 
     const totalTokens = overview.tokenUsage.total;
-    const successRate = overview.apiCalls.totalCalls > 0
-      ? ((overview.apiCalls.successfulCalls / overview.apiCalls.totalCalls) * 100).toFixed(1)
-      : '0';
+    const successRate =
+      overview.apiCalls.totalCalls > 0
+        ? ((overview.apiCalls.successfulCalls / overview.apiCalls.totalCalls) * 100).toFixed(1)
+        : "0";
 
-    const totalFiles = overview.fileOperations.filesRead +
+    const totalFiles =
+      overview.fileOperations.filesRead +
       overview.fileOperations.filesWritten +
       overview.fileOperations.filesEdited;
 
@@ -84,9 +96,10 @@ export function Metrics() {
       totalTokens,
       successRate,
       totalFiles,
-      avgTokensPerMessage: overview.agentActivity.totalMessages > 0
-        ? Math.round(totalTokens / overview.agentActivity.totalMessages)
-        : 0,
+      avgTokensPerMessage:
+        overview.agentActivity.totalMessages > 0
+          ? Math.round(totalTokens / overview.agentActivity.totalMessages)
+          : 0,
     };
   }, [overview]);
 
@@ -94,23 +107,28 @@ export function Metrics() {
     const totalToolCalls = overview?.toolCalls.totalCalls || 0;
     const totalMessages = overview?.agentActivity.totalMessages || 0;
     const memoryToolCalls = (tools?.mostUsed || [])
-      .filter((entry) => entry.tool.startsWith('memory_'))
+      .filter((entry) => entry.tool.startsWith("memory_"))
       .reduce((sum, entry) => sum + entry.calls, 0);
 
-    const toolsPerMessage = totalMessages > 0 ? Number((totalToolCalls / totalMessages).toFixed(2)) : 0;
-    const memorySharePct = totalToolCalls > 0 ? Number(((memoryToolCalls / totalToolCalls) * 100).toFixed(2)) : 0;
+    const toolsPerMessage =
+      totalMessages > 0 ? Number((totalToolCalls / totalMessages).toFixed(2)) : 0;
+    const memorySharePct =
+      totalToolCalls > 0 ? Number(((memoryToolCalls / totalToolCalls) * 100).toFixed(2)) : 0;
     const topProviderShare = insightsData?.providerEfficiency?.[0]?.sharePct || 0;
-    const providerBalance = Number((Math.max(0, 100 - topProviderShare)).toFixed(2));
+    const providerBalance = Number(Math.max(0, 100 - topProviderShare).toFixed(2));
 
     const behaviorTotals = new Map<string, number>();
     for (const profile of tokenAnalysisData?.modelThoughtProfiles || []) {
-      behaviorTotals.set(profile.behavior, (behaviorTotals.get(profile.behavior) || 0) + profile.totalTokens);
+      behaviorTotals.set(
+        profile.behavior,
+        (behaviorTotals.get(profile.behavior) || 0) + profile.totalTokens
+      );
     }
     const behaviorEntries = Array.from(behaviorTotals.entries()).sort((a, b) => b[1] - a[1]);
-    const dominantBehavior = behaviorEntries[0]?.[0] || 'n/a';
+    const dominantBehavior = behaviorEntries[0]?.[0] || "n/a";
 
     const outputHeavyShare = (tokenAnalysisData?.promptOutputDistribution?.bands || [])
-      .filter((band) => band.band === 'output_heavy' || band.band === 'very_output_heavy')
+      .filter((band) => band.band === "output_heavy" || band.band === "very_output_heavy")
       .reduce((sum, band) => sum + band.sharePct, 0);
 
     return {
@@ -126,16 +144,56 @@ export function Metrics() {
   const storageCategoryEntries = useMemo(() => {
     if (!storageData) return [];
     return [
-      { label: 'Data', bytes: storageData.components.data.bytes, path: storageData.components.data.path },
-      { label: 'Sessions', bytes: storageData.components.sessions?.bytes || 0, path: storageData.components.sessions?.path || '' },
-      { label: 'Media', bytes: storageData.components.media?.bytes || 0, path: storageData.components.media?.path || '' },
-      { label: 'Channels', bytes: storageData.components.channels?.bytes || 0, path: storageData.components.channels?.path || '' },
-      { label: 'Artifacts', bytes: storageData.components.artifacts.bytes, path: storageData.components.artifacts.path },
-      { label: 'Logs', bytes: storageData.components.logs.bytes, path: storageData.components.logs.path },
-      { label: 'Memory', bytes: storageData.components.memory.bytes, path: storageData.components.memory.path },
-      { label: 'Skills', bytes: storageData.components.skills.bytes, path: storageData.components.skills.path },
-      { label: 'Secure', bytes: storageData.components.secure.bytes, path: storageData.components.secure.path },
-      { label: 'Other', bytes: storageData.components.other?.bytes || storageData.uncategorizedBytes || 0, path: storageData.components.other?.path || storageData.directories.cybaraDir },
+      {
+        label: "Data",
+        bytes: storageData.components.data.bytes,
+        path: storageData.components.data.path,
+      },
+      {
+        label: "Sessions",
+        bytes: storageData.components.sessions?.bytes || 0,
+        path: storageData.components.sessions?.path || "",
+      },
+      {
+        label: "Media",
+        bytes: storageData.components.media?.bytes || 0,
+        path: storageData.components.media?.path || "",
+      },
+      {
+        label: "Channels",
+        bytes: storageData.components.channels?.bytes || 0,
+        path: storageData.components.channels?.path || "",
+      },
+      {
+        label: "Artifacts",
+        bytes: storageData.components.artifacts.bytes,
+        path: storageData.components.artifacts.path,
+      },
+      {
+        label: "Logs",
+        bytes: storageData.components.logs.bytes,
+        path: storageData.components.logs.path,
+      },
+      {
+        label: "Memory",
+        bytes: storageData.components.memory.bytes,
+        path: storageData.components.memory.path,
+      },
+      {
+        label: "Skills",
+        bytes: storageData.components.skills.bytes,
+        path: storageData.components.skills.path,
+      },
+      {
+        label: "Secure",
+        bytes: storageData.components.secure.bytes,
+        path: storageData.components.secure.path,
+      },
+      {
+        label: "Other",
+        bytes: storageData.components.other?.bytes || storageData.uncategorizedBytes || 0,
+        path: storageData.components.other?.path || storageData.directories.cybaraDir,
+      },
     ]
       .filter((entry) => entry.bytes > 0)
       .sort((a, b) => b.bytes - a.bytes);
@@ -170,8 +228,8 @@ export function Metrics() {
     const rows = timeSeries?.days || [];
     const totals = rows.map((day, index) => {
       const dayTotal = Object.entries(day)
-        .filter(([key]) => key !== 'date')
-        .reduce((sum, [, value]) => sum + (typeof value === 'number' ? value : 0), 0);
+        .filter(([key]) => key !== "date")
+        .reduce((sum, [, value]) => sum + (typeof value === "number" ? value : 0), 0);
       return { date: day.date, dayTotal, key: `${day.date}:${index}` };
     });
     const maxDayTotal = Math.max(...totals.map((day) => day.dayTotal), 1);
@@ -199,10 +257,7 @@ export function Metrics() {
   }
 
   return (
-    <PageLayout
-      title="Metrics"
-      subtitle="Track token usage, file operations, and system activity"
-    >
+    <PageLayout title="Metrics" subtitle="Track token usage, file operations, and system activity">
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
         <StatCard
           icon={<Cpu className="w-5 h-5" />}
@@ -251,13 +306,17 @@ export function Metrics() {
             <CardDescription>7-day intensity map by hour with hottest usage window</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {tokenAnalysisData?.tokenHeatmap?.days && tokenAnalysisData.tokenHeatmap.days.length > 0 ? (
+            {tokenAnalysisData?.tokenHeatmap?.days &&
+            tokenAnalysisData.tokenHeatmap.days.length > 0 ? (
               <>
                 <div className="space-y-2">
                   {tokenAnalysisData.tokenHeatmap.days.map((day) => (
                     <div key={day.date} className="grid grid-cols-[64px,1fr] gap-2 items-center">
                       <p className="text-xs text-gray-400">{day.dayLabel}</p>
-                      <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))' }}>
+                      <div
+                        className="grid gap-1"
+                        style={{ gridTemplateColumns: "repeat(24, minmax(0, 1fr))" }}
+                      >
                         {day.hours.map((hour) => (
                           <div
                             key={`${day.date}-${hour.hour}`}
@@ -265,7 +324,7 @@ export function Metrics() {
                             style={{
                               backgroundColor: `rgba(34, 211, 238, ${0.08 + hour.intensity * 0.92})`,
                             }}
-                            title={`${day.date} ${String(hour.hour).padStart(2, '0')}:00 - ${formatNumber(hour.tokens)} tokens (${hour.calls} calls)`}
+                            title={`${day.date} ${String(hour.hour).padStart(2, "0")}:00 - ${formatNumber(hour.tokens)} tokens (${hour.calls} calls)`}
                           />
                         ))}
                       </div>
@@ -274,8 +333,9 @@ export function Metrics() {
                 </div>
                 {tokenAnalysisData.tokenHeatmap.hottestHour && (
                   <div className="rounded-lg bg-white/5 p-3 text-xs text-gray-300">
-                    Hottest window: {tokenAnalysisData.tokenHeatmap.hottestHour.dayLabel} {String(tokenAnalysisData.tokenHeatmap.hottestHour.hour).padStart(2, '0')}:00
-                    {' '}with {formatNumber(tokenAnalysisData.tokenHeatmap.hottestHour.tokens)} tokens
+                    Hottest window: {tokenAnalysisData.tokenHeatmap.hottestHour.dayLabel}{" "}
+                    {String(tokenAnalysisData.tokenHeatmap.hottestHour.hour).padStart(2, "0")}:00{" "}
+                    with {formatNumber(tokenAnalysisData.tokenHeatmap.hottestHour.tokens)} tokens
                   </div>
                 )}
               </>
@@ -297,9 +357,10 @@ export function Metrics() {
             <div className="rounded-lg bg-white/5 p-3">
               <p className="text-xs text-gray-500 mb-1">Input:Output</p>
               <p className="text-lg font-semibold text-white">
-                {tokenAnalysisData?.summary?.inputToOutputRatio !== null && tokenAnalysisData?.summary?.inputToOutputRatio !== undefined
+                {tokenAnalysisData?.summary?.inputToOutputRatio !== null &&
+                tokenAnalysisData?.summary?.inputToOutputRatio !== undefined
                   ? `${tokenAnalysisData.summary.inputToOutputRatio}:1`
-                  : 'n/a'}
+                  : "n/a"}
               </p>
             </div>
             <div className="rounded-lg bg-white/5 p-3">
@@ -308,11 +369,14 @@ export function Metrics() {
                 {tokenAnalysisData?.promptOutputDistribution?.bands?.map((band) => (
                   <div key={band.band}>
                     <div className="flex items-center justify-between text-xs mb-1">
-                      <span className="text-gray-300">{band.band.split('_').join(' ')}</span>
+                      <span className="text-gray-300">{band.band.split("_").join(" ")}</span>
                       <span className="text-gray-500">{band.sharePct}%</span>
                     </div>
                     <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                      <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${Math.min(100, band.sharePct)}%` }} />
+                      <div
+                        className="h-full bg-emerald-500 rounded-full"
+                        style={{ width: `${Math.min(100, band.sharePct)}%` }}
+                      />
                     </div>
                   </div>
                 ))}
@@ -321,11 +385,15 @@ export function Metrics() {
             <div className="rounded-lg bg-white/5 p-3 grid grid-cols-2 gap-2 text-xs">
               <div>
                 <p className="text-gray-500">Avg/call</p>
-                <p className="text-white">{formatNumber(tokenAnalysisData?.summary?.averageTokensPerCall || 0)}</p>
+                <p className="text-white">
+                  {formatNumber(tokenAnalysisData?.summary?.averageTokensPerCall || 0)}
+                </p>
               </div>
               <div>
                 <p className="text-gray-500">Median</p>
-                <p className="text-white">{formatNumber(tokenAnalysisData?.summary?.medianTokensPerCall || 0)}</p>
+                <p className="text-white">
+                  {formatNumber(tokenAnalysisData?.summary?.medianTokensPerCall || 0)}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -339,22 +407,25 @@ export function Metrics() {
               <Cpu className="w-5 h-5 text-amber-400" />
               Token Cloud
             </CardTitle>
-            <CardDescription>Most active models, providers, tools, and recurring terms</CardDescription>
+            <CardDescription>
+              Most active models, providers, tools, and recurring terms
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {tokenCloudEntries.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {tokenCloudEntries.map((entry) => {
                   const size = Math.min(26, 11 + entry.sharePct * 0.5);
-                  const color = entry.category === 'model'
-                    ? 'text-cyan-300'
-                    : entry.category === 'provider'
-                      ? 'text-emerald-300'
-                      : entry.category === 'tool'
-                        ? 'text-violet-300'
-                        : entry.category === 'pattern'
-                          ? 'text-orange-300'
-                        : 'text-amber-300';
+                  const color =
+                    entry.category === "model"
+                      ? "text-cyan-300"
+                      : entry.category === "provider"
+                        ? "text-emerald-300"
+                        : entry.category === "tool"
+                          ? "text-violet-300"
+                          : entry.category === "pattern"
+                            ? "text-orange-300"
+                            : "text-amber-300";
                   return (
                     <span
                       key={`${entry.category}-${entry.token}`}
@@ -384,10 +455,15 @@ export function Metrics() {
           <CardContent>
             <div className="space-y-3">
               {tokenAnalysisData?.modelThoughtProfiles?.slice(0, 8).map((profile) => (
-                <div key={`${profile.provider}-${profile.model}`} className="rounded-lg bg-white/5 p-3">
+                <div
+                  key={`${profile.provider}-${profile.model}`}
+                  className="rounded-lg bg-white/5 p-3"
+                >
                   <div className="flex items-center justify-between mb-1">
                     <p className="text-sm text-white">{profile.model}</p>
-                    <span className="text-[11px] uppercase tracking-wide text-rose-300">{profile.behavior}</span>
+                    <span className="text-[11px] uppercase tracking-wide text-rose-300">
+                      {profile.behavior}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between text-xs text-gray-400">
                     <span>{profile.promptSharePct}% prompt</span>
@@ -397,7 +473,8 @@ export function Metrics() {
                   </div>
                 </div>
               ))}
-              {(!tokenAnalysisData?.modelThoughtProfiles || tokenAnalysisData.modelThoughtProfiles.length === 0) && (
+              {(!tokenAnalysisData?.modelThoughtProfiles ||
+                tokenAnalysisData.modelThoughtProfiles.length === 0) && (
                 <p className="text-sm text-gray-500">No model thought profile data yet</p>
               )}
             </div>
@@ -418,7 +495,9 @@ export function Metrics() {
             <div className="grid grid-cols-3 gap-3">
               <div className="rounded-lg bg-white/5 p-3">
                 <p className="text-xs text-gray-500 mb-1">24h Trend</p>
-                <p className={`text-lg font-semibold ${insightsData?.tokenTrend24h.direction === 'up' ? 'text-emerald-400' : insightsData?.tokenTrend24h.direction === 'down' ? 'text-red-400' : 'text-gray-300'}`}>
+                <p
+                  className={`text-lg font-semibold ${insightsData?.tokenTrend24h.direction === "up" ? "text-emerald-400" : insightsData?.tokenTrend24h.direction === "down" ? "text-red-400" : "text-gray-300"}`}
+                >
                   {insightsData?.tokenTrend24h.changePct ?? 0}%
                 </p>
               </div>
@@ -466,13 +545,18 @@ export function Metrics() {
                     <p className="text-xs text-gray-400">{provider.sharePct}% share</p>
                   </div>
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-cyan-300">{formatNumber(provider.tokensPerCall)} tok/call</span>
+                    <span className="text-cyan-300">
+                      {formatNumber(provider.tokensPerCall)} tok/call
+                    </span>
                     <span className="text-gray-500">{formatNumber(provider.calls)} calls</span>
                   </div>
                 </div>
               ))}
-              {(!insightsData?.providerEfficiency || insightsData.providerEfficiency.length === 0) && (
-                <p className="text-sm text-gray-500 text-center py-4">No provider efficiency data yet</p>
+              {(!insightsData?.providerEfficiency ||
+                insightsData.providerEfficiency.length === 0) && (
+                <p className="text-sm text-gray-500 text-center py-4">
+                  No provider efficiency data yet
+                </p>
               )}
             </div>
           </CardContent>
@@ -490,9 +574,24 @@ export function Metrics() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <TokenBar label="Input" value={overview?.tokenUsage.input || 0} total={overview?.tokenUsage.total || 1} color="bg-blue-500" />
-              <TokenBar label="Output" value={overview?.tokenUsage.output || 0} total={overview?.tokenUsage.total || 1} color="bg-green-500" />
-              <TokenBar label="Cache" value={overview?.tokenUsage.cache || 0} total={overview?.tokenUsage.total || 1} color="bg-purple-500" />
+              <TokenBar
+                label="Input"
+                value={overview?.tokenUsage.input || 0}
+                total={overview?.tokenUsage.total || 1}
+                color="bg-blue-500"
+              />
+              <TokenBar
+                label="Output"
+                value={overview?.tokenUsage.output || 0}
+                total={overview?.tokenUsage.total || 1}
+                color="bg-green-500"
+              />
+              <TokenBar
+                label="Cache"
+                value={overview?.tokenUsage.cache || 0}
+                total={overview?.tokenUsage.total || 1}
+                color="bg-purple-500"
+              />
 
               <div className="pt-4 border-t border-white/10">
                 <p className="text-sm text-gray-400 mb-2">By Model</p>
@@ -537,9 +636,21 @@ export function Metrics() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-3 gap-4 mb-6">
-              <FileStat icon={<FileText className="w-4 h-4" />} label="Read" value={formatNumber(overview?.fileOperations.filesRead || 0)} />
-              <FileStat icon={<FileText className="w-4 h-4" />} label="Written" value={formatNumber(overview?.fileOperations.filesWritten || 0)} />
-              <FileStat icon={<Terminal className="w-4 h-4" />} label="Edited" value={formatNumber(overview?.fileOperations.filesEdited || 0)} />
+              <FileStat
+                icon={<FileText className="w-4 h-4" />}
+                label="Read"
+                value={formatNumber(overview?.fileOperations.filesRead || 0)}
+              />
+              <FileStat
+                icon={<FileText className="w-4 h-4" />}
+                label="Written"
+                value={formatNumber(overview?.fileOperations.filesWritten || 0)}
+              />
+              <FileStat
+                icon={<Terminal className="w-4 h-4" />}
+                label="Edited"
+                value={formatNumber(overview?.fileOperations.filesEdited || 0)}
+              />
             </div>
 
             <div>
@@ -547,7 +658,9 @@ export function Metrics() {
               <div className="space-y-2">
                 {files?.mostRead.slice(0, 5).map((file, i) => (
                   <div key={i} className="flex items-center justify-between">
-                    <span className="text-sm text-gray-300 truncate max-w-[200px]">{file.path.split('/').pop()}</span>
+                    <span className="text-sm text-gray-300 truncate max-w-[200px]">
+                      {file.path.split("/").pop()}
+                    </span>
                     <span className="text-sm text-gray-500">{formatNumber(file.count)}</span>
                   </div>
                 ))}
@@ -562,7 +675,9 @@ export function Metrics() {
               <div className="space-y-2">
                 {files?.mostWritten.slice(0, 5).map((file, i) => (
                   <div key={i} className="flex items-center justify-between">
-                    <span className="text-sm text-gray-300 truncate max-w-[200px]">{file.path.split('/').pop()}</span>
+                    <span className="text-sm text-gray-300 truncate max-w-[200px]">
+                      {file.path.split("/").pop()}
+                    </span>
                     <span className="text-sm text-gray-500">{formatNumber(file.count)}</span>
                   </div>
                 ))}
@@ -577,7 +692,9 @@ export function Metrics() {
               <div className="space-y-2">
                 {files?.mostEdited.slice(0, 5).map((file, i) => (
                   <div key={i} className="flex items-center justify-between">
-                    <span className="text-sm text-gray-300 truncate max-w-[200px]">{file.path.split('/').pop()}</span>
+                    <span className="text-sm text-gray-300 truncate max-w-[200px]">
+                      {file.path.split("/").pop()}
+                    </span>
                     <span className="text-sm text-gray-500">{formatNumber(file.count)}</span>
                   </div>
                 ))}
@@ -614,7 +731,9 @@ export function Metrics() {
                     <div className="h-2 bg-white/10 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-cyan-500 rounded-full"
-                        style={{ width: `${Math.min(100, (tool.calls / (tools?.mostUsed[0]?.calls || 1)) * 100)}%` }}
+                        style={{
+                          width: `${Math.min(100, (tool.calls / (tools?.mostUsed[0]?.calls || 1)) * 100)}%`,
+                        }}
                       />
                     </div>
                   </div>
@@ -628,15 +747,21 @@ export function Metrics() {
               <div className="mt-4 pt-4 border-t border-white/10 grid grid-cols-3 gap-2 text-xs">
                 <div className="rounded bg-white/5 p-2 text-center">
                   <p className="text-gray-500">Success</p>
-                  <p className="text-emerald-400 font-semibold">{insightsData.toolReliability.successRatePct}%</p>
+                  <p className="text-emerald-400 font-semibold">
+                    {insightsData.toolReliability.successRatePct}%
+                  </p>
                 </div>
                 <div className="rounded bg-white/5 p-2 text-center">
                   <p className="text-gray-500">Calls</p>
-                  <p className="text-white font-semibold">{formatNumber(insightsData.toolReliability.totalCalls)}</p>
+                  <p className="text-white font-semibold">
+                    {formatNumber(insightsData.toolReliability.totalCalls)}
+                  </p>
                 </div>
                 <div className="rounded bg-white/5 p-2 text-center">
                   <p className="text-gray-500">Errors</p>
-                  <p className="text-red-400 font-semibold">{formatNumber(insightsData.toolReliability.totalErrors)}</p>
+                  <p className="text-red-400 font-semibold">
+                    {formatNumber(insightsData.toolReliability.totalErrors)}
+                  </p>
                 </div>
               </div>
             )}
@@ -680,11 +805,15 @@ export function Metrics() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex items-center justify-between p-3 rounded-lg bg-green-500/10">
                   <span className="text-sm text-gray-300">Successful</span>
-                  <span className="text-sm text-green-400">{formatNumber(overview?.apiCalls.successfulCalls || 0)}</span>
+                  <span className="text-sm text-green-400">
+                    {formatNumber(overview?.apiCalls.successfulCalls || 0)}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-lg bg-red-500/10">
                   <span className="text-sm text-gray-300">Failed</span>
-                  <span className="text-sm text-red-400">{formatNumber(overview?.apiCalls.failedCalls || 0)}</span>
+                  <span className="text-sm text-red-400">
+                    {formatNumber(overview?.apiCalls.failedCalls || 0)}
+                  </span>
                 </div>
               </div>
             </div>
@@ -703,14 +832,21 @@ export function Metrics() {
             {visibleProviders.length > 0 ? (
               <div className="space-y-4">
                 {visibleProviders.map((provider, i) => (
-                  <div key={`${provider.provider}:${provider.url}:${i}`} className="p-4 rounded-lg bg-white/5 border border-white/10">
+                  <div
+                    key={`${provider.provider}:${provider.url}:${i}`}
+                    className="p-4 rounded-lg bg-white/5 border border-white/10"
+                  >
                     <div className="flex items-center justify-between mb-2">
                       <div>
                         <p className="text-sm font-medium text-white">{provider.provider}</p>
-                        <p className="text-xs text-gray-500 truncate max-w-[200px]">{provider.url}</p>
+                        <p className="text-xs text-gray-500 truncate max-w-[200px]">
+                          {provider.url}
+                        </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-lg font-bold text-white">{formatNumber(provider.tokens)}</p>
+                        <p className="text-lg font-bold text-white">
+                          {formatNumber(provider.tokens)}
+                        </p>
                         <p className="text-xs text-gray-500">tokens</p>
                       </div>
                     </div>
@@ -739,22 +875,30 @@ export function Metrics() {
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-lg bg-white/5 p-3">
                 <p className="text-xs text-gray-500 mb-1">Autonomy</p>
-                <p className="text-lg font-semibold text-indigo-300">{cybaraSignals.toolsPerMessage}</p>
+                <p className="text-lg font-semibold text-indigo-300">
+                  {cybaraSignals.toolsPerMessage}
+                </p>
                 <p className="text-[11px] text-gray-500">tools/message</p>
               </div>
               <div className="rounded-lg bg-white/5 p-3">
                 <p className="text-xs text-gray-500 mb-1">Memory Share</p>
-                <p className="text-lg font-semibold text-emerald-300">{cybaraSignals.memorySharePct}%</p>
+                <p className="text-lg font-semibold text-emerald-300">
+                  {cybaraSignals.memorySharePct}%
+                </p>
                 <p className="text-[11px] text-gray-500">memory tool calls</p>
               </div>
               <div className="rounded-lg bg-white/5 p-3">
                 <p className="text-xs text-gray-500 mb-1">Provider Balance</p>
-                <p className="text-lg font-semibold text-cyan-300">{cybaraSignals.providerBalance}</p>
+                <p className="text-lg font-semibold text-cyan-300">
+                  {cybaraSignals.providerBalance}
+                </p>
                 <p className="text-[11px] text-gray-500">100 - top provider share</p>
               </div>
               <div className="rounded-lg bg-white/5 p-3">
                 <p className="text-xs text-gray-500 mb-1">Output-Heavy</p>
-                <p className="text-lg font-semibold text-amber-300">{cybaraSignals.outputHeavyShare}%</p>
+                <p className="text-lg font-semibold text-amber-300">
+                  {cybaraSignals.outputHeavyShare}%
+                </p>
                 <p className="text-[11px] text-gray-500">response-forward calls</p>
               </div>
             </div>
@@ -791,38 +935,38 @@ export function Metrics() {
           {modelPerformanceRows.length > 0 ? (
             <div className="space-y-3">
               {modelPerformanceRows.map((model) => (
-                  <div key={model.key} className="p-4 rounded-lg bg-white/5 border border-white/10">
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <p className="text-sm font-medium text-white">{model.model}</p>
-                        <p className="text-xs text-gray-500">{model.provider}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-lg font-bold text-emerald-400">{model.avgTps} <span className="text-xs text-gray-400">tok/s</span></p>
-                      </div>
+                <div key={model.key} className="p-4 rounded-lg bg-white/5 border border-white/10">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <p className="text-sm font-medium text-white">{model.model}</p>
+                      <p className="text-xs text-gray-500">{model.provider}</p>
                     </div>
-
-                    <div className="h-2 bg-white/10 rounded-full overflow-hidden mb-3">
-                      <div
-                        className="h-full bg-emerald-500 rounded-full transition-all"
-                        style={{ width: `${model.tpsPercent}%` }}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 text-xs">
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-gray-500" />
-                        <span className="text-gray-400">{model.avgLatencyMs}ms avg</span>
-                      </div>
-                      <div className="text-center text-gray-400">
-                        {formatNumber(model.totalTokens)} tokens
-                      </div>
-                      <div className="text-right text-gray-400">
-                        {model.callCount} calls
-                      </div>
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-emerald-400">
+                        {model.avgTps} <span className="text-xs text-gray-400">tok/s</span>
+                      </p>
                     </div>
                   </div>
-                ))}
+
+                  <div className="h-2 bg-white/10 rounded-full overflow-hidden mb-3">
+                    <div
+                      className="h-full bg-emerald-500 rounded-full transition-all"
+                      style={{ width: `${model.tpsPercent}%` }}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-gray-500" />
+                      <span className="text-gray-400">{model.avgLatencyMs}ms avg</span>
+                    </div>
+                    <div className="text-center text-gray-400">
+                      {formatNumber(model.totalTokens)} tokens
+                    </div>
+                    <div className="text-right text-gray-400">{model.callCount} calls</div>
+                  </div>
+                </div>
+              ))}
             </div>
           ) : (
             <div className="text-center py-8 text-gray-500">
@@ -847,20 +991,30 @@ export function Metrics() {
             <div className="space-y-4">
               <div className="rounded-lg bg-white/5 p-3">
                 <p className="text-xs text-gray-500 mb-1">Total Local Storage</p>
-                <p className="text-xl font-semibold text-white">{formatBytes(storageData.totalBytes)}</p>
-                <p className="text-[11px] text-gray-500 mt-1">{storageData.directories.cybaraDir}</p>
+                <p className="text-xl font-semibold text-white">
+                  {formatBytes(storageData.totalBytes)}
+                </p>
+                <p className="text-[11px] text-gray-500 mt-1">
+                  {storageData.directories.cybaraDir}
+                </p>
                 <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
                   <div className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1.5">
                     <p className="text-gray-500">Accounted</p>
-                    <p className="text-gray-200">{formatBytes(storageData.accountedBytes ?? storageData.totalBytes)}</p>
+                    <p className="text-gray-200">
+                      {formatBytes(storageData.accountedBytes ?? storageData.totalBytes)}
+                    </p>
                   </div>
                   <div className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1.5">
                     <p className="text-gray-500">Uncategorized</p>
-                    <p className="text-gray-200">{formatBytes(storageData.uncategorizedBytes ?? 0)}</p>
+                    <p className="text-gray-200">
+                      {formatBytes(storageData.uncategorizedBytes ?? 0)}
+                    </p>
                   </div>
                   <div className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1.5">
                     <p className="text-gray-500">Database (in Data)</p>
-                    <p className="text-gray-200">{formatBytes(storageData.components.database.bytes)}</p>
+                    <p className="text-gray-200">
+                      {formatBytes(storageData.components.database.bytes)}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -868,15 +1022,22 @@ export function Metrics() {
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
                 <div className="space-y-2">
                   {storageCategoryEntries.map((entry) => {
-                    const sharePct = storageData.totalBytes > 0 ? (entry.bytes / storageData.totalBytes) * 100 : 0;
+                    const sharePct =
+                      storageData.totalBytes > 0 ? (entry.bytes / storageData.totalBytes) * 100 : 0;
                     return (
-                      <div key={entry.label} className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+                      <div
+                        key={entry.label}
+                        className="rounded-lg border border-white/10 bg-white/[0.02] p-3"
+                      >
                         <div className="flex items-center justify-between text-sm mb-1.5">
                           <span className="text-gray-200">{entry.label}</span>
                           <span className="text-cyan-300">{formatBytes(entry.bytes)}</span>
                         </div>
                         <div className="h-1.5 bg-white/10 rounded-full overflow-hidden mb-1.5">
-                          <div className="h-full bg-cyan-500 rounded-full" style={{ width: `${Math.min(100, sharePct)}%` }} />
+                          <div
+                            className="h-full bg-cyan-500 rounded-full"
+                            style={{ width: `${Math.min(100, sharePct)}%` }}
+                          />
                         </div>
                         <p className="text-[11px] text-gray-500 truncate">{entry.path}</p>
                       </div>
@@ -889,15 +1050,25 @@ export function Metrics() {
                   <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
                     {storageTopLevelEntries.length > 0 ? (
                       storageTopLevelEntries.map((entry) => {
-                        const sharePct = storageData.totalBytes > 0 ? (entry.bytes / storageData.totalBytes) * 100 : 0;
+                        const sharePct =
+                          storageData.totalBytes > 0
+                            ? (entry.bytes / storageData.totalBytes) * 100
+                            : 0;
                         return (
-                          <div key={entry.path} className="rounded-md border border-white/10 bg-black/20 p-2.5">
+                          <div
+                            key={entry.path}
+                            className="rounded-md border border-white/10 bg-black/20 p-2.5"
+                          >
                             <div className="flex items-center justify-between gap-3 text-[12px]">
                               <span className="text-gray-200 truncate">{entry.name}</span>
-                              <span className="text-cyan-300 shrink-0">{formatBytes(entry.bytes)}</span>
+                              <span className="text-cyan-300 shrink-0">
+                                {formatBytes(entry.bytes)}
+                              </span>
                             </div>
                             <p className="text-[11px] text-gray-500 truncate mt-1">{entry.path}</p>
-                            <p className="text-[10px] text-gray-500 mt-1">{sharePct.toFixed(2)}% of total</p>
+                            <p className="text-[10px] text-gray-500 mt-1">
+                              {sharePct.toFixed(2)}% of total
+                            </p>
                           </div>
                         );
                       })
@@ -916,19 +1087,26 @@ export function Metrics() {
 
               {(() => {
                 const entry = {
-                  label: 'Database files',
+                  label: "Database files",
                   bytes: storageData.components.database.bytes,
                   path: storageData.components.database.path,
                 };
-                const sharePct = storageData.totalBytes > 0 ? (entry.bytes / storageData.totalBytes) * 100 : 0;
+                const sharePct =
+                  storageData.totalBytes > 0 ? (entry.bytes / storageData.totalBytes) * 100 : 0;
                 return (
-                  <div key={entry.label} className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+                  <div
+                    key={entry.label}
+                    className="rounded-lg border border-white/10 bg-white/[0.02] p-3"
+                  >
                     <div className="flex items-center justify-between text-sm mb-1.5">
                       <span className="text-gray-200">{entry.label}</span>
                       <span className="text-cyan-300">{formatBytes(entry.bytes)}</span>
                     </div>
                     <div className="h-1.5 bg-white/10 rounded-full overflow-hidden mb-1.5">
-                      <div className="h-full bg-cyan-500 rounded-full" style={{ width: `${Math.min(100, sharePct)}%` }} />
+                      <div
+                        className="h-full bg-cyan-500 rounded-full"
+                        style={{ width: `${Math.min(100, sharePct)}%` }}
+                      />
                     </div>
                     <p className="text-[11px] text-gray-500 truncate">{entry.path}</p>
                   </div>
@@ -982,7 +1160,13 @@ export function Metrics() {
   );
 }
 
-function StatCard({ icon, label, value, color, bgColor }: {
+function StatCard({
+  icon,
+  label,
+  value,
+  color,
+  bgColor,
+}: {
   icon: React.ReactNode;
   label: string;
   value: string;
@@ -993,9 +1177,7 @@ function StatCard({ icon, label, value, color, bgColor }: {
     <Card>
       <CardContent className="p-4">
         <div className="flex items-center gap-2 mb-2">
-          <div className={`p-2 rounded-lg ${bgColor}`}>
-            {icon}
-          </div>
+          <div className={`p-2 rounded-lg ${bgColor}`}>{icon}</div>
           <span className="text-sm text-gray-400">{label}</span>
         </div>
         <p className={`text-2xl font-bold ${color}`}>{value}</p>
@@ -1004,7 +1186,12 @@ function StatCard({ icon, label, value, color, bgColor }: {
   );
 }
 
-function TokenBar({ label, value, total, color }: {
+function TokenBar({
+  label,
+  value,
+  total,
+  color,
+}: {
   label: string;
   value: number;
   total: number;
@@ -1016,7 +1203,9 @@ function TokenBar({ label, value, total, color }: {
     <div>
       <div className="flex items-center justify-between mb-1">
         <span className="text-sm text-gray-400">{label}</span>
-        <span className="text-sm text-gray-500">{formatNumber(value)} ({percentage.toFixed(1)}%)</span>
+        <span className="text-sm text-gray-500">
+          {formatNumber(value)} ({percentage.toFixed(1)}%)
+        </span>
       </div>
       <div className="h-2 bg-white/10 rounded-full overflow-hidden">
         <div className={`h-full ${color} rounded-full`} style={{ width: `${percentage}%` }} />
@@ -1025,11 +1214,7 @@ function TokenBar({ label, value, total, color }: {
   );
 }
 
-function FileStat({ icon, label, value }: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
+function FileStat({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <div className="text-center p-3 rounded-lg bg-white/5">
       <div className="text-gray-400 mb-1">{icon}</div>
@@ -1039,7 +1224,11 @@ function FileStat({ icon, label, value }: {
   );
 }
 
-function ActivityStat({ icon, label, value }: {
+function ActivityStat({
+  icon,
+  label,
+  value,
+}: {
   icon: React.ReactNode;
   label: string;
   value: string;

@@ -1,487 +1,517 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Cloud, Bot, CheckCircle, ChevronRight, Key, Loader2, AlertCircle, Shield } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { useProviders, useAgents, useAvailableProviders, useCreateProvider, useCreateDefaultAgent } from '@/hooks/useApi';
-import { setupApi, settingsApi } from '@/lib/api';
-import type { AvailableProvider } from '@/types';
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  Cloud,
+  Bot,
+  CheckCircle,
+  ChevronRight,
+  Key,
+  Loader2,
+  AlertCircle,
+  Shield,
+} from "lucide-react";
+import { Card, CardContent } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import {
+  useProviders,
+  useAgents,
+  useAvailableProviders,
+  useCreateProvider,
+  useCreateDefaultAgent,
+} from "@/hooks/useApi";
+import { setupApi, settingsApi } from "@/lib/api";
+import type { AvailableProvider } from "@/types";
 
-type WizardStep = 'welcome' | 'provider' | 'apikey' | 'oauth' | 'permissions' | 'agent' | 'complete';
-type SetupAuthFlow = 'api_key' | 'oauth' | 'external' | 'none';
+type WizardStep =
+  "welcome" | "provider" | "apikey" | "oauth" | "permissions" | "agent" | "complete";
+type SetupAuthFlow = "api_key" | "oauth" | "external" | "none";
 
 function getAuthFlow(provider: AvailableProvider): SetupAuthFlow {
-    if (!provider.authType || provider.authType === 'none') return 'none';
-    if (provider.authType === 'oauth') return 'oauth';
-    if (provider.authType === 'aws-sdk') return 'external';
-    return 'api_key'; // api_key, bearer, token
+  if (!provider.authType || provider.authType === "none") return "none";
+  if (provider.authType === "oauth") return "oauth";
+  if (provider.authType === "aws-sdk") return "external";
+  return "api_key"; // api_key, bearer, token
 }
 
 export function Setup() {
   const navigate = useNavigate();
-  const [step, setStep] = useState<WizardStep>('welcome');
+  const [step, setStep] = useState<WizardStep>("welcome");
   const [selectedProvider, setSelectedProvider] = useState<AvailableProvider | null>(null);
-  const [providerSearch, setProviderSearch] = useState('');
-  const [toolApprovalMode, setToolApprovalMode] = useState<'always_allow' | 'ask'>('always_allow');
-  const [apiKey, setApiKey] = useState('');
+  const [providerSearch, setProviderSearch] = useState("");
+  const [toolApprovalMode, setToolApprovalMode] = useState<"always_allow" | "ask">("always_allow");
+  const [apiKey, setApiKey] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-    const { data: providers, isLoading: providersLoading } = useProviders();
-    const { data: agents, isLoading: agentsLoading } = useAgents();
-    const { data: availableProviders, isLoading: availableLoading, error: availableError, refetch: refetchAvailable } = useAvailableProviders();
-    const createProvider = useCreateProvider();
-    const createDefaultAgent = useCreateDefaultAgent();
-    const progressSteps: WizardStep[] = ['welcome', 'provider', 'apikey', 'permissions', 'agent', 'complete'];
-    const filteredProviders = (availableProviders || []).filter((provider) => {
-        const search = providerSearch.trim().toLowerCase();
-        if (!search) return true;
-        return (
-            provider.name.toLowerCase().includes(search) ||
-            provider.id.toLowerCase().includes(search)
-        );
-    });
-
-    useEffect(() => {
-        if (!providersLoading && !agentsLoading) {
-            if (providers && providers.length > 0 && agents && agents.length > 0) {
-                navigate('/');
-            }
-        }
-    }, [providers, agents, providersLoading, agentsLoading, navigate]);
-
-    const handleProviderSelect = (provider: AvailableProvider) => {
-        setSelectedProvider(provider);
-        setError(null);
-
-        const authFlow = getAuthFlow(provider);
-
-        if (authFlow === 'api_key') {
-            setStep('apikey');
-        } else if (authFlow === 'oauth') {
-            setStep('oauth');
-        } else {
-            handleCreateProvider(provider.id, '');
-        }
-    };
-
-    const handleCreateProvider = async (providerId: string, key: string) => {
-        setIsLoading(true);
-        setError(null);
-        try {
-            await createProvider.mutateAsync({
-                provider: providerId,
-                name: selectedProvider?.name || providerId,
-                api_key: key || undefined,
-                is_default: true,
-            });
-            setStep('permissions');
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to create provider');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const handleSkipOAuth = () => {
-        if (selectedProvider) {
-            handleCreateProvider(selectedProvider.id, '');
-        }
-    };
-
-    const handleConfigurePermissions = async () => {
-        setIsLoading(true);
-        setError(null);
-        try {
-            const result = await settingsApi.updateConfig({ tool_approval_mode: toolApprovalMode });
-            if (!result.success || !result.data?.success) {
-                throw new Error(result.error || 'Failed to save permissions');
-            }
-            setStep('agent');
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to save permissions');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const handleCreateAgent = async () => {
-        setIsLoading(true);
-        setError(null);
-        try {
-            await createDefaultAgent.mutateAsync();
-            await completeSetup();
-        } catch (err) {
-            await completeSetup();
-        }
-    };
-
-    const handleSkipAgent = async () => {
-        await completeSetup();
-    };
-
-    const completeSetup = async () => {
-        try {
-            const result = await setupApi.complete();
-            if (!result.success || !result.data?.success) {
-                throw new Error(result.error || 'Failed to complete setup');
-            }
-            setStep('complete');
-        } catch (err) {
-            setError('Failed to complete setup');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const handleGoToDashboard = () => {
-        navigate('/');
-    };
-
-    if (providersLoading || agentsLoading) {
-        return (
-            <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
-                <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
-            </div>
-        );
-    }
-
+  const { data: providers, isLoading: providersLoading } = useProviders();
+  const { data: agents, isLoading: agentsLoading } = useAgents();
+  const {
+    data: availableProviders,
+    isLoading: availableLoading,
+    error: availableError,
+    refetch: refetchAvailable,
+  } = useAvailableProviders();
+  const createProvider = useCreateProvider();
+  const createDefaultAgent = useCreateDefaultAgent();
+  const progressSteps: WizardStep[] = [
+    "welcome",
+    "provider",
+    "apikey",
+    "permissions",
+    "agent",
+    "complete",
+  ];
+  const filteredProviders = (availableProviders || []).filter((provider) => {
+    const search = providerSearch.trim().toLowerCase();
+    if (!search) return true;
     return (
-        <div className="min-h-screen w-full bg-[#0a0a0f] flex items-center justify-center">
-            <div className="w-full max-w-xl mx-auto px-4">
-                <div className="flex items-center justify-center mb-8">
-                    {progressSteps.map((s, i) => (
-                        <div key={s} className="flex items-center">
-                            <div className={`w-2.5 h-2.5 rounded-full shrink-0 transition-colors ${step === s || (step === 'oauth' && s === 'apikey') ? 'bg-indigo-500' :
-                                    progressSteps.indexOf(step) > i ||
-                                        (step === 'oauth' && i < 2) ? 'bg-emerald-500' :
-                                        'bg-white/20'
-                                }`} />
-                            {i < progressSteps.length - 1 && <div className={`w-8 h-0.5 mx-1.5 shrink-0 transition-colors ${progressSteps.indexOf(step) > i ||
-                                    (step === 'oauth' && i < 2) ? 'bg-emerald-500' : 'bg-white/20'
-                                }`} />}
-                        </div>
-                    ))}
+      provider.name.toLowerCase().includes(search) || provider.id.toLowerCase().includes(search)
+    );
+  });
+
+  useEffect(() => {
+    if (!providersLoading && !agentsLoading) {
+      if (providers && providers.length > 0 && agents && agents.length > 0) {
+        navigate("/");
+      }
+    }
+  }, [providers, agents, providersLoading, agentsLoading, navigate]);
+
+  const handleProviderSelect = (provider: AvailableProvider) => {
+    setSelectedProvider(provider);
+    setError(null);
+
+    const authFlow = getAuthFlow(provider);
+
+    if (authFlow === "api_key") {
+      setStep("apikey");
+    } else if (authFlow === "oauth") {
+      setStep("oauth");
+    } else {
+      handleCreateProvider(provider.id, "");
+    }
+  };
+
+  const handleCreateProvider = async (providerId: string, key: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      await createProvider.mutateAsync({
+        provider: providerId,
+        name: selectedProvider?.name || providerId,
+        api_key: key || undefined,
+        is_default: true,
+      });
+      setStep("permissions");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create provider");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSkipOAuth = () => {
+    if (selectedProvider) {
+      handleCreateProvider(selectedProvider.id, "");
+    }
+  };
+
+  const handleConfigurePermissions = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await settingsApi.updateConfig({ tool_approval_mode: toolApprovalMode });
+      if (!result.success || !result.data?.success) {
+        throw new Error(result.error || "Failed to save permissions");
+      }
+      setStep("agent");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save permissions");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCreateAgent = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      await createDefaultAgent.mutateAsync();
+      await completeSetup();
+    } catch (err) {
+      await completeSetup();
+    }
+  };
+
+  const handleSkipAgent = async () => {
+    await completeSetup();
+  };
+
+  const completeSetup = async () => {
+    try {
+      const result = await setupApi.complete();
+      if (!result.success || !result.data?.success) {
+        throw new Error(result.error || "Failed to complete setup");
+      }
+      setStep("complete");
+    } catch (err) {
+      setError("Failed to complete setup");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoToDashboard = () => {
+    navigate("/");
+  };
+
+  if (providersLoading || agentsLoading) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen w-full bg-[#0a0a0f] flex items-center justify-center">
+      <div className="w-full max-w-xl mx-auto px-4">
+        <div className="flex items-center justify-center mb-8">
+          {progressSteps.map((s, i) => (
+            <div key={s} className="flex items-center">
+              <div
+                className={`w-2.5 h-2.5 rounded-full shrink-0 transition-colors ${
+                  step === s || (step === "oauth" && s === "apikey")
+                    ? "bg-indigo-500"
+                    : progressSteps.indexOf(step) > i || (step === "oauth" && i < 2)
+                      ? "bg-emerald-500"
+                      : "bg-white/20"
+                }`}
+              />
+              {i < progressSteps.length - 1 && (
+                <div
+                  className={`w-8 h-0.5 mx-1.5 shrink-0 transition-colors ${
+                    progressSteps.indexOf(step) > i || (step === "oauth" && i < 2)
+                      ? "bg-emerald-500"
+                      : "bg-white/20"
+                  }`}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+
+        <Card className="backdrop-blur-xl bg-white/5 border-white/10">
+          <CardContent className="p-8">
+            {step === "welcome" && (
+              <div className="text-center space-y-6">
+                <div className="w-20 h-20 mx-auto flex items-center justify-center">
+                  <img
+                    src="/cybara.png"
+                    alt="Cybara"
+                    className={"w-full h-full object-cover transition-all duration-300"}
+                  />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold text-white mb-2">Welcome to Cybara!</h1>
+                  <p className="text-gray-400 text-lg">Let's get you set up in just a few steps</p>
+                </div>
+                <div className="text-left space-y-3 py-4">
+                  <div className="flex items-center gap-3 text-gray-300">
+                    <Cloud className="w-5 h-5 text-indigo-400 shrink-0" />
+                    <span>Connect an AI provider</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-gray-300">
+                    <Bot className="w-5 h-5 text-indigo-400 shrink-0" />
+                    <span>Create your first AI agent</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-gray-300">
+                    <Shield className="w-5 h-5 text-indigo-400 shrink-0" />
+                    <span>Choose tool permission mode</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-gray-300">
+                    <CheckCircle className="w-5 h-5 text-indigo-400 shrink-0" />
+                    <span>Start chatting and building</span>
+                  </div>
+                </div>
+                <Button size="lg" onClick={() => setStep("provider")} className="w-full">
+                  Get Started <ChevronRight className="w-5 h-5 ml-2" />
+                </Button>
+              </div>
+            )}
+
+            {step === "provider" && (
+              <div className="space-y-6">
+                <div className="text-center">
+                  <h2 className="text-2xl font-bold text-white mb-2">Choose AI Provider</h2>
+                  <p className="text-gray-400">Select which AI service to connect</p>
+                </div>
+                <Input
+                  type="text"
+                  placeholder="Search providers..."
+                  value={providerSearch}
+                  onChange={(e) => setProviderSearch(e.target.value)}
+                />
+                {availableLoading ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2 max-h-80 overflow-y-auto pr-1">
+                    {filteredProviders.map((provider) => {
+                      const authFlow = getAuthFlow(provider);
+                      return (
+                        <button
+                          key={provider.id}
+                          onClick={() => handleProviderSelect(provider)}
+                          className="px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-indigo-500/10 transition-all text-center group relative"
+                        >
+                          <span className="font-medium text-sm text-white group-hover:text-indigo-300 transition-colors">
+                            {provider.name}
+                          </span>
+                          {authFlow === "none" && (
+                            <span className="absolute top-1 right-1 text-[10px] bg-emerald-500/20 text-emerald-400 px-1 rounded">
+                              Local
+                            </span>
+                          )}
+                          {authFlow === "oauth" && (
+                            <span className="absolute top-1 right-1 text-[10px] bg-amber-500/20 text-amber-400 px-1 rounded">
+                              OAuth
+                            </span>
+                          )}
+                          {authFlow === "external" && (
+                            <span className="absolute top-1 right-1 text-[10px] bg-blue-500/20 text-blue-300 px-1 rounded">
+                              External
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                    {filteredProviders.length === 0 && (
+                      <div className="col-span-2 text-center py-8 text-sm text-gray-500">
+                        {availableError ? (
+                          <div className="space-y-2">
+                            <p className="text-red-400">Couldn't load the provider list.</p>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => void refetchAvailable()}
+                            >
+                              Retry
+                            </Button>
+                          </div>
+                        ) : (availableProviders?.length ?? 0) === 0 ? (
+                          "No providers available yet."
+                        ) : (
+                          <>No providers match &ldquo;{providerSearch}&rdquo;.</>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-xs text-gray-500">
+                    {availableProviders?.length
+                      ? `${filteredProviders.length} of ${availableProviders.length} providers`
+                      : ""}
+                  </span>
+                  <Button variant="ghost" size="sm" onClick={() => setStep("permissions")}>
+                    Skip for now
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {step === "apikey" && selectedProvider && (
+              <div className="space-y-6">
+                <div className="text-center">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
+                    <Key className="w-8 h-8 text-white" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-white mb-2">Enter API Key</h2>
+                  <p className="text-gray-400">Add your {selectedProvider.name} API key</p>
                 </div>
 
-                <Card className="backdrop-blur-xl bg-white/5 border-white/10">
-                    <CardContent className="p-8">
-                        {step === 'welcome' && (
-                            <div className="text-center space-y-6">
-                                <div className="w-20 h-20 mx-auto flex items-center justify-center">
-                                    <img
-                                        src="/cybara.png"
-                                        alt="Cybara"
-                                        className={'w-full h-full object-cover transition-all duration-300'}
-                                    />
-                                </div>
-                                <div>
-                                    <h1 className="text-3xl font-bold text-white mb-2">Welcome to Cybara!</h1>
-                                    <p className="text-gray-400 text-lg">Let's get you set up in just a few steps</p>
-                                </div>
-                                <div className="text-left space-y-3 py-4">
-                                    <div className="flex items-center gap-3 text-gray-300">
-                                        <Cloud className="w-5 h-5 text-indigo-400 shrink-0" />
-                                        <span>Connect an AI provider</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 text-gray-300">
-                                        <Bot className="w-5 h-5 text-indigo-400 shrink-0" />
-                                        <span>Create your first AI agent</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 text-gray-300">
-                                        <Shield className="w-5 h-5 text-indigo-400 shrink-0" />
-                                        <span>Choose tool permission mode</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 text-gray-300">
-                                        <CheckCircle className="w-5 h-5 text-indigo-400 shrink-0" />
-                                        <span>Start chatting and building</span>
-                                    </div>
-                                </div>
-                                <Button size="lg" onClick={() => setStep('provider')} className="w-full">
-                                    Get Started <ChevronRight className="w-5 h-5 ml-2" />
-                                </Button>
-                            </div>
-                        )}
+                <div className="space-y-4">
+                  <Input
+                    type="password"
+                    placeholder="sk-... or your API key"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    className="text-lg"
+                  />
 
-                        {step === 'provider' && (
-                            <div className="space-y-6">
-                                <div className="text-center">
-                                    <h2 className="text-2xl font-bold text-white mb-2">Choose AI Provider</h2>
-                                    <p className="text-gray-400">Select which AI service to connect</p>
-                                </div>
-                                <Input
-                                    type="text"
-                                    placeholder="Search providers..."
-                                    value={providerSearch}
-                                    onChange={(e) => setProviderSearch(e.target.value)}
-                                />
-                                {availableLoading ? (
-                                    <div className="flex justify-center py-8">
-                                        <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
-                                    </div>
-                                ) : (
-                                    <div className="grid grid-cols-2 gap-2 max-h-80 overflow-y-auto pr-1">
-                                        {filteredProviders.map((provider) => {
-                                            const authFlow = getAuthFlow(provider);
-                                            return (
-                                                <button
-                                                    key={provider.id}
-                                                    onClick={() => handleProviderSelect(provider)}
-                                                    className="px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-indigo-500/10 transition-all text-center group relative"
-                                                >
-                                                    <span className="font-medium text-sm text-white group-hover:text-indigo-300 transition-colors">
-                                                        {provider.name}
-                                                    </span>
-                                                    {authFlow === 'none' && (
-                                                        <span className="absolute top-1 right-1 text-[10px] bg-emerald-500/20 text-emerald-400 px-1 rounded">
-                                                            Local
-                                                        </span>
-                                                    )}
-                                                    {authFlow === 'oauth' && (
-                                                        <span className="absolute top-1 right-1 text-[10px] bg-amber-500/20 text-amber-400 px-1 rounded">
-                                                            OAuth
-                                                        </span>
-                                                    )}
-                                                    {authFlow === 'external' && (
-                                                        <span className="absolute top-1 right-1 text-[10px] bg-blue-500/20 text-blue-300 px-1 rounded">
-                                                            External
-                                                        </span>
-                                                    )}
-                                                </button>
-                                            );
-                                        })}
-                                        {filteredProviders.length === 0 && (
-                                            <div className="col-span-2 text-center py-8 text-sm text-gray-500">
-                                                {availableError ? (
-                                                    <div className="space-y-2">
-                                                        <p className="text-red-400">Couldn't load the provider list.</p>
-                                                        <Button variant="ghost" size="sm" onClick={() => void refetchAvailable()}>
-                                                            Retry
-                                                        </Button>
-                                                    </div>
-                                                ) : (availableProviders?.length ?? 0) === 0 ? (
-                                                    'No providers available yet.'
-                                                ) : (
-                                                    <>No providers match &ldquo;{providerSearch}&rdquo;.</>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                                <div className="flex items-center justify-between pt-2">
-                                    <span className="text-xs text-gray-500">
-                                        {availableProviders?.length
-                                            ? `${filteredProviders.length} of ${availableProviders.length} providers`
-                                            : ''}
-                                    </span>
-                                    <Button variant="ghost" size="sm" onClick={() => setStep('permissions')}>
-                                        Skip for now
-                                    </Button>
-                                </div>
-                            </div>
-                        )}
+                  {error && <p className="text-red-400 text-sm text-center">{error}</p>}
 
-                        {step === 'apikey' && selectedProvider && (
-                            <div className="space-y-6">
-                                <div className="text-center">
-                                    <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
-                                        <Key className="w-8 h-8 text-white" />
-                                    </div>
-                                    <h2 className="text-2xl font-bold text-white mb-2">Enter API Key</h2>
-                                    <p className="text-gray-400">Add your {selectedProvider.name} API key</p>
-                                </div>
+                  <div className="flex gap-3">
+                    <Button variant="ghost" onClick={() => setStep("provider")} className="flex-1">
+                      Back
+                    </Button>
+                    <Button
+                      onClick={() => handleCreateProvider(selectedProvider.id, apiKey)}
+                      disabled={!apiKey.trim() || isLoading}
+                      isLoading={isLoading}
+                      className="flex-1"
+                    >
+                      Continue
+                    </Button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setStep("permissions")}
+                    className="w-full text-center text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                  >
+                    Skip for now
+                  </button>
+                </div>
+              </div>
+            )}
 
-                                <div className="space-y-4">
-                                    <Input
-                                        type="password"
-                                        placeholder="sk-... or your API key"
-                                        value={apiKey}
-                                        onChange={(e) => setApiKey(e.target.value)}
-                                        className="text-lg"
-                                    />
+            {step === "oauth" && selectedProvider && (
+              <div className="space-y-6">
+                <div className="text-center">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center">
+                    <AlertCircle className="w-8 h-8 text-white" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-white mb-2">OAuth Required</h2>
+                  <p className="text-gray-400">
+                    {selectedProvider.name} requires OAuth authentication
+                  </p>
+                </div>
 
-                                    {error && (
-                                        <p className="text-red-400 text-sm text-center">{error}</p>
-                                    )}
+                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30">
+                  <p className="text-sm text-amber-200">
+                    This provider uses OAuth for authentication. After setup, go to{" "}
+                    <strong>Settings → Providers</strong> to complete the OAuth flow.
+                  </p>
+                </div>
 
-                                    <div className="flex gap-3">
-                                        <Button variant="ghost" onClick={() => setStep('provider')} className="flex-1">
-                                            Back
-                                        </Button>
-                                        <Button
-                                            onClick={() => handleCreateProvider(selectedProvider.id, apiKey)}
-                                            disabled={!apiKey.trim() || isLoading}
-                                            isLoading={isLoading}
-                                            className="flex-1"
-                                        >
-                                            Continue
-                                        </Button>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setStep('permissions')}
-                                        className="w-full text-center text-xs text-gray-500 hover:text-gray-300 transition-colors"
-                                    >
-                                        Skip for now
-                                    </button>
-                                </div>
-                            </div>
-                        )}
+                {error && <p className="text-red-400 text-sm text-center">{error}</p>}
 
-                        {step === 'oauth' && selectedProvider && (
-                            <div className="space-y-6">
-                                <div className="text-center">
-                                    <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center">
-                                        <AlertCircle className="w-8 h-8 text-white" />
-                                    </div>
-                                    <h2 className="text-2xl font-bold text-white mb-2">OAuth Required</h2>
-                                    <p className="text-gray-400">{selectedProvider.name} requires OAuth authentication</p>
-                                </div>
+                <div className="flex gap-3">
+                  <Button variant="ghost" onClick={() => setStep("provider")} className="flex-1">
+                    Back
+                  </Button>
+                  <Button onClick={handleSkipOAuth} isLoading={isLoading} className="flex-1">
+                    Continue Anyway
+                  </Button>
+                </div>
+              </div>
+            )}
 
-                                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30">
-                                    <p className="text-sm text-amber-200">
-                                        This provider uses OAuth for authentication. After setup, go to <strong>Settings → Providers</strong> to complete the OAuth flow.
-                                    </p>
-                                </div>
+            {step === "permissions" && (
+              <div className="space-y-6">
+                <div className="text-center">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center">
+                    <Shield className="w-8 h-8 text-white" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-white mb-2">Tool Permissions</h2>
+                  <p className="text-gray-400">Choose how dangerous tools should be handled</p>
+                </div>
 
-                                {error && (
-                                    <p className="text-red-400 text-sm text-center">{error}</p>
-                                )}
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => setToolApprovalMode("always_allow")}
+                    className={`w-full text-left p-4 rounded-xl border transition-colors cursor-pointer ${
+                      toolApprovalMode === "always_allow"
+                        ? "border-indigo-500/60 bg-indigo-500/10"
+                        : "border-white/10 bg-white/5 hover:border-white/20"
+                    }`}
+                  >
+                    <p className="text-white font-medium text-sm">Always Allow</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Run tools immediately in chat and channels.
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setToolApprovalMode("ask")}
+                    className={`w-full text-left p-4 rounded-xl border transition-colors cursor-pointer ${
+                      toolApprovalMode === "ask"
+                        ? "border-indigo-500/60 bg-indigo-500/10"
+                        : "border-white/10 bg-white/5 hover:border-white/20"
+                    }`}
+                  >
+                    <p className="text-white font-medium text-sm">Ask Me First</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Require confirmation before dangerous tool calls.
+                    </p>
+                  </button>
+                </div>
 
-                                <div className="flex gap-3">
-                                    <Button variant="ghost" onClick={() => setStep('provider')} className="flex-1">
-                                        Back
-                                    </Button>
-                                    <Button
-                                        onClick={handleSkipOAuth}
-                                        isLoading={isLoading}
-                                        className="flex-1"
-                                    >
-                                        Continue Anyway
-                                    </Button>
-                                </div>
-                            </div>
-                        )}
+                {error && <p className="text-red-400 text-sm text-center">{error}</p>}
 
-                        {step === 'permissions' && (
-                            <div className="space-y-6">
-                                <div className="text-center">
-                                    <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center">
-                                        <Shield className="w-8 h-8 text-white" />
-                                    </div>
-                                    <h2 className="text-2xl font-bold text-white mb-2">Tool Permissions</h2>
-                                    <p className="text-gray-400">Choose how dangerous tools should be handled</p>
-                                </div>
+                <div className="flex gap-3">
+                  <Button variant="ghost" onClick={() => setStep("provider")} className="flex-1">
+                    Back
+                  </Button>
+                  <Button
+                    onClick={handleConfigurePermissions}
+                    isLoading={isLoading}
+                    className="flex-1"
+                  >
+                    Continue
+                  </Button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setStep("agent")}
+                  className="w-full text-center text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                >
+                  Skip for now
+                </button>
+              </div>
+            )}
 
-                                <div className="space-y-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setToolApprovalMode('always_allow')}
-                                        className={`w-full text-left p-4 rounded-xl border transition-colors cursor-pointer ${toolApprovalMode === 'always_allow'
-                                            ? 'border-indigo-500/60 bg-indigo-500/10'
-                                            : 'border-white/10 bg-white/5 hover:border-white/20'
-                                            }`}
-                                    >
-                                        <p className="text-white font-medium text-sm">Always Allow</p>
-                                        <p className="text-xs text-gray-400 mt-1">
-                                            Run tools immediately in chat and channels.
-                                        </p>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setToolApprovalMode('ask')}
-                                        className={`w-full text-left p-4 rounded-xl border transition-colors cursor-pointer ${toolApprovalMode === 'ask'
-                                            ? 'border-indigo-500/60 bg-indigo-500/10'
-                                            : 'border-white/10 bg-white/5 hover:border-white/20'
-                                            }`}
-                                    >
-                                        <p className="text-white font-medium text-sm">Ask Me First</p>
-                                        <p className="text-xs text-gray-400 mt-1">
-                                            Require confirmation before dangerous tool calls.
-                                        </p>
-                                    </button>
-                                </div>
+            {step === "agent" && (
+              <div className="space-y-6">
+                <div className="text-center">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+                    <Bot className="w-8 h-8 text-white" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-white mb-2">Create Your Agent</h2>
+                  <p className="text-gray-400">Set up a default AI assistant</p>
+                </div>
 
-                                {error && (
-                                    <p className="text-red-400 text-sm text-center">{error}</p>
-                                )}
+                <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+                  <h3 className="font-medium text-white mb-1">Default Agent</h3>
+                  <p className="text-sm text-gray-400">
+                    A general-purpose AI assistant ready to help with coding, questions, and tasks.
+                  </p>
+                </div>
 
-                                <div className="flex gap-3">
-                                    <Button variant="ghost" onClick={() => setStep('provider')} className="flex-1">
-                                        Back
-                                    </Button>
-                                    <Button
-                                        onClick={handleConfigurePermissions}
-                                        isLoading={isLoading}
-                                        className="flex-1"
-                                    >
-                                        Continue
-                                    </Button>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setStep('agent')}
-                                    className="w-full text-center text-xs text-gray-500 hover:text-gray-300 transition-colors"
-                                >
-                                    Skip for now
-                                </button>
-                            </div>
-                        )}
+                {error && <p className="text-red-400 text-sm text-center">{error}</p>}
 
-                        {step === 'agent' && (
-                            <div className="space-y-6">
-                                <div className="text-center">
-                                    <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-                                        <Bot className="w-8 h-8 text-white" />
-                                    </div>
-                                    <h2 className="text-2xl font-bold text-white mb-2">Create Your Agent</h2>
-                                    <p className="text-gray-400">Set up a default AI assistant</p>
-                                </div>
+                <div className="flex gap-3">
+                  <Button variant="ghost" onClick={handleSkipAgent} className="flex-1">
+                    Skip for Now
+                  </Button>
+                  <Button onClick={handleCreateAgent} isLoading={isLoading} className="flex-1">
+                    Create Agent
+                  </Button>
+                </div>
+              </div>
+            )}
 
-                                <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                                    <h3 className="font-medium text-white mb-1">Default Agent</h3>
-                                    <p className="text-sm text-gray-400">
-                                        A general-purpose AI assistant ready to help with coding, questions, and tasks.
-                                    </p>
-                                </div>
-
-                                {error && (
-                                    <p className="text-red-400 text-sm text-center">{error}</p>
-                                )}
-
-                                <div className="flex gap-3">
-                                    <Button variant="ghost" onClick={handleSkipAgent} className="flex-1">
-                                        Skip for Now
-                                    </Button>
-                                    <Button
-                                        onClick={handleCreateAgent}
-                                        isLoading={isLoading}
-                                        className="flex-1"
-                                    >
-                                        Create Agent
-                                    </Button>
-                                </div>
-                            </div>
-                        )}
-
-                        {step === 'complete' && (
-                            <div className="text-center space-y-6">
-                                <div className="w-20 h-20 mx-auto rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-                                    <CheckCircle className="w-10 h-10 text-white" />
-                                </div>
-                                <div>
-                                    <h1 className="text-3xl font-bold text-white mb-2">You're All Set! 🎉</h1>
-                                    <p className="text-gray-400 text-lg">Cybara is ready to use</p>
-                                </div>
-                                <Button size="lg" onClick={handleGoToDashboard} className="w-full">
-                                    Go to Dashboard <ChevronRight className="w-5 h-5 ml-2" />
-                                </Button>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            </div>
-        </div>
-    );
+            {step === "complete" && (
+              <div className="text-center space-y-6">
+                <div className="w-20 h-20 mx-auto rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+                  <CheckCircle className="w-10 h-10 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold text-white mb-2">You're All Set! 🎉</h1>
+                  <p className="text-gray-400 text-lg">Cybara is ready to use</p>
+                </div>
+                <Button size="lg" onClick={handleGoToDashboard} className="w-full">
+                  Go to Dashboard <ChevronRight className="w-5 h-5 ml-2" />
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
 }

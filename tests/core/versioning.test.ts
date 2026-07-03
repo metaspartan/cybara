@@ -43,9 +43,9 @@ describe("versioning helpers", () => {
     expect(replaceJsonVersion('{"name":"cybara","version":"1.0.0"}', "1.0.44")).toContain(
       '"version": "1.0.44"'
     );
-    expect(replaceCargoTomlVersion('[package]\nname = "cybara"\nversion = "1.0.0"\n', "1.0.44")).toContain(
-      'version = "1.0.44"'
-    );
+    expect(
+      replaceCargoTomlVersion('[package]\nname = "cybara"\nversion = "1.0.0"\n', "1.0.44")
+    ).toContain('version = "1.0.44"');
   });
 
   test("maps release assets for each supported CLI target", () => {
@@ -65,17 +65,13 @@ describe("versioning helpers", () => {
   });
 
   test("builds a release-only Tauri updater patch", () => {
-    expect(
-      buildTauriReleaseConfigPatch("metaspartan/cybara", "PUBLIC_KEY", null)
-    ).toEqual({
+    expect(buildTauriReleaseConfigPatch("metaspartan/cybara", "PUBLIC_KEY", null)).toEqual({
       bundle: {
         createUpdaterArtifacts: true,
       },
       plugins: {
         updater: {
-          endpoints: [
-            "https://github.com/metaspartan/cybara/releases/latest/download/latest.json",
-          ],
+          endpoints: ["https://github.com/metaspartan/cybara/releases/latest/download/latest.json"],
           pubkey: "PUBLIC_KEY",
         },
       },
@@ -112,17 +108,14 @@ describe("versioning helpers", () => {
     expect(validateTauriUpdaterManifest(manifest).ok).toBe(true);
 
     delete manifest.platforms["windows-x86_64-msi"];
-    expect(validateTauriUpdaterManifest(manifest).missingPlatforms).toEqual([
-      "windows-x86_64-msi",
-    ]);
+    expect(validateTauriUpdaterManifest(manifest).missingPlatforms).toEqual(["windows-x86_64-msi"]);
 
     manifest.platforms["windows-x86_64-msi"] = {
       signature: "",
       url: "https://example.com/cybara.msi",
     };
     expect(
-      validateTauriUpdaterManifest(manifest, TAURI_WINDOWS_X64_RELEASE_PLATFORMS)
-        .invalidPlatforms
+      validateTauriUpdaterManifest(manifest, TAURI_WINDOWS_X64_RELEASE_PLATFORMS).invalidPlatforms
     ).toEqual(["windows-x86_64-msi"]);
   });
 });

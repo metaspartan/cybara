@@ -272,9 +272,9 @@ describe("workspace indexer re-indexing", () => {
     expect(report.afterChange.files.map((f) => f.relativePath)).toContain("delta-new.ts");
 
     expect(report.removedGoneAfterReindex.success).toBe(true);
-    expect(
-      report.removedGoneAfterReindex.files.map((f) => f.relativePath)
-    ).not.toContain("alpha.ts");
+    expect(report.removedGoneAfterReindex.files.map((f) => f.relativePath)).not.toContain(
+      "alpha.ts"
+    );
   });
 });
 

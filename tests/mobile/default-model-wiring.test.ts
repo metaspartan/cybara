@@ -69,7 +69,7 @@ describe("mobile: system prompt sub-page (web parity)", () => {
     expect(screen).toContain("<SystemPromptPanel");
     expect(screen).toContain('kind: "systemPrompt"');
     expect(screen).toContain("openSystemPrompt");
-    expect(screen).toContain('<Text style={styles.listTitle}>System Prompt</Text>');
+    expect(screen).toContain("<Text style={styles.listTitle}>System Prompt</Text>");
     // and it is no longer a section on the settings tab
     expect(screen).not.toContain('title="Assistant identity"');
     expect(screen).not.toContain('title="Agent prompt features"');
@@ -92,7 +92,7 @@ describe("mobile: model router sub-page", () => {
     expect(screen).toContain("<ModelRouterPanel");
     expect(screen).toContain('kind: "modelRouter"');
     expect(screen).toContain("openModelRouter");
-    expect(screen).toContain('<Text style={styles.listTitle}>Model Router</Text>');
+    expect(screen).toContain("<Text style={styles.listTitle}>Model Router</Text>");
     // no longer an inline section on the settings tab
     expect(screen).not.toContain('title="Model router"');
   });

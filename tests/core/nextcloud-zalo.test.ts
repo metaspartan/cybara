@@ -34,7 +34,9 @@ describe("Nextcloud Talk", () => {
 
   test("ignores non-Create / empty", () => {
     expect(parseNextcloudMessage({ type: "Join" })).toBeNull();
-    expect(parseNextcloudMessage({ type: "Create", object: { content: '{"message":""}' } })).toBeNull();
+    expect(
+      parseNextcloudMessage({ type: "Create", object: { content: '{"message":""}' } })
+    ).toBeNull();
   });
 });
 
@@ -55,7 +57,9 @@ describe("Zalo", () => {
     const raw = '{"event_name":"user_send_text"}';
     const ts = "1700000000";
     const secret = "oasecret";
-    const mac = createHash("sha256").update(appId + raw + ts + secret).digest("hex");
+    const mac = createHash("sha256")
+      .update(appId + raw + ts + secret)
+      .digest("hex");
     expect(verifyZaloMac(appId, raw, ts, secret, mac)).toBe(true);
     expect(verifyZaloMac(appId, raw, ts, secret, "bad")).toBe(false);
   });

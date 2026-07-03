@@ -111,9 +111,7 @@ describe("self-improving skills toggle e2e", () => {
   test("defaults to enabled: config reports true and skill_save is offered", async () => {
     const config = await api("GET", "/api/config");
     expect(config.status).toBe(200);
-    expect(
-      (config.data as Record<string, unknown>).self_improving_skills_enabled
-    ).toBe(true);
+    expect((config.data as Record<string, unknown>).self_improving_skills_enabled).toBe(true);
 
     const names = await listToolNames();
     expect(names).toContain("skill_save");
@@ -126,9 +124,7 @@ describe("self-improving skills toggle e2e", () => {
     expect(update.status).toBe(200);
 
     const config = await api("GET", "/api/config");
-    expect(
-      (config.data as Record<string, unknown>).self_improving_skills_enabled
-    ).toBe(false);
+    expect((config.data as Record<string, unknown>).self_improving_skills_enabled).toBe(false);
 
     const names = await listToolNames();
     expect(names).not.toContain("skill_save");

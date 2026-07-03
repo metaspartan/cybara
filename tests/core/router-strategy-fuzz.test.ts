@@ -7,7 +7,13 @@ import {
   resetRouterForTests,
 } from "../../src/core/router";
 
-const VALID_STRATEGIES = ["weighted", "round_robin", "lowest_cost", "priority", "mixture_of_agents"];
+const VALID_STRATEGIES = [
+  "weighted",
+  "round_robin",
+  "lowest_cost",
+  "priority",
+  "mixture_of_agents",
+];
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -38,15 +44,30 @@ function randomString(maxLen: number): string {
 function randomJsonValue(depth = 0): unknown {
   const pick = randInt(depth > 2 ? 5 : 7);
   switch (pick) {
-    case 0: return randomString(30);
-    case 1: return randInt(2_000_000) - 1_000_000;
-    case 2: return rand() > 0.5;
-    case 3: return null;
-    case 4: return rand() * 1e15 - 5e14;
-    case 5: return Array.from({ length: randInt(6) }, () => randomJsonValue(depth + 1));
+    case 0:
+      return randomString(30);
+    case 1:
+      return randInt(2_000_000) - 1_000_000;
+    case 2:
+      return rand() > 0.5;
+    case 3:
+      return null;
+    case 4:
+      return rand() * 1e15 - 5e14;
+    case 5:
+      return Array.from({ length: randInt(6) }, () => randomJsonValue(depth + 1));
     default: {
       const obj: Record<string, unknown> = {};
-      const keys = ["enabled", "strategy", "routes", "moaMaxAgents", "moaAggregatorAgentId", "fallbackToAny", "globalSpendLimitDaily", randomString(8)];
+      const keys = [
+        "enabled",
+        "strategy",
+        "routes",
+        "moaMaxAgents",
+        "moaAggregatorAgentId",
+        "fallbackToAny",
+        "globalSpendLimitDaily",
+        randomString(8),
+      ];
       const count = randInt(keys.length);
       for (let i = 0; i < count; i++) obj[keys[randInt(keys.length)]] = randomJsonValue(depth + 1);
       return obj;
@@ -149,9 +170,19 @@ describe("router config fuzz via config.set", () => {
   });
 
   test("MoA is active only for an enabled mixture_of_agents config", () => {
-    config.set("router", { enabled: true, strategy: "mixture_of_agents", fallbackToAny: true, routes: {} });
+    config.set("router", {
+      enabled: true,
+      strategy: "mixture_of_agents",
+      fallbackToAny: true,
+      routes: {},
+    });
     expect(isMixtureOfAgentsRoutingActive()).toBe(true);
-    config.set("router", { enabled: "true", strategy: "mixture_of_agents", fallbackToAny: true, routes: {} });
+    config.set("router", {
+      enabled: "true",
+      strategy: "mixture_of_agents",
+      fallbackToAny: true,
+      routes: {},
+    });
     const active = isMixtureOfAgentsRoutingActive();
     expect(typeof active).toBe("boolean");
   });

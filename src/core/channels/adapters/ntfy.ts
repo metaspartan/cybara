@@ -149,7 +149,8 @@ export class NtfyAdapter implements ChannelAdapter {
     if (event.id) {
       if (runtime.seen.has(event.id)) return;
       runtime.seen.add(event.id);
-      if (runtime.seen.size > 500) runtime.seen.delete(runtime.seen.values().next().value as string);
+      if (runtime.seen.size > 500)
+        runtime.seen.delete(runtime.seen.values().next().value as string);
     }
 
     const topic = event.topic || runtime.config.topic;

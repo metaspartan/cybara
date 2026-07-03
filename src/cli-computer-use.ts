@@ -19,7 +19,9 @@ function printComputerUseStatus(status: ComputerUseStatus): void {
   console.log(`  command:          ${status.command}`);
   if (status.driverSource) console.log(`  source:           ${status.driverSource}`);
   if (status.configuredCommand) console.log(`  configured path:  ${status.configuredCommand}`);
-  console.log(`  installed:        ${yn(status.available)}${status.version ? ` (${status.version})` : ""}`);
+  console.log(
+    `  installed:        ${yn(status.available)}${status.version ? ` (${status.version})` : ""}`
+  );
   console.log(`  platform:         ${status.platform}`);
   if (status.platform === "darwin") {
     console.log(`  accessibility:    ${yn(status.accessibility)}`);

@@ -23,7 +23,8 @@ function definitionLocationToResult(
     };
   };
 
-  const uri = typeof raw.uri === "string" ? raw.uri : typeof raw.targetUri === "string" ? raw.targetUri : "";
+  const uri =
+    typeof raw.uri === "string" ? raw.uri : typeof raw.targetUri === "string" ? raw.targetUri : "";
   if (!uri) return null;
 
   const effectiveRange = raw.range || raw.targetSelectionRange || raw.targetRange;
@@ -207,8 +208,13 @@ export async function handleLSPDefinition(args: Record<string, unknown>): Promis
     .filter(
       (
         location
-      ): location is { file: string; line: number; column: number; endLine: number; endColumn: number } =>
-        !!location
+      ): location is {
+        file: string;
+        line: number;
+        column: number;
+        endLine: number;
+        endColumn: number;
+      } => !!location
     );
   return {
     locations,

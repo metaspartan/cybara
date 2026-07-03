@@ -11,8 +11,7 @@ const OUTPUT_PATH = join(ROOT, "src-tauri", "tauri.release.conf.json");
 
 function resolveUpdaterPublicKey(): string {
   const publicKey =
-    process.env.CYBARA_TAURI_UPDATER_PUBKEY?.trim() ||
-    process.env.TAURI_SIGNING_PUBLIC_KEY?.trim();
+    process.env.CYBARA_TAURI_UPDATER_PUBKEY?.trim() || process.env.TAURI_SIGNING_PUBLIC_KEY?.trim();
   if (!publicKey) {
     throw new Error(
       "Missing Tauri updater public key. Without TAURI_SIGNING_PUBLIC_KEY the " +

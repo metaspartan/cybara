@@ -14,7 +14,7 @@ describe("Chat scroll-to-latest button wiring", () => {
     expect(source).toContain("showScrollToBottomButton");
     expect(source).toContain("ref={messagesContainerRef}");
     expect(source).toContain("onScroll={refreshScrollToBottomVisibility}");
-    expect(source).toContain("aria-label=\"Scroll to latest message\"");
-    expect(source).toContain("<ArrowDown className=\"h-4 w-4\" />");
+    expect(source).toContain('aria-label="Scroll to latest message"');
+    expect(source).toContain('<ArrowDown className="h-4 w-4" />');
   });
 });

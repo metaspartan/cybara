@@ -45,8 +45,7 @@ export class IrcAdapter implements ChannelAdapter {
     if (!server || !nick) throw new Error("IRC: server and nick are required");
 
     const tls = config.tls !== false;
-    const port =
-      typeof config.port === "number" ? config.port : tls ? 6697 : 6667;
+    const port = typeof config.port === "number" ? config.port : tls ? 6697 : 6667;
     const channels = String(config.channels || "")
       .split(",")
       .map((c) => c.trim())
@@ -145,9 +144,7 @@ export class IrcAdapter implements ChannelAdapter {
       if (!runtime.registered && (line.command === "001" || line.command === "376")) {
         runtime.registered = true;
         if (runtime.config.nickservPassword) {
-          runtime.socket.write(
-            `PRIVMSG NickServ :IDENTIFY ${runtime.config.nickservPassword}\r\n`
-          );
+          runtime.socket.write(`PRIVMSG NickServ :IDENTIFY ${runtime.config.nickservPassword}\r\n`);
         }
         for (const channel of runtime.config.channels) {
           runtime.socket.write(`JOIN ${channel}\r\n`);

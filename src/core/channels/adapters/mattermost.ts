@@ -34,7 +34,9 @@ export class MattermostAdapter implements ChannelAdapter {
   }
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
-    const baseUrl = (typeof config.base_url === "string" ? config.base_url : "").trim().replace(/\/+$/, "");
+    const baseUrl = (typeof config.base_url === "string" ? config.base_url : "")
+      .trim()
+      .replace(/\/+$/, "");
     const token = typeof config.token === "string" ? config.token.trim() : "";
     if (!baseUrl || !token) throw new Error("Mattermost: base_url and token are required");
 
@@ -111,7 +113,8 @@ export class MattermostAdapter implements ChannelAdapter {
     ws.addEventListener("message", (ev) => {
       const data = typeof ev.data === "string" ? ev.data : "";
       const inbound = parseMattermostEvent(data, runtime.selfUserId);
-      if (inbound) void this.dispatch(channelId, inbound.channelId, inbound.userId, inbound.message);
+      if (inbound)
+        void this.dispatch(channelId, inbound.channelId, inbound.userId, inbound.message);
     });
 
     ws.addEventListener("close", () => {

@@ -906,7 +906,11 @@ export class DiscordAdapter implements ChannelAdapter {
               url: embed.url,
               thumbnail: embed.thumbnail ? { url: embed.thumbnail } : undefined,
               image: embed.imageUrl ? { url: embed.imageUrl } : undefined,
-              fields: embed.fields?.map((f) => ({ name: f.name, value: f.value, inline: f.inline })),
+              fields: embed.fields?.map((f) => ({
+                name: f.name,
+                value: f.value,
+                inline: f.inline,
+              })),
               footer: embed.footer ? { text: embed.footer } : undefined,
               timestamp: embed.timestamp ? new Date(embed.timestamp).toISOString() : undefined,
             },

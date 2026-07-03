@@ -9,7 +9,9 @@ export interface DingTalkInbound {
 }
 
 export function signDingTalk(timestamp: string, appSecret: string): string {
-  return createHmac("sha256", appSecret).update(`${timestamp}\n${appSecret}`, "utf8").digest("base64");
+  return createHmac("sha256", appSecret)
+    .update(`${timestamp}\n${appSecret}`, "utf8")
+    .digest("base64");
 }
 
 export function verifyDingTalkSignature(

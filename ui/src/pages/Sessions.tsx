@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from "react";
 import {
   MessageSquare,
   Search,
@@ -16,17 +16,17 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
-  Zap
-} from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Badge } from '@/components/ui/Badge';
-import { Modal } from '@/components/ui/Modal';
-import { PageLayout } from '@/components/layout';
-import { sessionsApi } from '@/lib/api';
-import { connectStatusStream } from '@/lib/status-stream';
-import type { ChatMessage, ToolCallInfo } from '@/types';
+  Zap,
+} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Badge } from "@/components/ui/Badge";
+import { Modal } from "@/components/ui/Modal";
+import { PageLayout } from "@/components/layout";
+import { sessionsApi } from "@/lib/api";
+import { connectStatusStream } from "@/lib/status-stream";
+import type { ChatMessage, ToolCallInfo } from "@/types";
 
 interface Session {
   id: string;
@@ -58,7 +58,7 @@ export function Sessions() {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedSession, setSelectedSession] = useState<SessionWithMessages | null>(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -81,7 +81,7 @@ export function Sessions() {
         setHasMore(data.length >= targetLimit);
       }
     } catch (error) {
-      console.error('Failed to fetch sessions:', error);
+      console.error("Failed to fetch sessions:", error);
     } finally {
       setIsLoading(false);
     }
@@ -98,14 +98,15 @@ export function Sessions() {
       if (response.success) {
         const nextChunk = response.data || [];
         const merged = [...sessionsRef.current, ...nextChunk].filter(
-          (session, index, all) => all.findIndex((candidate) => candidate.id === session.id) === index
+          (session, index, all) =>
+            all.findIndex((candidate) => candidate.id === session.id) === index
         );
         sessionsRef.current = merged;
         setSessions(merged);
         setHasMore(nextChunk.length >= PAGE_SIZE);
       }
     } catch (error) {
-      console.error('Failed to load more sessions:', error);
+      console.error("Failed to load more sessions:", error);
     } finally {
       setIsLoadingMore(false);
     }
@@ -150,7 +151,7 @@ export function Sessions() {
         setIsViewModalOpen(true);
       }
     } catch (error) {
-      console.error('Failed to load session:', error);
+      console.error("Failed to load session:", error);
     }
   };
 
@@ -159,19 +160,20 @@ export function Sessions() {
 
     try {
       await sessionsApi.delete(sessionToDelete.id);
-      const nextSessions = sessions.filter(s => s.id !== sessionToDelete.id);
+      const nextSessions = sessions.filter((s) => s.id !== sessionToDelete.id);
       sessionsRef.current = nextSessions;
       setSessions(nextSessions);
       setIsDeleteModalOpen(false);
       setSessionToDelete(null);
     } catch (error) {
-      console.error('Failed to delete session:', error);
+      console.error("Failed to delete session:", error);
     }
   };
 
-  const filteredSessions = sessions.filter(session =>
-    session.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    session.agent_id.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredSessions = sessions.filter(
+    (session) =>
+      session.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      session.agent_id.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -219,7 +221,10 @@ export function Sessions() {
         ) : (
           <div className="grid gap-4 max-w-full">
             {filteredSessions.map((session) => (
-              <Card key={session.id} className="hover:border-white/20 transition-colors max-w-full overflow-hidden">
+              <Card
+                key={session.id}
+                className="hover:border-white/20 transition-colors max-w-full overflow-hidden"
+              >
                 <CardContent className="p-4">
                   <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
@@ -240,14 +245,17 @@ export function Sessions() {
                         </span>
                         <span className="flex items-center gap-1">
                           <Clock className="w-4 h-4 flex-shrink-0" />
-                          <span className="truncate">{new Date(session.updated_at).toLocaleString()}</span>
+                          <span className="truncate">
+                            {new Date(session.updated_at).toLocaleString()}
+                          </span>
                         </span>
                       </div>
 
                       {session.last_message && (
                         <p className="mt-2 text-sm text-gray-500 truncate">
-                          Last: <span className="capitalize">{session.last_message.role}</span>: {session.last_message.content.slice(0, 100)}
-                          {session.last_message.content.length > 100 && '...'}
+                          Last: <span className="capitalize">{session.last_message.role}</span>:{" "}
+                          {session.last_message.content.slice(0, 100)}
+                          {session.last_message.content.length > 100 && "..."}
                         </p>
                       )}
                     </div>
@@ -284,7 +292,9 @@ export function Sessions() {
                     void fetchMoreSessions();
                   }}
                   disabled={isLoadingMore}
-                  leftIcon={isLoadingMore ? <RefreshCw className="w-4 h-4 animate-spin" /> : undefined}
+                  leftIcon={
+                    isLoadingMore ? <RefreshCw className="w-4 h-4 animate-spin" /> : undefined
+                  }
                 >
                   {isLoadingMore ? "Loading..." : "Load more"}
                 </Button>
@@ -309,21 +319,24 @@ export function Sessions() {
               <span className="text-gray-400">Agent:</span>
               <code className="text-white">{selectedSession.agent_id}</code>
               <span className="text-gray-400 ml-4">Created:</span>
-              <span className="text-white">{new Date(selectedSession.created_at).toLocaleString()}</span>
+              <span className="text-white">
+                {new Date(selectedSession.created_at).toLocaleString()}
+              </span>
             </div>
 
             <div className="space-y-3">
               {selectedSession.messagesList?.map((message, index) => (
                 <div
                   key={index}
-                  className={`flex gap-3 p-3 rounded-xl ${message.role === 'user'
-                    ? 'bg-indigo-500/10'
-                    : message.role === 'assistant'
-                      ? 'bg-emerald-500/10'
-                      : message.role === 'tool'
-                        ? 'bg-amber-500/10'
-                        : 'bg-white/5'
-                    }`}
+                  className={`flex gap-3 p-3 rounded-xl ${
+                    message.role === "user"
+                      ? "bg-indigo-500/10"
+                      : message.role === "assistant"
+                        ? "bg-emerald-500/10"
+                        : message.role === "tool"
+                          ? "bg-amber-500/10"
+                          : "bg-white/5"
+                  }`}
                 >
                   <div className="flex-shrink-0 mt-1">
                     {roleIcons[message.role] || <MessageSquare className="w-4 h-4 text-gray-400" />}
@@ -341,7 +354,7 @@ export function Sessions() {
                       {message.tool_calls && message.tool_calls.length > 0 && (
                         <Badge variant="warning" size="sm" className="flex items-center gap-1">
                           <Zap className="w-3 h-3" />
-                          {message.tool_calls.length} tool{message.tool_calls.length > 1 ? 's' : ''}
+                          {message.tool_calls.length} tool{message.tool_calls.length > 1 ? "s" : ""}
                         </Badge>
                       )}
                     </div>
@@ -355,11 +368,11 @@ export function Sessions() {
                             className="p-2 rounded-lg bg-black/30 border border-white/10"
                           >
                             <div className="flex items-center gap-2">
-                              {tc.status === 'completed' || tc.status === 'success' ? (
+                              {tc.status === "completed" || tc.status === "success" ? (
                                 <CheckCircle className="w-4 h-4 text-emerald-400" />
-                              ) : tc.status === 'failed' || tc.status === 'error' ? (
+                              ) : tc.status === "failed" || tc.status === "error" ? (
                                 <XCircle className="w-4 h-4 text-red-400" />
-                              ) : tc.status === 'executing' ? (
+                              ) : tc.status === "executing" ? (
                                 <RefreshCw className="w-4 h-4 text-blue-400 animate-spin" />
                               ) : (
                                 <AlertCircle className="w-4 h-4 text-amber-400" />
@@ -370,24 +383,33 @@ export function Sessions() {
                               )}
                               <Badge
                                 size="sm"
-                                variant={(tc.status === 'completed' || tc.status === 'success') ? 'success' : (tc.status === 'failed' || tc.status === 'error') ? 'error' : 'default'}
+                                variant={
+                                  tc.status === "completed" || tc.status === "success"
+                                    ? "success"
+                                    : tc.status === "failed" || tc.status === "error"
+                                      ? "error"
+                                      : "default"
+                                }
                               >
                                 {tc.status}
                               </Badge>
                             </div>
                             {tc.error && (
-                              <p className="mt-1 text-xs text-red-400">{String(tc.error).slice(0, 200)}</p>
+                              <p className="mt-1 text-xs text-red-400">
+                                {String(tc.error).slice(0, 200)}
+                              </p>
                             )}
                             {tc.result && (
                               <pre className="mt-2 text-xs text-gray-400 overflow-auto max-h-24 bg-black/20 p-2 rounded">
                                 {(() => {
                                   try {
-                                    const str = typeof tc.result === 'string'
-                                      ? tc.result.slice(0, 500)
-                                      : JSON.stringify(tc.result, null, 2).slice(0, 500);
-                                    return str.length >= 500 ? str + '...' : str;
+                                    const str =
+                                      typeof tc.result === "string"
+                                        ? tc.result.slice(0, 500)
+                                        : JSON.stringify(tc.result, null, 2).slice(0, 500);
+                                    return str.length >= 500 ? str + "..." : str;
                                   } catch {
-                                    return '[Result too large to display]';
+                                    return "[Result too large to display]";
                                   }
                                 })()}
                               </pre>
@@ -407,9 +429,7 @@ export function Sessions() {
             </div>
 
             {(!selectedSession.messagesList || selectedSession.messagesList.length === 0) && (
-              <div className="text-center py-8 text-gray-500">
-                No messages in this session
-              </div>
+              <div className="text-center py-8 text-gray-500">No messages in this session</div>
             )}
           </div>
         )}
@@ -430,8 +450,13 @@ export function Sessions() {
           </p>
           {sessionToDelete && (
             <div className="p-3 rounded-lg bg-white/5 text-sm">
-              <p><span className="text-gray-400">Session ID:</span> {sessionToDelete.id}</p>
-              <p><span className="text-gray-400">Messages:</span> {sessionToDelete.message_count || 0}</p>
+              <p>
+                <span className="text-gray-400">Session ID:</span> {sessionToDelete.id}
+              </p>
+              <p>
+                <span className="text-gray-400">Messages:</span>{" "}
+                {sessionToDelete.message_count || 0}
+              </p>
             </div>
           )}
           <div className="flex justify-end gap-3">

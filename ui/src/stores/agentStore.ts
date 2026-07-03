@@ -1,5 +1,5 @@
-import { create } from 'zustand';
-import type { Agent } from '@/types';
+import { create } from "zustand";
+import type { Agent } from "@/types";
 
 interface AgentState {
   agents: Agent[];
@@ -23,12 +23,14 @@ export const useAgentStore = create<AgentState>((set) => ({
   setAgents: (agents) => set({ agents }),
   setSelectedAgent: (agent) => set({ selectedAgent: agent }),
   addAgent: (agent) => set((state) => ({ agents: [...state.agents, agent] })),
-  updateAgent: (id, updates) => set((state) => ({
-    agents: state.agents.map((a) => a.id === id ? { ...a, ...updates } : a),
-  })),
-  removeAgent: (id) => set((state) => ({
-    agents: state.agents.filter((a) => a.id !== id),
-  })),
+  updateAgent: (id, updates) =>
+    set((state) => ({
+      agents: state.agents.map((a) => (a.id === id ? { ...a, ...updates } : a)),
+    })),
+  removeAgent: (id) =>
+    set((state) => ({
+      agents: state.agents.filter((a) => a.id !== id),
+    })),
   setLoading: (isLoading) => set({ isLoading }),
   setError: (error) => set({ error }),
 }));

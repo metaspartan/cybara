@@ -11,7 +11,7 @@ describe("Memory page: embedding method toggle", () => {
   test("renders a method selector with the supported providers", () => {
     expect(memory).toContain("handleChangeMethod");
     for (const provider of ["auto", "transformers_js", "openai", "gemini", "ollama"]) {
-      expect(memory).toContain(`value: '${provider}'`);
+      expect(memory).toMatch(new RegExp(`value: ["']${provider}["']`));
     }
     expect(memory).not.toContain('value="voyage"');
   });

@@ -1,4 +1,10 @@
-import type { ChannelAdapter, ToolCallInfo, MessageHandler, WebhookPayload, WebhookResult } from "../types";
+import type {
+  ChannelAdapter,
+  ToolCallInfo,
+  MessageHandler,
+  WebhookPayload,
+  WebhookResult,
+} from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { verifyLineSignature, parseLineEvents } from "../line-events";
@@ -32,7 +38,8 @@ export class LineAdapter implements ChannelAdapter {
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
     const channelAccessToken =
       typeof config.channel_access_token === "string" ? config.channel_access_token.trim() : "";
-    const channelSecret = typeof config.channel_secret === "string" ? config.channel_secret.trim() : "";
+    const channelSecret =
+      typeof config.channel_secret === "string" ? config.channel_secret.trim() : "";
     if (!channelAccessToken || !channelSecret) {
       throw new Error("LINE: channel_access_token and channel_secret are required");
     }
@@ -59,7 +66,10 @@ export class LineAdapter implements ChannelAdapter {
         "Content-Type": "application/json",
         Authorization: `Bearer ${cfg.channelAccessToken}`,
       },
-      body: JSON.stringify({ to: String(chatId), messages: [{ type: "text", text: text.slice(0, 5000) }] }),
+      body: JSON.stringify({
+        to: String(chatId),
+        messages: [{ type: "text", text: text.slice(0, 5000) }],
+      }),
     });
     return res.ok;
   }
@@ -75,7 +85,8 @@ export class LineAdapter implements ChannelAdapter {
     const cfg = this.configs.get(channelId);
     if (!cfg) return { status: 404 };
 
-    const signature = payload.headers["x-line-signature"] || payload.headers["X-Line-Signature"] || "";
+    const signature =
+      payload.headers["x-line-signature"] || payload.headers["X-Line-Signature"] || "";
     if (!verifyLineSignature(payload.rawBody, signature, cfg.channelSecret)) {
       return { status: 401, body: { error: "invalid signature" } };
     }

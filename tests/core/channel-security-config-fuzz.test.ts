@@ -36,15 +36,24 @@ function randString(maxLen: number): string {
 
 function randValue(depth = 0): unknown {
   switch (randInt(depth > 2 ? 6 : 9)) {
-    case 0: return randString(40);
-    case 1: return randInt(1_000_000) - 500_000;
-    case 2: return rand() > 0.5;
-    case 3: return null;
-    case 4: return undefined;
-    case 5: return Array.from({ length: randInt(6) }, () => randValue(depth + 1));
-    case 6: return { [randString(6)]: randValue(depth + 1) };
-    case 7: return NaN;
-    default: return { dm_policy: randValue(depth + 1), group_policy: randValue(depth + 1) };
+    case 0:
+      return randString(40);
+    case 1:
+      return randInt(1_000_000) - 500_000;
+    case 2:
+      return rand() > 0.5;
+    case 3:
+      return null;
+    case 4:
+      return undefined;
+    case 5:
+      return Array.from({ length: randInt(6) }, () => randValue(depth + 1));
+    case 6:
+      return { [randString(6)]: randValue(depth + 1) };
+    case 7:
+      return NaN;
+    default:
+      return { dm_policy: randValue(depth + 1), group_policy: randValue(depth + 1) };
   }
 }
 

@@ -484,7 +484,8 @@ function sessionRouteLabel(session: Record<string, unknown>): string | null {
     typeof session.provider_name === "string" && session.provider_name.trim()
       ? session.provider_name.trim()
       : displayProviderLabel(typeof session.provider === "string" ? session.provider : null);
-  const model = typeof session.model === "string" && session.model.trim() ? session.model.trim() : null;
+  const model =
+    typeof session.model === "string" && session.model.trim() ? session.model.trim() : null;
   const agentName =
     typeof session.agent_name === "string" && session.agent_name.trim()
       ? session.agent_name.trim()
@@ -3203,9 +3204,7 @@ function SessionsPanel({
                       <div
                         className={cn(
                           "flex items-center gap-1 transition-opacity",
-                          session.pinned
-                            ? "opacity-100"
-                            : "opacity-0 group-hover:opacity-100"
+                          session.pinned ? "opacity-100" : "opacity-0 group-hover:opacity-100"
                         )}
                       >
                         <button
@@ -4718,7 +4717,7 @@ export function Chat() {
   const pendingCapture = pendingProcessCaptureRef.current;
   const pendingCaptureForCurrentSession =
     !!pendingCapture &&
-    (!!sessionId
+    (sessionId
       ? !pendingCapture.sessionId || pendingCapture.sessionId === sessionId
       : !pendingCapture.sessionId);
   const showWorkingTimeline =
@@ -4916,123 +4915,123 @@ export function Chat() {
                   </div>
                 ) : (
                   visibleMessageEntries.map(({ message, originalIndex, turnStartedAtMs }) => {
-                      const persistedProcessActivities = getMessageProcessActivities(
-                        messageProcessMap,
-                        sessionId,
-                        message,
-                        originalIndex
-                      );
-                      const embeddedProcessActivities = normalizeMessageProcessActivities(
-                        message.process_activities,
-                        parseTimestampMs(message.timestamp) ?? turnStartedAtMs
-                      );
-                      const restoredProcessActivities = mergeActivityLists(
-                        persistedProcessActivities,
-                        embeddedProcessActivities
-                      );
-                      const fallbackToolActivities =
-                        restoredProcessActivities.length === 0
-                          ? buildActivitiesFromToolCalls(message.tool_calls, formatToolIntent, {
-                              baseTimestampMs:
-                                parseTimestampMs(message.timestamp) ?? turnStartedAtMs ?? 0,
-                            })
-                          : [];
-                      const mergedActivities = mergeActivityLists(
-                        restoredProcessActivities,
-                        fallbackToolActivities
-                      );
-                      const processActivities =
-                        mergedActivities.length > 0
-                          ? finalizeCompletedActivities(mergedActivities)
-                          : undefined;
-                      const hasAssistantToolCalls =
-                        message.role !== "user" &&
-                        Array.isArray(message.tool_calls) &&
-                        message.tool_calls.length > 0;
-                      return (
+                    const persistedProcessActivities = getMessageProcessActivities(
+                      messageProcessMap,
+                      sessionId,
+                      message,
+                      originalIndex
+                    );
+                    const embeddedProcessActivities = normalizeMessageProcessActivities(
+                      message.process_activities,
+                      parseTimestampMs(message.timestamp) ?? turnStartedAtMs
+                    );
+                    const restoredProcessActivities = mergeActivityLists(
+                      persistedProcessActivities,
+                      embeddedProcessActivities
+                    );
+                    const fallbackToolActivities =
+                      restoredProcessActivities.length === 0
+                        ? buildActivitiesFromToolCalls(message.tool_calls, formatToolIntent, {
+                            baseTimestampMs:
+                              parseTimestampMs(message.timestamp) ?? turnStartedAtMs ?? 0,
+                          })
+                        : [];
+                    const mergedActivities = mergeActivityLists(
+                      restoredProcessActivities,
+                      fallbackToolActivities
+                    );
+                    const processActivities =
+                      mergedActivities.length > 0
+                        ? finalizeCompletedActivities(mergedActivities)
+                        : undefined;
+                    const hasAssistantToolCalls =
+                      message.role !== "user" &&
+                      Array.isArray(message.tool_calls) &&
+                      message.tool_calls.length > 0;
+                    return (
+                      <div
+                        key={`${message.timestamp || "msg"}-${originalIndex}`}
+                        className={`deferred-chat-message flex gap-3 ${
+                          message.role === "user" ? "flex-row-reverse" : ""
+                        }`}
+                      >
                         <div
-                          key={`${message.timestamp || "msg"}-${originalIndex}`}
-                          className={`deferred-chat-message flex gap-3 ${
-                            message.role === "user" ? "flex-row-reverse" : ""
+                          className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                            message.role === "user"
+                              ? "bg-[rgba(var(--accent-primary),0.2)]"
+                              : "bg-emerald-500/20"
                           }`}
                         >
+                          {message.role === "user" ? (
+                            <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 accent-text" />
+                          ) : (
+                            <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
+                          )}
+                        </div>
+                        <div
+                          className={`max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] ${message.role === "user" ? "text-right" : ""}`}
+                        >
                           <div
-                            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                            className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${
                               message.role === "user"
-                                ? "bg-[rgba(var(--accent-primary),0.2)]"
-                                : "bg-emerald-500/20"
+                                ? "border border-[rgba(var(--accent-primary),0.2)]"
+                                : "border border-white/5"
                             }`}
                           >
-                            {message.role === "user" ? (
-                              <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 accent-text" />
-                            ) : (
-                              <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
+                            {message.role !== "user" && (
+                              <AssistantMetaInline
+                                message={message}
+                                processActivities={processActivities}
+                                sessionId={sessionId}
+                                turnStartedAtMs={turnStartedAtMs}
+                                onOpenArtifact={openArtifactViewer}
+                                section="work"
+                              />
+                            )}
+                            {hasAssistantToolCalls && (
+                              <div className="my-2 border-t border-white/12" />
+                            )}
+                            <MessageContent content={message.content} />
+                            {message.role === "user" && sessionId && (
+                              <div className="mt-2 flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setRevertTarget({
+                                      index: originalIndex,
+                                      content: message.content,
+                                      timestamp: message.timestamp,
+                                    })
+                                  }
+                                  className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[10px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+                                  title="Revert session to this message"
+                                >
+                                  <RotateCcw className="w-3 h-3" />
+                                  Revert to here
+                                </button>
+                              </div>
+                            )}
+                            {message.role !== "user" && (
+                              <AssistantMetaInline
+                                message={message}
+                                processActivities={processActivities}
+                                sessionId={sessionId}
+                                turnStartedAtMs={turnStartedAtMs}
+                                onOpenArtifact={openArtifactViewer}
+                                section="summary"
+                              />
                             )}
                           </div>
-                          <div
-                            className={`max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] ${message.role === "user" ? "text-right" : ""}`}
-                          >
-                            <div
-                              className={`rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 ${
-                                message.role === "user"
-                                  ? "border border-[rgba(var(--accent-primary),0.2)]"
-                                  : "border border-white/5"
-                              }`}
-                            >
-                              {message.role !== "user" && (
-                                <AssistantMetaInline
-                                  message={message}
-                                  processActivities={processActivities}
-                                  sessionId={sessionId}
-                                  turnStartedAtMs={turnStartedAtMs}
-                                  onOpenArtifact={openArtifactViewer}
-                                  section="work"
-                                />
-                              )}
-                              {hasAssistantToolCalls && (
-                                <div className="my-2 border-t border-white/12" />
-                              )}
-                              <MessageContent content={message.content} />
-                              {message.role === "user" && sessionId && (
-                                <div className="mt-2 flex justify-end">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setRevertTarget({
-                                        index: originalIndex,
-                                        content: message.content,
-                                        timestamp: message.timestamp,
-                                      })
-                                    }
-                                    className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[10px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
-                                    title="Revert session to this message"
-                                  >
-                                    <RotateCcw className="w-3 h-3" />
-                                    Revert to here
-                                  </button>
-                                </div>
-                              )}
-                              {message.role !== "user" && (
-                                <AssistantMetaInline
-                                  message={message}
-                                  processActivities={processActivities}
-                                  sessionId={sessionId}
-                                  turnStartedAtMs={turnStartedAtMs}
-                                  onOpenArtifact={openArtifactViewer}
-                                  section="summary"
-                                />
-                              )}
-                            </div>
 
-                            {message.timestamp && (
-                              <p className="text-[10px] text-gray-600 mt-1.5">
-                                {formatRelativeTime(message.timestamp)}
-                              </p>
-                            )}
-                          </div>
+                          {message.timestamp && (
+                            <p className="text-[10px] text-gray-600 mt-1.5">
+                              {formatRelativeTime(message.timestamp)}
+                            </p>
+                          )}
                         </div>
-                      );
-                    })
+                      </div>
+                    );
+                  })
                 )}
                 {showWorkingTimeline && (
                   <div className="flex gap-3">

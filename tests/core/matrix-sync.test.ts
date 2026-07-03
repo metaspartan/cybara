@@ -52,7 +52,11 @@ describe("matrix sync parsing", () => {
 
   test("ignoreInitial returns next_batch but no messages", () => {
     const sync = syncWith([
-      { type: "m.room.message", sender: "@a:example.org", content: { msgtype: "m.text", body: "x" } },
+      {
+        type: "m.room.message",
+        sender: "@a:example.org",
+        content: { msgtype: "m.text", body: "x" },
+      },
     ]);
     const r = parseSyncMessages(sync, SELF, { ignoreInitial: true });
     expect(r.nextBatch).toBe("s2");

@@ -26,7 +26,9 @@ describe("session-context chunking helpers", () => {
   });
 
   test("splitMessagesByTokenShare splits into N roughly-equal chunks", () => {
-    const msgs = Array.from({ length: 10 }, (_, i) => msg("user", `message number ${i} with content`));
+    const msgs = Array.from({ length: 10 }, (_, i) =>
+      msg("user", `message number ${i} with content`)
+    );
     const chunks = splitMessagesByTokenShare(msgs, 2);
     expect(chunks.length).toBe(2);
     // All messages accounted for.

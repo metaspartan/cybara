@@ -46,7 +46,9 @@ describe("GitHub Actions security posture", () => {
     const workflow = read(workflowPath);
     expect(workflow).toContain("security-events: write");
     expect(workflow).toContain("schedule:");
-    expect(workflow).toContain("google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@");
+    expect(workflow).toContain(
+      "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@"
+    );
     expect(workflow).toContain("--lockfile=bun.lock");
     expect(workflow).toContain("--lockfile=ui/bun.lock");
     expect(workflow).toContain("--lockfile=apps/mobile/bun.lock");

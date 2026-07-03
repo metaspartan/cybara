@@ -222,10 +222,11 @@ export function Artifacts() {
                           setSelected(artifact);
                           setRawView(false);
                         }}
-                        className={`w-full text-left rounded-lg border px-3 py-2.5 transition-colors cursor-pointer ${isSelected
-                          ? "border-indigo-500/40 bg-indigo-500/15"
-                          : "border-white/10 bg-white/[0.02] hover:bg-white/[0.06]"
-                          }`}
+                        className={`w-full text-left rounded-lg border px-3 py-2.5 transition-colors cursor-pointer ${
+                          isSelected
+                            ? "border-indigo-500/40 bg-indigo-500/15"
+                            : "border-white/10 bg-white/[0.02] hover:bg-white/[0.06]"
+                        }`}
                       >
                         <p className="text-sm text-white truncate">
                           {artifact.title || artifact.fileName}
@@ -260,20 +261,22 @@ export function Artifacts() {
                   <button
                     type="button"
                     onClick={() => setRawView(false)}
-                    className={`rounded-md border px-2 py-1 text-xs transition-colors cursor-pointer ${!rawView
-                      ? "border-cyan-500/40 bg-cyan-500/20 text-cyan-200"
-                      : "border-white/15 bg-white/[0.03] text-gray-300 hover:text-white hover:bg-white/[0.08]"
-                      }`}
+                    className={`rounded-md border px-2 py-1 text-xs transition-colors cursor-pointer ${
+                      !rawView
+                        ? "border-cyan-500/40 bg-cyan-500/20 text-cyan-200"
+                        : "border-white/15 bg-white/[0.03] text-gray-300 hover:text-white hover:bg-white/[0.08]"
+                    }`}
                   >
                     Markdown
                   </button>
                   <button
                     type="button"
                     onClick={() => setRawView(true)}
-                    className={`rounded-md border px-2 py-1 text-xs transition-colors cursor-pointer ${rawView
-                      ? "border-cyan-500/40 bg-cyan-500/20 text-cyan-200"
-                      : "border-white/15 bg-white/[0.03] text-gray-300 hover:text-white hover:bg-white/[0.08]"
-                      }`}
+                    className={`rounded-md border px-2 py-1 text-xs transition-colors cursor-pointer ${
+                      rawView
+                        ? "border-cyan-500/40 bg-cyan-500/20 text-cyan-200"
+                        : "border-white/15 bg-white/[0.03] text-gray-300 hover:text-white hover:bg-white/[0.08]"
+                    }`}
                   >
                     Raw
                   </button>

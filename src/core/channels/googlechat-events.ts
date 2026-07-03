@@ -7,7 +7,11 @@ export interface GoogleChatInbound {
 export function parseGoogleChatEvent(body: unknown): GoogleChatInbound | null {
   const event = body as {
     type?: string;
-    message?: { text?: string; sender?: { name?: string; displayName?: string }; space?: { name?: string } };
+    message?: {
+      text?: string;
+      sender?: { name?: string; displayName?: string };
+      space?: { name?: string };
+    };
     space?: { name?: string };
   };
   if (event?.type !== "MESSAGE" || !event.message) return null;

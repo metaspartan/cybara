@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   getDesktopHostRuntime,
   isDesktopHostRuntime,
@@ -6,14 +6,14 @@ import {
   isCybaraNativeRuntime,
   isDesktopUpdaterSupported,
   getDesktopRuntimeLabel,
-} from './desktopHost';
+} from "./desktopHost";
 
 const g = globalThis as { window?: unknown };
 let hadWindow: boolean;
 let originalWindow: unknown;
 
 beforeEach(() => {
-  hadWindow = 'window' in g;
+  hadWindow = "window" in g;
   originalWindow = g.window;
 });
 
@@ -33,53 +33,53 @@ function setWindow(shape: Record<string, unknown> | undefined) {
   }
 }
 
-describe('getDesktopHostRuntime', () => {
-  test('no window object defaults to null (web)', () => {
+describe("getDesktopHostRuntime", () => {
+  test("no window object defaults to null (web)", () => {
     setWindow(undefined);
     expect(getDesktopHostRuntime()).toBe(null);
     expect(isDesktopHostRuntime()).toBe(false);
   });
 
-  test('bare window with no bridge fields is web', () => {
+  test("bare window with no bridge fields is web", () => {
     setWindow({});
     expect(getDesktopHostRuntime()).toBe(null);
   });
 
-  test('detects Tauri via __TAURI_INTERNALS__', () => {
+  test("detects Tauri via __TAURI_INTERNALS__", () => {
     setWindow({ __TAURI_INTERNALS__: {} });
     expect(isTauriDesktopRuntime()).toBe(true);
-    expect(getDesktopHostRuntime()).toBe('tauri');
+    expect(getDesktopHostRuntime()).toBe("tauri");
   });
 
-  test('detects Tauri via __TAURI__', () => {
+  test("detects Tauri via __TAURI__", () => {
     setWindow({ __TAURI__: {} });
-    expect(getDesktopHostRuntime()).toBe('tauri');
+    expect(getDesktopHostRuntime()).toBe("tauri");
   });
 
-  test('detects cybara-native bridge', () => {
-    setWindow({ __CYBARA_NATIVE__: { runtime: 'cybara-native' } });
+  test("detects cybara-native bridge", () => {
+    setWindow({ __CYBARA_NATIVE__: { runtime: "cybara-native" } });
     expect(isCybaraNativeRuntime()).toBe(true);
-    expect(getDesktopHostRuntime()).toBe('cybara-native');
+    expect(getDesktopHostRuntime()).toBe("cybara-native");
   });
 
-  test('cybara bridge with wrong runtime value is not detected', () => {
-    setWindow({ __CYBARA_NATIVE__: { runtime: 'something-else' } });
+  test("cybara bridge with wrong runtime value is not detected", () => {
+    setWindow({ __CYBARA_NATIVE__: { runtime: "something-else" } });
     expect(isCybaraNativeRuntime()).toBe(false);
     expect(getDesktopHostRuntime()).toBe(null);
   });
 
-  test('tauri wins over cybara-native when both present', () => {
-    setWindow({ __TAURI__: {}, __CYBARA_NATIVE__: { runtime: 'cybara-native' } });
-    expect(getDesktopHostRuntime()).toBe('tauri');
+  test("tauri wins over cybara-native when both present", () => {
+    setWindow({ __TAURI__: {}, __CYBARA_NATIVE__: { runtime: "cybara-native" } });
+    expect(getDesktopHostRuntime()).toBe("tauri");
   });
 });
 
-describe('isDesktopUpdaterSupported', () => {
-  test('only tauri supports the desktop updater', () => {
+describe("isDesktopUpdaterSupported", () => {
+  test("only tauri supports the desktop updater", () => {
     setWindow({ __TAURI__: {} });
     expect(isDesktopUpdaterSupported()).toBe(true);
 
-    setWindow({ __CYBARA_NATIVE__: { runtime: 'cybara-native' } });
+    setWindow({ __CYBARA_NATIVE__: { runtime: "cybara-native" } });
     expect(isDesktopUpdaterSupported()).toBe(false);
 
     setWindow({});
@@ -87,15 +87,15 @@ describe('isDesktopUpdaterSupported', () => {
   });
 });
 
-describe('getDesktopRuntimeLabel', () => {
-  test('maps runtime to human label', () => {
-    expect(getDesktopRuntimeLabel('tauri')).toBe('Tauri Desktop');
-    expect(getDesktopRuntimeLabel('cybara-native')).toBe('Cybara macOS App');
-    expect(getDesktopRuntimeLabel(null)).toBe('Web');
+describe("getDesktopRuntimeLabel", () => {
+  test("maps runtime to human label", () => {
+    expect(getDesktopRuntimeLabel("tauri")).toBe("Tauri Desktop");
+    expect(getDesktopRuntimeLabel("cybara-native")).toBe("Cybara macOS App");
+    expect(getDesktopRuntimeLabel(null)).toBe("Web");
   });
 
-  test('defaults to the current runtime when no arg passed', () => {
+  test("defaults to the current runtime when no arg passed", () => {
     setWindow({});
-    expect(getDesktopRuntimeLabel()).toBe('Web');
+    expect(getDesktopRuntimeLabel()).toBe("Web");
   });
 });

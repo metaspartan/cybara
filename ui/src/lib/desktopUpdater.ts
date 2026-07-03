@@ -4,11 +4,7 @@ import { isTauriDesktopRuntime } from "./desktopHost";
 
 export function describeDesktopUpdaterError(error: unknown): string {
   const message =
-    error instanceof Error
-      ? error.message.trim()
-      : typeof error === "string"
-        ? error.trim()
-        : "";
+    error instanceof Error ? error.message.trim() : typeof error === "string" ? error.trim() : "";
 
   if (!message) {
     return "Desktop update failed.";

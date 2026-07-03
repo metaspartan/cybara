@@ -34,10 +34,12 @@ jobs:
         run: bash scripts/ci-install.sh --ignore-scripts && bun run scripts/postinstall.ts
       - name: Install UI dependencies
         run: cd ui && bash ../scripts/ci-install.sh
+      - name: Install mobile dependencies
+        run: cd apps/mobile && bash ../../scripts/ci-install.sh
       - name: Run CI checks
         run: bun run check:ci
       - name: Security audit
-        run: bun audit || true
+        run: bun run audit:ci
 
   # ── CLI binaries (cross-compiled on a Linux runner) ─────────────────────────
   build-cli:
@@ -317,6 +319,8 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
       - name: Install dependencies
         run: bash scripts/ci-install.sh --ignore-scripts
+      - name: Install mobile dependencies
+        run: cd apps/mobile && bash ../../scripts/ci-install.sh
       - name: Run postinstall
         run: bun run scripts/postinstall.ts
       - name: Sync version metadata
@@ -466,6 +470,8 @@ jobs:
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
       - name: Install dependencies
         run: bash scripts/ci-install.sh --ignore-scripts && bun run scripts/postinstall.ts
+      - name: Install mobile dependencies
+        run: cd apps/mobile && bash ../../scripts/ci-install.sh
       - name: Sync version metadata
         run: bun run version:sync
       - name: Prebuild Android project
@@ -557,6 +563,8 @@ jobs:
           node-version: "20"
       - name: Install dependencies
         run: bash scripts/ci-install.sh --ignore-scripts && bun run scripts/postinstall.ts
+      - name: Install mobile dependencies
+        run: cd apps/mobile && bash ../../scripts/ci-install.sh
       - name: Sync version metadata
         run: bun run version:sync
       - name: Prebuild iOS project

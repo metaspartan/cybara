@@ -10,12 +10,21 @@ export default [
         ignores: ["node_modules/**", "dist/**", "ui/**", "data/**", "memory/**", "skills/**"],
     },
     {
-        files: ["src/**/*.ts"],
+        files: [
+            "src/**/*.ts",
+            "tests/**/*.ts",
+            "scripts/**/*.ts",
+            "apps/mobile/App.tsx",
+            "apps/mobile/src/**/*.{ts,tsx}",
+        ],
         languageOptions: {
             parser: tsParser,
             parserOptions: {
                 ecmaVersion: "latest",
                 sourceType: "module",
+                ecmaFeatures: {
+                    jsx: true,
+                },
             },
             globals: {
                 Bun: "readonly",

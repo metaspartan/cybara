@@ -115,7 +115,11 @@ function evaluateProviderStatus(provider: ResolvedSandboxProvider): SandboxProvi
       supported,
       installed,
       available,
-      reason: !supported ? "Only supported on Linux" : !installed ? "podman is not installed" : undefined,
+      reason: !supported
+        ? "Only supported on Linux"
+        : !installed
+          ? "podman is not installed"
+          : undefined,
     };
   }
 
@@ -134,7 +138,10 @@ function resolveProviderFromRuntime(runtime: SandboxRuntimeConfig): SandboxProvi
     return { enabled: false, provider: null, runtime };
   }
 
-  const choose = (provider: ResolvedSandboxProvider | null, reason?: string): SandboxProviderResolution => ({
+  const choose = (
+    provider: ResolvedSandboxProvider | null,
+    reason?: string
+  ): SandboxProviderResolution => ({
     enabled: true,
     provider,
     reason,
@@ -210,7 +217,10 @@ function normalizeWorkdir(input?: string): string {
   return isAbsolute(trimmed) ? resolve(trimmed) : resolve(fallback, trimmed);
 }
 
-function buildAppleSandboxPolicy(workdir: string, network: SandboxRuntimeConfig["network"]): string {
+function buildAppleSandboxPolicy(
+  workdir: string,
+  network: SandboxRuntimeConfig["network"]
+): string {
   const escapedWorkdir = escapeSandboxPath(workdir);
   const networkRule = network === "allow" ? "(allow network*)" : "(deny network*)";
   return [
@@ -412,12 +422,7 @@ export function buildSandboxedShellPlan(params: {
   }
 
   if (resolution.provider === "docker") {
-    const dockerCommand = buildDockerCommand(
-      params.command,
-      workdir,
-      env,
-      resolution.runtime
-    );
+    const dockerCommand = buildDockerCommand(params.command, workdir, env, resolution.runtime);
     log.info("Prepared sandbox command", {
       provider: "docker",
       cwd: workdir,

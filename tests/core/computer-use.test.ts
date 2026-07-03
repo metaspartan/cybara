@@ -81,9 +81,9 @@ describe("computer_use action validation", () => {
 
   test("assertActionAllowed throws on blocked key combos even with auto-approve", () => {
     setComputerUseAutoApprove(true);
-    expect(() =>
-      assertActionAllowed("key", { action: "key", keys: "cmd+shift+q" })
-    ).toThrow(/blocked/i);
+    expect(() => assertActionAllowed("key", { action: "key", keys: "cmd+shift+q" })).toThrow(
+      /blocked/i
+    );
   });
 
   test("assertActionAllowed throws on blocked type text even with auto-approve", () => {

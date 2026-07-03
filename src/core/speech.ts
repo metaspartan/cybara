@@ -55,11 +55,7 @@ const OPENAI_SPEECH_VOICES = new Set([
 function normalizeProviderType(value: string | undefined): SpeechTtsProviderType | null {
   const resolved = resolveProviderType(value);
   const normalized = resolved || value?.trim().toLowerCase();
-  if (
-    normalized === "elevenlabs" ||
-    normalized === "openai" ||
-    normalized === "openai-codex"
-  ) {
+  if (normalized === "elevenlabs" || normalized === "openai" || normalized === "openai-codex") {
     return normalized;
   }
   return null;
@@ -111,7 +107,9 @@ export function resolveSpeechTtsProvider(input: {
     );
     if (preferredDefault) return { provider: preferredDefault, type };
 
-    const firstMatch = providerRows.find((provider) => normalizeProviderType(provider.provider) === type);
+    const firstMatch = providerRows.find(
+      (provider) => normalizeProviderType(provider.provider) === type
+    );
     if (firstMatch) return { provider: firstMatch, type };
   }
 
@@ -160,7 +158,10 @@ function jsonNumber(value: unknown, min: number, max: number): number | undefine
 }
 
 function providerBaseUrl(provider: Provider, fallback: string): string {
-  const providerInfo = providers[(resolveProviderType(provider.provider) || provider.provider) as keyof typeof providers];
+  const providerInfo =
+    providers[
+      (resolveProviderType(provider.provider) || provider.provider) as keyof typeof providers
+    ];
   return (provider.base_url || providerInfo?.baseUrl || fallback).replace(/\/+$/, "");
 }
 
@@ -185,7 +186,9 @@ async function resolveElevenLabsVoiceId(
   const data = (await response.json()) as { voices?: Array<{ voice_id?: string }> };
   const firstVoice = data.voices?.find((entry) => typeof entry.voice_id === "string")?.voice_id;
   if (!firstVoice) {
-    throw new Error("ElevenLabs TTS requires a voice ID; no voices were returned for this account.");
+    throw new Error(
+      "ElevenLabs TTS requires a voice ID; no voices were returned for this account."
+    );
   }
   return firstVoice;
 }
@@ -205,7 +208,9 @@ async function synthesizeWithElevenLabs(
   if (!apiKey) throw new Error("ElevenLabs TTS provider is missing an API key");
 
   const baseUrl = providerBaseUrl(provider, "https://api.elevenlabs.io/v1");
-  const output = elevenLabsOutputFormat(resolveOutputFormat(args.format, settings.tts.outputFormat));
+  const output = elevenLabsOutputFormat(
+    resolveOutputFormat(args.format, settings.tts.outputFormat)
+  );
   const voiceId = await resolveElevenLabsVoiceId(baseUrl, apiKey, args.voice || settings.tts.voice);
   const modelId = args.model?.trim() || settings.tts.model || "eleven_multilingual_v2";
   const speed = jsonNumber(args.speed ?? settings.tts.speed, 0.5, 2);
@@ -238,9 +243,7 @@ async function synthesizeWithElevenLabs(
 
   if (!response.ok) {
     const text = (await response.text().catch(() => "")).slice(0, 300);
-    throw new Error(
-      `ElevenLabs TTS failed: HTTP ${response.status}${text ? ` - ${text}` : ""}`
-    );
+    throw new Error(`ElevenLabs TTS failed: HTTP ${response.status}${text ? ` - ${text}` : ""}`);
   }
 
   const bytes = new Uint8Array(await response.arrayBuffer());
@@ -277,7 +280,9 @@ async function synthesizeWithOpenAI(
   if (!apiKey) throw new Error("OpenAI TTS provider is missing API credentials");
 
   const baseUrl = providerBaseUrl(provider, "https://api.openai.com/v1");
-  const responseFormat = openAiOutputFormat(resolveOutputFormat(args.format, settings.tts.outputFormat));
+  const responseFormat = openAiOutputFormat(
+    resolveOutputFormat(args.format, settings.tts.outputFormat)
+  );
   const extension = responseFormat === "aac" && args.format === "m4a" ? "m4a" : responseFormat;
   const model = args.model?.trim() || settings.tts.model || "gpt-4o-mini-tts";
   const voice = normalizeOpenAiVoice(args.voice || settings.tts.voice);
@@ -407,7 +412,8 @@ export async function synthesizeWithSystemVoice(
   let format = "aiff";
   if (requestedFormat !== "aiff") {
     const outPath = join(dir, `tts-${stamp}.${requestedFormat}`);
-    const fmtFlag = requestedFormat === "m4a" ? ["-f", "m4af", "-d", "aac"] : ["-f", "WAVE", "-d", "LEI16"];
+    const fmtFlag =
+      requestedFormat === "m4a" ? ["-f", "m4af", "-d", "aac"] : ["-f", "WAVE", "-d", "LEI16"];
     const converted = Bun.spawnSync(["afconvert", aiffPath, outPath, ...fmtFlag]);
     if (converted.exitCode === 0 && existsSync(outPath)) {
       try {

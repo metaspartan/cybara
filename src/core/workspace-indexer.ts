@@ -3,15 +3,9 @@ import { existsSync, realpathSync, statSync } from "fs";
 import { basename, extname, isAbsolute, join, relative, resolve } from "path";
 import { homedir } from "os";
 import { createHash } from "crypto";
-import {
-  config,
-  type WorkspaceIndexerSettings,
-} from "./config";
+import { config, type WorkspaceIndexerSettings } from "./config";
 import { createLogger } from "./logger";
-import {
-  getEmbeddingProviderCatalog,
-  type EmbeddingProviderPreference,
-} from "./memory/embeddings";
+import { getEmbeddingProviderCatalog, type EmbeddingProviderPreference } from "./memory/embeddings";
 import { getVectorStore } from "./memory/vector-store";
 
 type WorkspaceIndexerState = "idle" | "indexing" | "ready" | "stopped" | "error";
@@ -224,7 +218,8 @@ class WorkspaceIndexer {
     }
     if (embeddingSelectionChanged) {
       this.semanticReady = false;
-      this.semanticError = "Embedding provider/model changed. Run Reindex to refresh semantic vectors.";
+      this.semanticError =
+        "Embedding provider/model changed. Run Reindex to refresh semantic vectors.";
     }
     return settings;
   }
@@ -237,10 +232,7 @@ class WorkspaceIndexer {
     });
   }
 
-  getEmbeddingRuntimeStatus(selection?: {
-    provider?: string;
-    model?: string;
-  }): {
+  getEmbeddingRuntimeStatus(selection?: { provider?: string; model?: string }): {
     selectedProvider: string;
     selectedModel: string;
     vectorProvider: string;
@@ -275,10 +267,7 @@ class WorkspaceIndexer {
     });
   }
 
-  async loadEmbeddingRuntime(selection?: {
-    provider?: string;
-    model?: string;
-  }): Promise<{
+  async loadEmbeddingRuntime(selection?: { provider?: string; model?: string }): Promise<{
     success: boolean;
     provider: string;
     model: string;
@@ -301,10 +290,7 @@ class WorkspaceIndexer {
     });
   }
 
-  async stopEmbeddingRuntime(selection?: {
-    provider?: string;
-    model?: string;
-  }): Promise<{
+  async stopEmbeddingRuntime(selection?: { provider?: string; model?: string }): Promise<{
     success: boolean;
     provider: string;
     model: string;
@@ -322,12 +308,7 @@ class WorkspaceIndexer {
 
     const vectorStore = getVectorStore();
     await vectorStore.configureEmbeddings({
-      provider: providerPreference as
-        | "auto"
-        | "openai"
-        | "gemini"
-        | "ollama"
-        | "transformers_js",
+      provider: providerPreference as "auto" | "openai" | "gemini" | "ollama" | "transformers_js",
       model: modelPreference,
     });
 
@@ -341,12 +322,7 @@ class WorkspaceIndexer {
     const model = modelPreference || (stats.model !== "none" ? stats.model : "");
 
     const result = await vectorStore.stopLocalRuntime({
-      provider: provider as
-        | "auto"
-        | "openai"
-        | "gemini"
-        | "ollama"
-        | "transformers_js",
+      provider: provider as "auto" | "openai" | "gemini" | "ollama" | "transformers_js",
       model,
     });
 
@@ -384,7 +360,9 @@ class WorkspaceIndexer {
       throw new Error("No workspace selected for indexing");
     }
     if (isHomeRootPath(targetPath)) {
-      throw new Error("Workspace indexer is disabled for the home directory. Select a project folder.");
+      throw new Error(
+        "Workspace indexer is disabled for the home directory. Select a project folder."
+      );
     }
     this.workspacePath = targetPath;
     await this.startIndex(targetPath, "manual_reindex");
@@ -493,7 +471,10 @@ class WorkspaceIndexer {
     });
 
     const rankedByPath = new Map(
-      rankedFiles.map((file) => [file.relativePathLower, scoreIndexedFile(file.relativePath, query)])
+      rankedFiles.map((file) => [
+        file.relativePathLower,
+        scoreIndexedFile(file.relativePath, query),
+      ])
     );
     const indexedByPath = new Map(this.indexedFiles.map((file) => [file.relativePathLower, file]));
     const combined = new Map<
@@ -550,7 +531,9 @@ class WorkspaceIndexer {
         semanticMatches = seenSemantic.size;
       } catch (errorValue) {
         const message =
-          errorValue instanceof Error ? errorValue.message : `Semantic search error: ${String(errorValue)}`;
+          errorValue instanceof Error
+            ? errorValue.message
+            : `Semantic search error: ${String(errorValue)}`;
         this.semanticError = message;
       }
     }
@@ -586,7 +569,10 @@ class WorkspaceIndexer {
   }
 
   private getWorkspaceSemanticPrefix(workspacePath: string): string {
-    const digest = createHash("sha1").update(resolveCanonicalPath(workspacePath)).digest("hex").slice(0, 12);
+    const digest = createHash("sha1")
+      .update(resolveCanonicalPath(workspacePath))
+      .digest("hex")
+      .slice(0, 12);
     return `workspace://${digest}`;
   }
 
@@ -820,7 +806,9 @@ class WorkspaceIndexer {
       }
 
       const message =
-        errorValue instanceof Error ? errorValue.message : `Unexpected indexer error: ${String(errorValue)}`;
+        errorValue instanceof Error
+          ? errorValue.message
+          : `Unexpected indexer error: ${String(errorValue)}`;
       this.state = "error";
       this.error = message;
       this.progress = 0;
@@ -919,7 +907,9 @@ class WorkspaceIndexer {
         throw errorValue;
       }
       const message =
-        errorValue instanceof Error ? errorValue.message : `Semantic indexing error: ${String(errorValue)}`;
+        errorValue instanceof Error
+          ? errorValue.message
+          : `Semantic indexing error: ${String(errorValue)}`;
       this.semanticReady = false;
       this.semanticError = message;
       log.warn("Semantic indexing failed", {

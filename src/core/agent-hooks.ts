@@ -174,9 +174,15 @@ export async function emitAgentHook(event: AgentHookEvent): Promise<AgentHookDec
       // Transform handling: the last hook's transformed value wins.
       if (event.type === "transform:tool_result" && result.transformedResult !== undefined) {
         (event as AgentTransformToolResultEvent).result = result.transformedResult;
-      } else if (event.type === "transform:llm_output" && typeof result.transformedContent === "string") {
+      } else if (
+        event.type === "transform:llm_output" &&
+        typeof result.transformedContent === "string"
+      ) {
         (event as AgentTransformLLMOutputEvent).content = result.transformedContent;
-      } else if (event.type === "transform:terminal_output" && typeof result.transformedOutput === "string") {
+      } else if (
+        event.type === "transform:terminal_output" &&
+        typeof result.transformedOutput === "string"
+      ) {
         (event as AgentTransformTerminalOutputEvent).output = result.transformedOutput;
       }
     } catch (error) {

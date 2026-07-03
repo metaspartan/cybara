@@ -285,7 +285,13 @@ export const channels = {
     color: "#2DA1A4",
     fields: [
       { name: "topic", label: "Topic", type: "string", required: true },
-      { name: "server", label: "Server URL", type: "string", required: false, default: "https://ntfy.sh" },
+      {
+        name: "server",
+        label: "Server URL",
+        type: "string",
+        required: false,
+        default: "https://ntfy.sh",
+      },
       { name: "token", label: "Access Token", type: "password", required: false },
     ],
   },
@@ -323,13 +329,19 @@ export const channels = {
   homeassistant: {
     name: "Home Assistant",
     icon: "🏠",
-    description: "Trigger the agent from Home Assistant automations (webhook) and reply via a notify service",
+    description:
+      "Trigger the agent from Home Assistant automations (webhook) and reply via a notify service",
     color: "#41BDF5",
     fields: [
       { name: "verify_token", label: "Inbound Verify Token", type: "password", required: false },
       { name: "ha_url", label: "Home Assistant URL (for replies)", type: "text", required: false },
       { name: "ha_token", label: "Long-Lived Access Token", type: "password", required: false },
-      { name: "notify_service", label: "Notify Service (e.g. notify.mobile_app_x)", type: "text", required: false },
+      {
+        name: "notify_service",
+        label: "Notify Service (e.g. notify.mobile_app_x)",
+        type: "text",
+        required: false,
+      },
     ],
   },
   wecom: {
@@ -350,9 +362,7 @@ export const channels = {
     icon: "📐",
     description: "Connect to DingTalk via an enterprise robot outgoing webhook (HMAC)",
     color: "#0089FF",
-    fields: [
-      { name: "app_secret", label: "Robot App Secret", type: "password", required: true },
-    ],
+    fields: [{ name: "app_secret", label: "Robot App Secret", type: "password", required: true }],
   },
   zulip: {
     name: "Zulip",
@@ -375,18 +385,39 @@ export const channels = {
       { name: "app_id", label: "App ID", type: "password", required: true },
       { name: "app_secret", label: "App Secret", type: "password", required: true },
       { name: "encrypt_key", label: "Encrypt Key", type: "password", required: false },
-      { name: "verification_token", label: "Verification Token", type: "password", required: false },
-      { name: "domain", label: "Domain (open.feishu.cn or open.larksuite.com)", type: "text", required: false },
+      {
+        name: "verification_token",
+        label: "Verification Token",
+        type: "password",
+        required: false,
+      },
+      {
+        name: "domain",
+        label: "Domain (open.feishu.cn or open.larksuite.com)",
+        type: "text",
+        required: false,
+      },
     ],
   },
   msteams: {
     name: "Microsoft Teams",
     icon: "🟦",
-    description: "Connect to Microsoft Teams via outgoing webhook (HMAC) + optional incoming webhook",
+    description:
+      "Connect to Microsoft Teams via outgoing webhook (HMAC) + optional incoming webhook",
     color: "#4B53BC",
     fields: [
-      { name: "security_token", label: "Outgoing Webhook Security Token", type: "password", required: true },
-      { name: "incoming_webhook_url", label: "Incoming Webhook URL", type: "password", required: false },
+      {
+        name: "security_token",
+        label: "Outgoing Webhook Security Token",
+        type: "password",
+        required: true,
+      },
+      {
+        name: "incoming_webhook_url",
+        label: "Incoming Webhook URL",
+        type: "password",
+        required: false,
+      },
     ],
   },
   synology: {
@@ -405,7 +436,12 @@ export const channels = {
     description: "Connect to LINE Messaging API",
     color: "#06C755",
     fields: [
-      { name: "channel_access_token", label: "Channel Access Token", type: "password", required: true },
+      {
+        name: "channel_access_token",
+        label: "Channel Access Token",
+        type: "password",
+        required: true,
+      },
       { name: "channel_secret", label: "Channel Secret", type: "password", required: true },
     ],
   },
@@ -438,7 +474,8 @@ export const channels = {
         label: "HMAC Secret",
         type: "password",
         required: false,
-        description: "Shared secret for HMAC-SHA256 signature verification (x-cybara-signature header).",
+        description:
+          "Shared secret for HMAC-SHA256 signature verification (x-cybara-signature header).",
       },
       {
         name: "dm_policy",
@@ -607,11 +644,7 @@ export interface ChannelAdapter {
   ): Promise<boolean>;
 
   /** Send a rich embed (Discord) or HTML-formatted message (Telegram). */
-  sendEmbed?(
-    channelId: string,
-    chatId: string | number,
-    embed: ChannelEmbed
-  ): Promise<boolean>;
+  sendEmbed?(channelId: string, chatId: string | number, embed: ChannelEmbed): Promise<boolean>;
 
   /** Create a thread under a message (Discord) or forum topic (Telegram). */
   createThread?(

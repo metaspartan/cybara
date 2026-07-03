@@ -98,7 +98,10 @@ describe("pairing-code redemption", () => {
     const failFetch: typeof fetch = (async () => ({
       ok: false,
       status: 400,
-      json: async () => ({ success: false, error: "Invalid, expired, or already-used pairing code" }),
+      json: async () => ({
+        success: false,
+        error: "Invalid, expired, or already-used pairing code",
+      }),
     })) as unknown as typeof fetch;
     const raw = JSON.stringify({
       protocol: MOBILE_PAIRING_PROTOCOL,

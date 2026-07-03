@@ -170,12 +170,19 @@ beforeAll(() => {
 
   const proc = Bun.spawnSync([process.execPath, "run", workerPath], {
     cwd: ROOT_DIR,
-    env: { ...process.env, HOME: tempHome, USERPROFILE: tempHome, CYBARA_HOME: join(tempHome, ".cybara") },
+    env: {
+      ...process.env,
+      HOME: tempHome,
+      USERPROFILE: tempHome,
+      CYBARA_HOME: join(tempHome, ".cybara"),
+    },
   });
   const stdout = proc.stdout.toString();
   const line = stdout.split("\n").find((l) => l.startsWith("__RESULT__"));
   if (!line) {
-    throw new Error(`worker produced no result. exit=${proc.exitCode}\nstderr=${proc.stderr.toString()}\nstdout=${stdout}`);
+    throw new Error(
+      `worker produced no result. exit=${proc.exitCode}\nstderr=${proc.stderr.toString()}\nstdout=${stdout}`
+    );
   }
   result = JSON.parse(line.slice("__RESULT__".length)) as WorkerResult;
 });

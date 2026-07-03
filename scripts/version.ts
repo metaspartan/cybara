@@ -87,7 +87,10 @@ function syncVersion(version: string): string[] {
     changed.push("package.json");
   }
   if (
-    writeIfChanged(UI_PACKAGE_JSON_PATH, replaceJsonVersion(readText(UI_PACKAGE_JSON_PATH), version))
+    writeIfChanged(
+      UI_PACKAGE_JSON_PATH,
+      replaceJsonVersion(readText(UI_PACKAGE_JSON_PATH), version)
+    )
   ) {
     changed.push("ui/package.json");
   }
@@ -96,13 +99,14 @@ function syncVersion(version: string): string[] {
   ) {
     changed.push("src-tauri/Cargo.toml");
   }
-  if (
-    writeIfChanged(TAURI_CONFIG_PATH, replaceJsonVersion(readText(TAURI_CONFIG_PATH), version))
-  ) {
+  if (writeIfChanged(TAURI_CONFIG_PATH, replaceJsonVersion(readText(TAURI_CONFIG_PATH), version))) {
     changed.push("src-tauri/tauri.conf.json");
   }
   if (
-    writeIfChanged(MOBILE_APP_JSON_PATH, replaceExpoVersion(readText(MOBILE_APP_JSON_PATH), version))
+    writeIfChanged(
+      MOBILE_APP_JSON_PATH,
+      replaceExpoVersion(readText(MOBILE_APP_JSON_PATH), version)
+    )
   ) {
     changed.push("apps/mobile/app.json");
   }

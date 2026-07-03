@@ -78,4 +78,3 @@ if (offenders.length > 0) {
 }
 
 console.log("\nLOC gate passed.");
-

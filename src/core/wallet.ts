@@ -315,12 +315,7 @@ interface WalletAgentPolicy {
 }
 
 type WalletDappAdapter =
-  | "rpc_call"
-  | "eth_contract_call"
-  | "sol_program_instruction"
-  | "swap"
-  | "price"
-  | "x402_http";
+  "rpc_call" | "eth_contract_call" | "sol_program_instruction" | "swap" | "price" | "x402_http";
 
 interface WalletRpcCallInput {
   chain: "eth" | "sol";
@@ -1077,10 +1072,10 @@ class WalletManager {
       wordCount: vault?.wordCount,
       kdf: vault
         ? {
-          name: vault.kdf.name,
-          hash: vault.kdf.hash,
-          iterations: vault.kdf.iterations,
-        }
+            name: vault.kdf.name,
+            hash: vault.kdf.hash,
+            iterations: vault.kdf.iterations,
+          }
         : undefined,
       agentAccessEnabled: this.isAgentAccessEnabled(),
       chains: SUPPORTED_CHAINS,
@@ -1345,11 +1340,7 @@ class WalletManager {
    * sends. A single prompt-injection should not be able to move funds to an
    * arbitrary address or in an arbitrary amount.
    */
-  private assertAgentSendWithinPolicy(
-    to: string,
-    amount: string,
-    policy: WalletAgentPolicy
-  ): void {
+  private assertAgentSendWithinPolicy(to: string, amount: string, policy: WalletAgentPolicy): void {
     const recipient = String(to || "").trim();
     if (policy.allowedSendRecipients.length > 0) {
       const allow = policy.allowedSendRecipients.map((a) => a.trim().toLowerCase());
@@ -1621,9 +1612,9 @@ class WalletManager {
         return await this.getPriceQuote({
           source:
             payload.source === "auto" ||
-              payload.source === "chainlink" ||
-              payload.source === "pyth" ||
-              payload.source === "jupiter"
+            payload.source === "chainlink" ||
+            payload.source === "pyth" ||
+            payload.source === "jupiter"
               ? payload.source
               : undefined,
           symbol: typeof payload.symbol === "string" ? payload.symbol : undefined,
@@ -2463,9 +2454,9 @@ class WalletManager {
       .toLowerCase() as WalletPriceSource;
     const source: WalletPriceSource =
       requestedSource === "chainlink" ||
-        requestedSource === "pyth" ||
-        requestedSource === "jupiter" ||
-        requestedSource === "auto"
+      requestedSource === "pyth" ||
+      requestedSource === "jupiter" ||
+      requestedSource === "auto"
         ? requestedSource
         : "auto";
 
@@ -2962,11 +2953,11 @@ class WalletManager {
         dynamicComputeUnitLimit: true,
         prioritizationFeeLamports:
           typeof input.computeUnitPriceMicroLamports === "number" &&
-            Number.isFinite(input.computeUnitPriceMicroLamports) &&
-            input.computeUnitPriceMicroLamports > 0
+          Number.isFinite(input.computeUnitPriceMicroLamports) &&
+          input.computeUnitPriceMicroLamports > 0
             ? {
-              priorityLevelWithMaxLamports: { priorityLevel: "veryHigh", maxLamports: 2_000_000 },
-            }
+                priorityLevelWithMaxLamports: { priorityLevel: "veryHigh", maxLamports: 2_000_000 },
+              }
             : undefined,
       }),
       signal: AbortSignal.timeout(20_000),
@@ -3411,9 +3402,9 @@ class WalletManager {
         return await this.getPriceQuote({
           source:
             payload.source === "auto" ||
-              payload.source === "chainlink" ||
-              payload.source === "pyth" ||
-              payload.source === "jupiter"
+            payload.source === "chainlink" ||
+            payload.source === "pyth" ||
+            payload.source === "jupiter"
               ? payload.source
               : undefined,
           symbol: typeof payload.symbol === "string" ? payload.symbol : undefined,
@@ -3957,8 +3948,8 @@ class WalletManager {
         quoteMethod && typeof quoteMethod.staticCall === "function"
           ? await quoteMethod.staticCall(params)
           : await (
-            quoterV2 as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>
-          ).quoteExactInputSingle(params);
+              quoterV2 as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>
+            ).quoteExactInputSingle(params);
 
       const amountOut = parseBigIntOrZero(
         Array.isArray(quoteValue)
@@ -3988,15 +3979,15 @@ class WalletManager {
     const legacyValue =
       legacyMethod && typeof legacyMethod.staticCall === "function"
         ? await legacyMethod.staticCall(
-          input.tokenIn,
-          input.tokenOut,
-          input.feeTier,
-          input.amountIn,
-          0
-        )
+            input.tokenIn,
+            input.tokenOut,
+            input.feeTier,
+            input.amountIn,
+            0
+          )
         : await (
-          legacyQuoter as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>
-        ).quoteExactInputSingle(input.tokenIn, input.tokenOut, input.feeTier, input.amountIn, 0);
+            legacyQuoter as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>
+          ).quoteExactInputSingle(input.tokenIn, input.tokenOut, input.feeTier, input.amountIn, 0);
     return parseBigIntOrZero(legacyValue);
   }
 
@@ -4560,8 +4551,7 @@ class WalletManager {
       try {
         const decoded = Buffer.from(encoded.trim(), "base64").toString("utf8");
         const parsed = JSON.parse(decoded) as
-          | WalletX402PaymentRequiredV2
-          | WalletX402PaymentRequiredV1;
+          WalletX402PaymentRequiredV2 | WalletX402PaymentRequiredV1;
         if (
           parsed &&
           Array.isArray(parsed.accepts) &&
@@ -4578,8 +4568,7 @@ class WalletManager {
     if (bodyText.trim()) {
       try {
         const parsed = JSON.parse(bodyText) as
-          | WalletX402PaymentRequiredV2
-          | WalletX402PaymentRequiredV1;
+          WalletX402PaymentRequiredV2 | WalletX402PaymentRequiredV1;
         if (
           parsed &&
           Array.isArray(parsed.accepts) &&
@@ -4753,45 +4742,45 @@ class WalletManager {
     const paymentRequiredPayload =
       input.required.x402Version === 2
         ? {
-          x402Version: 2 as const,
-          error: input.required.error,
-          resource: input.required.resource || {
-            url: input.requestUrl,
-            description: "x402 protected resource",
-            mimeType: "application/json",
-          },
-          accepts: (input.required.accepts || []).map((entry) => ({
-            scheme: String(entry.scheme || ""),
-            network: String(entry.network || ""),
-            amount: String(entry.amount || ""),
-            asset: String(entry.asset || ""),
-            payTo: String(entry.payTo || ""),
-            maxTimeoutSeconds: Number.isFinite(Number(entry.maxTimeoutSeconds))
-              ? Math.max(30, Number(entry.maxTimeoutSeconds))
-              : 60,
-            extra: (entry.extra || {}) as Record<string, unknown>,
-          })),
-          extensions: input.required.extensions || {},
-        }
+            x402Version: 2 as const,
+            error: input.required.error,
+            resource: input.required.resource || {
+              url: input.requestUrl,
+              description: "x402 protected resource",
+              mimeType: "application/json",
+            },
+            accepts: (input.required.accepts || []).map((entry) => ({
+              scheme: String(entry.scheme || ""),
+              network: String(entry.network || ""),
+              amount: String(entry.amount || ""),
+              asset: String(entry.asset || ""),
+              payTo: String(entry.payTo || ""),
+              maxTimeoutSeconds: Number.isFinite(Number(entry.maxTimeoutSeconds))
+                ? Math.max(30, Number(entry.maxTimeoutSeconds))
+                : 60,
+              extra: (entry.extra || {}) as Record<string, unknown>,
+            })),
+            extensions: input.required.extensions || {},
+          }
         : {
-          x402Version: 1 as const,
-          error: input.required.error,
-          accepts: (input.required.accepts || []).map((entry) => ({
-            scheme: String(entry.scheme || ""),
-            network: String(entry.network || ""),
-            maxAmountRequired: String(entry.maxAmountRequired || ""),
-            resource: input.requestUrl,
-            description: "x402 protected resource",
-            mimeType: "application/json",
-            outputSchema: {},
-            payTo: String(entry.payTo || ""),
-            maxTimeoutSeconds: Number.isFinite(Number(entry.maxTimeoutSeconds))
-              ? Math.max(30, Number(entry.maxTimeoutSeconds))
-              : 60,
-            asset: String(entry.asset || ""),
-            extra: (entry.extra || {}) as Record<string, unknown>,
-          })),
-        };
+            x402Version: 1 as const,
+            error: input.required.error,
+            accepts: (input.required.accepts || []).map((entry) => ({
+              scheme: String(entry.scheme || ""),
+              network: String(entry.network || ""),
+              maxAmountRequired: String(entry.maxAmountRequired || ""),
+              resource: input.requestUrl,
+              description: "x402 protected resource",
+              mimeType: "application/json",
+              outputSchema: {},
+              payTo: String(entry.payTo || ""),
+              maxTimeoutSeconds: Number.isFinite(Number(entry.maxTimeoutSeconds))
+                ? Math.max(30, Number(entry.maxTimeoutSeconds))
+                : 60,
+              asset: String(entry.asset || ""),
+              extra: (entry.extra || {}) as Record<string, unknown>,
+            })),
+          };
 
     const paymentPayload = await paymentClient.createPaymentPayload(
       paymentRequiredPayload as never
@@ -4858,15 +4847,15 @@ class WalletManager {
       paymentHeaderUsed: input.paymentHeaderUsed,
       paymentRequirement: input.paymentRequirement
         ? {
-          x402Version: input.paymentRequirement.x402Version,
-          scheme: input.paymentRequirement.scheme,
-          network: input.paymentRequirement.network,
-          amount: input.paymentRequirement.amount,
-          asset: input.paymentRequirement.asset,
-          payTo: input.paymentRequirement.payTo,
-          maxTimeoutSeconds: input.paymentRequirement.maxTimeoutSeconds,
-          extra: input.paymentRequirement.extra,
-        }
+            x402Version: input.paymentRequirement.x402Version,
+            scheme: input.paymentRequirement.scheme,
+            network: input.paymentRequirement.network,
+            amount: input.paymentRequirement.amount,
+            asset: input.paymentRequirement.asset,
+            payTo: input.paymentRequirement.payTo,
+            maxTimeoutSeconds: input.paymentRequirement.maxTimeoutSeconds,
+            extra: input.paymentRequirement.extra,
+          }
         : undefined,
       settlement: input.settlement,
       responseHeaders: this.serializeResponseHeaders(input.response.headers),

@@ -192,106 +192,107 @@ export function NewChatPanel({
   );
 }
 
-const makeStyles = () => StyleSheet.create({
-  panel: {
-    gap: spacing.md,
-  },
-  sectionHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: typography.heading,
-    fontWeight: "800",
-  },
-  counterText: {
-    color: colors.cyan,
-    fontSize: typography.body,
-    fontWeight: "900",
-  },
-  horizontalPicker: {
-    marginHorizontal: -spacing.xs,
-  },
-  agentChip: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    gap: 3,
-    marginHorizontal: spacing.xs,
-    minHeight: 72,
-    padding: spacing.md,
-    width: 172,
-  },
-  agentChipActive: {
-    backgroundColor: colors.softCyan,
-  },
-  agentChipTitle: {
-    color: colors.text,
-    fontSize: typography.body,
-    fontWeight: "800",
-  },
-  agentChipDetail: {
-    color: colors.textMuted,
-    fontSize: typography.tiny,
-  },
-  composer: {
-    alignItems: "flex-end",
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: spacing.sm,
-    padding: spacing.sm,
-  },
-  messageComposer: {
-    minHeight: MOBILE_CHAT_COMPOSER.minHeight + spacing.sm * 2,
-  },
-  composerInput: {
-    color: colors.text,
-    flex: 1,
-    fontSize: typography.body,
-    includeFontPadding: false,
-    minHeight: MOBILE_CHAT_COMPOSER.minHeight,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-  },
-  messageInput: {
-    lineHeight: MOBILE_CHAT_COMPOSER.lineHeight,
-    maxHeight: MOBILE_CHAT_COMPOSER.maxHeight,
-    minHeight: MOBILE_CHAT_COMPOSER.minHeight,
-    paddingTop: 10,
-    paddingBottom: 8,
-  },
-  sendButton: {
-    alignItems: "center",
-    borderRadius: radius.md,
-    height: MOBILE_CHAT_COMPOSER.minHeight,
-    justifyContent: "center",
-    width: MOBILE_CHAT_COMPOSER.minHeight,
-  },
-  errorBox: {
-    alignItems: "center",
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    gap: spacing.xs,
-    padding: spacing.lg,
-  },
-  errorTitle: {
-    color: colors.text,
-    fontSize: typography.body,
-    fontWeight: "800",
-  },
-  errorDetail: {
-    color: colors.textMuted,
-    fontSize: typography.label,
-    textAlign: "center",
-  },
-});
+const makeStyles = () =>
+  StyleSheet.create({
+    panel: {
+      gap: spacing.md,
+    },
+    sectionHeader: {
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
+    },
+    sectionTitle: {
+      color: colors.text,
+      fontSize: typography.heading,
+      fontWeight: "800",
+    },
+    counterText: {
+      color: colors.cyan,
+      fontSize: typography.body,
+      fontWeight: "900",
+    },
+    horizontalPicker: {
+      marginHorizontal: -spacing.xs,
+    },
+    agentChip: {
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      gap: 3,
+      marginHorizontal: spacing.xs,
+      minHeight: 72,
+      padding: spacing.md,
+      width: 172,
+    },
+    agentChipActive: {
+      backgroundColor: colors.softCyan,
+    },
+    agentChipTitle: {
+      color: colors.text,
+      fontSize: typography.body,
+      fontWeight: "800",
+    },
+    agentChipDetail: {
+      color: colors.textMuted,
+      fontSize: typography.tiny,
+    },
+    composer: {
+      alignItems: "flex-end",
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: spacing.sm,
+      padding: spacing.sm,
+    },
+    messageComposer: {
+      minHeight: MOBILE_CHAT_COMPOSER.minHeight + spacing.sm * 2,
+    },
+    composerInput: {
+      color: colors.text,
+      flex: 1,
+      fontSize: typography.body,
+      includeFontPadding: false,
+      minHeight: MOBILE_CHAT_COMPOSER.minHeight,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.sm,
+    },
+    messageInput: {
+      lineHeight: MOBILE_CHAT_COMPOSER.lineHeight,
+      maxHeight: MOBILE_CHAT_COMPOSER.maxHeight,
+      minHeight: MOBILE_CHAT_COMPOSER.minHeight,
+      paddingTop: 10,
+      paddingBottom: 8,
+    },
+    sendButton: {
+      alignItems: "center",
+      borderRadius: radius.md,
+      height: MOBILE_CHAT_COMPOSER.minHeight,
+      justifyContent: "center",
+      width: MOBILE_CHAT_COMPOSER.minHeight,
+    },
+    errorBox: {
+      alignItems: "center",
+      borderColor: colors.border,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      gap: spacing.xs,
+      padding: spacing.lg,
+    },
+    errorTitle: {
+      color: colors.text,
+      fontSize: typography.body,
+      fontWeight: "800",
+    },
+    errorDetail: {
+      color: colors.textMuted,
+      fontSize: typography.label,
+      textAlign: "center",
+    },
+  });
 
 let styles = makeStyles();
 subscribeColors(() => {

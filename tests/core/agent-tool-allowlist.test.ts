@@ -203,11 +203,10 @@ describe("Agent tool allowlist guardrails", () => {
       );
     }) as typeof fetch;
 
-    const result = await agentManager.execute(
-      agent.id,
-      [{ role: "user", content: "read file" }],
-      { useTools: true, sessionId: "permission-session" }
-    );
+    const result = await agentManager.execute(agent.id, [{ role: "user", content: "read file" }], {
+      useTools: true,
+      sessionId: "permission-session",
+    });
 
     expect(result.content).toBe("done");
     expect(result.tool_calls?.[0]?.name).toBe("read");
@@ -234,9 +233,7 @@ describe("Agent tool allowlist guardrails", () => {
     });
     createdAgentIds.push(agent.id);
     const expectedTokenLimit =
-      providerManager
-        .getModels(provider.id)
-        .find((entry) => entry.model_id === "openai/gpt-5.2")
+      providerManager.getModels(provider.id).find((entry) => entry.model_id === "openai/gpt-5.2")
         ?.max_tokens || 100000;
 
     const requestBodies: Array<Record<string, unknown>> = [];
@@ -312,9 +309,7 @@ describe("Agent tool allowlist guardrails", () => {
     });
     createdAgentIds.push(agent.id);
     const expectedTokenLimit =
-      providerManager
-        .getModels(provider.id)
-        .find((entry) => entry.model_id === "gpt-5.2")
+      providerManager.getModels(provider.id).find((entry) => entry.model_id === "gpt-5.2")
         ?.max_tokens || 100000;
 
     const requestBodies: Array<Record<string, unknown>> = [];
@@ -1034,11 +1029,10 @@ describe("Agent tool allowlist guardrails", () => {
       );
     }) as typeof fetch;
 
-    const result = await agentManager.execute(
-      agent.id,
-      [{ role: "user", content: "keep going" }],
-      { useTools: true, sessionId: "kimi-no-progress-session" }
-    );
+    const result = await agentManager.execute(agent.id, [{ role: "user", content: "keep going" }], {
+      useTools: true,
+      sessionId: "kimi-no-progress-session",
+    });
 
     expect(completionCalls).toBe(3);
     expect(result.content).toContain("repeating with no progress");

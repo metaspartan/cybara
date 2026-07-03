@@ -51,9 +51,7 @@ class TaskScheduler {
       try {
         parseCronExpression(data.schedule);
       } catch (error) {
-        throw new Error(
-          `Validation error: Invalid cron schedule: ${(error as Error).message}`
-        );
+        throw new Error(`Validation error: Invalid cron schedule: ${(error as Error).message}`);
       }
     }
   }
@@ -156,11 +154,7 @@ class TaskScheduler {
           : data.schedule
         : current.schedule;
     const requestedStatus =
-      data.enabled !== undefined
-        ? data.enabled
-          ? "pending"
-          : "paused"
-        : data.status;
+      data.enabled !== undefined ? (data.enabled ? "pending" : "paused") : data.status;
     const status = requestedStatus || current.status || "pending";
     const nextRun =
       status === "paused"

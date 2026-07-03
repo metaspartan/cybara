@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { parseHomeAssistantWebhook, notifyTarget } from "../../src/core/channels/homeassistant-events";
+import {
+  parseHomeAssistantWebhook,
+  notifyTarget,
+} from "../../src/core/channels/homeassistant-events";
 
 describe("parseHomeAssistantWebhook", () => {
   test("reads text from body and defaults sender/conversation", () => {

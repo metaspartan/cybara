@@ -105,11 +105,9 @@ describe("Agent execute system prompt handling", () => {
     };
 
     try {
-      const result = await agentManager.execute(
-        agent.id,
-        [{ role: "user", content: "hello" }],
-        { useTools: false }
-      );
+      const result = await agentManager.execute(agent.id, [{ role: "user", content: "hello" }], {
+        useTools: false,
+      });
 
       expect(result.content).toBe("ok");
       expect(capturedMessages).toEqual([
@@ -141,10 +139,7 @@ describe("Agent execute system prompt handling", () => {
     let capturedModel: string | undefined;
 
     const originalCallLLM = agentManager.callLLM.bind(agentManager) as CallLLMShape;
-    (agentManager as unknown as { callLLM: CallLLMShape }).callLLM = async (
-      _provider,
-      model
-    ) => {
+    (agentManager as unknown as { callLLM: CallLLMShape }).callLLM = async (_provider, model) => {
       capturedModel = model;
       return { content: "ok" };
     };

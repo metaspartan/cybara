@@ -477,8 +477,7 @@ export function setComputerUseAutoApprove(enabled: boolean): void {
 
 /** Optional consent callback; if unset, destructive actions require sessionAutoApprove. */
 let approvalCallback:
-  | ((action: ComputerUseAction, args: ComputerUseArgs, summary: string) => boolean)
-  | null = null;
+  ((action: ComputerUseAction, args: ComputerUseArgs, summary: string) => boolean) | null = null;
 export function setComputerUseApprovalCallback(
   cb: (action: ComputerUseAction, args: ComputerUseArgs, summary: string) => boolean
 ): void {
@@ -538,7 +537,10 @@ export function assertActionAllowed(action: ComputerUseAction, args: ComputerUse
  * Send a request to cua-driver, reconnecting once if the session died
  * (exactly one retry, never loops).
  */
-async function sendWithReconnect(method: string, params: Record<string, unknown>): Promise<unknown> {
+async function sendWithReconnect(
+  method: string,
+  params: Record<string, unknown>
+): Promise<unknown> {
   try {
     return await sendRaw(method, params);
   } catch (error) {
@@ -673,9 +675,8 @@ export async function handleComputerUse(args: Record<string, unknown>): Promise<
     })) as { content?: Array<Record<string, unknown>> };
 
     const textBlock = result.content?.find((c) => c.type === "text");
-    const imageBlock = result.content?.find(
-      (c) => c.type === "image" || c.type === "image_url"
-    ) as { data?: string; mimeType?: string; image_url?: { url?: string } } | undefined;
+    const imageBlock = result.content?.find((c) => c.type === "image" || c.type === "image_url") as
+      { data?: string; mimeType?: string; image_url?: { url?: string } } | undefined;
 
     let screenshot: string | undefined;
     let screenshotMime = "image/png";

@@ -41,7 +41,10 @@ describe("parseRateLimitHeaders", () => {
 describe("rate-limit state tracking", () => {
   test("isRateLimited is true when remaining is 0", () => {
     const key = `test-exhausted-${Date.now()}`;
-    recordRateLimit(key, new Headers({ "x-ratelimit-remaining-requests": "0", "x-ratelimit-reset-requests": "60" }));
+    recordRateLimit(
+      key,
+      new Headers({ "x-ratelimit-remaining-requests": "0", "x-ratelimit-reset-requests": "60" })
+    );
     expect(isRateLimited(key)).toBe(true);
   });
 
@@ -54,14 +57,20 @@ describe("rate-limit state tracking", () => {
   test("isRateLimited clears after the reset window elapses", () => {
     const key = `test-reset-${Date.now()}`;
     // resetSeconds of 0 means resetAt is now (already elapsed).
-    recordRateLimit(key, new Headers({ "x-ratelimit-remaining-requests": "0", "x-ratelimit-reset-requests": "0" }));
+    recordRateLimit(
+      key,
+      new Headers({ "x-ratelimit-remaining-requests": "0", "x-ratelimit-reset-requests": "0" })
+    );
     expect(isRateLimited(key)).toBe(false);
   });
 
   test("msUntilReset is 0 when unknown or elapsed", () => {
     const key = `test-unknown-${Date.now()}`;
     expect(msUntilReset(key)).toBe(0);
-    recordRateLimit(key, new Headers({ "x-ratelimit-remaining-requests": "0", "x-ratelimit-reset-requests": "0" }));
+    recordRateLimit(
+      key,
+      new Headers({ "x-ratelimit-remaining-requests": "0", "x-ratelimit-reset-requests": "0" })
+    );
     expect(msUntilReset(key)).toBe(0);
   });
 });

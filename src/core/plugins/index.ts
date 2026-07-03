@@ -67,7 +67,10 @@ export function getPluginRoots(workspaceDir?: string): Array<{
   return [
     { path: getBundledPluginsRoot(), source: "bundled" },
     { path: getLocalPluginsRoot(), source: "local" },
-    ...getWorkspacePluginRoots(workspaceDir).map((path) => ({ path, source: "workspace" as const })),
+    ...getWorkspacePluginRoots(workspaceDir).map((path) => ({
+      path,
+      source: "workspace" as const,
+    })),
   ];
 }
 
@@ -170,14 +173,21 @@ export function validatePluginAtPath(pluginPath: string): PluginValidationResult
   if (typeof manifest.name !== "string" || !manifest.name.trim()) {
     errors.push("Plugin manifest requires a name");
   }
-  if (typeof manifest.version !== "string" || !/^\d+\.\d+\.\d+(?:[-+].*)?$/.test(manifest.version.trim())) {
+  if (
+    typeof manifest.version !== "string" ||
+    !/^\d+\.\d+\.\d+(?:[-+].*)?$/.test(manifest.version.trim())
+  ) {
     errors.push("Plugin manifest requires a semver-like version");
   }
   if (typeof manifest.description !== "string" || !manifest.description.trim()) {
     errors.push("Plugin manifest requires a description");
   }
 
-  const skillDirs = resolveContributionDirs(rootDir, manifest.contributions?.skills?.dirs, warnings);
+  const skillDirs = resolveContributionDirs(
+    rootDir,
+    manifest.contributions?.skills?.dirs,
+    warnings
+  );
   if (skillDirs.length === 0) {
     warnings.push("Plugin does not expose any existing skill directories");
   }
@@ -220,7 +230,10 @@ function pluginSourcePriority(source: CybaraPluginSource): number {
   return 1;
 }
 
-export function loadPluginFromRoot(rootDir: string, source: CybaraPluginSource): InstalledCybaraPlugin | null {
+export function loadPluginFromRoot(
+  rootDir: string,
+  source: CybaraPluginSource
+): InstalledCybaraPlugin | null {
   const validation = validatePluginAtPath(rootDir);
   if (!validation.valid || !validation.manifest) {
     return null;
@@ -261,7 +274,10 @@ export function listInstalledPlugins(options?: { workspaceDir?: string }): Insta
       const plugin = loadPluginFromRoot(pluginRoot, root.source);
       if (!plugin) continue;
       const existing = pluginsById.get(plugin.manifest.id);
-      if (!existing || pluginSourcePriority(plugin.source) >= pluginSourcePriority(existing.source)) {
+      if (
+        !existing ||
+        pluginSourcePriority(plugin.source) >= pluginSourcePriority(existing.source)
+      ) {
         pluginsById.set(plugin.manifest.id, plugin);
       }
     }

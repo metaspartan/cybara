@@ -222,11 +222,7 @@ export interface SystemPromptConfig {
 export type ToolApprovalDecision = "approve_once" | "approve_session" | "approve_always" | "deny";
 
 export type RouterStrategy =
-  | "weighted"
-  | "round_robin"
-  | "lowest_cost"
-  | "priority"
-  | "mixture_of_agents";
+  "weighted" | "round_robin" | "lowest_cost" | "priority" | "mixture_of_agents";
 
 export interface RouterRouteConfig {
   weight: number;
@@ -655,7 +651,9 @@ export function normalizeMemoryList(value: unknown): MemoryListResponse {
   });
   const files = normalizeArrayResponse(record.files, ["files"])
     .map((file, index) =>
-      typeof file === "string" ? file : readString(asRecord(file), ["file", "name"]) || `memory-file-${index + 1}`
+      typeof file === "string"
+        ? file
+        : readString(asRecord(file), ["file", "name"]) || `memory-file-${index + 1}`
     )
     .filter((file) => file.length > 0);
 
@@ -979,11 +977,9 @@ function normalizeProviders(value: unknown): ProviderSummary[] {
       record?.refresh_token ||
       record?.refreshToken
     );
-    const rawModels = (Array.isArray(record?.models)
-      ? record.models
-      : Array.isArray(info?.models)
-        ? info.models
-        : []) as unknown[];
+    const rawModels = (
+      Array.isArray(record?.models) ? record.models : Array.isArray(info?.models) ? info.models : []
+    ) as unknown[];
     const models = rawModels
       .map((entry) =>
         typeof entry === "string"
@@ -1064,7 +1060,10 @@ function normalizeRouterStrategy(value: unknown): RouterStrategy {
 function normalizeRouterConfig(value: unknown): RouterConfig {
   const record = asRecord(value);
   const moaMaxAgents = readNumber(record, ["moaMaxAgents", "moa_max_agents"]);
-  const moaAggregatorAgentId = readString(record, ["moaAggregatorAgentId", "moa_aggregator_agent_id"]);
+  const moaAggregatorAgentId = readString(record, [
+    "moaAggregatorAgentId",
+    "moa_aggregator_agent_id",
+  ]);
   return {
     enabled: record?.enabled === true,
     strategy: normalizeRouterStrategy(record?.strategy),

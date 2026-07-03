@@ -2,11 +2,7 @@
 import type { ToolCallLike, LiveActivityItem } from "@/lib/chatActivities";
 import { normalizeActivityTextForPhase } from "@/lib/chatActivities";
 import { isPlainRecord } from "./ideDiffHelpers";
-import type {
-  IdeProcessActivity,
-  IdePendingFileDiff,
-  IdeChatMessage,
-} from "./ideTypes";
+import type { IdeProcessActivity, IdePendingFileDiff, IdeChatMessage } from "./ideTypes";
 
 export function getIdeToolCallArgs(toolCall: ToolCallLike): Record<string, unknown> | null {
   if (isPlainRecord(toolCall.args)) return toolCall.args;

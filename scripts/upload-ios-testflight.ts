@@ -130,7 +130,9 @@ export async function uploadIpaToTestFlight(options: TestFlightUploadOptions): P
       }
 
       const delayMs = nextRetryDelayMs(attempt, retryBaseDelayMs);
-      console.warn(`Transient TestFlight upload failure; retrying in ${Math.round(delayMs / 1000)}s.`);
+      console.warn(
+        `Transient TestFlight upload failure; retrying in ${Math.round(delayMs / 1000)}s.`
+      );
       await sleepFn(delayMs);
     }
   } finally {
@@ -165,8 +167,7 @@ if (import.meta.main) {
     apiKeyId: requireEnv("ASC_KEY_ID"),
     apiIssuerId: requireEnv("ASC_ISSUER_ID"),
     attempts: parsePositiveInt(process.env.TESTFLIGHT_UPLOAD_ATTEMPTS, DEFAULT_ATTEMPTS),
-    retryBaseDelayMs:
-      parsePositiveInt(process.env.TESTFLIGHT_UPLOAD_RETRY_BASE_SECONDS, 20) * 1000,
+    retryBaseDelayMs: parsePositiveInt(process.env.TESTFLIGHT_UPLOAD_RETRY_BASE_SECONDS, 20) * 1000,
     warn: (message) => console.warn(`::warning::${message}`),
   }).catch((error) => {
     console.error(error instanceof Error ? error.message : error);

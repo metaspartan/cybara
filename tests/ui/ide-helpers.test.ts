@@ -7,7 +7,12 @@ import {
   reverseUnifiedDiff,
   truncateDiffPreview,
 } from "../../ui/src/pages/ide/ideDiffHelpers";
-import { formatDurationMs, formatSize, isMarkdownExtension, scoreQuickOpenResult } from "../../ui/src/pages/ide/ideUtils";
+import {
+  formatDurationMs,
+  formatSize,
+  isMarkdownExtension,
+  scoreQuickOpenResult,
+} from "../../ui/src/pages/ide/ideUtils";
 
 describe("ideDiffHelpers (extracted pure helpers)", () => {
   test("isPlainRecord distinguishes plain objects", () => {

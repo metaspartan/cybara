@@ -63,7 +63,12 @@ import {
   getDefaultSystemPrompt,
 } from "./system-prompt";
 import { getSandboxPromptInfo } from "./sandbox";
-import { broadcastStatus, broadcastTokenDelta, type AgentStatus, type StatusPayload } from "./status";
+import {
+  broadcastStatus,
+  broadcastTokenDelta,
+  type AgentStatus,
+  type StatusPayload,
+} from "./status";
 import { homedir } from "os";
 import { loadAllSkills, createEligibilityContext, filterEligibleSkills } from "./skills";
 import { emitAgentHook, type AgentHookContext } from "./agent-hooks";
@@ -244,7 +249,8 @@ const CONVERSATION_KEEP_RECENT_MESSAGES = 16;
 const CONVERSATION_MAX_MESSAGES = 60;
 const CONVERSATION_COMPACT_TRIGGER_RATIO = 0.55;
 const CONVERSATION_SUMMARY_MAX_CHARS = 4_000;
-const CONVERSATION_SUMMARY_PREFIX = "[Earlier conversation summary — prior turns condensed to save context]";
+const CONVERSATION_SUMMARY_PREFIX =
+  "[Earlier conversation summary — prior turns condensed to save context]";
 const MAX_AGENTIC_CONFIGURED_ITERATIONS = 10000;
 const MAX_AGENTIC_MAX_RUNTIME_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_TOOL_LOOP_WARNING_THRESHOLD = 10;
@@ -1028,7 +1034,11 @@ class AgentManager {
     if (lower.includes("insufficient_quota") || lower.includes("quota")) {
       return "Provider quota/billing limit reached. Update billing or use a different provider.";
     }
-    if (lower.includes("402") || lower.includes("membership") || lower.includes("payment required")) {
+    if (
+      lower.includes("402") ||
+      lower.includes("membership") ||
+      lower.includes("payment required")
+    ) {
       return "Provider billing/membership inactive (402). Check your provider account's subscription or credits.";
     }
     if (lower.includes("401")) {
@@ -2468,8 +2478,7 @@ class AgentManager {
     const baseUrl = providerInfo.base_url || this.getProviderBaseUrl(providerConfig);
     const auth = providerInfo.api_key || providerInfo.access_token;
     const providerDefinition = providerCatalog[providerConfig as ProviderType] as
-      | { api?: string; headers?: Record<string, string>; authType?: string }
-      | undefined;
+      { api?: string; headers?: Record<string, string>; authType?: string } | undefined;
     const providerAuthType = providerDefinition?.authType || "api_key";
     const requiresTokenAuth = providerAuthType !== "none" && providerAuthType !== "aws-sdk";
 
@@ -3924,11 +3933,7 @@ class AgentManager {
         throw new Error(finalError);
       }
 
-      const parsed = await this.parseOpenAICodexTurnResponse(
-        response,
-        sessionId,
-        agentId
-      );
+      const parsed = await this.parseOpenAICodexTurnResponse(response, sessionId, agentId);
       return { ...parsed, resolvedModel: candidate };
     }
 
@@ -4721,7 +4726,11 @@ class AgentManager {
           markCredentialCooldown(poolName, activeCredential, "rate_limit");
           // Also feed the model router's cooldown + circuit breaker.
           const retryAfter = parseInt(response.headers.get("retry-after") || "60", 10) * 1000;
-          try { recordRouterRateLimit("anthropic", retryAfter || 60_000); } catch { /* best-effort */ }
+          try {
+            recordRouterRateLimit("anthropic", retryAfter || 60_000);
+          } catch {
+            /* best-effort */
+          }
         }
         const rotated = !vertex && poolSize(poolName) > 0 ? acquireCredential(poolName) : null;
         if (rotated) {
@@ -4823,14 +4832,22 @@ class AgentManager {
       const iterationToolCalls: AgentToolCallResult[] = [];
 
       const preStarted = new Map<string, ReturnType<typeof this.executeToolWithHooks>>();
-      if (canRunToolsInParallel(toolUseBlocks.map((b) => (typeof b.name === "string" ? b.name : "")))) {
+      if (
+        canRunToolsInParallel(toolUseBlocks.map((b) => (typeof b.name === "string" ? b.name : "")))
+      ) {
         for (const toolUse of toolUseBlocks) {
           const id = typeof toolUse.id === "string" ? toolUse.id : "";
           const name = typeof toolUse.name === "string" ? toolUse.name : "";
           if (id && name) {
             preStarted.set(
               id,
-              this.executeToolWithHooks(name, toolUse.input || {}, allowedToolNames, toolContext, hookContext)
+              this.executeToolWithHooks(
+                name,
+                toolUse.input || {},
+                allowedToolNames,
+                toolContext,
+                hookContext
+              )
             );
           }
         }

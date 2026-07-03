@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState } from "react";
 import {
   Clock,
   Plus,
@@ -17,15 +17,15 @@ import {
   ExternalLink,
   CheckCircle,
   XCircle,
-  Loader2
-} from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
-import { Badge } from '../components/ui/Badge';
-import { Modal } from '../components/ui/Modal';
-import { ConfirmDialog } from '../components/ui/ConfirmDialog';
-import { Select, Textarea } from '../components/ui/Input';
+  Loader2,
+} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/Card";
+import { Button } from "../components/ui/Button";
+import { Input } from "../components/ui/Input";
+import { Badge } from "../components/ui/Badge";
+import { Modal } from "../components/ui/Modal";
+import { ConfirmDialog } from "../components/ui/ConfirmDialog";
+import { Select, Textarea } from "../components/ui/Input";
 import {
   useTasks,
   useAgents,
@@ -33,19 +33,19 @@ import {
   useDeleteTask,
   useStartTask,
   useStopTask,
-  useTriggerTask
-} from '../hooks/useApi';
-import { useUIStore } from '../stores/uiStore';
-import { PageLayout } from '@/components/layout';
-import type { Task, Agent } from '../types';
-import { useTaskNotifications } from '../hooks/useNotifications';
-import { useQuery } from '@tanstack/react-query';
-import { tasksApi } from '@/lib/api';
+  useTriggerTask,
+} from "../hooks/useApi";
+import { useUIStore } from "../stores/uiStore";
+import { PageLayout } from "@/components/layout";
+import type { Task, Agent } from "../types";
+import { useTaskNotifications } from "../hooks/useNotifications";
+import { useQuery } from "@tanstack/react-query";
+import { tasksApi } from "@/lib/api";
 
 interface TaskRun {
   id: string;
   task_id: string;
-  status: 'running' | 'completed' | 'failed';
+  status: "running" | "completed" | "failed";
   started_at: string;
   completed_at?: string;
   session_id?: string;
@@ -54,17 +54,17 @@ interface TaskRun {
 }
 
 const schedulePresets = [
-  { value: '*/5 * * * *', label: 'Every 5 minutes' },
-  { value: '*/15 * * * *', label: 'Every 15 minutes' },
-  { value: '0 * * * *', label: 'Every hour' },
-  { value: '0 */6 * * *', label: 'Every 6 hours' },
-  { value: '0 0 * * *', label: 'Daily at midnight' },
-  { value: '0 9 * * 1', label: 'Weekly (Monday 9am)' },
-  { value: 'custom', label: 'Custom (Cron)' },
+  { value: "*/5 * * * *", label: "Every 5 minutes" },
+  { value: "*/15 * * * *", label: "Every 15 minutes" },
+  { value: "0 * * * *", label: "Every hour" },
+  { value: "0 */6 * * *", label: "Every 6 hours" },
+  { value: "0 0 * * *", label: "Daily at midnight" },
+  { value: "0 9 * * 1", label: "Weekly (Monday 9am)" },
+  { value: "custom", label: "Custom (Cron)" },
 ];
 
 export function Tasks() {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [deletingTask, setDeletingTask] = useState<Task | null>(null);
@@ -83,7 +83,7 @@ export function Tasks() {
   const triggerTask = useTriggerTask();
 
   const { data: taskRuns, isLoading: runsLoading } = useQuery<TaskRun[]>({
-    queryKey: ['taskRuns', expandedTaskId],
+    queryKey: ["taskRuns", expandedTaskId],
     queryFn: async () => {
       if (!expandedTaskId) return [];
       const result = await tasksApi.getRuns(expandedTaskId);
@@ -94,30 +94,31 @@ export function Tasks() {
     refetchInterval: 5000, // Auto-refresh every 5 seconds when expanded
   });
 
-  const filteredTasks = tasks?.filter(task =>
-    task.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    task.action.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredTasks = tasks?.filter(
+    (task) =>
+      task.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      task.action.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const handleCreate = async (formData: FormData) => {
     try {
-      let schedule = formData.get('schedule_preset') as string;
-      if (schedule === 'custom') {
-        schedule = formData.get('schedule_custom') as string;
+      let schedule = formData.get("schedule_preset") as string;
+      if (schedule === "custom") {
+        schedule = formData.get("schedule_custom") as string;
       }
 
       await createTask.mutateAsync({
-        name: formData.get('name') as string,
-        description: formData.get('description') as string,
+        name: formData.get("name") as string,
+        description: formData.get("description") as string,
         schedule,
-        agent_id: formData.get('agent_id') as string,
-        action: formData.get('action') as string,
+        agent_id: formData.get("agent_id") as string,
+        action: formData.get("action") as string,
         enabled: true,
       });
-      addToast('success', 'Task created successfully');
+      addToast("success", "Task created successfully");
       setIsCreateModalOpen(false);
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to create task');
+      addToast("error", error instanceof Error ? error.message : "Failed to create task");
     }
   };
 
@@ -125,10 +126,10 @@ export function Tasks() {
     if (!deletingTask) return;
     try {
       await deleteTask.mutateAsync(deletingTask.id);
-      addToast('success', 'Task deleted successfully');
+      addToast("success", "Task deleted successfully");
       setDeletingTask(null);
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to delete task');
+      addToast("error", error instanceof Error ? error.message : "Failed to delete task");
     }
   };
 
@@ -136,32 +137,32 @@ export function Tasks() {
     try {
       if (task.enabled) {
         await stopTask.mutateAsync(task.id);
-        addToast('success', 'Task stopped');
+        addToast("success", "Task stopped");
       } else {
         await startTask.mutateAsync(task.id);
-        addToast('success', 'Task started');
+        addToast("success", "Task started");
       }
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to toggle task');
+      addToast("error", error instanceof Error ? error.message : "Failed to toggle task");
     }
   };
 
   const handleTrigger = async (task: Task) => {
     try {
       await triggerTask.mutateAsync(task.id);
-      addToast('success', 'Task triggered manually');
+      addToast("success", "Task triggered manually");
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to trigger task');
+      addToast("error", error instanceof Error ? error.message : "Failed to trigger task");
     }
   };
 
   const formatSchedule = (schedule: string) => {
-    const preset = schedulePresets.find(p => p.value === schedule);
+    const preset = schedulePresets.find((p) => p.value === schedule);
     return preset?.label || schedule;
   };
 
   const formatLastRun = (date: string | undefined) => {
-    if (!date) return 'Never';
+    if (!date) return "Never";
     return new Date(date).toLocaleString();
   };
 
@@ -172,13 +173,19 @@ export function Tasks() {
       actions={
         <div className="flex items-center gap-3">
           <Button
-            variant={permission === 'granted' ? 'secondary' : 'ghost'}
+            variant={permission === "granted" ? "secondary" : "ghost"}
             size="sm"
-            leftIcon={permission === 'granted' ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+            leftIcon={
+              permission === "granted" ? (
+                <Bell className="w-4 h-4" />
+              ) : (
+                <BellOff className="w-4 h-4" />
+              )
+            }
             onClick={requestPermission}
-            title={permission === 'granted' ? 'Notifications enabled' : 'Enable notifications'}
+            title={permission === "granted" ? "Notifications enabled" : "Enable notifications"}
           >
-            {permission === 'granted' ? 'Notifications On' : 'Enable Notifications'}
+            {permission === "granted" ? "Notifications On" : "Enable Notifications"}
           </Button>
           <Button
             leftIcon={<Plus className="w-4 h-4" />}
@@ -235,8 +242,8 @@ export function Tasks() {
                       <div>
                         <div className="flex items-center gap-2">
                           <h3 className="font-medium text-white">{task.name}</h3>
-                          <Badge variant={task.enabled ? 'success' : 'default'} size="sm">
-                            {task.enabled ? 'Active' : 'Paused'}
+                          <Badge variant={task.enabled ? "success" : "default"} size="sm">
+                            {task.enabled ? "Active" : "Paused"}
                           </Badge>
                         </div>
                         {task.description && (
@@ -268,16 +275,30 @@ export function Tasks() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        leftIcon={task.enabled ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                        leftIcon={
+                          task.enabled ? (
+                            <Square className="w-4 h-4" />
+                          ) : (
+                            <Play className="w-4 h-4" />
+                          )
+                        }
                         onClick={() => handleToggle(task)}
                       >
-                        {task.enabled ? 'Pause' : 'Resume'}
+                        {task.enabled ? "Pause" : "Resume"}
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
-                        leftIcon={expandedTaskId === task.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                        onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
+                        leftIcon={
+                          expandedTaskId === task.id ? (
+                            <ChevronUp className="w-4 h-4" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4" />
+                          )
+                        }
+                        onClick={() =>
+                          setExpandedTaskId(expandedTaskId === task.id ? null : task.id)
+                        }
                       >
                         History
                       </Button>
@@ -307,9 +328,9 @@ export function Tasks() {
                               key={run.id}
                               className="flex items-start gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/8 transition-colors"
                             >
-                              {run.status === 'completed' ? (
+                              {run.status === "completed" ? (
                                 <CheckCircle className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
-                              ) : run.status === 'failed' ? (
+                              ) : run.status === "failed" ? (
                                 <XCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
                               ) : (
                                 <Loader2 className="w-5 h-5 text-amber-400 animate-spin flex-shrink-0 mt-0.5" />
@@ -317,7 +338,13 @@ export function Tasks() {
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 mb-1">
                                   <Badge
-                                    variant={run.status === 'completed' ? 'success' : run.status === 'failed' ? 'error' : 'default'}
+                                    variant={
+                                      run.status === "completed"
+                                        ? "success"
+                                        : run.status === "failed"
+                                          ? "error"
+                                          : "default"
+                                    }
                                     size="sm"
                                   >
                                     {run.status}
@@ -327,17 +354,25 @@ export function Tasks() {
                                   </span>
                                   {run.completed_at && (
                                     <span className="text-xs text-gray-500">
-                                      ({Math.round((new Date(run.completed_at).getTime() - new Date(run.started_at).getTime()) / 1000)}s)
+                                      (
+                                      {Math.round(
+                                        (new Date(run.completed_at).getTime() -
+                                          new Date(run.started_at).getTime()) /
+                                          1000
+                                      )}
+                                      s)
                                     </span>
                                   )}
                                 </div>
                                 {run.result_preview && (
-                                  <p className="text-sm text-gray-300 line-clamp-2">{run.result_preview}</p>
+                                  <p className="text-sm text-gray-300 line-clamp-2">
+                                    {run.result_preview}
+                                  </p>
                                 )}
                                 {run.error && (
                                   <p className="text-sm text-red-400 line-clamp-2">{run.error}</p>
                                 )}
-                                {run.session_id && run.status === 'completed' && (
+                                {run.session_id && run.status === "completed" && (
                                   <a
                                     href={`/chat?session=${run.session_id}`}
                                     className="inline-flex items-center gap-2 mt-3 px-3 py-1.5 text-sm font-medium rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 hover:text-blue-300 transition-colors"
@@ -346,7 +381,7 @@ export function Tasks() {
                                     View Full Agent Response
                                   </a>
                                 )}
-                                {run.session_id && run.status === 'running' && (
+                                {run.session_id && run.status === "running" && (
                                   <a
                                     href={`/chat?session=${run.session_id}`}
                                     className="inline-flex items-center gap-2 mt-3 px-3 py-1.5 text-sm font-medium rounded-lg bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 hover:text-amber-300 transition-colors"
@@ -360,7 +395,9 @@ export function Tasks() {
                           ))}
                         </div>
                       ) : (
-                        <p className="text-sm text-gray-500">No runs yet. Click "Run Now" to execute this task.</p>
+                        <p className="text-sm text-gray-500">
+                          No runs yet. Click "Run Now" to execute this task.
+                        </p>
                       )}
                     </div>
                   )}
@@ -404,24 +441,19 @@ interface TaskModalProps {
 }
 
 function TaskModal({ isOpen, onClose, onSubmit, title, agents, isLoading }: TaskModalProps) {
-  const [scheduleType, setScheduleType] = useState('preset');
+  const [scheduleType, setScheduleType] = useState("preset");
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     onSubmit(new FormData(e.currentTarget));
   };
 
-  const agentOptions = agents.map(a => ({ value: a.id, label: a.name }));
+  const agentOptions = agents.map((a) => ({ value: a.id, label: a.name }));
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} size="lg">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Input
-          name="name"
-          label="Task Name"
-          placeholder="Daily Report Generation"
-          required
-        />
+        <Input name="name" label="Task Name" placeholder="Daily Report Generation" required />
 
         <Textarea
           name="description"
@@ -430,12 +462,7 @@ function TaskModal({ isOpen, onClose, onSubmit, title, agents, isLoading }: Task
           rows={2}
         />
 
-        <Select
-          name="agent_id"
-          label="Agent"
-          options={agentOptions}
-          required
-        />
+        <Select name="agent_id" label="Agent" options={agentOptions} required />
 
         <Textarea
           name="action"
@@ -452,10 +479,10 @@ function TaskModal({ isOpen, onClose, onSubmit, title, agents, isLoading }: Task
             name="schedule_preset"
             options={schedulePresets}
             defaultValue="0 * * * *"
-            onChange={(value) => setScheduleType(value === 'custom' ? 'custom' : 'preset')}
+            onChange={(value) => setScheduleType(value === "custom" ? "custom" : "preset")}
           />
 
-          {scheduleType === 'custom' && (
+          {scheduleType === "custom" && (
             <Input
               name="schedule_custom"
               placeholder="*/5 * * * *"

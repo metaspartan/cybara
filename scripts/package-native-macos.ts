@@ -245,12 +245,7 @@ async function readSwiftReleaseBinPath(): Promise<string> {
 const ENTITLEMENTS_PATH = join(APP_PACKAGE_PATH, "Cybara.entitlements");
 
 const MACH_O_MAGICS = new Set([
-  0xfeedface,
-  0xcefaedfe,
-  0xfeedfacf,
-  0xcffaedfe,
-  0xcafebabe,
-  0xbebafeca,
+  0xfeedface, 0xcefaedfe, 0xfeedfacf, 0xcffaedfe, 0xcafebabe, 0xbebafeca,
 ]);
 
 export function isMachOFile(path: string): boolean {
@@ -325,7 +320,10 @@ interface ProcessResult {
   stderr: string;
 }
 
-async function runProcess(command: string[], options?: { allowFailure?: boolean }): Promise<ProcessResult> {
+async function runProcess(
+  command: string[],
+  options?: { allowFailure?: boolean }
+): Promise<ProcessResult> {
   const process = Bun.spawn(command, {
     stdout: "pipe",
     stderr: "pipe",
@@ -358,7 +356,9 @@ function parseJSONRecord(raw: string, label: string): Record<string, unknown> {
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       return parsed as Record<string, unknown>;
     }
-  } catch {}
+  } catch {
+    // Keep the caller-facing error focused on the invalid notarytool payload.
+  }
   throw new Error(`Unable to parse ${label} JSON: ${raw.trim() || "<empty>"}`);
 }
 
@@ -433,7 +433,8 @@ async function notarizeBundle(
     ]);
     const infoJSON = parseJSONRecord(info.stdout, "notary info");
     const status = stringField(infoJSON, "status") ?? "Unknown";
-    const summary = stringField(infoJSON, "statusSummary") ?? stringField(infoJSON, "message") ?? "";
+    const summary =
+      stringField(infoJSON, "statusSummary") ?? stringField(infoJSON, "message") ?? "";
     lastStatus = summary ? `${status}: ${summary}` : status;
     console.log(`   notary ${submissionId}: ${lastStatus}`);
 

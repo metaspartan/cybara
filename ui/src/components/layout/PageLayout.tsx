@@ -1,5 +1,5 @@
-import { type ReactNode } from 'react';
-import { cn } from '@/lib/utils';
+import { type ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
 interface PageLayoutProps {
   children: ReactNode;
@@ -23,22 +23,14 @@ export function PageLayout({ children, title, subtitle, actions, noPadding }: Pa
                 </span>
               )}
             </div>
-            {actions && (
-              <div className="flex items-center gap-2 flex-shrink-0">
-                {actions}
-              </div>
-            )}
+            {actions && <div className="flex items-center gap-2 flex-shrink-0">{actions}</div>}
           </div>
         </div>
       </header>
 
-      <main className={cn(
-        "flex-1 flex flex-col",
-        !noPadding && "px-4 sm:px-6 py-4 sm:py-6"
-      )}>
+      <main className={cn("flex-1 flex flex-col", !noPadding && "px-4 sm:px-6 py-4 sm:py-6")}>
         {children}
       </main>
     </div>
   );
 }
-

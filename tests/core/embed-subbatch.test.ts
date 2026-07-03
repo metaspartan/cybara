@@ -27,7 +27,14 @@ describe("embedInSubBatches", () => {
 
   test("small inputs make a single call", async () => {
     let calls = 0;
-    await embedInSubBatches(["1", "2"], (b) => { calls += 1; return fakeEmbed(b); }, { batchSize: 96 });
+    await embedInSubBatches(
+      ["1", "2"],
+      (b) => {
+        calls += 1;
+        return fakeEmbed(b);
+      },
+      { batchSize: 96 }
+    );
     expect(calls).toBe(1);
   });
 

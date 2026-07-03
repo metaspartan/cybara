@@ -144,7 +144,15 @@ describe("CLI auth header forwarding", () => {
   });
 
   test("provider direct-fetch commands include authorization header", async () => {
-    const add = await runCli(["provider", "add", "openai", "--name", "Auth Test Provider", "--key", "sk"]);
+    const add = await runCli([
+      "provider",
+      "add",
+      "openai",
+      "--name",
+      "Auth Test Provider",
+      "--key",
+      "sk",
+    ]);
     expect(add.exitCode).toBe(0);
     expect(add.stdout).toContain("Added provider: Auth Test Provider");
 
@@ -198,6 +206,8 @@ describe("CLI auth header forwarding", () => {
     const cliSource = readFileSync(cliPath, "utf8");
 
     expect(cliSource).toContain("const resp = await fetch(`${API_BASE}/api/chat`, {");
-    expect(cliSource).toContain('headers: withCliAuthHeaders({ "Content-Type": "application/json" }),');
+    expect(cliSource).toContain(
+      'headers: withCliAuthHeaders({ "Content-Type": "application/json" }),'
+    );
   });
 });

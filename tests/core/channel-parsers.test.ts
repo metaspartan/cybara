@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { parseIrcLine, parsePrivmsg, nickFromPrefix, isPing } from "../../src/core/channels/irc-protocol";
+import {
+  parseIrcLine,
+  parsePrivmsg,
+  nickFromPrefix,
+  isPing,
+} from "../../src/core/channels/irc-protocol";
 import { parseNtfyLine } from "../../src/core/channels/adapters/ntfy";
 import { parseMattermostEvent, websocketUrl } from "../../src/core/channels/mattermost-events";
 

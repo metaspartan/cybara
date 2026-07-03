@@ -1,4 +1,10 @@
-import type { ChannelAdapter, ToolCallInfo, MessageHandler, WebhookPayload, WebhookResult } from "../types";
+import type {
+  ChannelAdapter,
+  ToolCallInfo,
+  MessageHandler,
+  WebhookPayload,
+  WebhookResult,
+} from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import {
@@ -52,7 +58,9 @@ export class FeishuAdapter implements ChannelAdapter {
       appId,
       appSecret,
       verificationToken:
-        typeof config.verification_token === "string" ? config.verification_token.trim() : undefined,
+        typeof config.verification_token === "string"
+          ? config.verification_token.trim()
+          : undefined,
       encryptKey: typeof config.encrypt_key === "string" ? config.encrypt_key.trim() : undefined,
       domain,
     });
@@ -95,21 +103,18 @@ export class FeishuAdapter implements ChannelAdapter {
     if (!cfg) return false;
     const token = await this.getTenantToken(channelId);
     if (!token) return false;
-    const res = await fetch(
-      `${cfg.domain}/open-apis/im/v1/messages?receive_id_type=chat_id`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          receive_id: String(chatId),
-          msg_type: "text",
-          content: JSON.stringify({ text }),
-        }),
-      }
-    );
+    const res = await fetch(`${cfg.domain}/open-apis/im/v1/messages?receive_id_type=chat_id`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        receive_id: String(chatId),
+        msg_type: "text",
+        content: JSON.stringify({ text }),
+      }),
+    });
     return res.ok;
   }
 

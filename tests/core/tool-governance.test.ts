@@ -1,10 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { PARALLEL_SAFE_TOOLS } from "../../src/core/llm/parallel-tools";
-import {
-  getDangerousToolNames,
-  isDangerousTool,
-  toolSchemas,
-} from "../../src/core/tools/index";
+import { getDangerousToolNames, isDangerousTool, toolSchemas } from "../../src/core/tools/index";
 
 describe("tool governance invariants", () => {
   const parallelSafePermissions = new Set([

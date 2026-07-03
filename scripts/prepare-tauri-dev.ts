@@ -68,7 +68,9 @@ async function killPortListeners(port: number): Promise<void> {
   for (const pid of pids) {
     try {
       process.kill(pid, "SIGTERM");
-    } catch {}
+    } catch {
+      // The process may have exited between lsof and kill.
+    }
   }
 
   await sleep(500);
@@ -77,7 +79,9 @@ async function killPortListeners(port: number): Promise<void> {
     if (!isPidAlive(pid)) continue;
     try {
       process.kill(pid, "SIGKILL");
-    } catch {}
+    } catch {
+      // The process may have exited between the liveness check and kill.
+    }
   }
 
   await sleep(100);

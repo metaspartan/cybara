@@ -22,11 +22,11 @@ export async function handleCalc(args: Record<string, unknown>): Promise<unknown
   try {
     // Use Function constructor for safe evaluation in a sandboxed way
     const result = new Function(`return ${safeExpression}`)();
-    
+
     if (typeof result !== "number" || !isFinite(result)) {
       throw new Error("Invalid result - expression must produce a finite number");
     }
-    
+
     return { result, expression };
   } catch (e) {
     throw new Error(`Failed to evaluate expression: ${(e as Error).message}`);

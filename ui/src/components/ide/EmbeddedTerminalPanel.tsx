@@ -40,7 +40,11 @@ export function EmbeddedTerminalPanel({
   const [capability, setCapability] = useState<IdeTerminalCapability>("checking");
   const [terminalError, setTerminalError] = useState<string | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const activeTermRef = useRef<{ term: XTerminal; fitAddon: FitAddon; ws: WebSocket | null } | null>(null);
+  const activeTermRef = useRef<{
+    term: XTerminal;
+    fitAddon: FitAddon;
+    ws: WebSocket | null;
+  } | null>(null);
   const previousCreateRequestRef = useRef<number>(createRequestToken);
   const hasAutoCreatedRef = useRef(false);
   const sessionsRef = useRef<TerminalSession[]>([]);
@@ -184,28 +188,31 @@ export function EmbeddedTerminalPanel({
     setTerminalError(null);
   }, [activeSessionId, capability, fitActiveTerminal, workspacePath]);
 
-  const removeSession = useCallback((id: string) => {
-    setSessions((previous) => {
-      const session = previous.find((item) => item.id === id);
-      if (session) {
-        try {
-          session.ws?.close();
-        } catch {
-          // Ignore close errors.
+  const removeSession = useCallback(
+    (id: string) => {
+      setSessions((previous) => {
+        const session = previous.find((item) => item.id === id);
+        if (session) {
+          try {
+            session.ws?.close();
+          } catch {
+            // Ignore close errors.
+          }
+          try {
+            session.term?.dispose();
+          } catch {
+            // Ignore dispose errors.
+          }
         }
-        try {
-          session.term?.dispose();
-        } catch {
-          // Ignore dispose errors.
+        const next = previous.filter((item) => item.id !== id);
+        if (activeSessionId === id) {
+          setActiveSessionId(next[next.length - 1]?.id || null);
         }
-      }
-      const next = previous.filter((item) => item.id !== id);
-      if (activeSessionId === id) {
-        setActiveSessionId(next[next.length - 1]?.id || null);
-      }
-      return next;
-    });
-  }, [activeSessionId]);
+        return next;
+      });
+    },
+    [activeSessionId]
+  );
 
   useEffect(() => {
     if (createRequestToken === previousCreateRequestRef.current) return;
@@ -343,8 +350,8 @@ export function EmbeddedTerminalPanel({
                 <span className="font-medium">Terminal access is disabled</span>
               </div>
               <p className="text-amber-200/90">
-                Enable terminal with <code>--enable-terminal</code> or <code>terminal_enabled=true</code> in
-                config.
+                Enable terminal with <code>--enable-terminal</code> or{" "}
+                <code>terminal_enabled=true</code> in config.
               </p>
               {terminalError && <p className="mt-2 text-amber-100/80">{terminalError}</p>}
             </div>

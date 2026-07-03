@@ -1,4 +1,10 @@
-import type { ChannelAdapter, ToolCallInfo, MessageHandler, WebhookPayload, WebhookResult } from "../types";
+import type {
+  ChannelAdapter,
+  ToolCallInfo,
+  MessageHandler,
+  WebhookPayload,
+  WebhookResult,
+} from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { parseMsTeamsActivity, verifyMsTeamsSignature } from "../msteams-events";
@@ -27,12 +33,15 @@ export class MsTeamsAdapter implements ChannelAdapter {
   }
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
-    const securityToken = typeof config.security_token === "string" ? config.security_token.trim() : "";
+    const securityToken =
+      typeof config.security_token === "string" ? config.security_token.trim() : "";
     if (!securityToken) throw new Error("Microsoft Teams: security_token is required");
     this.configs.set(channelId, {
       securityToken,
       incomingWebhookUrl:
-        typeof config.incoming_webhook_url === "string" ? config.incoming_webhook_url.trim() : undefined,
+        typeof config.incoming_webhook_url === "string"
+          ? config.incoming_webhook_url.trim()
+          : undefined,
     });
     this.running.add(channelId);
     console.log(`[MsTeams] ready for channel ${channelId}`);
@@ -77,7 +86,12 @@ export class MsTeamsAdapter implements ChannelAdapter {
     const activity = parseMsTeamsActivity(payload.body);
     if (!activity) return { status: 200, body: {} };
 
-    const reply = await this.dispatch(channelId, activity.conversationId, activity.sender, activity.text);
+    const reply = await this.dispatch(
+      channelId,
+      activity.conversationId,
+      activity.sender,
+      activity.text
+    );
     return { status: 200, body: { type: "message", text: reply || "" } };
   }
 

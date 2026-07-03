@@ -42,7 +42,9 @@ export function createAcpDispatcher(deps: AcpDeps): (line: string) => Promise<vo
         case "session/new": {
           const agentId = deps.resolveAgentId();
           if (!agentId) {
-            deps.write(jsonRpcError(req.id, -32603, "No agent is configured to serve ACP sessions"));
+            deps.write(
+              jsonRpcError(req.id, -32603, "No agent is configured to serve ACP sessions")
+            );
             return;
           }
           const sessionId = newSessionId();
@@ -83,7 +85,11 @@ export function createAcpDispatcher(deps: AcpDeps): (line: string) => Promise<vo
     } catch (error) {
       if (!notification) {
         deps.write(
-          jsonRpcError(req.id ?? null, -32603, error instanceof Error ? error.message : "internal error")
+          jsonRpcError(
+            req.id ?? null,
+            -32603,
+            error instanceof Error ? error.message : "internal error"
+          )
         );
       }
     }

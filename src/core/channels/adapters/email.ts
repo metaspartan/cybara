@@ -54,11 +54,7 @@ export class EmailAdapter implements ChannelAdapter {
    * Send an email via raw SMTP (EHLO/AUTH LOGIN/MAIL FROM/RCPT TO/DATA).
    * `chatId` is the recipient address. Minimal but dependency-free.
    */
-  async sendMessage(
-    channelId: string,
-    chatId: string | number,
-    text: string
-  ): Promise<boolean> {
+  async sendMessage(channelId: string, chatId: string | number, text: string): Promise<boolean> {
     const cfg = this.configs.get(channelId);
     if (!cfg?.smtp_host || !cfg?.username || !cfg?.password || !cfg?.from_address) {
       console.warn("[Email] Missing SMTP credentials; cannot send.");

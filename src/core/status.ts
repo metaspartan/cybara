@@ -1,13 +1,7 @@
 import { createLogger } from "./logger";
 
 export type AgentStatus =
-  | "idle"
-  | "thinking"
-  | "tool_executing"
-  | "tool_completed"
-  | "generating"
-  | "compacting"
-  | "error";
+  "idle" | "thinking" | "tool_executing" | "tool_completed" | "generating" | "compacting" | "error";
 
 export type ToolStatusPhase = "start" | "result" | "error";
 
@@ -214,7 +208,9 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
   const phase = statusToPhase(payload.status);
   const rawActivityText = sanitizeActivityText(payload.detail);
   const activityText =
-    phase && rawActivityText ? normalizeActivityTextForPhase(rawActivityText, phase) : rawActivityText;
+    phase && rawActivityText
+      ? normalizeActivityTextForPhase(rawActivityText, phase)
+      : rawActivityText;
   const toolName = normalizeToolName(payload.toolName);
   const toolCallId = normalizeToolCallId(payload.toolCallId);
   const isThoughtStatus = payload.status === "thinking" || payload.status === "generating";

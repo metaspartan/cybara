@@ -1,4 +1,10 @@
-import type { ChannelAdapter, ToolCallInfo, MessageHandler, WebhookPayload, WebhookResult } from "../types";
+import type {
+  ChannelAdapter,
+  ToolCallInfo,
+  MessageHandler,
+  WebhookPayload,
+  WebhookResult,
+} from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { parseDingTalkMessage, verifyDingTalkSignature } from "../dingtalk-events";

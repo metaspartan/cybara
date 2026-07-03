@@ -47,11 +47,7 @@ export function buildCompactedConversation<T extends WindowMessage>(
   const summaryBody = `${prefix}\n${summaryText}`;
   if (recent[0]?.role === "user") {
     const [first, ...rest] = recent;
-    return [
-      ...system,
-      { ...first, content: `${summaryBody}\n\n---\n\n${first.content}` },
-      ...rest,
-    ];
+    return [...system, { ...first, content: `${summaryBody}\n\n---\n\n${first.content}` }, ...rest];
   }
   return [...system, { role: "user", content: summaryBody } as T, ...recent];
 }

@@ -173,10 +173,7 @@ export function parseModelGeneratedSessionTitle(modelOutput?: string | null): st
       line
         .replace(/^['"`]+|['"`]+$/g, "")
         .replace(/^(?:title|session title|chat title|suggested title)\s*:\s*/i, "")
-        .replace(
-          /^(?:the\s+)?(?:best\s+)?(?:session|chat)?\s*title\s*(?:is|would be)\s*/i,
-          ""
-        )
+        .replace(/^(?:the\s+)?(?:best\s+)?(?:session|chat)?\s*title\s*(?:is|would be)\s*/i, "")
         .trim()
     )
     .filter(Boolean);

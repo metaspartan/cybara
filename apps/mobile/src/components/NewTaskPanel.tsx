@@ -108,7 +108,10 @@ export function NewTaskPanel({
                 selected && [styles.agentChipActive, { borderColor: accentColor }],
               ]}
             >
-              <Text numberOfLines={1} style={[styles.agentChipTitle, selected && { color: accentColor }]}>
+              <Text
+                numberOfLines={1}
+                style={[styles.agentChipTitle, selected && { color: accentColor }]}
+              >
                 {agent.name}
               </Text>
               <Text numberOfLines={1} style={styles.agentChipDetail}>

@@ -1,43 +1,43 @@
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { Sidebar, SidebarProvider, useSidebar } from '@/components/layout/Sidebar';
-import { UpdateBanner } from '@/components/layout/UpdateBanner';
-import { ToastContainer } from '@/components/ui/Toast';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { Dashboard } from '@/pages/Dashboard';
-import { Agents } from '@/pages/Agents';
-import { Providers } from '@/pages/Providers';
-import { RouterSettings } from '@/pages/RouterSettings';
-import { Channels } from '@/pages/Channels';
-import { Tasks } from '@/pages/Tasks';
-import { Skills } from '@/pages/Skills';
-import { Tools } from '@/pages/Tools';
-import { Memory } from '@/pages/Memory';
-import { Settings } from '@/pages/Settings';
-import { Chat } from '@/pages/Chat';
-import { Logs } from '@/pages/Logs';
-import { Sessions } from '@/pages/Sessions';
-import { Metrics } from '@/pages/Metrics';
-import { MCPServers } from '@/pages/MCPServers';
-import { LSP } from '@/pages/LSP';
-import { IDE } from '@/pages/IDE';
-import { TerminalPage } from '@/pages/Terminal';
-import { Wallet } from '@/pages/Wallet';
-import { Artifacts } from '@/pages/Artifacts';
-import { Mobile } from '@/pages/Mobile';
-import { Setup } from '@/pages/Setup';
-import { useProviders, useAgents } from '@/hooks/useApi';
-import { settingsApi } from '@/lib/api';
-import { Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { resolveSetupGate } from '@/lib/setupGate';
-import { useEffect } from 'react';
-import { readThemeAccentFromConfig, useUIStore } from '@/stores/uiStore';
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { Sidebar, SidebarProvider, useSidebar } from "@/components/layout/Sidebar";
+import { UpdateBanner } from "@/components/layout/UpdateBanner";
+import { ToastContainer } from "@/components/ui/Toast";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { Dashboard } from "@/pages/Dashboard";
+import { Agents } from "@/pages/Agents";
+import { Providers } from "@/pages/Providers";
+import { RouterSettings } from "@/pages/RouterSettings";
+import { Channels } from "@/pages/Channels";
+import { Tasks } from "@/pages/Tasks";
+import { Skills } from "@/pages/Skills";
+import { Tools } from "@/pages/Tools";
+import { Memory } from "@/pages/Memory";
+import { Settings } from "@/pages/Settings";
+import { Chat } from "@/pages/Chat";
+import { Logs } from "@/pages/Logs";
+import { Sessions } from "@/pages/Sessions";
+import { Metrics } from "@/pages/Metrics";
+import { MCPServers } from "@/pages/MCPServers";
+import { LSP } from "@/pages/LSP";
+import { IDE } from "@/pages/IDE";
+import { TerminalPage } from "@/pages/Terminal";
+import { Wallet } from "@/pages/Wallet";
+import { Artifacts } from "@/pages/Artifacts";
+import { Mobile } from "@/pages/Mobile";
+import { Setup } from "@/pages/Setup";
+import { useProviders, useAgents } from "@/hooks/useApi";
+import { settingsApi } from "@/lib/api";
+import { Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { resolveSetupGate } from "@/lib/setupGate";
+import { useEffect } from "react";
+import { readThemeAccentFromConfig, useUIStore } from "@/stores/uiStore";
 
-const SETUP_COMPLETE_KEY = 'cybara.setupComplete';
+const SETUP_COMPLETE_KEY = "cybara.setupComplete";
 
 function readSetupComplete(): boolean {
   try {
-    return localStorage.getItem(SETUP_COMPLETE_KEY) === '1';
+    return localStorage.getItem(SETUP_COMPLETE_KEY) === "1";
   } catch {
     return false;
   }
@@ -45,7 +45,7 @@ function readSetupComplete(): boolean {
 
 function writeSetupComplete(done: boolean): void {
   try {
-    if (done) localStorage.setItem(SETUP_COMPLETE_KEY, '1');
+    if (done) localStorage.setItem(SETUP_COMPLETE_KEY, "1");
     else localStorage.removeItem(SETUP_COMPLETE_KEY);
   } catch {
     /* ignore */
@@ -61,9 +61,7 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
   const { data: agents, isSuccess: agentsReady } = agentsQuery;
 
   const resolved = providersReady && agentsReady;
-  const hasSetup = resolved
-    ? (providers?.length ?? 0) > 0 && (agents?.length ?? 0) > 0
-    : null;
+  const hasSetup = resolved ? (providers?.length ?? 0) > 0 && (agents?.length ?? 0) > 0 : null;
 
   useEffect(() => {
     if (hasSetup === true) writeSetupComplete(true);
@@ -79,11 +77,11 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
     setupComplete: readSetupComplete(),
   });
 
-  if (decision === 'redirect') {
+  if (decision === "redirect") {
     return <Navigate to="/setup" replace />;
   }
 
-  if (decision === 'spinner') {
+  if (decision === "spinner") {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0a0a0f]">
         <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
@@ -98,11 +96,13 @@ function MainContent({ children }: { children: React.ReactNode }) {
   const { collapsed } = useSidebar();
 
   return (
-    <div className={cn(
-      'flex-1 overflow-auto transition-all duration-300',
-      collapsed ? 'md:ml-16' : 'md:ml-64',
-      'ml-0'
-    )}>
+    <div
+      className={cn(
+        "flex-1 overflow-auto transition-all duration-300",
+        collapsed ? "md:ml-16" : "md:ml-64",
+        "ml-0"
+      )}
+    >
       <UpdateBanner />
       {children}
     </div>
@@ -156,11 +156,11 @@ function ThemeConfigSync() {
     const interval = window.setInterval(() => {
       void syncTheme();
     }, 30000);
-    window.addEventListener('focus', syncTheme);
+    window.addEventListener("focus", syncTheme);
     return () => {
       mounted = false;
       window.clearInterval(interval);
-      window.removeEventListener('focus', syncTheme);
+      window.removeEventListener("focus", syncTheme);
     };
   }, [setAccent]);
 
@@ -170,24 +170,27 @@ function ThemeConfigSync() {
 function App() {
   return (
     <ErrorBoundary>
-    <SidebarProvider>
-      <div className="flex min-h-screen bg-[#0a0a0f] overflow-hidden">
-        <ThemeConfigSync />
-        <Routes>
-          <Route path="/setup" element={<Setup />} />
+      <SidebarProvider>
+        <div className="flex min-h-screen bg-[#0a0a0f] overflow-hidden">
+          <ThemeConfigSync />
+          <Routes>
+            <Route path="/setup" element={<Setup />} />
 
-          <Route path="*" element={
-            <SetupGuard>
-              <Sidebar />
-              <MainContent>
-                <AppRoutes />
-              </MainContent>
-            </SetupGuard>
-          } />
-        </Routes>
-        <ToastContainer />
-      </div>
-    </SidebarProvider>
+            <Route
+              path="*"
+              element={
+                <SetupGuard>
+                  <Sidebar />
+                  <MainContent>
+                    <AppRoutes />
+                  </MainContent>
+                </SetupGuard>
+              }
+            />
+          </Routes>
+          <ToastContainer />
+        </div>
+      </SidebarProvider>
     </ErrorBoundary>
   );
 }

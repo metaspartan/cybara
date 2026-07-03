@@ -33,7 +33,9 @@ const lspState = {
   allDiagnostics: new Map<string, DiagnosticShape[]>(),
   definitionResult: null as LocationShape | LocationShape[] | null,
   referencesResult: [] as LocationShape[],
-  hoverResult: null as null | { contents: string | Array<string | { value: string }> | { value: string } },
+  hoverResult: null as null | {
+    contents: string | Array<string | { value: string }> | { value: string };
+  },
   diagnosticsCalls: [] as string[],
   definitionCalls: [] as Array<{ filePath: string; line: number; column: number }>,
   referencesCalls: [] as Array<{ filePath: string; line: number; column: number }>,
@@ -185,9 +187,9 @@ describe("LSP tool handlers", () => {
     await expect(handlers.handleLSPDefinition({ file: sampleFile, column: 1 })).rejects.toThrow(
       "Required parameters: file, line, column"
     );
-    await expect(
-      handlers.handleLSPHover({ file: sampleFile, line: 0, column: 1 })
-    ).rejects.toThrow("line and column must be 1-based positive numbers");
+    await expect(handlers.handleLSPHover({ file: sampleFile, line: 0, column: 1 })).rejects.toThrow(
+      "line and column must be 1-based positive numbers"
+    );
 
     expect(lspState.definitionCalls).toEqual([]);
     expect(lspState.hoverCalls).toEqual([]);

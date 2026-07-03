@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Wallet as WalletIcon,
   Shield,
@@ -15,13 +15,13 @@ import {
   Copy,
   History,
   Settings,
-} from 'lucide-react';
-import { PageLayout } from '@/components/layout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
-import { Input, Textarea, Select } from '@/components/ui/Input';
-import { Modal } from '@/components/ui/Modal';
+} from "lucide-react";
+import { PageLayout } from "@/components/layout";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
+import { Input, Textarea, Select } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
 import {
   walletApi,
   type WalletAgentPolicy,
@@ -35,21 +35,21 @@ import {
   type WalletTokenBalance,
   type WalletTokenTransaction,
   type WalletTokenChain,
-} from '@/lib/api';
-import { useUIStore } from '@/stores/uiStore';
+} from "@/lib/api";
+import { useUIStore } from "@/stores/uiStore";
 
 const CHAIN_OPTIONS: Array<{ value: WalletChain; label: string; symbol: string }> = [
-  { value: 'eth', label: 'Ethereum', symbol: 'ETH' },
-  { value: 'btc', label: 'Bitcoin', symbol: 'BTC' },
-  { value: 'sol', label: 'Solana', symbol: 'SOL' },
+  { value: "eth", label: "Ethereum", symbol: "ETH" },
+  { value: "btc", label: "Bitcoin", symbol: "BTC" },
+  { value: "sol", label: "Solana", symbol: "SOL" },
 ];
 
 const TOKEN_CHAIN_OPTIONS: Array<{ value: WalletTokenChain; label: string; symbol: string }> = [
-  { value: 'eth', label: 'Ethereum', symbol: 'ERC-20' },
-  { value: 'sol', label: 'Solana', symbol: 'SPL' },
+  { value: "eth", label: "Ethereum", symbol: "ERC-20" },
+  { value: "sol", label: "Solana", symbol: "SPL" },
 ];
 
-type WalletTab = 'receive' | 'send' | 'history' | 'settings';
+type WalletTab = "receive" | "send" | "history" | "settings";
 
 const WALLET_TABS: Array<{
   id: WalletTab;
@@ -57,14 +57,24 @@ const WALLET_TABS: Array<{
   icon: ReactNode;
   requiresUnlocked?: boolean;
 }> = [
-  { id: 'receive', label: 'Receive', icon: <ArrowDownLeft className="h-4 w-4" />, requiresUnlocked: true },
-  { id: 'send', label: 'Send', icon: <ArrowUpRight className="h-4 w-4" />, requiresUnlocked: true },
-  { id: 'history', label: 'History', icon: <History className="h-4 w-4" />, requiresUnlocked: true },
-  { id: 'settings', label: 'Settings', icon: <Settings className="h-4 w-4" /> },
+  {
+    id: "receive",
+    label: "Receive",
+    icon: <ArrowDownLeft className="h-4 w-4" />,
+    requiresUnlocked: true,
+  },
+  { id: "send", label: "Send", icon: <ArrowUpRight className="h-4 w-4" />, requiresUnlocked: true },
+  {
+    id: "history",
+    label: "History",
+    icon: <History className="h-4 w-4" />,
+    requiresUnlocked: true,
+  },
+  { id: "settings", label: "Settings", icon: <Settings className="h-4 w-4" /> },
 ];
 
 function formatTimestamp(value?: string): string {
-  if (!value) return 'N/A';
+  if (!value) return "N/A";
   try {
     return new Date(value).toLocaleString();
   } catch {
@@ -73,7 +83,7 @@ function formatTimestamp(value?: string): string {
 }
 
 function shortenAddress(address: string): string {
-  if (!address) return '';
+  if (!address) return "";
   if (address.length < 16) return address;
   return `${address.slice(0, 8)}...${address.slice(-8)}`;
 }
@@ -106,50 +116,50 @@ export function Wallet() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
-  const [createMode, setCreateMode] = useState<'create' | 'import'>('create');
-  const [password, setPassword] = useState('');
-  const [passwordConfirm, setPasswordConfirm] = useState('');
-  const [importMnemonic, setImportMnemonic] = useState('');
-  const [generatedMnemonic, setGeneratedMnemonic] = useState('');
+  const [createMode, setCreateMode] = useState<"create" | "import">("create");
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [importMnemonic, setImportMnemonic] = useState("");
+  const [generatedMnemonic, setGeneratedMnemonic] = useState("");
 
-  const [unlockPassword, setUnlockPassword] = useState('');
+  const [unlockPassword, setUnlockPassword] = useState("");
   const [showMnemonic, setShowMnemonic] = useState(false);
 
-  const [accountCountInput, setAccountCountInput] = useState('1');
-  const [startIndexInput, setStartIndexInput] = useState('0');
+  const [accountCountInput, setAccountCountInput] = useState("1");
+  const [startIndexInput, setStartIndexInput] = useState("0");
 
-  const [txChain, setTxChain] = useState<WalletChain>('eth');
-  const [txIndexInput, setTxIndexInput] = useState('0');
-  const [txLimitInput, setTxLimitInput] = useState('10');
-  const [historyMode, setHistoryMode] = useState<'native' | 'token'>('native');
-  const [tokenTxChain, setTokenTxChain] = useState<WalletTokenChain>('eth');
-  const [tokenTxIndexInput, setTokenTxIndexInput] = useState('0');
-  const [tokenTxLimitInput, setTokenTxLimitInput] = useState('10');
-  const [tokenTxAddressFilter, setTokenTxAddressFilter] = useState('');
+  const [txChain, setTxChain] = useState<WalletChain>("eth");
+  const [txIndexInput, setTxIndexInput] = useState("0");
+  const [txLimitInput, setTxLimitInput] = useState("10");
+  const [historyMode, setHistoryMode] = useState<"native" | "token">("native");
+  const [tokenTxChain, setTokenTxChain] = useState<WalletTokenChain>("eth");
+  const [tokenTxIndexInput, setTokenTxIndexInput] = useState("0");
+  const [tokenTxLimitInput, setTokenTxLimitInput] = useState("10");
+  const [tokenTxAddressFilter, setTokenTxAddressFilter] = useState("");
 
-  const [sendChain, setSendChain] = useState<WalletChain>('eth');
-  const [sendIndexInput, setSendIndexInput] = useState('0');
-  const [sendTo, setSendTo] = useState('');
-  const [sendAmount, setSendAmount] = useState('');
-  const [sendMemo, setSendMemo] = useState('');
-  const [sendFeeRate, setSendFeeRate] = useState('');
-  const [sendAssetType, setSendAssetType] = useState<'native' | 'token'>('native');
-  const [sendTokenAddress, setSendTokenAddress] = useState('');
-  const [sendTokenDecimals, setSendTokenDecimals] = useState('');
-  const [activeTab, setActiveTab] = useState<WalletTab>('receive');
+  const [sendChain, setSendChain] = useState<WalletChain>("eth");
+  const [sendIndexInput, setSendIndexInput] = useState("0");
+  const [sendTo, setSendTo] = useState("");
+  const [sendAmount, setSendAmount] = useState("");
+  const [sendMemo, setSendMemo] = useState("");
+  const [sendFeeRate, setSendFeeRate] = useState("");
+  const [sendAssetType, setSendAssetType] = useState<"native" | "token">("native");
+  const [sendTokenAddress, setSendTokenAddress] = useState("");
+  const [sendTokenDecimals, setSendTokenDecimals] = useState("");
+  const [activeTab, setActiveTab] = useState<WalletTab>("receive");
 
-  const [tokenChain, setTokenChain] = useState<WalletTokenChain>('eth');
-  const [tokenIndexInput, setTokenIndexInput] = useState('0');
+  const [tokenChain, setTokenChain] = useState<WalletTokenChain>("eth");
+  const [tokenIndexInput, setTokenIndexInput] = useState("0");
   const [tokenIncludeZero, setTokenIncludeZero] = useState(false);
 
-  const [rpcEth, setRpcEth] = useState('');
-  const [rpcSol, setRpcSol] = useState('');
-  const [rpcBtc, setRpcBtc] = useState('');
-  const [policyEthAllowlistInput, setPolicyEthAllowlistInput] = useState('');
-  const [policySolAllowlistInput, setPolicySolAllowlistInput] = useState('');
+  const [rpcEth, setRpcEth] = useState("");
+  const [rpcSol, setRpcSol] = useState("");
+  const [rpcBtc, setRpcBtc] = useState("");
+  const [policyEthAllowlistInput, setPolicyEthAllowlistInput] = useState("");
+  const [policySolAllowlistInput, setPolicySolAllowlistInput] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deletePassword, setDeletePassword] = useState('');
-  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   const accountCount = useMemo(() => {
     const value = Number(accountCountInput);
@@ -208,10 +218,10 @@ export function Wallet() {
     ]);
 
     if (!statusResponse.success || !statusResponse.data) {
-      throw new Error(statusResponse.error || 'Failed to load wallet status');
+      throw new Error(statusResponse.error || "Failed to load wallet status");
     }
     if (!rpcResponse.success || !rpcResponse.data) {
-      throw new Error(rpcResponse.error || 'Failed to load wallet RPC settings');
+      throw new Error(rpcResponse.error || "Failed to load wallet RPC settings");
     }
 
     setStatus(statusResponse.data);
@@ -219,30 +229,40 @@ export function Wallet() {
     setRpcEth(rpcResponse.data.ethRpc);
     setRpcSol(rpcResponse.data.solRpc);
     setRpcBtc(rpcResponse.data.btcApi);
-    setRpcStatus(rpcStatusResponse.success && rpcStatusResponse.data ? rpcStatusResponse.data : null);
+    setRpcStatus(
+      rpcStatusResponse.success && rpcStatusResponse.data ? rpcStatusResponse.data : null
+    );
 
     if (policyResponse.success && policyResponse.data) {
       setAgentPolicy(policyResponse.data);
-      setPolicyEthAllowlistInput(policyResponse.data.allowedEthContracts.join('\n'));
-      setPolicySolAllowlistInput(policyResponse.data.allowedSolPrograms.join('\n'));
+      setPolicyEthAllowlistInput(policyResponse.data.allowedEthContracts.join("\n"));
+      setPolicySolAllowlistInput(policyResponse.data.allowedSolPrograms.join("\n"));
     } else {
       setAgentPolicy(null);
-      setPolicyEthAllowlistInput('');
-      setPolicySolAllowlistInput('');
+      setPolicyEthAllowlistInput("");
+      setPolicySolAllowlistInput("");
     }
   }
 
   async function refreshPortfolio() {
     const [accountResponse, balanceResponse] = await Promise.all([
-      walletApi.accounts({ count: accountCount, startIndex: accountStartIndex, chains: ['eth', 'btc', 'sol'] }),
-      walletApi.balances({ count: accountCount, startIndex: accountStartIndex, chains: ['eth', 'btc', 'sol'] }),
+      walletApi.accounts({
+        count: accountCount,
+        startIndex: accountStartIndex,
+        chains: ["eth", "btc", "sol"],
+      }),
+      walletApi.balances({
+        count: accountCount,
+        startIndex: accountStartIndex,
+        chains: ["eth", "btc", "sol"],
+      }),
     ]);
 
     if (!accountResponse.success || !accountResponse.data) {
-      throw new Error(accountResponse.error || 'Failed to load derived accounts');
+      throw new Error(accountResponse.error || "Failed to load derived accounts");
     }
     if (!balanceResponse.success || !balanceResponse.data) {
-      throw new Error(balanceResponse.error || 'Failed to load balances');
+      throw new Error(balanceResponse.error || "Failed to load balances");
     }
 
     setAccounts(accountResponse.data);
@@ -250,9 +270,13 @@ export function Wallet() {
   }
 
   async function refreshTransactions() {
-    const txResponse = await walletApi.transactions({ chain: txChain, index: txIndex, limit: txLimit });
+    const txResponse = await walletApi.transactions({
+      chain: txChain,
+      index: txIndex,
+      limit: txLimit,
+    });
     if (!txResponse.success || !txResponse.data) {
-      throw new Error(txResponse.error || 'Failed to load transactions');
+      throw new Error(txResponse.error || "Failed to load transactions");
     }
     setTransactions(txResponse.data);
   }
@@ -265,7 +289,7 @@ export function Wallet() {
       tokenAddress: tokenTxAddressFilter.trim() || undefined,
     });
     if (!response.success || !response.data) {
-      throw new Error(response.error || 'Failed to load token transactions');
+      throw new Error(response.error || "Failed to load token transactions");
     }
     setTokenTransactions(response.data);
   }
@@ -277,7 +301,7 @@ export function Wallet() {
       includeZero: tokenIncludeZero,
     });
     if (!tokenResponse.success || !tokenResponse.data) {
-      throw new Error(tokenResponse.error || 'Failed to load token balances');
+      throw new Error(tokenResponse.error || "Failed to load token balances");
     }
     setTokenBalances(tokenResponse.data);
   }
@@ -285,7 +309,7 @@ export function Wallet() {
   async function refreshRpcStatusOnly() {
     const response = await walletApi.rpcStatus();
     if (!response.success || !response.data) {
-      throw new Error(response.error || 'Failed to load RPC status');
+      throw new Error(response.error || "Failed to load RPC status");
     }
     setRpcStatus(response.data);
   }
@@ -295,7 +319,7 @@ export function Wallet() {
     try {
       await refreshStatus();
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to load wallet data');
+      addToast("error", error instanceof Error ? error.message : "Failed to load wallet data");
     } finally {
       setLoading(false);
     }
@@ -316,7 +340,7 @@ export function Wallet() {
       try {
         await refreshPortfolio();
       } catch (error) {
-        addToast('error', error instanceof Error ? error.message : 'Failed to refresh balances');
+        addToast("error", error instanceof Error ? error.message : "Failed to refresh balances");
       }
     })();
   }, [status?.unlocked, accountCount, accountStartIndex]);
@@ -331,7 +355,10 @@ export function Wallet() {
       try {
         await refreshTransactions();
       } catch (error) {
-        addToast('error', error instanceof Error ? error.message : 'Failed to refresh transactions');
+        addToast(
+          "error",
+          error instanceof Error ? error.message : "Failed to refresh transactions"
+        );
       }
     })();
   }, [status?.unlocked, txChain, txIndex, txLimit]);
@@ -346,7 +373,10 @@ export function Wallet() {
       try {
         await refreshTokenTransactions();
       } catch (error) {
-        addToast('error', error instanceof Error ? error.message : 'Failed to refresh token transactions');
+        addToast(
+          "error",
+          error instanceof Error ? error.message : "Failed to refresh token transactions"
+        );
       }
     })();
   }, [status?.unlocked, tokenTxChain, tokenTxIndex, tokenTxLimit, tokenTxAddressFilter]);
@@ -361,21 +391,24 @@ export function Wallet() {
       try {
         await refreshTokenBalances();
       } catch (error) {
-        addToast('error', error instanceof Error ? error.message : 'Failed to refresh token balances');
+        addToast(
+          "error",
+          error instanceof Error ? error.message : "Failed to refresh token balances"
+        );
       }
     })();
   }, [status?.unlocked, tokenChain, tokenIndex, tokenIncludeZero]);
 
   useEffect(() => {
     if (!status?.exists) return;
-    if (!status.unlocked && activeTab !== 'settings') {
-      setActiveTab('settings');
+    if (!status.unlocked && activeTab !== "settings") {
+      setActiveTab("settings");
     }
   }, [status?.exists, status?.unlocked, activeTab]);
 
   useEffect(() => {
-    if (sendChain === 'btc' && sendAssetType === 'token') {
-      setSendAssetType('native');
+    if (sendChain === "btc" && sendAssetType === "token") {
+      setSendAssetType("native");
     }
   }, [sendChain, sendAssetType]);
 
@@ -396,24 +429,24 @@ export function Wallet() {
 
   async function handleCreateOrImport() {
     if (password.trim().length < 8) {
-      addToast('error', 'Wallet password must be at least 8 characters');
+      addToast("error", "Wallet password must be at least 8 characters");
       return;
     }
 
     if (password !== passwordConfirm) {
-      addToast('error', 'Passwords do not match');
+      addToast("error", "Passwords do not match");
       return;
     }
 
-    if (createMode === 'import' && importMnemonic.trim().split(/\s+/).length !== 24) {
-      addToast('error', 'Seed phrase must contain exactly 24 words');
+    if (createMode === "import" && importMnemonic.trim().split(/\s+/).length !== 24) {
+      addToast("error", "Seed phrase must contain exactly 24 words");
       return;
     }
 
     setBusy(true);
     try {
       const response =
-        createMode === 'create'
+        createMode === "create"
           ? await walletApi.create(password)
           : await walletApi.importWallet(importMnemonic, password);
 
@@ -421,17 +454,20 @@ export function Wallet() {
         throw new Error(response.error || `Failed to ${createMode} wallet`);
       }
 
-      setGeneratedMnemonic(response.data.mnemonic || '');
-      setPassword('');
-      setPasswordConfirm('');
-      setImportMnemonic('');
-      addToast('success', createMode === 'create' ? 'Wallet created and unlocked' : 'Wallet imported');
+      setGeneratedMnemonic(response.data.mnemonic || "");
+      setPassword("");
+      setPasswordConfirm("");
+      setImportMnemonic("");
+      addToast(
+        "success",
+        createMode === "create" ? "Wallet created and unlocked" : "Wallet imported"
+      );
       await refreshStatus();
       await refreshPortfolio();
       await refreshTransactions();
       await refreshTokenTransactions();
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : `Failed to ${createMode} wallet`);
+      addToast("error", error instanceof Error ? error.message : `Failed to ${createMode} wallet`);
     } finally {
       setBusy(false);
     }
@@ -439,7 +475,7 @@ export function Wallet() {
 
   async function handleUnlock() {
     if (!unlockPassword.trim()) {
-      addToast('error', 'Password is required to unlock wallet');
+      addToast("error", "Password is required to unlock wallet");
       return;
     }
 
@@ -447,17 +483,17 @@ export function Wallet() {
     try {
       const response = await walletApi.unlock(unlockPassword);
       if (!response.success) {
-        throw new Error(response.error || 'Failed to unlock wallet');
+        throw new Error(response.error || "Failed to unlock wallet");
       }
 
-      setUnlockPassword('');
-      addToast('success', 'Wallet unlocked');
+      setUnlockPassword("");
+      addToast("success", "Wallet unlocked");
       await refreshStatus();
       await refreshPortfolio();
       await refreshTransactions();
       await refreshTokenTransactions();
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to unlock wallet');
+      addToast("error", error instanceof Error ? error.message : "Failed to unlock wallet");
     } finally {
       setBusy(false);
     }
@@ -468,20 +504,20 @@ export function Wallet() {
     try {
       const response = await walletApi.lock();
       if (!response.success) {
-        throw new Error(response.error || 'Failed to lock wallet');
+        throw new Error(response.error || "Failed to lock wallet");
       }
-      addToast('success', 'Wallet locked');
+      addToast("success", "Wallet locked");
       await refreshStatus();
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to lock wallet');
+      addToast("error", error instanceof Error ? error.message : "Failed to lock wallet");
     } finally {
       setBusy(false);
     }
   }
 
   function resetDeleteDialogState() {
-    setDeletePassword('');
-    setDeleteConfirmText('');
+    setDeletePassword("");
+    setDeleteConfirmText("");
   }
 
   function openDeleteDialog() {
@@ -498,22 +534,22 @@ export function Wallet() {
   function handleSelectTab(tab: WalletTab) {
     const tabConfig = WALLET_TABS.find((item) => item.id === tab);
     if (tabConfig?.requiresUnlocked && !status?.unlocked) {
-      addToast('error', 'Unlock wallet to access this tab');
-      setActiveTab('settings');
+      addToast("error", "Unlock wallet to access this tab");
+      setActiveTab("settings");
       return;
     }
     setActiveTab(tab);
   }
 
   async function handleDeleteWallet() {
-    if (deleteConfirmText.trim().toUpperCase() !== 'DELETE') {
-      addToast('error', 'Type DELETE to confirm wallet deletion');
+    if (deleteConfirmText.trim().toUpperCase() !== "DELETE") {
+      addToast("error", "Type DELETE to confirm wallet deletion");
       return;
     }
 
     const passwordForDelete = deletePassword.trim();
     if (!status?.unlocked && !passwordForDelete) {
-      addToast('error', 'Password is required while wallet is locked');
+      addToast("error", "Password is required while wallet is locked");
       return;
     }
 
@@ -521,20 +557,20 @@ export function Wallet() {
     try {
       const response = await walletApi.deleteWallet(passwordForDelete || undefined);
       if (!response.success) {
-        throw new Error(response.error || 'Failed to delete wallet');
+        throw new Error(response.error || "Failed to delete wallet");
       }
 
-      setGeneratedMnemonic('');
+      setGeneratedMnemonic("");
       setTransactions([]);
       setBalances([]);
       setAccounts([]);
-      setUnlockPassword('');
+      setUnlockPassword("");
       setDeleteDialogOpen(false);
       resetDeleteDialogState();
-      addToast('success', 'Wallet deleted');
+      addToast("success", "Wallet deleted");
       await refreshStatus();
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to delete wallet');
+      addToast("error", error instanceof Error ? error.message : "Failed to delete wallet");
     } finally {
       setBusy(false);
     }
@@ -547,12 +583,12 @@ export function Wallet() {
     try {
       const response = await walletApi.setAgentAccess(!status.agentAccessEnabled);
       if (!response.success) {
-        throw new Error(response.error || 'Failed to update agent access');
+        throw new Error(response.error || "Failed to update agent access");
       }
-      addToast('success', `Agent wallet access ${response.data?.enabled ? 'enabled' : 'disabled'}`);
+      addToast("success", `Agent wallet access ${response.data?.enabled ? "enabled" : "disabled"}`);
       await refreshStatus();
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to update agent access');
+      addToast("error", error instanceof Error ? error.message : "Failed to update agent access");
     } finally {
       setBusy(false);
     }
@@ -567,17 +603,16 @@ export function Wallet() {
         btcApi: rpcBtc.trim(),
       });
       if (!response.success || !response.data) {
-        throw new Error(response.error || 'Failed to save RPC settings');
+        throw new Error(response.error || "Failed to save RPC settings");
       }
 
       setRpcConfig(response.data.config);
       try {
         await refreshRpcStatusOnly();
-      } catch {
-      }
-      addToast('success', 'RPC settings updated');
+      } catch {}
+      addToast("success", "RPC settings updated");
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to save RPC settings');
+      addToast("error", error instanceof Error ? error.message : "Failed to save RPC settings");
     } finally {
       setBusy(false);
     }
@@ -585,7 +620,7 @@ export function Wallet() {
 
   async function handleSaveAgentPolicy() {
     if (!agentPolicy) {
-      addToast('error', 'Agent policy is not available');
+      addToast("error", "Agent policy is not available");
       return;
     }
 
@@ -601,15 +636,15 @@ export function Wallet() {
         allowedSolPrograms: parseAllowlistInput(policySolAllowlistInput),
       });
       if (!response.success || !response.data) {
-        throw new Error(response.error || 'Failed to save agent policy');
+        throw new Error(response.error || "Failed to save agent policy");
       }
 
       setAgentPolicy(response.data.policy);
-      setPolicyEthAllowlistInput(response.data.policy.allowedEthContracts.join('\n'));
-      setPolicySolAllowlistInput(response.data.policy.allowedSolPrograms.join('\n'));
-      addToast('success', 'Agent wallet policy updated');
+      setPolicyEthAllowlistInput(response.data.policy.allowedEthContracts.join("\n"));
+      setPolicySolAllowlistInput(response.data.policy.allowedSolPrograms.join("\n"));
+      addToast("success", "Agent wallet policy updated");
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to save agent policy');
+      addToast("error", error instanceof Error ? error.message : "Failed to save agent policy");
     } finally {
       setBusy(false);
     }
@@ -617,40 +652,48 @@ export function Wallet() {
 
   async function handleSend() {
     if (!sendTo.trim()) {
-      addToast('error', 'Destination address is required');
+      addToast("error", "Destination address is required");
       return;
     }
     if (!sendAmount.trim()) {
-      addToast('error', 'Amount is required');
+      addToast("error", "Amount is required");
       return;
     }
 
-    if (sendAssetType === 'token' && sendChain === 'btc') {
-      addToast('error', 'Token transfers are supported only for ETH and SOL');
+    if (sendAssetType === "token" && sendChain === "btc") {
+      addToast("error", "Token transfers are supported only for ETH and SOL");
       return;
     }
 
-    if (sendAssetType === 'token' && !sendTokenAddress.trim()) {
-      addToast('error', 'Token contract/mint address is required');
+    if (sendAssetType === "token" && !sendTokenAddress.trim()) {
+      addToast("error", "Token contract/mint address is required");
       return;
     }
 
     const parsedFeeRate = sendFeeRate.trim() ? Number(sendFeeRate) : undefined;
-    if (sendChain === 'btc' && sendFeeRate.trim() && (!Number.isFinite(parsedFeeRate) || parsedFeeRate <= 0)) {
-      addToast('error', 'BTC fee rate must be a positive number');
+    if (
+      sendChain === "btc" &&
+      sendFeeRate.trim() &&
+      (!Number.isFinite(parsedFeeRate) || parsedFeeRate <= 0)
+    ) {
+      addToast("error", "BTC fee rate must be a positive number");
       return;
     }
 
     const parsedTokenDecimals = sendTokenDecimals.trim() ? Number(sendTokenDecimals) : undefined;
-    if (sendAssetType === 'token' && sendTokenDecimals.trim() && (!Number.isFinite(parsedTokenDecimals) || parsedTokenDecimals < 0)) {
-      addToast('error', 'Token decimals must be a non-negative number');
+    if (
+      sendAssetType === "token" &&
+      sendTokenDecimals.trim() &&
+      (!Number.isFinite(parsedTokenDecimals) || parsedTokenDecimals < 0)
+    ) {
+      addToast("error", "Token decimals must be a non-negative number");
       return;
     }
 
     setBusy(true);
     try {
       const response =
-        sendAssetType === 'native'
+        sendAssetType === "native"
           ? await walletApi.send({
               chain: sendChain,
               to: sendTo.trim(),
@@ -670,24 +713,24 @@ export function Wallet() {
             });
 
       if (!response.success || !response.data) {
-        throw new Error(response.error || 'Failed to send transaction');
+        throw new Error(response.error || "Failed to send transaction");
       }
 
-      setSendTo('');
-      setSendAmount('');
-      setSendMemo('');
-      setSendFeeRate('');
-      if (sendAssetType === 'token') {
-        setSendTokenAddress('');
-        setSendTokenDecimals('');
+      setSendTo("");
+      setSendAmount("");
+      setSendMemo("");
+      setSendFeeRate("");
+      if (sendAssetType === "token") {
+        setSendTokenAddress("");
+        setSendTokenDecimals("");
       }
-      addToast('success', `Transaction sent: ${shortenAddress(response.data.txid)}`);
+      addToast("success", `Transaction sent: ${shortenAddress(response.data.txid)}`);
       await refreshPortfolio();
       await refreshTokenBalances();
       await refreshTransactions();
       await refreshTokenTransactions();
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to send transaction');
+      addToast("error", error instanceof Error ? error.message : "Failed to send transaction");
     } finally {
       setBusy(false);
     }
@@ -696,9 +739,9 @@ export function Wallet() {
   async function copyToClipboard(label: string, value: string) {
     try {
       await navigator.clipboard.writeText(value);
-      addToast('success', `${label} copied`);
+      addToast("success", `${label} copied`);
     } catch {
-      addToast('error', `Could not copy ${label.toLowerCase()}`);
+      addToast("error", `Could not copy ${label.toLowerCase()}`);
     }
   }
 
@@ -709,7 +752,13 @@ export function Wallet() {
       actions={
         <Button
           variant="secondary"
-          leftIcon={loading || busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+          leftIcon={
+            loading || busy ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4" />
+            )
+          }
           onClick={() => void refreshAll()}
           disabled={busy}
         >
@@ -722,21 +771,26 @@ export function Wallet() {
           <CardContent className="p-6 sm:p-8">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-[rgba(var(--accent-primary),0.85)]">Cybara Secure Vault</p>
-                <h2 className="mt-2 text-2xl font-semibold text-white">One seed. Multiple chains.</h2>
+                <p className="text-xs uppercase tracking-[0.2em] text-[rgba(var(--accent-primary),0.85)]">
+                  Cybara Secure Vault
+                </p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">
+                  One seed. Multiple chains.
+                </h2>
                 <p className="mt-2 text-sm text-gray-300 max-w-2xl">
-                  Wallet secrets stay encrypted on this device. Agent access is opt-in and disabled by default.
+                  Wallet secrets stay encrypted on this device. Agent access is opt-in and disabled
+                  by default.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Badge variant={status?.exists ? 'success' : 'warning'}>
-                  {status?.exists ? 'Wallet Created' : 'Wallet Missing'}
+                <Badge variant={status?.exists ? "success" : "warning"}>
+                  {status?.exists ? "Wallet Created" : "Wallet Missing"}
                 </Badge>
-                <Badge variant={status?.unlocked ? 'info' : 'default'}>
-                  {status?.unlocked ? 'Unlocked' : 'Locked'}
+                <Badge variant={status?.unlocked ? "info" : "default"}>
+                  {status?.unlocked ? "Unlocked" : "Locked"}
                 </Badge>
-                <Badge variant={status?.agentAccessEnabled ? 'warning' : 'default'}>
-                  Agent Access: {status?.agentAccessEnabled ? 'On' : 'Off'}
+                <Badge variant={status?.agentAccessEnabled ? "warning" : "default"}>
+                  Agent Access: {status?.agentAccessEnabled ? "On" : "Off"}
                 </Badge>
               </div>
             </div>
@@ -745,7 +799,9 @@ export function Wallet() {
 
         {loading ? (
           <Card>
-            <CardContent className="p-8 text-center text-gray-400">Loading wallet state...</CardContent>
+            <CardContent className="p-8 text-center text-gray-400">
+              Loading wallet state...
+            </CardContent>
           </Card>
         ) : !status?.exists ? (
           <Card variant="liquid">
@@ -761,22 +817,22 @@ export function Wallet() {
             <CardContent className="space-y-5">
               <div className="flex gap-2">
                 <Button
-                  variant={createMode === 'create' ? 'primary' : 'secondary'}
-                  onClick={() => setCreateMode('create')}
+                  variant={createMode === "create" ? "primary" : "secondary"}
+                  onClick={() => setCreateMode("create")}
                   disabled={busy}
                 >
                   Create Wallet
                 </Button>
                 <Button
-                  variant={createMode === 'import' ? 'primary' : 'secondary'}
-                  onClick={() => setCreateMode('import')}
+                  variant={createMode === "import" ? "primary" : "secondary"}
+                  onClick={() => setCreateMode("import")}
                   disabled={busy}
                 >
                   Import Wallet
                 </Button>
               </div>
 
-              {createMode === 'import' && (
+              {createMode === "import" && (
                 <Textarea
                   label="24-word seed phrase"
                   value={importMnemonic}
@@ -802,23 +858,27 @@ export function Wallet() {
               </div>
 
               <Button onClick={() => void handleCreateOrImport()} disabled={busy}>
-                {busy ? 'Working...' : createMode === 'create' ? 'Create Wallet' : 'Import Wallet'}
+                {busy ? "Working..." : createMode === "create" ? "Create Wallet" : "Import Wallet"}
               </Button>
 
               {generatedMnemonic && (
                 <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-4">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-amber-200">Backup this seed phrase now</p>
+                    <p className="text-sm font-medium text-amber-200">
+                      Backup this seed phrase now
+                    </p>
                     <Button
                       size="sm"
                       variant="outline"
                       leftIcon={<Copy className="w-4 h-4" />}
-                      onClick={() => void copyToClipboard('Seed phrase', generatedMnemonic)}
+                      onClick={() => void copyToClipboard("Seed phrase", generatedMnemonic)}
                     >
                       Copy
                     </Button>
                   </div>
-                  <p className="mt-3 text-sm text-amber-100 break-words leading-relaxed">{generatedMnemonic}</p>
+                  <p className="mt-3 text-sm text-amber-100 break-words leading-relaxed">
+                    {generatedMnemonic}
+                  </p>
                 </div>
               )}
             </CardContent>
@@ -844,12 +904,15 @@ export function Wallet() {
                   </div>
                   <div className="rounded-xl border border-white/10 bg-black/20 p-4">
                     <p className="text-gray-400">Primary ETH Address</p>
-                    <p className="mt-1 text-white break-all">{status.primaryAddresses?.eth || 'N/A'}</p>
+                    <p className="mt-1 text-white break-all">
+                      {status.primaryAddresses?.eth || "N/A"}
+                    </p>
                   </div>
                 </div>
                 {!status.unlocked && (
                   <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
-                    Wallet is locked. Use the <span className="font-semibold">Settings</span> tab to unlock and enable send/receive/history views.
+                    Wallet is locked. Use the <span className="font-semibold">Settings</span> tab to
+                    unlock and enable send/receive/history views.
                   </div>
                 )}
               </CardContent>
@@ -857,7 +920,11 @@ export function Wallet() {
 
             <Card variant="liquid">
               <CardContent className="p-3">
-                <div role="tablist" aria-label="Wallet sections" className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <div
+                  role="tablist"
+                  aria-label="Wallet sections"
+                  className="grid grid-cols-2 md:grid-cols-4 gap-2"
+                >
                   {WALLET_TABS.map((tab) => {
                     const isLockedTab = tab.requiresUnlocked && !status.unlocked;
                     const isActive = activeTab === tab.id;
@@ -872,18 +939,20 @@ export function Wallet() {
                         aria-disabled={isLockedTab}
                         onClick={() => handleSelectTab(tab.id)}
                         className={[
-                          'flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm transition-all',
+                          "flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm transition-all",
                           isActive
-                            ? 'border-[rgba(var(--accent-primary),0.8)] bg-[rgba(var(--accent-primary),0.2)] text-white'
-                            : 'border-white/10 bg-black/20 text-gray-300 hover:border-white/25 hover:text-white',
-                          isLockedTab ? 'opacity-60' : '',
-                        ].join(' ')}
+                            ? "border-[rgba(var(--accent-primary),0.8)] bg-[rgba(var(--accent-primary),0.2)] text-white"
+                            : "border-white/10 bg-black/20 text-gray-300 hover:border-white/25 hover:text-white",
+                          isLockedTab ? "opacity-60" : "",
+                        ].join(" ")}
                       >
                         <span className="flex items-center gap-2">
                           {tab.icon}
                           {tab.label}
                         </span>
-                        {isLockedTab ? <span className="text-[10px] uppercase tracking-wide">Locked</span> : null}
+                        {isLockedTab ? (
+                          <span className="text-[10px] uppercase tracking-wide">Locked</span>
+                        ) : null}
                       </button>
                     );
                   })}
@@ -891,8 +960,13 @@ export function Wallet() {
               </CardContent>
             </Card>
 
-            {activeTab === 'receive' && status.unlocked && (
-              <Card variant="liquid" role="tabpanel" id="wallet-tab-receive" aria-labelledby="wallet-tab-button-receive">
+            {activeTab === "receive" && status.unlocked && (
+              <Card
+                variant="liquid"
+                role="tabpanel"
+                id="wallet-tab-receive"
+                aria-labelledby="wallet-tab-button-receive"
+              >
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <ArrowDownLeft className="w-5 h-5" />
@@ -907,7 +981,11 @@ export function Wallet() {
                       value={accountCountInput}
                       onChange={(e) => setAccountCountInput(e.target.value)}
                       helperText="1-20"
-                      error={accountCountInput.trim() && !isValidCount(accountCountInput) ? 'Invalid count' : undefined}
+                      error={
+                        accountCountInput.trim() && !isValidCount(accountCountInput)
+                          ? "Invalid count"
+                          : undefined
+                      }
                     />
                     <Input
                       label="Start index"
@@ -916,7 +994,11 @@ export function Wallet() {
                       helperText="Derivation offset"
                     />
                     <div className="flex items-end">
-                      <Button variant="secondary" onClick={() => void refreshPortfolio()} disabled={busy}>
+                      <Button
+                        variant="secondary"
+                        onClick={() => void refreshPortfolio()}
+                        disabled={busy}
+                      >
                         Refresh Balances
                       </Button>
                     </div>
@@ -924,7 +1006,10 @@ export function Wallet() {
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {CHAIN_OPTIONS.map((chain) => (
-                      <div key={chain.value} className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
+                      <div
+                        key={chain.value}
+                        className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3"
+                      >
                         <div className="flex items-center justify-between">
                           <p className="text-sm text-gray-300">{chain.label}</p>
                           <Badge variant="info">{chain.symbol}</Badge>
@@ -944,7 +1029,9 @@ export function Wallet() {
                                   size="sm"
                                   variant="ghost"
                                   leftIcon={<Copy className="w-3 h-3" />}
-                                  onClick={() => void copyToClipboard(`${chain.label} address`, balance.address)}
+                                  onClick={() =>
+                                    void copyToClipboard(`${chain.label} address`, balance.address)
+                                  }
                                 >
                                   Copy
                                 </Button>
@@ -964,13 +1051,18 @@ export function Wallet() {
                     <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                       <div>
                         <p className="text-sm font-medium text-white">Token Balances</p>
-                        <p className="text-xs text-gray-400">ERC-20 and SPL token balances for a single derivation index.</p>
+                        <p className="text-xs text-gray-400">
+                          ERC-20 and SPL token balances for a single derivation index.
+                        </p>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-3 w-full md:w-auto">
                         <Select
                           label="Chain"
                           value={tokenChain}
-                          options={TOKEN_CHAIN_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+                          options={TOKEN_CHAIN_OPTIONS.map((option) => ({
+                            value: option.value,
+                            label: option.label,
+                          }))}
                           onChange={(value) => setTokenChain(value as WalletTokenChain)}
                         />
                         <Input
@@ -988,7 +1080,11 @@ export function Wallet() {
                           Include zero balances
                         </label>
                         <div className="flex items-end">
-                          <Button variant="secondary" onClick={() => void refreshTokenBalances()} disabled={busy}>
+                          <Button
+                            variant="secondary"
+                            onClick={() => void refreshTokenBalances()}
+                            disabled={busy}
+                          >
                             Refresh Tokens
                           </Button>
                         </div>
@@ -1000,18 +1096,29 @@ export function Wallet() {
                         <p className="text-xs text-gray-500">No token balances found.</p>
                       ) : (
                         tokenBalances.map((token) => (
-                          <div key={`${token.chain}-${token.index}-${token.tokenAddress}`} className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
+                          <div
+                            key={`${token.chain}-${token.index}-${token.tokenAddress}`}
+                            className="rounded-lg border border-white/5 bg-white/[0.02] p-3"
+                          >
                             <div className="flex items-center justify-between gap-2">
                               <div>
                                 <p className="text-sm text-white font-medium">{token.symbol}</p>
-                                <p className="text-xs text-gray-400">{token.name || token.tokenAddress}</p>
+                                <p className="text-xs text-gray-400">
+                                  {token.name || token.tokenAddress}
+                                </p>
                               </div>
                               <Badge variant="info">{token.chain.toUpperCase()}</Badge>
                             </div>
-                            <p className="mt-2 text-sm font-semibold text-emerald-300">{token.amount}</p>
-                            <p className="mt-1 text-xs text-gray-500 break-all">Token: {token.tokenAddress}</p>
+                            <p className="mt-2 text-sm font-semibold text-emerald-300">
+                              {token.amount}
+                            </p>
+                            <p className="mt-1 text-xs text-gray-500 break-all">
+                              Token: {token.tokenAddress}
+                            </p>
                             {token.tokenAccount ? (
-                              <p className="mt-1 text-xs text-gray-500 break-all">Account: {token.tokenAccount}</p>
+                              <p className="mt-1 text-xs text-gray-500 break-all">
+                                Account: {token.tokenAccount}
+                              </p>
                             ) : null}
                           </div>
                         ))
@@ -1022,8 +1129,13 @@ export function Wallet() {
               </Card>
             )}
 
-            {activeTab === 'send' && status.unlocked && (
-              <Card variant="liquid" role="tabpanel" id="wallet-tab-send" aria-labelledby="wallet-tab-button-send">
+            {activeTab === "send" && status.unlocked && (
+              <Card
+                variant="liquid"
+                role="tabpanel"
+                id="wallet-tab-send"
+                aria-labelledby="wallet-tab-button-send"
+              >
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <ArrowUpRight className="w-5 h-5" />
@@ -1036,7 +1148,10 @@ export function Wallet() {
                     <Select
                       label="Chain"
                       value={sendChain}
-                      options={CHAIN_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+                      options={CHAIN_OPTIONS.map((option) => ({
+                        value: option.value,
+                        label: option.label,
+                      }))}
                       onChange={(value) => setSendChain(value as WalletChain)}
                     />
                     <Input
@@ -1049,25 +1164,25 @@ export function Wallet() {
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
-                      variant={sendAssetType === 'native' ? 'primary' : 'secondary'}
-                      onClick={() => setSendAssetType('native')}
+                      variant={sendAssetType === "native" ? "primary" : "secondary"}
+                      onClick={() => setSendAssetType("native")}
                     >
                       Native
                     </Button>
                     <Button
                       size="sm"
-                      variant={sendAssetType === 'token' ? 'primary' : 'secondary'}
-                      onClick={() => setSendAssetType('token')}
-                      disabled={sendChain === 'btc'}
+                      variant={sendAssetType === "token" ? "primary" : "secondary"}
+                      onClick={() => setSendAssetType("token")}
+                      disabled={sendChain === "btc"}
                     >
                       Token
                     </Button>
                   </div>
 
                   <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-gray-300">
-                    From address:{' '}
+                    From address:{" "}
                     <span className="text-white font-medium">
-                      {selectedReceiveAccount?.address || 'Select a loaded account index'}
+                      {selectedReceiveAccount?.address || "Select a loaded account index"}
                     </span>
                   </div>
 
@@ -1080,8 +1195,8 @@ export function Wallet() {
 
                   <Input
                     label={
-                      sendAssetType === 'token'
-                        ? 'Amount (token units)'
+                      sendAssetType === "token"
+                        ? "Amount (token units)"
                         : `Amount (${CHAIN_OPTIONS.find((item) => item.value === sendChain)?.symbol})`
                     }
                     placeholder="0.0"
@@ -1089,11 +1204,13 @@ export function Wallet() {
                     onChange={(e) => setSendAmount(e.target.value)}
                   />
 
-                  {sendAssetType === 'token' && (
+                  {sendAssetType === "token" && (
                     <>
                       <Input
-                        label={sendChain === 'eth' ? 'Token contract address' : 'Token mint address'}
-                        placeholder={sendChain === 'eth' ? '0x...' : 'So111...'}
+                        label={
+                          sendChain === "eth" ? "Token contract address" : "Token mint address"
+                        }
+                        placeholder={sendChain === "eth" ? "0x..." : "So111..."}
                         value={sendTokenAddress}
                         onChange={(e) => setSendTokenAddress(e.target.value)}
                       />
@@ -1113,7 +1230,7 @@ export function Wallet() {
                     onChange={(e) => setSendMemo(e.target.value)}
                   />
 
-                  {sendChain === 'btc' && (
+                  {sendChain === "btc" && (
                     <Input
                       label="BTC fee rate (sat/vB, optional)"
                       placeholder="e.g. 4"
@@ -1122,14 +1239,18 @@ export function Wallet() {
                     />
                   )}
 
-                  <Button leftIcon={<Send className="w-4 h-4" />} onClick={() => void handleSend()} disabled={busy}>
-                    {sendAssetType === 'token' ? 'Send Token' : 'Send Transaction'}
+                  <Button
+                    leftIcon={<Send className="w-4 h-4" />}
+                    onClick={() => void handleSend()}
+                    disabled={busy}
+                  >
+                    {sendAssetType === "token" ? "Send Token" : "Send Transaction"}
                   </Button>
                 </CardContent>
               </Card>
             )}
 
-            {activeTab === 'history' && status.unlocked && (
+            {activeTab === "history" && status.unlocked && (
               <Card
                 variant="liquid"
                 role="tabpanel"
@@ -1144,27 +1265,30 @@ export function Wallet() {
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
-                      variant={historyMode === 'native' ? 'primary' : 'secondary'}
-                      onClick={() => setHistoryMode('native')}
+                      variant={historyMode === "native" ? "primary" : "secondary"}
+                      onClick={() => setHistoryMode("native")}
                     >
                       Native
                     </Button>
                     <Button
                       size="sm"
-                      variant={historyMode === 'token' ? 'primary' : 'secondary'}
-                      onClick={() => setHistoryMode('token')}
+                      variant={historyMode === "token" ? "primary" : "secondary"}
+                      onClick={() => setHistoryMode("token")}
                     >
                       Token
                     </Button>
                   </div>
 
-                  {historyMode === 'native' ? (
+                  {historyMode === "native" ? (
                     <>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <Select
                           label="Chain"
                           value={txChain}
-                          options={CHAIN_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+                          options={CHAIN_OPTIONS.map((option) => ({
+                            value: option.value,
+                            label: option.label,
+                          }))}
                           onChange={(value) => setTxChain(value as WalletChain)}
                         />
                         <Input
@@ -1179,24 +1303,33 @@ export function Wallet() {
                         />
                       </div>
 
-                      <Button variant="secondary" onClick={() => void refreshTransactions()} disabled={busy}>
+                      <Button
+                        variant="secondary"
+                        onClick={() => void refreshTransactions()}
+                        disabled={busy}
+                      >
                         Refresh Transactions
                       </Button>
 
                       <div className="space-y-2 max-h-[460px] overflow-auto">
                         {transactions.length === 0 ? (
-                          <p className="text-sm text-gray-500">No transactions found for this derivation.</p>
+                          <p className="text-sm text-gray-500">
+                            No transactions found for this derivation.
+                          </p>
                         ) : (
                           transactions.map((tx) => (
-                            <div key={tx.txid} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                            <div
+                              key={tx.txid}
+                              className="rounded-xl border border-white/10 bg-black/20 p-3"
+                            >
                               <div className="flex items-center justify-between gap-2">
                                 <Badge
                                   variant={
-                                    tx.status === 'confirmed'
-                                      ? 'success'
-                                      : tx.status === 'pending'
-                                        ? 'warning'
-                                        : 'error'
+                                    tx.status === "confirmed"
+                                      ? "success"
+                                      : tx.status === "pending"
+                                        ? "warning"
+                                        : "error"
                                   }
                                 >
                                   {tx.status}
@@ -1210,14 +1343,18 @@ export function Wallet() {
                                   Open Explorer
                                 </a>
                               </div>
-                              <p className="mt-2 font-mono text-xs text-gray-300 break-all">{tx.txid}</p>
+                              <p className="mt-2 font-mono text-xs text-gray-300 break-all">
+                                {tx.txid}
+                              </p>
                               <div className="mt-2 text-xs text-gray-400 grid grid-cols-2 gap-2">
-                                <span>Amount: {tx.amount || 'N/A'}</span>
-                                <span>Fee: {tx.fee || 'N/A'}</span>
-                                <span>From: {tx.from ? shortenAddress(tx.from) : 'N/A'}</span>
-                                <span>To: {tx.to ? shortenAddress(tx.to) : 'N/A'}</span>
+                                <span>Amount: {tx.amount || "N/A"}</span>
+                                <span>Fee: {tx.fee || "N/A"}</span>
+                                <span>From: {tx.from ? shortenAddress(tx.from) : "N/A"}</span>
+                                <span>To: {tx.to ? shortenAddress(tx.to) : "N/A"}</span>
                               </div>
-                              <p className="mt-2 text-xs text-gray-500">{formatTimestamp(tx.timestamp)}</p>
+                              <p className="mt-2 text-xs text-gray-500">
+                                {formatTimestamp(tx.timestamp)}
+                              </p>
                             </div>
                           ))
                         )}
@@ -1247,42 +1384,51 @@ export function Wallet() {
                         />
                         <Input
                           label="Token filter (optional)"
-                          placeholder={tokenTxChain === 'eth' ? '0x...' : 'So111...'}
+                          placeholder={tokenTxChain === "eth" ? "0x..." : "So111..."}
                           value={tokenTxAddressFilter}
                           onChange={(e) => setTokenTxAddressFilter(e.target.value)}
                         />
                       </div>
 
-                      <Button variant="secondary" onClick={() => void refreshTokenTransactions()} disabled={busy}>
+                      <Button
+                        variant="secondary"
+                        onClick={() => void refreshTokenTransactions()}
+                        disabled={busy}
+                      >
                         Refresh Token Transactions
                       </Button>
 
                       <div className="space-y-2 max-h-[460px] overflow-auto">
                         {tokenTransactions.length === 0 ? (
-                          <p className="text-sm text-gray-500">No token transfers found for this derivation.</p>
+                          <p className="text-sm text-gray-500">
+                            No token transfers found for this derivation.
+                          </p>
                         ) : (
                           tokenTransactions.map((tx) => (
-                            <div key={`${tx.txid}-${tx.tokenAddress}-${tx.raw}`} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                            <div
+                              key={`${tx.txid}-${tx.tokenAddress}-${tx.raw}`}
+                              className="rounded-xl border border-white/10 bg-black/20 p-3"
+                            >
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
                                   <Badge
                                     variant={
-                                      tx.status === 'confirmed'
-                                        ? 'success'
-                                        : tx.status === 'pending'
-                                          ? 'warning'
-                                          : 'error'
+                                      tx.status === "confirmed"
+                                        ? "success"
+                                        : tx.status === "pending"
+                                          ? "warning"
+                                          : "error"
                                     }
                                   >
                                     {tx.status}
                                   </Badge>
                                   <Badge
                                     variant={
-                                      tx.direction === 'in'
-                                        ? 'success'
-                                        : tx.direction === 'out'
-                                          ? 'warning'
-                                          : 'default'
+                                      tx.direction === "in"
+                                        ? "success"
+                                        : tx.direction === "out"
+                                          ? "warning"
+                                          : "default"
                                     }
                                   >
                                     {tx.direction}
@@ -1300,9 +1446,15 @@ export function Wallet() {
                               <p className="mt-2 text-sm text-white">
                                 {tx.amount} {tx.symbol}
                               </p>
-                              <p className="mt-1 font-mono text-xs text-gray-400 break-all">{tx.txid}</p>
-                              <p className="mt-1 text-xs text-gray-500 break-all">Token: {tx.tokenAddress}</p>
-                              <p className="mt-1 text-xs text-gray-500">{formatTimestamp(tx.timestamp)}</p>
+                              <p className="mt-1 font-mono text-xs text-gray-400 break-all">
+                                {tx.txid}
+                              </p>
+                              <p className="mt-1 text-xs text-gray-500 break-all">
+                                Token: {tx.tokenAddress}
+                              </p>
+                              <p className="mt-1 text-xs text-gray-500">
+                                {formatTimestamp(tx.timestamp)}
+                              </p>
                             </div>
                           ))
                         )}
@@ -1313,7 +1465,7 @@ export function Wallet() {
               </Card>
             )}
 
-            {activeTab === 'settings' && (
+            {activeTab === "settings" && (
               <Card
                 variant="liquid"
                 role="tabpanel"
@@ -1325,7 +1477,9 @@ export function Wallet() {
                     <Settings className="w-5 h-5" />
                     Wallet Settings & Controls
                   </CardTitle>
-                  <CardDescription>Security controls, agent permissions, and RPC endpoints</CardDescription>
+                  <CardDescription>
+                    Security controls, agent permissions, and RPC endpoints
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -1364,12 +1518,14 @@ export function Wallet() {
                         )}
 
                         <Button
-                          variant={status.agentAccessEnabled ? 'danger' : 'outline'}
+                          variant={status.agentAccessEnabled ? "danger" : "outline"}
                           leftIcon={<Shield className="w-4 h-4" />}
                           onClick={() => void handleToggleAgentAccess()}
                           disabled={busy || !status.unlocked}
                         >
-                          {status.agentAccessEnabled ? 'Disable Agent Access' : 'Enable Agent Access'}
+                          {status.agentAccessEnabled
+                            ? "Disable Agent Access"
+                            : "Enable Agent Access"}
                         </Button>
 
                         <Button
@@ -1389,9 +1545,21 @@ export function Wallet() {
                         Public endpoints used for balances, tx history, and send operations.
                       </p>
                       <div className="mt-4 space-y-3">
-                        <Input label="ETH RPC" value={rpcEth} onChange={(e) => setRpcEth(e.target.value)} />
-                        <Input label="SOL RPC" value={rpcSol} onChange={(e) => setRpcSol(e.target.value)} />
-                        <Input label="BTC API" value={rpcBtc} onChange={(e) => setRpcBtc(e.target.value)} />
+                        <Input
+                          label="ETH RPC"
+                          value={rpcEth}
+                          onChange={(e) => setRpcEth(e.target.value)}
+                        />
+                        <Input
+                          label="SOL RPC"
+                          value={rpcSol}
+                          onChange={(e) => setRpcSol(e.target.value)}
+                        />
+                        <Input
+                          label="BTC API"
+                          value={rpcBtc}
+                          onChange={(e) => setRpcBtc(e.target.value)}
+                        />
                         <div className="flex flex-wrap gap-2">
                           <Button onClick={() => void handleSaveRpcConfig()} disabled={busy}>
                             Save RPC Settings
@@ -1404,8 +1572,10 @@ export function Wallet() {
                                   await refreshRpcStatusOnly();
                                 } catch (error) {
                                   addToast(
-                                    'error',
-                                    error instanceof Error ? error.message : 'Failed to refresh RPC status'
+                                    "error",
+                                    error instanceof Error
+                                      ? error.message
+                                      : "Failed to refresh RPC status"
                                   );
                                 }
                               })()
@@ -1415,7 +1585,11 @@ export function Wallet() {
                             Refresh RPC Status
                           </Button>
                         </div>
-                        {rpcConfig && <p className="text-xs text-gray-500">Active BTC API: {rpcConfig.btcApi}</p>}
+                        {rpcConfig && (
+                          <p className="text-xs text-gray-500">
+                            Active BTC API: {rpcConfig.btcApi}
+                          </p>
+                        )}
 
                         <div className="space-y-2">
                           {rpcStatus?.services?.length ? (
@@ -1425,21 +1599,27 @@ export function Wallet() {
                                 className="rounded-lg border border-white/10 bg-black/30 p-3 text-xs text-gray-300"
                               >
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="font-medium text-white uppercase">{service.chain}</span>
-                                  <Badge variant={service.healthy ? 'success' : 'error'}>
-                                    {service.healthy ? 'healthy' : 'down'}
+                                  <span className="font-medium text-white uppercase">
+                                    {service.chain}
+                                  </span>
+                                  <Badge variant={service.healthy ? "success" : "error"}>
+                                    {service.healthy ? "healthy" : "down"}
                                   </Badge>
                                 </div>
                                 <p className="mt-1 break-all text-gray-400">{service.endpoint}</p>
                                 <p className="mt-1 text-gray-400">
                                   latency: {service.latencyMs}ms
-                                  {service.latestHeight ? ` • latest: ${service.latestHeight}` : ''}
+                                  {service.latestHeight ? ` • latest: ${service.latestHeight}` : ""}
                                 </p>
-                                {service.error ? <p className="mt-1 text-red-300">{service.error}</p> : null}
+                                {service.error ? (
+                                  <p className="mt-1 text-red-300">{service.error}</p>
+                                ) : null}
                               </div>
                             ))
                           ) : (
-                            <p className="text-xs text-gray-500">RPC health status is not loaded yet.</p>
+                            <p className="text-xs text-gray-500">
+                              RPC health status is not loaded yet.
+                            </p>
                           )}
                         </div>
                       </div>
@@ -1449,7 +1629,8 @@ export function Wallet() {
                   <div className="rounded-xl border border-white/10 bg-black/20 p-4">
                     <p className="text-sm font-medium text-white">Agent Wallet Policy</p>
                     <p className="mt-1 text-xs text-gray-400">
-                      Fine-grained controls for agent/subagent write actions. Read actions remain available when access is enabled.
+                      Fine-grained controls for agent/subagent write actions. Read actions remain
+                      available when access is enabled.
                     </p>
 
                     {agentPolicy ? (
@@ -1462,7 +1643,9 @@ export function Wallet() {
                               checked={agentPolicy.allowNativeSend}
                               onChange={(e) =>
                                 setAgentPolicy((current) =>
-                                  current ? { ...current, allowNativeSend: e.target.checked } : current
+                                  current
+                                    ? { ...current, allowNativeSend: e.target.checked }
+                                    : current
                                 )
                               }
                             />
@@ -1475,7 +1658,9 @@ export function Wallet() {
                               checked={agentPolicy.allowTokenSend}
                               onChange={(e) =>
                                 setAgentPolicy((current) =>
-                                  current ? { ...current, allowTokenSend: e.target.checked } : current
+                                  current
+                                    ? { ...current, allowTokenSend: e.target.checked }
+                                    : current
                                 )
                               }
                             />
@@ -1488,7 +1673,9 @@ export function Wallet() {
                               checked={agentPolicy.allowEthContractWrite}
                               onChange={(e) =>
                                 setAgentPolicy((current) =>
-                                  current ? { ...current, allowEthContractWrite: e.target.checked } : current
+                                  current
+                                    ? { ...current, allowEthContractWrite: e.target.checked }
+                                    : current
                                 )
                               }
                             />
@@ -1516,7 +1703,9 @@ export function Wallet() {
                               checked={agentPolicy.allowEthSwaps}
                               onChange={(e) =>
                                 setAgentPolicy((current) =>
-                                  current ? { ...current, allowEthSwaps: e.target.checked } : current
+                                  current
+                                    ? { ...current, allowEthSwaps: e.target.checked }
+                                    : current
                                 )
                               }
                             />
@@ -1537,7 +1726,11 @@ export function Wallet() {
                           onChange={(e) => setPolicySolAllowlistInput(e.target.value)}
                         />
 
-                        <Button variant="secondary" onClick={() => void handleSaveAgentPolicy()} disabled={busy}>
+                        <Button
+                          variant="secondary"
+                          onClick={() => void handleSaveAgentPolicy()}
+                          disabled={busy}
+                        >
                           Save Agent Policy
                         </Button>
                       </div>
@@ -1549,28 +1742,38 @@ export function Wallet() {
                   {generatedMnemonic && status.unlocked && (
                     <div className="rounded-lg border border-amber-300/30 bg-amber-300/10 p-4">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm text-amber-100">24-word seed phrase backup reminder</p>
+                        <p className="text-sm text-amber-100">
+                          24-word seed phrase backup reminder
+                        </p>
                         <div className="flex gap-2">
                           <Button
                             size="sm"
                             variant="ghost"
-                            leftIcon={showMnemonic ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            leftIcon={
+                              showMnemonic ? (
+                                <EyeOff className="w-4 h-4" />
+                              ) : (
+                                <Eye className="w-4 h-4" />
+                              )
+                            }
                             onClick={() => setShowMnemonic((current) => !current)}
                           >
-                            {showMnemonic ? 'Hide' : 'Show'}
+                            {showMnemonic ? "Hide" : "Show"}
                           </Button>
                           <Button
                             size="sm"
                             variant="outline"
                             leftIcon={<Copy className="w-4 h-4" />}
-                            onClick={() => void copyToClipboard('Seed phrase', generatedMnemonic)}
+                            onClick={() => void copyToClipboard("Seed phrase", generatedMnemonic)}
                           >
                             Copy
                           </Button>
                         </div>
                       </div>
                       <p className="mt-3 text-sm break-words text-amber-50">
-                        {showMnemonic ? generatedMnemonic : '•••••••• •••••••• •••••••• •••••••• •••••••• ••••••••'}
+                        {showMnemonic
+                          ? generatedMnemonic
+                          : "•••••••• •••••••• •••••••• •••••••• •••••••• ••••••••"}
                       </p>
                     </div>
                   )}
@@ -1590,14 +1793,19 @@ export function Wallet() {
       >
         <div className="space-y-4">
           <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100">
-            This action cannot be undone. Ensure your seed phrase backup is stored offline before deleting.
+            This action cannot be undone. Ensure your seed phrase backup is stored offline before
+            deleting.
           </div>
           <Input
             type="password"
-            label={status?.unlocked ? 'Wallet password (optional)' : 'Wallet password'}
+            label={status?.unlocked ? "Wallet password (optional)" : "Wallet password"}
             value={deletePassword}
             onChange={(e) => setDeletePassword(e.target.value)}
-            placeholder={status?.unlocked ? 'Optional verification password' : 'Required while wallet is locked'}
+            placeholder={
+              status?.unlocked
+                ? "Optional verification password"
+                : "Required while wallet is locked"
+            }
           />
           <Input
             label='Type "DELETE" to confirm'

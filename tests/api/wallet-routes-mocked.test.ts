@@ -511,7 +511,8 @@ mock.module("../../src/core/wallet", () => ({
       walletMockState.rpcCallCalls.push(input);
       return {
         chain: input.chain,
-        rpcUrl: input.rpcUrl || (input.chain === "eth" ? "https://eth.example" : "https://sol.example"),
+        rpcUrl:
+          input.rpcUrl || (input.chain === "eth" ? "https://eth.example" : "https://sol.example"),
         method: input.method,
         id: input.id ?? 1,
         result: { ok: true },

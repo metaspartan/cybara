@@ -1294,8 +1294,22 @@ export const providers = {
     api: "openai-completions",
     authType: "api_key",
     models: [
-      { id: "sonar", name: "Sonar", context: 128000, maxTokens: 8000, reasoning: false, input: ["text"] },
-      { id: "sonar-pro", name: "Sonar Pro", context: 200000, maxTokens: 8000, reasoning: false, input: ["text"] },
+      {
+        id: "sonar",
+        name: "Sonar",
+        context: 128000,
+        maxTokens: 8000,
+        reasoning: false,
+        input: ["text"],
+      },
+      {
+        id: "sonar-pro",
+        name: "Sonar Pro",
+        context: 200000,
+        maxTokens: 8000,
+        reasoning: false,
+        input: ["text"],
+      },
       {
         id: "sonar-reasoning-pro",
         name: "Sonar Reasoning Pro",

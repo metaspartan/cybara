@@ -156,9 +156,9 @@ describe("metrics tool call counters", () => {
     expect(r.toolRead).toBe(2);
     expect(r.toolWrite).toBe(1);
     expect(r.toolNoop).toBe(1);
-    expect(
-      (r.toolRead as number) + (r.toolWrite as number) + (r.toolNoop as number)
-    ).toBe(r.toolAll as number);
+    expect((r.toolRead as number) + (r.toolWrite as number) + (r.toolNoop as number)).toBe(
+      r.toolAll as number
+    );
   });
 
   test("duration accumulates and error counter only counts failures", () => {

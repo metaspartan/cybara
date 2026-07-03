@@ -43,7 +43,10 @@ export function selectTranscribeBackend(
   return null;
 }
 
-function resolveConfiguredProviderBackend(args: Record<string, unknown>, modelOverride?: string): BackendConfig | null {
+function resolveConfiguredProviderBackend(
+  args: Record<string, unknown>,
+  modelOverride?: string
+): BackendConfig | null {
   const speech = config.getSpeechSettings();
   const providerId =
     typeof args.providerId === "string" && args.providerId.trim()
@@ -64,10 +67,11 @@ function resolveConfiguredProviderBackend(args: Record<string, unknown>, modelOv
     throw new Error("Requested transcription provider has no API credentials");
   }
   const providerInfo = providers[providerType];
-  const baseUrl = (provider.base_url || providerInfo?.baseUrl || "https://api.openai.com/v1").replace(
-    /\/+$/,
-    ""
-  );
+  const baseUrl = (
+    provider.base_url ||
+    providerInfo?.baseUrl ||
+    "https://api.openai.com/v1"
+  ).replace(/\/+$/, "");
   return {
     backend: providerType,
     endpoint: `${baseUrl}/audio/transcriptions`,
@@ -91,7 +95,12 @@ function resolveBackend(args: Record<string, unknown>, modelOverride?: string): 
   if (selected.backend === "groq") {
     return { backend: "groq", endpoint: GROQ_ENDPOINT, apiKey: process.env.GROQ_API_KEY!, model };
   }
-  return { backend: "openai", endpoint: OPENAI_ENDPOINT, apiKey: process.env.OPENAI_API_KEY!, model };
+  return {
+    backend: "openai",
+    endpoint: OPENAI_ENDPOINT,
+    apiKey: process.env.OPENAI_API_KEY!,
+    model,
+  };
 }
 
 async function loadAudio(args: Record<string, unknown>): Promise<{ blob: Blob; filename: string }> {

@@ -35,10 +35,7 @@ export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfi
     try {
       onConnect(await resolveGatewayProfile(payload));
     } catch (error) {
-      Alert.alert(
-        "Could not connect",
-        error instanceof Error ? error.message : String(error)
-      );
+      Alert.alert("Could not connect", error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -66,10 +63,7 @@ export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfi
       setScannerOpen(false);
     } catch (error) {
       setScanLocked(false);
-      Alert.alert(
-        "Could not connect",
-        error instanceof Error ? error.message : String(error)
-      );
+      Alert.alert("Could not connect", error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -160,106 +154,107 @@ export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfi
   );
 }
 
-const makeStyles = () => StyleSheet.create({
-  wrap: {
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-  },
-  brand: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: spacing.md,
-    paddingBottom: spacing.xs,
-  },
-  logoMark: {
-    alignItems: "center",
-    backgroundColor: colors.softCyan,
-    borderColor: colors.softCyanBorder,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    height: 58,
-    justifyContent: "center",
-    overflow: "hidden",
-    width: 58,
-  },
-  logoImage: {
-    height: 45,
-    width: 45,
-  },
-  brandText: {
-    flex: 1,
-    gap: 3,
-  },
-  title: {
-    color: colors.text,
-    fontSize: 35,
-    fontWeight: "900",
-  },
-  subtitle: {
-    color: colors.textMuted,
-    fontSize: typography.body,
-    lineHeight: 22,
-  },
-  card: {
-    gap: spacing.md,
-  },
-  cardTitle: {
-    color: colors.text,
-    fontSize: typography.heading,
-    fontWeight: "800",
-  },
-  help: {
-    color: colors.textMuted,
-    fontSize: typography.label,
-    lineHeight: 18,
-  },
-  input: {
-    minHeight: 46,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    color: colors.text,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  payload: {
-    minHeight: 92,
-    textAlignVertical: "top",
-  },
-  cameraWrap: {
-    height: 260,
-    borderRadius: radius.lg,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    backgroundColor: colors.backgroundLift,
-  },
-  camera: {
-    bottom: 0,
-    left: 0,
-    position: "absolute",
-    right: 0,
-    top: 0,
-  },
-  cameraOverlay: {
-    alignItems: "center",
-    bottom: 0,
-    justifyContent: "center",
-    left: 0,
-    position: "absolute",
-    right: 0,
-    top: 0,
-  },
-  scanFrame: {
-    width: 190,
-    height: 190,
-    borderRadius: radius.lg,
-    borderWidth: 2,
-    borderColor: colors.cyan,
-    backgroundColor: colors.inset,
-  },
-});
+const makeStyles = () =>
+  StyleSheet.create({
+    wrap: {
+      gap: spacing.md,
+      paddingHorizontal: spacing.lg,
+    },
+    brand: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: spacing.md,
+      paddingBottom: spacing.xs,
+    },
+    logoMark: {
+      alignItems: "center",
+      backgroundColor: colors.softCyan,
+      borderColor: colors.softCyanBorder,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      height: 58,
+      justifyContent: "center",
+      overflow: "hidden",
+      width: 58,
+    },
+    logoImage: {
+      height: 45,
+      width: 45,
+    },
+    brandText: {
+      flex: 1,
+      gap: 3,
+    },
+    title: {
+      color: colors.text,
+      fontSize: 35,
+      fontWeight: "900",
+    },
+    subtitle: {
+      color: colors.textMuted,
+      fontSize: typography.body,
+      lineHeight: 22,
+    },
+    card: {
+      gap: spacing.md,
+    },
+    cardTitle: {
+      color: colors.text,
+      fontSize: typography.heading,
+      fontWeight: "800",
+    },
+    help: {
+      color: colors.textMuted,
+      fontSize: typography.label,
+      lineHeight: 18,
+    },
+    input: {
+      minHeight: 46,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      color: colors.text,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    payload: {
+      minHeight: 92,
+      textAlignVertical: "top",
+    },
+    cameraWrap: {
+      height: 260,
+      borderRadius: radius.lg,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: colors.borderStrong,
+      backgroundColor: colors.backgroundLift,
+    },
+    camera: {
+      bottom: 0,
+      left: 0,
+      position: "absolute",
+      right: 0,
+      top: 0,
+    },
+    cameraOverlay: {
+      alignItems: "center",
+      bottom: 0,
+      justifyContent: "center",
+      left: 0,
+      position: "absolute",
+      right: 0,
+      top: 0,
+    },
+    scanFrame: {
+      width: 190,
+      height: 190,
+      borderRadius: radius.lg,
+      borderWidth: 2,
+      borderColor: colors.cyan,
+      backgroundColor: colors.inset,
+    },
+  });
 
 let styles = makeStyles();
 subscribeColors(() => {

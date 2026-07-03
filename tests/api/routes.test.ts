@@ -182,13 +182,9 @@ function insertRawAgent(
   const dbPath = join(testHome, ".cybara", "data", "platform.db");
   const db = new Database(dbPath);
   try {
-    db.query("INSERT INTO agents (id, name, model, provider_id, config) VALUES (?, ?, ?, ?, ?)").run(
-      id,
-      name,
-      options.model ?? null,
-      options.providerId ?? null,
-      config
-    );
+    db.query(
+      "INSERT INTO agents (id, name, model, provider_id, config) VALUES (?, ?, ?, ?, ?)"
+    ).run(id, name, options.model ?? null, options.providerId ?? null, config);
   } finally {
     db.close();
   }
@@ -198,11 +194,7 @@ function insertRawProvider(id: string, provider: string, name: string): void {
   const dbPath = join(testHome, ".cybara", "data", "platform.db");
   const db = new Database(dbPath);
   try {
-    db.query("INSERT INTO providers (id, provider, name) VALUES (?, ?, ?)").run(
-      id,
-      provider,
-      name
-    );
+    db.query("INSERT INTO providers (id, provider, name) VALUES (?, ?, ?)").run(id, provider, name);
   } finally {
     db.close();
   }
@@ -2527,7 +2519,8 @@ describe("Config API", () => {
   test("PUT /api/config normalizes computer-use driver command override", async () => {
     const putRes = await api("PUT", "/api/config", {
       computer_use: {
-        driverCommand: '"C:\\Users\\carsen\\AppData\\Local\\Programs\\Cua\\cua-driver\\bin\\cua-driver.exe"',
+        driverCommand:
+          '"C:\\Users\\carsen\\AppData\\Local\\Programs\\Cua\\cua-driver\\bin\\cua-driver.exe"',
       },
     });
     expect(putRes.status).toBe(200);
@@ -2780,7 +2773,9 @@ describe("Memory API", () => {
       expect(appendCreate.data.appended).toBe(true);
 
       const listAfterAppend = await api("GET", "/api/memory");
-      const memoryFile = listAfterAppend.data.memories.find((item: { file: string }) => item.file === file);
+      const memoryFile = listAfterAppend.data.memories.find(
+        (item: { file: string }) => item.file === file
+      );
       expect(memoryFile.entries).toHaveLength(2);
       expect(memoryFile.entries[1].content).toContain("second memory entry");
 
@@ -2801,7 +2796,9 @@ describe("Memory API", () => {
       expect(deleteEntryRes.data.success).toBe(true);
 
       const listAfterDelete = await api("GET", "/api/memory");
-      const updatedMemoryFile = listAfterDelete.data.memories.find((item: { file: string }) => item.file === file);
+      const updatedMemoryFile = listAfterDelete.data.memories.find(
+        (item: { file: string }) => item.file === file
+      );
       expect(updatedMemoryFile.entries).toHaveLength(1);
       expect(updatedMemoryFile.entries[0].content).toContain("edited second memory entry");
     } finally {
@@ -2829,9 +2826,14 @@ describe("Memory API", () => {
       expect(editRes.status).toBe(200);
       expect(editRes.data.success).toBe(true);
 
-      const searchRes = await api("GET", "/api/memory/search?query=encoded%20memory%20entry%20updated");
+      const searchRes = await api(
+        "GET",
+        "/api/memory/search?query=encoded%20memory%20entry%20updated"
+      );
       expect(searchRes.status).toBe(200);
-      const hit = searchRes.data.results.find((item: { file: string }) => item.file === expectedFile);
+      const hit = searchRes.data.results.find(
+        (item: { file: string }) => item.file === expectedFile
+      );
       expect(hit.entry.content).toContain("encoded memory entry updated");
 
       const deleteRes = await api("DELETE", `/api/memory/${encodedFile}`);

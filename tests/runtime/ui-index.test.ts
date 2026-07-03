@@ -8,7 +8,7 @@ const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 describe("UI index runtime loading", () => {
   test("reads the current dist index on every request", () => {
-    let html = "<script src=\"/assets/old.js\"></script>";
+    let html = '<script src="/assets/old.js"></script>';
     const reads: string[] = [];
 
     const readFileSyncFn = (path: string, encoding: BufferEncoding) => {
@@ -26,7 +26,7 @@ describe("UI index runtime loading", () => {
       })
     ).toContain("old.js");
 
-    html = "<script src=\"/assets/new.js\"></script>";
+    html = '<script src="/assets/new.js"></script>';
 
     expect(
       readUiIndexContent({
@@ -36,7 +36,10 @@ describe("UI index runtime loading", () => {
         readFileSyncFn,
       })
     ).toContain("new.js");
-    expect(reads).toEqual([`${join(uiPath, "index.html")}:utf-8`, `${join(uiPath, "index.html")}:utf-8`]);
+    expect(reads).toEqual([
+      `${join(uiPath, "index.html")}:utf-8`,
+      `${join(uiPath, "index.html")}:utf-8`,
+    ]);
   });
 
   test("falls back when the UI index cannot be read", () => {

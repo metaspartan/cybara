@@ -12,7 +12,10 @@ import {
   clearChannelSubagentSpawnHandler,
   setChannelSubagentSpawnHandler,
 } from "../../src/core/channels/commands";
-import { configureChannelChatRuntime, resetChannelChatRuntime } from "../../src/core/channels/chat-runtime";
+import {
+  configureChannelChatRuntime,
+  resetChannelChatRuntime,
+} from "../../src/core/channels/chat-runtime";
 import { securityManager } from "../../src/core/channels/security";
 import { config } from "../../src/core/config";
 import { tables } from "../../src/core/database";
@@ -370,9 +373,9 @@ describe("Discord adapter mocked message flows", () => {
       expect(captured?.fileType).toBe("image/png");
       expect(captured?.placeholder).toBe("<attachment:image.png>");
       expect(captured?.content).toContain("<attachment:image.png>");
-      expect(captured?.filePath.startsWith(path.join(cybaraDir, "media", "inbound", "discord"))).toBe(
-        true
-      );
+      expect(
+        captured?.filePath.startsWith(path.join(cybaraDir, "media", "inbound", "discord"))
+      ).toBe(true);
       expect(existsSync(captured?.filePath || "")).toBe(true);
       expect(replies).toContain("attachment-ok");
     } finally {
@@ -722,8 +725,7 @@ describe("Discord adapter mocked message flows", () => {
     await handleDiscordMessage(adapter, channelId, message);
 
     const updatedAgent = tables.agents.get(agentId) as
-      | { provider_id?: string; model?: string }
-      | undefined;
+      { provider_id?: string; model?: string } | undefined;
     expect(handlerCalls).toBe(0);
     expect(updatedAgent?.provider_id).toBe(providerB);
     expect(updatedAgent?.model).toBe("b-model");
@@ -1074,7 +1076,12 @@ describe("Discord adapter mocked message flows", () => {
       }
     ).clients.set(channelId, fakeClient);
 
-    const success = await adapter.sendReaction(channelId, "chat-reaction", "message-1", "<:fire:123>");
+    const success = await adapter.sendReaction(
+      channelId,
+      "chat-reaction",
+      "message-1",
+      "<:fire:123>"
+    );
 
     expect(success).toBe(true);
     expect(reacted).toEqual(["fire:123"]);

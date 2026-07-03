@@ -145,7 +145,9 @@ function semanticActivityDedupKey(activity: LiveActivityItem): string {
     return `toolCall:${activity.toolCallId}:${activity.phase}`;
   }
   const toolPrefix = activity.toolName ? `${activity.toolName.toLowerCase()}:` : "";
-  const normalizedText = normalizeText(toCanonicalVerb(activity.text, activity.phase)).toLowerCase();
+  const normalizedText = normalizeText(
+    toCanonicalVerb(activity.text, activity.phase)
+  ).toLowerCase();
   const timestampBucket = Number.isFinite(activity.timestamp)
     ? Math.floor(activity.timestamp / 1000)
     : 0;
@@ -244,14 +246,13 @@ export function mergeActivityLists(
     }
     const key = canonicalActivityKey(activity);
     const normalizedToolName = activity.toolName?.toLowerCase();
-    return allActivities.some(
-      (candidate) => {
-        if (candidate.phase === "start") return false;
-        if (candidate.timestamp < activity.timestamp) return false;
-        if (normalizedToolName && candidate.toolName?.toLowerCase() === normalizedToolName) return true;
-        return canonicalActivityKey(candidate) === key;
-      }
-    );
+    return allActivities.some((candidate) => {
+      if (candidate.phase === "start") return false;
+      if (candidate.timestamp < activity.timestamp) return false;
+      if (normalizedToolName && candidate.toolName?.toLowerCase() === normalizedToolName)
+        return true;
+      return canonicalActivityKey(candidate) === key;
+    });
   };
 
   const seen = new Set<string>();

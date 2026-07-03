@@ -38,15 +38,13 @@ function parseRequiredPlatforms(): readonly string[] {
 
 async function main(): Promise<void> {
   const source =
-    process.argv[2] ||
-    "https://github.com/metaspartan/cybara/releases/latest/download/latest.json";
+    process.argv[2] || "https://github.com/metaspartan/cybara/releases/latest/download/latest.json";
   const manifest = await readManifest(source);
   const requiredPlatforms = parseRequiredPlatforms();
   const validation = validateTauriUpdaterManifest(manifest, requiredPlatforms);
 
   if (!validation.ok) {
-    const invalidEntryLabel =
-      validation.invalidPlatforms.length === 1 ? "entry" : "entries";
+    const invalidEntryLabel = validation.invalidPlatforms.length === 1 ? "entry" : "entries";
     const details = [
       validation.missingPlatforms.length > 0
         ? `missing platform(s): ${validation.missingPlatforms.join(", ")}`

@@ -25,7 +25,22 @@ describe("parallel tool eligibility", () => {
   });
 
   test("safe set excludes write/exec/effectful tools", () => {
-    for (const unsafe of ["write", "edit", "exec", "process", "git", "browser", "wallet", "message", "execute_code", "apply_patch", "home_assistant", "cron", "tts", "image"]) {
+    for (const unsafe of [
+      "write",
+      "edit",
+      "exec",
+      "process",
+      "git",
+      "browser",
+      "wallet",
+      "message",
+      "execute_code",
+      "apply_patch",
+      "home_assistant",
+      "cron",
+      "tts",
+      "image",
+    ]) {
       expect(isParallelSafeTool(unsafe)).toBe(false);
     }
     for (const safe of ["read", "grep", "web_search", "memory_search"]) {
@@ -36,7 +51,10 @@ describe("parallel tool eligibility", () => {
 
 describe("memory recall formatting", () => {
   test("formats snippets as a bounded background-context block", () => {
-    const out = formatRecallBlock([{ content: "User prefers dark mode." }, { content: "  Ships on Fridays.  " }]);
+    const out = formatRecallBlock([
+      { content: "User prefers dark mode." },
+      { content: "  Ships on Fridays.  " },
+    ]);
     expect(out).toContain("## Relevant memory");
     expect(out).toContain("- User prefers dark mode.");
     expect(out).toContain("- Ships on Fridays.");

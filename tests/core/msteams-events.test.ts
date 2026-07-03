@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { createHmac } from "crypto";
-import { parseMsTeamsActivity, verifyMsTeamsSignature } from "../../src/core/channels/msteams-events";
+import {
+  parseMsTeamsActivity,
+  verifyMsTeamsSignature,
+} from "../../src/core/channels/msteams-events";
 
 describe("Microsoft Teams activity parsing", () => {
   test("extracts a message activity", () => {

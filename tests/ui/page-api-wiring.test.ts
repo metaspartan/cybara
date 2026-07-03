@@ -81,7 +81,7 @@ describe("UI page API wiring", () => {
     expect(settingsSource).toContain("readThemeAccentFromConfig(result.data)");
     expect(appSource).toContain("function ThemeConfigSync()");
     expect(appSource).toContain("settingsApi.getConfig()");
-    expect(appSource).toContain("window.addEventListener('focus', syncTheme)");
+    expect(appSource).toMatch(/window\.addEventListener\(["']focus["'],\s*syncTheme\)/);
     expect(storeSource).toContain("export function themeConfigPayload");
     expect(storeSource).toContain("config?.theme,");
   });
@@ -89,13 +89,21 @@ describe("UI page API wiring", () => {
   test("Setup page completes onboarding through setupApi helper", () => {
     const source = readPage("Setup.tsx");
 
-    expect(source).toContain("type SetupAuthFlow = 'api_key' | 'oauth' | 'external' | 'none';");
-    expect(source).toContain("if (provider.authType === 'oauth') return 'oauth';");
-    expect(source).toContain("if (provider.authType === 'aws-sdk') return 'external';");
-    expect(source).not.toContain("provider.authType === 'oauth' || provider.authType === 'aws-sdk'");
-    expect(source).toContain("authFlow === 'external'");
+    expect(source).toMatch(
+      /type SetupAuthFlow = ["']api_key["'] \| ["']oauth["'] \| ["']external["'] \| ["']none["'];/
+    );
+    expect(source).toMatch(/if \(provider\.authType === ["']oauth["']\) return ["']oauth["'];/);
+    expect(source).toMatch(
+      /if \(provider\.authType === ["']aws-sdk["']\) return ["']external["'];/
+    );
+    expect(source).not.toContain(
+      "provider.authType === 'oauth' || provider.authType === 'aws-sdk'"
+    );
+    expect(source).toMatch(/authFlow === ["']external["']/);
     expect(source).toContain("External");
-    expect(source).toContain("import { setupApi, settingsApi } from '@/lib/api';");
+    expect(source).toMatch(
+      /import\s*\{\s*setupApi,\s*settingsApi\s*\}\s*from\s*["']@\/lib\/api["'];/
+    );
     expect(source).toContain("setupApi.complete()");
     expect(source).toContain("settingsApi.updateConfig({ tool_approval_mode: toolApprovalMode })");
     expect(source).not.toContain("apiFetch('/api/setup/complete'");
@@ -111,18 +119,20 @@ describe("UI page API wiring", () => {
     expect(typesSource).toContain("export type ProviderAuthType");
     expect(typesSource).toContain('"none" | "api_key" | "bearer" | "token" | "oauth" | "aws-sdk"');
     expect(typesSource).toContain("authType?: ProviderAuthType;");
-    expect(source).toContain("apiFetch('/api/providers/oauth/device-code'");
-    expect(source).toContain("apiFetch('/api/providers/oauth/poll'");
-    expect(source).toContain("apiFetch('/api/providers/oauth/start'");
-    expect(source).toContain("apiFetch('/api/providers/oauth/callback-status'");
+    expect(source).toMatch(/apiFetch\(["']\/api\/providers\/oauth\/device-code["']/);
+    expect(source).toMatch(/apiFetch\(["']\/api\/providers\/oauth\/poll["']/);
+    expect(source).toMatch(/apiFetch\(["']\/api\/providers\/oauth\/start["']/);
+    expect(source).toMatch(/apiFetch\(["']\/api\/providers\/oauth\/callback-status["']/);
     expect(source).toContain("apiFetch(`/api/providers/${provider.id}/test`");
     expect(source).toContain("openExternal(data.verification_uri)");
     expect(source).toContain("openExternal(data.auth_url)");
-    expect(source).toContain("const authType = selectedProviderInfo?.authType || 'api_key';");
-    expect(source).toContain("authType === 'api_key'");
-    expect(source).toContain("authType === 'oauth'");
-    expect(source).toContain("authType === 'aws-sdk'");
-    expect(source).toContain("authType === 'none'");
+    expect(source).toMatch(
+      /const authType = selectedProviderInfo\?\.authType \|\| ["']api_key["'];/
+    );
+    expect(source).toMatch(/authType === ["']api_key["']/);
+    expect(source).toMatch(/authType === ["']oauth["']/);
+    expect(source).toMatch(/authType === ["']aws-sdk["']/);
+    expect(source).toMatch(/authType === ["']none["']/);
   });
 
   test("IDE page routes file and git operations through encoded API paths", () => {
@@ -162,14 +172,14 @@ describe("UI page API wiring", () => {
     expect(source).toContain(
       "appendApiTokenParam(`/api/terminal/ws?session=${encodeURIComponent(id)}`)"
     );
-    expect(source).toContain("apiFetch('/api/terminal/sessions')");
+    expect(source).toMatch(/apiFetch\(["']\/api\/terminal\/sessions["']\)/);
     expect(source).toContain("new WebSocket(`${proto}//${window.location.host}${wsPath}`)");
   });
 
   test("Tasks page loads run history through tasksApi helper", () => {
     const source = readPage("Tasks.tsx");
 
-    expect(source).toContain("import { tasksApi } from '@/lib/api';");
+    expect(source).toMatch(/import\s*\{\s*tasksApi\s*\}\s*from\s*["']@\/lib\/api["'];/);
     expect(source).toContain("tasksApi.getRuns(expandedTaskId)");
     expect(source).not.toContain("apiFetch(`/api/tasks/${expandedTaskId}/runs`)");
   });
@@ -202,13 +212,13 @@ describe("UI page API wiring", () => {
     const logsSource = readPage("Logs.tsx");
     const sessionsSource = readPage("Sessions.tsx");
 
-    expect(logsSource).toContain("import { logsApi } from '@/lib/api';");
+    expect(logsSource).toMatch(/import\s*\{\s*logsApi\s*\}\s*from\s*["']@\/lib\/api["'];/);
     expect(logsSource).toContain("logsApi.getSystem()");
     expect(logsSource).toContain("logsApi.getStats(24)");
     expect(logsSource).toContain("logsApi.search(searchQuery)");
     expect(logsSource).not.toContain("apiFetch(");
 
-    expect(sessionsSource).toContain("import { sessionsApi } from '@/lib/api';");
+    expect(sessionsSource).toMatch(/import\s*\{\s*sessionsApi\s*\}\s*from\s*["']@\/lib\/api["'];/);
     expect(sessionsSource).toContain("sessionsApi.list({ limit: targetLimit, offset: 0 })");
     expect(sessionsSource).toContain("sessionsApi.list({");
     expect(sessionsSource).toContain("sessionsApi.get(session.id)");

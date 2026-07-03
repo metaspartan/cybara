@@ -1,4 +1,10 @@
-import type { ChannelAdapter, ToolCallInfo, MessageHandler, WebhookPayload, WebhookResult } from "../types";
+import type {
+  ChannelAdapter,
+  ToolCallInfo,
+  MessageHandler,
+  WebhookPayload,
+  WebhookResult,
+} from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { parseSynologyForm } from "../synology-events";
@@ -29,7 +35,8 @@ export class SynologyAdapter implements ChannelAdapter {
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
     const incomingUrl = typeof config.incoming_url === "string" ? config.incoming_url.trim() : "";
     const token = typeof config.token === "string" ? config.token.trim() : "";
-    if (!incomingUrl || !token) throw new Error("Synology Chat: incoming_url and token are required");
+    if (!incomingUrl || !token)
+      throw new Error("Synology Chat: incoming_url and token are required");
     this.configs.set(channelId, { incomingUrl, token });
     this.running.add(channelId);
     console.log(`[Synology] ready for channel ${channelId}`);
@@ -91,7 +98,10 @@ export class SynologyAdapter implements ChannelAdapter {
       synologySessions.set(sessionKey, sessionId);
     }
 
-    await logChannelMessage("synology", "incoming", text, { channelId, senderId: username || userId });
+    await logChannelMessage("synology", "incoming", text, {
+      channelId,
+      senderId: username || userId,
+    });
 
     let response: string;
     try {

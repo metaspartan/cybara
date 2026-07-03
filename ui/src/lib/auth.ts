@@ -74,10 +74,7 @@ export function appendApiTokenParam(urlOrPath: string, token = getApiAuthToken()
   return `${urlOrPath}${separator}token=${encodeURIComponent(token)}`;
 }
 
-export function withApiAuthHeaders(
-  headers?: HeadersInit,
-  token = getApiAuthToken()
-): Headers {
+export function withApiAuthHeaders(headers?: HeadersInit, token = getApiAuthToken()): Headers {
   const resolved = new Headers(headers);
   if (token && !resolved.has("Authorization")) {
     resolved.set("Authorization", `Bearer ${token}`);

@@ -12,7 +12,12 @@ function runVerifier(manifestPath: string): {
   stdout: string;
 } {
   const result = Bun.spawnSync(
-    [process.execPath, "run", join(ROOT_DIR, "scripts", "verify-tauri-updater-manifest.ts"), manifestPath],
+    [
+      process.execPath,
+      "run",
+      join(ROOT_DIR, "scripts", "verify-tauri-updater-manifest.ts"),
+      manifestPath,
+    ],
     {
       cwd: ROOT_DIR,
       stderr: "pipe",

@@ -51,8 +51,7 @@ async function waitForServerReady(url: string, timeoutMs = 30000): Promise<void>
     try {
       const res = await fetch(`${url}/api/health`);
       if (res.ok) return;
-    } catch {
-    }
+    } catch {}
     await sleep(250);
   }
   throw new Error(`Timed out waiting for server at ${url}`);
@@ -179,7 +178,9 @@ async function api(method: string, path: string, body?: unknown) {
   return { status: response.status, data };
 }
 
-async function runCli(args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+async function runCli(
+  args: string[]
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const proc = Bun.spawn([process.execPath, "run", "src/cli.tsx", ...args], {
     cwd: ROOT_DIR,
     env: {
@@ -201,7 +202,9 @@ async function runCli(args: string[]): Promise<{ exitCode: number; stdout: strin
   const timeoutPromise = new Promise<{ exitCode: number; stdout: string; stderr: string }>(
     (resolve) => {
       setTimeout(() => {
-        try { proc.kill("SIGKILL"); } catch {}
+        try {
+          proc.kill("SIGKILL");
+        } catch {}
         resolve({ exitCode: 143, stdout: "", stderr: "CLI timed out" });
       }, timeoutMs);
     }
@@ -246,8 +249,7 @@ describeOrSkip("Stateful CLI + API e2e", () => {
     if (serverProc) {
       try {
         serverProc.kill("SIGTERM");
-      } catch {
-      }
+      } catch {}
       await Promise.race([serverProc.exited, sleep(5000)]);
     }
 
@@ -522,9 +524,11 @@ describeOrSkip("Stateful CLI + API e2e", () => {
       });
       expect(dappCapabilities.status).toBe(200);
       expect(Array.isArray(dappCapabilities.data.adapters)).toBe(true);
-      expect(dappCapabilities.data.adapters.some((entry: { adapter: string }) => entry.adapter === "x402_http")).toBe(
-        true
-      );
+      expect(
+        dappCapabilities.data.adapters.some(
+          (entry: { adapter: string }) => entry.adapter === "x402_http"
+        )
+      ).toBe(true);
 
       const toolX402 = await api("POST", "/api/tools/execute", {
         name: "wallet",
@@ -594,9 +598,11 @@ describeOrSkip("Stateful CLI + API e2e", () => {
       expect(permit2Paid.status).toBe(200);
       expect(permit2Paid.data.status).toBe(200);
       expect(permit2Paid.data.paid).toBe(true);
-      expect(permit2Merchant.requests.some((request) => request.paymentHeaderName === "payment-signature")).toBe(
-        true
-      );
+      expect(
+        permit2Merchant.requests.some(
+          (request) => request.paymentHeaderName === "payment-signature"
+        )
+      ).toBe(true);
     } finally {
       await permit2Merchant.stop();
     }
@@ -640,7 +646,9 @@ describeOrSkip("Stateful CLI + API e2e", () => {
       expect(v1Paid.status).toBe(200);
       expect(v1Paid.data.status).toBe(200);
       expect(v1Paid.data.paid).toBe(true);
-      expect(v1Merchant.requests.some((request) => request.paymentHeaderName === "x-payment")).toBe(true);
+      expect(v1Merchant.requests.some((request) => request.paymentHeaderName === "x-payment")).toBe(
+        true
+      );
     } finally {
       await v1Merchant.stop();
     }

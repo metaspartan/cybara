@@ -14,17 +14,19 @@ describe("Sidebar status indicator behavior", () => {
   test("treats thinking, generating, and tool execution events as active status", () => {
     const source = readSidebarSource();
 
-    expect(source).toContain("'thinking'");
-    expect(source).toContain("'generating'");
-    expect(source).toContain("'tool_executing'");
-    expect(source).not.toContain("'tool_completed',");
-    expect(source).toContain("setStatus(globalActive || hasActiveSessions ? 'active' : 'idle')");
+    expect(source).toMatch(/["']thinking["']/);
+    expect(source).toMatch(/["']generating["']/);
+    expect(source).toMatch(/["']tool_executing["']/);
+    expect(source).not.toMatch(/["']tool_completed["'],/);
+    expect(source).toMatch(
+      /setStatus\(globalActive \|\| hasActiveSessions \? ["']active["'] : ["']idle["']\)/
+    );
   });
 
   test("renders active ring state from unified active status", () => {
     const source = readSidebarSource();
 
-    expect(source).toContain("status === 'active'");
+    expect(source).toMatch(/status === ["']active["']/);
     expect(source).toContain("ring-2 ring-amber-400/60");
   });
 });

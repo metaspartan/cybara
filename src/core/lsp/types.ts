@@ -217,9 +217,7 @@ export interface TextEdit {
 
 export interface Hover {
   contents:
-    | string
-    | { kind: string; value: string }
-    | Array<string | { language: string; value: string }>;
+    string | { kind: string; value: string } | Array<string | { language: string; value: string }>;
   range?: Range;
 }
 

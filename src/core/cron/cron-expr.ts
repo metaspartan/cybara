@@ -12,11 +12,27 @@
  */
 
 const MONTH_NAMES: Record<string, number> = {
-  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
-  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+  jan: 1,
+  feb: 2,
+  mar: 3,
+  apr: 4,
+  may: 5,
+  jun: 6,
+  jul: 7,
+  aug: 8,
+  sep: 9,
+  oct: 10,
+  nov: 11,
+  dec: 12,
 };
 const DOW_NAMES: Record<string, number> = {
-  sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
+  sun: 0,
+  mon: 1,
+  tue: 2,
+  wed: 3,
+  thu: 4,
+  fri: 5,
+  sat: 6,
 };
 
 interface CronFields {
@@ -93,7 +109,10 @@ export function parseCronExpression(expr: string): CronFields {
 }
 
 /** Calendar fields for an epoch ms, in local time or a given IANA timezone. */
-function fieldsAt(ms: number, tz?: string): {
+function fieldsAt(
+  ms: number,
+  tz?: string
+): {
   minute: number;
   hour: number;
   dom: number;

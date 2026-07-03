@@ -53,9 +53,16 @@ describe("sms + email adapter wiring", () => {
   });
 
   test("email adapter lifecycle + formatResponse", async () => {
-    await emailAdapter.start("ch1", { smtp_host: "smtp.x.com", username: "u", password: "p", from_address: "a@x.com" });
+    await emailAdapter.start("ch1", {
+      smtp_host: "smtp.x.com",
+      username: "u",
+      password: "p",
+      from_address: "a@x.com",
+    });
     expect(emailAdapter.isRunning("ch1")).toBe(true);
-    const out = emailAdapter.formatResponse("hello", [{ id: "1", name: "calc", status: "completed" }]);
+    const out = emailAdapter.formatResponse("hello", [
+      { id: "1", name: "calc", status: "completed" },
+    ]);
     expect(out).toContain("hello");
     await emailAdapter.stop("ch1");
   });

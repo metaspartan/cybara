@@ -58,8 +58,7 @@ async function stopServer(proc: ReturnType<typeof Bun.spawn> | null): Promise<vo
   if (!proc) return;
   try {
     proc.kill("SIGTERM");
-  } catch {
-  }
+  } catch {}
   await Promise.race([proc.exited, sleep(5000)]);
 }
 
@@ -69,8 +68,7 @@ async function waitForServerReady(baseUrl: string, timeoutMs = 30000): Promise<v
     try {
       const response = await fetch(`${baseUrl}/api/health`);
       if (response.ok) return;
-    } catch {
-    }
+    } catch {}
     await sleep(250);
   }
   throw new Error(`Timed out waiting for server at ${baseUrl}`);
@@ -521,9 +519,13 @@ describe("Security auth e2e", () => {
       expect(missingAuth.status).toBe(401);
       expect(missingAuth.data.error).toContain("Missing Authorization");
 
-      const browseHome = await request(baseUrl, `/api/ide/browse?path=${encodeURIComponent(homeDir)}`, {
-        Authorization: `Bearer ${apiKey}`,
-      });
+      const browseHome = await request(
+        baseUrl,
+        `/api/ide/browse?path=${encodeURIComponent(homeDir)}`,
+        {
+          Authorization: `Bearer ${apiKey}`,
+        }
+      );
       expect(browseHome.status).toBe(200);
       expect(browseHome.data.success).toBe(true);
 

@@ -355,9 +355,10 @@ describe("getModelMetrics aggregation", () => {
   });
 
   test("defaults provider to unknown, latency to 0, and tokens to 0 when unmatched", () => {
-    const metrics = r<
-      Array<{ model: string; provider: string; avgLatencyMs: number; totalTokens: number }>
-    >("metrics");
+    const metrics =
+      r<Array<{ model: string; provider: string; avgLatencyMs: number; totalTokens: number }>>(
+        "metrics"
+      );
     const solo = metrics.find((m) => m.model === "solo")!;
     expect(solo.provider).toBe("x");
     expect(solo.avgLatencyMs).toBe(0);

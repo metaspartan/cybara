@@ -79,8 +79,7 @@ export function extractCitations(data: unknown): string[] {
   const choices = record.choices;
   if (Array.isArray(choices) && choices[0] && typeof choices[0] === "object") {
     const message = (choices[0] as Record<string, unknown>).message as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
     const msgCitations = message?.citations;
     if (Array.isArray(msgCitations)) {
       return msgCitations.filter((c): c is string => typeof c === "string");
@@ -133,7 +132,9 @@ export async function handleXSearch(args: Record<string, unknown>): Promise<XSea
 
   if (!response.ok) {
     const text = (await response.text().catch(() => "")).slice(0, 300);
-    throw new Error(`xAI search error: ${response.status} ${response.statusText}${text ? ` - ${text}` : ""}`);
+    throw new Error(
+      `xAI search error: ${response.status} ${response.statusText}${text ? ` - ${text}` : ""}`
+    );
   }
 
   const data = (await response.json()) as {

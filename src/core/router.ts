@@ -23,7 +23,14 @@ import { tables } from "./database";
 // Stamped pricing data + estimates.
 // Format: [providerId, modelId, inputPerM, outputPerM, cacheReadPerM?, cacheWritePerM?]
 
-type PricingEntry = [provider: string, model: string, inputPerM: number, outputPerM: number, cacheReadPerM?: number, cacheWritePerM?: number];
+type PricingEntry = [
+  provider: string,
+  model: string,
+  inputPerM: number,
+  outputPerM: number,
+  cacheReadPerM?: number,
+  cacheWritePerM?: number,
+];
 
 const PROVIDER_PRICING: readonly PricingEntry[] = [
   // OpenAI (est. mid-2026)
@@ -91,7 +98,10 @@ const PROVIDER_PRICING: readonly PricingEntry[] = [
 ];
 
 /** Lookup pricing for a provider+model. Returns null if unknown. */
-export function getPricing(providerId: string, modelId?: string): {
+export function getPricing(
+  providerId: string,
+  modelId?: string
+): {
   inputPerM: number;
   outputPerM: number;
   cacheReadPerM?: number;
@@ -153,11 +163,7 @@ export interface ProviderRouteConfig {
 }
 
 export type RouterStrategy =
-  | "weighted"
-  | "round_robin"
-  | "lowest_cost"
-  | "priority"
-  | "mixture_of_agents";
+  "weighted" | "round_robin" | "lowest_cost" | "priority" | "mixture_of_agents";
 
 export interface RouterConfig {
   enabled: boolean;
@@ -277,8 +283,10 @@ function normalizeRoute(route: ProviderRouteConfig): ProviderRouteConfig {
     limitWeekly: Math.max(0, route.limitWeekly ?? 0),
     spendLimitDaily: Math.max(0, route.spendLimitDaily ?? 0),
     spendLimitWeekly: Math.max(0, route.spendLimitWeekly ?? 0),
-    priceInputPerM: route.priceInputPerM !== undefined ? Math.max(0, route.priceInputPerM) : undefined,
-    priceOutputPerM: route.priceOutputPerM !== undefined ? Math.max(0, route.priceOutputPerM) : undefined,
+    priceInputPerM:
+      route.priceInputPerM !== undefined ? Math.max(0, route.priceInputPerM) : undefined,
+    priceOutputPerM:
+      route.priceOutputPerM !== undefined ? Math.max(0, route.priceOutputPerM) : undefined,
     enabled: route.enabled ?? true,
     model: route.model,
   };
@@ -325,7 +333,9 @@ export function recordProviderFailure(providerId: string, reason?: string): void
   state.consecutiveFailures += 1;
   if (state.consecutiveFailures >= CIRCUIT_FAILURE_THRESHOLD) {
     state.openUntil = Date.now() + CIRCUIT_RECOVERY_MS;
-    console.warn(`[Router] Circuit opened for ${providerId} after ${state.consecutiveFailures} failures${reason ? ` (${reason})` : ""}`);
+    console.warn(
+      `[Router] Circuit opened for ${providerId} after ${state.consecutiveFailures} failures${reason ? ` (${reason})` : ""}`
+    );
   }
   circuitState.set(providerId, state);
 }
@@ -352,7 +362,10 @@ function isInCooldown(providerId: string): boolean {
 
 // ─── Availability computation ───────────────────────────────────────────────
 
-function resolvePrice(route: ProviderRouteConfig, providerId: string): { inputPerM: number; outputPerM: number } {
+function resolvePrice(
+  route: ProviderRouteConfig,
+  providerId: string
+): { inputPerM: number; outputPerM: number } {
   if (route.priceInputPerM !== undefined && route.priceOutputPerM !== undefined) {
     return { inputPerM: route.priceInputPerM, outputPerM: route.priceOutputPerM };
   }
@@ -377,30 +390,57 @@ export function getProviderAvailability(providerId: string): ProviderAvailabilit
   let available = route.enabled !== false;
   let reason: string | undefined;
 
-  if (circuitOpen) { available = false; reason = "Circuit breaker open (too many failures)"; }
-  if (inCooldown) { available = false; reason = "Rate-limit cooldown"; }
+  if (circuitOpen) {
+    available = false;
+    reason = "Circuit breaker open (too many failures)";
+  }
+  if (inCooldown) {
+    available = false;
+    reason = "Rate-limit cooldown";
+  }
   const limit5h = route.limit5h ?? 0;
   const limitWeekly = route.limitWeekly ?? 0;
   const spendDaily = route.spendLimitDaily ?? 0;
   const spendWeekly = route.spendLimitWeekly ?? 0;
-  if (limit5h > 0 && requests5h >= limit5h) { available = false; reason = `5h rate limit (${requests5h}/${limit5h})`; }
-  if (limitWeekly > 0 && requestsWeek >= limitWeekly) { available = false; reason = `Weekly rate limit (${requestsWeek}/${limitWeekly})`; }
-  if (spendDaily > 0 && spendToday >= spendDaily) { available = false; reason = `Daily spend ($${spendToday.toFixed(2)}/$${spendDaily})`; }
-  if (spendWeekly > 0 && spendWeek >= spendWeekly) { available = false; reason = `Weekly spend ($${spendWeek.toFixed(2)}/$${spendWeekly})`; }
+  if (limit5h > 0 && requests5h >= limit5h) {
+    available = false;
+    reason = `5h rate limit (${requests5h}/${limit5h})`;
+  }
+  if (limitWeekly > 0 && requestsWeek >= limitWeekly) {
+    available = false;
+    reason = `Weekly rate limit (${requestsWeek}/${limitWeekly})`;
+  }
+  if (spendDaily > 0 && spendToday >= spendDaily) {
+    available = false;
+    reason = `Daily spend ($${spendToday.toFixed(2)}/$${spendDaily})`;
+  }
+  if (spendWeekly > 0 && spendWeek >= spendWeekly) {
+    available = false;
+    reason = `Weekly spend ($${spendWeek.toFixed(2)}/$${spendWeekly})`;
+  }
 
   const globalLimit = routerCfg.globalSpendLimitDaily;
   const globalToday = getWindowedSpend(null, WINDOW_DAY_MS);
   if (globalLimit !== undefined && globalLimit > 0 && globalToday >= globalLimit) {
-    available = false; reason = `Global daily spend ($${globalToday.toFixed(2)}/$${globalLimit})`;
+    available = false;
+    reason = `Global daily spend ($${globalToday.toFixed(2)}/$${globalLimit})`;
   }
 
   return {
-    providerId, weight: route.weight, priority: route.priority ?? 0,
-    enabled: route.enabled !== false, available, reason,
-    requestsIn5hWindow: requests5h, requestsInWeekWindow: requestsWeek,
-    spendToday, spendThisWeek: spendWeek,
-    inputPerM: price.inputPerM, outputPerM: price.outputPerM,
-    circuitOpen, inCooldown,
+    providerId,
+    weight: route.weight,
+    priority: route.priority ?? 0,
+    enabled: route.enabled !== false,
+    available,
+    reason,
+    requestsIn5hWindow: requests5h,
+    requestsInWeekWindow: requestsWeek,
+    spendToday,
+    spendThisWeek: spendWeek,
+    inputPerM: price.inputPerM,
+    outputPerM: price.outputPerM,
+    circuitOpen,
+    inCooldown,
   };
 }
 
@@ -437,7 +477,9 @@ export function selectProvider(preferredProviderId?: string): string | null {
   switch (routerCfg.strategy) {
     case "priority": {
       // Sort by priority tier, then by weight within tier.
-      candidates.sort((a, b) => a.avail.priority - b.avail.priority || b.avail.weight - a.avail.weight);
+      candidates.sort(
+        (a, b) => a.avail.priority - b.avail.priority || b.avail.weight - a.avail.weight
+      );
       return candidates[0].id;
     }
     case "round_robin": {
@@ -447,11 +489,15 @@ export function selectProvider(preferredProviderId?: string): string | null {
     }
     case "lowest_cost": {
       // Sort by total price ascending; exclude unpriced (price=0) unless all are unpriced.
-      const priced = candidates.filter((c) => (c.avail.inputPerM ?? 0) + (c.avail.outputPerM ?? 0) > 0);
+      const priced = candidates.filter(
+        (c) => (c.avail.inputPerM ?? 0) + (c.avail.outputPerM ?? 0) > 0
+      );
       const pool = priced.length > 0 ? priced : candidates;
-      pool.sort((a, b) =>
-        ((a.avail.inputPerM ?? 0) + (a.avail.outputPerM ?? 0)) -
-        ((b.avail.inputPerM ?? 0) + (b.avail.outputPerM ?? 0))
+      pool.sort(
+        (a, b) =>
+          (a.avail.inputPerM ?? 0) +
+          (a.avail.outputPerM ?? 0) -
+          ((b.avail.inputPerM ?? 0) + (b.avail.outputPerM ?? 0))
       );
       return pool[0].id;
     }
@@ -484,16 +530,23 @@ export function recordUsage(
   const route = routerCfg.routes[providerId] ? normalizeRoute(routerCfg.routes[providerId]) : null;
   const price = route
     ? resolvePrice(route, providerId)
-    : { inputPerM: getPricing(providerId, model)?.inputPerM ?? 0, outputPerM: getPricing(providerId, model)?.outputPerM ?? 0 };
+    : {
+        inputPerM: getPricing(providerId, model)?.inputPerM ?? 0,
+        outputPerM: getPricing(providerId, model)?.outputPerM ?? 0,
+      };
 
   const estimatedCost =
-    Math.max(0, inputTokens) / 1_000_000 * price.inputPerM +
-    Math.max(0, outputTokens) / 1_000_000 * price.outputPerM;
+    (Math.max(0, inputTokens) / 1_000_000) * price.inputPerM +
+    (Math.max(0, outputTokens) / 1_000_000) * price.outputPerM;
 
   const record: RouterUsageRecord = {
-    providerId, model, timestamp: Date.now(),
-    inputTokens: Math.max(0, inputTokens), outputTokens: Math.max(0, outputTokens),
-    estimatedCost, success,
+    providerId,
+    model,
+    timestamp: Date.now(),
+    inputTokens: Math.max(0, inputTokens),
+    outputTokens: Math.max(0, outputTokens),
+    estimatedCost,
+    success,
   };
   usageLog.push(record);
   if (usageLog.length > MAX_USAGE_RECORDS) usageLog.splice(0, usageLog.length - MAX_USAGE_RECORDS);

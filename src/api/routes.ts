@@ -183,7 +183,6 @@ const oauthCallbacks = new Map<
   { status: string; access_token?: string; refresh_token?: string; error?: string }
 >();
 
-
 function validateProviderCredentialShape(
   providerType: string,
   credentials: { apiKey?: string; accessToken?: string }
@@ -521,7 +520,8 @@ interface SessionModelMetadata {
 function metadataFromRecord(record?: Record<string, unknown> | null): SessionModelMetadata | null {
   if (!record) return null;
   const metadata: SessionModelMetadata = {
-    provider: normalizeOptionalString(record.provider) || normalizeOptionalString(record.providerType),
+    provider:
+      normalizeOptionalString(record.provider) || normalizeOptionalString(record.providerType),
     provider_id:
       normalizeOptionalString(record.provider_id) || normalizeOptionalString(record.providerId),
     provider_name:
@@ -676,7 +676,6 @@ const routes: Record<string, RouteHandler> = {
     }
     return { success: true };
   },
-
 
   "GET /api/config": () => ({
     ...redactSecretConfig(config.getAll()),
@@ -1063,10 +1062,11 @@ const routes: Record<string, RouteHandler> = {
 
     if (provider.provider === "elevenlabs") {
       const apiKey = provider.api_key || provider.access_token;
-      const baseUrl = (provider.base_url || providerInfo.baseUrl || "https://api.elevenlabs.io/v1").replace(
-        /\/+$/,
-        ""
-      );
+      const baseUrl = (
+        provider.base_url ||
+        providerInfo.baseUrl ||
+        "https://api.elevenlabs.io/v1"
+      ).replace(/\/+$/, "");
       if (!apiKey) {
         return {
           success: false,
@@ -1279,7 +1279,9 @@ const routes: Record<string, RouteHandler> = {
     const data = (body || {}) as { workspaceDir?: string; label?: string };
     if (!data.workspaceDir) return { success: false, error: "workspaceDir is required" };
     const checkpoint = await createCheckpoint(data.workspaceDir, data.label || "manual checkpoint");
-    return checkpoint ? { success: true, checkpoint } : { success: false, error: "checkpoint failed" };
+    return checkpoint
+      ? { success: true, checkpoint }
+      : { success: false, error: "checkpoint failed" };
   },
   "POST /api/checkpoints/:id/restore": async (body, params) => {
     const data = (body || {}) as { workspaceDir?: string };
@@ -3346,7 +3348,10 @@ const routes: Record<string, RouteHandler> = {
   "POST /api/tasks": (body) =>
     taskScheduler.create(body as Parameters<typeof taskScheduler.create>[0]),
   "PUT /api/tasks/:id": (body, params) => {
-    const task = taskScheduler.update(params!.id, body as Parameters<typeof taskScheduler.update>[1]);
+    const task = taskScheduler.update(
+      params!.id,
+      body as Parameters<typeof taskScheduler.update>[1]
+    );
     return task || { error: "Task not found" };
   },
   "POST /api/tasks/:id/start": async (_body, params) => ({
@@ -3424,7 +3429,7 @@ const routes: Record<string, RouteHandler> = {
         ? data.providerId.trim()
         : speechSettings.stt.providerId
           ? speechSettings.stt.providerId
-        : undefined
+          : undefined
     );
     const result = await transcribeWithOpenAICompatibleProvider({
       provider,
@@ -3822,8 +3827,9 @@ const routes: Record<string, RouteHandler> = {
 
     const detailModelMetadata = sessionModelMetadata(
       session.agentId,
-      sessionModelMetadataSnapshot((session as { modelMetadata?: SessionModelMetadata | null }).modelMetadata) ||
-        latestSessionModelMetadata(sanitizedMessages)
+      sessionModelMetadataSnapshot(
+        (session as { modelMetadata?: SessionModelMetadata | null }).modelMetadata
+      ) || latestSessionModelMetadata(sanitizedMessages)
     );
 
     return {
@@ -5196,7 +5202,11 @@ async function dispatchChannelWebhook(
     query: query as Record<string, string>,
   });
   if (result?.rawBody !== undefined) {
-    return makeRawHttpResponse(result.rawBody, result.contentType || "text/plain", result.status || 200);
+    return makeRawHttpResponse(
+      result.rawBody,
+      result.contentType || "text/plain",
+      result.status || 200
+    );
   }
   return result?.body !== undefined ? result.body : { ok: true };
 }
@@ -5388,7 +5398,10 @@ export async function handleRequest(req: {
     // but redact any absolute filesystem paths they may carry so internals
     // never leak to clients outside development.
     if (process.env.NODE_ENV !== "development") {
-      userMessage = userMessage.replace(/(?:[A-Za-z]:)?[\\/](?:Users|home|private|var|tmp|opt)[\\/][^\s"']*/g, "[path]");
+      userMessage = userMessage.replace(
+        /(?:[A-Za-z]:)?[\\/](?:Users|home|private|var|tmp|opt)[\\/][^\s"']*/g,
+        "[path]"
+      );
     }
 
     logRequest({

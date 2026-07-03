@@ -25,10 +25,7 @@ import {
 
 /** Escape text for Telegram HTML parse mode. */
 function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 export const telegramSessions = new Map<string, string>();
@@ -900,7 +897,7 @@ export class TelegramBotManager implements ChannelAdapter {
       clearTimeout(bot.pollingTimer);
     }
     if (bot.mode === "webhook") {
-      await deleteTelegramWebhook(bot.token).catch(() => { });
+      await deleteTelegramWebhook(bot.token).catch(() => {});
     }
 
     this.bots.delete(channelId);
@@ -960,10 +957,16 @@ export class TelegramBotManager implements ChannelAdapter {
     if (!bot) return false;
     const formData = new FormData();
     formData.append("chat_id", String(chatId));
-    const blob = typeof voice === "string" ? new Blob([await Bun.file(voice).arrayBuffer()]) : new Blob([voice]);
+    const blob =
+      typeof voice === "string"
+        ? new Blob([await Bun.file(voice).arrayBuffer()])
+        : new Blob([voice]);
     formData.append("voice", blob, "voice.ogg");
     if (caption) formData.append("caption", caption);
-    const res = await fetch(`https://api.telegram.org/bot${bot.token}/sendVoice`, { method: "POST", body: formData });
+    const res = await fetch(`https://api.telegram.org/bot${bot.token}/sendVoice`, {
+      method: "POST",
+      body: formData,
+    });
     const data = (await res.json()) as { ok: boolean };
     return data.ok === true;
   }
@@ -978,10 +981,16 @@ export class TelegramBotManager implements ChannelAdapter {
     if (!bot) return false;
     const formData = new FormData();
     formData.append("chat_id", String(chatId));
-    const blob = typeof audio === "string" ? new Blob([await Bun.file(audio).arrayBuffer()]) : new Blob([audio]);
+    const blob =
+      typeof audio === "string"
+        ? new Blob([await Bun.file(audio).arrayBuffer()])
+        : new Blob([audio]);
     formData.append("audio", blob, "audio.mp3");
     if (caption) formData.append("caption", caption);
-    const res = await fetch(`https://api.telegram.org/bot${bot.token}/sendAudio`, { method: "POST", body: formData });
+    const res = await fetch(`https://api.telegram.org/bot${bot.token}/sendAudio`, {
+      method: "POST",
+      body: formData,
+    });
     const data = (await res.json()) as { ok: boolean };
     return data.ok === true;
   }
@@ -996,7 +1005,9 @@ export class TelegramBotManager implements ChannelAdapter {
     const formData = new FormData();
     formData.append("chat_id", String(chatId));
     const blob =
-      typeof videoNote === "string" ? new Blob([await Bun.file(videoNote).arrayBuffer()]) : new Blob([videoNote]);
+      typeof videoNote === "string"
+        ? new Blob([await Bun.file(videoNote).arrayBuffer()])
+        : new Blob([videoNote]);
     formData.append("video_note", blob, "video_note.mp4");
     const res = await fetch(`https://api.telegram.org/bot${bot.token}/sendVideoNote`, {
       method: "POST",

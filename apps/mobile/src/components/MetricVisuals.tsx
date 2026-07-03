@@ -227,206 +227,207 @@ export function MetricEndpointGrid({
   );
 }
 
-const makeStyles = () => StyleSheet.create({
-  section: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    gap: spacing.md,
-    padding: spacing.md,
-  },
-  sectionHeader: {
-    gap: 3,
-  },
-  title: {
-    color: colors.text,
-    fontSize: typography.heading,
-    fontWeight: "800",
-  },
-  detail: {
-    color: colors.textMuted,
-    fontSize: typography.label,
-  },
-  rowTitle: {
-    color: colors.text,
-    fontSize: typography.body,
-    fontWeight: "800",
-  },
-  counter: {
-    fontSize: typography.label,
-    fontWeight: "900",
-  },
-  micro: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    flexBasis: "31%",
-    flexGrow: 1,
-    gap: 3,
-    minHeight: 58,
-    padding: spacing.sm,
-  },
-  microLabel: {
-    color: colors.textDim,
-    fontSize: typography.tiny,
-    fontWeight: "800",
-    textTransform: "uppercase",
-  },
-  microValue: {
-    color: colors.text,
-    fontSize: typography.body,
-    fontWeight: "900",
-  },
-  breakdown: {
-    gap: spacing.sm,
-  },
-  breakdownRow: {
-    gap: spacing.xs,
-  },
-  breakdownHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  track: {
-    backgroundColor: colors.inset,
-    borderRadius: 999,
-    height: 9,
-    overflow: "hidden",
-  },
-  trackSmall: {
-    backgroundColor: colors.inset,
-    borderRadius: 999,
-    height: 5,
-    overflow: "hidden",
-    width: 90,
-  },
-  trackFill: {
-    borderRadius: 999,
-    height: "100%",
-    minWidth: 2,
-  },
-  barChart: {
-    alignItems: "flex-end",
-    flexDirection: "row",
-    gap: spacing.xs,
-    minHeight: 92,
-  },
-  barSlot: {
-    alignItems: "center",
-    flex: 1,
-    gap: spacing.xs,
-    justifyContent: "flex-end",
-    minWidth: 18,
-  },
-  bar: {
-    borderRadius: 4,
-    opacity: 0.86,
-    width: "70%",
-  },
-  barLabel: {
-    color: colors.textDim,
-    fontSize: 9,
-    maxWidth: 38,
-  },
-  heatmap: {
-    gap: spacing.xs,
-  },
-  heatmapRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  heatmapLabel: {
-    color: colors.textMuted,
-    fontSize: typography.tiny,
-    fontWeight: "800",
-    width: 28,
-  },
-  heatmapCells: {
-    flex: 1,
-    flexDirection: "row",
-    gap: 2,
-  },
-  heatmapCell: {
-    borderRadius: 2,
-    flex: 1,
-    height: 9,
-  },
-  rows: {
-    gap: spacing.sm,
-  },
-  shareRow: {
-    alignItems: "center",
-    borderTopColor: colors.border,
-    borderTopWidth: 1,
-    flexDirection: "row",
-    gap: spacing.sm,
-    minHeight: 54,
-    paddingTop: spacing.sm,
-  },
-  shareText: {
-    flex: 1,
-    gap: 2,
-  },
-  shareValue: {
-    alignItems: "flex-end",
-    gap: spacing.xs,
-    minWidth: 104,
-  },
-  cloud: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.xs,
-  },
-  cloudPill: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    gap: 2,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-  },
-  cloudText: {
-    color: colors.text,
-    fontSize: typography.label,
-    fontWeight: "800",
-  },
-  cloudMeta: {
-    color: colors.textDim,
-    fontSize: 9,
-    textTransform: "uppercase",
-  },
-  endpointGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.xs,
-  },
-  endpointPill: {
-    alignItems: "center",
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-  },
-  endpointDot: {
-    borderRadius: 4,
-    height: 8,
-    width: 8,
-  },
-  endpointText: {
-    color: colors.textMuted,
-    fontSize: typography.tiny,
-    fontWeight: "800",
-  },
-});
+const makeStyles = () =>
+  StyleSheet.create({
+    section: {
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      gap: spacing.md,
+      padding: spacing.md,
+    },
+    sectionHeader: {
+      gap: 3,
+    },
+    title: {
+      color: colors.text,
+      fontSize: typography.heading,
+      fontWeight: "800",
+    },
+    detail: {
+      color: colors.textMuted,
+      fontSize: typography.label,
+    },
+    rowTitle: {
+      color: colors.text,
+      fontSize: typography.body,
+      fontWeight: "800",
+    },
+    counter: {
+      fontSize: typography.label,
+      fontWeight: "900",
+    },
+    micro: {
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      flexBasis: "31%",
+      flexGrow: 1,
+      gap: 3,
+      minHeight: 58,
+      padding: spacing.sm,
+    },
+    microLabel: {
+      color: colors.textDim,
+      fontSize: typography.tiny,
+      fontWeight: "800",
+      textTransform: "uppercase",
+    },
+    microValue: {
+      color: colors.text,
+      fontSize: typography.body,
+      fontWeight: "900",
+    },
+    breakdown: {
+      gap: spacing.sm,
+    },
+    breakdownRow: {
+      gap: spacing.xs,
+    },
+    breakdownHeader: {
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
+    },
+    track: {
+      backgroundColor: colors.inset,
+      borderRadius: 999,
+      height: 9,
+      overflow: "hidden",
+    },
+    trackSmall: {
+      backgroundColor: colors.inset,
+      borderRadius: 999,
+      height: 5,
+      overflow: "hidden",
+      width: 90,
+    },
+    trackFill: {
+      borderRadius: 999,
+      height: "100%",
+      minWidth: 2,
+    },
+    barChart: {
+      alignItems: "flex-end",
+      flexDirection: "row",
+      gap: spacing.xs,
+      minHeight: 92,
+    },
+    barSlot: {
+      alignItems: "center",
+      flex: 1,
+      gap: spacing.xs,
+      justifyContent: "flex-end",
+      minWidth: 18,
+    },
+    bar: {
+      borderRadius: 4,
+      opacity: 0.86,
+      width: "70%",
+    },
+    barLabel: {
+      color: colors.textDim,
+      fontSize: 9,
+      maxWidth: 38,
+    },
+    heatmap: {
+      gap: spacing.xs,
+    },
+    heatmapRow: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: spacing.sm,
+    },
+    heatmapLabel: {
+      color: colors.textMuted,
+      fontSize: typography.tiny,
+      fontWeight: "800",
+      width: 28,
+    },
+    heatmapCells: {
+      flex: 1,
+      flexDirection: "row",
+      gap: 2,
+    },
+    heatmapCell: {
+      borderRadius: 2,
+      flex: 1,
+      height: 9,
+    },
+    rows: {
+      gap: spacing.sm,
+    },
+    shareRow: {
+      alignItems: "center",
+      borderTopColor: colors.border,
+      borderTopWidth: 1,
+      flexDirection: "row",
+      gap: spacing.sm,
+      minHeight: 54,
+      paddingTop: spacing.sm,
+    },
+    shareText: {
+      flex: 1,
+      gap: 2,
+    },
+    shareValue: {
+      alignItems: "flex-end",
+      gap: spacing.xs,
+      minWidth: 104,
+    },
+    cloud: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: spacing.xs,
+    },
+    cloudPill: {
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      gap: 2,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 6,
+    },
+    cloudText: {
+      color: colors.text,
+      fontSize: typography.label,
+      fontWeight: "800",
+    },
+    cloudMeta: {
+      color: colors.textDim,
+      fontSize: 9,
+      textTransform: "uppercase",
+    },
+    endpointGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: spacing.xs,
+    },
+    endpointPill: {
+      alignItems: "center",
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: spacing.xs,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 6,
+    },
+    endpointDot: {
+      borderRadius: 4,
+      height: 8,
+      width: 8,
+    },
+    endpointText: {
+      color: colors.textMuted,
+      fontSize: typography.tiny,
+      fontWeight: "800",
+    },
+  });
 
 let styles = makeStyles();
 subscribeColors(() => {

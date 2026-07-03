@@ -1,6 +1,6 @@
-import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
-import { cn } from '../../lib/utils';
-import { useUIStore } from '../../stores/uiStore';
+import { CheckCircle, XCircle, AlertTriangle, Info, X } from "lucide-react";
+import { cn } from "../../lib/utils";
+import { useUIStore } from "../../stores/uiStore";
 
 const icons = {
   success: CheckCircle,
@@ -10,10 +10,10 @@ const icons = {
 };
 
 const styles = {
-  success: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
-  error: 'bg-red-500/10 border-red-500/20 text-red-400',
-  warning: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
-  info: 'bg-blue-500/10 border-blue-500/20 text-blue-400',
+  success: "bg-emerald-500/10 border-emerald-500/20 text-emerald-400",
+  error: "bg-red-500/10 border-red-500/20 text-red-400",
+  warning: "bg-amber-500/10 border-amber-500/20 text-amber-400",
+  info: "bg-blue-500/10 border-blue-500/20 text-blue-400",
 };
 
 export function ToastContainer() {
@@ -29,8 +29,8 @@ export function ToastContainer() {
           <div
             key={toast.id}
             className={cn(
-              'flex items-center gap-3 px-4 py-3 rounded-xl border backdrop-blur-xl min-w-[300px] max-w-md',
-              'transform transition-all duration-300 animate-in slide-in-from-right-full',
+              "flex items-center gap-3 px-4 py-3 rounded-xl border backdrop-blur-xl min-w-[300px] max-w-md",
+              "transform transition-all duration-300 animate-in slide-in-from-right-full",
               styles[toast.type]
             )}
           >

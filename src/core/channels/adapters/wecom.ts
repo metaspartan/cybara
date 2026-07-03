@@ -1,4 +1,10 @@
-import type { ChannelAdapter, ToolCallInfo, MessageHandler, WebhookPayload, WebhookResult } from "../types";
+import type {
+  ChannelAdapter,
+  ToolCallInfo,
+  MessageHandler,
+  WebhookPayload,
+  WebhookResult,
+} from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import {
@@ -48,9 +54,7 @@ export class WeComAdapter implements ChannelAdapter {
     const corpSecret = typeof config.corp_secret === "string" ? config.corp_secret.trim() : "";
     const agentId = typeof config.agent_id === "string" ? config.agent_id.trim() : "";
     if (!token || !encodingAesKey || !corpId || !corpSecret || !agentId) {
-      throw new Error(
-        "WeCom requires token, encoding_aes_key, corp_id, corp_secret, and agent_id"
-      );
+      throw new Error("WeCom requires token, encoding_aes_key, corp_id, corp_secret, and agent_id");
     }
     this.configs.set(channelId, { token, encodingAesKey, corpId, corpSecret, agentId });
     this.running.add(channelId);

@@ -236,7 +236,10 @@ describe("Subagent execution wiring", () => {
 
     expect(spawnResult.status).toBe("accepted");
 
-    await waitFor(() => getSubagentSession(spawnResult.childSessionKey)?.status === "completed", 2000);
+    await waitFor(
+      () => getSubagentSession(spawnResult.childSessionKey)?.status === "completed",
+      2000
+    );
 
     const session = getSubagentSession(spawnResult.childSessionKey);
     expect(session?.result).toBe("subagent done");

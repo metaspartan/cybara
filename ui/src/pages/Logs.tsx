@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import { useState, useEffect, useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Terminal,
   Search,
@@ -17,19 +17,19 @@ import {
   Logs as LogsIcon,
   Bot,
   Radio,
-  Wrench
-} from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Badge } from '@/components/ui/Badge';
-import { PageLayout } from '@/components/layout';
-import { logsApi } from '@/lib/api';
-import { connectStatusStream } from '@/lib/status-stream';
+  Wrench,
+} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Badge } from "@/components/ui/Badge";
+import { PageLayout } from "@/components/layout";
+import { logsApi } from "@/lib/api";
+import { connectStatusStream } from "@/lib/status-stream";
 
 interface LogEntry {
   id: string;
-  level: 'debug' | 'info' | 'warn' | 'error' | string;
+  level: "debug" | "info" | "warn" | "error" | string;
   source: string;
   message: string;
   metadata?: string;
@@ -75,10 +75,10 @@ const levelIcons = {
 };
 
 const levelColors = {
-  debug: 'bg-gray-500/20 text-gray-400',
-  info: 'bg-blue-500/20 text-blue-400',
-  warn: 'bg-amber-500/20 text-amber-400',
-  error: 'bg-red-500/20 text-red-400',
+  debug: "bg-gray-500/20 text-gray-400",
+  info: "bg-blue-500/20 text-blue-400",
+  warn: "bg-amber-500/20 text-amber-400",
+  error: "bg-red-500/20 text-red-400",
 };
 
 const sourceIcons: Record<string, React.ReactNode> = {
@@ -94,7 +94,7 @@ export function Logs() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [stats, setStats] = useState<LogStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [filterLevel, setFilterLevel] = useState<string | null>(null);
   const [filterSource, setFilterSource] = useState<string | null>(null);
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
@@ -118,7 +118,7 @@ export function Logs() {
         setStats(statsResponse.data);
       }
     } catch (error) {
-      console.error('Failed to fetch logs:', error);
+      console.error("Failed to fetch logs:", error);
     } finally {
       if (!options?.silent) {
         setIsLoading(false);
@@ -168,46 +168,46 @@ export function Logs() {
       if (response.success) {
         const searchData = response.data as
           | {
-            system?: LogEntry[];
-            sessionMessages?: SessionMessageLog[];
-            agent?: AgentActionLog[];
-            channel?: ChannelMessageLog[];
-          }
+              system?: LogEntry[];
+              sessionMessages?: SessionMessageLog[];
+              agent?: AgentActionLog[];
+              channel?: ChannelMessageLog[];
+            }
           | undefined;
         const allLogs: LogEntry[] = [
           ...(searchData?.system || []).map((l: LogEntry) => ({ ...l })),
           ...(searchData?.sessionMessages || []).map((l: SessionMessageLog) => ({
             id: l.id,
-            level: 'info' as const,
-            source: 'session',
-            message: `${l.role}: ${l.content.substring(0, 100)}${l.content.length > 100 ? '...' : ''}`,
-            created_at: l.created_at
+            level: "info" as const,
+            source: "session",
+            message: `${l.role}: ${l.content.substring(0, 100)}${l.content.length > 100 ? "..." : ""}`,
+            created_at: l.created_at,
           })),
           ...(searchData?.agent || []).map((l: AgentActionLog) => ({
             id: l.id,
-            level: 'info' as const,
-            source: 'agent',
-            message: `Action: ${l.action}${l.details ? ` - ${l.details}` : ''}`,
-            created_at: l.created_at
+            level: "info" as const,
+            source: "agent",
+            message: `Action: ${l.action}${l.details ? ` - ${l.details}` : ""}`,
+            created_at: l.created_at,
           })),
           ...(searchData?.channel || []).map((l: ChannelMessageLog) => ({
             id: l.id,
-            level: 'info' as const,
-            source: 'channel',
-            message: `${l.direction || 'message'}: ${l.content.substring(0, 100)}${l.content.length > 100 ? '...' : ''}`,
-            created_at: l.created_at
+            level: "info" as const,
+            source: "channel",
+            message: `${l.direction || "message"}: ${l.content.substring(0, 100)}${l.content.length > 100 ? "..." : ""}`,
+            created_at: l.created_at,
           })),
         ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         setLogs(allLogs);
       }
     } catch (error) {
-      console.error('Search failed:', error);
+      console.error("Search failed:", error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const filteredLogs = logs.filter(log => {
+  const filteredLogs = logs.filter((log) => {
     if (filterLevel && log.level !== filterLevel) return false;
     if (filterSource && log.source !== filterSource) return false;
     return true;
@@ -215,9 +215,9 @@ export function Logs() {
 
   const exportLogs = () => {
     const data = JSON.stringify(filteredLogs, null, 2);
-    const blob = new Blob([data], { type: 'application/json' });
+    const blob = new Blob([data], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
     a.download = `logs-${new Date().toISOString()}.json`;
     a.click();
@@ -244,7 +244,12 @@ export function Logs() {
           >
             Refresh
           </Button>
-          <Button variant="secondary" size="sm" onClick={exportLogs} leftIcon={<Download className="w-4 h-4" />}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={exportLogs}
+            leftIcon={<Download className="w-4 h-4" />}
+          >
             Export
           </Button>
         </div>
@@ -309,13 +314,13 @@ export function Logs() {
                   placeholder="Search logs..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                   className="pl-10"
                 />
               </div>
               <div className="flex gap-2">
                 <select
-                  value={filterLevel || ''}
+                  value={filterLevel || ""}
                   onChange={(e) => setFilterLevel(e.target.value || null)}
                   className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm"
                 >
@@ -326,7 +331,7 @@ export function Logs() {
                   <option value="error">Error</option>
                 </select>
                 <select
-                  value={filterSource || ''}
+                  value={filterSource || ""}
                   onChange={(e) => setFilterSource(e.target.value || null)}
                   className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm"
                 >
@@ -362,15 +367,12 @@ export function Logs() {
                 <p className="text-gray-400">No logs found</p>
               </div>
             ) : (
-              <div
-                ref={parentRef}
-                className="h-[600px] overflow-auto"
-              >
+              <div ref={parentRef} className="h-[600px] overflow-auto">
                 <div
                   style={{
                     height: `${virtualizer.getTotalSize()}px`,
-                    width: '100%',
-                    position: 'relative',
+                    width: "100%",
+                    position: "relative",
                   }}
                 >
                   {virtualizer.getVirtualItems().map((virtualItem) => {
@@ -393,7 +395,11 @@ export function Logs() {
                               <Badge className={levelColors[log.level]} size="sm">
                                 {log.level}
                               </Badge>
-                              <Badge variant="default" size="sm" className="flex items-center gap-1">
+                              <Badge
+                                variant="default"
+                                size="sm"
+                                className="flex items-center gap-1"
+                              >
                                 {sourceIcons[log.source] || <Terminal className="w-3 h-3" />}
                                 {log.source}
                               </Badge>

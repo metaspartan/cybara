@@ -6,14 +6,15 @@
 import { existsSync, statSync, readdirSync } from "fs";
 import { join } from "path";
 import type { MetricsEntry } from "../queries";
-import {
-  cybaraDir, dataDir, memoryDir, logsDir, secureDir, userSkillsDir,
-} from "../../core/paths";
+import { cybaraDir, dataDir, memoryDir, logsDir, secureDir, userSkillsDir } from "../../core/paths";
 import { getArtifactsRootDir } from "../../core/artifacts";
 import type { ChatMessage } from "../chat";
 import type { WalletChain, WalletTokenChain } from "../../core/wallet";
 import {
-  providerManager, providers, resolveProviderType, type ProviderType,
+  providerManager,
+  providers,
+  resolveProviderType,
+  type ProviderType,
 } from "../../core/providers";
 
 export interface LspDiagnosticLike {
@@ -866,8 +867,6 @@ export function isArtifactToolCall(toolCall: unknown): boolean {
   if (name === "artifacts" || name === "artifact") return true;
   return !!sanitizeArtifactToolResult(toolCall.result);
 }
-
-
 
 export function sanitizeProcessActivities(
   activities: unknown,

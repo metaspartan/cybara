@@ -203,7 +203,9 @@ describe("mcpRegistry catalog surface", () => {
       expect(["smithery", "mcp.so", "npm", "official"]).toContain(server.registry);
       expect(server.command).toBe("bunx");
       expect(["bunx", "bun", "smithery"]).toContain(server.installType);
-      expect(server.args).toContain(server.installType === "smithery" ? "@smithery/cli" : server.package);
+      expect(server.args).toContain(
+        server.installType === "smithery" ? "@smithery/cli" : server.package
+      );
     }
     const uniqueIds = new Set(report.popularDefault.map((s) => s.id));
     expect(uniqueIds.size).toBe(report.popularDefault.length);

@@ -661,8 +661,7 @@ describe("iMessage adapter mocked flows", () => {
     );
 
     const updatedAgent = tables.agents.get(agentId) as
-      | { provider_id?: string; model?: string }
-      | undefined;
+      { provider_id?: string; model?: string } | undefined;
     expect(handlerCalls).toBe(0);
     expect(updatedAgent?.provider_id).toBe(providerB);
     expect(updatedAgent?.model).toBe("b-model");

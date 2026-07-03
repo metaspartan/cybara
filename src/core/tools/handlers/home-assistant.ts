@@ -78,7 +78,9 @@ export async function handleHomeAssistant(
     if (action === "get_state") {
       const entityId = typeof args.entity_id === "string" ? args.entity_id.trim() : "";
       if (!entityId) return { error: "get_state requires entity_id" };
-      const res = await fetch(haStatesUrl(cfg.baseUrl, entityId), { headers: haHeaders(cfg.token) });
+      const res = await fetch(haStatesUrl(cfg.baseUrl, entityId), {
+        headers: haHeaders(cfg.token),
+      });
       if (!res.ok) return { error: `Home Assistant error: ${res.status}` };
       return { state: await res.json() };
     }
@@ -87,7 +89,9 @@ export async function handleHomeAssistant(
       const service = typeof args.service === "string" ? args.service.trim() : "";
       const target = parseServiceTarget(service);
       if (!target) {
-        return { error: "call_service requires 'service' as 'domain.service' (e.g. light.turn_on)" };
+        return {
+          error: "call_service requires 'service' as 'domain.service' (e.g. light.turn_on)",
+        };
       }
       const data =
         args.data && typeof args.data === "object" ? (args.data as Record<string, unknown>) : {};

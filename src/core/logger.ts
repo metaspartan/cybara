@@ -125,8 +125,7 @@ function log(
     // Never break primary logging path on custom sink errors.
   }
 
-  const formattedLine =
-    LOG_FORMAT === "json" ? safeStringify(entry) : formatLogEntry(entry);
+  const formattedLine = LOG_FORMAT === "json" ? safeStringify(entry) : formatLogEntry(entry);
 
   if (level === "error") {
     console.error(formattedLine);

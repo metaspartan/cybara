@@ -423,13 +423,13 @@ export async function executeTool(
     throw new Error(`Unknown tool: ${name}`);
   }
 
-  const schema = toolSchemaRegistry[name]?.input_schema as
-    | { required?: string[] }
-    | undefined;
+  const schema = toolSchemaRegistry[name]?.input_schema as { required?: string[] } | undefined;
   if (Array.isArray(schema?.required) && schema.required.length > 0) {
     const missing = schema.required.filter((key) => {
       const value = (args as Record<string, unknown>)?.[key];
-      return value === undefined || value === null || (typeof value === "string" && value.trim() === "");
+      return (
+        value === undefined || value === null || (typeof value === "string" && value.trim() === "")
+      );
     });
     if (missing.length > 0) {
       throw new Error(

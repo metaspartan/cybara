@@ -1,7 +1,7 @@
-import { useState, useCallback, useRef } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { chatApi, agentsApi, extractApiError } from '@/lib/api';
-import type { ChatMessage } from '@/types';
+import { useState, useCallback, useRef } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { chatApi, agentsApi, extractApiError } from "@/lib/api";
+import type { ChatMessage } from "@/types";
 
 interface ChatState {
   messages: ChatMessage[];
@@ -33,7 +33,7 @@ export function useChat(agentId?: string) {
     const controller = new AbortController();
     const requestSessionId = state.sessionId;
     activeRequestAbortRef.current = controller;
-    const userMessage: ChatMessage = { role: 'user', content, timestamp: new Date().toISOString() };
+    const userMessage: ChatMessage = { role: "user", content, timestamp: new Date().toISOString() };
     const requestedWorkspaceDir =
       options?.workspaceDir !== undefined ? options.workspaceDir : state.workspaceDir;
     setState((prev) => ({
@@ -41,9 +41,9 @@ export function useChat(agentId?: string) {
       messages: [...prev.messages, userMessage],
       isLoading: true,
     }));
-    
+
     try {
-      const response = agentId 
+      const response = agentId
         ? await agentsApi.chat(
             agentId,
             content,
@@ -58,7 +58,7 @@ export function useChat(agentId?: string) {
             requestedWorkspaceDir || undefined,
             controller.signal
           );
-        
+
       if (response.success && response.data) {
         if (activeRequestAbortRef.current !== controller) {
           return null;
@@ -78,10 +78,10 @@ export function useChat(agentId?: string) {
                 isLoading: false,
               }),
         }));
-        void queryClient.invalidateQueries({ queryKey: ['sessions'] });
+        void queryClient.invalidateQueries({ queryKey: ["sessions"] });
         return response.data;
       }
-      throw new Error(response.error || 'Failed to send message');
+      throw new Error(response.error || "Failed to send message");
     } catch (error) {
       if (activeRequestAbortRef.current === controller) {
         setState((prev) =>
@@ -167,7 +167,7 @@ export function useChat(agentId?: string) {
         messages: response.data?.messagesList || [],
         isLoading: false,
       }));
-      void queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      void queryClient.invalidateQueries({ queryKey: ["sessions"] });
 
       return response.data;
     } catch (error) {
@@ -193,13 +193,13 @@ export function useChat(agentId?: string) {
 export function useSessions(options?: { limit?: number }) {
   const limit = options?.limit ?? CHAT_SESSION_LIST_LIMIT;
   return useQuery({
-    queryKey: ['sessions', { limit }],
+    queryKey: ["sessions", { limit }],
     queryFn: async () => {
       const response = await chatApi.getSessions({ limit });
       if (response.success && response.data) {
         return response.data;
       }
-      throw new Error(response.error || 'Failed to fetch sessions');
+      throw new Error(response.error || "Failed to fetch sessions");
     },
     refetchOnWindowFocus: false,
     staleTime: 30_000,
@@ -208,17 +208,17 @@ export function useSessions(options?: { limit?: number }) {
 
 export function useDeleteSession() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async (sessionId: string) => {
       const response = await chatApi.deleteSession(sessionId);
       if (response.success) {
         return response.data;
       }
-      throw new Error(response.error || 'Failed to delete session');
+      throw new Error(response.error || "Failed to delete session");
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      queryClient.invalidateQueries({ queryKey: ["sessions"] });
     },
   });
 }
@@ -264,7 +264,7 @@ export function useLoadSession() {
       if (response.success && response.data) {
         return response.data;
       }
-      throw new Error(response.error || 'Failed to load session');
+      throw new Error(response.error || "Failed to load session");
     },
   });
 }

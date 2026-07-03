@@ -69,7 +69,12 @@ export class MatrixAdapter implements ChannelAdapter {
     }
 
     if (!selfUserId) {
-      const who = await this.request(homeserver, accessToken, "GET", "/_matrix/client/v3/account/whoami");
+      const who = await this.request(
+        homeserver,
+        accessToken,
+        "GET",
+        "/_matrix/client/v3/account/whoami"
+      );
       selfUserId = String((who as { user_id?: string }).user_id || "");
     }
 

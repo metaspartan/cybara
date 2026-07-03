@@ -112,7 +112,9 @@ describe("UI auth token helpers", () => {
   });
 
   test("apiFetch adds Authorization from query token", async () => {
-    (globalThis as unknown as { window: Window }).window = createWindow("?token=query-token") as unknown as Window;
+    (globalThis as unknown as { window: Window }).window = createWindow(
+      "?token=query-token"
+    ) as unknown as Window;
 
     let capturedInit: RequestInit | undefined;
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -129,7 +131,9 @@ describe("UI auth token helpers", () => {
   });
 
   test("apiFetch keeps explicit Authorization header", async () => {
-    (globalThis as unknown as { window: Window }).window = createWindow("?token=query-token") as unknown as Window;
+    (globalThis as unknown as { window: Window }).window = createWindow(
+      "?token=query-token"
+    ) as unknown as Window;
 
     let capturedInit: RequestInit | undefined;
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {

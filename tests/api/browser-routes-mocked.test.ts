@@ -75,7 +75,12 @@ mock.module("../../src/core/browser/pw-manager", () => ({
   ) => {
     browserMockState.clickCalls.push({ id, selector, opts });
   },
-  type: async (id: string, selector: string, text: string, opts?: { submit?: boolean; clear?: boolean }) => {
+  type: async (
+    id: string,
+    selector: string,
+    text: string,
+    opts?: { submit?: boolean; clear?: boolean }
+  ) => {
     browserMockState.typeCalls.push({ id, selector, text, opts });
   },
   closeAll: async () => {

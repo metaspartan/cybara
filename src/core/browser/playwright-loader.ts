@@ -58,8 +58,7 @@ function resolveChromium(mod: Record<string, unknown>): ChromiumApi | undefined 
   const direct = mod.chromium as ChromiumApi | undefined;
   if (direct) return direct;
   const fromDefault = (mod.default as Record<string, unknown> | undefined)?.chromium as
-    | ChromiumApi
-    | undefined;
+    ChromiumApi | undefined;
   return fromDefault;
 }
 

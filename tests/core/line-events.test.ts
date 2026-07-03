@@ -36,7 +36,12 @@ describe("LINE event parsing", () => {
   test("prefers group/room id over user id", () => {
     const body = {
       events: [
-        { type: "message", replyToken: "r", message: { type: "text", text: "yo" }, source: { groupId: "g1", userId: "u1" } },
+        {
+          type: "message",
+          replyToken: "r",
+          message: { type: "text", text: "yo" },
+          source: { groupId: "g1", userId: "u1" },
+        },
       ],
     };
     expect(parseLineEvents(body)[0].sourceId).toBe("g1");

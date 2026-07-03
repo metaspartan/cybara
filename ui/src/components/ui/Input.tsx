@@ -1,5 +1,5 @@
-import { cn } from '../../lib/utils';
-import { forwardRef, useId } from 'react';
+import { cn } from "../../lib/utils";
+import { forwardRef, useId } from "react";
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -23,10 +23,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           id={inputId}
           ref={ref}
           className={cn(
-            'w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500',
-            'focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50',
-            'transition-all duration-200',
-            error && 'border-red-500/50 focus:border-red-500/50 focus:ring-red-500/50',
+            "w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500",
+            "focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50",
+            "transition-all duration-200",
+            error && "border-red-500/50 focus:border-red-500/50 focus:ring-red-500/50",
             className
           )}
           {...props}
@@ -38,7 +38,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
   }
 );
 
-Input.displayName = 'Input';
+Input.displayName = "Input";
 
 interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string;
@@ -62,10 +62,10 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
           id={textareaId}
           ref={ref}
           className={cn(
-            'w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500',
-            'focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50',
-            'transition-all duration-200 resize-vertical min-h-[100px]',
-            error && 'border-red-500/50 focus:border-red-500/50 focus:ring-red-500/50',
+            "w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500",
+            "focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50",
+            "transition-all duration-200 resize-vertical min-h-[100px]",
+            error && "border-red-500/50 focus:border-red-500/50 focus:ring-red-500/50",
             className
           )}
           {...props}
@@ -77,6 +77,6 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
   }
 );
 
-Textarea.displayName = 'Textarea';
+Textarea.displayName = "Textarea";
 
-export { Select } from './Select';
+export { Select } from "./Select";

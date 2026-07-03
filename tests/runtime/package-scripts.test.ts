@@ -22,10 +22,14 @@ describe("package.json script wiring", () => {
     expect(pkg.scripts?.["tauri:sidecar"]).toBe("bun run scripts/build-sidecar.ts");
     expect(pkg.scripts?.["tauri:prepare-release"]).toBe("bun run scripts/prepare-tauri-release.ts");
     expect(pkg.scripts?.["tauri:build:release"]).toContain("bun run tauri:prepare-release");
-    expect(pkg.scripts?.["native:macos:build"]).toBe("swift build --package-path apps/macos/Cybara");
+    expect(pkg.scripts?.["native:macos:build"]).toBe(
+      "swift build --package-path apps/macos/Cybara"
+    );
     expect(pkg.scripts?.["native:macos:run"]).toContain("bun run ui:build");
     expect(pkg.scripts?.["native:macos:run"]).toContain("bun run tauri:sidecar");
-    expect(pkg.scripts?.["native:macos:run"]).toContain("swift run --package-path apps/macos/Cybara");
+    expect(pkg.scripts?.["native:macos:run"]).toContain(
+      "swift run --package-path apps/macos/Cybara"
+    );
     expect(pkg.scripts?.["native:macos:package"]).toBe("bun run scripts/package-native-macos.ts");
     expect(pkg.scripts?.["mobile:dev"]).toBe("cd apps/mobile && bun run dev");
     expect(pkg.scripts?.["mobile:ios"]).toBe("cd apps/mobile && bun run ios");

@@ -564,7 +564,7 @@ function ComputerUseSettings() {
             ? "Install it and grant macOS Accessibility + Screen Recording permissions to let agents see and control the screen."
             : status?.platform === "win32"
               ? "Windows computer use runs on the active desktop, so keep the target app visible while agents work."
-            : "Install the cua-driver engine to let agents see and control the screen."}
+              : "Install the cua-driver engine to let agents see and control the screen."}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -610,7 +610,9 @@ function ComputerUseSettings() {
                     or when cua-driver is installed outside the default Cua folders.
                   </p>
                 </div>
-                {status.driverSource === "config" && <Badge variant="success">Using override</Badge>}
+                {status.driverSource === "config" && (
+                  <Badge variant="success">Using override</Badge>
+                )}
               </div>
               <div className="flex flex-col gap-2 md:flex-row">
                 <Input
@@ -732,8 +734,8 @@ function SandboxBrowserSettings() {
       <CardHeader>
         <CardTitle>Sandbox Browser (cross-platform)</CardTitle>
         <CardDescription>
-          Runs Chromium inside an isolated Linux container (viewable in your browser via noVNC)
-          and drives it over the DevTools Protocol. Works the same on macOS, Windows, and Linux.
+          Runs Chromium inside an isolated Linux container (viewable in your browser via noVNC) and
+          drives it over the DevTools Protocol. Works the same on macOS, Windows, and Linux.
           Requires Docker.
         </CardDescription>
       </CardHeader>
@@ -752,7 +754,12 @@ function SandboxBrowserSettings() {
                 )}
               </span>
               <span className="flex items-center gap-2">
-                Image {status.imageBuilt ? <Badge variant="success">Built</Badge> : <Badge variant="default">Not built</Badge>}
+                Image{" "}
+                {status.imageBuilt ? (
+                  <Badge variant="success">Built</Badge>
+                ) : (
+                  <Badge variant="default">Not built</Badge>
+                )}
               </span>
               <span className="flex items-center gap-2">
                 Running{" "}
@@ -881,9 +888,7 @@ function FeatureSettings() {
             : "auto"
         );
         setSandboxNetwork(sandboxRaw?.network === "allow" ? "allow" : "deny");
-        setReasoningEffort(
-          typeof data?.reasoning_effort === "string" ? data.reasoning_effort : ""
-        );
+        setReasoningEffort(typeof data?.reasoning_effort === "string" ? data.reasoning_effort : "");
         if (sandboxResult.success && sandboxResult.data) {
           setSandboxStatus(sandboxResult.data as SandboxStatusView);
         }
@@ -986,7 +991,10 @@ function FeatureSettings() {
       if (!result.success || !result.data?.success) {
         throw new Error(result.error || "Config update failed");
       }
-      addToast("success", next ? `Reasoning effort set to ${next}` : "Reasoning effort set to default");
+      addToast(
+        "success",
+        next ? `Reasoning effort set to ${next}` : "Reasoning effort set to default"
+      );
     } catch {
       setReasoningEffort(previous);
       addToast("error", "Failed to update reasoning effort");
@@ -1456,8 +1464,7 @@ function readSpeechSettings(value: unknown): SpeechSettingsState {
         typeof tts.maxTextLength === "number" && Number.isFinite(tts.maxTextLength)
           ? tts.maxTextLength
           : 8000,
-      fallbackToSystem:
-        typeof tts.fallbackToSystem === "boolean" ? tts.fallbackToSystem : true,
+      fallbackToSystem: typeof tts.fallbackToSystem === "boolean" ? tts.fallbackToSystem : true,
     },
     stt: {
       provider: sttProvider,
@@ -1541,7 +1548,9 @@ function SpeechSettingsSection() {
           <Volume2 className="w-5 h-5 text-cyan-400" />
           Speech
         </CardTitle>
-        <CardDescription>TTS and dictation defaults shared by Web, Tauri, mobile, and native apps</CardDescription>
+        <CardDescription>
+          TTS and dictation defaults shared by Web, Tauri, mobile, and native apps
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -1562,7 +1571,10 @@ function SpeechSettingsSection() {
               onChange={(provider) =>
                 setSpeech((current) => ({
                   ...current,
-                  tts: { ...current.tts, provider: provider as SpeechSettingsState["tts"]["provider"] },
+                  tts: {
+                    ...current.tts,
+                    provider: provider as SpeechSettingsState["tts"]["provider"],
+                  },
                 }))
               }
             />
@@ -1682,7 +1694,10 @@ function SpeechSettingsSection() {
               onChange={(provider) =>
                 setSpeech((current) => ({
                   ...current,
-                  stt: { ...current.stt, provider: provider as SpeechSettingsState["stt"]["provider"] },
+                  stt: {
+                    ...current.stt,
+                    provider: provider as SpeechSettingsState["stt"]["provider"],
+                  },
                 }))
               }
             />
@@ -1719,13 +1734,16 @@ function SpeechSettingsSection() {
               />
             </div>
             <p className="text-xs text-gray-500">
-              Dictation uses the saved provider when the chat composer does not send an explicit provider.
+              Dictation uses the saved provider when the chat composer does not send an explicit
+              provider.
             </p>
           </div>
         </div>
         <div className="flex justify-end">
           <Button
-            leftIcon={saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            leftIcon={
+              saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />
+            }
             onClick={() => void save()}
             disabled={saving || loading}
           >

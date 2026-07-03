@@ -18,7 +18,9 @@ export class WebhookAdapter implements ChannelAdapter {
 
   async start(channelId: string, _config: Record<string, unknown>): Promise<void> {
     this.running.add(channelId);
-    console.log(`[Webhook] Adapter ready for channel ${channelId} (inbound via /api/channels/:id/webhook)`);
+    console.log(
+      `[Webhook] Adapter ready for channel ${channelId} (inbound via /api/channels/:id/webhook)`
+    );
   }
 
   async stop(channelId: string): Promise<void> {
@@ -47,7 +49,11 @@ export class WebhookAdapter implements ChannelAdapter {
 }
 
 /** Verify an inbound webhook signature: HMAC-SHA256 of the raw body with the shared secret. */
-export function verifyWebhookSignature(rawBody: string, signature: string | undefined, secret: string): boolean {
+export function verifyWebhookSignature(
+  rawBody: string,
+  signature: string | undefined,
+  secret: string
+): boolean {
   if (!secret) return true; // No secret configured = unsigned webhooks allowed.
   if (!signature) return false;
   try {

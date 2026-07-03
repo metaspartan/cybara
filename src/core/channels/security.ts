@@ -9,7 +9,6 @@ function pairingCodeEqual(a: string, b: string): boolean {
   return timingSafeEqual(bufA, bufB);
 }
 
-
 const log = createLogger("Security");
 
 export type DMPolicy = "pairing" | "allowlist" | "open" | "disabled";
@@ -77,8 +76,7 @@ export function buildChannelSecurityConfig(
       ? (groupPolicyRaw as GroupPolicy)
       : "owner_only";
   const groupOwnerRaw = config.group_owner_sender_id ?? config.owner_sender_id;
-  const groupOwnerSenderId =
-    typeof groupOwnerRaw === "string" ? groupOwnerRaw.trim() : "";
+  const groupOwnerSenderId = typeof groupOwnerRaw === "string" ? groupOwnerRaw.trim() : "";
 
   const securityConfig: Partial<ChannelSecurityConfig> = {
     dm_policy: dmPolicy,

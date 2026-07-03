@@ -118,15 +118,11 @@ describe("withRetry", () => {
 
   test("invokes onAttempt callback with attempt info", async () => {
     const attempts: Array<{ attempt: number; status?: number }> = [];
-    await withRetry(
-      async () => serverErrorResponse(),
-      null,
-      {
-        sleep: async () => {},
-        maxAttempts: 2,
-        onAttempt: (info) => attempts.push({ attempt: info.attempt, status: info.status }),
-      }
-    );
+    await withRetry(async () => serverErrorResponse(), null, {
+      sleep: async () => {},
+      maxAttempts: 2,
+      onAttempt: (info) => attempts.push({ attempt: info.attempt, status: info.status }),
+    });
     expect(attempts.length).toBeGreaterThanOrEqual(1);
     expect(attempts.every((a) => typeof a.status === "number")).toBe(true);
   });

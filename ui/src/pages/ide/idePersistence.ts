@@ -170,12 +170,19 @@ export function readPersistedOpenTabs(): { tabs: IdeTab[]; activeTabPath: string
     const tabs = Array.isArray(parsed)
       ? parsed
           .filter(
-            (t) => t && typeof t === "object" && typeof (t as IdeTab).path === "string" && typeof (t as IdeTab).name === "string"
+            (t) =>
+              t &&
+              typeof t === "object" &&
+              typeof (t as IdeTab).path === "string" &&
+              typeof (t as IdeTab).name === "string"
           )
           .slice(0, 20) // cap to avoid unbounded restore
       : [];
     const activeTabPath = window.localStorage.getItem(IDE_ACTIVE_TAB_STORAGE_KEY);
-    return { tabs, activeTabPath: activeTabPath && typeof activeTabPath === "string" ? activeTabPath : null };
+    return {
+      tabs,
+      activeTabPath: activeTabPath && typeof activeTabPath === "string" ? activeTabPath : null,
+    };
   } catch {
     return { tabs: [], activeTabPath: null };
   }
@@ -185,7 +192,12 @@ export function persistOpenTabs(tabs: IdeTab[], activeTabPath: string | null): v
   if (typeof window === "undefined") return;
   try {
     // Only persist path + name (not transient fields); cap to 20.
-    const minimal = tabs.slice(0, 20).map((t) => ({ path: t.path, name: t.name, extension: t.extension, previewMode: t.previewMode }));
+    const minimal = tabs.slice(0, 20).map((t) => ({
+      path: t.path,
+      name: t.name,
+      extension: t.extension,
+      previewMode: t.previewMode,
+    }));
     window.localStorage.setItem(IDE_OPEN_TABS_STORAGE_KEY, JSON.stringify(minimal));
     if (activeTabPath) {
       window.localStorage.setItem(IDE_ACTIVE_TAB_STORAGE_KEY, activeTabPath);

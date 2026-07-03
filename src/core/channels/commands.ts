@@ -505,10 +505,10 @@ export async function handleChannelManagementCommand(
       normalized === "ask" || normalized === "prompt" || normalized === "confirm"
         ? "ask"
         : normalized === "allow" ||
-          normalized === "always" ||
-          normalized === "always_allow" ||
-          normalized === "auto" ||
-          normalized === "on"
+            normalized === "always" ||
+            normalized === "always_allow" ||
+            normalized === "auto" ||
+            normalized === "on"
           ? "always_allow"
           : undefined;
 

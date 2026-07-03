@@ -66,11 +66,15 @@ describe("checkWritePath", () => {
 
   test("workspace confinement blocks paths outside the root", () => {
     const root = process.cwd();
-    expect(checkWritePath(`${root}/src/x.ts`, { confineToWorkspace: true, workspaceRoot: root }).allowed).toBe(true);
-    expect(checkWritePath("/etc/passwd", { confineToWorkspace: true, workspaceRoot: root }).allowed).toBe(false);
-    expect(checkWritePath("/etc/passwd", { confineToWorkspace: true, workspaceRoot: root }).reason).toBe(
-      "outside-workspace"
-    );
+    expect(
+      checkWritePath(`${root}/src/x.ts`, { confineToWorkspace: true, workspaceRoot: root }).allowed
+    ).toBe(true);
+    expect(
+      checkWritePath("/etc/passwd", { confineToWorkspace: true, workspaceRoot: root }).allowed
+    ).toBe(false);
+    expect(
+      checkWritePath("/etc/passwd", { confineToWorkspace: true, workspaceRoot: root }).reason
+    ).toBe("outside-workspace");
   });
 
   test("workspace confinement follows symlink targets before allowing a path", () => {

@@ -20,8 +20,12 @@ describe("IDE top menu layout", () => {
     const source = readIdeSource();
     const typesSource = readIdeTypesSource();
 
-    expect(typesSource).toContain('export type IdeTopMenuId = "file" | "edit" | "view" | "terminal" | "go";');
-    expect(source).toContain("const [openMenu, setOpenMenu] = useState<IdeTopMenuId | null>(null);");
+    expect(typesSource).toContain(
+      'export type IdeTopMenuId = "file" | "edit" | "view" | "terminal" | "go";'
+    );
+    expect(source).toContain(
+      "const [openMenu, setOpenMenu] = useState<IdeTopMenuId | null>(null);"
+    );
     expect(source).toContain('label: "File"');
     expect(source).toContain('label: "Edit"');
     expect(source).toContain('label: "View"');

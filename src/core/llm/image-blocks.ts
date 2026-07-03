@@ -20,12 +20,7 @@ export interface AgentImage {
   mimeType?: string;
 }
 
-const SUPPORTED_ANTHROPIC_MIME = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/gif",
-  "image/webp",
-]);
+const SUPPORTED_ANTHROPIC_MIME = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 
 export function normalizeMimeType(mime?: string): string {
   const m = (mime || "").trim().toLowerCase();

@@ -1,13 +1,13 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { memoryApi } from '@/lib/api';
-import { useMemoryStore } from '@/stores';
-import type { Memory } from '@/types';
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { memoryApi } from "@/lib/api";
+import { useMemoryStore } from "@/stores";
+import type { Memory } from "@/types";
 
-const MEMORY_KEY = 'memory';
+const MEMORY_KEY = "memory";
 
 export function useMemory(params?: { agentId?: string; userId?: string; limit?: number }) {
   const { setMemories, setLoading } = useMemoryStore();
-  
+
   const query = useQuery({
     queryKey: [MEMORY_KEY, params],
     queryFn: async () => {
@@ -17,7 +17,7 @@ export function useMemory(params?: { agentId?: string; userId?: string; limit?: 
         setMemories(response.data);
         return response.data;
       }
-      throw new Error(response.error || 'Failed to fetch memories');
+      throw new Error(response.error || "Failed to fetch memories");
     },
   });
 
@@ -36,7 +36,7 @@ export function useSearchMemory() {
       if (response.success && response.data) {
         return response.data;
       }
-      throw new Error(response.error || 'Failed to search memories');
+      throw new Error(response.error || "Failed to search memories");
     },
   });
 }
@@ -44,14 +44,14 @@ export function useSearchMemory() {
 export function useCreateMemory() {
   const queryClient = useQueryClient();
   const { addMemory } = useMemoryStore();
-  
+
   return useMutation({
-    mutationFn: async (memory: Omit<Memory, 'id' | 'createdAt' | 'updatedAt'>) => {
+    mutationFn: async (memory: Omit<Memory, "id" | "createdAt" | "updatedAt">) => {
       const response = await memoryApi.create(memory);
       if (response.success && response.data) {
         return response.data;
       }
-      throw new Error(response.error || 'Failed to create memory');
+      throw new Error(response.error || "Failed to create memory");
     },
     onSuccess: (data) => {
       addMemory(data);
@@ -63,14 +63,14 @@ export function useCreateMemory() {
 export function useUpdateMemory() {
   const queryClient = useQueryClient();
   const { updateMemory } = useMemoryStore();
-  
+
   return useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: Partial<Memory> }) => {
       const response = await memoryApi.update(id, updates);
       if (response.success && response.data) {
         return response.data;
       }
-      throw new Error(response.error || 'Failed to update memory');
+      throw new Error(response.error || "Failed to update memory");
     },
     onSuccess: (data) => {
       updateMemory(data.id, data);
@@ -82,12 +82,12 @@ export function useUpdateMemory() {
 export function useDeleteMemory() {
   const queryClient = useQueryClient();
   const { removeMemory } = useMemoryStore();
-  
+
   return useMutation({
     mutationFn: async (id: string) => {
       const response = await memoryApi.delete(id);
       if (response.success) return id;
-      throw new Error(response.error || 'Failed to delete memory');
+      throw new Error(response.error || "Failed to delete memory");
     },
     onSuccess: (id) => {
       removeMemory(id);

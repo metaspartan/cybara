@@ -8,7 +8,11 @@ export interface MsTeamsInbound {
   text: string;
 }
 
-export function verifyMsTeamsSignature(rawBody: string, authHeader: string, securityToken: string): boolean {
+export function verifyMsTeamsSignature(
+  rawBody: string,
+  authHeader: string,
+  securityToken: string
+): boolean {
   if (!authHeader || !securityToken) return false;
   const provided = authHeader.replace(/^HMAC\s+/i, "").trim();
   if (!provided) return false;

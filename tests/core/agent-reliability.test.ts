@@ -30,6 +30,8 @@ describe("required-argument validation in executeTool", () => {
   });
 
   test("rejects a required argument that is an empty string", async () => {
-    await expect(executeTool("read", { path: "   " })).rejects.toThrow(/Missing required argument/i);
+    await expect(executeTool("read", { path: "   " })).rejects.toThrow(
+      /Missing required argument/i
+    );
   });
 });

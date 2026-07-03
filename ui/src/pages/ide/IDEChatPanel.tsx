@@ -3,10 +3,36 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Highlight, themes } from "prism-react-renderer";
 import {
-  Loader2, Check, AlertTriangle, AlertCircle, Info, RotateCcw, X, ChevronRight, ChevronDown,
-  ChevronUp, File, FileCode, FileJson, FileText, FilePlus, Folder, FolderOpen, Search, Save,
-  RefreshCw, Copy, Code, Zap, Sparkles, MessageSquare, Square, ListTree, GitBranch,
-  ExternalLink, CheckCircle2,
+  Loader2,
+  Check,
+  AlertTriangle,
+  AlertCircle,
+  Info,
+  RotateCcw,
+  X,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  File,
+  FileCode,
+  FileJson,
+  FileText,
+  FilePlus,
+  Folder,
+  FolderOpen,
+  Search,
+  Save,
+  RefreshCw,
+  Copy,
+  Code,
+  Zap,
+  Sparkles,
+  MessageSquare,
+  Square,
+  ListTree,
+  GitBranch,
+  ExternalLink,
+  CheckCircle2,
 } from "lucide-react";
 import type { CSSProperties } from "react";
 import { Button } from "@/components/ui/Button";
@@ -15,58 +41,147 @@ import { apiFetch } from "@/lib/auth";
 import { chatApi, agentsApi } from "@/lib/api";
 import { useStopAgent } from "@/hooks/useApi";
 import {
-  mergeActivityLists, normalizeActivityTextForPhase, finalizeCompletedActivities,
-  buildActivitiesFromToolCalls, type LiveActivityItem, type ToolCallLike,
+  mergeActivityLists,
+  normalizeActivityTextForPhase,
+  finalizeCompletedActivities,
+  buildActivitiesFromToolCalls,
+  type LiveActivityItem,
+  type ToolCallLike,
 } from "@/lib/chatActivities";
 import { connectStatusStream } from "@/lib/status-stream";
 import {
-  parseGitDiffDecorations, countGitDiffLineChanges, mergeGitDiffDecorations,
-  buildPendingInlinePreviewRows, emptyIdePendingDiffDecorations,
-  type IdePendingLineState, type IdePendingDeletedBlock,
-  type IdePendingInlinePreviewRow, type IdePendingDiffDecorations,
+  parseGitDiffDecorations,
+  countGitDiffLineChanges,
+  mergeGitDiffDecorations,
+  buildPendingInlinePreviewRows,
+  emptyIdePendingDiffDecorations,
+  type IdePendingLineState,
+  type IdePendingDeletedBlock,
+  type IdePendingInlinePreviewRow,
+  type IdePendingDiffDecorations,
 } from "@/lib/idePendingDiffDecorations";
 import {
-  IDE_DEFAULT_PREFERENCES, IDE_CHAT_AGENT_STORAGE_KEY, IDE_CHAT_OPEN_STORAGE_KEY,
-  IDE_CHAT_WIDTH_STORAGE_KEY, EDITOR_FONT_SIZE_PX, EDITOR_LINE_HEIGHT_PX,
-  EDITOR_LARGE_FILE_CHAR_THRESHOLD, EDITOR_LARGE_FILE_LINE_THRESHOLD,
-  COMPLETION_LOCAL_SCAN_BEFORE, COMPLETION_LOCAL_SCAN_AFTER, COMPLETION_CACHE_TTL_MS, COMPLETION_CACHE_MAX_ENTRIES,
+  IDE_DEFAULT_PREFERENCES,
+  IDE_CHAT_AGENT_STORAGE_KEY,
+  IDE_CHAT_OPEN_STORAGE_KEY,
+  IDE_CHAT_WIDTH_STORAGE_KEY,
+  EDITOR_FONT_SIZE_PX,
+  EDITOR_LINE_HEIGHT_PX,
+  EDITOR_LARGE_FILE_CHAR_THRESHOLD,
+  EDITOR_LARGE_FILE_LINE_THRESHOLD,
+  COMPLETION_LOCAL_SCAN_BEFORE,
+  COMPLETION_LOCAL_SCAN_AFTER,
+  COMPLETION_CACHE_TTL_MS,
+  COMPLETION_CACHE_MAX_ENTRIES,
   EDITOR_TYPING_BURST_MS,
 } from "./ideConstants";
 import { getActiveLanguageFromExtension } from "./ideLanguageMaps";
 import {
-  getFileIcon, formatSize, getLineAndColumn, getPrismLanguage, splitPathForBreadcrumbs,
-  flattenOutlineSymbols, getSymbolKindLabel, fileEntryFromPath, isMarkdownExtension,
-  ideMarkdownComponents, formatBlameStamp, formatBlameDateTime, scoreQuickOpenResult, getSeverityIcon,
+  getFileIcon,
+  formatSize,
+  getLineAndColumn,
+  getPrismLanguage,
+  splitPathForBreadcrumbs,
+  flattenOutlineSymbols,
+  getSymbolKindLabel,
+  fileEntryFromPath,
+  isMarkdownExtension,
+  ideMarkdownComponents,
+  formatBlameStamp,
+  formatBlameDateTime,
+  scoreQuickOpenResult,
+  getSeverityIcon,
 } from "./ideUtils";
 import {
-  isPlainRecord, normalizeIdePath, getIdePendingFileDecisionKey, isSameIdePath, countDiffLines,
-  truncateDiffPreview, shouldHydratePendingFileDiffFromGit, getPendingLineTextClass,
-  getPendingLineContainerClass, getPendingLineDecorationStyle, summarizePendingDeletedBlocks,
-  parseIdePatchFileChanges, parseIdeChangeRecord, summarizeIdeFileChanges,
-  summarizeIdeTextFileChanges, summarizeIdeMessageFileChanges, summarizeIdeActivityFileChanges,
-  mergeIdeFileChangeSummaries, reverseUnifiedDiff, isIdeToolCallLike, getIdeToolCallsInTimelineOrder,
+  isPlainRecord,
+  normalizeIdePath,
+  getIdePendingFileDecisionKey,
+  isSameIdePath,
+  countDiffLines,
+  truncateDiffPreview,
+  shouldHydratePendingFileDiffFromGit,
+  getPendingLineTextClass,
+  getPendingLineContainerClass,
+  getPendingLineDecorationStyle,
+  summarizePendingDeletedBlocks,
+  parseIdePatchFileChanges,
+  parseIdeChangeRecord,
+  summarizeIdeFileChanges,
+  summarizeIdeTextFileChanges,
+  summarizeIdeMessageFileChanges,
+  summarizeIdeActivityFileChanges,
+  mergeIdeFileChangeSummaries,
+  reverseUnifiedDiff,
+  isIdeToolCallLike,
+  getIdeToolCallsInTimelineOrder,
 } from "./ideDiffHelpers";
 import {
-  getIdeToolCallArgs, getIdeToolCallCommand, getIdeToolCallResultSummary, getIdeToolCallExitCode,
-  parseIdeTimestampMs, normalizeIdeSandboxProviderValue, formatIdeSandboxProviderLabel,
-  isGenericIdeStatusLabel, isMeaningfulIdeThoughtDetail, getLatestIdeInFlightStep,
-  toIdeLiveActivityItems, formatIdeStatusEventText, getIdeHeaderTitle,
+  getIdeToolCallArgs,
+  getIdeToolCallCommand,
+  getIdeToolCallResultSummary,
+  getIdeToolCallExitCode,
+  parseIdeTimestampMs,
+  normalizeIdeSandboxProviderValue,
+  formatIdeSandboxProviderLabel,
+  isGenericIdeStatusLabel,
+  isMeaningfulIdeThoughtDetail,
+  getLatestIdeInFlightStep,
+  toIdeLiveActivityItems,
+  formatIdeStatusEventText,
+  getIdeHeaderTitle,
 } from "./ideActivityHelpers";
 import {
-  persistIdeChatAgentId, readPersistedChatOpen, persistChatOpen, readPersistedChatWidth,
-  persistChatWidth, readPersistedIdeChatAgentId, readPersistedIdePreferences,
+  persistIdeChatAgentId,
+  readPersistedChatOpen,
+  persistChatOpen,
+  readPersistedChatWidth,
+  persistChatWidth,
+  readPersistedIdeChatAgentId,
+  readPersistedIdePreferences,
 } from "./idePersistence";
 import type {
-  FileEntry, BrowseResult, ReadResult, Diagnostic, LspActiveServer,
-  IdeSearchMatch, IdeSearchFileResult, IdeSearchResult, IdeReplaceResult,
-  IdeReplacePreviewFile, IdeReplacePreviewResult, IdeListFilesResult, WorkspaceIndexerSettings,
-  IdeBlameLine, IdeBlameResult, GitHistoryStatus, IdeTab, IdeChatMessage, IdeChatAgentOption,
-  IdeProcessActivity, IdeFileChangeItem, IdeFileChangeSummary, IdePendingFileDiff,
-  IdePendingFileDiffController, TreeContextMenuState, IdeCommandItem, IdeOutlineSymbol,
-  IdeOutlineResponse, IdeCompletionItem, IdeCompletionResponse, IdeInlineCompletionResponse,
-  FlattenedOutlineSymbol, IdeBreadcrumb, IdeSettingsSectionId, IdeTopMenuId, IdePreferences,
+  FileEntry,
+  BrowseResult,
+  ReadResult,
+  Diagnostic,
+  LspActiveServer,
+  IdeSearchMatch,
+  IdeSearchFileResult,
+  IdeSearchResult,
+  IdeReplaceResult,
+  IdeReplacePreviewFile,
+  IdeReplacePreviewResult,
+  IdeListFilesResult,
+  WorkspaceIndexerSettings,
+  IdeBlameLine,
+  IdeBlameResult,
+  GitHistoryStatus,
+  IdeTab,
+  IdeChatMessage,
+  IdeChatAgentOption,
+  IdeProcessActivity,
+  IdeFileChangeItem,
+  IdeFileChangeSummary,
+  IdePendingFileDiff,
+  IdePendingFileDiffController,
+  TreeContextMenuState,
+  IdeCommandItem,
+  IdeOutlineSymbol,
+  IdeOutlineResponse,
+  IdeCompletionItem,
+  IdeCompletionResponse,
+  IdeInlineCompletionResponse,
+  FlattenedOutlineSymbol,
+  IdeBreadcrumb,
+  IdeSettingsSectionId,
+  IdeTopMenuId,
+  IdePreferences,
 } from "./ideTypes";
-import { IdeActivityText, IdeProcessActivityList, IdeLiveActivityTimeline } from "./IdeActivityTimeline";
+import {
+  IdeActivityText,
+  IdeProcessActivityList,
+  IdeLiveActivityTimeline,
+} from "./IdeActivityTimeline";
 
 export function IDEChatPanel({
   workspaceDir,
@@ -908,16 +1023,19 @@ export function IDEChatPanel({
     [isReverting, isSending, mapApiMessageToIde, messages, sessionId]
   );
 
-  const setDecisionForFileKeys = useCallback((keys: string[], decision: "accepted" | "rejected") => {
-    if (keys.length === 0) return;
-    setFileDiffDecision((previous) => {
-      const next = { ...previous };
-      for (const key of keys) {
-        next[key] = decision;
-      }
-      return next;
-    });
-  }, []);
+  const setDecisionForFileKeys = useCallback(
+    (keys: string[], decision: "accepted" | "rejected") => {
+      if (keys.length === 0) return;
+      setFileDiffDecision((previous) => {
+        const next = { ...previous };
+        for (const key of keys) {
+          next[key] = decision;
+        }
+        return next;
+      });
+    },
+    []
+  );
 
   const applyReversePatchForFiles = useCallback(
     async (files: IdePendingFileDiff[]): Promise<boolean> => {
@@ -992,7 +1110,9 @@ export function IDEChatPanel({
 
   const getPendingFilesForMessage = useCallback(
     (messageKey: string): IdePendingFileDiff[] =>
-      (resolvedFileEntriesByMessageKey.get(messageKey) || []).filter((file) => !fileDiffDecision[file.key]),
+      (resolvedFileEntriesByMessageKey.get(messageKey) || []).filter(
+        (file) => !fileDiffDecision[file.key]
+      ),
     [fileDiffDecision, resolvedFileEntriesByMessageKey]
   );
 
@@ -1037,7 +1157,14 @@ export function IDEChatPanel({
         setDecisionForFileKeys([file.key], "rejected");
       }
     },
-    [applyReversePatchForFiles, isApplyingDiffAction, isReverting, isSending, pendingFileDiffs, setDecisionForFileKeys]
+    [
+      applyReversePatchForFiles,
+      isApplyingDiffAction,
+      isReverting,
+      isSending,
+      pendingFileDiffs,
+      setDecisionForFileKeys,
+    ]
   );
 
   const handleRejectMessageChanges = useCallback(
@@ -1687,4 +1814,3 @@ export function IDEChatPanel({
     </div>
   );
 }
-

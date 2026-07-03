@@ -4,7 +4,10 @@ export interface HomeAssistantInbound {
   conversationId: string;
 }
 
-export function parseHomeAssistantWebhook(body: unknown, query: Record<string, string>): HomeAssistantInbound | null {
+export function parseHomeAssistantWebhook(
+  body: unknown,
+  query: Record<string, string>
+): HomeAssistantInbound | null {
   const b = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
   const pick = (...keys: string[]): string => {
     for (const k of keys) {

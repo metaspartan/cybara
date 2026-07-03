@@ -1,17 +1,17 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
-import { tmpdir } from 'os';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import {
   readThemeAccentFromConfig,
   themeAccentKeys,
   themeAccents,
   themeConfigPayload,
   useUIStore,
-} from './uiStore';
+} from "./uiStore";
 
-const STORE_PATH = join(dirname(fileURLToPath(import.meta.url)), 'uiStore.ts').replace(/\\/g, '/');
+const STORE_PATH = join(dirname(fileURLToPath(import.meta.url)), "uiStore.ts").replace(/\\/g, "/");
 
 function makeStorage(initial: Record<string, string> = {}) {
   const store = new Map<string, string>(Object.entries(initial));
@@ -37,15 +37,15 @@ const originalWarn = console.warn;
 
 beforeEach(() => {
   console.warn = (...args: unknown[]) => {
-    if (String(args[0]).includes('[zustand persist middleware]')) return;
+    if (String(args[0]).includes("[zustand persist middleware]")) return;
     originalWarn(...args);
   };
-  hadStorage = 'localStorage' in g;
+  hadStorage = "localStorage" in g;
   originalStorage = g.localStorage;
   storage = makeStorage();
   g.localStorage = storage;
   useUIStore.setState({
-    accent: 'indigo',
+    accent: "indigo",
     loading: {},
     toasts: [],
     activeModal: null,
@@ -63,8 +63,8 @@ afterEach(() => {
   }
 });
 
-describe('theme accent catalog', () => {
-  test('every accent has an rgb triple and display name', () => {
+describe("theme accent catalog", () => {
+  test("every accent has an rgb triple and display name", () => {
     expect(themeAccentKeys.length).toBe(10);
     for (const key of themeAccentKeys) {
       const entry = themeAccents[key];
@@ -74,43 +74,51 @@ describe('theme accent catalog', () => {
   });
 });
 
-describe('readThemeAccentFromConfig', () => {
-  test('reads each supported flat key', () => {
-    expect(readThemeAccentFromConfig({ themeAccent: 'rose' })).toBe('rose');
-    expect(readThemeAccentFromConfig({ theme_accent: 'teal' })).toBe('teal');
-    expect(readThemeAccentFromConfig({ theme: 'amber' })).toBe('amber');
-    expect(readThemeAccentFromConfig({ accent: 'cyan' })).toBe('cyan');
-    expect(readThemeAccentFromConfig({ ui_accent: 'pink' })).toBe('pink');
+describe("readThemeAccentFromConfig", () => {
+  test("reads each supported flat key", () => {
+    expect(readThemeAccentFromConfig({ themeAccent: "rose" })).toBe("rose");
+    expect(readThemeAccentFromConfig({ theme_accent: "teal" })).toBe("teal");
+    expect(readThemeAccentFromConfig({ theme: "amber" })).toBe("amber");
+    expect(readThemeAccentFromConfig({ accent: "cyan" })).toBe("cyan");
+    expect(readThemeAccentFromConfig({ ui_accent: "pink" })).toBe("pink");
   });
 
-  test('reads nested shapes', () => {
-    expect(readThemeAccentFromConfig({ ui: { accent: 'emerald' } })).toBe('emerald');
-    expect(readThemeAccentFromConfig({ appearance: { accent: 'purple' } })).toBe('purple');
-    expect(readThemeAccentFromConfig({ settings: { accent: 'blue' } })).toBe('blue');
-    expect(readThemeAccentFromConfig({ identity: { accent: 'orange' } })).toBe('orange');
-    expect(readThemeAccentFromConfig({ identity: { theme: 'rose' } })).toBe('rose');
+  test("reads nested shapes", () => {
+    expect(readThemeAccentFromConfig({ ui: { accent: "emerald" } })).toBe("emerald");
+    expect(readThemeAccentFromConfig({ appearance: { accent: "purple" } })).toBe("purple");
+    expect(readThemeAccentFromConfig({ settings: { accent: "blue" } })).toBe("blue");
+    expect(readThemeAccentFromConfig({ identity: { accent: "orange" } })).toBe("orange");
+    expect(readThemeAccentFromConfig({ identity: { theme: "rose" } })).toBe("rose");
   });
 
-  test('normalizes case and whitespace', () => {
-    expect(readThemeAccentFromConfig({ theme: '  ROSE  ' })).toBe('rose');
-    expect(readThemeAccentFromConfig({ ui: { accent: ' Emerald ' } })).toBe('emerald');
+  test("normalizes case and whitespace", () => {
+    expect(readThemeAccentFromConfig({ theme: "  ROSE  " })).toBe("rose");
+    expect(readThemeAccentFromConfig({ ui: { accent: " Emerald " } })).toBe("emerald");
   });
 
-  test('flat keys win over nested ones', () => {
-    expect(readThemeAccentFromConfig({ themeAccent: 'rose', ui: { accent: 'teal' } })).toBe('rose');
-    expect(readThemeAccentFromConfig({ theme: 'dark', ui: { accent: 'teal' } })).toBe('teal');
+  test("flat keys win over nested ones", () => {
+    expect(readThemeAccentFromConfig({ themeAccent: "rose", ui: { accent: "teal" } })).toBe("rose");
+    expect(readThemeAccentFromConfig({ theme: "dark", ui: { accent: "teal" } })).toBe("teal");
   });
 
-  test('rejects garbage shapes without throwing', () => {
+  test("rejects garbage shapes without throwing", () => {
     expect(readThemeAccentFromConfig(undefined)).toBeUndefined();
     expect(readThemeAccentFromConfig({})).toBeUndefined();
-    expect(readThemeAccentFromConfig({ theme: 'dark' })).toBeUndefined();
-    expect(readThemeAccentFromConfig({ theme: 42 } as unknown as Record<string, unknown>)).toBeUndefined();
-    expect(readThemeAccentFromConfig({ theme: null } as unknown as Record<string, unknown>)).toBeUndefined();
-    expect(readThemeAccentFromConfig({ ui: ['rose'] } as unknown as Record<string, unknown>)).toBeUndefined();
-    expect(readThemeAccentFromConfig({ ui: { accent: '' } })).toBeUndefined();
-    expect(readThemeAccentFromConfig({ ui: { accent: '   ' } })).toBeUndefined();
-    expect(readThemeAccentFromConfig({ ui: 'rose' } as unknown as Record<string, unknown>)).toBeUndefined();
+    expect(readThemeAccentFromConfig({ theme: "dark" })).toBeUndefined();
+    expect(
+      readThemeAccentFromConfig({ theme: 42 } as unknown as Record<string, unknown>)
+    ).toBeUndefined();
+    expect(
+      readThemeAccentFromConfig({ theme: null } as unknown as Record<string, unknown>)
+    ).toBeUndefined();
+    expect(
+      readThemeAccentFromConfig({ ui: ["rose"] } as unknown as Record<string, unknown>)
+    ).toBeUndefined();
+    expect(readThemeAccentFromConfig({ ui: { accent: "" } })).toBeUndefined();
+    expect(readThemeAccentFromConfig({ ui: { accent: "   " } })).toBeUndefined();
+    expect(
+      readThemeAccentFromConfig({ ui: "rose" } as unknown as Record<string, unknown>)
+    ).toBeUndefined();
   });
 });
 
@@ -125,27 +133,36 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-describe('readThemeAccentFromConfig fuzz', () => {
-  test('never throws and only ever returns a valid accent (seed 0xacc)', () => {
+describe("readThemeAccentFromConfig fuzz", () => {
+  test("never throws and only ever returns a valid accent (seed 0xacc)", () => {
     const rand = mulberry32(0xacc);
-    const keys = ['theme', 'themeAccent', 'accent', 'ui', 'appearance', 'settings', 'identity', 'x'];
+    const keys = [
+      "theme",
+      "themeAccent",
+      "accent",
+      "ui",
+      "appearance",
+      "settings",
+      "identity",
+      "x",
+    ];
     const leaves: unknown[] = [
-      'rose',
-      'ROSE ',
-      'not-a-color',
-      '',
+      "rose",
+      "ROSE ",
+      "not-a-color",
+      "",
       0,
       42,
       null,
       undefined,
       true,
-      ['rose'],
-      { accent: 'teal' },
+      ["rose"],
+      { accent: "teal" },
       { theme: 5 },
-      Symbol('s'),
-      () => 'rose',
+      Symbol("s"),
+      () => "rose",
     ];
-    const pick = <T,>(arr: T[]): T => arr[Math.floor(rand() * arr.length)];
+    const pick = <T>(arr: T[]): T => arr[Math.floor(rand() * arr.length)];
 
     for (let i = 0; i < 500; i++) {
       const cfg: Record<string, unknown> = {};
@@ -162,54 +179,54 @@ describe('readThemeAccentFromConfig fuzz', () => {
   });
 });
 
-describe('themeConfigPayload', () => {
-  test('mirrors the accent into every config alias', () => {
-    expect(themeConfigPayload('teal')).toEqual({
-      theme: 'teal',
-      themeAccent: 'teal',
-      theme_accent: 'teal',
-      ui_accent: 'teal',
+describe("themeConfigPayload", () => {
+  test("mirrors the accent into every config alias", () => {
+    expect(themeConfigPayload("teal")).toEqual({
+      theme: "teal",
+      themeAccent: "teal",
+      theme_accent: "teal",
+      ui_accent: "teal",
     });
   });
 });
 
-describe('useUIStore actions', () => {
-  test('setAccent updates state', () => {
-    useUIStore.getState().setAccent('rose');
-    expect(useUIStore.getState().accent).toBe('rose');
+describe("useUIStore actions", () => {
+  test("setAccent updates state", () => {
+    useUIStore.getState().setAccent("rose");
+    expect(useUIStore.getState().accent).toBe("rose");
   });
 
-  test('setLoading tracks independent keys', () => {
-    useUIStore.getState().setLoading('agents', true);
-    useUIStore.getState().setLoading('chat', true);
-    useUIStore.getState().setLoading('agents', false);
+  test("setLoading tracks independent keys", () => {
+    useUIStore.getState().setLoading("agents", true);
+    useUIStore.getState().setLoading("chat", true);
+    useUIStore.getState().setLoading("agents", false);
     expect(useUIStore.getState().loading).toEqual({ agents: false, chat: true });
   });
 
-  test('addToast and removeToast manage the toast list', () => {
-    useUIStore.getState().addToast('success', 'saved');
-    useUIStore.getState().addToast('error', 'broke');
+  test("addToast and removeToast manage the toast list", () => {
+    useUIStore.getState().addToast("success", "saved");
+    useUIStore.getState().addToast("error", "broke");
     const toasts = useUIStore.getState().toasts;
     expect(toasts.length).toBe(2);
-    expect(toasts[0].type).toBe('success');
-    expect(toasts[0].message).toBe('saved');
+    expect(toasts[0].type).toBe("success");
+    expect(toasts[0].message).toBe("saved");
     expect(toasts[0].id).not.toBe(toasts[1].id);
 
     useUIStore.getState().removeToast(toasts[0].id);
-    expect(useUIStore.getState().toasts.map((t) => t.message)).toEqual(['broke']);
+    expect(useUIStore.getState().toasts.map((t) => t.message)).toEqual(["broke"]);
   });
 
-  test('openModal and closeModal manage modal state and data', () => {
-    useUIStore.getState().openModal('settings', { tab: 'theme' });
-    expect(useUIStore.getState().activeModal).toBe('settings');
-    expect(useUIStore.getState().modalData).toEqual({ tab: 'theme' });
+  test("openModal and closeModal manage modal state and data", () => {
+    useUIStore.getState().openModal("settings", { tab: "theme" });
+    expect(useUIStore.getState().activeModal).toBe("settings");
+    expect(useUIStore.getState().modalData).toEqual({ tab: "theme" });
 
     useUIStore.getState().closeModal();
     expect(useUIStore.getState().activeModal).toBeNull();
     expect(useUIStore.getState().modalData).toBeNull();
   });
 
-  test('toggleSidebar flips the flag', () => {
+  test("toggleSidebar flips the flag", () => {
     expect(useUIStore.getState().sidebarOpen).toBe(true);
     useUIStore.getState().toggleSidebar();
     expect(useUIStore.getState().sidebarOpen).toBe(false);
@@ -230,10 +247,10 @@ interface PersistenceReport {
 // evaluates, so persistence runs in a child process where a shim module
 // installs an in-memory localStorage before uiStore loads.
 function runPersistenceWorker(): PersistenceReport {
-  const dir = mkdtempSync(join(tmpdir(), 'cybara-uistore-'));
+  const dir = mkdtempSync(join(tmpdir(), "cybara-uistore-"));
   try {
     writeFileSync(
-      join(dir, 'shim.ts'),
+      join(dir, "shim.ts"),
       `
 const store = new Map<string, string>();
 const shim = {
@@ -250,10 +267,10 @@ const g = globalThis as { localStorage?: unknown; window?: unknown };
 g.localStorage = shim;
 g.window = { localStorage: shim };
 `,
-      'utf-8'
+      "utf-8"
     );
     writeFileSync(
-      join(dir, 'worker.ts'),
+      join(dir, "worker.ts"),
       `
 import "./shim.ts";
 import { useUIStore } from "${STORE_PATH}";
@@ -289,42 +306,42 @@ console.log(
     })
 );
 `,
-      'utf-8'
+      "utf-8"
     );
-    const result = Bun.spawnSync([process.execPath, 'run', join(dir, 'worker.ts')], {
+    const result = Bun.spawnSync([process.execPath, "run", join(dir, "worker.ts")], {
       cwd: dirname(STORE_PATH),
     });
     const stdout = result.stdout.toString();
     if (result.exitCode !== 0) {
       throw new Error(`uiStore worker failed: ${result.stderr.toString()}\n${stdout}`);
     }
-    const line = stdout.split('\n').find((l) => l.startsWith('@@REPORT@@'));
+    const line = stdout.split("\n").find((l) => l.startsWith("@@REPORT@@"));
     if (!line) throw new Error(`no report in worker output:\n${stdout}`);
-    return JSON.parse(line.slice('@@REPORT@@'.length)) as PersistenceReport;
+    return JSON.parse(line.slice("@@REPORT@@".length)) as PersistenceReport;
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 }
 
-describe('useUIStore persistence', () => {
+describe("useUIStore persistence", () => {
   const report = runPersistenceWorker();
 
-  test('exposes the persist API when storage is available at load time', () => {
+  test("exposes the persist API when storage is available at load time", () => {
     expect(report.hasPersistApi).toBe(true);
   });
 
-  test('persists only the accent', () => {
+  test("persists only the accent", () => {
     expect(report.persistedAfterSet).not.toBeNull();
-    expect(report.persistedAfterSet?.state).toEqual({ accent: 'amber' });
+    expect(report.persistedAfterSet?.state).toEqual({ accent: "amber" });
   });
 
-  test('rehydrates the accent from storage', () => {
-    expect(report.rehydratedAccent).toBe('purple');
+  test("rehydrates the accent from storage", () => {
+    expect(report.rehydratedAccent).toBe("purple");
   });
 
-  test('rehydrating garbage storage does not throw and keeps a valid accent', () => {
+  test("rehydrating garbage storage does not throw and keeps a valid accent", () => {
     expect(report.garbageRehydrateThrew).toBe(false);
     expect(themeAccentKeys).toContain(report.accentAfterGarbage);
-    expect(typeof initialState.setAccent).toBe('function');
+    expect(typeof initialState.setAccent).toBe("function");
   });
 });

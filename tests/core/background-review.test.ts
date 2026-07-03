@@ -8,19 +8,13 @@ describe("background review", () => {
 
   test("maybeRunBackgroundReview skips short content", async () => {
     await expect(
-      maybeRunBackgroundReview(
-        { agentId: "test", sessionId: "s1" },
-        "short"
-      )
+      maybeRunBackgroundReview({ agentId: "test", sessionId: "s1" }, "short")
     ).resolves.toBeUndefined();
   });
 
   test("maybeRunBackgroundReview skips when disabled", async () => {
     await expect(
-      maybeRunBackgroundReview(
-        { agentId: "test", sessionId: "s1" },
-        "x".repeat(300)
-      )
+      maybeRunBackgroundReview({ agentId: "test", sessionId: "s1" }, "x".repeat(300))
     ).resolves.toBeUndefined();
   });
 });

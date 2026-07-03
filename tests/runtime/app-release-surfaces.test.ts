@@ -29,7 +29,9 @@ describe("app release surface wiring", () => {
     expect(workflow).toContain("build-android:");
     expect(workflow).toContain("name: Android APK");
     expect(workflow).toContain("android-actions/setup-android@");
-    expect(workflow).toContain("cd apps/mobile && bunx expo prebuild --platform android --no-install");
+    expect(workflow).toContain(
+      "cd apps/mobile && bunx expo prebuild --platform android --no-install"
+    );
     expect(workflow).toContain("./gradlew bundleRelease assembleRelease");
     expect(workflow).toContain("./gradlew assembleDebug");
     expect(workflow).toContain("packageName: com.ck.cybara");
@@ -52,10 +54,14 @@ describe("app release surface wiring", () => {
     expect(workflow).toContain("releaseDraft: true");
     expect(workflow).toContain("draft: true");
     expect(workflow).toContain("publish-release:");
-    expect(workflow).toContain("needs: [release, build-tauri, build-native-macos, build-android, build-ios]");
-    expect(workflow).toContain("gh release download \"$TAG\"");
-    expect(workflow).toContain("bun run scripts/verify-tauri-updater-manifest.ts release-check/latest.json");
-    expect(workflow).toContain("gh release edit \"$TAG\" --repo \"$GITHUB_REPOSITORY\" --draft=false");
+    expect(workflow).toContain(
+      "needs: [release, build-tauri, build-native-macos, build-android, build-ios]"
+    );
+    expect(workflow).toContain('gh release download "$TAG"');
+    expect(workflow).toContain(
+      "bun run scripts/verify-tauri-updater-manifest.ts release-check/latest.json"
+    );
+    expect(workflow).toContain('gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false');
     expect(workflow).not.toContain("releaseDraft: false");
   });
 

@@ -29,7 +29,10 @@ function randomTraversalPayload(): string {
   let out = "";
   const parts = 1 + randInt(6);
   for (let i = 0; i < parts; i++) {
-    out += rand() > 0.5 ? segments[randInt(segments.length)] : POOL[randInt(POOL.length)].repeat(1 + randInt(4));
+    out +=
+      rand() > 0.5
+        ? segments[randInt(segments.length)]
+        : POOL[randInt(POOL.length)].repeat(1 + randInt(4));
     if (i < parts - 1) out += rand() > 0.5 ? "/" : "\\";
   }
   return out;

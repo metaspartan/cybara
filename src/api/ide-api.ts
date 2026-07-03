@@ -296,11 +296,11 @@ export async function browseDirectory(inputPath?: string): Promise<BrowseResult>
         extension: item.isFile() ? extname(item.name) : undefined,
         gitModified:
           !!repoRelativePath && pathHasStatus(gitModifiedSet, repoRelativePath, isDirectory),
-        gitStaged:
-          !!repoRelativePath && pathHasStatus(gitStagedSet, repoRelativePath, isDirectory),
+        gitStaged: !!repoRelativePath && pathHasStatus(gitStagedSet, repoRelativePath, isDirectory),
         gitUntracked:
           !!repoRelativePath && pathHasStatus(gitUntrackedSet, repoRelativePath, isDirectory),
-        gitIgnored: !!repoRelativePath && pathHasStatus(gitIgnoredSet, repoRelativePath, isDirectory),
+        gitIgnored:
+          !!repoRelativePath && pathHasStatus(gitIgnoredSet, repoRelativePath, isDirectory),
       });
     }
 
@@ -787,14 +787,22 @@ async function collectSearchFiles(dirPath: string, out: string[]): Promise<void>
   }
 }
 
-function resolveWorkspaceSearchRoot(targetPath: string, targetStats: { isDirectory(): boolean }): string {
+function resolveWorkspaceSearchRoot(
+  targetPath: string,
+  targetStats: { isDirectory(): boolean }
+): string {
   return targetStats.isDirectory() ? targetPath : dirname(targetPath);
 }
 
 export async function searchWorkspace(
   inputPath: string,
   query: string,
-  options?: { caseSensitive?: boolean; wholeWord?: boolean; useRegex?: boolean; maxResults?: number }
+  options?: {
+    caseSensitive?: boolean;
+    wholeWord?: boolean;
+    useRegex?: boolean;
+    maxResults?: number;
+  }
 ): Promise<IdeSearchResult> {
   const targetPath = normalizePath(inputPath || HOME_DIR);
   const trimmedQuery = query.trim();
@@ -889,7 +897,8 @@ function applyReplacements(
   // In regex mode the user's query IS the pattern (with capture-group support
   // via $1/$2 in the replacement); otherwise escape it as a literal.
   const patternSource = options?.useRegex ? query : escapeRegExp(query);
-  const pattern = options?.wholeWord && !options?.useRegex ? `\\b${patternSource}\\b` : patternSource;
+  const pattern =
+    options?.wholeWord && !options?.useRegex ? `\\b${patternSource}\\b` : patternSource;
   let regex: RegExp;
   try {
     regex = new RegExp(pattern, options?.caseSensitive ? "g" : "gi");
@@ -1177,7 +1186,9 @@ function parseBlamePorcelain(output: string): IdeBlameLine[] {
       commit: rawCommit,
       shortCommit: isUncommitted ? "working" : rawCommit.slice(0, 8),
       author: author || "Unknown",
-      authorDate: Number.isFinite(parsedTime) ? new Date(parsedTime * 1000).toISOString() : undefined,
+      authorDate: Number.isFinite(parsedTime)
+        ? new Date(parsedTime * 1000).toISOString()
+        : undefined,
       summary: summary || undefined,
       isUncommitted,
     });
@@ -1283,7 +1294,11 @@ function buildHistoryUrl(remoteBaseUrl: string, branch: string, repoRelativePath
   return `${remoteBaseUrl}/commits/${encodedBranch}/${encodedPath}`;
 }
 
-function getLineCommitHash(repoRoot: string, repoRelativePath: string, line: number): string | null {
+function getLineCommitHash(
+  repoRoot: string,
+  repoRelativePath: string,
+  line: number
+): string | null {
   const safeLine = Math.max(1, Math.floor(line));
   const proc = Bun.spawnSync(
     ["git", "blame", "--line-porcelain", "-L", `${safeLine},${safeLine}`, "--", repoRelativePath],
@@ -1309,14 +1324,11 @@ function getCommitDescriptions(repoRoot: string, commits: string[]): Map<string,
   for (let i = 0; i < uniqueCommits.length; i += batchSize) {
     const batch = uniqueCommits.slice(i, i + batchSize);
     if (batch.length === 0) continue;
-    const proc = Bun.spawnSync(
-      ["git", "show", "--no-patch", "--format=%H%x1f%B%x1e", ...batch],
-      {
-        cwd: repoRoot,
-        stdout: "pipe",
-        stderr: "pipe",
-      }
-    );
+    const proc = Bun.spawnSync(["git", "show", "--no-patch", "--format=%H%x1f%B%x1e", ...batch], {
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
     if ((proc.exitCode ?? 1) !== 0) continue;
     const payload = proc.stdout.toString();
     for (const row of payload.split("\x1e")) {
@@ -1406,11 +1418,14 @@ export async function getFileBlame(
     const truncated = totalLines > lineLimit;
     const relativePath = relative(gitStatus.root, targetPath).replaceAll("\\", "/");
 
-    const proc = Bun.spawn(["git", "blame", "--line-porcelain", "-L", `1,${lineLimit}`, "--", relativePath], {
-      cwd: gitStatus.root,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+    const proc = Bun.spawn(
+      ["git", "blame", "--line-porcelain", "-L", `1,${lineLimit}`, "--", relativePath],
+      {
+        cwd: gitStatus.root,
+        stdout: "pipe",
+        stderr: "pipe",
+      }
+    );
     const [stdout, stderr, exitCode] = await Promise.all([
       new Response(proc.stdout).text(),
       new Response(proc.stderr).text(),
@@ -1436,7 +1451,9 @@ export async function getFileBlame(
     const parsedLines = blameLines.map((line) => ({
       ...line,
       commitDescription:
-        !line.isUncommitted && line.commit ? commitDescriptions.get(line.commit) || line.summary : line.summary,
+        !line.isUncommitted && line.commit
+          ? commitDescriptions.get(line.commit) || line.summary
+          : line.summary,
       commitUrl:
         commitBaseUrl && !line.isUncommitted && line.commit
           ? buildCommitUrl(commitBaseUrl, line.commit)
@@ -1689,8 +1706,8 @@ export async function getFilePermalink(inputPath: string, line: number): Promise
         cwd: gitStatus.root,
         stdout: "pipe",
         stderr: "pipe",
-      }).stdout
-        .toString()
+      })
+        .stdout.toString()
         .trim();
 
     if (!commit) {
@@ -1704,7 +1721,12 @@ export async function getFilePermalink(inputPath: string, line: number): Promise
     return {
       success: true,
       path: targetPath,
-      url: buildPermalinkUrl(remoteBaseUrl, commit, repoRelativePath, Math.max(1, Math.floor(line))),
+      url: buildPermalinkUrl(
+        remoteBaseUrl,
+        commit,
+        repoRelativePath,
+        Math.max(1, Math.floor(line))
+      ),
     };
   } catch (error) {
     return {

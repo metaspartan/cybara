@@ -1,6 +1,7 @@
 // Env vars commonly hold provider keys, tokens, and secrets. Redact their
 // values so the `env` tool can't be used to exfiltrate credentials to the LLM.
-const SENSITIVE_ENV_KEY = /(key|token|secret|password|passwd|credential|mnemonic|seed|private|auth|session)/i;
+const SENSITIVE_ENV_KEY =
+  /(key|token|secret|password|passwd|credential|mnemonic|seed|private|auth|session)/i;
 function redactEnvValue(key: string, value: string | undefined): string | null {
   if (value == null) return null;
   if (SENSITIVE_ENV_KEY.test(key)) return "***redacted***";

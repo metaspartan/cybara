@@ -41,7 +41,8 @@ export function getRuntimeTargetFor(target: Target): RuntimeTarget {
   if (target.tauriSuffix === "aarch64-apple-darwin") return { platform: "darwin", arch: "arm64" };
   if (target.tauriSuffix === "x86_64-apple-darwin") return { platform: "darwin", arch: "x64" };
   if (target.tauriSuffix === "x86_64-unknown-linux-gnu") return { platform: "linux", arch: "x64" };
-  if (target.tauriSuffix === "aarch64-unknown-linux-gnu") return { platform: "linux", arch: "arm64" };
+  if (target.tauriSuffix === "aarch64-unknown-linux-gnu")
+    return { platform: "linux", arch: "arm64" };
   if (target.tauriSuffix === "x86_64-pc-windows-msvc") return { platform: "win32", arch: "x64" };
   if (target.tauriSuffix === "aarch64-pc-windows-msvc") return { platform: "win32", arch: "arm64" };
   throw new Error(`Unsupported sidecar target: ${target.tauriSuffix}`);
@@ -206,10 +207,7 @@ export function getSharpRuntimePackageNames(runtimeTarget: RuntimeTarget): strin
   return [`@img/sharp-${suffix}`, `@img/sharp-libvips-${suffix}`];
 }
 
-function copySharpRuntime(
-  targetNodeModulesDir: string,
-  runtimeTarget: RuntimeTarget
-): boolean {
+function copySharpRuntime(targetNodeModulesDir: string, runtimeTarget: RuntimeTarget): boolean {
   const runtimePackages = getSharpRuntimePackageNames(runtimeTarget);
   if (runtimePackages.length === 0) return false;
 
@@ -228,7 +226,10 @@ function copySharpRuntime(
   return true;
 }
 
-function copyTransformersRuntime(targetNodeModulesDir: string, runtimeTarget: RuntimeTarget): string | null {
+function copyTransformersRuntime(
+  targetNodeModulesDir: string,
+  runtimeTarget: RuntimeTarget
+): string | null {
   copyPackageJson("@huggingface/transformers", targetNodeModulesDir);
   copyPackageDirectory("@huggingface/transformers", "dist", targetNodeModulesDir, {
     omitSourceMaps: true,

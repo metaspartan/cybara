@@ -793,7 +793,10 @@ export const memoryApi = {
   create: (memory: Omit<Memory, "id" | "createdAt" | "updatedAt">) =>
     fetchApi<Memory>("/memory", { method: "POST", body: JSON.stringify(memory) }),
   update: (id: string, memory: Partial<Memory>) =>
-    fetchApi<Memory>(`/memory/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(memory) }),
+    fetchApi<Memory>(`/memory/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(memory),
+    }),
   delete: (id: string) => fetchApi<void>(`/memory/${encodeURIComponent(id)}`, { method: "DELETE" }),
   search: (query: string, limit?: number) =>
     fetchApi<Memory[] | { results: Memory[] }>(
@@ -899,11 +902,7 @@ export const chatApi = {
       updated_at: string;
       workspace_dir?: string | null;
       messagesList: ChatMessage[];
-    }>(
-      "/sessions/" +
-        id +
-        (options?.includeFullToolCalls ? "?includeFullToolCalls=1" : "")
-    ),
+    }>("/sessions/" + id + (options?.includeFullToolCalls ? "?includeFullToolCalls=1" : "")),
   revertSession: (
     id: string,
     payload: {
@@ -1016,9 +1015,7 @@ export const chatApi = {
       content: string;
       truncated: boolean;
       totalChars: number;
-    }>(
-      `/sessions/${encodeURIComponent(sessionId)}/artifacts/${encodeURIComponent(artifactName)}`
-    ),
+    }>(`/sessions/${encodeURIComponent(sessionId)}/artifacts/${encodeURIComponent(artifactName)}`),
   deleteSession: (id: string) => fetchApi<void>("/sessions/" + id, { method: "DELETE" }),
 };
 
@@ -1143,11 +1140,7 @@ export const sessionsApi = {
       updated_at: string;
       workspace_dir?: string | null;
       messagesList: ChatMessage[];
-    }>(
-      "/sessions/" +
-        id +
-        (options?.includeFullToolCalls ? "?includeFullToolCalls=1" : "")
-    ),
+    }>("/sessions/" + id + (options?.includeFullToolCalls ? "?includeFullToolCalls=1" : "")),
   delete: (id: string) => fetchApi<void>("/sessions/" + id, { method: "DELETE" }),
 };
 

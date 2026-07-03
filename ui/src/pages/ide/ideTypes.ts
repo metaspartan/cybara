@@ -250,7 +250,7 @@ export interface IdeChatAgentOption {
   status?: string;
 }
 
-export interface IdeProcessActivity extends LiveActivityItem {}
+export type IdeProcessActivity = LiveActivityItem;
 
 export interface IdeFileChangeItem {
   path: string;

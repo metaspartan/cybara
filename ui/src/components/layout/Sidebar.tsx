@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   Bot,
@@ -26,10 +26,10 @@ import {
   Wallet as WalletIcon,
   FileText,
   TabletSmartphone,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { useState, useEffect, useRef, createContext, useContext } from 'react';
-import { connectStatusStream } from '@/lib/status-stream';
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useState, useEffect, useRef, createContext, useContext } from "react";
+import { connectStatusStream } from "@/lib/status-stream";
 
 interface SidebarContextType {
   collapsed: boolean;
@@ -40,9 +40,9 @@ interface SidebarContextType {
 
 const SidebarContext = createContext<SidebarContextType>({
   collapsed: false,
-  setCollapsed: () => { },
+  setCollapsed: () => {},
   mobileOpen: false,
-  setMobileOpen: () => { },
+  setMobileOpen: () => {},
 });
 
 export function useSidebar() {
@@ -51,13 +51,13 @@ export function useSidebar() {
 
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(() => {
-    const saved = localStorage.getItem('sidebar-collapsed');
-    return saved === 'true';
+    const saved = localStorage.getItem("sidebar-collapsed");
+    return saved === "true";
   });
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem('sidebar-collapsed', String(collapsed));
+    localStorage.setItem("sidebar-collapsed", String(collapsed));
   }, [collapsed]);
 
   return (
@@ -68,17 +68,13 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 }
 
 function useAgentStatus() {
-  const [status, setStatus] = useState<'idle' | 'active'>('idle');
+  const [status, setStatus] = useState<"idle" | "active">("idle");
   const activeSessionLastSeenRef = useRef<Map<string, number>>(new Map());
   const globalLastSeenRef = useRef<number>(0);
 
   useEffect(() => {
     const ACTIVE_WINDOW_MS = 10_000;
-    const ACTIVE_STATUSES = new Set([
-      'thinking',
-      'generating',
-      'tool_executing',
-    ]);
+    const ACTIVE_STATUSES = new Set(["thinking", "generating", "tool_executing"]);
 
     const refreshDerivedStatus = () => {
       const now = Date.now();
@@ -90,7 +86,7 @@ function useAgentStatus() {
       const globalActive =
         globalLastSeenRef.current > 0 && now - globalLastSeenRef.current <= ACTIVE_WINDOW_MS;
       const hasActiveSessions = activeSessionLastSeenRef.current.size > 0;
-      setStatus(globalActive || hasActiveSessions ? 'active' : 'idle');
+      setStatus(globalActive || hasActiveSessions ? "active" : "idle");
     };
 
     const sweepInterval = setInterval(() => {
@@ -99,19 +95,18 @@ function useAgentStatus() {
 
     const disconnect = connectStatusStream({
       onEvent: (data) => {
-        if (!data || typeof data !== 'object' || typeof data.type !== 'string') return;
+        if (!data || typeof data !== "object" || typeof data.type !== "string") return;
         const now = Date.now();
 
-        if (data.type === 'snapshot') {
+        if (data.type === "snapshot") {
           activeSessionLastSeenRef.current.clear();
           for (const snapshot of Array.isArray(data.activeSessions) ? data.activeSessions : []) {
             const sessionId =
-              typeof snapshot?.sessionId === 'string' ? snapshot.sessionId.trim() : '';
-            const snapshotStatus =
-              typeof snapshot?.status === 'string' ? snapshot.status : '';
+              typeof snapshot?.sessionId === "string" ? snapshot.sessionId.trim() : "";
+            const snapshotStatus = typeof snapshot?.status === "string" ? snapshot.status : "";
             if (!sessionId || !ACTIVE_STATUSES.has(snapshotStatus)) continue;
             const lastSeen =
-              typeof snapshot.timestamp === 'number' && Number.isFinite(snapshot.timestamp)
+              typeof snapshot.timestamp === "number" && Number.isFinite(snapshot.timestamp)
                 ? snapshot.timestamp
                 : now;
             activeSessionLastSeenRef.current.set(sessionId, lastSeen);
@@ -120,23 +115,23 @@ function useAgentStatus() {
           return;
         }
 
-        if (data.type !== 'status') return;
+        if (data.type !== "status") return;
 
-        const statusValue = typeof data.status === 'string' ? data.status : '';
-        const sessionId = typeof data.sessionId === 'string' ? data.sessionId.trim() : '';
+        const statusValue = typeof data.status === "string" ? data.status : "";
+        const sessionId = typeof data.sessionId === "string" ? data.sessionId.trim() : "";
         if (!statusValue) return;
         const isActiveStatus = ACTIVE_STATUSES.has(statusValue);
 
         if (sessionId) {
           if (isActiveStatus) {
             activeSessionLastSeenRef.current.set(sessionId, now);
-          } else if (statusValue === 'idle' || statusValue === 'error') {
+          } else if (statusValue === "idle" || statusValue === "error") {
             activeSessionLastSeenRef.current.delete(sessionId);
           }
         } else {
           if (isActiveStatus) {
             globalLastSeenRef.current = now;
-          } else if (statusValue === 'idle' || statusValue === 'error') {
+          } else if (statusValue === "idle" || statusValue === "error") {
             globalLastSeenRef.current = 0;
           }
         }
@@ -155,47 +150,47 @@ function useAgentStatus() {
 
 const navCategories = [
   {
-    id: 'main',
+    id: "main",
     label: null,
     items: [
-      { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
-      { path: '/agents', icon: Bot, label: 'Agents' },
-      { path: '/providers', icon: Plug, label: 'Providers' },
-      { path: '/router', icon: Network, label: 'Model Router' },
-      { path: '/channels', icon: Smartphone, label: 'Channels' },
-      { path: '/mobile', icon: TabletSmartphone, label: 'Mobile' },
+      { path: "/", icon: LayoutDashboard, label: "Dashboard" },
+      { path: "/agents", icon: Bot, label: "Agents" },
+      { path: "/providers", icon: Plug, label: "Providers" },
+      { path: "/router", icon: Network, label: "Model Router" },
+      { path: "/channels", icon: Smartphone, label: "Channels" },
+      { path: "/mobile", icon: TabletSmartphone, label: "Mobile" },
     ],
   },
   {
-    id: 'developer',
-    label: 'Developer',
+    id: "developer",
+    label: "Developer",
     items: [
-      { path: '/mcp', icon: Terminal, label: 'MCP Servers' },
-      { path: '/lsp', icon: Code, label: 'LSP' },
-      { path: '/ide', icon: FolderOpen, label: 'IDE' },
-      { path: '/skills', icon: LibraryBig, label: 'Skills' },
-      { path: '/tools', icon: Wrench, label: 'Tools' },
-      { path: '/terminal', icon: SquareTerminal, label: 'Terminal' },
+      { path: "/mcp", icon: Terminal, label: "MCP Servers" },
+      { path: "/lsp", icon: Code, label: "LSP" },
+      { path: "/ide", icon: FolderOpen, label: "IDE" },
+      { path: "/skills", icon: LibraryBig, label: "Skills" },
+      { path: "/tools", icon: Wrench, label: "Tools" },
+      { path: "/terminal", icon: SquareTerminal, label: "Terminal" },
     ],
   },
   {
-    id: 'chat',
+    id: "chat",
     label: null,
     items: [
-      { path: '/chat', icon: MessageSquare, label: 'Chat' },
-      { path: '/sessions', icon: MessagesSquare, label: 'Sessions' },
+      { path: "/chat", icon: MessageSquare, label: "Chat" },
+      { path: "/sessions", icon: MessagesSquare, label: "Sessions" },
     ],
   },
   {
-    id: 'system',
-    label: 'System',
+    id: "system",
+    label: "System",
     items: [
-      { path: '/memory', icon: Brain, label: 'Memory' },
-      { path: '/wallet', icon: WalletIcon, label: 'Wallet' },
-      { path: '/artifacts', icon: FileText, label: 'Artifacts' },
-      { path: '/metrics', icon: BarChart3, label: 'Metrics' },
-      { path: '/tasks', icon: ListTodo, label: 'Tasks' },
-      { path: '/logs', icon: Logs, label: 'Logs' },
+      { path: "/memory", icon: Brain, label: "Memory" },
+      { path: "/wallet", icon: WalletIcon, label: "Wallet" },
+      { path: "/artifacts", icon: FileText, label: "Artifacts" },
+      { path: "/metrics", icon: BarChart3, label: "Metrics" },
+      { path: "/tasks", icon: ListTodo, label: "Tasks" },
+      { path: "/logs", icon: Logs, label: "Logs" },
     ],
   },
 ];
@@ -220,10 +215,15 @@ export function Sidebar() {
     }));
   };
 
-  const renderNavItem = (item: { path: string; icon: React.ComponentType<{ className?: string }>; label: string }) => {
+  const renderNavItem = (item: {
+    path: string;
+    icon: React.ComponentType<{ className?: string }>;
+    label: string;
+  }) => {
     const Icon = item.icon;
-    const isActive = location.pathname === item.path ||
-      (item.path !== '/' && location.pathname.startsWith(item.path));
+    const isActive =
+      location.pathname === item.path ||
+      (item.path !== "/" && location.pathname.startsWith(item.path));
 
     return (
       <NavLink
@@ -231,19 +231,23 @@ export function Sidebar() {
         to={item.path}
         title={collapsed ? item.label : undefined}
         className={cn(
-          'flex items-center gap-3 rounded-xl text-sm font-medium transition-all duration-200',
-          '!outline-none !ring-0 !border-transparent focus:!outline-none focus-visible:!outline-none active:!outline-none',
-          collapsed ? 'px-3 py-2.5 justify-center' : 'px-4 py-2.5',
+          "flex items-center gap-3 rounded-xl text-sm font-medium transition-all duration-200",
+          "!outline-none !ring-0 !border-transparent focus:!outline-none focus-visible:!outline-none active:!outline-none",
+          collapsed ? "px-3 py-2.5 justify-center" : "px-4 py-2.5",
           isActive
-            ? 'bg-[rgba(var(--accent-primary),0.15)] text-white border border-[rgba(var(--accent-primary),0.3)] shadow-lg'
-            : 'text-gray-400 hover:text-white hover:bg-white/5'
+            ? "bg-[rgba(var(--accent-primary),0.15)] text-white border border-[rgba(var(--accent-primary),0.3)] shadow-lg"
+            : "text-gray-400 hover:text-white hover:bg-white/5"
         )}
-        style={isActive ? { boxShadow: 'inset 0 1px 8px rgba(var(--accent-primary), 0.15)' } : undefined}
+        style={
+          isActive ? { boxShadow: "inset 0 1px 8px rgba(var(--accent-primary), 0.15)" } : undefined
+        }
       >
-        <Icon className={cn(
-          'w-5 h-5 flex-shrink-0 transition-colors',
-          isActive ? 'accent-text' : 'text-gray-500'
-        )} />
+        <Icon
+          className={cn(
+            "w-5 h-5 flex-shrink-0 transition-colors",
+            isActive ? "accent-text" : "text-gray-500"
+          )}
+        />
         {!collapsed && <span className="truncate">{item.label}</span>}
       </NavLink>
     );
@@ -266,33 +270,36 @@ export function Sidebar() {
         />
       )}
 
-      <aside className={cn(
-        'fixed left-0 top-0 h-full glass border-r border-white/5 z-40 overflow-hidden transition-all duration-300',
-        collapsed ? 'w-16' : 'w-64',
-        'max-md:-translate-x-full max-md:w-64',
-        mobileOpen && 'max-md:translate-x-0'
-      )}>
+      <aside
+        className={cn(
+          "fixed left-0 top-0 h-full glass border-r border-white/5 z-40 overflow-hidden transition-all duration-300",
+          collapsed ? "w-16" : "w-64",
+          "max-md:-translate-x-full max-md:w-64",
+          mobileOpen && "max-md:translate-x-0"
+        )}
+      >
         <div className="h-full flex flex-col">
-          <div className={cn(
-            'border-b border-white/5 flex items-center',
-            collapsed ? 'px-3 py-4 justify-center' : 'px-5 py-4 gap-3'
-          )}>
+          <div
+            className={cn(
+              "border-b border-white/5 flex items-center",
+              collapsed ? "px-3 py-4 justify-center" : "px-5 py-4 gap-3"
+            )}
+          >
             <div className="relative flex-shrink-0">
               <div
                 className={cn(
-                  'w-10 h-10 rounded-xl overflow-hidden transition-all duration-300',
-                  status === 'active' && 'ring-2 ring-amber-400/60 ring-offset-2 ring-offset-[#12121a]'
+                  "w-10 h-10 rounded-xl overflow-hidden transition-all duration-300",
+                  status === "active" &&
+                    "ring-2 ring-amber-400/60 ring-offset-2 ring-offset-[#12121a]"
                 )}
               >
                 <img
                   src="/cybara.png"
                   alt="Cybara"
-                  className={cn(
-                    'w-full h-full object-cover transition-all duration-300'
-                  )}
+                  className={cn("w-full h-full object-cover transition-all duration-300")}
                 />
               </div>
-              {status === 'active' && (
+              {status === "active" && (
                 <div className="absolute -inset-1 rounded-xl bg-amber-400/20" />
               )}
             </div>
@@ -304,10 +311,12 @@ export function Sidebar() {
             )}
           </div>
 
-          <nav className={cn(
-            'flex-1 p-2 space-y-1 pb-20',
-            collapsed ? 'overflow-hidden' : 'overflow-y-auto'
-          )}>
+          <nav
+            className={cn(
+              "flex-1 p-2 space-y-1 pb-20",
+              collapsed ? "overflow-hidden" : "overflow-y-auto"
+            )}
+          >
             {navCategories.map((category) => (
               <div key={category.id}>
                 {category.label && !collapsed ? (
@@ -319,24 +328,22 @@ export function Sidebar() {
                       <span>{category.label}</span>
                       <ChevronDown
                         className={cn(
-                          'w-4 h-4 transition-transform duration-200',
-                          !expandedSections[category.id] && '-rotate-90'
+                          "w-4 h-4 transition-transform duration-200",
+                          !expandedSections[category.id] && "-rotate-90"
                         )}
                       />
                     </button>
                     <div
                       className={cn(
-                        'space-y-0.5 overflow-hidden transition-all duration-200',
-                        expandedSections[category.id] ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
+                        "space-y-0.5 overflow-hidden transition-all duration-200",
+                        expandedSections[category.id] ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
                       )}
                     >
                       {category.items.map(renderNavItem)}
                     </div>
                   </>
                 ) : (
-                  <div className="space-y-0.5">
-                    {category.items.map(renderNavItem)}
-                  </div>
+                  <div className="space-y-0.5">{category.items.map(renderNavItem)}</div>
                 )}
               </div>
             ))}
@@ -345,28 +352,34 @@ export function Sidebar() {
           <div className="border-t border-white/5 bg-black/20 p-2 backdrop-blur-md">
             <NavLink
               to="/settings"
-              title={collapsed ? 'Settings' : undefined}
+              title={collapsed ? "Settings" : undefined}
               className={cn(
-                'flex items-center gap-3 rounded-xl text-sm font-medium transition-all duration-200 mb-2',
-                '!outline-none !ring-0 !border-transparent focus:!outline-none focus-visible:!outline-none active:!outline-none',
-                collapsed ? 'px-3 py-2.5 justify-center' : 'px-4 py-2.5',
-                location.pathname === '/settings'
-                  ? 'bg-[rgba(var(--accent-primary),0.15)] text-white border border-[rgba(var(--accent-primary),0.3)] shadow-lg'
-                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+                "flex items-center gap-3 rounded-xl text-sm font-medium transition-all duration-200 mb-2",
+                "!outline-none !ring-0 !border-transparent focus:!outline-none focus-visible:!outline-none active:!outline-none",
+                collapsed ? "px-3 py-2.5 justify-center" : "px-4 py-2.5",
+                location.pathname === "/settings"
+                  ? "bg-[rgba(var(--accent-primary),0.15)] text-white border border-[rgba(var(--accent-primary),0.3)] shadow-lg"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
               )}
-              style={location.pathname === '/settings' ? { boxShadow: 'inset 0 1px 8px rgba(var(--accent-primary), 0.15)' } : undefined}
+              style={
+                location.pathname === "/settings"
+                  ? { boxShadow: "inset 0 1px 8px rgba(var(--accent-primary), 0.15)" }
+                  : undefined
+              }
             >
-              <Settings className={cn(
-                'w-5 h-5 flex-shrink-0 transition-colors',
-                location.pathname === '/settings' ? 'accent-text' : 'text-gray-500'
-              )} />
+              <Settings
+                className={cn(
+                  "w-5 h-5 flex-shrink-0 transition-colors",
+                  location.pathname === "/settings" ? "accent-text" : "text-gray-500"
+                )}
+              />
               {!collapsed && <span>Settings</span>}
             </NavLink>
 
             <button
               onClick={() => setCollapsed(!collapsed)}
               className="hidden md:flex w-full items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-500 hover:text-white hover:bg-white/5 transition-colors !outline-none"
-              title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
               {collapsed ? (
                 <ChevronRight className="w-4 h-4" />

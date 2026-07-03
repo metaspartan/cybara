@@ -225,7 +225,9 @@ export function buildPendingInlinePreviewRows(
         rows.push({
           kind: "context",
           lineNumber: currentLineNumber,
-          text: hunkLine.startsWith(" ") ? hunkLine.slice(1) : currentLines[currentLineNumber - 1] ?? "",
+          text: hunkLine.startsWith(" ")
+            ? hunkLine.slice(1)
+            : (currentLines[currentLineNumber - 1] ?? ""),
         });
         currentLineNumber += 1;
         continue;

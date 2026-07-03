@@ -178,12 +178,7 @@ const summary: FeatureSummary = {
 
 describe("mobile dashboard model", () => {
   test("keeps recent activity first and moves gateway connection details to settings", () => {
-    expect(MOBILE_TABS.map((tab) => tab.key)).toEqual([
-      "overview",
-      "sessions",
-      "metrics",
-      "tasks",
-    ]);
+    expect(MOBILE_TABS.map((tab) => tab.key)).toEqual(["overview", "sessions", "metrics", "tasks"]);
     expect(MOBILE_TABS.find((tab) => tab.key === "sessions")?.label).toBe("Chats");
     // Settings is reached from the header gear, not a bottom tab.
     expect(MOBILE_TABS.some((tab) => tab.key === "settings")).toBe(false);
@@ -330,9 +325,7 @@ describe("mobile dashboard model", () => {
     expect(dashboardScreenSource).toContain(
       "shouldRefreshMetrics ? refreshMetrics({ force: true }) : Promise.resolve()"
     );
-    expect(dashboardScreenSource).toContain(
-      'activeTab !== "metrics" && !hasLoadedMetrics'
-    );
+    expect(dashboardScreenSource).toContain('activeTab !== "metrics" && !hasLoadedMetrics');
   });
 
   test("keeps logs paged while still showing the total count", () => {

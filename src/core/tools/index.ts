@@ -620,7 +620,10 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
       properties: {
         audioPath: { type: "string", description: "Local path to an audio file (<=25MB)" },
         url: { type: "string", description: "URL of an audio file (alternative to audioPath)" },
-        providerId: { type: "string", description: "Optional configured OpenAI/OpenAI Codex provider id" },
+        providerId: {
+          type: "string",
+          description: "Optional configured OpenAI/OpenAI Codex provider id",
+        },
         language: { type: "string", description: "Optional ISO-639-1 language hint (e.g. en)" },
         prompt: { type: "string", description: "Optional context prompt to guide transcription" },
         model: { type: "string", description: "Optional model override" },
@@ -2285,7 +2288,8 @@ ACTIONS:
         seconds: { type: "number", description: "Seconds to wait (action='wait')." },
         value: {
           type: "string",
-          description: "Value to set (action='set_value' — sets a native AX value without focus steal).",
+          description:
+            "Value to set (action='set_value' — sets a native AX value without focus steal).",
         },
         raiseWindow: {
           type: "boolean",

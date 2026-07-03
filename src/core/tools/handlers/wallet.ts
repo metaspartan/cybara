@@ -372,9 +372,7 @@ export async function handleWallet(args: Record<string, unknown>): Promise<unkno
     case "swap_quote":
       return await walletManager.swapForAgent({
         venue: String(args.venue || "uniswap_v3").toLowerCase() as
-          | "uniswap_v2"
-          | "uniswap_v3"
-          | "jupiter",
+          "uniswap_v2" | "uniswap_v3" | "jupiter",
         tokenOut:
           typeof args.tokenOut === "string"
             ? args.tokenOut
@@ -403,9 +401,7 @@ export async function handleWallet(args: Record<string, unknown>): Promise<unkno
     case "swap_execute":
       return await walletManager.swapForAgent({
         venue: String(args.venue || "uniswap_v3").toLowerCase() as
-          | "uniswap_v2"
-          | "uniswap_v3"
-          | "jupiter",
+          "uniswap_v2" | "uniswap_v3" | "jupiter",
         tokenOut:
           typeof args.tokenOut === "string"
             ? args.tokenOut
@@ -436,9 +432,7 @@ export async function handleWallet(args: Record<string, unknown>): Promise<unkno
       const execute = parseBoolean(args.execute) || parseBoolean(args.broadcast);
       return await walletManager.swapForAgent({
         venue: String(args.venue || "uniswap_v3").toLowerCase() as
-          | "uniswap_v2"
-          | "uniswap_v3"
-          | "jupiter",
+          "uniswap_v2" | "uniswap_v3" | "jupiter",
         tokenOut:
           typeof args.tokenOut === "string"
             ? args.tokenOut

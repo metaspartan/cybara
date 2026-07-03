@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from "react";
 import {
   Brain,
   Trash2,
@@ -12,44 +12,39 @@ import {
   FolderOpen,
   Settings2,
   Database,
-  RefreshCw
-} from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
-import { Modal } from '../components/ui/Modal';
-import { ConfirmDialog } from '../components/ui/ConfirmDialog';
-import { Textarea } from '../components/ui/Input';
-import { Select } from '../components/ui/Select';
-import { PageLayout } from '@/components/layout';
-import { memoryApi, settingsApi } from '@/lib/api';
-import {
-  useMemory,
-  useSearchMemory,
-  useDeleteMemory,
-  useUpdateMemory
-} from '../hooks/useApi';
-import { useUIStore } from '../stores/uiStore';
-import type { MemoryEntry } from '../types';
+  RefreshCw,
+} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/Card";
+import { Button } from "../components/ui/Button";
+import { Input } from "../components/ui/Input";
+import { Modal } from "../components/ui/Modal";
+import { ConfirmDialog } from "../components/ui/ConfirmDialog";
+import { Textarea } from "../components/ui/Input";
+import { Select } from "../components/ui/Select";
+import { PageLayout } from "@/components/layout";
+import { memoryApi, settingsApi } from "@/lib/api";
+import { useMemory, useSearchMemory, useDeleteMemory, useUpdateMemory } from "../hooks/useApi";
+import { useUIStore } from "../stores/uiStore";
+import type { MemoryEntry } from "../types";
 
 function formatMemoryDate(entry: MemoryEntry): string {
   if (entry.date && entry.timestamp) {
-    const [hours, minutes, seconds] = entry.timestamp.split(':').map(Number);
-    const [year, month, day] = entry.date.split('-').map(Number);
-    
+    const [hours, minutes, seconds] = entry.timestamp.split(":").map(Number);
+    const [year, month, day] = entry.date.split("-").map(Number);
+
     const date = new Date(Date.UTC(year, month - 1, day, hours, minutes, seconds));
-    
+
     return date.toLocaleString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
       hour12: true,
-      timeZoneName: 'short'
+      timeZoneName: "short",
     });
   }
-  return entry.timestamp || 'Unknown';
+  return entry.timestamp || "Unknown";
 }
 
 type MemorySearchResult = {
@@ -57,7 +52,7 @@ type MemorySearchResult = {
   entry: MemoryEntry;
 };
 
-type EmbeddingProviderPreference = 'auto' | 'openai' | 'gemini' | 'ollama' | 'transformers_js';
+type EmbeddingProviderPreference = "auto" | "openai" | "gemini" | "ollama" | "transformers_js";
 
 type MemoryIndexerSettings = {
   enabled: boolean;
@@ -81,44 +76,49 @@ const MEMORY_INDEXER_DEFAULTS: MemoryIndexerSettings = {
   semanticEnabled: true,
   semanticMaxFiles: 2000,
   semanticMinScore: 0.45,
-  embeddingProvider: 'auto',
-  embeddingModel: '',
+  embeddingProvider: "auto",
+  embeddingModel: "",
 };
 
 const EMBEDDING_PROVIDER_OPTIONS: Array<{ value: EmbeddingProviderPreference; label: string }> = [
-  { value: 'auto', label: 'Auto' },
-  { value: 'transformers_js', label: 'Local (Transformers)' },
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'gemini', label: 'Gemini' },
-  { value: 'ollama', label: 'Ollama' },
+  { value: "auto", label: "Auto" },
+  { value: "transformers_js", label: "Local (Transformers)" },
+  { value: "openai", label: "OpenAI" },
+  { value: "gemini", label: "Gemini" },
+  { value: "ollama", label: "Ollama" },
 ];
 
 function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
+  return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
 }
 
 function asBoolean(value: unknown, fallback: boolean): boolean {
-  return typeof value === 'boolean' ? value : fallback;
+  return typeof value === "boolean" ? value : fallback;
 }
 
 function clampInteger(value: unknown, fallback: number, min: number, max: number): number {
-  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
+  const parsed =
+    typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(max, Math.max(min, Math.floor(parsed)));
 }
 
 function clampFloat(value: unknown, fallback: number, min: number, max: number): number {
-  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
+  const parsed =
+    typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
   if (!Number.isFinite(parsed)) return fallback;
   return Number(Math.min(max, Math.max(min, parsed)).toFixed(2));
 }
 
 function normalizeEmbeddingProvider(value: unknown): EmbeddingProviderPreference {
-  if (typeof value !== 'string') return MEMORY_INDEXER_DEFAULTS.embeddingProvider;
-  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, '_');
-  if (normalized === 'transformers') return 'transformers_js';
+  if (typeof value !== "string") return MEMORY_INDEXER_DEFAULTS.embeddingProvider;
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  if (normalized === "transformers") return "transformers_js";
   if (EMBEDDING_PROVIDER_OPTIONS.some((option) => option.value === normalized)) {
     return normalized as EmbeddingProviderPreference;
   }
@@ -155,18 +155,19 @@ function parseMemoryIndexerSettings(value: unknown): MemoryIndexerSettings {
       0.99
     ),
     embeddingProvider: normalizeEmbeddingProvider(raw.embeddingProvider),
-    embeddingModel: typeof raw.embeddingModel === 'string' ? raw.embeddingModel.slice(0, 160) : '',
+    embeddingModel: typeof raw.embeddingModel === "string" ? raw.embeddingModel.slice(0, 160) : "",
   };
 }
 
 export function Memory() {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [memStatus, setMemStatus] = useState<{
     provider?: string;
     model?: string;
     chunks?: number;
   } | null>(null);
-  const [memorySettings, setMemorySettings] = useState<MemoryIndexerSettings>(MEMORY_INDEXER_DEFAULTS);
+  const [memorySettings, setMemorySettings] =
+    useState<MemoryIndexerSettings>(MEMORY_INDEXER_DEFAULTS);
   const [savingMethod, setSavingMethod] = useState(false);
 
   const refreshStatus = useCallback(async () => {
@@ -194,7 +195,9 @@ export function Memory() {
   }, [refreshStatus]);
 
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [editingEntry, setEditingEntry] = useState<{ file: string; entry: MemoryEntry } | null>(null);
+  const [editingEntry, setEditingEntry] = useState<{ file: string; entry: MemoryEntry } | null>(
+    null
+  );
   const [deletingEntry, setDeletingEntry] = useState<{ file: string; index: number } | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
@@ -213,13 +216,16 @@ export function Memory() {
           workspace_indexer: next,
         });
         if (!res.success || !res.data?.success) {
-          throw new Error(res.error || 'Failed to update memory settings');
+          throw new Error(res.error || "Failed to update memory settings");
         }
-        addToast('success', 'Memory settings saved');
+        addToast("success", "Memory settings saved");
         await refreshStatus();
       } catch (error) {
         setMemorySettings(previous);
-        addToast('error', error instanceof Error ? error.message : 'Failed to update memory settings');
+        addToast(
+          "error",
+          error instanceof Error ? error.message : "Failed to update memory settings"
+        );
       } finally {
         setSavingMethod(false);
       }
@@ -256,11 +262,11 @@ export function Memory() {
   const handleUpdate = async (file: string, index: number, content: string) => {
     try {
       await updateMemory.mutateAsync({ file, index, content });
-      addToast('success', 'Memory entry updated');
+      addToast("success", "Memory entry updated");
       setEditingEntry(null);
       await refetchMemory();
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to update memory');
+      addToast("error", error instanceof Error ? error.message : "Failed to update memory");
     }
   };
 
@@ -271,35 +277,35 @@ export function Memory() {
         file: deletingEntry.file,
         index: deletingEntry.index,
       });
-      addToast('success', 'Memory entry deleted');
+      addToast("success", "Memory entry deleted");
       setDeletingEntry(null);
       await refetchMemory();
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to delete memory');
+      addToast("error", error instanceof Error ? error.message : "Failed to delete memory");
     }
   };
 
   const handleCreate = async (formData: FormData) => {
-    const file = formData.get('file') as string;
-    const content = formData.get('content') as string;
+    const file = formData.get("file") as string;
+    const content = formData.get("content") as string;
 
     try {
       const result = await memoryApi.createFile(file, content);
       if (!result.success || !result.data?.success) {
-        throw new Error(result.error || 'Failed to create memory');
+        throw new Error(result.error || "Failed to create memory");
       }
 
-      addToast('success', result.data.appended ? 'Memory entry added' : 'Memory file created');
+      addToast("success", result.data.appended ? "Memory entry added" : "Memory file created");
       setSelectedFile(result.data.file);
       setIsCreating(false);
       await refetchMemory();
       await refreshStatus();
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to create memory');
+      addToast("error", error instanceof Error ? error.message : "Failed to create memory");
     }
   };
 
-  const selectedMemory = memory?.find(m => m.file === selectedFile);
+  const selectedMemory = memory?.find((m) => m.file === selectedFile);
   const memorySettingsPanel = (
     <Card className="mb-6">
       <CardHeader>
@@ -316,8 +322,8 @@ export function Memory() {
           <div className="flex items-center gap-2">
             {memStatus && (
               <div className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-gray-400">
-                {memStatus.provider === 'none' || !memStatus.model
-                  ? 'Keyword only'
+                {memStatus.provider === "none" || !memStatus.model
+                  ? "Keyword only"
                   : `${memStatus.provider}/${memStatus.model} · ${memStatus.chunks ?? 0} chunks`}
               </div>
             )}
@@ -351,7 +357,9 @@ export function Memory() {
               type="checkbox"
               checked={memorySettings.semanticEnabled}
               disabled={savingMethod}
-              onChange={(e) => void saveMemorySettings({ semanticEnabled: e.currentTarget.checked })}
+              onChange={(e) =>
+                void saveMemorySettings({ semanticEnabled: e.currentTarget.checked })
+              }
               className="h-4 w-4 accent-indigo-500"
             />
           </label>
@@ -373,7 +381,9 @@ export function Memory() {
             <select
               value={memorySettings.embeddingProvider}
               disabled={savingMethod}
-              onChange={(e) => void handleChangeMethod(e.currentTarget.value as EmbeddingProviderPreference)}
+              onChange={(e) =>
+                void handleChangeMethod(e.currentTarget.value as EmbeddingProviderPreference)
+              }
               className="w-full bg-white/5 border border-white/10 rounded-md px-2 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/50 disabled:opacity-50"
             >
               {EMBEDDING_PROVIDER_OPTIONS.map((option) => (
@@ -445,7 +455,9 @@ export function Memory() {
                   parseMemoryIndexerSettings({ ...previous, semanticMaxFiles: e.target.value })
                 )
               }
-              onBlur={(e) => void saveMemorySettings({ semanticMaxFiles: Number(e.currentTarget.value) })}
+              onBlur={(e) =>
+                void saveMemorySettings({ semanticMaxFiles: Number(e.currentTarget.value) })
+              }
             />
           </label>
           <label className="space-y-1">
@@ -462,7 +474,9 @@ export function Memory() {
                   parseMemoryIndexerSettings({ ...previous, semanticMinScore: e.target.value })
                 )
               }
-              onBlur={(e) => void saveMemorySettings({ semanticMinScore: Number(e.currentTarget.value) })}
+              onBlur={(e) =>
+                void saveMemorySettings({ semanticMinScore: Number(e.currentTarget.value) })
+              }
             />
           </label>
           <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 md:col-span-2">
@@ -481,7 +495,9 @@ export function Memory() {
         <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-gray-400">
           <Database className="w-4 h-4 text-indigo-300" />
           <span>
-            {savingMethod ? 'Saving memory settings...' : 'Settings are shared with workspace search and IDE indexing.'}
+            {savingMethod
+              ? "Saving memory settings..."
+              : "Settings are shared with workspace search and IDE indexing."}
           </span>
         </div>
       </CardContent>
@@ -500,12 +516,10 @@ export function Memory() {
               </div>
               <h3 className="text-xl font-semibold text-white mb-3">No Memory Files</h3>
               <p className="text-gray-400 mb-6">
-                Memory files store important information that agents can recall across conversations.
-                Create your first memory file to get started.
+                Memory files store important information that agents can recall across
+                conversations. Create your first memory file to get started.
               </p>
-              <Button onClick={() => setIsCreating(true)}>
-                Create Memory File
-              </Button>
+              <Button onClick={() => setIsCreating(true)}>Create Memory File</Button>
             </CardContent>
           </Card>
         </div>
@@ -581,14 +595,15 @@ export function Memory() {
           <CardContent>
             <div className="space-y-2">
               {memorySearchResults.map(({ file, entry }, idx) => (
-                <div key={`${file}:${entry.index ?? idx}`} className="p-3 rounded-lg bg-white/5 border border-white/10">
+                <div
+                  key={`${file}:${entry.index ?? idx}`}
+                  className="p-3 rounded-lg bg-white/5 border border-white/10"
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-xs text-indigo-300 mb-1 truncate">{file}</p>
                       <p className="text-sm text-gray-300 whitespace-pre-wrap">{entry.content}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {formatMemoryDate(entry)}
-                      </p>
+                      <p className="text-xs text-gray-500 mt-1">{formatMemoryDate(entry)}</p>
                     </div>
                     <div className="flex gap-2 shrink-0">
                       <Button
@@ -632,31 +647,39 @@ export function Memory() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="space-y-2">
-            <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">Memory Files</h3>
+            <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">
+              Memory Files
+            </h3>
             {memory?.map((mem) => (
               <button
                 key={mem.file}
                 onClick={() => setSelectedFile(mem.file === selectedFile ? null : mem.file)}
                 className={`w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all ${
                   selectedFile === mem.file
-                    ? 'bg-indigo-500/20 border border-indigo-500/30'
-                    : 'bg-white/5 border border-transparent hover:bg-white/10'
+                    ? "bg-indigo-500/20 border border-indigo-500/30"
+                    : "bg-white/5 border border-transparent hover:bg-white/10"
                 }`}
               >
-                <FileText className={`w-5 h-5 ${
-                  selectedFile === mem.file ? 'text-indigo-400' : 'text-gray-500'
-                }`} />
+                <FileText
+                  className={`w-5 h-5 ${
+                    selectedFile === mem.file ? "text-indigo-400" : "text-gray-500"
+                  }`}
+                />
                 <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-medium truncate ${
-                    selectedFile === mem.file ? 'text-white' : 'text-gray-300'
-                  }`}>
+                  <p
+                    className={`text-sm font-medium truncate ${
+                      selectedFile === mem.file ? "text-white" : "text-gray-300"
+                    }`}
+                  >
                     {mem.file}
                   </p>
                   <p className="text-xs text-gray-500">{mem.entries.length} entries</p>
                 </div>
-                <ChevronRight className={`w-4 h-4 transition-transform ${
-                  selectedFile === mem.file ? 'rotate-90 text-indigo-400' : 'text-gray-600'
-                }`} />
+                <ChevronRight
+                  className={`w-4 h-4 transition-transform ${
+                    selectedFile === mem.file ? "rotate-90 text-indigo-400" : "text-gray-600"
+                  }`}
+                />
               </button>
             ))}
           </div>
@@ -670,11 +693,7 @@ export function Memory() {
                       <CardTitle>{selectedMemory.file}</CardTitle>
                       <CardDescription>{selectedMemory.entries.length} entries</CardDescription>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setSelectedFile(null)}
-                    >
+                    <Button variant="ghost" size="sm" onClick={() => setSelectedFile(null)}>
                       <X className="w-4 h-4" />
                     </Button>
                   </div>
@@ -686,12 +705,17 @@ export function Memory() {
                         key={entry.index}
                         className="p-4 rounded-xl bg-white/5 border border-white/10"
                       >
-                        {editingEntry?.file === selectedMemory.file && editingEntry?.entry.index === entry.index ? (
+                        {editingEntry?.file === selectedMemory.file &&
+                        editingEntry?.entry.index === entry.index ? (
                           <form
                             onSubmit={(e) => {
                               e.preventDefault();
                               const formData = new FormData(e.currentTarget);
-                              handleUpdate(selectedMemory.file, entry.index, formData.get('content') as string);
+                              handleUpdate(
+                                selectedMemory.file,
+                                entry.index,
+                                formData.get("content") as string
+                              );
                             }}
                             className="space-y-3"
                           >
@@ -710,11 +734,7 @@ export function Memory() {
                               >
                                 Cancel
                               </Button>
-                              <Button
-                                type="submit"
-                                size="sm"
-                                isLoading={updateMemory.isPending}
-                              >
+                              <Button type="submit" size="sm" isLoading={updateMemory.isPending}>
                                 <Save className="w-3 h-3 mr-1" />
                                 Save
                               </Button>
@@ -731,7 +751,9 @@ export function Memory() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => setEditingEntry({ file: selectedMemory.file, entry })}
+                                  onClick={() =>
+                                    setEditingEntry({ file: selectedMemory.file, entry })
+                                  }
                                   aria-label={`Edit memory entry ${entry.index + 1}`}
                                 >
                                   <Edit2 className="w-3 h-3" />
@@ -739,7 +761,12 @@ export function Memory() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => setDeletingEntry({ file: selectedMemory.file, index: entry.index })}
+                                  onClick={() =>
+                                    setDeletingEntry({
+                                      file: selectedMemory.file,
+                                      index: entry.index,
+                                    })
+                                  }
                                   aria-label={`Delete memory entry ${entry.index + 1}`}
                                 >
                                   <Trash2 className="w-3 h-3" />
@@ -758,7 +785,9 @@ export function Memory() {
                 <CardContent className="text-center">
                   <Brain className="w-12 h-12 text-gray-600 mx-auto mb-4" />
                   <h3 className="text-lg font-medium text-white mb-2">Select a memory file</h3>
-                  <p className="text-gray-400">Choose a file from the list to view and edit entries</p>
+                  <p className="text-gray-400">
+                    Choose a file from the list to view and edit entries
+                  </p>
                 </CardContent>
               </Card>
             )}
@@ -782,7 +811,7 @@ export function Memory() {
           <Select
             name="file"
             label="Memory File"
-            options={memory?.map(m => ({ value: m.file, label: m.file })) || []}
+            options={memory?.map((m) => ({ value: m.file, label: m.file })) || []}
             required
           />
           <Textarea

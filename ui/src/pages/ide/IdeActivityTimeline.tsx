@@ -3,7 +3,12 @@ import { Loader2, AlertTriangle, AlertCircle, CheckCircle2, Info } from "lucide-
 import { normalizeActivityTextForPhase, type LiveActivityItem } from "@/lib/chatActivities";
 import { cn } from "@/lib/utils";
 import { Sparkles } from "lucide-react";
-import { isGenericIdeStatusLabel, formatIdeStatusEventText, formatIdeSandboxProviderLabel, getLatestIdeInFlightStep } from "./ideActivityHelpers";
+import {
+  isGenericIdeStatusLabel,
+  formatIdeStatusEventText,
+  formatIdeSandboxProviderLabel,
+  getLatestIdeInFlightStep,
+} from "./ideActivityHelpers";
 import type { IdeProcessActivity } from "./ideTypes";
 
 export function IdeActivityText({ text }: { text: string }) {
@@ -131,4 +136,3 @@ export function IdeLiveActivityTimeline({
     </div>
   );
 }
-

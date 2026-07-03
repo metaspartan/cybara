@@ -1,13 +1,13 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { agentsApi } from '@/lib/api';
-import { useAgentStore } from '@/stores/agentStore';
-import type { Agent } from '@/types';
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { agentsApi } from "@/lib/api";
+import { useAgentStore } from "@/stores/agentStore";
+import type { Agent } from "@/types";
 
-const AGENTS_KEY = 'agents';
+const AGENTS_KEY = "agents";
 
 export function useAgents() {
   const { setAgents, setLoading } = useAgentStore();
-  
+
   const query = useQuery({
     queryKey: [AGENTS_KEY],
     queryFn: async () => {
@@ -17,7 +17,7 @@ export function useAgents() {
         setAgents(response.data);
         return response.data;
       }
-      throw new Error(response.error || 'Failed to fetch agents');
+      throw new Error(response.error || "Failed to fetch agents");
     },
   });
 
@@ -37,7 +37,7 @@ export function useAgent(id: string) {
       if (response.success && response.data) {
         return response.data;
       }
-      throw new Error(response.error || 'Failed to fetch agent');
+      throw new Error(response.error || "Failed to fetch agent");
     },
     enabled: !!id,
   });
@@ -46,14 +46,14 @@ export function useAgent(id: string) {
 export function useCreateAgent() {
   const queryClient = useQueryClient();
   const { addAgent } = useAgentStore();
-  
+
   return useMutation({
-    mutationFn: async (agent: Omit<Agent, 'id' | 'createdAt' | 'updatedAt'>) => {
+    mutationFn: async (agent: Omit<Agent, "id" | "createdAt" | "updatedAt">) => {
       const response = await agentsApi.create(agent);
       if (response.success && response.data) {
         return response.data;
       }
-      throw new Error(response.error || 'Failed to create agent');
+      throw new Error(response.error || "Failed to create agent");
     },
     onSuccess: (data) => {
       addAgent(data);
@@ -65,14 +65,14 @@ export function useCreateAgent() {
 export function useUpdateAgent() {
   const queryClient = useQueryClient();
   const { updateAgent } = useAgentStore();
-  
+
   return useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: Partial<Agent> }) => {
       const response = await agentsApi.update(id, updates);
       if (response.success && response.data) {
         return response.data;
       }
-      throw new Error(response.error || 'Failed to update agent');
+      throw new Error(response.error || "Failed to update agent");
     },
     onSuccess: (data) => {
       updateAgent(data.id, data);
@@ -84,14 +84,14 @@ export function useUpdateAgent() {
 export function useDeleteAgent() {
   const queryClient = useQueryClient();
   const { removeAgent } = useAgentStore();
-  
+
   return useMutation({
     mutationFn: async (id: string) => {
       const response = await agentsApi.delete(id);
       if (response.success) {
         return id;
       }
-      throw new Error(response.error || 'Failed to delete agent');
+      throw new Error(response.error || "Failed to delete agent");
     },
     onSuccess: (id) => {
       removeAgent(id);

@@ -7,12 +7,7 @@ const log = createLogger("PhoneCallTool");
 type VoiceCallProvider = "macos_facetime" | "mock";
 type VoiceCallStatus = "dialing" | "active" | "ended" | "error";
 type VoiceCallAction =
-  | "check_support"
-  | "initiate_call"
-  | "continue_call"
-  | "speak_to_user"
-  | "end_call"
-  | "get_status";
+  "check_support" | "initiate_call" | "continue_call" | "speak_to_user" | "end_call" | "get_status";
 
 interface VoiceCallEvent {
   action: string;
@@ -218,7 +213,10 @@ function startDetached(command: string, commandArgs: string[]): Promise<void> {
   });
 }
 
-function runInteractiveCommand(command: string, commandArgs: string[]): Promise<{
+function runInteractiveCommand(
+  command: string,
+  commandArgs: string[]
+): Promise<{
   code: number;
   stdout: string;
   stderr: string;
@@ -249,7 +247,11 @@ async function startMacOSFaceTimeCall(phoneNumber: string): Promise<void> {
   await startDetached("open", [`tel:${phoneNumber}`]);
 }
 
-async function speakOnMac(message: string, voice: string | null, rate: number | null): Promise<void> {
+async function speakOnMac(
+  message: string,
+  voice: string | null,
+  rate: number | null
+): Promise<void> {
   const args: string[] = [];
   if (voice) {
     args.push("-v", voice);
@@ -353,13 +355,10 @@ export async function handleVoiceCall(args: Record<string, unknown>): Promise<un
 
   const provider = resolveVoiceCallProvider(args);
   const requestedPhone =
-    typeof args.to === "string"
-      ? args.to
-      : typeof args.phone === "string"
-        ? args.phone
-        : "";
+    typeof args.to === "string" ? args.to : typeof args.phone === "string" ? args.phone : "";
   const sanitizedPhone = requestedPhone ? sanitizePhoneNumber(requestedPhone) : "";
-  const requestedVoice = typeof args.voice === "string" && args.voice.trim() ? args.voice.trim() : null;
+  const requestedVoice =
+    typeof args.voice === "string" && args.voice.trim() ? args.voice.trim() : null;
   const requestedRate = readNumericArg(args.rate);
 
   if (action === "check_support") {
@@ -385,7 +384,8 @@ export async function handleVoiceCall(args: Record<string, unknown>): Promise<un
       success: false,
       provider: "unsupported",
       supportedActions: ["check_support"],
-      message: "Voice calls are only supported on macOS right now. Use mode=\"mock\" for dry runs and tests.",
+      message:
+        'Voice calls are only supported on macOS right now. Use mode="mock" for dry runs and tests.',
     };
   }
 
@@ -393,7 +393,8 @@ export async function handleVoiceCall(args: Record<string, unknown>): Promise<un
     return {
       success: false,
       provider: "unsupported",
-      message: "Voice calls are only supported on macOS right now. Use mode=\"mock\" for dry runs and tests.",
+      message:
+        'Voice calls are only supported on macOS right now. Use mode="mock" for dry runs and tests.',
     };
   }
 
@@ -403,7 +404,8 @@ export async function handleVoiceCall(args: Record<string, unknown>): Promise<un
         return {
           success: false,
           provider,
-          message: "A destination phone number is required. Pass `to` (or `phone`) in E.164 format when possible.",
+          message:
+            "A destination phone number is required. Pass `to` (or `phone`) in E.164 format when possible.",
         };
       }
 
@@ -648,7 +650,9 @@ export async function handleVoiceCall(args: Record<string, unknown>): Promise<un
         success: true,
         provider,
         message: `Tracked voice calls: ${voiceCallSessions.size}.`,
-        sessions: Array.from(voiceCallSessions.values()).map((entry) => summarizeVoiceCallSession(entry)),
+        sessions: Array.from(voiceCallSessions.values()).map((entry) =>
+          summarizeVoiceCallSession(entry)
+        ),
       };
     }
 

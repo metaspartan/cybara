@@ -241,7 +241,6 @@ import {
 import { IDEChatPanel } from "./ide/IDEChatPanel";
 import { IDEWelcomeScreen } from "./ide/IDEWelcomeScreen";
 
-
 const FileTreeItem = memo(function FileTreeItem({
   entry,
   level = 0,
@@ -2272,11 +2271,15 @@ export function IDE() {
     if (pendingEditorFiles.length === 0) return -1;
     const activePath = selectedFile?.path || activeTabPath || null;
     if (!activePath) return 0;
-    const matchingIndex = pendingEditorFiles.findIndex((file) => isSameIdePath(activePath, file.path));
+    const matchingIndex = pendingEditorFiles.findIndex((file) =>
+      isSameIdePath(activePath, file.path)
+    );
     return matchingIndex >= 0 ? matchingIndex : 0;
   }, [activeTabPath, pendingEditorFiles, selectedFile?.path]);
   const activePendingEditorFile =
-    activePendingEditorFileIndex >= 0 ? pendingEditorFiles[activePendingEditorFileIndex] || null : null;
+    activePendingEditorFileIndex >= 0
+      ? pendingEditorFiles[activePendingEditorFileIndex] || null
+      : null;
   const workspaceRootPath = rootInfo?.path || currentPath;
   const resolvedCompletionAgentId = useMemo(() => {
     if (idePreferences.useChatAgentForCompletions) {
@@ -2306,9 +2309,7 @@ export function IDE() {
   );
   const getNeighborPendingEditorFile = useCallback(
     (currentIndex: number): IdePendingFileDiff | null =>
-      pendingEditorFiles[currentIndex + 1] ||
-      pendingEditorFiles[currentIndex - 1] ||
-      null,
+      pendingEditorFiles[currentIndex + 1] || pendingEditorFiles[currentIndex - 1] || null,
     [pendingEditorFiles]
   );
   const handleAcceptActivePendingEditorFile = useCallback(() => {
@@ -3358,27 +3359,27 @@ export function IDE() {
                       setRefreshKey((k) => k + 1);
                     }}
                   >
-                  <CodeViewer
-                    path={selectedFile.path}
-                    previewMode={activeTab?.previewMode === true}
-                    autoRefresh={true}
-                    jumpToLineRequest={requestedJumpLine}
-                    externalRefreshKey={refreshKey}
-                    saveRequestToken={saveRequestToken}
-                    onSaveSuccess={handleRefresh}
-                    onCursorChange={handleCursorPositionChange}
-                    onGitHistoryStatusChange={setGitHistoryStatus}
-                    onOpenLocation={(filePath, line) => {
-                      openFileAtPath(filePath, line, false);
-                    }}
-                    completionAgentId={resolvedCompletionAgentId}
-                    editorFontSizePx={idePreferences.editorFontSizePx}
-                    editorLineHeightPx={idePreferences.editorLineHeightPx}
-                    showMinimap={idePreferences.showMinimap}
-                    enableCompletions={false}
-                    enableGhostCompletions={false}
-                    pendingFileDiffs={idePendingFileDiffs}
-                  />
+                    <CodeViewer
+                      path={selectedFile.path}
+                      previewMode={activeTab?.previewMode === true}
+                      autoRefresh={true}
+                      jumpToLineRequest={requestedJumpLine}
+                      externalRefreshKey={refreshKey}
+                      saveRequestToken={saveRequestToken}
+                      onSaveSuccess={handleRefresh}
+                      onCursorChange={handleCursorPositionChange}
+                      onGitHistoryStatusChange={setGitHistoryStatus}
+                      onOpenLocation={(filePath, line) => {
+                        openFileAtPath(filePath, line, false);
+                      }}
+                      completionAgentId={resolvedCompletionAgentId}
+                      editorFontSizePx={idePreferences.editorFontSizePx}
+                      editorLineHeightPx={idePreferences.editorLineHeightPx}
+                      showMinimap={idePreferences.showMinimap}
+                      enableCompletions={false}
+                      enableGhostCompletions={false}
+                      pendingFileDiffs={idePendingFileDiffs}
+                    />
                   </ErrorBoundary>
                   {activePendingEditorFile && idePendingFileDiffController && (
                     <div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex justify-center px-4">
@@ -3401,7 +3402,9 @@ export function IDE() {
                           </div>
                           <div className="text-[10px] text-gray-500">
                             File {activePendingEditorFileIndex + 1} of {pendingEditorFiles.length} ·{" "}
-                            <span className="text-emerald-300">+{activePendingEditorFile.added}</span>{" "}
+                            <span className="text-emerald-300">
+                              +{activePendingEditorFile.added}
+                            </span>{" "}
                             <span className="text-red-300">-{activePendingEditorFile.removed}</span>
                           </div>
                         </div>

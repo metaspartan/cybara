@@ -35,7 +35,9 @@ export class TwitchAdapter implements ChannelAdapter {
   }
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
-    const username = (typeof config.username === "string" ? config.username : "").trim().toLowerCase();
+    const username = (typeof config.username === "string" ? config.username : "")
+      .trim()
+      .toLowerCase();
     const tokenRaw = typeof config.oauth_token === "string" ? config.oauth_token.trim() : "";
     if (!username || !tokenRaw) throw new Error("Twitch: username and oauth_token are required");
 

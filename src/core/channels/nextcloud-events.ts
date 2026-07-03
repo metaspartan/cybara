@@ -7,7 +7,9 @@ export interface NextcloudInbound {
 }
 
 export function signNextcloud(random: string, message: string, secret: string): string {
-  return createHmac("sha256", secret).update(random + message).digest("hex");
+  return createHmac("sha256", secret)
+    .update(random + message)
+    .digest("hex");
 }
 
 export function verifyNextcloudSignature(

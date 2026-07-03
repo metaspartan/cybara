@@ -1,5 +1,5 @@
-import { cn } from '@/lib/utils';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { cn } from "@/lib/utils";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 interface DataTableProps<T> {
   data: T[];
@@ -35,9 +35,7 @@ export function DataTable<T>({
   if (data.length === 0) {
     return (
       <div className="glass rounded-xl overflow-hidden">
-        <div className="p-8 text-center text-gray-400">
-          No data available
-        </div>
+        <div className="p-8 text-center text-gray-400">No data available</div>
       </div>
     );
   }
@@ -48,10 +46,7 @@ export function DataTable<T>({
         <thead>
           <tr className="border-b border-white/10">
             {columns.map((col) => (
-              <th
-                key={col.key}
-                className="px-6 py-4 text-left text-sm font-medium text-gray-400"
-              >
+              <th key={col.key} className="px-6 py-4 text-left text-sm font-medium text-gray-400">
                 {col.header}
               </th>
             ))}
@@ -63,19 +58,16 @@ export function DataTable<T>({
               key={keyExtractor(item)}
               onClick={() => onRowClick?.(item)}
               className={cn(
-                'border-b border-white/5 last:border-0',
-                onRowClick && 'cursor-pointer hover:bg-white/5',
-                index % 2 === 0 && 'bg-white/[0.02]'
+                "border-b border-white/5 last:border-0",
+                onRowClick && "cursor-pointer hover:bg-white/5",
+                index % 2 === 0 && "bg-white/[0.02]"
               )}
             >
               {columns.map((col) => (
-                <td
-                  key={col.key}
-                  className="px-6 py-4 text-sm text-gray-300"
-                >
+                <td key={col.key} className="px-6 py-4 text-sm text-gray-300">
                   {col.render
                     ? col.render(item)
-                    : (item as Record<string, unknown>)[col.key] as React.ReactNode}
+                    : ((item as Record<string, unknown>)[col.key] as React.ReactNode)}
                 </td>
               ))}
             </tr>

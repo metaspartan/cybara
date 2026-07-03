@@ -157,7 +157,8 @@ export async function redeemPairingCode(
   }
   const apiKey = typeof data?.apiKey === "string" ? data.apiKey : "";
   if (!response.ok || data?.success !== true || !apiKey) {
-    const message = typeof data?.error === "string" ? data.error : `Pairing failed (${response.status})`;
+    const message =
+      typeof data?.error === "string" ? data.error : `Pairing failed (${response.status})`;
     throw new Error(message);
   }
   const device = (data.device as { id?: string } | undefined) ?? undefined;
@@ -189,7 +190,11 @@ export async function resolveGatewayProfile(
   } catch {
     parsed = null;
   }
-  if (parsed && typeof parsed === "object" && (parsed as { protocol?: unknown }).protocol === MOBILE_PAIRING_PROTOCOL) {
+  if (
+    parsed &&
+    typeof parsed === "object" &&
+    (parsed as { protocol?: unknown }).protocol === MOBILE_PAIRING_PROTOCOL
+  ) {
     const data = parsed as Partial<MobilePairingCodePayload>;
     if (typeof data.baseUrl !== "string" || typeof data.code !== "string") {
       throw new Error("Pairing code payload is missing baseUrl or code");

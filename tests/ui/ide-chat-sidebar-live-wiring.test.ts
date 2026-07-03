@@ -52,6 +52,8 @@ describe("IDE chat sidebar live wiring", () => {
     );
     expect(helpersSource).toContain('const normalized = value.replace(/\\r\\n/g, "\\n").trim();');
     expect(helpersSource).toContain("[output truncated]");
-    expect(panelSource).toContain("max-h-52 overflow-auto rounded border border-white/10 bg-[#06060b]");
+    expect(panelSource).toContain(
+      "max-h-52 overflow-auto rounded border border-white/10 bg-[#06060b]"
+    );
   });
 });

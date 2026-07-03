@@ -19,7 +19,7 @@ describe("desktop host runtime wiring", () => {
       "utf8"
     );
 
-    expect(desktopHost).toContain("'cybara-native'");
+    expect(desktopHost).toMatch(/["']cybara-native["']/);
     expect(desktopHost).toContain("__CYBARA_NATIVE__");
     expect(desktopHost).toContain("getDesktopHostRuntime");
     expect(desktopHost).toContain("supportsDesktopUpdater");
@@ -32,7 +32,7 @@ describe("desktop host runtime wiring", () => {
     expect(desktopUpdater).not.toContain('import("@tauri-apps/plugin-process")');
 
     expect(mainTsx).toContain("getDesktopHostRuntime()");
-    expect(mainTsx).toContain("rootElement.dataset.runtime = desktopRuntime || 'web'");
+    expect(mainTsx).toMatch(/rootElement\.dataset\.runtime = desktopRuntime \|\| ["']web["']/);
 
     expect(settingsTsx).toContain("getDesktopRuntimeLabel");
     expect(settingsTsx).toContain("isDesktopUpdaterSupported");

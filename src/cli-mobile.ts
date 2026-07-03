@@ -64,10 +64,7 @@ async function rawMobileConnect(args: string[], context: MobileCliContext): Prom
   }
 
   if (useCode) {
-    await rawMobilePairCode(
-      { baseUrl, gatewayName, deviceName, role, showQr, jsonOnly },
-      context
-    );
+    await rawMobilePairCode({ baseUrl, gatewayName, deviceName, role, showQr, jsonOnly }, context);
     return;
   }
 
@@ -242,10 +239,7 @@ export function printMobileHelp(prefix = ""): void {
   console.log(`${prefix}mobile remove <device-id>`);
 }
 
-export async function runMobileCommand(
-  args: string[],
-  context: MobileCliContext
-): Promise<void> {
+export async function runMobileCommand(args: string[], context: MobileCliContext): Promise<void> {
   switch (args[0]) {
     case "connect":
     case undefined:

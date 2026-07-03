@@ -1,4 +1,10 @@
-import type { ChannelAdapter, ToolCallInfo, MessageHandler, WebhookPayload, WebhookResult } from "../types";
+import type {
+  ChannelAdapter,
+  ToolCallInfo,
+  MessageHandler,
+  WebhookPayload,
+  WebhookResult,
+} from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { parseHomeAssistantWebhook, notifyTarget } from "../homeassistant-events";
@@ -35,7 +41,8 @@ export class HomeAssistantAdapter implements ChannelAdapter {
           ? config.ha_url.trim().replace(/\/+$/, "")
           : undefined,
       haToken: typeof config.ha_token === "string" ? config.ha_token.trim() : undefined,
-      notifyService: typeof config.notify_service === "string" ? config.notify_service.trim() : undefined,
+      notifyService:
+        typeof config.notify_service === "string" ? config.notify_service.trim() : undefined,
       verifyToken: typeof config.verify_token === "string" ? config.verify_token.trim() : undefined,
     });
     this.running.add(channelId);
@@ -124,7 +131,10 @@ export class HomeAssistantAdapter implements ChannelAdapter {
 
     if (response) {
       await this.sendMessage(channelId, conversationId, response);
-      await logChannelMessage("homeassistant", "outgoing", response, { channelId, senderId: sender });
+      await logChannelMessage("homeassistant", "outgoing", response, {
+        channelId,
+        senderId: sender,
+      });
     }
     return response || null;
   }

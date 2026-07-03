@@ -22,9 +22,9 @@ describe("chat tool summary utilities", () => {
     expect(
       shouldEnforceToolUseForMessage("continue fixing tests in this repo and update the files")
     ).toBe(true);
-    expect(
-      shouldEnforceToolUseForMessage("scan the project and run lint to fix issues")
-    ).toBe(true);
+    expect(shouldEnforceToolUseForMessage("scan the project and run lint to fix issues")).toBe(
+      true
+    );
   });
 
   test("does not force tools for greetings or capability questions", () => {
@@ -37,7 +37,9 @@ describe("chat tool summary utilities", () => {
       shouldPreferArtifactsForMessage("audit this codebase and create an artifact report when done")
     ).toBe(true);
     expect(
-      shouldPreferArtifactsForMessage("make an implementation.md.resolved and walkthrough.md.resolved")
+      shouldPreferArtifactsForMessage(
+        "make an implementation.md.resolved and walkthrough.md.resolved"
+      )
     ).toBe(true);
     expect(shouldPreferArtifactsForMessage("hello what can you do")).toBe(false);
   });

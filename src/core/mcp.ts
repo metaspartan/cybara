@@ -322,8 +322,9 @@ class MCPServerManager extends EventEmitter {
         tools?: Array<{ name?: string; description?: string; inputSchema?: unknown }>;
       };
       instance.tools = (listed?.tools || [])
-        .filter((t): t is { name: string; description?: string; inputSchema?: unknown } =>
-          typeof t.name === "string"
+        .filter(
+          (t): t is { name: string; description?: string; inputSchema?: unknown } =>
+            typeof t.name === "string"
         )
         .map((t) => ({
           name: t.name,

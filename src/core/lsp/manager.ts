@@ -219,7 +219,9 @@ export class LSPManager {
     const primaryKey = LANGUAGE_TO_CONFIG[languageId];
     if (!primaryKey) return [];
     const supplemental =
-      LANGUAGE_TO_SUPPLEMENTAL_CONFIGS[languageId] || LANGUAGE_TO_SUPPLEMENTAL_CONFIGS[primaryKey] || [];
+      LANGUAGE_TO_SUPPLEMENTAL_CONFIGS[languageId] ||
+      LANGUAGE_TO_SUPPLEMENTAL_CONFIGS[primaryKey] ||
+      [];
     const ordered = [primaryKey, ...supplemental];
     return ordered.filter((key, index, self) => {
       if (!key || self.indexOf(key) !== index) return false;
@@ -340,16 +342,18 @@ export class LSPManager {
     if (BUNDLED_LANGUAGES.has(languageId)) {
       try {
         const bundledDiags = bundledTS.getDiagnosticsForFile(filePath);
-        bundledDiagnostics.push(...bundledDiags.map((d) => ({
-          range: {
-            start: { line: d.line - 1, character: d.column - 1 },
-            end: { line: (d.endLine || d.line) - 1, character: (d.endColumn || d.column) - 1 },
-          },
-          severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
-          message: d.message,
-          source: d.source,
-          code: d.code,
-        })));
+        bundledDiagnostics.push(
+          ...bundledDiags.map((d) => ({
+            range: {
+              start: { line: d.line - 1, character: d.column - 1 },
+              end: { line: (d.endLine || d.line) - 1, character: (d.endColumn || d.column) - 1 },
+            },
+            severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
+            message: d.message,
+            source: d.source,
+            code: d.code,
+          }))
+        );
       } catch (err) {
         console.error("[LSP Manager] Bundled TS diagnostics failed:", err);
       }
@@ -549,7 +553,11 @@ export class LSPManager {
     if (!client) {
       if (BUNDLED_LANGUAGES.has(languageId)) {
         try {
-          return bundledTS.getCompletionsForFile(filePath, line, character) as unknown as CompletionItem[];
+          return bundledTS.getCompletionsForFile(
+            filePath,
+            line,
+            character
+          ) as unknown as CompletionItem[];
         } catch (err) {
           console.warn("[LSP Manager] Bundled TS completion lookup failed:", err);
         }

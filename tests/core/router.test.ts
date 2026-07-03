@@ -30,7 +30,12 @@ describe("mixture-of-agents strategy", () => {
   });
 
   test("MoA routing is active only when router is enabled with that strategy", () => {
-    config.set("router", { enabled: false, strategy: "mixture_of_agents", fallbackToAny: true, routes: {} });
+    config.set("router", {
+      enabled: false,
+      strategy: "mixture_of_agents",
+      fallbackToAny: true,
+      routes: {},
+    });
     expect(isMixtureOfAgentsRoutingActive()).toBe(false);
     config.set("router", {
       enabled: true,
@@ -41,7 +46,10 @@ describe("mixture-of-agents strategy", () => {
       moaAggregatorAgentId: "agent-x",
     });
     expect(isMixtureOfAgentsRoutingActive()).toBe(true);
-    expect(getMixtureOfAgentsRoutingConfig()).toEqual({ maxAgents: 3, aggregatorAgentId: "agent-x" });
+    expect(getMixtureOfAgentsRoutingConfig()).toEqual({
+      maxAgents: 3,
+      aggregatorAgentId: "agent-x",
+    });
     config.set("router", { enabled: true, strategy: "weighted", fallbackToAny: true, routes: {} });
     expect(isMixtureOfAgentsRoutingActive()).toBe(false);
   });
@@ -111,7 +119,9 @@ describe("router availability + limits", () => {
 
   test("daily spend limit blocks when exceeded", () => {
     setRouterConfig({
-      routes: { openai: { weight: 50, spendLimitDaily: 1.0, priceInputPerM: 10, priceOutputPerM: 30 } },
+      routes: {
+        openai: { weight: 50, spendLimitDaily: 1.0, priceInputPerM: 10, priceOutputPerM: 30 },
+      },
     });
     recordUsage("openai", 200_000, 200_000, true);
     expect(getProviderAvailability("openai").available).toBe(false);

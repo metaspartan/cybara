@@ -13,10 +13,7 @@ import { loadAllSkills } from "../../src/core/skills";
 
 function writePlugin(rootDir: string, manifest: Record<string, unknown>, skillName: string): void {
   mkdirSync(join(rootDir, "skills", "example-skill"), { recursive: true });
-  writeFileSync(
-    join(rootDir, "cybara-plugin.json"),
-    JSON.stringify(manifest, null, 2)
-  );
+  writeFileSync(join(rootDir, "cybara-plugin.json"), JSON.stringify(manifest, null, 2));
   writeFileSync(
     join(rootDir, "skills", "example-skill", "SKILL.md"),
     `---
@@ -140,7 +137,9 @@ describe("plugin runtime", () => {
 
       const unsafe = validatePluginAtPath(unsafePluginDir);
       expect(unsafe.valid).toBe(true);
-      expect(unsafe.warnings.join(" ")).toContain("symlinked contribution path outside plugin root");
+      expect(unsafe.warnings.join(" ")).toContain(
+        "symlinked contribution path outside plugin root"
+      );
       expect(unsafe.manifest?.contributions?.skills?.dirs).toEqual([]);
 
       const installed = installLocalPluginFromPath(sourcePluginDir);

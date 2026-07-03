@@ -274,9 +274,9 @@ export function Channels() {
         addToast(
           "error",
           result.error ||
-          result.data?.error ||
-          result.data?.message ||
-          `${channel.name} connection test failed`
+            result.data?.error ||
+            result.data?.message ||
+            `${channel.name} connection test failed`
         );
       }
     } catch (error) {
@@ -653,7 +653,9 @@ export function Channels() {
                 variant="ghost"
                 size="sm"
                 leftIcon={
-                  <RefreshCw className={`w-4 h-4 ${isLoadingWhatsAppState ? "animate-spin" : ""}`} />
+                  <RefreshCw
+                    className={`w-4 h-4 ${isLoadingWhatsAppState ? "animate-spin" : ""}`}
+                  />
                 }
                 onClick={async () => {
                   if (!whatsAppChannel) return;

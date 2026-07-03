@@ -4,10 +4,7 @@ import { verifyLineSignature } from "../../src/core/channels/line-events";
 import { verifyMsTeamsSignature } from "../../src/core/channels/msteams-events";
 import { verifyDingTalkSignature, signDingTalk } from "../../src/core/channels/dingtalk-events";
 import { verifyWecomSignature, wecomSignature } from "../../src/core/channels/wecom-crypto";
-import {
-  verifyNextcloudSignature,
-  signNextcloud,
-} from "../../src/core/channels/nextcloud-events";
+import { verifyNextcloudSignature, signNextcloud } from "../../src/core/channels/nextcloud-events";
 import { verifyZaloMac } from "../../src/core/channels/zalo-events";
 import { verifyFeishuSignature } from "../../src/core/channels/feishu-events";
 import { verifyWebhookSignature } from "../../src/core/channels/adapters/webhook";
@@ -218,7 +215,9 @@ describe("wecom sorted-SHA1 signature", () => {
 
 describe("zalo appId+body+timestamp+secret MAC", () => {
   const sign = (appId: string, raw: string, ts: string, secret: string) =>
-    createHash("sha256").update(appId + raw + ts + secret).digest("hex");
+    createHash("sha256")
+      .update(appId + raw + ts + secret)
+      .digest("hex");
 
   test("accepts correct, rejects tampered/empty/wrong-length/wrong-secret", () => {
     const appId = "app-1";
@@ -252,7 +251,9 @@ describe("zalo appId+body+timestamp+secret MAC", () => {
 
 describe("feishu timestamp+nonce+key+body signature", () => {
   const sign = (ts: string, nonce: string, key: string, raw: string) =>
-    createHash("sha256").update(ts + nonce + key + raw, "utf8").digest("hex");
+    createHash("sha256")
+      .update(ts + nonce + key + raw, "utf8")
+      .digest("hex");
 
   test("accepts correct, rejects tampered/empty/wrong-length/wrong-key", () => {
     const ts = "1700000000";

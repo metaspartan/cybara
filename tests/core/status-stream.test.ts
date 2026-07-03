@@ -11,7 +11,10 @@ describe("status stream events", () => {
     const sessionId = `status-stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const received: Array<{ type: string; sessionId?: string }> = [];
     const unsubscribe = onStatusStream((event) => {
-      received.push({ type: event.type, sessionId: "sessionId" in event ? event.sessionId : undefined });
+      received.push({
+        type: event.type,
+        sessionId: "sessionId" in event ? event.sessionId : undefined,
+      });
     });
 
     broadcastStatus({

@@ -73,7 +73,7 @@ describe("mobile theming", () => {
 
   test("tab bar and chat composer use the LiquidGlass surface (no opaque fill)", () => {
     const screen = read("screens/DashboardScreen.tsx");
-    expect(screen).toContain('import { LiquidGlass }');
+    expect(screen).toContain("import { LiquidGlass }");
     expect(screen).toContain("<LiquidGlass");
     // the composer bar must be full-bleed glass, not an opaque surface bar
     const barStyle = screen.slice(screen.indexOf("chatComposerBar: {"));
@@ -90,7 +90,7 @@ describe("mobile theming", () => {
     ];
     for (const rel of styledFiles) {
       const src = read(rel);
-      expect(src).toContain("const makeStyles = () => StyleSheet.create(");
+      expect(src).toMatch(/const makeStyles = \(\) =>\s*StyleSheet\.create\(/);
       expect(src).toContain("subscribeColors(() => {");
       // no un-rebuilt static stylesheet left behind
       expect(src).not.toContain("const styles = StyleSheet.create(");

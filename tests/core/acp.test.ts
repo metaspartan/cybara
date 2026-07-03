@@ -12,7 +12,9 @@ import type { JsonRpcRequest, JsonRpcResponse } from "../../src/core/acp/protoco
 
 describe("ACP protocol helpers", () => {
   test("parseJsonRpc accepts valid requests, rejects junk", () => {
-    expect(parseJsonRpc('{"jsonrpc":"2.0","id":1,"method":"initialize"}')?.method).toBe("initialize");
+    expect(parseJsonRpc('{"jsonrpc":"2.0","id":1,"method":"initialize"}')?.method).toBe(
+      "initialize"
+    );
     expect(parseJsonRpc("not json")).toBeNull();
     expect(parseJsonRpc('{"id":1}')).toBeNull();
     expect(parseJsonRpc("   ")).toBeNull();
@@ -27,13 +29,17 @@ describe("ACP protocol helpers", () => {
   test("agentMessageChunk is a session/update notification (no id)", () => {
     const n = agentMessageChunk("sess1", "hello");
     expect(n.method).toBe("session/update");
-    expect((n.params as { update: { content: { text: string } } }).update.content.text).toBe("hello");
+    expect((n.params as { update: { content: { text: string } } }).update.content.text).toBe(
+      "hello"
+    );
     expect((n as { id?: unknown }).id).toBeUndefined();
   });
 
   test("extractPromptText joins text blocks and ignores non-text", () => {
     expect(
-      extractPromptText({ prompt: [{ type: "text", text: "a" }, { type: "image" }, { type: "text", text: "b" }] })
+      extractPromptText({
+        prompt: [{ type: "text", text: "a" }, { type: "image" }, { type: "text", text: "b" }],
+      })
     ).toBe("a\nb");
     expect(extractPromptText({})).toBe("");
   });

@@ -1,4 +1,10 @@
-import type { ChannelAdapter, ToolCallInfo, MessageHandler, WebhookPayload, WebhookResult } from "../types";
+import type {
+  ChannelAdapter,
+  ToolCallInfo,
+  MessageHandler,
+  WebhookPayload,
+  WebhookResult,
+} from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import {
@@ -32,7 +38,9 @@ export class NextcloudAdapter implements ChannelAdapter {
   }
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
-    const baseUrl = (typeof config.base_url === "string" ? config.base_url : "").trim().replace(/\/+$/, "");
+    const baseUrl = (typeof config.base_url === "string" ? config.base_url : "")
+      .trim()
+      .replace(/\/+$/, "");
     const secret = typeof config.secret === "string" ? config.secret.trim() : "";
     if (!baseUrl || !secret) throw new Error("Nextcloud Talk: base_url and secret are required");
     this.configs.set(channelId, { baseUrl, secret });

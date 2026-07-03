@@ -20,10 +20,7 @@ describe("API security module", () => {
   test("authenticateRequest allows localhost bypass for same-origin browser requests in dev", () => {
     // Browser fetch/SSE send Sec-Fetch-Site: same-origin — that legit UI path
     // is bypassed in dev.
-    const result = security.authenticateRequest(
-      { "sec-fetch-site": "same-origin" },
-      "127.0.0.1"
-    );
+    const result = security.authenticateRequest({ "sec-fetch-site": "same-origin" }, "127.0.0.1");
     expect(result.authenticated).toBe(true);
   });
 

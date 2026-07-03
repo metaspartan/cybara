@@ -10,7 +10,9 @@ import {
 
 describe("resolveHaConfig", () => {
   test("reads primary and alias env vars, trims trailing slashes", () => {
-    expect(resolveHaConfig({ HOME_ASSISTANT_URL: "http://ha:8123/", HOME_ASSISTANT_TOKEN: "t" })).toEqual({
+    expect(
+      resolveHaConfig({ HOME_ASSISTANT_URL: "http://ha:8123/", HOME_ASSISTANT_TOKEN: "t" })
+    ).toEqual({
       baseUrl: "http://ha:8123",
       token: "t",
     });

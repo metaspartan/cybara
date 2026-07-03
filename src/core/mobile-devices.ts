@@ -29,7 +29,8 @@ export const DEFAULT_MOBILE_SCOPES: MobileScope[] = ["chat", "manage", "read"];
 export function normalizeMobileScopes(value: unknown): MobileScope[] {
   if (!Array.isArray(value)) return [...DEFAULT_MOBILE_SCOPES];
   const valid = value.filter(
-    (s): s is MobileScope => typeof s === "string" && (MOBILE_SCOPES as readonly string[]).includes(s)
+    (s): s is MobileScope =>
+      typeof s === "string" && (MOBILE_SCOPES as readonly string[]).includes(s)
   );
   return valid.length > 0 ? Array.from(new Set(valid)) : [...DEFAULT_MOBILE_SCOPES];
 }
@@ -244,7 +245,8 @@ export function createMobileDevice(input: {
     tokenHash: hashToken(token),
     baseUrl,
     createdAt: now,
-    scopes: input.scopes === undefined ? [...DEFAULT_MOBILE_SCOPES] : normalizeMobileScopes(input.scopes),
+    scopes:
+      input.scopes === undefined ? [...DEFAULT_MOBILE_SCOPES] : normalizeMobileScopes(input.scopes),
   };
 
   store.devices.unshift(record);
@@ -297,7 +299,8 @@ export function createPairingCode(input: {
   const ttl = input.ttlMs && input.ttlMs > 0 ? input.ttlMs : DEFAULT_PAIRING_CODE_TTL_MS;
   const roleScopes = scopesForRole(input.role);
   const scopes =
-    roleScopes ?? (input.scopes === undefined ? [...DEFAULT_MOBILE_SCOPES] : normalizeMobileScopes(input.scopes));
+    roleScopes ??
+    (input.scopes === undefined ? [...DEFAULT_MOBILE_SCOPES] : normalizeMobileScopes(input.scopes));
 
   const store = readStore();
   const code = generatePairingCode();

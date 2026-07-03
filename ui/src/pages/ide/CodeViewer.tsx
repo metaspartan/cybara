@@ -3,10 +3,36 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Highlight, themes } from "prism-react-renderer";
 import {
-  Loader2, Check, AlertTriangle, AlertCircle, Info, RotateCcw, X, ChevronRight, ChevronDown,
-  ChevronUp, File, FileCode, FileJson, FileText, FilePlus, Folder, FolderOpen, Search, Save,
-  RefreshCw, Copy, Code, Zap, Sparkles, MessageSquare, Square, ListTree, GitBranch,
-  ExternalLink, CheckCircle2,
+  Loader2,
+  Check,
+  AlertTriangle,
+  AlertCircle,
+  Info,
+  RotateCcw,
+  X,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  File,
+  FileCode,
+  FileJson,
+  FileText,
+  FilePlus,
+  Folder,
+  FolderOpen,
+  Search,
+  Save,
+  RefreshCw,
+  Copy,
+  Code,
+  Zap,
+  Sparkles,
+  MessageSquare,
+  Square,
+  ListTree,
+  GitBranch,
+  ExternalLink,
+  CheckCircle2,
 } from "lucide-react";
 import type { CSSProperties } from "react";
 import { Button } from "@/components/ui/Button";
@@ -15,58 +41,147 @@ import { apiFetch } from "@/lib/auth";
 import { chatApi, agentsApi } from "@/lib/api";
 import { useStopAgent } from "@/hooks/useApi";
 import {
-  mergeActivityLists, normalizeActivityTextForPhase, finalizeCompletedActivities,
-  buildActivitiesFromToolCalls, type LiveActivityItem, type ToolCallLike,
+  mergeActivityLists,
+  normalizeActivityTextForPhase,
+  finalizeCompletedActivities,
+  buildActivitiesFromToolCalls,
+  type LiveActivityItem,
+  type ToolCallLike,
 } from "@/lib/chatActivities";
 import { connectStatusStream } from "@/lib/status-stream";
 import {
-  parseGitDiffDecorations, countGitDiffLineChanges, mergeGitDiffDecorations,
-  buildPendingInlinePreviewRows, emptyIdePendingDiffDecorations,
-  type IdePendingLineState, type IdePendingDeletedBlock,
-  type IdePendingInlinePreviewRow, type IdePendingDiffDecorations,
+  parseGitDiffDecorations,
+  countGitDiffLineChanges,
+  mergeGitDiffDecorations,
+  buildPendingInlinePreviewRows,
+  emptyIdePendingDiffDecorations,
+  type IdePendingLineState,
+  type IdePendingDeletedBlock,
+  type IdePendingInlinePreviewRow,
+  type IdePendingDiffDecorations,
 } from "@/lib/idePendingDiffDecorations";
 import {
-  IDE_DEFAULT_PREFERENCES, IDE_CHAT_AGENT_STORAGE_KEY, IDE_CHAT_OPEN_STORAGE_KEY,
-  IDE_CHAT_WIDTH_STORAGE_KEY, EDITOR_FONT_SIZE_PX, EDITOR_LINE_HEIGHT_PX,
-  EDITOR_LARGE_FILE_CHAR_THRESHOLD, EDITOR_LARGE_FILE_LINE_THRESHOLD,
-  COMPLETION_LOCAL_SCAN_BEFORE, COMPLETION_LOCAL_SCAN_AFTER, COMPLETION_CACHE_TTL_MS, COMPLETION_CACHE_MAX_ENTRIES,
+  IDE_DEFAULT_PREFERENCES,
+  IDE_CHAT_AGENT_STORAGE_KEY,
+  IDE_CHAT_OPEN_STORAGE_KEY,
+  IDE_CHAT_WIDTH_STORAGE_KEY,
+  EDITOR_FONT_SIZE_PX,
+  EDITOR_LINE_HEIGHT_PX,
+  EDITOR_LARGE_FILE_CHAR_THRESHOLD,
+  EDITOR_LARGE_FILE_LINE_THRESHOLD,
+  COMPLETION_LOCAL_SCAN_BEFORE,
+  COMPLETION_LOCAL_SCAN_AFTER,
+  COMPLETION_CACHE_TTL_MS,
+  COMPLETION_CACHE_MAX_ENTRIES,
   EDITOR_TYPING_BURST_MS,
 } from "./ideConstants";
 import { getActiveLanguageFromExtension } from "./ideLanguageMaps";
 import {
-  getFileIcon, formatSize, getLineAndColumn, getPrismLanguage, splitPathForBreadcrumbs,
-  flattenOutlineSymbols, getSymbolKindLabel, fileEntryFromPath, isMarkdownExtension,
-  ideMarkdownComponents, formatBlameStamp, formatBlameDateTime, scoreQuickOpenResult, getSeverityIcon,
+  getFileIcon,
+  formatSize,
+  getLineAndColumn,
+  getPrismLanguage,
+  splitPathForBreadcrumbs,
+  flattenOutlineSymbols,
+  getSymbolKindLabel,
+  fileEntryFromPath,
+  isMarkdownExtension,
+  ideMarkdownComponents,
+  formatBlameStamp,
+  formatBlameDateTime,
+  scoreQuickOpenResult,
+  getSeverityIcon,
 } from "./ideUtils";
 import {
-  isPlainRecord, normalizeIdePath, getIdePendingFileDecisionKey, isSameIdePath, countDiffLines,
-  truncateDiffPreview, shouldHydratePendingFileDiffFromGit, getPendingLineTextClass,
-  getPendingLineContainerClass, getPendingLineDecorationStyle, summarizePendingDeletedBlocks,
-  parseIdePatchFileChanges, parseIdeChangeRecord, summarizeIdeFileChanges,
-  summarizeIdeTextFileChanges, summarizeIdeMessageFileChanges, summarizeIdeActivityFileChanges,
-  mergeIdeFileChangeSummaries, reverseUnifiedDiff, isIdeToolCallLike, getIdeToolCallsInTimelineOrder,
+  isPlainRecord,
+  normalizeIdePath,
+  getIdePendingFileDecisionKey,
+  isSameIdePath,
+  countDiffLines,
+  truncateDiffPreview,
+  shouldHydratePendingFileDiffFromGit,
+  getPendingLineTextClass,
+  getPendingLineContainerClass,
+  getPendingLineDecorationStyle,
+  summarizePendingDeletedBlocks,
+  parseIdePatchFileChanges,
+  parseIdeChangeRecord,
+  summarizeIdeFileChanges,
+  summarizeIdeTextFileChanges,
+  summarizeIdeMessageFileChanges,
+  summarizeIdeActivityFileChanges,
+  mergeIdeFileChangeSummaries,
+  reverseUnifiedDiff,
+  isIdeToolCallLike,
+  getIdeToolCallsInTimelineOrder,
 } from "./ideDiffHelpers";
 import {
-  getIdeToolCallArgs, getIdeToolCallCommand, getIdeToolCallResultSummary, getIdeToolCallExitCode,
-  parseIdeTimestampMs, normalizeIdeSandboxProviderValue, formatIdeSandboxProviderLabel,
-  isGenericIdeStatusLabel, isMeaningfulIdeThoughtDetail, getLatestIdeInFlightStep,
-  toIdeLiveActivityItems, formatIdeStatusEventText, getIdeHeaderTitle,
+  getIdeToolCallArgs,
+  getIdeToolCallCommand,
+  getIdeToolCallResultSummary,
+  getIdeToolCallExitCode,
+  parseIdeTimestampMs,
+  normalizeIdeSandboxProviderValue,
+  formatIdeSandboxProviderLabel,
+  isGenericIdeStatusLabel,
+  isMeaningfulIdeThoughtDetail,
+  getLatestIdeInFlightStep,
+  toIdeLiveActivityItems,
+  formatIdeStatusEventText,
+  getIdeHeaderTitle,
 } from "./ideActivityHelpers";
 import {
-  persistIdeChatAgentId, readPersistedChatOpen, persistChatOpen, readPersistedChatWidth,
-  persistChatWidth, readPersistedIdeChatAgentId, readPersistedIdePreferences,
+  persistIdeChatAgentId,
+  readPersistedChatOpen,
+  persistChatOpen,
+  readPersistedChatWidth,
+  persistChatWidth,
+  readPersistedIdeChatAgentId,
+  readPersistedIdePreferences,
 } from "./idePersistence";
 import type {
-  FileEntry, BrowseResult, ReadResult, Diagnostic, LspActiveServer,
-  IdeSearchMatch, IdeSearchFileResult, IdeSearchResult, IdeReplaceResult,
-  IdeReplacePreviewFile, IdeReplacePreviewResult, IdeListFilesResult, WorkspaceIndexerSettings,
-  IdeBlameLine, IdeBlameResult, GitHistoryStatus, IdeTab, IdeChatMessage, IdeChatAgentOption,
-  IdeProcessActivity, IdeFileChangeItem, IdeFileChangeSummary, IdePendingFileDiff,
-  IdePendingFileDiffController, TreeContextMenuState, IdeCommandItem, IdeOutlineSymbol,
-  IdeOutlineResponse, IdeCompletionItem, IdeCompletionResponse, IdeInlineCompletionResponse,
-  FlattenedOutlineSymbol, IdeBreadcrumb, IdeSettingsSectionId, IdeTopMenuId, IdePreferences,
+  FileEntry,
+  BrowseResult,
+  ReadResult,
+  Diagnostic,
+  LspActiveServer,
+  IdeSearchMatch,
+  IdeSearchFileResult,
+  IdeSearchResult,
+  IdeReplaceResult,
+  IdeReplacePreviewFile,
+  IdeReplacePreviewResult,
+  IdeListFilesResult,
+  WorkspaceIndexerSettings,
+  IdeBlameLine,
+  IdeBlameResult,
+  GitHistoryStatus,
+  IdeTab,
+  IdeChatMessage,
+  IdeChatAgentOption,
+  IdeProcessActivity,
+  IdeFileChangeItem,
+  IdeFileChangeSummary,
+  IdePendingFileDiff,
+  IdePendingFileDiffController,
+  TreeContextMenuState,
+  IdeCommandItem,
+  IdeOutlineSymbol,
+  IdeOutlineResponse,
+  IdeCompletionItem,
+  IdeCompletionResponse,
+  IdeInlineCompletionResponse,
+  FlattenedOutlineSymbol,
+  IdeBreadcrumb,
+  IdeSettingsSectionId,
+  IdeTopMenuId,
+  IdePreferences,
 } from "./ideTypes";
-import { IdeActivityText, IdeProcessActivityList, IdeLiveActivityTimeline } from "./IdeActivityTimeline";
+import {
+  IdeActivityText,
+  IdeProcessActivityList,
+  IdeLiveActivityTimeline,
+} from "./IdeActivityTimeline";
 
 export function CodeViewer({
   path,
@@ -128,7 +243,11 @@ export function CodeViewer({
   const [activeLine, setActiveLine] = useState(1);
   const [blamePopoverLine, setBlamePopoverLine] = useState<number | null>(null);
   const [copiedCommit, setCopiedCommit] = useState<string | null>(null);
-  const [hoverInfo, setHoverInfo] = useState<{ line: number; text: string | null; loading: boolean } | null>(null);
+  const [hoverInfo, setHoverInfo] = useState<{
+    line: number;
+    text: string | null;
+    loading: boolean;
+  } | null>(null);
   const hoverAbortRef = useRef<AbortController | null>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [cursorLine, setCursorLine] = useState(1);
@@ -419,7 +538,8 @@ export function CodeViewer({
         currentLineCount
       );
       const needsGitHydration =
-        forCurrentFile.length > 1 || forCurrentFile.some((entry) => shouldHydratePendingFileDiffFromGit(entry));
+        forCurrentFile.length > 1 ||
+        forCurrentFile.some((entry) => shouldHydratePendingFileDiffFromGit(entry));
 
       if (!needsGitHydration && directDiff) {
         setPendingLineDecorations(parseGitDiffDecorations(directDiff, currentLineCount));
@@ -1588,8 +1708,7 @@ export function CodeViewer({
       if (!previewElement) return;
       const line = Math.max(1, Math.round(requestedLine));
       if (options?.scrollIntoView) {
-        const rowIndex =
-          pendingPreviewRowIndexByLineRef.current.get(line) ?? Math.max(line - 1, 0);
+        const rowIndex = pendingPreviewRowIndexByLineRef.current.get(line) ?? Math.max(line - 1, 0);
         const targetTop = Math.max((rowIndex - 2) * normalizedLineHeight, 0);
         const maxScroll = Math.max(previewElement.scrollHeight - previewElement.clientHeight, 0);
         previewElement.scrollTop = Math.min(targetTop, maxScroll);
@@ -2057,18 +2176,27 @@ export function CodeViewer({
     const col = selectionStart - before.lastIndexOf("\n") - 1;
     apiFetch(`/api/lsp/diagnostics/file?path=${encodeURIComponent(path)}`)
       .then((res) => res.json())
-      .then((data: { diagnostics?: Array<{ line: number; character: number; message: string; severity: string }> }) => {
-        const diags = (data.diagnostics ?? []).filter(
-          (d) => d.line === line && Math.abs(d.character - col) <= 5
-        );
-        if (diags.length > 0) {
-          setSaveError(
-            diags.map((d) => `[${d.severity}] Line ${d.line + 1}: ${d.message}`).join("\n")
+      .then(
+        (data: {
+          diagnostics?: Array<{
+            line: number;
+            character: number;
+            message: string;
+            severity: string;
+          }>;
+        }) => {
+          const diags = (data.diagnostics ?? []).filter(
+            (d) => d.line === line && Math.abs(d.character - col) <= 5
           );
-        } else {
-          setSaveError("No diagnostics or code actions at this position.");
+          if (diags.length > 0) {
+            setSaveError(
+              diags.map((d) => `[${d.severity}] Line ${d.line + 1}: ${d.message}`).join("\n")
+            );
+          } else {
+            setSaveError("No diagnostics or code actions at this position.");
+          }
         }
-      })
+      )
       .catch(() => {
         setSaveError("No code actions available for this selection.");
       });
@@ -2254,7 +2382,9 @@ export function CodeViewer({
     () =>
       !!path &&
       Array.isArray(pendingFileDiffs) &&
-      pendingFileDiffs.some((entry) => entry && typeof entry.path === "string" && isSameIdePath(path, entry.path)),
+      pendingFileDiffs.some(
+        (entry) => entry && typeof entry.path === "string" && isSameIdePath(path, entry.path)
+      ),
     [path, pendingFileDiffs]
   );
   const pendingInlinePreviewRows = useMemo<IdePendingInlinePreviewRow[]>(
@@ -2307,7 +2437,11 @@ export function CodeViewer({
     const previewRows = showPendingInlinePreview ? pendingInlinePreviewRows : null;
     const totalRows = previewRows ? previewRows.length : sourceLines.length;
     const step = Math.max(1, Math.ceil(Math.max(totalRows, 1) / maxRows));
-    const rows: Array<{ sourceLine: number; length: number; kind: IdePendingInlinePreviewRow["kind"] | "mixed" }> = [];
+    const rows: Array<{
+      sourceLine: number;
+      length: number;
+      kind: IdePendingInlinePreviewRow["kind"] | "mixed";
+    }> = [];
     for (let i = 0; i < totalRows; i += step) {
       let longest = 0;
       let segmentKind: IdePendingInlinePreviewRow["kind"] | "mixed" = "context";
@@ -2328,7 +2462,7 @@ export function CodeViewer({
     return { rows, step };
   }, [pendingInlinePreviewRows, showPendingInlinePreview, sourceLines]);
   const activeEditorRowIndex = showPendingInlinePreview
-    ? pendingInlinePreviewIndexByLine.get(activeLine) ?? Math.max(activeLine - 1, 0)
+    ? (pendingInlinePreviewIndexByLine.get(activeLine) ?? Math.max(activeLine - 1, 0))
     : Math.max(activeLine - 1, 0);
   const activeMinimapRow = Math.floor(activeEditorRowIndex / Math.max(minimapRows.step, 1));
 
@@ -2697,7 +2831,9 @@ export function CodeViewer({
                       const lineNum = previewRow.lineNumber;
                       const diagnosticsIndex = lineNum === null ? null : lineNum - 1;
                       const lineDiags =
-                        diagnosticsIndex === null ? [] : lineDiagnostics.get(diagnosticsIndex) || [];
+                        diagnosticsIndex === null
+                          ? []
+                          : lineDiagnostics.get(diagnosticsIndex) || [];
                       const hasError = lineDiags.some((d) => d.severity === "error");
                       const hasWarning = lineDiags.some((d) => d.severity === "warning");
                       const isActivePreviewLine = lineNum !== null && activeLine === lineNum;
@@ -2819,9 +2955,12 @@ export function CodeViewer({
                       }}
                     >
                       {pendingInlinePreviewRows.map((row, index) => {
-                        const diagnosticsIndex = row.lineNumber === null ? null : row.lineNumber - 1;
+                        const diagnosticsIndex =
+                          row.lineNumber === null ? null : row.lineNumber - 1;
                         const lineDiags =
-                          diagnosticsIndex === null ? [] : lineDiagnostics.get(diagnosticsIndex) || [];
+                          diagnosticsIndex === null
+                            ? []
+                            : lineDiagnostics.get(diagnosticsIndex) || [];
                         const hasError = lineDiags.some((d) => d.severity === "error");
                         const hasWarning = lineDiags.some((d) => d.severity === "warning");
                         const isActivePreviewLine =
@@ -2851,7 +2990,10 @@ export function CodeViewer({
                               row.kind === "added" && "bg-emerald-500/14 text-emerald-100/95",
                               row.kind === "removed" && "bg-red-500/12 text-red-100/95",
                               row.kind === "context" && hasError && "bg-red-500/10",
-                              row.kind === "context" && hasWarning && !hasError && "bg-yellow-500/10",
+                              row.kind === "context" &&
+                                hasWarning &&
+                                !hasError &&
+                                "bg-yellow-500/10",
                               row.kind === "context" &&
                                 !hasError &&
                                 !hasWarning &&
@@ -2874,7 +3016,9 @@ export function CodeViewer({
                                 row.lineNumber !== null ? "cursor-pointer" : "cursor-default",
                                 row.kind === "removed" && "line-through"
                               )}
-                              title={row.lineNumber === null ? "Removed line" : `Line ${row.lineNumber}`}
+                              title={
+                                row.lineNumber === null ? "Removed line" : `Line ${row.lineNumber}`
+                              }
                             >
                               {row.text.length > 0 ? row.text : "\u00a0"}
                             </button>
@@ -2914,7 +3058,9 @@ export function CodeViewer({
                           >
                             <div
                               className="absolute left-0 right-0"
-                              style={{ transform: `translateY(${gutterStartLine * lineHeightPx}px)` }}
+                              style={{
+                                transform: `translateY(${gutterStartLine * lineHeightPx}px)`,
+                              }}
                             >
                               {visibleLineIndices.map((i) => {
                                 const line = sourceLines[i] || "";
@@ -2923,7 +3069,9 @@ export function CodeViewer({
                                 const hasError = lineDiags.some((d) => d.severity === "error");
                                 const hasWarning = lineDiags.some((d) => d.severity === "warning");
                                 const isActiveLine = activeLine === i + 1;
-                                const pendingLineState = pendingLineDecorations.lineStates.get(i + 1);
+                                const pendingLineState = pendingLineDecorations.lineStates.get(
+                                  i + 1
+                                );
                                 const pendingDeletedSummary = summarizePendingDeletedBlocks(
                                   pendingDeletedBlocksByLine.get(i + 1)
                                 );
@@ -2936,7 +3084,10 @@ export function CodeViewer({
                                     style={{
                                       height: `${normalizedLineHeight}px`,
                                       lineHeight: `${normalizedLineHeight}px`,
-                                      ...getPendingLineDecorationStyle(pendingLineState, isActiveLine),
+                                      ...getPendingLineDecorationStyle(
+                                        pendingLineState,
+                                        isActiveLine
+                                      ),
                                     }}
                                     className={cn(
                                       "w-max min-w-full flex items-center relative",
@@ -2950,7 +3101,9 @@ export function CodeViewer({
                                       )
                                     )}
                                   >
-                                    <span className="flex-shrink-0">{line.length > 0 ? line : "\u00a0"}</span>
+                                    <span className="flex-shrink-0">
+                                      {line.length > 0 ? line : "\u00a0"}
+                                    </span>
                                     {pendingDeletedSummary && (
                                       <span className="ml-4 inline-flex max-w-[40vw] min-w-0 flex-shrink items-center rounded border border-red-500/25 bg-red-500/10 px-1.5 py-0.5 text-[10px] text-red-200/90">
                                         <span className="truncate font-mono line-through">
@@ -2965,7 +3118,10 @@ export function CodeViewer({
                                     )}
                                     {hoverInfo?.line === i + 1 && hoverInfo.text && (
                                       <div className="absolute z-30 left-0 top-full mt-1 max-w-[500px] rounded-md border border-white/15 bg-[#0b0f19] shadow-[0_10px_30px_rgba(0,0,0,0.5)] px-3 py-2 text-xs text-gray-300 whitespace-pre-wrap break-words pointer-events-none">
-                                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={ideMarkdownComponents}>
+                                        <ReactMarkdown
+                                          remarkPlugins={[remarkGfm]}
+                                          components={ideMarkdownComponents}
+                                        >
                                           {hoverInfo.text}
                                         </ReactMarkdown>
                                       </div>
@@ -3008,14 +3164,17 @@ export function CodeViewer({
                                 const hasError = lineDiags.some((d) => d.severity === "error");
                                 const hasWarning = lineDiags.some((d) => d.severity === "warning");
                                 const isActiveLine = activeLine === i + 1;
-                                const pendingLineState = pendingLineDecorations.lineStates.get(i + 1);
+                                const pendingLineState = pendingLineDecorations.lineStates.get(
+                                  i + 1
+                                );
                                 const pendingDeletedSummary = summarizePendingDeletedBlocks(
                                   pendingDeletedBlocksByLine.get(i + 1)
                                 );
                                 const blameLine = blameLines.get(i + 1) || null;
                                 const blameDate = formatBlameStamp(blameLine?.authorDate);
                                 const blameSummary =
-                                  blameLine?.summary || (blameLine?.isUncommitted ? "Uncommitted" : "");
+                                  blameLine?.summary ||
+                                  (blameLine?.isUncommitted ? "Uncommitted" : "");
                                 const blameText = blameLine
                                   ? `${blameLine.author} · ${blameLine.shortCommit}${blameDate ? ` · ${blameDate}` : ""}${blameSummary ? ` · ${blameSummary}` : ""}`
                                   : "";
@@ -3031,7 +3190,10 @@ export function CodeViewer({
                                       ...(lineProps.style || {}),
                                       height: `${normalizedLineHeight}px`,
                                       lineHeight: `${normalizedLineHeight}px`,
-                                      ...getPendingLineDecorationStyle(pendingLineState, isActiveLine),
+                                      ...getPendingLineDecorationStyle(
+                                        pendingLineState,
+                                        isActiveLine
+                                      ),
                                     }}
                                     className={cn(
                                       lineProps.className,
@@ -3110,7 +3272,9 @@ export function CodeViewer({
                                                   <button
                                                     type="button"
                                                     onClick={() =>
-                                                      void handleCopyCommit(popoverBlameDetails.commit)
+                                                      void handleCopyCommit(
+                                                        popoverBlameDetails.commit
+                                                      )
                                                     }
                                                     className="p-1 rounded border border-white/15 text-gray-300 hover:text-white hover:bg-white/10"
                                                     title={
@@ -3230,7 +3394,9 @@ export function CodeViewer({
                         }}
                       >
                         <div className="px-2 py-1.5 border-b border-white/10 text-[10px] text-gray-500 flex items-center justify-between">
-                          <span>Completions {completionPrefix ? `for "${completionPrefix}"` : ""}</span>
+                          <span>
+                            Completions {completionPrefix ? `for "${completionPrefix}"` : ""}
+                          </span>
                           <span>Tab to accept</span>
                         </div>
                         <div className="divide-y divide-white/5">

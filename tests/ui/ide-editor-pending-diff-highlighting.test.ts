@@ -53,7 +53,7 @@ describe("IDE editor pending diff highlighting", () => {
     const merged = mergeGitDiffDecorations(
       [
         ["@@ -7,2 +7,0 @@", "-tail_cleanup()", "-close_connection()"].join("\n"),
-        ["@@ -2,0 +2,1 @@", '+const ready = true;'].join("\n"),
+        ["@@ -2,0 +2,1 @@", "+const ready = true;"].join("\n"),
       ],
       6
     );
@@ -91,7 +91,7 @@ describe("IDE editor pending diff highlighting", () => {
     const rows = buildPendingInlinePreviewRows(
       [
         "@@ -1,4 +1,4 @@",
-        " <p align=\"center\">",
+        ' <p align="center">',
         '-  <img src="https://img.shields.io/badge/tools-50-green" alt="50 Tools" />',
         '-  <img src="https://img.shields.io/badge/providers-31-purple" alt="31 Providers" />',
         '+  <img src="https://img.shields.io/badge/tools-53-green" alt="53 Tools" />',
@@ -99,7 +99,7 @@ describe("IDE editor pending diff highlighting", () => {
         " </p>",
       ].join("\n"),
       [
-        "<p align=\"center\">",
+        '<p align="center">',
         '  <img src="https://img.shields.io/badge/tools-53-green" alt="53 Tools" />',
         '  <img src="https://img.shields.io/badge/providers-33-purple" alt="33 Providers" />',
         "</p>",
@@ -145,30 +145,46 @@ describe("IDE editor pending diff highlighting", () => {
     const codeViewerSource = readCodeViewerSource();
     const ideChatPanelSource = readIdeChatPanelSource();
 
-    expect(codeViewerSource).toContain(
-      "const [pendingLineDecorations, setPendingLineDecorations] = useState<IdePendingDiffDecorations>"
+    expect(codeViewerSource).toMatch(
+      /const \[pendingLineDecorations, setPendingLineDecorations\] =\s*useState<IdePendingDiffDecorations>/
     );
-    expect(codeViewerSource).toContain("const [pendingPreviewDiff, setPendingPreviewDiff] = useState<string | null>(null);");
+    expect(codeViewerSource).toContain(
+      "const [pendingPreviewDiff, setPendingPreviewDiff] = useState<string | null>(null);"
+    );
     expect(codeViewerSource).toContain("mergeGitDiffDecorations(");
     expect(codeViewerSource).toContain("parseGitDiffDecorations(");
-    expect(codeViewerSource).toContain("buildPendingInlinePreviewRows(pendingPreviewDiff, sourceText)");
+    expect(codeViewerSource).toMatch(
+      /buildPendingInlinePreviewRows\(\s*pendingPreviewDiff,\s*sourceText\s*\)/
+    );
     expect(codeViewerSource).toContain("const selectPendingPreviewLine = useCallback(");
-    expect(codeViewerSource).toContain("selectPendingPreviewLine(requestedLine, { scrollIntoView: true });");
-    expect(codeViewerSource).toContain("selectPendingPreviewLine(row.lineNumber, {");
-    expect(codeViewerSource).toContain("const wasShowingPendingPreview = previousPendingInlinePreviewRef.current;");
+    expect(codeViewerSource).toMatch(
+      /selectPendingPreviewLine\(\s*requestedLine,\s*\{\s*scrollIntoView: true\s*\}\s*\);/
+    );
+    expect(codeViewerSource).toMatch(/selectPendingPreviewLine\(\s*row\.lineNumber,\s*\{/);
+    expect(codeViewerSource).toContain(
+      "const wasShowingPendingPreview = previousPendingInlinePreviewRef.current;"
+    );
     expect(codeViewerSource).toContain("textarea.setSelectionRange(offset, offset);");
     expect(codeViewerSource).toContain("textarea.scrollTop = scrollMetrics.top;");
     expect(codeViewerSource).toContain("pendingLineDecorations.lineStates.get(i + 1)");
-    expect(codeViewerSource).toContain("getPendingLineDecorationStyle(pendingLineState, isActiveLine)");
+    expect(codeViewerSource).toMatch(
+      /getPendingLineDecorationStyle\(\s*pendingLineState,\s*isActiveLine\s*\)/
+    );
     expect(codeViewerSource).toContain("ref={previewScrollRef}");
     expect(codeViewerSource).toContain("Removed line");
     expect(codeViewerSource).toContain("border border-red-500/25 bg-red-500/10");
-    expect(codeViewerSource).toContain("setPendingLineDecorations(emptyIdePendingDiffDecorations());");
-    expect(ideChatPanelSource).toContain("onPendingFileDiffControllerChange?.({");
-    expect(ideSource).toContain("onPendingFileDiffControllerChange={setIdePendingFileDiffController}");
+    expect(codeViewerSource).toContain(
+      "setPendingLineDecorations(emptyIdePendingDiffDecorations());"
+    );
+    expect(ideChatPanelSource).toMatch(/onPendingFileDiffControllerChange\?\.\(\s*\{/);
+    expect(ideSource).toMatch(
+      /onPendingFileDiffControllerChange=\{setIdePendingFileDiffController\}/
+    );
     expect(ideSource).toContain("Accept Changes");
     expect(ideSource).toContain("Reject Changes");
-    expect(ideSource).toContain("File {activePendingEditorFileIndex + 1} of {pendingEditorFiles.length}");
+    expect(ideSource).toMatch(
+      /File \{activePendingEditorFileIndex \+ 1\} of \{pendingEditorFiles\.length\}/
+    );
     expect(ideSource).toContain("enableCompletions={false}");
     expect(ideSource).toContain("enableGhostCompletions={false}");
     expect(ideSource).not.toContain('id: "completion"');

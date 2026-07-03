@@ -27,9 +27,9 @@ describe("TestFlight upload helper", () => {
 
   test("keeps App Store Connect validation and credential failures fatal", () => {
     expect(classifyTestFlightUploadFailure("ERROR ITMS-90035: Invalid Signature")).toBe("fatal");
-    expect(classifyTestFlightUploadFailure("Authentication credentials are missing or invalid")).toBe(
-      "fatal"
-    );
+    expect(
+      classifyTestFlightUploadFailure("Authentication credentials are missing or invalid")
+    ).toBe("fatal");
   });
 
   test("parses retry settings with safe fallbacks", () => {

@@ -51,7 +51,10 @@ function makeFakeRegistry(spec: FakeRegistrySpec): SkillRegistry {
   };
 }
 
-function createIsolatedManager(defaultRegistry: string, registries: SkillRegistry[]): SkillRegistryManager {
+function createIsolatedManager(
+  defaultRegistry: string,
+  registries: SkillRegistry[]
+): SkillRegistryManager {
   const manager = new SkillRegistryManager(defaultRegistry);
   (manager as unknown as { registries: Map<string, SkillRegistry> }).registries = new Map();
   for (const registry of registries) {

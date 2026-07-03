@@ -13,12 +13,16 @@ describe("x_search request body", () => {
 
   test("clamps max results to 1..30", () => {
     expect(
-      ((buildXSearchBody({ query: "q", maxResults: 999 }).search_parameters as Record<string, unknown>)
-        .max_search_results)
+      (
+        buildXSearchBody({ query: "q", maxResults: 999 }).search_parameters as Record<
+          string,
+          unknown
+        >
+      ).max_search_results
     ).toBe(30);
     expect(
-      ((buildXSearchBody({ query: "q", maxResults: 0 }).search_parameters as Record<string, unknown>)
-        .max_search_results)
+      (buildXSearchBody({ query: "q", maxResults: 0 }).search_parameters as Record<string, unknown>)
+        .max_search_results
     ).toBe(1);
   });
 

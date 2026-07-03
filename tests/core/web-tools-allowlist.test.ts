@@ -51,9 +51,9 @@ describe("Web tool URL allowlist policy", () => {
   });
 
   test("browser navigation uses the same private-host and allowlist policy", async () => {
-    await expect(
-      validateBrowserNavigationUrl("http://localhost:4269/api/config")
-    ).rejects.toThrow("Navigation blocked");
+    await expect(validateBrowserNavigationUrl("http://localhost:4269/api/config")).rejects.toThrow(
+      "Navigation blocked"
+    );
 
     config.setWebToolUrlPolicy({
       enabled: true,
@@ -64,7 +64,9 @@ describe("Web tool URL allowlist policy", () => {
     await expect(validateBrowserNavigationUrl("https://blocked.example/path")).rejects.toThrow(
       "not allowlisted for web_fetch"
     );
-    await expect(validateBrowserNavigationUrl("https://allowed.example/path")).resolves.toBeUndefined();
+    await expect(
+      validateBrowserNavigationUrl("https://allowed.example/path")
+    ).resolves.toBeUndefined();
   });
 
   test("browser openProfileTab blocks private hosts before opening a profile page", async () => {
@@ -85,10 +87,13 @@ describe("Web tool URL allowlist policy", () => {
     });
 
     globalThis.fetch = (async () =>
-      new Response("<html><head><title>Allowed</title></head><body><p>Hello world</p></body></html>", {
-        status: 200,
-        headers: { "Content-Type": "text/html" },
-      })) as typeof fetch;
+      new Response(
+        "<html><head><title>Allowed</title></head><body><p>Hello world</p></body></html>",
+        {
+          status: 200,
+          headers: { "Content-Type": "text/html" },
+        }
+      )) as typeof fetch;
 
     const result = await handleWebFetch({ url: "https://docs.allowed.example/path" });
     expect(result.title).toBe("Allowed");

@@ -583,7 +583,7 @@ function buildAgenticBehaviorSection(): string[] {
     "3. **Complete the task**: Don't give a partial answer and ask if the user wants you to continue. Just continue.",
     "4. **Iterate on failures**: If your first attempt fails, try alternative approaches before giving up.",
     "5. **Use tools liberally**: You have tools—use them. Read files, check directories, run commands, search the codebase.",
-    "6. **Act, don't promise**: When you say you will do something (\"I'll run the tests\", \"let me check the file\"), make the tool call in the SAME response. Never end a turn with only a description of what you intend to do. Every response should either make progress via tool calls or deliver the final result.",
+    '6. **Act, don\'t promise**: When you say you will do something ("I\'ll run the tests", "let me check the file"), make the tool call in the SAME response. Never end a turn with only a description of what you intend to do. Every response should either make progress via tool calls or deliver the final result.',
     "",
     "**What NOT to do:**",
     '- Don\'t ask "Would you like me to...?" when the answer is obvious from context.',

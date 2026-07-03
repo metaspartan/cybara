@@ -18,7 +18,10 @@ describe("MCP HTTP response parsing", () => {
   });
 
   test("surfaces JSON-RPC errors", () => {
-    const r = parseMcpHttpResponse("application/json", '{"error":{"code":-32601,"message":"nope"}}');
+    const r = parseMcpHttpResponse(
+      "application/json",
+      '{"error":{"code":-32601,"message":"nope"}}'
+    );
     expect(r.error?.message).toBe("nope");
   });
 

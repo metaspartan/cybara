@@ -17,7 +17,11 @@ import type { Channel } from "../../database";
 import * as subagentRegistry from "../../subagent-registry";
 import type { SubagentRunRecord } from "../../subagent-registry";
 import { getInboundMediaRootDir, saveInboundMediaFromUrl } from "../../channels/media";
-import { synthesizeSpeech, synthesizeWithSystemVoice, type SpeechSynthesisResult } from "../../speech";
+import {
+  synthesizeSpeech,
+  synthesizeWithSystemVoice,
+  type SpeechSynthesisResult,
+} from "../../speech";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -810,9 +814,7 @@ function runCapture(
   return { ok: true };
 }
 
-export async function handleNodes(
-  args: Record<string, unknown>
-): Promise<{
+export async function handleNodes(args: Record<string, unknown>): Promise<{
   success: boolean;
   action: string;
   nodes?: unknown[];
@@ -872,16 +874,48 @@ export async function handleNodes(
       const outPath = join(nodesCaptureDir(), `camera_${stamp}.jpg`);
       const cmd =
         os === "darwin"
-          ? ["ffmpeg", "-hide_banner", "-f", "avfoundation", "-i", "0:none", "-frames:v", "1", "-y", outPath]
+          ? [
+              "ffmpeg",
+              "-hide_banner",
+              "-f",
+              "avfoundation",
+              "-i",
+              "0:none",
+              "-frames:v",
+              "1",
+              "-y",
+              outPath,
+            ]
           : os === "linux"
-            ? ["ffmpeg", "-hide_banner", "-f", "v4l2", "-i", "/dev/video0", "-frames:v", "1", "-y", outPath]
+            ? [
+                "ffmpeg",
+                "-hide_banner",
+                "-f",
+                "v4l2",
+                "-i",
+                "/dev/video0",
+                "-frames:v",
+                "1",
+                "-y",
+                outPath,
+              ]
             : null;
       if (!cmd) {
-        return { success: false, action: "camera_snap", message: `Camera capture is not supported on ${os}.` };
+        return {
+          success: false,
+          action: "camera_snap",
+          message: `Camera capture is not supported on ${os}.`,
+        };
       }
       const r = runCapture(cmd, outPath, 15_000);
       return r.ok
-        ? { success: true, action: "camera_snap", node: LOCAL_NODE_ID, filePath: outPath, message: `Captured camera image to ${outPath}` }
+        ? {
+            success: true,
+            action: "camera_snap",
+            node: LOCAL_NODE_ID,
+            filePath: outPath,
+            message: `Captured camera image to ${outPath}`,
+          }
         : { success: false, action: "camera_snap", message: r.error! };
     }
 
@@ -898,16 +932,48 @@ export async function handleNodes(
       const outPath = join(nodesCaptureDir(), `screen_${stamp}.mp4`);
       const cmd =
         os === "darwin"
-          ? ["ffmpeg", "-hide_banner", "-f", "avfoundation", "-i", "1:none", "-t", String(seconds), "-y", outPath]
+          ? [
+              "ffmpeg",
+              "-hide_banner",
+              "-f",
+              "avfoundation",
+              "-i",
+              "1:none",
+              "-t",
+              String(seconds),
+              "-y",
+              outPath,
+            ]
           : os === "linux"
-            ? ["ffmpeg", "-hide_banner", "-f", "x11grab", "-i", process.env.DISPLAY || ":0.0", "-t", String(seconds), "-y", outPath]
+            ? [
+                "ffmpeg",
+                "-hide_banner",
+                "-f",
+                "x11grab",
+                "-i",
+                process.env.DISPLAY || ":0.0",
+                "-t",
+                String(seconds),
+                "-y",
+                outPath,
+              ]
             : null;
       if (!cmd) {
-        return { success: false, action: "screen_record", message: `Screen recording is not supported on ${os}.` };
+        return {
+          success: false,
+          action: "screen_record",
+          message: `Screen recording is not supported on ${os}.`,
+        };
       }
       const r = runCapture(cmd, outPath, (seconds + 15) * 1000);
       return r.ok
-        ? { success: true, action: "screen_record", node: LOCAL_NODE_ID, filePath: outPath, message: `Recorded ${seconds}s of the screen to ${outPath}` }
+        ? {
+            success: true,
+            action: "screen_record",
+            node: LOCAL_NODE_ID,
+            filePath: outPath,
+            message: `Recorded ${seconds}s of the screen to ${outPath}`,
+          }
         : { success: false, action: "screen_record", message: r.error! };
     }
 

@@ -74,7 +74,9 @@ describe("Feishu signature verification", () => {
   const nonce = "abc123";
   const rawBody = JSON.stringify({ encrypt: "..." });
   const sign = (ts: string, n: string, k: string, body: string) =>
-    createHash("sha256").update(ts + n + k + body, "utf8").digest("hex");
+    createHash("sha256")
+      .update(ts + n + k + body, "utf8")
+      .digest("hex");
 
   test("accepts a valid signature", () => {
     const sig = sign(timestamp, nonce, encryptKey, rawBody);

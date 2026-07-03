@@ -19,13 +19,7 @@ import { cybaraDir } from "./paths";
 import { join } from "path";
 
 export type KanbanStatus =
-  | "triage"
-  | "todo"
-  | "ready"
-  | "running"
-  | "blocked"
-  | "done"
-  | "archived";
+  "triage" | "todo" | "ready" | "running" | "blocked" | "done" | "archived";
 
 export const VALID_STATUSES: KanbanStatus[] = [
   "triage",

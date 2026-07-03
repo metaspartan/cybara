@@ -56,8 +56,7 @@ async function stopServer(target: ReturnType<typeof Bun.spawn> | null): Promise<
   if (!target) return;
   try {
     target.kill("SIGTERM");
-  } catch {
-  }
+  } catch {}
   await Promise.race([target.exited, sleep(5000)]);
 }
 
@@ -67,8 +66,7 @@ async function waitForServerReady(url: string, timeoutMs = 30000): Promise<void>
     try {
       const response = await fetch(`${url}/api/health`);
       if (response.ok) return;
-    } catch {
-    }
+    } catch {}
     await sleep(250);
   }
   throw new Error(`Timed out waiting for server at ${url}`);
@@ -146,7 +144,10 @@ describe("memory CRUD e2e", () => {
 
     const search = await api("GET", `/api/memory/search?query=${encodeURIComponent(secondNeedle)}`);
     expect(search.status).toBe(200);
-    const results = search.data.results as Array<{ file: string; entry: { index: number; content: string } }>;
+    const results = search.data.results as Array<{
+      file: string;
+      entry: { index: number; content: string };
+    }>;
     const hit = results.find((result) => result.file === expectedFile);
     expect(hit?.entry.index).toBe(1);
     expect(hit?.entry.content).toContain(secondNeedle);
@@ -156,9 +157,9 @@ describe("memory CRUD e2e", () => {
     expect(deleteEntry.data.success).toBe(true);
 
     const afterEntryDelete = await api("GET", "/api/memory");
-    const memory = (afterEntryDelete.data.memories as Array<{ file: string; entries: unknown[] }>).find(
-      (item) => item.file === expectedFile
-    );
+    const memory = (
+      afterEntryDelete.data.memories as Array<{ file: string; entries: unknown[] }>
+    ).find((item) => item.file === expectedFile);
     expect(memory?.entries).toHaveLength(1);
 
     const deleteFile = await api("DELETE", `/api/memory/${encodedRawFile}`);

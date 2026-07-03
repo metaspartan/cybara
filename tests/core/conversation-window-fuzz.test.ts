@@ -149,9 +149,7 @@ describe("estimateConversationChars properties", () => {
         expect(current).toBeGreaterThanOrEqual(prev);
         prev = current;
       }
-      expect(prev).toBeGreaterThanOrEqual(
-        convo.reduce((sum, m) => sum + m.content.length, 0)
-      );
+      expect(prev).toBeGreaterThanOrEqual(convo.reduce((sum, m) => sum + m.content.length, 0));
     }
   });
 });
@@ -172,9 +170,7 @@ describe("conversationNeedsCompaction properties", () => {
         expect(result).toBe(false);
       }
       if (result) {
-        expect(
-          opts.convoChars > opts.threshold || opts.convoLength > opts.maxMessages
-        ).toBe(true);
+        expect(opts.convoChars > opts.threshold || opts.convoLength > opts.maxMessages).toBe(true);
       }
     }
   });

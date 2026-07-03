@@ -13,9 +13,7 @@ import {
 describe("local Solana SPL token helpers", () => {
   test("exports the canonical token program ids", () => {
     expect(TOKEN_PROGRAM_ID.toBase58()).toBe("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
-    expect(TOKEN_2022_PROGRAM_ID.toBase58()).toBe(
-      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-    );
+    expect(TOKEN_2022_PROGRAM_ID.toBase58()).toBe("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
     expect(ASSOCIATED_TOKEN_PROGRAM_ID.toBase58()).toBe(
       "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
     );
@@ -92,8 +90,8 @@ describe("local Solana SPL token helpers", () => {
     await expect(getMintDecimals(connection as never, mint, "confirmed")).rejects.toThrow(
       "unsupported owner"
     );
-    expect(() =>
-      createTransferCheckedInstruction(mint, mint, mint, mint, 1n << 64n, 6)
-    ).toThrow("outside u64 range");
+    expect(() => createTransferCheckedInstruction(mint, mint, mint, mint, 1n << 64n, 6)).toThrow(
+      "outside u64 range"
+    );
   });
 });

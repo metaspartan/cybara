@@ -5,7 +5,10 @@ import {
   handleChannelManagementCommand,
   setChannelSubagentSpawnHandler,
 } from "../../src/core/channels/commands";
-import { configureChannelChatRuntime, resetChannelChatRuntime } from "../../src/core/channels/chat-runtime";
+import {
+  configureChannelChatRuntime,
+  resetChannelChatRuntime,
+} from "../../src/core/channels/chat-runtime";
 import { tables } from "../../src/core/database";
 import {
   handleSessionsSpawn,
@@ -172,8 +175,7 @@ describe("channel management commands", () => {
     });
 
     const updatedAgent = tables.agents.get(agentId) as
-      | { provider_id?: string; model?: string }
-      | undefined;
+      { provider_id?: string; model?: string } | undefined;
 
     expect(response).toContain("Provider B");
     expect(updatedAgent?.provider_id).toBe(providerB);

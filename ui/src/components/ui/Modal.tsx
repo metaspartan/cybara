@@ -1,6 +1,6 @@
-import { X } from 'lucide-react';
-import { cn } from '../../lib/utils';
-import { useEffect } from 'react';
+import { X } from "lucide-react";
+import { cn } from "../../lib/utils";
+import { useEffect } from "react";
 
 interface ModalProps {
   isOpen: boolean;
@@ -8,28 +8,28 @@ interface ModalProps {
   title?: string;
   description?: string;
   children: React.ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: "sm" | "md" | "lg" | "xl";
 }
 
-export function Modal({ isOpen, onClose, title, description, children, size = 'md' }: ModalProps) {
+export function Modal({ isOpen, onClose, title, description, children, size = "md" }: ModalProps) {
   useEffect(() => {
     if (isOpen) {
-      document.body.style.overflow = 'hidden';
+      document.body.style.overflow = "hidden";
     } else {
-      document.body.style.overflow = '';
+      document.body.style.overflow = "";
     }
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = "";
     };
   }, [isOpen]);
 
   if (!isOpen) return null;
 
   const sizes = {
-    sm: 'max-w-md',
-    md: 'max-w-lg',
-    lg: 'max-w-2xl',
-    xl: 'max-w-4xl',
+    sm: "max-w-md",
+    md: "max-w-lg",
+    lg: "max-w-2xl",
+    xl: "max-w-4xl",
   };
 
   return (
@@ -39,13 +39,15 @@ export function Modal({ isOpen, onClose, title, description, children, size = 'm
         onClick={onClose}
       />
 
-      <div className={cn(
-        'relative w-full rounded-2xl overflow-hidden',
-        'transform transition-all duration-300 ease-out',
-        'animate-in zoom-in-95 slide-in-from-bottom-4',
-        sizes[size],
-        'glass-strong'
-      )}>
+      <div
+        className={cn(
+          "relative w-full rounded-2xl overflow-hidden",
+          "transform transition-all duration-300 ease-out",
+          "animate-in zoom-in-95 slide-in-from-bottom-4",
+          sizes[size],
+          "glass-strong"
+        )}
+      >
         <div className="absolute inset-0 rounded-2xl pointer-events-none">
           <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/20 via-transparent to-white/10" />
         </div>
@@ -65,9 +67,7 @@ export function Modal({ isOpen, onClose, title, description, children, size = 'm
           </div>
         )}
 
-        <div className="relative p-6">
-          {children}
-        </div>
+        <div className="relative p-6">{children}</div>
       </div>
     </div>
   );

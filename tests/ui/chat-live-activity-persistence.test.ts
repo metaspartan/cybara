@@ -14,9 +14,7 @@ describe("Chat live activity persistence", () => {
 
   test("does not clear live activities on idle while a request is still loading", () => {
     const source = readFileSync(chatSourcePath, "utf8");
-    expect(source).toContain(
-      "if (!loadingRef.current && !hasPendingCaptureForVisibleSession) {"
-    );
+    expect(source).toContain("if (!loadingRef.current && !hasPendingCaptureForVisibleSession) {");
     expect(source).toContain("setLiveActivities([]);");
     expect(source).toContain("runActivityBufferRef.current = [];");
   });
@@ -33,7 +31,7 @@ describe("Chat live activity persistence", () => {
     const source = readFileSync(chatSourcePath, "utf8");
     expect(source).toContain("eventTimestamp?: number");
     expect(source).toContain(
-      "typeof eventTimestamp === \"number\" && Number.isFinite(eventTimestamp)"
+      'typeof eventTimestamp === "number" && Number.isFinite(eventTimestamp)'
     );
     expect(source).toMatch(
       /appendLiveActivity\(\s*phase,\s*text,\s*payload\.toolName,\s*eventTimestamp,\s*payload\.toolCallId,\s*payload\.sandboxProvider\s*\);/
@@ -48,7 +46,9 @@ describe("Chat live activity persistence", () => {
 
   test("clears stale running step text after a tool completion with no in-flight step", () => {
     const source = readFileSync(chatSourcePath, "utf8");
-    expect(source).toContain("const nextActiveStep = getLatestInFlightStep(runActivityBufferRef.current);");
+    expect(source).toContain(
+      "const nextActiveStep = getLatestInFlightStep(runActivityBufferRef.current);"
+    );
     expect(source).toContain("if (nextActiveStep) {");
     expect(source).toContain("setLiveCurrentStep(nextActiveStep);");
     expect(source).toContain("} else {");

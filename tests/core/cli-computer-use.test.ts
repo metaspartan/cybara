@@ -24,7 +24,8 @@ describe("computer-use CLI output", () => {
           expect(endpoint).toBe("/api/computer-use/status");
           return {
             available: true,
-            command: "C:\\Users\\carsen\\AppData\\Local\\Programs\\Cua\\cua-driver\\bin\\cua-driver.exe",
+            command:
+              "C:\\Users\\carsen\\AppData\\Local\\Programs\\Cua\\cua-driver\\bin\\cua-driver.exe",
             driverSource: "known-install-dir",
             configuredCommand: "C:\\Portable\\Cua\\cua-driver.exe",
             platform: "win32",

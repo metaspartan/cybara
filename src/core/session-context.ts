@@ -680,7 +680,10 @@ function normalizePersistedSessionListRow(
   };
 }
 
-function persistedSessionListSql(limit?: number, offset?: number): {
+function persistedSessionListSql(
+  limit?: number,
+  offset?: number
+): {
   sql: string;
   params: number[];
 } {

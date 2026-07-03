@@ -5,10 +5,7 @@ import {
   listMediaProviders,
   resolveDefaultProvider,
 } from "../../src/core/media-generation";
-import {
-  registerFalProviders,
-  registerOpenAIImageProvider,
-} from "../../src/core/media-providers";
+import { registerFalProviders, registerOpenAIImageProvider } from "../../src/core/media-providers";
 
 const MEDIA_ENV_KEYS = [
   "OPENAI_API_KEY",

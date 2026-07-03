@@ -16,7 +16,7 @@ describe("security-sensitive runtime defaults", () => {
   test("server expose flag overrides loopback only when explicitly requested", () => {
     const serverSource = readFileSync(join(ROOT_DIR, "src", "index.ts"), "utf8");
 
-    expect(serverSource).toContain("process.argv.includes(\"--expose\")");
+    expect(serverSource).toContain('process.argv.includes("--expose")');
     expect(serverSource).toContain("function isAllInterfaceHost");
     expect(serverSource).toContain('host === "0.0.0.0"');
     expect(serverSource).toContain('host === "::"');
@@ -31,8 +31,8 @@ describe("security-sensitive runtime defaults", () => {
     const speechSource = readFileSync(join(ROOT_DIR, "src", "core", "speech.ts"), "utf8");
 
     expect(pathsSource).toContain("process.env.CYBARA_HOME?.trim()");
-    expect(mainSource).toContain("process.env.CYBARA_HOME || join(USER_HOME, \".cybara\")");
-    expect(cliSource).toContain("process.env.CYBARA_HOME || join(home, \".cybara\")");
+    expect(mainSource).toContain('process.env.CYBARA_HOME || join(USER_HOME, ".cybara")');
+    expect(cliSource).toContain('process.env.CYBARA_HOME || join(home, ".cybara")');
     expect(speechSource).toContain("process.env.CYBARA_HOME?.trim()");
     expect(speechSource).toContain('join(cybaraHome, "media")');
     expect(speechSource).toContain("chmodSync(aiffPath, 0o600)");

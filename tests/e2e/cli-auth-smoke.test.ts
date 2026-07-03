@@ -50,8 +50,7 @@ async function waitForServerReady(url: string, timeoutMs = 30000): Promise<void>
     try {
       const res = await fetch(`${url}/api/health`);
       if (res.ok) return;
-    } catch {
-    }
+    } catch {}
     await sleep(250);
   }
   throw new Error(`Timed out waiting for server at ${url}`);
@@ -125,8 +124,7 @@ describeOrSkip("CLI auth e2e", () => {
     if (serverProc) {
       try {
         serverProc.kill("SIGTERM");
-      } catch {
-      }
+      } catch {}
       await Promise.race([serverProc.exited, sleep(5000)]);
     }
 
@@ -182,10 +180,9 @@ describeOrSkip("CLI auth e2e", () => {
   test("CLI direct-fetch mutation commands succeed when CYBARA_API_KEY is set", async () => {
     removeApiKeyFile();
 
-    const setConfig = await runCli(
-      ["config", "set", "theme", `cli-auth-theme-${Date.now()}`],
-      { CYBARA_API_KEY: apiKey }
-    );
+    const setConfig = await runCli(["config", "set", "theme", `cli-auth-theme-${Date.now()}`], {
+      CYBARA_API_KEY: apiKey,
+    });
     expect(setConfig.exitCode).toBe(0);
     expect(setConfig.stdout).toContain("Set theme =");
 
