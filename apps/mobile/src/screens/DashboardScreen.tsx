@@ -219,6 +219,7 @@ type DetailRoute =
   | { kind: "newTask" }
   | { kind: "systemPrompt" }
   | { kind: "modelRouter" }
+  | { kind: "speech" }
   | { kind: "surface"; surface: MobileSurfaceKey }
   | { kind: "item"; surface: MobileSurfaceKey; item: RemoteItemSummary | ActivitySummary };
 
@@ -754,6 +755,9 @@ function routeHeader(
   if (route.kind === "modelRouter") {
     return { title: "Model Router", detail: "Provider routing and fallback" };
   }
+  if (route.kind === "speech") {
+    return { title: "Voice & Speech", detail: "Text-to-speech and dictation" };
+  }
   if (route.kind === "surface") {
     const meta = surfaceMeta[route.surface];
     return { title: meta.title, detail: "Live gateway data" };
@@ -970,6 +974,11 @@ export function DashboardScreen({
     setDetailRoute({ kind: "systemPrompt" });
   };
 
+  const openSpeech = () => {
+    setChatHeaderAction(null);
+    setActiveTab("settings");
+    setDetailRoute({ kind: "speech" });
+  };
   const openModelRouter = () => {
     setChatHeaderAction(null);
     setActiveTab("settings");
@@ -1232,6 +1241,7 @@ export function DashboardScreen({
               openSurface={openSurface}
               openSystemPrompt={openSystemPrompt}
               openModelRouter={openModelRouter}
+              openSpeech={openSpeech}
             />
           ) : null}
         </ScrollView>
@@ -1987,6 +1997,16 @@ function DetailContent({
   }
   if (route.kind === "modelRouter") {
     return <ModelRouterPanel accentColor={accentColor} api={api} summary={summary} />;
+  }
+  if (route.kind === "speech") {
+    return (
+      <SpeechSettingsPanel
+        accentColor={accentColor}
+        api={api}
+        summary={summary}
+        refreshSummary={refreshSummary}
+      />
+    );
   }
   if (route.kind === "item") {
     return (
@@ -4351,6 +4371,206 @@ function ModelRouterPanel({
   );
 }
 
+function SpeechSettingsPanel({
+  accentColor,
+  api,
+  summary,
+  refreshSummary,
+}: {
+  accentColor: string;
+  api: CybaraMobileApi;
+  summary: FeatureSummary | null;
+  refreshSummary: () => void;
+}) {
+  const configAvailable = summary?.availability.config.ok === true;
+  const speechSettings = readMobileSpeechSettings(summary?.config);
+  const [speechDraft, setSpeechDraft] = useState(speechSettings);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setSpeechDraft(speechSettings);
+  }, [
+    speechSettings.stt.language,
+    speechSettings.stt.model,
+    speechSettings.stt.provider,
+    speechSettings.stt.providerId,
+    speechSettings.tts.fallbackToSystem,
+    speechSettings.tts.maxTextLength,
+    speechSettings.tts.model,
+    speechSettings.tts.outputFormat,
+    speechSettings.tts.provider,
+    speechSettings.tts.providerId,
+    speechSettings.tts.speed,
+    speechSettings.tts.voice,
+  ]);
+
+  const saveSpeech = async (
+    section: "tts" | "stt",
+    patch: Partial<MobileSpeechSettings["tts"]> | Partial<MobileSpeechSettings["stt"]>
+  ) => {
+    if (!configAvailable || saving) return;
+    const nextSpeech: MobileSpeechSettings = {
+      ...speechDraft,
+      [section]: { ...speechDraft[section], ...patch },
+    };
+    setSpeechDraft(nextSpeech);
+    setSaving(true);
+    try {
+      const result = await api.updateConfig({ speech: nextSpeech });
+      if (result.success === false) throw new Error("Speech setting failed");
+      await refreshSummary();
+    } catch (error) {
+      Alert.alert("Speech setting failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!configAvailable) {
+    return (
+      <SettingsSection title="Speech">
+        <EmptyState
+          label="Speech settings unavailable"
+          detail={endpointErrorDetail(
+            summary?.availability.config,
+            "The gateway did not return editable speech settings."
+          )}
+        />
+      </SettingsSection>
+    );
+  }
+
+  return (
+    <>
+      <SettingsSection title="Text to speech">
+        <View style={styles.settingsInfoHeader}>
+          <Volume2 color={accentColor} size={18} strokeWidth={2.1} />
+          <Text style={styles.settingsInfoTitle}>Voice output</Text>
+        </View>
+        <SettingSelector
+          disabled={saving}
+          label="TTS provider"
+          onSelect={(value) => {
+            const provider =
+              value === "system" || value === "elevenlabs" || value === "openai" ? value : "auto";
+            void saveSpeech("tts", { provider });
+          }}
+          options={[
+            { label: "Auto", value: "auto" },
+            { label: "ElevenLabs", value: "elevenlabs" },
+            { label: "OpenAI", value: "openai" },
+            { label: "System", value: "system" },
+          ]}
+          selected={speechDraft.tts.provider}
+          tone={accentColor}
+          variant="menu"
+        />
+        <SettingSelector
+          disabled={saving}
+          label="TTS account"
+          onSelect={(providerId) => {
+            void saveSpeech("tts", { providerId });
+          }}
+          options={mobileSpeechProviderOptions(summary?.providers || [], "tts")}
+          selected={speechDraft.tts.providerId}
+          tone={accentColor}
+          variant="menu"
+        />
+        <SettingsTextField
+          label="TTS model"
+          onBlur={() => {
+            void saveSpeech("tts", { model: speechDraft.tts.model });
+          }}
+          onChangeText={(model) =>
+            setSpeechDraft((current) => ({ ...current, tts: { ...current.tts, model } }))
+          }
+          placeholder="eleven_multilingual_v2"
+          value={speechDraft.tts.model}
+        />
+        <SettingsTextField
+          label="Voice"
+          onBlur={() => {
+            void saveSpeech("tts", { voice: speechDraft.tts.voice });
+          }}
+          onChangeText={(voice) =>
+            setSpeechDraft((current) => ({ ...current, tts: { ...current.tts, voice } }))
+          }
+          placeholder="Voice ID or name"
+          value={speechDraft.tts.voice}
+        />
+        <SettingSelector
+          disabled={saving}
+          label="Audio format"
+          onSelect={(outputFormat) => {
+            void saveSpeech("tts", { outputFormat });
+          }}
+          options={[
+            { label: "MP3", value: "mp3" },
+            { label: "M4A", value: "m4a" },
+            { label: "WAV", value: "wav" },
+            { label: "Opus", value: "opus" },
+            { label: "AAC", value: "aac" },
+            { label: "AIFF", value: "aiff" },
+          ]}
+          selected={speechDraft.tts.outputFormat}
+          tone={accentColor}
+          variant="menu"
+        />
+        <SettingToggle
+          busy={saving}
+          detail="Use the system voice if no cloud TTS provider is configured."
+          disabled={saving}
+          label="System voice fallback"
+          onPress={() => {
+            void saveSpeech("tts", { fallbackToSystem: !speechDraft.tts.fallbackToSystem });
+          }}
+          tone={accentColor}
+          value={speechDraft.tts.fallbackToSystem}
+        />
+      </SettingsSection>
+      <SettingsSection title="Speech to text">
+        <View style={styles.settingsInfoHeader}>
+          <Mic color={accentColor} size={18} strokeWidth={2.1} />
+          <Text style={styles.settingsInfoTitle}>Dictation</Text>
+        </View>
+        <SettingSelector
+          disabled={saving}
+          label="STT account"
+          onSelect={(providerId) => {
+            void saveSpeech("stt", { providerId });
+          }}
+          options={mobileSpeechProviderOptions(summary?.providers || [], "stt")}
+          selected={speechDraft.stt.providerId}
+          tone={accentColor}
+          variant="menu"
+        />
+        <SettingsTextField
+          label="STT model"
+          onBlur={() => {
+            void saveSpeech("stt", { model: speechDraft.stt.model });
+          }}
+          onChangeText={(model) =>
+            setSpeechDraft((current) => ({ ...current, stt: { ...current.stt, model } }))
+          }
+          placeholder="gpt-4o-mini-transcribe"
+          value={speechDraft.stt.model}
+        />
+        <SettingsTextField
+          label="Language"
+          onBlur={() => {
+            void saveSpeech("stt", { language: speechDraft.stt.language });
+          }}
+          onChangeText={(language) =>
+            setSpeechDraft((current) => ({ ...current, stt: { ...current.stt, language } }))
+          }
+          placeholder="en"
+          value={speechDraft.stt.language}
+        />
+      </SettingsSection>
+    </>
+  );
+}
+
 function SystemPromptPanel({
   api,
   summary,
@@ -4662,6 +4882,7 @@ function SettingsPanel({
   openSurface,
   openSystemPrompt,
   openModelRouter,
+  openSpeech,
 }: {
   accentColor: string;
   accentKey: AccentKey;
@@ -4675,6 +4896,7 @@ function SettingsPanel({
   openSurface: (surface: MobileSurfaceKey) => void;
   openSystemPrompt: () => void;
   openModelRouter: () => void;
+  openSpeech: () => void;
 }) {
   const counts = summarizeFeatureCounts(summary);
   const { mode: appearanceMode, setMode: setAppearanceMode } = useThemeControls();
@@ -4711,28 +4933,9 @@ function SettingsPanel({
   const reasoningEffort = readMobileReasoningEffort(summary?.config);
   const dangerousPolicy = readMobileDangerousToolPolicy(summary?.config);
   const sandboxRuntime = readMobileSandboxRuntime(summary?.config);
-  const speechSettings = readMobileSpeechSettings(summary?.config);
-  const [speechDraft, setSpeechDraft] = useState(speechSettings);
   const walletStatus = objectRecord(summary?.walletStatus);
   const walletStatusAvailable = Boolean(walletStatus);
   const agentAccessEnabled = booleanSetting(walletStatus, "agentAccessEnabled");
-
-  useEffect(() => {
-    setSpeechDraft(speechSettings);
-  }, [
-    speechSettings.stt.language,
-    speechSettings.stt.model,
-    speechSettings.stt.provider,
-    speechSettings.stt.providerId,
-    speechSettings.tts.fallbackToSystem,
-    speechSettings.tts.maxTextLength,
-    speechSettings.tts.model,
-    speechSettings.tts.outputFormat,
-    speechSettings.tts.provider,
-    speechSettings.tts.providerId,
-    speechSettings.tts.speed,
-    speechSettings.tts.voice,
-  ]);
 
   const saveConfigPatch = async (
     key: string,
@@ -4754,20 +4957,6 @@ function SettingsPanel({
     }
   };
 
-  const saveSpeechPatch = async (
-    section: "tts" | "stt",
-    patch: Partial<MobileSpeechSettings["tts"]> | Partial<MobileSpeechSettings["stt"]>
-  ) => {
-    const nextSpeech: MobileSpeechSettings = {
-      ...speechDraft,
-      [section]: {
-        ...speechDraft[section],
-        ...patch,
-      },
-    };
-    setSpeechDraft(nextSpeech);
-    await saveConfigPatch("speech", { speech: nextSpeech }, "Speech setting failed");
-  };
 
   const toggleAgentAccess = async () => {
     if (!walletStatusAvailable || savingAgentAccess) return;
@@ -5188,160 +5377,25 @@ function SettingsPanel({
           ) : null}
         </SettingsSection>
         {MOBILE_SETTINGS_ROOT_CHROME.speechControls ? (
-          <SettingsSection title="Speech">
-            {configAvailable ? (
-              <>
-                <SettingSelector
-                  disabled={savingConfigKey !== null}
-                  label="TTS provider"
-                  onSelect={(value) => {
-                    const provider =
-                      value === "system" || value === "elevenlabs" || value === "openai"
-                        ? value
-                        : "auto";
-                    void saveSpeechPatch("tts", { provider });
-                  }}
-                  options={[
-                    { label: "Auto", value: "auto" },
-                    { label: "ElevenLabs", value: "elevenlabs" },
-                    { label: "OpenAI", value: "openai" },
-                    { label: "System", value: "system" },
-                  ]}
-                  selected={speechDraft.tts.provider}
-                  tone={accentColor}
-                  variant="menu"
-                />
-                <SettingSelector
-                  disabled={savingConfigKey !== null}
-                  label="TTS account"
-                  onSelect={(providerId) => {
-                    void saveSpeechPatch("tts", { providerId });
-                  }}
-                  options={mobileSpeechProviderOptions(summary?.providers || [], "tts")}
-                  selected={speechDraft.tts.providerId}
-                  tone={accentColor}
-                  variant="menu"
-                />
-                <View style={styles.settingsInfoBox}>
-                  <View style={styles.settingsInfoHeader}>
-                    <Volume2 color={accentColor} size={18} strokeWidth={2.1} />
-                    <Text style={styles.settingsInfoTitle}>Text to speech</Text>
-                  </View>
-                  <SettingsTextField
-                    label="TTS model"
-                    onBlur={() => {
-                      void saveSpeechPatch("tts", { model: speechDraft.tts.model });
-                    }}
-                    onChangeText={(model) =>
-                      setSpeechDraft((current) => ({
-                        ...current,
-                        tts: { ...current.tts, model },
-                      }))
-                    }
-                    placeholder="eleven_multilingual_v2"
-                    value={speechDraft.tts.model}
-                  />
-                  <SettingsTextField
-                    label="Voice"
-                    onBlur={() => {
-                      void saveSpeechPatch("tts", { voice: speechDraft.tts.voice });
-                    }}
-                    onChangeText={(voice) =>
-                      setSpeechDraft((current) => ({
-                        ...current,
-                        tts: { ...current.tts, voice },
-                      }))
-                    }
-                    placeholder="Voice ID or name"
-                    value={speechDraft.tts.voice}
-                  />
-                  <SettingSelector
-                    disabled={savingConfigKey !== null}
-                    label="Audio format"
-                    onSelect={(outputFormat) => {
-                      void saveSpeechPatch("tts", { outputFormat });
-                    }}
-                    options={[
-                      { label: "MP3", value: "mp3" },
-                      { label: "M4A", value: "m4a" },
-                      { label: "WAV", value: "wav" },
-                      { label: "Opus", value: "opus" },
-                      { label: "AAC", value: "aac" },
-                      { label: "AIFF", value: "aiff" },
-                    ]}
-                    selected={speechDraft.tts.outputFormat}
-                    tone={accentColor}
-                    variant="menu"
-                  />
-                  <SettingToggle
-                    busy={savingConfigKey === "speech"}
-                    detail="Use macOS system voice if no cloud TTS provider is configured."
-                    disabled={savingConfigKey !== null}
-                    label="System voice fallback"
-                    onPress={() => {
-                      void saveSpeechPatch("tts", {
-                        fallbackToSystem: !speechDraft.tts.fallbackToSystem,
-                      });
-                    }}
-                    tone={accentColor}
-                    value={speechDraft.tts.fallbackToSystem}
-                  />
-                </View>
-                <View style={styles.settingsInfoBox}>
-                  <View style={styles.settingsInfoHeader}>
-                    <Mic color={accentColor} size={18} strokeWidth={2.1} />
-                    <Text style={styles.settingsInfoTitle}>Speech to text</Text>
-                  </View>
-                  <SettingSelector
-                    disabled={savingConfigKey !== null}
-                    label="STT account"
-                    onSelect={(providerId) => {
-                      void saveSpeechPatch("stt", { providerId });
-                    }}
-                    options={mobileSpeechProviderOptions(summary?.providers || [], "stt")}
-                    selected={speechDraft.stt.providerId}
-                    tone={accentColor}
-                    variant="menu"
-                  />
-                  <SettingsTextField
-                    label="STT model"
-                    onBlur={() => {
-                      void saveSpeechPatch("stt", { model: speechDraft.stt.model });
-                    }}
-                    onChangeText={(model) =>
-                      setSpeechDraft((current) => ({
-                        ...current,
-                        stt: { ...current.stt, model },
-                      }))
-                    }
-                    placeholder="gpt-4o-mini-transcribe"
-                    value={speechDraft.stt.model}
-                  />
-                  <SettingsTextField
-                    label="Language"
-                    onBlur={() => {
-                      void saveSpeechPatch("stt", { language: speechDraft.stt.language });
-                    }}
-                    onChangeText={(language) =>
-                      setSpeechDraft((current) => ({
-                        ...current,
-                        stt: { ...current.stt, language },
-                      }))
-                    }
-                    placeholder="en"
-                    value={speechDraft.stt.language}
-                  />
-                </View>
-              </>
-            ) : (
-              <EmptyState
-                label="Speech settings unavailable"
-                detail={endpointErrorDetail(
-                  summary?.availability.config,
-                  "The gateway did not return editable speech settings."
-                )}
-              />
-            )}
+          <SettingsSection title="Voice & Speech">
+            <Pressable
+              accessibilityRole="button"
+              style={styles.settingsNavigationRow}
+              onPress={openSpeech}
+            >
+              <View style={[styles.settingsNavigationIcon, { backgroundColor: `${accentColor}18` }]}>
+                <Volume2 color={accentColor} size={20} strokeWidth={2.1} />
+              </View>
+              <View style={styles.listText}>
+                <Text style={styles.listTitle}>Text-to-speech & dictation</Text>
+                <Text style={styles.listDetail} numberOfLines={1}>
+                  {configAvailable
+                    ? "Voice output provider, model, and speech-to-text"
+                    : endpointStatusLabel(summary?.availability.config)}
+                </Text>
+              </View>
+              <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+            </Pressable>
           </SettingsSection>
         ) : null}
         <SettingsSection title="Gateway APIs">
