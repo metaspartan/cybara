@@ -62,13 +62,24 @@ describe("mobile theming", () => {
     expect(light).toContain("chrome:");
   });
 
-  test("LiquidGlass prefers native expo-glass-effect and falls back to BlurView", () => {
-    const src = read("components/LiquidGlass.tsx");
+  test("shared glass probe prefers native expo-glass-effect", () => {
+    const src = read("components/glassSupport.ts");
     expect(src).toContain('import("expo-glass-effect")');
     expect(src).toContain("isLiquidGlassAvailable");
     expect(src).toContain("GlassView");
-    expect(src).toContain('from "expo-blur"');
-    expect(src).toContain("BlurView");
+    expect(src).toContain("useNativeGlassView");
+  });
+
+  test("LiquidGlass and GlassPanel both use the native glass surface with a BlurView fallback", () => {
+    // Every primary surface uses genuine iOS 26 Liquid Glass, not just LiquidGlass:
+    // GlassPanel (the app's most-used surface) now upgrades too.
+    for (const rel of ["components/LiquidGlass.tsx", "components/Glass.tsx"]) {
+      const src = read(rel);
+      expect(src).toContain("useNativeGlassView");
+      expect(src).toContain("GlassView");
+      expect(src).toContain('from "expo-blur"');
+      expect(src).toContain("BlurView");
+    }
   });
 
   test("tab bar and chat composer use the LiquidGlass surface (no opaque fill)", () => {

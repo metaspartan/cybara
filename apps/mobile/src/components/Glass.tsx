@@ -10,6 +10,7 @@ import {
   typography,
 } from "../theme/liquidGlass";
 import { useThemeControls } from "../theme/ThemeContext";
+import { useNativeGlassView } from "./glassSupport";
 
 export function GlassPanel({
   children,
@@ -22,6 +23,25 @@ export function GlassPanel({
   elevated?: boolean;
 }>) {
   const { scheme } = useThemeControls();
+  const GlassView = useNativeGlassView();
+
+  // On iOS 26 use the genuine Liquid Glass material for every panel (this is the
+  // app's primary surface, used ~20×). The real material supplies its own
+  // translucency and edge highlight, so the BlurView wash/highlight overlays are
+  // only needed on the fallback path.
+  if (GlassView) {
+    return (
+      <GlassView
+        glassEffectStyle="regular"
+        isInteractive={false}
+        colorScheme={scheme}
+        style={[styles.panel, elevated && styles.elevated, elevated && shadows.glass, style]}
+      >
+        <View style={[styles.panelFill, contentStyle]}>{children}</View>
+      </GlassView>
+    );
+  }
+
   return (
     <BlurView
       blurMethod="dimezisBlurViewSdk31Plus"
