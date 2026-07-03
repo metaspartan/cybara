@@ -11,6 +11,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "fs";
 import { tmpdir } from "os";
@@ -207,23 +208,48 @@ async function readSwiftReleaseBinPath(): Promise<string> {
 
 const ENTITLEMENTS_PATH = join(APP_PACKAGE_PATH, "Cybara.entitlements");
 
-/// Collect nested Mach-O binaries (dylibs, .node addons, .so) bundled with the
-/// sidecar. Notarization rejects any unsigned Mach-O, so every one must be
-/// signed inner-first before the executables and the bundle itself.
-function findNestedSignables(macOSPath: string): string[] {
+const MACH_O_MAGICS = new Set([
+  0xfeedface,
+  0xcefaedfe,
+  0xfeedfacf,
+  0xcffaedfe,
+  0xcafebabe,
+  0xbebafeca,
+]);
+
+export function isMachOFile(path: string): boolean {
+  try {
+    const header = readFileSync(path).subarray(0, 4);
+    return header.length === 4 && MACH_O_MAGICS.has(header.readUInt32BE(0));
+  } catch {
+    return false;
+  }
+}
+
+/// Collect nested Mach-O binaries bundled with the app. Notarization rejects
+/// any unsigned Mach-O, including extensionless helper executables in package
+/// payloads, so every nested binary must be signed inner-first.
+export function findNestedSignables(contentsPath: string): string[] {
   const results: string[] = [];
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const full = join(dir, entry.name);
       if (entry.isDirectory()) {
         walk(full);
-      } else if (entry.isFile() && /\.(dylib|node|so)$/.test(entry.name)) {
-        results.push(full);
+      } else if (entry.isFile()) {
+        const hasNativeExtension = /\.(dylib|node|so)$/.test(entry.name);
+        const isExecutable = (statSync(full).mode & 0o111) !== 0;
+        if (hasNativeExtension || (isExecutable && isMachOFile(full))) {
+          results.push(full);
+        }
       }
     }
   };
-  walk(macOSPath);
-  return results;
+  walk(contentsPath);
+  return results.sort((a, b) => {
+    const depth = b.split("/").length - a.split("/").length;
+    return depth === 0 ? a.localeCompare(b) : depth;
+  });
 }
 
 async function codesignBundle(bundlePath: string, identity: string): Promise<void> {
@@ -234,7 +260,11 @@ async function codesignBundle(bundlePath: string, identity: string): Promise<voi
   const contentsPath = join(bundlePath, "Contents");
 
   // 1. Nested libraries/addons (onnxruntime dylib, .node binding, etc.).
-  for (const signable of findNestedSignables(contentsPath)) {
+  const nestedSignables = findNestedSignables(contentsPath);
+  if (nestedSignables.length > 0) {
+    console.log(`   signing ${nestedSignables.length} nested Mach-O file(s)`);
+  }
+  for (const signable of nestedSignables) {
     await $`codesign --force --timestamp --options runtime --sign ${identity} ${signable}`;
   }
 
@@ -252,14 +282,140 @@ async function createZipArchive(bundlePath: string, zipPath: string): Promise<vo
   await $`ditto -c -k --sequesterRsrc --keepParent ${bundlePath} ${zipPath}`.quiet();
 }
 
+interface ProcessResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}
+
+async function runProcess(command: string[], options?: { allowFailure?: boolean }): Promise<ProcessResult> {
+  const process = Bun.spawn(command, {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(process.stdout).text(),
+    new Response(process.stderr).text(),
+    process.exited,
+  ]);
+
+  const result = { exitCode, stdout, stderr };
+  if (exitCode !== 0 && !options?.allowFailure) {
+    throw new Error(
+      `${command.join(" ")} failed with exit code ${exitCode}\n${stderr || stdout}`.trim()
+    );
+  }
+  return result;
+}
+
+async function runNotaryTool(
+  args: string[],
+  options?: { allowFailure?: boolean }
+): Promise<ProcessResult> {
+  return runProcess(["xcrun", "notarytool", ...args], options);
+}
+
+function parseJSONRecord(raw: string, label: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {}
+  throw new Error(`Unable to parse ${label} JSON: ${raw.trim() || "<empty>"}`);
+}
+
+function stringField(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+export function resolveNotaryTimeoutMinutes(value: string | undefined): number {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 90;
+}
+
+export function resolveNotaryPollSeconds(value: string | undefined): number {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) && parsed >= 10 ? parsed : 30;
+}
+
+async function printNotaryLog(submissionId: string, notaryProfile: string): Promise<void> {
+  const log = await runNotaryTool(
+    ["log", submissionId, "--keychain-profile", notaryProfile, "--output-format", "json"],
+    { allowFailure: true }
+  );
+  const output = [log.stdout.trim(), log.stderr.trim()].filter(Boolean).join("\n");
+  if (output) {
+    console.error(`[notary] Log for ${submissionId}:\n${output}`);
+  } else {
+    console.error(`[notary] No diagnostic log was returned for ${submissionId}.`);
+  }
+}
+
 async function notarizeBundle(
   bundlePath: string,
   zipPath: string,
   notaryProfile: string
 ): Promise<void> {
   await createZipArchive(bundlePath, zipPath);
-  await $`xcrun notarytool submit ${zipPath} --keychain-profile ${notaryProfile} --wait`.quiet();
-  await $`xcrun stapler staple ${bundlePath}`.quiet();
+  console.log("   submitting app zip to Apple notary service...");
+  const submit = await runNotaryTool([
+    "submit",
+    zipPath,
+    "--keychain-profile",
+    notaryProfile,
+    "--output-format",
+    "json",
+  ]);
+  const submitJSON = parseJSONRecord(submit.stdout, "notary submission");
+  const submissionId = stringField(submitJSON, "id");
+  if (!submissionId) {
+    throw new Error(`Apple notary submission did not return an id: ${submit.stdout.trim()}`);
+  }
+
+  const timeoutMinutes = resolveNotaryTimeoutMinutes(
+    process.env.CYBARA_MACOS_NOTARY_TIMEOUT_MINUTES
+  );
+  const pollSeconds = resolveNotaryPollSeconds(process.env.CYBARA_MACOS_NOTARY_POLL_SECONDS);
+  const deadline = Date.now() + timeoutMinutes * 60_000;
+  let lastStatus = "Submitted";
+
+  console.log(
+    `   notary submission id ${submissionId}; polling every ${pollSeconds}s for up to ${timeoutMinutes}m`
+  );
+
+  while (Date.now() < deadline) {
+    const info = await runNotaryTool([
+      "info",
+      submissionId,
+      "--keychain-profile",
+      notaryProfile,
+      "--output-format",
+      "json",
+    ]);
+    const infoJSON = parseJSONRecord(info.stdout, "notary info");
+    const status = stringField(infoJSON, "status") ?? "Unknown";
+    const summary = stringField(infoJSON, "statusSummary") ?? stringField(infoJSON, "message") ?? "";
+    lastStatus = summary ? `${status}: ${summary}` : status;
+    console.log(`   notary ${submissionId}: ${lastStatus}`);
+
+    switch (status.toLowerCase()) {
+      case "accepted":
+        await $`xcrun stapler staple ${bundlePath}`;
+        return;
+      case "invalid":
+      case "rejected":
+        await printNotaryLog(submissionId, notaryProfile);
+        throw new Error(`Apple notarization ${status.toLowerCase()} for ${submissionId}.`);
+      default:
+        await new Promise((resolve) => setTimeout(resolve, pollSeconds * 1000));
+    }
+  }
+
+  throw new Error(
+    `Apple notarization did not finish within ${timeoutMinutes} minutes for ${submissionId}. Last status: ${lastStatus}`
+  );
 }
 
 function writeSha256(zipPath: string, shaPath: string): void {

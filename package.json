@@ -50,7 +50,7 @@
     "tauri:build:release": "bun run tauri:sidecar && bun run tauri:prepare-release && bunx tauri build --config src-tauri/tauri.release.conf.json",
     "tauri:sidecar": "bun run scripts/build-sidecar.ts",
     "native:macos:build": "swift build --package-path apps/macos/Cybara",
-    "native:macos:run": "swift run --package-path apps/macos/Cybara",
+    "native:macos:run": "bun run ui:build && bun run tauri:sidecar && swift run --package-path apps/macos/Cybara",
     "native:macos:package": "bun run scripts/package-native-macos.ts"
   },
   "dependencies": {

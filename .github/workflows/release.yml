@@ -265,6 +265,7 @@ jobs:
             # SDK, so an older SDK (macos-15 → Xcode 16) can't build it at all.
             runner: macos-26
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 105
     env:
       # Mapped from secrets so steps can gate on presence. Leave the secrets
       # unset to produce an unsigned (Gatekeeper-quarantined) build instead.
@@ -333,6 +334,8 @@ jobs:
           # notarizes only when the profile is set (requires the identity too).
           CYBARA_MACOS_SIGN_IDENTITY: ${{ env.MACOS_SIGN_IDENTITY }}
           CYBARA_MACOS_NOTARY_KEYCHAIN_PROFILE: ${{ env.HAS_NATIVE_MACOS_SIGNING == 'true' && env.HAS_NATIVE_MACOS_NOTARY == 'true' && 'cybara-notary' || '' }}
+          CYBARA_MACOS_NOTARY_TIMEOUT_MINUTES: "90"
+          CYBARA_MACOS_NOTARY_POLL_SECONDS: "30"
         run: bun run scripts/package-native-macos.ts
       - name: Clean up signing keychain
         if: always() && env.HAS_NATIVE_MACOS_SIGNING == 'true'

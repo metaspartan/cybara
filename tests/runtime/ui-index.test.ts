@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { join } from "path";
+import { readFileSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import { readUiIndexContent } from "../../src/core/runtime/ui-index";
+
+const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 describe("UI index runtime loading", () => {
   test("reads the current dist index on every request", () => {
@@ -59,5 +63,16 @@ describe("UI index runtime loading", () => {
         },
       })
     ).toBe(fallbackContent);
+  });
+
+  test("gateway static assets revalidate script and style chunks after desktop updates", () => {
+    const serverSource = readFileSync(join(ROOT_DIR, "src", "index.ts"), "utf8");
+
+    expect(serverSource).toContain("function cacheControlForStaticAsset");
+    expect(serverSource).toContain('ext === ".js" || ext === ".mjs" || ext === ".css"');
+    expect(serverSource).toContain('return "no-cache"');
+    expect(serverSource).toContain('ext === ".map"');
+    expect(serverSource).toContain('return "no-store"');
+    expect(serverSource).toContain('"Cache-Control": cacheControlForStaticAsset(ext)');
   });
 });

@@ -18,6 +18,8 @@ describe("native macOS shell wiring", () => {
     expect(sidecarCore).toContain('environment["PORT"] = String(port)');
     expect(sidecarCore).toContain('environment["CYBARA_HOST"] = "127.0.0.1"');
     expect(sidecarManager).toContain('arguments = ["start", "--enable-terminal"]');
+    expect(sidecarCore).toContain("ancestorDirectories(from: currentDirectory)");
+    expect(sidecarCore).toContain("ancestorDirectories(from: executableDirectory)");
     expect(sidecarCore).toContain('bundledSidecar.appendingPathComponent("cybara").path');
     expect(sidecarManager).toContain("gatewayMode = .managed");
     expect(sidecarManager).toContain("gatewayMode = .attached");

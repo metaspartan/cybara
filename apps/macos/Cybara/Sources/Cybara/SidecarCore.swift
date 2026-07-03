@@ -61,6 +61,26 @@ public enum SidecarCore {
             .path
     }
 
+    public static func ancestorDirectories(from path: String, maxDepth: Int = 8) -> [String] {
+        var directories: [String] = []
+        var seen = Set<String>()
+        var current = URL(fileURLWithPath: path).standardizedFileURL
+
+        for _ in 0 ... max(0, maxDepth) {
+            let normalized = current.path
+            if !seen.contains(normalized) {
+                directories.append(normalized)
+                seen.insert(normalized)
+            }
+
+            let parent = current.deletingLastPathComponent()
+            if parent.path == current.path { break }
+            current = parent
+        }
+
+        return directories
+    }
+
     /// `PATH` can include an app bundle's `Contents/MacOS` directory after a
     /// native launch. Treat a lowercase `cybara` binary there as an app-bundle
     /// executable alias, not as the external Bun sidecar, to avoid recursion.
@@ -82,20 +102,39 @@ public enum SidecarCore {
     public static func sidecarCandidatePaths(currentDirectory: String, executableDirectory: String)
         -> [String]
     {
-        let cwd = URL(fileURLWithPath: currentDirectory)
         let exec = URL(fileURLWithPath: executableDirectory)
         let bundledSidecar = exec.appendingPathComponent("sidecar")
-        return [
-            cwd.appendingPathComponent("src-tauri/bin/cybara-aarch64-apple-darwin").path,
-            cwd.appendingPathComponent("src-tauri/bin/cybara-x86_64-apple-darwin").path,
-            cwd.appendingPathComponent("release/cybara").path,
+        var paths: [String] = []
+
+        // SwiftPM/Xcode local runs commonly start from apps/macos/Cybara or a
+        // .build directory, while the sidecar is generated at the repo root.
+        // Walk ancestors from both cwd and executable location so dev launches
+        // resolve the same sidecar that release packaging embeds.
+        let roots =
+            ancestorDirectories(from: currentDirectory)
+            + ancestorDirectories(from: executableDirectory)
+        for root in roots {
+            let base = URL(fileURLWithPath: root)
+            paths.append(base.appendingPathComponent("src-tauri/bin/cybara-aarch64-apple-darwin").path)
+            paths.append(base.appendingPathComponent("src-tauri/bin/cybara-x86_64-apple-darwin").path)
+            paths.append(base.appendingPathComponent("release/cybara").path)
+        }
+
+        paths.append(contentsOf: [
             bundledSidecar.appendingPathComponent("cybara").path,
             bundledSidecar.appendingPathComponent("cybara-aarch64-apple-darwin").path,
             bundledSidecar.appendingPathComponent("cybara-x86_64-apple-darwin").path,
             exec.appendingPathComponent("cybara-aarch64-apple-darwin").path,
             exec.appendingPathComponent("cybara-x86_64-apple-darwin").path,
             exec.appendingPathComponent("cybara").path,
-        ]
+        ])
+
+        var seen = Set<String>()
+        return paths.filter { path in
+            if seen.contains(path) { return false }
+            seen.insert(path)
+            return true
+        }
     }
 
     /// Exponential backoff (capped) between automatic restart attempts after an

@@ -141,19 +141,43 @@ final class SidecarCoreTests: XCTestCase {
 
     // MARK: - sidecarCandidatePaths
 
+    func testAncestorDirectoriesWalkUpFromLocalPackagePath() {
+        let directories = SidecarCore.ancestorDirectories(
+            from: "/work/apps/macos/Cybara/.build/arm64-apple-macosx/debug")
+
+        XCTAssertEqual(directories[0], "/work/apps/macos/Cybara/.build/arm64-apple-macosx/debug")
+        XCTAssertTrue(directories.contains("/work/apps/macos/Cybara"))
+        XCTAssertTrue(directories.contains("/work"))
+        XCTAssertEqual(Set(directories).count, directories.count, "ancestor directories must be unique")
+    }
+
     func testSidecarCandidatePathsOrderAndContents() {
         let paths = SidecarCore.sidecarCandidatePaths(
             currentDirectory: "/work", executableDirectory: "/app/Contents/MacOS")
-        XCTAssertEqual(paths.count, 9)
         // Most-specific (project tree) first.
         XCTAssertEqual(paths[0], "/work/src-tauri/bin/cybara-aarch64-apple-darwin")
         XCTAssertEqual(paths[1], "/work/src-tauri/bin/cybara-x86_64-apple-darwin")
         XCTAssertEqual(paths[2], "/work/release/cybara")
         // Bundled sidecar dir next to the executable.
-        XCTAssertEqual(paths[3], "/app/Contents/MacOS/sidecar/cybara")
+        XCTAssertTrue(paths.contains("/app/Contents/MacOS/sidecar/cybara"))
         // Executable-adjacent fallbacks last.
-        XCTAssertEqual(paths[8], "/app/Contents/MacOS/cybara")
+        XCTAssertEqual(paths.last, "/app/Contents/MacOS/cybara")
         XCTAssertEqual(Set(paths).count, paths.count, "candidate paths must be unique")
+    }
+
+    func testSidecarCandidatePathsFindRepoRootFromSwiftPackageCwd() {
+        let paths = SidecarCore.sidecarCandidatePaths(
+            currentDirectory: "/work/apps/macos/Cybara",
+            executableDirectory: "/work/apps/macos/Cybara/.build/arm64-apple-macosx/debug")
+
+        XCTAssertTrue(paths.contains("/work/src-tauri/bin/cybara-aarch64-apple-darwin"))
+        XCTAssertTrue(paths.contains("/work/src-tauri/bin/cybara-x86_64-apple-darwin"))
+        XCTAssertTrue(paths.contains("/work/release/cybara"))
+        XCTAssertLessThan(
+            paths.firstIndex(of: "/work/src-tauri/bin/cybara-aarch64-apple-darwin") ?? Int.max,
+            paths.firstIndex(of: "/work/apps/macos/Cybara/.build/arm64-apple-macosx/debug/cybara")
+                ?? Int.max
+        )
     }
 
     // MARK: - restartDelaySeconds

@@ -133,11 +133,22 @@ const mimeTypes: Record<string, string> = {
   ".jpeg": "image/jpeg",
   ".svg": "image/svg+xml",
   ".ico": "image/x-icon",
+  ".map": "application/json",
   ".woff": "font/woff",
   ".woff2": "font/woff2",
   ".ttf": "font/ttf",
   ".webp": "image/webp",
 };
+
+function cacheControlForStaticAsset(ext: string): string {
+  if (ext === ".js" || ext === ".mjs" || ext === ".css") {
+    return "no-cache";
+  }
+  if (ext === ".map") {
+    return "no-store";
+  }
+  return "public, max-age=3600";
+}
 
 const commonSecurityHeaders = {
   "X-Content-Type-Options": "nosniff",
@@ -482,7 +493,7 @@ Bun.serve<WsData>({
         return new Response(content, {
           headers: {
             "Content-Type": contentType,
-            "Cache-Control": "public, max-age=3600",
+            "Cache-Control": cacheControlForStaticAsset(ext),
             ...commonSecurityHeaders,
           },
         });
