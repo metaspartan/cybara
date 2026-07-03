@@ -38,6 +38,10 @@ export interface CuaDriverResolution {
 }
 
 let driverProcess: ChildProcess | null = null;
+/** Tool names advertised by the running driver (tools/list); empty = unknown. */
+let driverToolNames = new Set<string>();
+/** Window the next action targets; every interactive driver tool requires a pid. */
+let activeWindowTarget: { pid: number; windowId?: number; appName?: string } | null = null;
 let nextRequestId = 1;
 const pending = new Map<
   number,
@@ -396,6 +400,38 @@ async function initializeSession(): Promise<void> {
     capabilities: {},
     clientInfo: { name: "cybara", version: "1.0.0" },
   });
+  // Complete the MCP handshake; some driver builds queue tool calls until
+  // the initialized notification arrives.
+  sendNotification("notifications/initialized");
+
+  // Discover the driver's actual tool vocabulary. cua-driver's tool names are
+  // NOT our action names (e.g. 0.6.x has get_window_state/type_text/press_key
+  // and no capture/type/key), and the set varies by driver version.
+  driverToolNames = new Set();
+  activeWindowTarget = null;
+  try {
+    const listed = (await sendRaw("tools/list", {})) as {
+      tools?: Array<{ name?: string }>;
+    };
+    for (const tool of listed?.tools || []) {
+      if (typeof tool?.name === "string" && tool.name) {
+        driverToolNames.add(tool.name);
+      }
+    }
+  } catch (error) {
+    // Discovery failure is non-fatal: with an empty set we optimistically try
+    // driver tools and let per-call errors surface (self-healing on any
+    // driver version, mirroring hermes-agent's backend behavior).
+    console.warn(
+      `[computer_use] tools/list failed: ${error instanceof Error ? error.message : error}`
+    );
+  }
+}
+
+/** Fire-and-forget JSON-RPC notification (no id, no response expected). */
+function sendNotification(method: string): void {
+  if (!driverProcess?.stdin?.writable) return;
+  driverProcess.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method })}\n`);
 }
 
 /** Send a JSON-RPC request to cua-driver and await its response. */
@@ -702,6 +738,250 @@ async function nativeScreenCapture(): Promise<ComputerUseResult | null> {
   }
 }
 
+interface DriverCallResult {
+  text?: string;
+  screenshot?: string;
+  screenshotMime?: string;
+  structured?: Record<string, unknown>;
+}
+
+interface DriverWindow {
+  appName: string;
+  pid: number;
+  windowId?: number;
+  zIndex: number;
+}
+
+function driverHasTool(name: string): boolean {
+  // With no discovery data, optimistically assume the tool exists and let the
+  // call itself fail — self-healing across driver versions.
+  return driverToolNames.size === 0 || driverToolNames.has(name);
+}
+
+/** Call a driver tool and flatten the MCP result (text/image/structuredContent). */
+async function callDriverTool(
+  name: string,
+  args: Record<string, unknown>
+): Promise<DriverCallResult> {
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(args)) {
+    if (value !== undefined && value !== null) cleaned[key] = value;
+  }
+  const result = (await sendWithReconnect("tools/call", { name, arguments: cleaned })) as {
+    content?: Array<Record<string, unknown>>;
+    structuredContent?: Record<string, unknown>;
+    isError?: boolean;
+  };
+
+  const textBlock = result?.content?.find((c) => c.type === "text") as
+    | { text?: string }
+    | undefined;
+  const imageBlock = result?.content?.find((c) => c.type === "image" || c.type === "image_url") as
+    | { data?: string; mimeType?: string; image_url?: { url?: string } }
+    | undefined;
+
+  let screenshot: string | undefined;
+  let screenshotMime: string | undefined;
+  if (imageBlock?.data) {
+    screenshot = imageBlock.data;
+    screenshotMime = imageBlock.mimeType || "image/png";
+  } else if (imageBlock?.image_url?.url) {
+    const match = imageBlock.image_url.url.match(/^data:([^;]+);base64,(.+)$/);
+    if (match) {
+      screenshotMime = match[1];
+      screenshot = match[2];
+    }
+  }
+
+  const text = typeof textBlock?.text === "string" ? textBlock.text : undefined;
+  if (result?.isError) {
+    throw new Error(text || `cua-driver tool "${name}" failed`);
+  }
+  return { text, screenshot, screenshotMime, structured: result?.structuredContent };
+}
+
+async function listDriverWindows(): Promise<DriverWindow[]> {
+  const result = await callDriverTool("list_windows", { on_screen_only: true });
+  let rawWindows = (result.structured?.windows as Array<Record<string, unknown>>) || [];
+  if (rawWindows.length === 0 && result.text) {
+    try {
+      const parsed = JSON.parse(result.text) as { windows?: Array<Record<string, unknown>> };
+      rawWindows = parsed?.windows || [];
+    } catch {
+      // Text wasn't JSON; fall through with what we have.
+    }
+  }
+  return rawWindows
+    .filter((w) => Number.isFinite(Number(w.pid)))
+    .map((w) => ({
+      appName: typeof w.app_name === "string" ? w.app_name : "",
+      pid: Number(w.pid),
+      windowId: Number.isFinite(Number(w.window_id)) ? Number(w.window_id) : undefined,
+      zIndex: Number.isFinite(Number(w.z_index)) ? Number(w.z_index) : 0,
+    }))
+    .sort((a, b) => a.zIndex - b.zIndex);
+}
+
+/**
+ * Resolve which window an action targets. Explicit app name wins; otherwise
+ * reuse the window focus_app selected; otherwise the frontmost window.
+ */
+async function resolveWindowTarget(app?: string): Promise<{ pid: number; windowId?: number }> {
+  const windows = await listDriverWindows();
+  const wanted = typeof app === "string" ? app.trim().toLowerCase() : "";
+  if (wanted) {
+    const match = windows.find((w) => w.appName.toLowerCase().includes(wanted));
+    if (!match) {
+      const available = windows
+        .map((w) => w.appName)
+        .filter(Boolean)
+        .slice(0, 10);
+      throw new Error(
+        `No on-screen window found for app "${app}". On-screen apps: ${available.join(", ") || "(none)"}.`
+      );
+    }
+    activeWindowTarget = { pid: match.pid, windowId: match.windowId, appName: match.appName };
+    return { pid: match.pid, windowId: match.windowId };
+  }
+  if (activeWindowTarget && windows.some((w) => w.pid === activeWindowTarget?.pid)) {
+    return { pid: activeWindowTarget.pid, windowId: activeWindowTarget.windowId };
+  }
+  const frontmost = windows[0];
+  if (!frontmost) {
+    throw new Error(
+      "No on-screen windows reported by cua-driver. Check its OS permissions (`cua-driver doctor`)."
+    );
+  }
+  activeWindowTarget = {
+    pid: frontmost.pid,
+    windowId: frontmost.windowId,
+    appName: frontmost.appName,
+  };
+  return { pid: frontmost.pid, windowId: frontmost.windowId };
+}
+
+function splitHotkeyCombo(keys: string): string[] {
+  return keys
+    .split("+")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Translate one of our high-level actions into the driver's tool vocabulary
+ * (cua-driver 0.6.x: get_window_state/type_text/press_key/hotkey/... — every
+ * interactive tool requires a target pid) and execute it.
+ */
+async function performDriverAction(typedArgs: ComputerUseArgs): Promise<DriverCallResult> {
+  const action = typedArgs.action;
+
+  if (action === "wait") {
+    const seconds = Math.min(Math.max(typedArgs.seconds ?? 1, 0), 30);
+    await new Promise<void>((resolve) => setTimeout(resolve, seconds * 1000));
+    return { text: `Waited ${seconds}s.` };
+  }
+
+  if (action === "list_apps") {
+    return callDriverTool("list_apps", {});
+  }
+
+  if (action === "capture") {
+    const target = await resolveWindowTarget(typedArgs.app);
+    // Older drivers had a cheap standalone screenshot tool; 0.5.x+ folded
+    // window capture into get_window_state.
+    if (driverToolNames.has("screenshot")) {
+      const shot = await callDriverTool("screenshot", {
+        window_id: target.windowId,
+        format: "jpeg",
+        quality: 85,
+      });
+      if (shot.screenshot) return shot;
+    }
+    return callDriverTool("get_window_state", {
+      pid: target.pid,
+      window_id: target.windowId,
+    });
+  }
+
+  if (action === "focus_app") {
+    if (!typedArgs.app) {
+      throw new Error("Validation error: focus_app requires 'app'.");
+    }
+    const target = await resolveWindowTarget(typedArgs.app);
+    const appName = activeWindowTarget?.appName || typedArgs.app;
+    if (typedArgs.raiseWindow !== false && driverHasTool("bring_to_front")) {
+      await callDriverTool("bring_to_front", { pid: target.pid, window_id: target.windowId });
+      return { text: `Focused ${appName} (pid ${target.pid}) and raised its window.` };
+    }
+    return { text: `Targeted ${appName} (pid ${target.pid}) without raising the window.` };
+  }
+
+  const target = await resolveWindowTarget(typedArgs.app);
+  const base: Record<string, unknown> = {
+    pid: target.pid,
+    window_id: target.windowId,
+  };
+  if (typeof typedArgs.element === "number") base.element_index = typedArgs.element;
+
+  switch (action) {
+    case "click":
+    case "double_click":
+    case "right_click":
+    case "middle_click": {
+      const coordinateArgs: Record<string, unknown> = { ...base };
+      if (Array.isArray(typedArgs.coordinate) && typedArgs.coordinate.length === 2) {
+        coordinateArgs.x = typedArgs.coordinate[0];
+        coordinateArgs.y = typedArgs.coordinate[1];
+      }
+      if (action === "middle_click") {
+        // 0.6.x has no middle_click tool; click accepts a button parameter.
+        return callDriverTool("click", { ...coordinateArgs, button: "middle" });
+      }
+      return callDriverTool(action, coordinateArgs);
+    }
+    case "scroll":
+      return callDriverTool("scroll", {
+        ...base,
+        direction: typedArgs.direction,
+        amount: typedArgs.amount,
+      });
+    case "drag": {
+      const from = typedArgs.fromCoordinate;
+      const to = typedArgs.toCoordinate;
+      if (!Array.isArray(from) || !Array.isArray(to)) {
+        throw new Error("Validation error: drag requires fromCoordinate and toCoordinate.");
+      }
+      return callDriverTool("drag", {
+        ...base,
+        from_x: from[0],
+        from_y: from[1],
+        to_x: to[0],
+        to_y: to[1],
+      });
+    }
+    case "type":
+      return callDriverTool(driverHasTool("type_text") ? "type_text" : "type", {
+        ...base,
+        text: typedArgs.text,
+      });
+    case "key": {
+      const keys = typedArgs.keys || "";
+      const parts = splitHotkeyCombo(keys);
+      if (parts.length > 1 && driverHasTool("hotkey")) {
+        return callDriverTool("hotkey", { ...base, keys: parts });
+      }
+      return callDriverTool(driverHasTool("press_key") ? "press_key" : "key", {
+        ...base,
+        key: parts[0] || keys,
+      });
+    }
+    case "set_value":
+      return callDriverTool("set_value", { ...base, value: typedArgs.value });
+    default:
+      throw new Error(`Unsupported computer_use action: ${action}`);
+  }
+}
+
 export async function handleComputerUse(args: Record<string, unknown>): Promise<ComputerUseResult> {
   const typedArgs = args as unknown as ComputerUseArgs;
   if (!typedArgs.action) {
@@ -724,51 +1004,23 @@ export async function handleComputerUse(args: Record<string, unknown>): Promise<
   }
   try {
     await ensureDriver();
-    const result = (await sendWithReconnect("tools/call", {
-      name: typedArgs.action,
-      arguments: typedArgs,
-    })) as { content?: Array<Record<string, unknown>> };
-
-    const textBlock = result.content?.find((c) => c.type === "text");
-    const imageBlock = result.content?.find((c) => c.type === "image" || c.type === "image_url") as
-      { data?: string; mimeType?: string; image_url?: { url?: string } } | undefined;
-
-    let screenshot: string | undefined;
-    let screenshotMime = "image/png";
-    if (imageBlock?.data) {
-      screenshot = imageBlock.data;
-      screenshotMime = imageBlock.mimeType || screenshotMime;
-    } else if (imageBlock?.image_url?.url) {
-      // data:image/png;base64,XXXX -> extract payload + mime.
-      const match = imageBlock.image_url.url.match(/^data:([^;]+);base64,(.+)$/);
-      if (match) {
-        screenshotMime = match[1];
-        screenshot = match[2];
-      }
-    }
+    const result = await performDriverAction(typedArgs);
+    let screenshot = result.screenshot;
+    let screenshotMime = result.screenshotMime || "image/png";
 
     // Optional follow-up capture so the model can self-verify the action.
     let capturedAfter = false;
     if (typedArgs.captureAfter && typedArgs.action !== "capture" && typedArgs.action !== "wait") {
       try {
-        const afterResult = (await sendWithReconnect("tools/call", {
-          name: "capture",
-          arguments: { mode: typedArgs.mode },
-        })) as { content?: Array<Record<string, unknown>> };
-        const afterImage = afterResult.content?.find(
-          (c) => c.type === "image" || c.type === "image_url"
-        ) as { data?: string; mimeType?: string; image_url?: { url?: string } } | undefined;
-        if (afterImage?.data) {
-          screenshot = afterImage.data;
-          screenshotMime = afterImage.mimeType || screenshotMime;
+        const after = await performDriverAction({
+          action: "capture",
+          mode: typedArgs.mode,
+          app: typedArgs.app,
+        });
+        if (after.screenshot) {
+          screenshot = after.screenshot;
+          screenshotMime = after.screenshotMime || screenshotMime;
           capturedAfter = true;
-        } else if (afterImage?.image_url?.url) {
-          const m = afterImage.image_url.url.match(/^data:([^;]+);base64,(.+)$/);
-          if (m) {
-            screenshotMime = m[1];
-            screenshot = m[2];
-            capturedAfter = true;
-          }
         }
       } catch {
         /* follow-up capture is best-effort */
@@ -778,7 +1030,7 @@ export async function handleComputerUse(args: Record<string, unknown>): Promise<
     return {
       action: typedArgs.action,
       ok: true,
-      text: typeof textBlock?.text === "string" ? textBlock.text : undefined,
+      text: result.text,
       screenshot,
       screenshotMime: screenshot ? screenshotMime : undefined,
       capturedAfter,

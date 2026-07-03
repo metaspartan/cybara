@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
 import {
@@ -304,5 +304,44 @@ describe("cua-driver resolution", () => {
     expect(parseCuaDriverVersion('"0.7.1"', "0.7.1")).toBe("0.7.1");
     expect(parseCuaDriverVersion("cua-driver 0.7.2\n", null)).toBe("0.7.2");
     expect(parseCuaDriverVersion("0.7.3\n", null)).toBe("0.7.3");
+  });
+});
+
+// The driver's tool vocabulary is NOT our action vocabulary. cua-driver 0.6.x
+// advertises get_window_state/type_text/press_key/hotkey/bring_to_front/...
+// (verified against a real 0.6.8 tools/list) and every interactive tool
+// requires a target pid. Sending our action names straight through produced
+// "Unknown tool: capture" / "Unknown tool: focus_app" / "Unknown tool: wait"
+// on real installs. These assertions pin the translation layer.
+describe("computer_use driver vocabulary translation", () => {
+  const source = readFileSync(
+    join(dirname(new URL(import.meta.url).pathname), "..", "..", "src", "core", "computer-use.ts"),
+    "utf8"
+  );
+
+  test("discovers the driver's advertised tools at session init", () => {
+    expect(source).toContain('sendNotification("notifications/initialized")');
+    expect(source).toContain('await sendRaw("tools/list", {})');
+    expect(source).toContain("driverToolNames = new Set()");
+  });
+
+  test("never sends our action names as driver tool names", () => {
+    expect(source).not.toContain("name: typedArgs.action");
+  });
+
+  test("maps actions onto real driver primitives with a resolved pid target", () => {
+    expect(source).toContain("async function resolveWindowTarget");
+    expect(source).toContain('callDriverTool("list_windows", { on_screen_only: true })');
+    expect(source).toContain('callDriverTool("get_window_state"');
+    expect(source).toContain('callDriverTool("bring_to_front"');
+    expect(source).toContain('driverHasTool("type_text") ? "type_text" : "type"');
+    expect(source).toContain('driverHasTool("press_key") ? "press_key" : "key"');
+    expect(source).toContain('callDriverTool("hotkey", { ...base, keys: parts })');
+    // middle_click has no driver tool; it maps to click with a button param.
+    expect(source).toContain('callDriverTool("click", { ...coordinateArgs, button: "middle" })');
+    // wait is local; the driver has no wait tool.
+    expect(source).toContain("Waited ${seconds}s.");
+    // Older drivers keep the cheap standalone screenshot path.
+    expect(source).toContain('driverToolNames.has("screenshot")');
   });
 });
