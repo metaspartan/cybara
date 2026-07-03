@@ -1333,8 +1333,16 @@ function SessionsPanel({
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
               <input
+                type="search"
+                aria-label="Search sessions"
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape" && searchQuery) {
+                    event.preventDefault();
+                    setSearchQuery("");
+                  }
+                }}
                 placeholder="Search sessions..."
                 className="w-full rounded-lg border border-white/10 bg-black/30 pl-8 pr-7 py-1.5 text-[12px] text-white placeholder:text-gray-600 !outline-none focus:border-indigo-400/50"
               />
@@ -1343,6 +1351,7 @@ function SessionsPanel({
                   onClick={() => setSearchQuery("")}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white cursor-pointer"
                   title="Clear search"
+                  aria-label="Clear session search"
                 >
                   <X className="w-3 h-3" />
                 </button>

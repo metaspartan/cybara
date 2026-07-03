@@ -30,4 +30,13 @@ describe("chat session sidebar layout", () => {
     );
     expect(source).not.toContain("session.last_message.content");
   });
+
+  test("session search is accessible and clears on Escape", () => {
+    const source = chatSource();
+    expect(source).toContain('aria-label="Search sessions"');
+    expect(source).toContain('aria-label="Clear session search"');
+    // Escape while there is a query clears it.
+    expect(source).toContain('event.key === "Escape" && searchQuery');
+    expect(source).toContain('setSearchQuery("")');
+  });
 });
