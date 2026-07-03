@@ -4,10 +4,17 @@ import { fileURLToPath } from "node:url";
 
 const chatPagePath = fileURLToPath(new URL("../../ui/src/pages/Chat.tsx", import.meta.url));
 const chatModelPath = fileURLToPath(new URL("../../ui/src/pages/chat/chatModel.ts", import.meta.url));
+const activityTimelinePath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/ActivityTimeline.tsx", import.meta.url)
+);
 const desktopHostPath = fileURLToPath(new URL("../../ui/src/lib/desktopHost.ts", import.meta.url));
 
 function readChatSource(): string {
-  return readFileSync(chatPagePath, "utf8") + readFileSync(chatModelPath, "utf8");
+  return (
+    readFileSync(chatPagePath, "utf8") +
+    readFileSync(chatModelPath, "utf8") +
+    readFileSync(activityTimelinePath, "utf8")
+  );
 }
 
 function readDesktopHostSource(): string {
