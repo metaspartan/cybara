@@ -584,6 +584,22 @@ struct GatewayClient: Sendable {
         return try await request("api/sessions/\(id)/pin", method: "PUT", body: body)
     }
 
+    func revertSession(
+        _ id: String,
+        messageContent: String?,
+        messageTimestamp: String?
+    ) async throws -> Data {
+        var payload: [String: Any] = ["messageRole": "user"]
+        if let messageContent, !messageContent.isEmpty {
+            payload["messageContent"] = messageContent
+        }
+        if let messageTimestamp, !messageTimestamp.isEmpty {
+            payload["messageTimestamp"] = messageTimestamp
+        }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        return try await request("api/sessions/\(id)/revert", method: "POST", body: body)
+    }
+
     func updateSessionWorkspace(
         _ id: String,
         workspaceDir: String?

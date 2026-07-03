@@ -1735,6 +1735,39 @@ export function Chat() {
   const [input, setInput] = useState("");
   const [workspaceSaving, setWorkspaceSaving] = useState(false);
   const [revertTarget, setRevertTarget] = useState<RevertTarget | null>(null);
+  const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
+  const copiedMessageTimerRef = useRef<number | null>(null);
+  const handleCopyMessage = useCallback(async (index: number, content: string) => {
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(content);
+      copied = true;
+    } catch {
+      // Clipboard API can be unavailable (permissions, embedded webviews);
+      // fall back to the legacy selection-based copy.
+      try {
+        const textarea = document.createElement("textarea");
+        textarea.value = content;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        copied = document.execCommand("copy");
+        document.body.removeChild(textarea);
+      } catch (error) {
+        console.error("Failed to copy message:", error);
+      }
+    }
+    if (!copied) return;
+    setCopiedMessageIndex(index);
+    if (copiedMessageTimerRef.current !== null) {
+      window.clearTimeout(copiedMessageTimerRef.current);
+    }
+    copiedMessageTimerRef.current = window.setTimeout(() => {
+      setCopiedMessageIndex(null);
+      copiedMessageTimerRef.current = null;
+    }, 1500);
+  }, []);
   const [reverting, setReverting] = useState(false);
   const [showSubagentPanel, setShowSubagentPanel] = useState(false);
   const [showSessionsPanel, setShowSessionsPanel] = useState(true);
@@ -3375,25 +3408,6 @@ export function Chat() {
                               <div className="my-2 border-t border-white/12" />
                             )}
                             <MessageContent content={message.content} />
-                            {message.role === "user" && sessionId && (
-                              <div className="mt-2 flex justify-end">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setRevertTarget({
-                                      index: originalIndex,
-                                      content: message.content,
-                                      timestamp: message.timestamp,
-                                    })
-                                  }
-                                  className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[10px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
-                                  title="Revert session to this message"
-                                >
-                                  <RotateCcw className="w-3 h-3" />
-                                  Revert to here
-                                </button>
-                              </div>
-                            )}
                             {message.role !== "user" && (
                               <AssistantMetaInline
                                 message={message}
@@ -3406,11 +3420,48 @@ export function Chat() {
                             )}
                           </div>
 
-                          {message.timestamp && (
-                            <p className="text-[10px] text-gray-600 mt-1.5">
-                              {formatRelativeTime(message.timestamp)}
-                            </p>
-                          )}
+                          <div
+                            className={cn(
+                              "mt-1.5 flex items-center gap-1.5",
+                              message.role === "user" ? "justify-end" : "justify-start"
+                            )}
+                          >
+                            {message.timestamp && (
+                              <span className="text-[10px] text-gray-600">
+                                {formatRelativeTime(message.timestamp)}
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => void handleCopyMessage(originalIndex, message.content)}
+                              className="p-1 rounded-md text-gray-600 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+                              title="Copy message"
+                              aria-label="Copy message"
+                            >
+                              {copiedMessageIndex === originalIndex ? (
+                                <Check className="w-3 h-3 text-emerald-400" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
+                            {message.role === "user" && sessionId && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setRevertTarget({
+                                    index: originalIndex,
+                                    content: message.content,
+                                    timestamp: message.timestamp,
+                                  })
+                                }
+                                className="p-1 rounded-md text-gray-600 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+                                title="Revert session to this message"
+                                aria-label="Revert session to this message"
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );

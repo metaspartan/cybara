@@ -24,9 +24,17 @@ function readDesktopHostSource(): string {
 }
 
 describe("Chat revert and diff wiring", () => {
-  test("shows a revert action on user messages with confirmation modal", () => {
+  test("shows icon-only revert + copy actions below the message with confirmation modal", () => {
     const source = readChatSource();
-    expect(source).toContain("Revert to here");
+    // Icon-only actions live BELOW the message box, not inside it.
+    expect(source).not.toContain("Revert to here");
+    expect(source).toContain('aria-label="Revert session to this message"');
+    expect(source).toContain('aria-label="Copy message"');
+    expect(source).toContain("handleCopyMessage(originalIndex, message.content)");
+    // Copy shows transient success feedback and has a legacy fallback.
+    expect(source).toContain("copiedMessageIndex === originalIndex");
+    expect(source).toContain('document.execCommand("copy")');
+    // Revert still requires confirmation.
     expect(source).toContain("Confirm Revert");
     expect(source).toContain("Are you sure you want to revert here?");
     expect(source).toContain("handleConfirmRevert");

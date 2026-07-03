@@ -1,5 +1,7 @@
-import { Linking, ScrollView, Text, View, type StyleProp, type TextStyle } from "react-native";
-import { AlertTriangle, CheckCircle2, Loader2, Sparkles, User } from "lucide-react-native";
+import { Linking, Pressable, ScrollView, Text, View, type StyleProp, type TextStyle } from "react-native";
+import { useState } from "react";
+import * as Clipboard from "expo-clipboard";
+import { AlertTriangle, Check, CheckCircle2, Copy, Loader2, RotateCcw, Sparkles, User } from "lucide-react-native";
 import { colors } from "../theme/liquidGlass";
 import { styles } from "./dashboardStyles";
 import { relativeTimestamp } from "./dashboardHelpers";
@@ -140,14 +142,67 @@ function MarkdownText({ content }: { content: string }) {
   );
 }
 
+/** Icon actions under a message: copy always, revert (with confirm upstream). */
+function MessageActionsRow({
+  alignEnd,
+  content,
+  timestampLabel,
+  onRevert,
+}: {
+  alignEnd?: boolean;
+  content: string;
+  timestampLabel?: string | null;
+  onRevert?: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <View style={[styles.messageActionsRow, alignEnd && styles.messageActionsRowEnd]}>
+      {timestampLabel ? <Text style={styles.messageTime}>{timestampLabel}</Text> : null}
+      <Pressable
+        accessibilityLabel="Copy message"
+        accessibilityRole="button"
+        hitSlop={8}
+        onPress={() => {
+          void Clipboard.setStringAsync(content)
+            .then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            })
+            .catch(() => {});
+        }}
+        style={styles.messageActionButton}
+      >
+        {copied ? (
+          <Check color={colors.green} size={13} strokeWidth={2.2} />
+        ) : (
+          <Copy color={colors.textDim} size={13} strokeWidth={2.2} />
+        )}
+      </Pressable>
+      {onRevert ? (
+        <Pressable
+          accessibilityLabel="Revert session to this message"
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={onRevert}
+          style={styles.messageActionButton}
+        >
+          <RotateCcw color={colors.textDim} size={13} strokeWidth={2.2} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 export function ChatMessageRow({
   accentColor,
   message,
   nowMs,
+  onRevert,
 }: {
   accentColor: string;
   message: SessionDetailSummary["messages"][number];
   nowMs?: number;
+  onRevert?: (message: SessionDetailSummary["messages"][number]) => void;
 }) {
   const isUser = message.role === "user";
   if (!isUser) {
@@ -169,9 +224,10 @@ export function ChatMessageRow({
         {hasContent || !hasWorkTimeline ? (
           <MessageContent content={hasContent ? displayContent : "(empty message)"} />
         ) : null}
-        {message.timestamp ? (
-          <Text style={styles.messageTime}>{relativeTimestamp(message.timestamp)}</Text>
-        ) : null}
+        <MessageActionsRow
+          content={message.content || ""}
+          timestampLabel={message.timestamp ? relativeTimestamp(message.timestamp) : null}
+        />
       </View>
     );
   }
@@ -180,19 +236,22 @@ export function ChatMessageRow({
       <View style={[styles.chatAvatar, { backgroundColor: `${accentColor}22` }]}>
         <User color={accentColor} size={16} strokeWidth={2.2} />
       </View>
-      <View
-        style={[
-          styles.messageBubble,
-          styles.userMessageBubble,
-          { borderColor: `${accentColor}55` },
-        ]}
-      >
-        <MessageContent content={message.content || "(empty message)"} />
-        {message.timestamp ? (
-          <Text style={[styles.messageTime, styles.messageTimeUser]}>
-            {relativeTimestamp(message.timestamp)}
-          </Text>
-        ) : null}
+      <View style={styles.userMessageColumn}>
+        <View
+          style={[
+            styles.messageBubble,
+            styles.userMessageBubble,
+            { borderColor: `${accentColor}55` },
+          ]}
+        >
+          <MessageContent content={message.content || "(empty message)"} />
+        </View>
+        <MessageActionsRow
+          alignEnd
+          content={message.content || ""}
+          timestampLabel={message.timestamp ? relativeTimestamp(message.timestamp) : null}
+          onRevert={onRevert ? () => onRevert(message) : undefined}
+        />
       </View>
     </View>
   );

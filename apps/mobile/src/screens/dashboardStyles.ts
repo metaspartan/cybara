@@ -545,6 +545,23 @@ const makeStyles = () =>
     messageTimeUser: {
       textAlign: "right",
     },
+    messageActionsRow: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: spacing.xs,
+      marginTop: 2,
+    },
+    messageActionsRowEnd: {
+      justifyContent: "flex-end",
+    },
+    messageActionButton: {
+      borderRadius: 6,
+      padding: 4,
+    },
+    userMessageColumn: {
+      alignItems: "flex-end",
+      flexShrink: 1,
+    },
     messageContent: {
       gap: spacing.sm,
     },

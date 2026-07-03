@@ -73,6 +73,45 @@ private func parseGatewayDate(_ iso: String?) -> Date? {
     return sqlite.date(from: iso)
 }
 
+/// Icon actions under a chat message: copy always, revert (confirmed upstream).
+struct NativeMessageActions: View {
+    let content: String
+    let timestampLabel: String
+    let onRevert: (() -> Void)?
+    @State private var copied = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if !timestampLabel.isEmpty {
+                Text(timestampLabel)
+                    .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(content, forType: .string)
+                copied = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+            } label: {
+                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: 10, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(copied ? Color.green : Color.secondary)
+            .help("Copy message")
+            if let onRevert {
+                Button(action: onRevert) {
+                    Image(systemName: "arrow.uturn.backward")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Revert session to this message")
+            }
+        }
+    }
+}
+
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 
 struct DashboardScreen: View {
@@ -245,6 +284,8 @@ struct ChatScreen: View {
     @State private var pendingWorkspaceDir = ""
     @State private var workspaceSaving = false
     @State private var liveStatus = "idle"
+    @State private var revertCandidate: GatewaySessionMessage?
+    @State private var showRevertConfirm = false
     @State private var liveActivities: [NativeToolActivity] = []
     @State private var liveCurrentStep: String?
     @State private var liveStartedAt: Date?
@@ -276,6 +317,17 @@ struct ChatScreen: View {
             handleStatusEvent(event)
         }
         .onDisappear { statusStream.stop() }
+        .alert("Revert to this message?", isPresented: $showRevertConfirm) {
+            Button("Revert", role: .destructive) {
+                if let candidate = revertCandidate {
+                    performRevert(candidate)
+                }
+                revertCandidate = nil
+            }
+            Button("Cancel", role: .cancel) { revertCandidate = nil }
+        } message: {
+            Text("The conversation rolls back to this point. Messages after it are removed from the session.")
+        }
         .alert("Rename chat", isPresented: renameAlertBinding) {
             TextField("Title", text: $renameDraft)
             Button("Rename") {
@@ -602,36 +654,63 @@ struct ChatScreen: View {
         let visibleContent = NativeMarkdown.preprocess(message.content, stripAssistantMarkup: !isUser)
         return HStack {
             if isUser { Spacer(minLength: 60) }
-            VStack(alignment: .leading, spacing: 7) {
-                if !isUser {
-                    NativeToolTimelineView(message: message)
-                }
-                if !visibleContent.isEmpty {
-                    NativeMarkdownView(content: visibleContent, isUser: isUser)
-                }
-                if let timestamp = message.timestamp {
-                    let relative = relativeTimestamp(timestamp)
-                    let absolute = absoluteTimestamp(timestamp)
-                    if !relative.isEmpty {
-                        Text(absolute.isEmpty ? relative : "\(relative) · \(absolute)")
-                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
-                            .foregroundStyle(.secondary)
+            VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 7) {
+                    if !isUser {
+                        NativeToolTimelineView(message: message)
+                    }
+                    if !visibleContent.isEmpty {
+                        NativeMarkdownView(content: visibleContent, isUser: isUser)
                     }
                 }
+                .padding(.horizontal, isUser ? 14 : 0)
+                .padding(.vertical, isUser ? 10 : 2)
+                .frame(maxWidth: isUser ? nil : .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(isUser ? accentTint.opacity(0.28) : Color.clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(isUser ? accentTint.opacity(0.18) : Color.clear, lineWidth: 1)
+                )
+                NativeMessageActions(
+                    content: visibleContent.isEmpty ? message.content : visibleContent,
+                    timestampLabel: messageTimestampLabel(message),
+                    onRevert: isUser
+                        ? {
+                            revertCandidate = message
+                            showRevertConfirm = true
+                        }
+                        : nil
+                )
             }
-            .padding(.horizontal, isUser ? 14 : 0)
-            .padding(.vertical, isUser ? 10 : 2)
-            .frame(maxWidth: isUser ? nil : .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(isUser ? accentTint.opacity(0.28) : Color.clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(isUser ? accentTint.opacity(0.18) : Color.clear, lineWidth: 1)
-            )
         }
         .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
+    }
+
+    private func messageTimestampLabel(_ message: GatewaySessionMessage) -> String {
+        guard let timestamp = message.timestamp else { return "" }
+        let relative = relativeTimestamp(timestamp)
+        let absolute = absoluteTimestamp(timestamp)
+        if relative.isEmpty { return absolute }
+        return absolute.isEmpty ? relative : "\(relative) · \(absolute)"
+    }
+
+    private func performRevert(_ message: GatewaySessionMessage) {
+        guard let sessionID = selectedSessionID else { return }
+        Task {
+            do {
+                _ = try await client.revertSession(
+                    sessionID,
+                    messageContent: message.content,
+                    messageTimestamp: message.timestamp
+                )
+                await loadMessages(sessionID)
+            } catch {
+                self.error = "Failed to revert: \(error.localizedDescription)"
+            }
+        }
     }
 
     private var composer: some View {

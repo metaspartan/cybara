@@ -2141,6 +2141,39 @@ function SessionDetailPanel({
     }
   };
 
+  const confirmRevertToMessage = (message: SessionDetailSummary["messages"][number]) => {
+    Alert.alert(
+      "Revert to this message?",
+      "The conversation will be rolled back to this point. Messages after it are removed from the session.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Revert",
+          style: "destructive",
+          onPress: () => {
+            void api
+              .revertSession(sessionId, {
+                messageRole: "user",
+                messageContent: message.content,
+                messageTimestamp: message.timestamp,
+              })
+              .then((result) => {
+                if (result?.success === false) {
+                  throw new Error(result.error || "Failed to revert session");
+                }
+                setComposerDraft(message.content || "");
+                return loadSession(false);
+              })
+              .then(() => refreshSummary())
+              .catch((error) => {
+                setLoadError(error instanceof Error ? error.message : String(error));
+              });
+          },
+        },
+      ]
+    );
+  };
+
   const deleteChat = () => {
     Alert.alert("Delete chat?", "This removes the session from the gateway history.", [
       { text: "Cancel", style: "cancel" },
@@ -2291,6 +2324,7 @@ function SessionDetailPanel({
                 accentColor={accentColor}
                 message={message}
                 nowMs={message.id === liveAssistant?.id ? liveNowMs : undefined}
+                onRevert={message.role === "user" ? confirmRevertToMessage : undefined}
               />
             ))}
             {waitingForAssistant ? (

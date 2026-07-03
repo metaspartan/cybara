@@ -1540,6 +1540,26 @@ export class CybaraMobileApi {
     });
   }
 
+  revertSession(
+    id: string,
+    payload: {
+      messageIndex?: number;
+      messageRole?: string;
+      messageContent?: string;
+      messageTimestamp?: string;
+    }
+  ): Promise<{ success: boolean; keptCount?: number; removedCount?: number; error?: string }> {
+    return this.request<{
+      success: boolean;
+      keptCount?: number;
+      removedCount?: number;
+      error?: string;
+    }>(`/api/sessions/${encodeURIComponent(id)}/revert`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
   async agents(): Promise<AgentSummary[]> {
     return normalizeAgents(await this.request<unknown>("/api/agents"));
   }
