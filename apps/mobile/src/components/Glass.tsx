@@ -30,12 +30,15 @@ export function GlassPanel({
   // translucency and edge highlight, so the BlurView wash/highlight overlays are
   // only needed on the fallback path.
   if (GlassView) {
+    // Shape only — no opaque fill. The native material IS the surface; painting
+    // colors.glass over it (0.82-opaque white in light mode) flattened it back
+    // into a solid card and defeated the Liquid Glass look.
     return (
       <GlassView
         glassEffectStyle="regular"
         isInteractive={false}
         colorScheme={scheme}
-        style={[styles.panel, elevated && styles.elevated, elevated && shadows.glass, style]}
+        style={[styles.panelShape, elevated && styles.panelShapeElevated, style]}
       >
         <View style={[styles.panelFill, contentStyle]}>{children}</View>
       </GlassView>
@@ -102,6 +105,17 @@ const makeStyles = () =>
       borderColor: colors.border,
       borderWidth: 1,
       overflow: "hidden",
+    },
+    // Native-glass surfaces: keep the rounded clip + hairline edge, but let the
+    // real material provide the translucency (no opaque background fill).
+    panelShape: {
+      borderRadius: radius.lg,
+      borderColor: colors.border,
+      borderWidth: 1,
+      overflow: "hidden",
+    },
+    panelShapeElevated: {
+      borderColor: colors.borderStrong,
     },
     liquidWash: {
       ...StyleSheet.absoluteFill,

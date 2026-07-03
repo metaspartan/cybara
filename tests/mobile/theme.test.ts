@@ -102,6 +102,17 @@ describe("mobile theming", () => {
     expect(src).toContain("useNativeGlassContainer");
   });
 
+  test("GlassPanel's native surface is shape-only so the real material shows (not a white fill)", () => {
+    const src = read("components/Glass.tsx");
+    // Native path uses the shape style (border + radius, no backgroundColor)...
+    expect(src).toContain("styles.panelShape");
+    expect(src).toMatch(/panelShape:\s*\{[^}]*borderRadius/);
+    const shape = src.slice(src.indexOf("panelShape: {"), src.indexOf("panelShapeElevated"));
+    expect(shape).not.toContain("backgroundColor");
+    // ...while the BlurView fallback still tints with colors.glass for contrast.
+    expect(src).toMatch(/panel:\s*\{[^}]*backgroundColor:\s*colors\.glass/);
+  });
+
   test("GlassGroup wraps clusters in a native GlassContainer with a plain-View fallback", () => {
     const src = read("components/LiquidGlass.tsx");
     expect(src).toContain("export function GlassGroup");
