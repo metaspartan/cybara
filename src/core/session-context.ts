@@ -520,7 +520,7 @@ export async function persistSession(
   messages: ChatMessage[],
   workspaceDir?: string | null,
   sessionTitle?: string | null
-): Promise<void> {
+): Promise<boolean> {
   try {
     const hasWorkspaceUpdate = workspaceDir !== undefined;
     const hasTitleUpdate = sessionTitle !== undefined;
@@ -571,8 +571,13 @@ export async function persistSession(
     }
 
     log.info("Persisted session", { sessionId, messageCount: messages.length });
+    return true;
   } catch (error) {
+    // Return failure so callers don't falsely mark the session as persisted;
+    // a swallowed error here previously reported success to the client while
+    // the write never landed.
     log.exception("Failed to persist session", error, { sessionId });
+    return false;
   }
 }
 

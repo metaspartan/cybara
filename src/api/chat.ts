@@ -1192,14 +1192,15 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     },
   });
 
-  await persistSession(
+  // Only mark the session persisted when the write actually succeeded, so a
+  // failed write is retried on the next turn instead of being silently lost.
+  session.persisted = await persistSession(
     session.id,
     session.agentId,
     session.messages,
     session.workspaceDir,
     session.title
   );
-  session.persisted = true;
   upsertPersistedSessionIndex({
     id: session.id,
     agentId: session.agentId,
