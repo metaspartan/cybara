@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
 import { cn } from "../../lib/utils";
-import { useEffect } from "react";
+import { useEffect, useId, useRef } from "react";
 
 interface ModalProps {
   isOpen: boolean;
@@ -12,6 +12,10 @@ interface ModalProps {
 }
 
 export function Modal({ isOpen, onClose, title, description, children, size = "md" }: ModalProps) {
+  const titleId = useId();
+  const descriptionId = useId();
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -22,6 +26,67 @@ export function Modal({ isOpen, onClose, title, description, children, size = "m
       document.body.style.overflow = "";
     };
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const previouslyFocused =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusableSelector = [
+      "a[href]",
+      "button:not([disabled])",
+      "textarea:not([disabled])",
+      "input:not([disabled])",
+      "select:not([disabled])",
+      '[tabindex]:not([tabindex="-1"])',
+    ].join(",");
+
+    const focusFirstElement = () => {
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const firstFocusable = dialog.querySelector<HTMLElement>(focusableSelector);
+      (firstFocusable || dialog).focus();
+    };
+
+    const animationFrame = window.requestAnimationFrame(focusFirstElement);
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector)).filter(
+        (element) => element.offsetParent !== null || element === document.activeElement
+      );
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      document.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus();
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -40,6 +105,12 @@ export function Modal({ isOpen, onClose, title, description, children, size = "m
       />
 
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={title ? titleId : undefined}
+        aria-describedby={description ? descriptionId : undefined}
+        tabIndex={-1}
         className={cn(
           "relative w-full rounded-2xl overflow-hidden",
           "transform transition-all duration-300 ease-out",
@@ -55,11 +126,20 @@ export function Modal({ isOpen, onClose, title, description, children, size = "m
         {(title || description) && (
           <div className="relative flex items-start justify-between px-6 py-4 border-b border-white/10">
             <div>
-              {title && <h2 className="text-lg font-semibold text-white">{title}</h2>}
-              {description && <p className="text-sm text-gray-400 mt-1">{description}</p>}
+              {title && (
+                <h2 id={titleId} className="text-lg font-semibold text-white">
+                  {title}
+                </h2>
+              )}
+              {description && (
+                <p id={descriptionId} className="text-sm text-gray-400 mt-1">
+                  {description}
+                </p>
+              )}
             </div>
             <button
               onClick={onClose}
+              aria-label="Close dialog"
               className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-white/10 transition-all"
             >
               <X className="w-5 h-5" />

@@ -178,7 +178,11 @@ enum NativeMarkdown {
                     thinking.append(captured)
                 }
             }
-            working = working.replacingOccurrences(of: pattern, with: "", options: [.regularExpression])
+            working = working.replacingOccurrences(
+                of: pattern,
+                with: "",
+                options: [.regularExpression, .caseInsensitive]
+            )
         }
 
         let finalMatches = regexMatches(#"<final\b[^>]*>([\s\S]*?)</final>"#, in: working)

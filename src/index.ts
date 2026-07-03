@@ -64,6 +64,7 @@ import { onSubagentLifecycle } from "./core/subagent-registry";
 import { resolveUiPath } from "./core/runtime/ui-path";
 import { readUiIndexContent } from "./core/runtime/ui-index";
 import { securityCheck } from "./api/security";
+import { getClientIp } from "./api/client-ip";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -266,18 +267,6 @@ type WsData =
       kind: "status";
       unsubscribe?: () => void;
     };
-
-function getClientIp(headers: Record<string, string>, directIp?: string): string {
-  if (directIp) return directIp;
-
-  const trustProxy =
-    process.env.CYBARA_TRUST_PROXY === "1" || process.env.CYBARA_TRUST_PROXY === "true";
-  if (trustProxy) {
-    return headers["x-forwarded-for"]?.split(",")[0]?.trim() || headers["x-real-ip"] || "127.0.0.1";
-  }
-
-  return "127.0.0.1";
-}
 
 function withOptionalQueryToken(headers: Record<string, string>, url: URL): Record<string, string> {
   // Query-token auth exists only for browser WebSocket/EventSource clients,

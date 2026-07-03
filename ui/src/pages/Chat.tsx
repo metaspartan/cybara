@@ -519,6 +519,16 @@ function sessionDisplayTitle(session: Record<string, unknown>): string {
   return rawTitle;
 }
 
+const SESSION_PREVIEW_LIMIT = 160;
+
+function sessionPreviewText(content: unknown, limit = SESSION_PREVIEW_LIMIT): string | null {
+  if (typeof content !== "string") return null;
+  const normalized = content.replace(/\s+/g, " ").trim();
+  if (!normalized) return null;
+  if (normalized.length <= limit) return normalized;
+  return `${normalized.slice(0, Math.max(0, limit - 3)).trimEnd()}...`;
+}
+
 function toActivityPath(path: string): string {
   const normalized = path.replace(/\\/g, "/").trim();
   if (!normalized) return "file";
@@ -2899,10 +2909,7 @@ function SessionsPanel({
     const filtered = query
       ? list.filter((session) => {
           const title = typeof session.title === "string" ? session.title.toLowerCase() : "";
-          const preview =
-            typeof session.last_message?.content === "string"
-              ? session.last_message.content.toLowerCase()
-              : "";
+          const preview = sessionPreviewText(session.last_message?.content)?.toLowerCase() || "";
           return title.includes(query) || preview.includes(query) || session.id.includes(query);
         })
       : list;
@@ -3086,6 +3093,7 @@ function SessionsPanel({
             visibleSessions.map((session) => {
               const displayTitle = sessionDisplayTitle(session as Record<string, unknown>);
               const routeLabel = sessionRouteLabel(session as Record<string, unknown>);
+              const previewText = sessionPreviewText(session.last_message?.content);
               const isSessionActive =
                 activeSessionIds.includes(session.id) ||
                 (currentSessionLoading && currentSessionId === session.id);
@@ -3194,9 +3202,12 @@ function SessionsPanel({
                           {(session as { workspace_dir?: string }).workspace_dir}
                         </p>
                       )}
-                      {session.last_message && (
-                        <p className="text-[10px] text-gray-500 mt-0.5 w-full truncate">
-                          {session.last_message.content}
+                      {previewText && (
+                        <p
+                          className="text-[10px] text-gray-500 mt-0.5 w-full truncate"
+                          title={previewText}
+                        >
+                          {previewText}
                         </p>
                       )}
                     </div>
@@ -3204,9 +3215,7 @@ function SessionsPanel({
                       <div
                         className={cn(
                           "pointer-events-none absolute right-2 top-2 flex items-center gap-1 rounded-md bg-[#11111a]/90 px-1 py-0.5 shadow-lg shadow-black/30 backdrop-blur transition-opacity",
-                          session.pinned
-                            ? "pointer-events-auto opacity-100"
-                            : "opacity-0 group-hover:pointer-events-auto group-hover:opacity-100"
+                          "opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
                         )}
                       >
                         <button
@@ -3217,6 +3226,7 @@ function SessionsPanel({
                               : "text-gray-400 hover:bg-amber-500/20 hover:text-amber-300"
                           )}
                           onClick={(event) => handleTogglePin(event, session.id, !!session.pinned)}
+                          aria-label={session.pinned ? "Unpin session" : "Pin session"}
                           title={session.pinned ? "Unpin session" : "Pin session"}
                         >
                           {session.pinned ? (
@@ -3228,6 +3238,7 @@ function SessionsPanel({
                         <button
                           className="p-1 rounded hover:bg-indigo-500/20 text-indigo-300 cursor-pointer"
                           onClick={(event) => beginRenameSession(event, session)}
+                          aria-label="Rename session"
                           title="Rename session"
                         >
                           <Pencil className="w-3 h-3" />
@@ -3238,6 +3249,7 @@ function SessionsPanel({
                             e.stopPropagation();
                             setShowDeleteModal(session.id);
                           }}
+                          aria-label="Delete session"
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>

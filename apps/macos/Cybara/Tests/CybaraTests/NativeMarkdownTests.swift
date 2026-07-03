@@ -54,6 +54,15 @@ final class NativeMarkdownTests: XCTestCase {
         XCTAssertEqual(NativeMarkdown.preprocess("<think>Hidden reasoning that never closed."), "")
     }
 
+    func testPreprocessStripsMixedCaseAssistantReasoningWithoutDroppingAnswer() {
+        let raw = """
+        <Think>Hidden reasoning.</THINK>
+        Visible answer.
+        """
+
+        XCTAssertEqual(NativeMarkdown.preprocess(raw), "Visible answer.")
+    }
+
     func testParseCanPreserveUserTypedReasoningTags() {
         let blocks = NativeMarkdown.parse("What does </think> mean?", stripAssistantMarkup: false)
 

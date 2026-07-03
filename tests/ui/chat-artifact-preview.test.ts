@@ -26,7 +26,7 @@ describe("Chat artifact preview wiring", () => {
       "<ArtifactSummaryCard artifacts={artifactSummary} onOpenArtifact={onOpenArtifact} />"
     );
     expect(source).not.toContain("View {artifactSummaries[0].fileName}");
-    expect(source).not.toContain("Preview");
+    expect(source).not.toContain("Preview {artifactSummaries[0].fileName}");
     expect(source).toContain("Loading artifact...");
   });
 
