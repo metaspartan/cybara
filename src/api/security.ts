@@ -422,7 +422,15 @@ export async function validateUrl(url: string): Promise<{ valid: boolean; error?
     const ipVersion = isIP(hostname);
     if (ipVersion === 0) {
       try {
-        const addresses: LookupAddress[] = await lookup(hostname, { all: true, verbatim: true });
+        // Bound the DNS lookup so a slow/absent resolver can't hang the request
+        // (or a test) indefinitely. On timeout we fall through to the permissive
+        // catch, same as any other resolution failure.
+        const addresses: LookupAddress[] = await Promise.race([
+          lookup(hostname, { all: true, verbatim: true }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("DNS lookup timed out")), 3000)
+          ),
+        ]);
         for (const address of addresses) {
           if (isPrivateOrBlockedIP(address.address)) {
             return {
