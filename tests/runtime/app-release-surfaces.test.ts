@@ -41,6 +41,9 @@ describe("app release surface wiring", () => {
     expect(workflow).toContain("cd apps/mobile/ios && pod install --repo-update");
     expect(workflow).toContain("xcodebuild -list -json");
     expect(workflow).toContain("xcodebuild -workspace");
+    expect(workflow).toContain("<key>method</key><string>app-store-connect</string>");
+    expect(workflow).toContain("bun run scripts/upload-ios-testflight.ts");
+    expect(workflow).toContain('TESTFLIGHT_UPLOAD_ATTEMPTS: "4"');
   });
 
   test("release workflow publishes only after the Tauri updater manifest is complete", () => {

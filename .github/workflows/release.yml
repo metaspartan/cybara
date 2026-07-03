@@ -604,7 +604,7 @@ jobs:
             {
               echo '<?xml version="1.0" encoding="UTF-8"?>'
               echo '<plist version="1.0"><dict>'
-              echo '<key>method</key><string>app-store</string>'
+              echo '<key>method</key><string>app-store-connect</string>'
               echo "<key>teamID</key><string>${APPLE_TEAM_ID}</string>"
               echo '<key>signingStyle</key><string>manual</string>'
               echo '<key>provisioningProfiles</key><dict>'
@@ -642,12 +642,11 @@ jobs:
           ASC_KEY: ${{ secrets.ASC_API_KEY_BASE64 }}
           ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          TESTFLIGHT_UPLOAD_ATTEMPTS: "4"
+          TESTFLIGHT_UPLOAD_RETRY_BASE_SECONDS: "20"
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.appstoreconnect/private_keys"
-          echo "$ASC_KEY" | base64 -d > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
-          xcrun altool --upload-app -f "${{ steps.ipa.outputs.path }}" -t ios \
-            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+          bun run scripts/upload-ios-testflight.ts "${{ steps.ipa.outputs.path }}"
       - name: Upload iOS artifact to release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
