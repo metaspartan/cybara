@@ -3,7 +3,8 @@ import { readFileSync } from "fs";
 import { join } from "path";
 
 const chatSource = () =>
-  readFileSync(join(process.cwd(), "ui", "src", "pages", "Chat.tsx"), "utf8");
+  readFileSync(join(process.cwd(), "ui", "src", "pages", "Chat.tsx"), "utf8") +
+  readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "chatModel.ts"), "utf8");
 
 describe("chat session sidebar layout", () => {
   test("lets session text use the full row width while actions float above it", () => {
