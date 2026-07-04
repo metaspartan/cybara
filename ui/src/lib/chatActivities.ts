@@ -392,27 +392,86 @@ const READ_ONLY_GIT_SUBCOMMANDS = new Set([
   "blame",
   "remote",
   "config",
+  "shortlog",
+  "rev-parse",
+  "rev-list",
+  "describe",
+  "ls-files",
+  "ls-tree",
+  "cat-file",
+  "reflog",
+  "whatchanged",
+  "show-ref",
+  "name-rev",
+  "count-objects",
+  "for-each-ref",
+  "symbolic-ref",
+  "merge-base",
+  "grep",
+  "tag",
+  "stash",
 ]);
 
-/** Classify a shell command string (verb-first) as a read-only exploring kind. */
-function classifyShellCommand(command: string): GroupableKind | null {
-  // Strip leading env assignments (FOO=bar) and sudo; take the first real verb.
-  const tokens = command.trim().split(/\s+/);
+// Command prefixes that wrap another command (git shortlog stays the verb).
+const COMMAND_PREFIX_WRAPPERS = new Set(["sudo", "command", "time", "nice", "nohup", "env"]);
+// Split a shell command into its pipe/&&/||/;/newline stages.
+const COMPOUND_STAGE_SPLIT = /\s*(?:&&|\|\||\||;|\n)\s*/;
+
+/** Classify one shell stage (no pipes) by its leading verb. */
+function classifyShellStage(stage: string): GroupableKind | null {
+  const tokens = stage.trim().split(/\s+/);
   let index = 0;
-  while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[index])) index += 1;
-  if (tokens[index] === "sudo") index += 1;
-  const rawVerb = tokens[index] || "";
-  // Drop any path prefix (e.g. /usr/bin/grep -> grep).
-  const verb = rawVerb.split(/[\\/]/).pop()?.toLowerCase() || "";
+  // Skip leading env assignments (FOO=bar) and wrapper commands (sudo/time/…).
+  while (index < tokens.length) {
+    const token = tokens[index];
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)) {
+      index += 1;
+      continue;
+    }
+    const stripped = token.split(/[\\/]/).pop()?.toLowerCase() || "";
+    if (COMMAND_PREFIX_WRAPPERS.has(stripped) && stripped !== "env") {
+      index += 1;
+      continue;
+    }
+    // `env` only wraps when followed by another command token, not `env` alone.
+    if (stripped === "env" && index + 1 < tokens.length && !tokens[index + 1].startsWith("-")) {
+      index += 1;
+      continue;
+    }
+    break;
+  }
+  const verb = tokens[index]?.split(/[\\/]/).pop()?.toLowerCase() || "";
   if (!verb) return null;
-  // A command with a pipe/redirect/&& is a compound; only classify when every
-  // stage is itself read-only would be ideal, but that's over-engineering —
-  // treat the leading verb as the signal and keep it conservative.
   if (verb === "git") {
     const sub = (tokens[index + 1] || "").toLowerCase();
     return READ_ONLY_GIT_SUBCOMMANDS.has(sub) ? "command" : null;
   }
   return READ_ONLY_COMMAND_KINDS[verb] ?? null;
+}
+
+/**
+ * Classify a (possibly compound) shell command. A command groups only when
+ * EVERY stage is a known read-only operation, so `echo && find` folds in but
+ * `echo && rm` stays visible. The label uses the most specific exploring kind.
+ */
+function classifyShellCommand(command: string): GroupableKind | null {
+  // Drop a trailing truncation marker so the last stage still parses.
+  const trimmed = command.trim().replace(/\s*\.\.\.$/, "");
+  if (!trimmed) return null;
+  const stages = trimmed
+    .split(COMPOUND_STAGE_SPLIT)
+    .map((stage) => stage.trim())
+    .filter(Boolean);
+  if (stages.length === 0) return null;
+
+  const kinds: GroupableKind[] = [];
+  for (const stage of stages) {
+    const kind = classifyShellStage(stage);
+    if (kind === null) return null; // any non-read-only / unknown stage blocks grouping
+    kinds.push(kind);
+  }
+  // Prefer a concrete exploring kind (read/list/search) over generic "command".
+  return kinds.find((kind) => kind !== "command") ?? "command";
 }
 
 function groupKindForActivity(activity: LiveActivityItem): GroupableKind | null {

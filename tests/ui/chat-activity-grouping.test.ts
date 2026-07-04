@@ -89,6 +89,46 @@ describe("groupActivitiesForDisplay", () => {
     expect(entries.map((entry) => entry.type)).toEqual(["single", "single", "single"]);
   });
 
+  test("read-only git subcommands beyond log/status group (regression: git shortlog)", () => {
+    const entries = groupActivitiesForDisplay([
+      activity({ id: "a", toolName: "exec", text: "Ran git log --oneline -20" }),
+      activity({ id: "b", toolName: "exec", text: "Ran git shortlog -sn --all" }),
+      activity({ id: "c", toolName: "exec", text: "Ran git rev-parse HEAD" }),
+    ]);
+    expect(entries).toHaveLength(1);
+    const group = entries[0];
+    if (group.type !== "group") throw new Error("expected group");
+    expect(group.label).toBe("Ran 3 commands");
+  });
+
+  test("compound read-only commands group; the leading echo does not fool it", () => {
+    const entries = groupActivitiesForDisplay([
+      activity({ id: "a", toolName: "exec", text: 'Ran echo "=== src ===" && find src -type f' }),
+      activity({ id: "b", toolName: "exec", text: 'Ran echo "=== loc ===" && cloc src | tail -3' }),
+    ]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].type).toBe("group");
+  });
+
+  test("a mutation anywhere in a compound blocks grouping", () => {
+    const entries = groupActivitiesForDisplay([
+      activity({ id: "a", toolName: "exec", text: "Ran ls -la" }),
+      activity({ id: "b", toolName: "exec", text: 'Ran echo done && rm -rf build' }),
+      activity({ id: "c", toolName: "exec", text: "Ran find src -name '*.ts'" }),
+    ]);
+    // The middle compound (contains rm) breaks the run into three singles.
+    expect(entries.map((entry) => entry.type)).toEqual(["single", "single", "single"]);
+  });
+
+  test("truncated compound still classifies by its parseable stages", () => {
+    const entries = groupActivitiesForDisplay([
+      activity({ id: "a", toolName: "exec", text: "Ran find src -type f -name \"*.ts\" -o -na..." }),
+      activity({ id: "b", toolName: "exec", text: "Ran grep -rn cybara src ..." }),
+    ]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].type).toBe("group");
+  });
+
   test("failures and in-flight steps are never hidden inside a group", () => {
     const entries = groupActivitiesForDisplay([
       activity({ id: "a", toolName: "read", text: "Explored a.ts" }),
