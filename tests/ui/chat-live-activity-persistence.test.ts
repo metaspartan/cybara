@@ -15,7 +15,10 @@ describe("Chat live activity persistence", () => {
 
   test("does not clear live activities on idle while a request is still loading", () => {
     const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
-    expect(source).toContain("if (!loadingRef.current && !hasPendingCaptureForVisibleSession) {");
+    expect(source).toContain("!loadingRef.current &&");
+    expect(source).toContain("activeSessionRef.current === resolvedSessionId &&");
+    expect(source).toContain("!nextActiveIds.includes(resolvedSessionId)");
+    expect(source).toContain("if (!loadingRef.current) {");
     expect(source).toContain("setLiveActivities([]);");
     expect(source).toContain("runActivityBufferRef.current = [];");
   });
