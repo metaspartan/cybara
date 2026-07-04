@@ -120,6 +120,51 @@ describe("groupActivitiesForDisplay", () => {
     expect(entries.map((entry) => entry.type)).toEqual(["single", "single", "single"]);
   });
 
+  test("interleaved thoughts do not break a command run (they fold into the group)", () => {
+    const entries = groupActivitiesForDisplay([
+      activity({ id: "t0", toolName: "__thought", text: "I'll explore the repo" }),
+      activity({ id: "a", toolName: "exec", text: "Ran ls -la" }),
+      activity({ id: "b", toolName: "grep", text: "Explored 53 files, 1 search" }),
+      activity({ id: "t1", toolName: "__thought", text: "What I'm doing: seen structure" }),
+      activity({ id: "c", toolName: "read", text: "Explored package.json" }),
+      activity({ id: "t2", toolName: "__thought", text: "Solid intel" }),
+      activity({ id: "d", toolName: "exec", text: "Ran cd /repo && wc -l package.json" }),
+      activity({ id: "e", toolName: "exec", text: "Ran git log --oneline" }),
+    ]);
+    // Leading thought stays visible above; the rest fold into one group.
+    expect(entries[0].type).toBe("single");
+    expect(entries).toHaveLength(2);
+    const group = entries[1];
+    if (group.type !== "group") throw new Error("expected group");
+    // 5 real commands; the two interior thoughts are absorbed, not counted.
+    expect(group.label).toBe("Ran 5 commands");
+    expect(group.items).toHaveLength(7);
+    expect(group.items.filter((item) => item.toolName === "__thought")).toHaveLength(2);
+  });
+
+  test("xargs wrapping a read-only command groups; xargs rm does not", () => {
+    const readOnly = groupActivitiesForDisplay([
+      activity({ id: "a", toolName: "exec", text: 'Ran find src -name "*.ts" | xargs wc -l' }),
+      activity({ id: "b", toolName: "exec", text: "Ran ls -la" }),
+    ]);
+    expect(readOnly[0].type).toBe("group");
+
+    const mutating = groupActivitiesForDisplay([
+      activity({ id: "a", toolName: "exec", text: "Ran find . -name tmp | xargs rm -f" }),
+      activity({ id: "b", toolName: "exec", text: "Ran ls -la" }),
+    ]);
+    expect(mutating.map((entry) => entry.type)).toEqual(["single", "single"]);
+  });
+
+  test("cd-prefixed compound classifies by the real command", () => {
+    const entries = groupActivitiesForDisplay([
+      activity({ id: "a", toolName: "exec", text: "Ran cd /repo && grep -rn foo src" }),
+      activity({ id: "b", toolName: "exec", text: "Ran cd /repo && wc -l package.json" }),
+    ]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].type).toBe("group");
+  });
+
   test("truncated compound still classifies by its parseable stages", () => {
     const entries = groupActivitiesForDisplay([
       activity({ id: "a", toolName: "exec", text: "Ran find src -type f -name \"*.ts\" -o -na..." }),

@@ -381,6 +381,14 @@ const READ_ONLY_COMMAND_KINDS: Record<string, GroupableKind> = {
   whoami: "command",
   uname: "command",
   hostname: "command",
+  // Neutral/no-op verbs that commonly prefix real exploration in a compound
+  // (e.g. `cd /repo && grep ...`); harmless on their own.
+  cd: "command",
+  pushd: "command",
+  popd: "command",
+  printf: "command",
+  true: "command",
+  ":": "command",
 };
 
 const READ_ONLY_GIT_SUBCOMMANDS = new Set([
@@ -413,7 +421,16 @@ const READ_ONLY_GIT_SUBCOMMANDS = new Set([
 ]);
 
 // Command prefixes that wrap another command (git shortlog stays the verb).
-const COMMAND_PREFIX_WRAPPERS = new Set(["sudo", "command", "time", "nice", "nohup", "env"]);
+// `xargs`/`env` also take flags, which the stage classifier skips.
+const COMMAND_PREFIX_WRAPPERS = new Set([
+  "sudo",
+  "command",
+  "time",
+  "nice",
+  "nohup",
+  "env",
+  "xargs",
+]);
 // Split a shell command into its pipe/&&/||/;/newline stages.
 const COMPOUND_STAGE_SPLIT = /\s*(?:&&|\|\||\||;|\n)\s*/;
 
@@ -428,13 +445,22 @@ function classifyShellStage(stage: string): GroupableKind | null {
       index += 1;
       continue;
     }
-    const stripped = token.split(/[\\/]/).pop()?.toLowerCase() || "";
-    if (COMMAND_PREFIX_WRAPPERS.has(stripped) && stripped !== "env") {
+    // Skip flags that belong to a wrapper we already consumed (e.g. xargs -0 -n1).
+    if (index > 0 && token.startsWith("-")) {
       index += 1;
       continue;
     }
-    // `env` only wraps when followed by another command token, not `env` alone.
-    if (stripped === "env" && index + 1 < tokens.length && !tokens[index + 1].startsWith("-")) {
+    const stripped = token.split(/[\\/]/).pop()?.toLowerCase() || "";
+    if (COMMAND_PREFIX_WRAPPERS.has(stripped) && stripped !== "env" && stripped !== "xargs") {
+      index += 1;
+      continue;
+    }
+    // env/xargs only wrap when followed by another command, not standalone.
+    if (
+      (stripped === "env" || stripped === "xargs") &&
+      index + 1 < tokens.length &&
+      !tokens[index + 1].startsWith("-")
+    ) {
       index += 1;
       continue;
     }
@@ -515,18 +541,21 @@ function groupLabel(kinds: GroupableKind[], count: number): string {
  */
 export function groupActivitiesForDisplay(activities: LiveActivityItem[]): ActivityDisplayEntry[] {
   const entries: ActivityDisplayEntry[] = [];
+  // A run tracks command kinds separately from items: `items` may include
+  // interleaved thoughts (so expanding shows them in order), but only real
+  // commands count toward the "N commands" label and the 2+ group threshold.
   let run: { kinds: GroupableKind[]; items: LiveActivityItem[] } | null = null;
 
   const flushRun = () => {
     if (!run) return;
-    if (run.items.length >= 2) {
+    if (run.kinds.length >= 2) {
       const uniqueKinds = new Set(run.kinds);
       const specific = uniqueKinds.size === 1 ? [...uniqueKinds][0] : "command";
       entries.push({
         type: "group",
         id: `group-${run.items[0].id}-${run.items.length}`,
         kind: specific === "command" ? "list" : specific,
-        label: groupLabel(run.kinds, run.items.length),
+        label: groupLabel(run.kinds, run.kinds.length),
         items: run.items,
       });
     } else {
@@ -538,6 +567,17 @@ export function groupActivitiesForDisplay(activities: LiveActivityItem[]): Activ
   };
 
   for (const activity of activities) {
+    // Thoughts are transparent: the model's narration between tool calls must
+    // not break a run of exploration. An open run absorbs the thought (shown
+    // when expanded); a thought with no open run renders as its own row.
+    if (activity.toolName === "__thought") {
+      if (run) {
+        run.items.push(activity);
+      } else {
+        entries.push({ type: "single", activity });
+      }
+      continue;
+    }
     const kind = groupKindForActivity(activity);
     if (kind === null) {
       flushRun();
