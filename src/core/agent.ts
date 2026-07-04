@@ -1891,6 +1891,16 @@ class AgentManager {
     tool_calls?: AgentToolCallResult[];
   }> {
     messages = coalesceSystemMessages(messages);
+    // Refresh a lapsed OAuth token (e.g. ChatGPT/Codex) before the call so an
+    // expired access_token doesn't fail the turn.
+    if (provider && typeof provider === "object" && "id" in provider) {
+      const refreshed = await providerManager.refreshOAuthCredentialsIfNeeded(
+        provider as Parameters<typeof providerManager.refreshOAuthCredentialsIfNeeded>[0]
+      );
+      if (refreshed) {
+        provider = refreshed as typeof provider;
+      }
+    }
     const providerName =
       provider && typeof provider === "object" && "provider" in provider
         ? String((provider as { provider?: unknown }).provider || "")
