@@ -7,6 +7,8 @@ import { styles } from "./dashboardStyles";
 import { relativeTimestamp } from "./dashboardHelpers";
 import {
   buildMobileWorkTimeline,
+  groupMobileActivities,
+  type MobileWorkActivity,
   hasUnicodeTextFallback,
   parseMarkdownBlocks,
   shouldUseSelectableNativeText,
@@ -270,6 +272,25 @@ export function WorkActivityIcon({ phase, toolName }: { phase: string; toolName?
   return <CheckCircle2 color={colors.green} size={13} strokeWidth={2.2} />;
 }
 
+function MobileActivityRow({ activity }: { activity: MobileWorkActivity }) {
+  return (
+    <View style={styles.messageActivityRow}>
+      <View style={styles.messageActivityIcon}>
+        <WorkActivityIcon phase={activity.phase} toolName={activity.toolName} />
+      </View>
+      <Text
+        numberOfLines={activity.toolName === "__thought" ? 3 : 2}
+        style={[
+          styles.messageActivityText,
+          activity.toolName === "__thought" && styles.messageThoughtText,
+        ]}
+      >
+        {activity.text}
+      </Text>
+    </View>
+  );
+}
+
 export function WorkTimeline({
   message,
   nowMs,
@@ -278,28 +299,46 @@ export function WorkTimeline({
   nowMs?: number;
 }) {
   const timeline = buildMobileWorkTimeline(message, nowMs);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   if (timeline.activities.length === 0) return null;
+
+  const entries = groupMobileActivities(timeline.activities);
 
   return (
     <View style={styles.workTimeline}>
       <Text style={styles.workedForText}>Worked for {timeline.workedDuration}</Text>
       <View style={styles.messageActivityList}>
-        {timeline.activities.map((activity) => (
-          <View key={activity.id} style={styles.messageActivityRow}>
-            <View style={styles.messageActivityIcon}>
-              <WorkActivityIcon phase={activity.phase} toolName={activity.toolName} />
+        {entries.map((entry) => {
+          if (entry.type === "single") {
+            return <MobileActivityRow key={entry.activity.id} activity={entry.activity} />;
+          }
+          const expanded = expandedGroups[entry.id] === true;
+          return (
+            <View key={entry.id}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() =>
+                  setExpandedGroups((previous) => ({ ...previous, [entry.id]: !expanded }))
+                }
+                style={styles.messageActivityRow}
+              >
+                <View style={styles.messageActivityIcon}>
+                  <CheckCircle2 color={colors.green} size={13} strokeWidth={2.2} />
+                </View>
+                <Text style={styles.messageActivityGroupLabel}>
+                  {entry.label} {expanded ? "▾" : "▸"}
+                </Text>
+              </Pressable>
+              {expanded ? (
+                <View style={styles.messageActivityGroupItems}>
+                  {entry.items.map((activity) => (
+                    <MobileActivityRow key={activity.id} activity={activity} />
+                  ))}
+                </View>
+              ) : null}
             </View>
-            <Text
-              numberOfLines={activity.toolName === "__thought" ? 3 : 2}
-              style={[
-                styles.messageActivityText,
-                activity.toolName === "__thought" && styles.messageThoughtText,
-              ]}
-            >
-              {activity.text}
-            </Text>
-          </View>
-        ))}
+          );
+        })}
       </View>
     </View>
   );

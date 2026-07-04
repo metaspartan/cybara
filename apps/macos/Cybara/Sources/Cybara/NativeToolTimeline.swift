@@ -50,11 +50,7 @@ struct NativeToolTimelineView: View {
                 }
 
                 if !activities.isEmpty {
-                    VStack(alignment: .leading, spacing: 5) {
-                        ForEach(activities) { activity in
-                            NativeToolActivityRow(activity: activity)
-                        }
-                    }
+                    NativeGroupedActivities(activities: activities)
                 }
 
                 if !orderedToolCalls.isEmpty {
@@ -130,11 +126,7 @@ struct NativeLiveToolTimelineView: View {
             }
 
             if !visibleActivities.isEmpty {
-                VStack(alignment: .leading, spacing: 5) {
-                    ForEach(visibleActivities) { activity in
-                        NativeToolActivityRow(activity: activity)
-                    }
-                }
+                NativeGroupedActivities(activities: visibleActivities)
             }
 
             if let displayCurrentStep {
@@ -1040,4 +1032,222 @@ private func nativeCompactDuration(_ durationMs: Double) -> String {
         return String(format: "%.1fs", durationMs / 1000)
     }
     return nativeFormatWorkedDuration(durationMs)
+}
+
+// ── Codex-style tool-call grouping (parity with the web + mobile timeline) ───
+
+enum NativeActivityGroupKind {
+    case read
+    case search
+    case list
+    case command
+}
+
+enum NativeTimelineEntry: Identifiable {
+    case single(NativeToolActivity)
+    case group(id: String, label: String, items: [NativeToolActivity])
+
+    var id: String {
+        switch self {
+        case .single(let activity): return "single-\(activity.id)"
+        case .group(let id, _, _): return id
+        }
+    }
+}
+
+private let nativeGroupableToolKinds: [String: NativeActivityGroupKind] = [
+    "read": .read, "grep": .search, "file_search": .search, "glob": .search,
+    "web_search": .search, "ls": .list, "list": .list,
+]
+
+private let nativeReadOnlyCommandKinds: [String: NativeActivityGroupKind] = [
+    "cat": .read, "head": .read, "tail": .read, "bat": .read, "less": .read, "more": .read,
+    "ls": .list, "find": .list, "tree": .list, "fd": .list, "dir": .list,
+    "grep": .search, "rg": .search, "ag": .search, "ack": .search, "ripgrep": .search,
+    "wc": .command, "cloc": .command, "du": .command, "stat": .command, "file": .command,
+    "which": .command, "pwd": .command, "echo": .command, "env": .command, "printenv": .command,
+    "date": .command, "whoami": .command, "uname": .command, "hostname": .command,
+    "cd": .command, "pushd": .command, "popd": .command, "printf": .command, "true": .command,
+    ":": .command,
+]
+
+private let nativeReadOnlyGitSubcommands: Set<String> = [
+    "log", "status", "diff", "show", "branch", "blame", "remote", "config", "shortlog",
+    "rev-parse", "rev-list", "describe", "ls-files", "ls-tree", "cat-file", "reflog",
+    "whatchanged", "show-ref", "name-rev", "count-objects", "for-each-ref", "symbolic-ref",
+    "merge-base", "grep", "tag", "stash",
+]
+
+private let nativeCommandPrefixWrappers: Set<String> = [
+    "sudo", "command", "time", "nice", "nohup", "env", "xargs",
+]
+
+private func nativeClassifyShellStage(_ stage: String) -> NativeActivityGroupKind? {
+    let tokens = stage.trimmingCharacters(in: .whitespaces).split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
+    guard !tokens.isEmpty else { return nil }
+    var index = 0
+    while index < tokens.count {
+        let token = tokens[index]
+        if token.range(of: "^[A-Za-z_][A-Za-z0-9_]*=", options: .regularExpression) != nil {
+            index += 1
+            continue
+        }
+        if index > 0 && token.hasPrefix("-") {
+            index += 1
+            continue
+        }
+        let stripped = (token.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? token).lowercased()
+        if nativeCommandPrefixWrappers.contains(stripped) && stripped != "env" && stripped != "xargs" {
+            index += 1
+            continue
+        }
+        if (stripped == "env" || stripped == "xargs") && index + 1 < tokens.count && !tokens[index + 1].hasPrefix("-") {
+            index += 1
+            continue
+        }
+        break
+    }
+    guard index < tokens.count else { return nil }
+    let verb = (tokens[index].split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? tokens[index]).lowercased()
+    if verb.isEmpty { return nil }
+    if verb == "git" {
+        let sub = index + 1 < tokens.count ? tokens[index + 1].lowercased() : ""
+        return nativeReadOnlyGitSubcommands.contains(sub) ? .command : nil
+    }
+    return nativeReadOnlyCommandKinds[verb]
+}
+
+private func nativeClassifyShellCommand(_ command: String) -> NativeActivityGroupKind? {
+    var trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.hasSuffix("...") { trimmed = String(trimmed.dropLast(3)).trimmingCharacters(in: .whitespaces) }
+    if trimmed.isEmpty { return nil }
+    let stages = trimmed
+        .components(separatedBy: CharacterSet(charactersIn: ";\n"))
+        .flatMap { $0.components(separatedBy: "&&") }
+        .flatMap { $0.components(separatedBy: "||") }
+        .flatMap { $0.components(separatedBy: "|") }
+        .map { $0.trimmingCharacters(in: .whitespaces) }
+        .filter { !$0.isEmpty }
+    guard !stages.isEmpty else { return nil }
+    var kinds: [NativeActivityGroupKind] = []
+    for stage in stages {
+        guard let kind = nativeClassifyShellStage(stage) else { return nil }
+        kinds.append(kind)
+    }
+    return kinds.first(where: { $0 != .command }) ?? .command
+}
+
+private func nativeGroupKind(_ activity: NativeToolActivity) -> NativeActivityGroupKind? {
+    guard activity.phase == .result else { return nil }
+    let toolName = (activity.toolName ?? "").lowercased()
+    if let kind = nativeGroupableToolKinds[toolName] { return kind }
+    if toolName == "exec" || toolName == "process" || toolName == "git" || toolName.isEmpty {
+        if let range = activity.text.range(of: "^Ran\\s+", options: .regularExpression) {
+            return nativeClassifyShellCommand(String(activity.text[range.upperBound...]))
+        }
+        if toolName.isEmpty {
+            if activity.text.hasPrefix("Explored ") { return .read }
+            if activity.text.hasPrefix("Searched ") { return .search }
+        }
+    }
+    return nil
+}
+
+private func nativeGroupLabel(_ kinds: [NativeActivityGroupKind], _ count: Int) -> String {
+    let unique = Set(kinds)
+    if unique.count == 1, let only = unique.first {
+        switch only {
+        case .read: return "Read \(count) files"
+        case .search: return "Ran \(count) searches"
+        case .list: return "Listed \(count) locations"
+        case .command: break
+        }
+    }
+    return "Ran \(count) commands"
+}
+
+/// Collapse consecutive read-only exploring activities; thoughts are
+/// transparent (folded into a group, shown when expanded, not counted).
+func nativeGroupActivities(_ activities: [NativeToolActivity]) -> [NativeTimelineEntry] {
+    var entries: [NativeTimelineEntry] = []
+    var runKinds: [NativeActivityGroupKind] = []
+    var runItems: [NativeToolActivity] = []
+
+    func flush() {
+        guard !runItems.isEmpty else { return }
+        if runKinds.count >= 2 {
+            entries.append(.group(id: "group-\(runItems[0].id)-\(runItems.count)",
+                                  label: nativeGroupLabel(runKinds, runKinds.count),
+                                  items: runItems))
+        } else {
+            for item in runItems { entries.append(.single(item)) }
+        }
+        runKinds = []
+        runItems = []
+    }
+
+    for activity in activities {
+        if activity.toolName == "__thought" {
+            if runItems.isEmpty {
+                entries.append(.single(activity))
+            } else {
+                runItems.append(activity)
+            }
+            continue
+        }
+        guard let kind = nativeGroupKind(activity) else {
+            flush()
+            entries.append(.single(activity))
+            continue
+        }
+        runKinds.append(kind)
+        runItems.append(activity)
+    }
+    flush()
+    return entries
+}
+
+/// Renders a grouped activity list with collapsible "Ran N commands" rows.
+struct NativeGroupedActivities: View {
+    let activities: [NativeToolActivity]
+    @State private var expanded: Set<String> = []
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            ForEach(nativeGroupActivities(activities)) { entry in
+                switch entry {
+                case .single(let activity):
+                    NativeToolActivityRow(activity: activity)
+                case .group(let id, let label, let items):
+                    let isExpanded = expanded.contains(id)
+                    Button {
+                        if isExpanded { expanded.remove(id) } else { expanded.insert(id) }
+                    } label: {
+                        HStack(alignment: .top, spacing: 7) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 11.5, weight: .semibold))
+                                .foregroundStyle(.green)
+                                .frame(width: 13, alignment: .center)
+                                .padding(.top, 1)
+                            Text(label)
+                                .font(.system(size: 11.8, weight: .medium, design: .rounded))
+                                .foregroundStyle(.secondary)
+                            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    if isExpanded {
+                        VStack(alignment: .leading, spacing: 5) {
+                            ForEach(items) { item in
+                                NativeToolActivityRow(activity: item)
+                            }
+                        }
+                        .padding(.leading, 10)
+                    }
+                }
+            }
+        }
+    }
 }

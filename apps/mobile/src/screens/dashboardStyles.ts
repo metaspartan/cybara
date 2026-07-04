@@ -740,6 +740,20 @@ const makeStyles = () =>
     messageThoughtText: {
       color: colors.text,
     },
+    messageActivityGroupLabel: {
+      color: colors.textMuted,
+      flex: 1,
+      fontSize: typography.label,
+      fontWeight: "600",
+      lineHeight: 18,
+    },
+    messageActivityGroupItems: {
+      borderLeftColor: colors.border,
+      borderLeftWidth: 1,
+      gap: spacing.xs,
+      marginLeft: 6,
+      paddingLeft: spacing.sm,
+    },
     loadingRow: {
       alignItems: "center",
       flexDirection: "row",

@@ -667,3 +667,242 @@ export function stripStreamingReasoningForDisplay(text: string): string {
 
   return result.replace(/^\s+/, "");
 }
+
+// ── Codex-style tool-call grouping (parity with the web/Tauri timeline) ──────
+export type MobileActivityGroupKind = "read" | "search" | "list";
+
+export interface MobileActivityGroup {
+  type: "group";
+  id: string;
+  kind: MobileActivityGroupKind;
+  label: string;
+  items: MobileWorkActivity[];
+}
+
+export interface MobileActivitySingle {
+  type: "single";
+  activity: MobileWorkActivity;
+}
+
+export type MobileActivityEntry = MobileActivityGroup | MobileActivitySingle;
+
+type MobileGroupableKind = MobileActivityGroupKind | "command";
+
+const MOBILE_GROUPABLE_TOOL_KINDS: Record<string, MobileGroupableKind> = {
+  read: "read",
+  grep: "search",
+  file_search: "search",
+  glob: "search",
+  web_search: "search",
+  ls: "list",
+  list: "list",
+};
+
+const MOBILE_READ_ONLY_COMMAND_KINDS: Record<string, MobileGroupableKind> = {
+  cat: "read",
+  head: "read",
+  tail: "read",
+  bat: "read",
+  less: "read",
+  more: "read",
+  ls: "list",
+  find: "list",
+  tree: "list",
+  fd: "list",
+  dir: "list",
+  grep: "search",
+  rg: "search",
+  ag: "search",
+  ack: "search",
+  ripgrep: "search",
+  wc: "command",
+  cloc: "command",
+  du: "command",
+  stat: "command",
+  file: "command",
+  which: "command",
+  pwd: "command",
+  echo: "command",
+  env: "command",
+  printenv: "command",
+  date: "command",
+  whoami: "command",
+  uname: "command",
+  hostname: "command",
+  cd: "command",
+  pushd: "command",
+  popd: "command",
+  printf: "command",
+  true: "command",
+  ":": "command",
+};
+
+const MOBILE_READ_ONLY_GIT_SUBCOMMANDS = new Set([
+  "log",
+  "status",
+  "diff",
+  "show",
+  "branch",
+  "blame",
+  "remote",
+  "config",
+  "shortlog",
+  "rev-parse",
+  "rev-list",
+  "describe",
+  "ls-files",
+  "ls-tree",
+  "cat-file",
+  "reflog",
+  "whatchanged",
+  "show-ref",
+  "name-rev",
+  "count-objects",
+  "for-each-ref",
+  "symbolic-ref",
+  "merge-base",
+  "grep",
+  "tag",
+  "stash",
+]);
+
+const MOBILE_COMMAND_PREFIX_WRAPPERS = new Set([
+  "sudo",
+  "command",
+  "time",
+  "nice",
+  "nohup",
+  "env",
+  "xargs",
+]);
+const MOBILE_COMPOUND_STAGE_SPLIT = /\s*(?:&&|\|\||\||;|\n)\s*/;
+
+function mobileClassifyShellStage(stage: string): MobileGroupableKind | null {
+  const tokens = stage.trim().split(/\s+/);
+  let index = 0;
+  while (index < tokens.length) {
+    const token = tokens[index];
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)) {
+      index += 1;
+      continue;
+    }
+    if (index > 0 && token.startsWith("-")) {
+      index += 1;
+      continue;
+    }
+    const stripped = token.split(/[\\/]/).pop()?.toLowerCase() || "";
+    if (
+      MOBILE_COMMAND_PREFIX_WRAPPERS.has(stripped) &&
+      stripped !== "env" &&
+      stripped !== "xargs"
+    ) {
+      index += 1;
+      continue;
+    }
+    if (
+      (stripped === "env" || stripped === "xargs") &&
+      index + 1 < tokens.length &&
+      !tokens[index + 1].startsWith("-")
+    ) {
+      index += 1;
+      continue;
+    }
+    break;
+  }
+  const verb = tokens[index]?.split(/[\\/]/).pop()?.toLowerCase() || "";
+  if (!verb) return null;
+  if (verb === "git") {
+    const sub = (tokens[index + 1] || "").toLowerCase();
+    return MOBILE_READ_ONLY_GIT_SUBCOMMANDS.has(sub) ? "command" : null;
+  }
+  return MOBILE_READ_ONLY_COMMAND_KINDS[verb] ?? null;
+}
+
+function mobileClassifyShellCommand(command: string): MobileGroupableKind | null {
+  const trimmed = command.trim().replace(/\s*\.\.\.$/, "");
+  if (!trimmed) return null;
+  const stages = trimmed
+    .split(MOBILE_COMPOUND_STAGE_SPLIT)
+    .map((stage) => stage.trim())
+    .filter(Boolean);
+  if (stages.length === 0) return null;
+  const kinds: MobileGroupableKind[] = [];
+  for (const stage of stages) {
+    const kind = mobileClassifyShellStage(stage);
+    if (kind === null) return null;
+    kinds.push(kind);
+  }
+  return kinds.find((kind) => kind !== "command") ?? "command";
+}
+
+function mobileGroupKind(activity: MobileWorkActivity): MobileGroupableKind | null {
+  if (activity.phase !== "result") return null;
+  const toolName = activity.toolName?.toLowerCase() || "";
+  if (toolName in MOBILE_GROUPABLE_TOOL_KINDS) return MOBILE_GROUPABLE_TOOL_KINDS[toolName];
+  if (toolName === "exec" || toolName === "process" || toolName === "git" || !toolName) {
+    const ranMatch = activity.text.match(/^Ran\s+(.+)$/s);
+    if (ranMatch) return mobileClassifyShellCommand(ranMatch[1]);
+    if (!toolName) {
+      if (/^Explored /.test(activity.text)) return "read";
+      if (/^Searched /.test(activity.text)) return "search";
+    }
+  }
+  return null;
+}
+
+function mobileGroupLabel(kinds: MobileGroupableKind[], count: number): string {
+  const unique = new Set(kinds);
+  if (unique.size === 1) {
+    const [only] = unique;
+    if (only === "read") return `Read ${count} files`;
+    if (only === "search") return `Ran ${count} searches`;
+    if (only === "list") return `Listed ${count} locations`;
+  }
+  return `Ran ${count} commands`;
+}
+
+/** Collapse consecutive read-only exploring activities, matching the web UI. */
+export function groupMobileActivities(activities: MobileWorkActivity[]): MobileActivityEntry[] {
+  const entries: MobileActivityEntry[] = [];
+  let run: { kinds: MobileGroupableKind[]; items: MobileWorkActivity[] } | null = null;
+
+  const flush = () => {
+    if (!run) return;
+    if (run.kinds.length >= 2) {
+      const unique = new Set(run.kinds);
+      const specific = unique.size === 1 ? [...unique][0] : "command";
+      entries.push({
+        type: "group",
+        id: `group-${run.items[0].id}-${run.items.length}`,
+        kind: specific === "command" ? "list" : specific,
+        label: mobileGroupLabel(run.kinds, run.kinds.length),
+        items: run.items,
+      });
+    } else {
+      for (const activity of run.items) entries.push({ type: "single", activity });
+    }
+    run = null;
+  };
+
+  for (const activity of activities) {
+    if (activity.toolName === "__thought") {
+      if (run) run.items.push(activity);
+      else entries.push({ type: "single", activity });
+      continue;
+    }
+    const kind = mobileGroupKind(activity);
+    if (kind === null) {
+      flush();
+      entries.push({ type: "single", activity });
+      continue;
+    }
+    if (run) {
+      run.kinds.push(kind);
+      run.items.push(activity);
+    } else {
+      run = { kinds: [kind], items: [activity] };
+    }
+  }
+  flush();
+  return entries;
+}
