@@ -429,6 +429,7 @@ interface AgentExecutionOptions {
   modelOverride?: string;
   requireToolUse?: boolean;
   requiredToolName?: string;
+  abortSignal?: AbortSignal;
   consumeSteeringMessages?: () => Array<{ id: string; content: string; createdAt: number }>;
 }
 
@@ -1226,8 +1227,10 @@ class AgentManager {
         tools,
         toolContext
       );
+      if (options?.abortSignal?.aborted) throw options.abortSignal.reason;
       return result;
     } catch (error) {
+      if (options?.abortSignal?.aborted) throw error;
       console.error("[Agent] LLM call failed:", error);
 
       if (agent.fallback_provider_id && activeProvider.id !== agent.fallback_provider_id) {
@@ -1241,8 +1244,10 @@ class AgentManager {
               tools,
               toolContext
             );
+            if (options?.abortSignal?.aborted) throw options.abortSignal.reason;
             return fallbackResult;
           } catch (fallbackError) {
+            if (options?.abortSignal?.aborted) throw fallbackError;
             console.error("[Agent] Fallback LLM call also failed:", fallbackError);
             return { content: this.formatLlmFailure(fallbackError) };
           }
@@ -1310,6 +1315,7 @@ class AgentManager {
         typeof options?.requiredToolName === "string" && options.requiredToolName.trim().length > 0
           ? options.requiredToolName.trim()
           : undefined,
+      abortSignal: options?.abortSignal,
       consumeSteeringMessages: options?.consumeSteeringMessages,
     };
   }
@@ -1940,8 +1946,6 @@ class AgentManager {
     tool_calls?: AgentToolCallResult[];
   }> {
     messages = coalesceSystemMessages(messages);
-    // Refresh a lapsed OAuth token (e.g. ChatGPT/Codex) before the call so an
-    // expired access_token doesn't fail the turn.
     if (provider && typeof provider === "object" && "id" in provider) {
       const refreshed = await providerManager.refreshOAuthCredentialsIfNeeded(
         provider as Parameters<typeof providerManager.refreshOAuthCredentialsIfNeeded>[0]
@@ -2680,13 +2684,15 @@ class AgentManager {
     baseUrl: string,
     headers: Record<string, string>,
     requestBody: Record<string, unknown>,
-    errorPrefix: string
+    errorPrefix: string,
+    signal?: AbortSignal
   ): Promise<OpenAIResponse> {
     const post = async (body: Record<string, unknown>) =>
       await fetch(`${baseUrl}/chat/completions`, {
         method: "POST",
         headers,
         body: JSON.stringify(body),
+        signal,
       });
 
     let currentBody: Record<string, unknown> = { ...requestBody };
@@ -2783,7 +2789,6 @@ class AgentManager {
     const requestBody: Record<string, unknown> = {
       model: modelId,
       messages: messages.map((m) => {
-        // Attach images to user turns as multimodal content blocks.
         if (m.role === "user" && hasImages(m.images)) {
           return {
             role: m.role,
@@ -2857,7 +2862,13 @@ class AgentManager {
 
     const startTime = performance.now();
 
-    const data = await this.postOpenAIChatCompletions(baseUrl, headers, requestBody, "API error");
+    const data = await this.postOpenAIChatCompletions(
+      baseUrl,
+      headers,
+      requestBody,
+      "API error",
+      toolContext?.abortSignal
+    );
 
     const durationMs = Math.round(performance.now() - startTime);
 
@@ -3046,7 +3057,8 @@ class AgentManager {
           baseUrl,
           headers,
           loopRequestBody,
-          "API error in agentic loop"
+          "API error in agentic loop",
+          toolContext?.abortSignal
         );
       } catch (error) {
         const errorMessage = this.normalizeErrorMessage(error);
@@ -3068,7 +3080,8 @@ class AgentManager {
             ...loopRequestBody,
             messages: currentMessages,
           },
-          "API error in agentic loop"
+          "API error in agentic loop",
+          toolContext?.abortSignal
         );
       }
       const loopChoice = loopData.choices?.[0];
@@ -3297,7 +3310,6 @@ class AgentManager {
       if (type === "response.output_text.delta") {
         if (typeof event.delta === "string") {
           outputText += event.delta;
-          // Stream the delta to the UI so users see text appear in real time.
           if (sessionId) {
             try {
               broadcastTokenDelta({
@@ -3465,7 +3477,8 @@ class AgentManager {
     requestBody: Record<string, unknown>,
     requestedModel: string,
     sessionId?: string,
-    agentId?: string
+    agentId?: string,
+    signal?: AbortSignal
   ): Promise<OpenAICodexTurnResult & { resolvedModel: string }> {
     const candidates = this.getOpenAICodexModelCandidates(requestedModel);
     let finalError = "OpenAI Codex request failed";
@@ -3477,6 +3490,7 @@ class AgentManager {
         method: "POST",
         headers,
         body: JSON.stringify(body),
+        signal,
       });
 
       if (!response.ok) {
@@ -3591,7 +3605,8 @@ class AgentManager {
         requestBody,
         activeModelId,
         toolContext?.sessionId,
-        toolContext?.agentId
+        toolContext?.agentId,
+        toolContext?.abortSignal
       );
       activeModelId = turn.resolvedModel;
       const durationMs = Math.round(performance.now() - startTime);
@@ -3737,7 +3752,6 @@ class AgentManager {
     const chatMessages = messages.filter((message) => message.role !== "system");
     const contents: GoogleContent[] = chatMessages.map((message) => {
       const role = message.role === "assistant" ? "model" : "user";
-      // Vision: inline image parts on user turns (Google needs base64 bytes).
       if (role === "user" && hasImages(message.images)) {
         const parts: unknown[] = [];
         if (message.content) parts.push({ text: message.content });
@@ -3816,6 +3830,7 @@ class AgentManager {
         method: "POST",
         headers,
         body: JSON.stringify(requestBody),
+        signal: toolContext?.abortSignal,
       });
 
       if (!response.ok) {
@@ -4179,7 +4194,6 @@ class AgentManager {
       .filter((m) => m.role !== "system")
       .map((m) => {
         const role = m.role === "assistant" ? "assistant" : "user";
-        // Vision: user image inputs become image content blocks alongside text.
         if (role === "user" && hasImages(m.images)) {
           return {
             role,
@@ -4249,13 +4263,11 @@ class AgentManager {
     requestBody.messages = cached.messages;
 
     const startTime = performance.now();
-    // 429 is now retryable (with credential rotation) in addition to transient 5xx/529.
     const INITIAL_TRANSIENT_CODES = new Set([429, 500, 502, 503, 520, 529]);
     const INITIAL_MAX_RETRIES = 3;
     let response: Response | null = null;
     let lastInitialError = "";
     const poolName = "anthropic";
-    // Prefer a pooled credential when available; fall back to the provided auth.
     let activeCredential: PooledCredential | null =
       !vertex && poolSize(poolName) > 0 ? acquireCredential(poolName) : null;
     let currentApiKey = activeCredential?.value ?? auth;
@@ -4270,6 +4282,7 @@ class AgentManager {
         method: "POST",
         headers,
         body: JSON.stringify(requestBody),
+        signal: toolContext?.abortSignal,
       });
 
       if (response.ok) {
@@ -4569,6 +4582,7 @@ class AgentManager {
             method: "POST",
             headers,
             body: JSON.stringify(loopRequestBody),
+            signal: toolContext?.abortSignal,
           });
 
           if (loopResponse.ok) break;
@@ -4590,6 +4604,7 @@ class AgentManager {
               method: "POST",
               headers,
               body: JSON.stringify(retryBody),
+              signal: toolContext?.abortSignal,
             });
             if (!retryResponse.ok) {
               loopFatalError = true;
@@ -4720,7 +4735,13 @@ class AgentManager {
 
     const startTime = performance.now();
 
-    const data = await this.postOpenAIChatCompletions(baseUrl, headers, requestBody, "API error");
+    const data = await this.postOpenAIChatCompletions(
+      baseUrl,
+      headers,
+      requestBody,
+      "API error",
+      toolContext?.abortSignal
+    );
 
     const durationMs = Math.round(performance.now() - startTime);
 
@@ -4889,7 +4910,8 @@ class AgentManager {
           baseUrl,
           headers,
           loopRequestBody,
-          "API error in agentic loop"
+          "API error in agentic loop",
+          toolContext?.abortSignal
         );
       } catch (error) {
         const errorMessage = this.normalizeErrorMessage(error);
@@ -4911,7 +4933,8 @@ class AgentManager {
             ...loopRequestBody,
             messages: currentMessages,
           },
-          "API error in agentic loop"
+          "API error in agentic loop",
+          toolContext?.abortSignal
         );
       }
       const loopChoice = loopData.choices?.[0];

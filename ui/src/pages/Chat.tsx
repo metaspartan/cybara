@@ -253,7 +253,8 @@ function PendingChatQueue({
     <div data-testid="pending-chat-queue" className="mb-2 w-full min-w-0 space-y-1.5">
       {messages.map((message) => {
         const isSteering = message.mode === "steering";
-        const canDrag = messages.length > 1 && !isSteering;
+        const isOptimistic = message.id.startsWith("optimistic-");
+        const canDrag = messages.length > 1 && !isSteering && !isOptimistic;
         return (
           <div
             key={message.id}
@@ -302,10 +303,14 @@ function PendingChatQueue({
               <button
                 type="button"
                 onClick={() => onSteer(message.id)}
-                disabled={steeringMessageId === message.id}
+                disabled={isOptimistic || steeringMessageId === message.id}
                 className="inline-flex h-7 shrink-0 items-center justify-center rounded-md px-2 text-[12px] font-medium text-gray-300 transition-colors hover:bg-white/[0.08] hover:text-white disabled:opacity-60"
               >
-                {steeringMessageId === message.id ? "Steering..." : "Steer"}
+                {isOptimistic
+                  ? "Queueing..."
+                  : steeringMessageId === message.id
+                    ? "Steering..."
+                    : "Steer"}
               </button>
             ) : (
               <span className="shrink-0 text-[11px] text-emerald-300">Steering</span>
@@ -2680,13 +2685,7 @@ export function Chat() {
         if (status === "idle") {
           setLiveStatus("idle");
           setLiveCurrentStep(null);
-          const pendingCapture = pendingProcessCaptureRef.current;
-          const hasPendingCaptureForVisibleSession =
-            !!pendingCapture &&
-            (!payloadSessionId ||
-              !pendingCapture.sessionId ||
-              pendingCapture.sessionId === payloadSessionId);
-          if (!loadingRef.current && !hasPendingCaptureForVisibleSession) {
+          if (!loadingRef.current) {
             const sessionToRefresh = payloadSessionId || activeSession;
             const finalizeLiveState = () => {
               setStreamingContent(null);

@@ -109,7 +109,7 @@ describe("handleChat per-session serialization", () => {
     expect(listPendingChatMessages(sessionId)).toEqual([]);
   });
 
-  test("queued follow-up can be promoted to steering", async () => {
+  test("queued follow-up can interrupt the active turn as steering", async () => {
     const provider = providerManager.create({
       provider: "openai",
       name: "Steering Provider",
@@ -128,8 +128,14 @@ describe("handleChat per-session serialization", () => {
     createdAgentIds.push(agent.id);
 
     let call = 0;
-    globalThis.fetch = (async () => {
+    let firstRequestAborted = false;
+    globalThis.fetch = (async (_url, init) => {
       const n = ++call;
+      if (n === 1 && init?.signal instanceof AbortSignal) {
+        init.signal.addEventListener("abort", () => {
+          firstRequestAborted = true;
+        });
+      }
       await new Promise((resolve) => setTimeout(resolve, n === 1 ? 40 : 5));
       return new Response(
         JSON.stringify({
@@ -174,12 +180,14 @@ describe("handleChat per-session serialization", () => {
     const materializedMessages = await waitForVisibleSessionMessages(sessionId, 2);
     expect(materializedMessages[1]?.content).toBe("adjust course");
 
-    await firstTurn;
-    const messages = await waitForVisibleSessionMessages(sessionId, 4);
+    const firstResult = await firstTurn;
+    expect(firstResult.interrupted).toBe(true);
+    expect(firstRequestAborted).toBe(true);
+    const messages = await waitForVisibleSessionMessages(sessionId, 3);
     expect(messages[0]?.content).toBe("start");
-    expect(messages[1]?.role).toBe("assistant");
-    expect(messages[2]?.content).toBe("adjust course");
-    expect(messages[3]?.role).toBe("assistant");
+    expect(messages[1]?.content).toBe("adjust course");
+    expect(messages[2]?.role).toBe("assistant");
+    expect(messages[2]?.content).toBe("steer-reply-2");
   });
 
   test("queue mode honors active session status even if no mutex is held", async () => {

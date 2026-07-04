@@ -68,6 +68,7 @@ export const agentsApi = {
       sessionId: string;
       workspaceDir?: string | null;
       queued?: boolean;
+      interrupted?: boolean;
       pendingMessage?: PendingChatMessage;
       pendingMessages?: PendingChatMessage[];
     }>(`/agents/${id}/chat`, {
@@ -860,6 +861,7 @@ export const chatApi = {
       sessionId: string;
       workspaceDir?: string | null;
       queued?: boolean;
+      interrupted?: boolean;
       pendingMessage?: PendingChatMessage;
       pendingMessages?: PendingChatMessage[];
     }>("/chat", {

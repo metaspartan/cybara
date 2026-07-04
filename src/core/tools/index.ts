@@ -43,6 +43,7 @@ export interface ToolContext {
   allowDangerousTools?: boolean;
   requireToolUse?: boolean;
   requiredToolName?: string;
+  abortSignal?: AbortSignal;
   /** Extra path prefixes to deny for write/edit/apply_patch (sensitive dirs). */
   denyWritePrefixes?: string[];
   /** When true, file writes are confined to `workspaceDir`. Default false. */

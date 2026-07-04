@@ -34,6 +34,8 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("sessionId: requestSessionId || undefined");
     expect(source).toContain("optimisticPendingMessageCounterRef");
     expect(source).toContain("optimisticPendingMessageId = `optimistic-${now}-");
+    expect(source).toContain('message.id.startsWith("optimistic-")');
+    expect(source).toContain('"Queueing..."');
     expect(source).toContain(
       "const sendQueuesFollowUp = showWorkingTimeline || pendingMessages.length > 0"
     );
@@ -44,6 +46,14 @@ describe("status stream websocket wiring", () => {
     const source = readSource(sidebarPath);
     expect(source).toContain("connectStatusStream");
     expect(source).not.toContain("new EventSource(");
+  });
+
+  test("chat idle status refresh is not blocked by pending process capture", () => {
+    const source = readSource(chatPath);
+    const idleBranch = source.slice(source.indexOf('if (status === "idle")'));
+    expect(idleBranch).toContain("void refreshSessionMessagesRef.current(sessionToRefresh)");
+    expect(idleBranch).toContain("if (!loadingRef.current) {");
+    expect(idleBranch).not.toContain("hasPendingCaptureForVisibleSession");
   });
 
   test("task notifications subscribe through websocket status stream", () => {

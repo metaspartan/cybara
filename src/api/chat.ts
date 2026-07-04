@@ -118,6 +118,7 @@ export interface ChatResponse {
   message: ChatMessage;
   workspaceDir?: string | null;
   queued?: boolean;
+  interrupted?: boolean;
   pendingMessage?: PendingChatMessageSnapshot;
   pendingMessages?: PendingChatMessageSnapshot[];
   agent?: {
@@ -186,7 +187,61 @@ interface PendingChatItem {
 
 const pendingChatQueues = new Map<string, PendingChatItem[]>();
 const pendingChatDrainScheduled = new Set<string>();
+const activeChatTurnAbortControllers = new Map<string, AbortController>();
 let pendingChatSequence = 0;
+
+function isChatTurnInterrupted(error: unknown, signal?: AbortSignal): boolean {
+  if (signal?.aborted) return true;
+  if (error instanceof DOMException) return error.name === "AbortError";
+  return (
+    !!error &&
+    typeof error === "object" &&
+    "name" in error &&
+    (error as Error).name === "AbortError"
+  );
+}
+
+function interruptActiveChatTurnForSteering(sessionId: string): boolean {
+  const controller = activeChatTurnAbortControllers.get(sessionId);
+  if (!controller || controller.signal.aborted) return false;
+  controller.abort(new DOMException("Chat turn interrupted by user steering", "AbortError"));
+  return true;
+}
+
+function clearActiveChatTurnAbortController(sessionId: string, controller: AbortController): void {
+  if (activeChatTurnAbortControllers.get(sessionId) === controller) {
+    activeChatTurnAbortControllers.delete(sessionId);
+  }
+}
+
+function finishInterruptedChatTurn(
+  session: InMemoryChatSession,
+  agent: { id: string; name: string },
+  controller: AbortController
+): ChatResponse {
+  clearActiveChatTurnAbortController(session.id, controller);
+  broadcastStatus({
+    status: "idle",
+    timestamp: Date.now(),
+    detail: "Steering to follow-up...",
+    sessionId: session.id,
+    agentId: agent.id,
+  });
+  return {
+    sessionId: session.id,
+    workspaceDir: session.workspaceDir ?? null,
+    interrupted: true,
+    message: {
+      role: "assistant",
+      content: "",
+      timestamp: new Date().toISOString(),
+    },
+    agent: {
+      id: agent.id,
+      name: agent.name,
+    },
+  };
+}
 
 function isActiveChatStatus(status?: string): boolean {
   return (
@@ -809,6 +864,7 @@ async function generateSessionTitleViaModel(params: {
   channel?: string;
   userId?: string;
   workspaceDir?: string | null;
+  abortSignal?: AbortSignal;
 }): Promise<string | null> {
   const { provider, agent } = params;
   if (!provider || !agent) return null;
@@ -836,6 +892,7 @@ async function generateSessionTitleViaModel(params: {
       channel: params.channel,
       userId: params.userId,
       workspaceDir: params.workspaceDir || undefined,
+      abortSignal: params.abortSignal,
     });
     return parseModelGeneratedSessionTitle(result.content);
   } catch (error) {
@@ -1012,10 +1069,14 @@ export async function steerPendingChatMessage(
     modelMetadata: resolveSessionModelMetadata(session.agentId),
   });
   const pendingMessages = syncPendingChatStatus(key);
+  const interrupted = interruptActiveChatTurnForSteering(key);
+  if (interrupted) {
+    schedulePendingChatDrain(key);
+  }
   broadcastStatus({
-    status: "thinking",
+    status: interrupted ? "idle" : "thinking",
     timestamp: Date.now(),
-    detail: "Follow-up added",
+    detail: interrupted ? "Steering to follow-up..." : "Follow-up added",
     sessionId: key,
     agentId: item.request.agentId,
   });
@@ -1143,6 +1204,10 @@ async function handleChatTurn(
   }
 
   const provider = agent ? agentManager.resolveProvider(agent.id) : undefined;
+  const turnAbortController = new AbortController();
+  if (provider && agent) {
+    activeChatTurnAbortControllers.set(session.id, turnAbortController);
+  }
 
   if (isNewSession && (!session.title || shouldRegenerateSessionTitle(session.title))) {
     const generatedTitle = await generateSessionTitleViaModel({
@@ -1153,11 +1218,16 @@ async function handleChatTurn(
       channel,
       userId,
       workspaceDir: session.workspaceDir,
+      abortSignal: turnAbortController.signal,
     });
     session.title = withAgentTitlePrefix(agent?.name, generatedTitle);
     if (!session.title) {
       session.title = withAgentTitlePrefix(agent?.name, deriveSessionTitleFromTurn(message));
     }
+  }
+
+  if (agent && turnAbortController.signal.aborted) {
+    return finishInterruptedChatTurn(session, agent, turnAbortController);
   }
 
   if (provider && agent) {
@@ -1297,6 +1367,7 @@ async function handleChatTurn(
         requireToolUse: shouldPreferArtifacts,
         requiredToolName: shouldPreferArtifacts ? "artifacts" : undefined,
         workspaceDir: session.workspaceDir || undefined,
+        abortSignal: turnAbortController.signal,
         consumeSteeringMessages: () => consumeSteeringMessages(session),
       });
       responseContent = result.content;
@@ -1346,6 +1417,7 @@ async function handleChatTurn(
             requireToolUse: true,
             requiredToolName: shouldPreferArtifacts ? "artifacts" : undefined,
             workspaceDir: session.workspaceDir || undefined,
+            abortSignal: turnAbortController.signal,
             consumeSteeringMessages: () => consumeSteeringMessages(session),
           });
           const forcedToolCalls = forcedResult.tool_calls || [];
@@ -1424,6 +1496,7 @@ async function handleChatTurn(
                 channel,
                 userId,
                 workspaceDir: session.workspaceDir || undefined,
+                abortSignal: turnAbortController.signal,
               }
             );
             responseContent = summaryResult.content;
@@ -1485,6 +1558,7 @@ async function handleChatTurn(
                       channel,
                       userId,
                       workspaceDir: session.workspaceDir || undefined,
+                      abortSignal: turnAbortController.signal,
                     }
                   );
                   responseContent = finalResult.content;
@@ -1508,12 +1582,17 @@ async function handleChatTurn(
         preview: responseContent.substring(0, 100),
       });
     } catch (error) {
+      if (isChatTurnInterrupted(error, turnAbortController.signal)) {
+        return finishInterruptedChatTurn(session, agent, turnAbortController);
+      }
       recordCircuitFailure(`llm:${provider.id}`);
       log.error("LLM API error", {
         sessionId: session.id,
         error: (error as Error).message,
       });
       responseContent = `I encountered an error calling the LLM API: ${(error as Error).message}. Please check your provider configuration.`;
+    } finally {
+      clearActiveChatTurnAbortController(session.id, turnAbortController);
     }
   } else {
     responseContent =

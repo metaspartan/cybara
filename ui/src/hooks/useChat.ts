@@ -97,6 +97,13 @@ export function useChat(agentId?: string) {
           void queryClient.invalidateQueries({ queryKey: ["sessions"] });
           return response.data;
         }
+        if (response.data.interrupted) {
+          setState((prev) =>
+            prev.sessionId === requestSessionId ? { ...prev, isLoading: false } : prev
+          );
+          void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+          return response.data;
+        }
         setState((prev) => ({
           // Ignore stale responses if the user switched sessions while the request was in-flight.
           ...(prev.sessionId !== requestSessionId
