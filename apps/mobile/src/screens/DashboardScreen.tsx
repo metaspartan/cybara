@@ -56,7 +56,9 @@ import { haptics } from "../lib/haptics";
 import { useThemeControls } from "../theme/ThemeContext";
 import {
   AlertTriangle,
+  ArrowDown,
   ArrowLeft,
+  ArrowUp,
   Bot,
   Box,
   Brain,
@@ -262,6 +264,33 @@ type DetailRoute =
 interface ChatHeaderAction {
   busy: boolean;
   onPress: () => void;
+}
+
+function pendingMessageIsOptimistic(message: MobilePendingChatMessage): boolean {
+  return message.id.startsWith("optimistic-");
+}
+
+function pendingMessagesFromResponse(result: {
+  pendingMessage?: MobilePendingChatMessage;
+  pendingMessages?: MobilePendingChatMessage[];
+}): MobilePendingChatMessage[] {
+  if (result.pendingMessages && result.pendingMessages.length > 0) return result.pendingMessages;
+  return result.pendingMessage ? [result.pendingMessage] : [];
+}
+
+function mergeOptimisticPendingMessages(
+  remoteMessages: MobilePendingChatMessage[],
+  currentMessages: MobilePendingChatMessage[]
+): MobilePendingChatMessage[] {
+  const optimisticMessages = currentMessages.filter((message) => {
+    if (!pendingMessageIsOptimistic(message)) return false;
+    return !remoteMessages.some(
+      (remote) => remote.sessionId === message.sessionId && remote.content === message.content
+    );
+  });
+  return [...remoteMessages, ...optimisticMessages].sort(
+    (a, b) => a.sequence - b.sequence || a.createdAt - b.createdAt
+  );
 }
 
 const tabIcons: Record<MobileTabKey, IconGlyph> = {
@@ -1863,12 +1892,14 @@ function SessionDetailPanel({
   const [sending, setSending] = useState(false);
   const [pendingMessages, setPendingMessages] = useState<MobilePendingChatMessage[]>([]);
   const [steeringPendingId, setSteeringPendingId] = useState<string | null>(null);
+  const [reorderingPendingId, setReorderingPendingId] = useState<string | null>(null);
   const [pinned, setPinned] = useState(sessionSummary?.pinned ?? false);
   const [pinning, setPinning] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const headerActionRef = useRef<() => void>(() => {});
   const sessionRefreshInFlight = useRef(false);
   const sendingRef = useRef(false);
+  const optimisticPendingCounterRef = useRef(0);
   const cachedLiveAssistant = readCachedMobileLiveAssistant(sessionId);
   const [liveAssistant, setLiveAssistant] = useState<
     SessionDetailSummary["messages"][number] | null
@@ -1935,7 +1966,9 @@ function SessionDetailPanel({
           snapshotStatus === "generating" ||
           snapshotStatus === "tool_executing" ||
           snapshotStatus === "tool_completed");
-      setPendingMessages(snapshot?.pendingMessages ?? []);
+      setPendingMessages((current) =>
+        mergeOptimisticPendingMessages(snapshot?.pendingMessages ?? [], current)
+      );
       if (!active || !snapshot) {
         if (!sendingRef.current) {
           commitLiveAssistant(() => null);
@@ -2010,10 +2043,12 @@ function SessionDetailPanel({
         if (event.type === "snapshot") {
           const snapshot = event.activeSessions.find((entry) => entry.sessionId === sessionId);
           if (!snapshot) {
-            setPendingMessages([]);
+            setPendingMessages((current) => mergeOptimisticPendingMessages([], current));
             return;
           }
-          setPendingMessages(snapshot.pendingMessages ?? []);
+          setPendingMessages((current) =>
+            mergeOptimisticPendingMessages(snapshot.pendingMessages ?? [], current)
+          );
           commitLiveAssistant(
             (current) => liveAssistantFromStatusSnapshot(sessionId, current, snapshot),
             snapshot.timestamp
@@ -2029,7 +2064,7 @@ function SessionDetailPanel({
             // empty for seconds right as a run finished.
             void loadSession(false).finally(() => {
               commitLiveAssistant(() => null, event.timestamp);
-              setPendingMessages([]);
+              void hydrateLiveAssistant();
             });
           }
           return;
@@ -2046,7 +2081,7 @@ function SessionDetailPanel({
       },
     });
     return disconnect;
-  }, [api, commitLiveAssistant, sessionId]);
+  }, [api, commitLiveAssistant, hydrateLiveAssistant, sessionId]);
 
   useEffect(() => {
     const interval = setInterval(
@@ -2072,6 +2107,7 @@ function SessionDetailPanel({
     detail?.messages.length,
     liveAssistant?.content,
     liveAssistant?.processActivities?.length,
+    pendingMessages.length,
     sending,
   ]);
 
@@ -2093,11 +2129,31 @@ function SessionDetailPanel({
     if (!message) return;
     resetComposerDraft();
     const liveStartedAt = Date.now();
+    let optimisticPendingMessageId: string | null = null;
+    let optimisticMessageId: string | null = null;
     if (!queuedSend) {
       setSending(true);
       commitLiveAssistant(
         () => liveAssistantMessage(sessionId, null, liveStartedAt),
         liveStartedAt
+      );
+    } else {
+      optimisticPendingCounterRef.current += 1;
+      optimisticPendingMessageId = `optimistic-${liveStartedAt}-${optimisticPendingCounterRef.current}`;
+      const optimisticPendingMessage: MobilePendingChatMessage = {
+        id: optimisticPendingMessageId,
+        sessionId,
+        content: message,
+        createdAt: liveStartedAt,
+        updatedAt: liveStartedAt,
+        mode: "queued",
+        sequence:
+          pendingMessages.reduce((max, pending) => Math.max(max, pending.sequence || 0), 0) + 1,
+      };
+      setPendingMessages((current) =>
+        [...current, optimisticPendingMessage].sort(
+          (a, b) => a.sequence - b.sequence || a.createdAt - b.createdAt
+        )
       );
     }
     const optimistic = {
@@ -2106,14 +2162,17 @@ function SessionDetailPanel({
       content: message,
       timestamp: new Date().toISOString(),
     };
-    setDetail((current) =>
-      current
-        ? {
-            ...current,
-            messages: [...current.messages, optimistic],
-          }
-        : current
-    );
+    if (!queuedSend) {
+      optimisticMessageId = optimistic.id;
+      setDetail((current) =>
+        current
+          ? {
+              ...current,
+              messages: [...current.messages, optimistic],
+            }
+          : current
+      );
+    }
     try {
       const result = await api.sendChat({
         message,
@@ -2123,17 +2182,34 @@ function SessionDetailPanel({
         queueMode: queuedSend ? "queue" : undefined,
       });
       if (result.queued) {
-        setPendingMessages(result.pendingMessages ?? []);
+        setPendingMessages(pendingMessagesFromResponse(result));
         setDetail((current) =>
           current
             ? {
                 ...current,
                 workspaceDir: result.workspaceDir ?? current.workspaceDir,
-                messages: current.messages.filter((entry) => entry.id !== optimistic.id),
+                messages: optimisticMessageId
+                  ? current.messages.filter((entry) => entry.id !== optimisticMessageId)
+                  : current.messages,
               }
             : current
         );
         return;
+      }
+      if (result.interrupted) {
+        if (optimisticPendingMessageId) {
+          setPendingMessages((current) =>
+            current.filter((entry) => entry.id !== optimisticPendingMessageId)
+          );
+        }
+        await loadSession(false);
+        commitLiveAssistant(() => null);
+        return;
+      }
+      if (optimisticPendingMessageId) {
+        setPendingMessages((current) =>
+          current.filter((entry) => entry.id !== optimisticPendingMessageId)
+        );
       }
       setDetail((current) =>
         current
@@ -2153,6 +2229,11 @@ function SessionDetailPanel({
       const messageText = error instanceof Error ? error.message : String(error);
       setComposerDraft(message);
       setLoadError(messageText);
+      if (optimisticPendingMessageId) {
+        setPendingMessages((current) =>
+          current.filter((entry) => entry.id !== optimisticPendingMessageId)
+        );
+      }
       const failedAt = Date.now();
       commitLiveAssistant((current) => {
         const base = liveAssistantMessage(sessionId, current, failedAt);
@@ -2174,11 +2255,12 @@ function SessionDetailPanel({
   };
 
   const steerPendingMessage = async (pendingMessageId: string) => {
+    if (pendingMessageId.startsWith("optimistic-")) return;
     setSteeringPendingId(pendingMessageId);
     try {
       const result = await api.steerPendingMessage(sessionId, pendingMessageId);
       if (result.success) {
-        setPendingMessages(result.pendingMessages ?? []);
+        setPendingMessages(pendingMessagesFromResponse(result));
         await loadSession(false);
       } else if (result.error) {
         setLoadError(result.error);
@@ -2187,6 +2269,43 @@ function SessionDetailPanel({
       setLoadError(error instanceof Error ? error.message : String(error));
     } finally {
       setSteeringPendingId(null);
+    }
+  };
+
+  const movePendingMessage = async (pendingMessageId: string, direction: -1 | 1) => {
+    if (pendingMessageId.startsWith("optimistic-") || reorderingPendingId) return;
+    const currentIndex = pendingMessages.findIndex((entry) => entry.id === pendingMessageId);
+    const nextIndex = currentIndex + direction;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= pendingMessages.length) return;
+    const targetMessage = pendingMessages[nextIndex];
+    if (!targetMessage || pendingMessageIsOptimistic(targetMessage)) return;
+    const previousMessages = pendingMessages;
+    const nextMessages = [...pendingMessages];
+    [nextMessages[currentIndex], nextMessages[nextIndex]] = [
+      nextMessages[nextIndex],
+      nextMessages[currentIndex],
+    ];
+    setPendingMessages(nextMessages);
+    setReorderingPendingId(pendingMessageId);
+    haptics.select();
+    try {
+      const result = await api.reorderPendingMessages(
+        sessionId,
+        nextMessages.filter((entry) => !pendingMessageIsOptimistic(entry)).map((entry) => entry.id)
+      );
+      if (result.success) {
+        setPendingMessages((current) =>
+          mergeOptimisticPendingMessages(result.pendingMessages ?? [], current)
+        );
+      } else {
+        setPendingMessages(previousMessages);
+        setLoadError(result.error || "Failed to reorder pending messages.");
+      }
+    } catch (error) {
+      setPendingMessages(previousMessages);
+      setLoadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setReorderingPendingId(null);
     }
   };
 
@@ -2391,35 +2510,86 @@ function SessionDetailPanel({
                 </Text>
                 {pendingMessages.map((pendingMessage) => {
                   const steering = pendingMessage.mode === "steering";
+                  const optimisticPending = pendingMessageIsOptimistic(pendingMessage);
+                  const busy =
+                    steeringPendingId === pendingMessage.id ||
+                    reorderingPendingId === pendingMessage.id;
+                  const pendingIndex = pendingMessages.findIndex(
+                    (entry) => entry.id === pendingMessage.id
+                  );
+                  const canMove =
+                    !optimisticPending && !steering && pendingMessages.length > 1 && !busy;
                   return (
                     <View key={pendingMessage.id} style={styles.pendingQueueItem}>
                       <View style={styles.pendingQueueText}>
                         <Text style={styles.pendingQueueMeta}>
-                          {steering ? "Steering" : "Queued"} -{" "}
+                          {optimisticPending ? "Queueing..." : steering ? "Steering" : "Queued"} -{" "}
                           {relativeTimestamp(new Date(pendingMessage.createdAt).toISOString())}
                         </Text>
-                        <Text numberOfLines={3} style={styles.pendingQueueContent}>
+                        <Text numberOfLines={1} style={styles.pendingQueueContent}>
                           {pendingMessage.content}
                         </Text>
                       </View>
-                      {!steering ? (
-                        <Pressable
-                          accessibilityLabel="Steer pending message"
-                          accessibilityRole="button"
-                          disabled={steeringPendingId === pendingMessage.id}
-                          onPress={() => {
-                            void steerPendingMessage(pendingMessage.id);
-                          }}
-                          style={[
-                            styles.pendingSteerButton,
-                            steeringPendingId === pendingMessage.id ? { opacity: 0.6 } : null,
-                          ]}
-                        >
-                          <Text style={styles.pendingSteerText}>
-                            {steeringPendingId === pendingMessage.id ? "Steering" : "Steer"}
-                          </Text>
-                        </Pressable>
-                      ) : null}
+                      <View style={styles.pendingQueueActions}>
+                        {pendingMessages.length > 1 ? (
+                          <View style={styles.pendingOrderControls}>
+                            <Pressable
+                              accessibilityLabel="Move pending message up"
+                              accessibilityRole="button"
+                              disabled={!canMove || pendingIndex <= 0}
+                              onPress={() => {
+                                void movePendingMessage(pendingMessage.id, -1);
+                              }}
+                              style={[
+                                styles.pendingOrderButton,
+                                !canMove || pendingIndex <= 0
+                                  ? styles.pendingOrderButtonDisabled
+                                  : null,
+                              ]}
+                            >
+                              <ArrowUp color={colors.text} size={13} strokeWidth={2.4} />
+                            </Pressable>
+                            <Pressable
+                              accessibilityLabel="Move pending message down"
+                              accessibilityRole="button"
+                              disabled={!canMove || pendingIndex >= pendingMessages.length - 1}
+                              onPress={() => {
+                                void movePendingMessage(pendingMessage.id, 1);
+                              }}
+                              style={[
+                                styles.pendingOrderButton,
+                                !canMove || pendingIndex >= pendingMessages.length - 1
+                                  ? styles.pendingOrderButtonDisabled
+                                  : null,
+                              ]}
+                            >
+                              <ArrowDown color={colors.text} size={13} strokeWidth={2.4} />
+                            </Pressable>
+                          </View>
+                        ) : null}
+                        {!steering ? (
+                          <Pressable
+                            accessibilityLabel="Steer pending message"
+                            accessibilityRole="button"
+                            disabled={optimisticPending || busy}
+                            onPress={() => {
+                              void steerPendingMessage(pendingMessage.id);
+                            }}
+                            style={[
+                              styles.pendingSteerButton,
+                              optimisticPending || busy ? { opacity: 0.6 } : null,
+                            ]}
+                          >
+                            <Text style={styles.pendingSteerText}>
+                              {optimisticPending
+                                ? "Queueing..."
+                                : steeringPendingId === pendingMessage.id
+                                  ? "Steering"
+                                  : "Steer"}
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
                     </View>
                   );
                 })}

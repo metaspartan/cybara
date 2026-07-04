@@ -784,7 +784,7 @@ const makeStyles = () =>
       textTransform: "uppercase",
     },
     pendingQueueItem: {
-      alignItems: "flex-start",
+      alignItems: "center",
       backgroundColor: colors.inset,
       borderRadius: radius.sm,
       flexDirection: "row",
@@ -805,11 +805,33 @@ const makeStyles = () =>
       fontSize: typography.label,
       lineHeight: 18,
     },
+    pendingQueueActions: {
+      alignItems: "flex-end",
+      gap: spacing.xs,
+    },
+    pendingOrderControls: {
+      flexDirection: "row",
+      gap: 4,
+    },
+    pendingOrderButton: {
+      alignItems: "center",
+      backgroundColor: colors.surfaceLift,
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      borderWidth: StyleSheet.hairlineWidth,
+      height: 28,
+      justifyContent: "center",
+      width: 28,
+    },
+    pendingOrderButtonDisabled: {
+      opacity: 0.35,
+    },
     pendingSteerButton: {
       backgroundColor: colors.surfaceLift,
       borderColor: colors.border,
       borderRadius: radius.sm,
       borderWidth: StyleSheet.hairlineWidth,
+      minWidth: 72,
       paddingHorizontal: spacing.sm,
       paddingVertical: 7,
     },

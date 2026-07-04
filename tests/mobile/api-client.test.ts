@@ -1366,6 +1366,138 @@ describe("mobile API client", () => {
     }
   });
 
+  test("normalizes queued and interrupted mobile chat responses", async () => {
+    const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      const method = init?.method || "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      calls.push({ method, path: parsedUrl.pathname, body });
+
+      if (parsedUrl.pathname === "/api/chat" && method === "POST") {
+        if (body?.queueMode === "queue") {
+          return Response.json({
+            sessionId: "s1",
+            queued: true,
+            pendingMessage: {
+              id: "pending-1",
+              sessionId: "s1",
+              content: body.message,
+              createdAt: 1783015200000,
+              updatedAt: 1783015200000,
+              mode: "queued",
+              sequence: 1,
+            },
+          });
+        }
+
+        return Response.json({
+          sessionId: "s1",
+          interrupted: true,
+          message: {
+            role: "assistant",
+            content: "",
+          },
+        });
+      }
+
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const api = new CybaraMobileApi(profile);
+      const queued = await api.sendChat({
+        sessionId: "s1",
+        message: "queue this",
+        queueMode: "queue",
+      });
+      const interrupted = await api.sendChat({
+        sessionId: "s1",
+        message: "active turn",
+      });
+
+      expect(queued).toMatchObject({
+        sessionId: "s1",
+        queued: true,
+        pendingMessage: { id: "pending-1", content: "queue this", mode: "queued" },
+      });
+      expect(interrupted.interrupted).toBe(true);
+      expect(interrupted.message.content).toBe("");
+      expect(calls.map((call) => call.body)).toEqual([
+        {
+          sessionId: "s1",
+          message: "queue this",
+          queueMode: "queue",
+        },
+        {
+          sessionId: "s1",
+          message: "active turn",
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("reorders pending mobile chat messages through the gateway endpoint", async () => {
+    const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      const method = init?.method || "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      calls.push({ method, path: parsedUrl.pathname, body });
+
+      if (parsedUrl.pathname === "/api/chat/sessions/s1/pending/reorder" && method === "POST") {
+        return Response.json({
+          success: true,
+          pendingMessages: [
+            {
+              id: "pending-2",
+              sessionId: "s1",
+              content: "second",
+              createdAt: 1783015200100,
+              updatedAt: 1783015200200,
+              mode: "queued",
+              sequence: 1,
+            },
+            {
+              id: "pending-1",
+              sessionId: "s1",
+              content: "first",
+              createdAt: 1783015200000,
+              updatedAt: 1783015200200,
+              mode: "queued",
+              sequence: 2,
+            },
+          ],
+        });
+      }
+
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const result = await new CybaraMobileApi(profile).reorderPendingMessages("s1", [
+        "pending-2",
+        "pending-1",
+      ]);
+
+      expect(result.success).toBe(true);
+      expect(result.pendingMessages?.map((entry) => entry.id)).toEqual(["pending-2", "pending-1"]);
+      expect(calls).toEqual([
+        {
+          method: "POST",
+          path: "/api/chat/sessions/s1/pending/reorder",
+          body: { pendingMessageIds: ["pending-2", "pending-1"] },
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("deletes sessions through the canonical gateway sessions route", async () => {
     const calls: Array<{ method: string; path: string }> = [];
     const originalFetch = globalThis.fetch;

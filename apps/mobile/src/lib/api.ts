@@ -1531,6 +1531,7 @@ export class CybaraMobileApi {
     message: SessionMessageSummary;
     workspaceDir?: string | null;
     queued?: boolean;
+    interrupted?: boolean;
     pendingMessage?: MobilePendingChatMessage;
     pendingMessages?: MobilePendingChatMessage[];
   }> {
@@ -1551,6 +1552,7 @@ export class CybaraMobileApi {
       sessionId: readString(record, ["sessionId"]) || input.sessionId || "",
       workspaceDir: readString(record, ["workspaceDir"]) || input.workspaceDir,
       queued: record?.queued === true,
+      interrupted: record?.interrupted === true,
       pendingMessage: normalizePendingChatMessages(record?.pendingMessage)[0],
       pendingMessages: normalizePendingChatMessages(record?.pendingMessages),
       message: {
@@ -1566,6 +1568,29 @@ export class CybaraMobileApi {
           messageRecord?.process_activities ?? messageRecord?.processActivities
         ),
       },
+    };
+  }
+
+  async reorderPendingMessages(
+    sessionId: string,
+    pendingMessageIds: string[]
+  ): Promise<{
+    success: boolean;
+    pendingMessages?: MobilePendingChatMessage[];
+    error?: string;
+  }> {
+    const response = await this.request<unknown>(
+      `/api/chat/sessions/${encodeURIComponent(sessionId)}/pending/reorder`,
+      {
+        method: "POST",
+        body: JSON.stringify({ pendingMessageIds }),
+      }
+    );
+    const record = asRecord(response);
+    return {
+      success: record?.success === true,
+      pendingMessages: normalizePendingChatMessages(record?.pendingMessages),
+      error: readString(record, ["error"]),
     };
   }
 

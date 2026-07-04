@@ -30,4 +30,23 @@ describe("mobile: chat management", () => {
     expect(screen).not.toContain("session.id.slice");
     expect(screen).not.toContain("Session ID:");
   });
+
+  test("queued follow-ups render as pending rows and only real pending ids can steer", () => {
+    const api = read("lib/api.ts");
+    const styles = read("screens/dashboardStyles.ts");
+    expect(api).toContain("interrupted?: boolean");
+    expect(api).toContain("reorderPendingMessages(");
+    expect(screen).toContain("optimisticPendingMessageId");
+    expect(screen).toContain(
+      "`optimistic-${liveStartedAt}-${optimisticPendingCounterRef.current}`"
+    );
+    expect(screen).toContain("pendingMessageIsOptimistic(pendingMessage)");
+    expect(screen).toContain("result.interrupted");
+    expect(screen).toContain("api.reorderPendingMessages(");
+    expect(screen).toContain('accessibilityLabel="Move pending message up"');
+    expect(screen).toContain('accessibilityLabel="Move pending message down"');
+    expect(screen).toContain('accessibilityLabel="Steer pending message"');
+    expect(styles).toContain("pendingQueueActions:");
+    expect(styles).toContain("pendingOrderControls:");
+  });
 });
