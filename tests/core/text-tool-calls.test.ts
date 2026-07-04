@@ -96,9 +96,34 @@ describe("text-form tool call parsing", () => {
     expect(stripTextToolCallMarkup(raw)).toBe("I'll open the repository.");
   });
 
+  test("extracts standalone bare command JSON as exec", () => {
+    const raw = '{"command":"cat package.json","cwd":"/Users/carsen/Documents/GitHub/cybara"}';
+
+    expect(extractTextToolCalls(raw, new Set(["exec"]))).toEqual([
+      {
+        name: "exec",
+        args: {
+          command: "cat package.json",
+          cwd: "/Users/carsen/Documents/GitHub/cybara",
+        },
+      },
+    ]);
+  });
+
+  test("strips leading bare command JSON before visible prose", () => {
+    const raw = [
+      '{"command":"cat package.json","cwd":"/Users/carsen/Documents/GitHub/cybara"}',
+      "Absolutely - here's a concise engineering review.",
+    ].join("\n");
+
+    expect(extractTextToolCalls(raw, new Set(["exec"]))).toEqual([]);
+    expect(stripTextToolCallMarkup(raw)).toBe("Absolutely - here's a concise engineering review.");
+  });
+
   test("does not promote text-form tool calls without an explicit allowed set", () => {
     expect(extractTextToolCalls('[calc]\n{"expression":"2 + 2"}\n[END_TOOL_REQUEST]')).toEqual([]);
     expect(extractTextToolCalls('{"name":"calc","arguments":{"expression":"2 + 2"}}')).toEqual([]);
+    expect(extractTextToolCalls('{"command":"cat package.json"}')).toEqual([]);
   });
 
   test("does not treat non-final JSON examples as tool calls", () => {

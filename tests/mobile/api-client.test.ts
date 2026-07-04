@@ -55,6 +55,17 @@ describe("mobile API client", () => {
             sessionId: "s1",
             status: "tool_executing",
             timestamp: 999,
+            pendingMessages: [
+              {
+                id: "pending-1",
+                sessionId: "s1",
+                content: "follow up",
+                createdAt: 1783015200700,
+                updatedAt: 1783015200700,
+                mode: "queued",
+                sequence: 1,
+              },
+            ],
             activities: [
               {
                 id: "activity-1",
@@ -73,6 +84,7 @@ describe("mobile API client", () => {
       activeSessions: [
         {
           sessionId: "s1",
+          pendingMessages: [{ content: "follow up", mode: "queued" }],
           activities: [{ text: "Exploring package.json", toolCallId: "read-1" }],
         },
       ],
@@ -89,6 +101,17 @@ describe("mobile API client", () => {
         status: "tool_executing",
         timestamp: 1783015200500,
         detail: "Running bun test",
+        pendingMessages: [
+          {
+            id: "pending-1",
+            sessionId: "s1",
+            content: "steer this",
+            createdAt: 1783015200800,
+            updatedAt: 1783015200801,
+            mode: "steering",
+            sequence: 1,
+          },
+        ],
         activities: [
           {
             id: "activity-1",
@@ -107,6 +130,10 @@ describe("mobile API client", () => {
     expect(status.session?.activities[0]).toMatchObject({
       text: "Running bun test",
       toolCallId: "tool-1",
+    });
+    expect(status.session?.pendingMessages?.[0]).toMatchObject({
+      content: "steer this",
+      mode: "steering",
     });
   });
 

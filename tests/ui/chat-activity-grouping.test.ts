@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  groupActivitiesForDisplay,
-  type LiveActivityItem,
-} from "../../ui/src/lib/chatActivities";
+import { groupActivitiesForDisplay, type LiveActivityItem } from "../../ui/src/lib/chatActivities";
 
 function activity(overrides: Partial<LiveActivityItem> & { id: string }): LiveActivityItem {
   return {
@@ -113,7 +110,7 @@ describe("groupActivitiesForDisplay", () => {
   test("a mutation anywhere in a compound blocks grouping", () => {
     const entries = groupActivitiesForDisplay([
       activity({ id: "a", toolName: "exec", text: "Ran ls -la" }),
-      activity({ id: "b", toolName: "exec", text: 'Ran echo done && rm -rf build' }),
+      activity({ id: "b", toolName: "exec", text: "Ran echo done && rm -rf build" }),
       activity({ id: "c", toolName: "exec", text: "Ran find src -name '*.ts'" }),
     ]);
     // The middle compound (contains rm) breaks the run into three singles.
@@ -167,7 +164,7 @@ describe("groupActivitiesForDisplay", () => {
 
   test("truncated compound still classifies by its parseable stages", () => {
     const entries = groupActivitiesForDisplay([
-      activity({ id: "a", toolName: "exec", text: "Ran find src -type f -name \"*.ts\" -o -na..." }),
+      activity({ id: "a", toolName: "exec", text: 'Ran find src -type f -name "*.ts" -o -na...' }),
       activity({ id: "b", toolName: "exec", text: "Ran grep -rn cybara src ..." }),
     ]);
     expect(entries).toHaveLength(1);

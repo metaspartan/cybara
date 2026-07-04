@@ -1026,9 +1026,13 @@ struct ChatSendResponse: Decodable {
     let sessionId: String?
     let workspaceDir: String?
     let message: GatewaySessionMessage?
+    let queued: Bool?
+    let pendingMessage: GatewayPendingChatMessage?
+    let pendingMessages: [GatewayPendingChatMessage]
 
     private enum CodingKeys: String, CodingKey {
         case sessionId, session_id, workspaceDir, workspace_dir, message
+        case queued, pendingMessage, pending_message, pendingMessages, pending_messages
     }
 
     init(from decoder: Decoder) throws {
@@ -1036,9 +1040,60 @@ struct ChatSendResponse: Decodable {
         sessionId = try container.decodeFlexibleString(forKeys: [.sessionId, .session_id])
         workspaceDir = try container.decodeFlexibleString(forKeys: [.workspaceDir, .workspace_dir])
         message = try container.decodeIfPresent(GatewaySessionMessage.self, forKey: .message)
+        queued = try container.decodeFlexibleBool(forKeys: [.queued])
+        pendingMessage = (try? container.decodeIfPresent(GatewayPendingChatMessage.self, forKey: .pendingMessage))
+            ?? (try? container.decodeIfPresent(GatewayPendingChatMessage.self, forKey: .pending_message))
+        pendingMessages = (try? container.decodeIfPresent([GatewayPendingChatMessage].self, forKey: .pendingMessages))
+            ?? ((try? container.decodeIfPresent([GatewayPendingChatMessage].self, forKey: .pending_messages)) ?? [])
     }
 
     var response: String? { message?.content }
+}
+
+struct GatewayPendingChatMessage: Decodable, Identifiable, Hashable {
+    let id: String
+    let sessionId: String
+    let content: String
+    let createdAt: Double
+    let updatedAt: Double
+    let mode: String
+    let sequence: Double
+
+    private enum CodingKeys: String, CodingKey {
+        case id, sessionId, session_id, content, message, text, createdAt, created_at, updatedAt, updated_at, mode, sequence
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeFlexibleString(forKeys: [.id]) ?? UUID().uuidString
+        sessionId = try container.decodeFlexibleString(forKeys: [.sessionId, .session_id]) ?? ""
+        content = try container.decodeFlexibleString(forKeys: [.content, .message, .text]) ?? ""
+        createdAt = try container.decodeFlexibleDouble(forKeys: [.createdAt, .created_at]) ?? Date().timeIntervalSince1970 * 1000
+        updatedAt = try container.decodeFlexibleDouble(forKeys: [.updatedAt, .updated_at]) ?? createdAt
+        mode = try container.decodeFlexibleString(forKeys: [.mode]) ?? "queued"
+        sequence = try container.decodeFlexibleDouble(forKeys: [.sequence]) ?? 0
+    }
+}
+
+struct GatewayPendingChatResponse: Decodable, Hashable {
+    let success: Bool?
+    let error: String?
+    let pendingMessage: GatewayPendingChatMessage?
+    let pendingMessages: [GatewayPendingChatMessage]
+
+    private enum CodingKeys: String, CodingKey {
+        case success, error, pendingMessage, pending_message, pendingMessages, pending_messages
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        success = try container.decodeFlexibleBool(forKeys: [.success])
+        error = try container.decodeFlexibleString(forKeys: [.error])
+        pendingMessage = (try? container.decodeIfPresent(GatewayPendingChatMessage.self, forKey: .pendingMessage))
+            ?? (try? container.decodeIfPresent(GatewayPendingChatMessage.self, forKey: .pending_message))
+        pendingMessages = (try? container.decodeIfPresent([GatewayPendingChatMessage].self, forKey: .pendingMessages))
+            ?? ((try? container.decodeIfPresent([GatewayPendingChatMessage].self, forKey: .pending_messages)) ?? [])
+    }
 }
 
 struct GatewayChannel: Decodable, Identifiable, Hashable {
@@ -1085,9 +1140,11 @@ struct GatewaySessionStatusSnapshot: Decodable, Hashable {
     let detail: String?
     let agentId: String?
     let activities: [GatewayProcessActivity]
+    let pendingMessages: [GatewayPendingChatMessage]
 
     private enum CodingKeys: String, CodingKey {
         case sessionId, session_id, status, timestamp, detail, agentId, agent_id, activities
+        case pendingMessages, pending_messages
     }
 
     init(from decoder: Decoder) throws {
@@ -1098,6 +1155,8 @@ struct GatewaySessionStatusSnapshot: Decodable, Hashable {
         detail = try container.decodeFlexibleString(forKeys: [.detail])
         agentId = try container.decodeFlexibleString(forKeys: [.agentId, .agent_id])
         activities = (try? container.decodeIfPresent([GatewayProcessActivity].self, forKey: .activities)) ?? []
+        pendingMessages = (try? container.decodeIfPresent([GatewayPendingChatMessage].self, forKey: .pendingMessages))
+            ?? ((try? container.decodeIfPresent([GatewayPendingChatMessage].self, forKey: .pending_messages)) ?? [])
     }
 }
 

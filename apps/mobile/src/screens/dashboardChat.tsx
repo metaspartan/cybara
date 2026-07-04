@@ -1,7 +1,24 @@
-import { Linking, Pressable, ScrollView, Text, View, type StyleProp, type TextStyle } from "react-native";
+import {
+  Linking,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+  type StyleProp,
+  type TextStyle,
+} from "react-native";
 import { useState } from "react";
 import * as Clipboard from "expo-clipboard";
-import { AlertTriangle, Check, CheckCircle2, Copy, Loader2, RotateCcw, Sparkles, User } from "lucide-react-native";
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  Copy,
+  Loader2,
+  RotateCcw,
+  Sparkles,
+  User,
+} from "lucide-react-native";
 import { colors } from "../theme/liquidGlass";
 import { styles } from "./dashboardStyles";
 import { relativeTimestamp } from "./dashboardHelpers";

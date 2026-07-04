@@ -3,6 +3,7 @@ import {
   normalizeActivityTextForPhase,
   type LiveActivityItem,
 } from "@/lib/chatActivities";
+import type { PendingChatMessage } from "@/lib/status-stream";
 export interface ToolCall {
   id: string;
   name: string;
@@ -98,6 +99,7 @@ export interface SessionStatusSnapshot {
   detail?: string;
   agentId?: string;
   activities: SessionStatusActivity[];
+  pendingMessages?: PendingChatMessage[];
 }
 
 export interface SessionStatusResponse {
@@ -1199,7 +1201,8 @@ export function getToolCallsInTimelineOrder(toolCalls?: ToolCall[]): ToolCall[] 
   return [...toolCalls];
 }
 
-const STREAM_REASONING_TAG = "(?:REASONING_SCRATCHPAD|antthinking|(?:antml:|mm:)?(?:thinking|think|thought)|reasoning)";
+const STREAM_REASONING_TAG =
+  "(?:REASONING_SCRATCHPAD|antthinking|(?:antml:|mm:)?(?:thinking|think|thought)|reasoning)";
 const STREAM_REASONING_BLOCK_PATTERN = new RegExp(
   `<${STREAM_REASONING_TAG}\\b[^>]*>[\\s\\S]*?</${STREAM_REASONING_TAG}>`,
   "gi"

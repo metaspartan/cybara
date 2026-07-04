@@ -115,6 +115,7 @@ import {
   type AgentSummary,
   type FeatureEndpointKey,
   type FeatureSummary,
+  type MobilePendingChatMessage,
   type ProviderSummary,
   type RemoteItemSummary,
   type RouterConfig,
@@ -1860,6 +1861,8 @@ function SessionDetailPanel({
   );
   const draftRef = useRef("");
   const [sending, setSending] = useState(false);
+  const [pendingMessages, setPendingMessages] = useState<MobilePendingChatMessage[]>([]);
+  const [steeringPendingId, setSteeringPendingId] = useState<string | null>(null);
   const [pinned, setPinned] = useState(sessionSummary?.pinned ?? false);
   const [pinning, setPinning] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -1932,6 +1935,7 @@ function SessionDetailPanel({
           snapshotStatus === "generating" ||
           snapshotStatus === "tool_executing" ||
           snapshotStatus === "tool_completed");
+      setPendingMessages(snapshot?.pendingMessages ?? []);
       if (!active || !snapshot) {
         if (!sendingRef.current) {
           commitLiveAssistant(() => null);
@@ -1959,6 +1963,7 @@ function SessionDetailPanel({
     const cached = readCachedMobileLiveAssistant(sessionId);
     setLiveAssistant(cached?.message ?? null);
     setLiveNowMs(cached?.nowMs ?? Date.now());
+    setPendingMessages([]);
     void hydrateLiveAssistant();
   }, [hydrateLiveAssistant, sessionId]);
 
@@ -2004,7 +2009,11 @@ function SessionDetailPanel({
 
         if (event.type === "snapshot") {
           const snapshot = event.activeSessions.find((entry) => entry.sessionId === sessionId);
-          if (!snapshot) return;
+          if (!snapshot) {
+            setPendingMessages([]);
+            return;
+          }
+          setPendingMessages(snapshot.pendingMessages ?? []);
           commitLiveAssistant(
             (current) => liveAssistantFromStatusSnapshot(sessionId, current, snapshot),
             snapshot.timestamp
@@ -2020,6 +2029,7 @@ function SessionDetailPanel({
             // empty for seconds right as a run finished.
             void loadSession(false).finally(() => {
               commitLiveAssistant(() => null, event.timestamp);
+              setPendingMessages([]);
             });
           }
           return;
@@ -2079,11 +2089,17 @@ function SessionDetailPanel({
 
   const sendMessage = async () => {
     const message = draft.trim();
-    if (!message || sending) return;
+    const queuedSend = sending || !!liveAssistant || pendingMessages.length > 0;
+    if (!message) return;
     resetComposerDraft();
-    setSending(true);
     const liveStartedAt = Date.now();
-    commitLiveAssistant(() => liveAssistantMessage(sessionId, null, liveStartedAt), liveStartedAt);
+    if (!queuedSend) {
+      setSending(true);
+      commitLiveAssistant(
+        () => liveAssistantMessage(sessionId, null, liveStartedAt),
+        liveStartedAt
+      );
+    }
     const optimistic = {
       id: `local-${Date.now()}`,
       role: "user",
@@ -2104,7 +2120,21 @@ function SessionDetailPanel({
         sessionId,
         agentId: detail?.agentId,
         workspaceDir: detail?.workspaceDir,
+        queueMode: queuedSend ? "queue" : undefined,
       });
+      if (result.queued) {
+        setPendingMessages(result.pendingMessages ?? []);
+        setDetail((current) =>
+          current
+            ? {
+                ...current,
+                workspaceDir: result.workspaceDir ?? current.workspaceDir,
+                messages: current.messages.filter((entry) => entry.id !== optimistic.id),
+              }
+            : current
+        );
+        return;
+      }
       setDetail((current) =>
         current
           ? {
@@ -2137,7 +2167,26 @@ function SessionDetailPanel({
         };
       }, failedAt);
     } finally {
-      setSending(false);
+      if (!queuedSend) {
+        setSending(false);
+      }
+    }
+  };
+
+  const steerPendingMessage = async (pendingMessageId: string) => {
+    setSteeringPendingId(pendingMessageId);
+    try {
+      const result = await api.steerPendingMessage(sessionId, pendingMessageId);
+      if (result.success) {
+        setPendingMessages(result.pendingMessages ?? []);
+        await loadSession(false);
+      } else if (result.error) {
+        setLoadError(result.error);
+      }
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSteeringPendingId(null);
     }
   };
 
@@ -2333,6 +2382,49 @@ function SessionDetailPanel({
                 <Text style={styles.listDetail}>Waiting for assistant response</Text>
               </View>
             ) : null}
+            {pendingMessages.length > 0 ? (
+              <View style={styles.pendingQueue}>
+                <Text style={styles.pendingQueueTitle}>
+                  {pendingMessages.length === 1
+                    ? "1 pending message"
+                    : `${pendingMessages.length} pending messages`}
+                </Text>
+                {pendingMessages.map((pendingMessage) => {
+                  const steering = pendingMessage.mode === "steering";
+                  return (
+                    <View key={pendingMessage.id} style={styles.pendingQueueItem}>
+                      <View style={styles.pendingQueueText}>
+                        <Text style={styles.pendingQueueMeta}>
+                          {steering ? "Steering" : "Queued"} -{" "}
+                          {relativeTimestamp(new Date(pendingMessage.createdAt).toISOString())}
+                        </Text>
+                        <Text numberOfLines={3} style={styles.pendingQueueContent}>
+                          {pendingMessage.content}
+                        </Text>
+                      </View>
+                      {!steering ? (
+                        <Pressable
+                          accessibilityLabel="Steer pending message"
+                          accessibilityRole="button"
+                          disabled={steeringPendingId === pendingMessage.id}
+                          onPress={() => {
+                            void steerPendingMessage(pendingMessage.id);
+                          }}
+                          style={[
+                            styles.pendingSteerButton,
+                            steeringPendingId === pendingMessage.id ? { opacity: 0.6 } : null,
+                          ]}
+                        >
+                          <Text style={styles.pendingSteerText}>
+                            {steeringPendingId === pendingMessage.id ? "Steering" : "Steer"}
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
             {visibleMessages.length === 0 ? (
               <EmptyState label="No messages" detail="This session has no stored messages yet." />
             ) : null}
@@ -2353,7 +2445,7 @@ function SessionDetailPanel({
         >
           <TextInput
             blurOnSubmit={false}
-            editable={!sending}
+            editable
             multiline
             onContentSizeChange={(event) => {
               setComposerHeight(
@@ -2376,7 +2468,7 @@ function SessionDetailPanel({
           <Pressable
             accessibilityLabel="Send message"
             accessibilityRole="button"
-            disabled={!draft.trim() || sending}
+            disabled={!draft.trim()}
             onPress={sendMessage}
             style={[
               styles.sendButton,
@@ -2386,11 +2478,7 @@ function SessionDetailPanel({
               },
             ]}
           >
-            {sending ? (
-              <ActivityIndicator color={colors.text} size="small" />
-            ) : (
-              <Send color={colors.text} size={19} strokeWidth={2.4} />
-            )}
+            <Send color={colors.text} size={19} strokeWidth={2.4} />
           </Pressable>
         </View>
       </LiquidGlass>

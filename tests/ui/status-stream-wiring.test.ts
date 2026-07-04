@@ -19,6 +19,24 @@ describe("status stream websocket wiring", () => {
   test("chat page uses shared status websocket stream helper", () => {
     const source = readSource(chatPath);
     expect(source).toContain("connectStatusStream");
+    expect(source).toContain("PendingChatQueue");
+    expect(source).toContain("chatApi.steerPendingMessage");
+    expect(source).toContain("chatApi.reorderPendingMessages");
+    expect(source).toContain("onMouseDown={(event) =>");
+    expect(source).toContain("onMouseUp={() =>");
+    expect(source).toContain("Drag to reorder");
+    expect(source).toContain("normalizePendingChatMessages(snapshot?.pendingMessages)");
+    expect(source).toContain("canQueueCurrentMessage");
+    expect(source).toContain("const locallyLoadingCurrentSession =");
+    expect(source).toContain("const requestSessionId = requestedQueueMode");
+    expect(source).toContain("sessionId || activeSessionRef.current || crypto.randomUUID()");
+    expect(source).toContain("sessionId: requestSessionId");
+    expect(source).toContain("sessionId: requestSessionId || undefined");
+    expect(source).toContain("optimisticPendingMessageCounterRef");
+    expect(source).toContain("optimisticPendingMessageId = `optimistic-${now}-");
+    expect(source).toContain(
+      "const sendQueuesFollowUp = showWorkingTimeline || pendingMessages.length > 0"
+    );
     expect(source).not.toContain("new EventSource(");
   });
 

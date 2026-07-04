@@ -3274,12 +3274,10 @@ class ProviderManager {
   ): Promise<Provider | undefined> {
     if (!provider?.id) return undefined;
     const staticConfig = providers[provider.provider as ProviderType] as
-      | { authType?: string; oauthConfig?: unknown }
-      | undefined;
+      { authType?: string; oauthConfig?: unknown } | undefined;
     if (!staticConfig || staticConfig.authType !== "oauth") return undefined;
     const oauth = staticConfig.oauthConfig as
-      | { tokenUrl?: string; clientId?: string; clientSecret?: string; scope?: string }
-      | undefined;
+      { tokenUrl?: string; clientId?: string; clientSecret?: string; scope?: string } | undefined;
     if (!oauth?.tokenUrl || !oauth?.clientId) return undefined;
     if (!provider.refresh_token) return undefined;
 

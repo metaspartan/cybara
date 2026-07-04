@@ -1,10 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import {
-  stripReasoningTagTokens,
-  summarizeProgressThought,
-} from "../../src/core/agent-internals";
+import { stripReasoningTagTokens, summarizeProgressThought } from "../../src/core/agent-internals";
 import { mergeActivityLists, type LiveActivityItem } from "../../ui/src/lib/chatActivities";
 import {
   buildMobileWorkTimeline,
@@ -23,9 +20,7 @@ describe("reasoning tag tokens never leak into visible chat state", () => {
     expect(summarizeProgressThought("<think>")).toBeUndefined();
     expect(summarizeProgressThought("[/thinking]")).toBeUndefined();
     expect(summarizeProgressThought("Checking the file</think>")).toBe("Checking the file");
-    expect(summarizeProgressThought("<thinking>plan</thinking> run tests")).toBe(
-      "plan run tests"
-    );
+    expect(summarizeProgressThought("<thinking>plan</thinking> run tests")).toBe("plan run tests");
   });
 
   test("gateway: stripReasoningTagTokens handles every tag family", () => {
@@ -57,10 +52,7 @@ describe("reasoning tag tokens never leak into visible chat state", () => {
       { id: "c", phase: "result", text: "Done</think> checking", timestamp: 3 },
     ];
     const merged = mergeActivityLists(activities, []);
-    expect(merged.map((entry) => entry.text)).toEqual([
-      "Read package.json",
-      "Done checking",
-    ]);
+    expect(merged.map((entry) => entry.text)).toEqual(["Read package.json", "Done checking"]);
   });
 
   test("mobile: work timeline drops tag-only thinking and activities", () => {

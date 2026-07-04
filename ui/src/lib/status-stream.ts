@@ -13,6 +13,16 @@ export interface StatusActivity {
   sandboxProvider?: string;
 }
 
+export interface PendingChatMessage {
+  id: string;
+  sessionId: string;
+  content: string;
+  createdAt: number;
+  updatedAt: number;
+  mode: "queued" | "steering";
+  sequence: number;
+}
+
 export interface StatusSessionSnapshot {
   sessionId: string;
   status: StreamAgentStatus;
@@ -20,6 +30,7 @@ export interface StatusSessionSnapshot {
   detail?: string;
   agentId?: string;
   activities: StatusActivity[];
+  pendingMessages?: PendingChatMessage[];
 }
 
 export interface StatusStreamStatusEvent {

@@ -40,6 +40,7 @@ import {
   Pin,
   PinOff,
   Search,
+  GripVertical,
 } from "lucide-react";
 import { Highlight, themes } from "prism-react-renderer";
 import ReactMarkdown from "react-markdown";
@@ -66,7 +67,7 @@ import { PageLayout } from "@/components/layout";
 import { GlassCard, GlassButton, Input, Badge, Modal, Button } from "@/components/ui";
 import { formatRelativeTime } from "@/lib/utils";
 import { appendApiTokenParam, apiFetch } from "@/lib/auth";
-import { connectStatusStream } from "@/lib/status-stream";
+import { connectStatusStream, type PendingChatMessage } from "@/lib/status-stream";
 import {
   buildActivitiesFromToolCalls,
   finalizeCompletedActivities,
@@ -209,6 +210,111 @@ function parseTimestampMs(value: unknown): number | undefined {
     }
   }
   return undefined;
+}
+
+function normalizePendingChatMessages(messages?: PendingChatMessage[]): PendingChatMessage[] {
+  return [...(messages || [])]
+    .filter(
+      (message) =>
+        typeof message.id === "string" &&
+        typeof message.content === "string" &&
+        message.content.trim().length > 0
+    )
+    .sort((a, b) => (a.sequence || 0) - (b.sequence || 0) || a.createdAt - b.createdAt);
+}
+
+function PendingChatQueue({
+  messages,
+  onSteer,
+  onReorder,
+  steeringMessageId,
+}: {
+  messages: PendingChatMessage[];
+  onSteer: (id: string) => void;
+  onReorder: (orderedIds: string[]) => void;
+  steeringMessageId: string | null;
+}) {
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  if (messages.length === 0) return null;
+
+  const reorderMessages = (sourceId: string, targetId: string) => {
+    if (!sourceId || sourceId === targetId) return;
+    const sourceIndex = messages.findIndex((message) => message.id === sourceId);
+    const targetIndex = messages.findIndex((message) => message.id === targetId);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+    const next = [...messages];
+    const [moved] = next.splice(sourceIndex, 1);
+    if (!moved) return;
+    next.splice(targetIndex, 0, moved);
+    onReorder(next.map((message) => message.id));
+  };
+
+  return (
+    <div data-testid="pending-chat-queue" className="mb-2 w-full min-w-0 space-y-1.5">
+      {messages.map((message) => {
+        const isSteering = message.mode === "steering";
+        const canDrag = messages.length > 1 && !isSteering;
+        return (
+          <div
+            key={message.id}
+            data-testid="pending-chat-message"
+            onMouseUp={() => {
+              if (!draggingId) return;
+              reorderMessages(draggingId, message.id);
+              setDraggingId(null);
+            }}
+            className={cn(
+              "flex h-11 w-full min-w-0 select-none items-center gap-2 rounded-t-2xl rounded-b-lg border border-white/10 bg-white/[0.055] px-3 text-[12px] shadow-[0_8px_24px_rgba(0,0,0,0.22)]",
+              canDrag ? "cursor-grab active:cursor-grabbing" : "",
+              draggingId === message.id ? "opacity-60" : ""
+            )}
+          >
+            {canDrag ? (
+              <span
+                className="inline-flex h-6 w-5 shrink-0 items-center justify-center rounded-md text-gray-500"
+                title="Drag to reorder"
+                aria-label="Drag to reorder queued message"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  setDraggingId(message.id);
+                }}
+              >
+                <GripVertical className="h-3.5 w-3.5" />
+              </span>
+            ) : (
+              <MessageSquare className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+            )}
+            <span
+              className={cn(
+                "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                isSteering ? "bg-emerald-500/15 text-emerald-200" : "bg-white/8 text-gray-300"
+              )}
+            >
+              {isSteering ? "Steering" : "Queued"}
+            </span>
+            <span
+              className="min-w-0 flex-1 truncate text-gray-300"
+              title={`${message.content} · ${formatRelativeTime(new Date(message.createdAt).toISOString())}`}
+            >
+              {message.content}
+            </span>
+            {!isSteering ? (
+              <button
+                type="button"
+                onClick={() => onSteer(message.id)}
+                disabled={steeringMessageId === message.id}
+                className="inline-flex h-7 shrink-0 items-center justify-center rounded-md px-2 text-[12px] font-medium text-gray-300 transition-colors hover:bg-white/[0.08] hover:text-white disabled:opacity-60"
+              >
+                {steeringMessageId === message.id ? "Steering..." : "Steer"}
+              </button>
+            ) : (
+              <span className="shrink-0 text-[11px] text-emerald-300">Steering</span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function parseDurationMs(value: unknown): number {
@@ -1729,9 +1835,7 @@ export function Chat() {
   const loadSessionMutation = useLoadSession();
   // Always-fresh callback so the SSE effect can refresh the open session's
   // persisted messages without re-subscribing on every render.
-  const refreshSessionMessagesRef = useRef<(sid: string) => Promise<void>>(() =>
-    Promise.resolve()
-  );
+  const refreshSessionMessagesRef = useRef<(sid: string) => Promise<void>>(() => Promise.resolve());
   const [input, setInput] = useState("");
   const [workspaceSaving, setWorkspaceSaving] = useState(false);
   const [revertTarget, setRevertTarget] = useState<RevertTarget | null>(null);
@@ -1787,6 +1891,8 @@ export function Chat() {
   const [liveActivities, setLiveActivities] = useState<LiveActivityItem[]>([]);
   const [liveCurrentStep, setLiveCurrentStep] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
+  const [pendingMessages, setPendingMessages] = useState<PendingChatMessage[]>([]);
+  const [steeringMessageId, setSteeringMessageId] = useState<string | null>(null);
   const visibleStreamingText = useMemo(
     () => (streamingContent ? stripStreamingReasoningForDisplay(streamingContent) : null),
     [streamingContent]
@@ -1812,6 +1918,7 @@ export function Chat() {
   const activeSessionRef = useRef<string | null>(null);
   const loadingRef = useRef(false);
   const wasLoadingRef = useRef(false);
+  const optimisticPendingMessageCounterRef = useRef(0);
   const acceptEventsUntilRef = useRef(0);
   const pendingProcessCaptureRef = useRef<PendingProcessCapture | null>(null);
   const runActivityBufferRef = useRef<LiveActivityItem[]>([]);
@@ -2310,6 +2417,7 @@ export function Chat() {
           snapshot.status === "generating" ||
           snapshot.status === "tool_executing" ||
           snapshot.status === "tool_completed");
+      setPendingMessages(normalizePendingChatMessages(snapshot?.pendingMessages));
 
       if (!isActive || !snapshot) {
         if (
@@ -2408,6 +2516,7 @@ export function Chat() {
     }
     acceptEventsUntilRef.current = 0;
     if (!sessionId) {
+      setPendingMessages([]);
       return;
     }
 
@@ -2667,25 +2776,152 @@ export function Chat() {
     return () => window.removeEventListener("resize", updateComposerHeight);
   }, []);
 
-  const handleSend = async () => {
+  const canQueueCurrentMessage = useCallback(() => {
     const sessionCurrentlyActive = !!sessionId && activeSessionIds.includes(sessionId);
-    if (!input.trim() || isLoading || sessionCurrentlyActive) return;
+    const locallyLoadingCurrentSession =
+      loadingRef.current && (!sessionId || !loadingSessionId || loadingSessionId === sessionId);
+    const pendingCapture = pendingProcessCaptureRef.current;
+    const pendingCaptureForCurrentSession =
+      !!pendingCapture &&
+      (sessionId
+        ? !pendingCapture.sessionId || pendingCapture.sessionId === sessionId
+        : !pendingCapture.sessionId);
+    return (
+      sessionCurrentlyActive ||
+      locallyLoadingCurrentSession ||
+      (isLoading && (!sessionId || loadingSessionId === sessionId)) ||
+      pendingCaptureForCurrentSession ||
+      liveStatus !== "idle" ||
+      liveActivities.length > 0
+    );
+  }, [activeSessionIds, isLoading, liveActivities.length, liveStatus, loadingSessionId, sessionId]);
+
+  const handleSend = async () => {
+    const requestedQueueMode =
+      canQueueCurrentMessage() || pendingMessages.length > 0 ? "queue" : undefined;
+    const requestSessionId = requestedQueueMode
+      ? sessionId || activeSessionRef.current
+      : sessionId || activeSessionRef.current || crypto.randomUUID();
+    const queueMode = requestedQueueMode && requestSessionId ? "queue" : undefined;
+    if (!input.trim() || (isLoading && !queueMode)) return;
     const message = input;
     setInput("");
-    const response = await sendMessage(message, {
-      workspaceDir: effectiveWorkspaceDir || undefined,
-    });
-    if (response && typeof response === "object" && "agent" in response) {
-      const responseRecord = response as Record<string, unknown>;
-      const responseAgent =
-        responseRecord.agent && typeof responseRecord.agent === "object"
-          ? (responseRecord.agent as Record<string, unknown>)
-          : null;
-      const resolvedAgentId =
-        responseAgent && typeof responseAgent.id === "string" ? responseAgent.id : null;
-      syncSessionAgentSelection(resolvedAgentId);
+    let optimisticPendingMessageId: string | null = null;
+    if (queueMode && requestSessionId) {
+      const now = Date.now();
+      optimisticPendingMessageCounterRef.current += 1;
+      optimisticPendingMessageId = `optimistic-${now}-${optimisticPendingMessageCounterRef.current}`;
+      setPendingMessages((previous) =>
+        normalizePendingChatMessages([
+          ...previous,
+          {
+            id: optimisticPendingMessageId!,
+            sessionId: requestSessionId,
+            content: message,
+            createdAt: now,
+            updatedAt: now,
+            mode: "queued",
+            sequence:
+              previous.reduce((max, pending) => Math.max(max, pending.sequence || 0), 0) + 1,
+          },
+        ])
+      );
+    } else if (!queueMode) {
+      loadingRef.current = true;
+      activeSessionRef.current = requestSessionId;
+      setLoadingSessionId(requestSessionId);
+    }
+    try {
+      const response = await sendMessage(message, {
+        workspaceDir: effectiveWorkspaceDir || undefined,
+        queueMode,
+        sessionId: requestSessionId || undefined,
+      });
+      if (response?.queued) {
+        setPendingMessages(normalizePendingChatMessages(response.pendingMessages));
+        return;
+      }
+      if (optimisticPendingMessageId) {
+        setPendingMessages((previous) =>
+          previous.filter((pending) => pending.id !== optimisticPendingMessageId)
+        );
+      }
+      if (response && typeof response === "object" && "agent" in response) {
+        const responseRecord = response as Record<string, unknown>;
+        const responseAgent =
+          responseRecord.agent && typeof responseRecord.agent === "object"
+            ? (responseRecord.agent as Record<string, unknown>)
+            : null;
+        const resolvedAgentId =
+          responseAgent && typeof responseAgent.id === "string" ? responseAgent.id : null;
+        syncSessionAgentSelection(resolvedAgentId);
+      }
+    } catch (error) {
+      if (optimisticPendingMessageId) {
+        setPendingMessages((previous) =>
+          previous.filter((pending) => pending.id !== optimisticPendingMessageId)
+        );
+      }
+      throw error;
     }
   };
+
+  const handleSteerPendingMessage = useCallback(
+    async (pendingMessageId: string) => {
+      if (!sessionId) return;
+      setSteeringMessageId(pendingMessageId);
+      try {
+        const response = await chatApi.steerPendingMessage(sessionId, pendingMessageId);
+        if (response.success && response.data) {
+          setPendingMessages(normalizePendingChatMessages(response.data.pendingMessages));
+          const refreshed = await loadSessionMutation.mutateAsync(sessionId);
+          if (refreshed?.messagesList) {
+            loadSession(
+              sessionId,
+              refreshed.messagesList as ChatMessage[],
+              (refreshed as { workspace_dir?: string | null }).workspace_dir || null
+            );
+            syncSessionAgentSelection((refreshed as { agent_id?: string | null }).agent_id || null);
+          }
+          return;
+        }
+        console.error("Failed to steer pending message:", response.error || response.data?.error);
+      } finally {
+        setSteeringMessageId(null);
+      }
+    },
+    [loadSession, loadSessionMutation, sessionId, syncSessionAgentSelection]
+  );
+
+  const handleReorderPendingMessages = useCallback(
+    async (orderedIds: string[]) => {
+      if (!sessionId || orderedIds.length === 0) return;
+      const previousMessages = pendingMessages;
+      const byId = new Map(previousMessages.map((message) => [message.id, message]));
+      const orderedMessages = orderedIds
+        .map((id) => byId.get(id))
+        .filter((message): message is PendingChatMessage => !!message);
+      if (orderedMessages.length === previousMessages.length) {
+        setPendingMessages(orderedMessages);
+      }
+      try {
+        const response = await chatApi.reorderPendingMessages(sessionId, orderedIds);
+        if (response.success && response.data?.success) {
+          setPendingMessages(normalizePendingChatMessages(response.data.pendingMessages));
+          return;
+        }
+        setPendingMessages(previousMessages);
+        console.error(
+          "Failed to reorder pending messages:",
+          response.error || response.data?.error
+        );
+      } catch (error) {
+        setPendingMessages(previousMessages);
+        console.error("Failed to reorder pending messages:", error);
+      }
+    },
+    [pendingMessages, sessionId]
+  );
 
   useEffect(() => {
     if (!streamingContent || isLoading) return;
@@ -3161,6 +3397,7 @@ export function Chat() {
     currentSessionIsActive ||
     pendingCaptureForCurrentSession ||
     liveActivities.length > 0;
+  const sendQueuesFollowUp = showWorkingTimeline || pendingMessages.length > 0;
   const timelineActivities =
     liveActivities.length > 0
       ? liveActivities
@@ -3522,6 +3759,14 @@ export function Chat() {
                 ref={composerRef}
                 className="flex-shrink-0 px-3 sm:px-4 py-3 border-t border-white/5 bg-[#0a0a0f]/80 backdrop-blur-xl"
               >
+                {pendingMessages.length > 0 && (
+                  <PendingChatQueue
+                    messages={pendingMessages}
+                    onSteer={handleSteerPendingMessage}
+                    onReorder={handleReorderPendingMessages}
+                    steeringMessageId={steeringMessageId}
+                  />
+                )}
                 <div className="flex items-end gap-2 sm:gap-3">
                   <textarea
                     ref={inputRef}
@@ -3567,7 +3812,7 @@ export function Chat() {
                       <Mic className="w-4 h-4" />
                     )}
                   </button>
-                  {showWorkingTimeline ? (
+                  {showWorkingTimeline && (
                     <button
                       type="button"
                       onClick={() => void handleStopActive()}
@@ -3581,15 +3826,15 @@ export function Chat() {
                         <Square className="w-4 h-4" />
                       )}
                     </button>
-                  ) : (
-                    <button
-                      onClick={handleSend}
-                      disabled={!input.trim()}
-                      className="h-[42px] w-[42px] shrink-0 self-end inline-flex items-center justify-center rounded-xl accent-button disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                    >
-                      <Send className="w-4 h-4" />
-                    </button>
                   )}
+                  <button
+                    onClick={handleSend}
+                    disabled={!input.trim() || (isLoading && !sendQueuesFollowUp)}
+                    className="h-[42px] w-[42px] shrink-0 self-end inline-flex items-center justify-center rounded-xl accent-button disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    title={sendQueuesFollowUp ? "Queue follow-up" : "Send message"}
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
                 </div>
                 {/* <div className="mt-1 px-1 text-[10px] text-gray-500">
                   Enter to send • Shift+Enter for newline

@@ -64,7 +64,12 @@ import {
   isMixtureOfAgentsRoutingActive,
   getMixtureOfAgentsRoutingConfig,
 } from "./router";
-import { executeTool, hasTool } from "./tools/handlers/index";
+import {
+  executeTool,
+  formatMissingRequiredToolArgumentsError,
+  getMissingRequiredToolArguments,
+  hasTool,
+} from "./tools/handlers/index";
 import {
   buildSystemPrompt,
   AGENT_TYPE_PROMPTS,
@@ -424,6 +429,7 @@ interface AgentExecutionOptions {
   modelOverride?: string;
   requireToolUse?: boolean;
   requiredToolName?: string;
+  consumeSteeringMessages?: () => Array<{ id: string; content: string; createdAt: number }>;
 }
 
 interface RunningAgentState {
@@ -1304,6 +1310,7 @@ class AgentManager {
         typeof options?.requiredToolName === "string" && options.requiredToolName.trim().length > 0
           ? options.requiredToolName.trim()
           : undefined,
+      consumeSteeringMessages: options?.consumeSteeringMessages,
     };
   }
 
@@ -1761,9 +1768,38 @@ class AgentManager {
     broadcastStatus(this.buildStatusPayload(status, toolContext, detail, extra));
   }
 
+  private consumeSteeringText(toolContext?: ToolContext): string | null {
+    const consumed = toolContext?.consumeSteeringMessages?.() || [];
+    const messages = consumed
+      .map((message) => message.content.trim())
+      .filter((content) => content.length > 0);
+    if (messages.length === 0) return null;
+
+    const content =
+      messages.length === 1
+        ? messages[0]
+        : messages.map((message, index) => `${index + 1}. ${message}`).join("\n");
+    this.broadcastAgentStatus(
+      "thinking",
+      toolContext,
+      messages.length === 1
+        ? "Applying user steering..."
+        : `Applying ${messages.length} user steering updates...`
+    );
+    return [
+      "User steering update received while this response was running.",
+      "Adjust the current work to account for this message before continuing.",
+      content,
+    ].join("\n\n");
+  }
+
   private normalizeErrorMessage(error: unknown): string {
     if (error instanceof Error) return error.message;
     return String(error || "Unknown error");
+  }
+
+  private missingExecutableToolCallsMessage(): string {
+    return "I stopped because the model produced tool calls without the required arguments.";
   }
 
   private createToolCallStatusId(toolName: string): string {
@@ -1802,6 +1838,19 @@ class AgentManager {
         reason,
       });
       return { skipped: false, result: { error: reason } };
+    }
+
+    const missingArgs = getMissingRequiredToolArguments(toolName, args);
+    if (missingArgs.length > 0) {
+      const reason = formatMissingRequiredToolArgumentsError(toolName, missingArgs);
+      await emitAgentHook({
+        type: "tool_blocked",
+        context: hookContext,
+        toolName,
+        args,
+        reason,
+      });
+      return { skipped: true, result: { error: reason } };
     }
 
     const hookDecision = await emitAgentHook({
@@ -2908,10 +2957,12 @@ class AgentManager {
           hookContext
         );
         const resultPayload =
-          executed.skipped || executed.result === undefined
+          executed.result === undefined
             ? { error: `Tool execution skipped for ${toolName}` }
             : executed.result;
-        iterationToolCalls.push({ name: toolName, args, result: resultPayload });
+        if (!executed.skipped) {
+          iterationToolCalls.push({ name: toolName, args, result: resultPayload });
+        }
         if (!executed.skipped && executed.result !== undefined) {
           allToolCalls.push({ name: toolName, args, result: executed.result });
         }
@@ -2927,6 +2978,13 @@ class AgentManager {
 
       if (toolResults.length === 0) {
         console.warn("[Agent] Tool loop produced no tool results; stopping loop early");
+        break;
+      }
+      if (iterationToolCalls.length === 0) {
+        console.warn("[Agent] Tool loop produced no executable tool calls; stopping loop early");
+        if (!finalContent.trim()) {
+          finalContent = this.missingExecutableToolCallsMessage();
+        }
         break;
       }
 
@@ -2949,6 +3007,10 @@ class AgentManager {
       );
       for (const toolResult of toolResults) {
         currentMessages.push(toolResult);
+      }
+      const steeringText = this.consumeSteeringText(toolContext);
+      if (steeringText) {
+        currentMessages.push({ role: "user", content: steeringText });
       }
       this.compactOpenAILoopMessagesForContext(currentMessages, contextGuard.contextBudgetChars);
 
@@ -3588,32 +3650,21 @@ class AgentManager {
           toolContext,
           hookContext
         );
-        if (executed.skipped || executed.result === undefined) {
-          // The Responses API rejects a follow-up turn if any function_call lacks
-          // a matching function_call_output. A skipped/empty tool still needs a
-          // paired output, or the whole conversation aborts on the next request.
-          functionCallOutputs.push({
-            type: "function_call_output",
-            call_id: toolCall.callId,
-            output: JSON.stringify({
-              skipped: true,
-              reason: executed.skipped ? "tool execution skipped" : "no result",
-            }),
-          });
-          continue;
+        const resultPayload =
+          executed.result === undefined ? { skipped: true, reason: "no result" } : executed.result;
+        if (!executed.skipped) {
+          const toolCallRecord = {
+            name: toolCall.name,
+            args: toolCall.args,
+            result: resultPayload,
+          };
+          allToolCalls.push(toolCallRecord);
+          iterationToolCalls.push(toolCallRecord);
         }
-
-        const toolCallRecord = {
-          name: toolCall.name,
-          args: toolCall.args,
-          result: executed.result,
-        };
-        allToolCalls.push(toolCallRecord);
-        iterationToolCalls.push(toolCallRecord);
         functionCallOutputs.push({
           type: "function_call_output",
           call_id: toolCall.callId,
-          output: JSON.stringify(executed.result),
+          output: JSON.stringify(resultPayload),
         });
       }
 
@@ -3621,6 +3672,9 @@ class AgentManager {
         console.warn(
           "[Agent] OpenAI Codex tool loop produced no tool results; stopping loop early"
         );
+        if (!finalContent.trim()) {
+          finalContent = this.missingExecutableToolCallsMessage();
+        }
         break;
       }
 
@@ -3639,6 +3693,13 @@ class AgentManager {
       }
 
       inputItems.push(...functionCallItems, ...functionCallOutputs);
+      const steeringText = this.consumeSteeringText(toolContext);
+      if (steeringText) {
+        inputItems.push({
+          role: "user",
+          content: [{ type: "input_text", text: steeringText }],
+        });
+      }
     }
 
     if (limitReason) {
@@ -3859,9 +3920,10 @@ class AgentManager {
         role: "model",
         parts,
       });
+      const steeringText = this.consumeSteeringText(toolContext);
       contents.push({
         role: "user",
-        parts: toolResponses,
+        parts: steeringText ? [...toolResponses, { text: steeringText }] : toolResponses,
       });
     }
 
@@ -4073,9 +4135,10 @@ class AgentManager {
         role: "assistant",
         content: outputContent,
       });
+      const steeringText = this.consumeSteeringText(toolContext);
       conversation.push({
         role: "user",
-        content: toolResults,
+        content: steeringText ? [...toolResults, { text: steeringText }] : toolResults,
       });
     }
 
@@ -4379,10 +4442,12 @@ class AgentManager {
         const executed = await (preStarted.get(toolUseId) ??
           this.executeToolWithHooks(toolName, args, allowedToolNames, toolContext, hookContext));
         const resultPayload =
-          executed.skipped || executed.result === undefined
+          executed.result === undefined
             ? { error: `Tool execution skipped for ${toolName}` }
             : executed.result;
-        iterationToolCalls.push({ name: toolName, args, result: resultPayload });
+        if (!executed.skipped) {
+          iterationToolCalls.push({ name: toolName, args, result: resultPayload });
+        }
         if (!executed.skipped && executed.result !== undefined) {
           allToolCalls.push({ name: toolName, args, result: executed.result });
         }
@@ -4413,6 +4478,15 @@ class AgentManager {
         console.warn("[Agent] Anthropic tool loop produced no tool results; stopping loop early");
         break;
       }
+      if (iterationToolCalls.length === 0) {
+        console.warn(
+          "[Agent] Anthropic tool loop produced no executable tool calls; stopping early"
+        );
+        if (!finalContent.trim()) {
+          finalContent = this.missingExecutableToolCallsMessage();
+        }
+        break;
+      }
 
       if (iterationToolCalls.length > 0) {
         const noProgressStreak = this.updateNoProgressLoopState(loopState, iterationToolCalls);
@@ -4441,9 +4515,12 @@ class AgentManager {
         role: "assistant",
         content: assistantLoopContent,
       });
+      const steeringText = this.consumeSteeringText(toolContext);
       currentMessages.push({
         role: "user",
-        content: toolResults,
+        content: steeringText
+          ? [...toolResults, { type: "text", text: steeringText }]
+          : toolResults,
       });
 
       this.compactAnthropicLoopMessagesForContext(currentMessages, contextGuard.contextBudgetChars);
@@ -4731,10 +4808,12 @@ class AgentManager {
           hookContext
         );
         const resultPayload =
-          executed.skipped || executed.result === undefined
+          executed.result === undefined
             ? { error: `Tool execution skipped for ${toolName}` }
             : executed.result;
-        iterationToolCalls.push({ name: toolName, args, result: resultPayload });
+        if (!executed.skipped) {
+          iterationToolCalls.push({ name: toolName, args, result: resultPayload });
+        }
         if (!executed.skipped && executed.result !== undefined) {
           allToolCalls.push({ name: toolName, args, result: executed.result });
         }
@@ -4750,6 +4829,13 @@ class AgentManager {
 
       if (toolResults.length === 0) {
         console.warn("[Agent] OpenAI tool loop produced no tool results; stopping loop early");
+        break;
+      }
+      if (iterationToolCalls.length === 0) {
+        console.warn("[Agent] OpenAI tool loop produced no executable tool calls; stopping early");
+        if (!finalContent.trim()) {
+          finalContent = this.missingExecutableToolCallsMessage();
+        }
         break;
       }
 
@@ -4772,6 +4858,10 @@ class AgentManager {
       );
       for (const toolResult of toolResults) {
         currentMessages.push(toolResult);
+      }
+      const steeringText = this.consumeSteeringText(toolContext);
+      if (steeringText) {
+        currentMessages.push({ role: "user", content: steeringText });
       }
       this.compactOpenAILoopMessagesForContext(currentMessages, contextGuard.contextBudgetChars);
 

@@ -968,13 +968,13 @@ describe("Agent tool allowlist guardrails", () => {
     });
     createdProviderIds.push(provider.id);
 
-    const execTool: ToolDefinition = {
-      name: "exec",
-      description: "Execute shell commands",
+    const calcTool: ToolDefinition = {
+      name: "calc",
+      description: "Evaluate math expressions",
       input_schema: {
         type: "object",
-        properties: { command: { type: "string" } },
-        required: ["command"],
+        properties: { expression: { type: "string" } },
+        required: ["expression"],
       },
     };
 
@@ -983,7 +983,7 @@ describe("Agent tool allowlist guardrails", () => {
       type: "main",
       provider_id: provider.id,
       model: "kimi-for-coding",
-      tools: [execTool],
+      tools: [calcTool],
       memory_enabled: false,
       config: {
         model_params: {
@@ -1015,8 +1015,8 @@ describe("Agent tool allowlist guardrails", () => {
                     id: `call-np-${completionCalls}`,
                     type: "function",
                     function: {
-                      name: "exec",
-                      arguments: JSON.stringify({}),
+                      name: "calc",
+                      arguments: JSON.stringify({ expression: "1+1" }),
                     },
                   },
                 ],
@@ -1037,6 +1037,76 @@ describe("Agent tool allowlist guardrails", () => {
     expect(completionCalls).toBe(3);
     expect(result.content).toContain("repeating with no progress");
     expect(result.tool_calls?.length).toBe(3);
+  });
+
+  test("stops malformed required-argument tool loops before broadcasting them as work", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "OpenAI Missing Args Provider",
+      api_key: "openai-missing-args-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const readTool: ToolDefinition = {
+      name: "read",
+      description: "Read a file",
+      input_schema: {
+        type: "object",
+        properties: { path: { type: "string" } },
+        required: ["path"],
+      },
+    };
+
+    const agent = agentManager.create({
+      name: "OpenAI Missing Args Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-5.2",
+      tools: [readTool],
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    let completionCalls = 0;
+    globalThis.fetch = (async () => {
+      completionCalls += 1;
+      return new Response(
+        JSON.stringify({
+          id: `resp-missing-${completionCalls}`,
+          object: "chat.completion",
+          model: "gpt-5.2",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "tool_calls",
+              message: {
+                role: "assistant",
+                content: null,
+                tool_calls: Array.from({ length: 8 }, (_, index) => ({
+                  id: `call-missing-${index}`,
+                  type: "function",
+                  function: {
+                    name: "read",
+                    arguments: JSON.stringify({}),
+                  },
+                })),
+              },
+            },
+          ],
+          usage: { prompt_tokens: 10, completion_tokens: 3, total_tokens: 13 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const result = await agentManager.execute(agent.id, [{ role: "user", content: "read files" }], {
+      useTools: true,
+      sessionId: "openai-missing-args-session",
+    });
+
+    expect(completionCalls).toBe(1);
+    expect(result.content).toContain("without the required arguments");
+    expect(result.tool_calls).toBeUndefined();
   });
 
   test("does not impose a default hard iteration cap when loop is still progressing", async () => {

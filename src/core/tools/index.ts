@@ -47,6 +47,8 @@ export interface ToolContext {
   denyWritePrefixes?: string[];
   /** When true, file writes are confined to `workspaceDir`. Default false. */
   confineToWorkspace?: boolean;
+  /** Consumes queued user steering messages at safe tool-result boundaries. */
+  consumeSteeringMessages?: () => Array<{ id: string; content: string; createdAt: number }>;
 }
 
 export interface Tool {

@@ -375,6 +375,16 @@ export interface SessionProcessActivitySummary {
   toolCallId?: string;
 }
 
+export interface MobilePendingChatMessage {
+  id: string;
+  sessionId: string;
+  content: string;
+  createdAt: number;
+  updatedAt: number;
+  mode: "queued" | "steering";
+  sequence: number;
+}
+
 export interface SessionMessageSummary {
   id: string;
   role: string;
@@ -410,6 +420,7 @@ export interface MobileStatusSessionSnapshot {
   detail?: string;
   agentId?: string;
   activities: SessionProcessActivitySummary[];
+  pendingMessages?: MobilePendingChatMessage[];
 }
 
 export interface MobileStatusStreamStatusEvent {
@@ -1058,6 +1069,32 @@ function normalizeProcessActivities(value: unknown): SessionProcessActivitySumma
   });
 }
 
+function normalizePendingChatMessages(value: unknown): MobilePendingChatMessage[] {
+  const valueRecord = asRecord(value);
+  const entries =
+    valueRecord && (readString(valueRecord, ["id"]) || readString(valueRecord, ["content"]))
+      ? [value]
+      : normalizeArrayResponse(value, ["pendingMessages", "pending_messages", "items"]);
+  return entries
+    .map((entry, index) => {
+      const record = asRecord(entry);
+      const mode = readString(record, ["mode"]);
+      const normalizedMode: MobilePendingChatMessage["mode"] =
+        mode === "steering" ? "steering" : "queued";
+      return {
+        id: readString(record, ["id"]) || `pending-${index + 1}`,
+        sessionId: readString(record, ["sessionId", "session_id"]) || "",
+        content: readString(record, ["content", "message", "text"]) || "",
+        createdAt: readNumber(record, ["createdAt", "created_at"]) ?? Date.now(),
+        updatedAt: readNumber(record, ["updatedAt", "updated_at"]) ?? Date.now(),
+        mode: normalizedMode,
+        sequence: readNumber(record, ["sequence"]) ?? index + 1,
+      };
+    })
+    .filter((entry) => entry.id.length > 0 && entry.content.trim().length > 0)
+    .sort((a, b) => a.sequence - b.sequence || a.createdAt - b.createdAt);
+}
+
 function normalizeStatusSnapshot(
   value: unknown,
   fallbackIndex: number
@@ -1072,6 +1109,9 @@ function normalizeStatusSnapshot(
     detail: readString(record, ["detail", "message", "text"]),
     agentId: readString(record, ["agentId", "agent_id"]),
     activities: normalizeProcessActivities(record?.activities) || [],
+    pendingMessages: normalizePendingChatMessages(
+      record?.pendingMessages ?? record?.pending_messages
+    ),
   };
 }
 
@@ -1485,7 +1525,15 @@ export class CybaraMobileApi {
     sessionId?: string;
     agentId?: string;
     workspaceDir?: string | null;
-  }): Promise<{ sessionId: string; message: SessionMessageSummary; workspaceDir?: string | null }> {
+    queueMode?: "queue" | "steer";
+  }): Promise<{
+    sessionId: string;
+    message: SessionMessageSummary;
+    workspaceDir?: string | null;
+    queued?: boolean;
+    pendingMessage?: MobilePendingChatMessage;
+    pendingMessages?: MobilePendingChatMessage[];
+  }> {
     const response = await this.request<unknown>("/api/chat", {
       method: "POST",
       body: JSON.stringify({
@@ -1493,6 +1541,7 @@ export class CybaraMobileApi {
         sessionId: input.sessionId,
         agentId: input.agentId,
         workspaceDir: input.workspaceDir,
+        queueMode: input.queueMode,
       }),
     });
     const record = asRecord(response);
@@ -1501,6 +1550,9 @@ export class CybaraMobileApi {
     return {
       sessionId: readString(record, ["sessionId"]) || input.sessionId || "",
       workspaceDir: readString(record, ["workspaceDir"]) || input.workspaceDir,
+      queued: record?.queued === true,
+      pendingMessage: normalizePendingChatMessages(record?.pendingMessage)[0],
+      pendingMessages: normalizePendingChatMessages(record?.pendingMessages),
       message: {
         id: readString(messageRecord, ["id"]) || `assistant-${Date.now()}`,
         role: readString(messageRecord, ["role"]) || "assistant",
@@ -1514,6 +1566,30 @@ export class CybaraMobileApi {
           messageRecord?.process_activities ?? messageRecord?.processActivities
         ),
       },
+    };
+  }
+
+  async steerPendingMessage(
+    sessionId: string,
+    pendingMessageId: string
+  ): Promise<{
+    success: boolean;
+    pendingMessage?: MobilePendingChatMessage;
+    pendingMessages?: MobilePendingChatMessage[];
+    error?: string;
+  }> {
+    const response = await this.request<unknown>(
+      `/api/chat/sessions/${encodeURIComponent(sessionId)}/pending/${encodeURIComponent(
+        pendingMessageId
+      )}/steer`,
+      { method: "POST" }
+    );
+    const record = asRecord(response);
+    return {
+      success: record?.success === true,
+      pendingMessage: normalizePendingChatMessages(record?.pendingMessage)[0],
+      pendingMessages: normalizePendingChatMessages(record?.pendingMessages),
+      error: readString(record, ["error"]),
     };
   }
 

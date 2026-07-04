@@ -98,9 +98,7 @@ describe("Chat live activity persistence", () => {
     expect(source).toContain('if (latestMessage?.role === "assistant") {');
     // Clearing now happens via finalizeLiveState AFTER the persisted reply is
     // fetched (see chat-finish-handoff.test.ts), never inline before it.
-    expect(source).toMatch(
-      /const finalizeLiveState = \(\) => \{\s*setStreamingContent\(null\);/
-    );
+    expect(source).toMatch(/const finalizeLiveState = \(\) => \{\s*setStreamingContent\(null\);/);
   });
 
   test("persists message process map across reloads", () => {

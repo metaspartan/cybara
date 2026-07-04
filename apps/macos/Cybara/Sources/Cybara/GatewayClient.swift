@@ -211,7 +211,8 @@ struct GatewayClient: Sendable {
         message: String,
         sessionId: String?,
         agentId: String?,
-        workspaceDir: String? = nil
+        workspaceDir: String? = nil,
+        queueMode: String? = nil
     ) async throws -> ChatSendResponse {
         var payload: [String: Any] = ["message": message]
         if let sessionId { payload["sessionId"] = sessionId }
@@ -219,9 +220,23 @@ struct GatewayClient: Sendable {
         if let workspaceDir = firstNonEmptyGatewayString(workspaceDir) {
             payload["workspaceDir"] = workspaceDir
         }
+        if let queueMode = firstNonEmptyGatewayString(queueMode) {
+            payload["queueMode"] = queueMode
+        }
         let body = try JSONSerialization.data(withJSONObject: payload)
         let data = try await request("api/chat", method: "POST", body: body)
         return try JSONDecoder().decode(ChatSendResponse.self, from: data)
+    }
+
+    func steerPendingMessage(
+        sessionId: String,
+        pendingId: String
+    ) async throws -> GatewayPendingChatResponse {
+        let data = try await request(
+            "api/chat/sessions/\(sessionId)/pending/\(pendingId)/steer",
+            method: "POST"
+        )
+        return try JSONDecoder().decode(GatewayPendingChatResponse.self, from: data)
     }
 
     @discardableResult

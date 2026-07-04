@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   broadcastStatus,
+  broadcastStatusSnapshot,
   broadcastTaskEvent,
   createStatusSnapshotEvent,
   onStatusStream,
+  setSessionPendingChatMessages,
 } from "../../src/core/status";
 
 describe("status stream events", () => {
@@ -67,5 +69,41 @@ describe("status stream events", () => {
       sessionId,
       detail: "idle",
     });
+  });
+
+  test("includes pending chat messages in snapshots", () => {
+    const sessionId = `pending-status-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const received: string[] = [];
+    const unsubscribe = onStatusStream((event) => {
+      if (event.type === "snapshot") {
+        const snapshot = event.activeSessions.find((entry) => entry.sessionId === sessionId);
+        const mode = snapshot?.pendingMessages?.[0]?.mode;
+        if (mode) received.push(mode);
+      }
+    });
+
+    setSessionPendingChatMessages(sessionId, [
+      {
+        id: "pending-1",
+        sessionId,
+        content: "follow up",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        mode: "queued",
+        sequence: 1,
+      },
+    ]);
+    const snapshot = createStatusSnapshotEvent();
+    broadcastStatusSnapshot();
+    unsubscribe();
+    setSessionPendingChatMessages(sessionId, []);
+
+    const pendingSnapshot = snapshot.activeSessions.find((entry) => entry.sessionId === sessionId);
+    expect(pendingSnapshot?.pendingMessages?.[0]).toMatchObject({
+      content: "follow up",
+      mode: "queued",
+    });
+    expect(snapshot.activeSessionIds.includes(sessionId)).toBe(true);
+    expect(received).toContain("queued");
   });
 });

@@ -72,7 +72,9 @@ function suggestNearbyPath(target: string): string | undefined {
         }
       }
       if (!best) return undefined;
-      const corrected = [current, best.name, ...segments.slice(i + 1)].join(sep).replace(/\/+/g, sep);
+      const corrected = [current, best.name, ...segments.slice(i + 1)]
+        .join(sep)
+        .replace(/\/+/g, sep);
       // Only suggest when the corrected prefix actually exists on disk.
       return existsSync(join(current, best.name)) ? corrected : undefined;
     }

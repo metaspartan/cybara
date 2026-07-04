@@ -45,7 +45,14 @@ import {
   trackMemoryFlush,
 } from "../core/metrics";
 import { shouldRunMemoryFlush, resolveMemoryFlushSettings } from "../core/memory/flush";
-import { broadcastStatus, getSessionStatusSnapshot } from "../core/status";
+import {
+  broadcastStatus,
+  broadcastStatusSnapshot,
+  getSessionRunStatusSnapshot,
+  getSessionStatusSnapshot,
+  setSessionPendingChatMessages,
+  type PendingChatMessageSnapshot,
+} from "../core/status";
 import { emitAgentHook } from "../core/agent-hooks";
 import { createLogger } from "../core/logger";
 import {
@@ -87,6 +94,7 @@ export interface ChatMessage {
   process_activities?: ProcessActivityInfo[];
   /** Optional image inputs (vision) attached to a user message. */
   images?: AgentImage[];
+  _pendingSteeringId?: string;
 }
 
 export interface ChatRequest {
@@ -99,6 +107,8 @@ export interface ChatRequest {
   channel?: string;
   userId?: string;
   source?: string;
+  queueMode?: "queue" | "steer";
+  recordedUserMessageId?: string;
   /** Optional image inputs (vision) for this user turn. */
   images?: AgentImage[];
 }
@@ -107,6 +117,9 @@ export interface ChatResponse {
   sessionId: string;
   message: ChatMessage;
   workspaceDir?: string | null;
+  queued?: boolean;
+  pendingMessage?: PendingChatMessageSnapshot;
+  pendingMessages?: PendingChatMessageSnapshot[];
   agent?: {
     id: string;
     name: string;
@@ -157,6 +170,259 @@ const persistedSessionIndex = new Map<string, PersistedSessionIndexEntry>();
 // session (e.g. a user retry, or several channel messages) can't interleave
 // their user/assistant pushes or race a mid-turn conversation compaction.
 const chatTurnMutex = new KeyedMutex();
+const MAX_PENDING_CHAT_MESSAGES_PER_SESSION = 20;
+
+interface PendingChatItem {
+  id: string;
+  sessionId: string;
+  request: ChatRequest;
+  content: string;
+  createdAt: number;
+  updatedAt: number;
+  mode: "queued" | "steering";
+  sequence: number;
+  materialized?: boolean;
+}
+
+const pendingChatQueues = new Map<string, PendingChatItem[]>();
+const pendingChatDrainScheduled = new Set<string>();
+let pendingChatSequence = 0;
+
+function isActiveChatStatus(status?: string): boolean {
+  return (
+    status === "thinking" ||
+    status === "generating" ||
+    status === "tool_executing" ||
+    status === "tool_completed" ||
+    status === "compacting"
+  );
+}
+
+function pendingChatSnapshot(item: PendingChatItem): PendingChatMessageSnapshot {
+  return {
+    id: item.id,
+    sessionId: item.sessionId,
+    content: item.content,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    mode: item.mode,
+    sequence: item.sequence,
+  };
+}
+
+function pendingChatSnapshots(sessionId: string): PendingChatMessageSnapshot[] {
+  return (pendingChatQueues.get(sessionId) || [])
+    .filter((item) => item.materialized !== true)
+    .map(pendingChatSnapshot);
+}
+
+function syncPendingChatStatus(sessionId: string): PendingChatMessageSnapshot[] {
+  const snapshots = pendingChatSnapshots(sessionId);
+  setSessionPendingChatMessages(sessionId, snapshots);
+  broadcastStatusSnapshot();
+  return snapshots;
+}
+
+function hasPendingChatMessages(sessionId: string): boolean {
+  return (pendingChatQueues.get(sessionId)?.length || 0) > 0;
+}
+
+function enqueuePendingChatMessage(
+  request: ChatRequest,
+  sessionId: string,
+  mode: "queued" | "steering"
+): ChatResponse {
+  const now = Date.now();
+  const queue = pendingChatQueues.get(sessionId) || [];
+  const item: PendingChatItem = {
+    id: `pending_${crypto.randomUUID()}`,
+    sessionId,
+    request: {
+      ...request,
+      sessionId,
+      queueMode: "queue",
+    },
+    content: request.message.trim(),
+    createdAt: now,
+    updatedAt: now,
+    mode,
+    sequence: ++pendingChatSequence,
+  };
+
+  queue.push(item);
+  while (queue.length > MAX_PENDING_CHAT_MESSAGES_PER_SESSION) {
+    const dropIndex = queue.findIndex((candidate) => candidate.mode !== "steering");
+    queue.splice(dropIndex >= 0 ? dropIndex : 0, 1);
+  }
+  pendingChatQueues.set(sessionId, queue);
+
+  const pendingMessages = syncPendingChatStatus(sessionId);
+  return {
+    sessionId,
+    queued: true,
+    pendingMessage: pendingChatSnapshot(item),
+    pendingMessages,
+    workspaceDir: request.workspaceDir ?? null,
+    message: {
+      role: "assistant",
+      content:
+        mode === "steering"
+          ? "Follow-up queued for the current run."
+          : "Message queued for the next turn.",
+      timestamp: new Date(now).toISOString(),
+    },
+  };
+}
+
+function consumeSteeringMessages(session: InMemoryChatSession): Array<{
+  id: string;
+  content: string;
+  createdAt: number;
+}> {
+  const queue = pendingChatQueues.get(session.id) || [];
+  const steeringItems = queue.filter((item) => item.mode === "steering");
+  if (steeringItems.length === 0) return [];
+
+  const steeringIds = new Set(steeringItems.map((item) => item.id));
+  const remaining = queue.filter((item) => !steeringIds.has(item.id));
+  if (remaining.length > 0) {
+    pendingChatQueues.set(session.id, remaining);
+  } else {
+    pendingChatQueues.delete(session.id);
+  }
+  syncPendingChatStatus(session.id);
+
+  for (const item of steeringItems) {
+    let materializedMessage = findMaterializedSteeringMessage(session, item.id);
+    if (!materializedMessage) {
+      materializedMessage = materializeSteeringMessage(session, item);
+    }
+    delete materializedMessage._pendingSteeringId;
+  }
+
+  return steeringItems.map((item) => ({
+    id: item.id,
+    content: item.content,
+    createdAt: item.createdAt,
+  }));
+}
+
+function schedulePendingChatDrain(sessionId: string, delayMs = 0): void {
+  if (pendingChatDrainScheduled.has(sessionId)) return;
+  pendingChatDrainScheduled.add(sessionId);
+  setTimeout(() => {
+    pendingChatDrainScheduled.delete(sessionId);
+    void drainPendingChatQueue(sessionId);
+  }, delayMs);
+}
+
+function findMaterializedSteeringMessage(
+  session: InMemoryChatSession,
+  pendingMessageId: string
+): ChatMessage | undefined {
+  return session.messages.find((message) => message._pendingSteeringId === pendingMessageId);
+}
+
+function materializeSteeringMessage(
+  session: InMemoryChatSession,
+  item: PendingChatItem
+): ChatMessage {
+  const existing = findMaterializedSteeringMessage(session, item.id);
+  if (existing) return existing;
+
+  const timestamp = new Date(item.updatedAt || item.createdAt).toISOString();
+  const message: ChatMessage = {
+    role: "user",
+    content: item.content,
+    timestamp,
+    _pendingSteeringId: item.id,
+    ...(hasImages(item.request.images) ? { images: item.request.images } : {}),
+  };
+  session.messages.push(message);
+  session.updatedAt = timestamp;
+  return message;
+}
+
+function queuedMaterializedSteeringIds(sessionId: string): Set<string> {
+  return new Set(
+    (pendingChatQueues.get(sessionId) || [])
+      .filter((item) => item.mode === "steering" && item.materialized === true)
+      .map((item) => item.id)
+  );
+}
+
+function appendAssistantMessage(session: InMemoryChatSession, assistantMessage: ChatMessage): void {
+  const queuedSteeringIds = queuedMaterializedSteeringIds(session.id);
+  const trailingSteeringMessages: ChatMessage[] = [];
+  while (session.messages.length > 0) {
+    const last = session.messages[session.messages.length - 1];
+    const pendingSteeringId = last?._pendingSteeringId;
+    if (!pendingSteeringId || !queuedSteeringIds.has(pendingSteeringId)) break;
+    const removed = session.messages.pop();
+    if (removed) trailingSteeringMessages.unshift(removed);
+  }
+  session.messages.push(assistantMessage, ...trailingSteeringMessages);
+  const lastMessage = session.messages[session.messages.length - 1] || assistantMessage;
+  session.updatedAt =
+    lastMessage.timestamp || assistantMessage.timestamp || new Date().toISOString();
+}
+
+async function drainPendingChatQueue(sessionId: string): Promise<void> {
+  const runStatusActive = isActiveChatStatus(getSessionRunStatusSnapshot(sessionId)?.status);
+  if (chatTurnMutex.isLocked(sessionId) || runStatusActive) {
+    schedulePendingChatDrain(sessionId, runStatusActive ? 500 : 0);
+    return;
+  }
+
+  const queue = pendingChatQueues.get(sessionId) || [];
+  const next = queue.shift();
+  if (!next) {
+    pendingChatQueues.delete(sessionId);
+    syncPendingChatStatus(sessionId);
+    return;
+  }
+
+  if (queue.length > 0) {
+    pendingChatQueues.set(sessionId, queue);
+  } else {
+    pendingChatQueues.delete(sessionId);
+  }
+  syncPendingChatStatus(sessionId);
+
+  try {
+    broadcastStatus({
+      status: "thinking",
+      timestamp: Date.now(),
+      detail: "Starting queued follow-up",
+      sessionId,
+      agentId: next.request.agentId,
+    });
+    await runChatTurnWithQueueDrain(
+      {
+        ...next.request,
+        message: next.content,
+        sessionId,
+        queueMode: "queue",
+        recordedUserMessageId: next.materialized ? next.id : undefined,
+      },
+      sessionId
+    );
+  } catch (error) {
+    log.exception("Queued chat turn failed", error, { sessionId });
+    schedulePendingChatDrain(sessionId);
+  }
+}
+
+function runChatTurnWithQueueDrain(
+  request: ChatRequest,
+  effectiveSessionId: string
+): Promise<ChatResponse> {
+  const result = chatTurnMutex.run(effectiveSessionId, () =>
+    handleChatTurn(request, effectiveSessionId)
+  );
+  void result.finally(() => schedulePendingChatDrain(effectiveSessionId));
+  return result;
+}
 
 function truncateSessionPreviewContent(content: string): string {
   if (content.length <= SESSION_LAST_MESSAGE_PREVIEW_MAX_CHARS) return content;
@@ -615,7 +881,149 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   // session id so the whole turn (create → push user → execute → push assistant
   // → persist) runs without interleaving.
   const effectiveSessionId = request.sessionId || crypto.randomUUID();
-  return chatTurnMutex.run(effectiveSessionId, () => handleChatTurn(request, effectiveSessionId));
+  const sessionLocked = chatTurnMutex.isLocked(effectiveSessionId);
+  const sessionHasPendingMessages = hasPendingChatMessages(effectiveSessionId);
+  const sessionStatusActive =
+    !!request.queueMode &&
+    isActiveChatStatus(getSessionRunStatusSnapshot(effectiveSessionId)?.status);
+  const shouldQueue =
+    !!request.sessionId && (sessionLocked || sessionHasPendingMessages || sessionStatusActive);
+  if (shouldQueue) {
+    const response = enqueuePendingChatMessage(
+      request,
+      effectiveSessionId,
+      request.queueMode === "steer" ? "steering" : "queued"
+    );
+    if (!sessionLocked) {
+      schedulePendingChatDrain(effectiveSessionId);
+    }
+    return response;
+  }
+  return runChatTurnWithQueueDrain(request, effectiveSessionId);
+}
+
+export function listPendingChatMessages(sessionId: string): PendingChatMessageSnapshot[] {
+  return pendingChatSnapshots(sessionId.trim());
+}
+
+export function reorderPendingChatMessages(
+  sessionId: string,
+  pendingMessageIds: string[]
+):
+  | { success: true; pendingMessages: PendingChatMessageSnapshot[] }
+  | { success: false; error: string; pendingMessages: PendingChatMessageSnapshot[] } {
+  const key = sessionId.trim();
+  const queue = pendingChatQueues.get(key) || [];
+  if (queue.length === 0) {
+    return { success: true, pendingMessages: [] };
+  }
+
+  const normalizedIds = pendingMessageIds
+    .map((id) => (typeof id === "string" ? id.trim() : ""))
+    .filter((id, index, ids) => id.length > 0 && ids.indexOf(id) === index);
+  const visibleItems = queue.filter((item) => item.materialized !== true);
+  const visibleById = new Map(visibleItems.map((item) => [item.id, item]));
+  const unknownId = normalizedIds.find((id) => !visibleById.has(id));
+  if (unknownId) {
+    return {
+      success: false,
+      error: "Pending message not found",
+      pendingMessages: pendingChatSnapshots(key),
+    };
+  }
+
+  const orderedIds = new Set(normalizedIds);
+  const now = Date.now();
+  const orderedVisibleItems = [
+    ...normalizedIds
+      .map((id) => visibleById.get(id))
+      .filter((item): item is PendingChatItem => !!item),
+    ...visibleItems.filter((item) => !orderedIds.has(item.id)),
+  ].map((item) => ({
+    ...item,
+    updatedAt: now,
+    sequence: ++pendingChatSequence,
+  }));
+  const materializedItems = queue.filter((item) => item.materialized === true);
+
+  pendingChatQueues.set(key, [...materializedItems, ...orderedVisibleItems]);
+  const pendingMessages = syncPendingChatStatus(key);
+  return { success: true, pendingMessages };
+}
+
+export async function steerPendingChatMessage(
+  sessionId: string,
+  pendingMessageId: string
+): Promise<
+  | {
+      success: true;
+      message: ChatMessage;
+      pendingMessages: PendingChatMessageSnapshot[];
+    }
+  | { success: false; error: string; pendingMessages: PendingChatMessageSnapshot[] }
+> {
+  const key = sessionId.trim();
+  const queue = pendingChatQueues.get(key) || [];
+  const index = queue.findIndex((item) => item.id === pendingMessageId);
+  if (index < 0) {
+    return {
+      success: false,
+      error: "Pending message not found",
+      pendingMessages: pendingChatSnapshots(key),
+    };
+  }
+
+  const session = chatSessions.get(key);
+  if (!session) {
+    return {
+      success: false,
+      error: "Session not found for pending message",
+      pendingMessages: pendingChatSnapshots(key),
+    };
+  }
+
+  const item = queue[index];
+  item.mode = "steering";
+  item.updatedAt = Date.now();
+  item.materialized = true;
+  queue[index] = item;
+  pendingChatQueues.set(key, queue);
+  const materializedMessage = materializeSteeringMessage(session, item);
+  await logSessionMessage(session.id, "user", materializedMessage.content, {
+    agentId: item.request.agentId,
+    metadata: { source: "chat_steering" },
+  });
+  session.persisted = await persistSession(
+    session.id,
+    session.agentId,
+    session.messages,
+    session.workspaceDir,
+    session.title
+  );
+  upsertPersistedSessionIndex({
+    id: session.id,
+    agentId: session.agentId,
+    title: session.title,
+    messageCount: session.messages.length,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    workspaceDir: session.workspaceDir ?? null,
+    lastMessage: buildLastMessagePreview(materializedMessage),
+    modelMetadata: resolveSessionModelMetadata(session.agentId),
+  });
+  const pendingMessages = syncPendingChatStatus(key);
+  broadcastStatus({
+    status: "thinking",
+    timestamp: Date.now(),
+    detail: "Follow-up added",
+    sessionId: key,
+    agentId: item.request.agentId,
+  });
+  return {
+    success: true,
+    message: materializedMessage,
+    pendingMessages,
+  };
 }
 
 async function handleChatTurn(
@@ -692,14 +1100,23 @@ async function handleChatTurn(
   };
 
   const sanitizedImages = sanitizeAgentImages(request.images);
-  const userMessage: ChatMessage = {
-    role: "user",
-    content: message,
-    timestamp: new Date().toISOString(),
-    ...(hasImages(sanitizedImages) ? { images: sanitizedImages } : {}),
-  };
-  session.messages.push(userMessage);
-  session.updatedAt = userMessage.timestamp || new Date().toISOString();
+  let userMessage =
+    typeof request.recordedUserMessageId === "string" && request.recordedUserMessageId.trim()
+      ? findMaterializedSteeringMessage(session, request.recordedUserMessageId.trim())
+      : undefined;
+  const shouldLogUserMessage = !userMessage;
+  if (userMessage) {
+    delete userMessage._pendingSteeringId;
+  } else {
+    userMessage = {
+      role: "user",
+      content: message,
+      timestamp: new Date().toISOString(),
+      ...(hasImages(sanitizedImages) ? { images: sanitizedImages } : {}),
+    };
+    session.messages.push(userMessage);
+    session.updatedAt = userMessage.timestamp || new Date().toISOString();
+  }
 
   broadcastStatus({
     status: "thinking",
@@ -718,10 +1135,12 @@ async function handleChatTurn(
     },
   });
 
-  await logSessionMessage(session.id, "user", message, {
-    agentId: agent?.id,
-    metadata: { source: "chat_api" },
-  });
+  if (shouldLogUserMessage) {
+    await logSessionMessage(session.id, "user", message, {
+      agentId: agent?.id,
+      metadata: { source: "chat_api" },
+    });
+  }
 
   const provider = agent ? agentManager.resolveProvider(agent.id) : undefined;
 
@@ -878,6 +1297,7 @@ async function handleChatTurn(
         requireToolUse: shouldPreferArtifacts,
         requiredToolName: shouldPreferArtifacts ? "artifacts" : undefined,
         workspaceDir: session.workspaceDir || undefined,
+        consumeSteeringMessages: () => consumeSteeringMessages(session),
       });
       responseContent = result.content;
 
@@ -926,6 +1346,7 @@ async function handleChatTurn(
             requireToolUse: true,
             requiredToolName: shouldPreferArtifacts ? "artifacts" : undefined,
             workspaceDir: session.workspaceDir || undefined,
+            consumeSteeringMessages: () => consumeSteeringMessages(session),
           });
           const forcedToolCalls = forcedResult.tool_calls || [];
           const forcedHasArtifacts = forcedToolCalls.some(
@@ -1191,8 +1612,7 @@ async function handleChatTurn(
         ? statusSnapshotActivities
         : fallbackProcessActivities,
   };
-  session.messages.push(assistantMessage);
-  session.updatedAt = assistantMessage.timestamp || new Date().toISOString();
+  appendAssistantMessage(session, assistantMessage);
   if (!session.title || shouldRegenerateSessionTitle(session.title)) {
     session.title = withAgentTitlePrefix(agent?.name, deriveSessionTitleFromTurn(message));
   }
@@ -1226,7 +1646,7 @@ async function handleChatTurn(
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     workspaceDir: session.workspaceDir ?? null,
-    lastMessage: buildLastMessagePreview(assistantMessage),
+    lastMessage: buildLastMessagePreview(session.messages[session.messages.length - 1]),
     modelMetadata,
   });
 

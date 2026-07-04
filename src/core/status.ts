@@ -38,6 +38,18 @@ export interface StatusSnapshotEventPayload {
   count: number;
 }
 
+export type PendingChatMessageMode = "queued" | "steering";
+
+export interface PendingChatMessageSnapshot {
+  id: string;
+  sessionId: string;
+  content: string;
+  createdAt: number;
+  updatedAt: number;
+  mode: PendingChatMessageMode;
+  sequence: number;
+}
+
 export type StatusStreamEvent =
   | ({ type: "status" } & StatusPayload)
   | TaskEventPayload
@@ -71,6 +83,7 @@ export interface SessionStatusSnapshot {
   detail?: string;
   agentId?: string;
   activities: SessionActivitySnapshot[];
+  pendingMessages?: PendingChatMessageSnapshot[];
 }
 
 type StatusCallback = (data: StatusPayload) => void;
@@ -84,6 +97,7 @@ const sseClients = new Set<ReadableStreamDefaultController<Uint8Array>>();
 
 const encoder = new TextEncoder();
 const sessionStatusSnapshots = new Map<string, SessionStatusSnapshot>();
+const sessionPendingChatMessages = new Map<string, PendingChatMessageSnapshot[]>();
 const ACTIVE_STATUSES = new Set<AgentStatus>([
   "thinking",
   "generating",
@@ -96,11 +110,50 @@ function isActiveStatus(status: AgentStatus): boolean {
   return ACTIVE_STATUSES.has(status);
 }
 
+function clonePendingMessages(
+  messages?: PendingChatMessageSnapshot[]
+): PendingChatMessageSnapshot[] {
+  return (messages || []).map((message) => ({ ...message }));
+}
+
+function pendingMessagesForSession(sessionId: string): PendingChatMessageSnapshot[] {
+  return clonePendingMessages(sessionPendingChatMessages.get(sessionId));
+}
+
+function withPendingMessages(snapshot: SessionStatusSnapshot): SessionStatusSnapshot {
+  const pendingMessages = pendingMessagesForSession(snapshot.sessionId);
+  return {
+    ...snapshot,
+    activities: snapshot.activities.map((activity) => ({ ...activity })),
+    ...(pendingMessages.length > 0 ? { pendingMessages } : {}),
+  };
+}
+
+function pendingOnlySnapshot(
+  sessionId: string,
+  pendingMessages: PendingChatMessageSnapshot[]
+): SessionStatusSnapshot {
+  const timestamp = pendingMessages.reduce(
+    (latest, message) => Math.max(latest, message.updatedAt || message.createdAt || 0),
+    Date.now()
+  );
+  return {
+    sessionId,
+    status: "thinking",
+    timestamp,
+    detail: "Queued follow-up",
+    activities: [],
+    pendingMessages: clonePendingMessages(pendingMessages),
+  };
+}
+
 function sanitizeActivityText(detail?: string): string {
   if (!detail || typeof detail !== "string") return "";
   // Streamed reasoning deltas can arrive as bare markup (e.g. "</think>");
   // never let tag tokens become visible activity text.
-  return stripReasoningTagTokens(detail).replace(/\s{2,}/g, " ").trim();
+  return stripReasoningTagTokens(detail)
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function isMeaningfulThoughtDetail(detail: string): boolean {
@@ -307,16 +360,30 @@ function cleanupStaleSnapshots(now = Date.now()): void {
 
 export function listSessionStatusSnapshots(): SessionStatusSnapshot[] {
   cleanupStaleSnapshots();
-  return Array.from(sessionStatusSnapshots.values())
-    .filter((snapshot) => isActiveStatus(snapshot.status))
-    .sort((a, b) => b.timestamp - a.timestamp)
-    .map((snapshot) => ({
-      ...snapshot,
-      activities: snapshot.activities.map((activity) => ({ ...activity })),
-    }));
+  const snapshots = new Map<string, SessionStatusSnapshot>();
+  for (const snapshot of sessionStatusSnapshots.values()) {
+    if (!isActiveStatus(snapshot.status)) continue;
+    snapshots.set(snapshot.sessionId, withPendingMessages(snapshot));
+  }
+  for (const [sessionId, pendingMessages] of sessionPendingChatMessages.entries()) {
+    if (pendingMessages.length === 0 || snapshots.has(sessionId)) continue;
+    snapshots.set(sessionId, pendingOnlySnapshot(sessionId, pendingMessages));
+  }
+  return Array.from(snapshots.values()).sort((a, b) => b.timestamp - a.timestamp);
 }
 
 export function getSessionStatusSnapshot(sessionId: string): SessionStatusSnapshot | null {
+  cleanupStaleSnapshots();
+  const key = sessionId.trim();
+  if (!key) return null;
+  const snapshot = sessionStatusSnapshots.get(key);
+  if (snapshot) return withPendingMessages(snapshot);
+  const pendingMessages = pendingMessagesForSession(key);
+  if (pendingMessages.length === 0) return null;
+  return pendingOnlySnapshot(key, pendingMessages);
+}
+
+export function getSessionRunStatusSnapshot(sessionId: string): SessionStatusSnapshot | null {
   cleanupStaleSnapshots();
   const key = sessionId.trim();
   if (!key) return null;
@@ -326,6 +393,22 @@ export function getSessionStatusSnapshot(sessionId: string): SessionStatusSnapsh
     ...snapshot,
     activities: snapshot.activities.map((activity) => ({ ...activity })),
   };
+}
+
+export function setSessionPendingChatMessages(
+  sessionId: string,
+  pendingMessages: PendingChatMessageSnapshot[]
+): void {
+  const key = sessionId.trim();
+  if (!key) return;
+  const normalized = clonePendingMessages(pendingMessages).filter(
+    (message) => message.sessionId === key && message.content.trim().length > 0
+  );
+  if (normalized.length === 0) {
+    sessionPendingChatMessages.delete(key);
+    return;
+  }
+  sessionPendingChatMessages.set(key, normalized);
 }
 
 export function addSSEClient(controller: ReadableStreamDefaultController<Uint8Array>): void {
@@ -380,6 +463,10 @@ export function createStatusSnapshotEvent(): StatusSnapshotEventPayload {
     activeSessionIds: activeSessions.map((entry) => entry.sessionId),
     count: activeSessions.length,
   };
+}
+
+export function broadcastStatusSnapshot(): void {
+  emitStatusStreamEvent(createStatusSnapshotEvent());
 }
 
 export function broadcastStatus(status: StatusPayload): void {

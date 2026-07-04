@@ -439,6 +439,21 @@ function hasRequiredToolArgument(
   });
 }
 
+export function getMissingRequiredToolArguments(
+  name: string,
+  args: Record<string, unknown>
+): string[] {
+  const schema = toolSchemaRegistry[name]?.input_schema as { required?: string[] } | undefined;
+  if (!Array.isArray(schema?.required) || schema.required.length === 0) {
+    return [];
+  }
+  return schema.required.filter((key) => !hasRequiredToolArgument(name, args, key));
+}
+
+export function formatMissingRequiredToolArgumentsError(name: string, missing: string[]): string {
+  return `Validation error: Missing required argument${missing.length > 1 ? "s" : ""} for tool '${name}': ${missing.join(", ")}. Re-call with ${missing.length > 1 ? "these arguments" : "this argument"}.`;
+}
+
 export async function executeTool(
   name: string,
   args: Record<string, unknown>,
@@ -450,14 +465,9 @@ export async function executeTool(
     throw new Error(`Unknown tool: ${name}`);
   }
 
-  const schema = toolSchemaRegistry[name]?.input_schema as { required?: string[] } | undefined;
-  if (Array.isArray(schema?.required) && schema.required.length > 0) {
-    const missing = schema.required.filter((key) => !hasRequiredToolArgument(name, args, key));
-    if (missing.length > 0) {
-      throw new Error(
-        `Validation error: Missing required argument${missing.length > 1 ? "s" : ""} for tool '${name}': ${missing.join(", ")}. Re-call with ${missing.length > 1 ? "these arguments" : "this argument"}.`
-      );
-    }
+  const missing = getMissingRequiredToolArguments(name, args);
+  if (missing.length > 0) {
+    throw new Error(formatMissingRequiredToolArgumentsError(name, missing));
   }
 
   const requiredPermissions = getToolRequiredPermissions(name);

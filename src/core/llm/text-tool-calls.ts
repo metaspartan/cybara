@@ -216,6 +216,22 @@ function parseJsonToolCalls(raw: string): TextToolCall[] {
   return calls;
 }
 
+function parseBareCommandArgs(raw: string): Record<string, unknown> | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(decodeMarkupEntities(raw).trim());
+  } catch {
+    return undefined;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+  const record = parsed as Record<string, unknown>;
+  if (typeof record.command !== "string" || record.command.trim().length === 0) return undefined;
+  if ("name" in record || "tool" in record || "tool_name" in record || "function" in record) {
+    return undefined;
+  }
+  return record;
+}
+
 function parseFunctionXmlToolCalls(raw: string): TextToolCall[] {
   const calls: TextToolCall[] = [];
   FUNCTION_XML_BLOCK_PATTERN.lastIndex = 0;
@@ -369,6 +385,21 @@ function findTrailingJsonToolCallBlock(
   return undefined;
 }
 
+function findLeadingBareCommandJsonBlock(
+  raw: string
+): { start: number; end: number; raw: string; args: Record<string, unknown> } | undefined {
+  const text = decodeMarkupEntities(raw);
+  const start = text.match(/^\s*/)?.[0].length || 0;
+  if (text[start] !== "{") return undefined;
+
+  const end = findBalancedJsonEnd(text, start);
+  if (end === undefined) return undefined;
+
+  const block = text.slice(start, end);
+  const args = parseBareCommandArgs(block);
+  return args ? { start, end, raw: block, args } : undefined;
+}
+
 function parseJsonishAfterLabel(payload: string, label: string): unknown {
   const match = new RegExp(`\\b${label}\\s*=>\\s*`, "i").exec(payload);
   if (!match) return undefined;
@@ -449,6 +480,13 @@ function parseTrailingJsonToolCalls(raw: string): TextToolCall[] {
   return block ? parseJsonToolCalls(block.raw) : [];
 }
 
+function parseBareCommandJsonToolCalls(raw: string): TextToolCall[] {
+  const block = findLeadingBareCommandJsonBlock(raw);
+  if (!block) return [];
+  if (raw.slice(0, block.start).trim() || raw.slice(block.end).trim()) return [];
+  return [{ name: "exec", args: block.args }];
+}
+
 function parseWrappedToolCallContainers(raw: string, depth = 0): TextToolCall[] {
   if (depth > 2) return [];
   const calls: TextToolCall[] = [];
@@ -513,6 +551,7 @@ export function extractTextToolCalls(
     ...parseFunctionEqualsToolCalls(normalizedContent),
     ...parseLegacyBracketToolCalls(normalizedContent),
     ...parseOpenClawPlainTextToolCalls(normalizedContent),
+    ...parseBareCommandJsonToolCalls(normalizedContent),
     ...parseTrailingJsonToolCalls(normalizedContent)
   );
 
@@ -524,8 +563,15 @@ function stripTrailingJsonToolCallMarkup(content: string): string {
   return block ? content.slice(0, block.start).trimEnd() : content;
 }
 
+function stripLeadingBareCommandJsonMarkup(content: string): string {
+  const block = findLeadingBareCommandJsonBlock(content);
+  return block
+    ? `${content.slice(0, block.start)}${content.slice(block.end).trimStart()}`
+    : content;
+}
+
 export function stripTextToolCallMarkup(content: string): string {
-  const stripped = normalizeProviderTextMarkers(content)
+  const stripped = stripLeadingBareCommandJsonMarkup(normalizeProviderTextMarkers(content))
     .replace(DSML_TOOL_BLOCK_PATTERN, "")
     .replace(TOOL_CALL_RESULT_BLOCK_PATTERN, "")
     .replace(TOOL_CALL_CONTAINER_PATTERN, "")
@@ -556,6 +602,7 @@ export function hasTextToolCallMarkup(content: string | null | undefined): boole
     /\[\s*TOOL_CALL\s*\]/i.test(content) ||
     /<[\uFF5C|]DSML[\uFF5C|](?:tool_calls|tool_call|function_calls)/i.test(content) ||
     MINIMAX_TEXT_SEGMENT_MARKER_QUICK_PATTERN.test(content) ||
+    findLeadingBareCommandJsonBlock(normalizeProviderTextMarkers(content)) !== undefined ||
     findTrailingJsonToolCallBlock(normalizeProviderTextMarkers(content)) !== undefined
   );
 }

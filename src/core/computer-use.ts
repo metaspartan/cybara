@@ -774,11 +774,9 @@ async function callDriverTool(
   };
 
   const textBlock = result?.content?.find((c) => c.type === "text") as
-    | { text?: string }
-    | undefined;
+    { text?: string } | undefined;
   const imageBlock = result?.content?.find((c) => c.type === "image" || c.type === "image_url") as
-    | { data?: string; mimeType?: string; image_url?: { url?: string } }
-    | undefined;
+    { data?: string; mimeType?: string; image_url?: { url?: string } } | undefined;
 
   let screenshot: string | undefined;
   let screenshotMime: string | undefined;

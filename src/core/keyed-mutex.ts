@@ -35,4 +35,9 @@ export class KeyedMutex {
   get activeKeyCount(): number {
     return this.tails.size;
   }
+
+  /** True when work for this key is in-flight or already queued. */
+  isLocked(key: string): boolean {
+    return this.tails.has(key);
+  }
 }

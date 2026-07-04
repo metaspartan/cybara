@@ -10,7 +10,7 @@ describe("retryInstall", () => {
     await retryInstall(
       async () => {
         attempts += 1;
-        if (attempts < 3) throw new Error("Fail extracting tarball for \"expo-camera\"");
+        if (attempts < 3) throw new Error('Fail extracting tarball for "expo-camera"');
       },
       {
         attempts: 3,

@@ -290,6 +290,8 @@ struct ChatScreen: View {
     @State private var liveCurrentStep: String?
     @State private var liveStartedAt: Date?
     @State private var streamingContent: String?
+    @State private var pendingMessages: [GatewayPendingChatMessage] = []
+    @State private var steeringPendingID: String?
     @AppStorage("cybara.chat.lastWorkspaceDir") private var lastWorkspaceDir = ""
     @StateObject private var statusStream = GatewayStatusStream()
 
@@ -306,6 +308,7 @@ struct ChatScreen: View {
         }
         .task(id: selectedSessionID) {
             resetLiveTimeline(clearStartedAt: true)
+            pendingMessages = []
             guard let selectedSessionID else {
                 messages = []
                 return
@@ -484,6 +487,10 @@ struct ChatScreen: View {
                             thinkingBubble
                                 .id("thinking")
                         }
+                        if !sortedPendingMessages.isEmpty {
+                            pendingQueueView
+                                .id("pendingQueue")
+                        }
                     }
                     .padding(20)
                 }
@@ -632,6 +639,15 @@ struct ChatScreen: View {
             ["thinking", "generating", "tool_executing", "tool_completed"].contains(liveStatus.lowercased())
     }
 
+    private var sortedPendingMessages: [GatewayPendingChatMessage] {
+        pendingMessages
+            .filter { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .sorted {
+                if $0.sequence == $1.sequence { return $0.createdAt < $1.createdAt }
+                return $0.sequence < $1.sequence
+            }
+    }
+
     private var visibleStreamingContent: String? {
         guard let streamingContent = firstNonEmptyGatewayString(streamingContent) else { return nil }
         return firstNonEmptyGatewayString(
@@ -658,6 +674,51 @@ struct ChatScreen: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var pendingQueueView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(
+                sortedPendingMessages.count == 1
+                    ? "Pending message"
+                    : "\(sortedPendingMessages.count) pending messages",
+                systemImage: "text.bubble"
+            )
+            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .foregroundStyle(.secondary)
+
+            ForEach(sortedPendingMessages) { message in
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(pendingMessageMeta(message))
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(message.mode == "steering" ? accentTint : .secondary)
+                        Text(message.content)
+                            .font(.system(size: 12, design: .rounded))
+                            .lineLimit(3)
+                            .textSelection(.enabled)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if message.mode != "steering" {
+                        Button("Steer") {
+                            Task { await steerPending(message) }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(steeringPendingID == message.id)
+                    }
+                }
+                .padding(10)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.white.opacity(0.05))
+                )
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cybaraGlass(cornerRadius: 14)
     }
 
     private func messageBubble(_ message: GatewaySessionMessage) -> some View {
@@ -708,6 +769,35 @@ struct ChatScreen: View {
         return absolute.isEmpty ? relative : "\(relative) · \(absolute)"
     }
 
+    private func pendingMessageMeta(_ message: GatewayPendingChatMessage) -> String {
+        let mode = message.mode == "steering" ? "Steering" : "Queued"
+        let date = Date(timeIntervalSince1970: message.createdAt / 1000)
+        let relative = RelativeDateTimeFormatter()
+        relative.unitsStyle = .short
+        return "\(mode) - \(relative.localizedString(for: date, relativeTo: Date()))"
+    }
+
+    private func steerPending(_ message: GatewayPendingChatMessage) async {
+        guard let selectedSessionID else { return }
+        steeringPendingID = message.id
+        defer { steeringPendingID = nil }
+        do {
+            let response = try await client.steerPendingMessage(
+                sessionId: selectedSessionID,
+                pendingId: message.id
+            )
+            if response.success == false {
+                error = response.error ?? "Failed to steer pending message"
+            } else {
+                pendingMessages = response.pendingMessages
+                await loadMessages(selectedSessionID)
+                await loadSessions()
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
     private func performRevert(_ message: GatewaySessionMessage) {
         guard let sessionID = selectedSessionID else { return }
         Task {
@@ -747,15 +837,11 @@ struct ChatScreen: View {
                 Button {
                     Task { await send() }
                 } label: {
-                    if sending {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 24))
-                    }
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 24))
                 }
                 .buttonStyle(.borderless)
-                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sending)
+                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
         .padding(14)
@@ -814,6 +900,7 @@ struct ChatScreen: View {
     private func startNewChat() {
         selectedSessionID = nil
         messages = []
+        pendingMessages = []
         pendingWorkspaceDir = ""
         error = nil
     }
@@ -895,6 +982,7 @@ struct ChatScreen: View {
             if let snapshot {
                 applyStatusSnapshot(snapshot)
             } else if status.active == false, !sending {
+                pendingMessages = []
                 resetLiveTimeline(clearStartedAt: true)
             }
         } catch {}
@@ -902,23 +990,37 @@ struct ChatScreen: View {
 
     private func send() async {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !sending else { return }
-        sending = true
+        let queuedSend = sending || showWorkingTimeline || !pendingMessages.isEmpty
+        guard !text.isEmpty else { return }
+        if !queuedSend {
+            sending = true
+        }
         error = nil
         draft = ""
-        liveStatus = "thinking"
-        liveCurrentStep = "Thinking..."
-        liveStartedAt = Date()
-        liveActivities = []
-        streamingContent = nil
-        messages.append(GatewaySessionMessage(role: "user", content: text, timestamp: gatewayTimestampNow()))
+        if !queuedSend {
+            liveStatus = "thinking"
+            liveCurrentStep = "Thinking..."
+            liveStartedAt = Date()
+            liveActivities = []
+            streamingContent = nil
+        }
+        let optimisticTimestamp = gatewayTimestampNow()
+        messages.append(GatewaySessionMessage(role: "user", content: text, timestamp: optimisticTimestamp))
         do {
             let result = try await client.sendChat(
                 message: text,
                 sessionId: selectedSessionID,
                 agentId: nil,
-                workspaceDir: activeWorkspaceDir
+                workspaceDir: activeWorkspaceDir,
+                queueMode: queuedSend ? "queue" : nil
             )
+            if result.queued == true {
+                pendingMessages = result.pendingMessages
+                messages.removeAll {
+                    $0.content == text && $0.role == "user" && $0.timestamp == optimisticTimestamp
+                }
+                return
+            }
             if let workspaceDir = result.workspaceDir {
                 lastWorkspaceDir = workspaceDir
                 if selectedSessionID == nil {
@@ -941,7 +1043,9 @@ struct ChatScreen: View {
         } catch {
             self.error = error.localizedDescription
         }
-        sending = false
+        if !queuedSend {
+            sending = false
+        }
     }
 
     private func handleStatusEvent(_ event: GatewayStatusEvent) {
@@ -1012,6 +1116,7 @@ struct ChatScreen: View {
     private func applyStatusSnapshot(_ snapshot: GatewaySessionStatusSnapshot) {
         guard !snapshot.sessionId.isEmpty else { return }
         if selectedSessionID != nil && snapshot.sessionId != selectedSessionID { return }
+        pendingMessages = snapshot.pendingMessages
         liveStatus = snapshot.status ?? liveStatus
         if liveStartedAt == nil { liveStartedAt = Date() }
         let snapshotActivities = nativeLiveActivities(from: snapshot)

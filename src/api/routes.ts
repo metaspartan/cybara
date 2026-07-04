@@ -75,6 +75,9 @@ import {
   updateSessionWorkspace,
   updateSessionTitle,
   getChatRateLimitStatus,
+  listPendingChatMessages,
+  reorderPendingChatMessages,
+  steerPendingChatMessage,
   type ChatMessage,
 } from "../api/chat";
 import {
@@ -809,12 +812,18 @@ const routes: Record<string, RouteHandler> = {
   },
 
   "POST /api/agents/:id/chat": async (body, params) => {
-    const data = body as { message: string; sessionId?: string; workspaceDir?: string };
+    const data = body as {
+      message: string;
+      sessionId?: string;
+      workspaceDir?: string;
+      queueMode?: "queue" | "steer";
+    };
     return await handleChat({
       message: data.message,
       agentId: params!.id,
       sessionId: data.sessionId,
       workspaceDir: data.workspaceDir,
+      queueMode: data.queueMode,
     });
   },
 
@@ -3393,6 +3402,7 @@ const routes: Record<string, RouteHandler> = {
       stream?: boolean;
       tools?: boolean;
       images?: Array<{ data?: string; url?: string; mimeType?: string }>;
+      queueMode?: "queue" | "steer";
     };
     return await handleChat(data);
   },
@@ -3463,6 +3473,19 @@ const routes: Record<string, RouteHandler> = {
     const messages = await getSessionMessages(params!.id);
     return sanitizeSessionMessages(messages);
   },
+  "GET /api/chat/sessions/:id/pending": (_body, params) => ({
+    sessionId: params!.id,
+    pendingMessages: listPendingChatMessages(params!.id),
+  }),
+  "POST /api/chat/sessions/:id/pending/reorder": (body, params) => {
+    const data = body as { pendingMessageIds?: string[] };
+    return reorderPendingChatMessages(
+      params!.id,
+      Array.isArray(data.pendingMessageIds) ? data.pendingMessageIds : []
+    );
+  },
+  "POST /api/chat/sessions/:id/pending/:pendingId/steer": async (_body, params) =>
+    await steerPendingChatMessage(params!.id, params!.pendingId),
   "DELETE /api/chat/sessions/:id": async (_body, params) => ({
     success: await deleteSession(params!.id),
   }),

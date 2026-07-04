@@ -13,6 +13,7 @@ import type {
   MobilePairing,
 } from "@/types";
 import { apiFetch } from "@/lib/auth";
+import type { PendingChatMessage } from "@/lib/status-stream";
 
 const API_BASE = "/api";
 
@@ -59,16 +60,21 @@ export const agentsApi = {
     message: string,
     sessionId?: string,
     workspaceDir?: string | null,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    queueMode?: "queue" | "steer"
   ) =>
-    fetchApi<{ message: ChatMessage; sessionId: string; workspaceDir?: string | null }>(
-      `/agents/${id}/chat`,
-      {
-        method: "POST",
-        body: JSON.stringify({ message, sessionId, workspaceDir }),
-        signal,
-      }
-    ),
+    fetchApi<{
+      message: ChatMessage;
+      sessionId: string;
+      workspaceDir?: string | null;
+      queued?: boolean;
+      pendingMessage?: PendingChatMessage;
+      pendingMessages?: PendingChatMessage[];
+    }>(`/agents/${id}/chat`, {
+      method: "POST",
+      body: JSON.stringify({ message, sessionId, workspaceDir, queueMode }),
+      signal,
+    }),
 };
 
 export const providersApi = {
@@ -846,12 +852,41 @@ export const chatApi = {
     agentId?: string,
     sessionId?: string,
     workspaceDir?: string | null,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    queueMode?: "queue" | "steer"
   ) =>
-    fetchApi<{ message: ChatMessage; sessionId: string; workspaceDir?: string | null }>("/chat", {
+    fetchApi<{
+      message: ChatMessage;
+      sessionId: string;
+      workspaceDir?: string | null;
+      queued?: boolean;
+      pendingMessage?: PendingChatMessage;
+      pendingMessages?: PendingChatMessage[];
+    }>("/chat", {
       method: "POST",
-      body: JSON.stringify({ message, agentId, sessionId, workspaceDir }),
+      body: JSON.stringify({ message, agentId, sessionId, workspaceDir, queueMode }),
       signal,
+    }),
+  steerPendingMessage: (sessionId: string, pendingMessageId: string) =>
+    fetchApi<{
+      success: boolean;
+      message?: ChatMessage;
+      pendingMessage?: PendingChatMessage;
+      pendingMessages?: PendingChatMessage[];
+      error?: string;
+    }>(`/chat/sessions/${sessionId}/pending/${pendingMessageId}/steer`, { method: "POST" }),
+  getPendingMessages: (sessionId: string) =>
+    fetchApi<{ sessionId: string; pendingMessages: PendingChatMessage[] }>(
+      `/chat/sessions/${sessionId}/pending`
+    ),
+  reorderPendingMessages: (sessionId: string, pendingMessageIds: string[]) =>
+    fetchApi<{
+      success: boolean;
+      pendingMessages?: PendingChatMessage[];
+      error?: string;
+    }>(`/chat/sessions/${sessionId}/pending/reorder`, {
+      method: "POST",
+      body: JSON.stringify({ pendingMessageIds }),
     }),
   dictate: (payload: {
     audioBase64: string;

@@ -124,6 +124,48 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(response.response, "Done.")
     }
 
+    func testChatSendResponseDecodesQueuedPendingMessages() throws {
+        let response = try JSONDecoder().decode(
+            ChatSendResponse.self,
+            from: Data(
+                #"""
+                {
+                  "sessionId": "session-1",
+                  "queued": true,
+                  "pendingMessage": {
+                    "id": "pending-1",
+                    "sessionId": "session-1",
+                    "content": "follow up",
+                    "createdAt": 1783015200700,
+                    "updatedAt": 1783015200701,
+                    "mode": "queued",
+                    "sequence": 1
+                  },
+                  "pendingMessages": [
+                    {
+                      "id": "pending-1",
+                      "sessionId": "session-1",
+                      "content": "follow up",
+                      "createdAt": 1783015200700,
+                      "updatedAt": 1783015200701,
+                      "mode": "queued",
+                      "sequence": 1
+                    }
+                  ],
+                  "message": {
+                    "role": "assistant",
+                    "content": "Message queued for the next turn."
+                  }
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(response.queued, true)
+        XCTAssertEqual(response.pendingMessage?.content, "follow up")
+        XCTAssertEqual(response.pendingMessages.first?.mode, "queued")
+    }
+
     func testChatSendResponsePreservesAssistantToolTimelineMetadata() throws {
         let response = try JSONDecoder().decode(
             ChatSendResponse.self,
@@ -656,6 +698,17 @@ final class GatewayClientModelTests: XCTestCase {
                   "status": "tool_executing",
                   "timestamp": 1783015200600,
                   "detail": "Running bun test",
+                  "pendingMessages": [
+                    {
+                      "id": "pending-1",
+                      "sessionId": "session-1",
+                      "content": "steer this",
+                      "createdAt": 1783015200700,
+                      "updatedAt": 1783015200701,
+                      "mode": "steering",
+                      "sequence": 1
+                    }
+                  ],
                   "activities": [
                     {
                       "id": "activity-1",
@@ -681,6 +734,8 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(liveActivity.text, "Running bun test")
         XCTAssertEqual(liveActivity.sandboxProvider, "host")
         XCTAssertEqual(snapshot.activeSessionIds, ["session-1"])
+        XCTAssertEqual(snapshot.activeSessions[0].pendingMessages.first?.content, "steer this")
+        XCTAssertEqual(snapshot.activeSessions[0].pendingMessages.first?.mode, "steering")
         XCTAssertEqual(nativeLiveActivities(from: snapshot.activeSessions[0]).first?.phase, .start)
     }
 
