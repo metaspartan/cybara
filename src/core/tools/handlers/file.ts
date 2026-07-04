@@ -1,5 +1,12 @@
-import { readFileSync, existsSync, writeFileSync, mkdirSync, promises as fs } from "fs";
-import { join, dirname, isAbsolute } from "path";
+import {
+  readFileSync,
+  existsSync,
+  writeFileSync,
+  mkdirSync,
+  readdirSync,
+  promises as fs,
+} from "fs";
+import { join, dirname, isAbsolute, sep } from "path";
 import { glob } from "tinyglobby";
 import { homeDir } from "../../paths";
 import { trackMetric } from "../../metrics";
@@ -7,6 +14,81 @@ import type { ToolContext } from "../index";
 import { assertWritablePath, assertReadablePath } from "../path-policy";
 
 const workspace = homeDir;
+
+/** Case-insensitive + small-edit similarity for path-typo suggestions. */
+function pathSegmentSimilarity(a: string, b: string): number {
+  const lowerA = a.toLowerCase();
+  const lowerB = b.toLowerCase();
+  if (lowerA === lowerB) return 1;
+  // Bounded Levenshtein ratio (short segments only).
+  const m = lowerA.length;
+  const n = lowerB.length;
+  if (m === 0 || n === 0) return 0;
+  const prev = new Array<number>(n + 1);
+  const curr = new Array<number>(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = lowerA[i - 1] === lowerB[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+    }
+    for (let j = 0; j <= n; j++) prev[j] = curr[j];
+  }
+  const distance = prev[n];
+  return 1 - distance / Math.max(m, n);
+}
+
+/**
+ * When a path doesn't exist, walk down from its deepest existing ancestor and,
+ * at the first missing segment, find the closest real entry (a case or typo
+ * fix like "Github"->"GitHub" or "Gybara"->"GitHub"). Returns a corrected path
+ * suggestion so the model self-corrects instead of retrying the same typo.
+ */
+function suggestNearbyPath(target: string): string | undefined {
+  try {
+    if (!isAbsolute(target)) return undefined;
+    const segments = target.split(sep).filter(Boolean);
+    let current: string = sep;
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+      const next = join(current, segment);
+      if (existsSync(next)) {
+        current = next;
+        continue;
+      }
+      // First missing segment: look for the closest sibling entry.
+      let entries: string[];
+      try {
+        entries = readdirSync(current);
+      } catch {
+        return undefined;
+      }
+      let best: { name: string; score: number } | undefined;
+      for (const name of entries) {
+        const score = pathSegmentSimilarity(segment, name);
+        if (score >= 0.6 && (!best || score > best.score)) {
+          best = { name, score };
+        }
+      }
+      if (!best) return undefined;
+      const corrected = [current, best.name, ...segments.slice(i + 1)].join(sep).replace(/\/+/g, sep);
+      // Only suggest when the corrected prefix actually exists on disk.
+      return existsSync(join(current, best.name)) ? corrected : undefined;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+function fileNotFoundError(path: string): Error {
+  const suggestion = suggestNearbyPath(path);
+  if (suggestion && suggestion !== path) {
+    return new Error(`File not found: ${path}. Did you mean: ${suggestion}?`);
+  }
+  return new Error(`File not found: ${path}`);
+}
 
 type FileChangeType = "created" | "updated" | "deleted";
 
@@ -203,7 +285,7 @@ export async function handleRead(
   // case-sensitive filesystems and the returned path are preserved.
   assertReadablePath(path);
   if (!existsSync(path)) {
-    throw new Error(`File not found: ${path}`);
+    throw fileNotFoundError(path);
   }
 
   const content = readFileSync(path, "utf-8");
@@ -290,7 +372,7 @@ export async function handleEdit(
   const newText = args.newText as string;
 
   if (!existsSync(path)) {
-    throw new Error(`File not found: ${path}`);
+    throw fileNotFoundError(path);
   }
 
   const content = readFileSync(path, "utf-8");

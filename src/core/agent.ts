@@ -437,6 +437,40 @@ interface RunningAgentState {
 class AgentManager {
   private runningAgents: Map<string, RunningAgentState> = new Map();
 
+  /**
+   * Pull the human-readable detail out of a raw LLM failure. Provider errors
+   * arrive as `API error: <status> - <body>` where body is often OpenAI-style
+   * JSON (`{"error":{"message":"..."}}`) or plain text. Returns a trimmed
+   * single-line detail so the fallback can show the real cause instead of a
+   * blank apology.
+   */
+  private extractLlmErrorDetail(message: string): string | undefined {
+    const afterDash = message.replace(/^API error:\s*\d+\s*-\s*/i, "");
+    const candidate = afterDash !== message ? afterDash : message;
+    const trimmed = candidate.trim();
+    if (!trimmed) return undefined;
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(trimmed) as {
+          error?: { message?: unknown; code?: unknown } | string;
+          message?: unknown;
+          detail?: unknown;
+        };
+        const errObj = typeof parsed.error === "object" ? parsed.error : undefined;
+        const detail =
+          (errObj && typeof errObj.message === "string" && errObj.message) ||
+          (typeof parsed.error === "string" && parsed.error) ||
+          (typeof parsed.message === "string" && parsed.message) ||
+          (typeof parsed.detail === "string" && parsed.detail) ||
+          "";
+        if (detail) return detail.replace(/\s+/g, " ").slice(0, 300);
+      } catch {
+        // Not JSON; fall through to the raw text.
+      }
+    }
+    return trimmed.replace(/\s+/g, " ").slice(0, 300);
+  }
+
   private formatLlmFailure(error: unknown): string {
     const message =
       typeof error === "object" && error && "message" in error
@@ -473,6 +507,27 @@ class AgentManager {
       return "Provider rate limit hit (429). Retry shortly or switch providers.";
     }
 
+    const detail = this.extractLlmErrorDetail(message);
+    if (lower.includes("400") || lower.includes("unsupported") || lower.includes("invalid")) {
+      return detail
+        ? `Provider rejected the request (400): ${detail}`
+        : "Provider rejected the request (400). The model may not support a sent parameter.";
+    }
+    if (lower.includes("404")) {
+      return detail
+        ? `Provider endpoint/model not found (404): ${detail}`
+        : "Provider endpoint or model not found (404). Verify the model id and base URL.";
+    }
+    if (lower.includes("5") && /\b5\d\d\b/.test(message)) {
+      return detail
+        ? `Provider server error: ${detail}`
+        : "Provider had a server error (5xx). Retry shortly or switch providers.";
+    }
+    // Surface the real cause instead of a blank apology so failures are
+    // actionable (Codex Responses errors, SSE parse failures, etc.).
+    if (detail) {
+      return `The provider request failed: ${detail}`;
+    }
     return "I apologize, but I encountered an issue processing your request. Please try again or rephrase your message.";
   }
 
