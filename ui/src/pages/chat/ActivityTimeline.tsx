@@ -16,7 +16,99 @@ import {
   getLatestInFlightStep,
   isGenericStatusLabel,
 } from "./chatModel";
-import { mergeActivityLists, type LiveActivityItem } from "@/lib/chatActivities";
+import {
+  groupActivitiesForDisplay,
+  mergeActivityLists,
+  type LiveActivityItem,
+} from "@/lib/chatActivities";
+
+function ActivityRow({ activity }: { activity: LiveActivityItem }) {
+  return (
+    <div
+      className={cn(
+        "flex items-start gap-2 text-[12px] px-0.5",
+        activity.toolName === "__thought" ? "text-gray-200" : "text-gray-400"
+      )}
+    >
+      {activity.toolName === "__thought" ? (
+        <Sparkles className="w-3 h-3 text-indigo-300 mt-0.5 flex-shrink-0" />
+      ) : activity.phase === "start" ? (
+        <Loader2 className="w-3 h-3 animate-spin text-amber-400 mt-0.5 flex-shrink-0" />
+      ) : activity.phase === "result" ? (
+        <CheckCircle2 className="w-3 h-3 text-emerald-400 mt-0.5 flex-shrink-0" />
+      ) : (
+        <AlertTriangle className="w-3 h-3 text-red-400 mt-0.5 flex-shrink-0" />
+      )}
+      <div className="min-w-0 flex-1 flex items-center gap-2">
+        <ActivityText text={activity.text} />
+        {activity.toolName !== "__thought" && activity.sandboxProvider && (
+          <span className="inline-flex items-center rounded border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 text-[10px] leading-none text-sky-200">
+            {formatSandboxProviderLabel(activity.sandboxProvider)}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Codex-style activity list: consecutive completed reads/searches/lists
+ * collapse into one summary row ("Read 3 files") that expands on click.
+ * Failures and in-flight steps always render individually.
+ */
+export function GroupedActivityRows({ activities }: { activities: LiveActivityItem[] }) {
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const entries = groupActivitiesForDisplay(activities);
+
+  const toggleGroup = (id: string) => {
+    setExpandedGroups((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  return (
+    <div className="space-y-1">
+      {entries.map((entry) => {
+        if (entry.type === "single") {
+          return <ActivityRow key={entry.activity.id} activity={entry.activity} />;
+        }
+        const expanded = expandedGroups.has(entry.id);
+        return (
+          <div key={entry.id}>
+            <button
+              type="button"
+              onClick={() => toggleGroup(entry.id)}
+              className="w-full flex items-center gap-2 text-[12px] px-0.5 text-left text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+              aria-expanded={expanded}
+              title={expanded ? "Collapse" : "Show each call"}
+            >
+              <CheckCircle2 className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+              <span className="min-w-0 truncate">{entry.label}</span>
+              {expanded ? (
+                <ChevronUp className="w-3 h-3 text-gray-600 flex-shrink-0" />
+              ) : (
+                <ChevronDown className="w-3 h-3 text-gray-600 flex-shrink-0" />
+              )}
+            </button>
+            {expanded && (
+              <div className="ml-[5px] mt-1 space-y-1 border-l border-white/10 pl-2.5">
+                {entry.items.map((activity) => (
+                  <ActivityRow key={activity.id} activity={activity} />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 export function SubagentCallItem({
   subagent,
 }: {
@@ -112,37 +204,7 @@ export function LiveActivityTimeline({
 
   return (
     <div className="space-y-1">
-      {visibleActivities.length > 0 && (
-        <div className="space-y-1">
-          {visibleActivities.map((activity) => (
-            <div
-              key={activity.id}
-              className={cn(
-                "flex items-start gap-2 text-[12px] px-0.5",
-                activity.toolName === "__thought" ? "text-gray-200" : "text-gray-400"
-              )}
-            >
-              {activity.toolName === "__thought" ? (
-                <Sparkles className="w-3 h-3 text-indigo-300 mt-0.5 flex-shrink-0" />
-              ) : activity.phase === "start" ? (
-                <Loader2 className="w-3 h-3 animate-spin text-amber-400 mt-0.5 flex-shrink-0" />
-              ) : activity.phase === "result" ? (
-                <CheckCircle2 className="w-3 h-3 text-emerald-400 mt-0.5 flex-shrink-0" />
-              ) : (
-                <AlertTriangle className="w-3 h-3 text-red-400 mt-0.5 flex-shrink-0" />
-              )}
-              <div className="min-w-0 flex-1 flex items-center gap-2">
-                <ActivityText text={activity.text} />
-                {activity.toolName !== "__thought" && activity.sandboxProvider && (
-                  <span className="inline-flex items-center rounded border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 text-[10px] leading-none text-sky-200">
-                    {formatSandboxProviderLabel(activity.sandboxProvider)}
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {visibleActivities.length > 0 && <GroupedActivityRows activities={visibleActivities} />}
       {displayCurrentStep ? (
         <div className="flex items-start gap-2 text-[12px] px-0.5 text-gray-300">
           <Loader2 className="w-3 h-3 animate-spin text-amber-400 mt-0.5 flex-shrink-0" />
@@ -174,37 +236,7 @@ export function ProcessActivityList({ activities }: { activities: LiveActivityIt
   const visibleActivities = activities.filter((activity) => !isGenericStatusLabel(activity.text));
   if (visibleActivities.length === 0) return null;
 
-  return (
-    <div className="space-y-1">
-      {visibleActivities.map((activity) => (
-        <div
-          key={activity.id}
-          className={cn(
-            "flex items-start gap-1.5 text-[12px] px-0.5",
-            activity.toolName === "__thought" ? "text-gray-200" : "text-gray-400"
-          )}
-        >
-          {activity.toolName === "__thought" ? (
-            <Sparkles className="h-3 w-3 text-indigo-300 mt-0.5 flex-shrink-0" />
-          ) : activity.phase === "start" ? (
-            <Loader2 className="h-3 w-3 animate-spin text-amber-400 mt-0.5 flex-shrink-0" />
-          ) : activity.phase === "result" ? (
-            <CheckCircle2 className="h-3 w-3 text-emerald-400 mt-0.5 flex-shrink-0" />
-          ) : (
-            <AlertTriangle className="h-3 w-3 text-rose-400 mt-0.5 flex-shrink-0" />
-          )}
-          <div className="min-w-0 flex-1 flex items-center gap-2">
-            <ActivityText text={activity.text} />
-            {activity.toolName !== "__thought" && activity.sandboxProvider && (
-              <span className="inline-flex items-center rounded border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 text-[10px] leading-none text-sky-200">
-                {formatSandboxProviderLabel(activity.sandboxProvider)}
-              </span>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+  return <GroupedActivityRows activities={visibleActivities} />;
 }
 
 export function ActivityStepCard({

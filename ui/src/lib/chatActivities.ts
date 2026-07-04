@@ -312,3 +312,99 @@ export function finalizeCompletedActivities(activities: LiveActivityItem[]): Liv
   });
   return mergeActivityLists([], finalized);
 }
+
+// ── Codex-style display grouping ─────────────────────────────────────────────
+// Consecutive completed "exploring" activities (reads / searches / lists)
+// collapse into one summary row ("Read 3 files") that expands to the full
+// list. Failures and in-flight steps are never grouped, so nothing is hidden.
+
+export type ActivityGroupKind = "read" | "search" | "list";
+
+export interface ActivityDisplayGroup {
+  type: "group";
+  id: string;
+  kind: ActivityGroupKind;
+  label: string;
+  items: LiveActivityItem[];
+}
+
+export interface ActivityDisplaySingle {
+  type: "single";
+  activity: LiveActivityItem;
+}
+
+export type ActivityDisplayEntry = ActivityDisplayGroup | ActivityDisplaySingle;
+
+const GROUPABLE_TOOL_KINDS: Record<string, ActivityGroupKind> = {
+  read: "read",
+  grep: "search",
+  file_search: "search",
+  glob: "search",
+  web_search: "search",
+  ls: "list",
+  list: "list",
+};
+
+function groupKindForActivity(activity: LiveActivityItem): ActivityGroupKind | null {
+  if (activity.phase !== "result") return null;
+  const toolName = activity.toolName?.toLowerCase() || "";
+  if (toolName in GROUPABLE_TOOL_KINDS) return GROUPABLE_TOOL_KINDS[toolName];
+  // Persisted activities sometimes lack toolName; classify by canonical verb.
+  if (!toolName) {
+    const text = activity.text;
+    if (/^Explored /.test(text)) return "read";
+    if (/^Searched /.test(text)) return "search";
+  }
+  return null;
+}
+
+function groupLabel(kind: ActivityGroupKind, count: number): string {
+  if (kind === "read") return `Read ${count} files`;
+  if (kind === "search") return `Ran ${count} searches`;
+  return `Listed ${count} locations`;
+}
+
+/**
+ * Collapse consecutive same-kind completed activities into summary groups.
+ * A group forms only from 2+ consecutive entries; everything else passes
+ * through unchanged and in order.
+ */
+export function groupActivitiesForDisplay(activities: LiveActivityItem[]): ActivityDisplayEntry[] {
+  const entries: ActivityDisplayEntry[] = [];
+  let run: { kind: ActivityGroupKind; items: LiveActivityItem[] } | null = null;
+
+  const flushRun = () => {
+    if (!run) return;
+    if (run.items.length >= 2) {
+      entries.push({
+        type: "group",
+        id: `group-${run.items[0].id}-${run.items.length}`,
+        kind: run.kind,
+        label: groupLabel(run.kind, run.items.length),
+        items: run.items,
+      });
+    } else {
+      for (const activity of run.items) {
+        entries.push({ type: "single", activity });
+      }
+    }
+    run = null;
+  };
+
+  for (const activity of activities) {
+    const kind = groupKindForActivity(activity);
+    if (kind === null) {
+      flushRun();
+      entries.push({ type: "single", activity });
+      continue;
+    }
+    if (run && run.kind === kind) {
+      run.items.push(activity);
+    } else {
+      flushRun();
+      run = { kind, items: [activity] };
+    }
+  }
+  flushRun();
+  return entries;
+}
