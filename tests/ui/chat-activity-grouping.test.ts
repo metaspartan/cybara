@@ -32,12 +32,12 @@ describe("groupActivitiesForDisplay", () => {
   test("a single read stays a plain row (no group of one)", () => {
     const entries = groupActivitiesForDisplay([
       activity({ id: "a", toolName: "read" }),
-      activity({ id: "b", toolName: "exec", text: "Ran ls" }),
+      activity({ id: "b", toolName: "exec", text: "Ran npm run build" }),
     ]);
     expect(entries.map((entry) => entry.type)).toEqual(["single", "single"]);
   });
 
-  test("non-groupable tools break a run and order is preserved", () => {
+  test("a state-changing exec command breaks a run and stays visible", () => {
     const entries = groupActivitiesForDisplay([
       activity({ id: "a", toolName: "read", text: "Explored a.ts" }),
       activity({ id: "b", toolName: "read", text: "Explored b.ts" }),
@@ -51,18 +51,42 @@ describe("groupActivitiesForDisplay", () => {
     expect(first.label).toBe("Read 2 files");
   });
 
-  test("searches group separately from reads", () => {
+  test("read-only shell commands fold into the exploring group", () => {
+    const entries = groupActivitiesForDisplay([
+      activity({ id: "a", toolName: "exec", text: "Ran ls -la" }),
+      activity({ id: "b", toolName: "exec", text: "Ran find src -name '*.ts'" }),
+      activity({ id: "c", toolName: "exec", text: "Ran grep -rn foo src" }),
+      activity({ id: "d", toolName: "exec", text: "Ran cloc src" }),
+      activity({ id: "e", toolName: "exec", text: "Ran git log --oneline" }),
+    ]);
+    expect(entries).toHaveLength(1);
+    const group = entries[0];
+    if (group.type !== "group") throw new Error("expected group");
+    // Mixed read-only kinds -> generic label.
+    expect(group.label).toBe("Ran 5 commands");
+    expect(group.items).toHaveLength(5);
+  });
+
+  test("mixed tool reads and read-only shell reads share one group", () => {
     const entries = groupActivitiesForDisplay([
       activity({ id: "a", toolName: "read", text: "Explored a.ts" }),
-      activity({ id: "b", toolName: "read", text: "Explored b.ts" }),
-      activity({ id: "c", toolName: "grep", text: "Searched for foo" }),
-      activity({ id: "d", toolName: "file_search", text: "Searched *.ts" }),
+      activity({ id: "b", toolName: "exec", text: "Ran cat b.ts" }),
+      activity({ id: "c", toolName: "exec", text: "Ran head -20 c.ts" }),
     ]);
-    expect(entries).toHaveLength(2);
-    const [reads, searches] = entries;
-    if (reads.type !== "group" || searches.type !== "group") throw new Error("expected groups");
-    expect(reads.label).toBe("Read 2 files");
-    expect(searches.label).toBe("Ran 2 searches");
+    expect(entries).toHaveLength(1);
+    const group = entries[0];
+    if (group.type !== "group") throw new Error("expected group");
+    // All three are "read" kind -> specific label.
+    expect(group.label).toBe("Read 3 files");
+  });
+
+  test("mutating and unknown shell commands never group", () => {
+    const entries = groupActivitiesForDisplay([
+      activity({ id: "a", toolName: "exec", text: "Ran git commit -m x" }),
+      activity({ id: "b", toolName: "exec", text: "Ran rm -f tmp" }),
+      activity({ id: "c", toolName: "exec", text: "Ran npm run build" }),
+    ]);
+    expect(entries.map((entry) => entry.type)).toEqual(["single", "single", "single"]);
   });
 
   test("failures and in-flight steps are never hidden inside a group", () => {

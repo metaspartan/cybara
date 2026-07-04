@@ -335,7 +335,9 @@ export interface ActivityDisplaySingle {
 
 export type ActivityDisplayEntry = ActivityDisplayGroup | ActivityDisplaySingle;
 
-const GROUPABLE_TOOL_KINDS: Record<string, ActivityGroupKind> = {
+type GroupableKind = ActivityGroupKind | "command";
+
+const GROUPABLE_TOOL_KINDS: Record<string, GroupableKind> = {
   read: "read",
   grep: "search",
   file_search: "search",
@@ -345,42 +347,127 @@ const GROUPABLE_TOOL_KINDS: Record<string, ActivityGroupKind> = {
   list: "list",
 };
 
-function groupKindForActivity(activity: LiveActivityItem): ActivityGroupKind | null {
+// Shell verbs that only read/inspect — safe to fold into an exploring group.
+// Anything not listed (git commit, rm, mv, npm/bun/cargo, mkdir, …) stays an
+// individual row so state-changing commands are never hidden inside a summary.
+const READ_ONLY_COMMAND_KINDS: Record<string, GroupableKind> = {
+  cat: "read",
+  head: "read",
+  tail: "read",
+  bat: "read",
+  less: "read",
+  more: "read",
+  ls: "list",
+  find: "list",
+  tree: "list",
+  fd: "list",
+  dir: "list",
+  grep: "search",
+  rg: "search",
+  ag: "search",
+  ack: "search",
+  ripgrep: "search",
+  wc: "command",
+  cloc: "command",
+  du: "command",
+  stat: "command",
+  file: "command",
+  which: "command",
+  pwd: "command",
+  echo: "command",
+  env: "command",
+  printenv: "command",
+  date: "command",
+  whoami: "command",
+  uname: "command",
+  hostname: "command",
+};
+
+const READ_ONLY_GIT_SUBCOMMANDS = new Set([
+  "log",
+  "status",
+  "diff",
+  "show",
+  "branch",
+  "blame",
+  "remote",
+  "config",
+]);
+
+/** Classify a shell command string (verb-first) as a read-only exploring kind. */
+function classifyShellCommand(command: string): GroupableKind | null {
+  // Strip leading env assignments (FOO=bar) and sudo; take the first real verb.
+  const tokens = command.trim().split(/\s+/);
+  let index = 0;
+  while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[index])) index += 1;
+  if (tokens[index] === "sudo") index += 1;
+  const rawVerb = tokens[index] || "";
+  // Drop any path prefix (e.g. /usr/bin/grep -> grep).
+  const verb = rawVerb.split(/[\\/]/).pop()?.toLowerCase() || "";
+  if (!verb) return null;
+  // A command with a pipe/redirect/&& is a compound; only classify when every
+  // stage is itself read-only would be ideal, but that's over-engineering —
+  // treat the leading verb as the signal and keep it conservative.
+  if (verb === "git") {
+    const sub = (tokens[index + 1] || "").toLowerCase();
+    return READ_ONLY_GIT_SUBCOMMANDS.has(sub) ? "command" : null;
+  }
+  return READ_ONLY_COMMAND_KINDS[verb] ?? null;
+}
+
+function groupKindForActivity(activity: LiveActivityItem): GroupableKind | null {
   if (activity.phase !== "result") return null;
   const toolName = activity.toolName?.toLowerCase() || "";
   if (toolName in GROUPABLE_TOOL_KINDS) return GROUPABLE_TOOL_KINDS[toolName];
-  // Persisted activities sometimes lack toolName; classify by canonical verb.
-  if (!toolName) {
-    const text = activity.text;
-    if (/^Explored /.test(text)) return "read";
-    if (/^Searched /.test(text)) return "search";
+
+  // exec/process/git tools carry a "Ran <command>" summary; classify by the
+  // shell verb so read-only shell exploration folds into the group too.
+  if (toolName === "exec" || toolName === "process" || toolName === "git" || !toolName) {
+    const ranMatch = activity.text.match(/^Ran\s+(.+)$/s);
+    if (ranMatch) return classifyShellCommand(ranMatch[1]);
+    // Persisted activities sometimes lack toolName; classify by canonical verb.
+    if (!toolName) {
+      if (/^Explored /.test(activity.text)) return "read";
+      if (/^Searched /.test(activity.text)) return "search";
+    }
   }
   return null;
 }
 
-function groupLabel(kind: ActivityGroupKind, count: number): string {
-  if (kind === "read") return `Read ${count} files`;
-  if (kind === "search") return `Ran ${count} searches`;
-  return `Listed ${count} locations`;
+function groupLabel(kinds: GroupableKind[], count: number): string {
+  const unique = new Set(kinds);
+  if (unique.size === 1) {
+    const [only] = unique;
+    if (only === "read") return `Read ${count} files`;
+    if (only === "search") return `Ran ${count} searches`;
+    if (only === "list") return `Listed ${count} locations`;
+  }
+  // Mixed exploration, or generic read-only commands.
+  return `Ran ${count} commands`;
 }
 
 /**
- * Collapse consecutive same-kind completed activities into summary groups.
- * A group forms only from 2+ consecutive entries; everything else passes
- * through unchanged and in order.
+ * Collapse consecutive completed exploring activities (reads / lists /
+ * searches / read-only shell commands) into one summary group, matching the
+ * Codex TUI's exploring cell. Different exploring kinds fold into the same run
+ * (a group of ls + find + grep becomes "Ran 3 commands"); a group forms only
+ * from 2+ consecutive entries. State-changing/unknown commands, failures, and
+ * in-flight steps are never grouped, so nothing actionable is hidden.
  */
 export function groupActivitiesForDisplay(activities: LiveActivityItem[]): ActivityDisplayEntry[] {
   const entries: ActivityDisplayEntry[] = [];
-  let run: { kind: ActivityGroupKind; items: LiveActivityItem[] } | null = null;
+  let run: { kinds: GroupableKind[]; items: LiveActivityItem[] } | null = null;
 
   const flushRun = () => {
     if (!run) return;
     if (run.items.length >= 2) {
+      const uniqueKinds = new Set(run.kinds);
+      const specific = uniqueKinds.size === 1 ? [...uniqueKinds][0] : "command";
       entries.push({
         type: "group",
         id: `group-${run.items[0].id}-${run.items.length}`,
-        kind: run.kind,
-        label: groupLabel(run.kind, run.items.length),
+        kind: specific === "command" ? "list" : specific,
+        label: groupLabel(run.kinds, run.items.length),
         items: run.items,
       });
     } else {
@@ -398,11 +485,11 @@ export function groupActivitiesForDisplay(activities: LiveActivityItem[]): Activ
       entries.push({ type: "single", activity });
       continue;
     }
-    if (run && run.kind === kind) {
+    if (run) {
+      run.kinds.push(kind);
       run.items.push(activity);
     } else {
-      flushRun();
-      run = { kind, items: [activity] };
+      run = { kinds: [kind], items: [activity] };
     }
   }
   flushRun();
