@@ -10,6 +10,7 @@ import {
   AgentSettingsPanel,
   ApprovalSettingsPanel,
   ChannelSettingsPanel,
+  MemorySettingsPanel,
   ModelRouterPanel,
   ProviderSettingsPanel,
   SpeechSettingsPanel,
@@ -258,6 +259,7 @@ type DetailRoute =
   | { kind: "systemPrompt" }
   | { kind: "modelRouter" }
   | { kind: "speech" }
+  | { kind: "memory" }
   | { kind: "surface"; surface: MobileSurfaceKey }
   | { kind: "item"; surface: MobileSurfaceKey; item: RemoteItemSummary | ActivitySummary };
 
@@ -593,6 +595,9 @@ function routeHeader(
   if (route.kind === "speech") {
     return { title: "Voice & Speech", detail: "Text-to-speech and dictation" };
   }
+  if (route.kind === "memory") {
+    return { title: "Memory", detail: "Memory provider, learning, and indexing" };
+  }
   if (route.kind === "surface") {
     const meta = surfaceMeta[route.surface];
     return { title: meta.title, detail: "Live gateway data" };
@@ -813,6 +818,11 @@ export function DashboardScreen({
     setChatHeaderAction(null);
     setActiveTab("settings");
     setDetailRoute({ kind: "speech" });
+  };
+  const openMemory = () => {
+    setChatHeaderAction(null);
+    setActiveTab("settings");
+    setDetailRoute({ kind: "memory" });
   };
   const openModelRouter = () => {
     setChatHeaderAction(null);
@@ -1068,6 +1078,7 @@ export function DashboardScreen({
               openSystemPrompt={openSystemPrompt}
               openModelRouter={openModelRouter}
               openSpeech={openSpeech}
+              openMemory={openMemory}
             />
           ) : null}
         </ScrollView>
@@ -1827,6 +1838,16 @@ function DetailContent({
   if (route.kind === "speech") {
     return (
       <SpeechSettingsPanel
+        accentColor={accentColor}
+        api={api}
+        summary={summary}
+        refreshSummary={refreshSummary}
+      />
+    );
+  }
+  if (route.kind === "memory") {
+    return (
+      <MemorySettingsPanel
         accentColor={accentColor}
         api={api}
         summary={summary}
@@ -3076,6 +3097,7 @@ function SettingsPanel({
   openSystemPrompt,
   openModelRouter,
   openSpeech,
+  openMemory,
 }: {
   accentColor: string;
   accentKey: AccentKey;
@@ -3090,6 +3112,7 @@ function SettingsPanel({
   openSystemPrompt: () => void;
   openModelRouter: () => void;
   openSpeech: () => void;
+  openMemory: () => void;
 }) {
   const counts = summarizeFeatureCounts(summary);
   const { mode: appearanceMode, setMode: setAppearanceMode } = useThemeControls();
@@ -3543,6 +3566,24 @@ function SettingsPanel({
                     ? `Identity: ${summary.systemPrompt.identity.name}`
                     : "Identity, instructions, and behavior"
                   : endpointStatusLabel(summary?.availability.systemPrompt)}
+              </Text>
+            </View>
+            <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            style={styles.settingsNavigationRow}
+            onPress={openMemory}
+          >
+            <View style={[styles.settingsNavigationIcon, { backgroundColor: `${accentColor}18` }]}>
+              <Brain color={accentColor} size={20} strokeWidth={2.1} />
+            </View>
+            <View style={styles.listText}>
+              <Text style={styles.listTitle}>Memory</Text>
+              <Text style={styles.listDetail} numberOfLines={1}>
+                {configAvailable
+                  ? "Memory provider, learning loop, and indexing"
+                  : endpointStatusLabel(summary?.availability.config)}
               </Text>
             </View>
             <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />

@@ -5,6 +5,7 @@ import { memoryDir } from "../paths";
 import { getVectorStore } from "./vector-store";
 import { sanitizeMemoryContent } from "./sanitize";
 import { captureToExternalMemory } from "./providers";
+import { config } from "../config";
 
 const MEMORY_FILE = "MEMORY.md";
 const MEMORY_PATH = join(memoryDir, MEMORY_FILE);
@@ -100,7 +101,6 @@ async function mirrorToExternalProvider(
     source?: string
 ): Promise<void> {
     try {
-        const { config } = await import("../config");
         const settings = config.getMemoryProviderSettings();
         const metadata: Record<string, string> = { category, app: "cybara" };
         if (source) metadata.source = source;

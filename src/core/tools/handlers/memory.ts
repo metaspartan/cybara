@@ -23,6 +23,7 @@ import {
   type HeartbeatState,
 } from "../../memory";
 import { memoryDir } from "../../paths";
+import { config } from "../../config";
 
 /**
  * Resolve `candidate` and assert it stays inside `memoryDir`, following symlinks
@@ -220,7 +221,6 @@ async function searchExternalMemoryProvider(
   maxResults: number
 ): Promise<Array<{ file: string; content: string; score: number; method: string }>> {
   try {
-    const { config } = await import("../../config");
     const settings = config.getMemoryProviderSettings();
     const adapter = getActiveMemoryProviderAdapter(settings);
     if (!adapter) return [];

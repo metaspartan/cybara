@@ -36,8 +36,9 @@ describe("mobile: memory method toggle", () => {
       expect(screen).toContain(`value: "${provider}"`);
     }
     expect(screen).not.toContain('value: "voyage"');
-    // It is no longer a section on the settings tab.
-    expect(screen).not.toContain('<SettingsSection title="Memory">');
+    // Memory settings are a drill-in detail page (MemorySettingsPanel), not an
+    // inline section on the root settings tab.
+    expect(screen).toContain("onPress={openMemory}");
     expect(screen).not.toContain('label="Memory method"');
   });
 });

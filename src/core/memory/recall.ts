@@ -1,5 +1,6 @@
 import { getVectorStore, type VectorSearchResult } from "./vector-store";
 import { recallFromExternalMemory } from "./providers";
+import { config } from "../config";
 
 export function formatRecallBlock(results: Array<{ content: string }>): string {
   const snippets = results
@@ -55,7 +56,6 @@ async function recallFromActiveExternalProvider(
   maxResults: number
 ): Promise<Array<{ content: string }>> {
   try {
-    const { config } = await import("../config");
     return await recallFromExternalMemory(config.getMemoryProviderSettings(), query, maxResults);
   } catch {
     return [];

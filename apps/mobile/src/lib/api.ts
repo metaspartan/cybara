@@ -1875,6 +1875,16 @@ export class CybaraMobileApi {
     });
   }
 
+  testMemoryProvider(
+    provider: string,
+    settings?: Record<string, unknown>
+  ): Promise<{ success: boolean; provider: string; ok: boolean; detail: string }> {
+    return this.request<{ success: boolean; provider: string; ok: boolean; detail: string }>(
+      "/api/memory/providers/test",
+      { method: "POST", body: JSON.stringify({ provider, settings }) }
+    );
+  }
+
   async routerConfig(): Promise<RouterConfig> {
     return normalizeRouterConfig(await this.request<unknown>("/api/router/config"));
   }

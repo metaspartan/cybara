@@ -141,6 +141,148 @@ export function readMobileSpeechSettings(
   };
 }
 
+export type MobileMemoryBehaviorSettings = {
+  backgroundReviewEnabled: boolean;
+  backgroundReviewMinIntervalMs: number;
+  backgroundReviewTimeoutSeconds: number;
+  memoryFlushEnabled: boolean;
+  memoryFlushSoftThresholdTokens: number;
+};
+
+export type MobileMemoryProviderChoice =
+  | "local"
+  | "supermemory"
+  | "mem0"
+  | "honcho"
+  | "openviking"
+  | "hindsight";
+
+export const MOBILE_MEMORY_PROVIDER_CHOICES: MobileMemoryProviderChoice[] = [
+  "local",
+  "supermemory",
+  "mem0",
+  "honcho",
+  "openviking",
+  "hindsight",
+];
+
+export type MobileMemoryProviderSettings = {
+  provider: MobileMemoryProviderChoice;
+  autoRecall: boolean;
+  autoCapture: boolean;
+  supermemory: Record<string, string>;
+  mem0: Record<string, string>;
+  honcho: Record<string, string>;
+  openviking: Record<string, string>;
+  hindsight: Record<string, string>;
+};
+
+export type MobileIndexingSettings = {
+  enabled: boolean;
+  semanticEnabled: boolean;
+  includeHidden: boolean;
+  autoReindexOnWorkspaceSet: boolean;
+  embeddingProvider: "auto" | "transformers_js" | "openai" | "gemini" | "ollama";
+  embeddingModel: string;
+};
+
+const MOBILE_MEMORY_PROVIDER_FIELD_DEFAULTS: Record<
+  Exclude<MobileMemoryProviderChoice, "local">,
+  Record<string, string>
+> = {
+  supermemory: { apiKey: "", baseUrl: "https://api.supermemory.ai", containerTag: "cybara" },
+  mem0: { apiKey: "", baseUrl: "https://api.mem0.ai", userId: "cybara-user", agentId: "cybara" },
+  honcho: { apiKey: "", baseUrl: "https://api.honcho.dev", workspace: "cybara", peer: "user" },
+  openviking: { apiKey: "", baseUrl: "http://127.0.0.1:1933" },
+  hindsight: {
+    apiKey: "",
+    baseUrl: "https://api.hindsight.vectorize.io",
+    tenant: "default",
+    bankId: "cybara",
+  },
+};
+
+function stringSetting(record: Record<string, unknown> | null, key: string, fallback: string) {
+  const value = record?.[key];
+  return typeof value === "string" ? value : fallback;
+}
+
+function boolSetting(record: Record<string, unknown> | null, key: string, fallback: boolean) {
+  const value = record?.[key];
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function numberSetting(record: Record<string, unknown> | null, key: string, fallback: number) {
+  const value = record?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+export function readMobileMemoryBehaviorSettings(
+  configRecord: Record<string, unknown> | null | undefined
+): MobileMemoryBehaviorSettings {
+  const memory = objectRecord(configRecord?.memory);
+  return {
+    backgroundReviewEnabled: boolSetting(memory, "backgroundReviewEnabled", true),
+    backgroundReviewMinIntervalMs: numberSetting(memory, "backgroundReviewMinIntervalMs", 300000),
+    backgroundReviewTimeoutSeconds: numberSetting(memory, "backgroundReviewTimeoutSeconds", 90),
+    memoryFlushEnabled: boolSetting(memory, "memoryFlushEnabled", true),
+    memoryFlushSoftThresholdTokens: numberSetting(memory, "memoryFlushSoftThresholdTokens", 4000),
+  };
+}
+
+export function readMobileMemoryProviderSettings(
+  configRecord: Record<string, unknown> | null | undefined
+): MobileMemoryProviderSettings {
+  const record = objectRecord(configRecord?.memory_provider);
+  const rawProvider = typeof record?.provider === "string" ? record.provider : "local";
+  const provider = MOBILE_MEMORY_PROVIDER_CHOICES.includes(
+    rawProvider as MobileMemoryProviderChoice
+  )
+    ? (rawProvider as MobileMemoryProviderChoice)
+    : "local";
+  const readFields = (key: Exclude<MobileMemoryProviderChoice, "local">) => {
+    const fields = objectRecord(record?.[key]);
+    const defaults = MOBILE_MEMORY_PROVIDER_FIELD_DEFAULTS[key];
+    const out: Record<string, string> = {};
+    for (const [fieldKey, fallback] of Object.entries(defaults)) {
+      out[fieldKey] = stringSetting(fields, fieldKey, fallback);
+    }
+    return out;
+  };
+  return {
+    provider,
+    autoRecall: boolSetting(record, "autoRecall", true),
+    autoCapture: boolSetting(record, "autoCapture", true),
+    supermemory: readFields("supermemory"),
+    mem0: readFields("mem0"),
+    honcho: readFields("honcho"),
+    openviking: readFields("openviking"),
+    hindsight: readFields("hindsight"),
+  };
+}
+
+export function readMobileIndexingSettings(
+  configRecord: Record<string, unknown> | null | undefined
+): MobileIndexingSettings {
+  const indexer = objectRecord(configRecord?.workspace_indexer);
+  const rawProvider = typeof indexer?.embeddingProvider === "string"
+    ? indexer.embeddingProvider
+    : "auto";
+  const embeddingProvider = ["auto", "transformers_js", "openai", "gemini", "ollama"].includes(
+    rawProvider
+  )
+    ? (rawProvider as MobileIndexingSettings["embeddingProvider"])
+    : "auto";
+  return {
+    enabled: boolSetting(indexer, "enabled", true),
+    semanticEnabled: boolSetting(indexer, "semanticEnabled", true),
+    includeHidden: boolSetting(indexer, "includeHidden", false),
+    autoReindexOnWorkspaceSet: boolSetting(indexer, "autoReindexOnWorkspaceSet", true),
+    embeddingProvider,
+    embeddingModel: stringSetting(indexer, "embeddingModel", ""),
+  };
+}
+
 export function mobileSpeechProviderOptions(providers: ProviderSummary[], mode: "tts" | "stt") {
   return [
     { label: "Auto", value: "" },

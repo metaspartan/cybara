@@ -26,8 +26,10 @@ describe("Memory and Settings pages: memory controls", () => {
     expect(settings).not.toMatch(/value:\s*["']voyage["']/);
   });
 
-  test("persists memory behavior and recall settings to gateway config", () => {
-    expect(settings).toContain("settingsApi.updateConfig({ memory })");
+  test("persists memory behavior, provider, and recall settings to gateway config", () => {
+    expect(settings).toContain(
+      "settingsApi.updateConfig({ memory, memory_provider: provider })"
+    );
     expect(settings).toContain("workspace_indexer: memoryRecallConfigPayload(recall)");
     expect(settings).toContain("embeddingProvider: recall.embeddingProvider");
   });
@@ -50,8 +52,12 @@ describe("Memory and Settings pages: memory controls", () => {
     ]) {
       expect(settings).toContain(setting);
     }
-    expect(settings).toContain("Save Recall Settings");
-    expect(settings).toContain("Active memory stack");
+    // Indexing is its own card now, and the external-provider picker replaced
+    // the old "Active memory stack" placeholder note.
+    expect(settings).toContain("Save Indexing Settings");
+    expect(settings).toContain("Memory provider");
+    expect(settings).toContain("memoryApi.testProvider(");
+    expect(settings).not.toContain("Active memory stack");
   });
 
   test("keeps memory search file metadata so entries can be edited or deleted", () => {

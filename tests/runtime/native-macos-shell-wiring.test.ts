@@ -61,6 +61,27 @@ describe("native macOS shell wiring", () => {
     expect(settings).not.toContain(".frame(maxWidth: .infinity, alignment: .topLeading)");
   });
 
+  test("native settings has a Memory tab with provider picker and indexing split", () => {
+    const settings = readFileSync(join(MACOS_APP_DIR, "NativeSettingsScreen.swift"), "utf8");
+    const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
+
+    expect(settings).toContain('memoryTab.tabItem { Label("Memory", systemImage: "memorychip") }');
+    for (const provider of ["supermemory", "mem0", "honcho", "openviking", "hindsight"]) {
+      expect(settings).toContain(`"${provider}"`);
+    }
+    // Memory, provider, and indexing write the same config keys as the web UI.
+    expect(settings).toContain('saveConfigPatch(["memory": memory], key: "memory")');
+    expect(settings).toContain(
+      'saveConfigPatch(["memory_provider": payload], key: "memory_provider")'
+    );
+    expect(settings).toContain(
+      'saveConfigPatch(["workspace_indexer": indexer], key: "workspace_indexer")'
+    );
+    // Connection test goes through the gateway test route.
+    expect(gatewayClient).toContain('request("api/memory/providers/test", method: "POST"');
+    expect(settings).toContain("client.testMemoryProvider(body)");
+  });
+
   test("native logs use bounded paged gateway reads instead of full log downloads", () => {
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
     const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");

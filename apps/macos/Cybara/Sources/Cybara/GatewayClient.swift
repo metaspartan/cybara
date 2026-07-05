@@ -402,6 +402,16 @@ struct GatewayClient: Sendable {
         try await get("api/memory", as: GatewayMemoryList.self)
     }
 
+    // Callers serialize the {provider, settings} payload on their own actor
+    // (same Sendable constraint as putJSON).
+    func testMemoryProvider(_ body: Data) async throws -> [String: Any] {
+        let data = try await request("api/memory/providers/test", method: "POST", body: body)
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw GatewayClientError.invalidResponse
+        }
+        return object
+    }
+
     func memoryFiles() async throws -> [String] {
         (try await memoryList()).files
     }

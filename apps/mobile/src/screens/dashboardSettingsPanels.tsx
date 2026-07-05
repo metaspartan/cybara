@@ -46,9 +46,17 @@ import {
   monitorPercent,
   monitorPercentLabel,
   objectRecord,
+  readMobileIndexingSettings,
+  readMobileMemoryBehaviorSettings,
+  readMobileMemoryProviderSettings,
   readMobileSpeechSettings,
   remoteItemEnabled,
   remoteTaskRunning,
+  MOBILE_MEMORY_PROVIDER_CHOICES,
+  type MobileIndexingSettings,
+  type MobileMemoryBehaviorSettings,
+  type MobileMemoryProviderChoice,
+  type MobileMemoryProviderSettings,
   type MobileSpeechSettings,
 } from "./dashboardHelpers";
 import {
@@ -1841,6 +1849,332 @@ export function ModelRouterPanel({
         />
       )}
     </GlassPanel>
+  );
+}
+
+const mobileMemoryProviderLabels: Record<MobileMemoryProviderChoice, string> = {
+  local: "Built-in (local)",
+  supermemory: "Supermemory",
+  mem0: "Mem0",
+  honcho: "Honcho",
+  openviking: "OpenViking",
+  hindsight: "Hindsight",
+};
+
+const mobileMemoryProviderFieldSpecs: Record<
+  Exclude<MobileMemoryProviderChoice, "local">,
+  Array<{ key: string; label: string; secret?: boolean; placeholder?: string }>
+> = {
+  supermemory: [
+    { key: "apiKey", label: "API key", secret: true },
+    { key: "baseUrl", label: "Base URL", placeholder: "https://api.supermemory.ai" },
+    { key: "containerTag", label: "Container tag", placeholder: "cybara" },
+  ],
+  mem0: [
+    { key: "apiKey", label: "API key", secret: true },
+    { key: "baseUrl", label: "Base URL", placeholder: "https://api.mem0.ai" },
+    { key: "userId", label: "User ID", placeholder: "cybara-user" },
+    { key: "agentId", label: "Agent ID", placeholder: "cybara" },
+  ],
+  honcho: [
+    { key: "apiKey", label: "API key", secret: true },
+    { key: "baseUrl", label: "Base URL", placeholder: "https://api.honcho.dev" },
+    { key: "workspace", label: "Workspace", placeholder: "cybara" },
+    { key: "peer", label: "Peer", placeholder: "user" },
+  ],
+  openviking: [
+    { key: "baseUrl", label: "Server URL", placeholder: "http://127.0.0.1:1933" },
+    { key: "apiKey", label: "API key", secret: true },
+  ],
+  hindsight: [
+    { key: "apiKey", label: "API key", secret: true },
+    { key: "baseUrl", label: "Base URL", placeholder: "https://api.hindsight.vectorize.io" },
+    { key: "tenant", label: "Tenant", placeholder: "default" },
+    { key: "bankId", label: "Memory bank", placeholder: "cybara" },
+  ],
+};
+
+export function MemorySettingsPanel({
+  accentColor,
+  api,
+  summary,
+  refreshSummary,
+}: {
+  accentColor: string;
+  api: CybaraMobileApi;
+  summary: FeatureSummary | null;
+  refreshSummary: () => void;
+}) {
+  const configAvailable = summary?.availability.config.ok === true;
+  const memorySettings = readMobileMemoryBehaviorSettings(summary?.config);
+  const providerSettings = readMobileMemoryProviderSettings(summary?.config);
+  const indexingSettings = readMobileIndexingSettings(summary?.config);
+  const [memoryDraft, setMemoryDraft] = useState(memorySettings);
+  const [providerDraft, setProviderDraft] = useState(providerSettings);
+  const [indexingDraft, setIndexingDraft] = useState(indexingSettings);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const configSignature = JSON.stringify(summary?.config?.memory_provider ?? null);
+
+  useEffect(() => {
+    setMemoryDraft(memorySettings);
+    setProviderDraft(providerSettings);
+    setIndexingDraft(indexingSettings);
+    // Re-sync drafts only when the gateway config itself changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configSignature, configAvailable]);
+
+  const persist = async (payload: Record<string, unknown>, failureTitle: string) => {
+    if (!configAvailable || saving) return;
+    setSaving(true);
+    try {
+      const result = await api.updateConfig(payload);
+      if (result.success === false) throw new Error("The gateway rejected the update.");
+      await refreshSummary();
+    } catch (error) {
+      Alert.alert(failureTitle, error instanceof Error ? error.message : String(error));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveMemory = (patch: Partial<MobileMemoryBehaviorSettings>) => {
+    const next = { ...memoryDraft, ...patch };
+    setMemoryDraft(next);
+    void persist({ memory: next }, "Memory setting failed");
+  };
+
+  const saveProvider = (patch: Partial<MobileMemoryProviderSettings>) => {
+    const next = { ...providerDraft, ...patch };
+    setProviderDraft(next);
+    void persist({ memory_provider: next }, "Memory provider setting failed");
+  };
+
+  const saveIndexing = (patch: Partial<MobileIndexingSettings>) => {
+    const next = { ...indexingDraft, ...patch };
+    setIndexingDraft(next);
+    void persist({ workspace_indexer: next }, "Indexing setting failed");
+  };
+
+  const testProvider = async () => {
+    if (testing) return;
+    setTesting(true);
+    try {
+      const result = await api.testMemoryProvider(providerDraft.provider, providerDraft);
+      Alert.alert(
+        result.ok ? "Connection OK" : "Connection failed",
+        result.detail || (result.ok ? "The provider responded." : "The provider did not respond.")
+      );
+    } catch (error) {
+      Alert.alert("Connection failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  if (!configAvailable) {
+    return (
+      <SettingsSection title="Memory">
+        <EmptyState
+          label="Memory settings unavailable"
+          detail={endpointErrorDetail(
+            summary?.availability.config,
+            "The gateway did not return editable memory settings."
+          )}
+        />
+      </SettingsSection>
+    );
+  }
+
+  const externalProvider = providerDraft.provider === "local" ? null : providerDraft.provider;
+
+  return (
+    <>
+      <SettingsSection title="Memory">
+        <View style={styles.settingsGroupHeader}>
+          <Sparkles color={accentColor} size={18} strokeWidth={2.1} />
+          <Text style={styles.settingsInfoTitle}>Learning & flush</Text>
+        </View>
+        <SettingToggle
+          busy={saving}
+          detail="After substantial responses, a silent reviewer saves durable preferences and facts."
+          label="Background memory review"
+          onPress={() =>
+            saveMemory({ backgroundReviewEnabled: !memoryDraft.backgroundReviewEnabled })
+          }
+          tone={accentColor}
+          value={memoryDraft.backgroundReviewEnabled}
+        />
+        <SettingToggle
+          busy={saving}
+          detail="Before a long chat compacts, the agent gets one chance to save durable memory."
+          label="Flush before compaction"
+          onPress={() => saveMemory({ memoryFlushEnabled: !memoryDraft.memoryFlushEnabled })}
+          tone={accentColor}
+          value={memoryDraft.memoryFlushEnabled}
+        />
+        <SettingsTextField
+          help="Soft reserve before compaction triggers the flush turn."
+          label="Flush threshold (tokens)"
+          onBlur={() => {
+            const parsed = Number.parseInt(
+              String(memoryDraft.memoryFlushSoftThresholdTokens),
+              10
+            );
+            saveMemory({
+              memoryFlushSoftThresholdTokens:
+                Number.isFinite(parsed) && parsed >= 500 ? parsed : 4000,
+            });
+          }}
+          onChangeText={(value) =>
+            setMemoryDraft((current) => ({
+              ...current,
+              memoryFlushSoftThresholdTokens: Number.parseInt(value, 10) || 0,
+            }))
+          }
+          placeholder="4000"
+          value={String(memoryDraft.memoryFlushSoftThresholdTokens || "")}
+        />
+      </SettingsSection>
+      <SettingsSection title="Memory provider">
+        <SettingSelector
+          disabled={saving}
+          label="Provider"
+          onSelect={(value) => {
+            const provider = MOBILE_MEMORY_PROVIDER_CHOICES.includes(
+              value as MobileMemoryProviderChoice
+            )
+              ? (value as MobileMemoryProviderChoice)
+              : "local";
+            saveProvider({ provider });
+          }}
+          options={MOBILE_MEMORY_PROVIDER_CHOICES.map((choice) => ({
+            label: mobileMemoryProviderLabels[choice],
+            value: choice,
+          }))}
+          selected={providerDraft.provider}
+          tone={accentColor}
+          variant="menu"
+        />
+        {externalProvider ? (
+          <>
+            {mobileMemoryProviderFieldSpecs[externalProvider].map((field) => (
+              <SettingsTextField
+                key={`${externalProvider}-${field.key}`}
+                label={field.label}
+                onBlur={() => saveProvider({})}
+                onChangeText={(value) =>
+                  setProviderDraft((current) => ({
+                    ...current,
+                    [externalProvider]: { ...current[externalProvider], [field.key]: value },
+                  }))
+                }
+                placeholder={field.placeholder}
+                secureTextEntry={field.secret}
+                value={providerDraft[externalProvider][field.key] ?? ""}
+              />
+            ))}
+            <SettingToggle
+              busy={saving}
+              detail="Blend provider memories into agent context."
+              label="Auto recall"
+              onPress={() => saveProvider({ autoRecall: !providerDraft.autoRecall })}
+              tone={accentColor}
+              value={providerDraft.autoRecall}
+            />
+            <SettingToggle
+              busy={saving}
+              detail="Mirror new durable memories to the provider."
+              label="Auto capture"
+              onPress={() => saveProvider({ autoCapture: !providerDraft.autoCapture })}
+              tone={accentColor}
+              value={providerDraft.autoCapture}
+            />
+            <DetailActionButton
+              Icon={Zap}
+              busy={testing}
+              label="Test connection"
+              onPress={() => void testProvider()}
+              tone={accentColor}
+            />
+          </>
+        ) : (
+          <Text style={styles.settingsFieldHelp}>
+            Built-in local memory (MEMORY.md + daily files) always runs. Select an external
+            provider to mirror durable memories and blend its recall.
+          </Text>
+        )}
+      </SettingsSection>
+      <SettingsSection title="Indexing">
+        <View style={styles.settingsGroupHeader}>
+          <Database color={accentColor} size={18} strokeWidth={2.1} />
+          <Text style={styles.settingsInfoTitle}>Semantic index</Text>
+        </View>
+        <SettingToggle
+          busy={saving}
+          detail="Index memory and workspace files for search. Separate from memory itself."
+          label="Build recall index"
+          onPress={() => saveIndexing({ enabled: !indexingDraft.enabled })}
+          tone={accentColor}
+          value={indexingDraft.enabled}
+        />
+        <SettingToggle
+          busy={saving}
+          detail="Use embeddings for similarity search."
+          label="Semantic recall"
+          onPress={() => saveIndexing({ semanticEnabled: !indexingDraft.semanticEnabled })}
+          tone={accentColor}
+          value={indexingDraft.semanticEnabled}
+        />
+        <SettingToggle
+          busy={saving}
+          label="Include hidden files"
+          onPress={() => saveIndexing({ includeHidden: !indexingDraft.includeHidden })}
+          tone={accentColor}
+          value={indexingDraft.includeHidden}
+        />
+        <SettingToggle
+          busy={saving}
+          label="Auto reindex on workspace change"
+          onPress={() =>
+            saveIndexing({ autoReindexOnWorkspaceSet: !indexingDraft.autoReindexOnWorkspaceSet })
+          }
+          tone={accentColor}
+          value={indexingDraft.autoReindexOnWorkspaceSet}
+        />
+        <SettingSelector
+          disabled={saving}
+          label="Embedding provider"
+          onSelect={(value) => {
+            const provider = ["auto", "transformers_js", "openai", "gemini", "ollama"].includes(
+              value
+            )
+              ? (value as MobileIndexingSettings["embeddingProvider"])
+              : "auto";
+            saveIndexing({ embeddingProvider: provider });
+          }}
+          options={[
+            { label: "Auto", value: "auto" },
+            { label: "Local Transformers.js", value: "transformers_js" },
+            { label: "OpenAI", value: "openai" },
+            { label: "Gemini", value: "gemini" },
+            { label: "Ollama", value: "ollama" },
+          ]}
+          selected={indexingDraft.embeddingProvider}
+          tone={accentColor}
+          variant="menu"
+        />
+        <SettingsTextField
+          label="Model override"
+          onBlur={() => saveIndexing({})}
+          onChangeText={(embeddingModel) =>
+            setIndexingDraft((current) => ({ ...current, embeddingModel }))
+          }
+          placeholder="Auto"
+          value={indexingDraft.embeddingModel}
+        />
+      </SettingsSection>
+    </>
   );
 }
 

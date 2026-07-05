@@ -49,6 +49,22 @@ struct NativeSettingsScreen: View {
     @State private var speechSTTProviderId = ""
     @State private var speechSTTModel = ""
     @State private var speechSTTLanguage = ""
+    @State private var memoryBackgroundReview = true
+    @State private var memoryFlushEnabled = true
+    @State private var memoryFlushThreshold = "4000"
+    @State private var memoryProvider = "local"
+    @State private var memoryAutoRecall = true
+    @State private var memoryAutoCapture = true
+    @State private var memoryProviderFields: [String: String] = [:]
+    @State private var memoryTestResult: String?
+    @State private var memoryTestOK = false
+    @State private var memoryTesting = false
+    @State private var indexEnabled = true
+    @State private var indexSemantic = true
+    @State private var indexHidden = false
+    @State private var indexAutoReindex = true
+    @State private var indexEmbeddingProvider = "auto"
+    @State private var indexEmbeddingModel = ""
     @State private var savingKey: String?
     @State private var copiedURL = false
     @State private var error: String?
@@ -79,6 +95,7 @@ struct NativeSettingsScreen: View {
                 appearanceTab.tabItem { Label("Appearance", systemImage: "paintpalette") }.tag(SettingsTab.appearance)
                 modelTab.tabItem { Label("Model", systemImage: "brain") }.tag(SettingsTab.model)
                 speechTab.tabItem { Label("Speech", systemImage: "waveform") }.tag(SettingsTab.speech)
+                memoryTab.tabItem { Label("Memory", systemImage: "memorychip") }.tag(SettingsTab.memory)
                 featuresTab.tabItem { Label("Features", systemImage: "slider.horizontal.3") }.tag(SettingsTab.features)
                 advancedTab.tabItem { Label("Advanced", systemImage: "square.grid.3x3") }.tag(SettingsTab.advanced)
             }
@@ -411,6 +428,231 @@ struct NativeSettingsScreen: View {
         }
     }
 
+    private static let memoryProviderChoices: [(id: String, label: String)] = [
+        ("local", "Built-in (local)"),
+        ("supermemory", "Supermemory"),
+        ("mem0", "Mem0"),
+        ("honcho", "Honcho"),
+        ("openviking", "OpenViking"),
+        ("hindsight", "Hindsight"),
+    ]
+
+    private static let memoryProviderFieldSpecs: [String: [(key: String, label: String, secret: Bool, placeholder: String)]] = [
+        "supermemory": [
+            ("apiKey", "API key", true, ""),
+            ("baseUrl", "Base URL", false, "https://api.supermemory.ai"),
+            ("containerTag", "Container tag", false, "cybara"),
+        ],
+        "mem0": [
+            ("apiKey", "API key", true, ""),
+            ("baseUrl", "Base URL", false, "https://api.mem0.ai"),
+            ("userId", "User ID", false, "cybara-user"),
+            ("agentId", "Agent ID", false, "cybara"),
+        ],
+        "honcho": [
+            ("apiKey", "API key", true, ""),
+            ("baseUrl", "Base URL", false, "https://api.honcho.dev"),
+            ("workspace", "Workspace", false, "cybara"),
+            ("peer", "Peer", false, "user"),
+        ],
+        "openviking": [
+            ("baseUrl", "Server URL", false, "http://127.0.0.1:1933"),
+            ("apiKey", "API key", true, ""),
+        ],
+        "hindsight": [
+            ("apiKey", "API key", true, ""),
+            ("baseUrl", "Base URL", false, "https://api.hindsight.vectorize.io"),
+            ("tenant", "Tenant", false, "default"),
+            ("bankId", "Memory bank", false, "cybara"),
+        ],
+    ]
+
+    private func memoryFieldBinding(_ provider: String, _ key: String) -> Binding<String> {
+        Binding(
+            get: { memoryProviderFields["\(provider).\(key)"] ?? "" },
+            set: { memoryProviderFields["\(provider).\(key)"] = $0 }
+        )
+    }
+
+    private var memoryTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: NativeSettingsLayout.cardSpacing) {
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "brain.head.profile")
+                                .foregroundStyle(.secondary)
+                            Text("Memory")
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                            Spacer()
+                        }
+                        toggleRow(
+                            "Background memory review",
+                            detail: "After substantial responses, a silent reviewer saves durable preferences and facts.",
+                            isOn: $memoryBackgroundReview
+                        ) {
+                            saveMemorySettings()
+                        }
+                        toggleRow(
+                            "Flush before compaction",
+                            detail: "Before a long chat compacts, the agent gets one chance to save durable memory.",
+                            isOn: $memoryFlushEnabled
+                        ) {
+                            saveMemorySettings()
+                        }
+                        TextField("Flush threshold (tokens)", text: $memoryFlushThreshold)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 220)
+                            .onSubmit { saveMemorySettings() }
+                    }
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "externaldrive.connected.to.line.below")
+                                .foregroundStyle(.secondary)
+                            Text("Memory Provider")
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                            Spacer()
+                        }
+                        Text("Built-in local memory (MEMORY.md + daily files) always runs. Selecting an external provider mirrors durable memories to it and blends its recall into agent context.")
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        Picker("Provider", selection: $memoryProvider) {
+                            ForEach(Self.memoryProviderChoices, id: \.id) { choice in
+                                Text(choice.label).tag(choice.id)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .onChange(of: memoryProvider) { _, _ in
+                            memoryTestResult = nil
+                            saveMemoryProviderSettings()
+                        }
+                        if memoryProvider != "local",
+                           let fields = Self.memoryProviderFieldSpecs[memoryProvider] {
+                            ForEach(fields, id: \.key) { field in
+                                if field.secret {
+                                    SecureField(field.label, text: memoryFieldBinding(memoryProvider, field.key))
+                                        .textFieldStyle(.roundedBorder)
+                                        .onSubmit { saveMemoryProviderSettings() }
+                                } else {
+                                    TextField(
+                                        field.label,
+                                        text: memoryFieldBinding(memoryProvider, field.key),
+                                        prompt: Text(field.placeholder)
+                                    )
+                                    .textFieldStyle(.roundedBorder)
+                                    .onSubmit { saveMemoryProviderSettings() }
+                                }
+                            }
+                            toggleRow(
+                                "Auto recall",
+                                detail: "Blend provider memories into agent context.",
+                                isOn: $memoryAutoRecall
+                            ) {
+                                saveMemoryProviderSettings()
+                            }
+                            toggleRow(
+                                "Auto capture",
+                                detail: "Mirror new durable memories to the provider.",
+                                isOn: $memoryAutoCapture
+                            ) {
+                                saveMemoryProviderSettings()
+                            }
+                            HStack(spacing: 10) {
+                                Button {
+                                    testMemoryProviderConnection()
+                                } label: {
+                                    if memoryTesting {
+                                        Label("Testing…", systemImage: "hourglass")
+                                    } else {
+                                        Label("Test Connection", systemImage: "bolt.horizontal")
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(memoryTesting)
+                                if let memoryTestResult {
+                                    Text(memoryTestResult)
+                                        .font(.system(size: 11, design: .rounded))
+                                        .foregroundStyle(memoryTestOK ? Color.green : Color.red)
+                                }
+                            }
+                        }
+                        HStack {
+                            Spacer()
+                            Button {
+                                saveMemorySettings()
+                                saveMemoryProviderSettings()
+                            } label: {
+                                Label("Save Memory", systemImage: "checkmark.circle")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(savingKey == "memory" || savingKey == "memory_provider")
+                        }
+                    }
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "square.grid.3x1.below.line.grid.1x2")
+                                .foregroundStyle(.secondary)
+                            Text("Indexing")
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                            Spacer()
+                        }
+                        Text("The embedding index that powers semantic search over memory, sessions, and workspace files. Separate from memory itself — memories persist even with indexing off.")
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        toggleRow(
+                            "Build recall index",
+                            detail: "Index memory and workspace files for search.",
+                            isOn: $indexEnabled
+                        ) {
+                            saveIndexingSettings()
+                        }
+                        toggleRow(
+                            "Semantic recall",
+                            detail: "Use embeddings for similarity search.",
+                            isOn: $indexSemantic
+                        ) {
+                            saveIndexingSettings()
+                        }
+                        toggleRow(
+                            "Include hidden files",
+                            detail: "Index dotfiles and hidden directories.",
+                            isOn: $indexHidden
+                        ) {
+                            saveIndexingSettings()
+                        }
+                        toggleRow(
+                            "Auto reindex on workspace change",
+                            detail: "Rebuild the index when the agent workspace changes.",
+                            isOn: $indexAutoReindex
+                        ) {
+                            saveIndexingSettings()
+                        }
+                        Picker("Embedding provider", selection: $indexEmbeddingProvider) {
+                            Text("Auto").tag("auto")
+                            Text("Local Transformers.js").tag("transformers_js")
+                            Text("OpenAI").tag("openai")
+                            Text("Gemini").tag("gemini")
+                            Text("Ollama").tag("ollama")
+                        }
+                        .pickerStyle(.menu)
+                        .onChange(of: indexEmbeddingProvider) { _, _ in saveIndexingSettings() }
+                        TextField("Model override", text: $indexEmbeddingModel, prompt: Text("Auto"))
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 320)
+                            .onSubmit { saveIndexingSettings() }
+                    }
+                }
+            }
+            .nativeSettingsContentLayout()
+        }
+    }
+
     private var featuresTab: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: NativeSettingsLayout.cardSpacing) {
@@ -662,6 +904,74 @@ struct NativeSettingsScreen: View {
         )
     }
 
+    private func saveMemorySettings() {
+        var memory = config["memory"] as? [String: Any] ?? [:]
+        memory["backgroundReviewEnabled"] = memoryBackgroundReview
+        memory["memoryFlushEnabled"] = memoryFlushEnabled
+        memory["memoryFlushSoftThresholdTokens"] = max(500, Int(memoryFlushThreshold) ?? 4000)
+        saveConfigPatch(["memory": memory], key: "memory")
+    }
+
+    private func saveMemoryProviderSettings() {
+        var payload: [String: Any] = [
+            "provider": memoryProvider,
+            "autoRecall": memoryAutoRecall,
+            "autoCapture": memoryAutoCapture,
+        ]
+        for (provider, fields) in Self.memoryProviderFieldSpecs {
+            var section: [String: Any] = [:]
+            for field in fields {
+                section[field.key] = memoryProviderFields["\(provider).\(field.key)"] ?? ""
+            }
+            payload[provider] = section
+        }
+        saveConfigPatch(["memory_provider": payload], key: "memory_provider")
+    }
+
+    private func saveIndexingSettings() {
+        var indexer = config["workspace_indexer"] as? [String: Any] ?? [:]
+        indexer["enabled"] = indexEnabled
+        indexer["semanticEnabled"] = indexSemantic
+        indexer["includeHidden"] = indexHidden
+        indexer["autoReindexOnWorkspaceSet"] = indexAutoReindex
+        indexer["embeddingProvider"] = indexEmbeddingProvider
+        indexer["embeddingModel"] = indexEmbeddingModel
+        saveConfigPatch(["workspace_indexer": indexer], key: "workspace_indexer")
+    }
+
+    private func testMemoryProviderConnection() {
+        var settings: [String: Any] = [
+            "provider": memoryProvider,
+            "autoRecall": memoryAutoRecall,
+            "autoCapture": memoryAutoCapture,
+        ]
+        for (provider, fields) in Self.memoryProviderFieldSpecs {
+            var section: [String: Any] = [:]
+            for field in fields {
+                section[field.key] = memoryProviderFields["\(provider).\(field.key)"] ?? ""
+            }
+            settings[provider] = section
+        }
+        guard let body = try? JSONSerialization.data(
+            withJSONObject: ["provider": memoryProvider, "settings": settings]
+        ) else { return }
+        memoryTesting = true
+        memoryTestResult = nil
+        Task {
+            do {
+                let result = try await client.testMemoryProvider(body)
+                let ok = result["ok"] as? Bool ?? false
+                let detail = result["detail"] as? String ?? (ok ? "Connected" : "Failed")
+                memoryTestOK = ok
+                memoryTestResult = "\(ok ? "Connected" : "Failed") — \(detail)"
+            } catch {
+                memoryTestOK = false
+                memoryTestResult = "Failed — \(error.localizedDescription)"
+            }
+            memoryTesting = false
+        }
+    }
+
     private func saveConfigPatch(
         _ patch: [String: Any],
         key: String,
@@ -743,6 +1053,32 @@ struct NativeSettingsScreen: View {
         speechSTTProviderId = stt["providerId"] as? String ?? ""
         speechSTTModel = stt["model"] as? String ?? ""
         speechSTTLanguage = stt["language"] as? String ?? ""
+        let memory = config["memory"] as? [String: Any] ?? [:]
+        memoryBackgroundReview = memory["backgroundReviewEnabled"] as? Bool ?? true
+        memoryFlushEnabled = memory["memoryFlushEnabled"] as? Bool ?? true
+        memoryFlushThreshold = String(memory["memoryFlushSoftThresholdTokens"] as? Int ?? 4000)
+        let memoryProviderConfig = config["memory_provider"] as? [String: Any] ?? [:]
+        let providerId = memoryProviderConfig["provider"] as? String ?? "local"
+        memoryProvider = Self.memoryProviderChoices.contains { $0.id == providerId } ? providerId : "local"
+        memoryAutoRecall = memoryProviderConfig["autoRecall"] as? Bool ?? true
+        memoryAutoCapture = memoryProviderConfig["autoCapture"] as? Bool ?? true
+        var fieldValues: [String: String] = [:]
+        for (provider, fields) in Self.memoryProviderFieldSpecs {
+            let section = memoryProviderConfig[provider] as? [String: Any] ?? [:]
+            for field in fields {
+                let fallback = field.key == "apiKey" ? "" : field.placeholder
+                fieldValues["\(provider).\(field.key)"] = section[field.key] as? String ?? fallback
+            }
+        }
+        memoryProviderFields = fieldValues
+        let indexer = config["workspace_indexer"] as? [String: Any] ?? [:]
+        indexEnabled = indexer["enabled"] as? Bool ?? true
+        indexSemantic = indexer["semanticEnabled"] as? Bool ?? true
+        indexHidden = indexer["includeHidden"] as? Bool ?? false
+        indexAutoReindex = indexer["autoReindexOnWorkspaceSet"] as? Bool ?? true
+        let embedding = indexer["embeddingProvider"] as? String ?? "auto"
+        indexEmbeddingProvider = ["auto", "transformers_js", "openai", "gemini", "ollama"].contains(embedding) ? embedding : "auto"
+        indexEmbeddingModel = indexer["embeddingModel"] as? String ?? ""
     }
 
     private func readAccentKey(from config: [String: Any]) -> String? {
@@ -761,6 +1097,7 @@ struct NativeSettingsScreen: View {
         case appearance
         case model
         case speech
+        case memory
         case features
         case advanced
     }
