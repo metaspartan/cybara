@@ -98,6 +98,13 @@ import {
 } from "../api/memory/memory-api";
 import { getVectorStore } from "../core/memory/vector-store";
 import {
+  getMemoryProviderCatalog,
+  mergeMemoryProviderSettingsUpdate,
+  normalizeMemoryProviderId,
+  redactMemoryProviderSettings,
+  testMemoryProvider,
+} from "../core/memory/providers";
+import {
   searchAllLogs,
   getRecentActivity,
   getSessionMessages as getLogSessionMessages,
@@ -666,6 +673,7 @@ const routes: Record<string, RouteHandler> = {
     sandbox_runtime: config.getSandboxRuntime(),
     workspace_indexer: config.getWorkspaceIndexerSettings(),
     memory: config.getMemoryBehaviorSettings(),
+    memory_provider: redactMemoryProviderSettings(config.getMemoryProviderSettings()),
     speech: config.getSpeechSettings(),
     computer_use: config.getComputerUseSettings(),
     reasoning_effort: config.getDefaultReasoningEffort(),
@@ -703,6 +711,10 @@ const routes: Record<string, RouteHandler> = {
       }
       if (key === "memory") {
         config.setMemoryBehaviorSettings(value);
+        continue;
+      }
+      if (key === "memory_provider") {
+        config.setMemoryProviderSettings(value);
         continue;
       }
       if (key === "speech") {
@@ -3508,6 +3520,25 @@ const routes: Record<string, RouteHandler> = {
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : "unavailable" };
     }
+  },
+  "GET /api/memory/providers": () => {
+    const settings = config.getMemoryProviderSettings();
+    return {
+      success: true,
+      settings: redactMemoryProviderSettings(settings),
+      providers: getMemoryProviderCatalog(settings),
+    };
+  },
+  "POST /api/memory/providers/test": async (body) => {
+    const data = (body || {}) as { provider?: string; settings?: unknown };
+    const stored = config.getMemoryProviderSettings();
+    const settings =
+      data.settings !== undefined
+        ? mergeMemoryProviderSettingsUpdate(stored, data.settings)
+        : stored;
+    const provider = normalizeMemoryProviderId(data.provider ?? settings.provider);
+    const health = await testMemoryProvider(provider, settings);
+    return { success: health.ok, provider, ...health };
   },
   "DELETE /api/memory/:file": async (body, params) => {
     const data = (body || {}) as { index?: number };

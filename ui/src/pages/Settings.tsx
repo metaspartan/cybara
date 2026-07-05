@@ -19,11 +19,13 @@ import {
 import {
   extractApiError,
   settingsApi,
+  memoryApi,
   computerUseApi,
   sandboxBrowserApi,
   type ComputerUseStatus,
   type SandboxBrowserStatus,
 } from "@/lib/api";
+import { Switch } from "@/components/ui/Switch";
 import { openExternal } from "@/utils/openExternal";
 import {
   checkForDesktopUpdate,
@@ -1038,13 +1040,147 @@ function memoryRecallConfigPayload(recall: MemoryRecallSettingsState): Record<st
   };
 }
 
+type MemoryProviderChoice =
+  | "local"
+  | "supermemory"
+  | "mem0"
+  | "honcho"
+  | "openviking"
+  | "hindsight";
+
+type MemoryProviderFieldValues = Record<string, string>;
+
+type MemoryProviderSettingsState = {
+  provider: MemoryProviderChoice;
+  autoRecall: boolean;
+  autoCapture: boolean;
+  supermemory: MemoryProviderFieldValues;
+  mem0: MemoryProviderFieldValues;
+  honcho: MemoryProviderFieldValues;
+  openviking: MemoryProviderFieldValues;
+  hindsight: MemoryProviderFieldValues;
+};
+
+type MemoryProviderFieldSpec = {
+  key: string;
+  label: string;
+  secret?: boolean;
+  required?: boolean;
+  placeholder?: string;
+};
+
+type ExternalMemoryProviderChoice = Exclude<MemoryProviderChoice, "local">;
+
+const memoryProviderOptions: Array<{ value: MemoryProviderChoice; label: string }> = [
+  { value: "local", label: "Built-in (local)" },
+  { value: "supermemory", label: "Supermemory" },
+  { value: "mem0", label: "Mem0" },
+  { value: "honcho", label: "Honcho" },
+  { value: "openviking", label: "OpenViking" },
+  { value: "hindsight", label: "Hindsight" },
+];
+
+const memoryProviderDocs: Record<ExternalMemoryProviderChoice, string> = {
+  supermemory: "https://docs.supermemory.ai",
+  mem0: "https://docs.mem0.ai",
+  honcho: "https://docs.honcho.dev",
+  openviking: "https://github.com/volcengine/OpenViking",
+  hindsight: "https://hindsight.vectorize.io",
+};
+
+const memoryProviderFieldSpecs: Record<ExternalMemoryProviderChoice, MemoryProviderFieldSpec[]> = {
+  supermemory: [
+    { key: "apiKey", label: "API key", secret: true, required: true },
+    { key: "baseUrl", label: "Base URL", placeholder: "https://api.supermemory.ai" },
+    { key: "containerTag", label: "Container tag", placeholder: "cybara" },
+  ],
+  mem0: [
+    { key: "apiKey", label: "API key", secret: true, required: true },
+    { key: "baseUrl", label: "Base URL", placeholder: "https://api.mem0.ai" },
+    { key: "userId", label: "User ID", placeholder: "cybara-user" },
+    { key: "agentId", label: "Agent ID", placeholder: "cybara" },
+  ],
+  honcho: [
+    { key: "apiKey", label: "API key", secret: true },
+    { key: "baseUrl", label: "Base URL", placeholder: "https://api.honcho.dev" },
+    { key: "workspace", label: "Workspace", placeholder: "cybara" },
+    { key: "peer", label: "Peer", placeholder: "user" },
+  ],
+  openviking: [
+    { key: "baseUrl", label: "Server URL", required: true, placeholder: "http://127.0.0.1:1933" },
+    { key: "apiKey", label: "API key", secret: true },
+  ],
+  hindsight: [
+    { key: "apiKey", label: "API key", secret: true },
+    { key: "baseUrl", label: "Base URL", placeholder: "https://api.hindsight.vectorize.io" },
+    { key: "tenant", label: "Tenant", placeholder: "default" },
+    { key: "bankId", label: "Memory bank", placeholder: "cybara" },
+  ],
+};
+
+const defaultMemoryProviderSettings: MemoryProviderSettingsState = {
+  provider: "local",
+  autoRecall: true,
+  autoCapture: true,
+  supermemory: { apiKey: "", baseUrl: "https://api.supermemory.ai", containerTag: "cybara" },
+  mem0: { apiKey: "", baseUrl: "https://api.mem0.ai", userId: "cybara-user", agentId: "cybara" },
+  honcho: { apiKey: "", baseUrl: "https://api.honcho.dev", workspace: "cybara", peer: "user" },
+  openviking: { apiKey: "", baseUrl: "http://127.0.0.1:1933" },
+  hindsight: {
+    apiKey: "",
+    baseUrl: "https://api.hindsight.vectorize.io",
+    tenant: "default",
+    bankId: "cybara",
+  },
+};
+
+function readMemoryProviderChoice(value: unknown): MemoryProviderChoice {
+  if (typeof value !== "string") return "local";
+  const normalized = value.trim().toLowerCase();
+  return memoryProviderOptions.some((option) => option.value === normalized)
+    ? (normalized as MemoryProviderChoice)
+    : "local";
+}
+
+function readMemoryProviderFields(
+  value: unknown,
+  defaults: MemoryProviderFieldValues
+): MemoryProviderFieldValues {
+  const record = asSettingsRecord(value);
+  const out: MemoryProviderFieldValues = {};
+  for (const [key, fallback] of Object.entries(defaults)) {
+    out[key] = typeof record[key] === "string" ? (record[key] as string) : fallback;
+  }
+  return out;
+}
+
+function readMemoryProviderSettings(value: unknown): MemoryProviderSettingsState {
+  const record = asSettingsRecord(value);
+  const defaults = defaultMemoryProviderSettings;
+  return {
+    provider: readMemoryProviderChoice(record.provider),
+    autoRecall: readBooleanSetting(record.autoRecall, defaults.autoRecall),
+    autoCapture: readBooleanSetting(record.autoCapture, defaults.autoCapture),
+    supermemory: readMemoryProviderFields(record.supermemory, defaults.supermemory),
+    mem0: readMemoryProviderFields(record.mem0, defaults.mem0),
+    honcho: readMemoryProviderFields(record.honcho, defaults.honcho),
+    openviking: readMemoryProviderFields(record.openviking, defaults.openviking),
+    hindsight: readMemoryProviderFields(record.hindsight, defaults.hindsight),
+  };
+}
+
 function MemoryBehaviorSettings() {
   const { addToast } = useUIStore();
   const [memory, setMemory] = useState<MemoryBehaviorSettingsState>(defaultMemoryBehaviorSettings);
   const [recall, setRecall] = useState<MemoryRecallSettingsState>(defaultMemoryRecallSettings);
+  const [provider, setProvider] = useState<MemoryProviderSettingsState>(
+    defaultMemoryProviderSettings
+  );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingRecall, setSavingRecall] = useState(false);
+  const [testingProvider, setTestingProvider] = useState(false);
+  const [providerTest, setProviderTest] = useState<{ ok: boolean; detail: string } | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -1054,6 +1190,7 @@ function MemoryBehaviorSettings() {
         if (!mounted || !result.success) return;
         setMemory(readMemoryBehaviorSettings(result.data?.memory));
         setRecall(readMemoryRecallSettings(result.data?.workspace_indexer));
+        setProvider(readMemoryProviderSettings(result.data?.memory_provider));
       } catch {
         // Keep defaults available while the gateway is unavailable.
       } finally {
@@ -1074,10 +1211,27 @@ function MemoryBehaviorSettings() {
     setRecall((current) => ({ ...current, ...patch }));
   };
 
+  const updateProvider = (patch: Partial<MemoryProviderSettingsState>) => {
+    setProviderTest(null);
+    setProvider((current) => ({ ...current, ...patch }));
+  };
+
+  const updateProviderField = (
+    providerId: ExternalMemoryProviderChoice,
+    key: string,
+    value: string
+  ) => {
+    setProviderTest(null);
+    setProvider((current) => ({
+      ...current,
+      [providerId]: { ...current[providerId], [key]: value },
+    }));
+  };
+
   const save = async () => {
     setSaving(true);
     try {
-      const result = await settingsApi.updateConfig({ memory });
+      const result = await settingsApi.updateConfig({ memory, memory_provider: provider });
       if (!result.success || result.data?.success === false) {
         throw new Error(result.error || "Memory settings were not saved");
       }
@@ -1096,70 +1250,299 @@ function MemoryBehaviorSettings() {
         workspace_indexer: memoryRecallConfigPayload(recall),
       });
       if (!result.success || result.data?.success === false) {
-        throw new Error(result.error || "Recall settings were not saved");
+        throw new Error(result.error || "Indexing settings were not saved");
       }
-      addToast("success", "Recall settings saved");
+      addToast("success", "Indexing settings saved");
     } catch (error) {
-      addToast("error", error instanceof Error ? error.message : "Failed to save recall settings");
+      addToast(
+        "error",
+        error instanceof Error ? error.message : "Failed to save indexing settings"
+      );
     } finally {
       setSavingRecall(false);
     }
   };
 
+  const testProvider = async () => {
+    setTestingProvider(true);
+    setProviderTest(null);
+    try {
+      const result = await memoryApi.testProvider(provider.provider, provider);
+      if (result.data) {
+        setProviderTest({ ok: result.data.ok, detail: result.data.detail });
+      } else {
+        setProviderTest({ ok: false, detail: result.error || "Connection test failed" });
+      }
+    } catch (error) {
+      setProviderTest({
+        ok: false,
+        detail: error instanceof Error ? error.message : "Connection test failed",
+      });
+    } finally {
+      setTestingProvider(false);
+    }
+  };
+
+  const activeExternalProvider =
+    provider.provider === "local" ? null : (provider.provider as ExternalMemoryProviderChoice);
+
   return (
-    <Card variant="liquid">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Brain className="w-5 h-5 text-indigo-400" />
-          Memory Behavior
-        </CardTitle>
-        <CardDescription>
-          Controls when agents learn durable facts and when long chats flush memory before
-          compaction.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-5">
+    <div className="space-y-6">
+      <Card variant="liquid">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Brain className="w-5 h-5 text-indigo-400" />
+            Memory
+          </CardTitle>
+          <CardDescription>
+            Controls how agents learn durable facts, when long chats flush memory before
+            compaction, and which memory provider stores long-term memories.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Learning loop</h3>
+              <p className="text-xs text-gray-400 mt-1">
+                After substantial responses, Cybara can run a silent reviewer that saves durable
+                preferences, corrections, and project facts.
+              </p>
+            </div>
+            <Switch
+              label="Background memory review"
+              checked={memory.backgroundReviewEnabled}
+              disabled={loading || saving}
+              onChange={(checked) => updateMemory({ backgroundReviewEnabled: checked })}
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input
+                label="Minimum interval (minutes)"
+                min={1}
+                max={1440}
+                type="number"
+                value={Math.round(memory.backgroundReviewMinIntervalMs / 60000)}
+                disabled={loading || saving}
+                onChange={(event) =>
+                  updateMemory({
+                    backgroundReviewMinIntervalMs:
+                      Math.max(1, Number(event.target.value) || 5) * 60000,
+                  })
+                }
+              />
+              <Input
+                label="Timeout (seconds)"
+                min={10}
+                max={600}
+                type="number"
+                value={memory.backgroundReviewTimeoutSeconds}
+                disabled={loading || saving}
+                onChange={(event) =>
+                  updateMemory({
+                    backgroundReviewTimeoutSeconds: Math.max(10, Number(event.target.value) || 90),
+                  })
+                }
+              />
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Pre-compaction flush</h3>
+              <p className="text-xs text-gray-400 mt-1">
+                Before a long chat compacts, the agent gets one chance to save durable memory so
+                important details are not lost.
+              </p>
+            </div>
+            <Switch
+              label="Flush before compaction"
+              checked={memory.memoryFlushEnabled}
+              disabled={loading || saving}
+              onChange={(checked) => updateMemory({ memoryFlushEnabled: checked })}
+            />
+            <Input
+              label="Soft threshold reserve (tokens)"
+              min={500}
+              max={200000}
+              type="number"
+              value={memory.memoryFlushSoftThresholdTokens}
+              disabled={loading || saving}
+              onChange={(event) =>
+                updateMemory({
+                  memoryFlushSoftThresholdTokens: Math.max(500, Number(event.target.value) || 4000),
+                })
+              }
+            />
+          </div>
+        </div>
+
+        <details className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+          <summary className="cursor-pointer text-sm font-medium text-gray-200">
+            Advanced memory prompts
+          </summary>
+          <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <Textarea
+              label="Flush prompt"
+              value={memory.memoryFlushPrompt}
+              disabled={loading || saving}
+              rows={5}
+              onChange={(event) => updateMemory({ memoryFlushPrompt: event.target.value })}
+            />
+            <Textarea
+              label="Flush system prompt"
+              value={memory.memoryFlushSystemPrompt}
+              disabled={loading || saving}
+              rows={5}
+              onChange={(event) => updateMemory({ memoryFlushSystemPrompt: event.target.value })}
+            />
+          </div>
+        </details>
+
         <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-4">
           <div>
-            <h3 className="text-sm font-semibold text-white">Recall search</h3>
+            <h3 className="text-sm font-semibold text-white">Memory provider</h3>
             <p className="text-xs text-gray-400 mt-1">
-              Controls the semantic index used by memory search, workspace search, and contextual
-              recall.
+              Built-in local memory (MEMORY.md + daily files) always runs. Selecting an external
+              provider mirrors durable memories to it and blends its recall into agent context.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
-              <span className="text-sm text-gray-300">Build recall index</span>
-              <input
-                type="checkbox"
-                checked={recall.enabled}
-                disabled={loading || savingRecall}
-                onChange={(event) => updateRecall({ enabled: event.currentTarget.checked })}
-                className="h-4 w-4 accent-indigo-500"
-              />
-            </label>
-            <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
-              <span className="text-sm text-gray-300">Semantic recall</span>
-              <input
-                type="checkbox"
-                checked={recall.semanticEnabled}
-                disabled={loading || savingRecall}
-                onChange={(event) => updateRecall({ semanticEnabled: event.currentTarget.checked })}
-                className="h-4 w-4 accent-indigo-500"
-              />
-            </label>
-            <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
-              <span className="text-sm text-gray-300">Include hidden files</span>
-              <input
-                type="checkbox"
-                checked={recall.includeHidden}
-                disabled={loading || savingRecall}
-                onChange={(event) => updateRecall({ includeHidden: event.currentTarget.checked })}
-                className="h-4 w-4 accent-indigo-500"
-              />
-            </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Select
+              label="Provider"
+              options={memoryProviderOptions}
+              value={provider.provider}
+              disabled={loading || saving}
+              onChange={(value) =>
+                updateProvider({ provider: value as MemoryProviderChoice })
+              }
+            />
+            {activeExternalProvider ? (
+              <div className="flex items-end pb-1">
+                <button
+                  type="button"
+                  className="text-xs text-indigo-300 hover:text-indigo-200 underline underline-offset-2"
+                  onClick={() => void openExternal(memoryProviderDocs[activeExternalProvider])}
+                >
+                  {memoryProviderDocs[activeExternalProvider]}
+                </button>
+              </div>
+            ) : null}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          {activeExternalProvider ? (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {memoryProviderFieldSpecs[activeExternalProvider].map((field) => (
+                  <Input
+                    key={`${activeExternalProvider}-${field.key}`}
+                    label={`${field.label}${field.required ? " *" : ""}`}
+                    type={field.secret ? "password" : "text"}
+                    placeholder={field.placeholder || ""}
+                    value={provider[activeExternalProvider][field.key] ?? ""}
+                    disabled={loading || saving}
+                    onChange={(event) =>
+                      updateProviderField(activeExternalProvider, field.key, event.target.value)
+                    }
+                  />
+                ))}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Switch
+                  label="Auto recall"
+                  description="Blend provider memories into agent context"
+                  checked={provider.autoRecall}
+                  disabled={loading || saving}
+                  onChange={(checked) => updateProvider({ autoRecall: checked })}
+                />
+                <Switch
+                  label="Auto capture"
+                  description="Mirror new durable memories to the provider"
+                  checked={provider.autoCapture}
+                  disabled={loading || saving}
+                  onChange={(checked) => updateProvider({ autoCapture: checked })}
+                />
+              </div>
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="secondary"
+                  leftIcon={
+                    testingProvider ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Activity className="w-4 h-4" />
+                    )
+                  }
+                  onClick={() => void testProvider()}
+                  disabled={loading || saving || testingProvider}
+                >
+                  Test Connection
+                </Button>
+                {providerTest ? (
+                  <span
+                    className={`text-xs ${providerTest.ok ? "text-emerald-300" : "text-red-300"}`}
+                  >
+                    {providerTest.ok ? "Connected" : "Failed"} — {providerTest.detail}
+                  </span>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+        </div>
+
+        <div className="flex justify-end">
+          <Button
+            leftIcon={
+              saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />
+            }
+            onClick={() => void save()}
+            disabled={loading || saving}
+          >
+            Save Memory Settings
+          </Button>
+        </div>
+        </CardContent>
+      </Card>
+
+      <Card variant="liquid">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="w-5 h-5 text-indigo-400" />
+            Indexing
+          </CardTitle>
+          <CardDescription>
+            The embedding index that powers semantic search over memory, sessions, and workspace
+            files. Separate from memory itself — memories persist even with indexing off.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Switch
+              label="Build recall index"
+              description="Index memory and workspace files for search"
+              checked={recall.enabled}
+              disabled={loading || savingRecall}
+              onChange={(checked) => updateRecall({ enabled: checked })}
+            />
+            <Switch
+              label="Semantic recall"
+              description="Use embeddings for similarity search"
+              checked={recall.semanticEnabled}
+              disabled={loading || savingRecall}
+              onChange={(checked) => updateRecall({ semanticEnabled: checked })}
+            />
+            <Switch
+              label="Include hidden files"
+              checked={recall.includeHidden}
+              disabled={loading || savingRecall}
+              onChange={(checked) => updateRecall({ includeHidden: checked })}
+            />
+            <Switch
+              label="Auto reindex on workspace change"
+              checked={recall.autoReindexOnWorkspaceSet}
+              disabled={loading || savingRecall}
+              onChange={(checked) => updateRecall({ autoReindexOnWorkspaceSet: checked })}
+            />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             <Select
               label="Embedding provider"
               options={memoryRecallProviderOptions}
@@ -1251,18 +1634,6 @@ function MemoryBehaviorSettings() {
                 })
               }
             />
-            <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 md:col-span-2">
-              <span className="text-sm text-gray-300">Auto reindex when workspace changes</span>
-              <input
-                type="checkbox"
-                checked={recall.autoReindexOnWorkspaceSet}
-                disabled={loading || savingRecall}
-                onChange={(event) =>
-                  updateRecall({ autoReindexOnWorkspaceSet: event.currentTarget.checked })
-                }
-                className="h-4 w-4 accent-indigo-500"
-              />
-            </label>
           </div>
           <div className="flex justify-end">
             <Button
@@ -1276,144 +1647,12 @@ function MemoryBehaviorSettings() {
               onClick={() => void saveRecall()}
               disabled={loading || savingRecall}
             >
-              Save Recall Settings
+              Save Indexing Settings
             </Button>
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-4">
-            <div>
-              <h3 className="text-sm font-semibold text-white">Learning loop</h3>
-              <p className="text-xs text-gray-400 mt-1">
-                After substantial responses, Cybara can run a silent reviewer that saves durable
-                preferences, corrections, and project facts.
-              </p>
-            </div>
-            <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
-              <span className="text-sm text-gray-300">Background memory review</span>
-              <input
-                type="checkbox"
-                checked={memory.backgroundReviewEnabled}
-                disabled={loading || saving}
-                onChange={(event) =>
-                  updateMemory({ backgroundReviewEnabled: event.currentTarget.checked })
-                }
-                className="h-4 w-4 accent-indigo-500"
-              />
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Input
-                label="Minimum interval (minutes)"
-                min={1}
-                max={1440}
-                type="number"
-                value={Math.round(memory.backgroundReviewMinIntervalMs / 60000)}
-                disabled={loading || saving}
-                onChange={(event) =>
-                  updateMemory({
-                    backgroundReviewMinIntervalMs:
-                      Math.max(1, Number(event.target.value) || 5) * 60000,
-                  })
-                }
-              />
-              <Input
-                label="Timeout (seconds)"
-                min={10}
-                max={600}
-                type="number"
-                value={memory.backgroundReviewTimeoutSeconds}
-                disabled={loading || saving}
-                onChange={(event) =>
-                  updateMemory({
-                    backgroundReviewTimeoutSeconds: Math.max(10, Number(event.target.value) || 90),
-                  })
-                }
-              />
-            </div>
-          </div>
-
-          <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-4">
-            <div>
-              <h3 className="text-sm font-semibold text-white">Pre-compaction flush</h3>
-              <p className="text-xs text-gray-400 mt-1">
-                Before a long chat compacts, the agent gets one chance to save durable memory so
-                important details are not lost.
-              </p>
-            </div>
-            <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
-              <span className="text-sm text-gray-300">Flush before compaction</span>
-              <input
-                type="checkbox"
-                checked={memory.memoryFlushEnabled}
-                disabled={loading || saving}
-                onChange={(event) =>
-                  updateMemory({ memoryFlushEnabled: event.currentTarget.checked })
-                }
-                className="h-4 w-4 accent-indigo-500"
-              />
-            </label>
-            <Input
-              label="Soft threshold reserve (tokens)"
-              min={500}
-              max={200000}
-              type="number"
-              value={memory.memoryFlushSoftThresholdTokens}
-              disabled={loading || saving}
-              onChange={(event) =>
-                updateMemory({
-                  memoryFlushSoftThresholdTokens: Math.max(500, Number(event.target.value) || 4000),
-                })
-              }
-            />
-          </div>
-        </div>
-
-        <details className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-          <summary className="cursor-pointer text-sm font-medium text-gray-200">
-            Advanced memory prompts
-          </summary>
-          <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Textarea
-              label="Flush prompt"
-              value={memory.memoryFlushPrompt}
-              disabled={loading || saving}
-              rows={5}
-              onChange={(event) => updateMemory({ memoryFlushPrompt: event.target.value })}
-            />
-            <Textarea
-              label="Flush system prompt"
-              value={memory.memoryFlushSystemPrompt}
-              disabled={loading || saving}
-              rows={5}
-              onChange={(event) => updateMemory({ memoryFlushSystemPrompt: event.target.value })}
-            />
-          </div>
-        </details>
-
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm text-gray-300">
-          <p className="font-medium text-white">Active memory stack</p>
-          <p className="mt-1 text-xs text-gray-400">
-            Built-in durable memory, daily memory files, session search, semantic recall, and
-            self-improving skills are available today. External memory providers such as Honcho,
-            Mem0, OpenViking, Hindsight, and Supermemory need backend provider adapters before they
-            can be safely selected here.
-          </p>
-        </div>
-
-        <div className="flex justify-end">
-          <Button
-            leftIcon={
-              saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />
-            }
-            onClick={() => void save()}
-            disabled={loading || saving}
-          >
-            Save Memory Settings
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

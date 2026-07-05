@@ -1,5 +1,11 @@
 import { tables } from "./database";
 import { normalizeReasoningEffort } from "./llm/reasoning";
+import {
+  type MemoryProviderSettings,
+  DEFAULT_MEMORY_PROVIDER_SETTINGS,
+  mergeMemoryProviderSettingsUpdate,
+  normalizeMemoryProviderSettings,
+} from "./memory/providers";
 
 interface PlatformConfig {
   name: string;
@@ -583,6 +589,7 @@ class ConfigManager {
       sandbox_runtime: { ...DEFAULT_SANDBOX_RUNTIME },
       workspace_indexer: { ...DEFAULT_WORKSPACE_INDEXER_SETTINGS },
       memory: { ...DEFAULT_MEMORY_BEHAVIOR_SETTINGS },
+      memory_provider: { ...DEFAULT_MEMORY_PROVIDER_SETTINGS },
       speech: { ...DEFAULT_SPEECH_SETTINGS },
       computer_use: { ...DEFAULT_COMPUTER_USE_SETTINGS },
     };
@@ -674,6 +681,17 @@ class ConfigManager {
     const normalized = normalizeMemoryBehaviorSettings(settings);
     this.set("memory", normalized);
     return normalized;
+  }
+
+  getMemoryProviderSettings(): MemoryProviderSettings {
+    const stored = this.get<unknown>("memory_provider");
+    return normalizeMemoryProviderSettings(stored);
+  }
+
+  setMemoryProviderSettings(settings: unknown): MemoryProviderSettings {
+    const merged = mergeMemoryProviderSettingsUpdate(this.getMemoryProviderSettings(), settings);
+    this.set("memory_provider", merged);
+    return merged;
   }
 
   getSpeechSettings(): SpeechSettings {

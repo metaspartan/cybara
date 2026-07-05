@@ -4,6 +4,7 @@ import { join } from "path";
 import { memoryDir } from "../paths";
 import { getVectorStore } from "./vector-store";
 import { sanitizeMemoryContent } from "./sanitize";
+import { captureToExternalMemory } from "./providers";
 
 const MEMORY_FILE = "MEMORY.md";
 const MEMORY_PATH = join(memoryDir, MEMORY_FILE);
@@ -84,11 +85,29 @@ export async function saveDurableMemory(entry: Omit<DurableMemoryEntry, "timesta
         console.warn("[Memory] Failed to index MEMORY.md:", error);
     }
 
+    void mirrorToExternalProvider(entry.category, safeContent, entry.source);
+
     return {
         success: true,
         path: MEMORY_PATH,
         indexed,
     };
+}
+
+async function mirrorToExternalProvider(
+    category: string,
+    content: string,
+    source?: string
+): Promise<void> {
+    try {
+        const { config } = await import("../config");
+        const settings = config.getMemoryProviderSettings();
+        const metadata: Record<string, string> = { category, app: "cybara" };
+        if (source) metadata.source = source;
+        await captureToExternalMemory(settings, content, metadata);
+    } catch {
+        /* external memory is best-effort; the local write already succeeded */
+    }
 }
 
 export function getDurableMemorySummary(): Record<string, number> {

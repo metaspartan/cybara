@@ -18,6 +18,7 @@ import {
   isQuietHours,
   getHeartbeatSummary,
   setQuietHours,
+  getActiveMemoryProviderAdapter,
   type DurableMemoryEntry,
   type HeartbeatState,
 } from "../../memory";
@@ -113,6 +114,7 @@ export async function handleMemorySearch(args: Record<string, unknown>): Promise
 
   const vectorStore = getVectorStore();
   const stats = vectorStore.stats();
+  const externalResultsPromise = searchExternalMemoryProvider(query, maxResults);
 
   if (stats.provider !== "none" && stats.chunks > 0) {
     try {
@@ -124,12 +126,15 @@ export async function handleMemorySearch(args: Record<string, unknown>): Promise
 
       if (vectorResults.length > 0) {
         return {
-          results: vectorResults.map((r) => ({
-            file: r.path.replace("memory/", ""),
-            content: r.content,
-            score: r.score,
-            method: "semantic",
-          })),
+          results: [
+            ...vectorResults.map((r) => ({
+              file: r.path.replace("memory/", ""),
+              content: r.content,
+              score: r.score,
+              method: "semantic",
+            })),
+            ...(await externalResultsPromise),
+          ],
           query,
           searchMethod: `semantic (${stats.provider}/${stats.model})`,
         };
@@ -201,13 +206,36 @@ export async function handleMemorySearch(args: Record<string, unknown>): Promise
   }
 
   return {
-    results,
+    results: [...results, ...(await externalResultsPromise)],
     query,
     searchMethod:
       stats.provider !== "none"
         ? `keyword (semantic unavailable: ${stats.chunks} chunks indexed)`
         : "keyword (no embedding provider)",
   };
+}
+
+async function searchExternalMemoryProvider(
+  query: string,
+  maxResults: number
+): Promise<Array<{ file: string; content: string; score: number; method: string }>> {
+  try {
+    const { config } = await import("../../config");
+    const settings = config.getMemoryProviderSettings();
+    const adapter = getActiveMemoryProviderAdapter(settings);
+    if (!adapter) return [];
+    // Explicit tool searches always query the provider; autoRecall only gates
+    // the automatic context injection.
+    const external = await adapter.search(settings, query, maxResults);
+    return external.map((entry) => ({
+      file: `${adapter.label} (external)`,
+      content: entry.content,
+      score: entry.score ?? 0.5,
+      method: adapter.id,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 export async function handleMemoryGet(

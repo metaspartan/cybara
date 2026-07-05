@@ -1,4 +1,5 @@
 import { getVectorStore, type VectorSearchResult } from "./vector-store";
+import { recallFromExternalMemory } from "./providers";
 
 export function formatRecallBlock(results: Array<{ content: string }>): string {
   const snippets = results
@@ -19,14 +20,44 @@ export async function recallRelevantMemory(
 ): Promise<string> {
   const trimmed = (query || "").trim();
   if (!trimmed) return "";
+  const [local, external] = await Promise.all([
+    recallFromLocalMemory(trimmed, maxResults),
+    recallFromActiveExternalProvider(trimmed, maxResults),
+  ]);
+  const seen = new Set<string>();
+  const merged = [...local, ...external].filter((result) => {
+    const key = result.content.replace(/\s+/g, " ").trim().toLowerCase().slice(0, 200);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return formatRecallBlock(merged.slice(0, maxResults * 2));
+}
+
+async function recallFromLocalMemory(
+  query: string,
+  maxResults: number
+): Promise<Array<{ content: string }>> {
   try {
-    const results: VectorSearchResult[] = await getVectorStore().search(trimmed, {
+    const results: VectorSearchResult[] = await getVectorStore().search(query, {
       source: "memory",
       maxResults,
       minScore: 0.35,
     });
-    return formatRecallBlock(results);
+    return results;
   } catch {
-    return "";
+    return [];
+  }
+}
+
+async function recallFromActiveExternalProvider(
+  query: string,
+  maxResults: number
+): Promise<Array<{ content: string }>> {
+  try {
+    const { config } = await import("../config");
+    return await recallFromExternalMemory(config.getMemoryProviderSettings(), query, maxResults);
+  } catch {
+    return [];
   }
 }

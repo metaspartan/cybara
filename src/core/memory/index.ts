@@ -40,6 +40,23 @@ export {
 } from "./durable";
 
 export {
+    type MemoryProviderId,
+    type MemoryProviderSettings,
+    type MemoryProviderCatalogEntry,
+    type ExternalMemoryResult,
+    type MemoryProviderHealth,
+    DEFAULT_MEMORY_PROVIDER_SETTINGS,
+    normalizeMemoryProviderSettings,
+    redactMemoryProviderSettings,
+    mergeMemoryProviderSettingsUpdate,
+    getMemoryProviderCatalog,
+    getActiveMemoryProviderAdapter,
+    testMemoryProvider,
+    captureToExternalMemory,
+    recallFromExternalMemory,
+} from "./providers";
+
+export {
     type HeartbeatState,
     loadHeartbeatState,
     saveHeartbeatState,

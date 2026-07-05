@@ -809,6 +809,30 @@ export const memoryApi = {
     fetchApi<Memory[] | { results: Memory[] }>(
       `/memory/search?query=${encodeURIComponent(query)}${limit ? `&limit=${limit}` : ""}`
     ),
+  providers: () =>
+    fetchApi<{
+      success: boolean;
+      settings: Record<string, unknown>;
+      providers: Array<{
+        id: string;
+        label: string;
+        docsUrl: string;
+        configured: boolean;
+        active: boolean;
+        fields: Array<{
+          key: string;
+          label: string;
+          secret?: boolean;
+          required?: boolean;
+          placeholder?: string;
+        }>;
+      }>;
+    }>("/memory/providers"),
+  testProvider: (provider: string, settings?: Record<string, unknown>) =>
+    fetchApi<{ success: boolean; provider: string; ok: boolean; detail: string }>(
+      "/memory/providers/test",
+      { method: "POST", body: JSON.stringify({ provider, settings }) }
+    ),
 };
 
 export const tasksApi = {
