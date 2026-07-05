@@ -122,6 +122,27 @@ function formatPct(value?: number | null): string {
 function ThemeSettings() {
   const { accent, setAccent, addToast } = useUIStore();
   const [savingAccent, setSavingAccent] = useState<ThemeAccent | null>(null);
+  const { data: identity } = useIdentity();
+  const updateIdentity = useUpdateIdentity();
+  const [lightMode, setLightMode] = useState(false);
+
+  useEffect(() => {
+    setLightMode((identity as IdentityConfig | undefined)?.theme === "light");
+  }, [identity]);
+
+  const toggleLightMode = async (next: boolean) => {
+    setLightMode(next);
+    try {
+      const current = (identity as IdentityConfig | undefined) ?? {};
+      // PUT /api/identity stores the body verbatim, so send the full identity
+      // with only the theme changed.
+      await updateIdentity.mutateAsync({ ...current, theme: next ? "light" : "dark" });
+      addToast("success", `Theme set to ${next ? "light" : "dark"}`);
+    } catch (error) {
+      setLightMode(!next);
+      addToast("error", error instanceof Error ? error.message : "Failed to update theme");
+    }
+  };
 
   const accentColors: Record<ThemeAccent, string> = {
     indigo: "bg-indigo-500",
@@ -180,9 +201,17 @@ function ThemeSettings() {
           <Palette className="w-5 h-5 text-indigo-400" />
           Theme Settings
         </CardTitle>
-        <CardDescription>Customize the UI accent color</CardDescription>
+        <CardDescription>Appearance and UI accent color</CardDescription>
       </CardHeader>
       <CardContent>
+        <Switch
+          label="Light theme"
+          description="Use the light appearance instead of dark."
+          checked={lightMode}
+          disabled={updateIdentity.isPending}
+          onChange={(checked) => void toggleLightMode(checked)}
+          className="mb-4"
+        />
         <div className="flex flex-wrap gap-3">
           {themeAccentKeys.map((key) => (
             <button
@@ -3055,17 +3084,6 @@ function SystemPromptSection() {
                     value={identityForm.vibe}
                     onChange={(e) => setIdentityForm({ ...identityForm, vibe: e.target.value })}
                     placeholder="Professional, helpful, and concise"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Theme</label>
-                  <Select
-                    value={identityForm.theme}
-                    onChange={(value) => setIdentityForm({ ...identityForm, theme: value })}
-                    options={[
-                      { value: "dark", label: "Dark" },
-                      { value: "light", label: "Light" },
-                    ]}
                   />
                 </div>
               </div>
