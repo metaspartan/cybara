@@ -120,18 +120,21 @@ function formatPct(value?: number | null): string {
 }
 
 function ThemeSettings() {
-  const { accent, setAccent, addToast } = useUIStore();
+  const { accent, setAccent, mode, setMode, addToast } = useUIStore();
   const [savingAccent, setSavingAccent] = useState<ThemeAccent | null>(null);
   const { data: identity } = useIdentity();
   const updateIdentity = useUpdateIdentity();
-  const [lightMode, setLightMode] = useState(false);
+  const lightMode = mode === "light";
 
   useEffect(() => {
-    setLightMode((identity as IdentityConfig | undefined)?.theme === "light");
-  }, [identity]);
+    const identityTheme = (identity as IdentityConfig | undefined)?.theme;
+    if (identityTheme === "light" || identityTheme === "dark") setMode(identityTheme);
+  }, [identity, setMode]);
 
   const toggleLightMode = async (next: boolean) => {
-    setLightMode(next);
+    const previous = mode;
+    // Apply instantly (adds/removes the html.light class), then persist.
+    setMode(next ? "light" : "dark");
     try {
       const current = (identity as IdentityConfig | undefined) ?? {};
       // PUT /api/identity stores the body verbatim, so send the full identity
@@ -139,7 +142,7 @@ function ThemeSettings() {
       await updateIdentity.mutateAsync({ ...current, theme: next ? "light" : "dark" });
       addToast("success", `Theme set to ${next ? "light" : "dark"}`);
     } catch (error) {
-      setLightMode(!next);
+      setMode(previous);
       addToast("error", error instanceof Error ? error.message : "Failed to update theme");
     }
   };

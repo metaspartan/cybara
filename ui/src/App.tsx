@@ -31,7 +31,7 @@ import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { resolveSetupGate } from "@/lib/setupGate";
 import { useEffect } from "react";
-import { readThemeAccentFromConfig, useUIStore } from "@/stores/uiStore";
+import { readThemeAccentFromConfig, readThemeModeFromIdentity, useUIStore } from "@/stores/uiStore";
 
 const SETUP_COMPLETE_KEY = "cybara.setupComplete";
 
@@ -139,6 +139,7 @@ function AppRoutes() {
 
 function ThemeConfigSync() {
   const setAccent = useUIStore((state) => state.setAccent);
+  const setMode = useUIStore((state) => state.setMode);
 
   useEffect(() => {
     let mounted = true;
@@ -148,6 +149,8 @@ function ThemeConfigSync() {
         if (!mounted || !result.success) return;
         const accent = readThemeAccentFromConfig(result.data);
         if (accent) setAccent(accent);
+        const identity = result.data?.identity as Record<string, unknown> | undefined;
+        setMode(readThemeModeFromIdentity(identity));
       } catch {
         // The persisted local accent remains active while the gateway is unavailable.
       }
@@ -162,7 +165,7 @@ function ThemeConfigSync() {
       window.clearInterval(interval);
       window.removeEventListener("focus", syncTheme);
     };
-  }, [setAccent]);
+  }, [setAccent, setMode]);
 
   return null;
 }

@@ -65,9 +65,20 @@ export function themeConfigPayload(accent: ThemeAccent): Record<string, string> 
   };
 }
 
+export type ThemeMode = "dark" | "light";
+
+export function readThemeModeFromIdentity(
+  identity: Record<string, unknown> | undefined
+): ThemeMode {
+  return identity?.theme === "light" ? "light" : "dark";
+}
+
 interface UIState {
   accent: ThemeAccent;
   setAccent: (accent: ThemeAccent) => void;
+
+  mode: ThemeMode;
+  setMode: (mode: ThemeMode) => void;
 
   loading: Record<string, boolean>;
   setLoading: (key: string, value: boolean) => void;
@@ -91,6 +102,11 @@ const applyTheme = (accent: ThemeAccent) => {
   document.documentElement.style.setProperty("--accent-primary", colors.primary);
 };
 
+const applyThemeMode = (mode: ThemeMode) => {
+  if (typeof document === "undefined") return;
+  document.documentElement.classList.toggle("light", mode === "light");
+};
+
 export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
@@ -98,6 +114,12 @@ export const useUIStore = create<UIState>()(
       setAccent: (accent) => {
         applyTheme(accent);
         set({ accent });
+      },
+
+      mode: "dark",
+      setMode: (mode) => {
+        applyThemeMode(mode);
+        set({ mode });
       },
 
       loading: {},
@@ -133,9 +155,10 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: "cybara-ui-settings",
-      partialize: (state) => ({ accent: state.accent }),
+      partialize: (state) => ({ accent: state.accent, mode: state.mode }),
       onRehydrateStorage: () => (state) => {
         if (state?.accent) applyTheme(state.accent);
+        applyThemeMode(state?.mode === "light" ? "light" : "dark");
       },
     }
   )

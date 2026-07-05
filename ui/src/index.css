@@ -661,3 +661,285 @@ select:focus {
     margin-left: 0 !important;
   }
 }
+
+/* ==================== LIGHT THEME ====================
+   The app is authored in dark utilities; `html.light` (set from
+   Settings > General > Light theme, persisted as identity.theme) remaps the
+   design tokens and the dark utility classes used across the app. Selectors
+   are scoped under html.light so they outrank the single-class utilities. */
+
+html.light {
+  color-scheme: light;
+  color: #1c2433;
+  background-color: #eef0f4;
+  --glass-border: rgba(15, 23, 42, 0.1);
+  --glass-surface: rgba(15, 23, 42, 0.03);
+  --glass-highlight: rgba(15, 23, 42, 0.08);
+}
+
+html.light body {
+  background: #eef0f4;
+}
+
+html.light body::before {
+  background:
+    radial-gradient(circle at 15% 50%, rgba(190, 197, 212, 0.35) 0%, transparent 50%),
+    radial-gradient(circle at 85% 30%, rgba(190, 197, 212, 0.2) 0%, transparent 50%);
+}
+
+html.light select {
+  color-scheme: light;
+}
+
+html.light select,
+html.light select option,
+html.light select optgroup {
+  background-color: #ffffff;
+  color: #1c2433;
+}
+
+html.light select option:checked,
+html.light select option:hover {
+  background-color: #e5e8ee;
+  color: #111827;
+}
+
+html.light ::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.18);
+  border-color: rgba(15, 23, 42, 0.08);
+}
+
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 23, 42, 0.3);
+}
+
+html.light input:-webkit-autofill,
+html.light input:-webkit-autofill:hover,
+html.light input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #111827;
+}
+
+/* Glass surfaces */
+html.light .glass {
+  background: rgba(255, 255, 255, 0.78);
+}
+
+html.light .glass-strong {
+  background: rgba(248, 249, 251, 0.95);
+}
+
+html.light .glass-card {
+  background: rgba(15, 23, 42, 0.03);
+  box-shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.06);
+}
+
+html.light .glass-card:hover {
+  background: rgba(15, 23, 42, 0.05);
+  border-color: rgba(15, 23, 42, 0.14);
+}
+
+html.light .glass-chip {
+  background: rgba(15, 23, 42, 0.05);
+  border-color: rgba(15, 23, 42, 0.1);
+}
+
+html.light .glass-button {
+  background: rgba(15, 23, 42, 0.06);
+  border-color: rgba(15, 23, 42, 0.12);
+  color: #111827;
+}
+
+html.light .glass-button:hover {
+  background: rgba(15, 23, 42, 0.1);
+  border-color: rgba(15, 23, 42, 0.2);
+}
+
+html.light .glass-button:active {
+  background: rgba(15, 23, 42, 0.05);
+}
+
+html.light .glass-input {
+  background: rgba(15, 23, 42, 0.04);
+  color: #1f2937;
+}
+
+html.light .glass-input::placeholder {
+  color: rgba(15, 23, 42, 0.4);
+}
+
+html.light .glass-input:hover {
+  border-color: rgba(15, 23, 42, 0.2);
+}
+
+html.light .glass-input:focus,
+html.light .glass-input:focus-visible {
+  background: rgba(15, 23, 42, 0.05);
+}
+
+html.light .shimmer {
+  background: linear-gradient(90deg,
+      rgba(15, 23, 42, 0) 0%,
+      rgba(15, 23, 42, 0.05) 50%,
+      rgba(15, 23, 42, 0) 100%);
+  background-size: 200% 100%;
+}
+
+html.light .text-glow {
+  text-shadow: none;
+}
+
+html.light .gradient-text {
+  color: #111827;
+}
+
+html.light[data-runtime="tauri"][data-platform="linux"] .glass {
+  background: rgba(255, 255, 255, 0.96);
+}
+
+html.light[data-runtime="tauri"][data-platform="linux"] .glass-strong {
+  background: rgba(248, 249, 251, 0.98);
+}
+
+html.light[data-runtime="tauri"][data-platform="linux"] .glass-card {
+  background: rgba(15, 23, 42, 0.025);
+}
+
+html.light[data-runtime="tauri"][data-platform="linux"] .glass-button {
+  background: rgba(15, 23, 42, 0.07);
+}
+
+html.light[data-runtime="tauri"][data-platform="linux"] body::before {
+  background:
+    radial-gradient(circle at 15% 50%, rgba(190, 197, 212, 0.22) 0%, transparent 44%),
+    radial-gradient(circle at 85% 30%, rgba(190, 197, 212, 0.14) 0%, transparent 42%);
+}
+
+/* Text utilities: white/light grays become ink on light surfaces. */
+html.light .text-white { color: #111827; }
+html.light .text-gray-100 { color: #1f2937; }
+html.light .text-gray-200 { color: #374151; }
+html.light .text-gray-300 { color: #4b5563; }
+html.light .text-gray-400 { color: #556275; }
+html.light .hover\:text-white:hover { color: #111827; }
+html.light .hover\:text-gray-200:hover { color: #374151; }
+html.light .hover\:text-gray-300:hover { color: #4b5563; }
+html.light .hover\:text-gray-400:hover { color: #556275; }
+
+/* Surface utilities: translucent white becomes translucent ink. */
+html.light .bg-white\/5 { background-color: rgba(15, 23, 42, 0.05); }
+html.light .bg-white\/10 { background-color: rgba(15, 23, 42, 0.08); }
+html.light .bg-white\/20 { background-color: rgba(15, 23, 42, 0.12); }
+html.light .bg-white\/\[0\.01\] { background-color: rgba(15, 23, 42, 0.02); }
+html.light .bg-white\/\[0\.02\] { background-color: rgba(15, 23, 42, 0.025); }
+html.light .bg-white\/\[0\.025\] { background-color: rgba(15, 23, 42, 0.03); }
+html.light .bg-white\/\[0\.03\] { background-color: rgba(15, 23, 42, 0.035); }
+html.light .bg-white\/\[0\.035\] { background-color: rgba(15, 23, 42, 0.04); }
+html.light .bg-white\/\[0\.04\] { background-color: rgba(15, 23, 42, 0.045); }
+html.light .bg-white\/\[0\.055\] { background-color: rgba(15, 23, 42, 0.05); }
+html.light .bg-white\/\[0\.07\] { background-color: rgba(15, 23, 42, 0.06); }
+html.light .hover\:bg-white\/5:hover { background-color: rgba(15, 23, 42, 0.06); }
+html.light .hover\:bg-white\/8:hover { background-color: rgba(15, 23, 42, 0.07); }
+html.light .hover\:bg-white\/10:hover { background-color: rgba(15, 23, 42, 0.09); }
+html.light .hover\:bg-white\/15:hover { background-color: rgba(15, 23, 42, 0.11); }
+html.light .hover\:bg-white\/\[0\.06\]:hover { background-color: rgba(15, 23, 42, 0.055); }
+html.light .hover\:bg-white\/\[0\.07\]:hover { background-color: rgba(15, 23, 42, 0.06); }
+html.light .hover\:bg-white\/\[0\.08\]:hover { background-color: rgba(15, 23, 42, 0.07); }
+
+/* Inset/dim panels authored as translucent black keep working as subtle
+   surfaces; true overlay scrims (>= 50%) stay dark in both themes. */
+html.light .bg-black\/20 { background-color: rgba(15, 23, 42, 0.05); }
+html.light .bg-black\/25 { background-color: rgba(15, 23, 42, 0.06); }
+html.light .bg-black\/30 { background-color: rgba(15, 23, 42, 0.07); }
+html.light .bg-black\/35 { background-color: rgba(15, 23, 42, 0.08); }
+html.light .bg-black\/40 { background-color: rgba(15, 23, 42, 0.09); }
+html.light .bg-black\/45 { background-color: rgba(15, 23, 42, 0.1); }
+
+/* Border + divider utilities. */
+html.light .border-white\/5 { border-color: rgba(15, 23, 42, 0.08); }
+html.light .border-white\/10 { border-color: rgba(15, 23, 42, 0.12); }
+html.light .border-white\/12 { border-color: rgba(15, 23, 42, 0.13); }
+html.light .border-white\/15 { border-color: rgba(15, 23, 42, 0.15); }
+html.light .border-white\/20 { border-color: rgba(15, 23, 42, 0.18); }
+html.light .border-white\/30 { border-color: rgba(15, 23, 42, 0.25); }
+html.light .hover\:border-white\/15:hover { border-color: rgba(15, 23, 42, 0.15); }
+html.light .hover\:border-white\/20:hover { border-color: rgba(15, 23, 42, 0.18); }
+html.light .hover\:border-white\/25:hover { border-color: rgba(15, 23, 42, 0.22); }
+html.light .focus\:border-white\/20:focus { border-color: rgba(15, 23, 42, 0.18); }
+html.light .divide-white\/5 > :not(:last-child),
+html.light .divide-white\/5 > :not(:first-child) { border-color: rgba(15, 23, 42, 0.08); }
+html.light .divide-white\/10 > :not(:last-child),
+html.light .divide-white\/10 > :not(:first-child) { border-color: rgba(15, 23, 42, 0.12); }
+
+/* Focus ring + ring offsets. */
+html.light .focus\:ring-white\/50:focus { --tw-ring-color: rgba(15, 23, 42, 0.4); }
+html.light .ring-white { --tw-ring-color: #111827; }
+html.light .ring-offset-\[\#0a0a0f\] { --tw-ring-offset-color: #eef0f4; }
+html.light .ring-offset-\[\#12121a\] { --tw-ring-offset-color: #eef0f4; }
+
+/* Hard-coded dark hex surfaces. Page backdrops go light gray, raised panels
+   go white. */
+html.light .bg-\[\#050508\],
+html.light .bg-\[\#06060b\],
+html.light .bg-\[\#070811\],
+html.light .bg-\[\#080810\],
+html.light .bg-\[\#0a0a0f\] { background-color: #eef0f4; }
+html.light .bg-\[\#090b13\],
+html.light .bg-\[\#0a0a10\],
+html.light .bg-\[\#0a0a12\],
+html.light .bg-\[\#0b0b12\],
+html.light .bg-\[\#0b0f19\],
+html.light .bg-\[\#0d0d12\],
+html.light .bg-\[\#0f0f16\],
+html.light .bg-\[\#10121a\],
+html.light .bg-\[\#11111a\],
+html.light .bg-\[\#11131c\],
+html.light .bg-\[\#121423\],
+html.light .bg-\[\#13131a\] { background-color: #ffffff; }
+html.light .bg-\[\#1a1e2b\] { background-color: #e5e8ee; }
+html.light .via-\[\#0f1220\] { --tw-gradient-via: #eef1f6; }
+html.light .to-\[\#090c16\] { --tw-gradient-to: #e9ecf2; }
+
+@media (max-width: 768px) {
+  html.light .sidebar {
+    background: rgba(248, 249, 251, 0.97);
+  }
+}
+
+/* Alpha-modified dark hex surfaces (sticky headers, blurred panels). */
+html.light .bg-\[\#0a0a0f\]\/80 { background-color: rgba(238, 240, 244, 0.8); }
+html.light .bg-\[\#0a0a0f\]\/90 { background-color: rgba(238, 240, 244, 0.9); }
+html.light .bg-\[\#0a0a10\]\/95 { background-color: rgba(255, 255, 255, 0.95); }
+html.light .bg-\[\#0b0f19\]\/95 { background-color: rgba(255, 255, 255, 0.95); }
+html.light .bg-\[\#11111a\]\/90 { background-color: rgba(255, 255, 255, 0.9); }
+html.light .bg-\[\#11131c\]\/95 { background-color: rgba(255, 255, 255, 0.95); }
+
+/* Pale accent tints (readable on dark) map to their strong shades on light. */
+html.light .text-indigo-100, html.light .text-indigo-200 { color: #4338ca; }
+html.light .text-indigo-300 { color: #4f46e5; }
+html.light .hover\:text-indigo-100:hover,
+html.light .hover\:text-indigo-200:hover { color: #4338ca; }
+html.light .hover\:text-indigo-300:hover { color: #4f46e5; }
+html.light .text-red-100, html.light .text-red-200 { color: #b91c1c; }
+html.light .text-red-300 { color: #dc2626; }
+html.light .hover\:text-red-200:hover { color: #b91c1c; }
+html.light .hover\:text-red-300:hover { color: #dc2626; }
+html.light .text-emerald-100, html.light .text-emerald-200 { color: #047857; }
+html.light .text-emerald-300 { color: #059669; }
+html.light .text-green-200 { color: #15803d; }
+html.light .text-green-300 { color: #16a34a; }
+html.light .text-amber-100, html.light .text-amber-200 { color: #b45309; }
+html.light .text-amber-300 { color: #d97706; }
+html.light .hover\:text-amber-200:hover { color: #b45309; }
+html.light .hover\:text-amber-300:hover { color: #d97706; }
+html.light .text-cyan-100, html.light .text-cyan-200 { color: #0e7490; }
+html.light .text-cyan-300 { color: #0891b2; }
+html.light .hover\:text-cyan-200:hover { color: #0e7490; }
+html.light .text-blue-200 { color: #1d4ed8; }
+html.light .text-blue-300 { color: #2563eb; }
+html.light .hover\:text-blue-200:hover { color: #1d4ed8; }
+html.light .hover\:text-blue-300:hover { color: #2563eb; }
+html.light .text-sky-200, html.light .text-sky-300 { color: #0284c7; }
+html.light .text-rose-200, html.light .text-rose-300 { color: #e11d48; }
+html.light .text-violet-300 { color: #7c3aed; }
+html.light .text-purple-300 { color: #9333ea; }
+html.light .text-orange-300 { color: #ea580c; }
