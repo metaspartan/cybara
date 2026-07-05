@@ -3641,11 +3641,6 @@ class AgentManager {
       }
 
       const iterationToolCalls: AgentToolCallResult[] = [];
-      // Every call the model made this turn (executed AND skipped-with-error),
-      // used for loop-progress fingerprinting so a model that repeats the same
-      // malformed call stalls out — but a single malformed call no longer kills
-      // the run; its error is fed back so the model can correct next turn.
-      const progressToolCalls: AgentToolCallResult[] = [];
       const functionCallItems: Array<Record<string, unknown>> = [];
       const functionCallOutputs: Array<Record<string, unknown>> = [];
 
@@ -3676,7 +3671,6 @@ class AgentManager {
         );
         const resultPayload =
           executed.result === undefined ? { skipped: true, reason: "no result" } : executed.result;
-        progressToolCalls.push({ name: toolCall.name, args: toolCall.args, result: resultPayload });
         if (!executed.skipped) {
           const toolCallRecord = {
             name: toolCall.name,
@@ -3693,17 +3687,14 @@ class AgentManager {
         });
       }
 
-      // Feed the tool outputs (including any validation errors) back so the
-      // model can react/correct, THEN evaluate loop safety. Nothing to send
-      // back only when the model produced no tool calls, already handled above.
-      if (functionCallOutputs.length === 0) {
+      if (iterationToolCalls.length === 0) {
         if (!finalContent.trim()) {
           finalContent = this.missingExecutableToolCallsMessage();
         }
         break;
       }
 
-      const noProgressStreak = this.updateNoProgressLoopState(loopState, progressToolCalls);
+      const noProgressStreak = this.updateNoProgressLoopState(loopState, iterationToolCalls);
       const loopEvaluation = this.evaluateNoProgressLoop(
         providerConfig || "openai-codex",
         noProgressStreak,
