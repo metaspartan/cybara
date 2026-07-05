@@ -122,7 +122,7 @@ function formatPct(value?: number | null): string {
 function ThemeSettings() {
   const { accent, setAccent, mode, setMode, addToast } = useUIStore();
   const [savingAccent, setSavingAccent] = useState<ThemeAccent | null>(null);
-  const { data: identity } = useIdentity();
+  const { data: identity, isLoading: identityLoading } = useIdentity();
   const updateIdentity = useUpdateIdentity();
   const lightMode = mode === "light";
 
@@ -211,7 +211,7 @@ function ThemeSettings() {
           label="Light theme"
           description="Use the light appearance instead of dark."
           checked={lightMode}
-          disabled={updateIdentity.isPending}
+          disabled={updateIdentity.isPending || identityLoading}
           onChange={(checked) => void toggleLightMode(checked)}
           className="mb-4"
         />
