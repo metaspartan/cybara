@@ -1856,7 +1856,11 @@ class AgentManager {
         args,
         reason,
       });
-      return { skipped: true, result: { error: reason } };
+      // Return the error as a normal (non-skipped) tool result so it is fed
+      // back to the model to self-correct, instead of skipped — which made a
+      // single malformed tool call terminate the whole agentic run. Repeated
+      // identical malformed calls are still stopped by the no-progress guard.
+      return { skipped: false, result: { error: reason } };
     }
 
     const hookDecision = await emitAgentHook({
@@ -3637,6 +3641,11 @@ class AgentManager {
       }
 
       const iterationToolCalls: AgentToolCallResult[] = [];
+      // Every call the model made this turn (executed AND skipped-with-error),
+      // used for loop-progress fingerprinting so a model that repeats the same
+      // malformed call stalls out — but a single malformed call no longer kills
+      // the run; its error is fed back so the model can correct next turn.
+      const progressToolCalls: AgentToolCallResult[] = [];
       const functionCallItems: Array<Record<string, unknown>> = [];
       const functionCallOutputs: Array<Record<string, unknown>> = [];
 
@@ -3667,6 +3676,7 @@ class AgentManager {
         );
         const resultPayload =
           executed.result === undefined ? { skipped: true, reason: "no result" } : executed.result;
+        progressToolCalls.push({ name: toolCall.name, args: toolCall.args, result: resultPayload });
         if (!executed.skipped) {
           const toolCallRecord = {
             name: toolCall.name,
@@ -3683,17 +3693,17 @@ class AgentManager {
         });
       }
 
-      if (iterationToolCalls.length === 0) {
-        console.warn(
-          "[Agent] OpenAI Codex tool loop produced no tool results; stopping loop early"
-        );
+      // Feed the tool outputs (including any validation errors) back so the
+      // model can react/correct, THEN evaluate loop safety. Nothing to send
+      // back only when the model produced no tool calls, already handled above.
+      if (functionCallOutputs.length === 0) {
         if (!finalContent.trim()) {
           finalContent = this.missingExecutableToolCallsMessage();
         }
         break;
       }
 
-      const noProgressStreak = this.updateNoProgressLoopState(loopState, iterationToolCalls);
+      const noProgressStreak = this.updateNoProgressLoopState(loopState, progressToolCalls);
       const loopEvaluation = this.evaluateNoProgressLoop(
         providerConfig || "openai-codex",
         noProgressStreak,
