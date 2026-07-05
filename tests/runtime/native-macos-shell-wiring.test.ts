@@ -131,10 +131,11 @@ describe("native macOS shell wiring", () => {
     expect(markdownViews).toContain("NativeMarkdown.parse(content, stripAssistantMarkup: !isUser)");
     expect(gatewayModels).toContain("normalizedContentAndThinking(role:");
     expect(gatewayModels).toContain('guard role.lowercased() == "assistant"');
-    expect(nativeScreens).toContain("visibleStreamingContent");
-    expect(nativeScreens).toContain(
-      "NativeMarkdown.preprocess(streamingContent, stripAssistantMarkup: true)"
-    );
+    // The live streamed-answer body is no longer rendered during a run (only the
+    // timeline/status shows), so there is no streamingContent markdown view to
+    // strip; assistant reasoning markup is stripped on the persisted message
+    // via NativeMarkdown.parse(stripAssistantMarkup:) above.
+    expect(nativeScreens).not.toContain("NativeMarkdownView(content: visibleStreamingContent");
   });
 
   test("native memory screen uses gateway CRUD/search routes with encoded filenames", () => {
