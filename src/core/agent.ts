@@ -1771,6 +1771,8 @@ class AgentManager {
     detail?: string,
     extra?: Partial<StatusPayload>
   ): void {
+    // Meta calls (title/flush/completion) must not touch the visible session.
+    if (toolContext?.suppressStreaming) return;
     broadcastStatus(this.buildStatusPayload(status, toolContext, detail, extra));
   }
 
@@ -1856,10 +1858,8 @@ class AgentManager {
         args,
         reason,
       });
-      // Return the error as a normal (non-skipped) tool result so it is fed
-      // back to the model to self-correct, instead of skipped — which made a
-      // single malformed tool call terminate the whole agentic run. Repeated
-      // identical malformed calls are still stopped by the no-progress guard.
+      // Non-skipped error result: fed back so the model self-corrects instead
+      // of a single malformed call killing the run (no-progress guard bounds repeats).
       return { skipped: false, result: { error: reason } };
     }
 
@@ -3608,7 +3608,8 @@ class AgentManager {
         headers,
         requestBody,
         activeModelId,
-        toolContext?.sessionId,
+        // Suppress token streaming for meta calls (no sessionId => no broadcast).
+        toolContext?.suppressStreaming ? undefined : toolContext?.sessionId,
         toolContext?.agentId,
         toolContext?.abortSignal
       );

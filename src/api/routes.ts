@@ -2750,6 +2750,8 @@ const routes: Record<string, RouteHandler> = {
       const result = await agentManager.callLLM(provider, selectedAgent.model, messages, [], {
         agentId: selectedAgent.id,
         workspaceDir,
+        // Inline completion is a meta call — never broadcast its status/tokens.
+        suppressStreaming: true,
       });
       const completion = sanitizeInlineCompletion(result.content || "", prefix, maxChars);
 

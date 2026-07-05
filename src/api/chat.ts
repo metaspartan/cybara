@@ -893,6 +893,9 @@ async function generateSessionTitleViaModel(params: {
       userId: params.userId,
       workspaceDir: params.workspaceDir || undefined,
       abortSignal: params.abortSignal,
+      // Title generation is a meta call — never stream its tokens/status into
+      // the visible chat as if it were the assistant's reply.
+      suppressStreaming: true,
     });
     return parseModelGeneratedSessionTitle(result.content);
   } catch (error) {
@@ -1273,6 +1276,8 @@ async function handleChatTurn(
             channel,
             userId,
             workspaceDir: session.workspaceDir || undefined,
+            // Memory flush is a background meta call — don't stream it to chat.
+            suppressStreaming: true,
           }
         );
 

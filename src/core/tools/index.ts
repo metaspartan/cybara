@@ -44,6 +44,12 @@ export interface ToolContext {
   requireToolUse?: boolean;
   requiredToolName?: string;
   abortSignal?: AbortSignal;
+  /**
+   * Suppress live status + token-delta broadcasts for this call. Set for meta
+   * LLM calls (session-title generation, background memory review) so their
+   * output doesn't stream into the visible chat as if it were the reply.
+   */
+  suppressStreaming?: boolean;
   /** Extra path prefixes to deny for write/edit/apply_patch (sensitive dirs). */
   denyWritePrefixes?: string[];
   /** When true, file writes are confined to `workspaceDir`. Default false. */
