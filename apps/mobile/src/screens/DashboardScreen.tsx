@@ -234,6 +234,10 @@ import {
   writeCachedMobileLiveAssistant,
 } from "./dashboardLiveChat";
 import {
+  readCachedMobileOptimisticPendingMessages,
+  writeCachedMobileOptimisticPendingMessages,
+} from "./dashboardPendingQueue";
+import {
   EmptyState,
   GatewayDetailPill,
   SettingsRow,
@@ -2003,6 +2007,15 @@ function SessionDetailPanel({
     } catch {}
   }, [api, commitLiveAssistant, sessionId]);
 
+  const hydratePendingMessages = useCallback(async () => {
+    try {
+      const pending = await api.pendingChatMessages(sessionId);
+      setPendingMessages((current) =>
+        mergeOptimisticPendingMessages(pending.pendingMessages ?? [], current)
+      );
+    } catch {}
+  }, [api, sessionId]);
+
   useEffect(() => {
     if (typeof sessionSummary?.pinned === "boolean") {
       setPinned(sessionSummary.pinned);
@@ -2017,9 +2030,20 @@ function SessionDetailPanel({
     const cached = readCachedMobileLiveAssistant(sessionId);
     setLiveAssistant(cached?.message ?? null);
     setLiveNowMs(cached?.nowMs ?? Date.now());
-    setPendingMessages([]);
+    const cachedOptimistic = readCachedMobileOptimisticPendingMessages(sessionId);
+    if (cachedOptimistic.length > 0) {
+      setPendingMessages((current) => mergeOptimisticPendingMessages(cachedOptimistic, current));
+    } else {
+      setPendingMessages([]);
+    }
+    void hydratePendingMessages();
     void hydrateLiveAssistant();
-  }, [hydrateLiveAssistant, sessionId]);
+  }, [hydrateLiveAssistant, hydratePendingMessages, sessionId]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    writeCachedMobileOptimisticPendingMessages(sessionId, pendingMessages);
+  }, [pendingMessages, sessionId]);
 
   useEffect(() => {
     let cancelled = false;

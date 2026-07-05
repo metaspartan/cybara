@@ -861,7 +861,6 @@ function mobileGroupLabel(kinds: MobileGroupableKind[], count: number): string {
   return `Ran ${count} commands`;
 }
 
-/** Collapse consecutive read-only exploring activities, matching the web UI. */
 export function groupMobileActivities(activities: MobileWorkActivity[]): MobileActivityEntry[] {
   const entries: MobileActivityEntry[] = [];
   let run: { kinds: MobileGroupableKind[]; items: MobileWorkActivity[] } | null = null;
@@ -886,8 +885,8 @@ export function groupMobileActivities(activities: MobileWorkActivity[]): MobileA
 
   for (const activity of activities) {
     if (activity.toolName === "__thought") {
-      if (run) run.items.push(activity);
-      else entries.push({ type: "single", activity });
+      flush();
+      entries.push({ type: "single", activity });
       continue;
     }
     const kind = mobileGroupKind(activity);

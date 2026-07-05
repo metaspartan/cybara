@@ -27,9 +27,7 @@ describe("Memory and Settings pages: memory controls", () => {
   });
 
   test("persists memory behavior, provider, and recall settings to gateway config", () => {
-    expect(settings).toContain(
-      "settingsApi.updateConfig({ memory, memory_provider: provider })"
-    );
+    expect(settings).toContain("settingsApi.updateConfig({ memory, memory_provider: provider })");
     expect(settings).toContain("workspace_indexer: memoryRecallConfigPayload(recall)");
     expect(settings).toContain("embeddingProvider: recall.embeddingProvider");
   });

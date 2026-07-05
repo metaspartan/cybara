@@ -117,26 +117,30 @@ describe("groupActivitiesForDisplay", () => {
     expect(entries.map((entry) => entry.type)).toEqual(["single", "single", "single"]);
   });
 
-  test("interleaved thoughts do not break a command run (they fold into the group)", () => {
+  test("interleaved thoughts stay visible between command groups", () => {
     const entries = groupActivitiesForDisplay([
       activity({ id: "t0", toolName: "__thought", text: "I'll explore the repo" }),
       activity({ id: "a", toolName: "exec", text: "Ran ls -la" }),
       activity({ id: "b", toolName: "grep", text: "Explored 53 files, 1 search" }),
       activity({ id: "t1", toolName: "__thought", text: "What I'm doing: seen structure" }),
-      activity({ id: "c", toolName: "read", text: "Explored package.json" }),
-      activity({ id: "t2", toolName: "__thought", text: "Solid intel" }),
       activity({ id: "d", toolName: "exec", text: "Ran cd /repo && wc -l package.json" }),
       activity({ id: "e", toolName: "exec", text: "Ran git log --oneline" }),
     ]);
-    // Leading thought stays visible above; the rest fold into one group.
-    expect(entries[0].type).toBe("single");
-    expect(entries).toHaveLength(2);
+    expect(entries.map((entry) => entry.type)).toEqual(["single", "group", "single", "group"]);
+    const firstThought = entries[0];
+    if (firstThought.type !== "single") throw new Error("expected leading thought");
+    expect(firstThought.activity.toolName).toBe("__thought");
     const group = entries[1];
     if (group.type !== "group") throw new Error("expected group");
-    // 5 real commands; the two interior thoughts are absorbed, not counted.
-    expect(group.label).toBe("Ran 5 commands");
-    expect(group.items).toHaveLength(7);
-    expect(group.items.filter((item) => item.toolName === "__thought")).toHaveLength(2);
+    expect(group.label).toBe("Ran 2 commands");
+    expect(group.items.map((item) => item.id)).toEqual(["a", "b"]);
+    const middleThought = entries[2];
+    if (middleThought.type !== "single") throw new Error("expected middle thought");
+    expect(middleThought.activity.toolName).toBe("__thought");
+    const finalGroup = entries[3];
+    if (finalGroup.type !== "group") throw new Error("expected final group");
+    expect(finalGroup.label).toBe("Ran 2 commands");
+    expect(finalGroup.items.map((item) => item.id)).toEqual(["d", "e"]);
   });
 
   test("xargs wrapping a read-only command groups; xargs rm does not", () => {

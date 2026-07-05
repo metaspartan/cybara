@@ -150,12 +150,7 @@ export type MobileMemoryBehaviorSettings = {
 };
 
 export type MobileMemoryProviderChoice =
-  | "local"
-  | "supermemory"
-  | "mem0"
-  | "honcho"
-  | "openviking"
-  | "hindsight";
+  "local" | "supermemory" | "mem0" | "honcho" | "openviking" | "hindsight";
 
 export const MOBILE_MEMORY_PROVIDER_CHOICES: MobileMemoryProviderChoice[] = [
   "local",
@@ -265,9 +260,8 @@ export function readMobileIndexingSettings(
   configRecord: Record<string, unknown> | null | undefined
 ): MobileIndexingSettings {
   const indexer = objectRecord(configRecord?.workspace_indexer);
-  const rawProvider = typeof indexer?.embeddingProvider === "string"
-    ? indexer.embeddingProvider
-    : "auto";
+  const rawProvider =
+    typeof indexer?.embeddingProvider === "string" ? indexer.embeddingProvider : "auto";
   const embeddingProvider = ["auto", "transformers_js", "openai", "gemini", "ollama"].includes(
     rawProvider
   )

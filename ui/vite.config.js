@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
-// https://vitejs.dev/config/
+
 export default defineConfig({
     plugins: [react(), tailwindcss()],
     resolve: {
@@ -16,6 +16,13 @@ export default defineConfig({
             '/api': {
                 target: 'http://localhost:4269',
                 changeOrigin: true,
+                ws: true,
+                rewriteWsOrigin: true,
+                configure: (proxy) => {
+                    proxy.on('proxyReqWs', (proxyReq) => {
+                        proxyReq.setHeader('origin', 'http://localhost:4269');
+                    });
+                },
             },
         },
     },

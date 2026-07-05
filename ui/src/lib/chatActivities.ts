@@ -536,14 +536,12 @@ function groupLabel(kinds: GroupableKind[], count: number): string {
  * searches / read-only shell commands) into one summary group, matching the
  * Codex TUI's exploring cell. Different exploring kinds fold into the same run
  * (a group of ls + find + grep becomes "Ran 3 commands"); a group forms only
- * from 2+ consecutive entries. State-changing/unknown commands, failures, and
- * in-flight steps are never grouped, so nothing actionable is hidden.
+ * from 2+ consecutive entries. State-changing/unknown commands, thoughts,
+ * failures, and in-flight steps are never grouped, so nothing actionable is
+ * hidden.
  */
 export function groupActivitiesForDisplay(activities: LiveActivityItem[]): ActivityDisplayEntry[] {
   const entries: ActivityDisplayEntry[] = [];
-  // A run tracks command kinds separately from items: `items` may include
-  // interleaved thoughts (so expanding shows them in order), but only real
-  // commands count toward the "N commands" label and the 2+ group threshold.
   let run: { kinds: GroupableKind[]; items: LiveActivityItem[] } | null = null;
 
   const flushRun = () => {
@@ -567,15 +565,9 @@ export function groupActivitiesForDisplay(activities: LiveActivityItem[]): Activ
   };
 
   for (const activity of activities) {
-    // Thoughts are transparent: the model's narration between tool calls must
-    // not break a run of exploration. An open run absorbs the thought (shown
-    // when expanded); a thought with no open run renders as its own row.
     if (activity.toolName === "__thought") {
-      if (run) {
-        run.items.push(activity);
-      } else {
-        entries.push({ type: "single", activity });
-      }
+      flushRun();
+      entries.push({ type: "single", activity });
       continue;
     }
     const kind = groupKindForActivity(activity);

@@ -35,6 +35,7 @@ describe("mobile: chat management", () => {
     const api = read("lib/api.ts");
     const styles = read("screens/dashboardStyles.ts");
     expect(api).toContain("interrupted?: boolean");
+    expect(api).toContain("pendingChatMessages(sessionId: string)");
     expect(api).toContain("reorderPendingMessages(");
     expect(screen).toContain("optimisticPendingMessageId");
     expect(screen).toContain(
@@ -42,6 +43,7 @@ describe("mobile: chat management", () => {
     );
     expect(screen).toContain("pendingMessageIsOptimistic(pendingMessage)");
     expect(screen).toContain("result.interrupted");
+    expect(screen).toContain("void hydratePendingMessages();");
     expect(screen).toContain("api.reorderPendingMessages(");
     expect(screen).toContain('accessibilityLabel="Move pending message up"');
     expect(screen).toContain('accessibilityLabel="Move pending message down"');

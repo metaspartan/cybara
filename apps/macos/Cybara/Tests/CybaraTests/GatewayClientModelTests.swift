@@ -670,6 +670,75 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(nativeWorkedDurationLabel(for: message), "0h 00m 01s")
     }
 
+    func testNativeGroupActivitiesKeepsThoughtsBetweenCommandGroups() {
+        let entries = nativeGroupActivities([
+            NativeToolActivity(
+                id: "a",
+                phase: .result,
+                text: "Ran ls -la",
+                timestamp: 1,
+                toolName: "exec",
+                toolCallId: nil,
+                sandboxProvider: nil
+            ),
+            NativeToolActivity(
+                id: "b",
+                phase: .result,
+                text: "Explored 53 files, 1 search",
+                timestamp: 2,
+                toolName: "grep",
+                toolCallId: nil,
+                sandboxProvider: nil
+            ),
+            NativeToolActivity(
+                id: "t",
+                phase: .result,
+                text: "Now checking the package metadata",
+                timestamp: 3,
+                toolName: "__thought",
+                toolCallId: nil,
+                sandboxProvider: nil
+            ),
+            NativeToolActivity(
+                id: "c",
+                phase: .result,
+                text: "Ran cd /repo && wc -l package.json",
+                timestamp: 4,
+                toolName: "exec",
+                toolCallId: nil,
+                sandboxProvider: nil
+            ),
+            NativeToolActivity(
+                id: "d",
+                phase: .result,
+                text: "Ran git log --oneline",
+                timestamp: 5,
+                toolName: "exec",
+                toolCallId: nil,
+                sandboxProvider: nil
+            ),
+        ])
+
+        XCTAssertEqual(entries.count, 3)
+        if case .group(_, let label, let items) = entries[0] {
+            XCTAssertEqual(label, "Ran 2 commands")
+            XCTAssertEqual(items.map(\.id), ["a", "b"])
+        } else {
+            XCTFail("expected first command group")
+        }
+        if case .single(let thought) = entries[1] {
+            XCTAssertEqual(thought.toolName, "__thought")
+        } else {
+            XCTFail("expected visible thought")
+        }
+        if case .group(_, let label, let items) = entries[2] {
+            XCTAssertEqual(label, "Ran 2 commands")
+            XCTAssertEqual(items.map(\.id), ["c", "d"])
+        } else {
+            XCTFail("expected second command group")
+        }
+    }
+
     func testNativeStatusEventsDecodeLiveToolActivityAndSnapshots() throws {
         let status = try decodeStatusEvent(
             #"""

@@ -2017,10 +2017,7 @@ export function MemorySettingsPanel({
           help="Soft reserve before compaction triggers the flush turn."
           label="Flush threshold (tokens)"
           onBlur={() => {
-            const parsed = Number.parseInt(
-              String(memoryDraft.memoryFlushSoftThresholdTokens),
-              10
-            );
+            const parsed = Number.parseInt(String(memoryDraft.memoryFlushSoftThresholdTokens), 10);
             saveMemory({
               memoryFlushSoftThresholdTokens:
                 Number.isFinite(parsed) && parsed >= 500 ? parsed : 4000,
@@ -2100,8 +2097,8 @@ export function MemorySettingsPanel({
           </>
         ) : (
           <Text style={styles.settingsFieldHelp}>
-            Built-in local memory (MEMORY.md + daily files) always runs. Select an external
-            provider to mirror durable memories and blend its recall.
+            Built-in local memory (MEMORY.md + daily files) always runs. Select an external provider
+            to mirror durable memories and blend its recall.
           </Text>
         )}
       </SettingsSection>

@@ -1520,6 +1520,22 @@ export class CybaraMobileApi {
     );
   }
 
+  async pendingChatMessages(sessionId: string): Promise<{
+    sessionId: string;
+    pendingMessages: MobilePendingChatMessage[];
+  }> {
+    const response = await this.request<unknown>(
+      `/api/chat/sessions/${encodeURIComponent(sessionId)}/pending`
+    );
+    const record = asRecord(response);
+    return {
+      sessionId: readString(record, ["sessionId", "session_id"]) || sessionId,
+      pendingMessages: normalizePendingChatMessages(
+        record?.pendingMessages ?? record?.pending_messages
+      ),
+    };
+  }
+
   async sendChat(input: {
     message: string;
     sessionId?: string;

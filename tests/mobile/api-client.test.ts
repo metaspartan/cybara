@@ -1498,6 +1498,49 @@ describe("mobile API client", () => {
     }
   });
 
+  test("fetches pending mobile chat messages on session remount", async () => {
+    const calls: Array<{ method: string; path: string }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      calls.push({ method: init?.method || "GET", path: parsedUrl.pathname });
+
+      if (parsedUrl.pathname === "/api/chat/sessions/s1/pending") {
+        return Response.json({
+          sessionId: "s1",
+          pendingMessages: [
+            {
+              id: "pending-1",
+              sessionId: "s1",
+              content: "queued follow-up",
+              createdAt: 1783015200000,
+              updatedAt: 1783015200001,
+              mode: "queued",
+              sequence: 1,
+            },
+          ],
+        });
+      }
+
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const result = await new CybaraMobileApi(profile).pendingChatMessages("s1");
+
+      expect(result.sessionId).toBe("s1");
+      expect(result.pendingMessages).toHaveLength(1);
+      expect(result.pendingMessages[0]).toMatchObject({
+        id: "pending-1",
+        content: "queued follow-up",
+        mode: "queued",
+      });
+      expect(calls).toEqual([{ method: "GET", path: "/api/chat/sessions/s1/pending" }]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("deletes sessions through the canonical gateway sessions route", async () => {
     const calls: Array<{ method: string; path: string }> = [];
     const originalFetch = globalThis.fetch;

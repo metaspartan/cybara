@@ -1166,8 +1166,6 @@ private func nativeGroupLabel(_ kinds: [NativeActivityGroupKind], _ count: Int) 
     return "Ran \(count) commands"
 }
 
-/// Collapse consecutive read-only exploring activities; thoughts are
-/// transparent (folded into a group, shown when expanded, not counted).
 func nativeGroupActivities(_ activities: [NativeToolActivity]) -> [NativeTimelineEntry] {
     var entries: [NativeTimelineEntry] = []
     var runKinds: [NativeActivityGroupKind] = []
@@ -1188,11 +1186,8 @@ func nativeGroupActivities(_ activities: [NativeToolActivity]) -> [NativeTimelin
 
     for activity in activities {
         if activity.toolName == "__thought" {
-            if runItems.isEmpty {
-                entries.append(.single(activity))
-            } else {
-                runItems.append(activity)
-            }
+            flush()
+            entries.append(.single(activity))
             continue
         }
         guard let kind = nativeGroupKind(activity) else {

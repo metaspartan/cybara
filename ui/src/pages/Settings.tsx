@@ -1073,12 +1073,7 @@ function memoryRecallConfigPayload(recall: MemoryRecallSettingsState): Record<st
 }
 
 type MemoryProviderChoice =
-  | "local"
-  | "supermemory"
-  | "mem0"
-  | "honcho"
-  | "openviking"
-  | "hindsight";
+  "local" | "supermemory" | "mem0" | "honcho" | "openviking" | "hindsight";
 
 type MemoryProviderFieldValues = Record<string, string>;
 
@@ -1327,210 +1322,218 @@ function MemoryBehaviorSettings() {
             Memory
           </CardTitle>
           <CardDescription>
-            Controls how agents learn durable facts, when long chats flush memory before
-            compaction, and which memory provider stores long-term memories.
+            Controls how agents learn durable facts, when long chats flush memory before compaction,
+            and which memory provider stores long-term memories.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-4">
-            <div>
-              <h3 className="text-sm font-semibold text-white">Learning loop</h3>
-              <p className="text-xs text-gray-400 mt-1">
-                After substantial responses, Cybara can run a silent reviewer that saves durable
-                preferences, corrections, and project facts.
-              </p>
-            </div>
-            <Switch
-              label="Background memory review"
-              checked={memory.backgroundReviewEnabled}
-              disabled={loading || saving}
-              onChange={(checked) => updateMemory({ backgroundReviewEnabled: checked })}
-            />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Input
-                label="Minimum interval (minutes)"
-                min={1}
-                max={1440}
-                type="number"
-                value={Math.round(memory.backgroundReviewMinIntervalMs / 60000)}
-                disabled={loading || saving}
-                onChange={(event) =>
-                  updateMemory({
-                    backgroundReviewMinIntervalMs:
-                      Math.max(1, Number(event.target.value) || 5) * 60000,
-                  })
-                }
-              />
-              <Input
-                label="Timeout (seconds)"
-                min={10}
-                max={600}
-                type="number"
-                value={memory.backgroundReviewTimeoutSeconds}
-                disabled={loading || saving}
-                onChange={(event) =>
-                  updateMemory({
-                    backgroundReviewTimeoutSeconds: Math.max(10, Number(event.target.value) || 90),
-                  })
-                }
-              />
-            </div>
-          </div>
-
-          <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-4">
-            <div>
-              <h3 className="text-sm font-semibold text-white">Pre-compaction flush</h3>
-              <p className="text-xs text-gray-400 mt-1">
-                Before a long chat compacts, the agent gets one chance to save durable memory so
-                important details are not lost.
-              </p>
-            </div>
-            <Switch
-              label="Flush before compaction"
-              checked={memory.memoryFlushEnabled}
-              disabled={loading || saving}
-              onChange={(checked) => updateMemory({ memoryFlushEnabled: checked })}
-            />
-            <Input
-              label="Soft threshold reserve (tokens)"
-              min={500}
-              max={200000}
-              type="number"
-              value={memory.memoryFlushSoftThresholdTokens}
-              disabled={loading || saving}
-              onChange={(event) =>
-                updateMemory({
-                  memoryFlushSoftThresholdTokens: Math.max(500, Number(event.target.value) || 4000),
-                })
-              }
-            />
-          </div>
-        </div>
-
-        <details className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-          <summary className="cursor-pointer text-sm font-medium text-gray-200">
-            Advanced memory prompts
-          </summary>
-          <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Textarea
-              label="Flush prompt"
-              value={memory.memoryFlushPrompt}
-              disabled={loading || saving}
-              rows={5}
-              onChange={(event) => updateMemory({ memoryFlushPrompt: event.target.value })}
-            />
-            <Textarea
-              label="Flush system prompt"
-              value={memory.memoryFlushSystemPrompt}
-              disabled={loading || saving}
-              rows={5}
-              onChange={(event) => updateMemory({ memoryFlushSystemPrompt: event.target.value })}
-            />
-          </div>
-        </details>
-
-        <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-4">
-          <div>
-            <h3 className="text-sm font-semibold text-white">Memory provider</h3>
-            <p className="text-xs text-gray-400 mt-1">
-              Built-in local memory (MEMORY.md + daily files) always runs. Selecting an external
-              provider mirrors durable memories to it and blends its recall into agent context.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Select
-              label="Provider"
-              options={memoryProviderOptions}
-              value={provider.provider}
-              disabled={loading || saving}
-              onChange={(value) =>
-                updateProvider({ provider: value as MemoryProviderChoice })
-              }
-            />
-            {activeExternalProvider ? (
-              <div className="flex items-end pb-1">
-                <button
-                  type="button"
-                  className="text-xs text-indigo-300 hover:text-indigo-200 underline underline-offset-2"
-                  onClick={() => void openExternal(memoryProviderDocs[activeExternalProvider])}
-                >
-                  {memoryProviderDocs[activeExternalProvider]}
-                </button>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-white">Learning loop</h3>
+                <p className="text-xs text-gray-400 mt-1">
+                  After substantial responses, Cybara can run a silent reviewer that saves durable
+                  preferences, corrections, and project facts.
+                </p>
               </div>
+              <Switch
+                label="Background memory review"
+                checked={memory.backgroundReviewEnabled}
+                disabled={loading || saving}
+                onChange={(checked) => updateMemory({ backgroundReviewEnabled: checked })}
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Input
+                  label="Minimum interval (minutes)"
+                  min={1}
+                  max={1440}
+                  type="number"
+                  value={Math.round(memory.backgroundReviewMinIntervalMs / 60000)}
+                  disabled={loading || saving}
+                  onChange={(event) =>
+                    updateMemory({
+                      backgroundReviewMinIntervalMs:
+                        Math.max(1, Number(event.target.value) || 5) * 60000,
+                    })
+                  }
+                />
+                <Input
+                  label="Timeout (seconds)"
+                  min={10}
+                  max={600}
+                  type="number"
+                  value={memory.backgroundReviewTimeoutSeconds}
+                  disabled={loading || saving}
+                  onChange={(event) =>
+                    updateMemory({
+                      backgroundReviewTimeoutSeconds: Math.max(
+                        10,
+                        Number(event.target.value) || 90
+                      ),
+                    })
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-white">Pre-compaction flush</h3>
+                <p className="text-xs text-gray-400 mt-1">
+                  Before a long chat compacts, the agent gets one chance to save durable memory so
+                  important details are not lost.
+                </p>
+              </div>
+              <Switch
+                label="Flush before compaction"
+                checked={memory.memoryFlushEnabled}
+                disabled={loading || saving}
+                onChange={(checked) => updateMemory({ memoryFlushEnabled: checked })}
+              />
+              <Input
+                label="Soft threshold reserve (tokens)"
+                min={500}
+                max={200000}
+                type="number"
+                value={memory.memoryFlushSoftThresholdTokens}
+                disabled={loading || saving}
+                onChange={(event) =>
+                  updateMemory({
+                    memoryFlushSoftThresholdTokens: Math.max(
+                      500,
+                      Number(event.target.value) || 4000
+                    ),
+                  })
+                }
+              />
+            </div>
+          </div>
+
+          <details className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+            <summary className="cursor-pointer text-sm font-medium text-gray-200">
+              Advanced memory prompts
+            </summary>
+            <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Textarea
+                label="Flush prompt"
+                value={memory.memoryFlushPrompt}
+                disabled={loading || saving}
+                rows={5}
+                onChange={(event) => updateMemory({ memoryFlushPrompt: event.target.value })}
+              />
+              <Textarea
+                label="Flush system prompt"
+                value={memory.memoryFlushSystemPrompt}
+                disabled={loading || saving}
+                rows={5}
+                onChange={(event) => updateMemory({ memoryFlushSystemPrompt: event.target.value })}
+              />
+            </div>
+          </details>
+
+          <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Memory provider</h3>
+              <p className="text-xs text-gray-400 mt-1">
+                Built-in local memory (MEMORY.md + daily files) always runs. Selecting an external
+                provider mirrors durable memories to it and blends its recall into agent context.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Select
+                label="Provider"
+                options={memoryProviderOptions}
+                value={provider.provider}
+                disabled={loading || saving}
+                onChange={(value) => updateProvider({ provider: value as MemoryProviderChoice })}
+              />
+              {activeExternalProvider ? (
+                <div className="flex items-end pb-1">
+                  <button
+                    type="button"
+                    className="text-xs text-indigo-300 hover:text-indigo-200 underline underline-offset-2"
+                    onClick={() => void openExternal(memoryProviderDocs[activeExternalProvider])}
+                  >
+                    {memoryProviderDocs[activeExternalProvider]}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+            {activeExternalProvider ? (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {memoryProviderFieldSpecs[activeExternalProvider].map((field) => (
+                    <Input
+                      key={`${activeExternalProvider}-${field.key}`}
+                      label={`${field.label}${field.required ? " *" : ""}`}
+                      type={field.secret ? "password" : "text"}
+                      placeholder={field.placeholder || ""}
+                      value={provider[activeExternalProvider][field.key] ?? ""}
+                      disabled={loading || saving}
+                      onChange={(event) =>
+                        updateProviderField(activeExternalProvider, field.key, event.target.value)
+                      }
+                    />
+                  ))}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Switch
+                    label="Auto recall"
+                    description="Blend provider memories into agent context"
+                    checked={provider.autoRecall}
+                    disabled={loading || saving}
+                    onChange={(checked) => updateProvider({ autoRecall: checked })}
+                  />
+                  <Switch
+                    label="Auto capture"
+                    description="Mirror new durable memories to the provider"
+                    checked={provider.autoCapture}
+                    disabled={loading || saving}
+                    onChange={(checked) => updateProvider({ autoCapture: checked })}
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="secondary"
+                    leftIcon={
+                      testingProvider ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Activity className="w-4 h-4" />
+                      )
+                    }
+                    onClick={() => void testProvider()}
+                    disabled={loading || saving || testingProvider}
+                  >
+                    Test Connection
+                  </Button>
+                  {providerTest ? (
+                    <span
+                      className={`text-xs ${providerTest.ok ? "text-emerald-300" : "text-red-300"}`}
+                    >
+                      {providerTest.ok ? "Connected" : "Failed"} — {providerTest.detail}
+                    </span>
+                  ) : null}
+                </div>
+              </>
             ) : null}
           </div>
-          {activeExternalProvider ? (
-            <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {memoryProviderFieldSpecs[activeExternalProvider].map((field) => (
-                  <Input
-                    key={`${activeExternalProvider}-${field.key}`}
-                    label={`${field.label}${field.required ? " *" : ""}`}
-                    type={field.secret ? "password" : "text"}
-                    placeholder={field.placeholder || ""}
-                    value={provider[activeExternalProvider][field.key] ?? ""}
-                    disabled={loading || saving}
-                    onChange={(event) =>
-                      updateProviderField(activeExternalProvider, field.key, event.target.value)
-                    }
-                  />
-                ))}
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Switch
-                  label="Auto recall"
-                  description="Blend provider memories into agent context"
-                  checked={provider.autoRecall}
-                  disabled={loading || saving}
-                  onChange={(checked) => updateProvider({ autoRecall: checked })}
-                />
-                <Switch
-                  label="Auto capture"
-                  description="Mirror new durable memories to the provider"
-                  checked={provider.autoCapture}
-                  disabled={loading || saving}
-                  onChange={(checked) => updateProvider({ autoCapture: checked })}
-                />
-              </div>
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="secondary"
-                  leftIcon={
-                    testingProvider ? (
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Activity className="w-4 h-4" />
-                    )
-                  }
-                  onClick={() => void testProvider()}
-                  disabled={loading || saving || testingProvider}
-                >
-                  Test Connection
-                </Button>
-                {providerTest ? (
-                  <span
-                    className={`text-xs ${providerTest.ok ? "text-emerald-300" : "text-red-300"}`}
-                  >
-                    {providerTest.ok ? "Connected" : "Failed"} — {providerTest.detail}
-                  </span>
-                ) : null}
-              </div>
-            </>
-          ) : null}
-        </div>
 
-        <div className="flex justify-end">
-          <Button
-            leftIcon={
-              saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />
-            }
-            onClick={() => void save()}
-            disabled={loading || saving}
-          >
-            Save Memory Settings
-          </Button>
-        </div>
+          <div className="flex justify-end">
+            <Button
+              leftIcon={
+                saving ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )
+              }
+              onClick={() => void save()}
+              disabled={loading || saving}
+            >
+              Save Memory Settings
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

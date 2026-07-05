@@ -235,9 +235,7 @@ describe("capture and recall helpers never throw", () => {
       mem0: { apiKey: "k", baseUrl: "https://api.mem0.ai", userId: "u", agentId: "a" },
     });
     expect(await captureToExternalMemory(configured, "x")).toBe(false);
-    expect(
-      await captureToExternalMemory({ ...configured, autoCapture: false }, "x")
-    ).toBe(false);
+    expect(await captureToExternalMemory({ ...configured, autoCapture: false }, "x")).toBe(false);
   });
 
   test("recall swallows provider failures and returns []", async () => {
@@ -249,9 +247,9 @@ describe("capture and recall helpers never throw", () => {
       supermemory: { apiKey: "k", baseUrl: "https://api.supermemory.ai", containerTag: "" },
     });
     expect(await recallFromExternalMemory(configured, "query")).toEqual([]);
-    expect(
-      await recallFromExternalMemory({ ...configured, autoRecall: false }, "query")
-    ).toEqual([]);
+    expect(await recallFromExternalMemory({ ...configured, autoRecall: false }, "query")).toEqual(
+      []
+    );
   });
 
   test("testMemoryProvider reports local always-ok and unconfigured externals", async () => {

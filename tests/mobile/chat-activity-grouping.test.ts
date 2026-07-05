@@ -41,17 +41,25 @@ describe("groupMobileActivities", () => {
     expect(group.label).toBe("Ran 4 commands");
   });
 
-  test("interleaved thoughts fold into the group without breaking it", () => {
+  test("interleaved thoughts stay visible between command groups", () => {
     const entries = groupMobileActivities([
       activity({ id: "a", toolName: "exec", text: "Ran ls" }),
-      activity({ id: "t", toolName: "__thought", text: "now searching" }),
       activity({ id: "b", toolName: "grep", text: "Explored 5 files, 1 search" }),
+      activity({ id: "t", toolName: "__thought", text: "now searching" }),
+      activity({ id: "c", toolName: "exec", text: "Ran cd /repo && wc -l package.json" }),
+      activity({ id: "d", toolName: "exec", text: "Ran git log --oneline" }),
     ]);
-    expect(entries).toHaveLength(1);
+    expect(entries.map((entry) => entry.type)).toEqual(["group", "single", "group"]);
     const group = entries[0];
     if (group.type !== "group") throw new Error("expected group");
     expect(group.label).toBe("Ran 2 commands");
-    expect(group.items).toHaveLength(3);
+    expect(group.items.map((item) => item.id)).toEqual(["a", "b"]);
+    const thought = entries[1];
+    if (thought.type !== "single") throw new Error("expected thought");
+    expect(thought.activity.toolName).toBe("__thought");
+    const finalGroup = entries[2];
+    if (finalGroup.type !== "group") throw new Error("expected final group");
+    expect(finalGroup.label).toBe("Ran 2 commands");
   });
 
   test("mutations and in-flight/failure steps never group", () => {

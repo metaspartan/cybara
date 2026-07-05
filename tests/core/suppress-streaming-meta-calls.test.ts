@@ -19,9 +19,7 @@ describe("meta LLM calls suppress live streaming", () => {
     expect(agent).toContain("if (toolContext?.suppressStreaming) return;");
     // The Codex token-delta stream passes no sessionId when suppressed, so
     // broadcastTokenDelta (guarded by `if (sessionId)`) never fires.
-    expect(agent).toContain(
-      "toolContext?.suppressStreaming ? undefined : toolContext?.sessionId"
-    );
+    expect(agent).toContain("toolContext?.suppressStreaming ? undefined : toolContext?.sessionId");
   });
 
   test("title generation, memory flush, and inline completion set the flag", () => {

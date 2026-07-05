@@ -9,7 +9,14 @@ interface SwitchProps {
   className?: string;
 }
 
-export function Switch({ checked, onChange, disabled, label, description, className }: SwitchProps) {
+export function Switch({
+  checked,
+  onChange,
+  disabled,
+  label,
+  description,
+  className,
+}: SwitchProps) {
   const control = (
     <button
       type="button"
