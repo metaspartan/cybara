@@ -92,13 +92,18 @@ describe("reasoning tag tokens never leak into visible chat state", () => {
     );
   });
 
-  test("web streaming render goes through the same display stripper", () => {
-    const chatSource = read("ui/src/pages/Chat.tsx");
-    expect(chatSource).toContain("stripStreamingReasoningForDisplay(streamingContent)");
-    expect(chatSource).toContain("{visibleStreamingText && (");
+  test("mobile/macOS still strip reasoning from any streamed live content", () => {
     const mobileChat = read("apps/mobile/src/screens/dashboardChat.tsx");
     expect(mobileChat).toContain("stripStreamingReasoningForDisplay(rawContent)");
     const macTimeline = read("apps/macos/Cybara/Sources/Cybara/NativeToolTimeline.swift");
     expect(macTimeline).toContain("nativeReasoningMarkupTokenPattern");
+  });
+
+  test("web/Tauri does not render a live streaming answer block during a run", () => {
+    // The reply appears only when the turn completes (status/timeline shows
+    // while generating) — no live token block that could read as a stuck/
+    // duplicate answer next to 'Generating response...'.
+    const chatSource = read("ui/src/pages/Chat.tsx");
+    expect(chatSource).not.toContain("{visibleStreamingText && (");
   });
 });

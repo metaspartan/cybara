@@ -83,7 +83,6 @@ import {
 } from "./chat/liveSessionState";
 import {
   getToolCallsInTimelineOrder,
-  stripStreamingReasoningForDisplay,
   DIFF_PANEL_MIN_WIDTH,
   PENDING_CAPTURE_TIMEOUT_MS,
   SESSION_ACTIVITY_STALE_MS,
@@ -1895,13 +1894,12 @@ export function Chat() {
   const [liveStatus, setLiveStatus] = useState<"thinking" | "generating" | "idle">("idle");
   const [liveActivities, setLiveActivities] = useState<LiveActivityItem[]>([]);
   const [liveCurrentStep, setLiveCurrentStep] = useState<string | null>(null);
+  // Tracked (for cache/completion-handoff) but NOT rendered as a live answer:
+  // during a run the UI shows only the working timeline/status, and the full
+  // reply appears when the turn completes — consistent across all providers.
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
   const [pendingMessages, setPendingMessages] = useState<PendingChatMessage[]>([]);
   const [steeringMessageId, setSteeringMessageId] = useState<string | null>(null);
-  const visibleStreamingText = useMemo(
-    () => (streamingContent ? stripStreamingReasoningForDisplay(streamingContent) : null),
-    [streamingContent]
-  );
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
   const [dictationSupported, setDictationSupported] = useState(false);
   const [dictating, setDictating] = useState(false);
@@ -3725,14 +3723,6 @@ export function Chat() {
                       activities={timelineActivities}
                       currentStep={liveCurrentStep}
                     />
-                  </div>
-                )}
-                {visibleStreamingText && (
-                  <div className="w-full min-w-0 py-1">
-                    <div className="text-sm text-gray-200 whitespace-pre-wrap break-words">
-                      {visibleStreamingText}
-                      <span className="inline-block w-2 h-4 ml-0.5 bg-emerald-400/70 animate-pulse align-middle" />
-                    </div>
                   </div>
                 )}
                 <div ref={messagesEndRef} />
