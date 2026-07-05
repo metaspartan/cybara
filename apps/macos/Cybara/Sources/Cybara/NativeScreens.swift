@@ -648,15 +648,10 @@ struct ChatScreen: View {
             }
     }
 
-    private var visibleStreamingContent: String? {
-        guard let streamingContent = firstNonEmptyGatewayString(streamingContent) else { return nil }
-        return firstNonEmptyGatewayString(
-            NativeMarkdown.preprocess(streamingContent, stripAssistantMarkup: true)
-        )
-    }
-
     /// Live status while a reply generates, fed by the gateway's SSE stream
-    /// (thoughts, tool activity, streaming text), scoped to the active session.
+    /// (thoughts, tool activity), scoped to the active session. The streamed
+    /// answer body is NOT shown during a run — only the timeline/status —
+    /// matching web/Tauri and mobile; the full reply renders on completion.
     private var thinkingBubble: some View {
         HStack {
             VStack(alignment: .leading, spacing: 9) {
@@ -666,9 +661,6 @@ struct ChatScreen: View {
                     currentStep: liveCurrentStep,
                     startedAt: liveStartedAt
                 )
-                if let visibleStreamingContent {
-                    NativeMarkdownView(content: visibleStreamingContent, isUser: false)
-                }
             }
             .padding(.vertical, 2)
             .frame(maxWidth: .infinity, alignment: .leading)

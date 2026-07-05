@@ -30,7 +30,6 @@ import {
   parseMarkdownBlocks,
   shouldUseSelectableNativeText,
   splitMessageContent,
-  stripStreamingReasoningForDisplay,
   type MarkdownInline,
 } from "../lib/chat-format";
 import type { SessionDetailSummary } from "../lib/api";
@@ -228,20 +227,25 @@ export function ChatMessageRow({
     const hasWorkTimeline = Boolean(
       message.thinking || message.processActivities?.length || message.toolCalls?.length
     );
-    // Live streaming buffers can contain reasoning markup; persisted messages
-    // are already sanitized by the gateway.
+    // During a run (the live placeholder) show ONLY the work timeline/status —
+    // never the streamed answer body — matching web/Tauri. The full reply
+    // renders when the turn completes as a persisted message.
     const isLiveMessage =
       typeof message.id === "string" && message.id.startsWith("live-assistant-");
-    const rawContent = message.content || "";
-    const displayContent = isLiveMessage
-      ? stripStreamingReasoningForDisplay(rawContent)
-      : rawContent;
-    const hasContent = displayContent.trim().length > 0;
+    if (isLiveMessage) {
+      return (
+        <View style={styles.agentMessageRow}>
+          <WorkTimeline message={message} nowMs={nowMs} />
+        </View>
+      );
+    }
+    const content = message.content || "";
+    const hasContent = content.trim().length > 0;
     return (
       <View style={styles.agentMessageRow}>
         {hasWorkTimeline ? <WorkTimeline message={message} nowMs={nowMs} /> : null}
         {hasContent || !hasWorkTimeline ? (
-          <MessageContent content={hasContent ? displayContent : "(empty message)"} />
+          <MessageContent content={hasContent ? content : "(empty message)"} />
         ) : null}
         <MessageActionsRow
           content={message.content || ""}

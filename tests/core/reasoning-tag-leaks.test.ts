@@ -92,18 +92,29 @@ describe("reasoning tag tokens never leak into visible chat state", () => {
     );
   });
 
-  test("mobile/macOS still strip reasoning from any streamed live content", () => {
-    const mobileChat = read("apps/mobile/src/screens/dashboardChat.tsx");
-    expect(mobileChat).toContain("stripStreamingReasoningForDisplay(rawContent)");
+  test("activity timelines still strip reasoning tag tokens", () => {
+    // The activity/thought stripper stays wired even though live answer bodies
+    // are no longer rendered during a run.
+    const mobileChat = read("apps/mobile/src/lib/chat-format.ts");
+    expect(mobileChat).toContain("stripReasoningTagTokens");
     const macTimeline = read("apps/macos/Cybara/Sources/Cybara/NativeToolTimeline.swift");
     expect(macTimeline).toContain("nativeReasoningMarkupTokenPattern");
   });
 
-  test("web/Tauri does not render a live streaming answer block during a run", () => {
-    // The reply appears only when the turn completes (status/timeline shows
-    // while generating) — no live token block that could read as a stuck/
-    // duplicate answer next to 'Generating response...'.
-    const chatSource = read("ui/src/pages/Chat.tsx");
-    expect(chatSource).not.toContain("{visibleStreamingText && (");
+  test("no client renders a live streaming answer body during a run", () => {
+    // Every client shows only the working timeline/status while generating; the
+    // full reply appears on completion. No live token block that could read as
+    // a stuck/duplicate answer next to 'Generating response...'.
+    const web = read("ui/src/pages/Chat.tsx");
+    expect(web).not.toContain("{visibleStreamingText && (");
+
+    // Mobile: the live-assistant placeholder renders only the WorkTimeline.
+    const mobileChat = read("apps/mobile/src/screens/dashboardChat.tsx");
+    expect(mobileChat).toContain("if (isLiveMessage) {");
+    expect(mobileChat).not.toContain("stripStreamingReasoningForDisplay(rawContent)");
+
+    // macOS: the thinking bubble shows the timeline only, no streamed body.
+    const macScreens = read("apps/macos/Cybara/Sources/Cybara/NativeScreens.swift");
+    expect(macScreens).not.toContain("NativeMarkdownView(content: visibleStreamingContent");
   });
 });
