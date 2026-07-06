@@ -1830,11 +1830,11 @@ export function ModelRouterPanel({
   ) => {
     if (!planConfig || savingRouterConfig) return;
     const previous = planConfig;
-    const current = planConfig.providers[providerKey] || {};
+    const current = planConfig.providers?.[providerKey] || {};
     const next: ProviderPlanMonitoringConfig = {
       ...planConfig,
       providers: {
-        ...planConfig.providers,
+        ...(planConfig.providers || {}),
         [providerKey]: {
           ...current,
           ...patch,
@@ -2024,7 +2024,7 @@ export function ModelRouterPanel({
             />
             {(routerStatus?.routes || []).slice(0, 6).map((route) => {
               const plan = planByRoute.get(route.providerId);
-              const providerPlanConfig = planConfig?.providers[route.providerId] || {};
+              const providerPlanConfig = planConfig?.providers?.[route.providerId] || {};
               const monthly = providerPlanConfig.monthly || {};
               const tokenDraft =
                 monthlyTokenDrafts[route.providerId] ??

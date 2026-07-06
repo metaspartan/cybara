@@ -70,6 +70,28 @@ function readNumber(record: Record<string, unknown>, key: string, fallback = 0):
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+function normalizeProviderPlanConfigResponse(value: unknown): ProviderPlanMonitoringConfig {
+  const record = asRecord(value);
+  const providersRecord = asRecord(record.providers);
+  return {
+    enabled: record.enabled !== false,
+    routerEnforcement: record.routerEnforcement !== false && record.router_enforcement !== false,
+    warningThresholdPct: readNumber(
+      record,
+      "warningThresholdPct",
+      readNumber(record, "warning_threshold_pct", 80)
+    ),
+    staleAfterMinutes: readNumber(
+      record,
+      "staleAfterMinutes",
+      readNumber(record, "stale_after_minutes", 120)
+    ),
+    providers: Object.fromEntries(
+      Object.entries(providersRecord)
+    ) as ProviderPlanMonitoringConfig["providers"],
+  };
+}
+
 function normalizeProviderPlanStatusResponse(value: unknown): ProviderPlanStatusResponse {
   const record = asRecord(value);
   const summary = asRecord(record.summary);
@@ -135,7 +157,14 @@ export const providersApi = {
 };
 
 export const providerPlansApi = {
-  config: () => fetchApi<ProviderPlanMonitoringConfig>("/provider-plans/config"),
+  config: async (): Promise<ApiResponse<ProviderPlanMonitoringConfig>> => {
+    const response = await fetchApi<unknown>("/provider-plans/config");
+    if (!response.success) return { success: false, error: response.error };
+    return {
+      ...response,
+      data: normalizeProviderPlanConfigResponse(response.data),
+    };
+  },
   status: async (): Promise<ApiResponse<ProviderPlanStatusResponse>> => {
     const response = await fetchApi<unknown>("/provider-plans/status");
     if (!response.success) return { success: false, error: response.error };
@@ -144,11 +173,17 @@ export const providerPlansApi = {
       data: normalizeProviderPlanStatusResponse(response.data),
     };
   },
-  updateConfig: (payload: ProviderPlanMonitoringConfig) =>
-    fetchApi<ProviderPlanMonitoringConfig>("/provider-plans/config", {
+  updateConfig: async (payload: ProviderPlanMonitoringConfig) => {
+    const response = await fetchApi<unknown>("/provider-plans/config", {
       method: "PUT",
       body: JSON.stringify(payload),
-    }),
+    });
+    if (!response.success) return { success: false, error: response.error };
+    return {
+      ...response,
+      data: normalizeProviderPlanConfigResponse(response.data),
+    };
+  },
 };
 
 export const channelsApi = {

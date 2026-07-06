@@ -674,7 +674,7 @@ export function RouterSettings() {
               displayName={providerName(route.providerId)}
               models={providerModels(route.providerId)}
               plan={planByRoute.get(route.providerId)}
-              planConfig={planConfig?.providers[route.providerId] || null}
+              planConfig={planConfig?.providers?.[route.providerId] || null}
               onPlanConfigChange={(next) => {
                 const base = planConfig || {
                   enabled: true,
@@ -683,10 +683,11 @@ export function RouterSettings() {
                   staleAfterMinutes: 120,
                   providers: {},
                 };
+                const providersById = base.providers || {};
                 void savePlanConfig({
                   ...base,
                   providers: {
-                    ...base.providers,
+                    ...providersById,
                     [route.providerId]: next,
                   },
                 });

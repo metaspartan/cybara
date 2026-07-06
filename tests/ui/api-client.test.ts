@@ -163,7 +163,7 @@ describe("UI API client wiring", () => {
   });
 
   test("providerPlansApi uses provider plan endpoints", async () => {
-    await providerPlansApi.config();
+    const config = await providerPlansApi.config();
     const status = await providerPlansApi.status();
     await providerPlansApi.updateConfig({
       enabled: true,
@@ -181,6 +181,7 @@ describe("UI API client wiring", () => {
     expect(calls).toHaveLength(3);
     expect(calls[0].url).toBe("/api/provider-plans/config");
     expect(calls[0].init?.method).toBeUndefined();
+    expect(config.data?.providers).toEqual({});
     expect(calls[1].url).toBe("/api/provider-plans/status");
     expect(calls[1].init?.method).toBeUndefined();
     expect(status.data?.summary.configured).toBe(0);
