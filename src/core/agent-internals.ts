@@ -127,7 +127,6 @@ export const MAX_TOOL_RESULT_CONTEXT_SHARE = 0.3;
 export const HARD_MAX_TOOL_RESULT_CHARS = 400_000;
 export const MIN_TOOL_RESULT_CHARS = 2_000;
 export const CONTEXT_LIMIT_TRUNCATION_NOTICE = "[truncated: output exceeded context limit]";
-export const CONTEXT_LIMIT_COMPACTION_NOTICE = "[compacted: tool output removed to free context]";
 export const CONVERSATION_KEEP_RECENT_MESSAGES = 16;
 export const CONVERSATION_MAX_MESSAGES = 60;
 export const CONVERSATION_COMPACT_TRIGGER_RATIO = 0.55;

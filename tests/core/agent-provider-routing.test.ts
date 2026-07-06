@@ -299,7 +299,7 @@ describe("Agent provider API-family routing", () => {
       if (requestCount === 3) {
         const serializedMessages = JSON.stringify(requestBody.messages || []);
         sawCompactedMarker = serializedMessages.includes(
-          "[compacted: tool output removed to free context]"
+          "[compacted: earlier tool output elided to free context]"
         );
 
         return new Response(
