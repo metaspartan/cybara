@@ -6,8 +6,10 @@ import {
   handleChat,
   getSessionMessages,
   listPendingChatMessages,
+  deletePendingChatMessage,
   reorderPendingChatMessages,
   steerPendingChatMessage,
+  updatePendingChatMessage,
 } from "../../src/api/chat";
 import { broadcastStatus, onStatusStream } from "../../src/core/status";
 
@@ -378,6 +380,101 @@ describe("handleChat per-session serialization", () => {
       "third",
       "second",
     ]);
+    expect(listPendingChatMessages(sessionId)).toEqual([]);
+  });
+
+  test("pending follow-ups can be edited or deleted before they drain", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Pending Mutation Provider",
+      api_key: "sk-pending-mutation",
+      base_url: "https://api.openai.com/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Pending Mutation Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-pending-mutation",
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    let call = 0;
+    globalThis.fetch = (async () => {
+      const n = ++call;
+      await new Promise((resolve) => setTimeout(resolve, n === 1 ? 60 : 5));
+      return new Response(
+        JSON.stringify({
+          id: `pending-mutation-resp-${n}`,
+          object: "chat.completion",
+          model: "gpt-pending-mutation",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: `mutation-reply-${n}` },
+            },
+          ],
+          usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const sessionId = `pending-mutation-${Date.now()}`;
+    createdSessionIds.push(sessionId);
+    const firstTurn = handleChat({
+      message: "first",
+      agentId: agent.id,
+      sessionId,
+      tools: false,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const second = await handleChat({
+      message: "second original",
+      agentId: agent.id,
+      sessionId,
+      tools: false,
+      queueMode: "queue",
+    });
+    const third = await handleChat({
+      message: "third deleted",
+      agentId: agent.id,
+      sessionId,
+      tools: false,
+      queueMode: "queue",
+    });
+
+    const secondId = second.pendingMessage?.id;
+    const thirdId = third.pendingMessage?.id;
+    expect(typeof secondId).toBe("string");
+    expect(typeof thirdId).toBe("string");
+
+    const updated = updatePendingChatMessage(sessionId, secondId!, "second edited");
+    expect(updated.success).toBe(true);
+    expect(updated.pendingMessages.map((message) => message.content)).toEqual([
+      "second edited",
+      "third deleted",
+    ]);
+
+    const deleted = deletePendingChatMessage(sessionId, thirdId!);
+    expect(deleted.success).toBe(true);
+    expect(deleted.pendingMessages.map((message) => message.content)).toEqual(["second edited"]);
+
+    await firstTurn;
+    const messages = await waitForVisibleSessionMessages(sessionId, 4);
+    expect(messages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+      "assistant",
+    ]);
+    expect(messages[0]?.content).toBe("first");
+    expect(messages[2]?.content).toBe("second edited");
+    expect(messages.map((message) => message.content)).not.toContain("second original");
+    expect(messages.map((message) => message.content)).not.toContain("third deleted");
     expect(listPendingChatMessages(sessionId)).toEqual([]);
   });
 });

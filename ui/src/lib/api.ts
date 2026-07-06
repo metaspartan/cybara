@@ -914,6 +914,24 @@ export const chatApi = {
       method: "POST",
       body: JSON.stringify({ pendingMessageIds }),
     }),
+  updatePendingMessage: (sessionId: string, pendingMessageId: string, content: string) =>
+    fetchApi<{
+      success: boolean;
+      pendingMessage?: PendingChatMessage;
+      pendingMessages?: PendingChatMessage[];
+      error?: string;
+    }>(`/chat/sessions/${sessionId}/pending/${pendingMessageId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ content }),
+    }),
+  deletePendingMessage: (sessionId: string, pendingMessageId: string) =>
+    fetchApi<{
+      success: boolean;
+      pendingMessages?: PendingChatMessage[];
+      error?: string;
+    }>(`/chat/sessions/${sessionId}/pending/${pendingMessageId}`, {
+      method: "DELETE",
+    }),
   dictate: (payload: {
     audioBase64: string;
     mimeType?: string;

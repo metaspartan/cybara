@@ -122,7 +122,7 @@ describe("groupActivitiesForDisplay", () => {
       activity({ id: "t0", toolName: "__thought", text: "I'll explore the repo" }),
       activity({ id: "a", toolName: "exec", text: "Ran ls -la" }),
       activity({ id: "b", toolName: "grep", text: "Explored 53 files, 1 search" }),
-      activity({ id: "t1", toolName: "__thought", text: "What I'm doing: seen structure" }),
+      activity({ id: "t1", toolName: "__thought", text: "Context automatically compacted" }),
       activity({ id: "d", toolName: "exec", text: "Ran cd /repo && wc -l package.json" }),
       activity({ id: "e", toolName: "exec", text: "Ran git log --oneline" }),
     ]);
@@ -137,6 +137,7 @@ describe("groupActivitiesForDisplay", () => {
     const middleThought = entries[2];
     if (middleThought.type !== "single") throw new Error("expected middle thought");
     expect(middleThought.activity.toolName).toBe("__thought");
+    expect(middleThought.activity.text).toBe("Context automatically compacted");
     const finalGroup = entries[3];
     if (finalGroup.type !== "group") throw new Error("expected final group");
     expect(finalGroup.label).toBe("Ran 2 commands");

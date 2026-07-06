@@ -27,7 +27,7 @@ function ActivityRow({ activity }: { activity: LiveActivityItem }) {
     <div
       className={cn(
         "flex items-start gap-2 text-[12px] px-0.5",
-        activity.toolName === "__thought" ? "text-gray-200" : "text-gray-400"
+        activity.toolName === "__thought" ? "text-gray-300" : "text-gray-400"
       )}
     >
       {activity.toolName === "__thought" ? (
@@ -183,7 +183,7 @@ export function LiveActivityTimeline({
   activities,
   currentStep,
 }: {
-  status: "thinking" | "generating" | "idle";
+  status: "thinking" | "generating" | "compacting" | "idle";
   activities: LiveActivityItem[];
   currentStep?: string | null;
 }) {
@@ -198,9 +198,11 @@ export function LiveActivityTimeline({
     : normalizedCurrentStep ||
       (status === "generating"
         ? "Generating response..."
-        : status === "thinking"
-          ? "Thinking..."
-          : null);
+        : status === "compacting"
+          ? "Context automatically compacted"
+          : status === "thinking"
+            ? "Thinking..."
+            : null);
 
   return (
     <div className="space-y-1">

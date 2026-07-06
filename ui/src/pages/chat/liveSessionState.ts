@@ -1,7 +1,7 @@
 import type { LiveActivityItem } from "@/lib/chatActivities";
 
 export interface CachedLiveSessionState {
-  status: "thinking" | "generating" | "idle";
+  status: "thinking" | "generating" | "compacting" | "idle";
   activities: LiveActivityItem[];
   currentStep: string | null;
   streamingContent: string | null;

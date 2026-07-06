@@ -7,6 +7,7 @@ import {
   useDeferredValue,
   isValidElement,
   type ComponentPropsWithoutRef,
+  type KeyboardEvent,
 } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -245,15 +246,57 @@ function PendingChatQueue({
   messages,
   onSteer,
   onReorder,
+  onUpdate,
+  onDelete,
   steeringMessageId,
+  mutatingMessageId,
 }: {
   messages: PendingChatMessage[];
   onSteer: (id: string) => void;
   onReorder: (orderedIds: string[]) => void;
+  onUpdate: (id: string, content: string) => void;
+  onDelete: (id: string) => void;
   steeringMessageId: string | null;
+  mutatingMessageId: string | null;
 }) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingContent, setEditingContent] = useState("");
   if (messages.length === 0) return null;
+
+  const beginEdit = (message: PendingChatMessage) => {
+    setEditingId(message.id);
+    setEditingContent(message.content);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditingContent("");
+  };
+
+  const submitEdit = (message: PendingChatMessage) => {
+    const nextContent = editingContent.trim();
+    if (!nextContent || nextContent === message.content.trim()) {
+      cancelEdit();
+      return;
+    }
+    onUpdate(message.id, nextContent);
+    cancelEdit();
+  };
+
+  const handleEditKeyDown = (
+    event: KeyboardEvent<HTMLInputElement>,
+    message: PendingChatMessage
+  ) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      submitEdit(message);
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      cancelEdit();
+    }
+  };
 
   const reorderMessages = (sourceId: string, targetId: string) => {
     if (!sourceId || sourceId === targetId) return;
@@ -272,7 +315,10 @@ function PendingChatQueue({
       {messages.map((message) => {
         const isSteering = message.mode === "steering";
         const isOptimistic = message.id.startsWith("optimistic-");
-        const canDrag = messages.length > 1 && !isSteering && !isOptimistic;
+        const isMutating = mutatingMessageId === message.id;
+        const canChange = !isSteering && !isOptimistic && !isMutating;
+        const canDrag = messages.length > 1 && canChange;
+        const isEditing = editingId === message.id;
         return (
           <div
             key={message.id}
@@ -311,17 +357,52 @@ function PendingChatQueue({
             >
               {isSteering ? "Steering" : "Queued"}
             </span>
-            <span
-              className="min-w-0 flex-1 truncate text-gray-300"
-              title={`${message.content} · ${formatRelativeTime(new Date(message.createdAt).toISOString())}`}
-            >
-              {message.content}
-            </span>
+            {isEditing ? (
+              <input
+                autoFocus
+                value={editingContent}
+                onChange={(event) => setEditingContent(event.target.value)}
+                onBlur={() => submitEdit(message)}
+                onKeyDown={(event) => handleEditKeyDown(event, message)}
+                className="min-w-0 flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[12px] text-white outline-none focus:border-amber-400/40"
+              />
+            ) : (
+              <span
+                className="min-w-0 flex-1 truncate text-gray-300"
+                title={`${message.content} · ${formatRelativeTime(new Date(message.createdAt).toISOString())}`}
+              >
+                {message.content}
+              </span>
+            )}
+            {!isSteering && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => beginEdit(message)}
+                  disabled={!canChange}
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-white/[0.08] hover:text-white disabled:opacity-40"
+                  title="Edit queued message"
+                  aria-label="Edit queued message"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDelete(message.id)}
+                  disabled={!canChange}
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-rose-500/10 hover:text-rose-200 disabled:opacity-40"
+                  title="Delete queued message"
+                  aria-label="Delete queued message"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </>
+            )}
             {!isSteering ? (
               <button
                 type="button"
                 onClick={() => onSteer(message.id)}
-                disabled={isOptimistic || steeringMessageId === message.id}
+                disabled={isOptimistic || steeringMessageId === message.id || isMutating}
                 className="inline-flex h-7 shrink-0 items-center justify-center rounded-md px-2 text-[12px] font-medium text-gray-300 transition-colors hover:bg-white/[0.08] hover:text-white disabled:opacity-60"
               >
                 {isOptimistic
@@ -1910,7 +1991,9 @@ export function Chat() {
   const [artifactViewerContent, setArtifactViewerContent] = useState("");
   const [artifactViewerRawView, setArtifactViewerRawView] = useState(false);
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
-  const [liveStatus, setLiveStatus] = useState<"thinking" | "generating" | "idle">("idle");
+  const [liveStatus, setLiveStatus] = useState<"thinking" | "generating" | "compacting" | "idle">(
+    "idle"
+  );
   const [liveActivities, setLiveActivities] = useState<LiveActivityItem[]>([]);
   const [liveCurrentStep, setLiveCurrentStep] = useState<string | null>(null);
   // Tracked (for cache/completion-handoff) but NOT rendered as a live answer:
@@ -1919,6 +2002,7 @@ export function Chat() {
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
   const [pendingMessages, setPendingMessages] = useState<PendingChatMessage[]>([]);
   const [steeringMessageId, setSteeringMessageId] = useState<string | null>(null);
+  const [pendingMessageMutationId, setPendingMessageMutationId] = useState<string | null>(null);
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
   const [dictationSupported, setDictationSupported] = useState(false);
   const [dictating, setDictating] = useState(false);
@@ -2440,6 +2524,7 @@ export function Chat() {
         (payload.active === true ||
           snapshot.status === "thinking" ||
           snapshot.status === "generating" ||
+          snapshot.status === "compacting" ||
           snapshot.status === "tool_executing" ||
           snapshot.status === "tool_completed");
       setPendingMessages((current) => mergePendingChatMessages(snapshot?.pendingMessages, current));
@@ -2513,6 +2598,8 @@ export function Chat() {
           setLiveCurrentStep(detail);
         } else if (normalizedSnapshotStatus === "generating") {
           setLiveCurrentStep("Generating response...");
+        } else if (normalizedSnapshotStatus === "compacting") {
+          setLiveCurrentStep("Context automatically compacted");
         } else if (normalizedSnapshotStatus === "thinking") {
           setLiveCurrentStep("Thinking...");
         } else {
@@ -2688,6 +2775,7 @@ export function Chat() {
           if (
             status === "thinking" ||
             status === "generating" ||
+            status === "compacting" ||
             status === "tool_executing" ||
             status === "tool_completed"
           ) {
@@ -2748,6 +2836,23 @@ export function Chat() {
             }
           }
           setLiveStatus("generating");
+          return;
+        }
+        if (status === "compacting") {
+          if (!payload.toolName) {
+            const activeToolStep = getLatestInFlightStep(runActivityBufferRef.current);
+            const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
+            const eventTimestamp =
+              typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
+                ? payload.timestamp
+                : undefined;
+            const compactingDetail = isMeaningfulThoughtDetail(detail)
+              ? detail
+              : "Context automatically compacted";
+            appendLiveActivity("result", compactingDetail, "__thought", eventTimestamp);
+            setLiveCurrentStep(activeToolStep || compactingDetail);
+          }
+          setLiveStatus("compacting");
           return;
         }
         if (status === "idle") {
@@ -2988,6 +3093,69 @@ export function Chat() {
       } catch (error) {
         setPendingMessages(previousMessages);
         console.error("Failed to reorder pending messages:", error);
+      }
+    },
+    [pendingMessages, sessionId]
+  );
+
+  const handleUpdatePendingMessage = useCallback(
+    async (pendingMessageId: string, content: string) => {
+      if (!sessionId || pendingMessageId.startsWith("optimistic-")) return;
+      const nextContent = content.trim();
+      if (!nextContent) return;
+      const previousMessages = pendingMessages;
+      const now = Date.now();
+      setPendingMessages((current) =>
+        normalizePendingChatMessages(
+          current.map((message) =>
+            message.id === pendingMessageId
+              ? { ...message, content: nextContent, updatedAt: now }
+              : message
+          )
+        )
+      );
+      setPendingMessageMutationId(pendingMessageId);
+      try {
+        const response = await chatApi.updatePendingMessage(
+          sessionId,
+          pendingMessageId,
+          nextContent
+        );
+        if (response.success && response.data?.success) {
+          setPendingMessages(normalizePendingChatMessages(response.data.pendingMessages));
+          return;
+        }
+        setPendingMessages(previousMessages);
+        console.error("Failed to update pending message:", response.error || response.data?.error);
+      } catch (error) {
+        setPendingMessages(previousMessages);
+        console.error("Failed to update pending message:", error);
+      } finally {
+        setPendingMessageMutationId(null);
+      }
+    },
+    [pendingMessages, sessionId]
+  );
+
+  const handleDeletePendingMessage = useCallback(
+    async (pendingMessageId: string) => {
+      if (!sessionId || pendingMessageId.startsWith("optimistic-")) return;
+      const previousMessages = pendingMessages;
+      setPendingMessages((current) => current.filter((message) => message.id !== pendingMessageId));
+      setPendingMessageMutationId(pendingMessageId);
+      try {
+        const response = await chatApi.deletePendingMessage(sessionId, pendingMessageId);
+        if (response.success && response.data?.success) {
+          setPendingMessages(normalizePendingChatMessages(response.data.pendingMessages));
+          return;
+        }
+        setPendingMessages(previousMessages);
+        console.error("Failed to delete pending message:", response.error || response.data?.error);
+      } catch (error) {
+        setPendingMessages(previousMessages);
+        console.error("Failed to delete pending message:", error);
+      } finally {
+        setPendingMessageMutationId(null);
       }
     },
     [pendingMessages, sessionId]
@@ -3870,7 +4038,10 @@ export function Chat() {
                     messages={pendingMessages}
                     onSteer={handleSteerPendingMessage}
                     onReorder={handleReorderPendingMessages}
+                    onUpdate={handleUpdatePendingMessage}
+                    onDelete={handleDeletePendingMessage}
                     steeringMessageId={steeringMessageId}
+                    mutatingMessageId={pendingMessageMutationId}
                   />
                 )}
                 <div className="flex items-end gap-2 sm:gap-3">

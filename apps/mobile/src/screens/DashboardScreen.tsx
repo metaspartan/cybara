@@ -79,6 +79,7 @@ import {
   MessageCircle,
   Mic,
   Network,
+  Pencil,
   Plus,
   Play,
   RefreshCw,
@@ -1918,6 +1919,10 @@ function SessionDetailPanel({
   const [pendingMessages, setPendingMessages] = useState<MobilePendingChatMessage[]>([]);
   const [steeringPendingId, setSteeringPendingId] = useState<string | null>(null);
   const [reorderingPendingId, setReorderingPendingId] = useState<string | null>(null);
+  const [mutatingPendingId, setMutatingPendingId] = useState<string | null>(null);
+  const [editingPendingMessage, setEditingPendingMessage] =
+    useState<MobilePendingChatMessage | null>(null);
+  const [editingPendingDraft, setEditingPendingDraft] = useState("");
   const [pinned, setPinned] = useState(sessionSummary?.pinned ?? false);
   const [pinning, setPinning] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -2354,6 +2359,77 @@ function SessionDetailPanel({
     }
   };
 
+  const openEditPendingMessage = (pendingMessage: MobilePendingChatMessage) => {
+    if (pendingMessageIsOptimistic(pendingMessage) || pendingMessage.mode === "steering") return;
+    setEditingPendingMessage(pendingMessage);
+    setEditingPendingDraft(pendingMessage.content);
+  };
+
+  const closeEditPendingMessage = () => {
+    setEditingPendingMessage(null);
+    setEditingPendingDraft("");
+  };
+
+  const updatePendingMessage = async () => {
+    const target = editingPendingMessage;
+    const nextContent = editingPendingDraft.trim();
+    if (!target || !nextContent || pendingMessageIsOptimistic(target)) return;
+    if (nextContent === target.content.trim()) {
+      closeEditPendingMessage();
+      return;
+    }
+    const previousMessages = pendingMessages;
+    const now = Date.now();
+    setPendingMessages((current) =>
+      current.map((entry) =>
+        entry.id === target.id ? { ...entry, content: nextContent, updatedAt: now } : entry
+      )
+    );
+    setMutatingPendingId(target.id);
+    haptics.select();
+    try {
+      const result = await api.updatePendingMessage(sessionId, target.id, nextContent);
+      if (result.success) {
+        setPendingMessages((current) =>
+          mergeOptimisticPendingMessages(result.pendingMessages ?? [], current)
+        );
+        closeEditPendingMessage();
+      } else {
+        setPendingMessages(previousMessages);
+        setLoadError(result.error || "Failed to update pending message.");
+      }
+    } catch (error) {
+      setPendingMessages(previousMessages);
+      setLoadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMutatingPendingId(null);
+    }
+  };
+
+  const deletePendingMessage = async (pendingMessage: MobilePendingChatMessage) => {
+    if (pendingMessageIsOptimistic(pendingMessage) || pendingMessage.mode === "steering") return;
+    const previousMessages = pendingMessages;
+    setPendingMessages((current) => current.filter((entry) => entry.id !== pendingMessage.id));
+    setMutatingPendingId(pendingMessage.id);
+    haptics.select();
+    try {
+      const result = await api.deletePendingMessage(sessionId, pendingMessage.id);
+      if (result.success) {
+        setPendingMessages((current) =>
+          mergeOptimisticPendingMessages(result.pendingMessages ?? [], current)
+        );
+      } else {
+        setPendingMessages(previousMessages);
+        setLoadError(result.error || "Failed to delete pending message.");
+      }
+    } catch (error) {
+      setPendingMessages(previousMessages);
+      setLoadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMutatingPendingId(null);
+    }
+  };
+
   const confirmRevertToMessage = (message: SessionDetailSummary["messages"][number]) => {
     Alert.alert(
       "Revert to this message?",
@@ -2558,7 +2634,8 @@ function SessionDetailPanel({
                   const optimisticPending = pendingMessageIsOptimistic(pendingMessage);
                   const busy =
                     steeringPendingId === pendingMessage.id ||
-                    reorderingPendingId === pendingMessage.id;
+                    reorderingPendingId === pendingMessage.id ||
+                    mutatingPendingId === pendingMessage.id;
                   const pendingIndex = pendingMessages.findIndex(
                     (entry) => entry.id === pendingMessage.id
                   );
@@ -2609,6 +2686,40 @@ function SessionDetailPanel({
                               ]}
                             >
                               <ArrowDown color={colors.text} size={13} strokeWidth={2.4} />
+                            </Pressable>
+                          </View>
+                        ) : null}
+                        {!steering ? (
+                          <View style={styles.pendingOrderControls}>
+                            <Pressable
+                              accessibilityLabel="Edit pending message"
+                              accessibilityRole="button"
+                              disabled={optimisticPending || busy}
+                              onPress={() => openEditPendingMessage(pendingMessage)}
+                              style={[
+                                styles.pendingOrderButton,
+                                optimisticPending || busy
+                                  ? styles.pendingOrderButtonDisabled
+                                  : null,
+                              ]}
+                            >
+                              <Pencil color={colors.text} size={13} strokeWidth={2.4} />
+                            </Pressable>
+                            <Pressable
+                              accessibilityLabel="Delete pending message"
+                              accessibilityRole="button"
+                              disabled={optimisticPending || busy}
+                              onPress={() => {
+                                void deletePendingMessage(pendingMessage);
+                              }}
+                              style={[
+                                styles.pendingOrderButton,
+                                optimisticPending || busy
+                                  ? styles.pendingOrderButtonDisabled
+                                  : null,
+                              ]}
+                            >
+                              <Trash2 color={colors.red} size={13} strokeWidth={2.4} />
                             </Pressable>
                           </View>
                         ) : null}
@@ -2697,6 +2808,56 @@ function SessionDetailPanel({
           </Pressable>
         </View>
       </LiquidGlass>
+      <Modal
+        animationType="fade"
+        onRequestClose={closeEditPendingMessage}
+        transparent
+        visible={editingPendingMessage !== null}
+      >
+        <View style={styles.pendingEditOverlay}>
+          <View style={styles.pendingEditCard}>
+            <Text style={styles.pendingEditTitle}>Edit queued message</Text>
+            <TextInput
+              autoFocus
+              multiline
+              onChangeText={setEditingPendingDraft}
+              placeholder="Queued message"
+              placeholderTextColor={colors.textDim}
+              style={styles.pendingEditInput}
+              value={editingPendingDraft}
+            />
+            <View style={styles.pendingEditActions}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={closeEditPendingMessage}
+                style={styles.pendingEditCancelButton}
+              >
+                <Text style={styles.pendingEditCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                disabled={!editingPendingDraft.trim() || mutatingPendingId !== null}
+                onPress={() => {
+                  void updatePendingMessage();
+                }}
+                style={[
+                  styles.pendingEditSaveButton,
+                  {
+                    backgroundColor:
+                      editingPendingDraft.trim() && mutatingPendingId === null
+                        ? accentColor
+                        : colors.inset,
+                  },
+                ]}
+              >
+                <Text style={styles.pendingEditSaveText}>
+                  {mutatingPendingId ? "Saving" : "Save"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }

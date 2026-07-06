@@ -292,6 +292,9 @@ struct ChatScreen: View {
     @State private var streamingContent: String?
     @State private var pendingMessages: [GatewayPendingChatMessage] = []
     @State private var steeringPendingID: String?
+    @State private var pendingMutationID: String?
+    @State private var editingPendingMessage: GatewayPendingChatMessage?
+    @State private var editingPendingDraft = ""
     @AppStorage("cybara.chat.lastWorkspaceDir") private var lastWorkspaceDir = ""
     @StateObject private var statusStream = GatewayStatusStream()
 
@@ -330,6 +333,38 @@ struct ChatScreen: View {
             Button("Cancel", role: .cancel) { revertCandidate = nil }
         } message: {
             Text("The conversation rolls back to this point. Messages after it are removed from the session.")
+        }
+        .sheet(item: $editingPendingMessage) { message in
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Edit queued message")
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                TextEditor(text: $editingPendingDraft)
+                    .font(.system(size: 13, design: .rounded))
+                    .frame(width: 420, height: 120)
+                    .scrollContentBackground(.hidden)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.white.opacity(0.05))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    )
+                HStack {
+                    Spacer()
+                    Button("Cancel") {
+                        editingPendingMessage = nil
+                        editingPendingDraft = ""
+                    }
+                    Button("Save") {
+                        Task { await updatePending(message, content: editingPendingDraft) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(editingPendingDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || pendingMutationID != nil)
+                }
+            }
+            .padding(18)
+            .frame(width: 460)
         }
         .alert("Rename chat", isPresented: renameAlertBinding) {
             TextField("Title", text: $renameDraft)
@@ -636,7 +671,7 @@ struct ChatScreen: View {
         sending ||
             !liveActivities.isEmpty ||
             streamingContent != nil ||
-            ["thinking", "generating", "tool_executing", "tool_completed"].contains(liveStatus.lowercased())
+            ["thinking", "generating", "compacting", "tool_executing", "tool_completed"].contains(liveStatus.lowercased())
     }
 
     private var sortedPendingMessages: [GatewayPendingChatMessage] {
@@ -680,6 +715,7 @@ struct ChatScreen: View {
             .foregroundStyle(.secondary)
 
             ForEach(sortedPendingMessages) { message in
+                let mutable = message.mode != "steering" && pendingMutationID != message.id
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(pendingMessageMeta(message))
@@ -693,12 +729,33 @@ struct ChatScreen: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                     if message.mode != "steering" {
+                        Button {
+                            editingPendingMessage = message
+                            editingPendingDraft = message.content
+                        } label: {
+                            Image(systemName: "pencil")
+                        }
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                        .help("Edit queued message")
+                        .disabled(!mutable)
+
+                        Button(role: .destructive) {
+                            Task { await deletePending(message) }
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                        .help("Delete queued message")
+                        .disabled(!mutable)
+
                         Button("Steer") {
                             Task { await steerPending(message) }
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
-                        .disabled(steeringPendingID == message.id)
+                        .disabled(steeringPendingID == message.id || pendingMutationID == message.id)
                     }
                 }
                 .padding(10)
@@ -788,6 +845,54 @@ struct ChatScreen: View {
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    private func updatePending(_ message: GatewayPendingChatMessage, content: String) async {
+        guard let selectedSessionID else { return }
+        let nextContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !nextContent.isEmpty else { return }
+        if nextContent == message.content.trimmingCharacters(in: .whitespacesAndNewlines) {
+            editingPendingMessage = nil
+            editingPendingDraft = ""
+            return
+        }
+        pendingMutationID = message.id
+        do {
+            let response = try await client.updatePendingMessage(
+                sessionId: selectedSessionID,
+                pendingId: message.id,
+                content: nextContent
+            )
+            if response.success == false {
+                error = response.error ?? "Failed to update pending message"
+            } else {
+                pendingMessages = response.pendingMessages
+                editingPendingMessage = nil
+                editingPendingDraft = ""
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+        pendingMutationID = nil
+    }
+
+    private func deletePending(_ message: GatewayPendingChatMessage) async {
+        guard let selectedSessionID else { return }
+        pendingMutationID = message.id
+        do {
+            let response = try await client.deletePendingMessage(
+                sessionId: selectedSessionID,
+                pendingId: message.id
+            )
+            if response.success == false {
+                error = response.error ?? "Failed to delete pending message"
+            } else {
+                pendingMessages = response.pendingMessages
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+        pendingMutationID = nil
     }
 
     private func performRevert(_ message: GatewaySessionMessage) {

@@ -1011,6 +1011,83 @@ export function reorderPendingChatMessages(
   return { success: true, pendingMessages };
 }
 
+export function updatePendingChatMessage(
+  sessionId: string,
+  pendingMessageId: string,
+  content: string
+):
+  | {
+      success: true;
+      pendingMessage: PendingChatMessageSnapshot;
+      pendingMessages: PendingChatMessageSnapshot[];
+    }
+  | { success: false; error: string; pendingMessages: PendingChatMessageSnapshot[] } {
+  const key = sessionId.trim();
+  const nextContent = typeof content === "string" ? content.trim() : "";
+  if (nextContent.length === 0) {
+    return {
+      success: false,
+      error: "Pending message cannot be empty",
+      pendingMessages: pendingChatSnapshots(key),
+    };
+  }
+
+  const queue = pendingChatQueues.get(key) || [];
+  const index = queue.findIndex(
+    (item) => item.id === pendingMessageId && item.materialized !== true
+  );
+  if (index < 0) {
+    return {
+      success: false,
+      error: "Pending message not found",
+      pendingMessages: pendingChatSnapshots(key),
+    };
+  }
+
+  const item = {
+    ...queue[index],
+    content: nextContent,
+    request: {
+      ...queue[index].request,
+      message: nextContent,
+    },
+    updatedAt: Date.now(),
+  };
+  queue[index] = item;
+  pendingChatQueues.set(key, queue);
+  const pendingMessages = syncPendingChatStatus(key);
+  return { success: true, pendingMessage: pendingChatSnapshot(item), pendingMessages };
+}
+
+export function deletePendingChatMessage(
+  sessionId: string,
+  pendingMessageId: string
+):
+  | { success: true; pendingMessages: PendingChatMessageSnapshot[] }
+  | { success: false; error: string; pendingMessages: PendingChatMessageSnapshot[] } {
+  const key = sessionId.trim();
+  const queue = pendingChatQueues.get(key) || [];
+  const visibleIndex = queue.findIndex(
+    (item) => item.id === pendingMessageId && item.materialized !== true
+  );
+  if (visibleIndex < 0) {
+    return {
+      success: false,
+      error: "Pending message not found",
+      pendingMessages: pendingChatSnapshots(key),
+    };
+  }
+
+  const nextQueue = queue.filter((item) => item.id !== pendingMessageId);
+  if (nextQueue.length > 0) {
+    pendingChatQueues.set(key, nextQueue);
+  } else {
+    pendingChatQueues.delete(key);
+  }
+  const pendingMessages = syncPendingChatStatus(key);
+  return { success: true, pendingMessages };
+}
+
 export async function steerPendingChatMessage(
   sessionId: string,
   pendingMessageId: string

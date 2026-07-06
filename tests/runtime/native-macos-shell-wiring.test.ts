@@ -97,6 +97,21 @@ describe("native macOS shell wiring", () => {
     expect(configScreens).toContain("logSummary");
   });
 
+  test("native chat pending queue exposes edit and delete controls", () => {
+    const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
+    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+
+    expect(gatewayClient).toContain("func updatePendingMessage(");
+    expect(gatewayClient).toContain("func deletePendingMessage(");
+    expect(gatewayClient).toContain('method: "PATCH"');
+    expect(gatewayClient).toContain('method: "DELETE"');
+    expect(nativeScreens).toContain('Image(systemName: "pencil")');
+    expect(nativeScreens).toContain('Image(systemName: "trash")');
+    expect(nativeScreens).toContain("Edit queued message");
+    expect(nativeScreens).toContain("await updatePending(message, content: editingPendingDraft)");
+    expect(nativeScreens).toContain("await deletePending(message)");
+  });
+
   test("gateway model labels trim blank titles before falling back", () => {
     const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
     const modelTests = readFileSync(

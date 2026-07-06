@@ -739,6 +739,24 @@ final class GatewayClientModelTests: XCTestCase {
         }
     }
 
+    func testNativeCompactingStatusRendersVisibleThoughtActivity() throws {
+        let event = try decodeStatusEvent(
+            #"""
+            {
+              "type": "status",
+              "status": "compacting",
+              "timestamp": 1783015200100,
+              "sessionId": "session-1"
+            }
+            """#
+        )
+
+        let activity = nativeLiveActivity(from: event)
+        XCTAssertEqual(activity?.toolName, "__thought")
+        XCTAssertEqual(activity?.phase, .result)
+        XCTAssertEqual(activity?.text, "Context automatically compacted")
+    }
+
     func testNativeStatusEventsDecodeLiveToolActivityAndSnapshots() throws {
         let status = try decodeStatusEvent(
             #"""

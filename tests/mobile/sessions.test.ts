@@ -37,6 +37,8 @@ describe("mobile: chat management", () => {
     expect(api).toContain("interrupted?: boolean");
     expect(api).toContain("pendingChatMessages(sessionId: string)");
     expect(api).toContain("reorderPendingMessages(");
+    expect(api).toContain("updatePendingMessage(");
+    expect(api).toContain("deletePendingMessage(");
     expect(screen).toContain("optimisticPendingMessageId");
     expect(screen).toContain(
       "`optimistic-${liveStartedAt}-${optimisticPendingCounterRef.current}`"
@@ -45,10 +47,16 @@ describe("mobile: chat management", () => {
     expect(screen).toContain("result.interrupted");
     expect(screen).toContain("void hydratePendingMessages();");
     expect(screen).toContain("api.reorderPendingMessages(");
+    expect(screen).toContain("api.updatePendingMessage(");
+    expect(screen).toContain("api.deletePendingMessage(");
     expect(screen).toContain('accessibilityLabel="Move pending message up"');
     expect(screen).toContain('accessibilityLabel="Move pending message down"');
+    expect(screen).toContain('accessibilityLabel="Edit pending message"');
+    expect(screen).toContain('accessibilityLabel="Delete pending message"');
     expect(screen).toContain('accessibilityLabel="Steer pending message"');
+    expect(screen).toContain("Edit queued message");
     expect(styles).toContain("pendingQueueActions:");
+    expect(styles).toContain("pendingEditCard:");
     expect(styles).toContain("pendingOrderControls:");
   });
 });

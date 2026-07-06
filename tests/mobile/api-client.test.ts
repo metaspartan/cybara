@@ -1541,6 +1541,73 @@ describe("mobile API client", () => {
     }
   });
 
+  test("updates and deletes pending mobile chat messages through gateway endpoints", async () => {
+    const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      const method = init?.method || "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      calls.push({ method, path: parsedUrl.pathname, body });
+
+      if (parsedUrl.pathname === "/api/chat/sessions/s1/pending/pending-1" && method === "PATCH") {
+        return Response.json({
+          success: true,
+          pendingMessage: {
+            id: "pending-1",
+            sessionId: "s1",
+            content: "edited follow-up",
+            createdAt: 1783015200000,
+            updatedAt: 1783015200100,
+            mode: "queued",
+            sequence: 1,
+          },
+          pendingMessages: [
+            {
+              id: "pending-1",
+              sessionId: "s1",
+              content: "edited follow-up",
+              createdAt: 1783015200000,
+              updatedAt: 1783015200100,
+              mode: "queued",
+              sequence: 1,
+            },
+          ],
+        });
+      }
+
+      if (parsedUrl.pathname === "/api/chat/sessions/s1/pending/pending-1" && method === "DELETE") {
+        return Response.json({ success: true, pendingMessages: [] });
+      }
+
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const api = new CybaraMobileApi(profile);
+      const updated = await api.updatePendingMessage("s1", "pending-1", "edited follow-up");
+      const deleted = await api.deletePendingMessage("s1", "pending-1");
+
+      expect(updated.success).toBe(true);
+      expect(updated.pendingMessage).toMatchObject({ content: "edited follow-up" });
+      expect(deleted).toEqual({ success: true, pendingMessages: [], error: undefined });
+      expect(calls).toEqual([
+        {
+          method: "PATCH",
+          path: "/api/chat/sessions/s1/pending/pending-1",
+          body: { content: "edited follow-up" },
+        },
+        {
+          method: "DELETE",
+          path: "/api/chat/sessions/s1/pending/pending-1",
+          body: undefined,
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("deletes sessions through the canonical gateway sessions route", async () => {
     const calls: Array<{ method: string; path: string }> = [];
     const originalFetch = globalThis.fetch;

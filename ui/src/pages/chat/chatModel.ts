@@ -714,8 +714,11 @@ export function formatToolIntent(
   return `${toolName} failed`;
 }
 
-export function normalizeSessionStatus(status: string): "thinking" | "generating" | "idle" {
+export function normalizeSessionStatus(
+  status: string
+): "thinking" | "generating" | "compacting" | "idle" {
   if (status === "generating") return "generating";
+  if (status === "compacting") return "compacting";
   if (
     status === "thinking" ||
     status === "tool_executing" ||

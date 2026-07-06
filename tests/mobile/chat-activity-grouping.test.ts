@@ -45,7 +45,7 @@ describe("groupMobileActivities", () => {
     const entries = groupMobileActivities([
       activity({ id: "a", toolName: "exec", text: "Ran ls" }),
       activity({ id: "b", toolName: "grep", text: "Explored 5 files, 1 search" }),
-      activity({ id: "t", toolName: "__thought", text: "now searching" }),
+      activity({ id: "t", toolName: "__thought", text: "Context automatically compacted" }),
       activity({ id: "c", toolName: "exec", text: "Ran cd /repo && wc -l package.json" }),
       activity({ id: "d", toolName: "exec", text: "Ran git log --oneline" }),
     ]);
@@ -57,6 +57,7 @@ describe("groupMobileActivities", () => {
     const thought = entries[1];
     if (thought.type !== "single") throw new Error("expected thought");
     expect(thought.activity.toolName).toBe("__thought");
+    expect(thought.activity.text).toBe("Context automatically compacted");
     const finalGroup = entries[2];
     if (finalGroup.type !== "group") throw new Error("expected final group");
     expect(finalGroup.label).toBe("Ran 2 commands");

@@ -22,6 +22,8 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("PendingChatQueue");
     expect(source).toContain("chatApi.steerPendingMessage");
     expect(source).toContain("chatApi.reorderPendingMessages");
+    expect(source).toContain("chatApi.updatePendingMessage");
+    expect(source).toContain("chatApi.deletePendingMessage");
     expect(source).toContain("chatApi.getPendingMessages");
     expect(source).toContain("refreshPendingMessages(sessionId)");
     expect(source).toContain("mergePendingChatMessages(snapshot?.pendingMessages, current)");
@@ -35,6 +37,9 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("onMouseDown={(event) =>");
     expect(source).toContain("onMouseUp={() =>");
     expect(source).toContain("Drag to reorder");
+    expect(source).toContain('aria-label="Edit queued message"');
+    expect(source).toContain('aria-label="Delete queued message"');
+    expect(source).toContain('"Context automatically compacted"');
     expect(source).toContain("canQueueCurrentMessage");
     expect(source).toContain("const locallyLoadingCurrentSession =");
     expect(source).toContain("const requestSessionId = requestedQueueMode");

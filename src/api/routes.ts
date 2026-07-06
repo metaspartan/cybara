@@ -76,8 +76,10 @@ import {
   updateSessionTitle,
   getChatRateLimitStatus,
   listPendingChatMessages,
+  deletePendingChatMessage,
   reorderPendingChatMessages,
   steerPendingChatMessage,
+  updatePendingChatMessage,
   type ChatMessage,
 } from "../api/chat";
 import {
@@ -3498,6 +3500,12 @@ const routes: Record<string, RouteHandler> = {
       Array.isArray(data.pendingMessageIds) ? data.pendingMessageIds : []
     );
   },
+  "PATCH /api/chat/sessions/:id/pending/:pendingId": (body, params) => {
+    const data = body as { content?: string };
+    return updatePendingChatMessage(params!.id, params!.pendingId, data.content || "");
+  },
+  "DELETE /api/chat/sessions/:id/pending/:pendingId": (_body, params) =>
+    deletePendingChatMessage(params!.id, params!.pendingId),
   "POST /api/chat/sessions/:id/pending/:pendingId/steer": async (_body, params) =>
     await steerPendingChatMessage(params!.id, params!.pendingId),
   "DELETE /api/chat/sessions/:id": async (_body, params) => ({

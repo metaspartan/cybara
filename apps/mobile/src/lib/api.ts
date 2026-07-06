@@ -1610,6 +1610,56 @@ export class CybaraMobileApi {
     };
   }
 
+  async updatePendingMessage(
+    sessionId: string,
+    pendingMessageId: string,
+    content: string
+  ): Promise<{
+    success: boolean;
+    pendingMessage?: MobilePendingChatMessage;
+    pendingMessages?: MobilePendingChatMessage[];
+    error?: string;
+  }> {
+    const response = await this.request<unknown>(
+      `/api/chat/sessions/${encodeURIComponent(sessionId)}/pending/${encodeURIComponent(
+        pendingMessageId
+      )}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ content }),
+      }
+    );
+    const record = asRecord(response);
+    return {
+      success: record?.success === true,
+      pendingMessage: normalizePendingChatMessages(record?.pendingMessage)[0],
+      pendingMessages: normalizePendingChatMessages(record?.pendingMessages),
+      error: readString(record, ["error"]),
+    };
+  }
+
+  async deletePendingMessage(
+    sessionId: string,
+    pendingMessageId: string
+  ): Promise<{
+    success: boolean;
+    pendingMessages?: MobilePendingChatMessage[];
+    error?: string;
+  }> {
+    const response = await this.request<unknown>(
+      `/api/chat/sessions/${encodeURIComponent(sessionId)}/pending/${encodeURIComponent(
+        pendingMessageId
+      )}`,
+      { method: "DELETE" }
+    );
+    const record = asRecord(response);
+    return {
+      success: record?.success === true,
+      pendingMessages: normalizePendingChatMessages(record?.pendingMessages),
+      error: readString(record, ["error"]),
+    };
+  }
+
   async steerPendingMessage(
     sessionId: string,
     pendingMessageId: string
