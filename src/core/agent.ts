@@ -42,6 +42,7 @@ import {
 } from "./llm/stream-watchdog";
 import { consumeOpenAIChatStream } from "./llm/streaming-completions";
 import { compactCodexInputItemsForContext, sanitizeCodexInputItems } from "./llm/codex-context";
+import { compactToolTranscriptInPlace, TOOL_RESULT_COMPACTION_NOTICE } from "./llm/tool-transcript";
 import { trackTokenUsage } from "./llm/token-usage-tracking";
 import {
   hasTextToolCallMarkup,
@@ -96,7 +97,6 @@ import {
   ANTHROPIC_CONTEXT_1M_BETA,
   CONTEXT_CHARS_PER_TOKEN_ESTIMATE,
   CONTEXT_INPUT_HEADROOM_RATIO,
-  CONTEXT_LIMIT_COMPACTION_NOTICE,
   CONTEXT_LIMIT_TRUNCATION_NOTICE,
   CONVERSATION_COMPACT_TRIGGER_RATIO,
   CONVERSATION_KEEP_RECENT_MESSAGES,
@@ -2270,6 +2270,10 @@ class AgentManager {
         continue;
       }
 
+      // Anthropic nests tool_result blocks inside a user message's content
+      // array, so we elide at the block level — same shared notice and
+      // elide-in-place philosophy as the flat Chat Completions / Responses
+      // formats, just adapted to the nested shape.
       let changed = false;
       const nextContent = message.content.map((block) => {
         if (!block || typeof block !== "object") return block;
@@ -2277,13 +2281,13 @@ class AgentManager {
         if (typed.type !== "tool_result" || typeof typed.content !== "string") {
           return block;
         }
-        if (typed.content.includes(CONTEXT_LIMIT_COMPACTION_NOTICE)) {
+        if (typed.content.includes(TOOL_RESULT_COMPACTION_NOTICE)) {
           return block;
         }
         changed = true;
         return {
           ...typed,
-          content: CONTEXT_LIMIT_COMPACTION_NOTICE,
+          content: TOOL_RESULT_COMPACTION_NOTICE,
         };
       });
 
@@ -2297,36 +2301,28 @@ class AgentManager {
     return compacted;
   }
 
+  // Chat Completions wire format: tool results are `role:"tool"` messages.
+  // Elides their content in place via the shared, provider-agnostic compactor
+  // (same layer the OpenAI-Responses/"codex" and other paths use).
   private compactOpenAILoopMessagesForContext(
     messages: Record<string, unknown>[],
     contextBudgetChars: number,
     aggressive = false
   ): boolean {
-    let totalChars = this.estimateOpenAIContextChars(messages);
-    if (totalChars <= contextBudgetChars && !aggressive) return false;
-
-    const minRecentMessagesToKeep = aggressive ? 0 : 8;
-    let compacted = false;
-    let forceCompaction = aggressive;
-
-    for (let index = 0; index < messages.length; index += 1) {
-      if (!forceCompaction && totalChars <= contextBudgetChars) break;
-      const remaining = messages.length - index;
-      if (remaining <= minRecentMessagesToKeep) break;
-
-      const message = messages[index];
-      if (!message || message.role !== "tool" || typeof message.content !== "string") {
-        continue;
-      }
-      if (message.content.includes(CONTEXT_LIMIT_COMPACTION_NOTICE)) continue;
-
-      message.content = CONTEXT_LIMIT_COMPACTION_NOTICE;
-      compacted = true;
-      forceCompaction = false;
-      totalChars = this.estimateOpenAIContextChars(messages);
-    }
-
-    return compacted;
+    const elided = compactToolTranscriptInPlace(
+      messages,
+      contextBudgetChars,
+      {
+        isToolResult: (message) => message.role === "tool" && typeof message.content === "string",
+        estimateChars: (message) => this.estimateOpenAIMessageChars(message) + 64,
+        isElided: (message) => message.content === TOOL_RESULT_COMPACTION_NOTICE,
+        elide: (message) => {
+          message.content = TOOL_RESULT_COMPACTION_NOTICE;
+        },
+      },
+      { aggressive }
+    );
+    return elided > 0;
   }
 
   private isContextWindowExceededError(errorText: string): boolean {

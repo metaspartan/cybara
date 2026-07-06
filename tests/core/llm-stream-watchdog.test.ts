@@ -385,7 +385,7 @@ describe("agentic loop stability against a real streaming provider", () => {
 });
 
 describe("Codex transcript compaction keeps long runs under context budget", () => {
-  test("evicts oldest tool traffic but preserves the leading request and recent turns", async () => {
+  test("elides old tool results in place, preserving pairing and the leading request", () => {
     const items: Array<Record<string, unknown>> = [
       { type: "message", role: "user", content: [{ type: "input_text", text: "review the repo" }] },
     ];
@@ -399,13 +399,16 @@ describe("Codex transcript compaction keeps long runs under context budget", () 
 
     const totalChars = items.reduce((sum, item) => sum + JSON.stringify(item).length, 0);
     expect(totalChars).toBeLessThanOrEqual(50_000);
-    expect(items.length).toBeLessThan(before);
-    // Leading user request survives.
+    // Elide-in-place keeps every structural item (pairing-safe) — the count is
+    // unchanged; it's the old output *content* that shrank.
+    expect(items.length).toBe(before);
+    // Leading user request survives untouched.
     expect(JSON.stringify(items[0])).toContain("review the repo");
-    // Most recent tool output survives (compaction drops from the front).
-    expect(JSON.stringify(items[items.length - 1])).toContain("function_call_output");
-    // Every surviving output MUST have its matching call — the Codex Responses
-    // API rejects orphaned function_call_output items (the deep-run failure).
+    // Recent tail is protected: the last output keeps its real content.
+    expect(items[items.length - 1].output).toBe("x".repeat(2000));
+    // An old output was elided to the shared notice.
+    expect(JSON.stringify(items)).toContain("elided to free context");
+    // Every output still has its matching call — no orphans possible.
     const liveCallIds = new Set(
       items.filter((i) => i.type === "function_call").map((i) => i.call_id as string)
     );
