@@ -20,8 +20,30 @@ function cacheRouteHandler(
   return async (body?: unknown, params?: Record<string, string>) => {
     const now = Date.now();
     const cached = cachedRouteResponses.get(routeKey);
+
+    // Serve stale-while-revalidate: metrics queries scan millions of rows
+    // synchronously, so an expired entry is returned immediately and refreshed
+    // off the request path. Only the very first call ever computes inline.
+    if (cached?.hasValue) {
+      if (cached.expiresAt <= now && !cached.pending) {
+        cached.pending = Promise.resolve()
+          .then(() => handler(body, params))
+          .then((value) => {
+            cachedRouteResponses.set(routeKey, {
+              expiresAt: Date.now() + ttlMs,
+              hasValue: true,
+              value,
+            });
+            return value;
+          })
+          .catch(() => {
+            cached.pending = undefined;
+            return cached.value;
+          });
+      }
+      return cached.value;
+    }
     if (cached?.pending) return cached.pending;
-    if (cached?.hasValue && cached.expiresAt > now) return cached.value;
 
     const pending = Promise.resolve(handler(body, params))
       .then((value) => {
@@ -66,4 +88,21 @@ export function cacheMetricsRoutes(routes: Record<string, CacheableRouteHandler>
       routes[routeKey] = cacheRouteHandler(routeKey, ttlMs, handler);
     }
   }
+}
+
+// Populate the metrics cache shortly after startup so the first dashboard
+// visit is served warm instead of paying the multi-second cold scans. Routes
+// run one at a time with a gap between them to avoid starving the event loop.
+export function prewarmMetricsRoutes(routes: Record<string, CacheableRouteHandler>): void {
+  const routeKeys = Object.keys(cachedMetricsRouteTtls).filter((key) => routes[key]);
+  let index = 0;
+  const runNext = () => {
+    if (index >= routeKeys.length) return;
+    const handler = routes[routeKeys[index++]];
+    Promise.resolve()
+      .then(() => handler())
+      .catch(() => {})
+      .finally(() => setTimeout(runNext, 250));
+  };
+  setTimeout(runNext, 1_000);
 }

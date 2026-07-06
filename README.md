@@ -9,8 +9,10 @@
 </p>
 
 <p align="center">
-  Cybara is a production-ready agent operating system that combines a powerful multi-agent runtime with a clean web UI, production-ready CLI, encrypted local wallet controls,
-  and a comprehensive tool layer. Deploy autonomous agents that can code, execute browser automation, manage communications across your messaging platforms, and handle crypto operations—with full operator control.
+  Cybara combines a Bun-based agent runtime with a web UI, CLI, desktop shells, mobile companion,
+  encrypted local wallet controls, channel adapters, MCP support, and a broad tool layer. Run agents
+  that can code, automate browsers, manage messaging workflows, and execute wallet operations while
+  keeping operator control in the loop.
 </p>
 
 <p align="center">
@@ -49,7 +51,7 @@ If you need an agent platform that can plan, execute, verify, and report with st
 - Mixture of Agents (MoA): fan a turn out to several proposer agents and synthesize one answer — available both as a `mixture_of_agents` tool and as a router strategy
 - Self-improving skills: agents can codify a verified multi-step procedure with `skill_save`, and the loader picks it up for future sessions
 - ACP (Agent Client Protocol) server so editors like Zed can drive an agent (`cybara acp`)
-- A full-featured web UI (`ui/src/pages/*.tsx`)
+- A web UI with dashboard, chat, IDE, terminal, tools, MCP, mobile pairing, wallet, and settings surfaces
 - Bundled skills (`skills/`)
 - Anthropic prompt caching, multi-key credential pools + rate-limit rotation, and a centralized LLM error taxonomy
 - Smart context compaction (token-aware chunking + structured summaries with identifier preservation)
@@ -249,7 +251,7 @@ DM policy modes:
 
 ### Provider Layer
 
-Tracks frontier models from OpenAI, Anthropic, Google, xAI, DeepSeek, Moonshot (Kimi), Z.AI, MiniMax, Qwen, and more, with model lists discovered dynamically from each provider when supported.
+Cybara ships 61 provider definitions in `src/core/providers.ts`, spanning hosted frontier APIs, OAuth-backed coding providers, local runtimes, gateway/proxy providers, and AWS Bedrock. Model lists are discovered dynamically from each provider when supported.
 
 Provider definitions: OpenAI, ElevenLabs, Anthropic, Google, Antigravity, MiniMax (API + OAuth portal), Moonshot (Kimi), Qwen Portal, Z.AI + Z.AI Coding, DeepSeek, Alibaba DashScope + Coding Plan, xAI, NVIDIA, Qianfan, Together, Hugging Face, Synthetic, Venice, Xiaomi, Perplexity, Arcee, Nous, Cerebras, Cohere, Mistral, DeepInfra, Fireworks, Novita, StepFun, Tencent, Volcengine, BytePlus, GMI, Kilo Code, OpenCode Go, Ollama Cloud, Ollama, vLLM, LiteLLM, LM Studio, SGLang, llama.cpp, Cloudflare AI Gateway, GitHub Copilot, AWS Bedrock, Groq, OpenRouter, OpenCode Zen, Copilot Proxy, OpenAI Codex (ChatGPT OAuth), Chutes, Vercel AI Gateway, and Google Gemini CLI.
 

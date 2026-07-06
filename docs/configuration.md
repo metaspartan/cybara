@@ -96,8 +96,9 @@ curl -X POST http://localhost:4269/api/providers \
 
 ### Supported Providers (61)
 
-See `/docs/providers.md` for the complete up-to-date provider matrix and the newest models
-(GPT-5.5, Claude Opus 4.8, Gemini 3.5 Flash, GLM-5.2, MiniMax M3, DeepSeek V4, Kimi K2.6, Grok 4.3).
+See `/docs/providers.md` for the provider matrix. Runtime model lists are discovered from each
+provider when supported, so use the UI, `GET /api/providers/available`, or
+`cybara provider models <provider-id>` for the current model catalog.
 
 Quick discovery commands:
 

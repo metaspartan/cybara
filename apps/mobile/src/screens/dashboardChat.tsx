@@ -227,9 +227,6 @@ export function ChatMessageRow({
     const hasWorkTimeline = Boolean(
       message.thinking || message.processActivities?.length || message.toolCalls?.length
     );
-    // During a run (the live placeholder) show ONLY the work timeline/status —
-    // never the streamed answer body — matching web/Tauri. The full reply
-    // renders when the turn completes as a persisted message.
     const isLiveMessage =
       typeof message.id === "string" && message.id.startsWith("live-assistant-");
     if (isLiveMessage) {

@@ -113,13 +113,32 @@ Canonical discovery:
 
 Channel adapters are in `src/core/channels/adapters/`:
 
-- telegram
+- dingtalk
 - discord
-- slack
-- signal
-- whatsapp
+- email
+- feishu
+- googlechat
+- homeassistant
 - imessage
+- irc
+- line
+- matrix
+- mattermost
+- msteams
+- nextcloud
+- ntfy
+- signal
+- slack
+- sms
+- synology
+- telegram
+- twitch
 - web
+- webhook
+- wecom
+- whatsapp
+- zalo
+- zulip
 
 Common command handling and session controls are implemented in `src/core/channels/commands.ts`.
 

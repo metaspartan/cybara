@@ -214,7 +214,7 @@ GET /api/providers
 ```http
 GET /api/providers/available
 ```
-Returns all supported provider types (currently 33 in this codebase) with configuration requirements.
+Returns all supported provider types (61 definitions in `src/core/providers.ts`) with configuration requirements.
 
 ### Provider Health
 ```http

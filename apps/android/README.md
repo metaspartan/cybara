@@ -2,29 +2,25 @@
 
 Cybara now has an active React Native mobile companion in `apps/mobile` for both iOS and Android. This older Android note is retained to document why the phone app connects to a running gateway instead of embedding the Bun runtime.
 
-## Recommended architecture
+## Current architecture
 
 - Android app: React Native / Expo app shared with iOS
 - Runtime target: connect to a local or remote Cybara gateway over the same HTTP/WebSocket APIs used by CLI and desktop
-- Optional future mode: package a dedicated Android-native companion service only after the core runtime is split from Bun-only assumptions
+- Local-node mode: not implemented in this repo; Android uses a remote gateway instead of embedding the Bun runtime
 
 ## Why this is different from macOS
 
 - The macOS native shell can reuse the compiled local Cybara binary directly.
 - Android cannot reliably reuse the current Bun binary/runtime stack the same way.
-- The correct path is API parity first, then a platform-native companion/runtime when the core is refactored for it.
+- The current Android path is API parity first through `apps/mobile`, not a separate Android-native runtime.
 
-## MVP features
+## Implemented companion scope
 
-- sign in / connect to local or remote Cybara node
-- native shell chrome around embedded web UI
-- notifications and share-sheet entrypoints
-- background reconnect and session recovery
-- optional voice and push surfaces later
+- connect to a local or remote gateway through QR/paste/manual setup
+- store a revocable per-device token instead of the root gateway API key
+- operate sessions, agents, providers, tools, approvals, wallet policy, channels, tasks, memory, terminal/log entrypoints, and settings summaries through gateway APIs
+- share the same Expo/React Native codebase as iOS
 
-## Next implementation track
+## Release path
 
-1. Stabilize CLI/Tauri/native-shell HTTP contracts.
-2. Add explicit mobile-safe auth/session APIs.
-3. Ship the React Native mobile companion using the shared API surface.
-4. Only then evaluate a true Android local-node mode.
+Use [../mobile/README.md](../mobile/README.md) for development, pairing, and release CI details.

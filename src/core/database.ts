@@ -622,6 +622,9 @@ const stmts = {
       "INSERT INTO session_messages (id, session_id, agent_id, channel_type, channel_id, role, content, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))"
     ),
     list: prepare("SELECT * FROM session_messages ORDER BY created_at DESC LIMIT 1000"),
+    recentByRole: prepare(
+      "SELECT role, substr(content, 1, 4000) as content FROM session_messages WHERE role = ? AND content != '' ORDER BY created_at DESC LIMIT ?"
+    ),
     search: prepare(
       "SELECT * FROM session_messages WHERE content LIKE ? ORDER BY created_at DESC LIMIT ?"
     ),
@@ -993,6 +996,11 @@ export const tables = {
         msg.created_at || null
       ),
     list: () => stmts.sessionMessages?.list.all() || [],
+    recentByRole: (role: string, limit = 600): Array<{ role: string; content: string }> =>
+      (stmts.sessionMessages?.recentByRole.all(role, limit) || []) as Array<{
+        role: string;
+        content: string;
+      }>,
     search: (query: string, limit = 100) =>
       stmts.sessionMessages?.search.all(`%${query}%`, limit) || [],
   },

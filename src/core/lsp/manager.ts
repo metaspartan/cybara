@@ -611,6 +611,10 @@ export class LSPManager {
     return Object.keys(this.config.lsp).filter((lang) => !this.config.lsp[lang].disabled);
   }
 
+  getServerCommand(language: string): string {
+    return this.config.lsp[language]?.command || language;
+  }
+
   getWorkspacePath(): string {
     return this.workspacePath;
   }

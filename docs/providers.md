@@ -1,8 +1,10 @@
 # Cybara AI Providers
 
-Cybara ships with a broad catalog of provider integrations (see `src/core/providers.ts`), with the
-newest frontier models: GPT-5.5, Claude Opus 4.8, Gemini 3.5 Flash, GLM-5.2, MiniMax M3, DeepSeek
-V4, Kimi K2.6, Grok 4.3, Nemotron 3, Qwen 3.7 Max, and MiMo V2.5 Pro.
+Cybara ships with 61 provider definitions in `src/core/providers.ts`. The registry covers hosted
+AI APIs, OAuth-backed coding providers, local OpenAI-compatible runtimes, proxy/gateway providers,
+and AWS Bedrock. Model names change frequently, so use the UI, `GET /api/providers/available`, or
+`cybara provider models <provider-id>` for the current model catalog exposed by a configured
+provider.
 
 ## Quick Setup
 
@@ -38,32 +40,57 @@ curl -X POST http://localhost:4269/api/providers \
   the stable system prompt + recent turns (~75% input-token savings on multi-turn sessions). Applied
   automatically; no config needed. See `src/core/prompt-cache.ts`.
 
-## Provider Types (Current)
+## Provider Types
 
 | Provider ID | Name | Auth |
 |-------------|------|------|
 | `openai` | OpenAI | API key |
+| `elevenlabs` | ElevenLabs | API key |
 | `anthropic` | Anthropic | API key |
 | `google` | Google AI | API key |
 | `antigravity` | Antigravity | OAuth |
 | `minimax` | MiniMax | API key |
 | `minimax-portal` | MiniMax Portal | OAuth |
-| `moonshot` | Moonshot AI (Kimi) | API key |
+| `moonshot` | Moonshot AI | API key |
 | `kimi-code` | Kimi Code | API key |
 | `qwen-portal` | Qwen Portal | OAuth |
+| `together` | Together AI | API key |
+| `huggingface` | Hugging Face | API key |
+| `synthetic` | Synthetic | API key |
+| `venice` | Venice AI | API key |
+| `xiaomi` | Xiaomi MiMo | API key |
+| `ollama` | Ollama (Local) | None |
+| `vllm` | vLLM (Local) | None |
+| `azure` | Azure OpenAI | API key (`api-key` header) |
+| `azure_foundry` | Azure AI Foundry | API key (`api-key` header) |
+| `anthropic_vertex` | Anthropic on Vertex AI | GCP/API token |
+| `google_vertex` | Google Gemini on Vertex AI | GCP/API token |
+| `litellm` | LiteLLM | API key/base URL |
+| `lmstudio` | LM Studio (Local) | None |
+| `sglang` | SGLang (Local) | None |
+| `llamacpp` | llama.cpp (Local) | None |
+| `perplexity` | Perplexity | API key |
+| `arcee` | Arcee | API key |
+| `nous` | Nous Research | API key |
+| `cloudflare-ai-gateway` | Cloudflare AI Gateway | API key |
+| `github_copilot` | GitHub Copilot | OAuth |
+| `bedrock` | AWS Bedrock | AWS SDK credentials |
+| `groq` | Groq | API key |
+| `openrouter` | OpenRouter | API key |
+| `opencode_zen` | OpenCode Zen | API key |
 | `z.ai` | Z.AI (Zhipu / GLM) | API key |
 | `z.ai-coding` | Z.AI Coding Plan | API key |
+| `openai-codex` | OpenAI Codex (ChatGPT OAuth) | OAuth |
+| `chutes` | Chutes | OAuth |
+| `vercel-ai-gateway` | Vercel AI Gateway | API key |
+| `google-gemini-cli` | Google Gemini CLI | OAuth |
+| `copilot-proxy` | Copilot Proxy | OAuth |
 | `deepseek` | DeepSeek | API key |
 | `alibaba` | Alibaba DashScope | API key |
 | `alibaba-coding-plan` | Alibaba Coding Plan | API key |
 | `xai` | xAI (Grok) | API key |
 | `nvidia` | NVIDIA | API key |
 | `qianfan` | Baidu Qianfan | API key |
-| `together` | Together AI | API key |
-| `huggingface` | Hugging Face | API key |
-| `synthetic` | Synthetic | API key |
-| `venice` | Venice AI | API key |
-| `xiaomi` | Xiaomi MiMo | API key |
 | `cerebras` | Cerebras | API key |
 | `cohere` | Cohere | API key |
 | `mistral` | Mistral | API key |
@@ -78,24 +105,6 @@ curl -X POST http://localhost:4269/api/providers \
 | `kilocode` | Kilo Code | API key |
 | `opencode-go` | OpenCode Go | API key |
 | `ollama-cloud` | Ollama Cloud | API key |
-| `ollama` | Ollama (Local) | Local/no key |
-| `vllm` | vLLM (Local) | Local/no key |
-| `litellm` | LiteLLM | API key/base URL |
-| `cloudflare-ai-gateway` | Cloudflare AI Gateway | API key |
-| `github_copilot` | GitHub Copilot | Token |
-| `bedrock` | AWS Bedrock | AWS credentials |
-| `azure` | Azure OpenAI (v1 API) | API key (`api-key` header) |
-| `azure_foundry` | Azure AI Foundry | API key (`api-key` header) |
-| `anthropic_vertex` | Anthropic on Vertex AI | GCP OAuth token |
-| `google_vertex` | Google Gemini on Vertex AI | GCP OAuth token |
-| `groq` | Groq | API key |
-| `openrouter` | OpenRouter | API key |
-| `opencode_zen` | OpenCode Zen | API key |
-| `openai-codex` | OpenAI Codex (ChatGPT OAuth) | OAuth |
-| `chutes` | Chutes | API key |
-| `vercel-ai-gateway` | Vercel AI Gateway | API key |
-| `google-gemini-cli` | Google Gemini CLI | API key |
-| `copilot-proxy` | Copilot Proxy | Token |
 
 ## OAuth Providers
 
@@ -104,7 +113,11 @@ The following providers use browser-based OAuth instead of raw API keys:
 - `antigravity`
 - `minimax-portal`
 - `qwen-portal`
+- `github_copilot`
 - `openai-codex`
+- `chutes`
+- `google-gemini-cli`
+- `copilot-proxy`
 
 Use the UI flow or API:
 ```bash

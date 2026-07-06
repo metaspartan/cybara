@@ -53,27 +53,20 @@ function formatBytes(bytes: number): string {
 
 export function Metrics() {
   const { data: overview, isLoading: loadingOverview } = useMetricsOverview();
-  const { data: tokens, isLoading: loadingTokens } = useMetricsTokens();
-  const { data: files, isLoading: loadingFiles } = useMetricsFiles();
-  const { data: tools, isLoading: loadingTools } = useMetricsTools();
-  const { data: timeSeries, isLoading: loadingTimeSeries } = useMetricsTimeSeries();
-  const { data: providers, isLoading: loadingProviders } = useMetricsProviders();
-  const { data: modelMetrics, isLoading: loadingModels } = useMetricsModels();
-  const { data: insights, isLoading: loadingInsights } = useMetricsInsights();
-  const { data: tokenAnalysis, isLoading: loadingTokenAnalysis } = useMetricsTokenAnalysis();
-  const { data: storage, isLoading: loadingStorage } = useMetricsStorage();
+  const { data: tokens } = useMetricsTokens();
+  const { data: files } = useMetricsFiles();
+  const { data: tools } = useMetricsTools();
+  const { data: timeSeries } = useMetricsTimeSeries();
+  const { data: providers } = useMetricsProviders();
+  const { data: modelMetrics } = useMetricsModels();
+  const { data: insights } = useMetricsInsights();
+  const { data: tokenAnalysis } = useMetricsTokenAnalysis();
+  const { data: storage } = useMetricsStorage();
 
-  const isLoading =
-    loadingOverview ||
-    loadingTokens ||
-    loadingFiles ||
-    loadingTools ||
-    loadingTimeSeries ||
-    loadingProviders ||
-    loadingModels ||
-    loadingInsights ||
-    loadingTokenAnalysis ||
-    loadingStorage;
+  // Gate the skeleton on the overview only; the remaining sections stream in
+  // as their queries resolve instead of blocking the whole page on the
+  // slowest endpoint.
+  const isLoading = loadingOverview;
   const insightsData = insights as MetricsInsights | undefined;
   const tokenAnalysisData = tokenAnalysis as TokenAnalysisMetrics | undefined;
   const storageData = storage as MetricsStorage | undefined;

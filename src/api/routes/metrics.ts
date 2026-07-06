@@ -18,14 +18,14 @@ const sqlUtc = (ms: number) => new Date(ms).toISOString().slice(0, 19).replace("
 
 function buildMetricsOverview() {
   const metrics = tables.metrics;
+  const inputTokens = metrics.getTotal("token_usage", "input") || 0;
+  const outputTokens = metrics.getTotal("token_usage", "output") || 0;
+  const cacheTokens = metrics.getTotal("token_usage", "cache") || 0;
   const tokenTotals = {
-    total:
-      (metrics.getTotal("token_usage", "input") || 0) +
-      (metrics.getTotal("token_usage", "output") || 0) +
-      (metrics.getTotal("token_usage", "cache") || 0),
-    input: metrics.getTotal("token_usage", "input") || 0,
-    output: metrics.getTotal("token_usage", "output") || 0,
-    cache: metrics.getTotal("token_usage", "cache") || 0,
+    total: inputTokens + outputTokens + cacheTokens,
+    input: inputTokens,
+    output: outputTokens,
+    cache: cacheTokens,
   };
   const fileStats = {
     filesRead: metrics.getTotal("file_operation", "read") || 0,
@@ -34,11 +34,17 @@ function buildMetricsOverview() {
     filesSearched: metrics.getTotal("file_operation", "search") || 0,
   };
   const totalToolCalls = metrics.getTotalByType("tool_call");
+  // api_call is by far the largest metric type (millions of rows); one grouped
+  // index scan replaces three separate SUM scans over the same rows.
+  const apiCallTotals = new Map(
+    metrics.getKeyAggregates("api_call").map((row) => [row.key, row.total || 0])
+  );
+  const apiSuccess = apiCallTotals.get("success") || 0;
+  const apiError = apiCallTotals.get("error") || 0;
   const apiStats = {
-    totalCalls:
-      (metrics.getTotal("api_call", "success") || 0) + (metrics.getTotal("api_call", "error") || 0),
-    successfulCalls: metrics.getTotal("api_call", "success") || 0,
-    failedCalls: metrics.getTotal("api_call", "error") || 0,
+    totalCalls: apiSuccess + apiError,
+    successfulCalls: apiSuccess,
+    failedCalls: apiError,
   };
   const agentStats = {
     totalExecutions:
@@ -566,16 +572,9 @@ function buildTokenCloud(
       weight: Number((entry.total * Math.max(averageTokensPerCall, 1) * 0.6).toFixed(2)),
       sharePct: 0,
     }));
-  const recentMessages = tables.sessionMessages.list() as Array<{
-    role?: string;
-    content?: string;
-  }>;
-  const assistantMessages = recentMessages.filter(
-    (entry) =>
-      entry.role === "assistant" &&
-      typeof entry.content === "string" &&
-      entry.content.trim().length > 0
-  );
+  const assistantMessages = tables.sessionMessages
+    .recentByRole("assistant", 600)
+    .filter((entry) => entry.content.trim().length > 0);
   const termCloudEntries = buildAssistantOutputCloud(
     assistantMessages,
     totalOutput,

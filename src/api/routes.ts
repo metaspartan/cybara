@@ -1,5 +1,5 @@
 import { config } from "../core/config";
-import { cacheMetricsRoutes } from "./route-cache";
+import { cacheMetricsRoutes, prewarmMetricsRoutes } from "./route-cache";
 import { mobileRoutes } from "./mobile";
 import {
   parseJsonObject,
@@ -4356,6 +4356,7 @@ const routes: Record<string, RouteHandler> = {
 };
 
 cacheMetricsRoutes(routes);
+prewarmMetricsRoutes(routes);
 
 function checkDatabaseHealth(): { status: string; error?: string } {
   try {

@@ -1,6 +1,6 @@
 # Cybara Documentation
 
-Welcome to Cybara — a self-hosted AI agent platform with modular skills, browser automation, multi-channel messaging, and a beautiful web UI.
+Welcome to Cybara — a self-hosted AI agent platform with modular skills, browser automation, multi-channel messaging, desktop shells, and a React web UI.
 
 ## Quick Start
 
@@ -131,7 +131,7 @@ Conversation contexts with message history, token tracking, and adaptive context
 Modular capabilities loaded from SKILL.md files with eligibility gating (OS, env, binaries).
 
 ### Tools
-76 built-in tools the agent can invoke: file I/O, browser, exec, web search, memory, artifacts, data processing, LSP, scheduling, media generation, planning, dynamic tool discovery, wallet operations, and more.
+76 built-in tool definitions the agent can invoke, plus compatibility aliases for direct computer-control actions: file I/O, browser, exec, web search, memory, artifacts, data processing, LSP, scheduling, media generation, planning, dynamic tool discovery, wallet operations, and more.
 
 ### Channels
 Communication interfaces across 26 platforms: Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Matrix, Mattermost, Microsoft Teams, Feishu/Lark, DingTalk, WeCom, Zulip, LINE, Google Chat, IRC, ntfy, Twitch, Nextcloud, Synology, Zalo, Home Assistant, Web, Webhook, SMS, and Email.

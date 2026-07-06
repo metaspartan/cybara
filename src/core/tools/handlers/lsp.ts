@@ -315,7 +315,8 @@ export async function handleLSPLanguages(_args: Record<string, unknown>): Promis
     languages.push({
       name: lang,
       available,
-      command: lang, // TODO: get actual command from config
+      command:
+        typeof manager.getServerCommand === "function" ? manager.getServerCommand(lang) : lang,
     });
   }
 
