@@ -59,6 +59,37 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<Api
   return { success: true, data };
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function readNumber(record: Record<string, unknown>, key: string, fallback = 0): number {
+  const value = record[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function normalizeProviderPlanStatusResponse(value: unknown): ProviderPlanStatusResponse {
+  const record = asRecord(value);
+  const summary = asRecord(record.summary);
+  return {
+    enabled: record.enabled !== false,
+    routerEnforcement: record.routerEnforcement !== false && record.router_enforcement !== false,
+    warningThresholdPct: readNumber(record, "warningThresholdPct", 80),
+    providers: Array.isArray(record.providers)
+      ? (record.providers as ProviderPlanStatusResponse["providers"])
+      : [],
+    summary: {
+      total: readNumber(summary, "total"),
+      monitored: readNumber(summary, "monitored"),
+      configured: readNumber(summary, "configured"),
+      warnings: readNumber(summary, "warnings"),
+      exhausted: readNumber(summary, "exhausted"),
+    },
+  };
+}
+
 export const agentsApi = {
   list: () => fetchApi<Agent[]>("/agents"),
   get: (id: string) => fetchApi<Agent>(`/agents/${id}`),
@@ -105,7 +136,14 @@ export const providersApi = {
 
 export const providerPlansApi = {
   config: () => fetchApi<ProviderPlanMonitoringConfig>("/provider-plans/config"),
-  status: () => fetchApi<ProviderPlanStatusResponse>("/provider-plans/status"),
+  status: async (): Promise<ApiResponse<ProviderPlanStatusResponse>> => {
+    const response = await fetchApi<unknown>("/provider-plans/status");
+    if (!response.success) return { success: false, error: response.error };
+    return {
+      ...response,
+      data: normalizeProviderPlanStatusResponse(response.data),
+    };
+  },
   updateConfig: (payload: ProviderPlanMonitoringConfig) =>
     fetchApi<ProviderPlanMonitoringConfig>("/provider-plans/config", {
       method: "PUT",

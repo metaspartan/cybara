@@ -2016,10 +2016,10 @@ export function ModelRouterPanel({
             <DetailInfoSection
               title="Plan monitor"
               fields={[
-                { label: "Monitored", value: String(planStatus?.summary.monitored ?? 0) },
-                { label: "Configured", value: String(planStatus?.summary.configured ?? 0) },
-                { label: "Warnings", value: String(planStatus?.summary.warnings ?? 0) },
-                { label: "Exhausted", value: String(planStatus?.summary.exhausted ?? 0) },
+                { label: "Monitored", value: String(planStatus?.summary?.monitored ?? 0) },
+                { label: "Configured", value: String(planStatus?.summary?.configured ?? 0) },
+                { label: "Warnings", value: String(planStatus?.summary?.warnings ?? 0) },
+                { label: "Exhausted", value: String(planStatus?.summary?.exhausted ?? 0) },
               ]}
             />
             {(routerStatus?.routes || []).slice(0, 6).map((route) => {

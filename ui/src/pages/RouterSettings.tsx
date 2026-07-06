@@ -348,6 +348,7 @@ export function RouterSettings() {
     (route) => Number(route.priceInputPerM || 0) > 0 || Number(route.priceOutputPerM || 0) > 0
   );
   const configuredPricingCount = pricedRoutes?.length || 0;
+  const planSummary = planStatus?.summary;
   const planByRoute = new Map<string, ProviderPlanSnapshot>();
   for (const plan of planStatus?.providers || []) {
     for (const key of [plan.providerId, plan.configuredProviderId, plan.providerType]) {
@@ -388,7 +389,7 @@ export function RouterSettings() {
           <div className="rounded-lg bg-black/25 px-3 py-2">
             <p className="text-[10px] uppercase tracking-wide text-gray-500">Plans</p>
             <p className="text-sm font-semibold text-amber-300">
-              {planStatus?.summary.configured || 0}/{planStatus?.summary.monitored || 0}
+              {planSummary?.configured || 0}/{planSummary?.monitored || 0}
             </p>
           </div>
         </div>

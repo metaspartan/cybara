@@ -1615,7 +1615,9 @@ function MetricsPanel({
 
       <MetricSection
         title="Provider plans"
-        detail={`${metrics?.providerPlans?.summary.configured ?? 0} configured - ${metrics?.providerPlans?.summary.warnings ?? 0} warnings`}
+        detail={`${metrics?.providerPlans?.summary?.configured ?? 0} configured - ${
+          metrics?.providerPlans?.summary?.warnings ?? 0
+        } warnings`}
       >
         <MetricShareRows rows={providerPlanRows} tone={colors.green} />
       </MetricSection>
