@@ -1,8 +1,11 @@
-// A hung provider socket must not stall an agent turn indefinitely; every LLM
-// request gets a hard timeout on top of the caller's interrupt signal.
+// Ceiling for genuinely non-streaming calls only (Anthropic path, providers
+// that reject `stream`). Streaming paths use inactivity watchdogs instead
+// (see stream-watchdog.ts) and have NO duration cap — agents may run for
+// hours. This ceiling exists because a non-streaming response is one silent
+// socket read, indistinguishable from a hang; keep it generous and tunable.
 export const LLM_REQUEST_TIMEOUT_MS = (() => {
-  const raw = Number(process.env.CYBARA_LLM_TIMEOUT_MS);
-  return Number.isFinite(raw) && raw >= 10_000 ? raw : 300_000;
+  const raw = Number(process.env.CYBARA_LLM_NONSTREAMING_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw >= 10_000 ? raw : 1_800_000;
 })();
 
 export function withLlmRequestTimeout(signal?: AbortSignal): AbortSignal {

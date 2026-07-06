@@ -35,6 +35,12 @@ import {
 } from "./llm/reasoning";
 import { applyProviderApiKey } from "./llm/auth-headers";
 import { normalizeLlmTimeoutError, withLlmRequestTimeout } from "./llm/request-timeout";
+import {
+  createStreamWatchdog,
+  resolveLlmWatchdogDefaults,
+  type StreamWatchdog,
+} from "./llm/stream-watchdog";
+import { consumeOpenAIChatStream } from "./llm/streaming-completions";
 import { trackTokenUsage } from "./llm/token-usage-tracking";
 import {
   hasTextToolCallMarkup,
@@ -2552,16 +2558,59 @@ class AgentManager {
     errorPrefix: string,
     signal?: AbortSignal
   ): Promise<OpenAIResponse> {
-    const post = async (body: Record<string, unknown>) => {
+    // Streaming with inactivity watchdogs (first-token + stall, no total cap
+    // by default): a healthy hours-long run keeps emitting chunks; only a
+    // silent provider gets cut off. Providers that reject `stream` fall back
+    // to a plain request guarded by a generous non-streaming ceiling.
+    let streamingDisabled = false;
+    const post = async (body: Record<string, unknown>): Promise<Response | OpenAIResponse> => {
+      if (streamingDisabled) {
+        try {
+          return await fetch(`${baseUrl}/chat/completions`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(body),
+            signal: withLlmRequestTimeout(signal),
+          });
+        } catch (error) {
+          throw normalizeLlmTimeoutError(error, signal);
+        }
+      }
+
+      const watchdog = createStreamWatchdog({
+        ...resolveLlmWatchdogDefaults(baseUrl),
+        callerSignal: signal,
+        label: "chat.completions",
+      });
       try {
-        return await fetch(`${baseUrl}/chat/completions`, {
+        const response = await fetch(`${baseUrl}/chat/completions`, {
           method: "POST",
           headers,
-          body: JSON.stringify(body),
-          signal: withLlmRequestTimeout(signal),
+          body: JSON.stringify({ ...body, stream: true, stream_options: { include_usage: true } }),
+          signal: watchdog.signal,
         });
+        if (!response.ok) {
+          watchdog.dispose();
+          return response;
+        }
+        const contentType = response.headers.get("content-type")?.toLowerCase() || "";
+        if (!contentType.includes("text/event-stream")) {
+          // Provider ignored the stream flag and answered with plain JSON.
+          const json = (await response.json()) as OpenAIResponse;
+          watchdog.dispose();
+          return json;
+        }
+        if (!response.body) {
+          watchdog.dispose();
+          throw new Error(`${errorPrefix}: empty streaming response body`);
+        }
+        watchdog.touch();
+        const assembled = await consumeOpenAIChatStream(response.body, watchdog);
+        watchdog.dispose();
+        return assembled as unknown as OpenAIResponse;
       } catch (error) {
-        throw normalizeLlmTimeoutError(error, signal);
+        watchdog.dispose();
+        throw watchdog.wrapError(error);
       }
     };
 
@@ -2570,13 +2619,28 @@ class AgentManager {
     let attemptedToolChoiceCompatibilityRetry = false;
     let contextRetryCount = 0;
 
+    let attemptedNonStreamingRetry = false;
     while (true) {
-      const response = await post(currentBody);
+      const result = await post(currentBody);
+      if (!(result instanceof Response)) {
+        return result;
+      }
+      const response = result;
       if (response.ok) {
         return (await response.json()) as OpenAIResponse;
       }
 
       const errorText = await response.text();
+      if (
+        !attemptedNonStreamingRetry &&
+        !streamingDisabled &&
+        /\bstream(_options)?\b/i.test(errorText)
+      ) {
+        attemptedNonStreamingRetry = true;
+        streamingDisabled = true;
+        console.log("[Agent] Provider rejected streaming; retrying without stream");
+        continue;
+      }
       if (
         !attemptedMaxCompletionRetry &&
         this.shouldRetryWithMaxCompletionTokens(response.status, errorText)
@@ -3152,7 +3216,8 @@ class AgentManager {
   private async parseOpenAICodexTurnResponse(
     response: Response,
     sessionId?: string,
-    agentId?: string
+    agentId?: string,
+    watchdog?: StreamWatchdog
   ): Promise<OpenAICodexTurnResult> {
     const contentType = response.headers.get("content-type")?.toLowerCase() || "";
 
@@ -3204,6 +3269,7 @@ class AgentManager {
     };
 
     for await (const event of parseServerSentEvents(response.body)) {
+      watchdog?.touch();
       const type = typeof event.type === "string" ? event.type : "";
 
       if (type === "response.output_text.delta") {
@@ -3385,19 +3451,29 @@ class AgentManager {
     for (let index = 0; index < candidates.length; index++) {
       const candidate = candidates[index];
       const body = { ...requestBody, model: candidate };
+      // The watchdog covers the whole turn: connection, first event, and
+      // every SSE chunk after it. Long runs stay alive as long as Codex
+      // keeps emitting events; only silence trips it.
+      const watchdog = createStreamWatchdog({
+        ...resolveLlmWatchdogDefaults(url),
+        callerSignal: signal,
+        label: "Codex",
+      });
       let response: Response;
       try {
         response = await fetch(url, {
           method: "POST",
           headers,
           body: JSON.stringify(body),
-          signal: withLlmRequestTimeout(signal),
+          signal: watchdog.signal,
         });
       } catch (error) {
-        throw normalizeLlmTimeoutError(error, signal);
+        watchdog.dispose();
+        throw watchdog.wrapError(error);
       }
 
       if (!response.ok) {
+        watchdog.dispose();
         const errorText = await response.text();
         finalError = `API error: ${response.status} - ${errorText}`;
         if (
@@ -3412,8 +3488,20 @@ class AgentManager {
         throw new Error(finalError);
       }
 
-      const parsed = await this.parseOpenAICodexTurnResponse(response, sessionId, agentId);
-      return { ...parsed, resolvedModel: candidate };
+      try {
+        watchdog.touch();
+        const parsed = await this.parseOpenAICodexTurnResponse(
+          response,
+          sessionId,
+          agentId,
+          watchdog
+        );
+        watchdog.dispose();
+        return { ...parsed, resolvedModel: candidate };
+      } catch (error) {
+        watchdog.dispose();
+        throw watchdog.wrapError(error);
+      }
     }
 
     throw new Error(finalError);

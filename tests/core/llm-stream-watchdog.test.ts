@@ -1,0 +1,377 @@
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import { createStreamWatchdog } from "../../src/core/llm/stream-watchdog";
+import { consumeOpenAIChatStream } from "../../src/core/llm/streaming-completions";
+import { agentManager } from "../../src/core/agent";
+import { providerManager } from "../../src/core/providers";
+
+// ── Scripted OpenAI-compatible provider ─────────────────────────────────────
+// Real server + real fetch so watchdog aborts genuinely cancel socket reads,
+// exactly like production. Behaviors are selected per-request via the model
+// name, mirroring the failure modes from the stalled session 07e1bb.
+
+function sseChunk(payload: Record<string, unknown>): string {
+  return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
+function contentDelta(text: string): string {
+  return sseChunk({ choices: [{ index: 0, delta: { content: text } }] });
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+let scriptedTurns: Array<(body: Record<string, unknown>) => Response | Promise<Response>> = [];
+let observedBodies: Array<Record<string, unknown>> = [];
+
+const server = Bun.serve({
+  port: 0,
+  idleTimeout: 0,
+  fetch: async (req) => {
+    const url = new URL(req.url);
+    if (!url.pathname.endsWith("/chat/completions")) {
+      return new Response("not found", { status: 404 });
+    }
+    const body = (await req.json()) as Record<string, unknown>;
+    observedBodies.push(body);
+    const model = String(body.model || "");
+
+    if (model === "behave-normal") {
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          const encoder = new TextEncoder();
+          controller.enqueue(encoder.encode(contentDelta("Hello ")));
+          await sleep(10);
+          controller.enqueue(encoder.encode(contentDelta("world")));
+          controller.enqueue(
+            encoder.encode(
+              sseChunk({
+                choices: [
+                  {
+                    index: 0,
+                    delta: {
+                      tool_calls: [
+                        {
+                          index: 0,
+                          id: "call_1",
+                          function: { name: "calc", arguments: '{"expression"' },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              })
+            )
+          );
+          controller.enqueue(
+            encoder.encode(
+              sseChunk({
+                choices: [
+                  {
+                    index: 0,
+                    delta: { tool_calls: [{ index: 0, function: { arguments: ':"1+1"}' } }] },
+                    finish_reason: "tool_calls",
+                  },
+                ],
+              })
+            )
+          );
+          controller.enqueue(
+            encoder.encode(sseChunk({ choices: [], usage: { prompt_tokens: 7, completion_tokens: 3 } }))
+          );
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+      return new Response(stream, {
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    }
+
+    if (model === "behave-silent") {
+      // Headers arrive, then the socket goes quiet forever (dead provider).
+      const stream = new ReadableStream<Uint8Array>({ start() {} });
+      return new Response(stream, { headers: { "Content-Type": "text/event-stream" } });
+    }
+
+    if (model === "behave-midstream-stall") {
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          const encoder = new TextEncoder();
+          controller.enqueue(encoder.encode(contentDelta("partial ")));
+          controller.enqueue(encoder.encode(contentDelta("output")));
+          // ...then silence forever.
+        },
+      });
+      return new Response(stream, { headers: { "Content-Type": "text/event-stream" } });
+    }
+
+    if (model === "behave-slow-but-alive") {
+      // Total duration far exceeds the stall window, but chunks keep coming:
+      // inactivity-based watchdogs must let this finish.
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          const encoder = new TextEncoder();
+          for (let i = 0; i < 12; i++) {
+            controller.enqueue(encoder.encode(contentDelta(`t${i} `)));
+            await sleep(60);
+          }
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+      return new Response(stream, { headers: { "Content-Type": "text/event-stream" } });
+    }
+
+    if (model === "behave-scripted") {
+      const turn = scriptedTurns.shift();
+      if (!turn) {
+        return new Response(JSON.stringify({ error: "no scripted turn left" }), { status: 500 });
+      }
+      return await turn(body);
+    }
+
+    return new Response(JSON.stringify({ error: `unknown behavior ${model}` }), { status: 400 });
+  },
+});
+
+const baseUrl = `http://127.0.0.1:${server.port}/v1`;
+
+const createdAgentIds: string[] = [];
+const createdProviderIds: string[] = [];
+
+afterEach(() => {
+  scriptedTurns = [];
+  observedBodies = [];
+  for (const agentId of createdAgentIds.splice(0)) {
+    agentManager.delete(agentId);
+  }
+  for (const providerId of createdProviderIds.splice(0)) {
+    providerManager.delete(providerId);
+  }
+});
+
+afterAll(() => {
+  server.stop(true);
+});
+
+async function fetchStreaming(model: string, watchdogOpts: Parameters<typeof createStreamWatchdog>[0]) {
+  const watchdog = createStreamWatchdog(watchdogOpts);
+  try {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model, stream: true, messages: [{ role: "user", content: "hi" }] }),
+      signal: watchdog.signal,
+    });
+    watchdog.touch();
+    const assembled = await consumeOpenAIChatStream(response.body!, watchdog);
+    watchdog.dispose();
+    return assembled;
+  } catch (error) {
+    watchdog.dispose();
+    throw watchdog.wrapError(error);
+  }
+}
+
+describe("LLM stream watchdog (inactivity, not duration)", () => {
+  test("assembles content, tool calls, and usage from a streamed completion", async () => {
+    const result = await fetchStreaming("behave-normal", { firstChunkMs: 2000, stallMs: 2000 });
+    const message = result.choices[0]!.message;
+    expect(message.content).toBe("Hello world");
+    expect(message.tool_calls?.[0]?.function.name).toBe("calc");
+    expect(message.tool_calls?.[0]?.function.arguments).toBe('{"expression":"1+1"}');
+    expect(result.usage).toEqual({ prompt_tokens: 7, completion_tokens: 3 });
+  });
+
+  test("a provider that never produces output trips the first-token timeout", async () => {
+    const startedAt = Date.now();
+    await expect(fetchStreaming("behave-silent", { firstChunkMs: 150, stallMs: 0 })).rejects.toThrow(
+      /no first token/i
+    );
+    expect(Date.now() - startedAt).toBeLessThan(2000);
+  });
+
+  test("a mid-stream stall trips the stall timeout — the exact 07e1bb failure", async () => {
+    await expect(
+      fetchStreaming("behave-midstream-stall", { firstChunkMs: 2000, stallMs: 200 })
+    ).rejects.toThrow(/stalled/i);
+  });
+
+  test("a slow-but-alive stream outlives the stall window because chunks reset it", async () => {
+    // 12 chunks * 60ms ≈ 720ms total with a 250ms stall window: duration-based
+    // timeouts would kill this; inactivity-based ones must not.
+    const result = await fetchStreaming("behave-slow-but-alive", {
+      firstChunkMs: 2000,
+      stallMs: 250,
+    });
+    expect(result.choices[0]!.message.content).toContain("t11");
+  });
+
+  test("a caller abort (user steer) is not rewritten as a watchdog timeout", async () => {
+    const caller = new AbortController();
+    setTimeout(() => caller.abort(), 50);
+    const watchdog = createStreamWatchdog({
+      firstChunkMs: 5000,
+      stallMs: 5000,
+      callerSignal: caller.signal,
+    });
+    let thrown: unknown;
+    try {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "behave-silent",
+          stream: true,
+          messages: [{ role: "user", content: "hi" }],
+        }),
+        signal: watchdog.signal,
+      });
+      await consumeOpenAIChatStream(response.body!, watchdog);
+    } catch (error) {
+      thrown = watchdog.wrapError(error);
+    } finally {
+      watchdog.dispose();
+    }
+    expect(watchdog.timedOutReason()).toBeNull();
+    expect(String((thrown as Error)?.message || thrown)).not.toMatch(/stalled|no first token/i);
+  });
+});
+
+describe("agentic loop stability against a real streaming provider", () => {
+  function createLoopAgent(model: string) {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Watchdog Loop Provider",
+      api_key: "test-key",
+      base_url: baseUrl,
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Watchdog Loop Agent",
+      type: "main",
+      provider_id: provider.id,
+      model,
+      system_prompt: "test",
+      tools: ["calc"],
+    });
+    createdAgentIds.push(agent.id);
+    return agent;
+  }
+
+  function streamedToolCallTurn(): Response {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            sseChunk({
+              choices: [
+                {
+                  index: 0,
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: "call_calc",
+                        function: { name: "calc", arguments: '{"expression":"2+2"}' },
+                      },
+                    ],
+                  },
+                  finish_reason: "tool_calls",
+                },
+              ],
+            })
+          )
+        );
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    return new Response(stream, { headers: { "Content-Type": "text/event-stream" } });
+  }
+
+  function streamedTextTurn(text: string): Response {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(contentDelta(text)));
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    return new Response(stream, { headers: { "Content-Type": "text/event-stream" } });
+  }
+
+  test("empty final message after a tool round is recovered by the closing nudge", async () => {
+    const agent = createLoopAgent("behave-scripted");
+    scriptedTurns = [
+      () => streamedToolCallTurn(),
+      // The turn that broke session 07e1bb: tools ran, then the provider
+      // returned an empty final message.
+      () => streamedTextTurn(""),
+      // The nudge (no-tools closing request) recovers the real answer.
+      () => streamedTextTurn("The result of 2+2 is 4."),
+    ];
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "what is 2+2? use the calc tool" }],
+      { useTools: true, sessionId: "watchdog-nudge-session" }
+    );
+
+    expect(result.tool_calls?.map((call) => call.name)).toContain("calc");
+    expect(result.content).toContain("4");
+    expect(result.content).not.toMatch(/completed.*tool/i);
+    // Three requests total: tool turn, empty final, nudge.
+    expect(observedBodies.length).toBe(3);
+    const nudgeBody = observedBodies[2]!;
+    expect(JSON.stringify(nudgeBody.messages)).toContain("Do not call any more tools");
+  });
+
+  test("provider that rejects streaming falls back to a plain request", async () => {
+    const agent = createLoopAgent("behave-scripted");
+    scriptedTurns = [
+      (body) =>
+        body.stream === true
+          ? new Response(JSON.stringify({ error: { message: "stream is not supported" } }), {
+              status: 400,
+            })
+          : new Response(
+              JSON.stringify({
+                choices: [
+                  {
+                    index: 0,
+                    message: { role: "assistant", content: "plain-json-ok" },
+                    finish_reason: "stop",
+                  },
+                ],
+              }),
+              { headers: { "Content-Type": "application/json" } }
+            ),
+      (body) =>
+        body.stream === true
+          ? new Response(JSON.stringify({ error: { message: "stream is not supported" } }), {
+              status: 400,
+            })
+          : new Response(
+              JSON.stringify({
+                choices: [
+                  {
+                    index: 0,
+                    message: { role: "assistant", content: "plain-json-ok" },
+                    finish_reason: "stop",
+                  },
+                ],
+              }),
+              { headers: { "Content-Type": "application/json" } }
+            ),
+    ];
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "hello" }],
+      { useTools: false, sessionId: "watchdog-fallback-session" }
+    );
+    expect(result.content).toBe("plain-json-ok");
+  });
+});
