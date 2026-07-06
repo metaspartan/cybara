@@ -15,9 +15,13 @@ export function normalizePendingChatMessages(
 
 export function mergePendingChatMessages(
   serverMessages: PendingChatMessage[] | undefined,
-  currentMessages: PendingChatMessage[]
+  currentMessages: PendingChatMessage[],
+  options?: { preserveOptimistic?: boolean }
 ): PendingChatMessage[] {
   const normalizedServerMessages = normalizePendingChatMessages(serverMessages);
+  if (options?.preserveOptimistic === false) {
+    return normalizedServerMessages;
+  }
   const serverClientPendingIds = new Set(
     normalizedServerMessages
       .map((message) =>

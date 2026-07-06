@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
+import { pruneCanonicalizedLiveActivities } from "../../ui/src/pages/chat/chatModel";
+import type { ChatMessage } from "../../ui/src/pages/chat/chatModel";
+import type { LiveActivityItem } from "../../ui/src/lib/chatActivities";
 
 const chatSourcePath = join(process.cwd(), "ui", "src", "pages", "Chat.tsx");
 const chatModelPath = join(process.cwd(), "ui", "src", "pages", "chat", "chatModel.ts");
@@ -109,6 +112,55 @@ describe("Chat live activity persistence", () => {
     expect(source).toContain('const MESSAGE_PROCESS_MAP_STORAGE_KEY = "cybara:messageProcessMap"');
     expect(source).toContain("readPersistedMessageProcessMap()");
     expect(source).toContain("persistMessageProcessMap(messageProcessMap)");
+  });
+
+  test("prunes remounted live activities already embedded in persisted messages", () => {
+    const messages: ChatMessage[] = [
+      {
+        role: "user",
+        content: "run a slow command",
+        timestamp: "2026-07-06T00:00:00.000Z",
+      },
+      {
+        role: "assistant",
+        content: "",
+        timestamp: "2026-07-06T00:00:01.000Z",
+        process_activities: [
+          {
+            id: "activity-before-steer",
+            phase: "result",
+            text: "Ran slow command before steering",
+            timestamp: 1783300001000,
+            toolName: "exec",
+            toolCallId: "tool-before-steer",
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: "steer now",
+        timestamp: "2026-07-06T00:00:02.000Z",
+      },
+    ];
+    const activities: LiveActivityItem[] = [
+      {
+        id: "activity-before-steer",
+        phase: "result",
+        text: "Ran slow command before steering",
+        timestamp: 1783300001000,
+        toolName: "exec",
+        toolCallId: "tool-before-steer",
+      },
+      {
+        id: "activity-after-steer",
+        phase: "start",
+        text: "Starting queued follow-up",
+        timestamp: 1783300002000,
+        toolName: "__thought",
+      },
+    ];
+
+    expect(pruneCanonicalizedLiveActivities(messages, activities)).toEqual([activities[1]]);
   });
 
   test("does not trim message process map history to last 199 entries", () => {

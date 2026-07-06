@@ -114,4 +114,13 @@ describe("web optimistic pending queue cache", () => {
     expect(merged[0]?.id).toBe("pending-server-1");
     expect(merged[0]?.content).toBe("queued before route change edited on server");
   });
+
+  test("server-authoritative empty pending state clears stale optimistic rows after remount", () => {
+    const sessionId = `web-pending-empty-server-${Date.now()}`;
+    const optimistic = makeOptimistic(sessionId, "stale", "queued before steering");
+
+    const merged = mergePendingChatMessages([], [optimistic], { preserveOptimistic: false });
+
+    expect(merged).toEqual([]);
+  });
 });

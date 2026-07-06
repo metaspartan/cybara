@@ -216,13 +216,33 @@ function clearActiveChatTurnAbortController(sessionId: string, controller: Abort
   }
 }
 
-function finishInterruptedChatTurn(
+async function finishInterruptedChatTurn(
   session: InMemoryChatSession,
   agent: { id: string; name: string },
   controller: AbortController
-): ChatResponse {
+): Promise<ChatResponse> {
   clearActiveChatTurnAbortController(session.id, controller);
-  materializeInterruptedAssistantBeforeSteering(session);
+  const materializedMessage = materializeInterruptedAssistantBeforeSteering(session);
+  if (materializedMessage) {
+    session.persisted = await persistSession(
+      session.id,
+      session.agentId,
+      session.messages,
+      session.workspaceDir,
+      session.title
+    );
+    upsertPersistedSessionIndex({
+      id: session.id,
+      agentId: session.agentId,
+      title: session.title,
+      messageCount: session.messages.length,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+      workspaceDir: session.workspaceDir ?? null,
+      lastMessage: buildLastMessagePreview(session.messages[session.messages.length - 1]),
+      modelMetadata: resolveSessionModelMetadata(session.agentId),
+    });
+  }
   broadcastStatus({
     status: "thinking",
     timestamp: Date.now(),
@@ -1774,7 +1794,7 @@ async function handleChatTurn(
       });
     } catch (error) {
       if (isChatTurnInterrupted(error, turnAbortController.signal)) {
-        return finishInterruptedChatTurn(session, agent, turnAbortController);
+        return await finishInterruptedChatTurn(session, agent, turnAbortController);
       }
       recordCircuitFailure(`llm:${provider.id}`);
       log.error("LLM API error", {

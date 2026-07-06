@@ -207,6 +207,46 @@ export function getMessageProcessActivities(
   return [];
 }
 
+function liveActivityCanonicalKey(activity: LiveActivityItem): string | null {
+  const text = typeof activity.text === "string" ? activity.text.trim() : "";
+  if (!text) return null;
+  return [
+    activity.phase || "result",
+    text,
+    typeof activity.toolName === "string" ? activity.toolName.trim().toLowerCase() : "",
+    typeof activity.toolCallId === "string" ? activity.toolCallId.trim().toLowerCase() : "",
+  ].join("\u0000");
+}
+
+export function pruneCanonicalizedLiveActivities(
+  messages: ChatMessage[],
+  activities: LiveActivityItem[]
+): LiveActivityItem[] {
+  if (activities.length === 0 || messages.length === 0) return activities;
+  const embeddedIds = new Set<string>();
+  const embeddedKeys = new Set<string>();
+  for (const message of messages) {
+    if (message.role !== "assistant" || !Array.isArray(message.process_activities)) continue;
+    for (const entry of message.process_activities) {
+      const activity = normalizePersistedLiveActivityItem(entry);
+      if (!activity) continue;
+      if (activity.id.trim()) {
+        embeddedIds.add(activity.id.trim());
+      }
+      const key = liveActivityCanonicalKey(activity);
+      if (key) {
+        embeddedKeys.add(key);
+      }
+    }
+  }
+  if (embeddedIds.size === 0 && embeddedKeys.size === 0) return activities;
+  return activities.filter((activity) => {
+    if (activity.id && embeddedIds.has(activity.id.trim())) return false;
+    const key = liveActivityCanonicalKey(activity);
+    return !key || !embeddedKeys.has(key);
+  });
+}
+
 export function readStringArg(args: Record<string, unknown>, keys: string[]): string | undefined {
   for (const key of keys) {
     const value = args[key];

@@ -83,6 +83,7 @@ import {
   writeCachedLiveSessionState,
 } from "./chat/liveSessionState";
 import {
+  clearCachedOptimisticPendingMessages,
   readCachedOptimisticPendingMessages,
   writeCachedOptimisticPendingMessages,
 } from "./chat/pendingQueueCache";
@@ -114,6 +115,7 @@ import {
   persistMessageProcessMap,
   persistSessionId,
   persistWorkspaceDir,
+  pruneCanonicalizedLiveActivities,
   readPersistedDiffPanelWidth,
   readPersistedMessageProcessMap,
   readPersistedSessionId,
@@ -2598,9 +2600,13 @@ export function Chat() {
       const response = await chatApi.getPendingMessages(resolvedSessionId);
       if (!response.success || !response.data) return;
       if (activeSessionRef.current !== resolvedSessionId) return;
+      const serverMessages = response.data?.pendingMessages;
       setPendingMessages((current) =>
-        mergePendingChatMessages(response.data?.pendingMessages, current)
+        mergePendingChatMessages(serverMessages, current, { preserveOptimistic: false })
       );
+      if (Array.isArray(serverMessages) && serverMessages.length === 0) {
+        clearCachedOptimisticPendingMessages(resolvedSessionId);
+      }
     } catch {}
   }, []);
 
@@ -2656,6 +2662,35 @@ export function Chat() {
     void hydrateSessionStatus(sessionId);
     return;
   }, [hydrateSessionStatus, refreshPendingMessages, sessionId]);
+
+  useEffect(() => {
+    if (!sessionId || liveActivities.length === 0 || typedMessages.length === 0) return;
+    const prunedActivities = pruneCanonicalizedLiveActivities(typedMessages, liveActivities);
+    const prunedBuffer = pruneCanonicalizedLiveActivities(
+      typedMessages,
+      runActivityBufferRef.current
+    );
+    const activitiesChanged = prunedActivities.length !== liveActivities.length;
+    const bufferChanged = prunedBuffer.length !== runActivityBufferRef.current.length;
+    if (!activitiesChanged && !bufferChanged) return;
+
+    if (bufferChanged) {
+      runActivityBufferRef.current = prunedBuffer.map((activity) => ({ ...activity }));
+    }
+    if (activitiesChanged) {
+      setLiveActivities(prunedActivities);
+    }
+    if (
+      prunedActivities.length === 0 &&
+      prunedBuffer.length === 0 &&
+      !isLoading &&
+      !activeSessionIds.includes(sessionId)
+    ) {
+      setLiveStatus("idle");
+      setLiveCurrentStep(null);
+      clearCachedLiveSessionState(sessionId);
+    }
+  }, [activeSessionIds, isLoading, liveActivities, sessionId, typedMessages]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -3043,6 +3078,9 @@ export function Chat() {
         const response = await chatApi.steerPendingMessage(sessionId, pendingMessageId);
         if (response.success && response.data) {
           setPendingMessages(normalizePendingChatMessages(response.data.pendingMessages));
+          if (response.data.pendingMessages.length === 0) {
+            clearCachedOptimisticPendingMessages(sessionId);
+          }
           appendSessionMessage(sessionId, response.data.message as ChatMessage, workspaceDir);
           const sessionStillActive =
             activeSessionIds.includes(sessionId) ||
