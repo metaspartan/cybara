@@ -156,6 +156,28 @@ interface ExternalPlanSourceInfo {
   hint: string;
 }
 
+interface MetricIndexRow {
+  createdAtMs: number;
+  value: number;
+  keys: Set<string>;
+}
+
+interface ProviderPlanMetricIndex {
+  byType: Map<string, MetricIndexRow[]>;
+}
+
+export interface ProviderPlanEvaluationContext {
+  cfg: ProviderPlanMonitoringConfig;
+  providerById: Map<string, Provider>;
+  firstProviderByType: Map<string, Provider>;
+  metricIndex: ProviderPlanMetricIndex;
+  now: Date;
+  nowMs: number;
+  fiveHourStart: number;
+  weeklyStart: number;
+  thirtyDayStart: number;
+}
+
 const EXTERNAL_PLAN_SOURCE_CATALOG: Record<string, ExternalPlanSourceInfo> = {
   "openai-codex": {
     mode: "oauth_api",
@@ -554,12 +576,18 @@ function sourceLabelFor(mode: ProviderPlanSourceMode, configured: boolean): stri
   return "Manual plan limits";
 }
 
-function configuredProviderForRoute(routeKey: string): Provider | undefined {
-  const direct = tables.providers.get(routeKey) as Provider | undefined;
+function configuredProviderForRoute(
+  routeKey: string,
+  context?: ProviderPlanEvaluationContext
+): Provider | undefined {
+  const direct =
+    context?.providerById.get(routeKey) ??
+    (!context ? (tables.providers.get(routeKey) as Provider | undefined) : undefined);
   if (direct) return direct;
   const resolvedType = resolveProviderType(routeKey) ?? routeKey;
+  if (context) return context.firstProviderByType.get(resolvedType);
   return (tables.providers.all() as Provider[]).find(
-    (provider) => provider.provider === resolvedType
+    (provider) => provider.provider === resolvedType || providerTypeOf(provider) === resolvedType
   );
 }
 
@@ -582,6 +610,24 @@ function planConfigFor(
   return byId ?? byType;
 }
 
+function hasWindowLimit(windowConfig?: ProviderPlanWindowConfig): boolean {
+  return Boolean(
+    windowConfig &&
+    windowConfig.enabled !== false &&
+    (windowConfig.tokenLimit !== undefined || windowConfig.spendLimit !== undefined)
+  );
+}
+
+function hasProviderPlanLimits(providerConfig?: ProviderPlanProviderConfig): boolean {
+  return Boolean(
+    providerConfig &&
+    providerConfig.enabled !== false &&
+    (hasWindowLimit(providerConfig.fiveHour) ||
+      hasWindowLimit(providerConfig.weekly) ||
+      hasWindowLimit(providerConfig.monthly))
+  );
+}
+
 function sqlTimestamp(date: Date): string {
   return date.toISOString().slice(0, 19).replace("T", " ");
 }
@@ -598,21 +644,69 @@ function metricValue(value: unknown): number {
   return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
 }
 
-function matchesProviderMetric(row: Record<string, unknown>, keys: Set<string>): boolean {
+function metricKeysForRow(row: Record<string, unknown>): Set<string> {
+  const keys = new Set<string>();
   const key = typeof row.key === "string" ? row.key : "";
-  if (keys.has(key)) return true;
-  if (typeof row.metadata !== "string") return false;
+  if (key) keys.add(key);
+  if (typeof row.metadata !== "string") return keys;
   try {
     const metadata = JSON.parse(row.metadata) as Record<string, unknown>;
     const provider = typeof metadata.provider === "string" ? metadata.provider : "";
     const providerId = typeof metadata.providerId === "string" ? metadata.providerId : "";
-    return keys.has(provider) || keys.has(providerId);
+    if (provider) keys.add(provider);
+    if (providerId) keys.add(providerId);
   } catch {
-    return false;
+    void 0;
   }
+  return keys;
 }
 
-function sumMetricWindow(type: string, keys: Set<string>, startMs: number): number {
+function matchesProviderMetric(row: Record<string, unknown>, keys: Set<string>): boolean {
+  for (const key of metricKeysForRow(row)) {
+    if (keys.has(key)) return true;
+  }
+  return false;
+}
+
+function buildMetricIndex(types: string[], startMs: number): ProviderPlanMetricIndex {
+  const byType = new Map<string, MetricIndexRow[]>();
+  const sinceSql = sqlTimestamp(new Date(startMs));
+  for (const type of types) {
+    const rows = tables.metrics.getByTypeSince(type, sinceSql) as Array<Record<string, unknown>>;
+    byType.set(
+      type,
+      rows
+        .map((row) => ({
+          createdAtMs: createdAtMs(row.created_at),
+          value: metricValue(row.value),
+          keys: metricKeysForRow(row),
+        }))
+        .filter((row) => row.createdAtMs >= startMs && row.keys.size > 0)
+    );
+  }
+  return { byType };
+}
+
+function sumMetricWindow(
+  type: string,
+  keys: Set<string>,
+  startMs: number,
+  metricIndex?: ProviderPlanMetricIndex
+): number {
+  const indexed = metricIndex?.byType.get(type);
+  if (indexed) {
+    let sum = 0;
+    for (const row of indexed) {
+      if (row.createdAtMs < startMs) continue;
+      for (const key of keys) {
+        if (row.keys.has(key)) {
+          sum += row.value;
+          break;
+        }
+      }
+    }
+    return sum;
+  }
   const rows = tables.metrics.getByTypeSince(type, sqlTimestamp(new Date(startMs))) as Array<
     Record<string, unknown>
   >;
@@ -672,6 +766,82 @@ function buildWindow(params: {
   };
 }
 
+function buildMeasuredWindow(params: {
+  id: string;
+  title: string;
+  kind: ProviderPlanWindowKind;
+  windowConfig?: ProviderPlanWindowConfig;
+  keys: Set<string>;
+  startMs: number;
+  metricIndex?: ProviderPlanMetricIndex;
+  resetsAt?: string;
+  resetDescription: string;
+}): ProviderPlanUsageWindow | null {
+  if (!params.windowConfig || params.windowConfig.enabled === false) return null;
+  return buildWindow({
+    id: params.id,
+    title: params.title,
+    kind: params.kind,
+    windowConfig: params.windowConfig,
+    usedTokens: sumMetricWindow(
+      "token_usage_by_provider",
+      params.keys,
+      params.startMs,
+      params.metricIndex
+    ),
+    usedSpend: sumMetricWindow("router_usage", params.keys, params.startMs, params.metricIndex),
+    resetsAt: params.resetsAt,
+    resetDescription: params.resetDescription,
+  });
+}
+
+function buildProviderPlanWindows(params: {
+  providerConfig?: ProviderPlanProviderConfig;
+  keys: Set<string>;
+  now: Date;
+  fiveHourStart: number;
+  weeklyStart: number;
+  metricIndex?: ProviderPlanMetricIndex;
+}): ProviderPlanUsageWindow[] {
+  const month = monthWindow(params.now, params.providerConfig?.billingCycleAnchorDay ?? 1);
+  return [
+    buildMeasuredWindow({
+      id: "5h",
+      title: "5h window",
+      kind: "rolling_5h",
+      windowConfig: params.providerConfig?.fiveHour,
+      keys: params.keys,
+      startMs: params.fiveHourStart,
+      metricIndex: params.metricIndex,
+      resetDescription: "Rolling 5h",
+    }),
+    buildMeasuredWindow({
+      id: "weekly",
+      title: "Weekly window",
+      kind: "rolling_week",
+      windowConfig: params.providerConfig?.weekly,
+      keys: params.keys,
+      startMs: params.weeklyStart,
+      metricIndex: params.metricIndex,
+      resetDescription: "Rolling 7d",
+    }),
+    buildMeasuredWindow({
+      id: "monthly",
+      title: "Billing month",
+      kind: "billing_month",
+      windowConfig: params.providerConfig?.monthly,
+      keys: params.keys,
+      startMs: month.startMs,
+      metricIndex: params.metricIndex,
+      resetsAt: new Date(month.endMs).toISOString(),
+      resetDescription: `Resets ${new Date(month.endMs).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      })}`,
+    }),
+  ].filter((window): window is ProviderPlanUsageWindow => Boolean(window));
+}
+
 function resolveStatus(
   windows: ProviderPlanUsageWindow[],
   providerConfig: ProviderPlanProviderConfig | undefined,
@@ -692,9 +862,93 @@ function resolveStatus(
   return { status: "ok" };
 }
 
-export function getProviderPlanSnapshot(routeKey: string): ProviderPlanSnapshot {
+function buildProviderPlanEvaluationContext(
+  cfg: ProviderPlanMonitoringConfig,
+  rows: Provider[],
+  now: Date
+): ProviderPlanEvaluationContext {
+  const providerById = new Map<string, Provider>();
+  const firstProviderByType = new Map<string, Provider>();
+  for (const provider of rows) {
+    providerById.set(provider.id, provider);
+    const providerType = providerTypeOf(provider);
+    if (!firstProviderByType.has(providerType)) firstProviderByType.set(providerType, provider);
+  }
+  const nowMs = now.getTime();
+  const fiveHourStart = nowMs - 5 * 60 * 60 * 1000;
+  const weeklyStart = nowMs - 7 * 24 * 60 * 60 * 1000;
+  const thirtyDayStart = nowMs - 30 * 24 * 60 * 60 * 1000;
+  let earliestStart = Math.min(fiveHourStart, weeklyStart, thirtyDayStart);
+  for (const provider of rows) {
+    const providerType = providerTypeOf(provider);
+    const providerConfig = planConfigFor(cfg, provider.id, providerType);
+    const month = monthWindow(now, providerConfig?.billingCycleAnchorDay ?? 1);
+    earliestStart = Math.min(earliestStart, month.startMs);
+  }
+  return {
+    cfg,
+    providerById,
+    firstProviderByType,
+    metricIndex: buildMetricIndex(["token_usage_by_provider", "router_usage"], earliestStart),
+    now,
+    nowMs,
+    fiveHourStart,
+    weeklyStart,
+    thirtyDayStart,
+  };
+}
+
+export function createProviderPlanEvaluationContext(): ProviderPlanEvaluationContext {
   const cfg = getProviderPlanMonitoringConfig();
-  const configured = configuredProviderForRoute(routeKey);
+  return buildProviderPlanEvaluationContext(cfg, tables.providers.all() as Provider[], new Date());
+}
+
+function providerMetricKeys(params: {
+  cfg: ProviderPlanMonitoringConfig;
+  routeKey: string;
+  providerId: string;
+  providerType: string;
+  providerName: string;
+  configuredProviderType?: string;
+}): Set<string> {
+  const explicitProviderIdConfig = Boolean(params.cfg.providers[params.providerId]);
+  const explicitProviderTypeConfig = Boolean(params.cfg.providers[params.providerType]);
+  const keyCandidates =
+    explicitProviderIdConfig && !explicitProviderTypeConfig
+      ? [params.routeKey, params.providerId, params.providerName]
+      : [
+          params.routeKey,
+          params.providerId,
+          params.providerType,
+          params.configuredProviderType,
+          params.providerName,
+        ];
+  return new Set(keyCandidates.filter(Boolean) as string[]);
+}
+
+export function hasProviderPlanRouteConstraints(routeKeys: string[]): boolean {
+  const cfg = getProviderPlanMonitoringConfig();
+  if (!cfg.enabled) return false;
+  for (const routeKey of routeKeys) {
+    const configured = configuredProviderForRoute(routeKey);
+    const providerType = configured
+      ? providerTypeOf(configured)
+      : (resolveProviderType(routeKey) ?? routeKey);
+    const staticInfo = providers[providerType as ProviderType];
+    const authType = staticInfo?.authType ?? "unknown";
+    if (!isPlanCapableProvider(providerType, authType)) continue;
+    const providerId = configured?.id ?? routeKey;
+    if (hasProviderPlanLimits(planConfigFor(cfg, providerId, providerType))) return true;
+  }
+  return false;
+}
+
+export function getProviderPlanSnapshot(
+  routeKey: string,
+  context?: ProviderPlanEvaluationContext
+): ProviderPlanSnapshot {
+  const cfg = context?.cfg ?? getProviderPlanMonitoringConfig();
+  const configured = configuredProviderForRoute(routeKey, context);
   const providerType = configured
     ? providerTypeOf(configured)
     : (resolveProviderType(routeKey) ?? routeKey);
@@ -707,57 +961,34 @@ export function getProviderPlanSnapshot(routeKey: string): ProviderPlanSnapshot 
   const externalSource = EXTERNAL_PLAN_SOURCE_CATALOG[providerType];
   const presetSuggestions = getProviderPlanPresetSuggestions(providerType);
   const activeSourceMode: ProviderPlanSourceMode = "local";
-  const explicitProviderIdConfig = Boolean(cfg.providers[providerId]);
-  const explicitProviderTypeConfig = Boolean(cfg.providers[providerType]);
-  const keyCandidates =
-    explicitProviderIdConfig && !explicitProviderTypeConfig
-      ? [routeKey, providerId, providerName]
-      : [routeKey, providerId, providerType, configured?.provider, providerName];
-  const keys = new Set(keyCandidates.filter(Boolean) as string[]);
-  const now = new Date();
-  const nowMs = now.getTime();
-  const fiveHourStart = nowMs - 5 * 60 * 60 * 1000;
-  const weeklyStart = nowMs - 7 * 24 * 60 * 60 * 1000;
-  const month = monthWindow(now, providerConfig?.billingCycleAnchorDay ?? 1);
+  const keys = providerMetricKeys({
+    cfg,
+    routeKey,
+    providerId,
+    providerType,
+    providerName,
+    configuredProviderType: configured?.provider,
+  });
+  const now = context?.now ?? new Date();
+  const nowMs = context?.nowMs ?? now.getTime();
+  const fiveHourStart = context?.fiveHourStart ?? nowMs - 5 * 60 * 60 * 1000;
+  const weeklyStart = context?.weeklyStart ?? nowMs - 7 * 24 * 60 * 60 * 1000;
+  const thirtyDayStart = context?.thirtyDayStart ?? nowMs - 30 * 24 * 60 * 60 * 1000;
   const localTokens30d = sumMetricWindow(
     "token_usage_by_provider",
     keys,
-    nowMs - 30 * 24 * 60 * 60 * 1000
+    thirtyDayStart,
+    context?.metricIndex
   );
-  const localSpend30d = sumMetricWindow("router_usage", keys, nowMs - 30 * 24 * 60 * 60 * 1000);
-  const windows = [
-    buildWindow({
-      id: "5h",
-      title: "5h window",
-      kind: "rolling_5h",
-      windowConfig: providerConfig?.fiveHour,
-      usedTokens: sumMetricWindow("token_usage_by_provider", keys, fiveHourStart),
-      usedSpend: sumMetricWindow("router_usage", keys, fiveHourStart),
-      resetDescription: "Rolling 5h",
-    }),
-    buildWindow({
-      id: "weekly",
-      title: "Weekly window",
-      kind: "rolling_week",
-      windowConfig: providerConfig?.weekly,
-      usedTokens: sumMetricWindow("token_usage_by_provider", keys, weeklyStart),
-      usedSpend: sumMetricWindow("router_usage", keys, weeklyStart),
-      resetDescription: "Rolling 7d",
-    }),
-    buildWindow({
-      id: "monthly",
-      title: "Billing month",
-      kind: "billing_month",
-      windowConfig: providerConfig?.monthly,
-      usedTokens: sumMetricWindow("token_usage_by_provider", keys, month.startMs),
-      usedSpend: sumMetricWindow("router_usage", keys, month.startMs),
-      resetsAt: new Date(month.endMs).toISOString(),
-      resetDescription: `Resets ${new Date(month.endMs).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      })}`,
-    }),
-  ].filter((window): window is ProviderPlanUsageWindow => Boolean(window));
+  const localSpend30d = sumMetricWindow("router_usage", keys, thirtyDayStart, context?.metricIndex);
+  const windows = buildProviderPlanWindows({
+    providerConfig,
+    keys,
+    now,
+    fiveHourStart,
+    weeklyStart,
+    metricIndex: context?.metricIndex,
+  });
 
   const resolved = monitored
     ? resolveStatus(windows, providerConfig, cfg.warningThresholdPct)
@@ -793,26 +1024,79 @@ export function getProviderPlanSnapshot(routeKey: string): ProviderPlanSnapshot 
   };
 }
 
-export function getProviderPlanRouteConstraint(routeKey: string): ProviderPlanRouteConstraint {
-  const cfg = getProviderPlanMonitoringConfig();
-  const snapshot = getProviderPlanSnapshot(routeKey);
-  const configured = snapshot.windows.length > 0 && snapshot.status !== "unconfigured";
+export function getProviderPlanRouteConstraint(
+  routeKey: string,
+  context?: ProviderPlanEvaluationContext
+): ProviderPlanRouteConstraint {
+  const cfg = context?.cfg ?? getProviderPlanMonitoringConfig();
+  const configuredProvider = configuredProviderForRoute(routeKey, context);
+  const providerType = configuredProvider
+    ? providerTypeOf(configuredProvider)
+    : (resolveProviderType(routeKey) ?? routeKey);
+  const staticInfo = providers[providerType as ProviderType];
+  const authType = staticInfo?.authType ?? "unknown";
+  const providerId = configuredProvider?.id ?? routeKey;
+  const providerName = configuredProvider?.name || staticInfo?.name || routeKey;
+  const providerConfig = planConfigFor(cfg, providerId, providerType);
+  const monitored = cfg.enabled && isPlanCapableProvider(providerType, authType);
+
+  if (!monitored) {
+    return {
+      monitored,
+      configured: false,
+      enforced: false,
+      status: "disabled",
+      reason: "Provider is not monitored",
+    };
+  }
+
+  if (!hasProviderPlanLimits(providerConfig)) {
+    return {
+      monitored,
+      configured: false,
+      enforced: false,
+      status: "unconfigured",
+      reason: "No plan limits configured",
+    };
+  }
+
+  const now = context?.now ?? new Date();
+  const nowMs = context?.nowMs ?? now.getTime();
+  const fiveHourStart = context?.fiveHourStart ?? nowMs - 5 * 60 * 60 * 1000;
+  const weeklyStart = context?.weeklyStart ?? nowMs - 7 * 24 * 60 * 60 * 1000;
+  const windows = buildProviderPlanWindows({
+    providerConfig,
+    keys: providerMetricKeys({
+      cfg,
+      routeKey,
+      providerId,
+      providerType,
+      providerName,
+      configuredProviderType: configuredProvider?.provider,
+    }),
+    now,
+    fiveHourStart,
+    weeklyStart,
+    metricIndex: context?.metricIndex,
+  });
+  const resolved = resolveStatus(windows, providerConfig, cfg.warningThresholdPct);
+  const configured = windows.length > 0 && resolved.status !== "unconfigured";
   const enforced =
     cfg.enabled &&
     cfg.routerEnforcement &&
-    snapshot.monitored &&
+    monitored &&
     configured &&
-    snapshot.status === "exhausted";
-  const primaryRemainingPercent = snapshot.windows
+    resolved.status === "exhausted";
+  const primaryRemainingPercent = windows
     .map((window) => window.remainingPercent)
     .filter((value): value is number => typeof value === "number")
     .sort((a, b) => a - b)[0];
   return {
-    monitored: snapshot.monitored,
+    monitored,
     configured,
     enforced,
-    status: snapshot.status,
-    reason: enforced ? snapshot.reason || "Provider plan exhausted" : snapshot.reason,
+    status: resolved.status,
+    reason: enforced ? resolved.reason || "Provider plan exhausted" : resolved.reason,
     primaryRemainingPercent,
   };
 }
@@ -820,7 +1104,8 @@ export function getProviderPlanRouteConstraint(routeKey: string): ProviderPlanRo
 export function getProviderPlanStatus(): ProviderPlanStatusResponse {
   const cfg = getProviderPlanMonitoringConfig();
   const rows = tables.providers.all() as Provider[];
-  const snapshots = rows.map((provider) => getProviderPlanSnapshot(provider.id));
+  const context = buildProviderPlanEvaluationContext(cfg, rows, new Date());
+  const snapshots = rows.map((provider) => getProviderPlanSnapshot(provider.id, context));
   const configured = snapshots.filter((snapshot) => snapshot.windows.length > 0);
   return {
     enabled: cfg.enabled,

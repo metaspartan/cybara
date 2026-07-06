@@ -330,11 +330,12 @@ export function RouterSettings() {
     void fetchPlanConfig();
     void fetchProviders();
     void fetchAgents();
-    const interval = setInterval(() => {
-      void fetchStatus();
-      void fetchPlanStatus();
-    }, 5000);
-    return () => clearInterval(interval);
+    const statusInterval = setInterval(() => void fetchStatus(), 5000);
+    const planInterval = setInterval(() => void fetchPlanStatus(), 15000);
+    return () => {
+      clearInterval(statusInterval);
+      clearInterval(planInterval);
+    };
   }, [fetchStatus, fetchConfig, fetchPlanStatus, fetchPlanConfig, fetchProviders, fetchAgents]);
 
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -402,6 +403,8 @@ export function RouterSettings() {
   );
   const configuredPricingCount = pricedRoutes?.length || 0;
   const planSummary = planStatus?.summary;
+  const planStatusLoaded = planStatus !== null;
+  const planConfigLoaded = planConfig !== null;
   const planMonitoringEnabled = planConfig?.enabled ?? true;
   const planEnforcementEnabled = planConfig?.routerEnforcement ?? true;
   const planByRoute = new Map<string, ProviderPlanSnapshot>();
@@ -417,12 +420,14 @@ export function RouterSettings() {
     staleAfterMinutes: 120,
     providers: {},
   };
-  const savePlanConfigPatch = (patch: Partial<ProviderPlanConfig>) =>
-    savePlanConfig({
+  const savePlanConfigPatch = (patch: Partial<ProviderPlanConfig>) => {
+    if (!planConfig) return Promise.resolve();
+    return savePlanConfig({
       ...basePlanConfig,
       ...patch,
       providers: patch.providers || basePlanConfig.providers || {},
     });
+  };
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
@@ -457,7 +462,9 @@ export function RouterSettings() {
           <div className="rounded-lg bg-black/25 px-3 py-2">
             <p className="text-[10px] uppercase tracking-wide text-gray-500">Plans</p>
             <p className="text-sm font-semibold text-amber-300">
-              {planSummary?.configured || 0}/{planSummary?.monitored || 0}
+              {planStatusLoaded
+                ? `${planSummary?.configured || 0}/${planSummary?.monitored || 0}`
+                : "..."}
             </p>
           </div>
         </div>
@@ -729,14 +736,18 @@ export function RouterSettings() {
                 </p>
               </div>
               <span className="rounded-full bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-wide">
-                {planSummary?.configured || 0} configured
+                {planStatusLoaded ? `${planSummary?.configured || 0} configured` : "Loading"}
               </span>
             </div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <button
                 type="button"
                 onClick={() => savePlanConfigPatch({ enabled: !planMonitoringEnabled })}
-                className="flex items-center justify-between gap-2 rounded-lg border border-cyan-200/15 bg-black/20 px-3 py-2 text-left"
+                disabled={!planConfigLoaded}
+                className={cn(
+                  "flex items-center justify-between gap-2 rounded-lg border border-cyan-200/15 bg-black/20 px-3 py-2 text-left",
+                  !planConfigLoaded && "cursor-not-allowed opacity-50"
+                )}
               >
                 <span>
                   <span className="block text-[11px] font-semibold text-cyan-50">
@@ -755,7 +766,11 @@ export function RouterSettings() {
               <button
                 type="button"
                 onClick={() => savePlanConfigPatch({ routerEnforcement: !planEnforcementEnabled })}
-                className="flex items-center justify-between gap-2 rounded-lg border border-cyan-200/15 bg-black/20 px-3 py-2 text-left"
+                disabled={!planConfigLoaded}
+                className={cn(
+                  "flex items-center justify-between gap-2 rounded-lg border border-cyan-200/15 bg-black/20 px-3 py-2 text-left",
+                  !planConfigLoaded && "cursor-not-allowed opacity-50"
+                )}
               >
                 <span>
                   <span className="block text-[11px] font-semibold text-cyan-50">

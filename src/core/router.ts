@@ -18,7 +18,13 @@
 import { config } from "./config";
 import { providerManager } from "./providers";
 import { tables } from "./database";
-import { getProviderPlanRouteConstraint, type ProviderPlanRouteConstraint } from "./provider-plans";
+import {
+  createProviderPlanEvaluationContext,
+  getProviderPlanRouteConstraint,
+  hasProviderPlanRouteConstraints,
+  type ProviderPlanEvaluationContext,
+  type ProviderPlanRouteConstraint,
+} from "./provider-plans";
 
 // ─── Built-in pricing data ($USD per 1M tokens) ─────────────────────────────
 // Stamped pricing data + estimates.
@@ -378,7 +384,10 @@ function resolvePrice(
   };
 }
 
-export function getProviderAvailability(providerId: string): ProviderAvailability {
+export function getProviderAvailability(
+  providerId: string,
+  planContext?: ProviderPlanEvaluationContext
+): ProviderAvailability {
   const routerCfg = getRouterConfig();
   const route = normalizeRoute(routerCfg.routes[providerId] ?? { weight: 50, enabled: true });
   const requests5h = getWindowedRequests(providerId, WINDOW_5H_MS);
@@ -388,7 +397,7 @@ export function getProviderAvailability(providerId: string): ProviderAvailabilit
   const price = resolvePrice(route, providerId);
   const circuitOpen = isCircuitOpen(providerId);
   const inCooldown = isInCooldown(providerId);
-  const plan = getProviderPlanRouteConstraint(providerId);
+  const plan = getProviderPlanRouteConstraint(providerId, planContext);
 
   let available = route.enabled !== false;
   let reason: string | undefined;
@@ -457,25 +466,40 @@ export function getProviderAvailability(providerId: string): ProviderAvailabilit
 export function selectProvider(preferredProviderId?: string): string | null {
   const routerCfg = getRouterConfig();
   if (!routerCfg.enabled) return preferredProviderId ?? null;
+  const routeIds = Object.keys(routerCfg.routes);
+  const fallbackProviderIds = routerCfg.fallbackToAny
+    ? providerManager
+        .list()
+        .map((provider) => provider.provider)
+        .filter((provider): provider is string => Boolean(provider))
+    : [];
+  const planRouteKeys = [
+    preferredProviderId,
+    ...routeIds,
+    ...fallbackProviderIds.filter((id) => !routerCfg.routes[id]),
+  ].filter((id): id is string => Boolean(id));
+  const planContext = hasProviderPlanRouteConstraints(planRouteKeys)
+    ? createProviderPlanEvaluationContext()
+    : undefined;
 
   // Preferred provider passthrough.
-  if (preferredProviderId && getProviderAvailability(preferredProviderId).available) {
+  if (preferredProviderId && getProviderAvailability(preferredProviderId, planContext).available) {
     return preferredProviderId;
   }
 
   // Build candidates from configured routes.
   const candidates: Array<{ id: string; avail: ProviderAvailability }> = [];
-  for (const id of Object.keys(routerCfg.routes)) {
-    const avail = getProviderAvailability(id);
+  for (const id of routeIds) {
+    const avail = getProviderAvailability(id, planContext);
     if (avail.available) candidates.push({ id, avail });
   }
 
   // Fallback to any configured provider.
   if (candidates.length === 0 && routerCfg.fallbackToAny) {
-    for (const p of providerManager.list()) {
-      if (p.provider && !routerCfg.routes[p.provider]) {
-        const avail = getProviderAvailability(p.provider);
-        if (avail.available) candidates.push({ id: p.provider, avail });
+    for (const providerId of fallbackProviderIds) {
+      if (!routerCfg.routes[providerId]) {
+        const avail = getProviderAvailability(providerId, planContext);
+        if (avail.available) candidates.push({ id: providerId, avail });
       }
     }
   }
@@ -597,12 +621,15 @@ export interface RouterStatus {
 export function getRouterStatus(): RouterStatus {
   const cfg = getRouterConfig();
   const routeIds = Object.keys(cfg.routes);
+  const planContext = hasProviderPlanRouteConstraints(routeIds)
+    ? createProviderPlanEvaluationContext()
+    : undefined;
   return {
     enabled: cfg.enabled,
     strategy: cfg.strategy,
     globalSpendToday: getWindowedSpend(null, WINDOW_DAY_MS),
     globalSpendLimitDaily: cfg.globalSpendLimitDaily,
-    routes: routeIds.map((id) => getProviderAvailability(id)),
+    routes: routeIds.map((id) => getProviderAvailability(id, planContext)),
     totalRequests: usageLog.length,
   };
 }

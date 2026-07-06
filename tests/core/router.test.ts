@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { config } from "../../src/core/config";
+import { tables } from "../../src/core/database";
 import {
   getProviderAvailability,
   getPricing,
@@ -19,6 +20,7 @@ import {
 afterEach(() => {
   resetRouterForTests();
   config.set("router", null);
+  config.set("provider_plan_monitoring", null);
 });
 
 describe("mixture-of-agents strategy", () => {
@@ -283,5 +285,70 @@ describe("status + spend tracking", () => {
     expect(status.routes[0].spendToday).toBeCloseTo(17.5, 1);
     expect(status.routes[0].inputPerM).toBe(5.0);
     expect(status.routes[0].outputPerM).toBe(25.0);
+  });
+
+  test("getRouterStatus skips provider plan metric scans when no plan limits are configured", () => {
+    setRouterConfig({
+      routes: {
+        "openai-codex": { weight: 50 },
+        "google-gemini-cli": { weight: 50 },
+      },
+    });
+    config.set("provider_plan_monitoring", {
+      enabled: true,
+      routerEnforcement: true,
+      providers: {},
+    });
+
+    const originalGetByTypeSince = tables.metrics.getByTypeSince;
+    const queriedTypes: string[] = [];
+    tables.metrics.getByTypeSince = ((type: string, sinceSql: string) => {
+      queriedTypes.push(type);
+      return originalGetByTypeSince(type, sinceSql);
+    }) as typeof tables.metrics.getByTypeSince;
+
+    try {
+      const status = getRouterStatus();
+
+      expect(status.routes).toHaveLength(2);
+      expect(queriedTypes).toHaveLength(0);
+    } finally {
+      tables.metrics.getByTypeSince = originalGetByTypeSince;
+    }
+  });
+
+  test("getRouterStatus reuses provider plan metric scans across routes", () => {
+    setRouterConfig({
+      routes: {
+        "openai-codex": { weight: 50 },
+        "google-gemini-cli": { weight: 50 },
+        github_copilot: { weight: 50 },
+      },
+    });
+    config.set("provider_plan_monitoring", {
+      enabled: true,
+      routerEnforcement: true,
+      providers: {
+        "openai-codex": { monthly: { tokenLimit: 1000 } },
+        "google-gemini-cli": { weekly: { tokenLimit: 1000 } },
+        github_copilot: { fiveHour: { tokenLimit: 1000 } },
+      },
+    });
+
+    const originalGetByTypeSince = tables.metrics.getByTypeSince;
+    const queriedTypes: string[] = [];
+    tables.metrics.getByTypeSince = ((type: string, sinceSql: string) => {
+      queriedTypes.push(type);
+      return originalGetByTypeSince(type, sinceSql);
+    }) as typeof tables.metrics.getByTypeSince;
+
+    try {
+      const status = getRouterStatus();
+
+      expect(status.routes).toHaveLength(3);
+      expect(queriedTypes.sort()).toEqual(["router_usage", "token_usage_by_provider"]);
+    } finally {
+      tables.metrics.getByTypeSince = originalGetByTypeSince;
+    }
   });
 });

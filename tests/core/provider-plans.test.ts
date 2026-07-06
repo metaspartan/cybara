@@ -167,6 +167,45 @@ describe("provider plan monitoring", () => {
     expect(status.summary.configured).toBeGreaterThan(0);
   });
 
+  test("status indexes local usage metrics once for all providers", () => {
+    const codexProviderId = createProvider("openai-codex");
+    const geminiProviderId = createProvider("google-gemini-cli");
+    const copilotProviderId = createProvider("github_copilot");
+    addProviderTokens(codexProviderId, 100);
+    addProviderTokens(geminiProviderId, 200);
+    addProviderTokens(copilotProviderId, 300);
+    setProviderPlanMonitoringConfig({
+      enabled: true,
+      providers: {
+        [codexProviderId]: { monthly: { tokenLimit: 1000 } },
+        [geminiProviderId]: { weekly: { tokenLimit: 1000 } },
+        [copilotProviderId]: { fiveHour: { tokenLimit: 1000 } },
+      },
+    });
+
+    const originalGetByTypeSince = tables.metrics.getByTypeSince;
+    const queriedTypes: string[] = [];
+    tables.metrics.getByTypeSince = ((type: string, sinceSql: string) => {
+      queriedTypes.push(type);
+      return originalGetByTypeSince(type, sinceSql);
+    }) as typeof tables.metrics.getByTypeSince;
+
+    try {
+      const status = getProviderPlanStatus();
+
+      expect(
+        status.providers.filter((provider) =>
+          [codexProviderId, geminiProviderId, copilotProviderId].includes(
+            provider.configuredProviderId ?? ""
+          )
+        )
+      ).toHaveLength(3);
+      expect(queriedTypes.sort()).toEqual(["router_usage", "token_usage_by_provider"]);
+    } finally {
+      tables.metrics.getByTypeSince = originalGetByTypeSince;
+    }
+  });
+
   test("normalizes and exposes applied coding plan presets", () => {
     const providerId = createProvider("github_copilot");
     setProviderPlanMonitoringConfig({
