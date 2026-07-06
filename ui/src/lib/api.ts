@@ -17,6 +17,16 @@ import type { PendingChatMessage } from "@/lib/status-stream";
 
 const API_BASE = "/api";
 
+type ChatProcessActivityPayload = Array<{
+  id?: string;
+  phase?: "start" | "result" | "error";
+  text?: string;
+  timestamp?: number | string;
+  toolName?: string;
+  toolCallId?: string;
+  sandboxProvider?: string;
+}>;
+
 /**
  * Resolve a human-readable error from an ApiResponse: prefer a nested
  * `data.error` (envelope returned with HTTP 200), then the transport `error`,
@@ -902,14 +912,22 @@ export const chatApi = {
       }),
       signal,
     }),
-  steerPendingMessage: (sessionId: string, pendingMessageId: string) =>
+  steerPendingMessage: (
+    sessionId: string,
+    pendingMessageId: string,
+    options?: { processActivities?: ChatProcessActivityPayload }
+  ) =>
     fetchApi<{
       success: boolean;
       message?: ChatMessage;
+      interruptedMessage?: ChatMessage;
       pendingMessage?: PendingChatMessage;
       pendingMessages?: PendingChatMessage[];
       error?: string;
-    }>(`/chat/sessions/${sessionId}/pending/${pendingMessageId}/steer`, { method: "POST" }),
+    }>(`/chat/sessions/${sessionId}/pending/${pendingMessageId}/steer`, {
+      method: "POST",
+      body: JSON.stringify({ processActivities: options?.processActivities || [] }),
+    }),
   getPendingMessages: (sessionId: string) =>
     fetchApi<{ sessionId: string; pendingMessages: PendingChatMessage[] }>(
       `/chat/sessions/${sessionId}/pending`

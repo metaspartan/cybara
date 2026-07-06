@@ -3077,18 +3077,37 @@ export function Chat() {
       if (!sessionId) return;
       setSteeringMessageId(pendingMessageId);
       const preSteerActivities = mergeActivityLists(runActivityBufferRef.current, liveActivities);
+      const preSteerProcessActivities = finalizeCompletedActivities(preSteerActivities)
+        .filter((activity) => {
+          const text = activity.text.trim().toLowerCase();
+          return (
+            text.length > 0 &&
+            text !== "steering to follow-up..." &&
+            text !== "starting queued follow-up"
+          );
+        })
+        .map((activity) => ({
+          id: activity.id,
+          phase: activity.phase,
+          text: activity.text,
+          timestamp: activity.timestamp,
+          toolName: activity.toolName,
+          toolCallId: activity.toolCallId,
+          sandboxProvider: activity.sandboxProvider,
+        }));
       try {
-        const response = await chatApi.steerPendingMessage(sessionId, pendingMessageId);
+        const response = await chatApi.steerPendingMessage(sessionId, pendingMessageId, {
+          processActivities: preSteerProcessActivities,
+        });
         if (response.success && response.data) {
           setPendingMessages(normalizePendingChatMessages(response.data.pendingMessages));
           if (response.data.pendingMessages.length === 0) {
             clearCachedOptimisticPendingMessages(sessionId);
           }
           const steeredMessage = response.data.message as ChatMessage;
-          const preSteerMessage = buildPreSteeringActivityMessage(
-            steeredMessage,
-            preSteerActivities
-          );
+          const preSteerMessage =
+            (response.data.interruptedMessage as ChatMessage | undefined) ||
+            buildPreSteeringActivityMessage(steeredMessage, preSteerActivities);
           if (preSteerMessage) {
             appendSessionMessages(sessionId, [preSteerMessage, steeredMessage], workspaceDir);
             const materializedMessages = [preSteerMessage];

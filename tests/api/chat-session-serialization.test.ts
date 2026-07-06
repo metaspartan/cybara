@@ -12,6 +12,7 @@ import {
   updatePendingChatMessage,
 } from "../../src/api/chat";
 import { broadcastStatus, onStatusStream } from "../../src/core/status";
+import { loadPersistedSession } from "../../src/core/session-context";
 
 const createdAgentIds: string[] = [];
 const createdProviderIds: string[] = [];
@@ -191,10 +192,25 @@ describe("handleChat per-session serialization", () => {
     const steered = await steerPendingChatMessage(sessionId, pendingId!);
     expect(steered.success).toBe(true);
     expect(steered.pendingMessages).toEqual([]);
+    expect(steered.interruptedMessage?.role).toBe("assistant");
+    expect(steered.interruptedMessage?.process_activities).toEqual([]);
     expect(listPendingChatMessages(sessionId)).toEqual([]);
 
-    const materializedMessages = await waitForVisibleSessionMessages(sessionId, 2);
-    expect(materializedMessages[1]?.content).toBe("adjust course");
+    const materializedMessages = await waitForVisibleSessionMessages(sessionId, 3);
+    expect(materializedMessages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+    ]);
+    expect(materializedMessages[1]?.content).toBe("");
+    expect(materializedMessages[2]?.content).toBe("adjust course");
+
+    const durableSession = await loadPersistedSession(sessionId);
+    const durableMessages = (durableSession?.messages || []).filter(
+      (message) => message.role !== "system"
+    );
+    expect(durableMessages.map((message) => message.role)).toEqual(["user", "assistant", "user"]);
+    expect(durableMessages[2]?.content).toBe("adjust course");
 
     const firstResult = await firstTurn.finally(() => unsubscribe());
     expect(firstResult.interrupted).toBe(true);
@@ -209,11 +225,13 @@ describe("handleChat per-session serialization", () => {
         (entry) => entry.status === "thinking" && entry.detail === "Steering to follow-up..."
       )
     ).toBe(true);
-    const messages = await waitForVisibleSessionMessages(sessionId, 3);
+    const messages = await waitForVisibleSessionMessages(sessionId, 4);
     expect(messages[0]?.content).toBe("start");
-    expect(messages[1]?.content).toBe("adjust course");
-    expect(messages[2]?.role).toBe("assistant");
-    expect(messages[2]?.content).toBe("steer-reply-2");
+    expect(messages[1]?.role).toBe("assistant");
+    expect(messages[1]?.content).toBe("");
+    expect(messages[2]?.content).toBe("adjust course");
+    expect(messages[3]?.role).toBe("assistant");
+    expect(messages[3]?.content).toBe("steer-reply-2");
   });
 
   test("steering during an aborted execution drains the materialized follow-up", async () => {
@@ -384,9 +402,147 @@ describe("handleChat per-session serialization", () => {
         "Ran long command before steering"
       );
       expect(listPendingChatMessages(sessionId)).toEqual([]);
+
+      const durableSession = await loadPersistedSession(sessionId);
+      const durableMessages = (durableSession?.messages || []).filter(
+        (message) => message.role !== "system"
+      );
+      expect(durableMessages.map((message) => message.role)).toEqual([
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+      ]);
+      expect(durableMessages[3]?.process_activities?.map((activity) => activity.text)).toContain(
+        "Ran long command before steering"
+      );
+      expect(durableMessages[4]?.content).toBe("steer after command");
     } finally {
       agentManager.execute = originalExecute;
     }
+  }, 15000);
+
+  test("steering persists observed work before route remount can reload the session", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Observed Steering Provider",
+      api_key: "sk-observed-steering",
+      base_url: "https://api.openai.com/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Observed Steering Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-observed-steering",
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    let call = 0;
+    globalThis.fetch = (async (_url, init) => {
+      const n = ++call;
+      if (n === 1) {
+        await new Promise<void>((resolve) => {
+          if (init?.signal instanceof AbortSignal) {
+            init.signal.addEventListener("abort", () => resolve(), { once: true });
+          }
+          setTimeout(resolve, 120);
+        });
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      return new Response(
+        JSON.stringify({
+          id: `observed-steer-${n}`,
+          object: "chat.completion",
+          model: "gpt-observed-steering",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: `observed-reply-${n}` },
+            },
+          ],
+          usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const sessionId = `observed-steering-${Date.now()}`;
+    createdSessionIds.push(sessionId);
+    const firstTurn = handleChat({
+      message: "review this repo",
+      agentId: agent.id,
+      sessionId,
+      tools: false,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const queued = await handleChat({
+      message: "focus on cost too",
+      agentId: agent.id,
+      sessionId,
+      tools: false,
+      queueMode: "queue",
+    });
+    expect(queued.queued).toBe(true);
+    const pendingId = queued.pendingMessage?.id;
+    expect(typeof pendingId).toBe("string");
+
+    const observedTimestamp = Date.now();
+    const steered = await steerPendingChatMessage(sessionId, pendingId!, {
+      processActivities: [
+        {
+          id: "observed-pre-steer-tool",
+          phase: "result",
+          text: "Ran repo inspection before steering",
+          timestamp: observedTimestamp,
+          toolName: "exec",
+          toolCallId: "observed-tool",
+        },
+      ],
+    });
+
+    expect(steered.success).toBe(true);
+    expect(
+      steered.interruptedMessage?.process_activities?.map((activity) => activity.text)
+    ).toEqual(["Ran repo inspection before steering"]);
+
+    const remountedMessages = await waitForVisibleSessionMessages(sessionId, 3);
+    expect(remountedMessages.map((message) => message.role)).toEqual(["user", "assistant", "user"]);
+    expect(remountedMessages[1]?.content).toBe("");
+    expect(remountedMessages[1]?.process_activities?.map((activity) => activity.text)).toEqual([
+      "Ran repo inspection before steering",
+    ]);
+    expect(remountedMessages[2]?.content).toBe("focus on cost too");
+
+    const durableSession = await loadPersistedSession(sessionId);
+    const durableMessages = (durableSession?.messages || []).filter(
+      (message) => message.role !== "system"
+    );
+    expect(durableMessages.map((message) => message.role)).toEqual(["user", "assistant", "user"]);
+    expect(durableMessages[1]?.process_activities?.map((activity) => activity.text)).toEqual([
+      "Ran repo inspection before steering",
+    ]);
+
+    await firstTurn;
+    const messages = await waitForVisibleSessionMessages(sessionId, 4);
+    expect(messages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+      "assistant",
+    ]);
+    expect(messages[1]?.process_activities?.map((activity) => activity.text)).toContain(
+      "Ran repo inspection before steering"
+    );
+    expect(messages[2]?.content).toBe("focus on cost too");
+    expect(messages[3]?.content).toBe("observed-reply-2");
   }, 15000);
 
   test("queue mode honors active session status even if no mutex is held", async () => {

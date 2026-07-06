@@ -3509,8 +3509,12 @@ const routes: Record<string, RouteHandler> = {
   },
   "DELETE /api/chat/sessions/:id/pending/:pendingId": (_body, params) =>
     deletePendingChatMessage(params!.id, params!.pendingId),
-  "POST /api/chat/sessions/:id/pending/:pendingId/steer": async (_body, params) =>
-    await steerPendingChatMessage(params!.id, params!.pendingId),
+  "POST /api/chat/sessions/:id/pending/:pendingId/steer": async (body, params) => {
+    const data = body as { processActivities?: unknown };
+    return await steerPendingChatMessage(params!.id, params!.pendingId, {
+      processActivities: data.processActivities,
+    });
+  },
   "DELETE /api/chat/sessions/:id": async (_body, params) => ({
     success: await deleteSession(params!.id),
   }),

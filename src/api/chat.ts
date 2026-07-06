@@ -22,6 +22,7 @@ import {
   shouldCompactContext,
   compactContext,
   persistSession,
+  upsertPersistedSessionMessage,
   deletePersistedSession,
   estimateMessagesTokens,
   getContextWindow,
@@ -114,6 +115,10 @@ export interface ChatRequest {
   images?: AgentImage[];
 }
 
+export interface SteerPendingChatMessageOptions {
+  processActivities?: unknown;
+}
+
 export interface ChatResponse {
   sessionId: string;
   message: ChatMessage;
@@ -190,6 +195,7 @@ interface PendingChatItem {
 const pendingChatQueues = new Map<string, PendingChatItem[]>();
 const pendingChatDrainScheduled = new Set<string>();
 const activeChatTurnAbortControllers = new Map<string, AbortController>();
+const interruptedChatTurnSteeringIds = new WeakMap<AbortController, string>();
 let pendingChatSequence = 0;
 
 function isChatTurnInterrupted(error: unknown, signal?: AbortSignal): boolean {
@@ -203,9 +209,10 @@ function isChatTurnInterrupted(error: unknown, signal?: AbortSignal): boolean {
   );
 }
 
-function interruptActiveChatTurnForSteering(sessionId: string): boolean {
+function interruptActiveChatTurnForSteering(sessionId: string, pendingSteeringId: string): boolean {
   const controller = activeChatTurnAbortControllers.get(sessionId);
   if (!controller || controller.signal.aborted) return false;
+  interruptedChatTurnSteeringIds.set(controller, pendingSteeringId);
   controller.abort(new DOMException("Chat turn interrupted by user steering", "AbortError"));
   return true;
 }
@@ -222,8 +229,21 @@ async function finishInterruptedChatTurn(
   controller: AbortController
 ): Promise<ChatResponse> {
   clearActiveChatTurnAbortController(session.id, controller);
-  const materializedMessage = materializeInterruptedAssistantBeforeSteering(session);
+  const pendingSteeringId = interruptedChatTurnSteeringIds.get(controller);
+  const materializedMessage = materializeInterruptedAssistantBeforeSteering(session, undefined, {
+    ...(pendingSteeringId ? { pendingSteeringId } : {}),
+  });
   if (materializedMessage) {
+    const stableKey = materializedMessage._pendingSteeringId
+      ? `interrupted:${materializedMessage._pendingSteeringId}`
+      : `interrupted:${materializedMessage.timestamp || ""}`;
+    await upsertPersistedSessionMessage(session.id, session.agentId, materializedMessage, {
+      stableKey,
+      metadata: { source: "chat_steering_interrupted" },
+    });
+    if (pendingSteeringId && materializedMessage._pendingSteeringId === pendingSteeringId) {
+      delete materializedMessage._pendingSteeringId;
+    }
     session.persisted = await persistSession(
       session.id,
       session.agentId,
@@ -463,48 +483,117 @@ function getSessionProcessActivities(
   return activities.length > 0 ? activities : undefined;
 }
 
+function sanitizeObservedProcessActivities(activities: unknown): ProcessActivityInfo[] | undefined {
+  if (!Array.isArray(activities)) return undefined;
+  const sanitized: ProcessActivityInfo[] = [];
+  for (const entry of activities.slice(-200)) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const record = entry as Record<string, unknown>;
+    const text = typeof record.text === "string" ? record.text.trim() : "";
+    if (!text) continue;
+    const timestamp =
+      typeof record.timestamp === "number" && Number.isFinite(record.timestamp)
+        ? record.timestamp
+        : Date.now();
+    const id =
+      typeof record.id === "string" && record.id.trim()
+        ? record.id.trim().slice(0, 160)
+        : `${timestamp}-${Math.random().toString(36).slice(2, 8)}`;
+    const phase =
+      record.phase === "start" || record.phase === "result" || record.phase === "error"
+        ? record.phase
+        : "result";
+    const toolName =
+      typeof record.toolName === "string" && record.toolName.trim()
+        ? record.toolName.trim().slice(0, 120)
+        : undefined;
+    const toolCallId =
+      typeof record.toolCallId === "string" && record.toolCallId.trim()
+        ? record.toolCallId.trim().slice(0, 160)
+        : undefined;
+    const sandboxProvider =
+      typeof record.sandboxProvider === "string" && record.sandboxProvider.trim()
+        ? record.sandboxProvider.trim().slice(0, 80)
+        : undefined;
+    sanitized.push({
+      id,
+      phase,
+      text: text.length > 1000 ? `${text.slice(0, 1000)}...` : text,
+      timestamp,
+      toolName,
+      toolCallId,
+      sandboxProvider,
+    });
+  }
+  const deduped = dedupeProcessActivities(sanitized);
+  return deduped.length > 0 ? deduped : undefined;
+}
+
 function isSteeringHandoffProcessActivity(activity: ProcessActivityInfo): boolean {
   const text = activity.text.trim().toLowerCase();
   return text === "steering to follow-up..." || text === "starting queued follow-up";
 }
 
 function materializeInterruptedAssistantBeforeSteering(
-  session: InMemoryChatSession
+  session: InMemoryChatSession,
+  observedActivities?: ProcessActivityInfo[],
+  options?: { pendingSteeringId?: string; createEmptyBoundary?: boolean }
 ): ChatMessage | undefined {
+  const pendingSteeringId = options?.pendingSteeringId;
+  const isMatchingPendingMessage = (message: ChatMessage): boolean =>
+    !!message._pendingSteeringId &&
+    (!pendingSteeringId || message._pendingSteeringId === pendingSteeringId);
   const steeringIndex = session.messages.findIndex(
-    (message) => message.role === "user" && !!message._pendingSteeringId
+    (message) => message.role === "user" && isMatchingPendingMessage(message)
   );
-  if (steeringIndex < 0) return undefined;
-
-  const processActivities = getSessionProcessActivities(session.id, {
-    excludeActivityIds: collectAttachedProcessActivityIds(session.messages),
-  })?.filter((activity) => !isSteeringHandoffProcessActivity(activity));
-  if (!processActivities || processActivities.length === 0) return undefined;
-  if (
-    !processActivities.some((activity) => activity.toolName && activity.toolName !== "__thought")
-  ) {
-    return undefined;
-  }
-
-  const previousMessage = session.messages[steeringIndex - 1];
-  if (
+  const existingInterruptedIndex = session.messages.findIndex(
+    (message) =>
+      message.role === "assistant" &&
+      message.content.trim().length === 0 &&
+      Array.isArray(message.process_activities) &&
+      isMatchingPendingMessage(message)
+  );
+  const previousMessage = steeringIndex >= 0 ? session.messages[steeringIndex - 1] : undefined;
+  const previousInterruptedAssistant =
     previousMessage?.role === "assistant" &&
     previousMessage.content.trim().length === 0 &&
     Array.isArray(previousMessage.process_activities) &&
-    previousMessage.process_activities.some((activity) =>
-      processActivities.some((nextActivity) => nextActivity.id === activity.id)
-    )
-  ) {
-    return previousMessage;
+    isMatchingPendingMessage(previousMessage)
+      ? previousMessage
+      : existingInterruptedIndex >= 0
+        ? session.messages[existingInterruptedIndex]
+        : undefined;
+
+  const processActivities = dedupeProcessActivities([
+    ...(observedActivities || []),
+    ...(getSessionProcessActivities(session.id, {
+      excludeActivityIds: previousInterruptedAssistant
+        ? undefined
+        : collectAttachedProcessActivityIds(session.messages),
+    }) || []),
+  ]).filter((activity) => !isSteeringHandoffProcessActivity(activity));
+  if ((!processActivities || processActivities.length === 0) && !options?.createEmptyBoundary) {
+    return previousInterruptedAssistant;
   }
 
+  if (previousInterruptedAssistant) {
+    const merged = dedupeProcessActivities([
+      ...(previousInterruptedAssistant.process_activities || []),
+      ...processActivities,
+    ]);
+    previousInterruptedAssistant.process_activities = merged;
+    return previousInterruptedAssistant;
+  }
+
+  if (steeringIndex < 0) return undefined;
   const steeringTimestampMs =
     parseIsoTimestampMs(session.messages[steeringIndex]?.timestamp) || Date.now();
   const assistantMessage: ChatMessage = {
     role: "assistant",
     content: "",
     timestamp: new Date(Math.max(0, steeringTimestampMs - 1)).toISOString(),
-    process_activities: processActivities,
+    process_activities: processActivities || [],
+    ...(pendingSteeringId ? { _pendingSteeringId: pendingSteeringId } : {}),
   };
   session.messages.splice(steeringIndex, 0, assistantMessage);
   const lastMessage = session.messages[session.messages.length - 1] || assistantMessage;
@@ -906,7 +995,31 @@ function extractSandboxProviderFromToolCall(toolCall: ToolCallInfo): string | un
 function dedupeProcessActivities(activities: ProcessActivityInfo[]): ProcessActivityInfo[] {
   const seen = new Set<string>();
   const deduped: ProcessActivityInfo[] = [];
-  for (const activity of activities.sort((a, b) => a.timestamp - b.timestamp)) {
+  const normalizedActivities = activities
+    .map((activity) => ({
+      ...activity,
+      text: normalizeProcessActivityTextForPhase(activity.text.trim(), activity.phase),
+    }))
+    .filter((activity) => activity.text.length > 0)
+    .sort((a, b) => a.timestamp - b.timestamp);
+  const hasCompletionForStart = (activity: ProcessActivityInfo): boolean => {
+    if (activity.phase !== "start") return false;
+    const toolCallIdKey =
+      typeof activity.toolCallId === "string" && activity.toolCallId.trim()
+        ? activity.toolCallId.trim().toLowerCase()
+        : "";
+    if (!toolCallIdKey) return false;
+    return normalizedActivities.some(
+      (candidate) =>
+        candidate.phase !== "start" &&
+        typeof candidate.toolCallId === "string" &&
+        candidate.toolCallId.trim().toLowerCase() === toolCallIdKey &&
+        candidate.timestamp >= activity.timestamp
+    );
+  };
+
+  for (const activity of normalizedActivities) {
+    if (hasCompletionForStart(activity)) continue;
     const normalizedText = normalizeProcessActivityTextForPhase(
       activity.text.trim(),
       activity.phase
@@ -916,7 +1029,9 @@ function dedupeProcessActivities(activities: ProcessActivityInfo[]): ProcessActi
       typeof activity.toolCallId === "string" && activity.toolCallId.trim()
         ? activity.toolCallId.trim().toLowerCase()
         : "";
-    const key = `${activity.phase}:${toolCallIdKey}:${(activity.toolName || "").toLowerCase()}:${normalizedText.toLowerCase()}:${Math.floor(activity.timestamp / 1000)}`;
+    const key = toolCallIdKey
+      ? `${activity.phase}:${toolCallIdKey}`
+      : `${activity.phase}:${(activity.toolName || "").toLowerCase()}:${normalizedText.toLowerCase()}:${Math.floor(activity.timestamp / 1000)}`;
     if (seen.has(key)) continue;
     seen.add(key);
     deduped.push({
@@ -1208,11 +1323,13 @@ export function deletePendingChatMessage(
 
 export async function steerPendingChatMessage(
   sessionId: string,
-  pendingMessageId: string
+  pendingMessageId: string,
+  options?: SteerPendingChatMessageOptions
 ): Promise<
   | {
       success: true;
       message: ChatMessage;
+      interruptedMessage?: ChatMessage;
       pendingMessages: PendingChatMessageSnapshot[];
     }
   | { success: false; error: string; pendingMessages: PendingChatMessageSnapshot[] }
@@ -1244,8 +1361,22 @@ export async function steerPendingChatMessage(
   queue[index] = item;
   pendingChatQueues.set(key, queue);
   const materializedMessage = materializeSteeringMessage(session, item);
-  await logSessionMessage(session.id, "user", materializedMessage.content, {
-    agentId: item.request.agentId,
+  const interruptedMessage = materializeInterruptedAssistantBeforeSteering(
+    session,
+    sanitizeObservedProcessActivities(options?.processActivities),
+    {
+      pendingSteeringId: item.id,
+      createEmptyBoundary: true,
+    }
+  );
+  if (interruptedMessage) {
+    await upsertPersistedSessionMessage(session.id, session.agentId, interruptedMessage, {
+      stableKey: `interrupted:${item.id}`,
+      metadata: { source: "chat_steering_interrupted" },
+    });
+  }
+  await upsertPersistedSessionMessage(session.id, session.agentId, materializedMessage, {
+    stableKey: `steering:${item.id}`,
     metadata: { source: "chat_steering" },
   });
   session.persisted = await persistSession(
@@ -1267,7 +1398,7 @@ export async function steerPendingChatMessage(
     modelMetadata: resolveSessionModelMetadata(session.agentId),
   });
   const pendingMessages = syncPendingChatStatus(key);
-  const interrupted = interruptActiveChatTurnForSteering(key);
+  const interrupted = interruptActiveChatTurnForSteering(key, item.id);
   schedulePendingChatDrain(key);
   broadcastStatus({
     status: "thinking",
@@ -1279,6 +1410,7 @@ export async function steerPendingChatMessage(
   return {
     success: true,
     message: materializedMessage,
+    ...(interruptedMessage ? { interruptedMessage } : {}),
     pendingMessages,
   };
 }
@@ -1400,6 +1532,7 @@ async function handleChatTurn(
     await logSessionMessage(session.id, "user", message, {
       agentId: agent?.id,
       metadata: { source: "chat_api" },
+      createdAt: userMessage.timestamp,
     });
   }
 
@@ -1903,6 +2036,7 @@ async function handleChatTurn(
 
   await logSessionMessage(session.id, "assistant", assistantMessage.content, {
     agentId: agent?.id,
+    createdAt: assistantMessage.timestamp,
     metadata: {
       source: "chat_api",
       ...(modelMetadata ?? {}),
@@ -2352,6 +2486,7 @@ export async function revertSessionToMessage(
     for (const message of keptMessages) {
       await logSessionMessage(sessionId, message.role, message.content, {
         agentId,
+        createdAt: message.timestamp,
         metadata: extractPersistedMessageMetadata(message),
       });
     }

@@ -7,6 +7,7 @@ import { existsSync, statSync } from "fs";
 import { homedir } from "os";
 import { isAbsolute, resolve } from "path";
 import { createLogger } from "./logger";
+import { createHash } from "crypto";
 
 const log = createLogger("Session");
 
@@ -21,6 +22,59 @@ interface PersistedSessionMessage {
 type SessionMessageMetadata = Partial<
   Pick<ChatMessage, "thinking" | "tool_calls" | "process_activities">
 >;
+
+function sessionMessageStableId(parts: unknown[]): string {
+  const hash = createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 32);
+  return `msg_${hash}`;
+}
+
+function toSqliteTimestamp(value?: string, offsetMs = 0): string {
+  const parsed = typeof value === "string" ? Date.parse(value) : NaN;
+  const timestamp = Number.isFinite(parsed) ? parsed + offsetMs : Date.now() + offsetMs;
+  return new Date(Math.max(0, timestamp)).toISOString().replace("T", " ").replace("Z", "");
+}
+
+function serializeSessionMessageMetadata(
+  message: ChatMessage,
+  extra?: Record<string, unknown>
+): string | undefined {
+  const metadata: Record<string, unknown> = { ...(extra || {}) };
+  if (typeof message.thinking === "string" && message.thinking.trim()) {
+    metadata.thinking = message.thinking;
+  }
+  if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+    metadata.tool_calls = message.tool_calls;
+  }
+  if (Array.isArray(message.process_activities) && message.process_activities.length > 0) {
+    metadata.process_activities = message.process_activities;
+  }
+  return Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : undefined;
+}
+
+export async function upsertPersistedSessionMessage(
+  sessionId: string,
+  agentId: string,
+  message: ChatMessage,
+  options?: { stableKey?: string; createdAtOffsetMs?: number; metadata?: Record<string, unknown> }
+): Promise<void> {
+  const id = sessionMessageStableId([
+    sessionId,
+    message.role,
+    options?.stableKey || message.timestamp || message.content,
+  ]);
+  const createdAt = toSqliteTimestamp(message.timestamp, options?.createdAtOffsetMs || 0);
+  const metadata = serializeSessionMessageMetadata(message, options?.metadata);
+  db.prepare(
+    `INSERT INTO session_messages (id, session_id, agent_id, role, content, metadata, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       agent_id = excluded.agent_id,
+       role = excluded.role,
+       content = excluded.content,
+       metadata = excluded.metadata,
+       created_at = excluded.created_at`
+  ).run(id, sessionId, agentId, message.role, message.content, metadata ?? null, createdAt);
+}
 
 export interface SessionModelMetadata {
   provider?: string;

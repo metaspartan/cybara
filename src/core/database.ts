@@ -616,10 +616,10 @@ const stmts = {
   },
   sessionMessages: {
     getBySession: prepare(
-      "SELECT * FROM session_messages WHERE session_id = ? ORDER BY created_at ASC"
+      "SELECT * FROM session_messages WHERE session_id = ? ORDER BY created_at ASC, rowid ASC"
     ),
     add: prepare(
-      "INSERT INTO session_messages (id, session_id, agent_id, channel_type, channel_id, role, content, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO session_messages (id, session_id, agent_id, channel_type, channel_id, role, content, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))"
     ),
     list: prepare("SELECT * FROM session_messages ORDER BY created_at DESC LIMIT 1000"),
     search: prepare(
@@ -979,6 +979,7 @@ export const tables = {
       role: string;
       content: string;
       metadata?: string;
+      created_at?: string;
     }) =>
       stmts.sessionMessages?.add.run(
         msg.id,
@@ -988,7 +989,8 @@ export const tables = {
         msg.channel_id || null,
         msg.role,
         msg.content,
-        msg.metadata || null
+        msg.metadata || null,
+        msg.created_at || null
       ),
     list: () => stmts.sessionMessages?.list.all() || [],
     search: (query: string, limit = 100) =>

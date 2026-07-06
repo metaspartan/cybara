@@ -56,6 +56,13 @@ export const systemLogger = new Logger("system");
 export const skillLogger = new Logger("skill");
 export const subagentLogger = new Logger("subagent");
 
+function normalizeCreatedAt(value?: string): string | undefined {
+  if (typeof value !== "string" || value.trim().length === 0) return undefined;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return undefined;
+  return new Date(parsed).toISOString().replace("T", " ").replace("Z", "");
+}
+
 export async function logSessionMessage(
   sessionId: string,
   role: "user" | "assistant" | "system" | "tool",
@@ -65,6 +72,7 @@ export async function logSessionMessage(
     channelType?: string;
     channelId?: string;
     metadata?: Record<string, unknown>;
+    createdAt?: string;
   }
 ) {
   const message = {
@@ -76,6 +84,7 @@ export async function logSessionMessage(
     role,
     content,
     metadata: options?.metadata ? JSON.stringify(options.metadata) : undefined,
+    created_at: normalizeCreatedAt(options?.createdAt),
   };
 
   try {
