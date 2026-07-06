@@ -1153,6 +1153,7 @@ final class GatewayClientModelTests: XCTestCase {
                       "providerName": "OpenAI Codex",
                       "authType": "oauth",
                       "monitored": true,
+                      "appliedPresetId": "openai-codex-plus",
                       "planName": "Codex Plus",
                       "source": "local_metrics_configured_limits",
                       "sourceMode": "local",
@@ -1166,6 +1167,19 @@ final class GatewayClientModelTests: XCTestCase {
                       "updatedAt": "2026-07-06T12:00:00.000Z",
                       "localTokens30d": 1700000,
                       "localSpend30d": 17.25,
+                      "presetSuggestions": [
+                        {
+                          "id": "openai-codex-plus",
+                          "label": "ChatGPT Plus",
+                          "planName": "Codex Plus",
+                          "description": "Moderate local coding sessions.",
+                          "confidence": "dynamic",
+                          "sourceMode": "oauth_api",
+                          "sourceUrl": "https://help.openai.com/",
+                          "limitDescription": "Codex uses your ChatGPT agentic allowance.",
+                          "externalSourceEnabled": true
+                        }
+                      ],
                       "windows": [
                         {
                           "id": "monthly",
@@ -1193,9 +1207,12 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(status.providers.first?.providerName, "OpenAI Codex")
         XCTAssertEqual(status.providers.first?.sourceMode, "local")
         XCTAssertEqual(status.providers.first?.sourceLabel, "Local usage with configured limits")
-        XCTAssertEqual(status.providers.first?.externalSourceAvailable, true)
-        XCTAssertEqual(status.providers.first?.externalSourceLabel, "OpenAI OAuth usage")
-        XCTAssertEqual(status.providers.first?.windows.first?.usedPercent, 85)
+	        XCTAssertEqual(status.providers.first?.externalSourceAvailable, true)
+	        XCTAssertEqual(status.providers.first?.externalSourceLabel, "OpenAI OAuth usage")
+	        XCTAssertEqual(status.providers.first?.appliedPresetId, "openai-codex-plus")
+	        XCTAssertEqual(status.providers.first?.presetSuggestions.first?.label, "ChatGPT Plus")
+	        XCTAssertEqual(status.providers.first?.presetSuggestions.first?.sourceMode, "oauth_api")
+	        XCTAssertEqual(status.providers.first?.windows.first?.usedPercent, 85)
         XCTAssertEqual(status.providers.first?.windows.first?.tokenLimit, 2_000_000)
     }
 

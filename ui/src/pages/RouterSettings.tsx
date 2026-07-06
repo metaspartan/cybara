@@ -50,6 +50,7 @@ interface RouterConfig {
 }
 
 interface ProviderMeta {
+  id?: string;
   type: string;
   name: string;
   models: string[];
@@ -76,18 +77,38 @@ interface ProviderPlanWindow {
   resetDescription: string;
 }
 
+interface ProviderPlanPresetSuggestion {
+  id: string;
+  label: string;
+  planName: string;
+  description: string;
+  confidence: "exact" | "published" | "dynamic" | "estimated";
+  sourceMode: "local" | "provider_api" | "oauth_api" | "browser_cookie" | "cli" | "manual";
+  sourceUrl?: string;
+  limitDescription: string;
+  monthlyTokenLimit?: number;
+  monthlySpendLimit?: number;
+  weeklyTokenLimit?: number;
+  fiveHourTokenLimit?: number;
+  routeLimit5h?: number;
+  routeLimitWeekly?: number;
+  externalSourceEnabled?: boolean;
+}
+
 interface ProviderPlanSnapshot {
   providerId: string;
   configuredProviderId?: string;
   providerType: string;
   providerName: string;
   monitored: boolean;
+  appliedPresetId?: string;
   planName?: string;
   status: "ok" | "warning" | "exhausted" | "unconfigured" | "disabled";
   reason?: string;
   localTokens30d: number;
   localSpend30d: number;
   windows: ProviderPlanWindow[];
+  presetSuggestions?: ProviderPlanPresetSuggestion[];
 }
 
 interface ProviderPlanStatus {
@@ -112,7 +133,10 @@ interface ProviderPlanWindowConfig {
 
 interface ProviderPlanProviderConfig {
   enabled?: boolean;
+  presetId?: string;
   planName?: string;
+  sourceMode?: ProviderPlanPresetSuggestion["sourceMode"];
+  externalSourceEnabled?: boolean;
   monthly?: ProviderPlanWindowConfig;
   weekly?: ProviderPlanWindowConfig;
   fiveHour?: ProviderPlanWindowConfig;
@@ -173,6 +197,21 @@ function formatCompactNumber(value: number | undefined): string {
   if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(num >= 10_000_000 ? 1 : 2)}M`;
   if (num >= 1_000) return `${(num / 1_000).toFixed(num >= 100_000 ? 0 : 1)}K`;
   return String(Math.round(num));
+}
+
+function confidenceLabel(confidence: ProviderPlanPresetSuggestion["confidence"]): string {
+  if (confidence === "exact") return "Exact";
+  if (confidence === "published") return "Published";
+  if (confidence === "dynamic") return "Dynamic";
+  return "Estimated";
+}
+
+function presetLimitSummary(preset: ProviderPlanPresetSuggestion): string {
+  if (preset.monthlyTokenLimit) return `${formatCompactNumber(preset.monthlyTokenLimit)} tokens/mo`;
+  if (preset.monthlySpendLimit) return `${formatMoney(preset.monthlySpendLimit, 0)} credits/mo`;
+  if (preset.routeLimitWeekly) return `${formatCompactNumber(preset.routeLimitWeekly)} req/week`;
+  if (preset.routeLimit5h) return `${formatCompactNumber(preset.routeLimit5h)} req/5h`;
+  return "Provider-managed";
 }
 
 function normalizedSpendLimit(value: string): number | undefined {
@@ -242,11 +281,25 @@ export function RouterSettings() {
       for (const p of Array.isArray(data) ? data : []) {
         const type: string = p.provider || p.type || p.id;
         if (!type || seen.has(type)) continue;
+        const rawModels = Array.isArray(p.models)
+          ? p.models
+          : Array.isArray(p.info?.models)
+            ? p.info.models
+            : [];
         seen.add(type);
         metas.push({
+          id: typeof p.id === "string" ? p.id : undefined,
           type,
           name: p.name || type,
-          models: Array.isArray(p.models) ? p.models.map(String) : [],
+          models: rawModels
+            .map((model: unknown) =>
+              typeof model === "string"
+                ? model
+                : model && typeof model === "object" && "id" in model
+                  ? String((model as { id: unknown }).id)
+                  : ""
+            )
+            .filter(Boolean),
         });
       }
       setProviders(metas);
@@ -349,12 +402,27 @@ export function RouterSettings() {
   );
   const configuredPricingCount = pricedRoutes?.length || 0;
   const planSummary = planStatus?.summary;
+  const planMonitoringEnabled = planConfig?.enabled ?? true;
+  const planEnforcementEnabled = planConfig?.routerEnforcement ?? true;
   const planByRoute = new Map<string, ProviderPlanSnapshot>();
   for (const plan of planStatus?.providers || []) {
     for (const key of [plan.providerId, plan.configuredProviderId, plan.providerType]) {
       if (key && !planByRoute.has(key)) planByRoute.set(key, plan);
     }
   }
+  const basePlanConfig: ProviderPlanConfig = planConfig || {
+    enabled: true,
+    routerEnforcement: true,
+    warningThresholdPct: 80,
+    staleAfterMinutes: 120,
+    providers: {},
+  };
+  const savePlanConfigPatch = (patch: Partial<ProviderPlanConfig>) =>
+    savePlanConfig({
+      ...basePlanConfig,
+      ...patch,
+      providers: patch.providers || basePlanConfig.providers || {},
+    });
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
@@ -652,8 +720,58 @@ export function RouterSettings() {
           </div>
 
           <div className="rounded-lg border border-cyan-400/15 bg-cyan-400/10 p-3 text-xs text-cyan-100/90">
-            For a $20/month coding plan, enter 20 as the monthly budget. For metered providers, set
-            $/M input and output tokens per provider below, then use Lowest Cost.
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold text-cyan-50">Plan-aware routing</p>
+                <p className="mt-0.5 text-cyan-100/75">
+                  Use provider coding-plan presets where limits are published, then let the router
+                  avoid exhausted providers before it spends API money.
+                </p>
+              </div>
+              <span className="rounded-full bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-wide">
+                {planSummary?.configured || 0} configured
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => savePlanConfigPatch({ enabled: !planMonitoringEnabled })}
+                className="flex items-center justify-between gap-2 rounded-lg border border-cyan-200/15 bg-black/20 px-3 py-2 text-left"
+              >
+                <span>
+                  <span className="block text-[11px] font-semibold text-cyan-50">
+                    Monitor plans
+                  </span>
+                  <span className="block text-[10px] text-cyan-100/65">
+                    Track local usage against plan windows
+                  </span>
+                </span>
+                {planMonitoringEnabled ? (
+                  <ToggleRight className="h-6 w-6 flex-shrink-0 text-emerald-300" />
+                ) : (
+                  <ToggleLeft className="h-6 w-6 flex-shrink-0 text-gray-500" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => savePlanConfigPatch({ routerEnforcement: !planEnforcementEnabled })}
+                className="flex items-center justify-between gap-2 rounded-lg border border-cyan-200/15 bg-black/20 px-3 py-2 text-left"
+              >
+                <span>
+                  <span className="block text-[11px] font-semibold text-cyan-50">
+                    Block exhausted plans
+                  </span>
+                  <span className="block text-[10px] text-cyan-100/65">
+                    Skip providers at their hard stop
+                  </span>
+                </span>
+                {planEnforcementEnabled ? (
+                  <ToggleRight className="h-6 w-6 flex-shrink-0 text-emerald-300" />
+                ) : (
+                  <ToggleLeft className="h-6 w-6 flex-shrink-0 text-gray-500" />
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -665,35 +783,39 @@ export function RouterSettings() {
           Providers in rotation
         </h3>
         {status && status.routes.length > 0 ? (
-          status.routes.map((route) => (
-            <RouteRow
-              key={route.providerId}
-              route={route}
-              config={config}
-              onSave={saveConfig}
-              displayName={providerName(route.providerId)}
-              models={providerModels(route.providerId)}
-              plan={planByRoute.get(route.providerId)}
-              planConfig={planConfig?.providers?.[route.providerId] || null}
-              onPlanConfigChange={(next) => {
-                const base = planConfig || {
-                  enabled: true,
-                  routerEnforcement: true,
-                  warningThresholdPct: 80,
-                  staleAfterMinutes: 120,
-                  providers: {},
-                };
-                const providersById = base.providers || {};
-                void savePlanConfig({
-                  ...base,
-                  providers: {
-                    ...providersById,
-                    [route.providerId]: next,
-                  },
-                });
-              }}
-            />
-          ))
+          status.routes.map((route) => {
+            const plan = planByRoute.get(route.providerId);
+            const routeType = plan?.providerType || route.providerId;
+            return (
+              <RouteRow
+                key={route.providerId}
+                route={route}
+                config={config}
+                onSave={saveConfig}
+                displayName={plan?.providerName || providerName(routeType)}
+                models={providerModels(routeType)}
+                plan={plan}
+                planConfig={planConfig?.providers?.[route.providerId] || null}
+                onPlanConfigChange={(next) => {
+                  const base = planConfig || {
+                    enabled: true,
+                    routerEnforcement: true,
+                    warningThresholdPct: 80,
+                    staleAfterMinutes: 120,
+                    providers: {},
+                  };
+                  const providersById = base.providers || {};
+                  void savePlanConfig({
+                    ...base,
+                    providers: {
+                      ...providersById,
+                      [route.providerId]: next,
+                    },
+                  });
+                }}
+              />
+            );
+          })
         ) : (
           <p className="text-xs text-gray-500">
             No providers added to the router yet. Pick one below to start routing.
@@ -764,6 +886,51 @@ function RouteRow({
     }
     onPlanConfigChange(next);
   };
+
+  const applyPreset = (preset: ProviderPlanPresetSuggestion) => {
+    const nextPlan: ProviderPlanProviderConfig = {
+      ...(planConfig || {}),
+      enabled: true,
+      presetId: preset.id,
+      planName: preset.planName,
+      sourceMode: preset.sourceMode,
+      externalSourceEnabled: preset.externalSourceEnabled,
+    };
+    if (preset.monthlyTokenLimit || preset.monthlySpendLimit) {
+      nextPlan.monthly = {
+        ...(nextPlan.monthly || {}),
+        enabled: true,
+        tokenLimit: preset.monthlyTokenLimit,
+        spendLimit: preset.monthlySpendLimit,
+      };
+    }
+    if (preset.weeklyTokenLimit) {
+      nextPlan.weekly = {
+        ...(nextPlan.weekly || {}),
+        enabled: true,
+        tokenLimit: preset.weeklyTokenLimit,
+      };
+    }
+    if (preset.fiveHourTokenLimit) {
+      nextPlan.fiveHour = {
+        ...(nextPlan.fiveHour || {}),
+        enabled: true,
+        tokenLimit: preset.fiveHourTokenLimit,
+      };
+    }
+    onPlanConfigChange(nextPlan);
+
+    const routeUpdates: Record<string, number> = {};
+    if (preset.routeLimit5h) routeUpdates.limit5h = preset.routeLimit5h;
+    if (preset.routeLimitWeekly) routeUpdates.limitWeekly = preset.routeLimitWeekly;
+    if (Object.keys(routeUpdates).length > 0) {
+      const routes = { ...config.routes };
+      routes[route.providerId] = { ...routeCfg, ...routeUpdates };
+      void onSave({ ...config, routes });
+    }
+  };
+
+  const suggestions = plan?.presetSuggestions || [];
 
   return (
     <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
@@ -887,9 +1054,67 @@ function RouteRow({
             />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 rounded-lg border border-amber-400/15 bg-amber-400/[0.04] p-3">
+            <div className="sm:col-span-3">
+              <div className="mb-2 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-amber-100">Coding plan preset</p>
+                  <p className="text-[10px] text-amber-100/60">
+                    Pick the subscription you actually use. Presets fill known guardrails; dynamic
+                    plans still need provider usage data or manual hard stops.
+                  </p>
+                </div>
+                {plan?.appliedPresetId && (
+                  <span className="rounded-full bg-amber-300/15 px-2 py-0.5 text-[10px] text-amber-100">
+                    preset applied
+                  </span>
+                )}
+              </div>
+              {suggestions.length > 0 ? (
+                <div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
+                  {suggestions.map((preset) => {
+                    const selected = (planConfig?.presetId || plan?.appliedPresetId) === preset.id;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => applyPreset(preset)}
+                        className={cn(
+                          "rounded-lg border px-3 py-2 text-left transition-colors",
+                          selected
+                            ? "border-amber-300/60 bg-amber-300/15"
+                            : "border-white/10 bg-black/20 hover:bg-white/[0.05]"
+                        )}
+                      >
+                        <span className="flex items-start justify-between gap-2">
+                          <span className="min-w-0">
+                            <span className="block truncate text-[11px] font-semibold text-white">
+                              {preset.label}
+                            </span>
+                            <span className="mt-0.5 block text-[10px] text-gray-400">
+                              {presetLimitSummary(preset)}
+                            </span>
+                          </span>
+                          <span className="rounded-full bg-black/25 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-amber-100/80">
+                            {confidenceLabel(preset.confidence)}
+                          </span>
+                        </span>
+                        <span className="mt-1 block line-clamp-2 text-[10px] text-gray-500">
+                          {preset.limitDescription}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-gray-400">
+                  No published coding-plan preset for this provider yet. Use manual caps below.
+                </p>
+              )}
+            </div>
             <label className="flex flex-col gap-0.5">
-              <span className="text-[10px] text-amber-200/70">Plan name</span>
+              <span className="text-[10px] text-amber-200/70">Manual plan name</span>
               <input
+                key={`plan-name-${planConfig?.planName || plan?.planName || ""}`}
                 defaultValue={planConfig?.planName || plan?.planName || ""}
                 placeholder="$20 coding plan"
                 onBlur={(e) => updatePlan("planName", e.target.value)}
@@ -1004,6 +1229,7 @@ function RouteField({
     <div className="flex flex-col gap-0.5">
       <label className="text-[10px] text-gray-500">{label}</label>
       <input
+        key={`${label}-${value ?? ""}`}
         type="number"
         min={0}
         step={step}

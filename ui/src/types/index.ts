@@ -59,6 +59,26 @@ export type ProviderPlanStatusState = "ok" | "warning" | "exhausted" | "unconfig
 export type ProviderPlanSourceMode =
   "local" | "provider_api" | "oauth_api" | "browser_cookie" | "cli" | "manual";
 
+export type ProviderPlanPresetConfidence = "exact" | "published" | "dynamic" | "estimated";
+
+export interface ProviderPlanPresetSuggestion {
+  id: string;
+  label: string;
+  planName: string;
+  description: string;
+  confidence: ProviderPlanPresetConfidence;
+  sourceMode: ProviderPlanSourceMode;
+  sourceUrl?: string;
+  limitDescription: string;
+  monthlyTokenLimit?: number;
+  monthlySpendLimit?: number;
+  weeklyTokenLimit?: number;
+  fiveHourTokenLimit?: number;
+  routeLimit5h?: number;
+  routeLimitWeekly?: number;
+  externalSourceEnabled?: boolean;
+}
+
 export interface ProviderPlanWindow {
   id: string;
   title: string;
@@ -81,6 +101,7 @@ export interface ProviderPlanSnapshot {
   providerName: string;
   authType: string;
   monitored: boolean;
+  appliedPresetId?: string;
   planName?: string;
   source: string;
   sourceMode: ProviderPlanSourceMode;
@@ -99,6 +120,7 @@ export interface ProviderPlanSnapshot {
   localTokens30d: number;
   localSpend30d: number;
   windows: ProviderPlanWindow[];
+  presetSuggestions: ProviderPlanPresetSuggestion[];
 }
 
 export interface ProviderPlanWindowConfig {
@@ -109,6 +131,7 @@ export interface ProviderPlanWindowConfig {
 
 export interface ProviderPlanProviderConfig {
   enabled?: boolean;
+  presetId?: string;
   planName?: string;
   currency?: string;
   sourceMode?: ProviderPlanSourceMode;

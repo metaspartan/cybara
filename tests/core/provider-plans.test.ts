@@ -105,6 +105,8 @@ describe("provider plan monitoring", () => {
     expect(snapshot.sourceLabel).toBe("Local usage with configured limits");
     expect(snapshot.externalSourceAvailable).toBe(true);
     expect(snapshot.externalSourceLabel).toBe("OpenAI OAuth usage");
+    expect(snapshot.appliedPresetId).toBeUndefined();
+    expect(snapshot.presetSuggestions.map((preset) => preset.id)).toContain("openai-codex-plus");
     expect(snapshot.status).toBe("warning");
     expect(snapshot.windows[0].usedTokens).toBeGreaterThanOrEqual(900);
     expect(snapshot.windows[0].usedPercent).toBeGreaterThanOrEqual(90);
@@ -155,7 +157,40 @@ describe("provider plan monitoring", () => {
 
     expect(snapshot?.providerType).toBe("google-gemini-cli");
     expect(snapshot?.externalSourceLabel).toBe("Gemini CLI OAuth quota");
+    expect(
+      snapshot?.presetSuggestions.find((preset) => preset.id === "gemini-code-assist-standard")
+    ).toMatchObject({
+      routeLimitWeekly: 10500,
+      confidence: "exact",
+    });
     expect(status.summary.monitored).toBeGreaterThan(0);
     expect(status.summary.configured).toBeGreaterThan(0);
+  });
+
+  test("normalizes and exposes applied coding plan presets", () => {
+    const providerId = createProvider("github_copilot");
+    setProviderPlanMonitoringConfig({
+      enabled: true,
+      providers: {
+        [providerId]: {
+          presetId: "github-copilot-pro-plus",
+          planName: "Copilot Pro+",
+          sourceMode: "oauth_api",
+          monthly: { spendLimit: 70 },
+        },
+      },
+    });
+
+    const snapshot = getProviderPlanSnapshot(providerId);
+
+    expect(snapshot.providerType).toBe("github_copilot");
+    expect(snapshot.appliedPresetId).toBe("github-copilot-pro-plus");
+    expect(snapshot.presetSuggestions.map((preset) => preset.id)).toContain("github-copilot-max");
+    expect(
+      snapshot.presetSuggestions.find((preset) => preset.id === "github-copilot-pro-plus")
+    ).toMatchObject({
+      monthlySpendLimit: 70,
+      sourceMode: "oauth_api",
+    });
   });
 });

@@ -1356,6 +1356,56 @@ struct ProviderPlanUsageWindow: Decodable, Identifiable, Hashable {
     }
 }
 
+struct ProviderPlanPresetSuggestion: Decodable, Identifiable, Hashable {
+    let id: String
+    let label: String
+    let planName: String
+    let description: String
+    let confidence: String
+    let sourceMode: String
+    let sourceUrl: String?
+    let limitDescription: String
+    let monthlyTokenLimit: Double?
+    let monthlySpendLimit: Double?
+    let weeklyTokenLimit: Double?
+    let fiveHourTokenLimit: Double?
+    let routeLimit5h: Double?
+    let routeLimitWeekly: Double?
+    let externalSourceEnabled: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case id, label, planName, plan_name, description, confidence, sourceMode, source_mode
+        case sourceUrl, source_url, limitDescription, limit_description
+        case monthlyTokenLimit, monthly_token_limit, monthlySpendLimit, monthly_spend_limit
+        case weeklyTokenLimit, weekly_token_limit, fiveHourTokenLimit, five_hour_token_limit
+        case routeLimit5h, route_limit_5h, routeLimitWeekly, route_limit_weekly
+        case externalSourceEnabled, external_source_enabled
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeFlexibleString(forKeys: [.id]) ?? UUID().uuidString
+        label = try container.decodeFlexibleString(forKeys: [.label]) ?? "Provider plan"
+        planName = try container.decodeFlexibleString(forKeys: [.planName, .plan_name]) ?? label
+        description = try container.decodeFlexibleString(forKeys: [.description]) ?? ""
+        confidence = try container.decodeFlexibleString(forKeys: [.confidence]) ?? "estimated"
+        sourceMode = try container.decodeFlexibleString(forKeys: [.sourceMode, .source_mode]) ?? "local"
+        sourceUrl = try container.decodeFlexibleString(forKeys: [.sourceUrl, .source_url])
+        limitDescription = try container.decodeFlexibleString(
+            forKeys: [.limitDescription, .limit_description]
+        ) ?? ""
+        monthlyTokenLimit = try container.decodeFlexibleDouble(forKeys: [.monthlyTokenLimit, .monthly_token_limit])
+        monthlySpendLimit = try container.decodeFlexibleDouble(forKeys: [.monthlySpendLimit, .monthly_spend_limit])
+        weeklyTokenLimit = try container.decodeFlexibleDouble(forKeys: [.weeklyTokenLimit, .weekly_token_limit])
+        fiveHourTokenLimit = try container.decodeFlexibleDouble(forKeys: [.fiveHourTokenLimit, .five_hour_token_limit])
+        routeLimit5h = try container.decodeFlexibleDouble(forKeys: [.routeLimit5h, .route_limit_5h])
+        routeLimitWeekly = try container.decodeFlexibleDouble(forKeys: [.routeLimitWeekly, .route_limit_weekly])
+        externalSourceEnabled = try container.decodeFlexibleBool(
+            forKeys: [.externalSourceEnabled, .external_source_enabled]
+        ) ?? false
+    }
+}
+
 struct ProviderPlanSnapshot: Decodable, Identifiable, Hashable {
     let providerId: String
     let configuredProviderId: String?
@@ -1363,6 +1413,7 @@ struct ProviderPlanSnapshot: Decodable, Identifiable, Hashable {
     let providerName: String
     let authType: String
     let monitored: Bool
+    let appliedPresetId: String?
     let planName: String?
     let source: String?
     let sourceMode: String?
@@ -1381,19 +1432,21 @@ struct ProviderPlanSnapshot: Decodable, Identifiable, Hashable {
     let localTokens30d: Int
     let localSpend30d: Double
     let windows: [ProviderPlanUsageWindow]
+    let presetSuggestions: [ProviderPlanPresetSuggestion]
 
     var id: String { providerId }
 
     private enum CodingKeys: String, CodingKey {
         case providerId, provider_id, configuredProviderId, configured_provider_id
         case providerType, provider_type, providerName, provider_name, authType, auth_type
-        case monitored, planName, plan_name, source, status, reason
+        case monitored, appliedPresetId, applied_preset_id, planName, plan_name, source, status, reason
         case sourceMode, source_mode, sourceLabel, source_label, sourceDescription, source_description
         case externalSourceAvailable, external_source_available, externalSourceMode, external_source_mode
         case externalSourceLabel, external_source_label, externalSourceHint, external_source_hint
         case warningThresholdPct, warning_threshold_pct, hardStopPct, hard_stop_pct
         case dataConfidence, data_confidence, updatedAt, updated_at
         case localTokens30d, local_tokens_30d, localSpend30d, local_spend_30d, windows
+        case presetSuggestions, preset_suggestions
     }
 
     init(from decoder: Decoder) throws {
@@ -1406,6 +1459,7 @@ struct ProviderPlanSnapshot: Decodable, Identifiable, Hashable {
         providerName = try container.decodeFlexibleString(forKeys: [.providerName, .provider_name]) ?? providerId
         authType = try container.decodeFlexibleString(forKeys: [.authType, .auth_type]) ?? "unknown"
         monitored = try container.decodeFlexibleBool(forKeys: [.monitored]) ?? false
+        appliedPresetId = try container.decodeFlexibleString(forKeys: [.appliedPresetId, .applied_preset_id])
         planName = try container.decodeFlexibleString(forKeys: [.planName, .plan_name])
         source = try container.decodeFlexibleString(forKeys: [.source])
         sourceMode = try container.decodeFlexibleString(forKeys: [.sourceMode, .source_mode])
@@ -1428,6 +1482,10 @@ struct ProviderPlanSnapshot: Decodable, Identifiable, Hashable {
         localTokens30d = try container.decodeFlexibleInt(forKeys: [.localTokens30d, .local_tokens_30d]) ?? 0
         localSpend30d = try container.decodeFlexibleDouble(forKeys: [.localSpend30d, .local_spend_30d]) ?? 0
         windows = (try? container.decodeIfPresent([ProviderPlanUsageWindow].self, forKey: .windows)) ?? []
+        presetSuggestions = (try? container.decodeIfPresent(
+            [ProviderPlanPresetSuggestion].self,
+            forKey: .presetSuggestions
+        )) ?? (try? container.decodeIfPresent([ProviderPlanPresetSuggestion].self, forKey: .preset_suggestions)) ?? []
     }
 }
 

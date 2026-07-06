@@ -14,8 +14,30 @@ export interface ProviderPlanWindowConfig {
   spendLimit?: number;
 }
 
+export type ProviderPlanPresetConfidence = "exact" | "published" | "dynamic" | "estimated";
+
+export interface ProviderPlanPresetSuggestion {
+  id: string;
+  providerTypes: string[];
+  label: string;
+  planName: string;
+  description: string;
+  confidence: ProviderPlanPresetConfidence;
+  sourceMode: ProviderPlanSourceMode;
+  sourceUrl?: string;
+  limitDescription: string;
+  monthlyTokenLimit?: number;
+  monthlySpendLimit?: number;
+  weeklyTokenLimit?: number;
+  fiveHourTokenLimit?: number;
+  routeLimit5h?: number;
+  routeLimitWeekly?: number;
+  externalSourceEnabled?: boolean;
+}
+
 export interface ProviderPlanProviderConfig {
   enabled?: boolean;
+  presetId?: string;
   planName?: string;
   currency?: string;
   sourceMode?: ProviderPlanSourceMode;
@@ -58,6 +80,7 @@ export interface ProviderPlanSnapshot {
   providerName: string;
   authType: string;
   monitored: boolean;
+  appliedPresetId?: string;
   planName?: string;
   source: string;
   sourceMode: ProviderPlanSourceMode;
@@ -76,6 +99,7 @@ export interface ProviderPlanSnapshot {
   localTokens30d: number;
   localSpend30d: number;
   windows: ProviderPlanUsageWindow[];
+  presetSuggestions: ProviderPlanPresetSuggestion[];
 }
 
 export interface ProviderPlanStatusResponse {
@@ -200,6 +224,164 @@ const EXTERNAL_PLAN_SOURCE_CATALOG: Record<string, ExternalPlanSourceInfo> = {
   },
 };
 
+const PROVIDER_PLAN_PRESETS: ProviderPlanPresetSuggestion[] = [
+  {
+    id: "openai-codex-plus",
+    providerTypes: ["openai-codex"],
+    label: "ChatGPT Plus",
+    planName: "Codex Plus",
+    description: "Best for moderate local coding sessions.",
+    confidence: "dynamic",
+    sourceMode: "oauth_api",
+    sourceUrl: "https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan",
+    limitDescription:
+      "Codex uses your ChatGPT agentic allowance; exact task count varies by task size.",
+    externalSourceEnabled: true,
+  },
+  {
+    id: "openai-codex-pro-5x",
+    providerTypes: ["openai-codex"],
+    label: "ChatGPT Pro 5x",
+    planName: "Codex Pro 5x",
+    description: "Higher Codex allowance than Plus for longer coding sessions.",
+    confidence: "dynamic",
+    sourceMode: "oauth_api",
+    sourceUrl: "https://developers.openai.com/codex/pricing",
+    limitDescription: "Published as 5x Plus usage; exact compute budget is demand-adjusted.",
+    externalSourceEnabled: true,
+  },
+  {
+    id: "openai-codex-pro-20x",
+    providerTypes: ["openai-codex"],
+    label: "ChatGPT Pro 20x",
+    planName: "Codex Pro 20x",
+    description: "Highest individual Codex usage tier.",
+    confidence: "dynamic",
+    sourceMode: "oauth_api",
+    sourceUrl: "https://chatgpt.com/codex/pricing/",
+    limitDescription: "Published as 20x Plus usage; exact compute budget is demand-adjusted.",
+    externalSourceEnabled: true,
+  },
+  {
+    id: "github-copilot-pro",
+    providerTypes: ["github_copilot", "copilot-proxy"],
+    label: "Copilot Pro",
+    planName: "Copilot Pro",
+    description: "Everyday Copilot plan with included monthly AI credits.",
+    confidence: "published",
+    sourceMode: "oauth_api",
+    sourceUrl: "https://github.com/features/copilot/plans",
+    limitDescription:
+      "$15 monthly total GitHub AI Credits; premium requests use model multipliers.",
+    monthlySpendLimit: 15,
+    externalSourceEnabled: true,
+  },
+  {
+    id: "github-copilot-pro-plus",
+    providerTypes: ["github_copilot", "copilot-proxy"],
+    label: "Copilot Pro+",
+    planName: "Copilot Pro+",
+    description: "Higher premium-model allowance for complex coding workflows.",
+    confidence: "published",
+    sourceMode: "oauth_api",
+    sourceUrl: "https://github.com/features/copilot/plans",
+    limitDescription: "$70 monthly total GitHub AI Credits.",
+    monthlySpendLimit: 70,
+    externalSourceEnabled: true,
+  },
+  {
+    id: "github-copilot-max",
+    providerTypes: ["github_copilot", "copilot-proxy"],
+    label: "Copilot Max",
+    planName: "Copilot Max",
+    description: "Sustained high-volume Copilot agent workflows.",
+    confidence: "published",
+    sourceMode: "oauth_api",
+    sourceUrl: "https://github.com/features/copilot/plans",
+    limitDescription: "$200 monthly total GitHub AI Credits.",
+    monthlySpendLimit: 200,
+    externalSourceEnabled: true,
+  },
+  {
+    id: "gemini-code-assist-standard",
+    providerTypes: ["google-gemini-cli"],
+    label: "Gemini Code Assist Standard",
+    planName: "Gemini Code Assist Standard",
+    description: "Standard business Gemini CLI and agent-mode quota.",
+    confidence: "exact",
+    sourceMode: "cli",
+    sourceUrl: "https://developers.google.com/gemini-code-assist/resources/quotas",
+    limitDescription:
+      "1,500 model requests per user per day; Cybara applies a 10,500/week request guardrail.",
+    routeLimitWeekly: 10_500,
+    externalSourceEnabled: true,
+  },
+  {
+    id: "gemini-code-assist-enterprise",
+    providerTypes: ["google-gemini-cli"],
+    label: "Gemini Code Assist Enterprise",
+    planName: "Gemini Code Assist Enterprise",
+    description: "Enterprise business Gemini CLI and agent-mode quota.",
+    confidence: "exact",
+    sourceMode: "cli",
+    sourceUrl: "https://developers.google.com/gemini-code-assist/resources/quotas",
+    limitDescription:
+      "2,000 model requests per user per day; Cybara applies a 14,000/week request guardrail.",
+    routeLimitWeekly: 14_000,
+    externalSourceEnabled: true,
+  },
+  {
+    id: "antigravity-migration",
+    providerTypes: ["antigravity"],
+    label: "Antigravity",
+    planName: "Antigravity",
+    description: "Recommended migration path for Gemini consumer coding accounts.",
+    confidence: "published",
+    sourceMode: "oauth_api",
+    sourceUrl:
+      "https://developers.google.com/gemini-code-assist/docs/deprecations/code-assist-individuals",
+    limitDescription:
+      "Google deprecated Gemini Code Assist consumer account access for Gemini CLI on June 18, 2026.",
+    externalSourceEnabled: true,
+  },
+  {
+    id: "claude-code-pro",
+    providerTypes: ["anthropic"],
+    label: "Claude Pro",
+    planName: "Claude Code Pro",
+    description: "Claude Code access with Pro subscription limits.",
+    confidence: "dynamic",
+    sourceMode: "manual",
+    sourceUrl: "https://www.anthropic.com/news/higher-limits-spacex",
+    limitDescription:
+      "Claude Code uses rolling five-hour limits; Anthropic doubled Pro, Max, Team, and Enterprise limits in May 2026.",
+  },
+  {
+    id: "claude-code-max-5x",
+    providerTypes: ["anthropic"],
+    label: "Claude Max 5x",
+    planName: "Claude Code Max 5x",
+    description: "Claude Max tier with 5x Pro usage capacity.",
+    confidence: "dynamic",
+    sourceMode: "manual",
+    sourceUrl: "https://support.claude.com/en/articles/11049741-what-is-the-max-plan",
+    limitDescription:
+      "$100/month Max tier with 5x Pro usage capacity; exact task count is dynamic.",
+  },
+  {
+    id: "claude-code-max-20x",
+    providerTypes: ["anthropic"],
+    label: "Claude Max 20x",
+    planName: "Claude Code Max 20x",
+    description: "Claude Max tier with 20x Pro usage capacity.",
+    confidence: "dynamic",
+    sourceMode: "manual",
+    sourceUrl: "https://support.claude.com/en/articles/11049741-what-is-the-max-plan",
+    limitDescription:
+      "$200/month Max tier with 20x Pro usage capacity; exact task count is dynamic.",
+  },
+];
+
 function normalizeSourceMode(value: unknown): ProviderPlanSourceMode | undefined {
   return value === "local" ||
     value === "provider_api" ||
@@ -209,6 +391,12 @@ function normalizeSourceMode(value: unknown): ProviderPlanSourceMode | undefined
     value === "manual"
     ? value
     : undefined;
+}
+
+function normalizePresetId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().slice(0, 120);
+  return PROVIDER_PLAN_PRESETS.some((preset) => preset.id === normalized) ? normalized : undefined;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -253,6 +441,7 @@ export function normalizeProviderPlanProviderConfig(value: unknown): ProviderPla
   const raw = asRecord(value);
   const providerConfig: ProviderPlanProviderConfig = {
     enabled: raw.enabled !== false,
+    presetId: normalizePresetId(raw.presetId ?? raw.preset_id),
     planName:
       typeof raw.planName === "string"
         ? raw.planName.trim().slice(0, 120)
@@ -276,10 +465,17 @@ export function normalizeProviderPlanProviderConfig(value: unknown): ProviderPla
     weekly: normalizeWindowConfig(raw.weekly),
     monthly: normalizeWindowConfig(raw.monthly),
   };
+  if (!providerConfig.presetId) delete providerConfig.presetId;
   if (!providerConfig.planName) delete providerConfig.planName;
   if (!providerConfig.sourceMode) delete providerConfig.sourceMode;
   if (!providerConfig.externalSourceEnabled) delete providerConfig.externalSourceEnabled;
   return providerConfig;
+}
+
+export function getProviderPlanPresetSuggestions(
+  providerType: string
+): ProviderPlanPresetSuggestion[] {
+  return PROVIDER_PLAN_PRESETS.filter((preset) => preset.providerTypes.includes(providerType));
 }
 
 export function normalizeProviderPlanMonitoringConfig(
@@ -509,6 +705,7 @@ export function getProviderPlanSnapshot(routeKey: string): ProviderPlanSnapshot 
   const providerConfig = planConfigFor(cfg, providerId, providerType);
   const monitored = cfg.enabled && isPlanCapableProvider(providerType, authType);
   const externalSource = EXTERNAL_PLAN_SOURCE_CATALOG[providerType];
+  const presetSuggestions = getProviderPlanPresetSuggestions(providerType);
   const activeSourceMode: ProviderPlanSourceMode = "local";
   const explicitProviderIdConfig = Boolean(cfg.providers[providerId]);
   const explicitProviderTypeConfig = Boolean(cfg.providers[providerType]);
@@ -573,6 +770,7 @@ export function getProviderPlanSnapshot(routeKey: string): ProviderPlanSnapshot 
     providerName,
     authType,
     monitored,
+    appliedPresetId: providerConfig?.presetId,
     planName: providerConfig?.planName,
     source: providerConfig ? "local_metrics_configured_limits" : "local_metrics",
     sourceMode: activeSourceMode,
@@ -591,6 +789,7 @@ export function getProviderPlanSnapshot(routeKey: string): ProviderPlanSnapshot 
     localTokens30d: Math.round(localTokens30d),
     localSpend30d: Number(localSpend30d.toFixed(4)),
     windows,
+    presetSuggestions,
   };
 }
 

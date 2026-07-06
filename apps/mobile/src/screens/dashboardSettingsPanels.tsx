@@ -148,6 +148,16 @@ function providerPlanStatusTone(status: ProviderPlanStatusResponse["providers"][
   return colors.textMuted;
 }
 
+function providerPlanPresetLimitLabel(
+  preset: ProviderPlanStatusResponse["providers"][number]["presetSuggestions"][number]
+) {
+  if (preset.monthlyTokenLimit) return `${formatMetricNumber(preset.monthlyTokenLimit)} tokens/mo`;
+  if (preset.monthlySpendLimit) return `$${preset.monthlySpendLimit}/mo credits`;
+  if (preset.routeLimitWeekly) return `${formatMetricNumber(preset.routeLimitWeekly)} req/week`;
+  if (preset.routeLimit5h) return `${formatMetricNumber(preset.routeLimit5h)} req/5h`;
+  return "Provider-managed";
+}
+
 export type WalletPolicyToggleKey = Extract<
   keyof WalletAgentPolicyUpdate,
   | "allowNativeSend"
@@ -1860,6 +1870,117 @@ export function ModelRouterPanel({
     }
   };
 
+  const savePlanGlobalPatch = async (patch: Partial<ProviderPlanMonitoringConfig>) => {
+    if (!planConfig || savingRouterConfig) return;
+    const previous = planConfig;
+    const next: ProviderPlanMonitoringConfig = {
+      ...planConfig,
+      ...patch,
+      providers: patch.providers || planConfig.providers || {},
+    };
+    setPlanConfig(next);
+    setSavingRouterConfig(true);
+    setRouterError(null);
+    try {
+      const saved = await api.updateProviderPlanConfig(next);
+      setPlanConfig(saved);
+      setPlanStatus(await api.providerPlanStatus().catch(() => null));
+    } catch (error) {
+      setPlanConfig(previous);
+      setRouterError(error instanceof Error ? error.message : String(error));
+      Alert.alert("Plan update failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setSavingRouterConfig(false);
+    }
+  };
+
+  const applyProviderPlanPreset = async (
+    route: RouterStatus["routes"][number],
+    preset: ProviderPlanStatusResponse["providers"][number]["presetSuggestions"][number]
+  ) => {
+    if (!planConfig || !routerConfig || savingRouterConfig) return;
+    const previousPlan = planConfig;
+    const previousRouter = routerConfig;
+    const currentProviderPlan = planConfig.providers?.[route.providerId] || {};
+    const nextProviderPlan: NonNullable<ProviderPlanMonitoringConfig["providers"][string]> = {
+      ...currentProviderPlan,
+      enabled: true,
+      presetId: preset.id,
+      planName: preset.planName,
+      sourceMode: preset.sourceMode,
+      externalSourceEnabled: preset.externalSourceEnabled,
+    };
+    if (preset.monthlyTokenLimit || preset.monthlySpendLimit) {
+      nextProviderPlan.monthly = {
+        ...(nextProviderPlan.monthly || {}),
+        enabled: true,
+        tokenLimit: preset.monthlyTokenLimit,
+        spendLimit: preset.monthlySpendLimit,
+      };
+    }
+    if (preset.weeklyTokenLimit) {
+      nextProviderPlan.weekly = {
+        ...(nextProviderPlan.weekly || {}),
+        enabled: true,
+        tokenLimit: preset.weeklyTokenLimit,
+      };
+    }
+    if (preset.fiveHourTokenLimit) {
+      nextProviderPlan.fiveHour = {
+        ...(nextProviderPlan.fiveHour || {}),
+        enabled: true,
+        tokenLimit: preset.fiveHourTokenLimit,
+      };
+    }
+    const nextPlan: ProviderPlanMonitoringConfig = {
+      ...planConfig,
+      providers: {
+        ...(planConfig.providers || {}),
+        [route.providerId]: nextProviderPlan,
+      },
+    };
+    const routePatch: Partial<RouterConfig["routes"][string]> = {};
+    if (preset.routeLimit5h) routePatch.limit5h = preset.routeLimit5h;
+    if (preset.routeLimitWeekly) routePatch.limitWeekly = preset.routeLimitWeekly;
+    const currentRoute = routerConfig.routes?.[route.providerId] || {};
+    const nextRouter: RouterConfig = {
+      ...routerConfig,
+      routes: {
+        ...(routerConfig.routes || {}),
+        [route.providerId]: { ...currentRoute, ...routePatch },
+      },
+    };
+    setPlanConfig(nextPlan);
+    setRouterConfig(nextRouter);
+    setMonthlyTokenDrafts((current) => ({
+      ...current,
+      [route.providerId]: preset.monthlyTokenLimit ? String(preset.monthlyTokenLimit) : "",
+    }));
+    setMonthlySpendDrafts((current) => ({
+      ...current,
+      [route.providerId]: preset.monthlySpendLimit ? String(preset.monthlySpendLimit) : "",
+    }));
+    setSavingRouterConfig(true);
+    setRouterError(null);
+    try {
+      const savedPlan = await api.updateProviderPlanConfig(nextPlan);
+      if (Object.keys(routePatch).length > 0) {
+        const routerResult = await api.updateRouterConfig(nextRouter);
+        if (routerResult.success === false) throw new Error("Router config update failed");
+      }
+      setPlanConfig(savedPlan);
+      setPlanStatus(await api.providerPlanStatus().catch(() => null));
+      setRouterStatus(await api.routerStatus().catch(() => null));
+    } catch (error) {
+      setPlanConfig(previousPlan);
+      setRouterConfig(previousRouter);
+      setRouterError(error instanceof Error ? error.message : String(error));
+      Alert.alert("Preset update failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setSavingRouterConfig(false);
+    }
+  };
+
   const saveRouterDailyLimit = () => {
     if (!routerConfig) return;
     const trimmed = routerDailyLimitDraft.trim();
@@ -2013,6 +2134,32 @@ export function ModelRouterPanel({
             ]}
           />
           <SettingsSection title="Provider plans">
+            <View style={styles.settingsGroup}>
+              <SettingToggle
+                busy={savingRouterConfig}
+                detail="Track local usage against coding-plan windows and preset limits."
+                disabled={savingRouterConfig || !planConfig}
+                label="Monitor coding plans"
+                onPress={() => {
+                  void savePlanGlobalPatch({ enabled: !(planConfig?.enabled ?? true) });
+                }}
+                tone={accentColor}
+                value={planConfig?.enabled ?? planStatus?.enabled ?? true}
+              />
+              <SettingToggle
+                busy={savingRouterConfig}
+                detail="Skip a provider automatically when its configured plan reaches the hard stop."
+                disabled={savingRouterConfig || !planConfig}
+                label="Block exhausted plans"
+                onPress={() => {
+                  void savePlanGlobalPatch({
+                    routerEnforcement: !(planConfig?.routerEnforcement ?? true),
+                  });
+                }}
+                tone={accentColor}
+                value={planConfig?.routerEnforcement ?? planStatus?.routerEnforcement ?? true}
+              />
+            </View>
             <DetailInfoSection
               title="Plan monitor"
               fields={[
@@ -2026,6 +2173,12 @@ export function ModelRouterPanel({
               const plan = planByRoute.get(route.providerId);
               const providerPlanConfig = planConfig?.providers?.[route.providerId] || {};
               const monthly = providerPlanConfig.monthly || {};
+              const presetSuggestions = plan?.presetSuggestions || [];
+              const selectedPreset =
+                providerPlanConfig.presetId || plan?.appliedPresetId || "manual";
+              const selectedPresetSummary = presetSuggestions.find(
+                (preset) => preset.id === selectedPreset
+              );
               const tokenDraft =
                 monthlyTokenDrafts[route.providerId] ??
                 (monthly.tokenLimit ? String(monthly.tokenLimit) : "");
@@ -2043,6 +2196,38 @@ export function ModelRouterPanel({
                       ? `${plan.status} - ${firstWindow?.usedPercent?.toFixed(1) ?? "0"}% used`
                       : "No plan snapshot yet"}
                   </Text>
+                  {presetSuggestions.length > 0 ? (
+                    <>
+                      <SettingSelector
+                        disabled={savingRouterConfig}
+                        label="Coding plan"
+                        variant="menu"
+                        onSelect={(value) => {
+                          if (value === "manual") {
+                            void savePlanConfigPatch(route.providerId, { presetId: undefined });
+                            return;
+                          }
+                          const preset = presetSuggestions.find(
+                            (candidate) => candidate.id === value
+                          );
+                          if (preset) void applyProviderPlanPreset(route, preset);
+                        }}
+                        options={[
+                          { label: "Manual / custom", value: "manual" },
+                          ...presetSuggestions.map((preset) => ({
+                            label: `${preset.label} - ${providerPlanPresetLimitLabel(preset)}`,
+                            value: preset.id,
+                          })),
+                        ]}
+                        selected={selectedPreset}
+                        tone={accentColor}
+                      />
+                      <Text style={styles.settingsFieldHelp}>
+                        {selectedPresetSummary?.limitDescription ||
+                          "Choose a preset, then override the manual caps below if needed."}
+                      </Text>
+                    </>
+                  ) : null}
                   <View style={styles.settingsActionRow}>
                     <TextInput
                       editable={!savingRouterConfig}

@@ -484,6 +484,7 @@ describe("mobile API client", () => {
           providers: {
             "openai-codex": {
               enabled: true,
+              presetId: "openai-codex-plus",
               planName: "Codex Plus",
               sourceMode: "browser_cookie",
               externalSourceEnabled: true,
@@ -504,6 +505,7 @@ describe("mobile API client", () => {
               providerName: "OpenAI Codex",
               authType: "oauth",
               monitored: true,
+              appliedPresetId: "openai-codex-plus",
               source: "local_metrics_configured_limits",
               sourceMode: "local",
               sourceLabel: "Local usage with configured limits",
@@ -514,6 +516,18 @@ describe("mobile API client", () => {
               status: "warning",
               localTokens30d: 1_700_000,
               localSpend30d: 17.25,
+              presetSuggestions: [
+                {
+                  id: "openai-codex-plus",
+                  label: "ChatGPT Plus",
+                  planName: "Codex Plus",
+                  description: "Moderate local coding sessions.",
+                  confidence: "dynamic",
+                  sourceMode: "oauth_api",
+                  limitDescription: "Codex uses your ChatGPT agentic allowance.",
+                  externalSourceEnabled: true,
+                },
+              ],
               windows: [
                 {
                   id: "monthly",
@@ -547,6 +561,7 @@ describe("mobile API client", () => {
         routerEnforcement: true,
         providers: {
           "openai-codex": {
+            presetId: "openai-codex-plus",
             planName: "Codex Plus",
             sourceMode: "browser_cookie",
             externalSourceEnabled: true,
@@ -560,8 +575,16 @@ describe("mobile API client", () => {
           {
             providerId: "openai-codex",
             status: "warning",
+            appliedPresetId: "openai-codex-plus",
             sourceLabel: "Local usage with configured limits",
             externalSourceLabel: "OpenAI OAuth usage",
+            presetSuggestions: [
+              {
+                id: "openai-codex-plus",
+                label: "ChatGPT Plus",
+                sourceMode: "oauth_api",
+              },
+            ],
             windows: [{ id: "monthly", usedPercent: 85 }],
           },
         ],

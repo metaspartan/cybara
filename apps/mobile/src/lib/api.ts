@@ -328,6 +328,25 @@ export interface RouterStatus {
 export type ProviderPlanStatusState = "ok" | "warning" | "exhausted" | "unconfigured" | "disabled";
 export type ProviderPlanSourceMode =
   "local" | "provider_api" | "oauth_api" | "browser_cookie" | "cli" | "manual";
+export type ProviderPlanPresetConfidence = "exact" | "published" | "dynamic" | "estimated";
+
+export interface ProviderPlanPresetSuggestion {
+  id: string;
+  label: string;
+  planName: string;
+  description: string;
+  confidence: ProviderPlanPresetConfidence;
+  sourceMode: ProviderPlanSourceMode;
+  sourceUrl?: string;
+  limitDescription: string;
+  monthlyTokenLimit?: number;
+  monthlySpendLimit?: number;
+  weeklyTokenLimit?: number;
+  fiveHourTokenLimit?: number;
+  routeLimit5h?: number;
+  routeLimitWeekly?: number;
+  externalSourceEnabled?: boolean;
+}
 
 export interface ProviderPlanRouteConstraint {
   monitored: boolean;
@@ -360,6 +379,7 @@ export interface ProviderPlanSnapshot {
   providerName: string;
   authType: string;
   monitored: boolean;
+  appliedPresetId?: string;
   planName?: string;
   source?: string;
   sourceMode: ProviderPlanSourceMode;
@@ -374,6 +394,7 @@ export interface ProviderPlanSnapshot {
   localTokens30d: number;
   localSpend30d: number;
   windows: ProviderPlanWindow[];
+  presetSuggestions: ProviderPlanPresetSuggestion[];
 }
 
 export interface ProviderPlanWindowConfig {
@@ -384,6 +405,7 @@ export interface ProviderPlanWindowConfig {
 
 export interface ProviderPlanProviderConfig {
   enabled?: boolean;
+  presetId?: string;
   planName?: string;
   sourceMode?: ProviderPlanSourceMode;
   externalSourceEnabled?: boolean;
@@ -1495,6 +1517,37 @@ function normalizeProviderPlanSourceMode(value: unknown): ProviderPlanSourceMode
     : "local";
 }
 
+function normalizeProviderPlanPresetConfidence(value: unknown): ProviderPlanPresetConfidence {
+  return value === "exact" || value === "published" || value === "dynamic" || value === "estimated"
+    ? value
+    : "estimated";
+}
+
+function normalizeProviderPlanPresetSuggestion(
+  value: unknown,
+  index = 0
+): ProviderPlanPresetSuggestion {
+  const record = asRecord(value);
+  return {
+    id: readString(record, ["id"]) || `preset-${index + 1}`,
+    label: readString(record, ["label"]) || "Provider plan",
+    planName: readString(record, ["planName", "plan_name"]) || "Provider plan",
+    description: readString(record, ["description"]) || "",
+    confidence: normalizeProviderPlanPresetConfidence(record?.confidence),
+    sourceMode: normalizeProviderPlanSourceMode(record?.sourceMode ?? record?.source_mode),
+    sourceUrl: readString(record, ["sourceUrl", "source_url"]),
+    limitDescription: readString(record, ["limitDescription", "limit_description"]) || "",
+    monthlyTokenLimit: readNumber(record, ["monthlyTokenLimit", "monthly_token_limit"]),
+    monthlySpendLimit: readNumber(record, ["monthlySpendLimit", "monthly_spend_limit"]),
+    weeklyTokenLimit: readNumber(record, ["weeklyTokenLimit", "weekly_token_limit"]),
+    fiveHourTokenLimit: readNumber(record, ["fiveHourTokenLimit", "five_hour_token_limit"]),
+    routeLimit5h: readNumber(record, ["routeLimit5h", "route_limit_5h"]),
+    routeLimitWeekly: readNumber(record, ["routeLimitWeekly", "route_limit_weekly"]),
+    externalSourceEnabled:
+      record?.externalSourceEnabled === true || record?.external_source_enabled === true,
+  };
+}
+
 function normalizeProviderPlanRouteConstraint(
   value: unknown
 ): ProviderPlanRouteConstraint | undefined {
@@ -1527,6 +1580,7 @@ function normalizeProviderPlanProviderConfig(value: unknown): ProviderPlanProvid
   const record = asRecord(value);
   return {
     enabled: record?.enabled !== false,
+    presetId: readString(record, ["presetId", "preset_id"]),
     planName: readString(record, ["planName", "plan_name"]),
     sourceMode: normalizeProviderPlanSourceMode(record?.sourceMode ?? record?.source_mode),
     externalSourceEnabled:
@@ -1566,6 +1620,7 @@ function normalizeProviderPlanSnapshot(value: unknown, index = 0): ProviderPlanS
     providerName: readString(record, ["providerName", "provider_name", "name"]) || providerId,
     authType: readString(record, ["authType", "auth_type"]) || "unknown",
     monitored: record?.monitored === true,
+    appliedPresetId: readString(record, ["appliedPresetId", "applied_preset_id"]),
     planName: readString(record, ["planName", "plan_name"]),
     source: readString(record, ["source"]),
     sourceMode: normalizeProviderPlanSourceMode(record?.sourceMode ?? record?.source_mode),
@@ -1607,6 +1662,11 @@ function normalizeProviderPlanSnapshot(value: unknown, index = 0): ProviderPlanS
         usageKnown: windowRecord?.usageKnown !== false && windowRecord?.usage_known !== false,
       };
     }),
+    presetSuggestions: normalizeArrayResponse(record?.presetSuggestions, [
+      "presetSuggestions",
+      "preset_suggestions",
+      "presets",
+    ]).map(normalizeProviderPlanPresetSuggestion),
   };
 }
 

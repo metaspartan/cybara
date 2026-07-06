@@ -111,11 +111,14 @@ describe("mobile: model router sub-page", () => {
 
   test("the router page keeps strategy, fallback, and spend controls", () => {
     const panel = screen.slice(screen.indexOf("function ModelRouterPanel("));
-    expect(panel.slice(0, 10000)).toContain('label="Selection strategy"');
-    expect(panel.slice(0, 10000)).toContain('label="Fallback providers"');
+    expect(panel).toContain('label="Selection strategy"');
+    expect(panel).toContain('label="Fallback providers"');
     expect(panel.slice(0, 10000)).toContain("api.updateRouterConfig");
     // MoA-specific controls surface when that strategy is picked
-    expect(panel.slice(0, 10000)).toContain('label="Aggregator agent"');
+    expect(panel).toContain('label="Aggregator agent"');
+    expect(panel).toContain('label="Monitor coding plans"');
+    expect(panel).toContain('label="Block exhausted plans"');
+    expect(panel).toContain('label="Coding plan"');
   });
 
   test("mixture-of-agents is a selectable strategy end to end", () => {

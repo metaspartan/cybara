@@ -158,6 +158,28 @@ struct RouterScreen: View {
                     planMetric("Exhausted", "\(planStatus?.summary.exhausted ?? 0)")
                 }
 
+                HStack(spacing: 14) {
+                    Toggle("Monitor coding plans", isOn: Binding(
+                        get: { planConfig["enabled"] as? Bool ?? planStatus?.enabled ?? true },
+                        set: { value in
+                            var next = planConfig
+                            next["enabled"] = value
+                            saveProviderPlanConfig(next)
+                        }
+                    ))
+                    .toggleStyle(.switch)
+                    Toggle("Block exhausted plans", isOn: Binding(
+                        get: { planConfig["routerEnforcement"] as? Bool ?? planStatus?.routerEnforcement ?? true },
+                        set: { value in
+                            var next = planConfig
+                            next["routerEnforcement"] = value
+                            saveProviderPlanConfig(next)
+                        }
+                    ))
+                    .toggleStyle(.switch)
+                }
+                .font(.system(size: 12, design: .rounded))
+
                 let routes = status?.routes ?? []
                 if routes.isEmpty {
                     Text("Add provider routes to configure plan limits for router decisions.")
@@ -238,6 +260,35 @@ struct RouterScreen: View {
                 .disabled(savingPlanProvider == route.providerId)
                 .labelStyle(.iconOnly)
                 .help("Save provider plan limits")
+            }
+
+            if let plan, !plan.presetSuggestions.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Picker("Coding plan", selection: Binding(
+                        get: { providerPlanPresetId(for: route.providerId, plan: plan) },
+                        set: { value in
+                            if value == "manual" {
+                                clearProviderPlanPreset(route.providerId)
+                            } else if let preset = plan.presetSuggestions.first(where: { $0.id == value }) {
+                                applyProviderPlanPreset(route.providerId, preset)
+                            }
+                        }
+                    )) {
+                        Text("Manual / custom").tag("manual")
+                        ForEach(plan.presetSuggestions) { preset in
+                            Text("\(preset.label) · \(providerPlanPresetLimitLabel(preset))")
+                                .tag(preset.id)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    Text(
+                        plan.presetSuggestions.first(where: { $0.id == providerPlanPresetId(for: route.providerId, plan: plan) })?.limitDescription
+                            ?? "Choose a published plan preset, then override manual caps if needed."
+                    )
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(.secondary)
+                }
             }
         }
         .padding(10)
@@ -348,6 +399,135 @@ struct RouterScreen: View {
         }
         monthlyTokenDrafts = tokenDrafts
         monthlySpendDrafts = spendDrafts
+    }
+
+    private func providerPlanPresetId(for providerId: String, plan: ProviderPlanSnapshot?) -> String {
+        let providers = planConfig["providers"] as? [String: Any] ?? [:]
+        let providerConfig = providers[providerId] as? [String: Any] ?? [:]
+        if let presetId = providerConfig["presetId"] as? String, !presetId.isEmpty {
+            return presetId
+        }
+        if let presetId = providerConfig["preset_id"] as? String, !presetId.isEmpty {
+            return presetId
+        }
+        return plan?.appliedPresetId ?? "manual"
+    }
+
+    private func providerPlanPresetLimitLabel(_ preset: ProviderPlanPresetSuggestion) -> String {
+        if let tokenLimit = preset.monthlyTokenLimit {
+            return "\(formatLargeNumber(Int(tokenLimit))) tokens/mo"
+        }
+        if let spendLimit = preset.monthlySpendLimit {
+            return String(format: "$%.0f/mo credits", spendLimit)
+        }
+        if let routeLimitWeekly = preset.routeLimitWeekly {
+            return "\(formatLargeNumber(Int(routeLimitWeekly))) req/week"
+        }
+        if let routeLimit5h = preset.routeLimit5h {
+            return "\(formatLargeNumber(Int(routeLimit5h))) req/5h"
+        }
+        return "Provider-managed"
+    }
+
+    private func clearProviderPlanPreset(_ providerId: String) {
+        var next = planConfig
+        var providers = next["providers"] as? [String: Any] ?? [:]
+        var providerConfig = providers[providerId] as? [String: Any] ?? [:]
+        providerConfig.removeValue(forKey: "presetId")
+        providerConfig.removeValue(forKey: "preset_id")
+        providers[providerId] = providerConfig
+        next["providers"] = providers
+        saveProviderPlanConfig(next)
+    }
+
+    private func applyProviderPlanPreset(_ providerId: String, _ preset: ProviderPlanPresetSuggestion) {
+        var nextPlan = planConfig
+        var providers = nextPlan["providers"] as? [String: Any] ?? [:]
+        var providerConfig = providers[providerId] as? [String: Any] ?? [:]
+        providerConfig["enabled"] = true
+        providerConfig["presetId"] = preset.id
+        providerConfig["planName"] = preset.planName
+        providerConfig["sourceMode"] = preset.sourceMode
+        providerConfig["externalSourceEnabled"] = preset.externalSourceEnabled
+        if preset.monthlyTokenLimit != nil || preset.monthlySpendLimit != nil {
+            var monthly = providerConfig["monthly"] as? [String: Any] ?? [:]
+            monthly["enabled"] = true
+            if let tokenLimit = preset.monthlyTokenLimit {
+                monthly["tokenLimit"] = tokenLimit
+            }
+            if let spendLimit = preset.monthlySpendLimit {
+                monthly["spendLimit"] = spendLimit
+            }
+            providerConfig["monthly"] = monthly
+            monthlyTokenDrafts[providerId] = preset.monthlyTokenLimit.map { limitText($0) } ?? ""
+            monthlySpendDrafts[providerId] = preset.monthlySpendLimit.map { limitText($0) } ?? ""
+        }
+        if let weeklyTokenLimit = preset.weeklyTokenLimit {
+            var weekly = providerConfig["weekly"] as? [String: Any] ?? [:]
+            weekly["enabled"] = true
+            weekly["tokenLimit"] = weeklyTokenLimit
+            providerConfig["weekly"] = weekly
+        }
+        if let fiveHourTokenLimit = preset.fiveHourTokenLimit {
+            var fiveHour = providerConfig["fiveHour"] as? [String: Any] ?? [:]
+            fiveHour["enabled"] = true
+            fiveHour["tokenLimit"] = fiveHourTokenLimit
+            providerConfig["fiveHour"] = fiveHour
+        }
+        providers[providerId] = providerConfig
+        nextPlan["providers"] = providers
+
+        var nextRouter = config
+        var routes = nextRouter["routes"] as? [String: Any] ?? [:]
+        var routeConfig = routes[providerId] as? [String: Any] ?? [:]
+        if let routeLimit5h = preset.routeLimit5h {
+            routeConfig["limit5h"] = routeLimit5h
+        }
+        if let routeLimitWeekly = preset.routeLimitWeekly {
+            routeConfig["limitWeekly"] = routeLimitWeekly
+        }
+        routes[providerId] = routeConfig
+        nextRouter["routes"] = routes
+
+        guard
+            let planBody = try? JSONSerialization.data(withJSONObject: nextPlan),
+            let routerBody = try? JSONSerialization.data(withJSONObject: nextRouter)
+        else { return }
+        planConfig = nextPlan
+        config = nextRouter
+        savingPlanProvider = providerId
+        Task {
+            do {
+                planConfig = try await client.updateProviderPlanConfig(planBody)
+                if preset.routeLimit5h != nil || preset.routeLimitWeekly != nil {
+                    try await client.updateRouterConfig(routerBody)
+                }
+                status = try? await client.routerStatus()
+                planStatus = try? await client.providerPlanStatus()
+                seedProviderPlanDrafts()
+                error = nil
+            } catch {
+                self.error = error.localizedDescription
+            }
+            savingPlanProvider = nil
+        }
+    }
+
+    private func saveProviderPlanConfig(_ next: [String: Any]) {
+        guard let body = try? JSONSerialization.data(withJSONObject: next) else { return }
+        planConfig = next
+        saving = true
+        Task {
+            do {
+                planConfig = try await client.updateProviderPlanConfig(body)
+                planStatus = try? await client.providerPlanStatus()
+                seedProviderPlanDrafts()
+                error = nil
+            } catch {
+                self.error = error.localizedDescription
+            }
+            saving = false
+        }
     }
 
     private func limitText(_ value: Any?) -> String {

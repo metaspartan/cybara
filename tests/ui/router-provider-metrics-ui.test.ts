@@ -23,7 +23,11 @@ describe("router, provider, and metrics UI wiring", () => {
     expect(source).toContain("const STRATEGY_OPTIONS");
     expect(source).toContain("Monthly budget");
     expect(source).toContain("globalSpendLimitDaily: monthly ? monthly / 30 : undefined");
-    expect(source).toContain("For a $20/month coding plan");
+    expect(source).toContain("Plan-aware routing");
+    expect(source).toContain("Coding plan preset");
+    expect(source).toContain("presetLimitSummary(preset)");
+    expect(source).toContain("Array.isArray(p.info?.models)");
+    expect(source).toContain("displayName={plan?.providerName || providerName(routeType)}");
     expect(source).toContain("formatTokenPrice(route.priceInputPerM, route.priceOutputPerM)");
     expect(source).toContain("Lowest cost");
   });
