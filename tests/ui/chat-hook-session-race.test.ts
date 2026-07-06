@@ -23,6 +23,8 @@ describe("useChat session race guards", () => {
     expect(source).toContain("!queuedSend ? crypto.randomUUID() : null");
     expect(source).toContain("sessionId: requestSessionId ?? prev.sessionId");
     expect(source).toContain("requestSessionId || undefined");
+    expect(source).toContain("clientPendingId?: string");
+    expect(source).toContain("options?.clientPendingId");
   });
 
   test("does not optimistically add queued follow-ups to the transcript", () => {
@@ -41,5 +43,17 @@ describe("useChat session race guards", () => {
     const loadSessionBlock = source.slice(source.indexOf("const loadSession = useCallback"));
     expect(loadSessionBlock).toContain("setState({");
     expect(loadSessionBlock).not.toContain("activeRequestAbortRef.current?.abort();");
+  });
+
+  test("can append a steered user message without ending the active run", () => {
+    const source = readFileSync(hookPath, "utf8");
+    const appendStart = source.indexOf("const appendSessionMessage = useCallback");
+    const appendEnd = source.indexOf("const setWorkspaceDir = useCallback", appendStart);
+    const appendBlock = source.slice(appendStart, appendEnd);
+    expect(appendBlock).toContain("prev.sessionId !== sessionId");
+    expect(appendBlock).toContain(
+      "messages: alreadyPresent ? prev.messages : [...prev.messages, message]"
+    );
+    expect(appendBlock).not.toContain("isLoading: false");
   });
 });

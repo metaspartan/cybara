@@ -16,6 +16,7 @@ export interface StatusActivity {
 export interface PendingChatMessage {
   id: string;
   sessionId: string;
+  clientPendingId?: string;
   content: string;
   createdAt: number;
   updatedAt: number;

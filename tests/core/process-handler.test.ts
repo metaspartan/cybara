@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { handleExecAsync, handleProcess } from "../../src/core/tools/handlers/process";
+import { handleExec, handleExecAsync, handleProcess } from "../../src/core/tools/handlers/process";
 
 type ProcListEntry = { sessionId: string; command: string; startedAt: string };
 
@@ -29,6 +29,36 @@ describe("handleExecAsync", () => {
     expect(result.exitCode).toBe(2);
     expect(result.output.toLowerCase()).toContain("command is required");
   });
+});
+
+describe("handleExec", () => {
+  test("runs a command and returns its output + exit code", async () => {
+    const result = await handleExec({ command: "echo cybara-exec-ok" });
+    expect(result.output).toContain("cybara-exec-ok");
+    expect(result.exitCode).toBe(0);
+  });
+
+  test("honors abort signals without blocking the process list", async () => {
+    const controller = new AbortController();
+    const running = handleExec(
+      { command: "sleep 30" },
+      { agentId: "test-agent", sessionId: "test-session", abortSignal: controller.signal }
+    );
+
+    const found = await waitFor(async () => {
+      const list = (await handleProcess({ action: "list" })) as ProcListEntry[];
+      return list.find((p) => p.command.includes("sleep 30"));
+    });
+    expect(found).toBeDefined();
+
+    controller.abort(new DOMException("test abort", "AbortError"));
+    const result = await running;
+
+    expect(result.exitCode).toBe(130);
+    expect(result.output).toContain("Command interrupted.");
+    const after = (await handleProcess({ action: "list" })) as ProcListEntry[];
+    expect(after.find((p) => p.sessionId === found.sessionId)).toBeUndefined();
+  }, 15000);
 });
 
 describe("handleProcess kill actually terminates the process", () => {

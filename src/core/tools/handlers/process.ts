@@ -2,6 +2,7 @@ import { existsSync } from "fs";
 import { homeDir } from "../../paths";
 import { buildSandboxedShellPlan } from "../../sandbox";
 import { createLogger } from "../../logger";
+import type { ToolContext } from "../index";
 
 const log = createLogger("ProcessTool");
 
@@ -14,7 +15,8 @@ function expandTilde(path: string | undefined): string | undefined {
 }
 
 export async function handleExec(
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  context?: ToolContext
 ): Promise<{ output: string; exitCode: number; cwd?: string; sandboxProvider?: string }> {
   const command =
     typeof args.command === "string"
@@ -85,25 +87,75 @@ export async function handleExec(
       plan.provider === "podman" || plan.provider === "docker"
         ? { ...process.env, PATH: fullEnv.PATH }
         : fullEnv;
-    const result = Bun.spawnSync(plan.command, {
+    const proc = Bun.spawn(plan.command, {
       cwd: plan.cwd,
       env: spawnEnv,
-      timeout: timeoutSeconds ? timeoutSeconds * 1000 : undefined,
+      stdout: "pipe",
+      stderr: "pipe",
+      detached: process.platform !== "win32",
     });
+    const key = String(proc.pid);
+    let timedOut = false;
+    let aborted = false;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let forceKillTimeoutId: ReturnType<typeof setTimeout> | undefined;
+    const killProcess = () => {
+      killSubprocessTree(proc);
+      forceKillTimeoutId = setTimeout(() => killSubprocessTree(proc, "SIGKILL"), 750);
+    };
+    const abortHandler = () => {
+      aborted = true;
+      killProcess();
+    };
+    if (timeoutSeconds) {
+      timeoutId = setTimeout(() => {
+        timedOut = true;
+        killProcess();
+      }, timeoutSeconds * 1000);
+    }
+    if (context?.abortSignal?.aborted) {
+      abortHandler();
+    } else {
+      context?.abortSignal?.addEventListener("abort", abortHandler, { once: true });
+    }
+    runningProcesses.set(key, { pid: proc.pid, command, startedAt: new Date(startedAt), proc });
 
-    const stdout = result.stdout.toString();
-    const stderr = result.stderr.toString();
+    let stdout = "";
+    let stderr = "";
+    let exitCode = 0;
+    try {
+      const [stdoutText, stderrText, exited] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+      stdout = stdoutText;
+      stderr = stderrText;
+      exitCode = exited ?? 0;
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (forceKillTimeoutId) clearTimeout(forceKillTimeoutId);
+      context?.abortSignal?.removeEventListener("abort", abortHandler);
+      runningProcesses.delete(key);
+    }
 
     log.info("Command completed", {
       cwd: plan.cwd,
       sandboxProvider: plan.provider || "host",
-      exitCode: result.exitCode ?? 0,
+      exitCode,
       durationMs: Date.now() - startedAt,
+      timedOut,
+      aborted,
     });
 
+    const statusOutput = timedOut
+      ? `\nCommand timed out after ${timeoutSeconds} second${timeoutSeconds === 1 ? "" : "s"}.`
+      : aborted
+        ? "\nCommand interrupted."
+        : "";
     return {
-      output: stdout + (stderr ? "\n" + stderr : ""),
-      exitCode: result.exitCode ?? 0,
+      output: stdout + (stderr ? "\n" + stderr : "") + statusOutput,
+      exitCode: aborted ? 130 : timedOut ? 124 : exitCode,
       cwd: plan.cwd,
       sandboxProvider: plan.provider || undefined,
     };
@@ -170,6 +222,7 @@ export async function handleExecAsync(
     env: { ...process.env },
     stdout: "pipe",
     stderr: "pipe",
+    detached: process.platform !== "win32",
   });
 
   // Register the live handle so `process` list/status/kill can see and terminate
@@ -207,6 +260,31 @@ type RunningProcess = {
 };
 const runningProcesses = new Map<string, RunningProcess>();
 
+type ProcessSignal = Parameters<Bun.Subprocess["kill"]>[0];
+
+function killSubprocessTree(proc: Bun.Subprocess, signal: ProcessSignal = "SIGTERM"): void {
+  if (process.platform === "win32") {
+    try {
+      Bun.spawn(["taskkill", "/pid", String(proc.pid), "/t", "/f"], {
+        stdout: "ignore",
+        stderr: "ignore",
+      });
+      return;
+    } catch {}
+  }
+
+  if (process.platform !== "win32") {
+    try {
+      process.kill(-proc.pid, signal);
+      return;
+    } catch {}
+  }
+
+  try {
+    proc.kill(signal);
+  } catch {}
+}
+
 export async function handleProcess(args: Record<string, unknown>): Promise<unknown> {
   const action = args.action as string;
 
@@ -228,7 +306,7 @@ export async function handleProcess(args: Record<string, unknown>): Promise<unkn
       // Actually terminate the process — the previous implementation only
       // removed the map entry, leaving the process running.
       try {
-        entry.proc.kill();
+        killSubprocessTree(entry.proc);
       } catch (error) {
         log.warn("Failed to kill process", { sessionId, error: String(error) });
       }

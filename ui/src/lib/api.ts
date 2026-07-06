@@ -61,7 +61,8 @@ export const agentsApi = {
     sessionId?: string,
     workspaceDir?: string | null,
     signal?: AbortSignal,
-    queueMode?: "queue" | "steer"
+    queueMode?: "queue" | "steer",
+    clientPendingId?: string
   ) =>
     fetchApi<{
       message: ChatMessage;
@@ -73,7 +74,7 @@ export const agentsApi = {
       pendingMessages?: PendingChatMessage[];
     }>(`/agents/${id}/chat`, {
       method: "POST",
-      body: JSON.stringify({ message, sessionId, workspaceDir, queueMode }),
+      body: JSON.stringify({ message, sessionId, workspaceDir, queueMode, clientPendingId }),
       signal,
     }),
 };
@@ -878,7 +879,8 @@ export const chatApi = {
     sessionId?: string,
     workspaceDir?: string | null,
     signal?: AbortSignal,
-    queueMode?: "queue" | "steer"
+    queueMode?: "queue" | "steer",
+    clientPendingId?: string
   ) =>
     fetchApi<{
       message: ChatMessage;
@@ -890,7 +892,14 @@ export const chatApi = {
       pendingMessages?: PendingChatMessage[];
     }>("/chat", {
       method: "POST",
-      body: JSON.stringify({ message, agentId, sessionId, workspaceDir, queueMode }),
+      body: JSON.stringify({
+        message,
+        agentId,
+        sessionId,
+        workspaceDir,
+        queueMode,
+        clientPendingId,
+      }),
       signal,
     }),
   steerPendingMessage: (sessionId: string, pendingMessageId: string) =>

@@ -101,6 +101,7 @@ export interface ChatRequest {
   message: string;
   agentId?: string;
   sessionId?: string;
+  clientPendingId?: string;
   workspaceDir?: string;
   stream?: boolean;
   tools?: boolean;
@@ -176,6 +177,7 @@ const MAX_PENDING_CHAT_MESSAGES_PER_SESSION = 20;
 interface PendingChatItem {
   id: string;
   sessionId: string;
+  clientPendingId?: string;
   request: ChatRequest;
   content: string;
   createdAt: number;
@@ -220,8 +222,9 @@ function finishInterruptedChatTurn(
   controller: AbortController
 ): ChatResponse {
   clearActiveChatTurnAbortController(session.id, controller);
+  materializeInterruptedAssistantBeforeSteering(session);
   broadcastStatus({
-    status: "idle",
+    status: "thinking",
     timestamp: Date.now(),
     detail: "Steering to follow-up...",
     sessionId: session.id,
@@ -257,6 +260,7 @@ function pendingChatSnapshot(item: PendingChatItem): PendingChatMessageSnapshot 
   return {
     id: item.id,
     sessionId: item.sessionId,
+    ...(item.clientPendingId ? { clientPendingId: item.clientPendingId } : {}),
     content: item.content,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
@@ -289,9 +293,14 @@ function enqueuePendingChatMessage(
 ): ChatResponse {
   const now = Date.now();
   const queue = pendingChatQueues.get(sessionId) || [];
+  const clientPendingId =
+    typeof request.clientPendingId === "string" && request.clientPendingId.trim().length > 0
+      ? request.clientPendingId.trim()
+      : undefined;
   const item: PendingChatItem = {
     id: `pending_${crypto.randomUUID()}`,
     sessionId,
+    clientPendingId,
     request: {
       ...request,
       sessionId,
@@ -398,6 +407,86 @@ function materializeSteeringMessage(
   return message;
 }
 
+function collectAttachedProcessActivityIds(messages: ChatMessage[]): Set<string> {
+  const ids = new Set<string>();
+  for (const message of messages) {
+    if (!Array.isArray(message.process_activities)) continue;
+    for (const activity of message.process_activities) {
+      if (typeof activity.id === "string" && activity.id.trim()) {
+        ids.add(activity.id);
+      }
+    }
+  }
+  return ids;
+}
+
+function getSessionProcessActivities(
+  sessionId: string,
+  options?: { excludeActivityIds?: Set<string> }
+): ProcessActivityInfo[] | undefined {
+  const snapshot = getSessionStatusSnapshot(sessionId);
+  if (!snapshot || !Array.isArray(snapshot.activities) || snapshot.activities.length === 0) {
+    return undefined;
+  }
+  const excludeActivityIds = options?.excludeActivityIds;
+  const activities = snapshot.activities
+    .filter((activity) => !excludeActivityIds?.has(activity.id))
+    .map((activity) => ({
+      id: activity.id,
+      phase: activity.phase,
+      text: activity.text,
+      timestamp: activity.timestamp,
+      toolName: activity.toolName,
+      toolCallId: activity.toolCallId,
+      sandboxProvider: activity.sandboxProvider,
+    }));
+  return activities.length > 0 ? activities : undefined;
+}
+
+function materializeInterruptedAssistantBeforeSteering(
+  session: InMemoryChatSession
+): ChatMessage | undefined {
+  const steeringIndex = session.messages.findIndex(
+    (message) => message.role === "user" && !!message._pendingSteeringId
+  );
+  if (steeringIndex < 0) return undefined;
+
+  const processActivities = getSessionProcessActivities(session.id, {
+    excludeActivityIds: collectAttachedProcessActivityIds(session.messages),
+  });
+  if (!processActivities || processActivities.length === 0) return undefined;
+  if (
+    !processActivities.some((activity) => activity.toolName && activity.toolName !== "__thought")
+  ) {
+    return undefined;
+  }
+
+  const previousMessage = session.messages[steeringIndex - 1];
+  if (
+    previousMessage?.role === "assistant" &&
+    previousMessage.content.trim().length === 0 &&
+    Array.isArray(previousMessage.process_activities) &&
+    previousMessage.process_activities.some((activity) =>
+      processActivities.some((nextActivity) => nextActivity.id === activity.id)
+    )
+  ) {
+    return previousMessage;
+  }
+
+  const steeringTimestampMs =
+    parseIsoTimestampMs(session.messages[steeringIndex]?.timestamp) || Date.now();
+  const assistantMessage: ChatMessage = {
+    role: "assistant",
+    content: "",
+    timestamp: new Date(Math.max(0, steeringTimestampMs - 1)).toISOString(),
+    process_activities: processActivities,
+  };
+  session.messages.splice(steeringIndex, 0, assistantMessage);
+  const lastMessage = session.messages[session.messages.length - 1] || assistantMessage;
+  session.updatedAt = lastMessage.timestamp || new Date().toISOString();
+  return assistantMessage;
+}
+
 function queuedMaterializedSteeringIds(sessionId: string): Set<string> {
   return new Set(
     (pendingChatQueues.get(sessionId) || [])
@@ -423,7 +512,11 @@ function appendAssistantMessage(session: InMemoryChatSession, assistantMessage: 
 }
 
 async function drainPendingChatQueue(sessionId: string): Promise<void> {
-  const runStatusActive = isActiveChatStatus(getSessionRunStatusSnapshot(sessionId)?.status);
+  const runStatusSnapshot = getSessionRunStatusSnapshot(sessionId);
+  const isSteeringHandoff =
+    typeof runStatusSnapshot?.detail === "string" &&
+    runStatusSnapshot.detail.trim().toLowerCase() === "steering to follow-up...";
+  const runStatusActive = isActiveChatStatus(runStatusSnapshot?.status) && !isSteeringHandoff;
   if (chatTurnMutex.isLocked(sessionId) || runStatusActive) {
     schedulePendingChatDrain(sessionId, runStatusActive ? 500 : 0);
     return;
@@ -1150,11 +1243,9 @@ export async function steerPendingChatMessage(
   });
   const pendingMessages = syncPendingChatStatus(key);
   const interrupted = interruptActiveChatTurnForSteering(key);
-  if (interrupted) {
-    schedulePendingChatDrain(key);
-  }
+  schedulePendingChatDrain(key);
   broadcastStatus({
-    status: interrupted ? "idle" : "thinking",
+    status: "thinking",
     timestamp: Date.now(),
     detail: interrupted ? "Steering to follow-up..." : "Follow-up added",
     sessionId: key,
@@ -1241,10 +1332,14 @@ async function handleChatTurn(
   };
 
   const sanitizedImages = sanitizeAgentImages(request.images);
-  let userMessage =
+  const recordedUserMessageId =
     typeof request.recordedUserMessageId === "string" && request.recordedUserMessageId.trim()
-      ? findMaterializedSteeringMessage(session, request.recordedUserMessageId.trim())
+      ? request.recordedUserMessageId.trim()
       : undefined;
+  let userMessage = recordedUserMessageId
+    ? findMaterializedSteeringMessage(session, recordedUserMessageId)
+    : undefined;
+  const isMaterializedSteeringTurn = !!userMessage;
   const shouldLogUserMessage = !userMessage;
   if (userMessage) {
     delete userMessage._pendingSteeringId;
@@ -1285,6 +1380,8 @@ async function handleChatTurn(
 
   const provider = agent ? agentManager.resolveProvider(agent.id) : undefined;
   const turnAbortController = new AbortController();
+  const consumeSteeringMessagesForActiveTurn = () =>
+    turnAbortController.signal.aborted ? [] : consumeSteeringMessages(session);
   if (provider && agent) {
     activeChatTurnAbortControllers.set(session.id, turnAbortController);
   }
@@ -1442,6 +1539,18 @@ async function handleChatTurn(
         content: sessionMessage.content,
         ...(sessionMessage.images ? { images: sessionMessage.images } : {}),
       }));
+      if (isMaterializedSteeringTurn) {
+        const steeringInstruction: AgentMessage = {
+          role: "system",
+          content:
+            "The previous assistant turn was interrupted by user steering. Treat the latest user message as the active instruction. Do not continue abandoned earlier work unless the latest user message explicitly asks for it.",
+        };
+        if (executionMessages[0]?.role === "system") {
+          executionMessages.splice(1, 0, steeringInstruction);
+        } else {
+          executionMessages.unshift(steeringInstruction);
+        }
+      }
       const shouldPreferArtifacts = tools && shouldPreferArtifactsForMessage(message);
       let result = await agentManager.execute(agent.id, executionMessages, {
         useTools: tools,
@@ -1450,7 +1559,7 @@ async function handleChatTurn(
         requiredToolName: shouldPreferArtifacts ? "artifacts" : undefined,
         workspaceDir: session.workspaceDir || undefined,
         abortSignal: turnAbortController.signal,
-        consumeSteeringMessages: () => consumeSteeringMessages(session),
+        consumeSteeringMessages: consumeSteeringMessagesForActiveTurn,
       });
       responseContent = result.content;
 
@@ -1500,7 +1609,7 @@ async function handleChatTurn(
             requiredToolName: shouldPreferArtifacts ? "artifacts" : undefined,
             workspaceDir: session.workspaceDir || undefined,
             abortSignal: turnAbortController.signal,
-            consumeSteeringMessages: () => consumeSteeringMessages(session),
+            consumeSteeringMessages: consumeSteeringMessagesForActiveTurn,
           });
           const forcedToolCalls = forcedResult.tool_calls || [];
           const forcedHasArtifacts = forcedToolCalls.some(
@@ -1727,21 +1836,9 @@ async function handleChatTurn(
 
   const assistantTimestamp = new Date().toISOString();
   const assistantTimestampMs = parseIsoTimestampMs(assistantTimestamp) || Date.now();
-  const statusSnapshotActivities = (() => {
-    const snapshot = getSessionStatusSnapshot(session.id);
-    if (!snapshot || !Array.isArray(snapshot.activities) || snapshot.activities.length === 0) {
-      return undefined;
-    }
-    return snapshot.activities.map((activity) => ({
-      id: activity.id,
-      phase: activity.phase,
-      text: activity.text,
-      timestamp: activity.timestamp,
-      toolName: activity.toolName,
-      toolCallId: activity.toolCallId,
-      sandboxProvider: activity.sandboxProvider,
-    }));
-  })();
+  const statusSnapshotActivities = getSessionProcessActivities(session.id, {
+    excludeActivityIds: collectAttachedProcessActivityIds(session.messages),
+  });
   const fallbackProcessActivities =
     !statusSnapshotActivities || statusSnapshotActivities.length === 0
       ? buildFallbackProcessActivities(

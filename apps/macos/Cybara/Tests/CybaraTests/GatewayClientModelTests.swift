@@ -135,6 +135,7 @@ final class GatewayClientModelTests: XCTestCase {
                   "pendingMessage": {
                     "id": "pending-1",
                     "sessionId": "session-1",
+                    "clientPendingId": "optimistic-native-1",
                     "content": "follow up",
                     "createdAt": 1783015200700,
                     "updatedAt": 1783015200701,
@@ -145,6 +146,7 @@ final class GatewayClientModelTests: XCTestCase {
                     {
                       "id": "pending-1",
                       "sessionId": "session-1",
+                      "clientPendingId": "optimistic-native-1",
                       "content": "follow up",
                       "createdAt": 1783015200700,
                       "updatedAt": 1783015200701,
@@ -163,7 +165,9 @@ final class GatewayClientModelTests: XCTestCase {
 
         XCTAssertEqual(response.queued, true)
         XCTAssertEqual(response.pendingMessage?.content, "follow up")
+        XCTAssertEqual(response.pendingMessage?.clientPendingId, "optimistic-native-1")
         XCTAssertEqual(response.pendingMessages.first?.mode, "queued")
+        XCTAssertEqual(response.pendingMessages.first?.clientPendingId, "optimistic-native-1")
     }
 
     func testChatSendResponsePreservesAssistantToolTimelineMetadata() throws {

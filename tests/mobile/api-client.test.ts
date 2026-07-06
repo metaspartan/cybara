@@ -1383,6 +1383,7 @@ describe("mobile API client", () => {
             pendingMessage: {
               id: "pending-1",
               sessionId: "s1",
+              clientPendingId: body.clientPendingId,
               content: body.message,
               createdAt: 1783015200000,
               updatedAt: 1783015200000,
@@ -1411,6 +1412,7 @@ describe("mobile API client", () => {
         sessionId: "s1",
         message: "queue this",
         queueMode: "queue",
+        clientPendingId: "optimistic-mobile-1",
       });
       const interrupted = await api.sendChat({
         sessionId: "s1",
@@ -1420,7 +1422,12 @@ describe("mobile API client", () => {
       expect(queued).toMatchObject({
         sessionId: "s1",
         queued: true,
-        pendingMessage: { id: "pending-1", content: "queue this", mode: "queued" },
+        pendingMessage: {
+          id: "pending-1",
+          clientPendingId: "optimistic-mobile-1",
+          content: "queue this",
+          mode: "queued",
+        },
       });
       expect(interrupted.interrupted).toBe(true);
       expect(interrupted.message.content).toBe("");
@@ -1429,6 +1436,7 @@ describe("mobile API client", () => {
           sessionId: "s1",
           message: "queue this",
           queueMode: "queue",
+          clientPendingId: "optimistic-mobile-1",
         },
         {
           sessionId: "s1",

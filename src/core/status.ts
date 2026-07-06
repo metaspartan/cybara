@@ -43,6 +43,7 @@ export type PendingChatMessageMode = "queued" | "steering";
 export interface PendingChatMessageSnapshot {
   id: string;
   sessionId: string;
+  clientPendingId?: string;
   content: string;
   createdAt: number;
   updatedAt: number;
@@ -103,6 +104,7 @@ const ACTIVE_STATUSES = new Set<AgentStatus>([
   "generating",
   "tool_executing",
   "tool_completed",
+  "compacting",
 ]);
 const STATUS_STALE_MS = 15 * 60 * 1000;
 

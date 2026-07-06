@@ -289,8 +289,16 @@ function mergeOptimisticPendingMessages(
   remoteMessages: MobilePendingChatMessage[],
   currentMessages: MobilePendingChatMessage[]
 ): MobilePendingChatMessage[] {
+  const remoteClientPendingIds = new Set(
+    remoteMessages
+      .map((message) =>
+        typeof message.clientPendingId === "string" ? message.clientPendingId.trim() : ""
+      )
+      .filter(Boolean)
+  );
   const optimisticMessages = currentMessages.filter((message) => {
     if (!pendingMessageIsOptimistic(message)) return false;
+    if (remoteClientPendingIds.has(message.id)) return false;
     return !remoteMessages.some(
       (remote) => remote.sessionId === message.sessionId && remote.content === message.content
     );
@@ -2193,6 +2201,7 @@ function SessionDetailPanel({
       const optimisticPendingMessage: MobilePendingChatMessage = {
         id: optimisticPendingMessageId,
         sessionId,
+        clientPendingId: optimisticPendingMessageId,
         content: message,
         createdAt: liveStartedAt,
         updatedAt: liveStartedAt,
@@ -2230,6 +2239,7 @@ function SessionDetailPanel({
         agentId: detail?.agentId,
         workspaceDir: detail?.workspaceDir,
         queueMode: queuedSend ? "queue" : undefined,
+        clientPendingId: optimisticPendingMessageId || undefined,
       });
       if (result.queued) {
         setPendingMessages(pendingMessagesFromResponse(result));

@@ -30,7 +30,12 @@ export function useChat(agentId?: string) {
 
   const sendMessage = async (
     content: string,
-    options?: { workspaceDir?: string | null; queueMode?: "queue" | "steer"; sessionId?: string }
+    options?: {
+      workspaceDir?: string | null;
+      queueMode?: "queue" | "steer";
+      sessionId?: string;
+      clientPendingId?: string;
+    }
   ) => {
     const queueMode = options?.queueMode;
     const queuedSend = !!queueMode;
@@ -61,7 +66,8 @@ export function useChat(agentId?: string) {
             requestSessionId || undefined,
             requestedWorkspaceDir || undefined,
             controller.signal,
-            queueMode
+            queueMode,
+            options?.clientPendingId
           )
         : await chatApi.send(
             content,
@@ -69,7 +75,8 @@ export function useChat(agentId?: string) {
             requestSessionId || undefined,
             requestedWorkspaceDir || undefined,
             controller.signal,
-            queueMode
+            queueMode,
+            options?.clientPendingId
           );
 
       if (response.success && response.data) {
@@ -174,6 +181,26 @@ export function useChat(agentId?: string) {
     []
   );
 
+  const appendSessionMessage = useCallback(
+    (sessionId: string, message: ChatMessage, workspaceDir?: string | null) => {
+      setState((prev) => {
+        if (prev.sessionId !== sessionId) return prev;
+        const messageKey = `${message.role}\u0000${message.timestamp || ""}\u0000${message.content}`;
+        const alreadyPresent = prev.messages.some(
+          (existing) =>
+            `${existing.role}\u0000${existing.timestamp || ""}\u0000${existing.content}` ===
+            messageKey
+        );
+        return {
+          ...prev,
+          messages: alreadyPresent ? prev.messages : [...prev.messages, message],
+          workspaceDir: workspaceDir ?? prev.workspaceDir,
+        };
+      });
+    },
+    []
+  );
+
   const setWorkspaceDir = useCallback((workspaceDir: string | null) => {
     setState((prev) => ({
       ...prev,
@@ -221,6 +248,7 @@ export function useChat(agentId?: string) {
     sendMessage,
     clearChat,
     loadSession,
+    appendSessionMessage,
     setWorkspaceDir,
     revertToMessage,
     stopGenerating,

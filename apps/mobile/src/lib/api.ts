@@ -378,6 +378,7 @@ export interface SessionProcessActivitySummary {
 export interface MobilePendingChatMessage {
   id: string;
   sessionId: string;
+  clientPendingId?: string;
   content: string;
   createdAt: number;
   updatedAt: number;
@@ -1084,6 +1085,7 @@ function normalizePendingChatMessages(value: unknown): MobilePendingChatMessage[
       return {
         id: readString(record, ["id"]) || `pending-${index + 1}`,
         sessionId: readString(record, ["sessionId", "session_id"]) || "",
+        clientPendingId: readString(record, ["clientPendingId", "client_pending_id"]),
         content: readString(record, ["content", "message", "text"]) || "",
         createdAt: readNumber(record, ["createdAt", "created_at"]) ?? Date.now(),
         updatedAt: readNumber(record, ["updatedAt", "updated_at"]) ?? Date.now(),
@@ -1542,6 +1544,7 @@ export class CybaraMobileApi {
     agentId?: string;
     workspaceDir?: string | null;
     queueMode?: "queue" | "steer";
+    clientPendingId?: string;
   }): Promise<{
     sessionId: string;
     message: SessionMessageSummary;
@@ -1559,6 +1562,7 @@ export class CybaraMobileApi {
         agentId: input.agentId,
         workspaceDir: input.workspaceDir,
         queueMode: input.queueMode,
+        clientPendingId: input.clientPendingId,
       }),
     });
     const record = asRecord(response);

@@ -829,6 +829,7 @@ const routes: Record<string, RouteHandler> = {
     const data = body as {
       message: string;
       sessionId?: string;
+      clientPendingId?: string;
       workspaceDir?: string;
       queueMode?: "queue" | "steer";
     };
@@ -836,6 +837,7 @@ const routes: Record<string, RouteHandler> = {
       message: data.message,
       agentId: params!.id,
       sessionId: data.sessionId,
+      clientPendingId: data.clientPendingId,
       workspaceDir: data.workspaceDir,
       queueMode: data.queueMode,
     });
@@ -3414,6 +3416,7 @@ const routes: Record<string, RouteHandler> = {
       message: string;
       agentId?: string;
       sessionId?: string;
+      clientPendingId?: string;
       workspaceDir?: string;
       stream?: boolean;
       tools?: boolean;

@@ -43,6 +43,8 @@ describe("mobile: chat management", () => {
     expect(screen).toContain(
       "`optimistic-${liveStartedAt}-${optimisticPendingCounterRef.current}`"
     );
+    expect(screen).toContain("clientPendingId: optimisticPendingMessageId");
+    expect(api).toContain("clientPendingId?: string");
     expect(screen).toContain("pendingMessageIsOptimistic(pendingMessage)");
     expect(screen).toContain("result.interrupted");
     expect(screen).toContain("void hydratePendingMessages();");

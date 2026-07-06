@@ -86,6 +86,7 @@ import {
   readCachedOptimisticPendingMessages,
   writeCachedOptimisticPendingMessages,
 } from "./chat/pendingQueueCache";
+import { mergePendingChatMessages, normalizePendingChatMessages } from "./chat/pendingQueueState";
 import {
   getToolCallsInTimelineOrder,
   DIFF_PANEL_MIN_WIDTH,
@@ -214,32 +215,6 @@ function parseTimestampMs(value: unknown): number | undefined {
     }
   }
   return undefined;
-}
-
-function normalizePendingChatMessages(messages?: PendingChatMessage[]): PendingChatMessage[] {
-  return [...(messages || [])]
-    .filter(
-      (message) =>
-        typeof message.id === "string" &&
-        typeof message.content === "string" &&
-        message.content.trim().length > 0
-    )
-    .sort((a, b) => (a.sequence || 0) - (b.sequence || 0) || a.createdAt - b.createdAt);
-}
-
-function mergePendingChatMessages(
-  serverMessages: PendingChatMessage[] | undefined,
-  currentMessages: PendingChatMessage[]
-): PendingChatMessage[] {
-  const normalizedServerMessages = normalizePendingChatMessages(serverMessages);
-  const optimisticMessages = currentMessages.filter((message) => {
-    if (!message.id.startsWith("optimistic-")) return false;
-    return !normalizedServerMessages.some(
-      (serverMessage) =>
-        serverMessage.sessionId === message.sessionId && serverMessage.content === message.content
-    );
-  });
-  return normalizePendingChatMessages([...normalizedServerMessages, ...optimisticMessages]);
 }
 
 function PendingChatQueue({
@@ -1904,6 +1879,7 @@ export function Chat() {
     stopGenerating,
     clearChat,
     loadSession,
+    appendSessionMessage,
     sessionId,
     workspaceDir,
     setWorkspaceDir,
@@ -2023,6 +1999,7 @@ export function Chat() {
   const diffPanelResizeCleanupRef = useRef<(() => void) | null>(null);
   const activeSessionRef = useRef<string | null>(null);
   const restoreSessionGenerationRef = useRef(0);
+  const suppressAutoRestoreRef = useRef(false);
   const loadingRef = useRef(false);
   const wasLoadingRef = useRef(false);
   const optimisticPendingMessageCounterRef = useRef(0);
@@ -2629,6 +2606,7 @@ export function Chat() {
 
   const resetChatSession = useCallback(
     (options?: { resetAgentSelection?: boolean }) => {
+      suppressAutoRestoreRef.current = true;
       activeSessionRef.current = null;
       restoreSessionGenerationRef.current += 1;
       loadingRef.current = false;
@@ -2755,6 +2733,9 @@ export function Chat() {
         }
         const status = typeof payload.status === "string" ? payload.status : "";
         if (!status) return;
+        const statusDetail = typeof payload.detail === "string" ? payload.detail.trim() : "";
+        const isSteeringHandoff =
+          status === "idle" && statusDetail.toLowerCase() === "steering to follow-up...";
         const payloadSessionId =
           typeof payload.sessionId === "string" && payload.sessionId.trim()
             ? payload.sessionId
@@ -2783,7 +2764,7 @@ export function Chat() {
               previous.includes(payloadSessionId) ? previous : [...previous, payloadSessionId]
             );
           }
-          if (status === "idle" || status === "error") {
+          if ((status === "idle" && !isSteeringHandoff) || status === "error") {
             setActiveSessionIds((previous) => previous.filter((id) => id !== payloadSessionId));
           }
         }
@@ -2856,6 +2837,16 @@ export function Chat() {
           return;
         }
         if (status === "idle") {
+          if (isSteeringHandoff) {
+            const eventTimestamp =
+              typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
+                ? payload.timestamp
+                : undefined;
+            appendLiveActivity("result", statusDetail, "__thought", eventTimestamp);
+            setLiveStatus("thinking");
+            setLiveCurrentStep(statusDetail);
+            return;
+          }
           setLiveStatus("idle");
           setLiveCurrentStep(null);
           if (!loadingRef.current) {
@@ -2969,6 +2960,7 @@ export function Chat() {
   }, [activeSessionIds, isLoading, liveActivities.length, liveStatus, loadingSessionId, sessionId]);
 
   const handleSend = async () => {
+    suppressAutoRestoreRef.current = false;
     const requestedQueueMode =
       canQueueCurrentMessage() || pendingMessages.length > 0 ? "queue" : undefined;
     const requestSessionId = requestedQueueMode
@@ -2989,6 +2981,7 @@ export function Chat() {
           {
             id: optimisticPendingMessageId!,
             sessionId: requestSessionId,
+            clientPendingId: optimisticPendingMessageId,
             content: message,
             createdAt: now,
             updatedAt: now,
@@ -3011,6 +3004,7 @@ export function Chat() {
         workspaceDir: effectiveWorkspaceDir || undefined,
         queueMode,
         sessionId: requestSessionId || undefined,
+        clientPendingId: optimisticPendingMessageId || undefined,
       });
       if (response?.queued) {
         setPendingMessages(normalizePendingChatMessages(response.pendingMessages));
@@ -3049,14 +3043,24 @@ export function Chat() {
         const response = await chatApi.steerPendingMessage(sessionId, pendingMessageId);
         if (response.success && response.data) {
           setPendingMessages(normalizePendingChatMessages(response.data.pendingMessages));
-          const refreshed = await loadSessionMutation.mutateAsync(sessionId);
-          if (refreshed?.messagesList) {
-            loadSession(
-              sessionId,
-              refreshed.messagesList as ChatMessage[],
-              (refreshed as { workspace_dir?: string | null }).workspace_dir || null
-            );
-            syncSessionAgentSelection((refreshed as { agent_id?: string | null }).agent_id || null);
+          appendSessionMessage(sessionId, response.data.message as ChatMessage, workspaceDir);
+          const sessionStillActive =
+            activeSessionIds.includes(sessionId) ||
+            (isLoading && loadingSessionId === sessionId) ||
+            liveStatus !== "idle" ||
+            liveActivities.length > 0;
+          if (!sessionStillActive) {
+            const refreshed = await loadSessionMutation.mutateAsync(sessionId);
+            if (refreshed?.messagesList) {
+              loadSession(
+                sessionId,
+                refreshed.messagesList as ChatMessage[],
+                (refreshed as { workspace_dir?: string | null }).workspace_dir || null
+              );
+              syncSessionAgentSelection(
+                (refreshed as { agent_id?: string | null }).agent_id || null
+              );
+            }
           }
           return;
         }
@@ -3065,7 +3069,19 @@ export function Chat() {
         setSteeringMessageId(null);
       }
     },
-    [loadSession, loadSessionMutation, sessionId, syncSessionAgentSelection]
+    [
+      activeSessionIds,
+      appendSessionMessage,
+      isLoading,
+      loadSession,
+      loadSessionMutation,
+      liveActivities.length,
+      liveStatus,
+      loadingSessionId,
+      sessionId,
+      syncSessionAgentSelection,
+      workspaceDir,
+    ]
   );
 
   const handleReorderPendingMessages = useCallback(
@@ -3591,77 +3607,79 @@ export function Chat() {
         ? sessionParamRaw.trim()
         : null;
     const persistedSessionId = readPersistedSessionId();
-    const initialSessionId = sessionParam || persistedSessionId;
+    const restoreGeneration = restoreSessionGenerationRef.current;
+    const isRestorableChatSessionId = (value: unknown): value is string =>
+      typeof value === "string" && value.trim().length > 0 && !value.startsWith("agent:");
+    const restoreSessionFromId = async (
+      targetSessionId: string,
+      options?: { replaceRoute?: boolean }
+    ) => {
+      if (!targetSessionId || targetSessionId === sessionId) return true;
+      try {
+        const result = await loadSessionMutation.mutateAsync(targetSessionId);
+        if (!result?.messagesList) return false;
+        if (restoreSessionGenerationRef.current !== restoreGeneration || activeSessionRef.current) {
+          return true;
+        }
+        loadSession(
+          targetSessionId,
+          result.messagesList as ChatMessage[],
+          (result as { workspace_dir?: string | null }).workspace_dir || null
+        );
+        syncSessionAgentSelection((result as { agent_id?: string | null }).agent_id || null);
+        void hydrateSessionStatus(targetSessionId);
+        if (options?.replaceRoute) {
+          window.history.replaceState({}, "", "/chat");
+        }
+        return true;
+      } catch (error) {
+        console.error("Failed to restore chat session:", error);
+        return false;
+      }
+    };
+    const resolveFreshestActiveSessionId = async () => {
+      try {
+        const response = await chatApi.getSessionStatus();
+        if (!response.success || !response.data) return null;
+        if (restoreSessionGenerationRef.current !== restoreGeneration || activeSessionRef.current) {
+          return null;
+        }
+        const payload = response.data as SessionStatusResponse;
+        const activeSnapshots = Array.isArray(payload.activeSessions) ? payload.activeSessions : [];
+        const activeIds = Array.isArray(payload.activeSessionIds) ? payload.activeSessionIds : [];
+        setActiveSessionIds(activeIds.filter(isRestorableChatSessionId));
+        return (
+          activeSnapshots
+            .filter((snapshot) => isRestorableChatSessionId(snapshot.sessionId))
+            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))[0]?.sessionId ||
+          activeIds.find(isRestorableChatSessionId) ||
+          null
+        );
+      } catch (error) {
+        console.error("Failed to inspect active chat sessions:", error);
+        return null;
+      }
+    };
 
-    if (initialSessionId && initialSessionId !== sessionId) {
-      loadSessionMutation
-        .mutateAsync(initialSessionId)
-        .then((result) => {
-          if (result?.messagesList) {
-            loadSession(
-              initialSessionId,
-              result.messagesList as ChatMessage[],
-              (result as { workspace_dir?: string | null }).workspace_dir || null
-            );
-            syncSessionAgentSelection((result as { agent_id?: string | null }).agent_id || null);
-            if (sessionParam) {
-              window.history.replaceState({}, "", "/chat");
-            }
-          }
-        })
-        .catch((error) => {
-          console.error("Failed to restore initial chat session:", error);
-          if (!sessionParam && readPersistedSessionId() === initialSessionId) {
-            persistSessionId(null);
-          }
-        });
-    } else if (!initialSessionId && !sessionId) {
-      const restoreGeneration = restoreSessionGenerationRef.current;
-      chatApi
-        .getSessionStatus()
-        .then((response) => {
-          if (!response.success || !response.data) return null;
-          if (
-            restoreSessionGenerationRef.current !== restoreGeneration ||
-            activeSessionRef.current
-          ) {
-            return null;
-          }
-          const payload = response.data as SessionStatusResponse;
-          const activeSnapshots = Array.isArray(payload.activeSessions)
-            ? payload.activeSessions
-            : [];
-          const isRestorableChatSessionId = (value: unknown): value is string =>
-            typeof value === "string" && value.trim().length > 0 && !value.startsWith("agent:");
-          const freshestActiveSessionId =
-            activeSnapshots
-              .filter((snapshot) => isRestorableChatSessionId(snapshot.sessionId))
-              .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))[0]?.sessionId ||
-            (Array.isArray(payload.activeSessionIds)
-              ? payload.activeSessionIds.find(isRestorableChatSessionId)
-              : null);
-          if (!freshestActiveSessionId) return null;
-          persistSessionId(freshestActiveSessionId);
-          return loadSessionMutation.mutateAsync(freshestActiveSessionId).then((result) => {
-            if (!result?.messagesList) return;
-            if (
-              restoreSessionGenerationRef.current !== restoreGeneration ||
-              activeSessionRef.current
-            ) {
-              return;
-            }
-            loadSession(
-              freshestActiveSessionId,
-              result.messagesList as ChatMessage[],
-              (result as { workspace_dir?: string | null }).workspace_dir || null
-            );
-            syncSessionAgentSelection((result as { agent_id?: string | null }).agent_id || null);
-          });
-        })
-        .catch((error) => {
-          console.error("Failed to restore active chat session:", error);
-        });
-    }
+    void (async () => {
+      if (sessionParam) {
+        await restoreSessionFromId(sessionParam, { replaceRoute: true });
+        return;
+      }
+      if (suppressAutoRestoreRef.current) return;
+      if (sessionId) return;
+      const freshestActiveSessionId = await resolveFreshestActiveSessionId();
+      const targetSessionId = freshestActiveSessionId || persistedSessionId;
+      if (!targetSessionId) return;
+      persistSessionId(targetSessionId);
+      const restored = await restoreSessionFromId(targetSessionId);
+      if (!restored && !freshestActiveSessionId && readPersistedSessionId() === targetSessionId) {
+        persistSessionId(null);
+      }
+      if (!restored && freshestActiveSessionId && persistedSessionId) {
+        await restoreSessionFromId(persistedSessionId);
+      }
+    })();
   }, []); // Only run on mount
 
   const revertRemovedCount = revertTarget
@@ -3808,6 +3826,7 @@ export function Chat() {
             activeSessionIds={activeSessionIds}
             currentSessionLoading={isLoading}
             onLoadSession={(id, msgs, loadedWorkspaceDir, loadedAgentId) => {
+              suppressAutoRestoreRef.current = false;
               loadSession(id, msgs, loadedWorkspaceDir);
               syncSessionAgentSelection(loadedAgentId);
             }}

@@ -5,6 +5,7 @@ import {
   readCachedOptimisticPendingMessages,
   writeCachedOptimisticPendingMessages,
 } from "../../ui/src/pages/chat/pendingQueueCache";
+import { mergePendingChatMessages } from "../../ui/src/pages/chat/pendingQueueState";
 import type { PendingChatMessage } from "../../ui/src/lib/status-stream";
 
 function makeOptimistic(
@@ -91,5 +92,26 @@ describe("web optimistic pending queue cache", () => {
     expect(isOptimisticPendingMessageId("optimistic-1")).toBe(true);
     expect(isOptimisticPendingMessageId("server-1")).toBe(false);
     expect(isOptimisticPendingMessageId(null)).toBe(false);
+  });
+
+  test("server clientPendingId replaces matching optimistic queue marker after remount", () => {
+    const sessionId = `web-pending-client-id-${Date.now()}`;
+    const optimistic = makeOptimistic(sessionId, "client-1", "queued before route change");
+    const server: PendingChatMessage = {
+      id: "pending-server-1",
+      sessionId,
+      clientPendingId: optimistic.id,
+      content: "queued before route change edited on server",
+      createdAt: optimistic.createdAt + 5,
+      updatedAt: optimistic.updatedAt + 10,
+      mode: "queued",
+      sequence: 1,
+    };
+
+    const merged = mergePendingChatMessages([server], [optimistic]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.id).toBe("pending-server-1");
+    expect(merged[0]?.content).toBe("queued before route change edited on server");
   });
 });

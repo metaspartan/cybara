@@ -25,11 +25,20 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("chatApi.updatePendingMessage");
     expect(source).toContain("chatApi.deletePendingMessage");
     expect(source).toContain("chatApi.getPendingMessages");
+    expect(source).toContain("clientPendingId: optimisticPendingMessageId");
+    expect(source).toContain(
+      "appendSessionMessage(sessionId, response.data.message as ChatMessage, workspaceDir)"
+    );
+    expect(source).toContain("const sessionStillActive =");
+    expect(source).toContain("if (!sessionStillActive) {");
     expect(source).toContain("refreshPendingMessages(sessionId)");
     expect(source).toContain("mergePendingChatMessages(snapshot?.pendingMessages, current)");
     expect(source).toContain("readCachedOptimisticPendingMessages(sessionId)");
     expect(source).toContain("writeCachedOptimisticPendingMessages(sessionId, pendingMessages)");
     expect(source).toContain("const resetChatSession = useCallback");
+    expect(source).toContain("const suppressAutoRestoreRef = useRef(false)");
+    expect(source).toContain("suppressAutoRestoreRef.current = true");
+    expect(source).toContain("if (suppressAutoRestoreRef.current) return");
     expect(source).toContain("activeSessionRef.current = null");
     expect(source).toContain("restoreSessionGenerationRef.current += 1");
     expect(source).toContain("resetChatSession({");
@@ -46,13 +55,22 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("sessionId || activeSessionRef.current || crypto.randomUUID()");
     expect(source).toContain("persistSessionId(requestSessionId)");
     expect(source).toContain("if (sessionId) {\n      persistSessionId(sessionId);\n    }");
-    expect(source).toContain("readPersistedSessionId() === initialSessionId");
     expect(source).toContain(".getSessionStatus()");
     expect(source).toContain("const restoreGeneration = restoreSessionGenerationRef.current");
+    expect(source).toContain("const resolveFreshestActiveSessionId = async () =>");
+    expect(source).toContain(
+      "const freshestActiveSessionId = await resolveFreshestActiveSessionId()"
+    );
+    expect(source).toContain(
+      "const targetSessionId = freshestActiveSessionId || persistedSessionId"
+    );
+    expect(source).toContain("void hydrateSessionStatus(targetSessionId)");
+    expect(source).toContain("if (!restored && !freshestActiveSessionId");
     expect(source).toContain("restoreSessionGenerationRef.current !== restoreGeneration");
     expect(source).toContain('!value.startsWith("agent:")');
     expect(source).toContain("freshestActiveSessionId");
-    expect(source).toContain("Failed to restore active chat session");
+    expect(source).toContain("Failed to restore chat session");
+    expect(source).toContain("Failed to inspect active chat sessions");
     expect(source).toContain("sessionId: requestSessionId");
     expect(source).toContain("sessionId: requestSessionId || undefined");
     expect(source).toContain("optimisticPendingMessageCounterRef");

@@ -86,6 +86,7 @@ describe("status stream events", () => {
       {
         id: "pending-1",
         sessionId,
+        clientPendingId: "optimistic-status-1",
         content: "follow up",
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -100,10 +101,36 @@ describe("status stream events", () => {
 
     const pendingSnapshot = snapshot.activeSessions.find((entry) => entry.sessionId === sessionId);
     expect(pendingSnapshot?.pendingMessages?.[0]).toMatchObject({
+      clientPendingId: "optimistic-status-1",
       content: "follow up",
       mode: "queued",
     });
     expect(snapshot.activeSessionIds.includes(sessionId)).toBe(true);
     expect(received).toContain("queued");
+  });
+
+  test("keeps compacting sessions in active snapshots", () => {
+    const sessionId = `compacting-status-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    broadcastStatus({
+      status: "compacting",
+      timestamp: Date.now(),
+      sessionId,
+      detail: "Summarizing earlier conversation to continue...",
+    });
+
+    const snapshot = createStatusSnapshotEvent();
+    const compactingSnapshot = snapshot.activeSessions.find(
+      (entry) => entry.sessionId === sessionId
+    );
+
+    expect(compactingSnapshot?.status).toBe("compacting");
+    expect(snapshot.activeSessionIds.includes(sessionId)).toBe(true);
+
+    broadcastStatus({
+      status: "idle",
+      timestamp: Date.now() + 1,
+      sessionId,
+      detail: "idle",
+    });
   });
 });

@@ -1053,6 +1053,7 @@ struct ChatSendResponse: Decodable {
 struct GatewayPendingChatMessage: Decodable, Identifiable, Hashable {
     let id: String
     let sessionId: String
+    let clientPendingId: String?
     let content: String
     let createdAt: Double
     let updatedAt: Double
@@ -1060,13 +1061,14 @@ struct GatewayPendingChatMessage: Decodable, Identifiable, Hashable {
     let sequence: Double
 
     private enum CodingKeys: String, CodingKey {
-        case id, sessionId, session_id, content, message, text, createdAt, created_at, updatedAt, updated_at, mode, sequence
+        case id, sessionId, session_id, clientPendingId, client_pending_id, content, message, text, createdAt, created_at, updatedAt, updated_at, mode, sequence
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeFlexibleString(forKeys: [.id]) ?? UUID().uuidString
         sessionId = try container.decodeFlexibleString(forKeys: [.sessionId, .session_id]) ?? ""
+        clientPendingId = try container.decodeFlexibleString(forKeys: [.clientPendingId, .client_pending_id])
         content = try container.decodeFlexibleString(forKeys: [.content, .message, .text]) ?? ""
         createdAt = try container.decodeFlexibleDouble(forKeys: [.createdAt, .created_at]) ?? Date().timeIntervalSince1970 * 1000
         updatedAt = try container.decodeFlexibleDouble(forKeys: [.updatedAt, .updated_at]) ?? createdAt

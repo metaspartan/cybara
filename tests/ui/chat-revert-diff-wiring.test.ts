@@ -93,7 +93,7 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain("setActiveSessionIds");
     expect(source).toContain("chatApi.getSessionStatus(");
     expect(source).toContain("hydrateSessionStatus");
-    expect(source).toContain('status === "idle" || status === "error"');
+    expect(source).toContain('(status === "idle" && !isSteeringHandoff) || status === "error"');
     expect(source).toContain(
       '<Loader2 className="w-3 h-3 animate-spin text-amber-400 flex-shrink-0" />'
     );
@@ -116,7 +116,12 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain("cybara:lastSessionId");
     expect(source).toContain("readPersistedSessionId");
     expect(source).toContain("persistSessionId(sessionId)");
-    expect(source).toContain("const initialSessionId = sessionParam || persistedSessionId");
-    expect(source).toContain("Failed to restore initial chat session:");
+    expect(source).toContain("const resolveFreshestActiveSessionId = async () =>");
+    expect(source).toContain(
+      "const targetSessionId = freshestActiveSessionId || persistedSessionId"
+    );
+    expect(source).toContain("persistSessionId(targetSessionId)");
+    expect(source).toContain("Failed to restore chat session:");
+    expect(source).toContain("Failed to inspect active chat sessions:");
   });
 });
