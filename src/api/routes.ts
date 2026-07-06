@@ -694,9 +694,19 @@ const routes: Record<string, RouteHandler> = {
     reasoning_effort: config.getDefaultReasoningEffort(),
     self_improving_skills_enabled: config.get<boolean>("self_improving_skills_enabled") !== false,
   }),
-  "GET /api/auth/settings": () => ({ success: true, ...getGatewayAuthSettings() }),
+  "GET /api/auth/settings": () => ({
+    success: true,
+    ...getGatewayAuthSettings(),
+    port: Number(process.env.PORT) || config.get<number>("port") || 4269,
+    configuredPort: config.get<number>("port") || 4269,
+    portForced: Boolean(Number(process.env.PORT)),
+  }),
   "PUT /api/auth/settings": (body) => {
-    const data = (body || {}) as { requireAuthForLocalhost?: unknown; basePath?: unknown };
+    const data = (body || {}) as {
+      requireAuthForLocalhost?: unknown;
+      basePath?: unknown;
+      port?: unknown;
+    };
     const settings = getGatewayAuthSettings();
 
     if (data.basePath !== undefined) {
@@ -711,6 +721,19 @@ const routes: Record<string, RouteHandler> = {
       setGatewayBasePath(data.basePath);
     }
 
+    if (data.port !== undefined) {
+      const port = Number(data.port);
+      if (!Number.isInteger(port) || port < 1024 || port > 65535) {
+        throw new Error("port must be an integer between 1024 and 65535");
+      }
+      if (Number(process.env.PORT)) {
+        throw new Error(
+          "Port is forced by the PORT environment variable and cannot be changed here"
+        );
+      }
+      config.set("port", port);
+    }
+
     if (data.requireAuthForLocalhost !== undefined) {
       if (typeof data.requireAuthForLocalhost !== "boolean") {
         throw new Error("requireAuthForLocalhost must be a boolean");
@@ -723,7 +746,13 @@ const routes: Record<string, RouteHandler> = {
       setRequireAuthForLocalhost(data.requireAuthForLocalhost);
     }
 
-    return { success: true, ...getGatewayAuthSettings() };
+    return {
+      success: true,
+      ...getGatewayAuthSettings(),
+      port: Number(process.env.PORT) || config.get<number>("port") || 4269,
+      configuredPort: config.get<number>("port") || 4269,
+      portForced: Boolean(Number(process.env.PORT)),
+    };
   },
   "GET /api/auth/key": () => ({ success: true, ...revealGatewayApiKey() }),
   "POST /api/auth/rotate-key": () => ({ success: true, ...rotateGatewayApiKey() }),

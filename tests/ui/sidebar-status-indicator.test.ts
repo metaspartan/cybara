@@ -11,22 +11,33 @@ function readSidebarSource(): string {
 }
 
 describe("Sidebar status indicator behavior", () => {
-  test("treats thinking, generating, and tool execution events as active status", () => {
+  test("treats every in-turn status event as activity so the glow never flickers", () => {
     const source = readSidebarSource();
 
-    expect(source).toMatch(/["']thinking["']/);
-    expect(source).toMatch(/["']generating["']/);
-    expect(source).toMatch(/["']tool_executing["']/);
-    expect(source).not.toMatch(/["']tool_completed["'],/);
+    // tool_completed/compacting count too: long silent LLM calls sit between
+    // tool rounds, and dropping to idle mid-turn made the glow strobe.
+    for (const status of [
+      "thinking",
+      "generating",
+      "tool_executing",
+      "tool_completed",
+      "compacting",
+    ]) {
+      expect(source).toContain(`"${status}"`);
+    }
     expect(source).toMatch(
       /setStatus\(globalActive \|\| hasActiveSessions \? ["']active["'] : ["']idle["']\)/
     );
+    // Generous silence window: no status events arrive during a long model
+    // call, and expiring the session mid-turn is what caused the flicker.
+    expect(source).toContain("ACTIVE_WINDOW_MS = 60_000");
   });
 
-  test("renders active ring state from unified active status", () => {
+  test("renders active ring state with a slow pulsing halo", () => {
     const source = readSidebarSource();
 
     expect(source).toMatch(/status === ["']active["']/);
     expect(source).toContain("ring-2 ring-amber-400/60");
+    expect(source).toContain("cybara-activity-pulse");
   });
 });

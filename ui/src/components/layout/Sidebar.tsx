@@ -73,8 +73,14 @@ function useAgentStatus() {
   const globalLastSeenRef = useRef<number>(0);
 
   useEffect(() => {
-    const ACTIVE_WINDOW_MS = 10_000;
-    const ACTIVE_STATUSES = new Set(["thinking", "generating", "tool_executing"]);
+    const ACTIVE_WINDOW_MS = 60_000;
+    const ACTIVE_STATUSES = new Set([
+      "thinking",
+      "generating",
+      "tool_executing",
+      "tool_completed",
+      "compacting",
+    ]);
 
     const refreshDerivedStatus = () => {
       const now = Date.now();
@@ -91,7 +97,7 @@ function useAgentStatus() {
 
     const sweepInterval = setInterval(() => {
       refreshDerivedStatus();
-    }, 5000);
+    }, 2000);
 
     const disconnect = connectStatusStream({
       onEvent: (data) => {
@@ -288,7 +294,7 @@ export function Sidebar() {
             <div className="relative flex-shrink-0">
               <div
                 className={cn(
-                  "w-10 h-10 rounded-xl overflow-hidden transition-all duration-300",
+                  "w-10 h-10 rounded-xl overflow-hidden transition-all duration-700",
                   status === "active" &&
                     "ring-2 ring-amber-400/60 ring-offset-2 ring-offset-[#12121a]"
                 )}
@@ -300,7 +306,7 @@ export function Sidebar() {
                 />
               </div>
               {status === "active" && (
-                <div className="absolute -inset-1 rounded-xl bg-amber-400/20" />
+                <div className="absolute -inset-1 rounded-xl bg-amber-400/20 cybara-activity-pulse" />
               )}
             </div>
             {!collapsed && (

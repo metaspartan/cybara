@@ -3236,6 +3236,9 @@ function GatewayAuthSettingsSection() {
   const [rotateConfirmOpen, setRotateConfirmOpen] = useState(false);
   const [basePathInput, setBasePathInput] = useState("");
   const basePathTouchedRef = useRef(false);
+  const [portInput, setPortInput] = useState("");
+  const portTouchedRef = useRef(false);
+  const [restartingForPort, setRestartingForPort] = useState(false);
 
   const load = useCallback(
     async (silent = false) => {
@@ -3246,6 +3249,9 @@ function GatewayAuthSettingsSection() {
           setSettings(res.data);
           if (!basePathTouchedRef.current) {
             setBasePathInput(res.data.basePath || "");
+          }
+          if (!portTouchedRef.current) {
+            setPortInput(String(res.data.configuredPort || res.data.port || 4269));
           }
           setUnsupported(false);
         } else if (/not found/i.test(res.error || "")) {
@@ -3285,6 +3291,52 @@ function GatewayAuthSettingsSection() {
       addToast("error", error instanceof Error ? error.message : "Failed to update base path");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleSavePortAndRestart() {
+    const port = Number(portInput.trim());
+    if (!Number.isInteger(port) || port < 1024 || port > 65535) {
+      addToast("error", "Port must be an integer between 1024 and 65535");
+      return;
+    }
+    setBusy(true);
+    setRestartingForPort(true);
+    try {
+      const res = await authApi.updateSettings({ port });
+      if (!res.success || !res.data?.success) {
+        throw new Error(res.error || "Failed to update port");
+      }
+      portTouchedRef.current = false;
+      const nextOrigin = `${window.location.protocol}//${window.location.hostname}:${port}`;
+      const nextUrl = `${nextOrigin}${res.data.basePath || ""}/`;
+      addToast("info", `Port saved — restarting gateway on ${port}…`);
+      await systemApi.restart();
+      // Follow the gateway to its new origin once it answers there.
+      const deadline = Date.now() + 45_000;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 1_500));
+        try {
+          const probe = await fetch(`${nextOrigin}${res.data.basePath || ""}/api/health`, {
+            mode: "cors",
+          });
+          if (probe.ok) {
+            window.location.href = nextUrl;
+            return;
+          }
+        } catch {
+          // Not up yet.
+        }
+      }
+      addToast(
+        "error",
+        `Gateway did not come back on port ${port} within 45s — open ${nextUrl} manually`
+      );
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Failed to update port");
+    } finally {
+      setBusy(false);
+      setRestartingForPort(false);
     }
   }
 
@@ -3451,6 +3503,40 @@ function GatewayAuthSettingsSection() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="w-40">
+                <Input
+                  label="Gateway port"
+                  placeholder="4269"
+                  value={portInput}
+                  disabled={controlsDisabled || Boolean(settings?.portForced) || restartingForPort}
+                  onChange={(e) => {
+                    portTouchedRef.current = true;
+                    setPortInput(e.target.value);
+                  }}
+                />
+              </div>
+              <Button
+                variant="secondary"
+                onClick={() => void handleSavePortAndRestart()}
+                disabled={
+                  controlsDisabled ||
+                  Boolean(settings?.portForced) ||
+                  restartingForPort ||
+                  portInput.trim() === String(settings?.configuredPort || settings?.port || "")
+                }
+              >
+                {restartingForPort ? "Restarting…" : "Save Port & Restart"}
+              </Button>
+            </div>
+            <p className="text-xs text-gray-500">
+              Changing the port restarts the gateway and this page follows it to the new address.
+              Native apps and paired devices must update their gateway URL to the new port.
+              {settings?.portForced ? " Currently forced by the PORT environment variable." : ""}
+            </p>
+          </div>
+
           <div className="space-y-2">
             <div className="flex flex-wrap items-end gap-2">
               <div className="flex-1 min-w-[220px]">

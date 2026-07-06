@@ -807,6 +807,35 @@ function sortSessionListEntries(sessions: SessionListEntry[]): SessionListEntry[
   );
 }
 
+async function restorePersistedChatSessionForChat(
+  sessionId: string
+): Promise<InMemoryChatSession | undefined> {
+  try {
+    const persisted = await loadPersistedSession(sessionId);
+    if (!persisted || persisted.messages.length === 0) return undefined;
+    const indexed = persistedSessionIndex.get(sessionId);
+    const createdAt = indexed?.createdAt || new Date().toISOString();
+    const restored: InMemoryChatSession = {
+      id: sessionId,
+      agentId: persisted.agentId,
+      title: normalizeSessionTitle(persisted.title),
+      messages: persisted.messages,
+      createdAt,
+      updatedAt: indexed?.updatedAt || createdAt,
+      workspaceDir: persisted.workspaceDir ?? indexed?.workspaceDir ?? null,
+      persisted: true,
+    };
+    chatSessions.set(sessionId, restored);
+    log.info("Restored persisted session for chat turn", {
+      sessionId,
+      messages: persisted.messages.length,
+    });
+    return restored;
+  } catch {
+    return undefined;
+  }
+}
+
 async function loadPersistedSessions() {
   try {
     const sessions = await listPersistedSessions();
@@ -1424,6 +1453,12 @@ async function handleChatTurn(
     workspaceDir !== undefined ? normalizeSessionWorkspaceDir(workspaceDir) : undefined;
 
   let session = chatSessions.get(effectiveSessionId);
+  if (!session) {
+    // A miss for a previously-persisted id (gateway restart, memory eviction)
+    // must restore history from the database — creating a fresh session here
+    // silently clobbers the conversation on the next persist.
+    session = await restorePersistedChatSessionForChat(effectiveSessionId);
+  }
   const isNewSession = !session;
 
   if (!session) {

@@ -943,3 +943,20 @@ html.light .text-rose-200, html.light .text-rose-300 { color: #e11d48; }
 html.light .text-violet-300 { color: #7c3aed; }
 html.light .text-purple-300 { color: #9333ea; }
 html.light .text-orange-300 { color: #ea580c; }
+
+/* Sidebar logo activity halo: slow breathing pulse while any session works. */
+@keyframes cybara-activity-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.08);
+  }
+}
+
+.cybara-activity-pulse {
+  animation: cybara-activity-pulse 2.6s ease-in-out infinite;
+}

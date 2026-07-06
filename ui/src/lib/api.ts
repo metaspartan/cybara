@@ -334,6 +334,9 @@ export interface GatewayAuthSettings {
   localhostBypassActive: boolean;
   basePath?: string;
   basePathForced?: boolean;
+  port?: number;
+  configuredPort?: number;
+  portForced?: boolean;
   rateLimits: Record<string, { windowMs: number; maxRequests: number }>;
 }
 
@@ -347,7 +350,11 @@ export const systemApi = {
 
 export const authApi = {
   settings: () => fetchApi<GatewayAuthSettings>("/auth/settings"),
-  updateSettings: (payload: { requireAuthForLocalhost?: boolean; basePath?: string }) =>
+  updateSettings: (payload: {
+    requireAuthForLocalhost?: boolean;
+    basePath?: string;
+    port?: number;
+  }) =>
     fetchApi<GatewayAuthSettings>("/auth/settings", {
       method: "PUT",
       body: JSON.stringify(payload),

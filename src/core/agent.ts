@@ -34,6 +34,8 @@ import {
   googleThinkingBudget,
 } from "./llm/reasoning";
 import { applyProviderApiKey } from "./llm/auth-headers";
+import { normalizeLlmTimeoutError, withLlmRequestTimeout } from "./llm/request-timeout";
+import { trackTokenUsage } from "./llm/token-usage-tracking";
 import {
   hasTextToolCallMarkup,
   normalizeAnthropicToolUses,
@@ -212,147 +214,6 @@ export function resolveAgentToolSelection(
     return { kind: "malformed", reason: "non-array" };
   }
   return { kind: "malformed", reason: "non-array" };
-}
-
-function trackTokenUsage(
-  model: string,
-  provider: string,
-  providerUrl: string,
-  inputTokens: number,
-  outputTokens: number,
-  durationMs?: number
-) {
-  try {
-    // ── Feed the model router's usage tracking + circuit breaker ──
-    recordUsage(provider, inputTokens, outputTokens, true, model);
-  } catch {
-    /* router tracking is best-effort */
-  }
-  try {
-    const totalTokens = inputTokens + outputTokens;
-    const callId = crypto.randomUUID();
-    const timestamp = Date.now();
-    const tokenMetadata = {
-      callId,
-      model,
-      provider,
-      providerUrl,
-      inputTokens,
-      outputTokens,
-      totalTokens,
-      durationMs: durationMs ?? null,
-      timestamp,
-    };
-
-    tables.metrics.add({
-      id: crypto.randomUUID(),
-      type: "token_usage_by_model",
-      key: model,
-      value: totalTokens,
-      metadata: JSON.stringify(tokenMetadata),
-    });
-
-    tables.metrics.add({
-      id: crypto.randomUUID(),
-      type: "token_usage_by_provider",
-      key: provider,
-      value: totalTokens,
-      metadata: JSON.stringify({ ...tokenMetadata, url: providerUrl }),
-    });
-
-    tables.metrics.add({
-      id: crypto.randomUUID(),
-      type: "token_usage",
-      key: "input",
-      value: inputTokens,
-      metadata: JSON.stringify({ ...tokenMetadata, direction: "input" }),
-    });
-    tables.metrics.add({
-      id: crypto.randomUUID(),
-      type: "token_usage",
-      key: "output",
-      value: outputTokens,
-      metadata: JSON.stringify({ ...tokenMetadata, direction: "output" }),
-    });
-    tables.metrics.add({
-      id: crypto.randomUUID(),
-      type: "token_usage",
-      key: "all",
-      value: totalTokens,
-      metadata: JSON.stringify(tokenMetadata),
-    });
-
-    tables.metrics.add({
-      id: crypto.randomUUID(),
-      type: "api_call",
-      key: "all",
-      value: 1,
-      metadata: JSON.stringify({ url: providerUrl }),
-    });
-    tables.metrics.add({
-      id: crypto.randomUUID(),
-      type: "api_call",
-      key: "success",
-      value: 1,
-      metadata: JSON.stringify({ url: providerUrl }),
-    });
-
-    tables.metrics.add({
-      id: crypto.randomUUID(),
-      type: "api_call",
-      key: provider,
-      value: 1,
-      metadata: JSON.stringify({ url: providerUrl }),
-    });
-
-    tables.metrics.add({ id: crypto.randomUUID(), type: "agent_execution", key: "all", value: 1 });
-    tables.metrics.add({
-      id: crypto.randomUUID(),
-      type: "agent_execution",
-      key: "message",
-      value: 1,
-      metadata: JSON.stringify({ timestamp }),
-    });
-
-    tables.metrics.add({
-      id: crypto.randomUUID(),
-      type: "system_status",
-      key: "last_activity",
-      value: timestamp,
-    });
-
-    if (durationMs && durationMs > 0) {
-      const tps = Math.round((outputTokens / durationMs) * 1000); // output tokens per second
-
-      tables.metrics.add({
-        id: crypto.randomUUID(),
-        type: "model_tps",
-        key: model,
-        value: tps,
-        metadata: JSON.stringify(tokenMetadata),
-      });
-
-      tables.metrics.add({
-        id: crypto.randomUUID(),
-        type: "model_latency",
-        key: model,
-        value: durationMs,
-        metadata: JSON.stringify({ ...tokenMetadata, provider }),
-      });
-
-      console.log(
-        `[Metrics] TPS: ${tps} tok/s (${outputTokens} tokens in ${durationMs}ms) for ${model}`
-      );
-    }
-
-    broadcastStatus({ status: "thinking", timestamp: Date.now() });
-
-    console.log(
-      `[Metrics] Tracked tokens: input=${inputTokens}, output=${outputTokens}, model=${model}, provider=${provider}`
-    );
-  } catch (e) {
-    console.error("[Metrics] Token tracking failed:", e);
-  }
 }
 
 function shouldPreferMaxCompletionTokens(providerConfig?: string): boolean {
@@ -2691,13 +2552,18 @@ class AgentManager {
     errorPrefix: string,
     signal?: AbortSignal
   ): Promise<OpenAIResponse> {
-    const post = async (body: Record<string, unknown>) =>
-      await fetch(`${baseUrl}/chat/completions`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal,
-      });
+    const post = async (body: Record<string, unknown>) => {
+      try {
+        return await fetch(`${baseUrl}/chat/completions`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+          signal: withLlmRequestTimeout(signal),
+        });
+      } catch (error) {
+        throw normalizeLlmTimeoutError(error, signal);
+      }
+    };
 
     let currentBody: Record<string, unknown> = { ...requestBody };
     let attemptedMaxCompletionRetry = false;
@@ -3092,11 +2958,40 @@ class AgentManager {
       message = loopChoice?.message as OpenAIMessage;
 
       if (!message) {
+        console.warn("[Agent] Agentic loop got an empty completion; stopping loop");
         break;
       }
 
       if (message.content) {
         finalContent = message.content;
+      }
+    }
+
+    // A turn that executed tools must end with real assistant text: one
+    // explicit no-tools nudge recovers the answer instead of surfacing a
+    // synthetic "Completed N tool calls" placeholder to the user.
+    if (!limitReason && !finalContent.trim() && allToolCalls.length > 0) {
+      console.warn("[Agent] Final content empty after tool loop; requesting a closing response");
+      try {
+        currentMessages.push({
+          role: "user",
+          content:
+            "Reply to the user now with your findings from the tool results above. Do not call any more tools.",
+        });
+        const nudgeBody: Record<string, unknown> = { model: modelId, messages: currentMessages };
+        const limit = this.resolveOpenAIRequestTokenLimit(nudgeBody, maxOutputTokens, contextWindowTokens);
+        this.applyOpenAITokenLimit(nudgeBody, preferMaxCompletionTokens, limit);
+        const nudgeData = await this.postOpenAIChatCompletions(
+          baseUrl,
+          headers,
+          nudgeBody,
+          "API error in agentic loop closing response",
+          toolContext?.abortSignal
+        );
+        const nudgeContent = nudgeData.choices?.[0]?.message?.content;
+        if (typeof nudgeContent === "string" && nudgeContent.trim()) finalContent = nudgeContent;
+      } catch (error) {
+        console.warn(`[Agent] Closing-response nudge failed: ${this.normalizeErrorMessage(error)}`);
       }
     }
 
@@ -3490,12 +3385,17 @@ class AgentManager {
     for (let index = 0; index < candidates.length; index++) {
       const candidate = candidates[index];
       const body = { ...requestBody, model: candidate };
-      const response = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal,
-      });
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+          signal: withLlmRequestTimeout(signal),
+        });
+      } catch (error) {
+        throw normalizeLlmTimeoutError(error, signal);
+      }
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -3832,7 +3732,7 @@ class AgentManager {
         method: "POST",
         headers,
         body: JSON.stringify(requestBody),
-        signal: toolContext?.abortSignal,
+        signal: withLlmRequestTimeout(toolContext?.abortSignal),
       });
 
       if (!response.ok) {
@@ -4284,7 +4184,7 @@ class AgentManager {
         method: "POST",
         headers,
         body: JSON.stringify(requestBody),
-        signal: toolContext?.abortSignal,
+        signal: withLlmRequestTimeout(toolContext?.abortSignal),
       });
 
       if (response.ok) {
@@ -4584,7 +4484,7 @@ class AgentManager {
             method: "POST",
             headers,
             body: JSON.stringify(loopRequestBody),
-            signal: toolContext?.abortSignal,
+            signal: withLlmRequestTimeout(toolContext?.abortSignal),
           });
 
           if (loopResponse.ok) break;
@@ -4606,7 +4506,7 @@ class AgentManager {
               method: "POST",
               headers,
               body: JSON.stringify(retryBody),
-              signal: toolContext?.abortSignal,
+              signal: withLlmRequestTimeout(toolContext?.abortSignal),
             });
             if (!retryResponse.ok) {
               loopFatalError = true;
