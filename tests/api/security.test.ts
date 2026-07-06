@@ -63,6 +63,21 @@ describe("API security module", () => {
     }
   });
 
+  test("normalizeGatewayBasePath accepts clean prefixes and rejects junk", () => {
+    expect(security.normalizeGatewayBasePath("/cybara")).toBe("/cybara");
+    expect(security.normalizeGatewayBasePath("cybara")).toBe("/cybara");
+    expect(security.normalizeGatewayBasePath("/cybara/")).toBe("/cybara");
+    expect(security.normalizeGatewayBasePath("/tools/cybara")).toBe("/tools/cybara");
+    expect(security.normalizeGatewayBasePath("")).toBe("");
+    expect(security.normalizeGatewayBasePath("/")).toBe("");
+    expect(security.normalizeGatewayBasePath("/api")).toBe("");
+    expect(security.normalizeGatewayBasePath("/api/nested")).toBe("");
+    expect(security.normalizeGatewayBasePath("/sp ace")).toBe("");
+    expect(security.normalizeGatewayBasePath("/a/b/c/d/e")).toBe("");
+    expect(security.normalizeGatewayBasePath("/../etc")).toBe("");
+    expect(security.normalizeGatewayBasePath(42)).toBe("");
+  });
+
   test("authenticateRequest rejects missing header for non-localhost", () => {
     const result = security.authenticateRequest({}, "203.0.113.10");
     expect(result.authenticated).toBe(false);

@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { getDesktopHostRuntime } from "./lib/desktopHost";
+import { getGatewayBasePath } from "./lib/auth";
 import "./index.css";
 
 const rootElement = document.documentElement;
@@ -34,10 +35,12 @@ const queryClient = new QueryClient({
   },
 });
 
+const routerBasename = getGatewayBasePath() || undefined;
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter basename={routerBasename}>
         <App />
       </BrowserRouter>
     </QueryClientProvider>

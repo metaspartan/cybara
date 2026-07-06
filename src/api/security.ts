@@ -16,6 +16,7 @@ let cachedApiKey: string | null | undefined;
 
 interface PersistedSecuritySettings {
   requireAuthForLocalhost?: boolean;
+  basePath?: string;
 }
 
 let cachedSecuritySettings: PersistedSecuritySettings | undefined;
@@ -33,6 +34,10 @@ function readPersistedSecuritySettings(): PersistedSecuritySettings {
           requireAuthForLocalhost:
             typeof record.requireAuthForLocalhost === "boolean"
               ? record.requireAuthForLocalhost
+              : undefined,
+          basePath:
+            typeof record.basePath === "string"
+              ? normalizeGatewayBasePath(record.basePath)
               : undefined,
         };
         return cachedSecuritySettings;
@@ -352,6 +357,47 @@ export function authenticateRequest(headers: Record<string, string>, ip: string)
  * process-management routes keep narrower high-risk scopes so paired-device
  * tokens cannot escalate into fund movement or local code execution.
  */
+/**
+ * Normalize an optional URL prefix the gateway serves under (e.g. "/cybara").
+ * Returns "" for none. Accepts 1-4 path segments of URL-safe characters; the
+ * env override CYBARA_BASE_PATH wins over the persisted setting.
+ */
+export function normalizeGatewayBasePath(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "/") return "";
+  const withSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  const cleaned = withSlash.replace(/\/+$/, "");
+  if (!/^(\/[A-Za-z0-9._~-]{1,64}){1,4}$/.test(cleaned)) return "";
+  // "." / ".." segments would alias other paths.
+  if (cleaned.split("/").some((segment) => /^\.+$/.test(segment) && segment !== "")) return "";
+  // Reserve the API namespace so a prefix can't shadow real routes confusingly.
+  if (cleaned === "/api" || cleaned.startsWith("/api/")) return "";
+  return cleaned;
+}
+
+export function getGatewayBasePath(): string {
+  const envBase = normalizeGatewayBasePath(process.env.CYBARA_BASE_PATH);
+  if (envBase) return envBase;
+  return normalizeGatewayBasePath(readPersistedSecuritySettings().basePath);
+}
+
+export function setGatewayBasePath(value: unknown): string {
+  const raw = typeof value === "string" ? value.trim() : "";
+  const normalized = normalizeGatewayBasePath(raw);
+  if (raw && raw !== "/" && !normalized) {
+    throw new Error(
+      "Invalid base path: use 1-4 URL-safe segments like /cybara or /tools/cybara (the /api prefix is reserved)"
+    );
+  }
+  writePersistedSecuritySettings({
+    ...readPersistedSecuritySettings(),
+    basePath: normalized || undefined,
+  });
+  log.info(`Gateway base path ${normalized ? `set to ${normalized}` : "cleared"}`);
+  return normalized;
+}
+
 export interface GatewayAuthSettings {
   apiKeyConfigured: boolean;
   apiKeyPreview: string | null;
@@ -360,6 +406,8 @@ export interface GatewayAuthSettings {
   requireAuthForLocalhost: boolean;
   requireAuthForLocalhostForced: boolean;
   localhostBypassActive: boolean;
+  basePath: string;
+  basePathForced: boolean;
   rateLimits: typeof config.rateLimits;
 }
 
@@ -376,6 +424,8 @@ export function getGatewayAuthSettings(): GatewayAuthSettings {
     requireAuthForLocalhost: !isLocalhostBypassAllowed(),
     requireAuthForLocalhostForced: requireForced,
     localhostBypassActive: isLocalhostBypassAllowed(),
+    basePath: getGatewayBasePath(),
+    basePathForced: Boolean(normalizeGatewayBasePath(process.env.CYBARA_BASE_PATH)),
     rateLimits: config.rateLimits,
   };
 }

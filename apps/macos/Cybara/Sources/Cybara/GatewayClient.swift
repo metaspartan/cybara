@@ -29,6 +29,18 @@ private struct GatewaySteerPendingBody: Encodable {
 struct GatewayClient: Sendable {
     let baseURL: URL
 
+    init(baseURL: URL) {
+        // Relative request paths ("api/…") resolve against the last path
+        // segment, so a gateway served under a base path (e.g. …/cybara)
+        // needs a trailing slash to keep the prefix.
+        let path = baseURL.path
+        if path.isEmpty || path == "/" || baseURL.absoluteString.hasSuffix("/") {
+            self.baseURL = baseURL
+        } else {
+            self.baseURL = URL(string: baseURL.absoluteString + "/") ?? baseURL
+        }
+    }
+
     static func loadAPIKey() -> String? {
         let path = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".cybara/api_key")

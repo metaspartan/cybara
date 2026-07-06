@@ -3234,6 +3234,8 @@ function GatewayAuthSettingsSection() {
   const [busy, setBusy] = useState(false);
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
   const [rotateConfirmOpen, setRotateConfirmOpen] = useState(false);
+  const [basePathInput, setBasePathInput] = useState("");
+  const basePathTouchedRef = useRef(false);
 
   const load = useCallback(
     async (silent = false) => {
@@ -3242,6 +3244,9 @@ function GatewayAuthSettingsSection() {
         const res = await authApi.settings();
         if (res.success && res.data?.success) {
           setSettings(res.data);
+          if (!basePathTouchedRef.current) {
+            setBasePathInput(res.data.basePath || "");
+          }
           setUnsupported(false);
         } else if (/not found/i.test(res.error || "")) {
           // Older gateway without /api/auth — show guidance instead of erroring.
@@ -3263,6 +3268,25 @@ function GatewayAuthSettingsSection() {
     }, 30_000);
     return () => window.clearInterval(timer);
   }, [load]);
+
+  async function handleSaveBasePath() {
+    setBusy(true);
+    try {
+      const res = await authApi.updateSettings({ basePath: basePathInput.trim() });
+      if (!res.success || !res.data?.success) {
+        throw new Error(res.error || "Failed to update base path");
+      }
+      setSettings(res.data);
+      basePathTouchedRef.current = false;
+      setBasePathInput(res.data.basePath || "");
+      const nextUrl = `${window.location.origin}${res.data.basePath || "/"}`;
+      addToast("success", `Base path saved — dashboard now lives at ${nextUrl}`);
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Failed to update base path");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function handleToggleRequireAuth(checked: boolean) {
     setBusy(true);
@@ -3427,6 +3451,41 @@ function GatewayAuthSettingsSection() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="flex-1 min-w-[220px]">
+                <Input
+                  label="Base path (optional)"
+                  placeholder="/cybara"
+                  value={basePathInput}
+                  disabled={controlsDisabled || Boolean(settings?.basePathForced)}
+                  onChange={(e) => {
+                    basePathTouchedRef.current = true;
+                    setBasePathInput(e.target.value);
+                  }}
+                />
+              </div>
+              <Button
+                variant="secondary"
+                onClick={() => void handleSaveBasePath()}
+                disabled={
+                  controlsDisabled ||
+                  Boolean(settings?.basePathForced) ||
+                  basePathInput.trim() === (settings?.basePath || "")
+                }
+              >
+                Save Base Path
+              </Button>
+            </div>
+            <p className="text-xs text-gray-500">
+              Serve the gateway under a URL prefix (useful behind a reverse proxy or as an extra
+              hurdle on a shared network). Takes effect immediately — the dashboard moves to{" "}
+              <span className="font-mono">{`${window.location.origin}${basePathInput.trim() || "/"}`}</span>
+              . Native apps just add the prefix to their gateway URL. /api/health stays reachable
+              without the prefix for health checks.
+            </p>
+          </div>
+
           <Switch
             label="Require API key for localhost"
             description={

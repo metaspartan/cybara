@@ -145,6 +145,7 @@ import {
   revealGatewayApiKey,
   rotateGatewayApiKey,
   securityCheck,
+  setGatewayBasePath,
   setRequireAuthForLocalhost,
   validateUrl,
 } from "./security";
@@ -695,17 +696,34 @@ const routes: Record<string, RouteHandler> = {
   }),
   "GET /api/auth/settings": () => ({ success: true, ...getGatewayAuthSettings() }),
   "PUT /api/auth/settings": (body) => {
-    const data = (body || {}) as { requireAuthForLocalhost?: unknown };
-    if (typeof data.requireAuthForLocalhost !== "boolean") {
-      throw new Error("requireAuthForLocalhost must be a boolean");
-    }
+    const data = (body || {}) as { requireAuthForLocalhost?: unknown; basePath?: unknown };
     const settings = getGatewayAuthSettings();
-    if (settings.requireAuthForLocalhostForced) {
-      throw new Error(
-        "Localhost auth requirement is forced by CYBARA_REQUIRE_AUTH/production mode and cannot be changed here"
-      );
+
+    if (data.basePath !== undefined) {
+      if (typeof data.basePath !== "string") {
+        throw new Error("basePath must be a string");
+      }
+      if (settings.basePathForced) {
+        throw new Error(
+          "Base path is forced by the CYBARA_BASE_PATH environment variable and cannot be changed here"
+        );
+      }
+      setGatewayBasePath(data.basePath);
     }
-    return { success: true, ...setRequireAuthForLocalhost(data.requireAuthForLocalhost) };
+
+    if (data.requireAuthForLocalhost !== undefined) {
+      if (typeof data.requireAuthForLocalhost !== "boolean") {
+        throw new Error("requireAuthForLocalhost must be a boolean");
+      }
+      if (settings.requireAuthForLocalhostForced) {
+        throw new Error(
+          "Localhost auth requirement is forced by CYBARA_REQUIRE_AUTH/production mode and cannot be changed here"
+        );
+      }
+      setRequireAuthForLocalhost(data.requireAuthForLocalhost);
+    }
+
+    return { success: true, ...getGatewayAuthSettings() };
   },
   "GET /api/auth/key": () => ({ success: true, ...revealGatewayApiKey() }),
   "POST /api/auth/rotate-key": () => ({ success: true, ...rotateGatewayApiKey() }),

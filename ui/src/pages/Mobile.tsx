@@ -21,12 +21,13 @@ import {
   useMobileDevices,
   useRevokeMobileDevice,
 } from "@/hooks/useApi";
+import { getGatewayBasePath } from "@/lib/auth";
 import { useUIStore } from "@/stores/uiStore";
 import type { MobileDevice, MobilePairing } from "@/types";
 
 function defaultGatewayUrl(): string {
   if (typeof window === "undefined") return "http://localhost:4269";
-  return window.location.origin;
+  return `${window.location.origin}${getGatewayBasePath()}`;
 }
 
 function formatDate(value?: string): string {

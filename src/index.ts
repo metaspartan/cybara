@@ -63,7 +63,7 @@ import { logSandboxRuntimeStatus } from "./core/sandbox";
 import { onSubagentLifecycle } from "./core/subagent-registry";
 import { resolveUiPath } from "./core/runtime/ui-path";
 import { readUiIndexContent } from "./core/runtime/ui-index";
-import { revealGatewayApiKey, securityCheck } from "./api/security";
+import { getGatewayBasePath, revealGatewayApiKey, securityCheck } from "./api/security";
 import { getClientIp } from "./api/client-ip";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -120,7 +120,19 @@ try {
 }
 
 function readUiIndex(): string {
-  return readUiIndexContent({ uiPath, uiExists, fallbackContent: uiContent });
+  const raw = readUiIndexContent({ uiPath, uiExists, fallbackContent: uiContent });
+  const basePath = getGatewayBasePath();
+  if (!basePath) return raw;
+  // The Vite build emits root-absolute asset URLs; rewrite them under the
+  // configured prefix and tell the SPA its base so routing/fetches line up.
+  return raw
+    .replaceAll('src="/', `src="${basePath}/`)
+    .replaceAll('href="/', `href="${basePath}/`)
+    .replace(
+      "<head>",
+      // A meta tag (not an inline script) so the strict CSP needs no carve-out.
+      `<head><meta name="cybara-base-path" content="${basePath}">`
+    );
 }
 
 const mimeTypes: Record<string, string> = {
@@ -295,7 +307,25 @@ Bun.serve<WsData>({
   idleTimeout: 255,
   fetch: async (req, server) => {
     const url = new URL(req.url);
-    const pathname = url.pathname;
+    let pathname = url.pathname;
+
+    // Optional URL prefix (Settings > Auth): strip it once here so every
+    // route below stays prefix-agnostic. Health stays reachable unprefixed —
+    // supervisors (sidecars, scripts, load balancers) probe it directly.
+    const basePath = getGatewayBasePath();
+    if (basePath) {
+      if (pathname === basePath || pathname.startsWith(`${basePath}/`)) {
+        pathname = pathname.slice(basePath.length) || "/";
+      } else if (pathname === "/" || pathname === "/index.html") {
+        return Response.redirect(`${basePath}/`, 307);
+      } else if (!pathname.startsWith("/api/health")) {
+        return new Response(JSON.stringify({ error: "Not found" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
     const requestHeaders = Object.fromEntries(req.headers.entries());
     const directIp = server.requestIP?.(req)?.address;
     const clientIp = getClientIp(requestHeaders, directIp);
@@ -430,7 +460,8 @@ Bun.serve<WsData>({
       }
       const response = await handleRequest({
         method: req.method,
-        url: req.url,
+        // Route matching re-parses the URL, so hand it the prefix-stripped path.
+        url: basePath ? `${url.origin}${pathname}${url.search}` : req.url,
         headers: requestHeaders,
         body,
         rawBody,
@@ -588,9 +619,10 @@ Bun.serve<WsData>({
 // rotation replaces it. The tokenized dashboard URL below authenticates the
 // browser even when the localhost bypass is off — same pattern as Jupyter.
 const gatewayKey = revealGatewayApiKey().apiKey;
+const startupBasePath = getGatewayBasePath();
 const tokenizedDashboardUrl = gatewayKey
-  ? `http://localhost:${PORT}/?token=${gatewayKey}`
-  : `http://localhost:${PORT}`;
+  ? `http://localhost:${PORT}${startupBasePath}/?token=${gatewayKey}`
+  : `http://localhost:${PORT}${startupBasePath}`;
 
 console.log(`
 ╔═══════════════════════════════════════════════════════════════╗

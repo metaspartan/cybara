@@ -1,6 +1,31 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isTauriDesktopRuntime } from "./desktopHost";
 
+declare global {
+  interface Window {
+    __CYBARA_BASE_PATH__?: string;
+  }
+}
+
+/**
+ * Optional URL prefix the gateway serves under (e.g. "/cybara"), injected into
+ * index.html by the gateway. Empty when served at the root or in Vite dev.
+ */
+export function getGatewayBasePath(): string {
+  if (typeof window === "undefined" || typeof document === "undefined") return "";
+  const meta = document.querySelector('meta[name="cybara-base-path"]');
+  const fromMeta = meta?.getAttribute("content") || "";
+  const base = fromMeta || window.__CYBARA_BASE_PATH__ || "";
+  return typeof base === "string" && base.startsWith("/") && base !== "/" ? base : "";
+}
+
+/** Prefix a root-relative API path with the gateway base path. */
+export function withGatewayBasePath(path: string): string {
+  const base = getGatewayBasePath();
+  if (!base || !path.startsWith("/") || path.startsWith(`${base}/`)) return path;
+  return `${base}${path}`;
+}
+
 let desktopTokenHydration: Promise<string | null> | null = null;
 
 function getWindowToken(): string | null {
@@ -85,13 +110,16 @@ export function setApiAuthToken(token: string): void {
 }
 
 export function appendApiTokenParam(urlOrPath: string, token = getApiAuthToken()): string {
+  // Callers hand this root-relative API paths destined for fetch/WebSocket;
+  // apply the gateway base path here so they stay prefix-agnostic.
+  const prefixed = urlOrPath.startsWith("/") ? withGatewayBasePath(urlOrPath) : urlOrPath;
   if (!token) {
-    return urlOrPath;
+    return prefixed;
   }
 
-  const hasQuery = urlOrPath.includes("?");
+  const hasQuery = prefixed.includes("?");
   const separator = hasQuery ? "&" : "?";
-  return `${urlOrPath}${separator}token=${encodeURIComponent(token)}`;
+  return `${prefixed}${separator}token=${encodeURIComponent(token)}`;
 }
 
 export function withApiAuthHeaders(headers?: HeadersInit, token = getApiAuthToken()): Headers {
@@ -108,7 +136,11 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
     await hydrateTauriDesktopToken();
   }
 
-  const response = await fetch(input, {
+  // Root-relative paths get the gateway base path here, at the single fetch
+  // choke point, so no call site needs to know about the prefix.
+  const target = typeof input === "string" && input.startsWith("/") ? withGatewayBasePath(input) : input;
+
+  const response = await fetch(target, {
     ...init,
     headers: withApiAuthHeaders(init?.headers),
   });
@@ -119,7 +151,7 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
     !getApiAuthToken() &&
     (await hydrateTauriDesktopToken(true))
   ) {
-    return fetch(input, {
+    return fetch(target, {
       ...init,
       headers: withApiAuthHeaders(init?.headers),
     });
